@@ -79,10 +79,17 @@ describe("bun compatibility", () => {
       canBuild: vi.fn().mockResolvedValue(false),
       execute: vi.fn(),
     }));
+    const otherFrameworkBuild = vi.fn().mockImplementation(() => ({
+      canBuild: vi.fn().mockResolvedValue(false),
+      execute: vi.fn(),
+    }));
 
     vi.doMock("@prisma/compute-sdk", () => ({
+      AstroBuild: otherFrameworkBuild,
       BunBuild: bunBuild,
       NextjsBuild: nextjsBuild,
+      NuxtBuild: otherFrameworkBuild,
+      TanstackStartBuild: otherFrameworkBuild,
     }));
 
     const { resolvePreviewBuildStrategy } = await import("../src/lib/app/preview-build");
@@ -98,6 +105,84 @@ describe("bun compatibility", () => {
       appPath: cwd,
       entrypoint: "index.ts",
     });
+  });
+
+  it("auto-detects SDK framework strategies before falling back to Bun", async () => {
+    const cwd = await createTempCwd();
+
+    const bunBuild = vi.fn().mockImplementation(() => ({
+      canBuild: vi.fn().mockResolvedValue(true),
+      execute: vi.fn(),
+    }));
+    const nextjsBuild = vi.fn().mockImplementation(() => ({
+      canBuild: vi.fn().mockResolvedValue(false),
+      execute: vi.fn(),
+    }));
+    const nuxtBuild = vi.fn().mockImplementation(() => ({
+      canBuild: vi.fn().mockResolvedValue(true),
+      execute: vi.fn(),
+    }));
+    const astroBuild = vi.fn().mockImplementation(() => ({
+      canBuild: vi.fn().mockResolvedValue(true),
+      execute: vi.fn(),
+    }));
+    const tanstackStartBuild = vi.fn().mockImplementation(() => ({
+      canBuild: vi.fn().mockResolvedValue(true),
+      execute: vi.fn(),
+    }));
+
+    vi.doMock("@prisma/compute-sdk", () => ({
+      AstroBuild: astroBuild,
+      BunBuild: bunBuild,
+      NextjsBuild: nextjsBuild,
+      NuxtBuild: nuxtBuild,
+      TanstackStartBuild: tanstackStartBuild,
+    }));
+
+    const { resolvePreviewBuildStrategy } = await import("../src/lib/app/preview-build");
+
+    const result = await resolvePreviewBuildStrategy({
+      appPath: cwd,
+      buildType: "auto",
+      entrypoint: undefined,
+    });
+
+    expect(result.buildType).toBe("nuxt");
+    expect(nuxtBuild).toHaveBeenCalledWith({ appPath: cwd });
+    expect(bunBuild).not.toHaveBeenCalled();
+    expect(astroBuild).not.toHaveBeenCalled();
+    expect(tanstackStartBuild).not.toHaveBeenCalled();
+  });
+
+  it("resolves explicit SDK framework build strategies", async () => {
+    const cwd = await createTempCwd();
+
+    const buildStrategy = vi.fn().mockImplementation(() => ({
+      canBuild: vi.fn(),
+      execute: vi.fn(),
+    }));
+
+    vi.doMock("@prisma/compute-sdk", () => ({
+      AstroBuild: buildStrategy,
+      BunBuild: buildStrategy,
+      NextjsBuild: buildStrategy,
+      NuxtBuild: buildStrategy,
+      TanstackStartBuild: buildStrategy,
+    }));
+
+    const { resolvePreviewBuildStrategy } = await import("../src/lib/app/preview-build");
+
+    await expect(resolvePreviewBuildStrategy({
+      appPath: cwd,
+      buildType: "astro",
+      entrypoint: undefined,
+    })).resolves.toMatchObject({ buildType: "astro" });
+
+    await expect(resolvePreviewBuildStrategy({
+      appPath: cwd,
+      buildType: "tanstack-start",
+      entrypoint: undefined,
+    })).resolves.toMatchObject({ buildType: "tanstack-start" });
   });
 
   it("still lets an explicit Bun entrypoint override package.json module", async () => {

@@ -60,8 +60,12 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "app",
     path: ["prisma", "app"],
     description: "App deployment and release commands.",
-    docsPath: "docs/product/command-spec.md#prisma-app-deploy---app-name---entry-path---build-type-autobunnextjs---http-port-port---env-namevalue",
-    examples: ["prisma app build --build-type nextjs", "prisma app deploy --app hello-world --build-type nextjs --http-port 3000"],
+    docsPath: "docs/product/command-spec.md#prisma-app-deploy---app-name---entry-path---build-type-autobunnextjsnuxtastrotanstack-start---http-port-port---env-namevalue",
+    examples: [
+      "prisma app build --build-type nextjs",
+      "prisma app deploy --app hello-world --build-type nextjs --http-port 3000",
+      "prisma app deploy --app hello-world --build-type nuxt",
+    ],
   },
   {
     id: "branch",
@@ -116,8 +120,8 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "app.build",
     path: ["prisma", "app", "build"],
     description: "Build the local app into a deployable artifact.",
-    docsPath: "docs/product/command-spec.md#prisma-app-build---entry-path---build-type-autobunnextjs",
-    examples: ["prisma app build --build-type nextjs", "prisma app build --build-type bun --entry server.ts"],
+    docsPath: "docs/product/command-spec.md#prisma-app-build---entry-path---build-type-autobunnextjsnuxtastrotanstack-start",
+    examples: ["prisma app build --build-type nextjs", "prisma app build --build-type nuxt", "prisma app build --build-type bun --entry server.ts"],
   },
   {
     id: "app.run",
@@ -130,11 +134,12 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "app.deploy",
     path: ["prisma", "app", "deploy"],
     description: "Build and release the selected app.",
-    docsPath: "docs/product/command-spec.md#prisma-app-deploy---app-name---entry-path---build-type-autobunnextjs---http-port-port---env-namevalue",
+    docsPath: "docs/product/command-spec.md#prisma-app-deploy---app-name---entry-path---build-type-autobunnextjsnuxtastrotanstack-start---http-port-port---env-namevalue",
     examples: [
       "prisma app deploy",
       "prisma app deploy --app hello-world --env DATABASE_URL=postgresql://example",
       "prisma app deploy --app hello-world --build-type nextjs --http-port 3000",
+      "prisma app deploy --app hello-world --build-type nuxt",
     ],
   },
   {

@@ -45,7 +45,7 @@ export interface AppShowResult {
 export interface AppBuildResult {
   directory: string;
   entrypoint: string | null;
-  buildType: "bun" | "nextjs";
+  buildType: "bun" | "nextjs" | "nuxt" | "astro" | "tanstack-start";
 }
 
 export interface AppShowDeployResult {
