@@ -1,0 +1,159 @@
+import path from "node:path";
+
+import stripAnsi from "strip-ansi";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { MockApi } from "../src/adapters/mock-api";
+import { renderAuthSuccess } from "../src/presenters/auth";
+import { getCommandDescriptor } from "../src/shell/command-meta";
+
+const fixturePath = path.resolve("fixtures/mock-api.json");
+
+afterEach(() => {
+  vi.doUnmock("../src/lib/auth/auth-ops");
+  vi.resetModules();
+  vi.restoreAllMocks();
+});
+
+describe("real auth mode", () => {
+  it("uses real auth operations when fixture mode is not enabled", async () => {
+    const performLogin = vi.fn().mockResolvedValue(undefined);
+    const readAuthState = vi.fn().mockResolvedValue({
+      authenticated: true,
+      provider: null,
+      user: {
+        id: "usr_real",
+        name: "Real User",
+        email: "real@example.com",
+      },
+      workspace: {
+        id: "ws_real",
+        name: "Real Workspace",
+      },
+      linkedProjectId: null,
+    });
+    const performLogout = vi.fn().mockResolvedValue(undefined);
+
+    vi.doMock("../src/lib/auth/auth-ops", () => ({
+      performLogin,
+      readAuthState,
+      performLogout,
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAuthLogin } = await import("../src/controllers/auth");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAuthLogin(context, {});
+
+    expect(performLogin).toHaveBeenCalledWith(context.runtime.env);
+    expect(readAuthState).toHaveBeenCalledWith(context.runtime.env);
+    expect(result.result).toMatchObject({
+      authenticated: true,
+      provider: null,
+      workspace: {
+        name: "Real Workspace",
+      },
+    });
+  });
+
+  it("stays in mock mode when fixture mode is enabled", async () => {
+    const performLogin = vi.fn().mockResolvedValue(undefined);
+    const readAuthState = vi.fn().mockResolvedValue(null);
+    const performLogout = vi.fn().mockResolvedValue(undefined);
+
+    vi.doMock("../src/lib/auth/auth-ops", () => ({
+      performLogin,
+      readAuthState,
+      performLogout,
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAuthLogin } = await import("../src/controllers/auth");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    const result = await runAuthLogin(context, {
+      provider: "github",
+      user: "usr_456",
+    });
+
+    expect(performLogin).not.toHaveBeenCalled();
+    expect(readAuthState).not.toHaveBeenCalled();
+    expect(result.result).toMatchObject({
+      authenticated: true,
+      provider: "github",
+      workspace: {
+        name: "Acme Inc",
+      },
+    });
+  });
+
+  it("does not eagerly load fixtures in real mode", async () => {
+    const loadSpy = vi.spyOn(MockApi, "load");
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    expect(loadSpy).not.toHaveBeenCalled();
+    expect(() => context.api).toThrow(
+      "context.api accessed in real mode. Set runtime.fixturePath or PRISMA_CLI_MOCK_FIXTURE_PATH to use fixture mode.",
+    );
+  });
+
+  it("omits empty provider and workspace rows in auth output", async () => {
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    const output = renderAuthSuccess(
+      context,
+      getCommandDescriptor("auth.login"),
+      "auth.login",
+      {
+        authenticated: true,
+        provider: null,
+        user: {
+          id: "usr_real",
+          name: "Real User",
+          email: "real@example.com",
+        },
+        workspace: null,
+        linkedProjectId: null,
+      },
+    ).join("");
+
+    const plain = stripAnsi(output);
+
+    expect(plain).toContain("user:");
+    expect(plain).not.toContain("provider:");
+    expect(plain).not.toContain("workspace:");
+  });
+});

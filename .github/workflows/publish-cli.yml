@@ -1,0 +1,201 @@
+name: Release CLI
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: Version strategy to publish
+        required: true
+        type: choice
+        default: current
+        options:
+          - current
+          - alpha
+          - custom
+      custom_version:
+        description: Exact version when release_type is custom (for example 0.2.0)
+        required: false
+        type: string
+      dry_run:
+        description: Validate the release without publishing, tagging, or pushing
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-cli-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Ensure workflow runs from main
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "This workflow only releases from main."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10.30.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump CLI version
+        id: cli_version
+        env:
+          RELEASE_TYPE: ${{ inputs.release_type }}
+          CUSTOM_VERSION: ${{ inputs.custom_version }}
+        run: |
+          if [ "${RELEASE_TYPE}" = "custom" ] && [ -z "${CUSTOM_VERSION}" ]; then
+            echo "custom_version is required when release_type=custom."
+            exit 1
+          fi
+
+          if [ "${RELEASE_TYPE}" = "current" ]; then
+            VERSION="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('packages/cli/package.json', 'utf8')).version)")"
+            printf 'version=%s\n' "${VERSION}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          TARGET="prerelease --preid alpha"
+          if [ "${RELEASE_TYPE}" = "custom" ]; then
+            TARGET="${CUSTOM_VERSION}"
+          fi
+
+          npm --prefix packages/cli version ${TARGET} --no-git-tag-version >/dev/null
+          VERSION="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('packages/cli/package.json', 'utf8')).version)")"
+          printf 'version=%s\n' "${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Fail if version already exists on npm
+        run: |
+          PACKAGE='@prisma/cli'
+          VERSION='${{ steps.cli_version.outputs.version }}'
+          if npm view "${PACKAGE}@${VERSION}" version >/dev/null 2>&1; then
+            echo "${PACKAGE}@${VERSION} already exists on npm."
+            exit 1
+          fi
+
+      - name: Run focused CLI tests
+        run: pnpm --filter @prisma/cli test
+
+      - name: Build CLI package
+        run: pnpm --filter @prisma/cli build
+
+      - name: Prepare staged publish package
+        run: node scripts/prepare-cli-publish.mjs .publish/cli
+
+      - name: Audit staged package contents
+        working-directory: .publish/cli
+        run: |
+          PACK_JSON="$(npm pack --dry-run --json)"
+          PACK_JSON="${PACK_JSON}" node -e "
+            const pack = JSON.parse(process.env.PACK_JSON)[0]
+            const files = pack.files.map((file) => file.path).sort()
+            const forbidden = files.filter((file) =>
+              file.startsWith('src/') ||
+              file.startsWith('tests/') ||
+              file.startsWith('fixtures/') ||
+              file.startsWith('docs/') ||
+              file.startsWith('.prisma/') ||
+              file.startsWith('.publish/')
+            )
+            if (forbidden.length) {
+              console.error('Forbidden files in npm package:', forbidden.join(', '))
+              process.exit(1)
+            }
+            for (const required of ['dist/cli.js', 'README.md', 'LICENSE', 'package.json']) {
+              if (!files.includes(required)) {
+                console.error('Missing required package file:', required)
+                process.exit(1)
+              }
+            }
+          "
+
+      - name: Smoke test staged tarball install
+        run: |
+          TARBALL="$(cd .publish/cli && npm pack --silent)"
+          TMPDIR="$(mktemp -d)"
+          cat > "${TMPDIR}/package.json" <<'EOF'
+          {
+            "name": "cli-publish-smoke",
+            "private": true
+          }
+          EOF
+          pnpm add -D "${PWD}/.publish/cli/${TARBALL}" --dir "${TMPDIR}"
+          (
+            cd "${TMPDIR}"
+            pnpm prisma-cli --help
+            pnpm prisma-cli auth whoami --json
+          )
+
+      - name: Ensure release still targets the latest main
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git fetch origin main
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+            echo "main moved while the release was running. Rerun the workflow from the latest main."
+            exit 1
+          fi
+
+      - name: Publish to npm
+        if: ${{ !inputs.dry_run }}
+        working-directory: .publish/cli
+        run: npm publish --access public --tag preview --provenance
+
+      - name: Commit release version
+        if: ${{ !inputs.dry_run }}
+        run: |
+          VERSION='${{ steps.cli_version.outputs.version }}'
+          git add packages/cli/package.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(cli): release @prisma/cli v${VERSION}"
+          fi
+          git tag "cli-v${VERSION}"
+
+      - name: Push release commit and tag
+        if: ${{ !inputs.dry_run }}
+        run: |
+          VERSION='${{ steps.cli_version.outputs.version }}'
+          git push origin HEAD:main
+          git push origin "cli-v${VERSION}"
+
+      - name: Summarize release
+        run: |
+          VERSION='${{ steps.cli_version.outputs.version }}'
+          {
+            echo "## Release CLI"
+            echo
+            echo "- Version: \`${VERSION}\`"
+            echo "- Dry run: \`${{ inputs.dry_run }}\`"
+            if [ '${{ inputs.dry_run }}' = 'true' ]; then
+              echo "- Publish: skipped"
+              echo "- Tag/push: skipped"
+            else
+              echo "- npm package: \`@prisma/cli@${VERSION}\`"
+              echo "- npm dist-tag: \`preview\`"
+              echo "- git tag: \`cli-v${VERSION}\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

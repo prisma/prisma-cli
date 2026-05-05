@@ -1,0 +1,63 @@
+{
+  "name": "@prisma/cli",
+  "version": "3.0.0-alpha.0",
+  "description": "Preview of the unified Prisma CLI.",
+  "type": "module",
+  "bin": {
+    "prisma-cli": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "prisma",
+    "cli",
+    "database",
+    "app",
+    "deployment"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/prisma/prisma-cli.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/prisma/prisma-cli#readme",
+  "bugs": {
+    "url": "https://github.com/prisma/prisma-cli/issues"
+  },
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "tsdown",
+    "prepack": "pnpm run build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.2.0",
+    "@prisma/compute-sdk": "^0.14.0",
+    "c12": "4.0.0-beta.4",
+    "@prisma/credentials-store": "^7.7.0",
+    "@prisma/management-api-sdk": "^1.24.0",
+    "colorette": "^2.0.20",
+    "commander": "^12.1.0",
+    "magicast": "^0.3.5",
+    "open": "^11.0.0",
+    "string-width": "^8.2.0",
+    "strip-ansi": "^7.2.0",
+    "wrap-ansi": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsdown": "^0.12.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

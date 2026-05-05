@@ -1,0 +1,95 @@
+import type { Writable } from "node:stream";
+
+import type { CliError } from "./errors";
+import type { ShellUi } from "./ui";
+import { renderNextSteps, renderSummaryLine } from "./ui";
+
+export interface CommandSuccess<T> {
+  command: string;
+  result: T;
+  warnings: string[];
+  nextSteps: string[];
+}
+
+export interface CliOutput {
+  stdout: Writable;
+  stderr: Writable;
+}
+
+export function writeJsonSuccess<T>(output: CliOutput, success: CommandSuccess<T>): void {
+  output.stdout.write(`${JSON.stringify({ ok: true, ...success }, null, 2)}\n`);
+}
+
+export function writeJsonError(output: CliOutput, command: string, error: CliError): void {
+  output.stdout.write(
+    `${JSON.stringify(
+      {
+        ok: false,
+        command,
+        error: {
+          code: error.code,
+          domain: error.domain,
+          severity: error.severity,
+          summary: error.summary,
+          why: error.why,
+          fix: error.fix,
+          where: error.where,
+          meta: error.meta,
+          docsUrl: error.docsUrl,
+        },
+        warnings: [],
+        nextSteps: error.nextSteps,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+export function writeHumanLines(output: CliOutput, lines: string[]): void {
+  if (lines.length === 0) {
+    return;
+  }
+
+  output.stderr.write(`${lines.join("\n")}\n`);
+}
+
+export function writeHumanError(
+  output: CliOutput,
+  ui: ShellUi,
+  error: CliError,
+  options: { trace: boolean },
+): void {
+  const lines = [renderSummaryLine(ui, "error", `${error.summary} [${error.code}]`)];
+
+  if (error.where) {
+    lines.push(...["", `Where: ${error.where}`]);
+  }
+
+  if (error.why) {
+    if (!error.where) {
+      lines.push("");
+    }
+
+    lines.push(`Why: ${error.why}`);
+  }
+
+  if (error.fix) {
+    lines.push(`Fix: ${error.fix}`);
+  }
+
+  if (options.trace) {
+    if (error.debug) {
+      lines.push("");
+      lines.push("Trace:");
+      lines.push(...error.debug.trimEnd().split("\n"));
+    }
+  } else {
+    lines.push("");
+    lines.push("More: Re-run with --trace for deeper diagnostics");
+  }
+
+  lines.push(...renderNextSteps(error.nextSteps));
+
+  writeHumanLines(output, lines);
+}

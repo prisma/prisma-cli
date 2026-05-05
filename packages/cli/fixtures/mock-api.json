@@ -1,0 +1,128 @@
+{
+  "providers": [
+    { "id": "github", "name": "GitHub" },
+    { "id": "google", "name": "Google" }
+  ],
+  "users": [
+    {
+      "id": "usr_123",
+      "name": "Alice Example",
+      "email": "alice@example.com",
+      "providerIds": ["github", "google"]
+    },
+    {
+      "id": "usr_456",
+      "name": "Bob Example",
+      "email": "bob@example.com",
+      "providerIds": ["github"]
+    }
+  ],
+  "workspaces": [
+    {
+      "id": "ws_123",
+      "name": "Acme Inc",
+      "slug": "acme"
+    },
+    {
+      "id": "ws_456",
+      "name": "Prisma Labs",
+      "slug": "prisma"
+    }
+  ],
+  "memberships": [
+    {
+      "userId": "usr_123",
+      "workspaceId": "ws_123"
+    },
+    {
+      "userId": "usr_123",
+      "workspaceId": "ws_456"
+    },
+    {
+      "userId": "usr_456",
+      "workspaceId": "ws_123"
+    }
+  ],
+  "projects": [
+    {
+      "id": "proj_123",
+      "name": "Acme Dashboard",
+      "slug": "acme-dashboard",
+      "workspaceId": "ws_123"
+    },
+    {
+      "id": "proj_456",
+      "name": "Billing API",
+      "slug": "billing-api",
+      "workspaceId": "ws_123"
+    },
+    {
+      "id": "proj_789",
+      "name": "Website",
+      "slug": "website",
+      "workspaceId": "ws_456"
+    }
+  ],
+  "branches": [
+    {
+      "id": "br_123",
+      "projectId": "proj_123",
+      "name": "preview",
+      "currentDeploymentId": "dep_123"
+    },
+    {
+      "id": "br_234",
+      "projectId": "proj_123",
+      "name": "pr-123",
+      "currentDeploymentId": "dep_234"
+    },
+    {
+      "id": "br_345",
+      "projectId": "proj_123",
+      "name": "staging",
+      "currentDeploymentId": null
+    },
+    {
+      "id": "br_456",
+      "projectId": "proj_123",
+      "name": "production",
+      "currentDeploymentId": "dep_456"
+    },
+    {
+      "id": "br_789",
+      "projectId": "proj_456",
+      "name": "preview",
+      "currentDeploymentId": "dep_789"
+    }
+  ],
+  "deployments": [
+    {
+      "id": "dep_123",
+      "projectId": "proj_123",
+      "branch": "preview",
+      "status": "ready",
+      "url": "https://preview.acme-dashboard.prisma.app"
+    },
+    {
+      "id": "dep_234",
+      "projectId": "proj_123",
+      "branch": "pr-123",
+      "status": "ready",
+      "url": "https://pr-123.acme-dashboard.prisma.app"
+    },
+    {
+      "id": "dep_456",
+      "projectId": "proj_123",
+      "branch": "production",
+      "status": "ready",
+      "url": "https://acme-dashboard.prisma.app"
+    },
+    {
+      "id": "dep_789",
+      "projectId": "proj_456",
+      "branch": "preview",
+      "status": "ready",
+      "url": "https://preview.billing-api.prisma.app"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+node_modules
+.next
+.prisma
+prisma.config.ts

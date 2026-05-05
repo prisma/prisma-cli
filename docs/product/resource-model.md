@@ -1,0 +1,244 @@
+# Prisma CLI Resource Model
+
+## Purpose
+
+This document defines the nouns and boundaries used by the Prisma CLI. It is the
+source of truth for what the CLI means by workspace, project, branch, app,
+deployment, database, and environment variables.
+
+## North Star Hierarchy
+
+The Prisma CLI resolves through one hierarchy:
+
+```text
+workspace -> project -> branch -> { app, database }
+```
+
+The preview implementation exposes only part of this hierarchy, but current
+behavior must not contradict it.
+
+## Core Resources
+
+### Workspace
+
+`workspace` is the account, membership, and billing boundary.
+
+Preview relevance:
+
+- authentication
+- current identity
+- project discovery
+
+### Project
+
+`project` is the remote Prisma resource linked to a local repo.
+
+Rules:
+
+- `project` is not the same thing as `app`
+- `prisma.config.ts` stores only the linked project id
+- `app deploy` may create project context when none is linked
+- other commands must not create project context implicitly
+- everything under a project happens in a branch
+
+Example config:
+
+```ts
+export default {
+  project: "proj_123",
+};
+```
+
+### Branch
+
+`branch` is the named project-scoped isolation boundary for app and database
+work.
+
+A Prisma branch is not just a Git branch and not just a database branch. It is
+the platform container for a version of a project: app resources, databases,
+deploy state, preview URL, scoped configuration, logs, and automation context can
+all belong to the branch over time.
+
+Rules:
+
+- `production` is a protected durable branch
+- every other named branch is a preview branch by default
+- preview branches are disposable by default
+- non-production branches can become durable later
+- `local` is local CLI context only, not a branch
+- active branch context is local CLI state, not `prisma.config.ts`
+- selecting a branch changes local CLI context only; it does not create remote
+  state by itself
+
+Examples of preview branches:
+
+- `preview`
+- `staging`
+- `feat-auth`
+- `pr-123`
+
+Branch role and durability are product concepts in the current docs. The preview
+command JSON for `branch list` and `branch show` does not expose dedicated
+`role` or `durability` fields yet.
+
+### Branch Role And Durability
+
+Branch role describes what the branch is used for. Branch durability describes
+the reliability contract attached to it.
+
+Rules:
+
+- production branches are durable by default
+- preview branches are disposable by default
+- a non-production branch can become durable for staging, QA, demos, release
+  candidates, or persistent automation work
+- all production branches are durable, but not all durable branches are
+  production
+
+Disposable preview work can have stricter runtime guardrails, automatic archive
+after inactivity, and restore-on-request behavior. Durable branches carry a
+stronger recovery expectation and should have stronger safeguards against
+accidental destructive actions.
+
+### App
+
+`app` is the deployable runtime workload for a project branch.
+
+Rules:
+
+- `app` is not the same thing as `project`
+- the app belongs to the linked project
+- app work is scoped by branch in the platform model
+- the app may be selected or created as part of app deployment workflows
+- app selection is local CLI state when needed for the preview package
+
+### Deployment
+
+`deployment` is one build-and-release instance of an app.
+
+Deployment fields should be treated as first-class:
+
+- `id`
+- `status`
+- `url` when available
+- `timestamps`
+- `sourceRevision` when known
+- whether it is currently live
+
+A branch can have many deployments over time, but at most one live deployment
+for a given app.
+
+### Source Revision
+
+`sourceRevision` is the code state a deployment was built from.
+
+It matters because:
+
+- promotion should be source-aware
+- production releases should make clear what source is going live
+- rollback should restore a known previous deployment
+
+### Environment Variables
+
+Environment variables are deploy-time inputs, not top-level CLI resources in the
+preview command model.
+
+Rules:
+
+- deployments get a snapshot of variables at deploy time
+- changing variables does not mutate older deployments
+- changing variables does not auto-redeploy unless the command explicitly
+  creates a new deployment
+- command output must not print secret values
+- listing variables should show names only
+
+The `env` word is reserved for environment-variable ergonomics. The current
+top-level target-context group is `branch`, not `env`.
+
+### Schema and Database
+
+`schema` and `database` are out of scope for the current preview package, but
+they remain part of the long-term hierarchy.
+
+- `schema` stays a local code artifact
+- `database` stays a branch-bound resource
+
+The preview package must not redefine project or branch in a way that makes
+future schema, database, and migration workflows awkward.
+
+## Relationships
+
+```text
+workspace -> project
+project -> branch
+branch -> app*
+branch -> database*
+app -> deployment*
+```
+
+Long-term, branch is where app and database relationships meet.
+
+## Invariants
+
+- `project` is not `app`
+- `project` is not `branch`
+- `branch` is not `deployment`
+- `deployment` is not `sourceRevision`
+- `local` is CLI context, not a branch or deploy target
+- `production` is protected and durable
+- every other named branch is preview by default
+- `prisma.config.ts` stores only the linked project id
+
+## Resolution Rules
+
+### Project Resolution
+
+Commands resolve project context in this order:
+
+1. linked project id in `prisma.config.ts`
+2. explicit `project link`
+3. implicit creation by `app deploy` when no project is linked
+
+Only `app deploy` may create projects implicitly.
+
+### App Selection Resolution
+
+Preview app commands that need an app resolve it in this order:
+
+1. explicit `--app <name>`
+2. locally selected app for the linked project
+3. interactive selection or creation in a TTY
+4. structured usage error when no app can be resolved non-interactively
+
+### Branch Context Resolution
+
+Commands that use branch context resolve it in this order:
+
+1. explicit branch argument when the command accepts one
+2. active branch context in local CLI state
+3. `preview`
+
+Consequences:
+
+- `local` never becomes a branch or deploy target
+- first remote app work defaults to `preview`
+- production requires explicit user intent
+
+### Inspect Resolution
+
+Commands that inspect deployments resolve in this order:
+
+1. exact deployment id if the command accepts one
+2. selected app for the linked project
+3. latest known live deployment for that app
+
+### Promote Resolution
+
+`app promote` releases an existing successful deployment or source into a more
+trusted target. Production promotion must be explicit and must not hide what is
+going live.
+
+### Rollback Resolution
+
+`app rollback` restores a previous known deployment. Rollback output must make
+clear what changed and which deployment is now live.

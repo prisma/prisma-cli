@@ -1,0 +1,1434 @@
+import path from "node:path";
+
+import open from "open";
+import type { PortMapping } from "@prisma/compute-sdk";
+
+import { UnsafeConfigWriteError, assertLinkedProjectIdWritable, readLinkedProjectId, writeLinkedProjectId } from "../adapters/config";
+import { authRequiredError, CliError, featureUnavailableError, usageError } from "../shell/errors";
+import type { CommandSuccess } from "../shell/output";
+import { canPrompt, type CommandContext } from "../shell/runtime";
+import { textPrompt } from "../shell/prompt";
+import type {
+  AppBuildResult,
+  AppDeployResult,
+  AppDeploymentSummary,
+  AppListEnvResult,
+  AppListDeploysResult,
+  AppOpenResult,
+  AppPromoteResult,
+  AppRemoveResult,
+  AppRollbackResult,
+  AppShowResult,
+  AppRunResult,
+  AppShowDeployResult,
+  AppUpdateEnvResult,
+} from "../types/app";
+import { requireComputeAuth } from "../lib/auth/guard";
+import { parseEnvAssignments } from "../lib/app/env-vars";
+import {
+  DEFAULT_LOCAL_DEV_PORT,
+  resolveLocalBuildType,
+  runLocalApp,
+} from "../lib/app/local-dev";
+import { projectNotFoundError } from "../use-cases/project";
+import { executePreviewBuild, type PreviewBuildType } from "../lib/app/preview-build";
+import {
+  createPreviewDeployInteraction,
+  PREVIEW_DEFAULT_REGION,
+} from "../lib/app/preview-interaction";
+import {
+  createPreviewDeployProgress,
+  createPreviewPromoteProgress,
+  createPreviewUpdateEnvProgress,
+} from "../lib/app/preview-progress";
+import { createPreviewAppProvider, type PreviewAppRecord } from "../lib/app/preview-provider";
+import { createSelectPromptPort } from "./select-prompt-port";
+
+function isRealMode(context: CommandContext): boolean {
+  return !context.runtime.fixturePath && !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH;
+}
+
+export async function runAppBuild(
+  context: CommandContext,
+  entrypoint: string | undefined,
+  requestedBuildType: string | undefined,
+): Promise<CommandSuccess<AppBuildResult>> {
+  const buildType = normalizeBuildType(requestedBuildType);
+  assertSupportedEntrypoint(buildType, entrypoint, "build");
+
+  const resolvedBuildType = await requireLocalBuildType(context, buildType, "build");
+
+  try {
+    const { artifact, buildType: actualBuildType } = await executePreviewBuild({
+      appPath: context.runtime.cwd,
+      entrypoint,
+      buildType: resolvedBuildType,
+    });
+
+    return {
+      command: "app.build",
+      result: {
+        directory: artifact.directory,
+        entrypoint: artifact.entrypoint,
+        buildType: actualBuildType,
+      },
+      warnings: [],
+      nextSteps: ["prisma app deploy"],
+    };
+  } catch (error) {
+    throw buildFailedError("Local app build failed", error);
+  }
+}
+
+export async function runAppRun(
+  context: CommandContext,
+  entrypoint: string | undefined,
+  requestedBuildType: string | undefined,
+  requestedPort: string | undefined,
+): Promise<CommandSuccess<AppRunResult>> {
+  if (context.flags.json) {
+    throw usageError(
+      "App run does not support --json",
+      "This command streams the framework dev server directly and cannot return structured JSON.",
+      "Rerun without --json to pass framework logs through directly.",
+      ["prisma app run"],
+      "app",
+    );
+  }
+
+  const buildType = normalizeBuildType(requestedBuildType);
+  assertSupportedEntrypoint(buildType, entrypoint, "run");
+  const port = parseLocalPort(requestedPort);
+  const resolvedBuildType = await requireLocalBuildType(context, buildType, "run");
+
+  let runResult: Awaited<ReturnType<typeof runLocalApp>>;
+  try {
+    runResult = await runLocalApp({
+      appPath: context.runtime.cwd,
+      buildType: resolvedBuildType,
+      entrypoint,
+      port,
+      env: context.runtime.env,
+    });
+  } catch (error) {
+    throw runFailedError("Local app run failed", error);
+  }
+
+  if (runResult.signal === "SIGINT" || runResult.signal === "SIGTERM") {
+    process.exitCode = runResult.signal === "SIGINT" ? 130 : 143;
+  } else if (runResult.exitCode !== 0) {
+    throw runFailedError(
+      "Local app run failed",
+      `The ${formatFrameworkName(runResult.framework)} process exited with code ${runResult.exitCode}.`,
+      runResult.exitCode,
+    );
+  }
+
+  return {
+    command: "app.run",
+    result: {
+      framework: runResult.framework,
+      entrypoint: runResult.entrypoint,
+      port: runResult.port,
+      command: runResult.command,
+    },
+    warnings: [],
+    nextSteps: [],
+  };
+}
+
+export async function runAppDeploy(
+  context: CommandContext,
+  appName: string | undefined,
+  options?: {
+    entrypoint?: string;
+    buildType?: string;
+    httpPort?: string;
+    envAssignments?: string[];
+  },
+): Promise<CommandSuccess<AppDeployResult>> {
+  ensurePreviewAppMode(context);
+
+  const buildType = normalizeBuildType(options?.buildType);
+  assertSupportedEntrypoint(buildType, options?.entrypoint, "deploy");
+  const portMapping = parseDeployPortMapping(options?.httpPort);
+  const envVars = toOptionalEnvVars(
+    parseEnvAssignments(options?.envAssignments, {
+      commandName: "deploy",
+    }),
+  );
+  const provider = await requirePreviewAppProvider(context);
+  const projectId = await resolveProjectIdForDeploy(context, provider);
+  const apps = await listApps(context, provider, projectId);
+  const selectedApp = await resolveDeploySelection(context, projectId, apps, appName);
+
+  const deployResult = await provider.deployApp({
+    cwd: context.runtime.cwd,
+    projectId,
+    appId: selectedApp.appId,
+    appName: selectedApp.appName,
+    region: selectedApp.region,
+    entrypoint: options?.entrypoint,
+    buildType,
+    portMapping,
+    envVars,
+    interaction: selectedApp.useInteractiveSelection ? createPreviewDeployInteraction(context) : undefined,
+    progress: createPreviewDeployProgress(context.output.stderr, !context.flags.json && !context.flags.quiet),
+  }).catch((error) => {
+    throw deployFailedError("App deploy failed", error, ["prisma app list-deploys"]);
+  });
+
+  await context.stateStore.setSelectedApp(projectId, {
+    id: deployResult.app.id,
+    name: deployResult.app.name,
+  });
+  await context.stateStore.setKnownLiveDeployment(projectId, deployResult.app.id, deployResult.deployment.id);
+
+  return {
+    command: "app.deploy",
+    result: {
+      projectId: deployResult.projectId,
+      app: {
+        id: deployResult.app.id,
+        name: deployResult.app.name,
+      },
+      deployment: deployResult.deployment,
+    },
+    warnings: [],
+    nextSteps: ["prisma app list-deploys", `prisma app show-deploy ${deployResult.deployment.id}`],
+  };
+}
+
+export async function runAppUpdateEnv(
+  context: CommandContext,
+  appName: string | undefined,
+  envAssignments: string[] | undefined,
+): Promise<CommandSuccess<AppUpdateEnvResult>> {
+  ensurePreviewAppMode(context);
+
+  const envVars = parseEnvAssignments(envAssignments, {
+    commandName: "update-env",
+    requireAtLeastOne: true,
+  });
+  const projectId = await requireLinkedProjectId(context);
+  const provider = await requirePreviewAppProvider(context);
+  const apps = await listApps(context, provider, projectId);
+  const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
+
+  if (!selectedApp) {
+    throw noDeploymentsError(
+      "No deployments available to update environment variables",
+      "The linked project does not have any deployed app yet.",
+    );
+  }
+
+  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+    throw deployFailedError("Failed to inspect app deployments", error, ["prisma app list-deploys"]);
+  });
+
+  if (deploymentsResult.deployments.length === 0) {
+    throw noDeploymentsError(
+      "No deployments available to update environment variables",
+      `The selected app "${deploymentsResult.app.name}" does not have any deployments yet.`,
+    );
+  }
+
+  const updateResult = await provider.updateAppEnv({
+    appId: deploymentsResult.app.id,
+    envVars,
+    progress: createPreviewUpdateEnvProgress(context.output.stderr, !context.flags.json && !context.flags.quiet),
+    promoteProgress: createPreviewPromoteProgress(context.output.stderr, !context.flags.json && !context.flags.quiet),
+  }).catch((error) => {
+    throw deployFailedError("Failed to update app environment variables", error, ["prisma app list-env"]);
+  });
+
+  await context.stateStore.setSelectedApp(projectId, {
+    id: updateResult.app.id,
+    name: updateResult.app.name,
+  });
+  await context.stateStore.setKnownLiveDeployment(projectId, updateResult.app.id, updateResult.deployment.id);
+
+  return {
+    command: "app.update-env",
+    result: {
+      projectId: updateResult.projectId,
+      app: {
+        id: updateResult.app.id,
+        name: updateResult.app.name,
+      },
+      deployment: updateResult.deployment,
+      variables: updateResult.variables,
+    },
+    warnings: [],
+    nextSteps: ["prisma app list-env", `prisma app show-deploy ${updateResult.deployment.id}`],
+  };
+}
+
+export async function runAppListEnv(
+  context: CommandContext,
+  appName: string | undefined,
+): Promise<CommandSuccess<AppListEnvResult>> {
+  ensurePreviewAppMode(context);
+
+  const projectId = await requireLinkedProjectId(context);
+  const provider = await requirePreviewAppProvider(context);
+  const apps = await listApps(context, provider, projectId);
+  const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
+
+  if (!selectedApp) {
+    return {
+      command: "app.list-env",
+      result: {
+        projectId,
+        app: null,
+        deployment: null,
+        variables: [],
+      },
+      warnings: [],
+      nextSteps: ["prisma app deploy"],
+    };
+  }
+
+  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+    throw deployFailedError("Failed to inspect app deployments", error, ["prisma app list-deploys"]);
+  });
+  const knownLiveDeploymentId = await context.stateStore.readKnownLiveDeployment(projectId, deploymentsResult.app.id);
+  const missingKnownLiveDeploymentId = knownLiveDeploymentId
+    && !deploymentsResult.deployments.some((candidate) => candidate.id === knownLiveDeploymentId)
+      ? knownLiveDeploymentId
+      : null;
+  const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
+    context,
+    projectId,
+    deploymentsResult.app,
+    deploymentsResult.deployments,
+  );
+  const deployments = applyLiveDeploymentHint(deploymentsResult.deployments, currentLiveDeploymentId)
+    .slice()
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
+  const deployment = currentLiveDeploymentId
+    ? deployments.find((candidate) => candidate.id === currentLiveDeploymentId) ?? null
+    : null;
+
+  await context.stateStore.setSelectedApp(projectId, {
+    id: deploymentsResult.app.id,
+    name: deploymentsResult.app.name,
+  });
+
+  if (missingKnownLiveDeploymentId) {
+    const envResult = await provider.listAppEnvNames({
+      appId: deploymentsResult.app.id,
+      deploymentId: missingKnownLiveDeploymentId,
+    }).catch((error) => {
+      throw deployFailedError("Failed to inspect app environment variables", error, ["prisma app list-deploys"]);
+    });
+
+    return {
+      command: "app.list-env",
+      result: {
+        projectId,
+        app: {
+          id: envResult.app.id,
+          name: envResult.app.name,
+        },
+        deployment: envResult.deployment,
+        variables: envResult.variables,
+      },
+      warnings: [],
+      nextSteps: [`prisma app show-deploy ${envResult.deployment.id}`],
+    };
+  }
+
+  if (!deployment) {
+    return {
+      command: "app.list-env",
+      result: {
+        projectId,
+        app: {
+          id: deploymentsResult.app.id,
+          name: deploymentsResult.app.name,
+        },
+        deployment: null,
+        variables: [],
+      },
+      warnings: [],
+      nextSteps: ["prisma app deploy"],
+    };
+  }
+
+  const envResult = await provider.listAppEnvNames({
+    appId: deploymentsResult.app.id,
+    deploymentId: deployment.id,
+  }).catch((error) => {
+    throw deployFailedError("Failed to inspect app environment variables", error, ["prisma app list-deploys"]);
+  });
+
+  return {
+    command: "app.list-env",
+    result: {
+      projectId,
+      app: {
+        id: envResult.app.id,
+        name: envResult.app.name,
+      },
+      deployment: {
+        ...deployment,
+        live: deployment.live ?? envResult.deployment.live,
+      },
+      variables: envResult.variables,
+    },
+    warnings: [],
+    nextSteps: deployment.id ? [`prisma app show-deploy ${deployment.id}`] : ["prisma app deploy"],
+  };
+}
+
+export async function runAppListDeploys(
+  context: CommandContext,
+  appName: string | undefined,
+): Promise<CommandSuccess<AppListDeploysResult>> {
+  ensurePreviewAppMode(context);
+
+  const projectId = await requireLinkedProjectId(context);
+  const provider = await requirePreviewAppProvider(context);
+  const apps = await listApps(context, provider, projectId);
+  const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
+
+  if (!selectedApp) {
+    return {
+      command: "app.list-deploys",
+      result: {
+        projectId,
+        app: null,
+        deployments: [],
+      },
+      warnings: [],
+      nextSteps: ["prisma app deploy"],
+    };
+  }
+
+  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+    throw deployFailedError("Failed to list app deployments", error, ["prisma app deploy"]);
+  });
+  const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
+    context,
+    projectId,
+    deploymentsResult.app,
+    deploymentsResult.deployments,
+  );
+  const deployments = applyLiveDeploymentHint(deploymentsResult.deployments, currentLiveDeploymentId)
+    .slice()
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
+
+  await context.stateStore.setSelectedApp(projectId, {
+    id: deploymentsResult.app.id,
+    name: deploymentsResult.app.name,
+  });
+
+  return {
+    command: "app.list-deploys",
+    result: {
+      projectId,
+      app: {
+        id: deploymentsResult.app.id,
+        name: deploymentsResult.app.name,
+      },
+      deployments,
+    },
+    warnings: [],
+    nextSteps: deployments.length > 0
+      ? [`prisma app show-deploy ${deployments[0]?.id}`]
+      : ["prisma app deploy"],
+  };
+}
+
+export async function runAppShow(
+  context: CommandContext,
+  appName: string | undefined,
+): Promise<CommandSuccess<AppShowResult>> {
+  ensurePreviewAppMode(context);
+
+  const projectId = await requireLinkedProjectId(context);
+  const provider = await requirePreviewAppProvider(context);
+  const apps = await listApps(context, provider, projectId);
+  const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
+
+  if (!selectedApp) {
+    return {
+      command: "app.show",
+      result: {
+        projectId,
+        app: null,
+        liveDeployment: null,
+        liveUrl: null,
+        recentDeployments: [],
+      },
+      warnings: [],
+      nextSteps: ["prisma app deploy"],
+    };
+  }
+
+  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+    throw deployFailedError("Failed to inspect app", error, ["prisma app list-deploys"]);
+  });
+  const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
+    context,
+    projectId,
+    deploymentsResult.app,
+    deploymentsResult.deployments,
+  );
+  const deployments = applyLiveDeploymentHint(deploymentsResult.deployments, currentLiveDeploymentId)
+    .slice()
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
+  const liveDeployment = currentLiveDeploymentId
+    ? deployments.find((deployment) => deployment.id === currentLiveDeploymentId) ?? null
+    : null;
+
+  await context.stateStore.setSelectedApp(projectId, {
+    id: deploymentsResult.app.id,
+    name: deploymentsResult.app.name,
+  });
+
+  return {
+    command: "app.show",
+    result: {
+      projectId,
+      app: {
+        id: deploymentsResult.app.id,
+        name: deploymentsResult.app.name,
+      },
+      liveDeployment,
+      liveUrl: deploymentsResult.app.liveUrl,
+      recentDeployments: deployments.slice(0, 5),
+    },
+    warnings: [],
+    nextSteps: buildAppShowNextSteps(deploymentsResult.app.liveUrl, liveDeployment, deployments),
+  };
+}
+
+export async function runAppShowDeploy(
+  context: CommandContext,
+  deploymentId: string,
+): Promise<CommandSuccess<AppShowDeployResult>> {
+  ensurePreviewAppMode(context);
+
+  const provider = await requirePreviewAppProvider(context);
+  const deployment = await provider.showDeployment(deploymentId).catch((error) => {
+    throw deployFailedError("Failed to show deployment", error, ["prisma app list-deploys"]);
+  });
+
+  if (!deployment) {
+    throw new CliError({
+      code: "DEPLOYMENT_NOT_FOUND",
+      domain: "app",
+      summary: `Deployment "${deploymentId}" not found`,
+      why: "The requested deployment does not exist or is no longer available.",
+      fix: "Run prisma app list-deploys to choose an available deployment id.",
+      exitCode: 1,
+      nextSteps: ["prisma app list-deploys"],
+    });
+  }
+
+  const linkedProjectId = deployment?.app ? await readLinkedProjectId(context.runtime.cwd) : null;
+  const knownLiveDeploymentId = deployment?.app && linkedProjectId
+    ? await context.stateStore.readKnownLiveDeployment(linkedProjectId, deployment.app.id)
+    : null;
+  const providerLiveDeploymentId = deployment.app?.liveDeploymentId ?? null;
+
+  return {
+    command: "app.show-deploy",
+    result: {
+      app: deployment.app
+        ? {
+            id: deployment.app.id,
+            name: deployment.app.name,
+          }
+        : null,
+      deployment: {
+        ...deployment.deployment,
+        live: providerLiveDeploymentId
+          ? deployment.deployment.id === providerLiveDeploymentId
+          : knownLiveDeploymentId
+            ? deployment.deployment.id === knownLiveDeploymentId
+            : deployment.deployment.live,
+      },
+    },
+    warnings: [],
+    nextSteps: [],
+  };
+}
+
+export async function runAppOpen(
+  context: CommandContext,
+  appName: string | undefined,
+): Promise<CommandSuccess<AppOpenResult>> {
+  ensurePreviewAppMode(context);
+
+  const projectId = await requireLinkedProjectId(context);
+  const provider = await requirePreviewAppProvider(context);
+  const apps = await listApps(context, provider, projectId);
+  const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
+
+  if (!selectedApp) {
+    throw noDeploymentsError(
+      "No deployments available to open",
+      "The linked project does not have any deployed app yet.",
+    );
+  }
+
+  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+    throw deployFailedError("Failed to resolve app URL", error, ["prisma app show"]);
+  });
+  const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
+    context,
+    projectId,
+    deploymentsResult.app,
+    deploymentsResult.deployments,
+  );
+  const deployments = applyLiveDeploymentHint(deploymentsResult.deployments, currentLiveDeploymentId)
+    .slice()
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
+  const liveDeployment = currentLiveDeploymentId
+    ? deployments.find((deployment) => deployment.id === currentLiveDeploymentId) ?? null
+    : null;
+
+  await context.stateStore.setSelectedApp(projectId, {
+    id: deploymentsResult.app.id,
+    name: deploymentsResult.app.name,
+  });
+
+  if (!liveDeployment) {
+    throw noDeploymentsError(
+      "No deployments available to open",
+      `The selected app "${deploymentsResult.app.name}" does not have any deployments yet.`,
+    );
+  }
+
+  if (!deploymentsResult.app.liveUrl) {
+    throw featureUnavailableError(
+      "Live URL is not available for the selected app",
+      "Deployments exist, but the provider does not expose a stable live service URL for this app yet.",
+      "Run prisma app show to inspect the current deployment state and try again after the app reports a live URL.",
+      ["prisma app show"],
+      "app",
+    );
+  }
+
+  const shouldOpen = canPrompt(context);
+  if (shouldOpen) {
+    await open(deploymentsResult.app.liveUrl);
+  }
+
+  return {
+    command: "app.open",
+    result: {
+      projectId,
+      app: {
+        id: deploymentsResult.app.id,
+        name: deploymentsResult.app.name,
+      },
+      url: deploymentsResult.app.liveUrl,
+      opened: shouldOpen,
+    },
+    warnings: [],
+    nextSteps: ["prisma app show", `prisma app show-deploy ${liveDeployment.id}`],
+  };
+}
+
+export async function runAppLogs(
+  context: CommandContext,
+  _appName: string | undefined,
+  _deploymentId: string | undefined,
+): Promise<never> {
+  ensurePreviewAppMode(context);
+  throw blockedPreviewAppCommandError(
+    "App logs are not available in this preview",
+    "The current preview cannot stream app logs yet.",
+  );
+}
+
+export async function runAppPromote(
+  context: CommandContext,
+  deploymentId: string,
+  appName: string | undefined,
+): Promise<CommandSuccess<AppPromoteResult>> {
+  ensurePreviewAppMode(context);
+
+  const projectId = await requireLinkedProjectId(context);
+  const provider = await requirePreviewAppProvider(context);
+  const apps = await listApps(context, provider, projectId);
+  const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "promote");
+  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+    throw deployFailedError("Failed to list app deployments", error, ["prisma app list-deploys"]);
+  });
+  const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
+    context,
+    projectId,
+    deploymentsResult.app,
+    deploymentsResult.deployments,
+  );
+  const targetDeployment = requireDeploymentForApp(
+    deploymentsResult.deployments,
+    deploymentId,
+    selectedApp.name,
+  );
+  const targetAlreadyLive = currentLiveDeploymentId === targetDeployment.id;
+
+  await context.stateStore.setSelectedApp(projectId, {
+    id: deploymentsResult.app.id,
+    name: deploymentsResult.app.name,
+  });
+
+  if (!targetAlreadyLive) {
+    await provider.promoteDeployment({
+      appId: selectedApp.id,
+      deploymentId: targetDeployment.id,
+      progress: createPreviewPromoteProgress(
+        context.output.stderr,
+        !context.flags.json && !context.flags.quiet,
+      ),
+    }).catch((error) => {
+      throw deployFailedError("Failed to promote deployment", error, ["prisma app list-deploys"]);
+    });
+  }
+
+  await context.stateStore.setKnownLiveDeployment(projectId, deploymentsResult.app.id, targetDeployment.id);
+
+  return {
+    command: "app.promote",
+    result: {
+      projectId,
+      app: {
+        id: deploymentsResult.app.id,
+        name: deploymentsResult.app.name,
+      },
+      deployment: {
+        ...targetDeployment,
+        status: "running",
+        live: true,
+      },
+    },
+    warnings: targetAlreadyLive ? ["The selected deployment is already live for this app."] : [],
+    nextSteps: ["prisma app list-deploys", `prisma app show-deploy ${targetDeployment.id}`],
+  };
+}
+
+export async function runAppRollback(
+  context: CommandContext,
+  appName: string | undefined,
+  deploymentId: string | undefined,
+): Promise<CommandSuccess<AppRollbackResult>> {
+  ensurePreviewAppMode(context);
+
+  const projectId = await requireLinkedProjectId(context);
+  const provider = await requirePreviewAppProvider(context);
+  const apps = await listApps(context, provider, projectId);
+  const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "rollback");
+  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+    throw deployFailedError("Failed to list app deployments", error, ["prisma app list-deploys"]);
+  });
+  const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
+    context,
+    projectId,
+    deploymentsResult.app,
+    deploymentsResult.deployments,
+  );
+  const currentLiveDeployment = currentLiveDeploymentId
+    ? deploymentsResult.deployments.find((deployment) => deployment.id === currentLiveDeploymentId) ?? null
+    : null;
+  const targetDeployment = deploymentId
+    ? requireDeploymentForApp(deploymentsResult.deployments, deploymentId, selectedApp.name)
+    : resolveRollbackTarget(deploymentsResult.deployments, currentLiveDeploymentId);
+  const targetAlreadyLive = currentLiveDeploymentId === targetDeployment.id;
+
+  await context.stateStore.setSelectedApp(projectId, {
+    id: deploymentsResult.app.id,
+    name: deploymentsResult.app.name,
+  });
+
+  if (!targetAlreadyLive) {
+    await provider.promoteDeployment({
+      appId: selectedApp.id,
+      deploymentId: targetDeployment.id,
+      progress: createPreviewPromoteProgress(
+        context.output.stderr,
+        !context.flags.json && !context.flags.quiet,
+      ),
+    }).catch((error) => {
+      throw deployFailedError("Failed to roll back deployment", error, ["prisma app list-deploys"]);
+    });
+  }
+
+  await context.stateStore.setKnownLiveDeployment(projectId, deploymentsResult.app.id, targetDeployment.id);
+
+  return {
+    command: "app.rollback",
+    result: {
+      projectId,
+      app: {
+        id: deploymentsResult.app.id,
+        name: deploymentsResult.app.name,
+      },
+      deployment: {
+        ...targetDeployment,
+        status: "running",
+        live: true,
+      },
+      previousLiveDeploymentId: currentLiveDeployment?.id ?? null,
+    },
+    warnings: targetAlreadyLive ? ["The selected deployment is already live for this app."] : [],
+    nextSteps: ["prisma app list-deploys", `prisma app show-deploy ${targetDeployment.id}`],
+  };
+}
+
+export async function runAppRemove(
+  context: CommandContext,
+  appName: string | undefined,
+): Promise<CommandSuccess<AppRemoveResult>> {
+  ensurePreviewAppMode(context);
+
+  const projectId = await requireLinkedProjectId(context);
+  const provider = await requirePreviewAppProvider(context);
+  const apps = await listApps(context, provider, projectId);
+  const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "remove");
+
+  await confirmAppRemoval(context, selectedApp);
+
+  const removedApp = await provider.removeApp(selectedApp.id).catch((error) => {
+    throw removeFailedError("Failed to remove app", error, ["prisma app show", "prisma app list-deploys"]);
+  });
+
+  const warnings = await cleanupRemovedAppState(context, projectId, removedApp.id);
+
+  return {
+    command: "app.remove",
+    result: {
+      projectId,
+      app: {
+        id: removedApp.id,
+        name: removedApp.name,
+      },
+      removed: true,
+    },
+    warnings,
+    nextSteps: ["prisma app deploy", "prisma app list-deploys"],
+  };
+}
+
+async function resolveDeploySelection(
+  context: CommandContext,
+  projectId: string,
+  apps: PreviewAppRecord[],
+  explicitAppName: string | undefined,
+): Promise<{
+  appId?: string;
+  appName?: string;
+  region?: string;
+  useInteractiveSelection: boolean;
+}> {
+  if (explicitAppName) {
+    const matched = findAppByName(apps, explicitAppName);
+
+    if (matched) {
+      return {
+        appId: matched.id,
+        useInteractiveSelection: false,
+      };
+    }
+
+    return {
+      appName: explicitAppName,
+      region: PREVIEW_DEFAULT_REGION,
+      useInteractiveSelection: false,
+    };
+  }
+
+  const savedSelection = await context.stateStore.readSelectedApp(projectId);
+  if (savedSelection) {
+    const matched = apps.find((app) => app.id === savedSelection.id) ?? findAppByName(apps, savedSelection.name);
+
+    if (matched) {
+      return {
+        appId: matched.id,
+        useInteractiveSelection: false,
+      };
+    }
+
+    if (!canPrompt(context)) {
+      throw usageError(
+        "Saved app selection is no longer available",
+        "The locally selected app could not be found in the linked project.",
+        "Pass --app <name>, or rerun prisma app deploy in a TTY to choose or create an app again.",
+        ["prisma app deploy"],
+        "app",
+      );
+    }
+  }
+
+  if (!canPrompt(context)) {
+    throw usageError(
+      "App deploy requires an app selection in non-interactive mode",
+      "This command cannot choose or create an app in the current mode.",
+      "Pass --app <name>, or rerun prisma app deploy in a TTY to choose or create an app.",
+      ["prisma app deploy --app hello-world"],
+      "app",
+    );
+  }
+
+  return {
+    useInteractiveSelection: true,
+  };
+}
+
+async function resolveExistingAppSelection(
+  context: CommandContext,
+  projectId: string,
+  apps: PreviewAppRecord[],
+  explicitAppName: string | undefined,
+): Promise<PreviewAppRecord | null> {
+  if (explicitAppName) {
+    const matched = findAppByName(apps, explicitAppName);
+    if (!matched) {
+      throw usageError(
+        "Selected app does not exist in the linked project",
+        `The app "${explicitAppName}" could not be found in linked project "${projectId}".`,
+        "Pass the name of an existing app, or rerun prisma app list-deploys in a TTY to choose one.",
+        ["prisma app list-deploys"],
+        "app",
+      );
+    }
+
+    return matched;
+  }
+
+  const savedSelection = await context.stateStore.readSelectedApp(projectId);
+  if (savedSelection) {
+    const matched = apps.find((app) => app.id === savedSelection.id) ?? findAppByName(apps, savedSelection.name);
+    if (matched) {
+      return matched;
+    }
+
+    if (!canPrompt(context)) {
+      throw usageError(
+        "Saved app selection is no longer available",
+        "The locally selected app could not be found in the linked project.",
+        "Pass --app <name>, or rerun prisma app list-deploys in a TTY to choose an available app.",
+        ["prisma app list-deploys"],
+        "app",
+      );
+    }
+  }
+
+  if (apps.length === 0) {
+    return null;
+  }
+
+  if (!canPrompt(context)) {
+    throw usageError(
+      "App selection required in non-interactive mode",
+      "This command cannot choose an app in the current mode.",
+      "Pass --app <name>, or rerun prisma app list-deploys in a TTY to choose an app.",
+      ["prisma app list-deploys"],
+      "app",
+    );
+  }
+
+  const prompt = createSelectPromptPort(context);
+  const selectedId = await prompt.select({
+    message: "Select an app",
+    choices: sortApps(apps).map((app) => ({
+      label: app.name,
+      value: app.id,
+    })),
+  });
+
+  return apps.find((app) => app.id === selectedId) ?? null;
+}
+
+async function requireReleaseAppSelection(
+  context: CommandContext,
+  projectId: string,
+  apps: PreviewAppRecord[],
+  explicitAppName: string | undefined,
+  commandName: "promote" | "rollback" | "remove",
+): Promise<PreviewAppRecord> {
+  const selectedApp = await resolveExistingAppSelection(context, projectId, apps, explicitAppName);
+  if (selectedApp) {
+    return selectedApp;
+  }
+
+  throw usageError(
+    `App ${commandName} requires an existing app`,
+    "The linked project does not have an app that can be selected for this command.",
+    `Deploy an app first, or rerun prisma app ${commandName} with --app <name> after an app exists.`,
+    ["prisma app deploy", "prisma app list-deploys"],
+    "app",
+  );
+}
+
+async function confirmAppRemoval(
+  context: CommandContext,
+  app: PreviewAppRecord,
+): Promise<void> {
+  if (context.flags.yes) {
+    return;
+  }
+
+  if (!canPrompt(context)) {
+    throw new CliError({
+      code: "CONFIRMATION_REQUIRED",
+      domain: "app",
+      summary: "App remove requires confirmation in the current mode",
+      why: "This command is destructive and cannot prompt for confirmation in the current mode.",
+      fix: `Pass --yes to confirm removal of "${app.name}", or rerun prisma app remove in an interactive TTY.`,
+      exitCode: 1,
+      nextSteps: [`prisma app remove --app ${app.name} --yes`],
+    });
+  }
+
+  await textPrompt({
+    input: context.runtime.stdin,
+    output: context.output.stderr,
+    message: `Type ${app.name} to confirm app removal`,
+    placeholder: app.name,
+    validate: (value) => value === app.name ? undefined : `Type "${app.name}" to confirm removal.`,
+  });
+}
+
+async function cleanupRemovedAppState(
+  context: CommandContext,
+  projectId: string,
+  appId: string,
+): Promise<string[]> {
+  const warnings: string[] = [];
+
+  try {
+    await context.stateStore.clearSelectedApp(projectId, appId);
+  } catch (error) {
+    warnings.push(localStateCleanupWarning("selected app", error));
+  }
+
+  try {
+    await context.stateStore.clearKnownLiveDeployment(projectId, appId);
+  } catch (error) {
+    warnings.push(localStateCleanupWarning("known live deployment", error));
+  }
+
+  return warnings;
+}
+
+function requireDeploymentForApp(
+  deployments: AppDeploymentSummary[],
+  deploymentId: string,
+  appName: string,
+): AppDeploymentSummary {
+  const deployment = deployments.find((candidate) => candidate.id === deploymentId);
+  if (deployment) {
+    return deployment;
+  }
+
+  throw new CliError({
+    code: "DEPLOYMENT_NOT_FOUND",
+    domain: "app",
+    summary: `Deployment "${deploymentId}" not found for app "${appName}"`,
+    why: "The requested deployment does not belong to the resolved app or is no longer available.",
+    fix: "Run prisma app list-deploys to choose an available deployment id for this app.",
+    exitCode: 1,
+    nextSteps: ["prisma app list-deploys"],
+  });
+}
+
+async function resolveCurrentLiveDeploymentId(
+  context: CommandContext,
+  projectId: string,
+  app: Pick<PreviewAppRecord, "id" | "liveDeploymentId">,
+  deployments: AppDeploymentSummary[],
+): Promise<string | null> {
+  if (app.liveDeploymentId && deployments.some((deployment) => deployment.id === app.liveDeploymentId)) {
+    return app.liveDeploymentId;
+  }
+
+  const providerLiveDeployment = deployments.find((deployment) => deployment.live === true);
+  if (providerLiveDeployment) {
+    return providerLiveDeployment.id;
+  }
+
+  const knownLiveDeploymentId = await context.stateStore.readKnownLiveDeployment(projectId, app.id);
+  if (knownLiveDeploymentId && deployments.some((deployment) => deployment.id === knownLiveDeploymentId)) {
+    return knownLiveDeploymentId;
+  }
+
+  return deployments[0]?.id ?? null;
+}
+
+function buildAppShowNextSteps(
+  liveUrl: string | null,
+  liveDeployment: AppDeploymentSummary | null,
+  deployments: AppDeploymentSummary[],
+): string[] {
+  const nextSteps: string[] = [];
+
+  if (liveUrl) {
+    nextSteps.push("prisma app open");
+  }
+
+  if (liveDeployment) {
+    nextSteps.push(`prisma app show-deploy ${liveDeployment.id}`);
+  } else if (deployments[0]) {
+    nextSteps.push(`prisma app show-deploy ${deployments[0].id}`);
+  } else {
+    nextSteps.push("prisma app deploy");
+  }
+
+  return nextSteps;
+}
+
+function applyLiveDeploymentHint(
+  deployments: AppDeploymentSummary[],
+  currentLiveDeploymentId: string | null,
+): AppDeploymentSummary[] {
+  if (!currentLiveDeploymentId) {
+    return deployments.map((deployment) => ({
+      ...deployment,
+      live: deployment.live ?? null,
+    }));
+  }
+
+  return deployments.map((deployment) => ({
+    ...deployment,
+    live: deployment.id === currentLiveDeploymentId,
+  }));
+}
+
+function resolveRollbackTarget(
+  deployments: AppDeploymentSummary[],
+  currentLiveDeploymentId: string | null,
+): AppDeploymentSummary {
+  const previousDeployment = deployments.find((deployment) => deployment.id !== currentLiveDeploymentId);
+  if (previousDeployment) {
+    return previousDeployment;
+  }
+
+  throw new CliError({
+    code: "NO_PREVIOUS_DEPLOYMENT",
+    domain: "app",
+    summary: "No previous deployment available for rollback",
+    why: "The selected app does not have an earlier deployment to switch back to.",
+    fix: "Deploy a second version first, or rerun prisma app rollback --to <deployment-id> for a specific earlier deployment.",
+    exitCode: 1,
+    nextSteps: ["prisma app deploy", "prisma app list-deploys"],
+  });
+}
+
+async function listApps(
+  context: CommandContext,
+  provider: ReturnType<typeof createPreviewAppProvider>,
+  projectId: string,
+) {
+  return provider.listApps(projectId).then(sortApps).catch((error) => {
+    if (isMissingProjectError(error)) {
+      throw projectNotFoundError(
+        `The linked project "${projectId}" does not exist in the authenticated workspace or is no longer accessible.`,
+        "Run prisma project show to inspect the current link, then relink the repo or rerun prisma app deploy to bootstrap a new project.",
+        ["prisma project show", "prisma project link", "prisma app deploy"],
+      );
+    }
+
+    throw deployFailedError("Failed to list apps", error, ["prisma project show"]);
+  });
+}
+
+async function requirePreviewAppProvider(context: CommandContext) {
+  const client = await requireComputeAuth(context.runtime.env);
+  if (!client) {
+    throw authRequiredError(["prisma auth login"]);
+  }
+
+  return createPreviewAppProvider(client);
+}
+
+async function requireLinkedProjectId(context: CommandContext): Promise<string> {
+  const projectId = await readLinkedProjectId(context.runtime.cwd);
+
+  if (!projectId) {
+    throw new CliError({
+      code: "PROJECT_NOT_LINKED",
+      domain: "project",
+      summary: "Project link required",
+      why: "This command needs a linked project for the current repo.",
+      fix: "Run prisma project link before deploying or inspecting app deployments.",
+      exitCode: 1,
+      nextSteps: ["prisma project link"],
+    });
+  }
+
+  return projectId;
+}
+
+async function resolveProjectIdForDeploy(
+  context: CommandContext,
+  provider: ReturnType<typeof createPreviewAppProvider>,
+): Promise<string> {
+  const linkedProjectId = await readLinkedProjectId(context.runtime.cwd);
+  if (linkedProjectId) {
+    return linkedProjectId;
+  }
+
+  await assertProjectLinkWritableForDeploy(context);
+
+  const projectName = path.basename(context.runtime.cwd);
+  const project = await provider.createProject({ name: projectName }).catch((error) => {
+    throw deployFailedError("Failed to create project for first deploy", error, ["prisma app deploy"]);
+  });
+
+  try {
+    await writeLinkedProjectId(context.runtime.cwd, project.id);
+  } catch (error) {
+    const cause = error instanceof Error ? error.message : String(error);
+    throw deployFailedError(
+      "Failed to link created project",
+      `Project "${project.name}" (${project.id}) was created remotely but could not be linked locally: ${cause}`,
+      ["prisma project show", "prisma app deploy"],
+    );
+  }
+
+  return project.id;
+}
+
+async function assertProjectLinkWritableForDeploy(context: CommandContext): Promise<void> {
+  try {
+    await assertLinkedProjectIdWritable(context.runtime.cwd);
+  } catch (error) {
+    if (error instanceof UnsafeConfigWriteError) {
+      throw usageError(
+        "Project bootstrap requires a writable Prisma config",
+        error.message,
+        "Update prisma.config.ts to use a recognizable project field, or remove it and rerun prisma app deploy.",
+        ["prisma app deploy --app hello-world"],
+        "app",
+      );
+    }
+
+    throw error;
+  }
+}
+
+function normalizeBuildType(requestedBuildType: string | undefined): PreviewBuildType {
+  if (!requestedBuildType) {
+    return "auto";
+  }
+
+  if (requestedBuildType === "auto" || requestedBuildType === "bun" || requestedBuildType === "nextjs") {
+    return requestedBuildType;
+  }
+
+  throw usageError(
+    `Unsupported build type "${requestedBuildType}"`,
+    "Only auto, bun, and nextjs are supported in the current preview.",
+    "Pass --build-type auto, --build-type bun, or --build-type nextjs.",
+    ["prisma app build --build-type nextjs", "prisma app build --build-type bun --entry server.ts"],
+    "app",
+  );
+}
+
+function assertSupportedEntrypoint(
+  buildType: PreviewBuildType,
+  entrypoint: string | undefined,
+  commandName: "build" | "run" | "deploy",
+) {
+  if (buildType === "nextjs" && entrypoint) {
+    throw usageError(
+      `App ${commandName} does not accept --entry with --build-type nextjs`,
+      "Next.js apps do not use an entrypoint flag in the current preview.",
+      `Remove --entry, or rerun prisma app ${commandName} with --build-type bun when you want to target a Bun entrypoint directly.`,
+      [
+        `prisma app ${commandName} --build-type nextjs`,
+        `prisma app ${commandName} --build-type bun --entry server.ts`,
+      ],
+      "app",
+    );
+  }
+}
+
+async function requireLocalBuildType(
+  context: CommandContext,
+  buildType: PreviewBuildType,
+  commandName: "build" | "run",
+) {
+  const resolvedBuildType = await resolveLocalBuildType(context.runtime.cwd, buildType);
+  if (resolvedBuildType) {
+    return resolvedBuildType;
+  }
+
+  throw usageError(
+    `App ${commandName} requires an explicit framework when detection is ambiguous`,
+    "This preview only auto-detects clear Next.js or Bun project shapes.",
+    "Pass --build-type nextjs for a Next.js app, or pass --build-type bun with --entry <path> for a Bun app.",
+    [
+      `prisma app ${commandName} --build-type nextjs`,
+      `prisma app ${commandName} --build-type bun --entry server.ts`,
+    ],
+    "app",
+  );
+}
+
+function parseLocalPort(requestedPort: string | undefined): number {
+  if (!requestedPort) {
+    return DEFAULT_LOCAL_DEV_PORT;
+  }
+
+  const port = Number.parseInt(requestedPort, 10);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw usageError(
+      `Invalid port "${requestedPort}"`,
+      "Port must be an integer between 1 and 65535.",
+      "Pass --port <number> with a valid local port value.",
+      ["prisma app run --port 3000"],
+      "app",
+    );
+  }
+
+  return port;
+}
+
+function parseDeployPortMapping(requestedPort: string | undefined): PortMapping | undefined {
+  if (!requestedPort) {
+    return undefined;
+  }
+
+  const port = Number.parseInt(requestedPort, 10);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw usageError(
+      `Invalid HTTP port "${requestedPort}"`,
+      "HTTP port must be an integer between 1 and 65535.",
+      "Pass --http-port <number> with a valid port value.",
+      ["prisma app deploy --http-port 3000"],
+      "app",
+    );
+  }
+
+  return { http: port };
+}
+
+function ensurePreviewAppMode(context: CommandContext) {
+  if (isRealMode(context)) {
+    return;
+  }
+
+  throw featureUnavailableError(
+    "App commands are not available in fixture mode",
+    "Preview app commands require live app deployment integration.",
+    "Rerun without fixture mode enabled to use preview app deployment workflows.",
+    ["prisma auth login", "prisma project link"],
+    "app",
+  );
+}
+
+function blockedPreviewAppCommandError(summary: string, why: string) {
+  return featureUnavailableError(
+    summary,
+    why,
+    "Use prisma app show, prisma app open, prisma app deploy, or prisma app list-deploys in the current preview.",
+    ["prisma app show", "prisma app list-deploys"],
+    "app",
+  );
+}
+
+function deployFailedError(summary: string, error: unknown, nextSteps: string[]): CliError {
+  return new CliError({
+    code: "DEPLOY_FAILED",
+    domain: "app",
+    summary,
+    why: error instanceof Error ? error.message : String(error),
+    fix: "Retry the command, or rerun with --trace for more detailed diagnostics.",
+    debug: formatDebugDetails(error),
+    exitCode: 1,
+    nextSteps,
+  });
+}
+
+function noDeploymentsError(summary: string, why: string): CliError {
+  return new CliError({
+    code: "NO_DEPLOYMENTS",
+    domain: "app",
+    summary,
+    why,
+    fix: "Run prisma app deploy first, or use prisma app show to inspect the current app state.",
+    exitCode: 1,
+    nextSteps: ["prisma app deploy", "prisma app show"],
+  });
+}
+
+function buildFailedError(summary: string, error: unknown): CliError {
+  return new CliError({
+    code: "BUILD_FAILED",
+    domain: "app",
+    summary,
+    why: error instanceof Error ? error.message : String(error),
+    fix: "Inspect the framework output, fix the build issue, and rerun prisma app build.",
+    debug: formatDebugDetails(error),
+    exitCode: 1,
+    nextSteps: ["prisma app build", "prisma app deploy"],
+  });
+}
+
+function runFailedError(summary: string, error: unknown, exitCode = 1): CliError {
+  return new CliError({
+    code: "RUN_FAILED",
+    domain: "app",
+    summary,
+    why: error instanceof Error ? error.message : String(error),
+    fix: "Inspect the framework output above, fix the issue, and rerun prisma app run.",
+    exitCode,
+    nextSteps: ["prisma app run"],
+  });
+}
+
+function formatFrameworkName(framework: AppRunResult["framework"]): string {
+  return framework === "nextjs" ? "Next.js" : "Bun";
+}
+
+function removeFailedError(summary: string, error: unknown, nextSteps: string[]): CliError {
+  return new CliError({
+    code: "REMOVE_FAILED",
+    domain: "app",
+    summary,
+    why: error instanceof Error ? error.message : String(error),
+    fix: "Retry the command, or rerun with --trace for more detailed diagnostics.",
+    debug: formatDebugDetails(error),
+    exitCode: 1,
+    nextSteps,
+  });
+}
+
+function localStateCleanupWarning(target: string, error: unknown): string {
+  const cause = error instanceof Error ? error.message : String(error);
+  return `The app was removed remotely, but the local ${target} state could not be cleared: ${cause}`;
+}
+
+function formatDebugDetails(error: unknown): string | null {
+  if (error instanceof Error) {
+    return error.stack ?? error.message;
+  }
+
+  return typeof error === "string" ? error : null;
+}
+
+function isMissingProjectError(error: unknown): boolean {
+  return error instanceof Error && error.message === "Resource Not Found";
+}
+
+function findAppByName(apps: PreviewAppRecord[], name: string): PreviewAppRecord | undefined {
+  return apps.find((app) => app.name === name);
+}
+
+function sortApps(apps: PreviewAppRecord[]): PreviewAppRecord[] {
+  return apps
+    .slice()
+    .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id));
+}
+
+function toOptionalEnvVars(
+  envVars: Record<string, string>,
+): Record<string, string> | undefined {
+  return Object.keys(envVars).length > 0 ? envVars : undefined;
+}

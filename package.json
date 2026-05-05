@@ -1,0 +1,14 @@
+{
+  "name": "prisma-cli",
+  "private": true,
+  "packageManager": "pnpm@10.30.0",
+  "scripts": {
+    "build:cli": "pnpm --filter @prisma/cli build",
+    "prepare:cli-publish": "node scripts/prepare-cli-publish.mjs",
+    "test": "pnpm --filter @prisma/cli test",
+    "prisma": "tsx packages/cli/src/bin.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
+}

@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Local CLI state
+.prisma/
+packages/*/.prisma/
+/prisma.config.ts
+tmp/
+
+# Build and test output
+dist/
+.publish/
+coverage/
+.vitest/
+*.tsbuildinfo
+
+# Logs
+*.log
+pnpm-debug.log*
+npm-debug.log*
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
