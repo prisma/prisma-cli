@@ -24,6 +24,10 @@ export const PREVIEW_BUILD_TYPES = [
 export type PreviewBuildType = typeof PREVIEW_BUILD_TYPES[number];
 export type ResolvedPreviewBuildType = Exclude<PreviewBuildType, "auto">;
 
+export const RESOLVED_PREVIEW_BUILD_TYPES = PREVIEW_BUILD_TYPES.filter(
+  (buildType): buildType is ResolvedPreviewBuildType => buildType !== "auto",
+);
+
 export class PreviewBuildStrategy implements BuildStrategy {
   readonly #appPath: string;
   readonly #entrypoint?: string;
@@ -104,7 +108,10 @@ export async function resolvePreviewBuildStrategy(options: {
     };
   }
 
-  for (const buildType of ["nextjs", "nuxt", "astro", "tanstack-start"] as const) {
+  for (const buildType of RESOLVED_PREVIEW_BUILD_TYPES) {
+    // Bun is the fallback because it can build any valid Bun entrypoint.
+    if (buildType === "bun") continue;
+
     const strategy = await createPreviewBuildStrategy({
       appPath: options.appPath,
       entrypoint: options.entrypoint,

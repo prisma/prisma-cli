@@ -31,7 +31,12 @@ import {
   runLocalApp,
 } from "../lib/app/local-dev";
 import { projectNotFoundError } from "../use-cases/project";
-import { executePreviewBuild, PREVIEW_BUILD_TYPES, type PreviewBuildType } from "../lib/app/preview-build";
+import {
+  executePreviewBuild,
+  PREVIEW_BUILD_TYPES,
+  RESOLVED_PREVIEW_BUILD_TYPES,
+  type PreviewBuildType,
+} from "../lib/app/preview-build";
 import {
   createPreviewDeployInteraction,
   PREVIEW_DEFAULT_REGION,
@@ -77,15 +82,9 @@ export async function runAppBuild(
     if (buildType === "auto" && isAutoBuildDetectionError(error)) {
       throw usageError(
         "App build requires an explicit framework when detection is ambiguous",
-        "This preview auto-detects clear Bun, Next.js, Nuxt, Astro, or TanStack Start project shapes.",
+        `This preview auto-detects clear project shapes for ${RESOLVED_PREVIEW_BUILD_TYPES.map(formatBuildTypeName).join(", ")}.`,
         "Pass a supported --build-type value, or pass --entry <path> for a Bun app.",
-        [
-          "prisma app build --build-type nextjs",
-          "prisma app build --build-type nuxt",
-          "prisma app build --build-type astro",
-          "prisma app build --build-type tanstack-start",
-          "prisma app build --build-type bun --entry server.ts",
-        ],
+        getBuildTypeExamples("build"),
         "app",
       );
     }
@@ -1237,21 +1236,22 @@ function normalizeBuildType(requestedBuildType: string | undefined): PreviewBuil
 
   throw usageError(
     `Unsupported build type "${requestedBuildType}"`,
-    "Only auto, bun, nextjs, nuxt, astro, and tanstack-start are supported in the current preview.",
+    `Only ${PREVIEW_BUILD_TYPES.join(", ")} are supported in the current preview.`,
     "Pass a supported --build-type value.",
-    [
-      "prisma app build --build-type nextjs",
-      "prisma app build --build-type nuxt",
-      "prisma app build --build-type astro",
-      "prisma app build --build-type tanstack-start",
-      "prisma app build --build-type bun --entry server.ts",
-    ],
+    getBuildTypeExamples("build"),
     "app",
   );
 }
 
 function isPreviewBuildType(value: string): value is PreviewBuildType {
   return (PREVIEW_BUILD_TYPES as readonly string[]).includes(value);
+}
+
+function getBuildTypeExamples(commandName: "build" | "deploy"): string[] {
+  return RESOLVED_PREVIEW_BUILD_TYPES.map((buildType) => {
+    const entrypoint = buildType === "bun" ? " --entry server.ts" : "";
+    return `prisma app ${commandName} --build-type ${buildType}${entrypoint}`;
+  });
 }
 
 function assertSupportedEntrypoint(
