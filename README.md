@@ -139,8 +139,23 @@ inside an example only when you want to run manual end-to-end checks.
 
 ## Publishing
 
-Publishing is intentionally manual and gated through GitHub Actions.
+Publishing is intentionally manual and gated through GitHub Actions. The
+workflow publishes the version that is already merged in
+`packages/cli/package.json`; it does not bump versions or push commits to
+`main`.
 
 The prerelease line uses `3.0.0-alpha.N`. The release workflow is configured to
 publish to the `preview` dist-tag. Do not publish from a local checkout unless
 the release owner explicitly asks you to do so.
+
+For a preview release:
+
+1. Open a PR that bumps `packages/cli/package.json` to the next
+   `3.0.0-alpha.N` version.
+2. Merge the PR to `main`.
+3. Run the `Release CLI` GitHub Actions workflow with `dry_run: true`.
+4. Run the same workflow with `dry_run: false`.
+
+If a release workflow fails after the npm publish step, check npm before
+rerunning. The package version may already be published even if tag creation
+failed.

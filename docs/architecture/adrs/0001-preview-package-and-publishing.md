@@ -18,8 +18,13 @@ dist-tag. The package exposes a `prisma-cli` binary so it can coexist with the
 existing `prisma` executable.
 
 Release preparation is staged through the repository scripts and the manual
-GitHub Actions release workflow. The publish workflow is prepared for npm
-trusted publishing with provenance and publishes with:
+GitHub Actions release workflow. Version bumps are merged through pull requests
+before publishing. The publish workflow reads the already-merged version from
+`packages/cli/package.json`, publishes it, and creates the matching release tag.
+It must not push release commits directly to `main`.
+
+The publish workflow is prepared for npm trusted publishing with provenance and
+publishes with:
 
 ```bash
 npm publish --access public --tag preview --provenance
@@ -35,3 +40,5 @@ Local development should build and stage the package, but should not publish it.
 - The npm package should contain only the staged package files: built `dist`,
   package README, license, and package manifest.
 - Publishing remains manual and gated until the release owner runs the workflow.
+- Preview version changes must be reviewed and merged before publishing so
+  repository rules that require pull requests are respected.
