@@ -5,6 +5,8 @@ import path from "node:path";
 import type { PreviewBuildType, ResolvedPreviewBuildType } from "./preview-build";
 import { readBunPackageEntrypoint, readBunPackageJson, resolveBunEntrypoint } from "./bun-project";
 
+export type LocalBuildType = Extract<ResolvedPreviewBuildType, "bun" | "nextjs">;
+
 const NEXT_CONFIG_FILENAMES = [
   "next.config.js",
   "next.config.mjs",
@@ -15,7 +17,7 @@ const NEXT_CONFIG_FILENAMES = [
 export const DEFAULT_LOCAL_DEV_PORT = 3000;
 
 export interface LocalRunResult {
-  framework: ResolvedPreviewBuildType;
+  framework: LocalBuildType;
   entrypoint: string | null;
   port: number;
   command: string;
@@ -32,15 +34,19 @@ interface CommandCandidate {
 export async function resolveLocalBuildType(
   appPath: string,
   buildType: PreviewBuildType,
-): Promise<ResolvedPreviewBuildType | null> {
+): Promise<LocalBuildType | null> {
   if (buildType === "bun" || buildType === "nextjs") {
     return buildType;
+  }
+
+  if (buildType !== "auto") {
+    return null;
   }
 
   return detectLocalBuildType(appPath);
 }
 
-export async function detectLocalBuildType(appPath: string): Promise<ResolvedPreviewBuildType | null> {
+export async function detectLocalBuildType(appPath: string): Promise<LocalBuildType | null> {
   if (await isNextProject(appPath)) {
     return "nextjs";
   }
@@ -54,7 +60,7 @@ export async function detectLocalBuildType(appPath: string): Promise<ResolvedPre
 
 export async function runLocalApp(options: {
   appPath: string;
-  buildType: ResolvedPreviewBuildType;
+  buildType: LocalBuildType;
   entrypoint?: string;
   port: number;
   env: NodeJS.ProcessEnv;

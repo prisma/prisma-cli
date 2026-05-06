@@ -1,20 +1,32 @@
-import { execFile } from "node:child_process";
-import { copyFile, cp, lstat, mkdir, mkdtemp, readdir, readFile, readlink, rm, stat, chmod } from "node:fs/promises";
-import os from "node:os";
+import { chmod, copyFile, cp, lstat, mkdir, readdir, readlink, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
-import { BunBuild, type BuildArtifact, type BuildStrategy } from "@prisma/compute-sdk";
+import {
+  AstroBuild,
+  BunBuild,
+  NextjsBuild,
+  NuxtBuild,
+  TanstackStartBuild,
+  type BuildArtifact,
+  type BuildStrategy,
+} from "@prisma/compute-sdk";
 import { resolveBunEntrypoint } from "./bun-project";
 
-export type PreviewBuildType = "auto" | "bun" | "nextjs";
+export const PREVIEW_BUILD_TYPES = [
+  "auto",
+  "bun",
+  "nextjs",
+  "nuxt",
+  "astro",
+  "tanstack-start",
+] as const;
+
+export type PreviewBuildType = typeof PREVIEW_BUILD_TYPES[number];
 export type ResolvedPreviewBuildType = Exclude<PreviewBuildType, "auto">;
 
-const NEXT_CONFIG_FILENAMES = [
-  "next.config.js",
-  "next.config.mjs",
-  "next.config.ts",
-  "next.config.mts",
-];
+export const RESOLVED_PREVIEW_BUILD_TYPES = PREVIEW_BUILD_TYPES.filter(
+  (buildType): buildType is ResolvedPreviewBuildType => buildType !== "auto",
+);
 
 export class PreviewBuildStrategy implements BuildStrategy {
   readonly #appPath: string;
@@ -83,150 +95,68 @@ export async function resolvePreviewBuildStrategy(options: {
   strategy: BuildStrategy;
   buildType: ResolvedPreviewBuildType;
 }> {
-  if (options.buildType === "nextjs") {
+  if (options.buildType !== "auto") {
+    const strategy = await createPreviewBuildStrategy({
+      appPath: options.appPath,
+      entrypoint: options.entrypoint,
+      buildType: options.buildType,
+    });
+
     return {
-      buildType: "nextjs",
-      strategy: new PreviewNextjsBuild({ appPath: options.appPath }),
+      buildType: options.buildType,
+      strategy,
     };
   }
 
-  if (options.buildType === "bun") {
-    const entrypoint = await resolveBunEntrypoint(options.appPath, options.entrypoint);
-    return {
-      buildType: "bun",
-      strategy: new BunBuild({
-        appPath: options.appPath,
-        entrypoint,
-      }),
-    };
+  for (const buildType of RESOLVED_PREVIEW_BUILD_TYPES) {
+    // Bun is the fallback because it can build any valid Bun entrypoint.
+    if (buildType === "bun") continue;
+
+    const strategy = await createPreviewBuildStrategy({
+      appPath: options.appPath,
+      entrypoint: options.entrypoint,
+      buildType,
+    });
+
+    if (await strategy.canBuild()) {
+      return {
+        buildType,
+        strategy,
+      };
+    }
   }
 
-  const nextjsStrategy = new PreviewNextjsBuild({ appPath: options.appPath });
-  if (await nextjsStrategy.canBuild()) {
-    return {
-      buildType: "nextjs",
-      strategy: nextjsStrategy,
-    };
-  }
-
-  const entrypoint = await resolveBunEntrypoint(options.appPath, options.entrypoint);
   return {
     buildType: "bun",
-    strategy: new BunBuild({
+    strategy: await createPreviewBuildStrategy({
       appPath: options.appPath,
-      entrypoint,
+      entrypoint: options.entrypoint,
+      buildType: "bun",
     }),
   };
 }
 
-class PreviewNextjsBuild implements BuildStrategy {
-  readonly #appPath: string;
-
-  constructor(options: { appPath: string }) {
-    this.#appPath = options.appPath;
-  }
-
-  async canBuild(): Promise<boolean> {
-    return (await this.#hasNextConfig()) || (await this.#hasNextDependency());
-  }
-
-  async execute(): Promise<BuildArtifact> {
-    await this.#runBuild();
-
-    const standaloneDir = path.join(this.#appPath, ".next", "standalone");
-    const standaloneStat = await stat(standaloneDir).catch(() => null);
-    if (!standaloneStat?.isDirectory()) {
-      throw new Error('Next.js build did not produce standalone output. Add output: "standalone" to your next.config file.');
-    }
-
-    const outDir = await mkdtemp(path.join(os.tmpdir(), "compute-build-"));
-
-    try {
-      const artifactDir = path.join(outDir, "app");
-      await stageNextjsStandaloneArtifact({
-        standaloneDir,
-        artifactDir,
-        appPath: this.#appPath,
+async function createPreviewBuildStrategy(options: {
+  appPath: string;
+  entrypoint?: string;
+  buildType: ResolvedPreviewBuildType;
+}): Promise<BuildStrategy> {
+  switch (options.buildType) {
+    case "nextjs":
+      return new NextjsBuild({ appPath: options.appPath });
+    case "nuxt":
+      return new NuxtBuild({ appPath: options.appPath });
+    case "astro":
+      return new AstroBuild({ appPath: options.appPath });
+    case "tanstack-start":
+      return new TanstackStartBuild({ appPath: options.appPath });
+    case "bun": {
+      const entrypoint = await resolveBunEntrypoint(options.appPath, options.entrypoint);
+      return new BunBuild({
+        appPath: options.appPath,
+        entrypoint,
       });
-
-      const publicDir = path.join(this.#appPath, "public");
-      if (await directoryExists(publicDir)) {
-        await cp(publicDir, path.join(artifactDir, "public"), { recursive: true });
-      }
-
-      const staticDir = path.join(this.#appPath, ".next", "static");
-      if (await directoryExists(staticDir)) {
-        await cp(staticDir, path.join(artifactDir, ".next", "static"), { recursive: true });
-      }
-
-      return {
-        directory: artifactDir,
-        entrypoint: "server.js",
-        defaultPortMapping: { http: 3000 },
-        cleanup: () => rm(outDir, { recursive: true, force: true }),
-      };
-    } catch (error) {
-      await rm(outDir, { recursive: true, force: true });
-      throw error;
     }
-  }
-
-  async #hasNextConfig(): Promise<boolean> {
-    let entries: string[];
-    try {
-      entries = await readdir(this.#appPath);
-    } catch {
-      return false;
-    }
-
-    return entries.some((entry) => NEXT_CONFIG_FILENAMES.includes(entry));
-  }
-
-  async #hasNextDependency(): Promise<boolean> {
-    const packageJsonPath = path.join(this.#appPath, "package.json");
-    let content: string;
-
-    try {
-      content = await readFile(packageJsonPath, "utf8");
-    } catch {
-      return false;
-    }
-
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(content) as Record<string, unknown>;
-    } catch {
-      return false;
-    }
-
-    const deps = isRecord(parsed.dependencies) ? parsed.dependencies : {};
-    const devDeps = isRecord(parsed.devDependencies) ? parsed.devDependencies : {};
-
-    return "next" in deps || "next" in devDeps;
-  }
-
-  async #runBuild(): Promise<void> {
-    const localBin = path.join(this.#appPath, "node_modules", ".bin", "next");
-    const candidates = [
-      { command: localBin, args: ["build"] },
-      { command: "npx", args: ["next", "build"] },
-      { command: "bunx", args: ["next", "build"] },
-    ];
-
-    for (const { command, args } of candidates) {
-      try {
-        await exec(command, args, this.#appPath);
-        return;
-      } catch (error) {
-        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-          continue;
-        }
-
-        throw error;
-      }
-    }
-
-    throw new Error("Could not find the Next.js CLI. Install it with `npm install next` or ensure npx/bunx is available.");
   }
 }
 
@@ -375,36 +305,6 @@ async function resolveSymlinkTarget(
   throw new Error(
     `Next.js standalone symlink target is missing: ${symlinkPath} -> ${linkTarget} (resolved to ${resolvedTarget})`,
   );
-}
-
-async function directoryExists(dirPath: string): Promise<boolean> {
-  const dirStat = await stat(dirPath).catch(() => null);
-  return dirStat?.isDirectory() ?? false;
-}
-
-function exec(command: string, args: string[], cwd: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    execFile(command, args, { cwd }, (error, _stdout, stderr) => {
-      if (error) {
-        if ("code" in error && error.code === "ENOENT") {
-          reject(Object.assign(new Error(`${command} not found`), {
-            code: "ENOENT",
-          }));
-          return;
-        }
-
-        const message = stderr.trim() || error.message;
-        reject(new Error(`Next.js build failed:\n${message}`));
-        return;
-      }
-
-      resolve();
-    });
-  });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 async function pathExists(targetPath: string): Promise<boolean> {

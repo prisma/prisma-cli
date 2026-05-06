@@ -52,16 +52,60 @@ describe("app local dev commands", () => {
     });
   });
 
-  it("build returns USAGE_ERROR when framework detection is ambiguous", async () => {
-    const resolveLocalBuildType = vi.fn().mockResolvedValue(null);
+  it("build accepts explicit SDK framework strategies", async () => {
+    const executePreviewBuild = vi.fn().mockResolvedValue({
+      artifact: {
+        directory: "/tmp/compute-build/app",
+        entrypoint: "server/entry.mjs",
+      },
+      buildType: "astro",
+    });
 
-    vi.doMock("../src/lib/app/local-dev", async () => {
-      const actual = await vi.importActual<typeof import("../src/lib/app/local-dev")>(
-        "../src/lib/app/local-dev",
+    vi.doMock("../src/lib/app/preview-build", async () => {
+      const actual = await vi.importActual<typeof import("../src/lib/app/preview-build")>(
+        "../src/lib/app/preview-build",
       );
       return {
         ...actual,
-        resolveLocalBuildType,
+        executePreviewBuild,
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppBuild } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+    });
+
+    const result = await runAppBuild(context, undefined, "astro");
+
+    expect(executePreviewBuild).toHaveBeenCalledWith({
+      appPath: cwd,
+      entrypoint: undefined,
+      buildType: "astro",
+    });
+    expect(result.result).toEqual({
+      directory: "/tmp/compute-build/app",
+      entrypoint: "server/entry.mjs",
+      buildType: "astro",
+    });
+  });
+
+  it("build returns USAGE_ERROR when framework detection is ambiguous", async () => {
+    const executePreviewBuild = vi.fn().mockRejectedValue(
+      new Error("Entrypoint is required. Pass --entry or define package.json main or module."),
+    );
+
+    vi.doMock("../src/lib/app/preview-build", async () => {
+      const actual = await vi.importActual<typeof import("../src/lib/app/preview-build")>(
+        "../src/lib/app/preview-build",
+      );
+      return {
+        ...actual,
+        executePreviewBuild,
       };
     });
 

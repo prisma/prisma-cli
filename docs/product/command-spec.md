@@ -299,7 +299,7 @@ prisma branch use
 prisma branch use production
 ```
 
-## `prisma app build --entry <path> --build-type <auto|bun|nextjs>`
+## `prisma app build --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|tanstack-start>`
 
 Purpose:
 
@@ -308,13 +308,16 @@ Purpose:
 Behavior:
 
 - detects supported project shapes when `--build-type auto` is used
-- supports Bun and Next.js app builds in the preview package
+- supports Bun, Next.js, Nuxt, Astro, and TanStack Start app builds in the preview package
 - fails with `USAGE_ERROR` when framework detection is ambiguous
 
 Examples:
 
 ```bash
 prisma app build --build-type nextjs
+prisma app build --build-type nuxt
+prisma app build --build-type astro
+prisma app build --build-type tanstack-start
 prisma app build --build-type bun --entry server.ts
 ```
 
@@ -337,7 +340,7 @@ prisma app run --build-type nextjs
 prisma app run --build-type bun --entry server.ts --port 3000
 ```
 
-## `prisma app deploy --app <name> --entry <path> --build-type <auto|bun|nextjs> --http-port <port> --env <name=value>`
+## `prisma app deploy --app <name> --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|tanstack-start> --http-port <port> --env <name=value>`
 
 Purpose:
 
@@ -349,6 +352,7 @@ Behavior:
 - resolves or creates project context
 - resolves or creates app context when required
 - accepts repeated `--env NAME=VALUE` flags
+- uses the same supported build strategies as `app build`
 - does not print secret values
 - returns app, deployment id, URL, and next steps
 
@@ -358,6 +362,9 @@ Examples:
 prisma app deploy
 prisma app deploy --app hello-world --env DATABASE_URL=postgresql://example
 prisma app deploy --app hello-world --build-type nextjs --http-port 3000
+prisma app deploy --app hello-world --build-type nuxt
+prisma app deploy --app hello-world --build-type astro
+prisma app deploy --app hello-world --build-type tanstack-start
 ```
 
 ## `prisma app update-env --app <name> --env <name=value>`

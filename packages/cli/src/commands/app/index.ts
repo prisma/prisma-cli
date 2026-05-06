@@ -45,6 +45,7 @@ import { attachCommandDescriptor } from "../../shell/command-meta";
 import { addGlobalFlags } from "../../shell/global-flags";
 import { runCommand } from "../../shell/command-runner";
 import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
+import { PREVIEW_BUILD_TYPES } from "../../lib/app/preview-build";
 import type {
   AppBuildResult,
   AppDeployResult,
@@ -90,7 +91,7 @@ function createBuildCommand(runtime: CliRuntime): Command {
     .addOption(new Option("--entry <path>", "Entrypoint path for Bun or auto builds"))
     .addOption(
       new Option("--build-type <type>", "Local build type")
-        .choices(["auto", "bun", "nextjs"])
+        .choices([...PREVIEW_BUILD_TYPES])
         .default("auto"),
     );
   addGlobalFlags(command);
@@ -161,7 +162,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
     .addOption(new Option("--entry <path>", "Entrypoint path for Bun or auto deploys"))
     .addOption(
       new Option("--build-type <type>", "Deploy build type")
-        .choices(["auto", "bun", "nextjs"])
+        .choices([...PREVIEW_BUILD_TYPES])
         .default("auto"),
     )
     .addOption(new Option("--http-port <port>", "HTTP port override for the deployed app"))

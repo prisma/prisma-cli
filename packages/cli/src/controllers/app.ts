@@ -31,7 +31,12 @@ import {
   runLocalApp,
 } from "../lib/app/local-dev";
 import { projectNotFoundError } from "../use-cases/project";
-import { executePreviewBuild, type PreviewBuildType } from "../lib/app/preview-build";
+import {
+  executePreviewBuild,
+  PREVIEW_BUILD_TYPES,
+  RESOLVED_PREVIEW_BUILD_TYPES,
+  type PreviewBuildType,
+} from "../lib/app/preview-build";
 import {
   createPreviewDeployInteraction,
   PREVIEW_DEFAULT_REGION,
@@ -56,13 +61,11 @@ export async function runAppBuild(
   const buildType = normalizeBuildType(requestedBuildType);
   assertSupportedEntrypoint(buildType, entrypoint, "build");
 
-  const resolvedBuildType = await requireLocalBuildType(context, buildType, "build");
-
   try {
     const { artifact, buildType: actualBuildType } = await executePreviewBuild({
       appPath: context.runtime.cwd,
       entrypoint,
-      buildType: resolvedBuildType,
+      buildType,
     });
 
     return {
@@ -76,6 +79,16 @@ export async function runAppBuild(
       nextSteps: ["prisma app deploy"],
     };
   } catch (error) {
+    if (buildType === "auto" && isAutoBuildDetectionError(error)) {
+      throw usageError(
+        "App build requires an explicit framework when detection is ambiguous",
+        `This preview auto-detects clear project shapes for ${RESOLVED_PREVIEW_BUILD_TYPES.map(formatBuildTypeName).join(", ")}.`,
+        "Pass a supported --build-type value, or pass --entry <path> for a Bun app.",
+        getBuildTypeExamples("build"),
+        "app",
+      );
+    }
+
     throw buildFailedError("Local app build failed", error);
   }
 }
@@ -1217,17 +1230,28 @@ function normalizeBuildType(requestedBuildType: string | undefined): PreviewBuil
     return "auto";
   }
 
-  if (requestedBuildType === "auto" || requestedBuildType === "bun" || requestedBuildType === "nextjs") {
+  if (isPreviewBuildType(requestedBuildType)) {
     return requestedBuildType;
   }
 
   throw usageError(
     `Unsupported build type "${requestedBuildType}"`,
-    "Only auto, bun, and nextjs are supported in the current preview.",
-    "Pass --build-type auto, --build-type bun, or --build-type nextjs.",
-    ["prisma app build --build-type nextjs", "prisma app build --build-type bun --entry server.ts"],
+    `Only ${PREVIEW_BUILD_TYPES.join(", ")} are supported in the current preview.`,
+    "Pass a supported --build-type value.",
+    getBuildTypeExamples("build"),
     "app",
   );
+}
+
+function isPreviewBuildType(value: string): value is PreviewBuildType {
+  return (PREVIEW_BUILD_TYPES as readonly string[]).includes(value);
+}
+
+function getBuildTypeExamples(commandName: "build" | "deploy"): string[] {
+  return RESOLVED_PREVIEW_BUILD_TYPES.map((buildType) => {
+    const entrypoint = buildType === "bun" ? " --entry server.ts" : "";
+    return `prisma app ${commandName} --build-type ${buildType}${entrypoint}`;
+  });
 }
 
 function assertSupportedEntrypoint(
@@ -1235,13 +1259,15 @@ function assertSupportedEntrypoint(
   entrypoint: string | undefined,
   commandName: "build" | "run" | "deploy",
 ) {
-  if (buildType === "nextjs" && entrypoint) {
+  // Framework strategies derive their runtime entrypoints from build output.
+  // Only Bun consumes a user-provided source entrypoint; auto may fall back to Bun.
+  if (buildType !== "auto" && buildType !== "bun" && entrypoint) {
     throw usageError(
-      `App ${commandName} does not accept --entry with --build-type nextjs`,
-      "Next.js apps do not use an entrypoint flag in the current preview.",
+      `App ${commandName} does not accept --entry with --build-type ${buildType}`,
+      `${formatBuildTypeName(buildType)} apps do not use an entrypoint flag in the current preview.`,
       `Remove --entry, or rerun prisma app ${commandName} with --build-type bun when you want to target a Bun entrypoint directly.`,
       [
-        `prisma app ${commandName} --build-type nextjs`,
+        `prisma app ${commandName} --build-type ${buildType}`,
         `prisma app ${commandName} --build-type bun --entry server.ts`,
       ],
       "app",
@@ -1254,6 +1280,9 @@ async function requireLocalBuildType(
   buildType: PreviewBuildType,
   commandName: "build" | "run",
 ) {
+  // Local dev server support is intentionally narrower than deploy build support.
+  // Nuxt, Astro, and TanStack Start can deploy via SDK strategies, but app run
+  // only starts the local dev servers currently documented for the preview.
   const resolvedBuildType = await resolveLocalBuildType(context.runtime.cwd, buildType);
   if (resolvedBuildType) {
     return resolvedBuildType;
@@ -1261,7 +1290,7 @@ async function requireLocalBuildType(
 
   throw usageError(
     `App ${commandName} requires an explicit framework when detection is ambiguous`,
-    "This preview only auto-detects clear Next.js or Bun project shapes.",
+    "This preview only starts local dev servers for clear Next.js or Bun project shapes.",
     "Pass --build-type nextjs for a Next.js app, or pass --build-type bun with --entry <path> for a Bun app.",
     [
       `prisma app ${commandName} --build-type nextjs`,
@@ -1385,6 +1414,27 @@ function runFailedError(summary: string, error: unknown, exitCode = 1): CliError
 
 function formatFrameworkName(framework: AppRunResult["framework"]): string {
   return framework === "nextjs" ? "Next.js" : "Bun";
+}
+
+function isAutoBuildDetectionError(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith("Entrypoint is required.");
+}
+
+function formatBuildTypeName(buildType: PreviewBuildType): string {
+  switch (buildType) {
+    case "nextjs":
+      return "Next.js";
+    case "nuxt":
+      return "Nuxt";
+    case "astro":
+      return "Astro";
+    case "tanstack-start":
+      return "TanStack Start";
+    case "bun":
+      return "Bun";
+    case "auto":
+      return "Auto";
+  }
 }
 
 function removeFailedError(summary: string, error: unknown, nextSteps: string[]): CliError {
