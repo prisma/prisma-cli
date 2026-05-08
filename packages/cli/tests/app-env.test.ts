@@ -553,45 +553,107 @@ describe("app env unset", () => {
   });
 });
 
+/**
+ * Shared scaffolding for the legacy `app update-env` / `app list-env`
+ * deprecation tests. The two flows share an auth gate, project-link
+ * lookup, and preview-provider seam; centralizing the mock keeps the
+ * tests focused on the deprecation banner contract instead of the
+ * provider stub shape, and means a future change to either of those
+ * underlying dependencies needs to be reflected in exactly one place.
+ */
+function mockLegacyEnvDependencies(
+  overrides: {
+    updateAppEnv?: ReturnType<typeof vi.fn>;
+    listAppEnvNames?: ReturnType<typeof vi.fn>;
+  } = {},
+): void {
+  vi.doMock("../src/adapters/config", async () => {
+    const actual =
+      await vi.importActual<typeof import("../src/adapters/config")>(
+        "../src/adapters/config",
+      );
+    return {
+      ...actual,
+      readLinkedProjectId: vi.fn().mockResolvedValue("proj_123"),
+    };
+  });
+  vi.doMock("../src/lib/auth/guard", () => ({
+    requireComputeAuth: vi.fn().mockResolvedValue({ token: "t" }),
+  }));
+
+  const appRecord = {
+    id: "app_1",
+    name: "hello-world",
+    region: null,
+    liveDeploymentId: "dep_1",
+    liveUrl: null,
+  };
+  const deploymentRecord = {
+    id: "dep_1",
+    status: "running",
+    createdAt: "2026-05-08T10:00:00.000Z",
+    url: null,
+    live: null,
+  };
+
+  vi.doMock("../src/lib/app/preview-provider", () => ({
+    createPreviewAppProvider: vi.fn(() => ({
+      listApps: vi.fn().mockResolvedValue([appRecord]),
+      listDeployments: vi.fn().mockResolvedValue({
+        app: appRecord,
+        deployments: [deploymentRecord],
+      }),
+      ...(overrides.updateAppEnv ? { updateAppEnv: overrides.updateAppEnv } : {}),
+      ...(overrides.listAppEnvNames
+        ? { listAppEnvNames: overrides.listAppEnvNames }
+        : {}),
+    })),
+  }));
+}
+
+const updateAppEnvHappyPath = () =>
+  vi.fn().mockResolvedValue({
+    projectId: "proj_123",
+    app: {
+      id: "app_1",
+      name: "hello-world",
+      region: null,
+      liveDeploymentId: "dep_1",
+      liveUrl: null,
+    },
+    deployment: {
+      id: "dep_1",
+      status: "running",
+      url: null,
+      createdAt: "2026-05-08T10:00:00.000Z",
+      live: true,
+    },
+    variables: ["FOO"],
+  });
+
+const listAppEnvNamesHappyPath = () =>
+  vi.fn().mockResolvedValue({
+    projectId: "proj_123",
+    app: {
+      id: "app_1",
+      name: "hello-world",
+      region: null,
+      liveDeploymentId: "dep_1",
+      liveUrl: null,
+    },
+    deployment: {
+      id: "dep_1",
+      status: "running",
+      createdAt: "2026-05-08T10:00:00.000Z",
+      url: null,
+      live: true,
+    },
+    variables: ["FOO"],
+  });
+
 describe("legacy env command deprecation warnings", () => {
   it("prints a deprecation banner to stderr from `app update-env`", async () => {
-    const updateAppEnv = vi.fn().mockResolvedValue({
-      projectId: "proj_123",
-      app: { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
-      deployment: {
-        id: "dep_1",
-        status: "running",
-        url: null,
-        createdAt: "2026-05-08T10:00:00.000Z",
-        live: true,
-      },
-      variables: ["FOO"],
-    });
-
-    vi.doMock("../src/adapters/config", async () => {
-      const actual =
-        await vi.importActual<typeof import("../src/adapters/config")>(
-          "../src/adapters/config",
-        );
-      return { ...actual, readLinkedProjectId: vi.fn().mockResolvedValue("proj_123") };
-    });
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi.fn().mockResolvedValue({ token: "t" }),
-    }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => ({
-        listApps: vi.fn().mockResolvedValue([
-          { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
-        ]),
-        listDeployments: vi.fn().mockResolvedValue({
-          app: { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
-          deployments: [
-            { id: "dep_1", status: "running", createdAt: "2026-05-08T10:00:00.000Z", url: null, live: null },
-          ],
-        }),
-        updateAppEnv,
-      })),
-    }));
+    mockLegacyEnvDependencies({ updateAppEnv: updateAppEnvHappyPath() });
 
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppUpdateEnv } = await import("../src/controllers/app");
@@ -606,43 +668,7 @@ describe("legacy env command deprecation warnings", () => {
   });
 
   it("suppresses the deprecation banner under --json", async () => {
-    const updateAppEnv = vi.fn().mockResolvedValue({
-      projectId: "proj_123",
-      app: { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
-      deployment: {
-        id: "dep_1",
-        status: "running",
-        url: null,
-        createdAt: "2026-05-08T10:00:00.000Z",
-        live: true,
-      },
-      variables: ["FOO"],
-    });
-
-    vi.doMock("../src/adapters/config", async () => {
-      const actual =
-        await vi.importActual<typeof import("../src/adapters/config")>(
-          "../src/adapters/config",
-        );
-      return { ...actual, readLinkedProjectId: vi.fn().mockResolvedValue("proj_123") };
-    });
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi.fn().mockResolvedValue({ token: "t" }),
-    }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => ({
-        listApps: vi.fn().mockResolvedValue([
-          { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
-        ]),
-        listDeployments: vi.fn().mockResolvedValue({
-          app: { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
-          deployments: [
-            { id: "dep_1", status: "running", createdAt: "2026-05-08T10:00:00.000Z", url: null, live: null },
-          ],
-        }),
-        updateAppEnv,
-      })),
-    }));
+    mockLegacyEnvDependencies({ updateAppEnv: updateAppEnvHappyPath() });
 
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppUpdateEnv } = await import("../src/controllers/app");
@@ -661,41 +687,7 @@ describe("legacy env command deprecation warnings", () => {
     // Parity with the `app update-env` deprecation test: the legacy
     // `app list-env` command shares the same deprecation policy, so we
     // pin it here too to guard against future drift in either direction.
-    vi.doMock("../src/adapters/config", async () => {
-      const actual =
-        await vi.importActual<typeof import("../src/adapters/config")>(
-          "../src/adapters/config",
-        );
-      return { ...actual, readLinkedProjectId: vi.fn().mockResolvedValue("proj_123") };
-    });
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi.fn().mockResolvedValue({ token: "t" }),
-    }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => ({
-        listApps: vi.fn().mockResolvedValue([
-          { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
-        ]),
-        listDeployments: vi.fn().mockResolvedValue({
-          app: { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
-          deployments: [
-            { id: "dep_1", status: "running", createdAt: "2026-05-08T10:00:00.000Z", url: null, live: null },
-          ],
-        }),
-        listAppEnvNames: vi.fn().mockResolvedValue({
-          projectId: "proj_123",
-          app: { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
-          deployment: {
-            id: "dep_1",
-            status: "running",
-            createdAt: "2026-05-08T10:00:00.000Z",
-            url: null,
-            live: true,
-          },
-          variables: ["FOO"],
-        }),
-      })),
-    }));
+    mockLegacyEnvDependencies({ listAppEnvNames: listAppEnvNamesHappyPath() });
 
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppListEnv } = await import("../src/controllers/app");
@@ -710,41 +702,7 @@ describe("legacy env command deprecation warnings", () => {
   });
 
   it("suppresses the `app list-env` deprecation banner under --json", async () => {
-    vi.doMock("../src/adapters/config", async () => {
-      const actual =
-        await vi.importActual<typeof import("../src/adapters/config")>(
-          "../src/adapters/config",
-        );
-      return { ...actual, readLinkedProjectId: vi.fn().mockResolvedValue("proj_123") };
-    });
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi.fn().mockResolvedValue({ token: "t" }),
-    }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => ({
-        listApps: vi.fn().mockResolvedValue([
-          { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
-        ]),
-        listDeployments: vi.fn().mockResolvedValue({
-          app: { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
-          deployments: [
-            { id: "dep_1", status: "running", createdAt: "2026-05-08T10:00:00.000Z", url: null, live: null },
-          ],
-        }),
-        listAppEnvNames: vi.fn().mockResolvedValue({
-          projectId: "proj_123",
-          app: { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
-          deployment: {
-            id: "dep_1",
-            status: "running",
-            createdAt: "2026-05-08T10:00:00.000Z",
-            url: null,
-            live: true,
-          },
-          variables: ["FOO"],
-        }),
-      })),
-    }));
+    mockLegacyEnvDependencies({ listAppEnvNames: listAppEnvNamesHappyPath() });
 
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppListEnv } = await import("../src/controllers/app");
