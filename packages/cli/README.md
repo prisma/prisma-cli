@@ -18,22 +18,7 @@ pnpm prisma-cli app list-env
 ```
 
 The package exposes `prisma-cli` so it can coexist with the existing `prisma`
-executable. If you want local project scripts that use the future command shape,
-add:
-
-```json
-{
-  "scripts": {
-    "prisma": "prisma-cli"
-  }
-}
-```
-
-Then run:
-
-```bash
-pnpm prisma app deploy
-```
+executable.
 
 Notes:
 

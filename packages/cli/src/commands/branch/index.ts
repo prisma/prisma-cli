@@ -3,13 +3,15 @@ import { Command } from "commander";
 import { runBranchList, runBranchShow, runBranchUse } from "../../controllers/branch";
 import { renderBranchList, renderBranchShow, renderBranchUse, serializeBranchList, serializeBranchShow } from "../../presenters/branch";
 import { attachCommandDescriptor } from "../../shell/command-meta";
-import { addGlobalFlags } from "../../shell/global-flags";
+import { addCompactGlobalFlags, addGlobalFlags } from "../../shell/global-flags";
 import { runCommand } from "../../shell/command-runner";
 import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
 import type { BranchListResult, BranchShowResult } from "../../types/branch";
 
 export function createBranchCommand(runtime: CliRuntime): Command {
   const branch = attachCommandDescriptor(configureRuntimeCommand(new Command("branch"), runtime), "branch");
+
+  addCompactGlobalFlags(branch);
 
   branch.addCommand(createBranchListCommand(runtime));
   branch.addCommand(createBranchShowCommand(runtime));

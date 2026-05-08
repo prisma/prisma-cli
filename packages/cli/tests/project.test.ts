@@ -30,7 +30,7 @@ describe("project commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "project list → Listing projects for the authenticated workspace.\n\n│  workspace:  Acme Inc\n│  ⚬ project:  Acme Dashboard (linked)\n│  ⚬ project:  Billing API\n│\n│  Read more   docs/product/command-spec.md#prisma-project-list\n",
+      "project list → Listing projects for the authenticated workspace.\n\n│  workspace:  Acme Inc\n│  ⚬ project:  Acme Dashboard (linked)\n│  ⚬ project:  Billing API\n",
     );
   });
 
@@ -77,7 +77,7 @@ describe("project commands", () => {
         count: 2,
       },
       warnings: [],
-      nextSteps: ["prisma project link"],
+      nextSteps: ["prisma-cli project link"],
     });
   });
 
@@ -103,13 +103,13 @@ describe("project commands", () => {
         severity: "error",
         summary: "Authentication required",
         why: "This command needs an authenticated session.",
-        fix: "Run prisma auth login, or rerun the command in a TTY to sign in interactively.",
+        fix: "Run prisma-cli auth login, or rerun the command in a TTY to sign in interactively.",
         where: null,
         meta: {},
         docsUrl: null,
       },
       warnings: [],
-      nextSteps: ["prisma auth login"],
+      nextSteps: ["prisma-cli auth login"],
     });
   });
 
@@ -150,7 +150,7 @@ describe("project commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "project show → Showing the linked project for the current repo.\n\n│  project:   not linked\n│\n│  Read more  docs/product/command-spec.md#prisma-project-show\n",
+      "project show → Showing the linked project for the current repo.\n\n│  project:  not linked\n",
     );
   });
 
@@ -169,7 +169,7 @@ describe("project commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "project show → Showing the linked project for the current repo.\n\n│  project:         linked\n│  remote details:  unavailable until you sign in\n│\n│  Read more        docs/product/command-spec.md#prisma-project-show\n",
+      "project show → Showing the linked project for the current repo.\n\n│  project:         linked\n│  remote details:  unavailable until you sign in\n",
     );
   });
 
@@ -233,7 +233,7 @@ describe("project commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "project link → Linking the current repo to an existing project.\n\n│  project:    Acme Dashboard\n│  workspace:  Acme Inc\n│  mode:       apply\n│\n│  Read more   docs/product/command-spec.md#prisma-project-link-project\n\n◇ Applying local project link...\n✔ Applied 1 operation(s)\n  Project link written to local repo config.\n",
+      "project link → Linking the current repo to an existing project.\n\n│  project:    Acme Dashboard\n│  workspace:  Acme Inc\n│  mode:       apply\n\n◇ Applying local project link...\n✔ Applied 1 operation(s)\n  Project link written to local repo config.\n",
     );
     expect(await readPrismaConfig(cwd)).toContain('project: "proj_123"');
   });
@@ -304,7 +304,7 @@ describe("project commands", () => {
         },
       },
       warnings: [],
-      nextSteps: ["prisma project show", "prisma app deploy"],
+      nextSteps: ["prisma-cli project show", "prisma-cli app deploy"],
     });
   });
 
@@ -330,13 +330,13 @@ describe("project commands", () => {
         severity: "error",
         summary: "Project link requires a project target in non-interactive mode",
         why: "This command cannot prompt for project selection in the current mode.",
-        fix: "Re-run prisma project link in a TTY, or pass a project id explicitly.",
+        fix: "Re-run prisma-cli project link in a TTY, or pass a project id explicitly.",
         where: null,
         meta: {},
         docsUrl: null,
       },
       warnings: [],
-      nextSteps: ["prisma project list"],
+      nextSteps: ["prisma-cli project list"],
     });
   });
 
@@ -369,13 +369,13 @@ describe("project commands", () => {
         severity: "error",
         summary: "Project link requires a project target in non-interactive mode",
         why: "This command cannot prompt for project selection in the current mode.",
-        fix: "Re-run prisma project link in a TTY, or pass a project id explicitly.",
+        fix: "Re-run prisma-cli project link in a TTY, or pass a project id explicitly.",
         where: null,
         meta: {},
         docsUrl: null,
       },
       warnings: [],
-      nextSteps: ["prisma project list"],
+      nextSteps: ["prisma-cli project list"],
     });
   });
 
@@ -408,13 +408,13 @@ describe("project commands", () => {
         severity: "error",
         summary: "Project not found",
         why: 'The project "proj_789" does not exist in workspace "Acme Inc".',
-        fix: "Run prisma project list and choose a project id from the active workspace.",
+        fix: "Run prisma-cli project list and choose a project id from the active workspace.",
         where: null,
         meta: {},
         docsUrl: null,
       },
       warnings: [],
-      nextSteps: ["prisma project list"],
+      nextSteps: ["prisma-cli project list"],
     });
   });
 
@@ -473,19 +473,19 @@ describe("project commands", () => {
     });
 
     expect(listHelp.exitCode).toBe(0);
-    expect(listHelp.stderr).toContain("List projects for the authenticated workspace.");
+    expect(listHelp.stderr).toContain("List all projects in your workspace");
     expect(listHelp.stderr).toContain("│  Examples:");
-    expect(listHelp.stderr).toContain("$ prisma project list");
-    expect(listHelp.stderr).toContain("$ prisma project list --json");
+    expect(listHelp.stderr).toContain("$ prisma-cli project list");
+    expect(listHelp.stderr).toContain("$ prisma-cli project list --json");
 
     expect(showHelp.exitCode).toBe(0);
-    expect(showHelp.stderr).toContain("Show the linked project for the current repo.");
-    expect(showHelp.stderr).toContain("$ prisma project show");
-    expect(showHelp.stderr).toContain("$ prisma project show --json");
+    expect(showHelp.stderr).toContain("Show the Prisma project linked to this directory");
+    expect(showHelp.stderr).toContain("$ prisma-cli project show");
+    expect(showHelp.stderr).toContain("$ prisma-cli project show --json");
 
     expect(linkHelp.exitCode).toBe(0);
-    expect(linkHelp.stderr).toContain("Link the current repo to an existing project.");
-    expect(linkHelp.stderr).toContain("$ prisma project link");
-    expect(linkHelp.stderr).toContain("$ prisma project link proj_123");
+    expect(linkHelp.stderr).toContain("Link this directory to a Prisma project");
+    expect(linkHelp.stderr).toContain("$ prisma-cli project link");
+    expect(linkHelp.stderr).toContain("$ prisma-cli project link proj_123");
   });
 });

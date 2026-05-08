@@ -76,7 +76,7 @@ export async function runAppBuild(
         buildType: actualBuildType,
       },
       warnings: [],
-      nextSteps: ["prisma app deploy"],
+      nextSteps: ["prisma-cli app deploy"],
     };
   } catch (error) {
     if (buildType === "auto" && isAutoBuildDetectionError(error)) {
@@ -104,7 +104,7 @@ export async function runAppRun(
       "App run does not support --json",
       "This command streams the framework dev server directly and cannot return structured JSON.",
       "Rerun without --json to pass framework logs through directly.",
-      ["prisma app run"],
+      ["prisma-cli app run"],
       "app",
     );
   }
@@ -188,7 +188,7 @@ export async function runAppDeploy(
     interaction: selectedApp.useInteractiveSelection ? createPreviewDeployInteraction(context) : undefined,
     progress: createPreviewDeployProgress(context.output.stderr, !context.flags.json && !context.flags.quiet),
   }).catch((error) => {
-    throw deployFailedError("App deploy failed", error, ["prisma app list-deploys"]);
+    throw deployFailedError("App deploy failed", error, ["prisma-cli app list-deploys"]);
   });
 
   await context.stateStore.setSelectedApp(projectId, {
@@ -208,7 +208,7 @@ export async function runAppDeploy(
       deployment: deployResult.deployment,
     },
     warnings: [],
-    nextSteps: ["prisma app list-deploys", `prisma app show-deploy ${deployResult.deployment.id}`],
+    nextSteps: ["prisma-cli app list-deploys", `prisma-cli app show-deploy ${deployResult.deployment.id}`],
   };
 }
 
@@ -236,7 +236,7 @@ export async function runAppUpdateEnv(
   }
 
   const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
-    throw deployFailedError("Failed to inspect app deployments", error, ["prisma app list-deploys"]);
+    throw deployFailedError("Failed to inspect app deployments", error, ["prisma-cli app list-deploys"]);
   });
 
   if (deploymentsResult.deployments.length === 0) {
@@ -252,7 +252,7 @@ export async function runAppUpdateEnv(
     progress: createPreviewUpdateEnvProgress(context.output.stderr, !context.flags.json && !context.flags.quiet),
     promoteProgress: createPreviewPromoteProgress(context.output.stderr, !context.flags.json && !context.flags.quiet),
   }).catch((error) => {
-    throw deployFailedError("Failed to update app environment variables", error, ["prisma app list-env"]);
+    throw deployFailedError("Failed to update app environment variables", error, ["prisma-cli app list-env"]);
   });
 
   await context.stateStore.setSelectedApp(projectId, {
@@ -273,7 +273,7 @@ export async function runAppUpdateEnv(
       variables: updateResult.variables,
     },
     warnings: [],
-    nextSteps: ["prisma app list-env", `prisma app show-deploy ${updateResult.deployment.id}`],
+    nextSteps: ["prisma-cli app list-env", `prisma-cli app show-deploy ${updateResult.deployment.id}`],
   };
 }
 
@@ -298,12 +298,12 @@ export async function runAppListEnv(
         variables: [],
       },
       warnings: [],
-      nextSteps: ["prisma app deploy"],
+      nextSteps: ["prisma-cli app deploy"],
     };
   }
 
   const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
-    throw deployFailedError("Failed to inspect app deployments", error, ["prisma app list-deploys"]);
+    throw deployFailedError("Failed to inspect app deployments", error, ["prisma-cli app list-deploys"]);
   });
   const knownLiveDeploymentId = await context.stateStore.readKnownLiveDeployment(projectId, deploymentsResult.app.id);
   const missingKnownLiveDeploymentId = knownLiveDeploymentId
@@ -333,7 +333,7 @@ export async function runAppListEnv(
       appId: deploymentsResult.app.id,
       deploymentId: missingKnownLiveDeploymentId,
     }).catch((error) => {
-      throw deployFailedError("Failed to inspect app environment variables", error, ["prisma app list-deploys"]);
+      throw deployFailedError("Failed to inspect app environment variables", error, ["prisma-cli app list-deploys"]);
     });
 
     return {
@@ -348,7 +348,7 @@ export async function runAppListEnv(
         variables: envResult.variables,
       },
       warnings: [],
-      nextSteps: [`prisma app show-deploy ${envResult.deployment.id}`],
+      nextSteps: [`prisma-cli app show-deploy ${envResult.deployment.id}`],
     };
   }
 
@@ -365,7 +365,7 @@ export async function runAppListEnv(
         variables: [],
       },
       warnings: [],
-      nextSteps: ["prisma app deploy"],
+      nextSteps: ["prisma-cli app deploy"],
     };
   }
 
@@ -373,7 +373,7 @@ export async function runAppListEnv(
     appId: deploymentsResult.app.id,
     deploymentId: deployment.id,
   }).catch((error) => {
-    throw deployFailedError("Failed to inspect app environment variables", error, ["prisma app list-deploys"]);
+    throw deployFailedError("Failed to inspect app environment variables", error, ["prisma-cli app list-deploys"]);
   });
 
   return {
@@ -391,7 +391,7 @@ export async function runAppListEnv(
       variables: envResult.variables,
     },
     warnings: [],
-    nextSteps: deployment.id ? [`prisma app show-deploy ${deployment.id}`] : ["prisma app deploy"],
+    nextSteps: deployment.id ? [`prisma-cli app show-deploy ${deployment.id}`] : ["prisma-cli app deploy"],
   };
 }
 
@@ -415,12 +415,12 @@ export async function runAppListDeploys(
         deployments: [],
       },
       warnings: [],
-      nextSteps: ["prisma app deploy"],
+      nextSteps: ["prisma-cli app deploy"],
     };
   }
 
   const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
-    throw deployFailedError("Failed to list app deployments", error, ["prisma app deploy"]);
+    throw deployFailedError("Failed to list app deployments", error, ["prisma-cli app deploy"]);
   });
   const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
     context,
@@ -449,8 +449,8 @@ export async function runAppListDeploys(
     },
     warnings: [],
     nextSteps: deployments.length > 0
-      ? [`prisma app show-deploy ${deployments[0]?.id}`]
-      : ["prisma app deploy"],
+      ? [`prisma-cli app show-deploy ${deployments[0]?.id}`]
+      : ["prisma-cli app deploy"],
   };
 }
 
@@ -476,12 +476,12 @@ export async function runAppShow(
         recentDeployments: [],
       },
       warnings: [],
-      nextSteps: ["prisma app deploy"],
+      nextSteps: ["prisma-cli app deploy"],
     };
   }
 
   const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
-    throw deployFailedError("Failed to inspect app", error, ["prisma app list-deploys"]);
+    throw deployFailedError("Failed to inspect app", error, ["prisma-cli app list-deploys"]);
   });
   const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
     context,
@@ -526,7 +526,7 @@ export async function runAppShowDeploy(
 
   const provider = await requirePreviewAppProvider(context);
   const deployment = await provider.showDeployment(deploymentId).catch((error) => {
-    throw deployFailedError("Failed to show deployment", error, ["prisma app list-deploys"]);
+    throw deployFailedError("Failed to show deployment", error, ["prisma-cli app list-deploys"]);
   });
 
   if (!deployment) {
@@ -535,9 +535,9 @@ export async function runAppShowDeploy(
       domain: "app",
       summary: `Deployment "${deploymentId}" not found`,
       why: "The requested deployment does not exist or is no longer available.",
-      fix: "Run prisma app list-deploys to choose an available deployment id.",
+      fix: "Run prisma-cli app list-deploys to choose an available deployment id.",
       exitCode: 1,
-      nextSteps: ["prisma app list-deploys"],
+      nextSteps: ["prisma-cli app list-deploys"],
     });
   }
 
@@ -589,7 +589,7 @@ export async function runAppOpen(
   }
 
   const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
-    throw deployFailedError("Failed to resolve app URL", error, ["prisma app show"]);
+    throw deployFailedError("Failed to resolve app URL", error, ["prisma-cli app show"]);
   });
   const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
     context,
@@ -620,8 +620,8 @@ export async function runAppOpen(
     throw featureUnavailableError(
       "Live URL is not available for the selected app",
       "Deployments exist, but the provider does not expose a stable live service URL for this app yet.",
-      "Run prisma app show to inspect the current deployment state and try again after the app reports a live URL.",
-      ["prisma app show"],
+      "Run prisma-cli app show to inspect the current deployment state and try again after the app reports a live URL.",
+      ["prisma-cli app show"],
       "app",
     );
   }
@@ -643,7 +643,7 @@ export async function runAppOpen(
       opened: shouldOpen,
     },
     warnings: [],
-    nextSteps: ["prisma app show", `prisma app show-deploy ${liveDeployment.id}`],
+    nextSteps: ["prisma-cli app show", `prisma-cli app show-deploy ${liveDeployment.id}`],
   };
 }
 
@@ -671,7 +671,7 @@ export async function runAppPromote(
   const apps = await listApps(context, provider, projectId);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "promote");
   const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
-    throw deployFailedError("Failed to list app deployments", error, ["prisma app list-deploys"]);
+    throw deployFailedError("Failed to list app deployments", error, ["prisma-cli app list-deploys"]);
   });
   const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
     context,
@@ -700,7 +700,7 @@ export async function runAppPromote(
         !context.flags.json && !context.flags.quiet,
       ),
     }).catch((error) => {
-      throw deployFailedError("Failed to promote deployment", error, ["prisma app list-deploys"]);
+      throw deployFailedError("Failed to promote deployment", error, ["prisma-cli app list-deploys"]);
     });
   }
 
@@ -721,7 +721,7 @@ export async function runAppPromote(
       },
     },
     warnings: targetAlreadyLive ? ["The selected deployment is already live for this app."] : [],
-    nextSteps: ["prisma app list-deploys", `prisma app show-deploy ${targetDeployment.id}`],
+    nextSteps: ["prisma-cli app list-deploys", `prisma-cli app show-deploy ${targetDeployment.id}`],
   };
 }
 
@@ -737,7 +737,7 @@ export async function runAppRollback(
   const apps = await listApps(context, provider, projectId);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "rollback");
   const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
-    throw deployFailedError("Failed to list app deployments", error, ["prisma app list-deploys"]);
+    throw deployFailedError("Failed to list app deployments", error, ["prisma-cli app list-deploys"]);
   });
   const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
     context,
@@ -767,7 +767,7 @@ export async function runAppRollback(
         !context.flags.json && !context.flags.quiet,
       ),
     }).catch((error) => {
-      throw deployFailedError("Failed to roll back deployment", error, ["prisma app list-deploys"]);
+      throw deployFailedError("Failed to roll back deployment", error, ["prisma-cli app list-deploys"]);
     });
   }
 
@@ -789,7 +789,7 @@ export async function runAppRollback(
       previousLiveDeploymentId: currentLiveDeployment?.id ?? null,
     },
     warnings: targetAlreadyLive ? ["The selected deployment is already live for this app."] : [],
-    nextSteps: ["prisma app list-deploys", `prisma app show-deploy ${targetDeployment.id}`],
+    nextSteps: ["prisma-cli app list-deploys", `prisma-cli app show-deploy ${targetDeployment.id}`],
   };
 }
 
@@ -807,7 +807,7 @@ export async function runAppRemove(
   await confirmAppRemoval(context, selectedApp);
 
   const removedApp = await provider.removeApp(selectedApp.id).catch((error) => {
-    throw removeFailedError("Failed to remove app", error, ["prisma app show", "prisma app list-deploys"]);
+    throw removeFailedError("Failed to remove app", error, ["prisma-cli app show", "prisma-cli app list-deploys"]);
   });
 
   const warnings = await cleanupRemovedAppState(context, projectId, removedApp.id);
@@ -823,7 +823,7 @@ export async function runAppRemove(
       removed: true,
     },
     warnings,
-    nextSteps: ["prisma app deploy", "prisma app list-deploys"],
+    nextSteps: ["prisma-cli app deploy", "prisma-cli app list-deploys"],
   };
 }
 
@@ -870,8 +870,8 @@ async function resolveDeploySelection(
       throw usageError(
         "Saved app selection is no longer available",
         "The locally selected app could not be found in the linked project.",
-        "Pass --app <name>, or rerun prisma app deploy in a TTY to choose or create an app again.",
-        ["prisma app deploy"],
+        "Pass --app <name>, or rerun prisma-cli app deploy in a TTY to choose or create an app again.",
+        ["prisma-cli app deploy"],
         "app",
       );
     }
@@ -881,8 +881,8 @@ async function resolveDeploySelection(
     throw usageError(
       "App deploy requires an app selection in non-interactive mode",
       "This command cannot choose or create an app in the current mode.",
-      "Pass --app <name>, or rerun prisma app deploy in a TTY to choose or create an app.",
-      ["prisma app deploy --app hello-world"],
+      "Pass --app <name>, or rerun prisma-cli app deploy in a TTY to choose or create an app.",
+      ["prisma-cli app deploy --app hello-world"],
       "app",
     );
   }
@@ -904,8 +904,8 @@ async function resolveExistingAppSelection(
       throw usageError(
         "Selected app does not exist in the linked project",
         `The app "${explicitAppName}" could not be found in linked project "${projectId}".`,
-        "Pass the name of an existing app, or rerun prisma app list-deploys in a TTY to choose one.",
-        ["prisma app list-deploys"],
+        "Pass the name of an existing app, or rerun prisma-cli app list-deploys in a TTY to choose one.",
+        ["prisma-cli app list-deploys"],
         "app",
       );
     }
@@ -924,8 +924,8 @@ async function resolveExistingAppSelection(
       throw usageError(
         "Saved app selection is no longer available",
         "The locally selected app could not be found in the linked project.",
-        "Pass --app <name>, or rerun prisma app list-deploys in a TTY to choose an available app.",
-        ["prisma app list-deploys"],
+        "Pass --app <name>, or rerun prisma-cli app list-deploys in a TTY to choose an available app.",
+        ["prisma-cli app list-deploys"],
         "app",
       );
     }
@@ -939,8 +939,8 @@ async function resolveExistingAppSelection(
     throw usageError(
       "App selection required in non-interactive mode",
       "This command cannot choose an app in the current mode.",
-      "Pass --app <name>, or rerun prisma app list-deploys in a TTY to choose an app.",
-      ["prisma app list-deploys"],
+      "Pass --app <name>, or rerun prisma-cli app list-deploys in a TTY to choose an app.",
+      ["prisma-cli app list-deploys"],
       "app",
     );
   }
@@ -972,8 +972,8 @@ async function requireReleaseAppSelection(
   throw usageError(
     `App ${commandName} requires an existing app`,
     "The linked project does not have an app that can be selected for this command.",
-    `Deploy an app first, or rerun prisma app ${commandName} with --app <name> after an app exists.`,
-    ["prisma app deploy", "prisma app list-deploys"],
+    `Deploy an app first, or rerun prisma-cli app ${commandName} with --app <name> after an app exists.`,
+    ["prisma-cli app deploy", "prisma-cli app list-deploys"],
     "app",
   );
 }
@@ -992,9 +992,9 @@ async function confirmAppRemoval(
       domain: "app",
       summary: "App remove requires confirmation in the current mode",
       why: "This command is destructive and cannot prompt for confirmation in the current mode.",
-      fix: `Pass --yes to confirm removal of "${app.name}", or rerun prisma app remove in an interactive TTY.`,
+      fix: `Pass --yes to confirm removal of "${app.name}", or rerun prisma-cli app remove in an interactive TTY.`,
       exitCode: 1,
-      nextSteps: [`prisma app remove --app ${app.name} --yes`],
+      nextSteps: [`prisma-cli app remove --app ${app.name} --yes`],
     });
   }
 
@@ -1044,9 +1044,9 @@ function requireDeploymentForApp(
     domain: "app",
     summary: `Deployment "${deploymentId}" not found for app "${appName}"`,
     why: "The requested deployment does not belong to the resolved app or is no longer available.",
-    fix: "Run prisma app list-deploys to choose an available deployment id for this app.",
+    fix: "Run prisma-cli app list-deploys to choose an available deployment id for this app.",
     exitCode: 1,
-    nextSteps: ["prisma app list-deploys"],
+    nextSteps: ["prisma-cli app list-deploys"],
   });
 }
 
@@ -1081,15 +1081,15 @@ function buildAppShowNextSteps(
   const nextSteps: string[] = [];
 
   if (liveUrl) {
-    nextSteps.push("prisma app open");
+    nextSteps.push("prisma-cli app open");
   }
 
   if (liveDeployment) {
-    nextSteps.push(`prisma app show-deploy ${liveDeployment.id}`);
+    nextSteps.push(`prisma-cli app show-deploy ${liveDeployment.id}`);
   } else if (deployments[0]) {
-    nextSteps.push(`prisma app show-deploy ${deployments[0].id}`);
+    nextSteps.push(`prisma-cli app show-deploy ${deployments[0].id}`);
   } else {
-    nextSteps.push("prisma app deploy");
+    nextSteps.push("prisma-cli app deploy");
   }
 
   return nextSteps;
@@ -1126,9 +1126,9 @@ function resolveRollbackTarget(
     domain: "app",
     summary: "No previous deployment available for rollback",
     why: "The selected app does not have an earlier deployment to switch back to.",
-    fix: "Deploy a second version first, or rerun prisma app rollback --to <deployment-id> for a specific earlier deployment.",
+    fix: "Deploy a second version first, or rerun prisma-cli app rollback --to <deployment-id> for a specific earlier deployment.",
     exitCode: 1,
-    nextSteps: ["prisma app deploy", "prisma app list-deploys"],
+    nextSteps: ["prisma-cli app deploy", "prisma-cli app list-deploys"],
   });
 }
 
@@ -1141,19 +1141,19 @@ async function listApps(
     if (isMissingProjectError(error)) {
       throw projectNotFoundError(
         `The linked project "${projectId}" does not exist in the authenticated workspace or is no longer accessible.`,
-        "Run prisma project show to inspect the current link, then relink the repo or rerun prisma app deploy to bootstrap a new project.",
-        ["prisma project show", "prisma project link", "prisma app deploy"],
+        "Run prisma-cli project show to inspect the current link, then relink the repo or rerun prisma-cli app deploy to bootstrap a new project.",
+        ["prisma-cli project show", "prisma-cli project link", "prisma-cli app deploy"],
       );
     }
 
-    throw deployFailedError("Failed to list apps", error, ["prisma project show"]);
+    throw deployFailedError("Failed to list apps", error, ["prisma-cli project show"]);
   });
 }
 
 async function requirePreviewAppProvider(context: CommandContext) {
   const client = await requireComputeAuth(context.runtime.env);
   if (!client) {
-    throw authRequiredError(["prisma auth login"]);
+    throw authRequiredError(["prisma-cli auth login"]);
   }
 
   return createPreviewAppProvider(client);
@@ -1168,9 +1168,9 @@ async function requireLinkedProjectId(context: CommandContext): Promise<string> 
       domain: "project",
       summary: "Project link required",
       why: "This command needs a linked project for the current repo.",
-      fix: "Run prisma project link before deploying or inspecting app deployments.",
+      fix: "Run prisma-cli project link before deploying or inspecting app deployments.",
       exitCode: 1,
-      nextSteps: ["prisma project link"],
+      nextSteps: ["prisma-cli project link"],
     });
   }
 
@@ -1190,7 +1190,7 @@ async function resolveProjectIdForDeploy(
 
   const projectName = path.basename(context.runtime.cwd);
   const project = await provider.createProject({ name: projectName }).catch((error) => {
-    throw deployFailedError("Failed to create project for first deploy", error, ["prisma app deploy"]);
+    throw deployFailedError("Failed to create project for first deploy", error, ["prisma-cli app deploy"]);
   });
 
   try {
@@ -1200,7 +1200,7 @@ async function resolveProjectIdForDeploy(
     throw deployFailedError(
       "Failed to link created project",
       `Project "${project.name}" (${project.id}) was created remotely but could not be linked locally: ${cause}`,
-      ["prisma project show", "prisma app deploy"],
+      ["prisma-cli project show", "prisma-cli app deploy"],
     );
   }
 
@@ -1215,8 +1215,8 @@ async function assertProjectLinkWritableForDeploy(context: CommandContext): Prom
       throw usageError(
         "Project bootstrap requires a writable Prisma config",
         error.message,
-        "Update prisma.config.ts to use a recognizable project field, or remove it and rerun prisma app deploy.",
-        ["prisma app deploy --app hello-world"],
+        "Update prisma.config.ts to use a recognizable project field, or remove it and rerun prisma-cli app deploy.",
+        ["prisma-cli app deploy --app hello-world"],
         "app",
       );
     }
@@ -1250,7 +1250,7 @@ function isPreviewBuildType(value: string): value is PreviewBuildType {
 function getBuildTypeExamples(commandName: "build" | "deploy"): string[] {
   return RESOLVED_PREVIEW_BUILD_TYPES.map((buildType) => {
     const entrypoint = buildType === "bun" ? " --entry server.ts" : "";
-    return `prisma app ${commandName} --build-type ${buildType}${entrypoint}`;
+    return `prisma-cli app ${commandName} --build-type ${buildType}${entrypoint}`;
   });
 }
 
@@ -1265,10 +1265,10 @@ function assertSupportedEntrypoint(
     throw usageError(
       `App ${commandName} does not accept --entry with --build-type ${buildType}`,
       `${formatBuildTypeName(buildType)} apps do not use an entrypoint flag in the current preview.`,
-      `Remove --entry, or rerun prisma app ${commandName} with --build-type bun when you want to target a Bun entrypoint directly.`,
+      `Remove --entry, or rerun prisma-cli app ${commandName} with --build-type bun when you want to target a Bun entrypoint directly.`,
       [
-        `prisma app ${commandName} --build-type ${buildType}`,
-        `prisma app ${commandName} --build-type bun --entry server.ts`,
+        `prisma-cli app ${commandName} --build-type ${buildType}`,
+        `prisma-cli app ${commandName} --build-type bun --entry server.ts`,
       ],
       "app",
     );
@@ -1293,8 +1293,8 @@ async function requireLocalBuildType(
     "This preview only starts local dev servers for clear Next.js or Bun project shapes.",
     "Pass --build-type nextjs for a Next.js app, or pass --build-type bun with --entry <path> for a Bun app.",
     [
-      `prisma app ${commandName} --build-type nextjs`,
-      `prisma app ${commandName} --build-type bun --entry server.ts`,
+      `prisma-cli app ${commandName} --build-type nextjs`,
+      `prisma-cli app ${commandName} --build-type bun --entry server.ts`,
     ],
     "app",
   );
@@ -1311,7 +1311,7 @@ function parseLocalPort(requestedPort: string | undefined): number {
       `Invalid port "${requestedPort}"`,
       "Port must be an integer between 1 and 65535.",
       "Pass --port <number> with a valid local port value.",
-      ["prisma app run --port 3000"],
+      ["prisma-cli app run --port 3000"],
       "app",
     );
   }
@@ -1330,7 +1330,7 @@ function parseDeployPortMapping(requestedPort: string | undefined): PortMapping 
       `Invalid HTTP port "${requestedPort}"`,
       "HTTP port must be an integer between 1 and 65535.",
       "Pass --http-port <number> with a valid port value.",
-      ["prisma app deploy --http-port 3000"],
+      ["prisma-cli app deploy --http-port 3000"],
       "app",
     );
   }
@@ -1347,7 +1347,7 @@ function ensurePreviewAppMode(context: CommandContext) {
     "App commands are not available in fixture mode",
     "Preview app commands require live app deployment integration.",
     "Rerun without fixture mode enabled to use preview app deployment workflows.",
-    ["prisma auth login", "prisma project link"],
+    ["prisma-cli auth login", "prisma-cli project link"],
     "app",
   );
 }
@@ -1356,8 +1356,8 @@ function blockedPreviewAppCommandError(summary: string, why: string) {
   return featureUnavailableError(
     summary,
     why,
-    "Use prisma app show, prisma app open, prisma app deploy, or prisma app list-deploys in the current preview.",
-    ["prisma app show", "prisma app list-deploys"],
+    "Use prisma-cli app show, prisma-cli app open, prisma-cli app deploy, or prisma-cli app list-deploys in the current preview.",
+    ["prisma-cli app show", "prisma-cli app list-deploys"],
     "app",
   );
 }
@@ -1381,9 +1381,9 @@ function noDeploymentsError(summary: string, why: string): CliError {
     domain: "app",
     summary,
     why,
-    fix: "Run prisma app deploy first, or use prisma app show to inspect the current app state.",
+    fix: "Run prisma-cli app deploy first, or use prisma-cli app show to inspect the current app state.",
     exitCode: 1,
-    nextSteps: ["prisma app deploy", "prisma app show"],
+    nextSteps: ["prisma-cli app deploy", "prisma-cli app show"],
   });
 }
 
@@ -1393,10 +1393,10 @@ function buildFailedError(summary: string, error: unknown): CliError {
     domain: "app",
     summary,
     why: error instanceof Error ? error.message : String(error),
-    fix: "Inspect the framework output, fix the build issue, and rerun prisma app build.",
+    fix: "Inspect the framework output, fix the build issue, and rerun prisma-cli app build.",
     debug: formatDebugDetails(error),
     exitCode: 1,
-    nextSteps: ["prisma app build", "prisma app deploy"],
+    nextSteps: ["prisma-cli app build", "prisma-cli app deploy"],
   });
 }
 
@@ -1406,9 +1406,9 @@ function runFailedError(summary: string, error: unknown, exitCode = 1): CliError
     domain: "app",
     summary,
     why: error instanceof Error ? error.message : String(error),
-    fix: "Inspect the framework output above, fix the issue, and rerun prisma app run.",
+    fix: "Inspect the framework output above, fix the issue, and rerun prisma-cli app run.",
     exitCode,
-    nextSteps: ["prisma app run"],
+    nextSteps: ["prisma-cli app run"],
   });
 }
 

@@ -3,13 +3,15 @@ import { Command, Option } from "commander";
 import { runAuthLogin, runAuthLogout, runAuthWhoAmI, type AuthLoginCommandOptions } from "../../controllers/auth";
 import { renderAuthSuccess } from "../../presenters/auth";
 import { attachCommandDescriptor } from "../../shell/command-meta";
-import { addGlobalFlags } from "../../shell/global-flags";
+import { addCompactGlobalFlags, addGlobalFlags } from "../../shell/global-flags";
 import { runCommand } from "../../shell/command-runner";
 import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
 import type { AuthStateResult } from "../../types/auth";
 
 export function createAuthCommand(runtime: CliRuntime): Command {
   const auth = attachCommandDescriptor(configureRuntimeCommand(new Command("auth"), runtime), "auth");
+
+  addCompactGlobalFlags(auth);
 
   auth.addCommand(createAuthLoginCommand(runtime));
   auth.addCommand(createAuthLogoutCommand(runtime));

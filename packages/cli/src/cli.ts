@@ -7,6 +7,7 @@ import { createAuthCommand } from "./commands/auth";
 import { createBranchCommand } from "./commands/branch";
 import { createProjectCommand } from "./commands/project";
 import { attachCommandDescriptor } from "./shell/command-meta";
+import { addCompactGlobalFlags } from "./shell/global-flags";
 import { disposePromptState } from "./shell/prompt";
 import { configureRuntimeCommand, type CliRuntime } from "./shell/runtime";
 
@@ -44,6 +45,8 @@ export async function runCli(options: RunCliOptions = {}): Promise<number> {
 
 export function createProgram(runtime: CliRuntime): Command {
   const program = attachCommandDescriptor(configureRuntimeCommand(new Command(), runtime), "root");
+
+  addCompactGlobalFlags(program);
 
   program
     .name("prisma")

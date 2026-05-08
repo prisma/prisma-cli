@@ -41,7 +41,7 @@ export async function runBranchShow(context: CommandContext): Promise<CommandSuc
     result,
     warnings: [],
     nextSteps:
-      result.branch.kind === "preview" && !result.branch.remoteState ? ["prisma app deploy"] : [],
+      result.branch.kind === "preview" && !result.branch.remoteState ? ["prisma-cli app deploy"] : [],
   };
 }
 
@@ -66,8 +66,8 @@ export async function runBranchUse(
     warnings,
     nextSteps:
       result.branch.kind === "preview" && !result.branch.remoteState
-        ? ["prisma branch show", "prisma app deploy"]
-        : ["prisma branch show"],
+        ? ["prisma-cli branch show", "prisma-cli app deploy"]
+        : ["prisma-cli branch show"],
   };
 }
 
@@ -123,7 +123,7 @@ function validateBranchName(branchName: string): void {
     "Branch name must use the documented form",
     "Branch names must be production or a lowercase preview slug such as preview or feat-auth.",
     "Use production or a lowercase preview branch name with letters, numbers, and hyphens.",
-    ["prisma branch list"],
+    ["prisma-cli branch list"],
     "branch",
   );
 }
@@ -132,8 +132,8 @@ function branchSelectionRequiredError() {
   return usageError(
     "Branch use requires a target in non-interactive mode",
     "This command cannot prompt for branch selection in the current mode.",
-    "Re-run prisma branch use in a TTY, or pass a branch name explicitly.",
-    ["prisma branch list"],
+    "Re-run prisma-cli branch use in a TTY, or pass a branch name explicitly.",
+    ["prisma-cli branch list"],
     "branch",
   );
 }
@@ -142,8 +142,8 @@ function branchCommandsUnavailableError() {
   return featureUnavailableError(
     "Branch commands are not available in this preview",
     "The current preview cannot resolve or change remote branch context yet.",
-    "Use prisma app deploy for preview app deployment workflows.",
-    ["prisma app deploy --app <name>"],
+    "Use prisma-cli app deploy for preview app deployment workflows.",
+    ["prisma-cli app deploy --app <name>"],
     "branch",
   );
 }

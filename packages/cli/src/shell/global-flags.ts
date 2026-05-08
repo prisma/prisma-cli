@@ -10,6 +10,15 @@ export interface GlobalFlags {
   color: boolean | undefined;
 }
 
+export const COMPACT_GLOBAL_OPTION_FLAGS = [
+  "--json",
+  "-q, --quiet",
+  "-v, --verbose",
+  "--trace",
+  "--no-interactive",
+  "-y, --yes",
+];
+
 export function addGlobalFlags(command: Command): Command {
   return command
     .option("--json", "Emit structured JSON output.")
@@ -21,6 +30,16 @@ export function addGlobalFlags(command: Command): Command {
     .addOption(new Option("--no-interactive", "Disable interactive behavior and prompts."))
     .addOption(new Option("--color", "Force color output in supported terminals."))
     .addOption(new Option("--no-color", "Disable color output."));
+}
+
+export function addCompactGlobalFlags(command: Command): Command {
+  return command
+    .option("--json", "Emit structured JSON output.")
+    .option("-q, --quiet", "Reduce human-oriented output.")
+    .option("-v, --verbose", "Increase human-oriented output detail.")
+    .option("--trace", "Show deeper diagnostics for failures.")
+    .addOption(new Option("--no-interactive", "Disable interactive behavior and prompts."))
+    .option("-y, --yes", "Accept supported confirmation prompts.");
 }
 
 function getExplicitBoolean(argv: string[], positive: string, negative: string): boolean | undefined {
