@@ -212,6 +212,47 @@ const DESCRIPTORS: CommandDescriptor[] = [
     docsPath: "docs/product/command-spec.md#prisma-app-remove---app-name--y---yes",
     examples: ["prisma app remove --app hello-world", "prisma app remove --app hello-world --yes"],
   },
+  {
+    id: "app.env",
+    path: ["prisma", "app", "env"],
+    description: "Manage environment variables for the linked project.",
+    docsPath: "docs/product/command-spec.md#prisma-app-env",
+    examples: [
+      "prisma app env list --class production",
+      "prisma app env set STRIPE_KEY=sk_test_xxx --class production",
+      "prisma app env unset STRIPE_KEY --branch feature-auth",
+    ],
+  },
+  {
+    id: "app.env.set",
+    path: ["prisma", "app", "env", "set"],
+    description: "Create or replace an environment variable's value.",
+    docsPath: "docs/product/command-spec.md#prisma-app-env-set-keyvalue",
+    examples: [
+      "prisma app env set STRIPE_KEY=sk_test_xxx --class production",
+      "prisma app env set STRIPE_KEY=override --branch feature-auth",
+    ],
+  },
+  {
+    id: "app.env.list",
+    path: ["prisma", "app", "env", "list"],
+    description: "List environment variable metadata for a scope (no values).",
+    docsPath: "docs/product/command-spec.md#prisma-app-env-list",
+    examples: [
+      "prisma app env list --class production",
+      "prisma app env list --branch feature-auth",
+    ],
+  },
+  {
+    id: "app.env.unset",
+    path: ["prisma", "app", "env", "unset"],
+    description: "Remove an environment variable from a scope.",
+    docsPath: "docs/product/command-spec.md#prisma-app-env-unset-key",
+    examples: [
+      "prisma app env unset STRIPE_KEY --class production",
+      "prisma app env unset STRIPE_KEY --branch feature-auth",
+    ],
+  },
 ];
 
 const DESCRIPTORS_BY_ID = new Map(DESCRIPTORS.map((descriptor) => [descriptor.id, descriptor]));

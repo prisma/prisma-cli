@@ -367,7 +367,96 @@ prisma app deploy --app hello-world --build-type astro
 prisma app deploy --app hello-world --build-type tanstack-start
 ```
 
+## `prisma app env`
+
+Manage durable, platform-stored environment variables for the linked
+project. Replaces the legacy `prisma app update-env` / `prisma app
+list-env` workflow, which mutated env vars on a single Foundry version
+and is now deprecated. The new `app env` namespace operates on the
+platform-managed `/v1/environment-variables` API; values are stored
+encrypted at rest and **never returned** by the platform — read-back
+is not supported in Beta.
+
+### Scope flags
+
+Both `--class` and `--branch` are recognized on every `app env` verb:
+
+- `--class <production|preview>` targets a project template.
+- `--branch <name>` targets a per-branch override (always against the
+  preview class — production overrides are forbidden by the platform).
+- The two flags are **mutually exclusive**.
+- For write verbs (`set`, `unset`), supplying neither flag is an error
+  so the CLI never silently writes to production.
+- For read verbs (`list`), neither flag defaults to `--class production`.
+
+### `prisma app env set KEY=VALUE [--class <class> | --branch <name>]`
+
+Purpose:
+
+- create a new environment variable, or replace the value of an
+  existing one, on the targeted scope.
+
+Behavior:
+
+- requires auth and a linked project
+- KEY=VALUE is parsed from a single positional; KEY must match
+  `[A-Z_][A-Z0-9_]*`
+- if a variable with the same key already exists in the scope, the
+  value is replaced (idempotent upsert)
+- the response carries metadata only — the value is never echoed back
+
+Examples:
+
+```bash
+prisma app env set STRIPE_KEY=sk_test_xxx --class production
+prisma app env set STRIPE_KEY=sk_test_xxx --class preview
+```
+
+### `prisma app env list [--class <class> | --branch <name>]`
+
+Purpose:
+
+- list environment variable names and metadata for the targeted scope.
+
+Behavior:
+
+- requires auth and a linked project
+- defaults to `--class production` when no scope flag is supplied
+- never prints values (FR15 / never-reveal)
+- emits `key`, `id`, `last updated`, and a `scope` annotation per row
+
+Examples:
+
+```bash
+prisma app env list
+prisma app env list --class preview
+prisma app env list --branch feature-auth
+```
+
+### `prisma app env unset KEY [--class <class> | --branch <name>]`
+
+Purpose:
+
+- remove an environment variable from the targeted scope.
+
+Behavior:
+
+- requires auth and a linked project
+- looks the variable up by natural key in the scope and `DELETE`s it
+- returns a focused error when no matching variable exists
+
+Examples:
+
+```bash
+prisma app env unset STRIPE_KEY --class production
+prisma app env unset STRIPE_KEY --branch feature-auth
+```
+
 ## `prisma app update-env --app <name> --env <name=value>`
+
+> **Deprecated.** Use `prisma app env set` instead. The legacy command
+> still works for backward compatibility but emits a deprecation
+> warning and will be removed in a future release.
 
 Purpose:
 
@@ -389,6 +478,10 @@ prisma app update-env --app hello-world --env DATABASE_URL=postgresql://another
 ```
 
 ## `prisma app list-env --app <name>`
+
+> **Deprecated.** Use `prisma app env list` instead. The legacy command
+> still works for backward compatibility but emits a deprecation
+> warning and will be removed in a future release.
 
 Purpose:
 

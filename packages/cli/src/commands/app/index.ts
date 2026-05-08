@@ -15,6 +15,7 @@ import {
   runAppShowDeploy,
   runAppUpdateEnv,
 } from "../../controllers/app";
+import { createEnvCommand } from "./env";
 import {
   renderAppBuild,
   renderAppDeploy,
@@ -67,6 +68,7 @@ export function createAppCommand(runtime: CliRuntime): Command {
   app.addCommand(createBuildCommand(runtime));
   app.addCommand(createRunCommand(runtime));
   app.addCommand(createDeployCommand(runtime));
+  app.addCommand(createEnvCommand(runtime));
   app.addCommand(createUpdateEnvCommand(runtime));
   app.addCommand(createListEnvCommand(runtime));
   app.addCommand(createShowCommand(runtime));
