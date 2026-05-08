@@ -555,6 +555,79 @@ describe("app env unset", () => {
     });
     expect(client.DELETE).not.toHaveBeenCalled();
   });
+
+  it("DELETEs an existing branch-override row when --branch is supplied", async () => {
+    // Branch-override deletes don't share the gate that branch-override
+    // writes do: DELETE /v1/environment-variables/{envVarId} addresses a
+    // row by id and doesn't need the POST/PATCH body to carry a branchId.
+    // Pin that contract so we don't accidentally regress unset into the
+    // same "feature unavailable" branch the set path takes.
+    const client = createMockClient();
+    client.GET
+      .mockResolvedValueOnce({
+        // Branch name → id resolution.
+        data: {
+          data: [
+            {
+              id: "branch_42",
+              type: "branch",
+              url: "https://api.example/v1/branches/branch_42",
+              gitName: "feature-auth",
+              isDefault: false,
+              createdAt: "2026-05-08T10:00:00.000Z",
+              updatedAt: "2026-05-08T10:00:00.000Z",
+              project: {
+                id: "proj_123",
+                url: "https://api.example/v1/projects/proj_123",
+                name: "demo",
+              },
+            },
+          ],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [
+            makeVariableRow({
+              id: "envvar_override",
+              key: "STRIPE_KEY",
+              branchId: "branch_42",
+              class: "preview",
+            }),
+          ],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      });
+    client.DELETE.mockResolvedValueOnce({
+      data: undefined,
+      response: { status: 204 },
+    });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writePrismaConfig(cwd, "proj_123");
+    const { context } = await createTestCommandContext({ cwd });
+
+    const result = await controllers.runAppEnvUnset(context, "STRIPE_KEY", {
+      branchName: "feature-auth",
+    });
+
+    expect(client.DELETE).toHaveBeenCalledWith(
+      "/v1/environment-variables/{envVarId}",
+      expect.objectContaining({
+        params: { path: { envVarId: "envvar_override" } },
+      }),
+    );
+    expect(result.result).toEqual({
+      projectId: "proj_123",
+      scope: { kind: "branch", name: "feature-auth", id: "branch_42" },
+      key: "STRIPE_KEY",
+    });
+  });
 });
 
 /**
