@@ -5,6 +5,10 @@ import { writePrismaConfig } from "./helpers";
 afterEach(() => {
   vi.doUnmock("../src/adapters/config");
   vi.doUnmock("../src/lib/auth/guard");
+  // The legacy-deprecation tests below mock the preview provider too;
+  // explicitly unmock it so a stale registration can't bleed into a
+  // sibling test file that doesn't expect a fake provider.
+  vi.doUnmock("../src/lib/app/preview-provider");
   vi.resetModules();
   vi.restoreAllMocks();
 });
@@ -611,45 +615,35 @@ function mockLegacyEnvDependencies(
   }));
 }
 
+/**
+ * The `updateAppEnv` and `listAppEnvNames` provider methods return the
+ * same record shape on the legacy happy path; share the factory so a
+ * future field rename only has to touch one place.
+ */
+const legacyEnvProviderResponse = () => ({
+  projectId: "proj_123",
+  app: {
+    id: "app_1",
+    name: "hello-world",
+    region: null,
+    liveDeploymentId: "dep_1",
+    liveUrl: null,
+  },
+  deployment: {
+    id: "dep_1",
+    status: "running",
+    createdAt: "2026-05-08T10:00:00.000Z",
+    url: null,
+    live: true,
+  },
+  variables: ["FOO"],
+});
+
 const updateAppEnvHappyPath = () =>
-  vi.fn().mockResolvedValue({
-    projectId: "proj_123",
-    app: {
-      id: "app_1",
-      name: "hello-world",
-      region: null,
-      liveDeploymentId: "dep_1",
-      liveUrl: null,
-    },
-    deployment: {
-      id: "dep_1",
-      status: "running",
-      url: null,
-      createdAt: "2026-05-08T10:00:00.000Z",
-      live: true,
-    },
-    variables: ["FOO"],
-  });
+  vi.fn().mockResolvedValue(legacyEnvProviderResponse());
 
 const listAppEnvNamesHappyPath = () =>
-  vi.fn().mockResolvedValue({
-    projectId: "proj_123",
-    app: {
-      id: "app_1",
-      name: "hello-world",
-      region: null,
-      liveDeploymentId: "dep_1",
-      liveUrl: null,
-    },
-    deployment: {
-      id: "dep_1",
-      status: "running",
-      createdAt: "2026-05-08T10:00:00.000Z",
-      url: null,
-      live: true,
-    },
-    variables: ["FOO"],
-  });
+  vi.fn().mockResolvedValue(legacyEnvProviderResponse());
 
 describe("legacy env command deprecation warnings", () => {
   it("prints a deprecation banner to stderr from `app update-env`", async () => {
