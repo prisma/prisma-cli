@@ -615,4 +615,106 @@ describe("legacy env command deprecation warnings", () => {
 
     expect(stderr.buffer).not.toContain("[deprecation]");
   });
+
+  it("prints a deprecation banner to stderr from `app list-env`", async () => {
+    // Parity with the `app update-env` deprecation test: the legacy
+    // `app list-env` command shares the same deprecation policy, so we
+    // pin it here too to guard against future drift in either direction.
+    vi.doMock("../src/adapters/config", async () => {
+      const actual =
+        await vi.importActual<typeof import("../src/adapters/config")>(
+          "../src/adapters/config",
+        );
+      return { ...actual, readLinkedProjectId: vi.fn().mockResolvedValue("proj_123") };
+    });
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth: vi.fn().mockResolvedValue({ token: "t" }),
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps: vi.fn().mockResolvedValue([
+          { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
+        ]),
+        listDeployments: vi.fn().mockResolvedValue({
+          app: { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
+          deployments: [
+            { id: "dep_1", status: "running", createdAt: "2026-05-08T10:00:00.000Z", url: null, live: null },
+          ],
+        }),
+        listAppEnvNames: vi.fn().mockResolvedValue({
+          projectId: "proj_123",
+          app: { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
+          deployment: {
+            id: "dep_1",
+            status: "running",
+            createdAt: "2026-05-08T10:00:00.000Z",
+            url: null,
+            live: true,
+          },
+          variables: ["FOO"],
+        }),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppListEnv } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context, stderr } = await createTestCommandContext({ cwd });
+
+    await runAppListEnv(context, "hello-world");
+
+    expect(stderr.buffer).toContain("[deprecation]");
+    expect(stderr.buffer).toContain("prisma app list-env");
+    expect(stderr.buffer).toContain("prisma app env list");
+  });
+
+  it("suppresses the `app list-env` deprecation banner under --json", async () => {
+    vi.doMock("../src/adapters/config", async () => {
+      const actual =
+        await vi.importActual<typeof import("../src/adapters/config")>(
+          "../src/adapters/config",
+        );
+      return { ...actual, readLinkedProjectId: vi.fn().mockResolvedValue("proj_123") };
+    });
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth: vi.fn().mockResolvedValue({ token: "t" }),
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps: vi.fn().mockResolvedValue([
+          { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
+        ]),
+        listDeployments: vi.fn().mockResolvedValue({
+          app: { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
+          deployments: [
+            { id: "dep_1", status: "running", createdAt: "2026-05-08T10:00:00.000Z", url: null, live: null },
+          ],
+        }),
+        listAppEnvNames: vi.fn().mockResolvedValue({
+          projectId: "proj_123",
+          app: { id: "app_1", name: "hello-world", region: null, liveDeploymentId: "dep_1", liveUrl: null },
+          deployment: {
+            id: "dep_1",
+            status: "running",
+            createdAt: "2026-05-08T10:00:00.000Z",
+            url: null,
+            live: true,
+          },
+          variables: ["FOO"],
+        }),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppListEnv } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context, stderr } = await createTestCommandContext({
+      cwd,
+      flags: { json: true },
+    });
+
+    await runAppListEnv(context, "hello-world");
+
+    expect(stderr.buffer).not.toContain("[deprecation]");
+  });
 });
