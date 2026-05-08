@@ -432,6 +432,28 @@ describe("app env list", () => {
     });
     expect(result.result.variables).toHaveLength(1);
   });
+
+  it("rejects --class and --branch supplied together", async () => {
+    // The mutex rule is enforced by a shared validator; pin it on
+    // every verb so a future refactor can't regress just one entry
+    // point silently.
+    const client = createMockClient();
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writePrismaConfig(cwd, "proj_123");
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runAppEnvList(context, {
+        className: "production",
+        branchName: "feature-auth",
+      }),
+    ).rejects.toMatchObject({
+      summary: expect.stringContaining("mutually exclusive"),
+    });
+    expect(client.GET).not.toHaveBeenCalled();
+  });
 });
 
 describe("app env unset", () => {
@@ -507,6 +529,25 @@ describe("app env unset", () => {
       controllers.runAppEnvUnset(context, "STRIPE_KEY", {}),
     ).rejects.toMatchObject({
       summary: expect.stringContaining("requires --class or --branch"),
+    });
+    expect(client.DELETE).not.toHaveBeenCalled();
+  });
+
+  it("rejects --class and --branch supplied together", async () => {
+    const client = createMockClient();
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writePrismaConfig(cwd, "proj_123");
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runAppEnvUnset(context, "STRIPE_KEY", {
+        className: "production",
+        branchName: "feature-auth",
+      }),
+    ).rejects.toMatchObject({
+      summary: expect.stringContaining("mutually exclusive"),
     });
     expect(client.DELETE).not.toHaveBeenCalled();
   });
