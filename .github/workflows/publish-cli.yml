@@ -3,19 +3,6 @@ name: Release CLI
 on:
   workflow_dispatch:
     inputs:
-      release_type:
-        description: Version strategy to publish
-        required: true
-        type: choice
-        default: current
-        options:
-          - current
-          - alpha
-          - custom
-      custom_version:
-        description: Exact version when release_type is custom (for example 0.2.0)
-        required: false
-        type: string
       dry_run:
         description: Validate the release without publishing, tagging, or pushing
         required: false
@@ -58,34 +45,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Configure git author
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Bump CLI version
+      - name: Resolve CLI version
         id: cli_version
-        env:
-          RELEASE_TYPE: ${{ inputs.release_type }}
-          CUSTOM_VERSION: ${{ inputs.custom_version }}
         run: |
-          if [ "${RELEASE_TYPE}" = "custom" ] && [ -z "${CUSTOM_VERSION}" ]; then
-            echo "custom_version is required when release_type=custom."
-            exit 1
-          fi
-
-          if [ "${RELEASE_TYPE}" = "current" ]; then
-            VERSION="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('packages/cli/package.json', 'utf8')).version)")"
-            printf 'version=%s\n' "${VERSION}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          TARGET="prerelease --preid alpha"
-          if [ "${RELEASE_TYPE}" = "custom" ]; then
-            TARGET="${CUSTOM_VERSION}"
-          fi
-
-          npm --prefix packages/cli version ${TARGET} --no-git-tag-version >/dev/null
           VERSION="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('packages/cli/package.json', 'utf8')).version)")"
           printf 'version=%s\n' "${VERSION}" >> "$GITHUB_OUTPUT"
 
@@ -95,6 +57,15 @@ jobs:
           VERSION='${{ steps.cli_version.outputs.version }}'
           if npm view "${PACKAGE}@${VERSION}" version >/dev/null 2>&1; then
             echo "${PACKAGE}@${VERSION} already exists on npm."
+            exit 1
+          fi
+
+      - name: Fail if release tag already exists
+        run: |
+          VERSION='${{ steps.cli_version.outputs.version }}'
+          TAG="cli-v${VERSION}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Release tag ${TAG} already exists."
             exit 1
           fi
 
@@ -165,22 +136,13 @@ jobs:
         working-directory: .publish/cli
         run: npm publish --access public --tag preview --provenance
 
-      - name: Commit release version
+      - name: Create and push release tag
         if: ${{ !inputs.dry_run }}
         run: |
           VERSION='${{ steps.cli_version.outputs.version }}'
-          git add packages/cli/package.json
-          if ! git diff --cached --quiet; then
-            git commit -m "chore(cli): release @prisma/cli v${VERSION}"
-          fi
-          git tag "cli-v${VERSION}"
-
-      - name: Push release commit and tag
-        if: ${{ !inputs.dry_run }}
-        run: |
-          VERSION='${{ steps.cli_version.outputs.version }}'
-          git push origin HEAD:main
-          git push origin "cli-v${VERSION}"
+          TAG="cli-v${VERSION}"
+          git tag "${TAG}"
+          git push origin "refs/tags/${TAG}"
 
       - name: Summarize release
         run: |
