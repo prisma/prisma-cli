@@ -6,6 +6,7 @@
     "build:cli": "pnpm --filter @prisma/cli build",
     "prepare:cli-publish": "node scripts/prepare-cli-publish.mjs",
     "test": "pnpm --filter @prisma/cli test",
+    "prisma-cli": "tsx packages/cli/src/bin.ts",
     "prisma": "tsx packages/cli/src/bin.ts"
   },
   "devDependencies": {

@@ -32,7 +32,7 @@ export async function runAuthLogin(
     result = await loginWithSelectionFlow(context, useCases, options);
   }
 
-  return createAuthSuccess("auth.login", result, ["prisma auth whoami", "prisma project list"]);
+  return createAuthSuccess("auth.login", result, ["prisma-cli auth whoami", "prisma-cli project list"]);
 }
 
 export async function runAuthLogout(context: CommandContext): Promise<CommandSuccess<AuthStateResult>> {
@@ -46,7 +46,7 @@ export async function runAuthLogout(context: CommandContext): Promise<CommandSuc
     result = await useCases.logout();
   }
 
-  return createAuthSuccess("auth.logout", result, ["prisma auth login"]);
+  return createAuthSuccess("auth.logout", result, ["prisma-cli auth login"]);
 }
 
 export async function runAuthWhoAmI(context: CommandContext): Promise<CommandSuccess<AuthStateResult>> {
@@ -59,7 +59,7 @@ export async function runAuthWhoAmI(context: CommandContext): Promise<CommandSuc
     result = await useCases.whoami();
   }
 
-  return createAuthSuccess("auth.whoami", result, result.authenticated ? [] : ["prisma auth login"]);
+  return createAuthSuccess("auth.whoami", result, result.authenticated ? [] : ["prisma-cli auth login"]);
 }
 
 export async function requireAuthenticatedAuthState(context: CommandContext): Promise<AuthStateResult> {
@@ -129,7 +129,7 @@ async function selectProvider(
 ) {
   if (!prompt) {
     throw nonInteractiveLoginError(
-      "Re-run prisma auth login in a TTY, or provide --provider and --user, and --workspace when required.",
+      "Re-run prisma-cli auth login in a TTY, or provide --provider and --user, and --workspace when required.",
     );
   }
 
@@ -152,7 +152,7 @@ async function selectUser(
 
   if (!prompt) {
     throw nonInteractiveLoginError(
-      "Re-run prisma auth login in a TTY, or provide --provider and --user, and --workspace when required.",
+      "Re-run prisma-cli auth login in a TTY, or provide --provider and --user, and --workspace when required.",
     );
   }
 
@@ -180,8 +180,8 @@ async function selectWorkspace(
     throw usageError(
       "Login requires explicit selectors in non-interactive mode",
       "The selected mock user belongs to more than one workspace and the shell cannot prompt in the current mode.",
-      "Re-run prisma auth login in a TTY, or provide --workspace.",
-      ["prisma auth login"],
+      "Re-run prisma-cli auth login in a TTY, or provide --workspace.",
+      ["prisma-cli auth login"],
       "auth",
     );
   }
@@ -200,7 +200,7 @@ function nonInteractiveLoginError(fix: string) {
     "Login requires explicit selectors in non-interactive mode",
     "The fixture mode cannot prompt in the current mode.",
     fix,
-    ["prisma auth login"],
+    ["prisma-cli auth login"],
     "auth",
   );
 }

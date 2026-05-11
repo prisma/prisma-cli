@@ -21,7 +21,7 @@ describe("auth commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "auth whoami → Showing the current authenticated identity.\n\n│  status:    signed out\n│\n│  Read more  docs/product/command-spec.md#prisma-auth-whoami\n",
+      "auth whoami → Showing the current authenticated identity.\n\n│  status:  signed out\n",
     );
   });
 
@@ -39,7 +39,7 @@ describe("auth commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "auth login → Starting an authenticated CLI session.\n\n│  provider:   GitHub\n│  user:       Bob Example <bob@example.com>\n│  workspace:  Acme Inc\n│  mode:       apply\n│\n│  Read more   docs/product/command-spec.md#prisma-auth-login\n\n◇ Applying authentication session changes...\n✔ Applied 1 operation(s)\n  Session stored in local CLI state.\n",
+      "auth login → Starting an authenticated CLI session.\n\n│  provider:   GitHub\n│  user:       Bob Example <bob@example.com>\n│  workspace:  Acme Inc\n│  mode:       apply\n\n◇ Applying authentication session changes...\n✔ Applied 1 operation(s)\n  Session stored in local CLI state.\n",
     );
   });
 
@@ -108,13 +108,13 @@ describe("auth commands", () => {
         severity: "error",
         summary: "Login requires explicit selectors in non-interactive mode",
         why: "The fixture mode cannot prompt in the current mode.",
-        fix: "Re-run prisma auth login in a TTY, or provide --provider and --user, and --workspace when required.",
+        fix: "Re-run prisma-cli auth login in a TTY, or provide --provider and --user, and --workspace when required.",
         where: null,
         meta: {},
         docsUrl: null,
       },
       warnings: [],
-      nextSteps: ["prisma auth login"],
+      nextSteps: ["prisma-cli auth login"],
     });
   });
 
@@ -131,10 +131,10 @@ describe("auth commands", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("Start an authenticated CLI session.");
+    expect(result.stderr).toContain("Log in to your Prisma platform account");
     expect(result.stderr).toContain("│  Examples:");
-    expect(result.stderr).toContain("$ prisma auth login");
-    expect(result.stderr).toContain("Read more");
+    expect(result.stderr).toContain("$ prisma-cli auth login");
+    expect(result.stderr).not.toContain("Read more");
     expect(result.stderr).not.toContain("--provider");
     expect(result.stderr).not.toContain("--user");
     expect(result.stderr).not.toContain("--workspace");
@@ -156,7 +156,7 @@ describe("auth commands", () => {
 
     expect(result.exitCode).toBe(0);
     expect(stderr).toContain("auth whoami → Showing the current authenticated identity.");
-    expect(stderr).toContain("Read more");
-    expect(stderr).toContain("status:    signed out");
+    expect(stderr).not.toContain("Read more");
+    expect(stderr).toContain("status:  signed out");
   });
 });

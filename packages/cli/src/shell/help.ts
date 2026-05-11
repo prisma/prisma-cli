@@ -1,7 +1,7 @@
 import type { Argument, Command, Option } from "commander";
 
 import { getDescriptorForCommand, formatDescriptorLabel } from "./command-meta";
-import { resolveGlobalFlags } from "./global-flags";
+import { COMPACT_GLOBAL_OPTION_FLAGS, resolveGlobalFlags } from "./global-flags";
 import type { CliRuntime } from "./runtime";
 import { createShellUi, padDisplay, wrapText } from "./ui";
 
@@ -21,9 +21,21 @@ export function renderHelp(command: Command, runtime: CliRuntime): string {
     lines.push(...renderCommandRows(rail, ui, visibleCommands));
   }
 
+  if (descriptor.longDescription) {
+    lines.push(`${rail}`);
+    const wrapped = wrapText(descriptor.longDescription, Math.max(ui.width - CARD_PREFIX.length, 40));
+    for (const line of wrapped) {
+      lines.push(`${rail}  ${line}`);
+    }
+  }
+
   if (visibleOptions.length > 0) {
     if (visibleCommands.length > 0) {
       lines.push(`${rail}`);
+    }
+
+    if (visibleCommands.length > 0 && visibleOptions.every((option) => COMPACT_GLOBAL_OPTION_FLAGS.includes(option.flags))) {
+      lines.push(`${rail}  Global options:`);
     }
 
     lines.push(...renderOptionRows(rail, ui, visibleOptions));
@@ -34,14 +46,6 @@ export function renderHelp(command: Command, runtime: CliRuntime): string {
     lines.push(`${rail}  Examples:`);
     for (const example of descriptor.examples) {
       lines.push(`${rail}    $ ${example}`);
-    }
-  }
-
-  if (descriptor.longDescription) {
-    lines.push(`${rail}`);
-    const wrapped = wrapText(descriptor.longDescription, Math.max(ui.width - CARD_PREFIX.length, 40));
-    for (const line of wrapped) {
-      lines.push(`${rail}  ${line}`);
     }
   }
 

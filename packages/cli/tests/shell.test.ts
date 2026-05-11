@@ -19,10 +19,26 @@ describe("shell behavior", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain("prisma → Unified Prisma CLI.");
+    expect(result.stderr).toContain("prisma → The Prisma Developer Platform, from your terminal");
     expect(result.stderr).toContain("auth");
     expect(result.stderr).toContain("project");
-    expect(result.stderr).toContain("$ prisma auth login");
+    expect(result.stderr).toContain("Global options:");
+    expect(result.stderr).toContain("--json");
+    expect(result.stderr).toContain("--no-interactive");
+    expect(result.stderr).toContain("-y, --yes");
+    expect(result.stderr).not.toContain("--interactive");
+    expect(result.stderr).not.toContain("--color");
+    expect(result.stderr).toContain("$ prisma-cli auth login");
+
+    const commandIndex = result.stderr.indexOf("app      Manage apps and deployments for a project");
+    const descriptionIndex = result.stderr.indexOf("Deploy your app with isolated infrastructure for every branch");
+    const globalOptionsIndex = result.stderr.indexOf("Global options:");
+    const examplesIndex = result.stderr.indexOf("Examples:");
+
+    expect(commandIndex).toBeGreaterThan(-1);
+    expect(descriptionIndex).toBeGreaterThan(commandIndex);
+    expect(globalOptionsIndex).toBeGreaterThan(descriptionIndex);
+    expect(examplesIndex).toBeGreaterThan(globalOptionsIndex);
   });
 
   it("treats bare root and group commands as successful help output", async () => {
@@ -55,16 +71,77 @@ describe("shell behavior", () => {
     });
 
     expect(rootResult.exitCode).toBe(0);
-    expect(rootResult.stderr).toContain("prisma → Unified Prisma CLI.");
+    expect(rootResult.stderr).toContain("prisma → The Prisma Developer Platform, from your terminal");
 
     expect(authResult.exitCode).toBe(0);
-    expect(authResult.stderr).toContain("auth → Authentication and identity commands.");
+    expect(authResult.stderr).toContain("auth → Manage local authentication for the CLI");
+    expect(authResult.stderr).toContain("Global options:");
+    expect(authResult.stderr).toContain("--json");
+    expect(authResult.stderr).toContain("--no-interactive");
+    expect(authResult.stderr).not.toContain("--interactive");
+    expect(authResult.stderr).not.toContain("--color");
 
     expect(projectResult.exitCode).toBe(0);
-    expect(projectResult.stderr).toContain("project → Project discovery and repo linking commands.");
+    expect(projectResult.stderr).toContain("project → Manage the link between this directory and a Prisma project");
+    expect(projectResult.stderr).toContain("Global options:");
 
     expect(branchResult.exitCode).toBe(0);
-    expect(branchResult.stderr).toContain("branch → Branch context and safety commands.");
+    expect(branchResult.stderr).toContain("branch → View your active Platform branches");
+    expect(branchResult.stderr).toContain("Global options:");
+  });
+
+  it("accepts global flags before the command path", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    const result = await executeCli({
+      argv: ["--json", "auth", "whoami"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      command: "auth.whoami",
+      result: {
+        authenticated: false,
+      },
+    });
+  });
+
+  it("accepts global flags between the group and action", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    const result = await executeCli({
+      argv: ["auth", "--quiet", "whoami"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+  });
+
+  it("accepts non-interactive before the command path", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    const result = await executeCli({
+      argv: ["--no-interactive", "project", "link"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("[USAGE_ERROR]");
+    expect(result.stderr).toContain("Project link requires a project target in non-interactive mode");
   });
 
   it("shows a did-you-mean suggestion for mistyped subcommands", async () => {

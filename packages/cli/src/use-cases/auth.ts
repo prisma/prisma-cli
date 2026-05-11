@@ -33,7 +33,7 @@ export function createAuthUseCases(dependencies: AuthUseCaseDependencies): AuthU
           "Login requires a valid mock provider",
           `The mock provider "${providerId}" does not exist.`,
           "Use --provider github or --provider google.",
-          ["prisma auth login"],
+          ["prisma-cli auth login"],
           "auth",
         );
       }
@@ -48,7 +48,7 @@ export function createAuthUseCases(dependencies: AuthUseCaseDependencies): AuthU
           "Login requires a valid mock user",
           `No mock users support provider "${providerId}".`,
           "Update the fixture data or choose a different provider.",
-          ["prisma auth login"],
+          ["prisma-cli auth login"],
           "auth",
         );
       }
@@ -63,7 +63,7 @@ export function createAuthUseCases(dependencies: AuthUseCaseDependencies): AuthU
           "Login requires a valid mock user",
           `The mock user "${userId}" is not available for provider "${providerId}".`,
           "Choose a user that supports the selected provider.",
-          ["prisma auth login"],
+          ["prisma-cli auth login"],
           "auth",
         );
       }
@@ -79,7 +79,7 @@ export function createAuthUseCases(dependencies: AuthUseCaseDependencies): AuthU
           "Login requires a valid mock workspace",
           `The mock workspace "${workspaceId}" is not available for the selected user.`,
           "Choose a workspace that the selected user can access.",
-          ["prisma auth login"],
+          ["prisma-cli auth login"],
           "auth",
         );
       }

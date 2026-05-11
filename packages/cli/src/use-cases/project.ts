@@ -59,7 +59,7 @@ export function createProjectUseCases(dependencies: ProjectUseCaseDependencies):
       if (!project) {
         throw projectNotFoundError(
           `The project "${projectId}" does not exist in workspace "${workspace.name}".`,
-          "Run prisma project list and choose a project id from the active workspace.",
+          "Run prisma-cli project list and choose a project id from the active workspace.",
         );
       }
 
@@ -101,7 +101,7 @@ function toProjectSummary(project: { id: string; name: string }): ProjectSummary
 export function projectNotFoundError(
   why: string,
   fix: string,
-  nextSteps: string[] = ["prisma project list"],
+  nextSteps: string[] = ["prisma-cli project list"],
 ): CliError {
   return new CliError({
     code: "PROJECT_NOT_FOUND",

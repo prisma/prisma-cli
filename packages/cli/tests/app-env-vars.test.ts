@@ -561,7 +561,7 @@ describe("app env vars", () => {
         variables: ["DATABASE_URL"],
       },
       warnings: [],
-      nextSteps: ["prisma app list-env"],
+      nextSteps: ["prisma-cli app list-env"],
     });
 
     vi.doMock("../src/controllers/app", async () => {
@@ -613,7 +613,7 @@ describe("app env vars", () => {
         },
       },
       warnings: [],
-      nextSteps: ["prisma app list-deploys"],
+      nextSteps: ["prisma-cli app list-deploys"],
     });
 
     vi.doMock("../src/controllers/app", async () => {

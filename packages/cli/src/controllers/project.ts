@@ -44,7 +44,7 @@ export async function runProjectList(context: CommandContext): Promise<CommandSu
         projects,
       },
       warnings: [],
-      nextSteps: ["prisma project link"],
+      nextSteps: ["prisma-cli project link"],
     };
   }
 
@@ -56,7 +56,7 @@ export async function runProjectList(context: CommandContext): Promise<CommandSu
     command: "project.list",
     result,
     warnings: [],
-    nextSteps: ["prisma project link"],
+    nextSteps: ["prisma-cli project link"],
   };
 }
 
@@ -73,7 +73,7 @@ export async function runProjectShow(context: CommandContext): Promise<CommandSu
           project: null,
         },
         warnings: [],
-        nextSteps: ["prisma project link"],
+        nextSteps: ["prisma-cli project link"],
       };
     }
 
@@ -88,7 +88,7 @@ export async function runProjectShow(context: CommandContext): Promise<CommandSu
           project: null,
         },
         warnings: [],
-        nextSteps: ["prisma auth login"],
+        nextSteps: ["prisma-cli auth login"],
       };
     }
 
@@ -103,7 +103,7 @@ export async function runProjectShow(context: CommandContext): Promise<CommandSu
           project: null,
         },
         warnings: [],
-        nextSteps: ["prisma auth login"],
+        nextSteps: ["prisma-cli auth login"],
       };
     }
 
@@ -166,7 +166,7 @@ export async function runProjectShow(context: CommandContext): Promise<CommandSu
     command: "project.show",
     result,
     warnings: [],
-    nextSteps: result.linkedProjectId ? (authState.authenticated ? [] : ["prisma auth login"]) : ["prisma project link"],
+    nextSteps: result.linkedProjectId ? (authState.authenticated ? [] : ["prisma-cli auth login"]) : ["prisma-cli project link"],
   };
 }
 
@@ -207,7 +207,7 @@ export async function runProjectLink(
         if (!data?.data || data.data.workspace.id !== workspace.id) {
           throw projectNotFoundError(
             `The project "${projectId}" does not exist in workspace "${workspace.name}".`,
-            "Run prisma project list and choose a project id from the active workspace.",
+            "Run prisma-cli project list and choose a project id from the active workspace.",
           );
         }
 
@@ -219,7 +219,7 @@ export async function runProjectLink(
 
         throw projectNotFoundError(
           `The project "${projectId}" does not exist in workspace "${workspace.name}".`,
-          "Run prisma project list and choose a project id from the active workspace.",
+          "Run prisma-cli project list and choose a project id from the active workspace.",
         );
       }
     } else {
@@ -236,7 +236,7 @@ export async function runProjectLink(
       if (projects.length === 0) {
         throw projectNotFoundError(
           `No projects are available in workspace "${workspace.name}".`,
-          "Use prisma app deploy to create project context, or switch workspaces and try again.",
+          "Use prisma-cli app deploy to create project context, or switch workspaces and try again.",
           [],
         );
       }
@@ -258,8 +258,8 @@ export async function runProjectLink(
         throw usageError(
           "Project link requires a writable Prisma config",
           error.message,
-          "Update prisma.config.ts to use a recognizable project field, or remove it and rerun prisma project link.",
-          ["prisma project link proj_123"],
+          "Update prisma.config.ts to use a recognizable project field, or remove it and rerun prisma-cli project link.",
+          ["prisma-cli project link proj_123"],
           "project",
         );
       }
@@ -281,7 +281,7 @@ export async function runProjectLink(
         },
       },
       warnings: [],
-      nextSteps: ["prisma project show", "prisma app deploy"],
+      nextSteps: ["prisma-cli project show", "prisma-cli app deploy"],
     };
   }
 
@@ -295,7 +295,7 @@ export async function runProjectLink(
     command: "project.link",
     result,
     warnings: [],
-    nextSteps: ["prisma project show", "prisma app deploy"],
+    nextSteps: ["prisma-cli project show", "prisma-cli app deploy"],
   };
 }
 
@@ -313,7 +313,7 @@ async function resolveProjectIdForLink(
   if (projects.length === 0) {
     throw projectNotFoundError(
       `No projects are available in workspace "${authState.workspace.name}".`,
-      "Use prisma app deploy to create project context, or switch workspaces and try again.",
+      "Use prisma-cli app deploy to create project context, or switch workspaces and try again.",
       [],
     );
   }
@@ -334,8 +334,8 @@ function projectSelectionRequiredError() {
   return usageError(
     "Project link requires a project target in non-interactive mode",
     "This command cannot prompt for project selection in the current mode.",
-    "Re-run prisma project link in a TTY, or pass a project id explicitly.",
-    ["prisma project list"],
+    "Re-run prisma-cli project link in a TTY, or pass a project id explicitly.",
+    ["prisma-cli project list"],
     "project",
   );
 }

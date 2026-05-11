@@ -75,8 +75,8 @@ export function createCliUseCaseGateways(context: CommandContext): CliUseCaseGat
             throw usageError(
               "Project link requires a writable Prisma config",
               error.message,
-              "Update prisma.config.ts to use a recognizable project field, or remove it and rerun prisma project link.",
-              ["prisma project link proj_123"],
+              "Update prisma.config.ts to use a recognizable project field, or remove it and rerun prisma-cli project link.",
+              ["prisma-cli project link proj_123"],
               "project",
             );
           }

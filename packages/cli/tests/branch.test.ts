@@ -34,13 +34,13 @@ describe("branch commands", () => {
         severity: "error",
         summary: "Branch commands are not available in this preview",
         why: "The current preview cannot resolve or change remote branch context yet.",
-        fix: "Use prisma app deploy for preview app deployment workflows.",
+        fix: "Use prisma-cli app deploy for preview app deployment workflows.",
         where: null,
         meta: {},
         docsUrl: null,
       },
       warnings: [],
-      nextSteps: ["prisma app deploy --app <name>"],
+      nextSteps: ["prisma-cli app deploy --app <name>"],
     });
   });
 
@@ -69,13 +69,13 @@ describe("branch commands", () => {
         severity: "error",
         summary: "Branch commands are not available in this preview",
         why: "The current preview cannot resolve or change remote branch context yet.",
-        fix: "Use prisma app deploy for preview app deployment workflows.",
+        fix: "Use prisma-cli app deploy for preview app deployment workflows.",
         where: null,
         meta: {},
         docsUrl: null,
       },
       warnings: [],
-      nextSteps: ["prisma app deploy --app <name>"],
+      nextSteps: ["prisma-cli app deploy --app <name>"],
     });
   });
 
@@ -104,13 +104,13 @@ describe("branch commands", () => {
         severity: "error",
         summary: "Branch commands are not available in this preview",
         why: "The current preview cannot resolve or change remote branch context yet.",
-        fix: "Use prisma app deploy for preview app deployment workflows.",
+        fix: "Use prisma-cli app deploy for preview app deployment workflows.",
         where: null,
         meta: {},
         docsUrl: null,
       },
       warnings: [],
-      nextSteps: ["prisma app deploy --app <name>"],
+      nextSteps: ["prisma-cli app deploy --app <name>"],
     });
   });
 
@@ -130,7 +130,7 @@ describe("branch commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(stripAnsi(result.stderr)).toBe(
-      "branch list → Listing branches for the linked project.\n\n│  project:   Acme Dashboard\n│  ⚬ branch:  production\n│  ⚬ branch:  pr-123\n│  ⚬ branch:  preview (active)\n│  ⚬ branch:  staging\n│\n│  Read more  docs/product/command-spec.md#prisma-branch-list\n",
+      "branch list → Listing branches for the linked project.\n\n│  project:   Acme Dashboard\n│  ⚬ branch:  production\n│  ⚬ branch:  pr-123\n│  ⚬ branch:  preview (active)\n│  ⚬ branch:  staging\n",
     );
   });
 
@@ -149,7 +149,7 @@ describe("branch commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(stripAnsi(result.stderr)).toBe(
-      "branch show → Showing the current active branch context.\n\n│  project:       not linked\n│  branch:        preview\n│  kind:          preview\n│  remote state:  not created yet\n│\n│  Read more      docs/product/command-spec.md#prisma-branch-show\n",
+      "branch show → Showing the current active branch context.\n\n│  project:       not linked\n│  branch:        preview\n│  kind:          preview\n│  remote state:  not created yet\n",
     );
   });
 
@@ -177,10 +177,10 @@ describe("branch commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(stderr).toContain("branch show → Showing the current active branch context.");
-    expect(stderr).toContain("project:   Acme Dashboard");
-    expect(stderr).toContain("branch:    preview");
-    expect(stderr).toContain("status:    ready");
-    expect(stderr).toContain("url:       https://preview.acme-dashboard.prisma.app");
+    expect(stderr).toContain("project:  Acme Dashboard");
+    expect(stderr).toContain("branch:   preview");
+    expect(stderr).toContain("status:   ready");
+    expect(stderr).toContain("url:      https://preview.acme-dashboard.prisma.app");
     expect(stderr).not.toContain("dep_123");
   });
 
@@ -311,7 +311,7 @@ describe("branch commands", () => {
         },
       },
       warnings: ["Production is protected and durable. Use with care."],
-      nextSteps: ["prisma branch show"],
+      nextSteps: ["prisma-cli branch show"],
     });
   });
 
@@ -339,7 +339,7 @@ describe("branch commands", () => {
     expect(stderr).toContain("preview (active)");
     expect(stderr).toContain("staging");
     expect(stderr).toContain("✔ Applied 1 operation(s)");
-    expect(stderr).toContain("branch:    production");
+    expect(stderr).toContain("branch:   production");
     expect(JSON.parse(await readFile(path.join(stateDir, "state.json"), "utf8"))).toMatchObject({
       branch: {
         active: "production",
@@ -375,7 +375,7 @@ describe("branch commands", () => {
         docsUrl: null,
       },
       warnings: [],
-      nextSteps: ["prisma branch list"],
+      nextSteps: ["prisma-cli branch list"],
     });
   });
 
@@ -401,13 +401,13 @@ describe("branch commands", () => {
         severity: "error",
         summary: "Branch use requires a target in non-interactive mode",
         why: "This command cannot prompt for branch selection in the current mode.",
-        fix: "Re-run prisma branch use in a TTY, or pass a branch name explicitly.",
+        fix: "Re-run prisma-cli branch use in a TTY, or pass a branch name explicitly.",
         where: null,
         meta: {},
         docsUrl: null,
       },
       warnings: [],
-      nextSteps: ["prisma branch list"],
+      nextSteps: ["prisma-cli branch list"],
     });
   });
 
@@ -433,13 +433,13 @@ describe("branch commands", () => {
         severity: "error",
         summary: "Branch use requires a target in non-interactive mode",
         why: "This command cannot prompt for branch selection in the current mode.",
-        fix: "Re-run prisma branch use in a TTY, or pass a branch name explicitly.",
+        fix: "Re-run prisma-cli branch use in a TTY, or pass a branch name explicitly.",
         where: null,
         meta: {},
         docsUrl: null,
       },
       warnings: [],
-      nextSteps: ["prisma branch list"],
+      nextSteps: ["prisma-cli branch list"],
     });
   });
 
@@ -482,24 +482,24 @@ describe("branch commands", () => {
     expect(rootHelp.stderr).toContain("branch");
 
     expect(branchHelp.exitCode).toBe(0);
-    expect(branchHelp.stderr).toContain("Branch context and safety commands.");
-    expect(branchHelp.stderr).toContain("$ prisma branch list");
-    expect(branchHelp.stderr).toContain("$ prisma branch use production");
+    expect(branchHelp.stderr).toContain("View your active Platform branches");
+    expect(branchHelp.stderr).toContain("$ prisma-cli branch list");
+    expect(branchHelp.stderr).toContain("$ prisma-cli branch show");
 
     expect(listHelp.exitCode).toBe(0);
-    expect(listHelp.stderr).toContain("List branches for the linked project.");
-    expect(listHelp.stderr).toContain("$ prisma branch list");
-    expect(listHelp.stderr).toContain("$ prisma branch list --json");
+    expect(listHelp.stderr).toContain("List active Platform branches linked to this project");
+    expect(listHelp.stderr).toContain("$ prisma-cli branch list");
+    expect(listHelp.stderr).toContain("$ prisma-cli branch list --json");
 
     expect(showHelp.exitCode).toBe(0);
-    expect(showHelp.stderr).toContain("Show the current active branch context.");
-    expect(showHelp.stderr).toContain("$ prisma branch show");
-    expect(showHelp.stderr).toContain("$ prisma branch show --json");
+    expect(showHelp.stderr).toContain("Show the Platform branch matching your current Git branch");
+    expect(showHelp.stderr).toContain("$ prisma-cli branch show");
+    expect(showHelp.stderr).toContain("$ prisma-cli branch show --json");
 
     expect(useHelp.exitCode).toBe(0);
     expect(useHelp.stderr).toContain("Change the local default branch context.");
-    expect(useHelp.stderr).toContain("$ prisma branch use");
-    expect(useHelp.stderr).toContain("$ prisma branch use production");
+    expect(useHelp.stderr).toContain("$ prisma-cli branch use");
+    expect(useHelp.stderr).toContain("$ prisma-cli branch use production");
   });
 
   it("writes only local branch state and does not mutate config or fixture data", async () => {
