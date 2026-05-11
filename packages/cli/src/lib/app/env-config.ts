@@ -29,6 +29,17 @@ export interface ScopeOptions {
 const VALID_CLASSES: ReadonlySet<string> = new Set(["production", "preview"]);
 
 /**
+ * Returns the positional placeholder a verb expects, used to keep
+ * next-step suggestions copy-pasteable: `set` takes `KEY=value`,
+ * `unset` takes a bare `KEY`, read verbs take nothing.
+ */
+function positionalHint(command: "set" | "unset" | "list" | "diff"): string {
+  if (command === "set") return "KEY=value ";
+  if (command === "unset") return "KEY ";
+  return "";
+}
+
+/**
  * Resolves the scope flags into a single {@link EnvScope}. Mirrors the FR21
  * rules: `--class` and `--branch` are mutually exclusive; `set`/`unset`
  * additionally require one of them so the CLI never silently writes to
@@ -39,13 +50,14 @@ export function resolveEnvScope(
   options: ScopeOptions,
 ): EnvScope | null {
   if (flags.className && flags.branchName) {
+    const positional = positionalHint(options.command);
     throw usageError(
       "--class and --branch are mutually exclusive",
       "Pass either --class to target a project template or --branch to target a branch override, but not both.",
       "Choose one scope and rerun the command.",
       [
-        `prisma-cli app env ${options.command} --class production`,
-        `prisma-cli app env ${options.command} --branch feature-auth`,
+        `prisma-cli app env ${options.command} ${positional}--class production`,
+        `prisma-cli app env ${options.command} ${positional}--branch feature-auth`,
       ],
       "app",
     );
@@ -84,13 +96,14 @@ export function resolveEnvScope(
   }
 
   if (options.requireExplicit) {
+    const positional = positionalHint(options.command);
     throw usageError(
       `prisma-cli app env ${options.command} requires --class or --branch`,
       "Writing without an explicit scope is rejected so the command never silently targets production.",
       "Pass --class production, --class preview, or --branch <name>.",
       [
-        `prisma-cli app env ${options.command} KEY=value --class production`,
-        `prisma-cli app env ${options.command} KEY --branch feature-auth`,
+        `prisma-cli app env ${options.command} ${positional}--class production`,
+        `prisma-cli app env ${options.command} ${positional}--branch feature-auth`,
       ],
       "app",
     );
