@@ -29,6 +29,18 @@ function createMockClient(): MockClient {
   };
 }
 
+// Negative-path tests want to assert the controller never reached the
+// HTTP layer at all. Checking a single method (e.g. only `POST`) lets a
+// regression silently leak a call on a sibling method, so collapse the
+// four expectations into one helper used everywhere the validator
+// should short-circuit before any request goes out.
+function expectNoApiCalls(client: MockClient) {
+  expect(client.GET).not.toHaveBeenCalled();
+  expect(client.POST).not.toHaveBeenCalled();
+  expect(client.PATCH).not.toHaveBeenCalled();
+  expect(client.DELETE).not.toHaveBeenCalled();
+}
+
 async function loadControllers(client: MockClient, projectId: string) {
   // Reset modules first so the dynamic import below picks up the fresh
   // mock registry — without this, ordering between tests can leave a
@@ -178,7 +190,7 @@ describe("app env set", () => {
     ).rejects.toMatchObject({
       summary: expect.stringContaining("mutually exclusive"),
     });
-    expect(client.POST).not.toHaveBeenCalled();
+    expectNoApiCalls(client);
   });
 
   it("rejects neither --class nor --branch (fail-fast on writes)", async () => {
@@ -194,7 +206,7 @@ describe("app env set", () => {
     ).rejects.toMatchObject({
       summary: expect.stringContaining("requires --class or --branch"),
     });
-    expect(client.POST).not.toHaveBeenCalled();
+    expectNoApiCalls(client);
   });
 
   it("rejects malformed KEY=VALUE", async () => {
@@ -456,7 +468,7 @@ describe("app env list", () => {
     ).rejects.toMatchObject({
       summary: expect.stringContaining("mutually exclusive"),
     });
-    expect(client.GET).not.toHaveBeenCalled();
+    expectNoApiCalls(client);
   });
 });
 
@@ -534,7 +546,7 @@ describe("app env unset", () => {
     ).rejects.toMatchObject({
       summary: expect.stringContaining("requires --class or --branch"),
     });
-    expect(client.DELETE).not.toHaveBeenCalled();
+    expectNoApiCalls(client);
   });
 
   it("rejects --class and --branch supplied together", async () => {
@@ -553,7 +565,7 @@ describe("app env unset", () => {
     ).rejects.toMatchObject({
       summary: expect.stringContaining("mutually exclusive"),
     });
-    expect(client.DELETE).not.toHaveBeenCalled();
+    expectNoApiCalls(client);
   });
 
   it("DELETEs an existing branch-override row when --branch is supplied", async () => {
