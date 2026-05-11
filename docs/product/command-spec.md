@@ -134,6 +134,7 @@ Behavior:
 - starts the login flow
 - stores the resulting session locally
 - resolves active workspace when required
+- confirms successful browser authentication and directs the user back to the terminal
 - returns the current auth state after login
 
 Examples:

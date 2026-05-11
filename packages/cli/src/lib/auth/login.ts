@@ -72,10 +72,9 @@ export async function login(options: LoginOptions = {}): Promise<void> {
           return;
         }
 
-        res.setHeader("Content-Type", "text/html");
-        res.end(
-          `<html><body style="font-family:system-ui;max-width:400px;margin:80px auto;text-align:center"><h2>✓ Signed in</h2><p>You may now close this tab and return to the terminal.</p></body></html>`,
-        );
+        const workspaceName = await state.resolveWorkspaceName();
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.end(renderSuccessPage(workspaceName));
         resolve();
       });
     });
@@ -94,6 +93,7 @@ class LoginState {
   private latestState?: string;
   private readonly sdk: ManagementApiSdk;
   private readonly openUrl: (url: string) => Promise<unknown> | unknown;
+  private readonly tokenStorage: TokenStorage;
 
   constructor(
     private readonly options: {
@@ -107,11 +107,11 @@ class LoginState {
       env?: NodeJS.ProcessEnv;
     },
   ) {
-    const tokenStorage = options.tokenStorage ?? new FileTokenStorage(options.env);
+    this.tokenStorage = options.tokenStorage ?? new FileTokenStorage(options.env);
     this.sdk = createManagementApiSdk({
       clientId: options.clientId ?? CLIENT_ID,
       redirectUri: `http://${options.hostname}:${options.port}/auth/callback`,
-      tokenStorage,
+      tokenStorage: this.tokenStorage,
       apiBaseUrl: options.apiBaseUrl ?? getApiBaseUrl(options.env),
       authBaseUrl: options.authBaseUrl,
     });
@@ -163,7 +163,134 @@ class LoginState {
     }
   }
 
+  async resolveWorkspaceName(): Promise<string | null> {
+    try {
+      const tokens = await this.tokenStorage.getTokens();
+      if (!tokens?.workspaceId) {
+        return null;
+      }
+
+      const { data } = await this.sdk.client.GET("/v1/workspaces/{id}", {
+        params: { path: { id: tokens.workspaceId } },
+      });
+      const name = data?.data?.name;
+      return typeof name === "string" && name.trim().length > 0 ? name.trim() : null;
+    } catch {
+      return null;
+    }
+  }
+
   get host(): string {
     return `${this.options.hostname}:${this.options.port}`;
   }
+}
+
+function renderSuccessPage(workspaceName: string | null): string {
+  const body = workspaceName
+    ? `Your terminal is now connected to your ${escapeHtml(workspaceName)} workspace. Head back to your terminal to continue.`
+    : "Your terminal is now connected to your Prisma workspace. Head back to your terminal to continue.";
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prisma Developer Platform</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --background: #ffffff;
+      --foreground: #1f2430;
+      --muted: #4f5665;
+      --mark-color: #050812;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background: #050812;
+        --foreground: #f6f7fb;
+        --muted: #c5cad6;
+        --mark-color: #ffffff;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background: var(--background);
+      color: var(--foreground);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: grid;
+      grid-template-rows: 128px 1fr;
+    }
+
+    .mark {
+      align-self: end;
+      justify-self: center;
+      width: 36px;
+      height: 36px;
+      color: var(--mark-color);
+    }
+
+    .mark path {
+      fill: currentColor !important;
+    }
+
+    main {
+      align-self: center;
+      justify-self: center;
+      width: min(520px, calc(100vw - 48px));
+      margin-top: -128px;
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: 26px;
+      line-height: 1.2;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0 auto;
+      max-width: 480px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.55;
+      letter-spacing: 0;
+    }
+  </style>
+</head>
+<body>
+  <svg class="mark" width="36" height="36" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M25.21,24.21,12.739,27.928a.525.525,0,0,1-.667-.606L16.528,5.811a.43.43,0,0,1,.809-.094l8.249,17.661A.6.6,0,0,1,25.21,24.21Zm2.139-.878L17.8,2.883h0A1.531,1.531,0,0,0,16.491,2a1.513,1.513,0,0,0-1.4.729L4.736,19.648a1.592,1.592,0,0,0,.018,1.7l5.064,7.909a1.628,1.628,0,0,0,1.83.678l14.7-4.383a1.6,1.6,0,0,0,1-2.218Z" style="fill:#0c344b;fill-rule:evenodd"/></svg>
+  <main>
+    <h1>You're all set.</h1>
+    <p>${body}</p>
+  </main>
+</body>
+</html>`;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      case "'":
+        return "&#39;";
+      default:
+        return char;
+    }
+  });
 }
