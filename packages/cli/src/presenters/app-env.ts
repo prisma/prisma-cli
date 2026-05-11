@@ -23,8 +23,8 @@ export function renderAppEnvSet(
   return renderShow(
     {
       title: result.replaced
-        ? "Replaced the environment variable's value."
-        : "Created a new environment variable.",
+        ? "Replacing the environment variable's value."
+        : "Setting a new environment variable.",
       descriptor,
       fields: [
         { key: "project", value: result.projectId },
@@ -103,7 +103,7 @@ export function renderAppEnvUnset(
 ): string[] {
   return renderShow(
     {
-      title: "Removed the environment variable.",
+      title: "Removing the environment variable from the scope.",
       descriptor,
       fields: [
         { key: "project", value: result.projectId },

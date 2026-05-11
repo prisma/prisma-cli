@@ -188,7 +188,6 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "app.env",
     path: ["prisma", "app", "env"],
     description: "Manage environment variables for the linked project.",
-    docsPath: "docs/product/command-spec.md#prisma-cli-app-env",
     examples: [
       "prisma-cli app env list --class production",
       "prisma-cli app env set STRIPE_KEY=sk_test_xxx --class production",
@@ -199,7 +198,6 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "app.env.set",
     path: ["prisma", "app", "env", "set"],
     description: "Create or replace an environment variable's value.",
-    docsPath: "docs/product/command-spec.md#prisma-cli-app-env-set-keyvalue",
     examples: [
       "prisma-cli app env set STRIPE_KEY=sk_test_xxx --class production",
       "prisma-cli app env set STRIPE_KEY=override --branch feature-auth",
@@ -209,7 +207,6 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "app.env.list",
     path: ["prisma", "app", "env", "list"],
     description: "List environment variable metadata for a scope (no values).",
-    docsPath: "docs/product/command-spec.md#prisma-cli-app-env-list",
     examples: [
       "prisma-cli app env list --class production",
       "prisma-cli app env list --branch feature-auth",
@@ -219,7 +216,6 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "app.env.unset",
     path: ["prisma", "app", "env", "unset"],
     description: "Remove an environment variable from a scope.",
-    docsPath: "docs/product/command-spec.md#prisma-cli-app-env-unset-key",
     examples: [
       "prisma-cli app env unset STRIPE_KEY --class production",
       "prisma-cli app env unset STRIPE_KEY --branch feature-auth",
