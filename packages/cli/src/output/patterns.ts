@@ -93,7 +93,11 @@ export function serializeList(input: {
 }
 
 export function renderShow(input: ShowPatternInput, ui: ShellUi): string[] {
-  const keyWidth = Math.max(...input.fields.map((field) => stringWidth(`${field.key}:`)), ...readMoreWidth(input.descriptor));
+  const keyWidth = Math.max(
+    0,
+    ...input.fields.map((field) => stringWidth(`${field.key}:`)),
+    ...readMoreWidth(input.descriptor),
+  );
   const lines = renderCardTitle(input.descriptor, input.title, ui);
 
   for (const field of input.fields) {
