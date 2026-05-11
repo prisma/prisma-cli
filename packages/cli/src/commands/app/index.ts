@@ -43,7 +43,7 @@ import {
   serializeAppUpdateEnv,
 } from "../../presenters/app";
 import { attachCommandDescriptor } from "../../shell/command-meta";
-import { addGlobalFlags } from "../../shell/global-flags";
+import { addCompactGlobalFlags, addGlobalFlags } from "../../shell/global-flags";
 import { runCommand } from "../../shell/command-runner";
 import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
 import { PREVIEW_BUILD_TYPES } from "../../lib/app/preview-build";
@@ -64,6 +64,8 @@ import type {
 
 export function createAppCommand(runtime: CliRuntime): Command {
   const app = attachCommandDescriptor(configureRuntimeCommand(new Command("app"), runtime), "app");
+
+  addCompactGlobalFlags(app);
 
   app.addCommand(createBuildCommand(runtime));
   app.addCommand(createRunCommand(runtime));

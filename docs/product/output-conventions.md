@@ -226,7 +226,7 @@ project link → Linking the current repo to an existing project.
 │  workspace:  Acme Inc
 │  mode:       apply
 │
-│  Read more   docs/product/command-spec.md#prisma-project-link-project
+│  Read more   docs/product/command-spec.md#prisma-cli-project-link-project
 ```
 
 Rules:
@@ -376,8 +376,8 @@ Required conventions:
   },
   "warnings": [],
   "nextSteps": [
-    "prisma app list-deploys --app hello-world",
-    "prisma app show-deploy dep_045"
+    "prisma-cli app list-deploys --app hello-world",
+    "prisma-cli app show-deploy dep_045"
   ]
 }
 ```

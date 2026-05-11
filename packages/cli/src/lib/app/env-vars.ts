@@ -12,9 +12,9 @@ export function parseEnvAssignments(
   if (options.requireAtLeastOne && values.length === 0) {
     throw usageError(
       "At least one environment variable is required",
-      `prisma app ${options.commandName} needs at least one --env NAME=VALUE flag in the current mode.`,
-      `Pass one or more --env NAME=VALUE flags, for example prisma app ${options.commandName} --env DATABASE_URL=postgresql://example.`,
-      [`prisma app ${options.commandName} --env DATABASE_URL=postgresql://example`],
+      `prisma-cli app ${options.commandName} needs at least one --env NAME=VALUE flag in the current mode.`,
+      `Pass one or more --env NAME=VALUE flags, for example prisma-cli app ${options.commandName} --env DATABASE_URL=postgresql://example.`,
+      [`prisma-cli app ${options.commandName} --env DATABASE_URL=postgresql://example`],
       "app",
     );
   }
@@ -28,8 +28,8 @@ export function parseEnvAssignments(
       throw usageError(
         "Environment variable assignment must use NAME=VALUE",
         "A provided --env flag is missing the = separator.",
-        `Pass repeated --env NAME=VALUE flags, for example prisma app ${options.commandName} --env DATABASE_URL=postgresql://example.`,
-        [`prisma app ${options.commandName} --env DATABASE_URL=postgresql://example`],
+        `Pass repeated --env NAME=VALUE flags, for example prisma-cli app ${options.commandName} --env DATABASE_URL=postgresql://example.`,
+        [`prisma-cli app ${options.commandName} --env DATABASE_URL=postgresql://example`],
         "app",
       );
     }
@@ -39,8 +39,8 @@ export function parseEnvAssignments(
       throw usageError(
         "Environment variable name is required",
         "A provided --env flag has an empty variable name.",
-        `Pass repeated --env NAME=VALUE flags, for example prisma app ${options.commandName} --env DATABASE_URL=postgresql://example.`,
-        [`prisma app ${options.commandName} --env DATABASE_URL=postgresql://example`],
+        `Pass repeated --env NAME=VALUE flags, for example prisma-cli app ${options.commandName} --env DATABASE_URL=postgresql://example.`,
+        [`prisma-cli app ${options.commandName} --env DATABASE_URL=postgresql://example`],
         "app",
       );
     }
@@ -49,8 +49,8 @@ export function parseEnvAssignments(
       throw usageError(
         `Environment variable "${name}" was provided more than once`,
         "Each environment variable name may be set only once per command invocation.",
-        `Remove the duplicate "${name}" assignment and rerun prisma app ${options.commandName}.`,
-        [`prisma app ${options.commandName} --env ${name}=value`],
+        `Remove the duplicate "${name}" assignment and rerun prisma-cli app ${options.commandName}.`,
+        [`prisma-cli app ${options.commandName} --env ${name}=value`],
         "app",
       );
     }

@@ -44,8 +44,8 @@ export function resolveEnvScope(
       "Pass either --class to target a project template or --branch to target a branch override, but not both.",
       "Choose one scope and rerun the command.",
       [
-        `prisma app env ${options.command} --class production`,
-        `prisma app env ${options.command} --branch feature-auth`,
+        `prisma-cli app env ${options.command} --class production`,
+        `prisma-cli app env ${options.command} --branch feature-auth`,
       ],
       "app",
     );
@@ -58,8 +58,8 @@ export function resolveEnvScope(
         "--class accepts production or preview.",
         "Pass --class production or --class preview.",
         [
-          `prisma app env ${options.command} --class production`,
-          `prisma app env ${options.command} --class preview`,
+          `prisma-cli app env ${options.command} --class production`,
+          `prisma-cli app env ${options.command} --class preview`,
         ],
         "app",
       );
@@ -75,7 +75,7 @@ export function resolveEnvScope(
         "--branch requires a branch name",
         "An empty value was passed to --branch.",
         "Pass a non-empty branch name, e.g. --branch feature-auth.",
-        [`prisma app env ${options.command} --branch feature-auth`],
+        [`prisma-cli app env ${options.command} --branch feature-auth`],
         "app",
       );
     }
@@ -85,12 +85,12 @@ export function resolveEnvScope(
 
   if (options.requireExplicit) {
     throw usageError(
-      `prisma app env ${options.command} requires --class or --branch`,
+      `prisma-cli app env ${options.command} requires --class or --branch`,
       "Writing without an explicit scope is rejected so the command never silently targets production.",
       "Pass --class production, --class preview, or --branch <name>.",
       [
-        `prisma app env ${options.command} KEY=value --class production`,
-        `prisma app env ${options.command} KEY --branch feature-auth`,
+        `prisma-cli app env ${options.command} KEY=value --class production`,
+        `prisma-cli app env ${options.command} KEY --branch feature-auth`,
       ],
       "app",
     );
@@ -113,10 +113,10 @@ export function parseKeyValuePositional(
 ): { key: string; value: string } {
   if (!raw) {
     throw usageError(
-      `prisma app env ${command} requires KEY=VALUE`,
+      `prisma-cli app env ${command} requires KEY=VALUE`,
       "No KEY=VALUE positional argument was supplied.",
       "Pass the variable as KEY=VALUE, e.g. STRIPE_KEY=sk_test_xxx.",
-      [`prisma app env ${command} STRIPE_KEY=sk_test_xxx --class production`],
+      [`prisma-cli app env ${command} STRIPE_KEY=sk_test_xxx --class production`],
       "app",
     );
   }
@@ -127,7 +127,7 @@ export function parseKeyValuePositional(
       `KEY=VALUE argument is missing the = separator`,
       `"${raw}" does not contain an = character.`,
       "Pass the variable as KEY=VALUE, e.g. STRIPE_KEY=sk_test_xxx.",
-      [`prisma app env ${command} STRIPE_KEY=sk_test_xxx --class production`],
+      [`prisma-cli app env ${command} STRIPE_KEY=sk_test_xxx --class production`],
       "app",
     );
   }
@@ -141,8 +141,8 @@ export function parseKeyValuePositional(
     throw usageError(
       `KEY=VALUE argument has an empty value`,
       `"${raw}" has an empty value after the = separator.`,
-      "Pass a non-empty value, or use prisma app env unset to remove a variable.",
-      [`prisma app env ${command} ${key}=value --class production`],
+      "Pass a non-empty value, or use prisma-cli app env unset to remove a variable.",
+      [`prisma-cli app env ${command} ${key}=value --class production`],
       "app",
     );
   }
@@ -166,7 +166,7 @@ export function validateKey(
       `Variable key cannot be empty`,
       "An empty key was passed.",
       "Pass an env-var key, e.g. STRIPE_KEY.",
-      [`prisma app env ${command} STRIPE_KEY${command === "set" ? "=value" : ""} --class production`],
+      [`prisma-cli app env ${command} STRIPE_KEY${command === "set" ? "=value" : ""} --class production`],
       "app",
     );
   }
@@ -186,7 +186,7 @@ export function validateKey(
       `Variable key "${key}" must match the POSIX env-var shape`,
       "Keys must start with an uppercase letter or underscore and contain only uppercase letters, digits, and underscores.",
       "Rename the key to match [A-Z_][A-Z0-9_]*.",
-      [`prisma app env ${command} STRIPE_KEY${command === "set" ? "=value" : ""} --class production`],
+      [`prisma-cli app env ${command} STRIPE_KEY${command === "set" ? "=value" : ""} --class production`],
       "app",
     );
   }
@@ -194,7 +194,7 @@ export function validateKey(
 
 /**
  * Human-readable label for a scope, used in renderers and the SCOPE
- * column of `prisma app env list`.
+ * column of `prisma-cli app env list`.
  */
 export function formatScopeLabel(scope: EnvScope): string {
   if (scope.kind === "class") {

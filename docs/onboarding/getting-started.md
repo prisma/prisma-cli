@@ -16,12 +16,12 @@ pnpm install
 ## Run The Source CLI
 
 ```bash
-pnpm prisma --help
-pnpm prisma auth whoami
-pnpm prisma app deploy --help
+pnpm prisma-cli --help
+pnpm prisma-cli auth whoami
+pnpm prisma-cli app deploy --help
 ```
 
-The root `prisma` script runs the TypeScript source entrypoint through `tsx`.
+The root `prisma-cli` script runs the TypeScript source entrypoint through `tsx`.
 
 ## Read The Product Docs
 

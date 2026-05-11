@@ -97,8 +97,8 @@ Fix: Inspect logs and redeploy after fixing the build
 More: Re-run with --trace for deeper diagnostics
 
 Next steps:
-- prisma app logs
-- fix the issue and rerun prisma app deploy
+- prisma-cli app logs
+- fix the issue and rerun prisma-cli app deploy
 ```
 
 ## JSON Error Shape

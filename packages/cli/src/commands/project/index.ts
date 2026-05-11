@@ -8,13 +8,15 @@ import {
   serializeProjectList,
 } from "../../presenters/project";
 import { attachCommandDescriptor } from "../../shell/command-meta";
-import { addGlobalFlags } from "../../shell/global-flags";
+import { addCompactGlobalFlags, addGlobalFlags } from "../../shell/global-flags";
 import { runCommand } from "../../shell/command-runner";
 import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
 import type { ProjectListResult, ProjectShowResult } from "../../types/project";
 
 export function createProjectCommand(runtime: CliRuntime): Command {
   const project = attachCommandDescriptor(configureRuntimeCommand(new Command("project"), runtime), "project");
+
+  addCompactGlobalFlags(project);
 
   project.addCommand(createProjectListCommand(runtime));
   project.addCommand(createProjectShowCommand(runtime));

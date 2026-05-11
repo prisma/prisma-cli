@@ -123,11 +123,11 @@ Rules:
 - `linkedProjectId` is the linked project id for the current repo or `null`
 - signed-out state is an empty auth state, not an error
 
-## `prisma auth login`
+## `prisma-cli auth login`
 
 Purpose:
 
-- establish authenticated CLI session
+- log in to your Prisma platform account
 
 Behavior:
 
@@ -139,15 +139,15 @@ Behavior:
 Examples:
 
 ```bash
-prisma auth login
-prisma auth login --json
+prisma-cli auth login
+prisma-cli auth login --json
 ```
 
-## `prisma auth logout`
+## `prisma-cli auth logout`
 
 Purpose:
 
-- clear authenticated CLI session
+- clear stored authentication credentials
 
 Behavior:
 
@@ -158,15 +158,15 @@ Behavior:
 Examples:
 
 ```bash
-prisma auth logout
-prisma auth logout --json
+prisma-cli auth logout
+prisma-cli auth logout --json
 ```
 
-## `prisma auth whoami`
+## `prisma-cli auth whoami`
 
 Purpose:
 
-- show the current authenticated identity
+- show the authenticated user and accessible workspace
 
 Behavior:
 
@@ -176,15 +176,15 @@ Behavior:
 Examples:
 
 ```bash
-prisma auth whoami
-prisma auth whoami --json
+prisma-cli auth whoami
+prisma-cli auth whoami --json
 ```
 
-## `prisma project list`
+## `prisma-cli project list`
 
 Purpose:
 
-- list projects for the authenticated workspace
+- list all projects in your workspace
 
 Behavior:
 
@@ -195,15 +195,15 @@ Behavior:
 Examples:
 
 ```bash
-prisma project list
-prisma project list --json
+prisma-cli project list
+prisma-cli project list --json
 ```
 
-## `prisma project show`
+## `prisma-cli project show`
 
 Purpose:
 
-- show the linked project for the current repo
+- show the Prisma project linked to this directory
 
 Behavior:
 
@@ -214,15 +214,15 @@ Behavior:
 Examples:
 
 ```bash
-prisma project show
-prisma project show --json
+prisma-cli project show
+prisma-cli project show --json
 ```
 
-## `prisma project link [project]`
+## `prisma-cli project link [project]`
 
 Purpose:
 
-- link the current repo to an existing project
+- link this directory to a Prisma project
 
 Behavior:
 
@@ -234,15 +234,15 @@ Behavior:
 Examples:
 
 ```bash
-prisma project link
-prisma project link proj_123
+prisma-cli project link
+prisma-cli project link proj_123
 ```
 
-## `prisma branch list`
+## `prisma-cli branch list`
 
 Purpose:
 
-- list branches for the linked project
+- list active Platform branches linked to this project
 
 Behavior:
 
@@ -254,15 +254,15 @@ Behavior:
 Examples:
 
 ```bash
-prisma branch list
-prisma branch list --json
+prisma-cli branch list
+prisma-cli branch list --json
 ```
 
-## `prisma branch show`
+## `prisma-cli branch show`
 
 Purpose:
 
-- show current active branch context
+- show the Platform branch matching your current Git branch
 
 Behavior:
 
@@ -274,36 +274,15 @@ Behavior:
 Examples:
 
 ```bash
-prisma branch show
-prisma branch show --json
+prisma-cli branch show
+prisma-cli branch show --json
 ```
 
-## `prisma branch use [name]`
+## `prisma-cli app build --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|tanstack-start>`
 
 Purpose:
 
-- change local default branch context
-
-Behavior:
-
-- writes only local CLI branch context
-- accepts `production` or a preview branch name
-- warns when switching to `production`
-- does not create remote state
-- does not support `local`; local is CLI context only, not a branch
-
-Examples:
-
-```bash
-prisma branch use
-prisma branch use production
-```
-
-## `prisma app build --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|tanstack-start>`
-
-Purpose:
-
-- build the local app into a deployable artifact
+- build the app locally into a deployable artifact
 
 Behavior:
 
@@ -314,18 +293,18 @@ Behavior:
 Examples:
 
 ```bash
-prisma app build --build-type nextjs
-prisma app build --build-type nuxt
-prisma app build --build-type astro
-prisma app build --build-type tanstack-start
-prisma app build --build-type bun --entry server.ts
+prisma-cli app build --build-type nextjs
+prisma-cli app build --build-type nuxt
+prisma-cli app build --build-type astro
+prisma-cli app build --build-type tanstack-start
+prisma-cli app build --build-type bun --entry server.ts
 ```
 
-## `prisma app run --entry <path> --build-type <auto|bun|nextjs> --port <port>`
+## `prisma-cli app run --entry <path> --build-type <auto|bun|nextjs> --port <port>`
 
 Purpose:
 
-- start a local framework dev server
+- run your app locally
 
 Behavior:
 
@@ -336,15 +315,15 @@ Behavior:
 Examples:
 
 ```bash
-prisma app run --build-type nextjs
-prisma app run --build-type bun --entry server.ts --port 3000
+prisma-cli app run --build-type nextjs
+prisma-cli app run --build-type bun --entry server.ts --port 3000
 ```
 
-## `prisma app deploy --app <name> --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|tanstack-start> --http-port <port> --env <name=value>`
+## `prisma-cli app deploy --app <name> --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|tanstack-start> --http-port <port> --env <name=value>`
 
 Purpose:
 
-- build and release the selected app
+- creates a new deployment for the app
 
 Behavior:
 
@@ -359,15 +338,15 @@ Behavior:
 Examples:
 
 ```bash
-prisma app deploy
-prisma app deploy --app hello-world --env DATABASE_URL=postgresql://example
-prisma app deploy --app hello-world --build-type nextjs --http-port 3000
-prisma app deploy --app hello-world --build-type nuxt
-prisma app deploy --app hello-world --build-type astro
-prisma app deploy --app hello-world --build-type tanstack-start
+prisma-cli app deploy
+prisma-cli app deploy --app hello-world --env DATABASE_URL=postgresql://example
+prisma-cli app deploy --app hello-world --build-type nextjs --http-port 3000
+prisma-cli app deploy --app hello-world --build-type nuxt
+prisma-cli app deploy --app hello-world --build-type astro
+prisma-cli app deploy --app hello-world --build-type tanstack-start
 ```
 
-## `prisma app env`
+## `prisma-cli app env`
 
 Manage durable, platform-stored environment variables for the linked
 project. Replaces the legacy `prisma app update-env` / `prisma app
@@ -389,7 +368,7 @@ Both `--class` and `--branch` are recognized on every `app env` verb:
   so the CLI never silently writes to production.
 - For read verbs (`list`), neither flag defaults to `--class production`.
 
-### `prisma app env set KEY=VALUE [--class <class> | --branch <name>]`
+### `prisma-cli app env set KEY=VALUE [--class <class> | --branch <name>]`
 
 Purpose:
 
@@ -408,11 +387,11 @@ Behavior:
 Examples:
 
 ```bash
-prisma app env set STRIPE_KEY=sk_test_xxx --class production
-prisma app env set STRIPE_KEY=sk_test_xxx --class preview
+prisma-cli app env set STRIPE_KEY=sk_test_xxx --class production
+prisma-cli app env set STRIPE_KEY=sk_test_xxx --class preview
 ```
 
-### `prisma app env list [--class <class> | --branch <name>]`
+### `prisma-cli app env list [--class <class> | --branch <name>]`
 
 Purpose:
 
@@ -428,12 +407,12 @@ Behavior:
 Examples:
 
 ```bash
-prisma app env list
-prisma app env list --class preview
-prisma app env list --branch feature-auth
+prisma-cli app env list
+prisma-cli app env list --class preview
+prisma-cli app env list --branch feature-auth
 ```
 
-### `prisma app env unset KEY [--class <class> | --branch <name>]`
+### `prisma-cli app env unset KEY [--class <class> | --branch <name>]`
 
 Purpose:
 
@@ -448,13 +427,13 @@ Behavior:
 Examples:
 
 ```bash
-prisma app env unset STRIPE_KEY --class production
-prisma app env unset STRIPE_KEY --branch feature-auth
+prisma-cli app env unset STRIPE_KEY --class production
+prisma-cli app env unset STRIPE_KEY --branch feature-auth
 ```
 
-## `prisma app update-env --app <name> --env <name=value>`
+## `prisma-cli app update-env --app <name> --env <name=value>`
 
-> **Deprecated.** Use `prisma app env set` instead. The legacy command
+> **Deprecated.** Use `prisma-cli app env set` instead. The legacy command
 > still works for backward compatibility but emits a deprecation
 > warning and will be removed in a future release.
 
@@ -473,13 +452,13 @@ Behavior:
 Examples:
 
 ```bash
-prisma app update-env --env DATABASE_URL=postgresql://example
-prisma app update-env --app hello-world --env DATABASE_URL=postgresql://another
+prisma-cli app update-env --env DATABASE_URL=postgresql://example
+prisma-cli app update-env --app hello-world --env DATABASE_URL=postgresql://another
 ```
 
-## `prisma app list-env --app <name>`
+## `prisma-cli app list-env --app <name>`
 
-> **Deprecated.** Use `prisma app env list` instead. The legacy command
+> **Deprecated.** Use `prisma-cli app env list` instead. The legacy command
 > still works for backward compatibility but emits a deprecation
 > warning and will be removed in a future release.
 
@@ -497,15 +476,15 @@ Behavior:
 Examples:
 
 ```bash
-prisma app list-env
-prisma app list-env --app hello-world
+prisma-cli app list-env
+prisma-cli app list-env --app hello-world
 ```
 
-## `prisma app show --app <name>`
+## `prisma-cli app show --app <name>`
 
 Purpose:
 
-- show the current state of the selected app
+- show the app and its current deployment
 
 Behavior:
 
@@ -516,15 +495,15 @@ Behavior:
 Examples:
 
 ```bash
-prisma app show
-prisma app show --app hello-world
+prisma-cli app show
+prisma-cli app show --app hello-world
 ```
 
-## `prisma app open --app <name>`
+## `prisma-cli app open --app <name>`
 
 Purpose:
 
-- open the live URL for the selected app
+- open the app's live URL
 
 Behavior:
 
@@ -536,15 +515,15 @@ Behavior:
 Examples:
 
 ```bash
-prisma app open
-prisma app open --app hello-world
+prisma-cli app open
+prisma-cli app open --app hello-world
 ```
 
-## `prisma app logs --app <name> --deployment <id>`
+## `prisma-cli app logs --app <name> --deployment <id>`
 
 Purpose:
 
-- show or stream logs for a deployment
+- stream logs for the app's current deployment
 
 Behavior:
 
@@ -555,15 +534,15 @@ Behavior:
 Examples:
 
 ```bash
-prisma app logs
-prisma app logs --deployment dep_123
+prisma-cli app logs
+prisma-cli app logs --deployment dep_123
 ```
 
-## `prisma app list-deploys --app <name>`
+## `prisma-cli app list-deploys --app <name>`
 
 Purpose:
 
-- list deployments for the selected app
+- list deployments for the app
 
 Behavior:
 
@@ -574,15 +553,15 @@ Behavior:
 Examples:
 
 ```bash
-prisma app list-deploys
-prisma app list-deploys --app hello-world
+prisma-cli app list-deploys
+prisma-cli app list-deploys --app hello-world
 ```
 
-## `prisma app show-deploy <deployment>`
+## `prisma-cli app show-deploy <deployment>`
 
 Purpose:
 
-- show one deployment in detail
+- show a deployment in detail
 
 Behavior:
 
@@ -593,14 +572,14 @@ Behavior:
 Examples:
 
 ```bash
-prisma app show-deploy dep_123
+prisma-cli app show-deploy dep_123
 ```
 
-## `prisma app promote <deployment> --app <name>`
+## `prisma-cli app promote <deployment> --app <name>`
 
 Purpose:
 
-- switch the live deployment for the selected app
+- promote a deployment to production by rebuilding with production env vars
 
 Behavior:
 
@@ -612,15 +591,15 @@ Behavior:
 Examples:
 
 ```bash
-prisma app promote dep_123
-prisma app promote dep_123 --app hello-world
+prisma-cli app promote dep_123
+prisma-cli app promote dep_123 --app hello-world
 ```
 
-## `prisma app rollback --app <name> --to <deployment>`
+## `prisma-cli app rollback --app <name> --to <deployment>`
 
 Purpose:
 
-- restore the selected app to an earlier deployment
+- roll back production to a previous deployment
 
 Behavior:
 
@@ -632,15 +611,15 @@ Behavior:
 Examples:
 
 ```bash
-prisma app rollback
-prisma app rollback --app hello-world --to dep_123
+prisma-cli app rollback
+prisma-cli app rollback --app hello-world --to dep_123
 ```
 
-## `prisma app remove --app <name> -y --yes`
+## `prisma-cli app remove --app <name> -y --yes`
 
 Purpose:
 
-- remove the selected app from the linked project
+- remove the app from the current branch
 
 Behavior:
 
@@ -652,6 +631,6 @@ Behavior:
 Examples:
 
 ```bash
-prisma app remove --app hello-world
-prisma app remove --app hello-world --yes
+prisma-cli app remove --app hello-world
+prisma-cli app remove --app hello-world --yes
 ```

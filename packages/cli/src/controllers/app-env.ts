@@ -53,10 +53,10 @@ export async function runAppEnvSet(
   if (!scope) {
     // resolveEnvScope already threw with a focused error in this branch.
     throw usageError(
-      `prisma app env set requires --class or --branch`,
+      `prisma-cli app env set requires --class or --branch`,
       "Writing without an explicit scope is rejected.",
       "Pass --class production, --class preview, or --branch <name>.",
-      [`prisma app env set ${key}=${value} --class production`],
+      [`prisma-cli app env set ${key}=${value} --class production`],
       "app",
     );
   }
@@ -144,7 +144,7 @@ export async function runAppEnvList(
     },
     warnings: [],
     nextSteps: variables.length === 0
-      ? [`prisma app env set KEY=value --${scope.kind === "class" ? `class ${scope.class}` : `branch ${scope.name}`}`]
+      ? [`prisma-cli app env set KEY=value --${scope.kind === "class" ? `class ${scope.class}` : `branch ${scope.name}`}`]
       : [],
   };
 }
@@ -156,10 +156,10 @@ export async function runAppEnvUnset(
 ): Promise<CommandSuccess<AppEnvUnsetResult>> {
   if (!key) {
     throw usageError(
-      "prisma app env unset requires KEY",
+      "prisma-cli app env unset requires KEY",
       "No KEY positional argument was supplied.",
       "Pass the variable name to remove, e.g. STRIPE_KEY.",
-      ["prisma app env unset STRIPE_KEY --class production"],
+      ["prisma-cli app env unset STRIPE_KEY --class production"],
       "app",
     );
   }
@@ -167,10 +167,10 @@ export async function runAppEnvUnset(
   const scope = resolveEnvScope(flags, { requireExplicit: true, command: "unset" });
   if (!scope) {
     throw usageError(
-      "prisma app env unset requires --class or --branch",
+      "prisma-cli app env unset requires --class or --branch",
       "Writing without an explicit scope is rejected.",
       "Pass --class production, --class preview, or --branch <name>.",
-      [`prisma app env unset ${key} --class production`],
+      [`prisma-cli app env unset ${key} --class production`],
       "app",
     );
   }
@@ -184,10 +184,10 @@ export async function runAppEnvUnset(
       domain: "app",
       summary: `Variable "${key}" not found in ${formatScopeLabel(scope)}`,
       why: "No variable with this key exists in the targeted scope, so there is nothing to remove.",
-      fix: "Run prisma app env list with the same scope to see the available variables.",
+      fix: "Run prisma-cli app env list with the same scope to see the available variables.",
       exitCode: 1,
       nextSteps: [
-        `prisma app env list --${scope.kind === "class" ? `class ${scope.class}` : `branch ${scope.name}`}`,
+        `prisma-cli app env list --${scope.kind === "class" ? `class ${scope.class}` : `branch ${scope.name}`}`,
       ],
     });
   }
@@ -223,7 +223,7 @@ async function requireClientAndProject(
       code: "PROJECT_NOT_LINKED",
       domain: "project",
       summary: "Project link required",
-      why: "prisma app env needs a linked project for the current repo.",
+      why: "prisma-cli app env needs a linked project for the current repo.",
       fix: "Run prisma project link before managing environment variables.",
       exitCode: 1,
       nextSteps: ["prisma project link"],
@@ -473,9 +473,9 @@ function branchWriteUnavailable(verb: "set" | "unset", key: string): CliError {
   // surface a clear "not yet" rather than a generic API rejection.
   return featureUnavailableError(
     `Branch-override writes are not available yet`,
-    "The Management API does not yet accept --branch on prisma app env writes; the API surface will land in a follow-up.",
+    "The Management API does not yet accept --branch on prisma-cli app env writes; the API surface will land in a follow-up.",
     `Until then, set the value on the preview template (--class preview) so every Branch inherits it, or wait for the upcoming branch-override write release.`,
-    [`prisma app env ${verb} ${key} --class preview`],
+    [`prisma-cli app env ${verb} ${key} --class preview`],
     "app",
   );
 }
