@@ -110,8 +110,8 @@ export function renderShow(input: ShowPatternInput, ui: ShellUi): string[] {
 }
 
 export function renderMutate(input: MutatePatternInput, ui: ShellUi): string[] {
-  const rows = [...input.context, { key: "mode", value: "apply", tone: "dim" as const }];
-  const keyWidth = Math.max(...rows.map((row) => stringWidth(`${row.key}:`)), ...readMoreWidth(input.descriptor));
+  const rows = input.context;
+  const keyWidth = Math.max(0, ...rows.map((row) => stringWidth(`${row.key}:`)), ...readMoreWidth(input.descriptor));
   const lines = renderCardTitle(input.descriptor, input.title, ui);
 
   for (const row of rows) {
