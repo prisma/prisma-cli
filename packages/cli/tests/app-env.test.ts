@@ -531,7 +531,7 @@ describe("legacy env command deprecation warnings", () => {
 
     expect(stderr.buffer).toContain("[deprecation]");
     expect(stderr.buffer).toContain("prisma-cli app update-env");
-    expect(stderr.buffer).toContain("prisma-cli app env set");
+    expect(stderr.buffer).toContain("prisma-cli env add");
   });
 
   it("suppresses the deprecation banner under --json", async () => {
@@ -562,7 +562,7 @@ describe("legacy env command deprecation warnings", () => {
 
     expect(stderr.buffer).toContain("[deprecation]");
     expect(stderr.buffer).toContain("prisma-cli app list-env");
-    expect(stderr.buffer).toContain("prisma-cli app env list");
+    expect(stderr.buffer).toContain("prisma-cli env list");
   });
 
   it("suppresses the `app list-env` deprecation banner under --json", async () => {

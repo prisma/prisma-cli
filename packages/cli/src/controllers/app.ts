@@ -218,7 +218,7 @@ export async function runAppUpdateEnv(
   envAssignments: string[] | undefined,
 ): Promise<CommandSuccess<AppUpdateEnvResult>> {
   ensurePreviewAppMode(context);
-  emitLegacyEnvDeprecationWarning(context, "app update-env", "app env set");
+  emitLegacyEnvDeprecationWarning(context, "app update-env", "env add");
 
   const envVars = parseEnvAssignments(envAssignments, {
     commandName: "update-env",
@@ -283,7 +283,7 @@ export async function runAppListEnv(
   appName: string | undefined,
 ): Promise<CommandSuccess<AppListEnvResult>> {
   ensurePreviewAppMode(context);
-  emitLegacyEnvDeprecationWarning(context, "app list-env", "app env list");
+  emitLegacyEnvDeprecationWarning(context, "app list-env", "env list");
 
   const projectId = await requireLinkedProjectId(context);
   const provider = await requirePreviewAppProvider(context);
@@ -1490,7 +1490,7 @@ function toOptionalEnvVars(
  * env-var commands are invoked. The banner is suppressed in --json
  * mode so machine consumers keep their JSON channel clean; --json
  * users discover the deprecation via release notes and the new
- * `prisma-cli app env` namespace's output anyway.
+ * `prisma-cli env` namespace's output anyway.
  *
  * Removal of these legacy commands is deliberately scoped out of the
  * Public Beta — see the Compute Beta plan, sub-track 3B.1, where the
