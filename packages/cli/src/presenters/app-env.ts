@@ -1,39 +1,31 @@
 import type { CommandDescriptor } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
 import type {
-  AppEnvListResult,
-  AppEnvScopeDescriptor,
-  AppEnvSetResult,
-  AppEnvUnsetResult,
+  EnvAddResult,
+  EnvListResult,
+  EnvRmResult,
+  EnvScopeDescriptor,
+  EnvUpdateResult,
 } from "../types/app-env";
 import { renderList, renderShow, serializeList } from "../output/patterns";
 
-function scopeLabel(scope: AppEnvScopeDescriptor): string {
-  if (scope.kind === "class") {
-    return scope.class;
-  }
-  return `branch:${scope.name}`;
+function scopeLabel(scope: EnvScopeDescriptor): string {
+  return scope.role;
 }
 
-export function renderAppEnvSet(
+export function renderEnvAdd(
   context: CommandContext,
   descriptor: CommandDescriptor,
-  result: AppEnvSetResult,
+  result: EnvAddResult,
 ): string[] {
   return renderShow(
     {
-      title: result.replaced
-        ? "Replacing the environment variable's value."
-        : "Setting a new environment variable.",
+      title: "Setting a new environment variable.",
       descriptor,
       fields: [
         { key: "project", value: result.projectId },
         { key: "scope", value: scopeLabel(result.scope) },
         { key: "key", value: result.variable.key },
-        // The value is intentionally omitted: under FR15 the platform
-        // never returns stored plaintext, and printing the user-supplied
-        // input back would teach a habit we don't want to support once
-        // a future "replace from stdin" flow lands.
         { key: "id", value: result.variable.id, tone: "dim" },
         {
           key: "last updated",
@@ -46,14 +38,43 @@ export function renderAppEnvSet(
   );
 }
 
-export function serializeAppEnvSet(result: AppEnvSetResult) {
+export function serializeEnvAdd(result: EnvAddResult) {
   return result;
 }
 
-export function renderAppEnvList(
+export function renderEnvUpdate(
   context: CommandContext,
   descriptor: CommandDescriptor,
-  result: AppEnvListResult,
+  result: EnvUpdateResult,
+): string[] {
+  return renderShow(
+    {
+      title: "Replacing the environment variable's value.",
+      descriptor,
+      fields: [
+        { key: "project", value: result.projectId },
+        { key: "scope", value: scopeLabel(result.scope) },
+        { key: "key", value: result.variable.key },
+        { key: "id", value: result.variable.id, tone: "dim" },
+        {
+          key: "last updated",
+          value: result.variable.updatedAt,
+          tone: "dim",
+        },
+      ],
+    },
+    context.ui,
+  );
+}
+
+export function serializeEnvUpdate(result: EnvUpdateResult) {
+  return result;
+}
+
+export function renderEnvList(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: EnvListResult,
 ): string[] {
   return renderList(
     {
@@ -75,7 +96,7 @@ export function renderAppEnvList(
   );
 }
 
-export function serializeAppEnvList(result: AppEnvListResult) {
+export function serializeEnvList(result: EnvListResult) {
   return {
     projectId: result.projectId,
     scope: result.scope,
@@ -90,16 +111,14 @@ export function serializeAppEnvList(result: AppEnvListResult) {
         status: variable.isManagedBySystem ? "default" : null,
       })),
     }),
-    // Surface metadata-only details for automation. The variable list
-    // here intentionally never includes a `value` field — FR15.
     variables: result.variables,
   };
 }
 
-export function renderAppEnvUnset(
+export function renderEnvRm(
   context: CommandContext,
   descriptor: CommandDescriptor,
-  result: AppEnvUnsetResult,
+  result: EnvRmResult,
 ): string[] {
   return renderShow(
     {
@@ -115,6 +134,6 @@ export function renderAppEnvUnset(
   );
 }
 
-export function serializeAppEnvUnset(result: AppEnvUnsetResult) {
+export function serializeEnvRm(result: EnvRmResult) {
   return result;
 }

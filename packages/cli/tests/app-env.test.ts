@@ -5,9 +5,6 @@ import { writePrismaConfig } from "./helpers";
 afterEach(() => {
   vi.doUnmock("../src/adapters/config");
   vi.doUnmock("../src/lib/auth/guard");
-  // The legacy-deprecation tests below mock the preview provider too;
-  // explicitly unmock it so a stale registration can't bleed into a
-  // sibling test file that doesn't expect a fake provider.
   vi.doUnmock("../src/lib/app/preview-provider");
   vi.resetModules();
   vi.restoreAllMocks();
@@ -29,11 +26,6 @@ function createMockClient(): MockClient {
   };
 }
 
-// Negative-path tests want to assert the controller never reached the
-// HTTP layer at all. Checking a single method (e.g. only `POST`) lets a
-// regression silently leak a call on a sibling method, so collapse the
-// four expectations into one helper used everywhere the validator
-// should short-circuit before any request goes out.
 function expectNoApiCalls(client: MockClient) {
   expect(client.GET).not.toHaveBeenCalled();
   expect(client.POST).not.toHaveBeenCalled();
@@ -42,9 +34,6 @@ function expectNoApiCalls(client: MockClient) {
 }
 
 async function loadControllers(client: MockClient, projectId: string) {
-  // Reset modules first so the dynamic import below picks up the fresh
-  // mock registry — without this, ordering between tests can leave a
-  // controllers module that already captured the unmocked guard.
   vi.resetModules();
 
   vi.doMock("../src/adapters/config", async () => {
@@ -90,7 +79,7 @@ function makeVariableRow(overrides: Partial<{
   };
 }
 
-describe("app env set", () => {
+describe("env add", () => {
   it("creates a new variable on the production template via POST", async () => {
     const client = createMockClient();
     client.GET.mockResolvedValueOnce({
@@ -108,10 +97,10 @@ describe("app env set", () => {
     await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
-    const result = await controllers.runAppEnvSet(
+    const result = await controllers.runEnvAdd(
       context,
       "STRIPE_KEY=sk_test_xxx",
-      { className: "production" },
+      { roleName: "production" },
     );
 
     expect(client.POST).toHaveBeenCalledWith(
@@ -127,17 +116,92 @@ describe("app env set", () => {
     );
     expect(result.result).toMatchObject({
       projectId: "proj_123",
-      scope: { kind: "class", class: "production" },
-      replaced: false,
+      scope: { kind: "role", role: "production" },
       variable: { key: "STRIPE_KEY", id: "envvar_v1" },
     });
-    // The plaintext value never leaks into the result envelope: AC5 / FR15
-    // protects readers of the API response, and the same surface contract
-    // applies on the client side.
     expect(JSON.stringify(result)).not.toContain("sk_test_xxx");
   });
 
-  it("replaces an existing variable's value via PATCH (upsert)", async () => {
+  it("fails when the variable already exists", async () => {
+    const client = createMockClient();
+    client.GET.mockResolvedValueOnce({
+      data: {
+        data: [makeVariableRow()],
+        pagination: { hasMore: false, nextCursor: null },
+      },
+      response: { status: 200 },
+    });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writePrismaConfig(cwd, "proj_123");
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runEnvAdd(context, "STRIPE_KEY=sk_test_xxx", {
+        roleName: "production",
+      }),
+    ).rejects.toMatchObject({
+      code: "ENV_VARIABLE_ALREADY_EXISTS",
+      summary: expect.stringContaining("already exists"),
+    });
+    expect(client.POST).not.toHaveBeenCalled();
+  });
+
+  it("rejects when --role is not provided (fail-fast on writes)", async () => {
+    const client = createMockClient();
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writePrismaConfig(cwd, "proj_123");
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runEnvAdd(context, "STRIPE_KEY=sk", {}),
+    ).rejects.toMatchObject({
+      summary: expect.stringContaining("requires --role"),
+    });
+    expectNoApiCalls(client);
+  });
+
+  it("rejects malformed KEY=VALUE", async () => {
+    const client = createMockClient();
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writePrismaConfig(cwd, "proj_123");
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runEnvAdd(context, "noequalshere", {
+        roleName: "production",
+      }),
+    ).rejects.toMatchObject({
+      summary: expect.stringContaining("missing the = separator"),
+    });
+  });
+
+  it("rejects keys that don't match POSIX env-var shape", async () => {
+    const client = createMockClient();
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writePrismaConfig(cwd, "proj_123");
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runEnvAdd(context, "lowercase-key=value", {
+        roleName: "production",
+      }),
+    ).rejects.toMatchObject({
+      summary: expect.stringContaining("POSIX env-var shape"),
+    });
+  });
+});
+
+describe("env update", () => {
+  it("replaces an existing variable's value via PATCH", async () => {
     const client = createMockClient();
     client.GET.mockResolvedValueOnce({
       data: {
@@ -157,10 +221,10 @@ describe("app env set", () => {
     await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
-    const result = await controllers.runAppEnvSet(
+    const result = await controllers.runEnvUpdate(
       context,
       "STRIPE_KEY=new-value",
-      { className: "production" },
+      { roleName: "production" },
     );
 
     expect(client.POST).not.toHaveBeenCalled();
@@ -171,10 +235,38 @@ describe("app env set", () => {
         body: { value: "new-value" },
       }),
     );
-    expect(result.result.replaced).toBe(true);
+    expect(result.result).toMatchObject({
+      projectId: "proj_123",
+      scope: { kind: "role", role: "production" },
+      variable: { key: "STRIPE_KEY", id: "envvar_v1" },
+    });
   });
 
-  it("rejects --class and --branch supplied together", async () => {
+  it("fails when the variable does not exist", async () => {
+    const client = createMockClient();
+    client.GET.mockResolvedValueOnce({
+      data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+      response: { status: 200 },
+    });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writePrismaConfig(cwd, "proj_123");
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runEnvUpdate(context, "STRIPE_KEY=new-value", {
+        roleName: "production",
+      }),
+    ).rejects.toMatchObject({
+      code: "ENV_VARIABLE_NOT_FOUND",
+      summary: expect.stringContaining("not found"),
+    });
+    expect(client.PATCH).not.toHaveBeenCalled();
+  });
+
+  it("rejects when --role is not provided (fail-fast on writes)", async () => {
     const client = createMockClient();
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
@@ -183,119 +275,16 @@ describe("app env set", () => {
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
-      controllers.runAppEnvSet(context, "STRIPE_KEY=sk", {
-        className: "production",
-        branchName: "feature-auth",
-      }),
+      controllers.runEnvUpdate(context, "STRIPE_KEY=sk", {}),
     ).rejects.toMatchObject({
-      summary: expect.stringContaining("mutually exclusive"),
+      summary: expect.stringContaining("requires --role"),
     });
     expectNoApiCalls(client);
-  });
-
-  it("rejects neither --class nor --branch (fail-fast on writes)", async () => {
-    const client = createMockClient();
-    const { controllers, createTempCwd, createTestCommandContext } =
-      await loadControllers(client, "proj_123");
-    const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
-    const { context } = await createTestCommandContext({ cwd });
-
-    await expect(
-      controllers.runAppEnvSet(context, "STRIPE_KEY=sk", {}),
-    ).rejects.toMatchObject({
-      summary: expect.stringContaining("requires --class or --branch"),
-    });
-    expectNoApiCalls(client);
-  });
-
-  it("rejects malformed KEY=VALUE", async () => {
-    const client = createMockClient();
-    const { controllers, createTempCwd, createTestCommandContext } =
-      await loadControllers(client, "proj_123");
-    const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
-    const { context } = await createTestCommandContext({ cwd });
-
-    await expect(
-      controllers.runAppEnvSet(context, "noequalshere", {
-        className: "production",
-      }),
-    ).rejects.toMatchObject({
-      summary: expect.stringContaining("missing the = separator"),
-    });
-  });
-
-  it("rejects keys that don't match POSIX env-var shape", async () => {
-    const client = createMockClient();
-    const { controllers, createTempCwd, createTestCommandContext } =
-      await loadControllers(client, "proj_123");
-    const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
-    const { context } = await createTestCommandContext({ cwd });
-
-    await expect(
-      controllers.runAppEnvSet(context, "lowercase-key=value", {
-        className: "production",
-      }),
-    ).rejects.toMatchObject({
-      summary: expect.stringContaining("POSIX env-var shape"),
-    });
-  });
-
-  it("returns a feature-unavailable error for branch-override writes", async () => {
-    // Branch-override creates require a future POST body extension; the
-    // CLI surface stays honest until the API supports it.
-    const client = createMockClient();
-    client.GET
-      .mockResolvedValueOnce({
-        // Resolve branch name → branch id.
-        data: {
-          data: [
-            {
-              id: "branch_42",
-              type: "branch",
-              url: "https://api.example/v1/branches/branch_42",
-              gitName: "feature-auth",
-              isDefault: false,
-              createdAt: "2026-05-08T10:00:00.000Z",
-              updatedAt: "2026-05-08T10:00:00.000Z",
-              project: {
-                id: "proj_123",
-                url: "https://api.example/v1/projects/proj_123",
-                name: "demo",
-              },
-            },
-          ],
-          pagination: { hasMore: false, nextCursor: null },
-        },
-        response: { status: 200 },
-      })
-      .mockResolvedValueOnce({
-        // Look up existing override row by natural key — none exist yet.
-        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
-        response: { status: 200 },
-      });
-
-    const { controllers, createTempCwd, createTestCommandContext } =
-      await loadControllers(client, "proj_123");
-    const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
-    const { context } = await createTestCommandContext({ cwd });
-
-    await expect(
-      controllers.runAppEnvSet(context, "STRIPE_KEY=override", {
-        branchName: "feature-auth",
-      }),
-    ).rejects.toMatchObject({
-      summary: expect.stringContaining("Branch-override writes are not available yet"),
-    });
-    expect(client.POST).not.toHaveBeenCalled();
   });
 });
 
-describe("app env list", () => {
-  it("returns metadata for a class scope and never includes values", async () => {
+describe("env list", () => {
+  it("returns metadata for a role scope and never includes values", async () => {
     const client = createMockClient();
     client.GET.mockResolvedValueOnce({
       data: {
@@ -314,8 +303,8 @@ describe("app env list", () => {
     await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
-    const result = await controllers.runAppEnvList(context, {
-      className: "production",
+    const result = await controllers.runEnvList(context, {
+      roleName: "production",
     });
 
     expect(client.GET).toHaveBeenCalledWith(
@@ -329,17 +318,16 @@ describe("app env list", () => {
         },
       }),
     );
-    expect(result.result.scope).toEqual({ kind: "class", class: "production" });
+    expect(result.result.scope).toEqual({ kind: "role", role: "production" });
     expect(result.result.variables.map((v) => v.key)).toEqual([
       "STRIPE_KEY",
       "SENDGRID_KEY",
     ]);
-    // Metadata-only contract: no field literally named `value` anywhere.
     const flattened = JSON.stringify(result.result);
     expect(flattened).not.toMatch(/"value"\s*:/);
   });
 
-  it("defaults to --class production when no scope flag is provided", async () => {
+  it("defaults to --role production when no scope flag is provided", async () => {
     const client = createMockClient();
     client.GET.mockResolvedValueOnce({
       data: { data: [], pagination: { hasMore: false, nextCursor: null } },
@@ -352,7 +340,7 @@ describe("app env list", () => {
     await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
-    const result = await controllers.runAppEnvList(context, {});
+    const result = await controllers.runEnvList(context, {});
 
     expect(client.GET).toHaveBeenCalledWith(
       "/v1/environment-variables",
@@ -365,114 +353,11 @@ describe("app env list", () => {
         },
       }),
     );
-    expect(result.result.scope).toEqual({ kind: "class", class: "production" });
-  });
-
-  it("resolves --branch to a branchId and lists overrides for that branch", async () => {
-    const client = createMockClient();
-    client.GET
-      .mockResolvedValueOnce({
-        data: {
-          data: [
-            {
-              id: "branch_42",
-              type: "branch",
-              url: "https://api.example/v1/branches/branch_42",
-              gitName: "feature-auth",
-              isDefault: false,
-              createdAt: "2026-05-08T10:00:00.000Z",
-              updatedAt: "2026-05-08T10:00:00.000Z",
-              project: {
-                id: "proj_123",
-                url: "https://api.example/v1/projects/proj_123",
-                name: "demo",
-              },
-            },
-          ],
-          pagination: { hasMore: false, nextCursor: null },
-        },
-        response: { status: 200 },
-      })
-      .mockResolvedValueOnce({
-        data: {
-          data: [
-            makeVariableRow({
-              id: "envvar_o1",
-              key: "STRIPE_KEY",
-              branchId: "branch_42",
-              class: "preview",
-            }),
-          ],
-          pagination: { hasMore: false, nextCursor: null },
-        },
-        response: { status: 200 },
-      });
-
-    const { controllers, createTempCwd, createTestCommandContext } =
-      await loadControllers(client, "proj_123");
-    const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
-    const { context } = await createTestCommandContext({ cwd });
-
-    const result = await controllers.runAppEnvList(context, {
-      branchName: "feature-auth",
-    });
-
-    expect(client.GET).toHaveBeenNthCalledWith(
-      1,
-      "/v1/projects/{projectId}/branches",
-      expect.objectContaining({
-        params: {
-          path: { projectId: "proj_123" },
-          query: { gitName: "feature-auth" },
-        },
-      }),
-    );
-    expect(client.GET).toHaveBeenNthCalledWith(
-      2,
-      "/v1/environment-variables",
-      expect.objectContaining({
-        params: {
-          query: expect.objectContaining({
-            projectId: "proj_123",
-            class: "preview",
-            branchId: "branch_42",
-          }),
-        },
-      }),
-    );
-    expect(result.result.scope).toEqual({
-      kind: "branch",
-      name: "feature-auth",
-      id: "branch_42",
-    });
-    expect(result.result.variables).toHaveLength(1);
-  });
-
-  it("rejects --class and --branch supplied together", async () => {
-    // The mutex rule is enforced by a shared validator; pin it on
-    // every verb so a future refactor can't regress just one entry
-    // point silently.
-    const client = createMockClient();
-    const { controllers, createTempCwd, createTestCommandContext } =
-      await loadControllers(client, "proj_123");
-    const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
-    const { context } = await createTestCommandContext({ cwd });
-
-    await expect(
-      controllers.runAppEnvList(context, {
-        className: "production",
-        branchName: "feature-auth",
-      }),
-    ).rejects.toMatchObject({
-      summary: expect.stringContaining("mutually exclusive"),
-    });
-    expectNoApiCalls(client);
+    expect(result.result.scope).toEqual({ kind: "role", role: "production" });
   });
 });
 
-describe("app env unset", () => {
+describe("env rm", () => {
   it("looks up the row and DELETEs it on the happy path", async () => {
     const client = createMockClient();
     client.GET.mockResolvedValueOnce({
@@ -493,8 +378,8 @@ describe("app env unset", () => {
     await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
-    const result = await controllers.runAppEnvUnset(context, "STRIPE_KEY", {
-      className: "production",
+    const result = await controllers.runEnvRm(context, "STRIPE_KEY", {
+      roleName: "production",
     });
 
     expect(client.DELETE).toHaveBeenCalledWith(
@@ -505,7 +390,7 @@ describe("app env unset", () => {
     );
     expect(result.result).toEqual({
       projectId: "proj_123",
-      scope: { kind: "class", class: "production" },
+      scope: { kind: "role", role: "production" },
       key: "STRIPE_KEY",
     });
   });
@@ -524,8 +409,8 @@ describe("app env unset", () => {
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
-      controllers.runAppEnvUnset(context, "STRIPE_KEY", {
-        className: "production",
+      controllers.runEnvRm(context, "STRIPE_KEY", {
+        roleName: "production",
       }),
     ).rejects.toMatchObject({
       code: "ENV_VARIABLE_NOT_FOUND",
@@ -533,7 +418,7 @@ describe("app env unset", () => {
     expect(client.DELETE).not.toHaveBeenCalled();
   });
 
-  it("rejects neither --class nor --branch (fail-fast on writes)", async () => {
+  it("rejects when --role is not provided (fail-fast on writes)", async () => {
     const client = createMockClient();
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
@@ -542,103 +427,11 @@ describe("app env unset", () => {
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
-      controllers.runAppEnvUnset(context, "STRIPE_KEY", {}),
+      controllers.runEnvRm(context, "STRIPE_KEY", {}),
     ).rejects.toMatchObject({
-      summary: expect.stringContaining("requires --class or --branch"),
+      summary: expect.stringContaining("requires --role"),
     });
     expectNoApiCalls(client);
-  });
-
-  it("rejects --class and --branch supplied together", async () => {
-    const client = createMockClient();
-    const { controllers, createTempCwd, createTestCommandContext } =
-      await loadControllers(client, "proj_123");
-    const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
-    const { context } = await createTestCommandContext({ cwd });
-
-    await expect(
-      controllers.runAppEnvUnset(context, "STRIPE_KEY", {
-        className: "production",
-        branchName: "feature-auth",
-      }),
-    ).rejects.toMatchObject({
-      summary: expect.stringContaining("mutually exclusive"),
-    });
-    expectNoApiCalls(client);
-  });
-
-  it("DELETEs an existing branch-override row when --branch is supplied", async () => {
-    // Branch-override deletes don't share the gate that branch-override
-    // writes do: DELETE /v1/environment-variables/{envVarId} addresses a
-    // row by id and doesn't need the POST/PATCH body to carry a branchId.
-    // Pin that contract so we don't accidentally regress unset into the
-    // same "feature unavailable" branch the set path takes.
-    const client = createMockClient();
-    client.GET
-      .mockResolvedValueOnce({
-        // Branch name → id resolution.
-        data: {
-          data: [
-            {
-              id: "branch_42",
-              type: "branch",
-              url: "https://api.example/v1/branches/branch_42",
-              gitName: "feature-auth",
-              isDefault: false,
-              createdAt: "2026-05-08T10:00:00.000Z",
-              updatedAt: "2026-05-08T10:00:00.000Z",
-              project: {
-                id: "proj_123",
-                url: "https://api.example/v1/projects/proj_123",
-                name: "demo",
-              },
-            },
-          ],
-          pagination: { hasMore: false, nextCursor: null },
-        },
-        response: { status: 200 },
-      })
-      .mockResolvedValueOnce({
-        data: {
-          data: [
-            makeVariableRow({
-              id: "envvar_override",
-              key: "STRIPE_KEY",
-              branchId: "branch_42",
-              class: "preview",
-            }),
-          ],
-          pagination: { hasMore: false, nextCursor: null },
-        },
-        response: { status: 200 },
-      });
-    client.DELETE.mockResolvedValueOnce({
-      data: undefined,
-      response: { status: 204 },
-    });
-
-    const { controllers, createTempCwd, createTestCommandContext } =
-      await loadControllers(client, "proj_123");
-    const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
-    const { context } = await createTestCommandContext({ cwd });
-
-    const result = await controllers.runAppEnvUnset(context, "STRIPE_KEY", {
-      branchName: "feature-auth",
-    });
-
-    expect(client.DELETE).toHaveBeenCalledWith(
-      "/v1/environment-variables/{envVarId}",
-      expect.objectContaining({
-        params: { path: { envVarId: "envvar_override" } },
-      }),
-    );
-    expect(result.result).toEqual({
-      projectId: "proj_123",
-      scope: { kind: "branch", name: "feature-auth", id: "branch_42" },
-      key: "STRIPE_KEY",
-    });
   });
 });
 
@@ -700,11 +493,6 @@ function mockLegacyEnvDependencies(
   }));
 }
 
-/**
- * The `updateAppEnv` and `listAppEnvNames` provider methods return the
- * same record shape on the legacy happy path; share the factory so a
- * future field rename only has to touch one place.
- */
 const legacyEnvProviderResponse = () => ({
   projectId: "proj_123",
   app: {
@@ -763,9 +551,6 @@ describe("legacy env command deprecation warnings", () => {
   });
 
   it("prints a deprecation banner to stderr from `app list-env`", async () => {
-    // Parity with the `app update-env` deprecation test: the legacy
-    // `app list-env` command shares the same deprecation policy, so we
-    // pin it here too to guard against future drift in either direction.
     mockLegacyEnvDependencies({ listAppEnvNames: listAppEnvNamesHappyPath() });
 
     const { createTempCwd, createTestCommandContext } = await import("./helpers");

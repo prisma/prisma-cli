@@ -1,36 +1,36 @@
-export type AppEnvScopeDescriptor =
-  | { kind: "class"; class: "production" | "preview" }
-  | { kind: "branch"; name: string; id: string };
+export interface EnvScopeDescriptor {
+  kind: "role";
+  role: "production" | "preview";
+}
 
-export interface AppEnvVariableMetadata {
+export interface EnvVariableMetadata {
   id: string;
   key: string;
-  scope: AppEnvScopeDescriptor;
+  scope: EnvScopeDescriptor;
   isManagedBySystem: boolean;
   updatedAt: string;
 }
 
-export interface AppEnvSetResult {
+export interface EnvAddResult {
   projectId: string;
-  scope: AppEnvScopeDescriptor;
-  variable: AppEnvVariableMetadata;
-  /**
-   * `true` when the value of an existing variable was replaced;
-   * `false` when a new variable was created. Surfaced in JSON output
-   * so automation can distinguish create vs. replace without parsing
-   * stderr.
-   */
-  replaced: boolean;
+  scope: EnvScopeDescriptor;
+  variable: EnvVariableMetadata;
 }
 
-export interface AppEnvListResult {
+export interface EnvUpdateResult {
   projectId: string;
-  scope: AppEnvScopeDescriptor;
-  variables: AppEnvVariableMetadata[];
+  scope: EnvScopeDescriptor;
+  variable: EnvVariableMetadata;
 }
 
-export interface AppEnvUnsetResult {
+export interface EnvListResult {
   projectId: string;
-  scope: AppEnvScopeDescriptor;
+  scope: EnvScopeDescriptor;
+  variables: EnvVariableMetadata[];
+}
+
+export interface EnvRmResult {
+  projectId: string;
+  scope: EnvScopeDescriptor;
   key: string;
 }

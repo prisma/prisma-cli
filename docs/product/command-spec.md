@@ -12,6 +12,7 @@ The preview package includes these command groups:
 - `auth`
 - `project`
 - `branch`
+- `env`
 - `app`
 
 Out of scope for the current preview:
@@ -346,34 +347,31 @@ prisma-cli app deploy --app hello-world --build-type astro
 prisma-cli app deploy --app hello-world --build-type tanstack-start
 ```
 
-## `prisma-cli app env`
+## `prisma-cli env`
 
 Manage durable, platform-stored environment variables for the linked
 project. Replaces the legacy `prisma app update-env` / `prisma app
 list-env` workflow, which mutated env vars on a single Foundry version
-and is now deprecated. The new `app env` namespace operates on the
+and is now deprecated. The `env` namespace operates on the
 platform-managed `/v1/environment-variables` API; values are stored
 encrypted at rest and **never returned** by the platform — read-back
 is not supported in Beta.
 
 ### Scope flags
 
-Both `--class` and `--branch` are recognized on every `app env` verb:
+The `--role` flag is recognized on every `env` verb:
 
-- `--class <production|preview>` targets a project template.
-- `--branch <name>` targets a per-branch override (always against the
-  preview class — production overrides are forbidden by the platform).
-- The two flags are **mutually exclusive**.
-- For write verbs (`set`, `unset`), supplying neither flag is an error
+- `--role <production|preview>` targets a project template.
+- For write verbs (`add`, `update`, `rm`), `--role` is required
   so the CLI never silently writes to production.
-- For read verbs (`list`), neither flag defaults to `--class production`.
+- For read verbs (`list`), omitting `--role` defaults to `--role production`.
 
-### `prisma-cli app env set KEY=VALUE [--class <class> | --branch <name>]`
+### `prisma-cli env add KEY=VALUE --role <production|preview>`
 
 Purpose:
 
-- create a new environment variable, or replace the value of an
-  existing one, on the targeted scope.
+- create a new environment variable on the targeted scope. Fails if a
+  variable with the same key already exists.
 
 Behavior:
 
@@ -381,17 +379,40 @@ Behavior:
 - KEY=VALUE is parsed from a single positional; KEY must match
   `[A-Z_][A-Z0-9_]*`
 - if a variable with the same key already exists in the scope, the
-  value is replaced (idempotent upsert)
+  command fails with a clear error directing to `env update`
 - the response carries metadata only — the value is never echoed back
 
 Examples:
 
 ```bash
-prisma-cli app env set STRIPE_KEY=sk_test_xxx --class production
-prisma-cli app env set STRIPE_KEY=sk_test_xxx --class preview
+prisma-cli env add STRIPE_KEY=sk_test_xxx --role production
+prisma-cli env add STRIPE_KEY=sk_test_xxx --role preview
 ```
 
-### `prisma-cli app env list [--class <class> | --branch <name>]`
+### `prisma-cli env update KEY=VALUE --role <production|preview>`
+
+Purpose:
+
+- replace the value of an existing environment variable on the
+  targeted scope. Fails if no variable with the given key exists.
+
+Behavior:
+
+- requires auth and a linked project
+- KEY=VALUE is parsed from a single positional; KEY must match
+  `[A-Z_][A-Z0-9_]*`
+- if no variable with the key exists in the scope, the command fails
+  with a clear error directing to `env add`
+- the response carries metadata only — the value is never echoed back
+
+Examples:
+
+```bash
+prisma-cli env update STRIPE_KEY=sk_new_xxx --role production
+prisma-cli env update STRIPE_KEY=sk_new_xxx --role preview
+```
+
+### `prisma-cli env list [--role <production|preview>]`
 
 Purpose:
 
@@ -400,19 +421,18 @@ Purpose:
 Behavior:
 
 - requires auth and a linked project
-- defaults to `--class production` when no scope flag is supplied
-- never prints values (FR15 / never-reveal)
+- defaults to `--role production` when `--role` is not supplied
+- never prints values (never-reveal)
 - emits `key`, `id`, `last updated`, and a `scope` annotation per row
 
 Examples:
 
 ```bash
-prisma-cli app env list
-prisma-cli app env list --class preview
-prisma-cli app env list --branch feature-auth
+prisma-cli env list
+prisma-cli env list --role preview
 ```
 
-### `prisma-cli app env unset KEY [--class <class> | --branch <name>]`
+### `prisma-cli env rm KEY --role <production|preview>`
 
 Purpose:
 
@@ -427,13 +447,13 @@ Behavior:
 Examples:
 
 ```bash
-prisma-cli app env unset STRIPE_KEY --class production
-prisma-cli app env unset STRIPE_KEY --branch feature-auth
+prisma-cli env rm STRIPE_KEY --role production
+prisma-cli env rm STRIPE_KEY --role preview
 ```
 
 ## `prisma-cli app update-env --app <name> --env <name=value>`
 
-> **Deprecated.** Use `prisma-cli app env set` instead. The legacy command
+> **Deprecated.** Use `prisma-cli env add` instead. The legacy command
 > still works for backward compatibility but emits a deprecation
 > warning and will be removed in a future release.
 
@@ -458,7 +478,7 @@ prisma-cli app update-env --app hello-world --env DATABASE_URL=postgresql://anot
 
 ## `prisma-cli app list-env --app <name>`
 
-> **Deprecated.** Use `prisma-cli app env list` instead. The legacy command
+> **Deprecated.** Use `prisma-cli env list` instead. The legacy command
 > still works for backward compatibility but emits a deprecation
 > warning and will be removed in a future release.
 
