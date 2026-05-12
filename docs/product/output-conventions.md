@@ -157,7 +157,6 @@ Structure:
 
 │  <context-key>:  <context-value>
 │  <context-key>:  <context-value>
-│  mode:           apply
 │
 │  Read more       <docs-link>
 
@@ -168,7 +167,7 @@ Structure:
 
 Rules:
 
-- the header card shows execution context plus `mode: apply`
+- the header card shows execution context
 - the body uses `◇` while describing the operation and `✔` or `✘` for the final summary
 - detail lines are indented two spaces below the summary
 - warnings may follow the operation block when they materially affect the next user action
@@ -224,7 +223,6 @@ project link → Linking the current repo to an existing project.
 
 │  project:    Acme Dashboard
 │  workspace:  Acme Inc
-│  mode:       apply
 │
 │  Read more   docs/product/command-spec.md#prisma-cli-project-link-project
 ```

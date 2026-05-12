@@ -68,7 +68,6 @@ project link → Linking the current repo to an existing project.
 
 │  project:    Acme Dashboard
 │  workspace:  Acme Inc
-│  mode:       apply
 │
 │  Read more   docs/product/command-spec.md#prisma-cli-project-link-project
 ```

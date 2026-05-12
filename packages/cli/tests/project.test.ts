@@ -233,7 +233,7 @@ describe("project commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "project link → Linking the current repo to an existing project.\n\n│  project:    Acme Dashboard\n│  workspace:  Acme Inc\n│  mode:       apply\n\n◇ Applying local project link...\n✔ Applied 1 operation(s)\n  Project link written to local repo config.\n",
+      "project link → Linking the current repo to an existing project.\n\n│  project:    Acme Dashboard\n│  workspace:  Acme Inc\n\n◇ Applying local project link...\n✔ Applied 1 operation(s)\n  Project link written to local repo config.\n",
     );
     expect(await readPrismaConfig(cwd)).toContain('project: "proj_123"');
   });
