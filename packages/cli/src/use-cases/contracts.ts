@@ -7,6 +7,11 @@ export interface ProviderInfo {
   name: string;
 }
 
+export interface IdentityUser extends AuthUser {
+  id: string;
+  name: string;
+}
+
 export interface ProjectRecord extends ProjectSummary {
   workspaceId: string;
 }
@@ -33,9 +38,9 @@ export interface AuthSessionRecord {
 export interface IdentityGateway {
   listProviders(): ProviderInfo[];
   getProvider(providerId: string): ProviderInfo | undefined;
-  listUsersForProvider(providerId: AuthProviderId): AuthUser[];
-  getUser(userId: string): AuthUser | undefined;
-  getUserForProvider(providerId: AuthProviderId, userId: string): AuthUser | undefined;
+  listUsersForProvider(providerId: AuthProviderId): IdentityUser[];
+  getUser(userId: string): IdentityUser | undefined;
+  getUserForProvider(providerId: AuthProviderId, userId: string): IdentityUser | undefined;
   listUserWorkspaces(userId: string): AuthWorkspace[];
   getWorkspace(workspaceId: string): AuthWorkspace | undefined;
   getUserWorkspace(userId: string, workspaceId: string): AuthWorkspace | undefined;
@@ -93,8 +98,8 @@ export interface AuthUseCases {
   logout(): Promise<AuthStateResult>;
   listProviders(): Promise<ProviderInfo[]>;
   resolveProvider(providerId: string): Promise<ProviderInfo>;
-  listUsersForProvider(providerId: AuthProviderId): Promise<AuthUser[]>;
-  resolveUserForProvider(providerId: AuthProviderId, userId: string): Promise<AuthUser>;
+  listUsersForProvider(providerId: AuthProviderId): Promise<IdentityUser[]>;
+  resolveUserForProvider(providerId: AuthProviderId, userId: string): Promise<IdentityUser>;
   listWorkspacesForUser(userId: string): Promise<AuthWorkspace[]>;
   resolveWorkspaceForUser(userId: string, workspaceId: string): Promise<AuthWorkspace>;
 }
