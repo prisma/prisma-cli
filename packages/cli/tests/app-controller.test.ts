@@ -2060,11 +2060,41 @@ describe("app controller", () => {
     });
   });
 
-  it("returns FEATURE_UNAVAILABLE for logs in real mode", async () => {
+  it("logs streams the live deployment for the selected app", async () => {
+    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
     const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
+    ]);
+    const listDeployments = vi.fn().mockResolvedValue({
+      app: { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
+      deployments: [
+        { id: "dep_old", status: "stopped", createdAt: "2026-05-01T00:00:00Z", url: null, live: null },
+        { id: "dep_live", status: "running", createdAt: "2026-05-02T00:00:00Z", url: "https://example.prisma.app", live: null },
+      ],
+    });
+    const streamDeploymentLogs = vi.fn().mockImplementation(async (options: { onRecord(record: unknown): void }) => {
+      options.onRecord({ type: "log", text: "hello from live\n", byteStart: 0, byteEnd: 16 });
+    });
+
+    vi.doMock("../src/adapters/config", async () => {
+      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
+      return {
+        ...actual,
+        readLinkedProjectId,
+      };
+    });
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        listDeployments,
+        showDeployment: vi.fn(),
+        streamDeploymentLogs,
+      })),
     }));
 
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
@@ -2080,9 +2110,196 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppLogs(context, undefined, undefined)).rejects.toMatchObject({
-      code: "FEATURE_UNAVAILABLE",
+    const stdout = context.output.stdout as unknown as { buffer: string };
+
+    await runAppLogs(context, "hello-world", undefined);
+
+    expect(streamDeploymentLogs).toHaveBeenCalledWith(expect.objectContaining({
+      deploymentId: "dep_live",
+    }));
+    expect(stdout.buffer).toBe("hello from live\n");
+  });
+
+  it("logs streams an explicit deployment for the selected app", async () => {
+    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
+    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
+    ]);
+    const listDeployments = vi.fn().mockResolvedValue({
+      app: { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
+      deployments: [
+        { id: "dep_old", status: "stopped", createdAt: "2026-05-01T00:00:00Z", url: null, live: null },
+        { id: "dep_live", status: "running", createdAt: "2026-05-02T00:00:00Z", url: "https://example.prisma.app", live: null },
+      ],
+    });
+    const streamDeploymentLogs = vi.fn().mockImplementation(async (options: { onRecord(record: unknown): void }) => {
+      options.onRecord({ type: "log", text: "old log\n", byteStart: 0, byteEnd: 8 });
+    });
+
+    vi.doMock("../src/adapters/config", async () => {
+      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
+      return {
+        ...actual,
+        readLinkedProjectId,
+      };
+    });
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        listDeployments,
+        showDeployment: vi.fn(),
+        streamDeploymentLogs,
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppLogs } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context, stdout } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await runAppLogs(context, "hello-world", "dep_old");
+
+    expect(streamDeploymentLogs).toHaveBeenCalledWith(expect.objectContaining({
+      deploymentId: "dep_old",
+    }));
+    expect(stdout.buffer).toBe("old log\n");
+  });
+
+  it("logs rejects an explicit deployment that does not belong to the selected app", async () => {
+    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
+    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
+    ]);
+    const listDeployments = vi.fn().mockResolvedValue({
+      app: { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
+      deployments: [
+        { id: "dep_live", status: "running", createdAt: "2026-05-02T00:00:00Z", url: "https://example.prisma.app", live: null },
+      ],
+    });
+    const streamDeploymentLogs = vi.fn();
+
+    vi.doMock("../src/adapters/config", async () => {
+      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
+      return {
+        ...actual,
+        readLinkedProjectId,
+      };
+    });
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        listDeployments,
+        showDeployment: vi.fn(),
+        streamDeploymentLogs,
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppLogs } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppLogs(context, "hello-world", "dep_other")).rejects.toMatchObject({
+      code: "DEPLOYMENT_NOT_FOUND",
       domain: "app",
+    });
+    expect(streamDeploymentLogs).not.toHaveBeenCalled();
+  });
+
+  it("logs emits newline-delimited JSON events in --json mode", async () => {
+    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
+    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
+    ]);
+    const listDeployments = vi.fn().mockResolvedValue({
+      app: { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
+      deployments: [
+        { id: "dep_live", status: "running", createdAt: "2026-05-02T00:00:00Z", url: "https://example.prisma.app", live: null },
+      ],
+    });
+    const streamDeploymentLogs = vi.fn().mockImplementation(async (options: { onRecord(record: unknown): void }) => {
+      options.onRecord({ type: "log", text: "json log\n", byteStart: 0, byteEnd: 9 });
+      options.onRecord({ type: "terminal", kind: "end", code: "done", message: "done", retryable: false, cursor: null });
+    });
+
+    vi.doMock("../src/adapters/config", async () => {
+      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
+      return {
+        ...actual,
+        readLinkedProjectId,
+      };
+    });
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        listDeployments,
+        showDeployment: vi.fn(),
+        streamDeploymentLogs,
+      })),
+    }));
+
+    const { createTempCwd, executeCli } = await import("./helpers");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    const result = await executeCli({
+      argv: ["app", "logs", "--app", "hello-world", "--json"],
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_API_TOKEN: "token",
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const events = result.stdout.trim().split("\n").map((line) => JSON.parse(line));
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(events).toHaveLength(3);
+    expect(events[0]).toMatchObject({
+      type: "log",
+      command: "app.logs",
+      data: {
+        text: "json log\n",
+      },
+    });
+    expect(events[1]).toMatchObject({
+      type: "terminal",
+      command: "app.logs",
+    });
+    expect(events[2]).toMatchObject({
+      type: "success",
+      command: "app.logs",
     });
   });
 

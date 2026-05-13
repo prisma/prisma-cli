@@ -1,7 +1,7 @@
 import path from "node:path";
 
-import { ApiError, ComputeClient } from "@prisma/compute-sdk";
-import type { PortMapping } from "@prisma/compute-sdk";
+import { ApiError, CancelledError, ComputeClient, streamLogs } from "@prisma/compute-sdk";
+import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
 import { envVarNames } from "./env-vars";
@@ -93,9 +93,20 @@ export interface PreviewAppProvider {
     deployments: PreviewDeploymentRecord[];
   }>;
   showDeployment(deploymentId: string): Promise<PreviewShownDeploymentRecord | null>;
+  streamDeploymentLogs(options: {
+    deploymentId: string;
+    signal?: AbortSignal;
+    onRecord(record: StreamRecord): void;
+  }): Promise<void>;
 }
 
-export function createPreviewAppProvider(client: ManagementApiClient): PreviewAppProvider {
+export function createPreviewAppProvider(
+  client: ManagementApiClient,
+  options?: {
+    baseUrl?: string;
+    getToken?: () => Promise<string>;
+  },
+): PreviewAppProvider {
   const sdk = new ComputeClient(client);
 
   return {
@@ -372,6 +383,30 @@ export function createPreviewAppProvider(client: ManagementApiClient): PreviewAp
           live: null,
         },
       };
+    },
+
+    async streamDeploymentLogs(streamOptions) {
+      if (!options?.baseUrl || !options.getToken) {
+        throw new Error("Log streaming requires an authenticated API base URL and token.");
+      }
+
+      const result = await streamLogs(
+        {
+          baseUrl: options.baseUrl,
+          token: await options.getToken(),
+          versionId: streamOptions.deploymentId,
+          signal: streamOptions.signal,
+        },
+        streamOptions.onRecord,
+      );
+
+      if (result.isErr()) {
+        if (CancelledError.is(result.error)) {
+          return;
+        }
+
+        throw result.error;
+      }
     },
   };
 }

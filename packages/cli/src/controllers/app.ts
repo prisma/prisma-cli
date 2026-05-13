@@ -1,13 +1,15 @@
 import path from "node:path";
 
 import open from "open";
-import type { PortMapping } from "@prisma/compute-sdk";
+import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";
 
 import { UnsafeConfigWriteError, assertLinkedProjectIdWritable, readLinkedProjectId, writeLinkedProjectId } from "../adapters/config";
+import { FileTokenStorage } from "../adapters/token-storage";
 import { authRequiredError, CliError, featureUnavailableError, usageError } from "../shell/errors";
-import type { CommandSuccess } from "../shell/output";
+import { writeJsonEvent, type CommandSuccess } from "../shell/output";
 import { canPrompt, type CommandContext } from "../shell/runtime";
 import { textPrompt } from "../shell/prompt";
+import { renderCommandHeader } from "../shell/ui";
 import type {
   AppBuildResult,
   AppDeployResult,
@@ -24,6 +26,7 @@ import type {
   AppUpdateEnvResult,
 } from "../types/app";
 import { requireComputeAuth } from "../lib/auth/guard";
+import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
 import { parseEnvAssignments } from "../lib/app/env-vars";
 import {
   DEFAULT_LOCAL_DEV_PORT,
@@ -649,14 +652,196 @@ export async function runAppOpen(
 
 export async function runAppLogs(
   context: CommandContext,
-  _appName: string | undefined,
-  _deploymentId: string | undefined,
-): Promise<never> {
+  appName: string | undefined,
+  deploymentId: string | undefined,
+): Promise<void> {
   ensurePreviewAppMode(context);
-  throw blockedPreviewAppCommandError(
-    "App logs are not available in this preview",
-    "The current preview cannot stream app logs yet.",
+
+  const projectId = await requireLinkedProjectId(context);
+  const provider = await requirePreviewAppProvider(context);
+  const target = deploymentId
+    ? await resolveExplicitLogDeployment(context, provider, projectId, appName, deploymentId)
+    : await resolveLiveLogDeployment(context, provider, projectId, appName);
+
+  if (!context.flags.json && !context.flags.quiet) {
+    const lines = renderCommandHeader(context.ui, {
+      commandLabel: "app logs",
+      description: "Streaming logs for the selected deployment.",
+      docsPath: "docs/product/command-spec.md#prisma-cli-app-logs---app-name---deployment-id",
+      rows: [
+        { key: "project", value: projectId },
+        { key: "app", value: target.app.name },
+        { key: "deployment", value: target.deployment.id },
+      ],
+    });
+    if (lines.length > 0) {
+      context.output.stderr.write(`${lines.join("\n")}\n`);
+    }
+  }
+
+  await provider.streamDeploymentLogs({
+    deploymentId: target.deployment.id,
+    onRecord: (record) => writeLogRecord(context, record),
+  }).catch((error) => {
+    throw deployFailedError("Failed to stream app logs", error, [
+      `prisma-cli app show-deploy ${target.deployment.id}`,
+      "prisma-cli app list-deploys",
+    ]);
+  });
+}
+
+async function resolveExplicitLogDeployment(
+  context: CommandContext,
+  provider: ReturnType<typeof createPreviewAppProvider>,
+  projectId: string,
+  appName: string | undefined,
+  deploymentId: string,
+): Promise<{ app: PreviewAppRecord; deployment: AppDeploymentSummary }> {
+  if (appName) {
+    const apps = await listApps(context, provider, projectId);
+    const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
+
+    if (!selectedApp) {
+      throw noDeploymentsError(
+        "No deployments available to stream logs",
+        "The linked project does not have any deployed app yet.",
+      );
+    }
+
+    const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+      throw deployFailedError("Failed to list app deployments", error, ["prisma-cli app list-deploys"]);
+    });
+    const deployment = requireDeploymentForApp(deploymentsResult.deployments, deploymentId, selectedApp.name);
+
+    await context.stateStore.setSelectedApp(projectId, {
+      id: deploymentsResult.app.id,
+      name: deploymentsResult.app.name,
+    });
+
+    return {
+      app: deploymentsResult.app,
+      deployment,
+    };
+  }
+
+  const shown = await provider.showDeployment(deploymentId).catch((error) => {
+    throw deployFailedError("Failed to show deployment", error, ["prisma-cli app list-deploys"]);
+  });
+
+  if (!shown) {
+    throw new CliError({
+      code: "DEPLOYMENT_NOT_FOUND",
+      domain: "app",
+      summary: `Deployment "${deploymentId}" not found`,
+      why: "The requested deployment does not exist or is no longer available.",
+      fix: "Run prisma-cli app list-deploys to choose an available deployment id.",
+      exitCode: 1,
+      nextSteps: ["prisma-cli app list-deploys"],
+    });
+  }
+
+  if (!shown.app) {
+    throw new CliError({
+      code: "DEPLOYMENT_NOT_FOUND",
+      domain: "app",
+      summary: `Deployment "${deploymentId}" is not attached to an app`,
+      why: "The requested deployment could be found, but its app could not be resolved.",
+      fix: "Run prisma-cli app list-deploys to choose an available deployment id for the selected app.",
+      exitCode: 1,
+      nextSteps: ["prisma-cli app list-deploys"],
+    });
+  }
+
+  const apps = await listApps(context, provider, projectId);
+  const linkedProjectApp = apps.find((app) => app.id === shown.app?.id);
+  if (!linkedProjectApp) {
+    throw new CliError({
+      code: "DEPLOYMENT_NOT_FOUND",
+      domain: "app",
+      summary: `Deployment "${deploymentId}" not found in the linked project`,
+      why: "The requested deployment does not belong to an app in the linked project.",
+      fix: "Run prisma-cli app list-deploys to choose an available deployment id for this project.",
+      exitCode: 1,
+      nextSteps: ["prisma-cli app list-deploys"],
+    });
+  }
+
+  await context.stateStore.setSelectedApp(projectId, {
+    id: linkedProjectApp.id,
+    name: linkedProjectApp.name,
+  });
+
+  return {
+    app: linkedProjectApp,
+    deployment: shown.deployment,
+  };
+}
+
+async function resolveLiveLogDeployment(
+  context: CommandContext,
+  provider: ReturnType<typeof createPreviewAppProvider>,
+  projectId: string,
+  appName: string | undefined,
+): Promise<{ app: PreviewAppRecord; deployment: AppDeploymentSummary }> {
+  const apps = await listApps(context, provider, projectId);
+  const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
+
+  if (!selectedApp) {
+    throw noDeploymentsError(
+      "No deployments available to stream logs",
+      "The linked project does not have any deployed app yet.",
+    );
+  }
+
+  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+    throw deployFailedError("Failed to list app deployments", error, ["prisma-cli app list-deploys"]);
+  });
+  const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
+    context,
+    projectId,
+    deploymentsResult.app,
+    deploymentsResult.deployments,
   );
+  const deployments = applyLiveDeploymentHint(deploymentsResult.deployments, currentLiveDeploymentId);
+  const deployment = currentLiveDeploymentId
+    ? deployments.find((candidate) => candidate.id === currentLiveDeploymentId) ?? null
+    : null;
+
+  await context.stateStore.setSelectedApp(projectId, {
+    id: deploymentsResult.app.id,
+    name: deploymentsResult.app.name,
+  });
+
+  if (!deployment) {
+    throw noDeploymentsError(
+      "No deployments available to stream logs",
+      `The selected app "${deploymentsResult.app.name}" does not have any deployments yet.`,
+    );
+  }
+
+  return {
+    app: deploymentsResult.app,
+    deployment,
+  };
+}
+
+function writeLogRecord(context: CommandContext, record: StreamRecord): void {
+  if (context.flags.json) {
+    writeJsonEvent(context.output, {
+      type: record.type,
+      command: "app.logs",
+      timestamp: new Date().toISOString(),
+      data: record,
+    });
+    return;
+  }
+
+  if (record.type === "log") {
+    context.output.stdout.write(record.text);
+    if (!record.text.endsWith("\n")) {
+      context.output.stdout.write("\n");
+    }
+  }
 }
 
 export async function runAppPromote(
@@ -1156,7 +1341,29 @@ async function requirePreviewAppProvider(context: CommandContext) {
     throw authRequiredError(["prisma-cli auth login"]);
   }
 
-  return createPreviewAppProvider(client);
+  return createPreviewAppProvider(client, createPreviewLogAuthOptions(context.runtime.env));
+}
+
+function createPreviewLogAuthOptions(env: NodeJS.ProcessEnv) {
+  const rawToken = env[SERVICE_TOKEN_ENV_VAR]?.trim();
+  if (rawToken) {
+    return {
+      baseUrl: getApiBaseUrl(env),
+      getToken: async () => rawToken,
+    };
+  }
+
+  const tokenStorage = new FileTokenStorage(env);
+  return {
+    baseUrl: getApiBaseUrl(env),
+    getToken: async () => {
+      const tokens = await tokenStorage.getTokens();
+      if (!tokens) {
+        throw new Error("Authentication token is no longer available. Run prisma-cli auth login and try again.");
+      }
+      return tokens.accessToken;
+    },
+  };
 }
 
 async function requireLinkedProjectId(context: CommandContext): Promise<string> {
@@ -1348,16 +1555,6 @@ function ensurePreviewAppMode(context: CommandContext) {
     "Preview app commands require live app deployment integration.",
     "Rerun without fixture mode enabled to use preview app deployment workflows.",
     ["prisma-cli auth login", "prisma-cli project link"],
-    "app",
-  );
-}
-
-function blockedPreviewAppCommandError(summary: string, why: string) {
-  return featureUnavailableError(
-    summary,
-    why,
-    "Use prisma-cli app show, prisma-cli app open, prisma-cli app deploy, or prisma-cli app list-deploys in the current preview.",
-    ["prisma-cli app show", "prisma-cli app list-deploys"],
     "app",
   );
 }

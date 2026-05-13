@@ -43,7 +43,7 @@ import {
 } from "../../presenters/app";
 import { attachCommandDescriptor } from "../../shell/command-meta";
 import { addCompactGlobalFlags, addGlobalFlags } from "../../shell/global-flags";
-import { runCommand } from "../../shell/command-runner";
+import { runCommand, runStreamingCommand } from "../../shell/command-runner";
 import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
 import { PREVIEW_BUILD_TYPES } from "../../lib/app/preview-build";
 import type {
@@ -330,14 +330,11 @@ function createLogsCommand(runtime: CliRuntime): Command {
     const appName = (options as { app?: string }).app;
     const deploymentId = (options as { deployment?: string }).deployment;
 
-    await runCommand<never>(
+    await runStreamingCommand(
       runtime,
       "app.logs",
       options as Record<string, unknown>,
       (context) => runAppLogs(context, appName, deploymentId),
-      {
-        renderHuman: () => [],
-      },
     );
   });
 
