@@ -71,7 +71,6 @@ export interface BranchStateGateway {
 
 export interface ProjectStateGateway {
   readRememberedProjectId(): Promise<string | null>;
-  rememberProjectId(projectId: string): Promise<void>;
 }
 
 export interface LoginSelection {

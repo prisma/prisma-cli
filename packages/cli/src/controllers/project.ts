@@ -1,6 +1,6 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
-import { authRequiredError } from "../shell/errors";
+import { authRequiredError, workspaceRequiredError } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
 import type { CommandContext } from "../shell/runtime";
 import type { AuthWorkspace } from "../types/auth";
@@ -23,7 +23,7 @@ export async function runProjectList(context: CommandContext): Promise<CommandSu
   const authState = await requireAuthenticatedAuthState(context);
   const workspace = authState.workspace;
   if (!workspace) {
-    throw authRequiredError();
+    throw workspaceRequiredError();
   }
 
   if (isRealMode(context)) {
@@ -61,7 +61,7 @@ export async function runProjectShow(
   const authState = await requireAuthenticatedAuthState(context);
   const workspace = authState.workspace;
   if (!workspace) {
-    throw authRequiredError();
+    throw workspaceRequiredError();
   }
 
   const result = isRealMode(context)

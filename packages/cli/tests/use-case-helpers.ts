@@ -72,9 +72,6 @@ export async function createUseCaseGateways(options?: {
       },
       projectStateGateway: {
         readRememberedProjectId: async () => projectId,
-        rememberProjectId: async (nextProjectId) => {
-          projectId = nextProjectId;
-        },
       },
       sessionGateway: {
         readAuthSession: async () => authSession,

@@ -8,7 +8,7 @@ import {
   type EnvVarRole,
 } from "../lib/app/env-config";
 import { requireComputeAuth } from "../lib/auth/guard";
-import { authRequiredError, CliError, usageError } from "../shell/errors";
+import { authRequiredError, CliError, usageError, workspaceRequiredError } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
 import type { CommandContext } from "../shell/runtime";
 import { resolveProjectTarget } from "../lib/project/resolution";
@@ -261,8 +261,11 @@ async function requireClientAndProject(
 ): Promise<{ client: ManagementApiClient; projectId: string }> {
   const authState = await requireAuthenticatedAuthState(context);
   const client = await requireComputeAuth(context.runtime.env);
-  if (!client || !authState.workspace) {
-    throw authRequiredError(["prisma auth login"]);
+  if (!client) {
+    throw authRequiredError(["prisma-cli auth login"]);
+  }
+  if (!authState.workspace) {
+    throw workspaceRequiredError();
   }
 
   const target = await resolveProjectTarget({

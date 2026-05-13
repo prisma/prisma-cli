@@ -3,7 +3,7 @@ import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
 import { FileTokenStorage } from "../adapters/token-storage";
-import { authRequiredError, CliError, featureUnavailableError, usageError } from "../shell/errors";
+import { authRequiredError, CliError, featureUnavailableError, usageError, workspaceRequiredError } from "../shell/errors";
 import { writeJsonEvent, type CommandSuccess } from "../shell/output";
 import { canPrompt, type CommandContext } from "../shell/runtime";
 import { textPrompt } from "../shell/prompt";
@@ -27,6 +27,7 @@ import type { AuthWorkspace } from "../types/auth";
 import type { BranchKind } from "../types/branch";
 import type { ProjectResolution, ProjectSummary } from "../types/project";
 import { requireComputeAuth } from "../lib/auth/guard";
+import { readAuthState } from "../lib/auth/auth-ops";
 import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
 import { parseEnvAssignments } from "../lib/app/env-vars";
 import {
@@ -177,11 +178,9 @@ export async function runAppDeploy(
       commandName: "deploy",
     }),
   );
-  const { client, provider } = await requirePreviewAppProviderWithClient(context);
-  const target = await resolveProjectContext(context, client, provider, options?.projectRef, {
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, options?.projectRef, {
     allowCreate: true,
   });
-  const projectId = target.project.id;
   const apps = await listApps(context, provider, projectId);
   const selectedApp = await resolveDeploySelection(context, projectId, apps, appName);
 
@@ -556,7 +555,8 @@ export async function runAppShowDeploy(
     });
   }
 
-  const rememberedProject = deployment?.app ? await context.stateStore.readLastResolvedProject() : null;
+  const workspaceId = deployment?.app ? await readCurrentWorkspaceId(context) : null;
+  const rememberedProject = workspaceId ? await context.stateStore.readRememberedProject(workspaceId) : null;
   const knownLiveDeploymentId = deployment?.app && rememberedProject
     ? await context.stateStore.readKnownLiveDeployment(rememberedProject.id, deployment.app.id)
     : null;
@@ -1407,6 +1407,7 @@ async function requireProviderAndProjectContext(
   explicitProject: string | undefined,
   options?: { allowCreate?: boolean },
 ): Promise<{
+  client: ManagementApiClient;
   provider: ReturnType<typeof createPreviewAppProvider>;
   target: ResolvedAppProjectContext;
   projectId: string;
@@ -1414,6 +1415,7 @@ async function requireProviderAndProjectContext(
   const { client, provider } = await requirePreviewAppProviderWithClient(context);
   const target = await resolveProjectContext(context, client, provider, explicitProject, options);
   return {
+    client,
     provider,
     target,
     projectId: target.project.id,
@@ -1429,7 +1431,7 @@ async function resolveProjectContext(
 ): Promise<ResolvedAppProjectContext> {
   const authState = await requireAuthenticatedAuthState(context);
   if (!authState.workspace) {
-    throw authRequiredError(["prisma-cli auth login"]);
+    throw workspaceRequiredError();
   }
 
   const resolved = await resolveProjectTarget({
@@ -1466,6 +1468,16 @@ async function resolveProjectContext(
 
 function toBranchKind(name: string): BranchKind {
   return name === "production" ? "production" : "preview";
+}
+
+async function readCurrentWorkspaceId(context: CommandContext): Promise<string | null> {
+  const state = await context.stateStore.read();
+  if (state.auth?.workspaceId) {
+    return state.auth.workspaceId;
+  }
+
+  const authState = await readAuthState(context.runtime.env);
+  return authState.workspace?.id ?? null;
 }
 
 function normalizeBuildType(requestedBuildType: string | undefined): PreviewBuildType {

@@ -179,6 +179,23 @@ describe("project commands", () => {
     expect(JSON.parse(result.stdout).error.code).toBe("PROJECT_UNRESOLVED");
   });
 
+  it("treats a primitive package.json root as missing package metadata", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writeFile(path.join(cwd, "package.json"), "null\n", "utf8");
+    await login(cwd, stateDir);
+
+    const result = await executeCli({
+      argv: ["project", "show", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).error.code).toBe("PROJECT_UNRESOLVED");
+  });
+
   it("does not prompt for project selection in interactive human mode", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");

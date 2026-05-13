@@ -68,13 +68,6 @@ export function createCliUseCaseGateways(context: CommandContext): CliUseCaseGat
         const remembered = await context.stateStore.readLastResolvedProject();
         return remembered?.id ?? null;
       },
-      rememberProjectId: async (projectId) => {
-        await context.stateStore.setRememberedProject({
-          id: projectId,
-          name: projectId,
-          workspaceId: "unknown",
-        });
-      },
     },
     sessionGateway: {
       readAuthSession: async () => {

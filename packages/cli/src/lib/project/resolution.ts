@@ -156,8 +156,12 @@ export function localStateStaleError(): CliError {
 export async function readPackageName(cwd: string): Promise<string | null> {
   try {
     const raw = await readFile(path.join(cwd, "package.json"), "utf8");
-    const parsed = JSON.parse(raw) as { name?: unknown };
-    return typeof parsed.name === "string" && parsed.name.trim().length > 0 ? parsed.name.trim() : null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    const packageName = "name" in parsed ? parsed.name : null;
+    return typeof packageName === "string" && packageName.trim().length > 0 ? packageName.trim() : null;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return null;

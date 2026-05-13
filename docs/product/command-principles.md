@@ -83,9 +83,7 @@ Change local CLI context only.
 
 `use` must never mutate a remote resource.
 
-`use` changes local active context only:
-
-- `use` changes local active context only
+`use` changes local active context only.
 
 Example:
 
