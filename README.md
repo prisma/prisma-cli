@@ -150,11 +150,11 @@ the release owner explicitly asks you to do so.
 
 For a preview release:
 
-1. Open a PR that bumps `packages/cli/package.json` to the next
-   `3.0.0-alpha.N` version.
-2. Merge the PR to `main`.
-3. Run the `Release CLI` GitHub Actions workflow with `dry_run: true`.
-4. Run the same workflow with `dry_run: false`.
+1. Run the `Prepare CLI Release` GitHub Actions workflow with `dry_run: true`.
+2. Run the same workflow with `dry_run: false` to open a version bump PR.
+3. Merge the PR to `main`.
+4. Run the `Release CLI` GitHub Actions workflow with `dry_run: true`.
+5. Run the same workflow with `dry_run: false`.
 
 If a release workflow fails after the npm publish step, check npm before
 rerunning. The package version may already be published even if tag creation
