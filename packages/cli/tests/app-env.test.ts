@@ -180,6 +180,7 @@ describe("env add", () => {
     ).rejects.toMatchObject({
       summary: expect.stringContaining("missing the = separator"),
     });
+    expectNoApiCalls(client);
   });
 
   it("rejects keys that don't match POSIX env-var shape", async () => {
@@ -197,6 +198,7 @@ describe("env add", () => {
     ).rejects.toMatchObject({
       summary: expect.stringContaining("POSIX env-var shape"),
     });
+    expectNoApiCalls(client);
   });
 });
 
