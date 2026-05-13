@@ -20,23 +20,31 @@ export function writeJsonSuccess<T>(output: CliOutput, success: CommandSuccess<T
   output.stdout.write(`${JSON.stringify({ ok: true, ...success }, null, 2)}\n`);
 }
 
+export function writeJsonEvent(output: CliOutput, event: Record<string, unknown>): void {
+  output.stdout.write(`${JSON.stringify(event)}\n`);
+}
+
+export function cliErrorToJson(error: CliError) {
+  return {
+    code: error.code,
+    domain: error.domain,
+    severity: error.severity,
+    summary: error.summary,
+    why: error.why,
+    fix: error.fix,
+    where: error.where,
+    meta: error.meta,
+    docsUrl: error.docsUrl,
+  };
+}
+
 export function writeJsonError(output: CliOutput, command: string, error: CliError): void {
   output.stdout.write(
     `${JSON.stringify(
       {
         ok: false,
         command,
-        error: {
-          code: error.code,
-          domain: error.domain,
-          severity: error.severity,
-          summary: error.summary,
-          why: error.why,
-          fix: error.fix,
-          where: error.where,
-          meta: error.meta,
-          docsUrl: error.docsUrl,
-        },
+        error: cliErrorToJson(error),
         warnings: [],
         nextSteps: error.nextSteps,
       },

@@ -546,8 +546,12 @@ Purpose:
 Behavior:
 
 - requires auth and project context
-- resolves the selected app and deployment
-- returns `FEATURE_UNAVAILABLE` when logs are unavailable in the current preview
+- resolves the selected app and the deployment currently serving live traffic
+- streams raw app log lines to stdout in human mode
+- writes CLI status and errors to stderr
+- when `--deployment` is provided, streams logs for that exact deployment
+- when both `--app` and `--deployment` are provided, verifies the deployment belongs to the selected app
+- returns `FEATURE_UNAVAILABLE` only when the platform cannot provide logs for the resolved deployment
 
 Examples:
 

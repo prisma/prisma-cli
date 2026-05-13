@@ -345,6 +345,10 @@ Required conventions:
 - the final event is either success or error
 - non-streaming commands should continue to use a single JSON object rather than NDJSON
 
+In human mode, `app logs` is a special case: raw app log lines are the primary
+streamed payload and go to stdout so they can be piped or redirected. CLI
+context, status, decoration, and errors stay on stderr.
+
 ## Data Conventions
 
 - ids are opaque and stable

@@ -65,6 +65,12 @@ describe("app commands", () => {
       stateDir,
       fixturePath,
     });
+    const logsHelp = await executeCli({
+      argv: ["app", "logs", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
     const listDeploysHelp = await executeCli({
       argv: ["app", "list-deploys", "--help"],
       cwd,
@@ -136,6 +142,10 @@ describe("app commands", () => {
     expect(openHelp.exitCode).toBe(0);
     expect(openHelp.stderr).toContain("Open the app's live URL");
     expect(openHelp.stderr).toContain("$ prisma-cli app open");
+
+    expect(logsHelp.exitCode).toBe(0);
+    expect(logsHelp.stderr).toContain("Stream logs for the app's current deployment");
+    expect(logsHelp.stderr).toContain("$ prisma-cli app logs --deployment dep_123");
 
     expect(listDeploysHelp.exitCode).toBe(0);
     expect(listDeploysHelp.stderr).toContain("List deployments for the app");
