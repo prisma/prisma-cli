@@ -12,6 +12,7 @@ import { addCompactGlobalFlags, addGlobalFlags } from "../../shell/global-flags"
 import { runCommand } from "../../shell/command-runner";
 import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
 import type { ProjectListResult, ProjectShowResult } from "../../types/project";
+import { createEnvCommand } from "../env";
 
 export function createProjectCommand(runtime: CliRuntime): Command {
   const project = attachCommandDescriptor(configureRuntimeCommand(new Command("project"), runtime), "project");
@@ -21,6 +22,7 @@ export function createProjectCommand(runtime: CliRuntime): Command {
   project.addCommand(createProjectListCommand(runtime));
   project.addCommand(createProjectShowCommand(runtime));
   project.addCommand(createProjectLinkCommand(runtime));
+  project.addCommand(createEnvCommand(runtime));
 
   return project;
 }

@@ -10,9 +10,8 @@ truth for command names, target resolution, and structured behavior.
 The preview package includes these command groups:
 
 - `auth`
-- `project`
+- `project` (includes `project env` subgroup)
 - `branch`
-- `env`
 - `app`
 
 Out of scope for the current preview:
@@ -347,7 +346,7 @@ prisma-cli app deploy --app hello-world --build-type astro
 prisma-cli app deploy --app hello-world --build-type tanstack-start
 ```
 
-## `prisma-cli env`
+## `prisma-cli project env`
 
 Manage durable, platform-stored environment variables for the linked
 project. Replaces the legacy `prisma app update-env` / `prisma app
@@ -366,7 +365,7 @@ The `--role` flag is recognized on every `env` verb:
   so the CLI never silently writes to production.
 - For read verbs (`list`), omitting `--role` defaults to `--role production`.
 
-### `prisma-cli env add KEY=VALUE --role <production|preview>`
+### `prisma-cli project env add KEY=VALUE --role <production|preview>`
 
 Purpose:
 
@@ -385,11 +384,11 @@ Behavior:
 Examples:
 
 ```bash
-prisma-cli env add STRIPE_KEY=sk_test_xxx --role production
-prisma-cli env add STRIPE_KEY=sk_test_xxx --role preview
+prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production
+prisma-cli project env add STRIPE_KEY=sk_test_xxx --role preview
 ```
 
-### `prisma-cli env update KEY=VALUE --role <production|preview>`
+### `prisma-cli project env update KEY=VALUE --role <production|preview>`
 
 Purpose:
 
@@ -408,11 +407,11 @@ Behavior:
 Examples:
 
 ```bash
-prisma-cli env update STRIPE_KEY=sk_new_xxx --role production
-prisma-cli env update STRIPE_KEY=sk_new_xxx --role preview
+prisma-cli project env update STRIPE_KEY=sk_new_xxx --role production
+prisma-cli project env update STRIPE_KEY=sk_new_xxx --role preview
 ```
 
-### `prisma-cli env list [--role <production|preview>]`
+### `prisma-cli project env list [--role <production|preview>]`
 
 Purpose:
 
@@ -428,11 +427,11 @@ Behavior:
 Examples:
 
 ```bash
-prisma-cli env list
-prisma-cli env list --role preview
+prisma-cli project env list
+prisma-cli project env list --role preview
 ```
 
-### `prisma-cli env rm KEY --role <production|preview>`
+### `prisma-cli project env rm KEY --role <production|preview>`
 
 Purpose:
 
@@ -447,13 +446,13 @@ Behavior:
 Examples:
 
 ```bash
-prisma-cli env rm STRIPE_KEY --role production
-prisma-cli env rm STRIPE_KEY --role preview
+prisma-cli project env rm STRIPE_KEY --role production
+prisma-cli project env rm STRIPE_KEY --role preview
 ```
 
 ## `prisma-cli app update-env --app <name> --env <name=value>`
 
-> **Deprecated.** Use `prisma-cli env add` instead. The legacy command
+> **Deprecated.** Use `prisma-cli project env add` instead. The legacy command
 > still works for backward compatibility but emits a deprecation
 > warning and will be removed in a future release.
 
@@ -478,7 +477,7 @@ prisma-cli app update-env --app hello-world --env DATABASE_URL=postgresql://anot
 
 ## `prisma-cli app list-env --app <name>`
 
-> **Deprecated.** Use `prisma-cli env list` instead. The legacy command
+> **Deprecated.** Use `prisma-cli project env list` instead. The legacy command
 > still works for backward compatibility but emits a deprecation
 > warning and will be removed in a future release.
 

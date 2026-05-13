@@ -32,8 +32,8 @@ export function resolveEnvScope(
         "--role accepts production or preview.",
         "Pass --role production or --role preview.",
         [
-          `prisma-cli env ${options.command} --role production`,
-          `prisma-cli env ${options.command} --role preview`,
+          `prisma-cli project env ${options.command} --role production`,
+          `prisma-cli project env ${options.command} --role preview`,
         ],
         "app",
       );
@@ -45,12 +45,12 @@ export function resolveEnvScope(
   if (options.requireExplicit) {
     const positional = positionalHint(options.command);
     throw usageError(
-      `prisma-cli env ${options.command} requires --role`,
+      `prisma-cli project env ${options.command} requires --role`,
       "Writing without an explicit scope is rejected so the command never silently targets production.",
       "Pass --role production or --role preview.",
       [
-        `prisma-cli env ${options.command} ${positional}--role production`,
-        `prisma-cli env ${options.command} ${positional}--role preview`,
+        `prisma-cli project env ${options.command} ${positional}--role production`,
+        `prisma-cli project env ${options.command} ${positional}--role preview`,
       ],
       "app",
     );
@@ -65,10 +65,10 @@ export function parseKeyValuePositional(
 ): { key: string; value: string } {
   if (!raw) {
     throw usageError(
-      `prisma-cli env ${command} requires KEY=VALUE`,
+      `prisma-cli project env ${command} requires KEY=VALUE`,
       "No KEY=VALUE positional argument was supplied.",
       "Pass the variable as KEY=VALUE, e.g. STRIPE_KEY=sk_test_xxx.",
-      [`prisma-cli env ${command} STRIPE_KEY=sk_test_xxx --role production`],
+      [`prisma-cli project env ${command} STRIPE_KEY=sk_test_xxx --role production`],
       "app",
     );
   }
@@ -79,7 +79,7 @@ export function parseKeyValuePositional(
       `KEY=VALUE argument is missing the = separator`,
       `"${raw}" does not contain an = character.`,
       "Pass the variable as KEY=VALUE, e.g. STRIPE_KEY=sk_test_xxx.",
-      [`prisma-cli env ${command} STRIPE_KEY=sk_test_xxx --role production`],
+      [`prisma-cli project env ${command} STRIPE_KEY=sk_test_xxx --role production`],
       "app",
     );
   }
@@ -93,8 +93,8 @@ export function parseKeyValuePositional(
     throw usageError(
       `KEY=VALUE argument has an empty value`,
       `"${raw}" has an empty value after the = separator.`,
-      `Pass a non-empty value, or use prisma-cli env rm to remove a variable.`,
-      [`prisma-cli env ${command} ${key}=value --role production`],
+      `Pass a non-empty value, or use prisma-cli project env rm to remove a variable.`,
+      [`prisma-cli project env ${command} ${key}=value --role production`],
       "app",
     );
   }
@@ -113,7 +113,7 @@ export function validateKey(
       `Variable key cannot be empty`,
       "An empty key was passed.",
       "Pass an env-var key, e.g. STRIPE_KEY.",
-      [`prisma-cli env ${command} STRIPE_KEY${command === "rm" ? "" : "=value"} --role production`],
+      [`prisma-cli project env ${command} STRIPE_KEY${command === "rm" ? "" : "=value"} --role production`],
       "app",
     );
   }
@@ -133,7 +133,7 @@ export function validateKey(
       `Variable key "${key}" must match the POSIX env-var shape`,
       "Keys must start with an uppercase letter or underscore and contain only uppercase letters, digits, and underscores.",
       "Rename the key to match [A-Z_][A-Z0-9_]*.",
-      [`prisma-cli env ${command} STRIPE_KEY${command === "rm" ? "" : "=value"} --role production`],
+      [`prisma-cli project env ${command} STRIPE_KEY${command === "rm" ? "" : "=value"} --role production`],
       "app",
     );
   }

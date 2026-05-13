@@ -49,10 +49,10 @@ export async function runEnvAdd(
   const scope = resolveEnvScope(flags, { requireExplicit: true, command: "add" });
   if (!scope) {
     throw usageError(
-      `prisma-cli env add requires --role`,
+      `prisma-cli project env add requires --role`,
       "Writing without an explicit scope is rejected.",
       "Pass --role production or --role preview.",
-      [`prisma-cli env add ${key}=${value} --role production`],
+      [`prisma-cli project env add ${key}=${value} --role production`],
       "app",
     );
   }
@@ -68,10 +68,10 @@ export async function runEnvAdd(
       domain: "app",
       summary: `Variable "${key}" already exists in ${formatScopeLabel(scope)}`,
       why: "A variable with this key already exists in the targeted scope.",
-      fix: "Use `prisma-cli env update` to change an existing variable's value.",
+      fix: "Use `prisma-cli project env update` to change an existing variable's value.",
       exitCode: 1,
       nextSteps: [
-        `prisma-cli env update ${key}=<new-value> --role ${scope.role}`,
+        `prisma-cli project env update ${key}=<new-value> --role ${scope.role}`,
       ],
     });
   }
@@ -92,7 +92,7 @@ export async function runEnvAdd(
   }
 
   return {
-    command: "env.add",
+    command: "project.env.add",
     result: {
       projectId,
       scope: resolved.descriptor,
@@ -112,10 +112,10 @@ export async function runEnvUpdate(
   const scope = resolveEnvScope(flags, { requireExplicit: true, command: "update" });
   if (!scope) {
     throw usageError(
-      `prisma-cli env update requires --role`,
+      `prisma-cli project env update requires --role`,
       "Writing without an explicit scope is rejected.",
       "Pass --role production or --role preview.",
-      [`prisma-cli env update ${key}=${value} --role production`],
+      [`prisma-cli project env update ${key}=${value} --role production`],
       "app",
     );
   }
@@ -131,10 +131,10 @@ export async function runEnvUpdate(
       domain: "app",
       summary: `Variable "${key}" not found in ${formatScopeLabel(scope)}`,
       why: "No variable with this key exists in the targeted scope.",
-      fix: "Use `prisma-cli env add` to create a new variable.",
+      fix: "Use `prisma-cli project env add` to create a new variable.",
       exitCode: 1,
       nextSteps: [
-        `prisma-cli env add ${key}=<value> --role ${scope.role}`,
+        `prisma-cli project env add ${key}=<value> --role ${scope.role}`,
       ],
     });
   }
@@ -151,7 +151,7 @@ export async function runEnvUpdate(
   }
 
   return {
-    command: "env.update",
+    command: "project.env.update",
     result: {
       projectId,
       scope: resolved.descriptor,
@@ -174,7 +174,7 @@ export async function runEnvList(
   const variables = await listVariables(client, projectId, resolved);
 
   return {
-    command: "env.list",
+    command: "project.env.list",
     result: {
       projectId,
       scope: resolved.descriptor,
@@ -182,7 +182,7 @@ export async function runEnvList(
     },
     warnings: [],
     nextSteps: variables.length === 0
-      ? [`prisma-cli env add KEY=value --role ${scope.role}`]
+      ? [`prisma-cli project env add KEY=value --role ${scope.role}`]
       : [],
   };
 }
@@ -194,10 +194,10 @@ export async function runEnvRm(
 ): Promise<CommandSuccess<EnvRmResult>> {
   if (!key) {
     throw usageError(
-      "prisma-cli env rm requires KEY",
+      "prisma-cli project env rm requires KEY",
       "No KEY positional argument was supplied.",
       "Pass the variable name to remove, e.g. STRIPE_KEY.",
-      ["prisma-cli env rm STRIPE_KEY --role production"],
+      ["prisma-cli project env rm STRIPE_KEY --role production"],
       "app",
     );
   }
@@ -205,10 +205,10 @@ export async function runEnvRm(
   const scope = resolveEnvScope(flags, { requireExplicit: true, command: "rm" });
   if (!scope) {
     throw usageError(
-      "prisma-cli env rm requires --role",
+      "prisma-cli project env rm requires --role",
       "Writing without an explicit scope is rejected.",
       "Pass --role production or --role preview.",
-      [`prisma-cli env rm ${key} --role production`],
+      [`prisma-cli project env rm ${key} --role production`],
       "app",
     );
   }
@@ -222,10 +222,10 @@ export async function runEnvRm(
       domain: "app",
       summary: `Variable "${key}" not found in ${formatScopeLabel(scope)}`,
       why: "No variable with this key exists in the targeted scope, so there is nothing to remove.",
-      fix: "Run prisma-cli env list with the same scope to see the available variables.",
+      fix: "Run prisma-cli project env list with the same scope to see the available variables.",
       exitCode: 1,
       nextSteps: [
-        `prisma-cli env list --role ${scope.role}`,
+        `prisma-cli project env list --role ${scope.role}`,
       ],
     });
   }
@@ -241,7 +241,7 @@ export async function runEnvRm(
   }
 
   return {
-    command: "env.rm",
+    command: "project.env.rm",
     result: {
       projectId,
       scope: resolved.descriptor,
@@ -261,7 +261,7 @@ async function requireClientAndProject(
       code: "PROJECT_NOT_LINKED",
       domain: "project",
       summary: "Project link required",
-      why: "prisma-cli env needs a linked project for the current repo.",
+      why: "prisma-cli project env needs a linked project for the current repo.",
       fix: "Run prisma project link before managing environment variables.",
       exitCode: 1,
       nextSteps: ["prisma project link"],

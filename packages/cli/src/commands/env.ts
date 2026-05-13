@@ -25,7 +25,7 @@ import type {
 export function createEnvCommand(runtime: CliRuntime): Command {
   const env = attachCommandDescriptor(
     configureRuntimeCommand(new Command("env"), runtime),
-    "env",
+    "project.env",
   );
 
   env.description("Manage environment variables for the linked project.");
@@ -40,7 +40,7 @@ export function createEnvCommand(runtime: CliRuntime): Command {
 function createEnvAddCommand(runtime: CliRuntime): Command {
   const command = attachCommandDescriptor(
     configureRuntimeCommand(new Command("add"), runtime),
-    "env.add",
+    "project.env.add",
   );
 
   command
@@ -58,7 +58,7 @@ function createEnvAddCommand(runtime: CliRuntime): Command {
 
     await runCommand<EnvAddResult>(
       runtime,
-      "env.add",
+      "project.env.add",
       options as Record<string, unknown>,
       (context) => runEnvAdd(context, assignment, { roleName }),
       {
@@ -74,7 +74,7 @@ function createEnvAddCommand(runtime: CliRuntime): Command {
 function createEnvUpdateCommand(runtime: CliRuntime): Command {
   const command = attachCommandDescriptor(
     configureRuntimeCommand(new Command("update"), runtime),
-    "env.update",
+    "project.env.update",
   );
 
   command
@@ -92,7 +92,7 @@ function createEnvUpdateCommand(runtime: CliRuntime): Command {
 
     await runCommand<EnvUpdateResult>(
       runtime,
-      "env.update",
+      "project.env.update",
       options as Record<string, unknown>,
       (context) => runEnvUpdate(context, assignment, { roleName }),
       {
@@ -108,7 +108,7 @@ function createEnvUpdateCommand(runtime: CliRuntime): Command {
 function createEnvListCommand(runtime: CliRuntime): Command {
   const command = attachCommandDescriptor(
     configureRuntimeCommand(new Command("list"), runtime),
-    "env.list",
+    "project.env.list",
   );
 
   command
@@ -125,7 +125,7 @@ function createEnvListCommand(runtime: CliRuntime): Command {
 
     await runCommand<EnvListResult>(
       runtime,
-      "env.list",
+      "project.env.list",
       options as Record<string, unknown>,
       (context) => runEnvList(context, { roleName }),
       {
@@ -141,7 +141,7 @@ function createEnvListCommand(runtime: CliRuntime): Command {
 function createEnvRmCommand(runtime: CliRuntime): Command {
   const command = attachCommandDescriptor(
     configureRuntimeCommand(new Command("rm"), runtime),
-    "env.rm",
+    "project.env.rm",
   );
 
   command
@@ -159,7 +159,7 @@ function createEnvRmCommand(runtime: CliRuntime): Command {
 
     await runCommand<EnvRmResult>(
       runtime,
-      "env.rm",
+      "project.env.rm",
       options as Record<string, unknown>,
       (context) => runEnvRm(context, key, { roleName }),
       {
