@@ -39,7 +39,7 @@ describe("auth commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "auth login → Starting an authenticated CLI session.\n\n│  provider:   GitHub\n│  user:       Bob Example <bob@example.com>\n│  workspace:  Acme Inc\n\n◇ Applying authentication session changes...\n✔ Applied 1 operation(s)\n  Session stored in local CLI state.\n",
+      "auth login → Starting an authenticated CLI session.\n\n│  provider:   GitHub\n│  user:       bob@example.com\n│  workspace:  Acme Inc\n\n◇ Applying authentication session changes...\n✔ Applied 1 operation(s)\n  Session stored in local CLI state.\n",
     );
   });
 
@@ -71,8 +71,6 @@ describe("auth commands", () => {
         authenticated: true,
         provider: "github",
         user: {
-          id: "usr_456",
-          name: "Bob Example",
           email: "bob@example.com",
         },
         workspace: {

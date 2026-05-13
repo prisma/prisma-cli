@@ -17,7 +17,7 @@ export function renderAuthSuccess(
     }
 
     if (result.user) {
-      rows.push({ key: "user", value: `${result.user.name} <${result.user.email}>` });
+      rows.push({ key: "user", value: result.user.email });
     }
 
     if (result.workspace?.name) {
@@ -58,7 +58,7 @@ export function renderAuthSuccess(
       fields: result.authenticated
         ? [
             { key: "status", value: "signed in", tone: "success" as const },
-            ...(result.user ? [{ key: "user", value: `${result.user.name} <${result.user.email}>` }] : []),
+            ...(result.user ? [{ key: "user", value: result.user.email }] : []),
             ...(result.provider ? [{ key: "provider", value: providerLabel(result.provider) }] : []),
             ...(result.workspace?.name ? [{ key: "workspace", value: result.workspace.name }] : []),
           ]

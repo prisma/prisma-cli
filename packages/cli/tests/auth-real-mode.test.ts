@@ -22,8 +22,6 @@ describe("real auth mode", () => {
       authenticated: true,
       provider: null,
       user: {
-        id: "usr_real",
-        name: "Real User",
         email: "real@example.com",
       },
       workspace: {
@@ -141,8 +139,6 @@ describe("real auth mode", () => {
         authenticated: true,
         provider: null,
         user: {
-          id: "usr_real",
-          name: "Real User",
           email: "real@example.com",
         },
         workspace: null,
@@ -155,5 +151,38 @@ describe("real auth mode", () => {
     expect(plain).toContain("user:");
     expect(plain).not.toContain("provider:");
     expect(plain).not.toContain("workspace:");
+  });
+
+  it("omits the user row when a real auth state has no email", async () => {
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    const output = renderAuthSuccess(
+      context,
+      getCommandDescriptor("auth.whoami"),
+      "auth.whoami",
+      {
+        authenticated: true,
+        provider: null,
+        user: null,
+        workspace: {
+          id: "ws_real",
+          name: "Real Workspace",
+        },
+        linkedProjectId: null,
+      },
+    ).join("");
+
+    const plain = stripAnsi(output);
+
+    expect(plain).toContain("status:     signed in");
+    expect(plain).not.toContain("user:");
+    expect(plain).not.toContain("<>");
   });
 });

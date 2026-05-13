@@ -102,8 +102,6 @@ In `--json`, `result` uses this shape:
   "authenticated": true,
   "provider": "github",
   "user": {
-    "id": "usr_123",
-    "name": "Alice Example",
     "email": "alice@example.com"
   },
   "workspace": {
@@ -118,7 +116,7 @@ Rules:
 
 - `authenticated` is always present
 - `provider` is `github`, `google`, or `null`
-- `user` is the current user or `null`
+- `user` contains the current user email or is `null`
 - `workspace` is the active workspace or `null`
 - `linkedProjectId` is the linked project id for the current repo or `null`
 - signed-out state is an empty auth state, not an error
