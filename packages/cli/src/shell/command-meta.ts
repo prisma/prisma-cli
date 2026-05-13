@@ -184,6 +184,52 @@ const DESCRIPTORS: CommandDescriptor[] = [
     description: "Remove the app from the current branch",
     examples: ["prisma-cli app remove --app hello-world", "prisma-cli app remove --app hello-world --yes"],
   },
+  {
+    id: "project.env",
+    path: ["prisma", "project", "env"],
+    description: "Manage environment variables for the linked project.",
+    examples: [
+      "prisma-cli project env list --role production",
+      "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production",
+      "prisma-cli project env rm STRIPE_KEY --role preview",
+    ],
+  },
+  {
+    id: "project.env.add",
+    path: ["prisma", "project", "env", "add"],
+    description: "Create a new environment variable.",
+    examples: [
+      "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production",
+      "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role preview",
+    ],
+  },
+  {
+    id: "project.env.update",
+    path: ["prisma", "project", "env", "update"],
+    description: "Replace an existing environment variable's value.",
+    examples: [
+      "prisma-cli project env update STRIPE_KEY=sk_new_xxx --role production",
+      "prisma-cli project env update STRIPE_KEY=sk_new_xxx --role preview",
+    ],
+  },
+  {
+    id: "project.env.list",
+    path: ["prisma", "project", "env", "list"],
+    description: "List environment variable metadata for a scope (no values).",
+    examples: [
+      "prisma-cli project env list --role production",
+      "prisma-cli project env list --role preview",
+    ],
+  },
+  {
+    id: "project.env.rm",
+    path: ["prisma", "project", "env", "rm"],
+    description: "Remove an environment variable from a scope.",
+    examples: [
+      "prisma-cli project env rm STRIPE_KEY --role production",
+      "prisma-cli project env rm STRIPE_KEY --role preview",
+    ],
+  },
 ];
 
 const DESCRIPTORS_BY_ID = new Map(DESCRIPTORS.map((descriptor) => [descriptor.id, descriptor]));
