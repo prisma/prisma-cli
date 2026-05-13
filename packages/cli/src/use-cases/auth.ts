@@ -122,7 +122,9 @@ async function resolveCurrentAuthState(dependencies: AuthUseCaseDependencies): P
   return {
     authenticated: true,
     provider: provider.id,
-    user,
+    user: {
+      email: user.email,
+    },
     workspace,
     linkedProjectId,
   };

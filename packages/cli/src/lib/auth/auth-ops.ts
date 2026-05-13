@@ -13,6 +13,11 @@ function decodeJwtPayload(token: string): Record<string, unknown> {
   }
 }
 
+function emailFromClaims(claims: Record<string, unknown>): string | null {
+  const email = claims.email;
+  return typeof email === "string" && email.trim().length > 0 ? email.trim() : null;
+}
+
 export async function performLogin(env: NodeJS.ProcessEnv): Promise<void> {
   await login({ tokenStorage: new FileTokenStorage(env), env });
 }
@@ -32,6 +37,7 @@ export async function readAuthState(env: NodeJS.ProcessEnv): Promise<AuthStateRe
   }
 
   const claims = decodeJwtPayload(tokens.accessToken);
+  const email = emailFromClaims(claims);
 
   const client = await requireComputeAuth(env);
   let workspaceId = tokens.workspaceId;
@@ -56,11 +62,7 @@ export async function readAuthState(env: NodeJS.ProcessEnv): Promise<AuthStateRe
   return {
     authenticated: true,
     provider: null,
-    user: {
-      id: (claims.sub as string) ?? "",
-      name: (claims.name as string) ?? "",
-      email: (claims.email as string) ?? "",
-    },
+    user: email ? { email } : null,
     workspace: {
       id: workspaceId,
       name: workspaceName,

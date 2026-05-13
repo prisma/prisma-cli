@@ -221,6 +221,7 @@ export async function runAppUpdateEnv(
   envAssignments: string[] | undefined,
 ): Promise<CommandSuccess<AppUpdateEnvResult>> {
   ensurePreviewAppMode(context);
+  emitLegacyEnvDeprecationWarning(context, "app update-env", "project env add");
 
   const envVars = parseEnvAssignments(envAssignments, {
     commandName: "update-env",
@@ -285,6 +286,7 @@ export async function runAppListEnv(
   appName: string | undefined,
 ): Promise<CommandSuccess<AppListEnvResult>> {
   ensurePreviewAppMode(context);
+  emitLegacyEnvDeprecationWarning(context, "app list-env", "project env list");
 
   const projectId = await requireLinkedProjectId(context);
   const provider = await requirePreviewAppProvider(context);
@@ -1678,4 +1680,28 @@ function toOptionalEnvVars(
   envVars: Record<string, string>,
 ): Record<string, string> | undefined {
   return Object.keys(envVars).length > 0 ? envVars : undefined;
+}
+
+/**
+ * Emits a deprecation banner to stderr when the legacy single-shot
+ * env-var commands are invoked. The banner is suppressed in --json
+ * mode so machine consumers keep their JSON channel clean; --json
+ * users discover the deprecation via release notes and the new
+ * `prisma-cli project env` namespace's output anyway.
+ *
+ * Removal of these legacy commands is deliberately scoped out of the
+ * Public Beta — see the Compute Beta plan, sub-track 3B.1, where the
+ * Terminal team picks an explicit removal milestone.
+ */
+function emitLegacyEnvDeprecationWarning(
+  context: CommandContext,
+  legacyCommand: string,
+  replacement: string,
+): void {
+  if (context.flags.json) {
+    return;
+  }
+
+  const message = `[deprecation] \`prisma-cli ${legacyCommand}\` is deprecated. Use \`prisma-cli ${replacement}\` instead.`;
+  context.runtime.stderr.write(`${message}\n`);
 }

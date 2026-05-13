@@ -17,8 +17,6 @@ describe("real project mode", () => {
       authenticated: true,
       provider: null,
       user: {
-        id: "usr_real",
-        name: "Real User",
         email: "real@example.com",
       },
       workspace: {
@@ -187,8 +185,6 @@ describe("real project mode", () => {
       authenticated: true,
       provider: null,
       user: {
-        id: "usr_real",
-        name: "Real User",
         email: "real@example.com",
       },
       workspace: {
@@ -269,8 +265,6 @@ describe("real project mode", () => {
       authenticated: true,
       provider: null,
       user: {
-        id: "usr_real",
-        name: "Real User",
         email: "real@example.com",
       },
       workspace: {
@@ -352,8 +346,6 @@ describe("real project mode", () => {
       authenticated: true,
       provider: null,
       user: {
-        id: "usr_real",
-        name: "Real User",
         email: "real@example.com",
       },
       workspace: {
@@ -427,8 +419,6 @@ describe("real project mode", () => {
       authenticated: true,
       provider: null,
       user: {
-        id: "usr_real",
-        name: "Real User",
         email: "real@example.com",
       },
       workspace: {
@@ -501,8 +491,6 @@ describe("real project mode", () => {
       authenticated: true,
       provider: null,
       user: {
-        id: "usr_real",
-        name: "Real User",
         email: "real@example.com",
       },
       workspace: {

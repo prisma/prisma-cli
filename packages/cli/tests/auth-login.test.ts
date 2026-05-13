@@ -16,6 +16,12 @@ describe("auth login callback", () => {
     expect(result.body).toContain('<meta charset="utf-8">');
   });
 
+  it("requests the supported Management API OAuth scopes", async () => {
+    const result = await requestSuccessPage({ workspaceName: "Acme Corp" });
+
+    expect(result.loginScope).toBe("workspace:admin offline_access");
+  });
+
   it("renders the workspace name when it resolves", async () => {
     const result = await requestSuccessPage({ workspaceName: "Acme Corp" });
 
@@ -63,8 +69,9 @@ describe("auth login callback", () => {
 async function requestSuccessPage(options: {
   workspaceName?: string;
   workspaceLookupError?: Error;
-}): Promise<{ contentType: string | null; body: string }> {
+}): Promise<{ contentType: string | null; body: string; loginScope: string | undefined }> {
   let redirectUri: string | undefined;
+  let loginScope: string | undefined;
   let contentType: string | null = null;
   let body = "";
   const tokenStorage: TokenStorage = {
@@ -83,10 +90,13 @@ async function requestSuccessPage(options: {
       redirectUri = sdkOptions.redirectUri;
 
       return {
-        getLoginUrl: vi.fn().mockResolvedValue({
-          url: "https://auth.example.test/login",
-          state: "state_123",
-          verifier: "verifier_123",
+        getLoginUrl: vi.fn().mockImplementation((options: { scope: string }) => {
+          loginScope = options.scope;
+          return {
+            url: "https://auth.example.test/login",
+            state: "state_123",
+            verifier: "verifier_123",
+          };
         }),
         handleCallback: vi.fn().mockResolvedValue(undefined),
         client: {
@@ -127,5 +137,5 @@ async function requestSuccessPage(options: {
     },
   });
 
-  return { contentType, body };
+  return { contentType, body, loginScope };
 }

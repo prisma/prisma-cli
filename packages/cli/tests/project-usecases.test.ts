@@ -15,8 +15,6 @@ describe("project use cases", () => {
         authenticated: true,
         provider: "github",
         user: {
-          id: "usr_456",
-          name: "Bob Example",
           email: "bob@example.com",
         },
         workspace: {
@@ -75,8 +73,6 @@ describe("project use cases", () => {
           authenticated: true,
           provider: "github",
           user: {
-            id: "usr_456",
-            name: "Bob Example",
             email: "bob@example.com",
           },
           workspace: {

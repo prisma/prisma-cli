@@ -5,6 +5,7 @@ import { Command, CommanderError } from "commander";
 import { createAppCommand } from "./commands/app";
 import { createAuthCommand } from "./commands/auth";
 import { createBranchCommand } from "./commands/branch";
+
 import { createProjectCommand } from "./commands/project";
 import { attachCommandDescriptor } from "./shell/command-meta";
 import { addCompactGlobalFlags } from "./shell/global-flags";
