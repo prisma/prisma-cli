@@ -147,8 +147,10 @@ These codes are the minimum stable set for the MVP:
 
 - `USAGE_ERROR`
 - `AUTH_REQUIRED`
-- `PROJECT_NOT_LINKED`
+- `PROJECT_UNRESOLVED`
 - `PROJECT_NOT_FOUND`
+- `PROJECT_AMBIGUOUS`
+- `LOCAL_STATE_STALE`
 - `BRANCH_NOT_DEPLOYABLE`
 - `DEPLOYMENT_NOT_FOUND`
 - `NO_DEPLOYMENTS`
@@ -166,8 +168,10 @@ Recommended meanings:
 
 - `USAGE_ERROR`: invalid arguments or invalid command combination
 - `AUTH_REQUIRED`: command needs an authenticated session
-- `PROJECT_NOT_LINKED`: command needs project context and none is linked
+- `PROJECT_UNRESOLVED`: command needs project context and none could be resolved
 - `PROJECT_NOT_FOUND`: requested project does not exist or is not accessible
+- `PROJECT_AMBIGUOUS`: multiple safe project candidates matched
+- `LOCAL_STATE_STALE`: remembered local project context no longer matches platform data and continuing would be ambiguous
 - `BRANCH_NOT_DEPLOYABLE`: command tried to deploy to a non-deployable branch context
 - `DEPLOYMENT_NOT_FOUND`: requested deployment id does not exist
 - `NO_DEPLOYMENTS`: command resolved a branch or app but found no deployments

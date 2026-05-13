@@ -67,7 +67,6 @@ Current MVP commands map to patterns like this:
 | `auth whoami` | `show` |
 | `project list` | `list` |
 | `project show` | `show` |
-| `project link` | `mutate` |
 | `branch list` | `list` |
 | `branch show` | `show` |
 | `branch use` | `mutate` |
@@ -99,7 +98,6 @@ Rules:
 - each list row uses `⚬` and repeats the same item noun
 - annotations are limited to one per row and use:
   - `(active)` for current context
-  - `(linked)` for the current local repo binding
   - `(default)` when the command defines a default item
 - human output prefers display labels over opaque ids
 - empty lists render a single dim sentence in the item area such as `No projects found.`
@@ -122,7 +120,7 @@ In `--json`, all list commands use this result shape:
 }
 ```
 
-`status` may be `"active"`, `"linked"`, or `null`.
+`status` may be `"active"`, `"default"`, or `null`.
 
 #### `show`
 
@@ -219,12 +217,13 @@ Human output should:
 Recommended header shape:
 
 ```text
-project link → Linking the current repo to an existing project.
+project show → Showing the project resolved for this directory.
 
 │  project:    Acme Dashboard
 │  workspace:  Acme Inc
+│  source:     package-name
 │
-│  Read more   docs/product/command-spec.md#prisma-cli-project-link-project
+│  Read more   docs/product/command-spec.md#prisma-cli-project-show
 ```
 
 Rules:
@@ -238,7 +237,7 @@ Rules:
 Recommended summary lines:
 
 ```text
-✔ Project linked
+✔ Project resolved
 ✘ Authentication required [AUTH_REQUIRED]
 ```
 

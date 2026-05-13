@@ -83,22 +83,13 @@ Change local CLI context only.
 
 `use` must never mutate a remote resource.
 
-`use` is intentionally different from `link`:
+`use` changes local active context only:
 
 - `use` changes local active context only
-- `link` binds local repo context to an existing remote resource
 
 Example:
 
 - `branch use production`
-
-### `link`
-
-Connect local repo context to an existing remote resource.
-
-Example:
-
-- `project link`
 
 ### `deploy`
 

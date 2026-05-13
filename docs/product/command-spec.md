@@ -39,7 +39,7 @@ Out of scope for the current preview:
 - Long flags use kebab-case.
 - Boolean negation uses `--no-<flag>`.
 - `--json` and non-interactive mode must not block on prompts.
-- `prisma.config.ts` stores only the linked project id.
+- Public Beta does not read or write `prisma.config.ts`, `.prisma/settings.json`, or any repo config file for Project -> Branch -> App resolution.
 - Remote commands do not silently change local context.
 
 ## Context Resolution
@@ -48,18 +48,23 @@ Out of scope for the current preview:
 
 Commands resolve project context in this order:
 
-1. linked project id in `prisma.config.ts`
-2. explicit `project link`
-3. implicit creation by `app deploy` when no project is linked
+1. explicit `--project <id-or-name>` when present
+2. durable platform mapping when available
+3. remembered local project context, revalidated against platform data
+4. `package.json` name matched exactly against accessible project id, name, or slug
+5. unambiguous project creation for commands that are allowed to create projects
+6. prompt in interactive mode, or structured failure in `--json` / `--no-interactive` mode
 
-Only `app deploy` may create project context implicitly.
+`--project` is an escape hatch for ambiguous or unavailable automatic
+resolution, not a setup step. Only `app deploy` may create a missing project,
+and only when the inferred name is unambiguous.
 
 ### App Selection
 
 Preview app commands that need an app resolve it in this order:
 
 1. `--app <name>`
-2. locally selected app for the linked project
+2. locally selected app for the resolved project
 3. interactive select-or-create flow in TTY mode
 4. `USAGE_ERROR` in non-interactive or `--json` mode when unresolved
 
@@ -107,8 +112,7 @@ In `--json`, `result` uses this shape:
   "workspace": {
     "id": "ws_123",
     "name": "Acme Inc"
-  },
-  "linkedProjectId": "proj_123"
+  }
 }
 ```
 
@@ -118,7 +122,6 @@ Rules:
 - `provider` is `github`, `google`, or `null`
 - `user` contains the current user email or is `null`
 - `workspace` is the active workspace or `null`
-- `linkedProjectId` is the linked project id for the current repo or `null`
 - signed-out state is an empty auth state, not an error
 
 ## `prisma-cli auth login`
@@ -189,7 +192,8 @@ Behavior:
 
 - requires auth
 - lists projects visible to the active workspace
-- marks the locally linked project when one is present
+- does not resolve the current directory
+- does not mutate local state
 
 Examples:
 
@@ -202,50 +206,35 @@ prisma-cli project list --json
 
 Purpose:
 
-- show the Prisma project linked to this directory
+- show the Prisma project resolved for this directory
 
 Behavior:
 
-- reads the linked project id from `prisma.config.ts`
-- requires auth when resolving remote project details
-- fails with `PROJECT_NOT_LINKED` when no project is linked
+- requires auth
+- resolves project context without creating projects
+- does not prompt for project selection
+- does not mutate local state
+- `--project <id-or-name>` resolves only the explicit project
+- returns Workspace, Project, and `resolution.projectSource`
+- fails with `PROJECT_UNRESOLVED`, `PROJECT_NOT_FOUND`, `PROJECT_AMBIGUOUS`, or `LOCAL_STATE_STALE` when resolution cannot continue safely
 
 Examples:
 
 ```bash
 prisma-cli project show
 prisma-cli project show --json
-```
-
-## `prisma-cli project link [project]`
-
-Purpose:
-
-- link this directory to a Prisma project
-
-Behavior:
-
-- writes only the project id to `prisma.config.ts`
-- prompts for a project when no project id is passed and prompting is allowed
-- fails with `USAGE_ERROR` when no project can be selected non-interactively
-- does not change active branch context
-
-Examples:
-
-```bash
-prisma-cli project link
-prisma-cli project link proj_123
+prisma-cli project show --project proj_123 --json
 ```
 
 ## `prisma-cli branch list`
 
 Purpose:
 
-- list active Platform branches linked to this project
+- list active Platform branches for the resolved project
 
 Behavior:
 
-- shows known remote branches for the linked project
+- shows known remote branches for the resolved project
 - marks active context
 - does not create remote state
 - does not expose branch `role` or `durability` fields yet
@@ -266,7 +255,7 @@ Purpose:
 Behavior:
 
 - reads local branch context
-- shows linked project context when known
+- shows resolved project context when known
 - does not mutate local or remote state
 - does not expose branch `role` or `durability` fields yet
 
@@ -347,7 +336,7 @@ prisma-cli app deploy --app hello-world --build-type tanstack-start
 
 ## `prisma-cli project env`
 
-Manage durable, platform-stored environment variables for the linked
+Manage durable, platform-stored environment variables for the resolved
 project. Replaces the legacy `prisma app update-env` / `prisma app
 list-env` workflow, which mutated env vars on a single Foundry version
 and is now deprecated. The `env` namespace operates on the
@@ -373,9 +362,10 @@ Purpose:
 
 Behavior:
 
-- requires auth and a linked project
+- requires auth and a resolved project; accepts `--project <id-or-name>` as an explicit fallback
 - KEY=VALUE is parsed from a single positional; KEY must match
   `[A-Z_][A-Z0-9_]*`
+- KEY without `=VALUE` reads the value from the current process environment
 - if a variable with the same key already exists in the scope, the
   command fails with a clear error directing to `env update`
 - the response carries metadata only — the value is never echoed back
@@ -385,6 +375,7 @@ Examples:
 ```bash
 prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production
 prisma-cli project env add STRIPE_KEY=sk_test_xxx --role preview
+API_URL=https://api.example prisma-cli project env add API_URL --project proj_123 --role preview
 ```
 
 ### `prisma-cli project env update KEY=VALUE --role <production|preview>`
@@ -396,9 +387,10 @@ Purpose:
 
 Behavior:
 
-- requires auth and a linked project
+- requires auth and a resolved project; accepts `--project <id-or-name>` as an explicit fallback
 - KEY=VALUE is parsed from a single positional; KEY must match
   `[A-Z_][A-Z0-9_]*`
+- KEY without `=VALUE` reads the value from the current process environment
 - if no variable with the key exists in the scope, the command fails
   with a clear error directing to `env add`
 - the response carries metadata only — the value is never echoed back
@@ -418,7 +410,7 @@ Purpose:
 
 Behavior:
 
-- requires auth and a linked project
+- requires auth and a resolved project; accepts `--project <id-or-name>` as an explicit fallback
 - defaults to `--role production` when `--role` is not supplied
 - never prints values (never-reveal)
 - emits `key`, `id`, `last updated`, and a `scope` annotation per row
@@ -438,7 +430,7 @@ Purpose:
 
 Behavior:
 
-- requires auth and a linked project
+- requires auth and a resolved project; accepts `--project <id-or-name>` as an explicit fallback
 - looks the variable up by natural key in the scope and `DELETE`s it
 - returns a focused error when no matching variable exists
 

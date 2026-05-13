@@ -31,23 +31,15 @@ Preview relevance:
 
 ### Project
 
-`project` is the remote Prisma resource linked to a local repo.
+`project` is the remote Prisma resource resolved for local work.
 
 Rules:
 
 - `project` is not the same thing as `app`
-- `prisma.config.ts` stores only the linked project id
-- `app deploy` may create project context when none is linked
+- Public Beta does not read or write `prisma.config.ts`, `.prisma/settings.json`, or any repo config file for project resolution
+- `app deploy` may create missing project context only when resolution is unambiguous
 - other commands must not create project context implicitly
 - everything under a project happens in a branch
-
-Example config:
-
-```ts
-export default {
-  project: "proj_123",
-};
-```
 
 ### Branch
 
@@ -107,7 +99,7 @@ accidental destructive actions.
 Rules:
 
 - `app` is not the same thing as `project`
-- the app belongs to the linked project
+- the app belongs to the resolved project
 - app work is scoped by branch in the platform model
 - the app may be selected or created as part of app deployment workflows
 - app selection is local CLI state when needed for the preview package
@@ -187,7 +179,7 @@ Long-term, branch is where app and database relationships meet.
 - `local` is CLI context, not a branch or deploy target
 - `production` is protected and durable
 - every other named branch is preview by default
-- `prisma.config.ts` stores only the linked project id
+- Public Beta does not use repo config files for Project -> Branch -> App resolution
 
 ## Resolution Rules
 
@@ -195,18 +187,23 @@ Long-term, branch is where app and database relationships meet.
 
 Commands resolve project context in this order:
 
-1. linked project id in `prisma.config.ts`
-2. explicit `project link`
-3. implicit creation by `app deploy` when no project is linked
+1. explicit `--project <id-or-name>` when present
+2. durable platform mapping when available
+3. remembered local project context, revalidated against platform data
+4. `package.json` name matched exactly against accessible project id, name, or slug
+5. unambiguous project creation for commands that are allowed to create projects
+6. prompt in interactive mode, or structured failure in `--json` / `--no-interactive` mode
 
-Only `app deploy` may create projects implicitly.
+Remembered local project context is an internal convenience after successful
+resolution. It must be revalidated before use and must not be described to users
+as durable linking. Only `app deploy` may create projects implicitly.
 
 ### App Selection Resolution
 
 Preview app commands that need an app resolve it in this order:
 
 1. explicit `--app <name>`
-2. locally selected app for the linked project
+2. locally selected app for the resolved project
 3. interactive selection or creation in a TTY
 4. structured usage error when no app can be resolved non-interactively
 
@@ -229,7 +226,7 @@ Consequences:
 Commands that inspect deployments resolve in this order:
 
 1. exact deployment id if the command accepts one
-2. selected app for the linked project
+2. selected app for the resolved project
 3. latest known live deployment for that app
 
 ### Promote Resolution
