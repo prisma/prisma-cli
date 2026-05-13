@@ -23,14 +23,14 @@ export interface BranchDetail {
 }
 
 export interface BranchListResult {
-  linkedProjectId: string | null;
+  projectId: string | null;
   projectName: string | null;
   activeBranch: string;
   branches: BranchSummary[];
 }
 
 export interface BranchShowResult {
-  linkedProjectId: string | null;
+  projectId: string | null;
   projectName: string | null;
   branch: BranchDetail;
 }

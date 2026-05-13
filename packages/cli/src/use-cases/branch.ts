@@ -5,7 +5,7 @@ import type {
   BranchGateway,
   BranchStateGateway,
   ProjectGateway,
-  ProjectConfigGateway,
+  ProjectStateGateway,
   RemoteBranchRecord,
 } from "./contracts";
 
@@ -13,39 +13,39 @@ interface BranchUseCaseDependencies {
   branchGateway: BranchGateway;
   branchStateGateway: BranchStateGateway;
   projectGateway: ProjectGateway;
-  projectConfigGateway: ProjectConfigGateway;
+  projectStateGateway: ProjectStateGateway;
 }
 
 export function createBranchUseCases(dependencies: BranchUseCaseDependencies): BranchUseCases {
   return {
     list: async (): Promise<BranchListResult> => {
-      const [linkedProjectId, activeBranch] = await Promise.all([
-        dependencies.projectConfigGateway.readLinkedProjectId(),
+      const [projectId, activeBranch] = await Promise.all([
+        dependencies.projectStateGateway.readRememberedProjectId(),
         dependencies.branchStateGateway.readActiveBranch(),
       ]);
-      const remoteBranches = await listRemoteBranches(dependencies.branchGateway, linkedProjectId);
-      const projectName = resolveProjectName(dependencies.projectGateway, linkedProjectId);
+      const remoteBranches = await listRemoteBranches(dependencies.branchGateway, projectId);
+      const projectName = resolveProjectName(dependencies.projectGateway, projectId);
 
       return {
-        linkedProjectId,
+        projectId,
         projectName,
         activeBranch,
         branches: buildBranchSummaries(activeBranch, remoteBranches),
       };
     },
     show: async (): Promise<BranchShowResult> => {
-      const [linkedProjectId, activeBranch] = await Promise.all([
-        dependencies.projectConfigGateway.readLinkedProjectId(),
+      const [projectId, activeBranch] = await Promise.all([
+        dependencies.projectStateGateway.readRememberedProjectId(),
         dependencies.branchStateGateway.readActiveBranch(),
       ]);
-      const projectName = resolveProjectName(dependencies.projectGateway, linkedProjectId);
+      const projectName = resolveProjectName(dependencies.projectGateway, projectId);
 
       return {
-        linkedProjectId,
+        projectId,
         projectName,
         branch: buildBranchDetail(
           dependencies.branchGateway,
-          linkedProjectId,
+          projectId,
           activeBranch,
         ),
       };
@@ -53,15 +53,15 @@ export function createBranchUseCases(dependencies: BranchUseCaseDependencies): B
     use: async (branchName: string): Promise<BranchShowResult> => {
       await dependencies.branchStateGateway.writeActiveBranch(branchName);
 
-      const linkedProjectId = await dependencies.projectConfigGateway.readLinkedProjectId();
-      const projectName = resolveProjectName(dependencies.projectGateway, linkedProjectId);
+      const projectId = await dependencies.projectStateGateway.readRememberedProjectId();
+      const projectName = resolveProjectName(dependencies.projectGateway, projectId);
 
       return {
-        linkedProjectId,
+        projectId,
         projectName,
         branch: buildBranchDetail(
           dependencies.branchGateway,
-          linkedProjectId,
+          projectId,
           branchName,
         ),
       };
@@ -69,23 +69,23 @@ export function createBranchUseCases(dependencies: BranchUseCaseDependencies): B
   };
 }
 
-function resolveProjectName(projectGateway: ProjectGateway, linkedProjectId: string | null): string | null {
-  if (!linkedProjectId) {
+function resolveProjectName(projectGateway: ProjectGateway, projectId: string | null): string | null {
+  if (!projectId) {
     return null;
   }
 
-  return projectGateway.getProject(linkedProjectId)?.name ?? null;
+  return projectGateway.getProject(projectId)?.name ?? null;
 }
 
 async function listRemoteBranches(
   branchGateway: BranchGateway,
-  linkedProjectId: string | null,
+  projectId: string | null,
 ): Promise<RemoteBranchRecord[]> {
-  if (!linkedProjectId) {
+  if (!projectId) {
     return [];
   }
 
-  return branchGateway.listBranchesForProject(linkedProjectId);
+  return branchGateway.listBranchesForProject(projectId);
 }
 
 function buildBranchSummaries(
@@ -119,12 +119,12 @@ function buildBranchSummaries(
 
 function buildBranchDetail(
   branchGateway: BranchGateway,
-  linkedProjectId: string | null,
+  projectId: string | null,
   branchName: string,
 ): BranchDetail {
   const kind = toBranchKind(branchName);
   const remoteBranch =
-    linkedProjectId ? branchGateway.getBranchForProject(linkedProjectId, branchName) : undefined;
+    projectId ? branchGateway.getBranchForProject(projectId, branchName) : undefined;
 
   return {
     name: branchName,

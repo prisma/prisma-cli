@@ -1,11 +1,11 @@
 import { Command } from "commander";
 
-import { runProjectLink, runProjectList, runProjectShow } from "../../controllers/project";
+import { runProjectList, runProjectShow } from "../../controllers/project";
 import {
-  renderProjectLink,
   renderProjectList,
   renderProjectShow,
   serializeProjectList,
+  serializeProjectShow,
 } from "../../presenters/project";
 import { attachCommandDescriptor } from "../../shell/command-meta";
 import { addCompactGlobalFlags, addGlobalFlags } from "../../shell/global-flags";
@@ -21,7 +21,6 @@ export function createProjectCommand(runtime: CliRuntime): Command {
 
   project.addCommand(createProjectListCommand(runtime));
   project.addCommand(createProjectShowCommand(runtime));
-  project.addCommand(createProjectLinkCommand(runtime));
   project.addCommand(createEnvCommand(runtime));
 
   return project;
@@ -51,38 +50,20 @@ function createProjectListCommand(runtime: CliRuntime): Command {
 function createProjectShowCommand(runtime: CliRuntime): Command {
   const command = attachCommandDescriptor(configureRuntimeCommand(new Command("show"), runtime), "project.show");
 
+  command.option("--project <id-or-name>", "Project id or name");
   addGlobalFlags(command);
 
   command.action(async (options) => {
+    const projectRef = (options as { project?: string }).project;
+
     await runCommand<ProjectShowResult>(
       runtime,
       "project.show",
       options as Record<string, unknown>,
-      (context) => runProjectShow(context),
+      (context) => runProjectShow(context, projectRef),
       {
         renderHuman: (context, descriptor, result) => renderProjectShow(context, descriptor, result),
-      },
-    );
-  });
-
-  return command;
-}
-
-function createProjectLinkCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("link"), runtime), "project.link");
-
-  command.argument("[project]", "Project id");
-
-  addGlobalFlags(command);
-
-  command.action(async (projectId: string | undefined, options) => {
-    await runCommand<ProjectShowResult>(
-      runtime,
-      "project.link",
-      options as Record<string, unknown>,
-      (context) => runProjectLink(context, projectId),
-      {
-        renderHuman: (context, descriptor, result) => renderProjectLink(context, descriptor, result),
+        renderJson: (result) => serializeProjectShow(result),
       },
     );
   });

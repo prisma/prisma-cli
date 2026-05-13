@@ -69,9 +69,9 @@ export interface BranchStateGateway {
   writeActiveBranch(branchName: string): Promise<void>;
 }
 
-export interface ProjectConfigGateway {
-  readLinkedProjectId(): Promise<string | null>;
-  writeLinkedProjectId(projectId: string): Promise<void>;
+export interface ProjectStateGateway {
+  readRememberedProjectId(): Promise<string | null>;
+  rememberProjectId(projectId: string): Promise<void>;
 }
 
 export interface LoginSelection {
@@ -106,8 +106,6 @@ export interface AuthUseCases {
 
 export interface ProjectUseCases {
   list(authState: AuthStateResult): Promise<import("../types/project").ProjectListResult>;
-  show(authState: AuthStateResult): Promise<import("../types/project").ProjectShowResult>;
-  link(authState: AuthStateResult, projectId: string): Promise<import("../types/project").ProjectShowResult>;
   listProjectsForWorkspace(workspaceId: string): Promise<ProjectSummary[]>;
 }
 

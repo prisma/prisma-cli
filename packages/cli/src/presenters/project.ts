@@ -1,7 +1,7 @@
 import type { CommandDescriptor } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
 import type { ProjectListResult, ProjectShowResult } from "../types/project";
-import { renderList, renderMutate, renderShow, serializeList } from "../output/patterns";
+import { renderList, renderShow, serializeList } from "../output/patterns";
 
 export function renderProjectList(
   context: CommandContext,
@@ -20,7 +20,7 @@ export function renderProjectList(
         noun: "project",
         label: project.name,
         id: project.id,
-        status: result.linkedProjectId === project.id ? "linked" : null,
+        status: null,
       })),
       emptyMessage: "No projects found.",
     },
@@ -37,7 +37,7 @@ export function serializeProjectList(result: ProjectListResult) {
       noun: "project",
       label: project.name,
       id: project.id,
-      status: result.linkedProjectId === project.id ? "linked" : null,
+      status: null,
     })),
   });
 }
@@ -47,65 +47,37 @@ export function renderProjectShow(
   descriptor: CommandDescriptor,
   result: ProjectShowResult,
 ): string[] {
-  if (!result.linkedProjectId) {
-    return renderShow(
-      {
-        title: "Showing the linked project for the current repo.",
-        descriptor,
-        fields: [{ key: "project", value: "not linked", tone: "dim" }],
-      },
-      context.ui,
-    );
-  }
-
-  if (!result.project || !result.workspace) {
-    return renderShow(
-      {
-        title: "Showing the linked project for the current repo.",
-        descriptor,
-        fields: [
-          { key: "project", value: "linked", tone: "success" },
-          { key: "remote details", value: "unavailable until you sign in", tone: "dim" },
-        ],
-      },
-      context.ui,
-    );
-  }
-
   return renderShow(
     {
-      title: "Showing the linked project for the current repo.",
+      title: "Showing the project Prisma resolves for this directory.",
       descriptor,
       fields: [
-        { key: "project", value: result.project.name },
         { key: "workspace", value: result.workspace.name },
+        { key: "project", value: result.project.name },
+        { key: "resolution", value: formatProjectSource(result.resolution.projectSource) },
       ],
     },
     context.ui,
   );
 }
 
-export function renderProjectLink(
-  context: CommandContext,
-  descriptor: CommandDescriptor,
-  result: ProjectShowResult,
-): string[] {
-  if (!result.project || !result.workspace) {
-    throw new Error("Linked project result must be enriched for human output.");
-  }
+export function serializeProjectShow(result: ProjectShowResult) {
+  return result;
+}
 
-  return renderMutate(
-    {
-      title: "Linking the current repo to an existing project.",
-      descriptor,
-      context: [
-        { key: "project", value: result.project.name },
-        { key: "workspace", value: result.workspace.name },
-      ],
-      operationDescription: "Applying local project link",
-      operationCount: 1,
-      details: ["Project link written to local repo config."],
-    },
-    context.ui,
-  );
+function formatProjectSource(source: ProjectShowResult["resolution"]["projectSource"]): string {
+  switch (source) {
+    case "explicit":
+      return "explicit";
+    case "platform-mapping":
+      return "platform mapping";
+    case "remembered-local":
+      return "remembered local context";
+    case "package-name":
+      return "package name";
+    case "created":
+      return "created";
+    case "prompt":
+      return "prompt";
+  }
 }

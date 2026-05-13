@@ -14,5 +14,4 @@ export interface AuthStateResult {
   provider: AuthProviderId | null;
   user: AuthUser | null;
   workspace: AuthWorkspace | null;
-  linkedProjectId: string | null;
 }

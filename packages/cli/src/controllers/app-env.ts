@@ -1,6 +1,5 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
-import { readLinkedProjectId } from "../adapters/config";
 import {
   formatScopeLabel,
   parseKeyValuePositional,
@@ -12,6 +11,7 @@ import { requireComputeAuth } from "../lib/auth/guard";
 import { authRequiredError, CliError, usageError } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
 import type { CommandContext } from "../shell/runtime";
+import { resolveProjectTarget } from "../lib/project/resolution";
 import type {
   EnvAddResult,
   EnvListResult,
@@ -20,6 +20,9 @@ import type {
   EnvUpdateResult,
   EnvVariableMetadata,
 } from "../types/app-env";
+import { requireAuthenticatedAuthState } from "./auth";
+import { createSelectPromptPort } from "./select-prompt-port";
+import { listRealWorkspaceProjects } from "./project";
 
 interface ResolvedScope {
   scope: EnvScope;
@@ -43,9 +46,9 @@ function defaultRoleScope(): EnvScope {
 export async function runEnvAdd(
   context: CommandContext,
   rawAssignment: string | undefined,
-  flags: { roleName?: string },
+  flags: { roleName?: string; projectRef?: string },
 ): Promise<CommandSuccess<EnvAddResult>> {
-  const { key, value } = parseKeyValuePositional(rawAssignment, "add");
+  const { key, value } = parseKeyValuePositional(rawAssignment, "add", context.runtime.env);
   const scope = resolveEnvScope(flags, { requireExplicit: true, command: "add" });
   if (!scope) {
     throw usageError(
@@ -57,7 +60,7 @@ export async function runEnvAdd(
     );
   }
 
-  const { client, projectId } = await requireClientAndProject(context);
+  const { client, projectId } = await requireClientAndProject(context, flags.projectRef);
   const resolved = resolveScopeToApi(scope);
 
   const existing = await findVariableByNaturalKey(client, projectId, key, resolved);
@@ -106,9 +109,9 @@ export async function runEnvAdd(
 export async function runEnvUpdate(
   context: CommandContext,
   rawAssignment: string | undefined,
-  flags: { roleName?: string },
+  flags: { roleName?: string; projectRef?: string },
 ): Promise<CommandSuccess<EnvUpdateResult>> {
-  const { key, value } = parseKeyValuePositional(rawAssignment, "update");
+  const { key, value } = parseKeyValuePositional(rawAssignment, "update", context.runtime.env);
   const scope = resolveEnvScope(flags, { requireExplicit: true, command: "update" });
   if (!scope) {
     throw usageError(
@@ -120,7 +123,7 @@ export async function runEnvUpdate(
     );
   }
 
-  const { client, projectId } = await requireClientAndProject(context);
+  const { client, projectId } = await requireClientAndProject(context, flags.projectRef);
   const resolved = resolveScopeToApi(scope);
 
   const existing = await findVariableByNaturalKey(client, projectId, key, resolved);
@@ -164,12 +167,12 @@ export async function runEnvUpdate(
 
 export async function runEnvList(
   context: CommandContext,
-  flags: { roleName?: string },
+  flags: { roleName?: string; projectRef?: string },
 ): Promise<CommandSuccess<EnvListResult>> {
   const explicit = resolveEnvScope(flags, { requireExplicit: false, command: "list" });
   const scope = explicit ?? defaultRoleScope();
 
-  const { client, projectId } = await requireClientAndProject(context);
+  const { client, projectId } = await requireClientAndProject(context, flags.projectRef);
   const resolved = resolveScopeToApi(scope);
   const variables = await listVariables(client, projectId, resolved);
 
@@ -190,7 +193,7 @@ export async function runEnvList(
 export async function runEnvRm(
   context: CommandContext,
   key: string | undefined,
-  flags: { roleName?: string },
+  flags: { roleName?: string; projectRef?: string },
 ): Promise<CommandSuccess<EnvRmResult>> {
   if (!key) {
     throw usageError(
@@ -213,7 +216,7 @@ export async function runEnvRm(
     );
   }
 
-  const { client, projectId } = await requireClientAndProject(context);
+  const { client, projectId } = await requireClientAndProject(context, flags.projectRef);
   const resolved = resolveScopeToApi(scope);
   const existing = await findVariableByNaturalKey(client, projectId, key, resolved);
   if (!existing) {
@@ -254,26 +257,24 @@ export async function runEnvRm(
 
 async function requireClientAndProject(
   context: CommandContext,
+  explicitProject: string | undefined,
 ): Promise<{ client: ManagementApiClient; projectId: string }> {
-  const projectId = await readLinkedProjectId(context.runtime.cwd);
-  if (!projectId) {
-    throw new CliError({
-      code: "PROJECT_NOT_LINKED",
-      domain: "project",
-      summary: "Project link required",
-      why: "prisma-cli project env needs a linked project for the current repo.",
-      fix: "Run prisma project link before managing environment variables.",
-      exitCode: 1,
-      nextSteps: ["prisma project link"],
-    });
-  }
-
+  const authState = await requireAuthenticatedAuthState(context);
   const client = await requireComputeAuth(context.runtime.env);
-  if (!client) {
+  if (!client || !authState.workspace) {
     throw authRequiredError(["prisma auth login"]);
   }
 
-  return { client, projectId };
+  const target = await resolveProjectTarget({
+    context,
+    workspace: authState.workspace,
+    explicitProject,
+    listProjects: () => listRealWorkspaceProjects(client, authState.workspace!),
+    prompt: createSelectPromptPort(context),
+    remember: true,
+  });
+
+  return { client, projectId: target.project.id };
 }
 
 function resolveScopeToApi(scope: EnvScope): ResolvedScope {
