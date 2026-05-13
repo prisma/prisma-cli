@@ -8,19 +8,19 @@ const fixturePath = path.resolve("fixtures/mock-api.json");
 
 export async function createUseCaseGateways(options?: {
   authSession?: AuthSessionRecord | null;
-  linkedProjectId?: string | null;
+  projectId?: string | null;
   activeBranch?: string;
 }): Promise<{
   gateways: CliUseCaseGateways;
   readState: () => {
     authSession: AuthSessionRecord | null;
-    linkedProjectId: string | null;
+    projectId: string | null;
     activeBranch: string;
   };
 }> {
   const api = await MockApi.load(fixturePath);
   let authSession = options?.authSession ?? null;
-  let linkedProjectId = options?.linkedProjectId ?? null;
+  let projectId = options?.projectId ?? null;
   let activeBranch = options?.activeBranch ?? "preview";
 
   return {
@@ -70,10 +70,10 @@ export async function createUseCaseGateways(options?: {
         },
         getDeployment: (deploymentId) => api.getDeployment(deploymentId),
       },
-      projectConfigGateway: {
-        readLinkedProjectId: async () => linkedProjectId,
-        writeLinkedProjectId: async (projectId) => {
-          linkedProjectId = projectId;
+      projectStateGateway: {
+        readRememberedProjectId: async () => projectId,
+        rememberProjectId: async (nextProjectId) => {
+          projectId = nextProjectId;
         },
       },
       sessionGateway: {
@@ -94,7 +94,7 @@ export async function createUseCaseGateways(options?: {
     },
     readState: () => ({
       authSession,
-      linkedProjectId,
+      projectId,
       activeBranch,
     }),
   };

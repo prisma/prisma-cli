@@ -1,13 +1,13 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { runProjectLink } from "../src/controllers/project";
+import { runProjectShow } from "../src/controllers/project";
 import { createTempCwd, createTestCommandContext } from "./helpers";
 
 const fixturePath = path.resolve("fixtures/mock-api.json");
 
 describe("project controller", () => {
-  it("returns a structured usage error when project link cannot prompt and no target is provided", async () => {
+  it("returns PROJECT_UNRESOLVED when automatic resolution cannot choose a project", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
@@ -17,10 +17,15 @@ describe("project controller", () => {
       isTTY: false,
     });
 
-    await expect(runProjectLink(context, undefined)).rejects.toMatchObject({
-      code: "USAGE_ERROR",
+    await context.stateStore.setAuthSession({
+      provider: "github",
+      userId: "usr_456",
+      workspaceId: "ws_123",
+    });
+
+    await expect(runProjectShow(context, undefined)).rejects.toMatchObject({
+      code: "PROJECT_UNRESOLVED",
       domain: "project",
-      summary: "Project link requires a project target in non-interactive mode",
     });
   });
 });

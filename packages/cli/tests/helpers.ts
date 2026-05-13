@@ -1,10 +1,11 @@
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { PassThrough, Writable } from "node:stream";
 
 import { runCli } from "../src/cli";
-import { createCommandContext, type CliRuntime, type CommandContext } from "../src/shell/runtime";
+import { LocalStateStore } from "../src/adapters/local-state";
+import { createCommandContext, resolveStateDir, type CliRuntime, type CommandContext } from "../src/shell/runtime";
 import type { GlobalFlags } from "../src/shell/global-flags";
 
 class CaptureStream extends Writable {
@@ -28,15 +29,6 @@ class CaptureInput extends PassThrough {
 
 export async function createTempCwd(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), "prisma-cli-"));
-}
-
-export async function writePrismaConfig(cwd: string, projectId: string): Promise<void> {
-  await mkdir(cwd, { recursive: true });
-  await writeFile(
-    path.join(cwd, "prisma.config.ts"),
-    `export default {\n  project: "${projectId}",\n};\n`,
-    "utf8",
-  );
 }
 
 export async function readPrismaConfig(cwd: string): Promise<string> {
@@ -64,16 +56,20 @@ export async function executeCli(options: {
 
   const stdin = new CaptureInput();
   stdin.isTTY = options.isTTY ?? false;
-  const cliPromise = runCli({
+  const env = createTestEnv(options.env, options.preserveCI);
+  const runtime: CliRuntime = {
     argv: options.argv,
     cwd: options.cwd,
-    env: createTestEnv(options.env, options.preserveCI),
+    env,
     fixturePath: options.fixturePath,
     stateDir: options.stateDir,
     stdin: stdin as unknown as NodeJS.ReadStream,
     stdout: stdout as unknown as NodeJS.WriteStream,
     stderr: stderr as unknown as NodeJS.WriteStream,
-  });
+  };
+  await seedRememberedProjectStateForTest(runtime);
+
+  const cliPromise = runCli(runtime);
 
   void streamInput(stdin, options.stdinText);
 
@@ -137,11 +133,41 @@ export async function createTestCommandContext(options: {
   };
 
   return {
-    context: await createCommandContext(runtime, flags),
+    context: await seedRememberedProjectForTest(await createCommandContext(runtime, flags), runtime.env),
     runtime,
     stdout,
     stderr,
   };
+}
+
+async function seedRememberedProjectForTest(
+  context: CommandContext,
+  env: NodeJS.ProcessEnv,
+): Promise<CommandContext> {
+  const projectId = env.PRISMA_CLI_TEST_REMEMBER_PROJECT_ID;
+  if (!projectId) {
+    return context;
+  }
+
+  await context.stateStore.setRememberedProject({
+    id: projectId,
+    name: env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME ?? "Acme Dashboard",
+    workspaceId: env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID ?? "ws_123",
+  });
+  return context;
+}
+
+async function seedRememberedProjectStateForTest(runtime: CliRuntime): Promise<void> {
+  const projectId = runtime.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_ID;
+  if (!projectId) {
+    return;
+  }
+
+  await new LocalStateStore(resolveStateDir(runtime)).setRememberedProject({
+    id: projectId,
+    name: runtime.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME ?? "Acme Dashboard",
+    workspaceId: runtime.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID ?? "ws_123",
+  });
 }
 
 function createTestEnv(env: NodeJS.ProcessEnv | undefined, preserveCI = false): NodeJS.ProcessEnv {

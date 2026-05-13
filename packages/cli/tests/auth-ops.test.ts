@@ -53,7 +53,6 @@ describe("readAuthState", () => {
         id: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
         name: "Sandpit",
       },
-      linkedProjectId: null,
     });
   });
 

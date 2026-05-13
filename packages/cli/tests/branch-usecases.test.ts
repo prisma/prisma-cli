@@ -4,15 +4,15 @@ import { createBranchUseCases } from "../src/use-cases/branch";
 import { createUseCaseGateways } from "./use-case-helpers";
 
 describe("branch use cases", () => {
-  it("lists all linked-project branches and keeps an active preview without remote state visible", async () => {
+  it("lists all resolved-project branches and keeps an active preview without remote state visible", async () => {
     const { gateways } = await createUseCaseGateways({
-      linkedProjectId: "proj_123",
+      projectId: "proj_123",
       activeBranch: "feat-auth",
     });
     const useCases = createBranchUseCases(gateways);
 
     await expect(useCases.list()).resolves.toEqual({
-      linkedProjectId: "proj_123",
+      projectId: "proj_123",
       projectName: "Acme Dashboard",
       activeBranch: "feat-auth",
       branches: [
@@ -57,13 +57,13 @@ describe("branch use cases", () => {
 
   it("shows live deployment details when remote state exists", async () => {
     const { gateways } = await createUseCaseGateways({
-      linkedProjectId: "proj_123",
+      projectId: "proj_123",
       activeBranch: "preview",
     });
     const useCases = createBranchUseCases(gateways);
 
     await expect(useCases.show()).resolves.toEqual({
-      linkedProjectId: "proj_123",
+      projectId: "proj_123",
       projectName: "Acme Dashboard",
       branch: {
         name: "preview",
@@ -79,14 +79,14 @@ describe("branch use cases", () => {
     });
   });
 
-  it("updates the active branch without mutating linked project state", async () => {
+  it("updates the active branch without mutating resolved project state", async () => {
     const { gateways, readState } = await createUseCaseGateways({
-      linkedProjectId: "proj_123",
+      projectId: "proj_123",
     });
     const useCases = createBranchUseCases(gateways);
 
     await expect(useCases.use("production")).resolves.toEqual({
-      linkedProjectId: "proj_123",
+      projectId: "proj_123",
       projectName: "Acme Dashboard",
       branch: {
         name: "production",
@@ -101,7 +101,7 @@ describe("branch use cases", () => {
       },
     });
 
-    expect(readState().linkedProjectId).toBe("proj_123");
+    expect(readState().projectId).toBe("proj_123");
     expect(readState().activeBranch).toBe("production");
   });
 });

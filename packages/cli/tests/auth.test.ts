@@ -2,7 +2,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import stripAnsi from "strip-ansi";
 
-import { createTempCwd, executeCli, writePrismaConfig } from "./helpers";
+import { createTempCwd, executeCli } from "./helpers";
 
 const fixturePath = path.resolve("fixtures/mock-api.json");
 
@@ -46,7 +46,6 @@ describe("auth commands", () => {
   it("returns the stable signed-in JSON shape for whoami", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
-    await writePrismaConfig(cwd, "proj_123");
 
     await executeCli({
       argv: ["auth", "login", "--provider", "github", "--user", "usr_456"],
@@ -77,7 +76,6 @@ describe("auth commands", () => {
           id: "ws_123",
           name: "Acme Inc",
         },
-        linkedProjectId: "proj_123",
       },
       warnings: [],
       nextSteps: [],

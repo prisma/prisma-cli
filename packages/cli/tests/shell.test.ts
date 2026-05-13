@@ -82,7 +82,7 @@ describe("shell behavior", () => {
     expect(authResult.stderr).not.toContain("--color");
 
     expect(projectResult.exitCode).toBe(0);
-    expect(projectResult.stderr).toContain("project → Manage the link between this directory and a Prisma project");
+    expect(projectResult.stderr).toContain("project → Manage and inspect your Prisma projects");
     expect(projectResult.stderr).toContain("Global options:");
 
     expect(branchResult.exitCode).toBe(0);
@@ -133,15 +133,14 @@ describe("shell behavior", () => {
     const stateDir = path.join(cwd, ".state");
 
     const result = await executeCli({
-      argv: ["--no-interactive", "project", "link"],
+      argv: ["--no-interactive", "project", "show"],
       cwd,
       stateDir,
       fixturePath,
     });
 
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("[USAGE_ERROR]");
-    expect(result.stderr).toContain("Project link requires a project target in non-interactive mode");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("[AUTH_REQUIRED]");
   });
 
   it("shows a did-you-mean suggestion for mistyped subcommands", async () => {
@@ -181,14 +180,14 @@ describe("shell behavior", () => {
     const stateDir = path.join(cwd, ".state");
 
     const result = await executeCli({
-      argv: ["project", "link", "--no-interactive", "--trace"],
+      argv: ["project", "show", "--no-interactive", "--trace"],
       cwd,
       stateDir,
       fixturePath,
     });
 
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("[USAGE_ERROR]");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("[AUTH_REQUIRED]");
     expect(result.stderr).not.toContain("More: Re-run with --trace");
   });
 
