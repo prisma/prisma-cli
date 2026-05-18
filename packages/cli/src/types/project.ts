@@ -27,3 +27,33 @@ export interface ProjectShowResult {
   project: ProjectSummary;
   resolution: ProjectResolution;
 }
+
+export interface GitRepositoryConnection {
+  id: string | null;
+  provider: "github";
+  repoId: number | null;
+  repository: {
+    owner: string;
+    name: string;
+    fullName: string;
+    url: string;
+  };
+  defaultBranch: string | null;
+  isPrivate: boolean | null;
+  status: "pending" | "active" | "archived";
+  installation: {
+    id: string | null;
+    status: "pending" | "connected";
+  };
+  automation: {
+    branches: boolean;
+    pullRequests: boolean;
+    comments: boolean;
+  };
+  connectedAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface ProjectRepositoryConnectionResult extends ProjectShowResult {
+  repositoryConnection: GitRepositoryConnection | null;
+}

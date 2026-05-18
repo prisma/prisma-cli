@@ -78,6 +78,22 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: ["prisma-cli project show", "prisma-cli project show --project proj_123 --json"],
   },
   {
+    id: "project.connect-repo",
+    path: ["prisma", "project", "connect-repo"],
+    description: "Connect the resolved project to a GitHub repository",
+    examples: [
+      "prisma-cli project connect-repo",
+      "prisma-cli project connect-repo git@github.com:prisma/prisma-cli.git",
+      "prisma-cli project connect-repo --project proj_123",
+    ],
+  },
+  {
+    id: "project.disconnect-repo",
+    path: ["prisma", "project", "disconnect-repo"],
+    description: "Disconnect the GitHub repository from the resolved project",
+    examples: ["prisma-cli project disconnect-repo", "prisma-cli project disconnect-repo --project proj_123"],
+  },
+  {
     id: "branch.list",
     path: ["prisma", "branch", "list"],
     description: "List active Platform branches for the resolved project",

@@ -1,7 +1,11 @@
 import type { CommandDescriptor } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
-import type { ProjectListResult, ProjectShowResult } from "../types/project";
-import { renderList, renderShow, serializeList } from "../output/patterns";
+import type {
+  ProjectListResult,
+  ProjectRepositoryConnectionResult,
+  ProjectShowResult,
+} from "../types/project";
+import { renderList, renderMutate, renderShow, serializeList } from "../output/patterns";
 
 export function renderProjectList(
   context: CommandContext,
@@ -63,6 +67,56 @@ export function renderProjectShow(
 
 export function serializeProjectShow(result: ProjectShowResult) {
   return result;
+}
+
+export function renderProjectConnectRepo(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: ProjectRepositoryConnectionResult,
+): string[] {
+  const connection = result.repositoryConnection;
+  return renderMutate(
+    {
+      title: "Connecting the resolved project to a GitHub repository.",
+      descriptor,
+      context: [
+        { key: "project", value: result.project.name },
+        { key: "workspace", value: result.workspace.name },
+        { key: "repository", value: connection.repository.fullName },
+        { key: "status", value: connection.status },
+      ],
+      operationDescription: "Applying repository connection",
+      operationCount: 1,
+      details: [
+        connection.status === "active"
+          ? "GitHub branch automation is active for this project."
+          : "GitHub branch automation is pending GitHub App installation.",
+      ],
+    },
+    context.ui,
+  );
+}
+
+export function renderProjectDisconnectRepo(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: ProjectRepositoryConnectionResult,
+): string[] {
+  return renderMutate(
+    {
+      title: "Disconnecting the GitHub repository from the resolved project.",
+      descriptor,
+      context: [
+        { key: "project", value: result.project.name },
+        { key: "workspace", value: result.workspace.name },
+        { key: "repository", value: result.repositoryConnection.repository.fullName },
+      ],
+      operationDescription: "Applying repository disconnection",
+      operationCount: 1,
+      details: ["GitHub branch automation is no longer active for this project."],
+    },
+    context.ui,
+  );
 }
 
 function formatProjectSource(source: ProjectShowResult["resolution"]["projectSource"]): string {

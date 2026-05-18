@@ -14,6 +14,9 @@ The preview package includes these command groups:
 - `branch`
 - `app`
 
+The GitHub repository connection slice extends the `project` group. It does not
+add a top-level `git` or `github` group.
+
 Out of scope for the current preview:
 
 - `init`
@@ -224,6 +227,68 @@ Examples:
 prisma-cli project show
 prisma-cli project show --json
 prisma-cli project show --project proj_123 --json
+```
+
+## `prisma-cli project connect-repo [git-url]`
+
+Purpose:
+
+- connect the resolved Prisma project to a GitHub repository
+
+Behavior:
+
+- requires auth
+- resolves project context without creating projects
+- supports `--project <id-or-name>` for explicit project selection
+- if `[git-url]` is provided, parses it as a GitHub repository URL
+- if `[git-url]` is omitted, reads the local Git `origin` remote URL
+- accepts common GitHub URL forms such as:
+  - `https://github.com/prisma/prisma-cli`
+  - `https://github.com/prisma/prisma-cli.git`
+  - `git@github.com:prisma/prisma-cli.git`
+- rejects unsupported providers with `REPO_PROVIDER_UNSUPPORTED`
+- stores the repository connection server-side through the Management API
+- does not write repository data to `prisma.config.ts`
+- does not create branches synchronously
+- enables platform webhook automation to map GitHub branch activity to Prisma Branch state
+
+Current backend contract:
+
+- the Management API link call requires GitHub's numeric repository id as `providerRepositoryId`
+- the CLI first tries to resolve that id from `gh repo view` or GitHub's public repository API
+- private repositories may require `gh auth login` or an explicit `--provider-repository-id <id>`
+
+Examples:
+
+```bash
+prisma-cli project connect-repo
+prisma-cli project connect-repo git@github.com:prisma/prisma-cli.git
+prisma-cli project connect-repo --project proj_123
+prisma-cli project connect-repo https://github.com/prisma/prisma-cli --provider-repository-id 123456
+```
+
+## `prisma-cli project disconnect-repo`
+
+Purpose:
+
+- disconnect the GitHub repository from the resolved Prisma project
+
+Behavior:
+
+- requires auth
+- resolves project context without creating projects
+- supports `--project <id-or-name>` for explicit project selection
+- removes the active server-side repository connection
+- stops future GitHub branch automation for that project
+- does not delete the resolved Prisma project
+- does not delete existing Branches synchronously; server-side retention rules own that behavior
+
+Examples:
+
+```bash
+prisma-cli project disconnect-repo
+prisma-cli project disconnect-repo --project proj_123
+prisma-cli project disconnect-repo --json
 ```
 
 ## `prisma-cli branch list`
