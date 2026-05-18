@@ -32,7 +32,6 @@ export async function readAuthState(env: NodeJS.ProcessEnv): Promise<AuthStateRe
       provider: null,
       user: null,
       workspace: null,
-      linkedProjectId: null,
     };
   }
 
@@ -67,7 +66,6 @@ export async function readAuthState(env: NodeJS.ProcessEnv): Promise<AuthStateRe
       id: workspaceId,
       name: workspaceName,
     },
-    linkedProjectId: null,
   };
 }
 

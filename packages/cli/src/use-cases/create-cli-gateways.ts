@@ -1,12 +1,10 @@
-import { UnsafeConfigWriteError, readLinkedProjectId, writeLinkedProjectId } from "../adapters/config";
 import type { CommandContext } from "../shell/runtime";
-import { usageError } from "../shell/errors";
 import type {
   BranchGateway,
   BranchStateGateway,
   IdentityGateway,
-  ProjectConfigGateway,
   ProjectGateway,
+  ProjectStateGateway,
   SessionGateway,
 } from "./contracts";
 
@@ -14,7 +12,7 @@ export interface CliUseCaseGateways {
   identityGateway: IdentityGateway;
   projectGateway: ProjectGateway;
   branchGateway: BranchGateway;
-  projectConfigGateway: ProjectConfigGateway;
+  projectStateGateway: ProjectStateGateway;
   sessionGateway: SessionGateway;
   branchStateGateway: BranchStateGateway;
 }
@@ -65,24 +63,10 @@ export function createCliUseCaseGateways(context: CommandContext): CliUseCaseGat
       },
       getDeployment: (deploymentId) => context.api.getDeployment(deploymentId),
     },
-    projectConfigGateway: {
-      readLinkedProjectId: () => readLinkedProjectId(context.runtime.cwd),
-      writeLinkedProjectId: async (projectId) => {
-        try {
-          await writeLinkedProjectId(context.runtime.cwd, projectId);
-        } catch (error) {
-          if (error instanceof UnsafeConfigWriteError) {
-            throw usageError(
-              "Project link requires a writable Prisma config",
-              error.message,
-              "Update prisma.config.ts to use a recognizable project field, or remove it and rerun prisma-cli project link.",
-              ["prisma-cli project link proj_123"],
-              "project",
-            );
-          }
-
-          throw error;
-        }
+    projectStateGateway: {
+      readRememberedProjectId: async () => {
+        const remembered = await context.stateStore.readLastResolvedProject();
+        return remembered?.id ?? null;
       },
     },
     sessionGateway: {

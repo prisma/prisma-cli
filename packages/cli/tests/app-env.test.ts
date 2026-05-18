@@ -1,9 +1,17 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { writePrismaConfig } from "./helpers";
+beforeEach(() => {
+  process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_ID = "proj_123";
+  process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME = "Acme Dashboard";
+  process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID = "ws_123";
+});
 
 afterEach(() => {
-  vi.doUnmock("../src/adapters/config");
+  delete process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_ID;
+  delete process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME;
+  delete process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID;
+
+  vi.doUnmock("../src/lib/auth/auth-ops");
   vi.doUnmock("../src/lib/auth/guard");
   vi.doUnmock("../src/lib/app/preview-provider");
   vi.resetModules();
@@ -12,14 +20,37 @@ afterEach(() => {
 
 interface MockClient {
   GET: ReturnType<typeof vi.fn>;
+  envGET: ReturnType<typeof vi.fn>;
   POST: ReturnType<typeof vi.fn>;
   PATCH: ReturnType<typeof vi.fn>;
   DELETE: ReturnType<typeof vi.fn>;
 }
 
 function createMockClient(): MockClient {
+  const envGET = vi.fn();
   return {
-    GET: vi.fn(),
+    GET: vi.fn().mockImplementation((pathName: string, ...args: unknown[]) => {
+      if (pathName === "/v1/projects") {
+        return {
+          data: {
+            data: [
+              {
+                id: "proj_123",
+                name: "Acme Dashboard",
+                slug: "acme-dashboard",
+                workspace: {
+                  id: "ws_123",
+                  name: "Acme Inc",
+                },
+              },
+            ],
+          },
+        };
+      }
+
+      return envGET(pathName, ...args);
+    }),
+    envGET,
     POST: vi.fn(),
     PATCH: vi.fn(),
     DELETE: vi.fn(),
@@ -35,17 +66,23 @@ function expectNoApiCalls(client: MockClient) {
 
 async function loadControllers(client: MockClient, projectId: string) {
   vi.resetModules();
+  void projectId;
 
-  vi.doMock("../src/adapters/config", async () => {
-    const actual =
-      await vi.importActual<typeof import("../src/adapters/config")>(
-        "../src/adapters/config",
-      );
-    return {
-      ...actual,
-      readLinkedProjectId: vi.fn().mockResolvedValue(projectId),
-    };
-  });
+  vi.doMock("../src/lib/auth/auth-ops", () => ({
+    readAuthState: vi.fn().mockResolvedValue({
+      authenticated: true,
+      provider: null,
+      user: {
+        email: "test@example.com",
+      },
+      workspace: {
+        id: "ws_123",
+        name: "Acme Inc",
+      },
+    }),
+    performLogin: vi.fn(),
+    performLogout: vi.fn(),
+  }));
   vi.doMock("../src/lib/auth/guard", () => ({
     requireComputeAuth: vi.fn().mockResolvedValue(client),
   }));
@@ -82,7 +119,7 @@ function makeVariableRow(overrides: Partial<{
 describe("env add", () => {
   it("creates a new variable on the production template via POST", async () => {
     const client = createMockClient();
-    client.GET.mockResolvedValueOnce({
+    client.envGET.mockResolvedValueOnce({
       data: { data: [], pagination: { hasMore: false, nextCursor: null } },
       response: { status: 200 },
     });
@@ -94,7 +131,6 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvAdd(
@@ -122,9 +158,49 @@ describe("env add", () => {
     expect(JSON.stringify(result)).not.toContain("sk_test_xxx");
   });
 
+  it("reads KEY-only assignments from the current environment with explicit --project", async () => {
+    const client = createMockClient();
+    client.envGET.mockResolvedValueOnce({
+      data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+      response: { status: 200 },
+    });
+    client.POST.mockResolvedValueOnce({
+      data: { data: makeVariableRow({ key: "API_URL", class: "preview" }) },
+      response: { status: 201 },
+    });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    const { context } = await createTestCommandContext({
+      cwd,
+      env: {
+        ...process.env,
+        API_URL: "https://api.example",
+      },
+    });
+
+    await controllers.runEnvAdd(context, "API_URL", {
+      roleName: "preview",
+      projectRef: "proj_123",
+    });
+
+    expect(client.POST).toHaveBeenCalledWith(
+      "/v1/environment-variables",
+      expect.objectContaining({
+        body: {
+          projectId: "proj_123",
+          class: "preview",
+          key: "API_URL",
+          value: "https://api.example",
+        },
+      }),
+    );
+  });
+
   it("fails when the variable already exists", async () => {
     const client = createMockClient();
-    client.GET.mockResolvedValueOnce({
+    client.envGET.mockResolvedValueOnce({
       data: {
         data: [makeVariableRow()],
         pagination: { hasMore: false, nextCursor: null },
@@ -135,7 +211,6 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -154,7 +229,6 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -170,7 +244,6 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -188,7 +261,6 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -205,7 +277,7 @@ describe("env add", () => {
 describe("env update", () => {
   it("replaces an existing variable's value via PATCH", async () => {
     const client = createMockClient();
-    client.GET.mockResolvedValueOnce({
+    client.envGET.mockResolvedValueOnce({
       data: {
         data: [makeVariableRow()],
         pagination: { hasMore: false, nextCursor: null },
@@ -220,7 +292,6 @@ describe("env update", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvUpdate(
@@ -246,7 +317,7 @@ describe("env update", () => {
 
   it("fails when the variable does not exist", async () => {
     const client = createMockClient();
-    client.GET.mockResolvedValueOnce({
+    client.envGET.mockResolvedValueOnce({
       data: { data: [], pagination: { hasMore: false, nextCursor: null } },
       response: { status: 200 },
     });
@@ -254,7 +325,6 @@ describe("env update", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -273,7 +343,6 @@ describe("env update", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -288,7 +357,7 @@ describe("env update", () => {
 describe("env list", () => {
   it("returns metadata for a role scope and never includes values", async () => {
     const client = createMockClient();
-    client.GET.mockResolvedValueOnce({
+    client.envGET.mockResolvedValueOnce({
       data: {
         data: [
           makeVariableRow({ id: "envvar_a", key: "STRIPE_KEY" }),
@@ -302,7 +371,6 @@ describe("env list", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvList(context, {
@@ -331,7 +399,7 @@ describe("env list", () => {
 
   it("defaults to --role production when no scope flag is provided", async () => {
     const client = createMockClient();
-    client.GET.mockResolvedValueOnce({
+    client.envGET.mockResolvedValueOnce({
       data: { data: [], pagination: { hasMore: false, nextCursor: null } },
       response: { status: 200 },
     });
@@ -339,7 +407,6 @@ describe("env list", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvList(context, {});
@@ -362,7 +429,7 @@ describe("env list", () => {
 describe("env rm", () => {
   it("looks up the row and DELETEs it on the happy path", async () => {
     const client = createMockClient();
-    client.GET.mockResolvedValueOnce({
+    client.envGET.mockResolvedValueOnce({
       data: {
         data: [makeVariableRow({ id: "envvar_target", key: "STRIPE_KEY" })],
         pagination: { hasMore: false, nextCursor: null },
@@ -377,7 +444,6 @@ describe("env rm", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvRm(context, "STRIPE_KEY", {
@@ -399,7 +465,7 @@ describe("env rm", () => {
 
   it("returns a focused not-found error when the row does not exist", async () => {
     const client = createMockClient();
-    client.GET.mockResolvedValueOnce({
+    client.envGET.mockResolvedValueOnce({
       data: { data: [], pagination: { hasMore: false, nextCursor: null } },
       response: { status: 200 },
     });
@@ -407,7 +473,6 @@ describe("env rm", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -425,7 +490,6 @@ describe("env rm", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -439,8 +503,8 @@ describe("env rm", () => {
 
 /**
  * Shared scaffolding for the legacy `app update-env` / `app list-env`
- * deprecation tests. The two flows share an auth gate, project-link
- * lookup, and preview-provider seam; centralizing the mock keeps the
+ * deprecation tests. The two flows share an auth gate, project
+ * resolution, and preview-provider seam; centralizing the mock keeps the
  * tests focused on the deprecation banner contract instead of the
  * provider stub shape, and means a future change to either of those
  * underlying dependencies needs to be reflected in exactly one place.
@@ -451,18 +515,23 @@ function mockLegacyEnvDependencies(
     listAppEnvNames?: ReturnType<typeof vi.fn>;
   } = {},
 ): void {
-  vi.doMock("../src/adapters/config", async () => {
-    const actual =
-      await vi.importActual<typeof import("../src/adapters/config")>(
-        "../src/adapters/config",
-      );
-    return {
-      ...actual,
-      readLinkedProjectId: vi.fn().mockResolvedValue("proj_123"),
-    };
-  });
+  vi.doMock("../src/lib/auth/auth-ops", () => ({
+    readAuthState: vi.fn().mockResolvedValue({
+      authenticated: true,
+      provider: null,
+      user: {
+        email: "test@example.com",
+      },
+      workspace: {
+        id: "ws_123",
+        name: "Acme Inc",
+      },
+    }),
+    performLogin: vi.fn(),
+    performLogout: vi.fn(),
+  }));
   vi.doMock("../src/lib/auth/guard", () => ({
-    requireComputeAuth: vi.fn().mockResolvedValue({ token: "t" }),
+    requireComputeAuth: vi.fn().mockResolvedValue(createMockClient()),
   }));
 
   const appRecord = {

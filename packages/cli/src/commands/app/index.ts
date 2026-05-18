@@ -161,6 +161,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
 
   command
     .addOption(new Option("--app <name>", "App name"))
+    .addOption(new Option("--project <id-or-name>", "Project id or name"))
     .addOption(new Option("--entry <path>", "Entrypoint path for Bun or auto deploys"))
     .addOption(
       new Option("--build-type <type>", "Deploy build type")
@@ -180,12 +181,14 @@ function createDeployCommand(runtime: CliRuntime): Command {
     const buildType = (options as { buildType?: string }).buildType;
     const httpPort = (options as { httpPort?: string }).httpPort;
     const envAssignments = (options as { env?: string[] }).env;
+    const projectRef = (options as { project?: string }).project;
 
     await runCommand<AppDeployResult>(
       runtime,
       "app.deploy",
       options as Record<string, unknown>,
       (context) => runAppDeploy(context, appName, {
+        projectRef,
         entrypoint: entry,
         buildType,
         httpPort,
@@ -209,6 +212,7 @@ function createUpdateEnvCommand(runtime: CliRuntime): Command {
 
   command
     .addOption(new Option("--app <name>", "App name"))
+    .addOption(new Option("--project <id-or-name>", "Project id or name"))
     .addOption(
       new Option("--env <name=value>", "Environment variable")
         .argParser(collectRepeatableValues),
@@ -218,12 +222,13 @@ function createUpdateEnvCommand(runtime: CliRuntime): Command {
   command.action(async (options) => {
     const appName = (options as { app?: string }).app;
     const envAssignments = (options as { env?: string[] }).env;
+    const projectRef = (options as { project?: string }).project;
 
     await runCommand<AppUpdateEnvResult>(
       runtime,
       "app.update-env",
       options as Record<string, unknown>,
-      (context) => runAppUpdateEnv(context, appName, envAssignments),
+      (context) => runAppUpdateEnv(context, appName, envAssignments, projectRef),
       {
         renderHuman: (context, descriptor, result) => renderAppUpdateEnv(context, descriptor, result),
         renderJson: (result) => serializeAppUpdateEnv(result),
@@ -240,17 +245,20 @@ function createListEnvCommand(runtime: CliRuntime): Command {
     "app.list-env",
   );
 
-  command.addOption(new Option("--app <name>", "App name"));
+  command
+    .addOption(new Option("--app <name>", "App name"))
+    .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
   command.action(async (options) => {
     const appName = (options as { app?: string }).app;
+    const projectRef = (options as { project?: string }).project;
 
     await runCommand<AppListEnvResult>(
       runtime,
       "app.list-env",
       options as Record<string, unknown>,
-      (context) => runAppListEnv(context, appName),
+      (context) => runAppListEnv(context, appName, projectRef),
       {
         renderHuman: (context, descriptor, result) => renderAppListEnv(context, descriptor, result),
         renderJson: (result) => serializeAppListEnv(result),
@@ -267,17 +275,20 @@ function createShowCommand(runtime: CliRuntime): Command {
     "app.show",
   );
 
-  command.addOption(new Option("--app <name>", "App name"));
+  command
+    .addOption(new Option("--app <name>", "App name"))
+    .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
   command.action(async (options) => {
     const appName = (options as { app?: string }).app;
+    const projectRef = (options as { project?: string }).project;
 
     await runCommand<AppShowResult>(
       runtime,
       "app.show",
       options as Record<string, unknown>,
-      (context) => runAppShow(context, appName),
+      (context) => runAppShow(context, appName, projectRef),
       {
         renderHuman: (context, descriptor, result) => renderAppShow(context, descriptor, result),
         renderJson: (result) => serializeAppShow(result),
@@ -294,17 +305,20 @@ function createOpenCommand(runtime: CliRuntime): Command {
     "app.open",
   );
 
-  command.addOption(new Option("--app <name>", "App name"));
+  command
+    .addOption(new Option("--app <name>", "App name"))
+    .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
   command.action(async (options) => {
     const appName = (options as { app?: string }).app;
+    const projectRef = (options as { project?: string }).project;
 
     await runCommand<AppOpenResult>(
       runtime,
       "app.open",
       options as Record<string, unknown>,
-      (context) => runAppOpen(context, appName),
+      (context) => runAppOpen(context, appName, projectRef),
       {
         renderHuman: (context, descriptor, result) => renderAppOpen(context, descriptor, result),
         renderJson: (result) => serializeAppOpen(result),
@@ -323,18 +337,20 @@ function createLogsCommand(runtime: CliRuntime): Command {
 
   command
     .addOption(new Option("--app <name>", "App name"))
+    .addOption(new Option("--project <id-or-name>", "Project id or name"))
     .addOption(new Option("--deployment <id>", "Deployment id"));
   addGlobalFlags(command);
 
   command.action(async (options) => {
     const appName = (options as { app?: string }).app;
     const deploymentId = (options as { deployment?: string }).deployment;
+    const projectRef = (options as { project?: string }).project;
 
     await runStreamingCommand(
       runtime,
       "app.logs",
       options as Record<string, unknown>,
-      (context) => runAppLogs(context, appName, deploymentId),
+      (context) => runAppLogs(context, appName, deploymentId, projectRef),
     );
   });
 
@@ -351,17 +367,20 @@ function createListDeploysCommand(runtime: CliRuntime): Command {
     "app.list-deploys",
   );
 
-  command.addOption(new Option("--app <name>", "App name"));
+  command
+    .addOption(new Option("--app <name>", "App name"))
+    .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
   command.action(async (options) => {
     const appName = (options as { app?: string }).app;
+    const projectRef = (options as { project?: string }).project;
 
     await runCommand<AppListDeploysResult>(
       runtime,
       "app.list-deploys",
       options as Record<string, unknown>,
-      (context) => runAppListDeploys(context, appName),
+      (context) => runAppListDeploys(context, appName, projectRef),
       {
         renderHuman: (context, descriptor, result) => renderAppListDeploys(context, descriptor, result),
         renderJson: (result) => serializeAppListDeploys(result),
@@ -404,17 +423,20 @@ function createPromoteCommand(runtime: CliRuntime): Command {
   );
 
   command.argument("<deployment>", "Deployment id");
-  command.addOption(new Option("--app <name>", "App name"));
+  command
+    .addOption(new Option("--app <name>", "App name"))
+    .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
   command.action(async (deploymentId: string, options) => {
     const appName = (options as { app?: string }).app;
+    const projectRef = (options as { project?: string }).project;
 
     await runCommand<AppPromoteResult>(
       runtime,
       "app.promote",
       options as Record<string, unknown>,
-      (context) => runAppPromote(context, deploymentId, appName),
+      (context) => runAppPromote(context, deploymentId, appName, projectRef),
       {
         renderHuman: (context, descriptor, result) => renderAppPromote(context, descriptor, result),
         renderJson: (result) => serializeAppPromote(result),
@@ -433,18 +455,20 @@ function createRollbackCommand(runtime: CliRuntime): Command {
 
   command
     .addOption(new Option("--app <name>", "App name"))
+    .addOption(new Option("--project <id-or-name>", "Project id or name"))
     .addOption(new Option("--to <deployment>", "Deployment id"));
   addGlobalFlags(command);
 
   command.action(async (options) => {
     const appName = (options as { app?: string }).app;
     const deploymentId = (options as { to?: string }).to;
+    const projectRef = (options as { project?: string }).project;
 
     await runCommand<AppRollbackResult>(
       runtime,
       "app.rollback",
       options as Record<string, unknown>,
-      (context) => runAppRollback(context, appName, deploymentId),
+      (context) => runAppRollback(context, appName, deploymentId, projectRef),
       {
         renderHuman: (context, descriptor, result) => renderAppRollback(context, descriptor, result),
         renderJson: (result) => serializeAppRollback(result),
@@ -461,17 +485,20 @@ function createRemoveCommand(runtime: CliRuntime): Command {
     "app.remove",
   );
 
-  command.addOption(new Option("--app <name>", "App name"));
+  command
+    .addOption(new Option("--app <name>", "App name"))
+    .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
   command.action(async (options) => {
     const appName = (options as { app?: string }).app;
+    const projectRef = (options as { project?: string }).project;
 
     await runCommand<AppRemoveResult>(
       runtime,
       "app.remove",
       options as Record<string, unknown>,
-      (context) => runAppRemove(context, appName),
+      (context) => runAppRemove(context, appName, projectRef),
       {
         renderHuman: (context, descriptor, result) => renderAppRemove(context, descriptor, result),
         renderJson: (result) => serializeAppRemove(result),

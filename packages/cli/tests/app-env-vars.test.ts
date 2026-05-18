@@ -1,14 +1,67 @@
 import path from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+beforeEach(() => {
+  process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_ID = "proj_123";
+  process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME = "Acme Dashboard";
+  process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID = "ws_123";
+
+  vi.doMock("../src/lib/auth/auth-ops", () => ({
+    readAuthState: vi.fn().mockResolvedValue({
+      authenticated: true,
+      provider: null,
+      user: {
+        email: "test@example.com",
+      },
+      workspace: {
+        id: "ws_123",
+        name: "Acme Inc",
+      },
+    }),
+    performLogin: vi.fn(),
+    performLogout: vi.fn(),
+  }));
+});
 
 afterEach(() => {
-  vi.doUnmock("../src/adapters/config");
+  delete process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_ID;
+  delete process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME;
+  delete process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID;
+
+  vi.doUnmock("../src/lib/auth/auth-ops");
   vi.doUnmock("../src/lib/auth/guard");
   vi.doUnmock("../src/lib/app/preview-provider");
   vi.resetModules();
   vi.restoreAllMocks();
 });
+
+function createProjectClient() {
+  return {
+    token: "token",
+    GET: vi.fn().mockImplementation((pathName: string) => {
+      if (pathName === "/v1/projects") {
+        return {
+          data: {
+            data: [
+              {
+                id: "proj_123",
+                name: "Acme Dashboard",
+                slug: "acme-dashboard",
+                workspace: {
+                  id: "ws_123",
+                  name: "Acme Inc",
+                },
+              },
+            ],
+          },
+        };
+      }
+
+      throw new Error(`Unexpected path ${pathName}`);
+    }),
+  };
+}
 
 describe("app env vars", () => {
   it("parses repeated env assignments and allows empty values", async () => {
@@ -76,8 +129,7 @@ describe("app env vars", () => {
   });
 
   it("passes env vars to provider deploy without surfacing values", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
     ]);
@@ -97,13 +149,6 @@ describe("app env vars", () => {
       },
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -158,8 +203,7 @@ describe("app env vars", () => {
   });
 
   it("returns NO_DEPLOYMENTS when updating env vars for an app without deployments", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
     ]);
@@ -168,13 +212,6 @@ describe("app env vars", () => {
       deployments: [],
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -214,8 +251,7 @@ describe("app env vars", () => {
   });
 
   it("updates env vars, stores the new live deployment, and returns variable names only", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_old", liveUrl: "https://hello-world.prisma.app" },
     ]);
@@ -244,13 +280,6 @@ describe("app env vars", () => {
       variables: ["DATABASE_URL", "FEATURE_FLAG"],
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -317,8 +346,7 @@ describe("app env vars", () => {
   });
 
   it("lists variable names for the resolved live deployment", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: "https://hello-world.prisma.app" },
     ]);
@@ -348,13 +376,6 @@ describe("app env vars", () => {
       variables: ["DATABASE_URL", "FEATURE_FLAG"],
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -411,8 +432,7 @@ describe("app env vars", () => {
   });
 
   it("uses the saved known-live deployment when provider version listing lags", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: "https://hello-world.prisma.app" },
     ]);
@@ -441,13 +461,6 @@ describe("app env vars", () => {
       variables: ["DATABASE_URL"],
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -491,17 +504,9 @@ describe("app env vars", () => {
   });
 
   it("returns an empty success state when listing env vars before any app exists", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -594,14 +599,29 @@ describe("app env vars", () => {
       expect.anything(),
       "hello-world",
       ["DATABASE_URL=postgresql://example"],
+      undefined,
     );
   });
 
-  it("parses deploy build and port options through the CLI command layer", async () => {
+  it("parses deploy build, port, explicit project, and JSON output through the CLI command layer", async () => {
     const runAppDeploy = vi.fn().mockResolvedValue({
       command: "app.deploy",
       result: {
-        projectId: "proj_123",
+        workspace: {
+          id: "ws_123",
+          name: "Acme Inc",
+        },
+        project: {
+          id: "proj_123",
+          name: "Acme Dashboard",
+        },
+        branch: {
+          name: "preview",
+          kind: "preview",
+        },
+        resolution: {
+          projectSource: "explicit",
+        },
         app: {
           id: "app_1",
           name: "hello-world",
@@ -640,6 +660,9 @@ describe("app env vars", () => {
         "3000",
         "--env",
         "DATABASE_URL=postgresql://example",
+        "--project",
+        "proj_123",
+        "--json",
       ],
       cwd,
       stateDir,
@@ -650,6 +673,31 @@ describe("app env vars", () => {
     });
 
     expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      command: "app.deploy",
+      result: {
+        workspace: {
+          id: "ws_123",
+          name: "Acme Inc",
+        },
+        project: {
+          id: "proj_123",
+          name: "Acme Dashboard",
+        },
+        branch: {
+          name: "preview",
+          kind: "preview",
+        },
+        app: {
+          id: "app_1",
+          name: "hello-world",
+        },
+        deployment: {
+          id: "dep_123",
+        },
+      },
+    });
     expect(runAppDeploy).toHaveBeenCalledWith(
       expect.anything(),
       "hello-world",
@@ -658,6 +706,7 @@ describe("app env vars", () => {
         buildType: "nextjs",
         httpPort: "3000",
         envAssignments: ["DATABASE_URL=postgresql://example"],
+        projectRef: "proj_123",
       },
     );
   });

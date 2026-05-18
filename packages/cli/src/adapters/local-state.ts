@@ -9,6 +9,10 @@ export interface LocalState {
     userId: string;
     workspaceId: string;
   } | null;
+  project: {
+    rememberedByWorkspace: Record<string, RememberedProjectState>;
+    lastResolved: RememberedProjectState | null;
+  };
   branch: {
     active: string;
   };
@@ -23,8 +27,18 @@ export interface SelectedAppState {
   name: string;
 }
 
+export interface RememberedProjectState {
+  id: string;
+  name: string;
+  workspaceId: string;
+}
+
 const DEFAULT_STATE: LocalState = {
   auth: null,
+  project: {
+    rememberedByWorkspace: {},
+    lastResolved: null,
+  },
   branch: {
     active: "preview",
   },
@@ -53,6 +67,10 @@ export class LocalStateStore {
       const parsed = JSON.parse(raw) as Partial<LocalState>;
       return {
         auth: parsed.auth ?? structuredClone(DEFAULT_STATE.auth),
+        project: {
+          rememberedByWorkspace: parsed.project?.rememberedByWorkspace ?? {},
+          lastResolved: parsed.project?.lastResolved ?? null,
+        },
         branch: {
           active: parsed.branch?.active ?? DEFAULT_STATE.branch.active,
         },
@@ -92,6 +110,24 @@ export class LocalStateStore {
   async setActiveBranch(active: string): Promise<LocalState> {
     const state = await this.read();
     state.branch.active = active;
+    await this.write(state);
+    return state;
+  }
+
+  async readRememberedProject(workspaceId: string): Promise<RememberedProjectState | null> {
+    const state = await this.read();
+    return state.project.rememberedByWorkspace[workspaceId] ?? null;
+  }
+
+  async readLastResolvedProject(): Promise<RememberedProjectState | null> {
+    const state = await this.read();
+    return state.project.lastResolved;
+  }
+
+  async setRememberedProject(project: RememberedProjectState): Promise<LocalState> {
+    const state = await this.read();
+    state.project.rememberedByWorkspace[project.workspaceId] = project;
+    state.project.lastResolved = project;
     await this.write(state);
     return state;
   }

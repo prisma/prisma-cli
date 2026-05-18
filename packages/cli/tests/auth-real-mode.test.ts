@@ -28,7 +28,6 @@ describe("real auth mode", () => {
         id: "ws_real",
         name: "Real Workspace",
       },
-      linkedProjectId: null,
     });
     const performLogout = vi.fn().mockResolvedValue(undefined);
 
@@ -142,7 +141,6 @@ describe("real auth mode", () => {
           email: "real@example.com",
         },
         workspace: null,
-        linkedProjectId: null,
       },
     ).join("");
 
@@ -175,7 +173,6 @@ describe("real auth mode", () => {
           id: "ws_real",
           name: "Real Workspace",
         },
-        linkedProjectId: null,
       },
     ).join("");
 

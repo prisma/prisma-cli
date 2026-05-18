@@ -77,6 +77,16 @@ export function authRequiredError(nextSteps: string[] = ["prisma-cli auth login"
   });
 }
 
+export function workspaceRequiredError(): CliError {
+  return usageError(
+    "Workspace required",
+    "This command needs an active workspace, but the authenticated session does not have one.",
+    "Run prisma-cli auth login and choose a workspace.",
+    ["prisma-cli auth login"],
+    "auth",
+  );
+}
+
 export function featureUnavailableError(
   summary: string,
   why: string,

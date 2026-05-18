@@ -1,11 +1,9 @@
-import path from "node:path";
-
 import open from "open";
 import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";
+import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
-import { UnsafeConfigWriteError, assertLinkedProjectIdWritable, readLinkedProjectId, writeLinkedProjectId } from "../adapters/config";
 import { FileTokenStorage } from "../adapters/token-storage";
-import { authRequiredError, CliError, featureUnavailableError, usageError } from "../shell/errors";
+import { authRequiredError, CliError, featureUnavailableError, usageError, workspaceRequiredError } from "../shell/errors";
 import { writeJsonEvent, type CommandSuccess } from "../shell/output";
 import { canPrompt, type CommandContext } from "../shell/runtime";
 import { textPrompt } from "../shell/prompt";
@@ -25,7 +23,11 @@ import type {
   AppShowDeployResult,
   AppUpdateEnvResult,
 } from "../types/app";
+import type { AuthWorkspace } from "../types/auth";
+import type { BranchKind } from "../types/branch";
+import type { ProjectResolution, ProjectSummary } from "../types/project";
 import { requireComputeAuth } from "../lib/auth/guard";
+import { readAuthState } from "../lib/auth/auth-ops";
 import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
 import { parseEnvAssignments } from "../lib/app/env-vars";
 import {
@@ -33,7 +35,7 @@ import {
   resolveLocalBuildType,
   runLocalApp,
 } from "../lib/app/local-dev";
-import { projectNotFoundError } from "../use-cases/project";
+import { resolveProjectTarget } from "../lib/project/resolution";
 import {
   executePreviewBuild,
   PREVIEW_BUILD_TYPES,
@@ -50,6 +52,8 @@ import {
   createPreviewUpdateEnvProgress,
 } from "../lib/app/preview-progress";
 import { createPreviewAppProvider, type PreviewAppRecord } from "../lib/app/preview-provider";
+import { requireAuthenticatedAuthState } from "./auth";
+import { listRealWorkspaceProjects } from "./project";
 import { createSelectPromptPort } from "./select-prompt-port";
 
 function isRealMode(context: CommandContext): boolean {
@@ -157,6 +161,7 @@ export async function runAppDeploy(
   context: CommandContext,
   appName: string | undefined,
   options?: {
+    projectRef?: string;
     entrypoint?: string;
     buildType?: string;
     httpPort?: string;
@@ -173,8 +178,9 @@ export async function runAppDeploy(
       commandName: "deploy",
     }),
   );
-  const provider = await requirePreviewAppProvider(context);
-  const projectId = await resolveProjectIdForDeploy(context, provider);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, options?.projectRef, {
+    allowCreate: true,
+  });
   const apps = await listApps(context, provider, projectId);
   const selectedApp = await resolveDeploySelection(context, projectId, apps, appName);
 
@@ -203,7 +209,10 @@ export async function runAppDeploy(
   return {
     command: "app.deploy",
     result: {
-      projectId: deployResult.projectId,
+      workspace: target.workspace,
+      project: target.project,
+      branch: target.branch,
+      resolution: target.resolution,
       app: {
         id: deployResult.app.id,
         name: deployResult.app.name,
@@ -219,6 +228,7 @@ export async function runAppUpdateEnv(
   context: CommandContext,
   appName: string | undefined,
   envAssignments: string[] | undefined,
+  projectRef?: string,
 ): Promise<CommandSuccess<AppUpdateEnvResult>> {
   ensurePreviewAppMode(context);
   emitLegacyEnvDeprecationWarning(context, "app update-env", "project env add");
@@ -227,15 +237,14 @@ export async function runAppUpdateEnv(
     commandName: "update-env",
     requireAtLeastOne: true,
   });
-  const projectId = await requireLinkedProjectId(context);
-  const provider = await requirePreviewAppProvider(context);
+  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
   const apps = await listApps(context, provider, projectId);
   const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
   if (!selectedApp) {
     throw noDeploymentsError(
       "No deployments available to update environment variables",
-      "The linked project does not have any deployed app yet.",
+      "The resolved project does not have any deployed app yet.",
     );
   }
 
@@ -284,12 +293,12 @@ export async function runAppUpdateEnv(
 export async function runAppListEnv(
   context: CommandContext,
   appName: string | undefined,
+  projectRef?: string,
 ): Promise<CommandSuccess<AppListEnvResult>> {
   ensurePreviewAppMode(context);
   emitLegacyEnvDeprecationWarning(context, "app list-env", "project env list");
 
-  const projectId = await requireLinkedProjectId(context);
-  const provider = await requirePreviewAppProvider(context);
+  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
   const apps = await listApps(context, provider, projectId);
   const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
@@ -403,11 +412,11 @@ export async function runAppListEnv(
 export async function runAppListDeploys(
   context: CommandContext,
   appName: string | undefined,
+  projectRef?: string,
 ): Promise<CommandSuccess<AppListDeploysResult>> {
   ensurePreviewAppMode(context);
 
-  const projectId = await requireLinkedProjectId(context);
-  const provider = await requirePreviewAppProvider(context);
+  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
   const apps = await listApps(context, provider, projectId);
   const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
@@ -462,11 +471,11 @@ export async function runAppListDeploys(
 export async function runAppShow(
   context: CommandContext,
   appName: string | undefined,
+  projectRef?: string,
 ): Promise<CommandSuccess<AppShowResult>> {
   ensurePreviewAppMode(context);
 
-  const projectId = await requireLinkedProjectId(context);
-  const provider = await requirePreviewAppProvider(context);
+  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
   const apps = await listApps(context, provider, projectId);
   const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
@@ -546,9 +555,10 @@ export async function runAppShowDeploy(
     });
   }
 
-  const linkedProjectId = deployment?.app ? await readLinkedProjectId(context.runtime.cwd) : null;
-  const knownLiveDeploymentId = deployment?.app && linkedProjectId
-    ? await context.stateStore.readKnownLiveDeployment(linkedProjectId, deployment.app.id)
+  const workspaceId = deployment?.app ? await readCurrentWorkspaceId(context) : null;
+  const rememberedProject = workspaceId ? await context.stateStore.readRememberedProject(workspaceId) : null;
+  const knownLiveDeploymentId = deployment?.app && rememberedProject
+    ? await context.stateStore.readKnownLiveDeployment(rememberedProject.id, deployment.app.id)
     : null;
   const providerLiveDeploymentId = deployment.app?.liveDeploymentId ?? null;
 
@@ -578,18 +588,18 @@ export async function runAppShowDeploy(
 export async function runAppOpen(
   context: CommandContext,
   appName: string | undefined,
+  projectRef?: string,
 ): Promise<CommandSuccess<AppOpenResult>> {
   ensurePreviewAppMode(context);
 
-  const projectId = await requireLinkedProjectId(context);
-  const provider = await requirePreviewAppProvider(context);
+  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
   const apps = await listApps(context, provider, projectId);
   const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
   if (!selectedApp) {
     throw noDeploymentsError(
       "No deployments available to open",
-      "The linked project does not have any deployed app yet.",
+      "The resolved project does not have any deployed app yet.",
     );
   }
 
@@ -656,11 +666,11 @@ export async function runAppLogs(
   context: CommandContext,
   appName: string | undefined,
   deploymentId: string | undefined,
+  projectRef?: string,
 ): Promise<void> {
   ensurePreviewAppMode(context);
 
-  const projectId = await requireLinkedProjectId(context);
-  const provider = await requirePreviewAppProvider(context);
+  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
   const target = deploymentId
     ? await resolveExplicitLogDeployment(context, provider, projectId, appName, deploymentId)
     : await resolveLiveLogDeployment(context, provider, projectId, appName);
@@ -706,7 +716,7 @@ async function resolveExplicitLogDeployment(
     if (!selectedApp) {
       throw noDeploymentsError(
         "No deployments available to stream logs",
-        "The linked project does not have any deployed app yet.",
+        "The resolved project does not have any deployed app yet.",
       );
     }
 
@@ -755,13 +765,13 @@ async function resolveExplicitLogDeployment(
   }
 
   const apps = await listApps(context, provider, projectId);
-  const linkedProjectApp = apps.find((app) => app.id === shown.app?.id);
-  if (!linkedProjectApp) {
+  const resolvedProjectApp = apps.find((app) => app.id === shown.app?.id);
+  if (!resolvedProjectApp) {
     throw new CliError({
       code: "DEPLOYMENT_NOT_FOUND",
       domain: "app",
-      summary: `Deployment "${deploymentId}" not found in the linked project`,
-      why: "The requested deployment does not belong to an app in the linked project.",
+      summary: `Deployment "${deploymentId}" not found in the resolved project`,
+      why: "The requested deployment does not belong to an app in the resolved project.",
       fix: "Run prisma-cli app list-deploys to choose an available deployment id for this project.",
       exitCode: 1,
       nextSteps: ["prisma-cli app list-deploys"],
@@ -769,12 +779,12 @@ async function resolveExplicitLogDeployment(
   }
 
   await context.stateStore.setSelectedApp(projectId, {
-    id: linkedProjectApp.id,
-    name: linkedProjectApp.name,
+    id: resolvedProjectApp.id,
+    name: resolvedProjectApp.name,
   });
 
   return {
-    app: linkedProjectApp,
+    app: resolvedProjectApp,
     deployment: shown.deployment,
   };
 }
@@ -791,7 +801,7 @@ async function resolveLiveLogDeployment(
   if (!selectedApp) {
     throw noDeploymentsError(
       "No deployments available to stream logs",
-      "The linked project does not have any deployed app yet.",
+      "The resolved project does not have any deployed app yet.",
     );
   }
 
@@ -850,11 +860,11 @@ export async function runAppPromote(
   context: CommandContext,
   deploymentId: string,
   appName: string | undefined,
+  projectRef?: string,
 ): Promise<CommandSuccess<AppPromoteResult>> {
   ensurePreviewAppMode(context);
 
-  const projectId = await requireLinkedProjectId(context);
-  const provider = await requirePreviewAppProvider(context);
+  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
   const apps = await listApps(context, provider, projectId);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "promote");
   const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
@@ -916,11 +926,11 @@ export async function runAppRollback(
   context: CommandContext,
   appName: string | undefined,
   deploymentId: string | undefined,
+  projectRef?: string,
 ): Promise<CommandSuccess<AppRollbackResult>> {
   ensurePreviewAppMode(context);
 
-  const projectId = await requireLinkedProjectId(context);
-  const provider = await requirePreviewAppProvider(context);
+  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
   const apps = await listApps(context, provider, projectId);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "rollback");
   const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
@@ -983,11 +993,11 @@ export async function runAppRollback(
 export async function runAppRemove(
   context: CommandContext,
   appName: string | undefined,
+  projectRef?: string,
 ): Promise<CommandSuccess<AppRemoveResult>> {
   ensurePreviewAppMode(context);
 
-  const projectId = await requireLinkedProjectId(context);
-  const provider = await requirePreviewAppProvider(context);
+  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
   const apps = await listApps(context, provider, projectId);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "remove");
 
@@ -1056,7 +1066,7 @@ async function resolveDeploySelection(
     if (!canPrompt(context)) {
       throw usageError(
         "Saved app selection is no longer available",
-        "The locally selected app could not be found in the linked project.",
+        "The locally selected app could not be found in the resolved project.",
         "Pass --app <name>, or rerun prisma-cli app deploy in a TTY to choose or create an app again.",
         ["prisma-cli app deploy"],
         "app",
@@ -1089,8 +1099,8 @@ async function resolveExistingAppSelection(
     const matched = findAppByName(apps, explicitAppName);
     if (!matched) {
       throw usageError(
-        "Selected app does not exist in the linked project",
-        `The app "${explicitAppName}" could not be found in linked project "${projectId}".`,
+        "Selected app does not exist in the resolved project",
+        `The app "${explicitAppName}" could not be found in resolved project "${projectId}".`,
         "Pass the name of an existing app, or rerun prisma-cli app list-deploys in a TTY to choose one.",
         ["prisma-cli app list-deploys"],
         "app",
@@ -1110,7 +1120,7 @@ async function resolveExistingAppSelection(
     if (!canPrompt(context)) {
       throw usageError(
         "Saved app selection is no longer available",
-        "The locally selected app could not be found in the linked project.",
+        "The locally selected app could not be found in the resolved project.",
         "Pass --app <name>, or rerun prisma-cli app list-deploys in a TTY to choose an available app.",
         ["prisma-cli app list-deploys"],
         "app",
@@ -1158,7 +1168,7 @@ async function requireReleaseAppSelection(
 
   throw usageError(
     `App ${commandName} requires an existing app`,
-    "The linked project does not have an app that can be selected for this command.",
+    "The resolved project does not have an app that can be selected for this command.",
     `Deploy an app first, or rerun prisma-cli app ${commandName} with --app <name> after an app exists.`,
     ["prisma-cli app deploy", "prisma-cli app list-deploys"],
     "app",
@@ -1326,11 +1336,15 @@ async function listApps(
 ) {
   return provider.listApps(projectId).then(sortApps).catch((error) => {
     if (isMissingProjectError(error)) {
-      throw projectNotFoundError(
-        `The linked project "${projectId}" does not exist in the authenticated workspace or is no longer accessible.`,
-        "Run prisma-cli project show to inspect the current link, then relink the repo or rerun prisma-cli app deploy to bootstrap a new project.",
-        ["prisma-cli project show", "prisma-cli project link", "prisma-cli app deploy"],
-      );
+      throw new CliError({
+        code: "PROJECT_NOT_FOUND",
+        domain: "project",
+        summary: "Project not found",
+        why: `The resolved project "${projectId}" does not exist in the authenticated workspace or is no longer accessible.`,
+        fix: "Pass --project <id-or-name>, or run prisma-cli project show to inspect resolution for this directory.",
+        exitCode: 1,
+        nextSteps: ["prisma-cli project show", "prisma-cli app deploy --project <id-or-name>"],
+      });
     }
 
     throw deployFailedError("Failed to list apps", error, ["prisma-cli project show"]);
@@ -1338,12 +1352,22 @@ async function listApps(
 }
 
 async function requirePreviewAppProvider(context: CommandContext) {
+  const { provider } = await requirePreviewAppProviderWithClient(context);
+  return provider;
+}
+
+async function requirePreviewAppProviderWithClient(
+  context: CommandContext,
+): Promise<{ client: ManagementApiClient; provider: ReturnType<typeof createPreviewAppProvider> }> {
   const client = await requireComputeAuth(context.runtime.env);
   if (!client) {
     throw authRequiredError(["prisma-cli auth login"]);
   }
 
-  return createPreviewAppProvider(client, createPreviewLogAuthOptions(context.runtime.env));
+  return {
+    client,
+    provider: createPreviewAppProvider(client, createPreviewLogAuthOptions(context.runtime.env)),
+  };
 }
 
 function createPreviewLogAuthOptions(env: NodeJS.ProcessEnv) {
@@ -1368,70 +1392,92 @@ function createPreviewLogAuthOptions(env: NodeJS.ProcessEnv) {
   };
 }
 
-async function requireLinkedProjectId(context: CommandContext): Promise<string> {
-  const projectId = await readLinkedProjectId(context.runtime.cwd);
-
-  if (!projectId) {
-    throw new CliError({
-      code: "PROJECT_NOT_LINKED",
-      domain: "project",
-      summary: "Project link required",
-      why: "This command needs a linked project for the current repo.",
-      fix: "Run prisma-cli project link before deploying or inspecting app deployments.",
-      exitCode: 1,
-      nextSteps: ["prisma-cli project link"],
-    });
-  }
-
-  return projectId;
+interface ResolvedAppProjectContext {
+  workspace: AuthWorkspace;
+  project: ProjectSummary;
+  branch: {
+    name: string;
+    kind: BranchKind;
+  };
+  resolution: ProjectResolution;
 }
 
-async function resolveProjectIdForDeploy(
+async function requireProviderAndProjectContext(
   context: CommandContext,
-  provider: ReturnType<typeof createPreviewAppProvider>,
-): Promise<string> {
-  const linkedProjectId = await readLinkedProjectId(context.runtime.cwd);
-  if (linkedProjectId) {
-    return linkedProjectId;
-  }
-
-  await assertProjectLinkWritableForDeploy(context);
-
-  const projectName = path.basename(context.runtime.cwd);
-  const project = await provider.createProject({ name: projectName }).catch((error) => {
-    throw deployFailedError("Failed to create project for first deploy", error, ["prisma-cli app deploy"]);
-  });
-
-  try {
-    await writeLinkedProjectId(context.runtime.cwd, project.id);
-  } catch (error) {
-    const cause = error instanceof Error ? error.message : String(error);
-    throw deployFailedError(
-      "Failed to link created project",
-      `Project "${project.name}" (${project.id}) was created remotely but could not be linked locally: ${cause}`,
-      ["prisma-cli project show", "prisma-cli app deploy"],
-    );
-  }
-
-  return project.id;
+  explicitProject: string | undefined,
+  options?: { allowCreate?: boolean },
+): Promise<{
+  client: ManagementApiClient;
+  provider: ReturnType<typeof createPreviewAppProvider>;
+  target: ResolvedAppProjectContext;
+  projectId: string;
+}> {
+  const { client, provider } = await requirePreviewAppProviderWithClient(context);
+  const target = await resolveProjectContext(context, client, provider, explicitProject, options);
+  return {
+    client,
+    provider,
+    target,
+    projectId: target.project.id,
+  };
 }
 
-async function assertProjectLinkWritableForDeploy(context: CommandContext): Promise<void> {
-  try {
-    await assertLinkedProjectIdWritable(context.runtime.cwd);
-  } catch (error) {
-    if (error instanceof UnsafeConfigWriteError) {
-      throw usageError(
-        "Project bootstrap requires a writable Prisma config",
-        error.message,
-        "Update prisma.config.ts to use a recognizable project field, or remove it and rerun prisma-cli app deploy.",
-        ["prisma-cli app deploy --app hello-world"],
-        "app",
-      );
-    }
-
-    throw error;
+async function resolveProjectContext(
+  context: CommandContext,
+  client: ManagementApiClient,
+  provider: ReturnType<typeof createPreviewAppProvider>,
+  explicitProject: string | undefined,
+  options?: { allowCreate?: boolean },
+): Promise<ResolvedAppProjectContext> {
+  const authState = await requireAuthenticatedAuthState(context);
+  if (!authState.workspace) {
+    throw workspaceRequiredError();
   }
+
+  const resolved = await resolveProjectTarget({
+    context,
+    workspace: authState.workspace,
+    explicitProject,
+    listProjects: () => listRealWorkspaceProjects(client, authState.workspace!),
+    createProject: options?.allowCreate
+      ? async (name) => {
+          const project = await provider.createProject({ name }).catch((error) => {
+            throw deployFailedError("Failed to create project for first deploy", error, ["prisma-cli app deploy"]);
+          });
+          return {
+            id: project.id,
+            name: project.name,
+            workspace: authState.workspace!,
+          };
+        }
+      : undefined,
+    allowCreate: options?.allowCreate,
+    prompt: createSelectPromptPort(context),
+    remember: true,
+  });
+  const branchName = await context.stateStore.read().then((state) => state.branch.active);
+
+  return {
+    ...resolved,
+    branch: {
+      name: branchName,
+      kind: toBranchKind(branchName),
+    },
+  };
+}
+
+function toBranchKind(name: string): BranchKind {
+  return name === "production" ? "production" : "preview";
+}
+
+async function readCurrentWorkspaceId(context: CommandContext): Promise<string | null> {
+  const state = await context.stateStore.read();
+  if (state.auth?.workspaceId) {
+    return state.auth.workspaceId;
+  }
+
+  const authState = await readAuthState(context.runtime.env);
+  return authState.workspace?.id ?? null;
 }
 
 function normalizeBuildType(requestedBuildType: string | undefined): PreviewBuildType {
@@ -1556,7 +1602,7 @@ function ensurePreviewAppMode(context: CommandContext) {
     "App commands are not available in fixture mode",
     "Preview app commands require live app deployment integration.",
     "Rerun without fixture mode enabled to use preview app deployment workflows.",
-    ["prisma-cli auth login", "prisma-cli project link"],
+    ["prisma-cli auth login", "prisma-cli project show"],
     "app",
   );
 }

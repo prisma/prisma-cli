@@ -10,11 +10,11 @@ export function renderBranchList(
 ): string[] {
   return renderList(
     {
-      title: "Listing branches for the linked project.",
+      title: "Listing branches for the resolved project.",
       descriptor,
       parentContext: {
         key: "project",
-        value: result.projectName ?? "not linked",
+        value: result.projectName ?? "not resolved",
       },
       items: result.branches.map((branch) => ({
         noun: "branch",
@@ -31,7 +31,7 @@ export function renderBranchList(
 export function serializeBranchList(result: BranchListResult) {
   return serializeList({
     context: {
-      project: result.projectName ?? "not linked",
+      project: result.projectName ?? "not resolved",
     },
     items: result.branches.map((branch) => ({
       noun: "branch",
@@ -44,7 +44,7 @@ export function serializeBranchList(result: BranchListResult) {
 
 export function serializeBranchShow(result: BranchShowResult) {
   return {
-    linkedProjectId: result.linkedProjectId,
+    projectId: result.projectId,
     projectName: result.projectName,
     branch: {
       name: result.branch.name,
@@ -68,7 +68,7 @@ export function renderBranchShow(
   }> = [
     {
       key: "project",
-      value: result.projectName ?? "not linked",
+      value: result.projectName ?? "not resolved",
       tone: result.projectName ? ("default" as const) : ("dim" as const),
     },
     {
@@ -129,7 +129,7 @@ export function renderBranchUse(
       title: "Changing the local default branch context.",
       descriptor,
       context: [
-        { key: "project", value: result.projectName ?? "not linked", tone: result.projectName ? "default" : "dim" },
+        { key: "project", value: result.projectName ?? "not resolved", tone: result.projectName ? "default" : "dim" },
         { key: "branch", value: result.branch.name },
       ],
       operationDescription: "Applying active branch change",

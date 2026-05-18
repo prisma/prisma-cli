@@ -1,3 +1,7 @@
+import type { AuthWorkspace } from "./auth";
+import type { BranchKind } from "./branch";
+import type { ProjectResolution, ProjectSummary } from "./project";
+
 export interface AppSummary {
   id: string;
   name: string;
@@ -12,7 +16,13 @@ export interface AppDeploymentSummary {
 }
 
 export interface AppDeployResult {
-  projectId: string;
+  workspace: AuthWorkspace;
+  project: ProjectSummary;
+  branch: {
+    name: string;
+    kind: BranchKind;
+  };
+  resolution: ProjectResolution;
   app: AppSummary;
   deployment: {
     id: string;

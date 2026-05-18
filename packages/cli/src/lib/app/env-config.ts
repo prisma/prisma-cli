@@ -62,6 +62,7 @@ export function resolveEnvScope(
 export function parseKeyValuePositional(
   raw: string | undefined,
   command: "add" | "update",
+  env: NodeJS.ProcessEnv = process.env,
 ): { key: string; value: string } {
   if (!raw) {
     throw usageError(
@@ -75,6 +76,25 @@ export function parseKeyValuePositional(
 
   const separatorIndex = raw.indexOf("=");
   if (separatorIndex === -1) {
+    if (KEY_SHAPE.test(raw)) {
+      validateKey(raw, command);
+      const value = env[raw];
+      if (typeof value === "string" && value.length > 0) {
+        return { key: raw, value };
+      }
+
+      throw usageError(
+        `Value for "${raw}" was not provided`,
+        `No KEY=VALUE assignment was supplied, and ${raw} is not set in the current environment.`,
+        "Pass KEY=VALUE or export the variable before running the command.",
+        [
+          `prisma-cli project env ${command} ${raw}=value --role production`,
+          `${raw}=value prisma-cli project env ${command} ${raw} --role production`,
+        ],
+        "app",
+      );
+    }
+
     throw usageError(
       `KEY=VALUE argument is missing the = separator`,
       `"${raw}" does not contain an = character.`,

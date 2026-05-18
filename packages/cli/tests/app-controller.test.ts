@@ -1,9 +1,35 @@
 import path from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+beforeEach(() => {
+  process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_ID = "proj_123";
+  process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME = "Acme Dashboard";
+  process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID = "ws_123";
+
+  vi.doMock("../src/lib/auth/auth-ops", () => ({
+    readAuthState: vi.fn().mockResolvedValue({
+      authenticated: true,
+      provider: null,
+      user: {
+        email: "test@example.com",
+      },
+      workspace: {
+        id: "ws_123",
+        name: "Acme Inc",
+      },
+    }),
+    performLogin: vi.fn(),
+    performLogout: vi.fn(),
+  }));
+});
 
 afterEach(() => {
-  vi.doUnmock("../src/adapters/config");
+  delete process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_ID;
+  delete process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME;
+  delete process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID;
+
+  vi.doUnmock("../src/lib/auth/auth-ops");
   vi.doUnmock("../src/lib/auth/guard");
   vi.doUnmock("../src/lib/app/preview-provider");
   vi.doUnmock("open");
@@ -11,10 +37,36 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function createProjectClient(projectId = "proj_123") {
+  return {
+    token: "token",
+    GET: vi.fn().mockImplementation((pathName: string) => {
+      if (pathName === "/v1/projects") {
+        return {
+          data: {
+            data: [
+              {
+                id: projectId,
+                name: projectId === "proj_456" ? "Billing API" : "Acme Dashboard",
+                slug: projectId === "proj_456" ? "billing-api" : "acme-dashboard",
+                workspace: {
+                  id: "ws_123",
+                  name: "Acme Inc",
+                },
+              },
+            ],
+          },
+        };
+      }
+
+      throw new Error(`Unexpected path ${pathName}`);
+    }),
+  };
+}
+
 describe("app controller", () => {
   it("deploy selects the correct existing app when --app is provided", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_2", name: "billing", region: "eu-west-3", liveDeploymentId: null },
       { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_live" },
@@ -34,13 +86,6 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -74,8 +119,22 @@ describe("app controller", () => {
         appId: "app_1",
       }),
     );
-    expect(result.result).toEqual({
-      projectId: "proj_123",
+    expect(result.result).toMatchObject({
+      workspace: {
+        id: "ws_123",
+        name: "Acme Inc",
+      },
+      project: {
+        id: "proj_123",
+        name: "Acme Dashboard",
+      },
+      branch: {
+        name: "preview",
+        kind: "preview",
+      },
+      resolution: {
+        projectSource: "remembered-local",
+      },
       app: {
         id: "app_1",
         name: "hello-world",
@@ -93,8 +152,7 @@ describe("app controller", () => {
   });
 
   it("forwards deploy build options and HTTP port overrides to the provider", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
     ]);
@@ -114,13 +172,6 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -220,8 +271,7 @@ describe("app controller", () => {
   });
 
   it("interactive first deploy can create a new app when none is selected", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi.fn().mockResolvedValue({
       projectId: "proj_123",
@@ -238,13 +288,6 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -288,17 +331,9 @@ describe("app controller", () => {
   });
 
   it("returns USAGE_ERROR for deploy without app selection in non-interactive mode", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -333,8 +368,7 @@ describe("app controller", () => {
   });
 
   it("creates a named new app with the default Frankfurt region in non-interactive mode", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi.fn().mockResolvedValue({
       projectId: "proj_123",
@@ -351,13 +385,6 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -397,8 +424,8 @@ describe("app controller", () => {
     );
   });
 
-  it("creates and links a project before first deploy when none is linked", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+  it("creates a project before first deploy when none is resolved", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const createProject = vi.fn().mockResolvedValue({
       id: "proj_new",
       name: "next-smoke",
@@ -442,6 +469,7 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
+        PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
         PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
@@ -457,17 +485,17 @@ describe("app controller", () => {
         appName: "hello-world",
       }),
     );
-    await expect(readPrismaConfig(cwd)).resolves.toContain('project: "proj_new"');
-    await expect(readPrismaConfig(cwd)).resolves.not.toContain("app:");
+    await expect(readPrismaConfig(cwd)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(context.stateStore.readSelectedApp("proj_new")).resolves.toEqual({
       id: "app_new",
       name: "hello-world",
     });
-    expect(result.result.projectId).toBe("proj_new");
+    expect(result.result.project.id).toBe("proj_new");
   });
 
-  it("reuses the linked project on second deploy instead of creating another one", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+  it("reuses the created project on second deploy instead of creating another one", async () => {
+    const client = createProjectClient();
+    const requireComputeAuth = vi.fn().mockResolvedValue(client);
     const createProject = vi.fn().mockResolvedValue({
       id: "proj_new",
       name: "next-smoke",
@@ -532,11 +560,33 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
+        PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
         PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
     await runAppDeploy(context, "hello-world");
+    client.GET.mockImplementation((pathName: string) => {
+      if (pathName === "/v1/projects") {
+        return {
+          data: {
+            data: [
+              {
+                id: "proj_new",
+                name: "next-smoke",
+                slug: "next-smoke",
+                workspace: {
+                  id: "ws_123",
+                  name: "Acme Inc",
+                },
+              },
+            ],
+          },
+        };
+      }
+
+      throw new Error(`Unexpected path ${pathName}`);
+    });
     await runAppDeploy(context, "hello-world");
 
     expect(createProject).toHaveBeenCalledTimes(1);
@@ -549,9 +599,26 @@ describe("app controller", () => {
     );
   });
 
-  it("fails before remote project creation when first-deploy config preflight is unsafe", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
-    const createProject = vi.fn();
+  it("creates a missing project without depending on repo config preflight", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const createProject = vi.fn().mockResolvedValue({
+      id: "proj_new",
+      name: "next-smoke",
+    });
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_new",
+      app: {
+        id: "app_new",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
@@ -559,24 +626,14 @@ describe("app controller", () => {
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
         createProject,
-        listApps: vi.fn(),
-        deployApp: vi.fn(),
+        listApps: vi.fn().mockResolvedValue([]),
+        deployApp,
         listDeployments: vi.fn(),
         showDeployment: vi.fn(),
       })),
     }));
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId: vi.fn().mockResolvedValue(null),
-        assertLinkedProjectIdWritable: vi.fn().mockRejectedValue(
-          new actual.UnsafeConfigWriteError("The existing prisma.config.ts file could not be updated safely."),
-        ),
-      };
-    });
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext, readPrismaConfig } = await import("./helpers");
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -586,21 +643,27 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
+        PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
         PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
-    await expect(runAppDeploy(context, "hello-world")).rejects.toMatchObject({
-      code: "USAGE_ERROR",
-      domain: "app",
-      summary: "Project bootstrap requires a writable Prisma config",
+    await expect(runAppDeploy(context, "hello-world")).resolves.toMatchObject({
+      result: {
+        project: {
+          id: "proj_new",
+        },
+        resolution: {
+          projectSource: "created",
+        },
+      },
     });
-    expect(createProject).not.toHaveBeenCalled();
+    expect(createProject).toHaveBeenCalledWith({ name: path.basename(cwd) });
+    await expect(readPrismaConfig(cwd)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("reuses the saved app selection on a second deploy", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_live" },
     ]);
@@ -619,13 +682,6 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -666,8 +722,7 @@ describe("app controller", () => {
   });
 
   it("list-deploys sorts deployments newest first for the selected app", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_2" },
     ]);
@@ -696,13 +751,6 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -733,18 +781,10 @@ describe("app controller", () => {
     expect(result.result.deployments.map((deployment) => deployment.id)).toEqual(["dep_2", "dep_1"]);
   });
 
-  it("returns PROJECT_NOT_FOUND when the linked project is not accessible in real mode", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+  it("returns PROJECT_NOT_FOUND when the resolved project is not accessible in real mode", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockRejectedValue(new Error("Resource Not Found"));
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -778,8 +818,7 @@ describe("app controller", () => {
   });
 
   it("list-deploys uses the local known live deployment when the provider cannot confirm it", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: null },
     ]);
@@ -808,13 +847,6 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -854,18 +886,10 @@ describe("app controller", () => {
     ]);
   });
 
-  it("show returns undeployed state when the linked project has no apps", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+  it("show returns undeployed state when the resolved project has no apps", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -905,8 +929,7 @@ describe("app controller", () => {
   });
 
   it("show returns selected app, live deployment, live URL, and recent deployments", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -942,13 +965,6 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -1012,8 +1028,7 @@ describe("app controller", () => {
   });
 
   it("show uses the local known live hint when provider live state is incomplete", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -1049,13 +1064,6 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -1093,7 +1101,7 @@ describe("app controller", () => {
   });
 
   it("show-deploy returns deployment detail without branch inference", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const showDeployment = vi.fn().mockResolvedValue({
       app: {
         id: "app_1",
@@ -1153,7 +1161,7 @@ describe("app controller", () => {
   });
 
   it("show-deploy uses the local known live deployment when available", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const showDeployment = vi.fn().mockResolvedValue({
       app: {
         id: "app_1",
@@ -1182,10 +1190,9 @@ describe("app controller", () => {
       })),
     }));
 
-    const { createTempCwd, createTestCommandContext, writePrismaConfig } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppShowDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
-    await writePrismaConfig(cwd, "proj_123");
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -1203,8 +1210,63 @@ describe("app controller", () => {
     expect(result.result.deployment.live).toBe(true);
   });
 
+  it("show-deploy ignores known live deployments from another workspace", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const showDeployment = vi.fn().mockResolvedValue({
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: null,
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://preview.prisma.app",
+        createdAt: "2026-04-11T12:00:00.000Z",
+        live: null,
+      },
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps: vi.fn(),
+        deployApp: vi.fn(),
+        listDeployments: vi.fn(),
+        showDeployment,
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppShowDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await context.stateStore.setRememberedProject({
+      id: "proj_other",
+      name: "Other Project",
+      workspaceId: "ws_other",
+    });
+    await context.stateStore.setKnownLiveDeployment("proj_other", "app_1", "dep_123");
+
+    const result = await runAppShowDeploy(context, "dep_123");
+
+    expect(result.result.deployment.live).toBe(null);
+  });
+
   it("show-deploy surfaces provider failures instead of reporting not found", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const showDeployment = vi.fn().mockRejectedValue(new Error("Missing or invalid authorization token"));
 
     vi.doMock("../src/lib/auth/guard", () => ({
@@ -1241,8 +1303,7 @@ describe("app controller", () => {
 
   it("open launches only in interactive human mode", async () => {
     const openUrl = vi.fn().mockResolvedValue(undefined);
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -1274,13 +1335,6 @@ describe("app controller", () => {
     vi.doMock("open", () => ({
       default: openUrl,
     }));
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -1317,8 +1371,7 @@ describe("app controller", () => {
 
   it("open returns the URL without launching the browser in json mode", async () => {
     const openUrl = vi.fn().mockResolvedValue(undefined);
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -1350,13 +1403,6 @@ describe("app controller", () => {
     vi.doMock("open", () => ({
       default: openUrl,
     }));
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -1402,8 +1448,7 @@ describe("app controller", () => {
   });
 
   it("open returns NO_DEPLOYMENTS when the selected app has not been deployed yet", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -1424,13 +1469,6 @@ describe("app controller", () => {
       deployments: [],
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -1465,8 +1503,7 @@ describe("app controller", () => {
   });
 
   it("open returns FEATURE_UNAVAILABLE when deployments exist but no live URL is exposed", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -1495,13 +1532,6 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -1537,8 +1567,7 @@ describe("app controller", () => {
   });
 
   it("promote switches the selected app to the requested deployment", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_2" },
     ]);
@@ -1568,13 +1597,6 @@ describe("app controller", () => {
     });
     const promoteDeployment = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -1627,8 +1649,7 @@ describe("app controller", () => {
   });
 
   it("promote returns a warning when the requested deployment is already live", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_2" },
     ]);
@@ -1651,13 +1672,6 @@ describe("app controller", () => {
     });
     const promoteDeployment = vi.fn();
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -1692,8 +1706,7 @@ describe("app controller", () => {
   });
 
   it("rollback chooses the previous deployment when no explicit target is provided", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_2" },
     ]);
@@ -1723,13 +1736,6 @@ describe("app controller", () => {
     });
     const promoteDeployment = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -1783,8 +1789,7 @@ describe("app controller", () => {
   });
 
   it("rollback uses the local known live deployment when the provider cannot confirm it", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: null },
     ]);
@@ -1814,13 +1819,6 @@ describe("app controller", () => {
     });
     const promoteDeployment = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -1863,8 +1861,7 @@ describe("app controller", () => {
   });
 
   it("rollback uses an explicit deployment target when provided", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_3" },
     ]);
@@ -1901,13 +1898,6 @@ describe("app controller", () => {
     });
     const promoteDeployment = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -1947,8 +1937,7 @@ describe("app controller", () => {
   });
 
   it("rollback returns NO_PREVIOUS_DEPLOYMENT when only one deployment exists", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_2" },
     ]);
@@ -1970,13 +1959,6 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -2010,18 +1992,10 @@ describe("app controller", () => {
     });
   });
 
-  it("does not reuse the wrong saved app when the linked project changes", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_456");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+  it("does not reuse the wrong saved app when the resolved project changes", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient("proj_456"));
     const listApps = vi.fn().mockResolvedValue([]);
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -2044,6 +2018,8 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
+        PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "proj_456",
+        PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME: "Billing API",
         PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
@@ -2061,8 +2037,7 @@ describe("app controller", () => {
   });
 
   it("logs streams the live deployment for the selected app", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
     ]);
@@ -2077,13 +2052,6 @@ describe("app controller", () => {
       options.onRecord({ type: "log", text: "hello from live\n", byteStart: 0, byteEnd: 16 });
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
@@ -2121,8 +2089,7 @@ describe("app controller", () => {
   });
 
   it("logs streams an explicit deployment for the selected app", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
     ]);
@@ -2137,13 +2104,6 @@ describe("app controller", () => {
       options.onRecord({ type: "log", text: "old log\n", byteStart: 0, byteEnd: 8 });
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -2178,8 +2138,7 @@ describe("app controller", () => {
   });
 
   it("logs rejects an explicit deployment that does not belong to the selected app", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
     ]);
@@ -2191,13 +2150,6 @@ describe("app controller", () => {
     });
     const streamDeploymentLogs = vi.fn();
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -2231,8 +2183,7 @@ describe("app controller", () => {
   });
 
   it("logs emits newline-delimited JSON events in --json mode", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
     ]);
@@ -2247,13 +2198,6 @@ describe("app controller", () => {
       options.onRecord({ type: "terminal", kind: "end", code: "done", message: "done", retryable: false, cursor: null });
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -2304,8 +2248,7 @@ describe("app controller", () => {
   });
 
   it("remove deletes the selected app when --yes is passed", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_2" },
     ]);
@@ -2314,13 +2257,6 @@ describe("app controller", () => {
       name: "hello-world",
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -2374,8 +2310,7 @@ describe("app controller", () => {
   });
 
   it("remove prompts for confirmation in interactive mode", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_2" },
     ]);
@@ -2385,13 +2320,6 @@ describe("app controller", () => {
     });
     const textPrompt = vi.fn().mockResolvedValue("hello-world");
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -2440,20 +2368,12 @@ describe("app controller", () => {
   });
 
   it("remove returns CONFIRMATION_REQUIRED in non-interactive mode without --yes", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_2" },
     ]);
     const removeApp = vi.fn();
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -2492,20 +2412,12 @@ describe("app controller", () => {
   });
 
   it("remove returns REMOVE_FAILED when remote deletion fails", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_2" },
     ]);
     const removeApp = vi.fn().mockRejectedValue(new Error("Resource Not Found"));
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
@@ -2545,8 +2457,7 @@ describe("app controller", () => {
   });
 
   it("remove returns a warning when local cleanup fails after remote deletion", async () => {
-    const readLinkedProjectId = vi.fn().mockResolvedValue("proj_123");
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_2" },
     ]);
@@ -2555,13 +2466,6 @@ describe("app controller", () => {
       name: "hello-world",
     });
 
-    vi.doMock("../src/adapters/config", async () => {
-      const actual = await vi.importActual<typeof import("../src/adapters/config")>("../src/adapters/config");
-      return {
-        ...actual,
-        readLinkedProjectId,
-      };
-    });
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));

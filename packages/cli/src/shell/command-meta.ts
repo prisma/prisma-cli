@@ -47,7 +47,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
   {
     id: "project",
     path: ["prisma", "project"],
-    description: "Manage the link between this directory and a Prisma project",
+    description: "Manage and inspect your Prisma projects",
     examples: ["prisma-cli project list", "prisma-cli project show"],
   },
   {
@@ -74,19 +74,13 @@ const DESCRIPTORS: CommandDescriptor[] = [
   {
     id: "project.show",
     path: ["prisma", "project", "show"],
-    description: "Show the Prisma project linked to this directory",
-    examples: ["prisma-cli project show", "prisma-cli project show --json"],
-  },
-  {
-    id: "project.link",
-    path: ["prisma", "project", "link"],
-    description: "Link this directory to a Prisma project",
-    examples: ["prisma-cli project link", "prisma-cli project link proj_123"],
+    description: "Show which project is active for this directory",
+    examples: ["prisma-cli project show", "prisma-cli project show --project proj_123 --json"],
   },
   {
     id: "branch.list",
     path: ["prisma", "branch", "list"],
-    description: "List active Platform branches linked to this project",
+    description: "List active Platform branches for the resolved project",
     examples: ["prisma-cli branch list", "prisma-cli branch list --json"],
   },
   {
@@ -187,7 +181,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
   {
     id: "project.env",
     path: ["prisma", "project", "env"],
-    description: "Manage environment variables for the linked project.",
+    description: "Manage environment variables for the active project",
     examples: [
       "prisma-cli project env list --role production",
       "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production",
@@ -201,6 +195,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: [
       "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production",
       "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role preview",
+      "API_URL=https://api.example prisma-cli project env add API_URL --project proj_123 --role preview",
     ],
   },
   {

@@ -1,10 +1,9 @@
 import { usageError } from "../shell/errors";
 import type { AuthProviderId, AuthStateResult } from "../types/auth";
-import type { AuthUseCases, IdentityGateway, LoginSelection, ProjectConfigGateway, SessionGateway } from "./contracts";
+import type { AuthUseCases, IdentityGateway, LoginSelection, SessionGateway } from "./contracts";
 
 interface AuthUseCaseDependencies {
   identityGateway: IdentityGateway;
-  projectConfigGateway: ProjectConfigGateway;
   sessionGateway: SessionGateway;
 }
 
@@ -90,10 +89,7 @@ export function createAuthUseCases(dependencies: AuthUseCaseDependencies): AuthU
 }
 
 async function resolveCurrentAuthState(dependencies: AuthUseCaseDependencies): Promise<AuthStateResult> {
-  const [session, linkedProjectId] = await Promise.all([
-    dependencies.sessionGateway.readAuthSession(),
-    dependencies.projectConfigGateway.readLinkedProjectId(),
-  ]);
+  const session = await dependencies.sessionGateway.readAuthSession();
 
   if (!session) {
     return {
@@ -101,7 +97,6 @@ async function resolveCurrentAuthState(dependencies: AuthUseCaseDependencies): P
       provider: null,
       user: null,
       workspace: null,
-      linkedProjectId,
     };
   }
 
@@ -115,7 +110,6 @@ async function resolveCurrentAuthState(dependencies: AuthUseCaseDependencies): P
       provider: null,
       user: null,
       workspace: null,
-      linkedProjectId,
     };
   }
 
@@ -126,6 +120,5 @@ async function resolveCurrentAuthState(dependencies: AuthUseCaseDependencies): P
       email: user.email,
     },
     workspace,
-    linkedProjectId,
   };
 }

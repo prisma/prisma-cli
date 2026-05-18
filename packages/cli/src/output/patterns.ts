@@ -6,7 +6,7 @@ import type { ShellUi } from "../shell/ui";
 import { maskValue, padDisplay, renderSummaryLine } from "../shell/ui";
 
 type ValueTone = "default" | "dim" | "success" | "warning" | "error" | "link";
-type AnnotationStatus = "active" | "linked" | "default" | null;
+type AnnotationStatus = "active" | "default" | null;
 
 interface CardRow {
   key: string;
@@ -184,10 +184,6 @@ function formatListItemValue(ui: ShellUi, item: ListItem): string {
 function renderAnnotation(ui: ShellUi, status: AnnotationStatus): string {
   if (status === "active") {
     return ui.success("(active)");
-  }
-
-  if (status === "linked") {
-    return ui.accent("(linked)");
   }
 
   if (status === "default") {

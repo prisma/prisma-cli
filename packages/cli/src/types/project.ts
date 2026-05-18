@@ -5,14 +5,25 @@ export interface ProjectSummary {
   name: string;
 }
 
+export type ProjectSource =
+  | "explicit"
+  | "platform-mapping"
+  | "remembered-local"
+  | "package-name"
+  | "created"
+  | "prompt";
+
+export interface ProjectResolution {
+  projectSource: ProjectSource;
+}
+
 export interface ProjectListResult {
   workspace: AuthWorkspace;
-  linkedProjectId: string | null;
   projects: ProjectSummary[];
 }
 
 export interface ProjectShowResult {
-  linkedProjectId: string | null;
-  workspace: AuthWorkspace | null;
-  project: ProjectSummary | null;
+  workspace: AuthWorkspace;
+  project: ProjectSummary;
+  resolution: ProjectResolution;
 }

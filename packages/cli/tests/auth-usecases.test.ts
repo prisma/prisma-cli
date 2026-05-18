@@ -13,7 +13,6 @@ describe("auth use cases", () => {
       provider: null,
       user: null,
       workspace: null,
-      linkedProjectId: null,
     });
   });
 
@@ -37,7 +36,6 @@ describe("auth use cases", () => {
         id: "ws_123",
         name: "Acme Inc",
       },
-      linkedProjectId: null,
     });
 
     expect(readState().authSession).toEqual({
@@ -47,14 +45,13 @@ describe("auth use cases", () => {
     });
   });
 
-  it("clears the session on logout and preserves linked project context", async () => {
+  it("clears the session on logout", async () => {
     const { gateways, readState } = await createUseCaseGateways({
       authSession: {
         provider: "github",
         userId: "usr_456",
         workspaceId: "ws_123",
       },
-      linkedProjectId: "proj_123",
     });
     const useCases = createAuthUseCases(gateways);
 
@@ -63,7 +60,6 @@ describe("auth use cases", () => {
       provider: null,
       user: null,
       workspace: null,
-      linkedProjectId: "proj_123",
     });
 
     expect(readState().authSession).toBeNull();

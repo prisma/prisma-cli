@@ -49,7 +49,9 @@ export function renderAppDeploy(
       title: "Deploying the selected app.",
       descriptor,
       fields: [
-        { key: "project", value: result.projectId },
+        { key: "workspace", value: result.workspace.name },
+        { key: "project", value: result.project.name },
+        { key: "branch", value: result.branch.name },
         { key: "app", value: result.app.name },
         { key: "deployment", value: result.deployment.id },
         { key: "status", value: result.deployment.status, tone: toneForStatus(result.deployment.status) },

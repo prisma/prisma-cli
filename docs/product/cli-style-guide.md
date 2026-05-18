@@ -64,12 +64,13 @@ Recommended symbols:
 Human-oriented command output in TTY mode should usually start with a compact header:
 
 ```text
-project link → Linking the current repo to an existing project.
+project show → Showing the project resolved for this directory.
 
 │  project:    Acme Dashboard
 │  workspace:  Acme Inc
+│  source:     package-name
 │
-│  Read more   docs/product/command-spec.md#prisma-cli-project-link-project
+│  Read more   docs/product/command-spec.md#prisma-cli-project-show
 ```
 
 Rules:

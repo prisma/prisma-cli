@@ -28,7 +28,7 @@ export function createEnvCommand(runtime: CliRuntime): Command {
     "project.env",
   );
 
-  env.description("Manage environment variables for the linked project.");
+  env.description("Manage environment variables for the active project");
   env.addCommand(createEnvAddCommand(runtime));
   env.addCommand(createEnvUpdateCommand(runtime));
   env.addCommand(createEnvListCommand(runtime));
@@ -44,23 +44,25 @@ function createEnvAddCommand(runtime: CliRuntime): Command {
   );
 
   command
-    .argument("<assignment>", "Variable assignment in KEY=VALUE form")
+    .argument("<assignment>", "Variable assignment as KEY=VALUE or KEY from the current environment")
     .addOption(
       new Option(
         "--role <role>",
         "Project template scope (production or preview)",
       ).choices(["production", "preview"]),
-    );
+    )
+    .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
   command.action(async (assignment: string, options) => {
     const roleName = (options as { role?: string }).role;
+    const projectRef = (options as { project?: string }).project;
 
     await runCommand<EnvAddResult>(
       runtime,
       "project.env.add",
       options as Record<string, unknown>,
-      (context) => runEnvAdd(context, assignment, { roleName }),
+      (context) => runEnvAdd(context, assignment, { roleName, projectRef }),
       {
         renderHuman: (context, descriptor, result) => renderEnvAdd(context, descriptor, result),
         renderJson: (result) => serializeEnvAdd(result),
@@ -78,23 +80,25 @@ function createEnvUpdateCommand(runtime: CliRuntime): Command {
   );
 
   command
-    .argument("<assignment>", "Variable assignment in KEY=VALUE form")
+    .argument("<assignment>", "Variable assignment as KEY=VALUE or KEY from the current environment")
     .addOption(
       new Option(
         "--role <role>",
         "Project template scope (production or preview)",
       ).choices(["production", "preview"]),
-    );
+    )
+    .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
   command.action(async (assignment: string, options) => {
     const roleName = (options as { role?: string }).role;
+    const projectRef = (options as { project?: string }).project;
 
     await runCommand<EnvUpdateResult>(
       runtime,
       "project.env.update",
       options as Record<string, unknown>,
-      (context) => runEnvUpdate(context, assignment, { roleName }),
+      (context) => runEnvUpdate(context, assignment, { roleName, projectRef }),
       {
         renderHuman: (context, descriptor, result) => renderEnvUpdate(context, descriptor, result),
         renderJson: (result) => serializeEnvUpdate(result),
@@ -117,17 +121,19 @@ function createEnvListCommand(runtime: CliRuntime): Command {
         "--role <role>",
         "Project template scope",
       ).choices(["production", "preview"]),
-    );
+    )
+    .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
   command.action(async (options) => {
     const roleName = (options as { role?: string }).role;
+    const projectRef = (options as { project?: string }).project;
 
     await runCommand<EnvListResult>(
       runtime,
       "project.env.list",
       options as Record<string, unknown>,
-      (context) => runEnvList(context, { roleName }),
+      (context) => runEnvList(context, { roleName, projectRef }),
       {
         renderHuman: (context, descriptor, result) => renderEnvList(context, descriptor, result),
         renderJson: (result) => serializeEnvList(result),
@@ -151,17 +157,19 @@ function createEnvRmCommand(runtime: CliRuntime): Command {
         "--role <role>",
         "Project template scope (production or preview)",
       ).choices(["production", "preview"]),
-    );
+    )
+    .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
   command.action(async (key: string, options) => {
     const roleName = (options as { role?: string }).role;
+    const projectRef = (options as { project?: string }).project;
 
     await runCommand<EnvRmResult>(
       runtime,
       "project.env.rm",
       options as Record<string, unknown>,
-      (context) => runEnvRm(context, key, { roleName }),
+      (context) => runEnvRm(context, key, { roleName, projectRef }),
       {
         renderHuman: (context, descriptor, result) => renderEnvRm(context, descriptor, result),
         renderJson: (result) => serializeEnvRm(result),

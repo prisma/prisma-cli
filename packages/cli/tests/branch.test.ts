@@ -1,12 +1,46 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import stripAnsi from "strip-ansi";
 
-import { createTempCwd, executeCli, readPrismaConfig, writePrismaConfig } from "./helpers";
+import { createTempCwd, executeCli } from "./helpers";
 import { DEFAULT_STATE_DIR_NAME } from "../src/shell/runtime";
 
 const fixturePath = path.resolve("fixtures/mock-api.json");
+
+async function rememberProject(stateDir: string, projectId = "proj_123") {
+  await mkdir(stateDir, { recursive: true });
+  await writeFile(
+    path.join(stateDir, "state.json"),
+    `${JSON.stringify(
+      {
+        auth: null,
+        project: {
+          rememberedByWorkspace: {
+            ws_123: {
+              id: projectId,
+              name: projectId === "proj_123" ? "Acme Dashboard" : projectId,
+              workspaceId: "ws_123",
+            },
+          },
+          lastResolved: {
+            id: projectId,
+            name: projectId === "proj_123" ? "Acme Dashboard" : projectId,
+            workspaceId: "ws_123",
+          },
+        },
+        branch: { active: "preview" },
+        app: {
+          selectedByProject: {},
+          knownLiveDeploymentByProject: {},
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+}
 
 describe("branch commands", () => {
   it("returns FEATURE_UNAVAILABLE for branch list in preview mode instead of crashing", async () => {
@@ -117,7 +151,7 @@ describe("branch commands", () => {
   it("renders the documented human output for branch list", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
-    await writePrismaConfig(cwd, "proj_123");
+    await rememberProject(stateDir);
 
     const result = await executeCli({
       argv: ["branch", "list"],
@@ -130,7 +164,7 @@ describe("branch commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(stripAnsi(result.stderr)).toBe(
-      "branch list → Listing branches for the linked project.\n\n│  project:   Acme Dashboard\n│  ⚬ branch:  production\n│  ⚬ branch:  pr-123\n│  ⚬ branch:  preview (active)\n│  ⚬ branch:  staging\n",
+      "branch list → Listing branches for the resolved project.\n\n│  project:   Acme Dashboard\n│  ⚬ branch:  production\n│  ⚬ branch:  pr-123\n│  ⚬ branch:  preview (active)\n│  ⚬ branch:  staging\n",
     );
   });
 
@@ -149,14 +183,14 @@ describe("branch commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(stripAnsi(result.stderr)).toBe(
-      "branch show → Showing the current active branch context.\n\n│  project:       not linked\n│  branch:        preview\n│  kind:          preview\n│  remote state:  not created yet\n",
+      "branch show → Showing the current active branch context.\n\n│  project:       not resolved\n│  branch:        preview\n│  kind:          preview\n│  remote state:  not created yet\n",
     );
   });
 
   it("shows remote branch status and url without leaking deployment ids in human output", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
-    await writePrismaConfig(cwd, "proj_123");
+    await rememberProject(stateDir);
 
     await executeCli({
       argv: ["branch", "use", "preview"],
@@ -187,7 +221,7 @@ describe("branch commands", () => {
   it("returns the shared list JSON shape for branch list", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
-    await writePrismaConfig(cwd, "proj_123");
+    await rememberProject(stateDir);
 
     const result = await executeCli({
       argv: ["branch", "list", "--json"],
@@ -237,7 +271,7 @@ describe("branch commands", () => {
   it("returns the documented JSON shape for branch show when remote state exists", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
-    await writePrismaConfig(cwd, "proj_123");
+    await rememberProject(stateDir);
 
     await executeCli({
       argv: ["branch", "use", "preview"],
@@ -259,7 +293,7 @@ describe("branch commands", () => {
       ok: true,
       command: "branch.show",
       result: {
-        linkedProjectId: "proj_123",
+        projectId: "proj_123",
         projectName: "Acme Dashboard",
         branch: {
           name: "preview",
@@ -281,7 +315,7 @@ describe("branch commands", () => {
   it("returns the documented JSON shape for branch use production", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
-    await writePrismaConfig(cwd, "proj_123");
+    await rememberProject(stateDir);
 
     const result = await executeCli({
       argv: ["branch", "use", "production", "--json"],
@@ -296,7 +330,7 @@ describe("branch commands", () => {
       ok: true,
       command: "branch.use",
       result: {
-        linkedProjectId: "proj_123",
+        projectId: "proj_123",
         projectName: "Acme Dashboard",
         branch: {
           name: "production",
@@ -318,7 +352,7 @@ describe("branch commands", () => {
   it("prompts for branch selection when no name is passed in interactive mode", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
-    await writePrismaConfig(cwd, "proj_123");
+    await rememberProject(stateDir);
 
     const result = await executeCli({
       argv: ["branch", "use"],
@@ -487,7 +521,7 @@ describe("branch commands", () => {
     expect(branchHelp.stderr).toContain("$ prisma-cli branch show");
 
     expect(listHelp.exitCode).toBe(0);
-    expect(listHelp.stderr).toContain("List active Platform branches linked to this project");
+    expect(listHelp.stderr).toContain("List active Platform branches for the resolved project");
     expect(listHelp.stderr).toContain("$ prisma-cli branch list");
     expect(listHelp.stderr).toContain("$ prisma-cli branch list --json");
 
@@ -502,10 +536,10 @@ describe("branch commands", () => {
     expect(useHelp.stderr).toContain("$ prisma-cli branch use production");
   });
 
-  it("writes only local branch state and does not mutate config or fixture data", async () => {
+  it("writes only local branch state and does not mutate fixture data", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
-    await writePrismaConfig(cwd, "proj_123");
+    await rememberProject(stateDir);
     const fixtureBefore = await readFile(fixturePath, "utf8");
 
     const result = await executeCli({
@@ -521,7 +555,6 @@ describe("branch commands", () => {
         active: "feat-auth",
       },
     });
-    expect(await readPrismaConfig(cwd)).toContain('project: "proj_123"');
     expect(await readFile(fixturePath, "utf8")).toBe(fixtureBefore);
   });
 
