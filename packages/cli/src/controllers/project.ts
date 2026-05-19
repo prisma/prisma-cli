@@ -15,6 +15,7 @@ import {
 import { authRequiredError, CliError, usageError, workspaceRequiredError } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
 import { canPrompt, type CommandContext } from "../shell/runtime";
+import { renderSummaryLine } from "../shell/ui";
 import type { AuthWorkspace } from "../types/auth";
 import type {
   GitRepositoryConnection,
@@ -33,6 +34,9 @@ export interface ProjectConnectRepoOptions {
 export interface ProjectDisconnectRepoOptions {
   project?: string;
 }
+
+const GITHUB_INSTALL_POLL_INTERVAL_MS = 2_000;
+const GITHUB_INSTALL_POLL_TIMEOUT_MS = 120_000;
 
 function isRealMode(context: CommandContext): boolean {
   return !context.runtime.fixturePath && !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH;
@@ -115,6 +119,25 @@ export async function runProjectConnectRepo(
     const target = await resolveProjectShowInRealMode(context, workspace, options.project);
     const repository = await resolveRepositoryForConnect(context, gitUrl);
     const api = client as unknown as SourceRepositoryApiClient;
+    const existing = await readFirstSourceRepository(api, target.project.id);
+
+    if (existing) {
+      const existingConnection = toRepositoryConnection(existing);
+      if (repositoryFullNamesMatch(existingConnection.repository.fullName, repository.fullName)) {
+        return {
+          command: "project.connect-repo",
+          result: {
+            ...target,
+            repositoryConnection: existingConnection,
+          },
+          warnings: [],
+          nextSteps: [],
+        };
+      }
+
+      throw repoAlreadyConnectedError(existingConnection.repository.fullName);
+    }
+
     const resolvedRepository = await resolveInstalledRepository(context, api, workspace.id, repository);
     const { data, error, response } = await api.POST("/v1/source-repositories", {
       body: {
@@ -332,6 +355,11 @@ interface InstalledRepositoryMatch {
   repository: ScmRepositoryResponse;
 }
 
+interface InstallationRepositoryLookup {
+  match: InstalledRepositoryMatch | null;
+  inspectableInstallationCount: number;
+}
+
 interface SourceRepositoryApiError {
   error?: {
     code?: string;
@@ -473,27 +501,150 @@ async function resolveInstalledRepository(
   repository: GitHubRepositoryReference,
 ): Promise<InstalledRepositoryMatch> {
   const installations = await listScmInstallations(api, workspaceId);
-  if (installations.length === 0) {
+  const lookup = await findRepositoryInInstallations(api, installations, repository);
+  if (lookup.match) {
+    return lookup.match;
+  }
+
+  if (!hasUsableGitHubInstallation(installations) || lookup.inspectableInstallationCount === 0) {
     const installUrl = await createGitHubInstallIntent(api, workspaceId);
+    const canWait = canPrompt(context);
     const opened = await openInstallUrlIfInteractive(context, installUrl);
+
+    if (!canWait) {
+      throw repoInstallationRequiredError(repository, installUrl, opened);
+    }
+
+    writeInstallWaitStatus(context, opened, installUrl);
+
+    const result = await waitForInstalledRepository(context, api, workspaceId, repository);
+    if (result.match) {
+      return result.match;
+    }
+
+    if (result.inspectableInstallationCount > 0) {
+      throw repoNotAccessibleError(repository);
+    }
+
     throw repoInstallationRequiredError(repository, installUrl, opened);
   }
+
+  throw repoNotAccessibleError(repository);
+}
+
+function hasUsableGitHubInstallation(installations: ScmInstallationResponse[]): boolean {
+  return installations.some((installation) => installation.provider === "github" && !installation.suspended);
+}
+
+async function findRepositoryInInstallations(
+  api: SourceRepositoryApiClient,
+  installations: ScmInstallationResponse[],
+  repository: GitHubRepositoryReference,
+): Promise<InstallationRepositoryLookup> {
+  let inspectableInstallationCount = 0;
 
   for (const installation of installations) {
     if (installation.provider !== "github" || installation.suspended) {
       continue;
     }
 
-    const matchedRepository = await findRepositoryInInstallation(api, installation.id, repository);
+    const matchedRepository = await findRepositoryInInstallationIfAvailable(api, installation.id, repository);
+    if (matchedRepository === "unavailable") {
+      continue;
+    }
+
+    inspectableInstallationCount += 1;
     if (matchedRepository) {
       return {
-        installation,
-        repository: matchedRepository,
+        match: {
+          installation,
+          repository: matchedRepository,
+        },
+        inspectableInstallationCount,
       };
     }
   }
 
-  throw repoNotAccessibleError(repository);
+  return {
+    match: null,
+    inspectableInstallationCount,
+  };
+}
+
+async function waitForInstalledRepository(
+  context: CommandContext,
+  api: SourceRepositoryApiClient,
+  workspaceId: string,
+  repository: GitHubRepositoryReference,
+): Promise<{ match: InstalledRepositoryMatch | null; inspectableInstallationCount: number }> {
+  const timeoutMs = readPositiveIntegerEnv(
+    context.runtime.env.PRISMA_CLI_GITHUB_INSTALL_TIMEOUT_MS,
+    GITHUB_INSTALL_POLL_TIMEOUT_MS,
+  );
+  const intervalMs = readPositiveIntegerEnv(
+    context.runtime.env.PRISMA_CLI_GITHUB_INSTALL_POLL_INTERVAL_MS,
+    GITHUB_INSTALL_POLL_INTERVAL_MS,
+  );
+  const deadline = Date.now() + timeoutMs;
+  let inspectableInstallationCount = 0;
+
+  while (Date.now() <= deadline) {
+    const installations = await listScmInstallations(api, workspaceId);
+
+    const lookup = await findRepositoryInInstallations(api, installations, repository);
+    inspectableInstallationCount = lookup.inspectableInstallationCount;
+    if (lookup.match) {
+      return { match: lookup.match, inspectableInstallationCount };
+    }
+
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      break;
+    }
+
+    await sleep(Math.min(intervalMs, remainingMs));
+  }
+
+  return { match: null, inspectableInstallationCount };
+}
+
+function readPositiveIntegerEnv(value: string | undefined, fallback: number): number {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function writeInstallWaitStatus(
+  context: CommandContext,
+  opened: boolean,
+  installUrl: string,
+): void {
+  if (context.flags.quiet) {
+    return;
+  }
+
+  const lines = [
+    renderSummaryLine(
+      context.ui,
+      "info",
+      opened
+        ? "Waiting for GitHub App installation approval..."
+        : "Waiting for GitHub App installation approval. Open the install URL in your browser.",
+    ),
+  ];
+
+  if (!opened) {
+    lines.push(installUrl);
+  }
+
+  context.output.stderr.write(`${lines.join("\n")}\n`);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function listScmInstallations(
@@ -559,6 +710,30 @@ async function findRepositoryInInstallation(
   } while (cursor);
 
   return null;
+}
+
+async function findRepositoryInInstallationIfAvailable(
+  api: SourceRepositoryApiClient,
+  installationId: string,
+  repository: GitHubRepositoryReference,
+): Promise<ScmRepositoryResponse | null | "unavailable"> {
+  try {
+    return await findRepositoryInInstallation(api, installationId, repository);
+  } catch (error) {
+    if (isUnavailableScmInstallationError(error)) {
+      return "unavailable";
+    }
+
+    throw error;
+  }
+}
+
+function isUnavailableScmInstallationError(error: unknown): boolean {
+  if (!(error instanceof CliError) || error.code !== "REPO_CONNECTION_FAILED") {
+    return false;
+  }
+
+  return error.meta.status === 404 || error.meta.status === 422;
 }
 
 async function createGitHubInstallIntent(
@@ -733,6 +908,25 @@ function repoNotAccessibleError(repository: GitHubRepositoryReference): CliError
     exitCode: 1,
     nextSteps: [`prisma-cli project connect-repo ${repository.url}`],
   });
+}
+
+function repoAlreadyConnectedError(repositoryFullName: string): CliError {
+  return new CliError({
+    code: "REPO_ALREADY_CONNECTED",
+    domain: "project",
+    summary: "Project already has a GitHub repository connected",
+    why: `The resolved project is already connected to ${repositoryFullName}.`,
+    fix: "Disconnect the existing repository before connecting a different one.",
+    meta: {
+      repository: repositoryFullName,
+    },
+    exitCode: 1,
+    nextSteps: ["prisma-cli project disconnect-repo"],
+  });
+}
+
+function repositoryFullNamesMatch(left: string, right: string): boolean {
+  return left.toLowerCase() === right.toLowerCase();
 }
 
 function repoConnectionApiError(
