@@ -89,7 +89,6 @@ function createProjectConnectRepoCommand(runtime: CliRuntime): Command {
 
   command.argument("[git-url]", "GitHub repository URL");
   command.option("--project <id-or-name>", "Project id or name");
-  command.option("--provider-repository-id <id>", "GitHub numeric repository id");
   addGlobalFlags(command);
 
   command.action(async (gitUrl: string | undefined, options) => {
@@ -99,9 +98,6 @@ function createProjectConnectRepoCommand(runtime: CliRuntime): Command {
       options as Record<string, unknown>,
       (context) => runProjectConnectRepo(context, gitUrl, {
         project: typeof options.project === "string" ? options.project : undefined,
-        providerRepositoryId: typeof options.providerRepositoryId === "string"
-          ? options.providerRepositoryId
-          : undefined,
       }),
       {
         renderHuman: (context, descriptor, result) => renderProjectConnectRepo(context, descriptor, result),

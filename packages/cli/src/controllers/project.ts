@@ -1,9 +1,9 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
+import open from "open";
 
 import {
   parseGitHubRepositoryUrl,
   readGitOriginRemote,
-  resolveGitHubRepositoryId,
   type GitHubRepositoryReference,
 } from "../adapters/git";
 import { requireComputeAuth } from "../lib/auth/guard";
@@ -14,7 +14,7 @@ import {
 } from "../lib/project/resolution";
 import { authRequiredError, CliError, usageError, workspaceRequiredError } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
-import type { CommandContext } from "../shell/runtime";
+import { canPrompt, type CommandContext } from "../shell/runtime";
 import type { AuthWorkspace } from "../types/auth";
 import type {
   GitRepositoryConnection,
@@ -27,7 +27,6 @@ import { createProjectUseCases } from "../use-cases/project";
 import { requireAuthenticatedAuthState } from "./auth";
 
 export interface ProjectConnectRepoOptions {
-  providerRepositoryId?: string;
   project?: string;
 }
 
@@ -115,13 +114,14 @@ export async function runProjectConnectRepo(
 
     const target = await resolveProjectShowInRealMode(context, workspace, options.project);
     const repository = await resolveRepositoryForConnect(context, gitUrl);
-    const providerRepositoryId = await resolveProviderRepositoryId(repository, options.providerRepositoryId);
     const api = client as unknown as SourceRepositoryApiClient;
+    const resolvedRepository = await resolveInstalledRepository(context, api, workspace.id, repository);
     const { data, error, response } = await api.POST("/v1/source-repositories", {
       body: {
         projectId: target.project.id,
         provider: "github",
-        providerRepositoryId,
+        providerRepositoryId: resolvedRepository.repository.id,
+        installationId: resolvedRepository.installation.id,
       },
     });
 
@@ -292,6 +292,8 @@ export function listFixtureWorkspaceProjects(
 
 interface SourceRepositoryResponse {
   id: string;
+  type?: "source-repository";
+  url?: string;
   repoId: number;
   provider: "github";
   repoFullName: string;
@@ -301,6 +303,33 @@ interface SourceRepositoryResponse {
   installationId: string;
   createdAt: string;
   updatedAt: string;
+}
+
+interface ScmInstallationResponse {
+  id: string;
+  type: "scm-installation";
+  url: string;
+  provider: "github";
+  installationId: number;
+  accountId: number;
+  accountLogin: string;
+  accountType: "user" | "organization";
+  suspended: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ScmRepositoryResponse {
+  id: number;
+  type: "scm-repository";
+  fullName: string;
+  defaultBranch: string;
+  isPrivate: boolean;
+}
+
+interface InstalledRepositoryMatch {
+  installation: ScmInstallationResponse;
+  repository: ScmRepositoryResponse;
 }
 
 interface SourceRepositoryApiError {
@@ -325,6 +354,7 @@ interface SourceRepositoryApiClient {
         projectId: string;
         provider: "github";
         providerRepositoryId: number;
+        installationId?: string;
       };
     },
   ): Promise<SourceRepositoryApiResult<{ data: SourceRepositoryResponse }>>;
@@ -344,6 +374,60 @@ interface SourceRepositoryApiClient {
     pagination: {
       nextCursor: string | null;
       hasMore: boolean;
+    };
+  }>>;
+  GET(
+    path: "/v1/scm-installations",
+    options: {
+      params: {
+        query: {
+          workspaceId: string;
+          cursor?: string;
+          limit?: number;
+        };
+      };
+    },
+  ): Promise<SourceRepositoryApiResult<{
+    data: ScmInstallationResponse[];
+    pagination: {
+      nextCursor: string | null;
+      hasMore: boolean;
+    };
+  }>>;
+  GET(
+    path: "/v1/scm-installations/{installationId}/repositories",
+    options: {
+      params: {
+        path: {
+          installationId: string;
+        };
+        query: {
+          cursor?: string;
+          limit?: number;
+        };
+      };
+    },
+  ): Promise<SourceRepositoryApiResult<{
+    data: ScmRepositoryResponse[];
+    pagination: {
+      nextCursor: string | null;
+      hasMore: boolean;
+    };
+  }>>;
+  POST(
+    path: "/v1/scm-installations/install-intents",
+    options: {
+      body: {
+        provider: "github";
+        workspaceId: string;
+      };
+    },
+  ): Promise<SourceRepositoryApiResult<{
+    data: {
+      type: "install-intent";
+      provider: "github";
+      workspaceId: string;
+      installUrl: string;
     };
   }>>;
   DELETE(
@@ -382,42 +466,133 @@ async function resolveRepositoryForConnect(
   return repository;
 }
 
-async function resolveProviderRepositoryId(
+async function resolveInstalledRepository(
+  context: CommandContext,
+  api: SourceRepositoryApiClient,
+  workspaceId: string,
   repository: GitHubRepositoryReference,
-  explicitId: string | undefined,
-): Promise<number> {
-  if (explicitId !== undefined) {
-    const parsed = Number(explicitId);
-    if (Number.isInteger(parsed) && parsed > 0) {
-      return parsed;
+): Promise<InstalledRepositoryMatch> {
+  const installations = await listScmInstallations(api, workspaceId);
+  if (installations.length === 0) {
+    const installUrl = await createGitHubInstallIntent(api, workspaceId);
+    const opened = await openInstallUrlIfInteractive(context, installUrl);
+    throw repoInstallationRequiredError(repository, installUrl, opened);
+  }
+
+  for (const installation of installations) {
+    if (installation.provider !== "github" || installation.suspended) {
+      continue;
     }
 
-    throw usageError(
-      "GitHub repository id must be a positive integer",
-      `Received "${explicitId}" for --provider-repository-id.`,
-      "Pass the numeric GitHub repository id, for example --provider-repository-id 123456.",
-      [`prisma-cli project connect-repo ${repository.url} --provider-repository-id 123456`],
-      "project",
-    );
+    const matchedRepository = await findRepositoryInInstallation(api, installation.id, repository);
+    if (matchedRepository) {
+      return {
+        installation,
+        repository: matchedRepository,
+      };
+    }
   }
 
-  const resolved = await resolveGitHubRepositoryId(repository);
-  if (resolved !== null) {
-    return resolved;
-  }
+  throw repoNotAccessibleError(repository);
+}
 
-  throw new CliError({
-    code: "REPO_ID_REQUIRED",
-    domain: "project",
-    summary: "GitHub repository id required",
-    why: "The platform API links repositories by GitHub's numeric repository id, and the CLI could not resolve it automatically.",
-    fix: "Pass --provider-repository-id, authenticate the GitHub CLI with gh auth login, or connect the repository in Console.",
-    exitCode: 2,
-    nextSteps: [
-      `gh repo view ${repository.fullName} --json databaseId`,
-      `prisma-cli project connect-repo ${repository.url} --provider-repository-id <id>`,
-    ],
+async function listScmInstallations(
+  api: SourceRepositoryApiClient,
+  workspaceId: string,
+): Promise<ScmInstallationResponse[]> {
+  const installations: ScmInstallationResponse[] = [];
+  let cursor: string | undefined;
+
+  do {
+    const { data, error, response } = await api.GET("/v1/scm-installations", {
+      params: {
+        query: {
+          workspaceId,
+          limit: 100,
+          ...(cursor ? { cursor } : {}),
+        },
+      },
+    });
+
+    if (error || !data) {
+      throw repoConnectionApiError("Failed to inspect GitHub App installations", response, error);
+    }
+
+    installations.push(...data.data);
+    cursor = data.pagination.hasMore && data.pagination.nextCursor ? data.pagination.nextCursor : undefined;
+  } while (cursor);
+
+  return installations;
+}
+
+async function findRepositoryInInstallation(
+  api: SourceRepositoryApiClient,
+  installationId: string,
+  repository: GitHubRepositoryReference,
+): Promise<ScmRepositoryResponse | null> {
+  const expectedFullName = repository.fullName.toLowerCase();
+  let cursor: string | undefined;
+
+  do {
+    const { data, error, response } = await api.GET("/v1/scm-installations/{installationId}/repositories", {
+      params: {
+        path: {
+          installationId,
+        },
+        query: {
+          limit: 100,
+          ...(cursor ? { cursor } : {}),
+        },
+      },
+    });
+
+    if (error || !data) {
+      throw repoConnectionApiError("Failed to inspect GitHub repositories", response, error);
+    }
+
+    const matchedRepository = data.data.find((candidate) => candidate.fullName.toLowerCase() === expectedFullName);
+    if (matchedRepository) {
+      return matchedRepository;
+    }
+
+    cursor = data.pagination.hasMore && data.pagination.nextCursor ? data.pagination.nextCursor : undefined;
+  } while (cursor);
+
+  return null;
+}
+
+async function createGitHubInstallIntent(
+  api: SourceRepositoryApiClient,
+  workspaceId: string,
+): Promise<string> {
+  const { data, error, response } = await api.POST("/v1/scm-installations/install-intents", {
+    body: {
+      provider: "github",
+      workspaceId,
+    },
   });
+
+  if (error || !data) {
+    throw repoConnectionApiError("Failed to create GitHub App installation link", response, error);
+  }
+
+  return data.data.installUrl;
+}
+
+async function openInstallUrlIfInteractive(
+  context: CommandContext,
+  installUrl: string,
+): Promise<boolean> {
+  if (!canPrompt(context)) {
+    return false;
+  }
+
+  try {
+    await open(installUrl);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function readFirstSourceRepository(
@@ -516,6 +691,47 @@ function repoNotConnectedError(): CliError {
     fix: "Run prisma-cli project connect-repo before disconnecting.",
     exitCode: 1,
     nextSteps: ["prisma-cli project connect-repo"],
+  });
+}
+
+function repoInstallationRequiredError(
+  repository: GitHubRepositoryReference,
+  installUrl: string,
+  opened: boolean,
+): CliError {
+  return new CliError({
+    code: "REPO_INSTALLATION_REQUIRED",
+    domain: "project",
+    summary: "GitHub App installation required",
+    why: `The selected workspace does not have a GitHub App installation that can be used to link ${repository.fullName}.`,
+    fix: opened
+      ? "Finish installing the GitHub App in the browser, then rerun prisma-cli project connect-repo."
+      : "Open the GitHub App installation URL, approve access, then rerun prisma-cli project connect-repo.",
+    meta: {
+      repository: repository.fullName,
+      installUrl,
+      opened,
+    },
+    exitCode: 1,
+    nextSteps: [
+      installUrl,
+      `prisma-cli project connect-repo ${repository.url}`,
+    ],
+  });
+}
+
+function repoNotAccessibleError(repository: GitHubRepositoryReference): CliError {
+  return new CliError({
+    code: "REPO_NOT_ACCESSIBLE",
+    domain: "project",
+    summary: "GitHub repository is not accessible",
+    why: `The GitHub App installations connected to this workspace do not expose ${repository.fullName}.`,
+    fix: "Update the GitHub App installation so it has access to this repository, then rerun prisma-cli project connect-repo.",
+    meta: {
+      repository: repository.fullName,
+    },
+    exitCode: 1,
+    nextSteps: [`prisma-cli project connect-repo ${repository.url}`],
   });
 }
 

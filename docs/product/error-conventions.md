@@ -161,7 +161,8 @@ These codes are the minimum stable set for the MVP:
 - `REMOVE_FAILED`
 - `FEATURE_UNAVAILABLE`
 - `REPO_PROVIDER_UNSUPPORTED`
-- `REPO_ID_REQUIRED`
+- `REPO_INSTALLATION_REQUIRED`
+- `REPO_NOT_ACCESSIBLE`
 - `REPO_NOT_CONNECTED`
 - `REPO_CONNECTION_FAILED`
 - `BUILD_FAILED`
@@ -186,7 +187,8 @@ Recommended meanings:
 - `REMOVE_FAILED`: app removal could not complete remotely
 - `FEATURE_UNAVAILABLE`: the command exists in the CLI model, but the current preview cannot support it yet
 - `REPO_PROVIDER_UNSUPPORTED`: repository connection received a non-GitHub repository URL
-- `REPO_ID_REQUIRED`: the CLI could not resolve the GitHub numeric repository id required by the current API
+- `REPO_INSTALLATION_REQUIRED`: repository connection needs a GitHub App installation before the project can be linked
+- `REPO_NOT_ACCESSIBLE`: the connected GitHub App installations do not expose the requested repository
 - `REPO_NOT_CONNECTED`: a command expected a project repository connection, but none exists
 - `REPO_CONNECTION_FAILED`: the Management API repository connection operation failed
 - `BUILD_FAILED`: build failed before a healthy deployment existed

@@ -58,63 +58,6 @@ export function parseGitHubRepositoryUrl(value: string): GitHubRepositoryReferen
   return toGitHubRepositoryReference(owner, name);
 }
 
-export async function resolveGitHubRepositoryId(
-  repository: GitHubRepositoryReference,
-): Promise<number | null> {
-  const fromGh = await resolveGitHubRepositoryIdWithGh(repository);
-  if (fromGh !== null) {
-    return fromGh;
-  }
-
-  return resolveGitHubRepositoryIdWithPublicApi(repository);
-}
-
-async function resolveGitHubRepositoryIdWithGh(
-  repository: GitHubRepositoryReference,
-): Promise<number | null> {
-  try {
-    const { stdout } = await execFileAsync(
-      "gh",
-      ["repo", "view", repository.fullName, "--json", "databaseId"],
-      { timeout: 5_000 },
-    );
-    const parsed = JSON.parse(stdout) as { databaseId?: unknown };
-    return typeof parsed.databaseId === "number" && Number.isInteger(parsed.databaseId)
-      ? parsed.databaseId
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-async function resolveGitHubRepositoryIdWithPublicApi(
-  repository: GitHubRepositoryReference,
-): Promise<number | null> {
-  try {
-    const response = await fetch(
-      `https://api.github.com/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}`,
-      {
-        headers: {
-          "user-agent": "prisma-cli",
-          accept: "application/vnd.github+json",
-        },
-        signal: AbortSignal.timeout(5_000),
-      },
-    );
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const parsed = await response.json() as { id?: unknown };
-    return typeof parsed.id === "number" && Number.isInteger(parsed.id)
-      ? parsed.id
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 function toGitHubRepositoryReference(owner: string | undefined, name: string | undefined): GitHubRepositoryReference | null {
   if (!owner || !name || owner.includes("/") || name.includes("/")) {
     return null;

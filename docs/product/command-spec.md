@@ -254,9 +254,13 @@ Behavior:
 
 Current backend contract:
 
-- the Management API link call requires GitHub's numeric repository id as `providerRepositoryId`
-- the CLI first tries to resolve that id from `gh repo view` or GitHub's public repository API
-- private repositories may require `gh auth login` or an explicit `--provider-repository-id <id>`
+- the CLI lists GitHub App installations for the authenticated workspace through the Management API
+- if no installation exists, the CLI creates a GitHub App install intent and returns the install URL
+- in interactive mode, the CLI attempts to open the install URL in the browser
+- the CLI lists repositories visible to the installation and finds the matching `owner/repo`
+- if the repository is not visible to any installation, the command fails with `REPO_NOT_ACCESSIBLE`
+- the CLI links the project to the repository with `POST /v1/source-repositories`
+- the link call sends `projectId`, `provider: "github"`, `providerRepositoryId`, and `installationId`
 
 Examples:
 
@@ -264,7 +268,7 @@ Examples:
 prisma-cli project connect-repo
 prisma-cli project connect-repo git@github.com:prisma/prisma-cli.git
 prisma-cli project connect-repo --project proj_123
-prisma-cli project connect-repo https://github.com/prisma/prisma-cli --provider-repository-id 123456
+prisma-cli project connect-repo https://github.com/prisma/prisma-cli --project proj_123
 ```
 
 ## `prisma-cli project disconnect-repo`
