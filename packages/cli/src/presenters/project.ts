@@ -69,7 +69,7 @@ export function serializeProjectShow(result: ProjectShowResult) {
   return result;
 }
 
-export function renderProjectConnectRepo(
+export function renderGitConnect(
   context: CommandContext,
   descriptor: CommandDescriptor,
   result: ProjectRepositoryConnectionResult,
@@ -77,7 +77,7 @@ export function renderProjectConnectRepo(
   const connection = result.repositoryConnection;
   return renderMutate(
     {
-      title: "Connecting the resolved project to a GitHub repository.",
+      title: "Connecting Git to the resolved project.",
       descriptor,
       context: [
         { key: "project", value: result.project.name },
@@ -97,14 +97,14 @@ export function renderProjectConnectRepo(
   );
 }
 
-export function renderProjectDisconnectRepo(
+export function renderGitDisconnect(
   context: CommandContext,
   descriptor: CommandDescriptor,
   result: ProjectRepositoryConnectionResult,
 ): string[] {
   return renderMutate(
     {
-      title: "Disconnecting the GitHub repository from the resolved project.",
+      title: "Disconnecting Git from the resolved project.",
       descriptor,
       context: [
         { key: "project", value: result.project.name },

@@ -27,11 +27,11 @@ import { createCliUseCaseGateways } from "../use-cases/create-cli-gateways";
 import { createProjectUseCases } from "../use-cases/project";
 import { requireAuthenticatedAuthState } from "./auth";
 
-export interface ProjectConnectRepoOptions {
+export interface GitConnectOptions {
   project?: string;
 }
 
-export interface ProjectDisconnectRepoOptions {
+export interface GitDisconnectOptions {
   project?: string;
 }
 
@@ -99,10 +99,10 @@ export async function runProjectShow(
   };
 }
 
-export async function runProjectConnectRepo(
+export async function runGitConnect(
   context: CommandContext,
   gitUrl: string | undefined,
-  options: ProjectConnectRepoOptions = {},
+  options: GitConnectOptions = {},
 ): Promise<CommandSuccess<ProjectRepositoryConnectionResult>> {
   const authState = await requireAuthenticatedAuthState(context);
   const workspace = authState.workspace;
@@ -125,7 +125,7 @@ export async function runProjectConnectRepo(
       const existingConnection = toRepositoryConnection(existing);
       if (repositoryFullNamesMatch(existingConnection.repository.fullName, repository.fullName)) {
         return {
-          command: "project.connect-repo",
+          command: "git.connect",
           result: {
             ...target,
             repositoryConnection: existingConnection,
@@ -153,7 +153,7 @@ export async function runProjectConnectRepo(
     }
 
     return {
-      command: "project.connect-repo",
+      command: "git.connect",
       result: {
         ...target,
         repositoryConnection: toRepositoryConnection(data.data),
@@ -169,7 +169,7 @@ export async function runProjectConnectRepo(
   await context.stateStore.setRepositoryConnection(target.project.id, connection);
 
   return {
-    command: "project.connect-repo",
+    command: "git.connect",
     result: {
       ...target,
       repositoryConnection: connection,
@@ -179,9 +179,9 @@ export async function runProjectConnectRepo(
   };
 }
 
-export async function runProjectDisconnectRepo(
+export async function runGitDisconnect(
   context: CommandContext,
-  options: ProjectDisconnectRepoOptions = {},
+  options: GitDisconnectOptions = {},
 ): Promise<CommandSuccess<ProjectRepositoryConnectionResult>> {
   const authState = await requireAuthenticatedAuthState(context);
   const workspace = authState.workspace;
@@ -216,7 +216,7 @@ export async function runProjectDisconnectRepo(
     }
 
     return {
-      command: "project.disconnect-repo",
+      command: "git.disconnect",
       result: {
         ...target,
         repositoryConnection: toRepositoryConnection(existing),
@@ -236,7 +236,7 @@ export async function runProjectDisconnectRepo(
   await context.stateStore.clearRepositoryConnection(target.project.id);
 
   return {
-    command: "project.disconnect-repo",
+    command: "git.disconnect",
     result: {
       ...target,
       repositoryConnection: existingConnection,
@@ -480,8 +480,8 @@ async function resolveRepositoryForConnect(
     throw usageError(
       "Repository connection requires a GitHub repository URL",
       "No git-url was provided and the local repo does not have an origin remote.",
-      "Pass a GitHub repository URL, or add a GitHub origin remote and rerun prisma-cli project connect-repo.",
-      ["prisma-cli project connect-repo git@github.com:prisma/prisma-cli.git"],
+      "Pass a GitHub repository URL, or add a GitHub origin remote and rerun prisma-cli git connect.",
+      ["prisma-cli git connect git@github.com:prisma/prisma-cli.git"],
       "project",
     );
   }
@@ -853,7 +853,7 @@ function unsupportedRepositoryProviderError(): CliError {
     why: "Repository connection supports GitHub repository URLs only.",
     fix: "Pass a GitHub repository URL such as git@github.com:prisma/prisma-cli.git.",
     exitCode: 2,
-    nextSteps: ["prisma-cli project connect-repo git@github.com:owner/repo.git"],
+    nextSteps: ["prisma-cli git connect git@github.com:owner/repo.git"],
   });
 }
 
@@ -863,9 +863,9 @@ function repoNotConnectedError(): CliError {
     domain: "project",
     summary: "No GitHub repository connected",
     why: "The resolved project does not have an active GitHub repository connection.",
-    fix: "Run prisma-cli project connect-repo before disconnecting.",
+    fix: "Run prisma-cli git connect before disconnecting.",
     exitCode: 1,
-    nextSteps: ["prisma-cli project connect-repo"],
+    nextSteps: ["prisma-cli git connect"],
   });
 }
 
@@ -880,8 +880,8 @@ function repoInstallationRequiredError(
     summary: "GitHub App installation required",
     why: `The selected workspace does not have a GitHub App installation that can be used to link ${repository.fullName}.`,
     fix: opened
-      ? "Finish installing the GitHub App in the browser, then rerun prisma-cli project connect-repo."
-      : "Open the GitHub App installation URL, approve access, then rerun prisma-cli project connect-repo.",
+      ? "Finish installing the GitHub App in the browser, then rerun prisma-cli git connect."
+      : "Open the GitHub App installation URL, approve access, then rerun prisma-cli git connect.",
     meta: {
       repository: repository.fullName,
       installUrl,
@@ -890,7 +890,7 @@ function repoInstallationRequiredError(
     exitCode: 1,
     nextSteps: [
       installUrl,
-      `prisma-cli project connect-repo ${repository.url}`,
+      `prisma-cli git connect ${repository.url}`,
     ],
   });
 }
@@ -901,12 +901,12 @@ function repoNotAccessibleError(repository: GitHubRepositoryReference): CliError
     domain: "project",
     summary: "GitHub repository is not accessible",
     why: `The GitHub App installations connected to this workspace do not expose ${repository.fullName}.`,
-    fix: "Update the GitHub App installation so it has access to this repository, then rerun prisma-cli project connect-repo.",
+    fix: "Update the GitHub App installation so it has access to this repository, then rerun prisma-cli git connect.",
     meta: {
       repository: repository.fullName,
     },
     exitCode: 1,
-    nextSteps: [`prisma-cli project connect-repo ${repository.url}`],
+    nextSteps: [`prisma-cli git connect ${repository.url}`],
   });
 }
 
@@ -921,7 +921,7 @@ function repoAlreadyConnectedError(repositoryFullName: string): CliError {
       repository: repositoryFullName,
     },
     exitCode: 1,
-    nextSteps: ["prisma-cli project disconnect-repo"],
+    nextSteps: ["prisma-cli git disconnect"],
   });
 }
 
@@ -960,7 +960,7 @@ function repoConnectionApiError(
 
 function repoConnectionFixForStatus(status: number): string {
   if (status === 404) {
-    return "Install the GitHub App for this workspace, then rerun prisma-cli project connect-repo.";
+    return "Install the GitHub App for this workspace, then rerun prisma-cli git connect.";
   }
 
   if (status === 409) {

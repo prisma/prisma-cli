@@ -5,7 +5,7 @@ import { Command, CommanderError } from "commander";
 import { createAppCommand } from "./commands/app";
 import { createAuthCommand } from "./commands/auth";
 import { createBranchCommand } from "./commands/branch";
-
+import { createGitCommand } from "./commands/git";
 import { createProjectCommand } from "./commands/project";
 import { attachCommandDescriptor } from "./shell/command-meta";
 import { addCompactGlobalFlags } from "./shell/global-flags";
@@ -54,8 +54,9 @@ export function createProgram(runtime: CliRuntime): Command {
     .showSuggestionAfterError();
 
   program.addCommand(createAuthCommand(runtime));
-  program.addCommand(createBranchCommand(runtime));
   program.addCommand(createProjectCommand(runtime));
+  program.addCommand(createGitCommand(runtime));
+  program.addCommand(createBranchCommand(runtime));
   program.addCommand(createAppCommand(runtime));
 
   return program;

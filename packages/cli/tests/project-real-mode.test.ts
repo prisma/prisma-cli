@@ -284,7 +284,7 @@ describe("real project mode", () => {
     }));
 
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
-    const { runProjectConnectRepo } = await import("../src/controllers/project");
+    const { runGitConnect } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
@@ -296,7 +296,7 @@ describe("real project mode", () => {
       },
     });
 
-    const result = await runProjectConnectRepo(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" });
+    const result = await runGitConnect(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" });
 
     expect(post).toHaveBeenCalledOnce();
     expect(get).toHaveBeenCalledWith("/v1/scm-installations/{installationId}/repositories", {
@@ -354,7 +354,7 @@ describe("real project mode", () => {
     }));
 
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
-    const { runProjectConnectRepo } = await import("../src/controllers/project");
+    const { runGitConnect } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
@@ -366,7 +366,7 @@ describe("real project mode", () => {
       },
     });
 
-    const result = await runProjectConnectRepo(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" });
+    const result = await runGitConnect(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" });
 
     expect(post).not.toHaveBeenCalled();
     expect(result.result.repositoryConnection).toMatchObject({
@@ -433,7 +433,7 @@ describe("real project mode", () => {
     }));
 
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
-    const { runProjectConnectRepo } = await import("../src/controllers/project");
+    const { runGitConnect } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
@@ -445,7 +445,7 @@ describe("real project mode", () => {
       },
     });
 
-    await expect(runProjectConnectRepo(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" }))
+    await expect(runGitConnect(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" }))
       .rejects
       .toMatchObject({
         code: "REPO_INSTALLATION_REQUIRED",
@@ -539,7 +539,7 @@ describe("real project mode", () => {
     }));
 
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
-    const { runProjectConnectRepo } = await import("../src/controllers/project");
+    const { runGitConnect } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
@@ -551,7 +551,7 @@ describe("real project mode", () => {
       },
     });
 
-    await expect(runProjectConnectRepo(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" }))
+    await expect(runGitConnect(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" }))
       .rejects
       .toMatchObject({
         code: "REPO_INSTALLATION_REQUIRED",
@@ -686,7 +686,7 @@ describe("real project mode", () => {
     }));
 
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
-    const { runProjectConnectRepo } = await import("../src/controllers/project");
+    const { runGitConnect } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     const { context, stderr } = await createTestCommandContext({
@@ -702,7 +702,7 @@ describe("real project mode", () => {
       },
     });
 
-    const result = await runProjectConnectRepo(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" });
+    const result = await runGitConnect(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" });
 
     expect(openBrowser).toHaveBeenCalledWith("https://github.com/apps/prisma/installations/new?state=abc");
     expect(installationListCalls).toBe(2);
@@ -788,7 +788,7 @@ describe("real project mode", () => {
     }));
 
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
-    const { runProjectConnectRepo } = await import("../src/controllers/project");
+    const { runGitConnect } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
@@ -800,7 +800,7 @@ describe("real project mode", () => {
       },
     });
 
-    await expect(runProjectConnectRepo(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" }))
+    await expect(runGitConnect(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" }))
       .rejects
       .toMatchObject({
         code: "REPO_NOT_ACCESSIBLE",
@@ -857,7 +857,7 @@ describe("real project mode", () => {
     }));
 
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
-    const { runProjectDisconnectRepo } = await import("../src/controllers/project");
+    const { runGitDisconnect } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
@@ -869,7 +869,7 @@ describe("real project mode", () => {
       },
     });
 
-    const result = await runProjectDisconnectRepo(context, { project: "proj_123" });
+    const result = await runGitDisconnect(context, { project: "proj_123" });
 
     expect(del).toHaveBeenCalledWith("/v1/source-repositories/{id}", {
       params: {

@@ -11,11 +11,12 @@ The preview package includes these command groups:
 
 - `auth`
 - `project` (includes `project env` subgroup)
+- `git`
 - `branch`
 - `app`
 
-The GitHub repository connection slice extends the `project` group. It does not
-add a top-level `git` or `github` group.
+The Git repository connection slice uses the `git` group. It does not add a
+provider-specific `github` group.
 
 Out of scope for the current preview:
 
@@ -229,7 +230,7 @@ prisma-cli project show --json
 prisma-cli project show --project proj_123 --json
 ```
 
-## `prisma-cli project connect-repo [git-url]`
+## `prisma-cli git connect [git-url]`
 
 Purpose:
 
@@ -267,13 +268,13 @@ Current backend contract:
 Examples:
 
 ```bash
-prisma-cli project connect-repo
-prisma-cli project connect-repo git@github.com:prisma/prisma-cli.git
-prisma-cli project connect-repo --project proj_123
-prisma-cli project connect-repo https://github.com/prisma/prisma-cli --project proj_123
+prisma-cli git connect
+prisma-cli git connect git@github.com:prisma/prisma-cli.git
+prisma-cli git connect --project proj_123
+prisma-cli git connect https://github.com/prisma/prisma-cli --project proj_123
 ```
 
-## `prisma-cli project disconnect-repo`
+## `prisma-cli git disconnect`
 
 Purpose:
 
@@ -292,9 +293,9 @@ Behavior:
 Examples:
 
 ```bash
-prisma-cli project disconnect-repo
-prisma-cli project disconnect-repo --project proj_123
-prisma-cli project disconnect-repo --json
+prisma-cli git disconnect
+prisma-cli git disconnect --project proj_123
+prisma-cli git disconnect --json
 ```
 
 ## `prisma-cli branch list`

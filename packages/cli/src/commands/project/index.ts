@@ -1,14 +1,7 @@
 import { Command } from "commander";
 
+import { runProjectList, runProjectShow } from "../../controllers/project";
 import {
-  runProjectConnectRepo,
-  runProjectDisconnectRepo,
-  runProjectList,
-  runProjectShow,
-} from "../../controllers/project";
-import {
-  renderProjectConnectRepo,
-  renderProjectDisconnectRepo,
   renderProjectList,
   renderProjectShow,
   serializeProjectList,
@@ -18,11 +11,7 @@ import { attachCommandDescriptor } from "../../shell/command-meta";
 import { addCompactGlobalFlags, addGlobalFlags } from "../../shell/global-flags";
 import { runCommand } from "../../shell/command-runner";
 import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
-import type {
-  ProjectListResult,
-  ProjectRepositoryConnectionResult,
-  ProjectShowResult,
-} from "../../types/project";
+import type { ProjectListResult, ProjectShowResult } from "../../types/project";
 import { createEnvCommand } from "../env";
 
 export function createProjectCommand(runtime: CliRuntime): Command {
@@ -32,8 +21,6 @@ export function createProjectCommand(runtime: CliRuntime): Command {
 
   project.addCommand(createProjectListCommand(runtime));
   project.addCommand(createProjectShowCommand(runtime));
-  project.addCommand(createProjectConnectRepoCommand(runtime));
-  project.addCommand(createProjectDisconnectRepoCommand(runtime));
   project.addCommand(createEnvCommand(runtime));
 
   return project;
@@ -77,53 +64,6 @@ function createProjectShowCommand(runtime: CliRuntime): Command {
       {
         renderHuman: (context, descriptor, result) => renderProjectShow(context, descriptor, result),
         renderJson: (result) => serializeProjectShow(result),
-      },
-    );
-  });
-
-  return command;
-}
-
-function createProjectConnectRepoCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("connect-repo"), runtime), "project.connect-repo");
-
-  command.argument("[git-url]", "GitHub repository URL");
-  command.option("--project <id-or-name>", "Project id or name");
-  addGlobalFlags(command);
-
-  command.action(async (gitUrl: string | undefined, options) => {
-    await runCommand<ProjectRepositoryConnectionResult>(
-      runtime,
-      "project.connect-repo",
-      options as Record<string, unknown>,
-      (context) => runProjectConnectRepo(context, gitUrl, {
-        project: typeof options.project === "string" ? options.project : undefined,
-      }),
-      {
-        renderHuman: (context, descriptor, result) => renderProjectConnectRepo(context, descriptor, result),
-      },
-    );
-  });
-
-  return command;
-}
-
-function createProjectDisconnectRepoCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("disconnect-repo"), runtime), "project.disconnect-repo");
-
-  command.option("--project <id-or-name>", "Project id or name");
-  addGlobalFlags(command);
-
-  command.action(async (options) => {
-    await runCommand<ProjectRepositoryConnectionResult>(
-      runtime,
-      "project.disconnect-repo",
-      options as Record<string, unknown>,
-      (context) => runProjectDisconnectRepo(context, {
-        project: typeof options.project === "string" ? options.project : undefined,
-      }),
-      {
-        renderHuman: (context, descriptor, result) => renderProjectDisconnectRepo(context, descriptor, result),
       },
     );
   });

@@ -66,6 +66,12 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: ["prisma-cli branch list", "prisma-cli branch show"],
   },
   {
+    id: "git",
+    path: ["prisma", "git"],
+    description: "Manage Git repository connections for a project",
+    examples: ["prisma-cli git connect", "prisma-cli git disconnect"],
+  },
+  {
     id: "project.list",
     path: ["prisma", "project", "list"],
     description: "List all projects in your workspace",
@@ -78,20 +84,20 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: ["prisma-cli project show", "prisma-cli project show --project proj_123 --json"],
   },
   {
-    id: "project.connect-repo",
-    path: ["prisma", "project", "connect-repo"],
+    id: "git.connect",
+    path: ["prisma", "git", "connect"],
     description: "Connect the resolved project to a GitHub repository",
     examples: [
-      "prisma-cli project connect-repo",
-      "prisma-cli project connect-repo git@github.com:prisma/prisma-cli.git",
-      "prisma-cli project connect-repo --project proj_123",
+      "prisma-cli git connect",
+      "prisma-cli git connect git@github.com:prisma/prisma-cli.git",
+      "prisma-cli git connect --project proj_123",
     ],
   },
   {
-    id: "project.disconnect-repo",
-    path: ["prisma", "project", "disconnect-repo"],
+    id: "git.disconnect",
+    path: ["prisma", "git", "disconnect"],
     description: "Disconnect the GitHub repository from the resolved project",
-    examples: ["prisma-cli project disconnect-repo", "prisma-cli project disconnect-repo --project proj_123"],
+    examples: ["prisma-cli git disconnect", "prisma-cli git disconnect --project proj_123"],
   },
   {
     id: "branch.list",
