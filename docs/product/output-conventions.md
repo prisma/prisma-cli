@@ -67,6 +67,8 @@ Current MVP commands map to patterns like this:
 | `auth whoami` | `show` |
 | `project list` | `list` |
 | `project show` | `show` |
+| `git connect` | `mutate` |
+| `git disconnect` | `mutate` |
 | `branch list` | `list` |
 | `branch show` | `show` |
 | `branch use` | `mutate` |

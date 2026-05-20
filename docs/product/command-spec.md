@@ -11,8 +11,12 @@ The preview package includes these command groups:
 
 - `auth`
 - `project` (includes `project env` subgroup)
+- `git`
 - `branch`
 - `app`
+
+The Git repository connection slice uses the `git` group. It does not add a
+provider-specific `GitHub` group.
 
 Out of scope for the current preview:
 
@@ -224,6 +228,76 @@ Examples:
 prisma-cli project show
 prisma-cli project show --json
 prisma-cli project show --project proj_123 --json
+```
+
+## `prisma-cli git connect [git-url]`
+
+Purpose:
+
+- connect the resolved Prisma project to a GitHub repository
+
+Behavior:
+
+- requires auth
+- resolves project context without creating projects
+- supports `--project <id-or-name>` for explicit project selection
+- if `[git-url]` is provided, parses it as a GitHub repository URL
+- if `[git-url]` is omitted, reads the local Git `origin` remote URL
+- accepts common GitHub URL forms such as:
+  - `https://github.com/prisma/prisma-cli`
+  - `https://github.com/prisma/prisma-cli.git`
+  - `git@github.com:prisma/prisma-cli.git`
+- rejects unsupported providers with `REPO_PROVIDER_UNSUPPORTED`
+- stores the repository connection server-side through the Management API
+- does not write repository data to `prisma.config.ts`
+- does not create branches synchronously
+- when the connection is active, enables platform webhook automation to map GitHub branch activity to Prisma Branch state
+
+Current backend contract:
+
+- the CLI lists GitHub App installations for the authenticated workspace through the Management API
+- if no installation exists, the CLI creates a GitHub App install intent and returns the install URL
+- in interactive mode, the CLI attempts to open the install URL in the browser and waits for the installation to become available
+- in non-interactive or `--json` mode, the CLI exits with `REPO_INSTALLATION_REQUIRED` and includes the install URL
+- the CLI lists repositories visible to the installation and finds the matching `owner/repo`
+- if the repository is not visible to any installation, the CLI creates a GitHub App install intent and exposes the install URL
+- if the repository still is not visible after the installation or repository-access step, the command fails with `REPO_NOT_ACCESSIBLE`
+- if the project is already connected to the same repository, the command returns the existing connection without creating a duplicate
+- if the project is already connected to a different repository, the command fails with `REPO_ALREADY_CONNECTED`
+- the CLI links the project to the repository with `POST /v1/source-repositories`
+- the link call sends `projectId`, `provider: "github"`, `providerRepositoryId`, and `installationId`
+
+Examples:
+
+```bash
+prisma-cli git connect
+prisma-cli git connect git@github.com:prisma/prisma-cli.git
+prisma-cli git connect --project proj_123
+prisma-cli git connect https://github.com/prisma/prisma-cli --project proj_123
+```
+
+## `prisma-cli git disconnect`
+
+Purpose:
+
+- disconnect the GitHub repository from the resolved Prisma project
+
+Behavior:
+
+- requires auth
+- resolves project context without creating projects
+- supports `--project <id-or-name>` for explicit project selection
+- removes the active server-side repository connection
+- stops future GitHub branch automation for that project
+- does not delete the resolved Prisma project
+- does not delete existing Branches synchronously; server-side retention rules own that behavior
+
+Examples:
+
+```bash
+prisma-cli git disconnect
+prisma-cli git disconnect --project proj_123
+prisma-cli git disconnect --json
 ```
 
 ## `prisma-cli branch list`

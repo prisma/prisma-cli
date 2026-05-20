@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { AuthProviderId } from "../types/auth";
+import type { GitRepositoryConnection } from "../types/project";
 
 export interface LocalState {
   auth: {
@@ -12,6 +13,7 @@ export interface LocalState {
   project: {
     rememberedByWorkspace: Record<string, RememberedProjectState>;
     lastResolved: RememberedProjectState | null;
+    repositoryConnectionsByProject: Record<string, GitRepositoryConnection>;
   };
   branch: {
     active: string;
@@ -38,6 +40,7 @@ const DEFAULT_STATE: LocalState = {
   project: {
     rememberedByWorkspace: {},
     lastResolved: null,
+    repositoryConnectionsByProject: {},
   },
   branch: {
     active: "preview",
@@ -70,6 +73,7 @@ export class LocalStateStore {
         project: {
           rememberedByWorkspace: parsed.project?.rememberedByWorkspace ?? {},
           lastResolved: parsed.project?.lastResolved ?? null,
+          repositoryConnectionsByProject: parsed.project?.repositoryConnectionsByProject ?? {},
         },
         branch: {
           active: parsed.branch?.active ?? DEFAULT_STATE.branch.active,
@@ -128,6 +132,28 @@ export class LocalStateStore {
     const state = await this.read();
     state.project.rememberedByWorkspace[project.workspaceId] = project;
     state.project.lastResolved = project;
+    await this.write(state);
+    return state;
+  }
+
+  async readRepositoryConnection(projectId: string): Promise<GitRepositoryConnection | null> {
+    const state = await this.read();
+    return state.project.repositoryConnectionsByProject[projectId] ?? null;
+  }
+
+  async setRepositoryConnection(
+    projectId: string,
+    connection: GitRepositoryConnection,
+  ): Promise<LocalState> {
+    const state = await this.read();
+    state.project.repositoryConnectionsByProject[projectId] = connection;
+    await this.write(state);
+    return state;
+  }
+
+  async clearRepositoryConnection(projectId: string): Promise<LocalState> {
+    const state = await this.read();
+    delete state.project.repositoryConnectionsByProject[projectId];
     await this.write(state);
     return state;
   }

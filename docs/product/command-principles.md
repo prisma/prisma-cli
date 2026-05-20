@@ -36,8 +36,9 @@ The long-term command surface grows through workflow groups such as:
 - `database`
 - `migrate`
 - `app`
+- `git`
 
-The preview implements only `auth`, `project`, `branch`, and `app`.
+The preview implements only `auth`, `project`, `git`, `branch`, and `app`.
 
 ## Stable Nouns
 
