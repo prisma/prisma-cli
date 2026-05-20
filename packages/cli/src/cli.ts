@@ -5,7 +5,7 @@ import { Command, CommanderError, Option } from "commander";
 import { createAppCommand } from "./commands/app";
 import { createAuthCommand } from "./commands/auth";
 import { createBranchCommand } from "./commands/branch";
-
+import { createGitCommand } from "./commands/git";
 import { createProjectCommand } from "./commands/project";
 import { createVersionCommand } from "./commands/version";
 import { runVersion } from "./controllers/version";
@@ -67,8 +67,9 @@ export function createProgram(runtime: CliRuntime): Command {
 
   program.addCommand(createVersionCommand(runtime));
   program.addCommand(createAuthCommand(runtime));
-  program.addCommand(createBranchCommand(runtime));
   program.addCommand(createProjectCommand(runtime));
+  program.addCommand(createGitCommand(runtime));
+  program.addCommand(createBranchCommand(runtime));
   program.addCommand(createAppCommand(runtime));
 
   return program;

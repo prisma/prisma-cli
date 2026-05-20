@@ -14,7 +14,3 @@ export interface VersionResult {
 }
 
 export type VersionInvocation = "bunx" | "npx" | "global" | "dev" | "unknown";
-
-export interface VersionFlagResult {
-  version: string;
-}

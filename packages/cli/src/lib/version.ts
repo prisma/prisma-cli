@@ -48,11 +48,18 @@ export function detectInvocation(env: NodeJS.ProcessEnv, argv: readonly string[]
     return "bunx";
   }
 
-  if (env.npm_lifecycle_event === "npx" || env.npm_execpath?.includes("/_npx/") || env.npm_config_user_agent?.startsWith("npm")) {
+  const normalizedExecPath = env.npm_execpath?.replace(/\\/g, "/").toLowerCase();
+  const normalizedUserAgent = env.npm_config_user_agent?.toLowerCase();
+
+  if (
+    env.npm_lifecycle_event === "npx" ||
+    normalizedExecPath?.includes("/_npx/") ||
+    normalizedUserAgent?.includes("npx")
+  ) {
     return "npx";
   }
 
-  const entry = argv[1] ?? "";
+  const entry = (argv[1] ?? "").replace(/\\/g, "/").toLowerCase();
 
   if (entry.endsWith(".ts") || entry.includes("/tsx/")) {
     return "dev";
@@ -66,7 +73,7 @@ export function detectInvocation(env: NodeJS.ProcessEnv, argv: readonly string[]
     return "bunx";
   }
 
-  if (entry.includes("/node_modules/.bin/") || entry.endsWith("/prisma-cli")) {
+  if (entry.includes("/node_modules/.bin/") || /\/prisma-cli(\.cmd|\.exe)?$/.test(entry)) {
     return "global";
   }
 

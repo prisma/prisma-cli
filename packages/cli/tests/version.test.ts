@@ -4,6 +4,7 @@ import process from "node:process";
 
 import { describe, expect, it } from "vitest";
 
+import { detectInvocation } from "../src/lib/version";
 import { createTempCwd, executeCli } from "./helpers";
 
 const requireFromHere = createRequire(import.meta.url);
@@ -166,5 +167,29 @@ describe("version", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe(`prisma-cli ${pkg.version}\n`);
     expect(result.stderr).toBe("");
+  });
+
+  it("does not classify normal npm script execution as npx", () => {
+    expect(
+      detectInvocation(
+        {
+          npm_config_user_agent: "npm/10.9.0 node/v24.14.1 darwin arm64 workspaces/false",
+        },
+        ["node", "/repo/node_modules/.bin/prisma-cli"],
+      ),
+    ).toBe("global");
+  });
+
+  it("detects Windows npx and global invocation paths", () => {
+    expect(
+      detectInvocation(
+        {
+          npm_execpath: "C:\\Users\\alice\\AppData\\Local\\npm-cache\\_npx\\1234\\node_modules\\npm\\bin\\npm-cli.js",
+        },
+        ["node", "C:\\Users\\alice\\AppData\\Local\\npm-cache\\_npx\\1234\\node_modules\\.bin\\prisma-cli.cmd"],
+      ),
+    ).toBe("npx");
+
+    expect(detectInvocation({}, ["node", "C:\\Users\\alice\\AppData\\Roaming\\npm\\prisma-cli.cmd"])).toBe("global");
   });
 });
