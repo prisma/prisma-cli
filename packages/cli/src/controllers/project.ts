@@ -165,6 +165,24 @@ export async function runGitConnect(
 
   const target = await resolveProjectShowInFixtureMode(context, workspace, options.project);
   const repository = await resolveRepositoryForConnect(context, gitUrl);
+  const existingConnection = await context.stateStore.readRepositoryConnection(target.project.id);
+
+  if (existingConnection) {
+    if (repositoryFullNamesMatch(existingConnection.repository.fullName, repository.fullName)) {
+      return {
+        command: "git.connect",
+        result: {
+          ...target,
+          repositoryConnection: existingConnection,
+        },
+        warnings: [],
+        nextSteps: [],
+      };
+    }
+
+    throw repoAlreadyConnectedError(existingConnection.repository.fullName);
+  }
+
   const connection = createPendingRepositoryConnection(repository);
   await context.stateStore.setRepositoryConnection(target.project.id, connection);
 

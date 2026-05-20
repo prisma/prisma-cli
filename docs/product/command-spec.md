@@ -16,7 +16,7 @@ The preview package includes these command groups:
 - `app`
 
 The Git repository connection slice uses the `git` group. It does not add a
-provider-specific `github` group.
+provider-specific `GitHub` group.
 
 Out of scope for the current preview:
 

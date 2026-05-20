@@ -290,6 +290,70 @@ describe("project commands", () => {
     expect(state.project.repositoryConnectionsByProject.proj_123.repository.fullName).toBe("prisma/prisma-cli");
   });
 
+  it("keeps fixture repository connection idempotent for the same repo", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await login(cwd, stateDir);
+
+    await executeCli({
+      argv: ["git", "connect", "https://github.com/prisma/prisma-cli", "--project", "proj_123"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    const result = await executeCli({
+      argv: ["git", "connect", "git@github.com:Prisma/Prisma-CLI.git", "--project", "proj_123", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      command: "git.connect",
+      result: {
+        repositoryConnection: {
+          repository: {
+            fullName: "prisma/prisma-cli",
+          },
+        },
+      },
+    });
+  });
+
+  it("blocks fixture repository replacement without disconnecting first", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await login(cwd, stateDir);
+
+    await executeCli({
+      argv: ["git", "connect", "https://github.com/prisma/prisma-cli", "--project", "proj_123"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    const result = await executeCli({
+      argv: ["git", "connect", "https://github.com/prisma/other", "--project", "proj_123", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const state = JSON.parse(await readFile(path.join(stateDir, "state.json"), "utf8"));
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      command: "git.connect",
+      error: {
+        code: "REPO_ALREADY_CONNECTED",
+      },
+    });
+    expect(state.project.repositoryConnectionsByProject.proj_123.repository.fullName).toBe("prisma/prisma-cli");
+  });
+
   it("disconnects a GitHub repository from an explicit project in fixture mode", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
