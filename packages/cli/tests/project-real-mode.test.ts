@@ -742,7 +742,7 @@ describe("real project mode", () => {
         installationId: "scminstall_123",
       },
     });
-    expect(stderr.buffer).toContain("Waiting for GitHub App installation approval");
+    expect(stderr.buffer).toContain("Waiting for GitHub App installation or repository access approval");
     expect(result.result.repositoryConnection?.repository.fullName).toBe("prisma/prisma-cli");
   });
 
@@ -804,7 +804,26 @@ describe("real project mode", () => {
 
       throw new Error(`Unexpected path ${pathName}`);
     });
-    const post = vi.fn();
+    const post = vi.fn().mockImplementation((pathName: string, request?: { body?: unknown }) => {
+      if (pathName === "/v1/scm-installations/install-intents") {
+        expect(request?.body).toEqual({
+          provider: "github",
+          workspaceId: "ws_123",
+        });
+        return {
+          data: {
+            data: {
+              type: "install-intent",
+              provider: "github",
+              workspaceId: "wksp_123",
+              installUrl: "https://github.com/apps/prisma/installations/new?state=abc",
+            },
+          },
+        };
+      }
+
+      throw new Error(`Unexpected path ${pathName}`);
+    });
 
     vi.doMock("../src/lib/auth/auth-ops", () => ({
       readAuthState: mockAuthState(),
@@ -833,10 +852,12 @@ describe("real project mode", () => {
       .toMatchObject({
         code: "REPO_NOT_ACCESSIBLE",
         meta: {
+          installUrl: "https://github.com/apps/prisma/installations/new?state=abc",
+          opened: false,
           repository: "prisma/prisma-cli",
         },
       });
-    expect(post).not.toHaveBeenCalled();
+    expect(post).toHaveBeenCalledOnce();
   });
 
   it("guards repeated GitHub App installation pagination cursors", async () => {

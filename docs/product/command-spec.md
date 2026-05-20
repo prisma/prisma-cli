@@ -260,8 +260,10 @@ Current backend contract:
 - in interactive mode, the CLI attempts to open the install URL in the browser and waits for the installation to become available
 - in non-interactive or `--json` mode, the CLI exits with `REPO_INSTALLATION_REQUIRED` and includes the install URL
 - the CLI lists repositories visible to the installation and finds the matching `owner/repo`
-- if the repository is not visible to any installation, the command fails with `REPO_NOT_ACCESSIBLE`
+- if the repository is not visible to any installation, the CLI creates a GitHub App install intent and exposes the install URL
+- if the repository still is not visible after the installation or repository-access step, the command fails with `REPO_NOT_ACCESSIBLE`
 - if the project is already connected to the same repository, the command returns the existing connection without creating a duplicate
+- if the project is already connected to a different repository, the command fails with `REPO_ALREADY_CONNECTED`
 - the CLI links the project to the repository with `POST /v1/source-repositories`
 - the link call sends `projectId`, `provider: "github"`, `providerRepositoryId`, and `installationId`
 

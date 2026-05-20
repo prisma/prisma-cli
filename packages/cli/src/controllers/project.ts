@@ -524,34 +524,30 @@ async function resolveInstalledRepository(
     return lookup.match;
   }
 
-  if (!hasUsableGitHubInstallation(installations) || lookup.inspectableInstallationCount === 0) {
-    const installUrl = await createGitHubInstallIntent(api, workspaceId);
-    const canWait = canPrompt(context);
-    const opened = await openInstallUrlIfInteractive(context, installUrl);
+  const installUrl = await createGitHubInstallIntent(api, workspaceId);
+  const canWait = canPrompt(context);
+  const opened = await openInstallUrlIfInteractive(context, installUrl);
 
-    if (!canWait) {
-      throw repoInstallationRequiredError(repository, installUrl, opened);
-    }
-
-    writeInstallWaitStatus(context, opened, installUrl);
-
-    const result = await waitForInstalledRepository(context, api, workspaceId, repository);
-    if (result.match) {
-      return result.match;
-    }
-
-    if (result.inspectableInstallationCount > 0) {
-      throw repoNotAccessibleError(repository);
+  if (!canWait) {
+    if (lookup.inspectableInstallationCount > 0) {
+      throw repoNotAccessibleError(repository, installUrl, opened);
     }
 
     throw repoInstallationRequiredError(repository, installUrl, opened);
   }
 
-  throw repoNotAccessibleError(repository);
-}
+  writeInstallWaitStatus(context, opened, installUrl);
 
-function hasUsableGitHubInstallation(installations: ScmInstallationResponse[]): boolean {
-  return installations.some((installation) => installation.provider === "github" && !installation.suspended);
+  const result = await waitForInstalledRepository(context, api, workspaceId, repository);
+  if (result.match) {
+    return result.match;
+  }
+
+  if (result.inspectableInstallationCount > 0) {
+    throw repoNotAccessibleError(repository, installUrl, opened);
+  }
+
+  throw repoInstallationRequiredError(repository, installUrl, opened);
 }
 
 async function findRepositoryInInstallations(
@@ -649,8 +645,8 @@ function writeInstallWaitStatus(
       context.ui,
       "info",
       opened
-        ? "Waiting for GitHub App installation approval..."
-        : "Waiting for GitHub App installation approval. Open the install URL in your browser.",
+        ? "Waiting for GitHub App installation or repository access approval..."
+        : "Waiting for GitHub App installation or repository access approval. Open the install URL in your browser.",
     ),
   ];
 
@@ -948,18 +944,27 @@ function repoInstallationRequiredError(
   });
 }
 
-function repoNotAccessibleError(repository: GitHubRepositoryReference): CliError {
+function repoNotAccessibleError(
+  repository: GitHubRepositoryReference,
+  installUrl: string,
+  opened: boolean,
+): CliError {
   return new CliError({
     code: "REPO_NOT_ACCESSIBLE",
     domain: "project",
     summary: "GitHub repository is not accessible",
     why: `The GitHub App installations connected to this workspace do not expose ${repository.fullName}.`,
-    fix: "Update the GitHub App installation so it has access to this repository, then rerun prisma-cli git connect.",
+    fix: "Open the GitHub App installation URL, grant access to this repository, then rerun prisma-cli git connect.",
     meta: {
       repository: repository.fullName,
+      installUrl,
+      opened,
     },
     exitCode: 1,
-    nextSteps: [`prisma-cli git connect ${repository.url}`],
+    nextSteps: [
+      installUrl,
+      `prisma-cli git connect ${repository.url}`,
+    ],
   });
 }
 
