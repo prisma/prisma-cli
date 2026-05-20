@@ -301,6 +301,8 @@ describe("project commands", () => {
       stateDir,
       fixturePath,
     });
+    const initialState = JSON.parse(await readFile(path.join(stateDir, "state.json"), "utf8"));
+    const initialConnection = initialState.project.repositoryConnectionsByProject.proj_123;
 
     const result = await executeCli({
       argv: ["git", "connect", "git@github.com:Prisma/Prisma-CLI.git", "--project", "proj_123", "--json"],
@@ -308,19 +310,16 @@ describe("project commands", () => {
       stateDir,
       fixturePath,
     });
+    const payload = JSON.parse(result.stdout);
+    const nextState = JSON.parse(await readFile(path.join(stateDir, "state.json"), "utf8"));
 
     expect(result.exitCode).toBe(0);
-    expect(JSON.parse(result.stdout)).toMatchObject({
+    expect(payload).toMatchObject({
       ok: true,
       command: "git.connect",
-      result: {
-        repositoryConnection: {
-          repository: {
-            fullName: "prisma/prisma-cli",
-          },
-        },
-      },
     });
+    expect(payload.result.repositoryConnection).toEqual(initialConnection);
+    expect(nextState.project.repositoryConnectionsByProject.proj_123).toEqual(initialConnection);
   });
 
   it("blocks fixture repository replacement without disconnecting first", async () => {
@@ -334,6 +333,8 @@ describe("project commands", () => {
       stateDir,
       fixturePath,
     });
+    const initialState = JSON.parse(await readFile(path.join(stateDir, "state.json"), "utf8"));
+    const initialConnection = initialState.project.repositoryConnectionsByProject.proj_123;
 
     const result = await executeCli({
       argv: ["git", "connect", "https://github.com/prisma/other", "--project", "proj_123", "--json"],
@@ -351,7 +352,7 @@ describe("project commands", () => {
         code: "REPO_ALREADY_CONNECTED",
       },
     });
-    expect(state.project.repositoryConnectionsByProject.proj_123.repository.fullName).toBe("prisma/prisma-cli");
+    expect(state.project.repositoryConnectionsByProject.proj_123).toEqual(initialConnection);
   });
 
   it("disconnects a GitHub repository from an explicit project in fixture mode", async () => {
