@@ -17,6 +17,7 @@ export const COMPACT_GLOBAL_OPTION_FLAGS = [
   "--trace",
   "--no-interactive",
   "-y, --yes",
+  "--version",
 ];
 
 export function addGlobalFlags(command: Command): Command {
