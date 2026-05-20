@@ -653,6 +653,7 @@ async function listScmInstallations(
 ): Promise<ScmInstallationResponse[]> {
   const installations: ScmInstallationResponse[] = [];
   let cursor: string | undefined;
+  const seenCursors = new Set<string>();
 
   do {
     const { data, error, response } = await api.GET("/v1/scm-installations", {
@@ -670,7 +671,12 @@ async function listScmInstallations(
     }
 
     installations.push(...data.data);
-    cursor = data.pagination.hasMore && data.pagination.nextCursor ? data.pagination.nextCursor : undefined;
+    cursor = readNextPaginationCursor(
+      data.pagination,
+      seenCursors,
+      "Failed to inspect GitHub App installations",
+      response,
+    );
   } while (cursor);
 
   return installations;
@@ -683,6 +689,7 @@ async function findRepositoryInInstallation(
 ): Promise<ScmRepositoryResponse | null> {
   const expectedFullName = repository.fullName.toLowerCase();
   let cursor: string | undefined;
+  const seenCursors = new Set<string>();
 
   do {
     const { data, error, response } = await api.GET("/v1/scm-installations/{installationId}/repositories", {
@@ -706,10 +713,38 @@ async function findRepositoryInInstallation(
       return matchedRepository;
     }
 
-    cursor = data.pagination.hasMore && data.pagination.nextCursor ? data.pagination.nextCursor : undefined;
+    cursor = readNextPaginationCursor(
+      data.pagination,
+      seenCursors,
+      "Failed to inspect GitHub repositories",
+      response,
+    );
   } while (cursor);
 
   return null;
+}
+
+function readNextPaginationCursor(
+  pagination: { hasMore: boolean; nextCursor: string | null },
+  seenCursors: Set<string>,
+  summary: string,
+  response: Response | undefined,
+): string | undefined {
+  const nextCursor = pagination.hasMore && pagination.nextCursor ? pagination.nextCursor : undefined;
+  if (!nextCursor) {
+    return undefined;
+  }
+
+  if (seenCursors.has(nextCursor)) {
+    throw repoConnectionApiError(summary, response, {
+      error: {
+        message: "Pagination cursor did not advance.",
+      },
+    });
+  }
+
+  seenCursors.add(nextCursor);
+  return nextCursor;
 }
 
 async function findRepositoryInInstallationIfAvailable(

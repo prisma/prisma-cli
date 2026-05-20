@@ -79,6 +79,34 @@ function sourceRepositoryList(records: unknown[] = []) {
   };
 }
 
+function scmInstallationRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "scminstall_123",
+    type: "scm-installation",
+    url: "https://api.prisma.test/v1/scm-installations/scminstall_123",
+    provider: "github",
+    installationId: 98765,
+    accountId: 111,
+    accountLogin: "prisma",
+    accountType: "organization",
+    suspended: false,
+    createdAt: "2026-05-18T00:00:00.000Z",
+    updatedAt: "2026-05-18T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function scmRepositoryRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 999,
+    type: "scm-repository",
+    fullName: "prisma/other",
+    defaultBranch: "main",
+    isPrivate: false,
+    ...overrides,
+  };
+}
+
 describe("real project mode", () => {
   it("uses the real API path for project list and sorts by name then id", async () => {
     const readAuthState = mockAuthState();
@@ -807,6 +835,132 @@ describe("real project mode", () => {
         meta: {
           repository: "prisma/prisma-cli",
         },
+      });
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("guards repeated GitHub App installation pagination cursors", async () => {
+    const get = vi.fn().mockImplementation((pathName: string) => {
+      if (pathName === "/v1/projects") {
+        return mockClient().GET(pathName);
+      }
+
+      if (pathName === "/v1/source-repositories") {
+        return sourceRepositoryList();
+      }
+
+      if (pathName === "/v1/scm-installations") {
+        return {
+          data: {
+            data: [],
+            pagination: {
+              nextCursor: "repeat",
+              hasMore: true,
+            },
+          },
+        };
+      }
+
+      throw new Error(`Unexpected path ${pathName}`);
+    });
+    const post = vi.fn();
+
+    vi.doMock("../src/lib/auth/auth-ops", () => ({
+      readAuthState: mockAuthState(),
+      performLogin: vi.fn(),
+      performLogout: vi.fn(),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth: vi.fn().mockResolvedValue(mockClient({ GET: get, POST: post })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runGitConnect } = await import("../src/controllers/project");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runGitConnect(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" }))
+      .rejects
+      .toMatchObject({
+        code: "REPO_CONNECTION_FAILED",
+        why: "Pagination cursor did not advance.",
+      });
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("guards repeated GitHub repository pagination cursors", async () => {
+    const get = vi.fn().mockImplementation((pathName: string) => {
+      if (pathName === "/v1/projects") {
+        return mockClient().GET(pathName);
+      }
+
+      if (pathName === "/v1/source-repositories") {
+        return sourceRepositoryList();
+      }
+
+      if (pathName === "/v1/scm-installations") {
+        return {
+          data: {
+            data: [scmInstallationRecord()],
+            pagination: {
+              nextCursor: null,
+              hasMore: false,
+            },
+          },
+        };
+      }
+
+      if (pathName === "/v1/scm-installations/{installationId}/repositories") {
+        return {
+          data: {
+            data: [scmRepositoryRecord()],
+            pagination: {
+              nextCursor: "repeat",
+              hasMore: true,
+            },
+          },
+        };
+      }
+
+      throw new Error(`Unexpected path ${pathName}`);
+    });
+    const post = vi.fn();
+
+    vi.doMock("../src/lib/auth/auth-ops", () => ({
+      readAuthState: mockAuthState(),
+      performLogin: vi.fn(),
+      performLogout: vi.fn(),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth: vi.fn().mockResolvedValue(mockClient({ GET: get, POST: post })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runGitConnect } = await import("../src/controllers/project");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runGitConnect(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" }))
+      .rejects
+      .toMatchObject({
+        code: "REPO_CONNECTION_FAILED",
+        why: "Pagination cursor did not advance.",
       });
     expect(post).not.toHaveBeenCalled();
   });

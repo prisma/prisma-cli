@@ -1,6 +1,7 @@
 import type { CommandDescriptor } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
 import type {
+  GitRepositoryConnection,
   ProjectListResult,
   ProjectRepositoryConnectionResult,
   ProjectShowResult,
@@ -87,11 +88,7 @@ export function renderGitConnect(
       ],
       operationDescription: "Applying repository connection",
       operationCount: 1,
-      details: [
-        connection.status === "active"
-          ? "GitHub branch automation is active for this project."
-          : "GitHub branch automation is pending GitHub App installation.",
-      ],
+      details: [formatGitConnectionDetail(connection.status)],
     },
     context.ui,
   );
@@ -133,5 +130,18 @@ function formatProjectSource(source: ProjectShowResult["resolution"]["projectSou
       return "created";
     case "prompt":
       return "prompt";
+  }
+}
+
+function formatGitConnectionDetail(status: GitRepositoryConnection["status"]): string {
+  switch (status) {
+    case "active":
+      return "GitHub branch automation is active for this project.";
+    case "pending":
+      return "GitHub branch automation is pending GitHub App installation.";
+    case "archived":
+      return "GitHub branch automation has been archived for this project.";
+    default:
+      return "GitHub repository is connected, but branch automation is not active.";
   }
 }

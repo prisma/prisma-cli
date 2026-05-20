@@ -251,7 +251,7 @@ Behavior:
 - stores the repository connection server-side through the Management API
 - does not write repository data to `prisma.config.ts`
 - does not create branches synchronously
-- enables platform webhook automation to map GitHub branch activity to Prisma Branch state
+- when the connection is active, enables platform webhook automation to map GitHub branch activity to Prisma Branch state
 
 Current backend contract:
 
