@@ -163,6 +163,7 @@ These codes are the minimum stable set for the MVP:
 - `BUILD_FAILED`
 - `RUN_FAILED`
 - `DEPLOY_FAILED`
+- `VERSION_UNAVAILABLE`
 
 Recommended meanings:
 
@@ -184,6 +185,7 @@ Recommended meanings:
 - `BUILD_FAILED`: build failed before a healthy deployment existed
 - `RUN_FAILED`: local framework run command could not be started or exited unsuccessfully
 - `DEPLOY_FAILED`: deployment or post-build health failed
+- `VERSION_UNAVAILABLE`: CLI could not read its own bundled package metadata to report a version (defensive; not expected in normal installs)
 
 ## Exit Codes
 
