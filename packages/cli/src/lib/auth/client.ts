@@ -3,7 +3,7 @@ import path from "node:path";
 
 export const CLIENT_ID = "cmm3lndn701oo0uefvxzo0ivw";
 export const DEFAULT_API_BASE_URL = "https://api.prisma.io";
-export const SERVICE_TOKEN_ENV_VAR = "PRISMA_API_TOKEN";
+export const SERVICE_TOKEN_ENV_VAR = "PRISMA_SERVICE_TOKEN";
 export const AUTH_FILE_ENV_VAR = "PRISMA_COMPUTE_AUTH_FILE";
 
 export function getApiBaseUrl(env: NodeJS.ProcessEnv = process.env): string {

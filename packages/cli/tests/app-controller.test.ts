@@ -2316,7 +2316,7 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_API_TOKEN: "token",
+        PRISMA_SERVICE_TOKEN: "token",
         PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });

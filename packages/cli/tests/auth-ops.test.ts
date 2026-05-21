@@ -100,7 +100,42 @@ describe("readAuthState", () => {
     });
   });
 
-  it("derives authenticated state from PRISMA_API_TOKEN without consulting FileTokenStorage", async () => {
+  it("uses the canonical workspace id as the fallback name when the API omits a name", async () => {
+    const getTokens = vi.fn().mockResolvedValue({
+      workspaceId: "cmmxlp7ae1251zyfs8mdpnavm",
+      accessToken: encodeJwt({ sub: "user:usr_123" }),
+      refreshToken: "refresh-token",
+    });
+    const requireComputeAuth = vi.fn().mockResolvedValue({
+      GET: vi.fn().mockResolvedValue({
+        data: {
+          data: {
+            id: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
+          },
+        },
+      }),
+    });
+
+    vi.doMock("../src/adapters/token-storage", () => ({
+      FileTokenStorage: vi.fn().mockImplementation(() => ({
+        getTokens,
+      })),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+
+    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+
+    await expect(readAuthState({} as NodeJS.ProcessEnv)).resolves.toMatchObject({
+      workspace: {
+        id: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
+        name: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
+      },
+    });
+  });
+
+  it("derives authenticated state from PRISMA_SERVICE_TOKEN without consulting FileTokenStorage", async () => {
     const getTokens = vi.fn();
     const requireComputeAuth = vi.fn().mockResolvedValue({
       GET: vi.fn().mockImplementation((pathName: string, request?: { params?: { path?: { id?: string } } }) => {
@@ -132,7 +167,7 @@ describe("readAuthState", () => {
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy", email: "service@example.com" });
 
     await expect(
-      readAuthState({ PRISMA_API_TOKEN: token } as NodeJS.ProcessEnv),
+      readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv),
     ).resolves.toEqual({
       authenticated: true,
       provider: null,
@@ -146,7 +181,7 @@ describe("readAuthState", () => {
     expect(getTokens).not.toHaveBeenCalled();
   });
 
-  it("ignores a stored OAuth session when PRISMA_API_TOKEN is set", async () => {
+  it("ignores a stored OAuth session when PRISMA_SERVICE_TOKEN is set", async () => {
     // Regression: a locally cached OAuth login for one workspace must not win
     // over the service token scoped to a different workspace. Otherwise CI
     // deploys silently target whichever workspace the developer last logged
@@ -172,7 +207,7 @@ describe("readAuthState", () => {
     const { readAuthState } = await import("../src/lib/auth/auth-ops");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
 
-    const result = await readAuthState({ PRISMA_API_TOKEN: token } as NodeJS.ProcessEnv);
+    const result = await readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv);
 
     expect(result.authenticated).toBe(true);
     expect(result.workspace?.id).toBe("wksp_clitq5hfg0000qv0gtg9nv9fy");
@@ -205,7 +240,7 @@ describe("readAuthState", () => {
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
 
     await expect(
-      readAuthState({ PRISMA_API_TOKEN: token } as NodeJS.ProcessEnv),
+      readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv),
     ).resolves.toEqual({
       authenticated: false,
       provider: null,
@@ -238,7 +273,7 @@ describe("readAuthState", () => {
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
 
     await expect(
-      readAuthState({ PRISMA_API_TOKEN: token } as NodeJS.ProcessEnv),
+      readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv),
     ).resolves.toEqual({
       authenticated: true,
       provider: null,
@@ -266,7 +301,7 @@ describe("readAuthState", () => {
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
 
     await expect(
-      readAuthState({ PRISMA_API_TOKEN: token } as NodeJS.ProcessEnv),
+      readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv),
     ).resolves.toEqual({
       authenticated: true,
       provider: null,
@@ -278,7 +313,7 @@ describe("readAuthState", () => {
     });
   });
 
-  it("returns signed-out state when PRISMA_API_TOKEN does not carry a workspace subject", async () => {
+  it("returns signed-out state when PRISMA_SERVICE_TOKEN does not carry a workspace subject", async () => {
     const getTokens = vi.fn();
     vi.doMock("../src/adapters/token-storage", () => ({
       FileTokenStorage: vi.fn().mockImplementation(() => ({ getTokens })),
@@ -291,7 +326,7 @@ describe("readAuthState", () => {
     const token = encodeJwt({ sub: "user:usr_123" });
 
     await expect(
-      readAuthState({ PRISMA_API_TOKEN: token } as NodeJS.ProcessEnv),
+      readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv),
     ).resolves.toEqual({
       authenticated: false,
       provider: null,
@@ -301,7 +336,7 @@ describe("readAuthState", () => {
     expect(getTokens).not.toHaveBeenCalled();
   });
 
-  it("treats an empty PRISMA_API_TOKEN as unset and falls back to FileTokenStorage", async () => {
+  it("treats an empty PRISMA_SERVICE_TOKEN as invalid and does not fall back to FileTokenStorage", async () => {
     const getTokens = vi.fn().mockResolvedValue(null);
 
     vi.doMock("../src/adapters/token-storage", () => ({
@@ -314,13 +349,10 @@ describe("readAuthState", () => {
     const { readAuthState } = await import("../src/lib/auth/auth-ops");
 
     await expect(
-      readAuthState({ PRISMA_API_TOKEN: "   " } as NodeJS.ProcessEnv),
-    ).resolves.toEqual({
-      authenticated: false,
-      provider: null,
-      user: null,
-      workspace: null,
-    });
-    expect(getTokens).toHaveBeenCalled();
+      readAuthState({ PRISMA_SERVICE_TOKEN: "   " } as NodeJS.ProcessEnv),
+    ).rejects.toThrow(
+      "PRISMA_SERVICE_TOKEN is set but empty. Provide a valid token or unset the variable.",
+    );
+    expect(getTokens).not.toHaveBeenCalled();
   });
 });

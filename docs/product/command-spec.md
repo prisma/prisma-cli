@@ -50,12 +50,12 @@ Out of scope for the current preview:
 
 The CLI accepts two authentication sources, in this fixed precedence:
 
-1. `PRISMA_API_TOKEN` environment variable — long-lived service token, intended for CI and other headless contexts.
+1. `PRISMA_SERVICE_TOKEN` environment variable — long-lived service token, intended for CI and other headless contexts.
 2. Stored OAuth session — created by `prisma-cli auth login`, kept in the OS-appropriate credentials store, refreshed automatically.
 
-When `PRISMA_API_TOKEN` is set, the token is fully sufficient for authenticated commands. The CLI does not read any locally stored OAuth session in that case, so behavior is identical on a fresh runner and a developer machine that happens to be signed in. The active workspace is derived from the token's `sub` claim; no additional flag or environment variable is required for the common case where the token is scoped to a single workspace.
+When `PRISMA_SERVICE_TOKEN` is set, the token is fully sufficient for authenticated commands. The CLI does not read any locally stored OAuth session in that case, so behavior is identical on a fresh runner and a developer machine that happens to be signed in. The active workspace is derived from the token's `sub` claim; no additional flag or environment variable is required for the common case where the token is scoped to a single workspace.
 
-`auth login` and `auth logout` operate on the stored OAuth session. They do not affect the `PRISMA_API_TOKEN` environment variable.
+`auth login` and `auth logout` operate on the stored OAuth session. They do not affect the `PRISMA_SERVICE_TOKEN` environment variable.
 
 ## Context Resolution
 

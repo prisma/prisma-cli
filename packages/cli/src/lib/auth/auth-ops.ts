@@ -34,14 +34,20 @@ export async function performLogin(env: NodeJS.ProcessEnv): Promise<void> {
 }
 
 export async function readAuthState(env: NodeJS.ProcessEnv): Promise<AuthStateResult> {
-  // PRISMA_API_TOKEN is the headless / CI auth surface. When it is set, derive
+  // PRISMA_SERVICE_TOKEN is the headless / CI auth surface. When it is set, derive
   // auth state from the token itself and intentionally skip FileTokenStorage,
   // so behavior is independent of any OAuth session that happens to be stored
   // on the runner. This matches the precedence already documented on
   // `requireComputeAuth` and keeps `auth whoami` and downstream commands
   // (e.g. `app deploy`) reading the same source of truth.
-  const serviceToken = env[SERVICE_TOKEN_ENV_VAR]?.trim();
-  if (serviceToken) {
+  const rawServiceToken = env[SERVICE_TOKEN_ENV_VAR];
+  if (rawServiceToken !== undefined) {
+    const serviceToken = rawServiceToken.trim();
+    if (serviceToken.length === 0) {
+      throw new Error(
+        `${SERVICE_TOKEN_ENV_VAR} is set but empty. Provide a valid token or unset the variable.`,
+      );
+    }
     return readServiceTokenAuthState(serviceToken, env);
   }
 
@@ -119,6 +125,7 @@ async function buildAuthState({
       }
       if (data?.data?.id) {
         workspaceId = data.data.id;
+        workspaceName = data.data.id;
       }
       if (data?.data?.name) {
         workspaceName = data.data.name;
