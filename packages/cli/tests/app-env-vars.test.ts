@@ -183,6 +183,8 @@ describe("app env vars", () => {
       context,
       "hello-world",
       {
+        projectRef: "proj_123",
+        framework: "hono",
         envAssignments: ["DATABASE_URL=postgresql://example", "FEATURE_FLAG=enabled", "EMPTY="],
       },
     );
