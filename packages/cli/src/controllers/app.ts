@@ -39,7 +39,21 @@ import {
   runLocalApp,
 } from "../lib/app/local-dev";
 import { readBunPackageJson, type BunPackageJsonLike } from "../lib/app/bun-project";
-import { inferTargetName, resolveProjectTarget, type InferredTargetNameSource } from "../lib/project/resolution";
+import {
+  inferTargetName,
+  projectNotFoundError,
+  resolveProjectTarget,
+  type InferredTargetName,
+  type InferredTargetNameSource,
+  type ProjectCandidate,
+} from "../lib/project/resolution";
+import {
+  ensureLocalResolutionPinGitignore,
+  LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
+  readLocalResolutionPin,
+  writeLocalResolutionPin,
+  type LocalResolutionPinReadResult,
+} from "../lib/project/local-pin";
 import {
   executePreviewBuild,
   PREVIEW_BUILD_TYPES,
@@ -62,6 +76,8 @@ type DeployFramework = "nextjs" | "hono" | "tanstack-start";
 
 const DEPLOY_FRAMEWORKS = ["nextjs", "hono", "tanstack-start"] as const satisfies readonly DeployFramework[];
 const FRAMEWORK_DEFAULT_HTTP_PORT = 3000;
+const PRISMA_PROJECT_ID_ENV_VAR = "PRISMA_PROJECT_ID";
+const PRISMA_APP_ID_ENV_VAR = "PRISMA_APP_ID";
 
 function isRealMode(context: CommandContext): boolean {
   return !context.runtime.fixturePath && !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH;
@@ -179,8 +195,17 @@ export async function runAppDeploy(
 ): Promise<CommandSuccess<AppDeployResult>> {
   ensurePreviewAppMode(context);
 
+  const envProjectId = readDeployEnvOverride(context, PRISMA_PROJECT_ID_ENV_VAR);
+  const envAppId = readDeployEnvOverride(context, PRISMA_APP_ID_ENV_VAR);
+  const skipLocalPin = Boolean(envProjectId || envAppId);
+  const localPin = skipLocalPin
+    ? ({ kind: "missing" } satisfies LocalResolutionPinReadResult)
+    : await readLocalResolutionPin(context.runtime.cwd);
+  if (!skipLocalPin && localPin.kind === "invalid") {
+    throw localResolutionPinStaleError();
+  }
+
   const explicitBuildType = Boolean(options?.buildType && options.buildType !== "auto");
-  const inferredName = await inferTargetName(context.runtime.cwd);
   const branch = await resolveDeployBranch(context, options?.branchName);
   if (options?.httpPort) {
     parseDeployHttpPort(options.httpPort);
@@ -197,18 +222,27 @@ export async function runAppDeploy(
       commandName: "deploy",
     }),
   );
-  const { provider, target, projectId } = await requireProviderAndProjectContext(context, options?.projectRef, {
+  const firstDeploy = !skipLocalPin && localPin.kind === "missing";
+  const { provider, target, projectId } = await requireProviderAndDeployProjectContext(context, options?.projectRef, {
     allowCreate: true,
     branch,
+    envProjectId,
+    localPin,
   });
   const apps = await listApps(context, provider, projectId);
   const selectedApp = await resolveDeployAppSelection(context, projectId, apps, {
     explicitAppName: appName,
-    inferredName,
+    explicitAppId: envAppId,
+    pinnedAppId: localPin.kind === "present" && target.project.id === localPin.pin.projectId
+      ? localPin.pin.defaultAppId
+      : undefined,
+    firstDeploy,
+    inferName: () => inferTargetName(context.runtime.cwd),
   });
 
   await maybeRenderDeploySetupBlock(context, {
     firstDeploy: selectedApp.firstDeploy,
+    showSubsequentAnnotations: skipLocalPin,
     workspaceName: target.workspace.name,
     projectName: target.project.name,
     projectAnnotation: annotationForProjectResolution(target.resolution),
@@ -256,6 +290,15 @@ export async function runAppDeploy(
     name: deployResult.app.name,
   });
   await context.stateStore.setKnownLiveDeployment(projectId, deployResult.app.id, deployResult.deployment.id);
+  const shouldWriteLocalPin = firstDeploy && !skipLocalPin;
+  if (shouldWriteLocalPin) {
+    await writeLocalResolutionPin(context.runtime.cwd, {
+      workspaceId: target.workspace.id,
+      projectId: target.project.id,
+      defaultAppId: deployResult.app.id,
+    });
+    await ensureLocalResolutionPinGitignore(context.runtime.cwd);
+  }
 
   return {
     command: "app.deploy",
@@ -269,6 +312,12 @@ export async function runAppDeploy(
         name: deployResult.app.name,
       },
       deployment: deployResult.deployment,
+      localPin: shouldWriteLocalPin
+        ? {
+            path: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
+            written: true,
+          }
+        : undefined,
     },
     warnings: [],
     nextSteps: ["prisma-cli app list-deploys", `prisma-cli app show-deploy ${deployResult.deployment.id}`],
@@ -1081,10 +1130,10 @@ async function resolveDeployAppSelection(
   apps: PreviewAppRecord[],
   options: {
     explicitAppName: string | undefined;
-    inferredName: {
-      name: string;
-      source: InferredTargetNameSource;
-    };
+    explicitAppId: string | undefined;
+    pinnedAppId: string | undefined;
+    firstDeploy: boolean;
+    inferName: () => Promise<InferredTargetName>;
   },
 ): Promise<{
   appId?: string;
@@ -1094,16 +1143,10 @@ async function resolveDeployAppSelection(
   annotation: string;
   firstDeploy: boolean;
 }> {
-  const savedSelection = await context.stateStore.readSelectedApp(projectId);
-  const savedMatch = savedSelection
-    ? apps.find((app) => app.id === savedSelection.id) ?? findAppByName(apps, savedSelection.name)
-    : undefined;
-  const firstDeploy = !savedMatch;
-
   if (options.explicitAppName) {
     const matches = findAppsByName(apps, options.explicitAppName);
     if (matches.length > 1) {
-      return resolveAmbiguousDeployApp(context, matches, options.explicitAppName, firstDeploy);
+      return resolveAmbiguousDeployApp(context, matches, options.explicitAppName, options.firstDeploy);
     }
     const matched = matches[0];
     if (matched) {
@@ -1111,7 +1154,7 @@ async function resolveDeployAppSelection(
         appId: matched.id,
         displayName: matched.name,
         annotation: "set by --app",
-        firstDeploy,
+        firstDeploy: options.firstDeploy,
       };
     }
 
@@ -1120,22 +1163,48 @@ async function resolveDeployAppSelection(
       region: PREVIEW_DEFAULT_REGION,
       displayName: options.explicitAppName,
       annotation: "set by --app",
-      firstDeploy,
+      firstDeploy: options.firstDeploy,
     };
   }
 
-  if (savedMatch) {
+  if (options.explicitAppId) {
+    const matched = apps.find((app) => app.id === options.explicitAppId);
+    if (!matched) {
+      throw usageError(
+        "Selected app does not exist in the resolved project",
+        `The app "${options.explicitAppId}" from ${PRISMA_APP_ID_ENV_VAR} could not be found in resolved project "${projectId}".`,
+        `Unset ${PRISMA_APP_ID_ENV_VAR}, pass --app <name>, or choose an app from prisma-cli app list-deploys.`,
+        ["prisma-cli app list-deploys"],
+        "app",
+      );
+    }
+
     return {
-      appId: savedMatch.id,
-      displayName: savedMatch.name,
-      annotation: "existing app on this branch",
-      firstDeploy,
+      appId: matched.id,
+      displayName: matched.name,
+      annotation: `from ${PRISMA_APP_ID_ENV_VAR}`,
+      firstDeploy: options.firstDeploy,
     };
   }
 
-  const matches = findAppsByName(apps, options.inferredName.name);
+  if (options.pinnedAppId) {
+    const matched = apps.find((app) => app.id === options.pinnedAppId);
+    if (!matched) {
+      throw localResolutionPinStaleError();
+    }
+
+    return {
+      appId: matched.id,
+      displayName: matched.name,
+      annotation: "from local pin",
+      firstDeploy: options.firstDeploy,
+    };
+  }
+
+  const inferredName = await options.inferName();
+  const matches = findAppsByName(apps, inferredName.name);
   if (matches.length > 1) {
-    return resolveAmbiguousDeployApp(context, matches, options.inferredName.name, firstDeploy);
+    return resolveAmbiguousDeployApp(context, matches, inferredName.name, options.firstDeploy);
   }
 
   const matched = matches[0];
@@ -1144,18 +1213,18 @@ async function resolveDeployAppSelection(
       appId: matched.id,
       displayName: matched.name,
       annotation: "existing app on this branch",
-      firstDeploy,
+      firstDeploy: options.firstDeploy,
     };
   }
 
   return {
-    appName: options.inferredName.name,
+    appName: inferredName.name,
     region: PREVIEW_DEFAULT_REGION,
-    displayName: options.inferredName.name,
-    annotation: options.inferredName.source === "package-name"
+    displayName: inferredName.name,
+    annotation: inferredName.source === "package-name"
       ? "created from package.json"
       : "created from directory name",
-    firstDeploy,
+    firstDeploy: options.firstDeploy,
   };
 }
 
@@ -1573,6 +1642,31 @@ async function requireProviderAndProjectContext(
   };
 }
 
+async function requireProviderAndDeployProjectContext(
+  context: CommandContext,
+  explicitProject: string | undefined,
+  options: {
+    allowCreate?: boolean;
+    branch?: ResolvedDeployBranch;
+    envProjectId?: string;
+    localPin: LocalResolutionPinReadResult;
+  },
+): Promise<{
+  client: ManagementApiClient;
+  provider: ReturnType<typeof createPreviewAppProvider>;
+  target: ResolvedAppProjectContext;
+  projectId: string;
+}> {
+  const { client, provider } = await requirePreviewAppProviderWithClient(context);
+  const target = await resolveDeployProjectContext(context, client, provider, explicitProject, options);
+  return {
+    client,
+    provider,
+    target,
+    projectId: target.project.id,
+  };
+}
+
 async function resolveProjectContext(
   context: CommandContext,
   client: ManagementApiClient,
@@ -1621,6 +1715,126 @@ async function resolveProjectContext(
       name: branch.name,
       kind: toBranchKind(branch.name),
     },
+  };
+}
+
+async function resolveDeployProjectContext(
+  context: CommandContext,
+  client: ManagementApiClient,
+  provider: ReturnType<typeof createPreviewAppProvider>,
+  explicitProject: string | undefined,
+  options: {
+    allowCreate?: boolean;
+    branch?: ResolvedDeployBranch;
+    envProjectId?: string;
+    localPin: LocalResolutionPinReadResult;
+  },
+): Promise<ResolvedAppProjectContext> {
+  const authState = await requireAuthenticatedAuthState(context);
+  const workspace = authState.workspace;
+  if (!workspace) {
+    throw workspaceRequiredError();
+  }
+
+  const branch = options.branch ?? await resolveDeployBranch(context, undefined);
+  const projects = await listRealWorkspaceProjects(client, workspace);
+  const createProject = options.allowCreate
+    ? async (name: string) => {
+        const project = await provider.createProject({ name }).catch((error) => {
+          throw createProjectOnFirstDeployError({
+            error,
+            inferredName: name,
+            workspaceName: workspace.name,
+          });
+        });
+        return {
+          id: project.id,
+          name: project.name,
+          workspace,
+        };
+      }
+    : undefined;
+
+  if (explicitProject) {
+    const resolved = await resolveProjectTarget({
+      context,
+      workspace,
+      explicitProject,
+      listProjects: async () => projects,
+      createProject,
+      allowCreate: options.allowCreate,
+      prompt: createSelectPromptPort(context),
+      remember: true,
+    });
+    return withDeployBranch(resolved, branch);
+  }
+
+  if (options.envProjectId) {
+    const project = projects.find((candidate) => candidate.id === options.envProjectId);
+    if (!project) {
+      throw projectNotFoundError(options.envProjectId, workspace);
+    }
+    return withDeployBranch({
+      workspace,
+      project: toProjectSummary(project),
+      resolution: {
+        projectSource: "env",
+        targetName: options.envProjectId,
+        targetNameSource: "env",
+      },
+    }, branch);
+  }
+
+  if (options.localPin.kind === "present") {
+    if (options.localPin.pin.workspaceId !== workspace.id) {
+      throw localResolutionPinStaleError();
+    }
+
+    const project = projects.find((candidate) => candidate.id === options.localPin.pin.projectId);
+    if (!project) {
+      throw localResolutionPinStaleError();
+    }
+
+    return withDeployBranch({
+      workspace,
+      project: toProjectSummary(project),
+      resolution: {
+        projectSource: "local-pin",
+        targetName: project.name,
+        targetNameSource: "local-pin",
+      },
+    }, branch);
+  }
+
+  const resolved = await resolveProjectTarget({
+    context,
+    workspace,
+    listProjects: async () => projects,
+    createProject,
+    allowCreate: options.allowCreate,
+    prompt: createSelectPromptPort(context),
+    remember: true,
+  });
+  return withDeployBranch(resolved, branch);
+}
+
+function withDeployBranch(
+  target: Omit<ResolvedAppProjectContext, "branch">,
+  branch: ResolvedDeployBranch,
+): ResolvedAppProjectContext {
+  return {
+    ...target,
+    branch: {
+      name: branch.name,
+      kind: toBranchKind(branch.name),
+    },
+  };
+}
+
+function toProjectSummary(project: Pick<ProjectCandidate, "id" | "name">): ProjectSummary {
+  return {
+    id: project.id,
+    name: project.name,
   };
 }
 
@@ -1894,6 +2108,7 @@ async function maybeRenderDeploySetupBlock(
   context: CommandContext,
   details: {
     firstDeploy: boolean;
+    showSubsequentAnnotations?: boolean;
     workspaceName: string;
     projectName: string;
     projectAnnotation: string;
@@ -1921,9 +2136,9 @@ async function maybeRenderDeploySetupBlock(
       ]
     : [
         { label: "Workspace", value: details.workspaceName },
-        { label: "Project", value: details.projectName },
-        { label: "Branch", value: details.branchName },
-        { label: "App", value: details.appName },
+        { label: "Project", value: details.projectName, annotation: details.showSubsequentAnnotations ? details.projectAnnotation : undefined },
+        { label: "Branch", value: details.branchName, annotation: details.showSubsequentAnnotations ? details.branchAnnotation : undefined },
+        { label: "App", value: details.appName, annotation: details.showSubsequentAnnotations ? details.appAnnotation : undefined },
       ];
   const lines = details.firstDeploy
     ? [title, "", ...renderDeploySetupRows(context, rows), ""]
@@ -2030,6 +2245,10 @@ function annotationForProjectResolution(resolution: ProjectResolution): string {
   switch (resolution.projectSource) {
     case "explicit":
       return "set by --project";
+    case "env":
+      return `from ${PRISMA_PROJECT_ID_ENV_VAR}`;
+    case "local-pin":
+      return "from local pin";
     case "created":
       return resolution.targetNameSource === "directory-name"
         ? "created from directory name"
@@ -2226,6 +2445,26 @@ function deployFailedError(summary: string, error: unknown, nextSteps: string[])
     exitCode: 1,
     nextSteps,
   });
+}
+
+function localResolutionPinStaleError(): CliError {
+  return new CliError({
+    code: "LOCAL_STATE_STALE",
+    domain: "project",
+    summary: "Local project binding is stale",
+    why: `The target recorded in ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} is no longer available in the selected workspace.`,
+    fix: `Delete ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} and re-run to re-bootstrap.`,
+    meta: {
+      pinPath: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
+    },
+    exitCode: 1,
+    nextSteps: ["prisma-cli app deploy"],
+  });
+}
+
+function readDeployEnvOverride(context: CommandContext, name: string): string | undefined {
+  const value = context.runtime.env[name]?.trim();
+  return value ? value : undefined;
 }
 
 /**

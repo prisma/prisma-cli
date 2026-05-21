@@ -7,6 +7,8 @@ export interface ProjectSummary {
 
 export type ProjectSource =
   | "explicit"
+  | "env"
+  | "local-pin"
   | "platform-mapping"
   | "remembered-local"
   | "package-name"
@@ -17,7 +19,7 @@ export type ProjectSource =
 export interface ProjectResolution {
   projectSource: ProjectSource;
   targetName?: string | null;
-  targetNameSource?: "explicit" | "package-name" | "directory-name" | "remembered-local" | "platform-mapping" | "prompt";
+  targetNameSource?: "explicit" | "env" | "local-pin" | "package-name" | "directory-name" | "remembered-local" | "platform-mapping" | "prompt";
 }
 
 export interface ProjectListResult {

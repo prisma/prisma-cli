@@ -120,6 +120,10 @@ function formatProjectSource(source: ProjectShowResult["resolution"]["projectSou
   switch (source) {
     case "explicit":
       return "explicit";
+    case "env":
+      return "environment";
+    case "local-pin":
+      return "local pin";
     case "platform-mapping":
       return "platform mapping";
     case "remembered-local":
