@@ -89,17 +89,20 @@ and only when the inferred name is unambiguous.
 Preview app commands that need an app resolve it in this order:
 
 1. `--app <name>`
-2. locally selected app for the resolved project
-3. interactive select-or-create flow in TTY mode
-4. `USAGE_ERROR` in non-interactive or `--json` mode when unresolved
+2. locally selected app for the resolved project when it still exists
+3. inferred app name from `package.json#name`
+4. current directory name
+5. create the inferred app when no existing app matches
+6. interactive picker only when multiple matching apps make the target ambiguous
+7. `APP_AMBIGUOUS` in non-interactive or `--json` mode when unresolved
 
 ### Branch
 
 Commands that use branch context resolve it in this order:
 
-1. explicit branch argument when the command accepts one
-2. active branch context in local CLI state
-3. `preview`
+1. explicit branch argument or `--branch <name>` when the command accepts one
+2. active Git branch for local deploy workflows
+3. `main`
 
 `local` is local CLI context only. It is never a branch or deploy target.
 Production is a protected durable branch and must require explicit user intent.
@@ -474,7 +477,7 @@ prisma-cli app run --build-type nextjs
 prisma-cli app run --build-type bun --entry server.ts --port 3000
 ```
 
-## `prisma-cli app deploy --app <name> --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|tanstack-start> --http-port <port> --env <name=value>`
+## `prisma-cli app deploy --project <id-or-name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start> --http-port <port> --env <name=value>`
 
 Purpose:
 
@@ -483,10 +486,15 @@ Purpose:
 Behavior:
 
 - requires auth
-- resolves or creates project context
-- resolves or creates app context when required
+- resolves or creates project context from `--project`, `package.json#name`, or current directory name
+- resolves branch context from `--branch`, local Git branch, or `main`
+- resolves or creates app context from `--app`, remembered app state, `package.json#name`, or current directory name
+- does not prompt when there is no real choice; zero matching apps creates the inferred app
+- detects supported frameworks and shows the resolved framework/runtime settings before deploy
+- asks `Customize settings? (y/N)` only in interactive first-deploy flows, and only asks for Framework and HTTP port when the user opts in
 - accepts repeated `--env NAME=VALUE` flags
-- uses the same supported build strategies as `app build`
+- maps user-facing framework names to deploy build strategies
+- accepts `--build-type <auto|bun|nextjs|nuxt|astro|tanstack-start>` as a legacy passthrough, but `--framework` wins when both are passed
 - does not print secret values
 - returns app, deployment id, URL, and next steps
 
@@ -494,11 +502,9 @@ Examples:
 
 ```bash
 prisma-cli app deploy
-prisma-cli app deploy --app hello-world --env DATABASE_URL=postgresql://example
-prisma-cli app deploy --app hello-world --build-type nextjs --http-port 3000
-prisma-cli app deploy --app hello-world --build-type nuxt
-prisma-cli app deploy --app hello-world --build-type astro
-prisma-cli app deploy --app hello-world --build-type tanstack-start
+prisma-cli app deploy --app my-app --env DATABASE_URL=postgresql://example
+prisma-cli app deploy --framework nextjs --http-port 3000
+prisma-cli app deploy --branch feat-login --framework hono --http-port 3000
 ```
 
 ## `prisma-cli project env`

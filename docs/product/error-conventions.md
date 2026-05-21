@@ -150,8 +150,10 @@ These codes are the minimum stable set for the MVP:
 - `PROJECT_UNRESOLVED`
 - `PROJECT_NOT_FOUND`
 - `PROJECT_AMBIGUOUS`
+- `APP_AMBIGUOUS`
 - `LOCAL_STATE_STALE`
 - `BRANCH_NOT_DEPLOYABLE`
+- `FRAMEWORK_NOT_DETECTED`
 - `DEPLOYMENT_NOT_FOUND`
 - `NO_DEPLOYMENTS`
 - `NO_PREVIOUS_DEPLOYMENT`
@@ -178,8 +180,10 @@ Recommended meanings:
 - `PROJECT_UNRESOLVED`: command needs project context and none could be resolved
 - `PROJECT_NOT_FOUND`: requested project does not exist or is not accessible
 - `PROJECT_AMBIGUOUS`: multiple safe project candidates matched
+- `APP_AMBIGUOUS`: multiple apps matched the inferred or explicit app target
 - `LOCAL_STATE_STALE`: remembered local project context no longer matches platform data and continuing would be ambiguous
 - `BRANCH_NOT_DEPLOYABLE`: command tried to deploy to a non-deployable branch context
+- `FRAMEWORK_NOT_DETECTED`: app deploy could not detect a supported Beta framework and no explicit framework/build type was provided
 - `DEPLOYMENT_NOT_FOUND`: requested deployment id does not exist
 - `NO_DEPLOYMENTS`: command resolved a branch or app but found no deployments
 - `NO_PREVIOUS_DEPLOYMENT`: rollback could not find an earlier deployment for the selected app
