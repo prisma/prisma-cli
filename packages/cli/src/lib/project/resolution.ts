@@ -113,6 +113,14 @@ export function projectNotFoundError(projectRef: string, workspace: AuthWorkspac
 }
 
 export function projectAmbiguousError(projectRef: string | null, matches: ProjectCandidate[]): CliError {
+  const firstMatch = matches[0];
+  const nextSteps = ["prisma-cli project list"];
+  if (firstMatch) {
+    // Surface the matched id verbatim so the user can see the exact
+    // shape of the disambiguation flag instead of guessing.
+    nextSteps.push(`prisma-cli app deploy --project ${firstMatch.id}`);
+  }
+
   return new CliError({
     code: "PROJECT_AMBIGUOUS",
     domain: "project",
@@ -125,7 +133,7 @@ export function projectAmbiguousError(projectRef: string | null, matches: Projec
       matches: matches.map((project) => ({ id: project.id, name: project.name })),
     },
     exitCode: 1,
-    nextSteps: ["prisma-cli project list"],
+    nextSteps,
   });
 }
 

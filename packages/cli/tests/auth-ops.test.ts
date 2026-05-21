@@ -7,6 +7,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function encodeJwt(claims: Record<string, unknown>): string {
+  const payload = Buffer.from(JSON.stringify(claims), "utf8").toString("base64url");
+  return `header.${payload}.signature`;
+}
+
 describe("readAuthState", () => {
   it("normalizes the workspace id to the canonical API id and returns the user email", async () => {
     const getTokens = vi.fn().mockResolvedValue({
@@ -43,7 +48,7 @@ describe("readAuthState", () => {
 
     const { readAuthState } = await import("../src/lib/auth/auth-ops");
 
-    await expect(readAuthState(process.env)).resolves.toEqual({
+    await expect(readAuthState({} as NodeJS.ProcessEnv)).resolves.toEqual({
       authenticated: true,
       provider: null,
       user: {
@@ -85,7 +90,7 @@ describe("readAuthState", () => {
 
     const { readAuthState } = await import("../src/lib/auth/auth-ops");
 
-    await expect(readAuthState(process.env)).resolves.toMatchObject({
+    await expect(readAuthState({} as NodeJS.ProcessEnv)).resolves.toMatchObject({
       authenticated: true,
       user: null,
       workspace: {
@@ -93,5 +98,261 @@ describe("readAuthState", () => {
         name: "Sandpit",
       },
     });
+  });
+
+  it("uses the canonical workspace id as the fallback name when the API omits a name", async () => {
+    const getTokens = vi.fn().mockResolvedValue({
+      workspaceId: "cmmxlp7ae1251zyfs8mdpnavm",
+      accessToken: encodeJwt({ sub: "user:usr_123" }),
+      refreshToken: "refresh-token",
+    });
+    const requireComputeAuth = vi.fn().mockResolvedValue({
+      GET: vi.fn().mockResolvedValue({
+        data: {
+          data: {
+            id: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
+          },
+        },
+      }),
+    });
+
+    vi.doMock("../src/adapters/token-storage", () => ({
+      FileTokenStorage: vi.fn().mockImplementation(() => ({
+        getTokens,
+      })),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+
+    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+
+    await expect(readAuthState({} as NodeJS.ProcessEnv)).resolves.toMatchObject({
+      workspace: {
+        id: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
+        name: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
+      },
+    });
+  });
+
+  it("derives authenticated state from PRISMA_SERVICE_TOKEN without consulting FileTokenStorage", async () => {
+    const getTokens = vi.fn();
+    const requireComputeAuth = vi.fn().mockResolvedValue({
+      GET: vi.fn().mockImplementation((pathName: string, request?: { params?: { path?: { id?: string } } }) => {
+        if (pathName === "/v1/workspaces/{id}" && request?.params?.path?.id === "clitq5hfg0000qv0gtg9nv9fy") {
+          return {
+            data: {
+              data: {
+                id: "wksp_clitq5hfg0000qv0gtg9nv9fy",
+                name: "Prisma Platform",
+              },
+            },
+          };
+        }
+
+        throw new Error(`Unexpected path ${pathName}`);
+      }),
+    });
+
+    vi.doMock("../src/adapters/token-storage", () => ({
+      FileTokenStorage: vi.fn().mockImplementation(() => ({
+        getTokens,
+      })),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+
+    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy", email: "service@example.com" });
+
+    await expect(
+      readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv),
+    ).resolves.toEqual({
+      authenticated: true,
+      provider: null,
+      user: { email: "service@example.com" },
+      workspace: {
+        id: "wksp_clitq5hfg0000qv0gtg9nv9fy",
+        name: "Prisma Platform",
+      },
+    });
+
+    expect(getTokens).not.toHaveBeenCalled();
+  });
+
+  it("ignores a stored OAuth session when PRISMA_SERVICE_TOKEN is set", async () => {
+    // Regression: a locally cached OAuth login for one workspace must not win
+    // over the service token scoped to a different workspace. Otherwise CI
+    // deploys silently target whichever workspace the developer last logged
+    // into.
+    const getTokens = vi.fn().mockResolvedValue({
+      workspaceId: "wksp_local_oauth_workspace",
+      accessToken: encodeJwt({ sub: "user:usr_local", email: "dev@example.com" }),
+      refreshToken: "refresh-token",
+    });
+    const requireComputeAuth = vi.fn().mockResolvedValue({
+      GET: vi.fn().mockResolvedValue({
+        data: {
+          data: { id: "wksp_clitq5hfg0000qv0gtg9nv9fy", name: "Prisma Platform" },
+        },
+      }),
+    });
+
+    vi.doMock("../src/adapters/token-storage", () => ({
+      FileTokenStorage: vi.fn().mockImplementation(() => ({ getTokens })),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
+
+    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
+
+    const result = await readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv);
+
+    expect(result.authenticated).toBe(true);
+    expect(result.workspace?.id).toBe("wksp_clitq5hfg0000qv0gtg9nv9fy");
+    expect(getTokens).not.toHaveBeenCalled();
+  });
+
+  it("returns signed-out state when the workspace lookup is rejected with HTTP 401", async () => {
+    // A 401 on the workspace lookup means the credential is fundamentally
+    // broken (revoked, wrong signing key, expired). The previous behavior
+    // swallowed the failure and returned a fake workspace where id == name,
+    // which made `auth whoami` look fine for a token the API was already
+    // rejecting. Now `auth whoami` reports the truth and downstream
+    // commands trigger the standard AUTH_REQUIRED flow.
+    const requireComputeAuth = vi.fn().mockResolvedValue({
+      GET: vi.fn().mockResolvedValue({
+        data: undefined,
+        error: { message: "Unauthorized" },
+        response: { status: 401 } as Response,
+      }),
+    });
+
+    vi.doMock("../src/adapters/token-storage", () => ({
+      FileTokenStorage: vi.fn().mockImplementation(() => ({
+        getTokens: vi.fn(),
+      })),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
+
+    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
+
+    await expect(
+      readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv),
+    ).resolves.toEqual({
+      authenticated: false,
+      provider: null,
+      user: null,
+      workspace: null,
+    });
+  });
+
+  it("falls back to the workspace id when the API lookup fails with a non-401 status", async () => {
+    // Non-401 lookup failures (404/5xx/network) leave the existing UX in
+    // place: the credential is presumably valid but the workspace lookup
+    // didn't succeed, so we keep authenticated state and use the
+    // workspace id as a placeholder name.
+    const requireComputeAuth = vi.fn().mockResolvedValue({
+      GET: vi.fn().mockResolvedValue({
+        data: undefined,
+        error: { message: "Internal Server Error" },
+        response: { status: 503 } as Response,
+      }),
+    });
+
+    vi.doMock("../src/adapters/token-storage", () => ({
+      FileTokenStorage: vi.fn().mockImplementation(() => ({
+        getTokens: vi.fn(),
+      })),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
+
+    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
+
+    await expect(
+      readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv),
+    ).resolves.toEqual({
+      authenticated: true,
+      provider: null,
+      user: null,
+      workspace: {
+        id: "clitq5hfg0000qv0gtg9nv9fy",
+        name: "clitq5hfg0000qv0gtg9nv9fy",
+      },
+    });
+  });
+
+  it("falls back to the workspace id when the API lookup fails for a service token", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue({
+      GET: vi.fn().mockRejectedValue(new Error("network down")),
+    });
+
+    vi.doMock("../src/adapters/token-storage", () => ({
+      FileTokenStorage: vi.fn().mockImplementation(() => ({
+        getTokens: vi.fn(),
+      })),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
+
+    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
+
+    await expect(
+      readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv),
+    ).resolves.toEqual({
+      authenticated: true,
+      provider: null,
+      user: null,
+      workspace: {
+        id: "clitq5hfg0000qv0gtg9nv9fy",
+        name: "clitq5hfg0000qv0gtg9nv9fy",
+      },
+    });
+  });
+
+  it("returns signed-out state when PRISMA_SERVICE_TOKEN does not carry a workspace subject", async () => {
+    const getTokens = vi.fn();
+    vi.doMock("../src/adapters/token-storage", () => ({
+      FileTokenStorage: vi.fn().mockImplementation(() => ({ getTokens })),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth: vi.fn(),
+    }));
+
+    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const token = encodeJwt({ sub: "user:usr_123" });
+
+    await expect(
+      readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv),
+    ).resolves.toEqual({
+      authenticated: false,
+      provider: null,
+      user: null,
+      workspace: null,
+    });
+    expect(getTokens).not.toHaveBeenCalled();
+  });
+
+  it("treats an empty PRISMA_SERVICE_TOKEN as invalid and does not fall back to FileTokenStorage", async () => {
+    const getTokens = vi.fn().mockResolvedValue(null);
+
+    vi.doMock("../src/adapters/token-storage", () => ({
+      FileTokenStorage: vi.fn().mockImplementation(() => ({ getTokens })),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth: vi.fn(),
+    }));
+
+    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+
+    await expect(
+      readAuthState({ PRISMA_SERVICE_TOKEN: "   " } as NodeJS.ProcessEnv),
+    ).rejects.toThrow(
+      "PRISMA_SERVICE_TOKEN is set but empty. Provide a valid token or unset the variable.",
+    );
+    expect(getTokens).not.toHaveBeenCalled();
   });
 });

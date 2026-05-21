@@ -11,7 +11,7 @@ import { CLIENT_ID, getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "./client";
  * Resolve authentication and return a ManagementApiClient.
  *
  * Priority:
- *   1. PRISMA_API_TOKEN env var → service token (CI / headless)
+ *   1. PRISMA_SERVICE_TOKEN env var → service token (CI / headless)
  *   2. Stored OAuth tokens     → SDK with auto-refresh
  *
  * Returns null if not authenticated.

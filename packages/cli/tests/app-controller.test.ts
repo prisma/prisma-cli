@@ -662,6 +662,102 @@ describe("app controller", () => {
     await expect(readPrismaConfig(cwd)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("surfaces AUTH_FORBIDDEN when create-on-first-deploy is rejected with 401", async () => {
+    // When the deploy lands in the auto-create-on-first-deploy branch
+    // (because no existing project matched the package.json name) and the
+    // platform rejects the create with 401/403, we don't want to surface
+    // the generic "Failed to create project for first deploy / retry the
+    // command" message — that hides that the CLI is inferring projects
+    // from package.json, and "retry" is unhelpful for a permissions
+    // failure. We surface an AUTH_FORBIDDEN error that explains the
+    // inference and recommends --project as the explicit fix.
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const createProject = vi.fn().mockRejectedValue(new Error("Authentication failed (HTTP 401)"));
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        createProject,
+        listApps: vi.fn().mockResolvedValue([]),
+        deployApp: vi.fn(),
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDeploy(context, "hello-world")).rejects.toMatchObject({
+      code: "AUTH_FORBIDDEN",
+      domain: "auth",
+      summary: "Could not create a new project for this deploy",
+      why: expect.stringContaining("No existing project matched the package.json name"),
+      fix: expect.stringContaining("--project <id-or-name>"),
+      nextSteps: expect.arrayContaining(["prisma-cli app deploy --project <id-or-name>"]),
+    });
+  });
+
+  it("rewrites the DEPLOY_FAILED message when a non-auth error rejects create-on-first-deploy", async () => {
+    // For non-401/403 create failures, keep the existing DEPLOY_FAILED
+    // code but use the new wording so it's clear the CLI was trying to
+    // create a project (because nothing matched the package.json name)
+    // and suggest --project as an unambiguous fix.
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const createProject = vi.fn().mockRejectedValue(new Error("Internal Server Error (HTTP 503)"));
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        createProject,
+        listApps: vi.fn().mockResolvedValue([]),
+        deployApp: vi.fn(),
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDeploy(context, "hello-world")).rejects.toMatchObject({
+      code: "DEPLOY_FAILED",
+      domain: "app",
+      summary: "Could not create a new project for this deploy",
+      why: expect.stringContaining("No existing project matched the package.json name"),
+      fix: expect.stringContaining("--project <id-or-name>"),
+      nextSteps: expect.arrayContaining(["prisma-cli app deploy --project <id-or-name>"]),
+    });
+  });
+
   it("reuses the saved app selection on a second deploy", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
@@ -2220,7 +2316,7 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_API_TOKEN: "token",
+        PRISMA_SERVICE_TOKEN: "token",
         PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });

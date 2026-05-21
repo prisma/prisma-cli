@@ -1442,7 +1442,11 @@ async function resolveProjectContext(
     createProject: options?.allowCreate
       ? async (name) => {
           const project = await provider.createProject({ name }).catch((error) => {
-            throw deployFailedError("Failed to create project for first deploy", error, ["prisma-cli app deploy"]);
+            throw createProjectOnFirstDeployError({
+              error,
+              inferredName: name,
+              workspaceName: authState.workspace!.name,
+            });
           });
           return {
             id: project.id,
@@ -1618,6 +1622,80 @@ function deployFailedError(summary: string, error: unknown, nextSteps: string[])
     exitCode: 1,
     nextSteps,
   });
+}
+
+/**
+ * `app deploy` falls into "create a new project on first deploy" when no
+ * existing project matches the package.json name (or the cwd basename as a
+ * fallback). When the create call fails the user often doesn't realise the
+ * CLI was attempting to create a project at all — they thought the deploy
+ * would find an existing project. Surface that context, and recommend the
+ * explicit `--project` flag as the unambiguous way out.
+ */
+function createProjectOnFirstDeployError(options: {
+  error: unknown;
+  inferredName: string;
+  workspaceName: string;
+}): CliError {
+  const { error, inferredName, workspaceName } = options;
+  const status = extractHttpStatus(error);
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const inferredContext = `No existing project matched the package.json name \`${inferredName}\`, so the CLI attempted to create one.`;
+  const nextSteps = [
+    "prisma-cli project list",
+    "prisma-cli app deploy --project <id-or-name>",
+  ];
+
+  if (status === 401 || status === 403) {
+    return new CliError({
+      code: "AUTH_FORBIDDEN",
+      domain: "auth",
+      summary: "Could not create a new project for this deploy",
+      why: `${inferredContext} The platform rejected the create (HTTP ${status}).`,
+      fix: `Pass --project <id-or-name> to deploy into an existing project, or grant the service token project-create permission on workspace \`${workspaceName}\`.`,
+      debug: formatDebugDetails(error),
+      exitCode: 1,
+      nextSteps,
+    });
+  }
+
+  return new CliError({
+    code: "DEPLOY_FAILED",
+    domain: "app",
+    summary: "Could not create a new project for this deploy",
+    why: `${inferredContext} ${errorMessage}`.trim(),
+    fix: "Pass --project <id-or-name> to deploy into an existing project, or retry after addressing the platform error above.",
+    debug: formatDebugDetails(error),
+    exitCode: 1,
+    nextSteps,
+  });
+}
+
+function extractHttpStatus(error: unknown): number | null {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const candidate = error as { statusCode?: unknown; status?: unknown; message?: unknown };
+  if (typeof candidate.statusCode === "number") {
+    return candidate.statusCode;
+  }
+  if (typeof candidate.status === "number") {
+    return candidate.status;
+  }
+
+  // The compute-sdk re-throws AuthenticationError / ApiError as plain
+  // Error instances whose `message` carries the "(HTTP <code>)" suffix.
+  // Match that suffix as a last resort so this UX still triggers for
+  // service tokens running through that path.
+  if (typeof candidate.message === "string") {
+    const match = /\(HTTP (\d{3})\)/.exec(candidate.message);
+    if (match) {
+      return Number.parseInt(match[1], 10);
+    }
+  }
+
+  return null;
 }
 
 function noDeploymentsError(summary: string, why: string): CliError {
