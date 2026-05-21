@@ -15,6 +15,12 @@ The preview package includes these command groups:
 - `branch`
 - `app`
 
+The preview package also includes one top-level utility command:
+
+- `version`
+
+`version` is intentionally outside the workflow groups: it reports CLI build and environment state, requires no auth, no project context, and no network, and is the canonical answer to "is this CLI installed and on the build I expect?"
+
 The Git repository connection slice uses the `git` group. It does not add a
 provider-specific `GitHub` group.
 
@@ -29,6 +35,7 @@ Out of scope for the current preview:
 ## Global Rules
 
 - Canonical shape is `prisma <group> <action>`.
+- `version` is the one top-level command outside that shape (see Scope above).
 - Every command supports `--json`.
 - Shared global flags are:
   - `--json`
@@ -40,6 +47,9 @@ Out of scope for the current preview:
   - `-y`, `--yes`
   - `--color`
   - `--no-color`
+- Universal utility flags also work at the program level:
+  - `--help` — prints help for the root program or the named command and exits 0.
+  - `--version` — prints the CLI version and exits 0. Honors `--json` for the structured envelope. No short alias (`-v` is reserved for `--verbose`; `-V` is avoided as a near-collision).
 - Long flags use kebab-case.
 - Boolean negation uses `--no-<flag>`.
 - `--json` and non-interactive mode must not block on prompts.
@@ -138,6 +148,78 @@ Rules:
 - `user` contains the current user email or is `null`
 - `workspace` is the active workspace or `null`
 - signed-out state is an empty auth state, not an error
+
+## `prisma-cli version`
+
+Purpose:
+
+- report the installed CLI build and a small block of host environment metadata
+
+Behavior:
+
+- requires no auth, no project context, and no network
+- reads the package's own version from its bundled metadata
+- reports CLI name, CLI version, Node.js version, OS platform, OS architecture, and a best-effort `invocation` label (`bunx`, `npx`, `global`, `dev`, or `unknown`)
+- uses the `show` output pattern (see `output-conventions.md`)
+- fails only when the bundled CLI metadata cannot be read; this is treated as `VERSION_UNAVAILABLE` and is not expected in practice
+
+In `--json`, `result` uses this shape:
+
+```json
+{
+  "cli": {
+    "name": "prisma-cli",
+    "version": "3.0.0-alpha.3"
+  },
+  "node": {
+    "version": "v24.14.1"
+  },
+  "os": {
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "invocation": "bunx"
+}
+```
+
+Rules:
+
+- `cli.name` is the published package's `bin` name (`prisma-cli` in the current preview).
+- `cli.version` is the published package version.
+- `node.version` mirrors `process.version` exactly, including the leading `v`.
+- `os.platform` and `os.arch` mirror `process.platform` and `process.arch`.
+- `invocation` is best-effort and falls back to `"unknown"` when no signal is conclusive.
+
+Examples:
+
+```bash
+prisma-cli version
+prisma-cli version --json
+```
+
+## `prisma-cli --version`
+
+Purpose:
+
+- universal smoke-test flag at the root of the program
+
+Behavior:
+
+- prints the CLI version and exits 0
+- requires no auth, no project context, and no network
+- works before any subcommand parsing — bare `prisma-cli --version` is sufficient
+- in human mode, prints a single line to stdout: `prisma-cli <version>`
+- in `--json` mode, emits the standard success envelope (see Command Result Envelopes) with `command: "version"` and `result.version: "<version>"`
+- `--version` is documented as a universal utility flag in Global Rules, not as a shared global flag (it is an early-exit utility, not a per-command modifier)
+
+Examples:
+
+```bash
+prisma-cli --version
+prisma-cli --version --json
+```
+
+`prisma-cli version` is the richer environment report; `prisma-cli --version` is the terse one-liner. Both report the same `cli.version`. Use the flag for quick checks, the subcommand for support tickets and bug reports.
 
 ## `prisma-cli auth login`
 

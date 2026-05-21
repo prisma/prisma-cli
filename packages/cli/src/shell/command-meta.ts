@@ -21,6 +21,12 @@ const DESCRIPTORS: CommandDescriptor[] = [
       "Deploy your app with isolated infrastructure for every branch",
   },
   {
+    id: "version",
+    path: ["prisma", "version"],
+    description: "Show CLI build and environment",
+    examples: ["prisma-cli version", "prisma-cli version --json"],
+  },
+  {
     id: "auth",
     path: ["prisma", "auth"],
     description: "Manage local authentication for the CLI",
