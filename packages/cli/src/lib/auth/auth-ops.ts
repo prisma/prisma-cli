@@ -100,9 +100,23 @@ async function buildAuthState({
 
   if (client) {
     try {
-      const { data } = await client.GET("/v1/workspaces/{id}", {
+      const { data, response } = await client.GET("/v1/workspaces/{id}", {
         params: { path: { id: workspaceIdFromCredential } },
       });
+      // A 401 from the workspace lookup means the credential the caller
+      // presented is fundamentally invalid (revoked, wrong signing key,
+      // expired) — surface signed-out state instead of returning a
+      // workspace shape that makes a broken token look fine. Other
+      // statuses (404/5xx/network) keep the silent fallback so transient
+      // lookup failures do not turn `auth whoami` into a hard error.
+      if (response?.status === 401) {
+        return {
+          authenticated: false,
+          provider: null,
+          user: null,
+          workspace: null,
+        };
+      }
       if (data?.data?.id) {
         workspaceId = data.data.id;
       }

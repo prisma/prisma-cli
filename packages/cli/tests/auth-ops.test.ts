@@ -179,6 +179,77 @@ describe("readAuthState", () => {
     expect(getTokens).not.toHaveBeenCalled();
   });
 
+  it("returns signed-out state when the workspace lookup is rejected with HTTP 401", async () => {
+    // A 401 on the workspace lookup means the credential is fundamentally
+    // broken (revoked, wrong signing key, expired). The previous behavior
+    // swallowed the failure and returned a fake workspace where id == name,
+    // which made `auth whoami` look fine for a token the API was already
+    // rejecting. Now `auth whoami` reports the truth and downstream
+    // commands trigger the standard AUTH_REQUIRED flow.
+    const requireComputeAuth = vi.fn().mockResolvedValue({
+      GET: vi.fn().mockResolvedValue({
+        data: undefined,
+        error: { message: "Unauthorized" },
+        response: { status: 401 } as Response,
+      }),
+    });
+
+    vi.doMock("../src/adapters/token-storage", () => ({
+      FileTokenStorage: vi.fn().mockImplementation(() => ({
+        getTokens: vi.fn(),
+      })),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
+
+    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
+
+    await expect(
+      readAuthState({ PRISMA_API_TOKEN: token } as NodeJS.ProcessEnv),
+    ).resolves.toEqual({
+      authenticated: false,
+      provider: null,
+      user: null,
+      workspace: null,
+    });
+  });
+
+  it("falls back to the workspace id when the API lookup fails with a non-401 status", async () => {
+    // Non-401 lookup failures (404/5xx/network) leave the existing UX in
+    // place: the credential is presumably valid but the workspace lookup
+    // didn't succeed, so we keep authenticated state and use the
+    // workspace id as a placeholder name.
+    const requireComputeAuth = vi.fn().mockResolvedValue({
+      GET: vi.fn().mockResolvedValue({
+        data: undefined,
+        error: { message: "Internal Server Error" },
+        response: { status: 503 } as Response,
+      }),
+    });
+
+    vi.doMock("../src/adapters/token-storage", () => ({
+      FileTokenStorage: vi.fn().mockImplementation(() => ({
+        getTokens: vi.fn(),
+      })),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
+
+    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
+
+    await expect(
+      readAuthState({ PRISMA_API_TOKEN: token } as NodeJS.ProcessEnv),
+    ).resolves.toEqual({
+      authenticated: true,
+      provider: null,
+      user: null,
+      workspace: {
+        id: "clitq5hfg0000qv0gtg9nv9fy",
+        name: "clitq5hfg0000qv0gtg9nv9fy",
+      },
+    });
+  });
+
   it("falls back to the workspace id when the API lookup fails for a service token", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue({
       GET: vi.fn().mockRejectedValue(new Error("network down")),
