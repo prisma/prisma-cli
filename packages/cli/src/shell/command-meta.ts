@@ -62,7 +62,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
     description: "Manage apps and deployments for a project",
     examples: [
       "prisma-cli app deploy",
-      "prisma-cli app deploy --app hello-world --build-type nextjs --http-port 3000",
+      "prisma-cli app deploy --app my-app --framework nextjs --http-port 3000",
     ],
   },
   {
@@ -141,9 +141,9 @@ const DESCRIPTORS: CommandDescriptor[] = [
     description: "Creates a new deployment for the app",
     examples: [
       "prisma-cli app deploy",
-      "prisma-cli app deploy --app hello-world --env DATABASE_URL=postgresql://example",
-      "prisma-cli app deploy --app hello-world --build-type nextjs --http-port 3000",
-      "prisma-cli app deploy --app hello-world --build-type nuxt",
+      "prisma-cli app deploy --app my-app --env DATABASE_URL=postgresql://example",
+      "prisma-cli app deploy --app my-app --framework nextjs --http-port 3000",
+      "prisma-cli app deploy --branch feat-login --framework hono",
     ],
   },
   {

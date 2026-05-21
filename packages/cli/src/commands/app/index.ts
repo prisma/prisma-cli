@@ -162,11 +162,17 @@ function createDeployCommand(runtime: CliRuntime): Command {
   command
     .addOption(new Option("--app <name>", "App name"))
     .addOption(new Option("--project <id-or-name>", "Project id or name"))
+    .addOption(new Option("--branch <name>", "Branch name"))
+    .addOption(
+      new Option("--framework <name>", "Framework to deploy")
+        .choices(["nextjs", "hono", "tanstack-start"]),
+    )
     .addOption(new Option("--entry <path>", "Entrypoint path for Bun or auto deploys"))
     .addOption(
-      new Option("--build-type <type>", "Deploy build type")
+      new Option("--build-type <type>", "Legacy deploy build type")
         .choices([...PREVIEW_BUILD_TYPES])
-        .default("auto"),
+        .default("auto")
+        .hideHelp(),
     )
     .addOption(new Option("--http-port <port>", "HTTP port override for the deployed app"))
     .addOption(
@@ -179,6 +185,8 @@ function createDeployCommand(runtime: CliRuntime): Command {
     const appName = (options as { app?: string }).app;
     const entry = (options as { entry?: string }).entry;
     const buildType = (options as { buildType?: string }).buildType;
+    const branchName = (options as { branch?: string }).branch;
+    const framework = (options as { framework?: string }).framework;
     const httpPort = (options as { httpPort?: string }).httpPort;
     const envAssignments = (options as { env?: string[] }).env;
     const projectRef = (options as { project?: string }).project;
@@ -189,8 +197,10 @@ function createDeployCommand(runtime: CliRuntime): Command {
       options as Record<string, unknown>,
       (context) => runAppDeploy(context, appName, {
         projectRef,
+        branchName,
         entrypoint: entry,
         buildType,
+        framework,
         httpPort,
         envAssignments,
       }),

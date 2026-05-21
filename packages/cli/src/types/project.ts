@@ -10,11 +10,14 @@ export type ProjectSource =
   | "platform-mapping"
   | "remembered-local"
   | "package-name"
+  | "directory-name"
   | "created"
   | "prompt";
 
 export interface ProjectResolution {
   projectSource: ProjectSource;
+  targetName?: string | null;
+  targetNameSource?: "explicit" | "package-name" | "directory-name" | "remembered-local" | "platform-mapping" | "prompt";
 }
 
 export interface ProjectListResult {
