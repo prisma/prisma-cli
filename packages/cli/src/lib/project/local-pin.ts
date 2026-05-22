@@ -6,7 +6,6 @@ export const LOCAL_RESOLUTION_PIN_RELATIVE_PATH = ".prisma/local.json";
 export interface LocalResolutionPin {
   workspaceId: string;
   projectId: string;
-  defaultAppId?: string;
 }
 
 export type LocalResolutionPinReadResult =
@@ -87,9 +86,5 @@ function isLocalResolutionPin(value: unknown): value is LocalResolutionPin {
   return typeof candidate.workspaceId === "string"
     && candidate.workspaceId.trim().length > 0
     && typeof candidate.projectId === "string"
-    && candidate.projectId.trim().length > 0
-    && (
-      candidate.defaultAppId === undefined
-      || (typeof candidate.defaultAppId === "string" && candidate.defaultAppId.trim().length > 0)
-    );
+    && candidate.projectId.trim().length > 0;
 }

@@ -36,7 +36,8 @@ Preview relevance:
 Rules:
 
 - `project` is not the same thing as `app`
-- Public Beta does not read or write `prisma.config.ts`, `.prisma/settings.json`, or any repo config file for project resolution
+- Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for project resolution
+- `.prisma/local.json` is a gitignored local pin/cache for Workspace and Project IDs; it is not a declarative repo config file
 - `app deploy` may create missing project context only when resolution is unambiguous
 - other commands must not create project context implicitly
 - everything under a project happens in a branch
@@ -99,8 +100,8 @@ accidental destructive actions.
 Rules:
 
 - `app` is not the same thing as `project`
-- the app belongs to the resolved project
-- app work is scoped by branch in the platform model
+- the app name is registered within the resolved project
+- the runtime app service is scoped by branch in the platform model
 - the app may be selected or created as part of app deployment workflows
 - app selection is local CLI state when needed for the preview package
 
@@ -179,7 +180,8 @@ Long-term, branch is where app and database relationships meet.
 - `local` is CLI context, not a branch or deploy target
 - `production` is protected and durable
 - every other named branch is preview by default
-- Public Beta does not use repo config files for Project -> Branch -> App resolution
+- Public Beta does not use committed repo config files for Project -> Branch -> App resolution
+- `.prisma/local.json` may cache Workspace and Project resolution, but Branch still comes from explicit targeting or Git and App is resolved inside the Branch
 
 ## Resolution Rules
 
@@ -200,12 +202,22 @@ as durable linking. Only `app deploy` may create projects implicitly.
 
 ### App Selection Resolution
 
-Preview app commands that need an app resolve it in this order:
+Preview app commands that need an app resolve it inside the resolved branch in
+this order:
 
 1. explicit `--app <name>`
-2. locally selected app for the resolved project
-3. interactive selection or creation in a TTY
-4. structured usage error when no app can be resolved non-interactively
+2. `PRISMA_APP_ID` when set for headless deploys
+3. locally selected app for non-deploy commands when it still exists in the resolved branch
+4. inferred app name from `package.json#name`
+5. current directory name
+6. create the inferred app service in the resolved branch when no existing app matches
+7. interactive selection only when multiple matching apps make the target ambiguous
+8. structured usage error when no app can be resolved non-interactively
+
+`.prisma/local.json` does not pin an app ID. The local pin binds the directory
+to a Workspace and Project; branches come from explicit targeting or Git, and
+apps are resolved within that branch. This avoids accidentally deploying
+feature-branch code into a service that belongs to `main`.
 
 ### Branch Context Resolution
 

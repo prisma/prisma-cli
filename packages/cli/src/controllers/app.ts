@@ -229,13 +229,10 @@ export async function runAppDeploy(
     envProjectId,
     localPin,
   });
-  const apps = await listApps(context, provider, projectId);
+  const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveDeployAppSelection(context, projectId, apps, {
     explicitAppName: appName,
     explicitAppId: envAppId,
-    pinnedAppId: localPin.kind === "present" && target.project.id === localPin.pin.projectId
-      ? localPin.pin.defaultAppId
-      : undefined,
     firstDeploy,
     inferName: () => inferTargetName(context.runtime.cwd),
   });
@@ -274,6 +271,7 @@ export async function runAppDeploy(
   const deployResult = await provider.deployApp({
     cwd: context.runtime.cwd,
     projectId,
+    branchName: target.branch.name,
     appId: selectedApp.appId,
     appName: selectedApp.appName,
     region: selectedApp.region,
@@ -297,7 +295,6 @@ export async function runAppDeploy(
     await writeLocalResolutionPin(context.runtime.cwd, {
       workspaceId: target.workspace.id,
       projectId: target.project.id,
-      defaultAppId: deployResult.app.id,
     });
     await ensureLocalResolutionPinGitignore(context.runtime.cwd);
   }
@@ -339,8 +336,8 @@ export async function runAppUpdateEnv(
     commandName: "update-env",
     requireAtLeastOne: true,
   });
-  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
-  const apps = await listApps(context, provider, projectId);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
   if (!selectedApp) {
@@ -400,8 +397,8 @@ export async function runAppListEnv(
   ensurePreviewAppMode(context);
   emitLegacyEnvDeprecationWarning(context, "app list-env", "project env list");
 
-  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
-  const apps = await listApps(context, provider, projectId);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
   if (!selectedApp) {
@@ -518,8 +515,8 @@ export async function runAppListDeploys(
 ): Promise<CommandSuccess<AppListDeploysResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
-  const apps = await listApps(context, provider, projectId);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
   if (!selectedApp) {
@@ -577,8 +574,8 @@ export async function runAppShow(
 ): Promise<CommandSuccess<AppShowResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
-  const apps = await listApps(context, provider, projectId);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
   if (!selectedApp) {
@@ -694,8 +691,8 @@ export async function runAppOpen(
 ): Promise<CommandSuccess<AppOpenResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
-  const apps = await listApps(context, provider, projectId);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
   if (!selectedApp) {
@@ -772,10 +769,10 @@ export async function runAppLogs(
 ): Promise<void> {
   ensurePreviewAppMode(context);
 
-  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const { provider, target: resolvedTarget, projectId } = await requireProviderAndProjectContext(context, projectRef);
   const target = deploymentId
-    ? await resolveExplicitLogDeployment(context, provider, projectId, appName, deploymentId)
-    : await resolveLiveLogDeployment(context, provider, projectId, appName);
+    ? await resolveExplicitLogDeployment(context, provider, projectId, resolvedTarget.branch.name, appName, deploymentId)
+    : await resolveLiveLogDeployment(context, provider, projectId, resolvedTarget.branch.name, appName);
 
   if (!context.flags.json && !context.flags.quiet) {
     const lines = renderCommandHeader(context.ui, {
@@ -808,11 +805,12 @@ async function resolveExplicitLogDeployment(
   context: CommandContext,
   provider: ReturnType<typeof createPreviewAppProvider>,
   projectId: string,
+  branchName: string,
   appName: string | undefined,
   deploymentId: string,
 ): Promise<{ app: PreviewAppRecord; deployment: AppDeploymentSummary }> {
   if (appName) {
-    const apps = await listApps(context, provider, projectId);
+    const apps = await listApps(context, provider, projectId, branchName);
     const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
     if (!selectedApp) {
@@ -866,7 +864,7 @@ async function resolveExplicitLogDeployment(
     });
   }
 
-  const apps = await listApps(context, provider, projectId);
+  const apps = await listApps(context, provider, projectId, branchName);
   const resolvedProjectApp = apps.find((app) => app.id === shown.app?.id);
   if (!resolvedProjectApp) {
     throw new CliError({
@@ -895,9 +893,10 @@ async function resolveLiveLogDeployment(
   context: CommandContext,
   provider: ReturnType<typeof createPreviewAppProvider>,
   projectId: string,
+  branchName: string,
   appName: string | undefined,
 ): Promise<{ app: PreviewAppRecord; deployment: AppDeploymentSummary }> {
-  const apps = await listApps(context, provider, projectId);
+  const apps = await listApps(context, provider, projectId, branchName);
   const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
   if (!selectedApp) {
@@ -966,8 +965,8 @@ export async function runAppPromote(
 ): Promise<CommandSuccess<AppPromoteResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
-  const apps = await listApps(context, provider, projectId);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "promote");
   const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
     throw deployFailedError("Failed to list app deployments", error, ["prisma-cli app list-deploys"]);
@@ -1032,8 +1031,8 @@ export async function runAppRollback(
 ): Promise<CommandSuccess<AppRollbackResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
-  const apps = await listApps(context, provider, projectId);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "rollback");
   const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
     throw deployFailedError("Failed to list app deployments", error, ["prisma-cli app list-deploys"]);
@@ -1099,8 +1098,8 @@ export async function runAppRemove(
 ): Promise<CommandSuccess<AppRemoveResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, projectId } = await requireProviderAndProjectContext(context, projectRef);
-  const apps = await listApps(context, provider, projectId);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "remove");
 
   await confirmAppRemoval(context, selectedApp);
@@ -1133,7 +1132,6 @@ async function resolveDeployAppSelection(
   options: {
     explicitAppName: string | undefined;
     explicitAppId: string | undefined;
-    pinnedAppId: string | undefined;
     firstDeploy: boolean;
     inferName: () => Promise<InferredTargetName>;
   },
@@ -1185,20 +1183,6 @@ async function resolveDeployAppSelection(
       appId: matched.id,
       displayName: matched.name,
       annotation: `from ${PRISMA_APP_ID_ENV_VAR}`,
-      firstDeploy: options.firstDeploy,
-    };
-  }
-
-  if (options.pinnedAppId) {
-    const matched = apps.find((app) => app.id === options.pinnedAppId);
-    if (!matched) {
-      throw localResolutionPinStaleError();
-    }
-
-    return {
-      appId: matched.id,
-      displayName: matched.name,
-      annotation: "from local pin",
       firstDeploy: options.firstDeploy,
     };
   }
@@ -1552,8 +1536,9 @@ async function listApps(
   context: CommandContext,
   provider: ReturnType<typeof createPreviewAppProvider>,
   projectId: string,
+  branchName?: string,
 ) {
-  return provider.listApps(projectId).then(sortApps).catch((error) => {
+  return provider.listApps(projectId, { branchName }).then(sortApps).catch((error) => {
     if (isMissingProjectError(error)) {
       throw new CliError({
         code: "PROJECT_NOT_FOUND",

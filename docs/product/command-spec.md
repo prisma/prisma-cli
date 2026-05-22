@@ -53,7 +53,7 @@ Out of scope for the current preview:
 - Long flags use kebab-case.
 - Boolean negation uses `--no-<flag>`.
 - `--json` and non-interactive mode must not block on prompts.
-- Public Beta does not read or write `prisma.config.ts`, `.prisma/settings.json`, or any repo config file for Project -> Branch -> App resolution.
+- Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for Project -> Branch -> App resolution. `.prisma/local.json` is a gitignored local pin/cache, not a declarative repo config file.
 - Remote commands do not silently change local context.
 
 ## Authentication
@@ -94,16 +94,19 @@ Preview app commands that need an app resolve it in this order:
 
 1. `--app <name>`
 2. `PRISMA_APP_ID` when set for headless deploys
-3. `.prisma/local.json` default app pin when present, revalidated against platform data
-4. locally selected app for non-deploy commands when it still exists
-5. inferred app name from `package.json#name`
-6. current directory name
-7. create the inferred app when no existing app matches
-8. interactive picker only when multiple matching apps make the target ambiguous
-9. `APP_AMBIGUOUS` in non-interactive or `--json` mode when unresolved
+3. locally selected app for non-deploy commands when it still exists in the resolved branch
+4. inferred app name from `package.json#name`
+5. current directory name
+6. create the inferred app in the resolved branch when no existing app matches
+7. interactive picker only when multiple matching apps make the target ambiguous
+8. `APP_AMBIGUOUS` in non-interactive or `--json` mode when unresolved
 
 When `PRISMA_APP_ID` is set, `app deploy` skips `.prisma/local.json` reads and
 does not write a new pin.
+
+`.prisma/local.json` pins the directory to a Workspace and Project only. It does
+not pin an App ID. App services are branch-scoped; a service ID from `main`
+must not be reused automatically when the user deploys from `feat/billing`.
 
 ### Branch
 
@@ -496,8 +499,8 @@ Behavior:
 
 - requires auth
 - resolves or creates project context from `--project`, `PRISMA_PROJECT_ID`, `.prisma/local.json`, `package.json#name`, or current directory name
-- resolves branch context from `--branch`, local Git branch, or `main`
-- resolves or creates app context from `--app`, `PRISMA_APP_ID`, `.prisma/local.json`, `package.json#name`, or current directory name
+- resolves or creates branch context from `--branch`, local Git branch, or `main`
+- resolves or creates app context inside the resolved branch from `--app`, `PRISMA_APP_ID`, `package.json#name`, or current directory name
 - does not prompt when there is no real choice; zero matching apps creates the inferred app
 - detects supported frameworks and shows the resolved framework/runtime settings before deploy
 - asks `Customize settings? (y/N)` only in interactive first-deploy flows, and only asks for Framework and HTTP port when the user opts in

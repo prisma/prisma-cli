@@ -90,6 +90,7 @@ async function writeLocalPin(
   pin: {
     workspaceId: string;
     projectId: string;
+    // Legacy pins may still contain an app id; deploy resolution ignores it.
     defaultAppId?: string;
   } | string,
 ): Promise<void> {
@@ -342,9 +343,11 @@ describe("app controller", () => {
 
     const result = await runAppDeploy(context, undefined);
 
+    expect(listApps).toHaveBeenCalledWith("proj_my_app", { branchName: "feat-j1" });
     expect(deployApp).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: "proj_my_app",
+        branchName: "feat-j1",
         appName: "my-app",
         buildType: "nextjs",
         portMapping: { http: 3000 },
@@ -381,7 +384,6 @@ describe("app controller", () => {
     await expect(readLocalPin(cwd)).resolves.toEqual({
       workspaceId: "ws_123",
       projectId: "proj_my_app",
-      defaultAppId: "app_new",
     });
     await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(".prisma/\n");
   });
@@ -562,7 +564,6 @@ describe("app controller", () => {
     await writeLocalPin(cwd, {
       workspaceId: "ws_123",
       projectId: "proj_missing",
-      defaultAppId: "app_1",
     });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
@@ -589,10 +590,24 @@ describe("app controller", () => {
     expect(deployApp).not.toHaveBeenCalled();
   });
 
-  it("returns LOCAL_STATE_STALE when the pinned app is gone", async () => {
+  it("ignores a legacy pinned app id and resolves the app inside the current branch", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
-    const deployApp = vi.fn();
+    const deployApp = vi.fn().mockImplementation(async (options: { appName?: string }) => ({
+      projectId: "proj_123",
+      app: {
+        id: "app_branch",
+        name: options.appName ?? "branch-app",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+        liveUrl: "https://branch-app.prisma.app",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://branch-app.prisma.app",
+      },
+    }));
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
@@ -627,13 +642,19 @@ describe("app controller", () => {
 
     await expect(runAppDeploy(context, undefined, {
       framework: "hono",
-    })).rejects.toMatchObject({
-      code: "LOCAL_STATE_STALE",
-      meta: {
-        pinPath: ".prisma/local.json",
+    })).resolves.toMatchObject({
+      result: {
+        app: {
+          id: "app_branch",
+          name: path.basename(cwd),
+        },
       },
     });
-    expect(deployApp).not.toHaveBeenCalled();
+    expect(deployApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appName: path.basename(cwd),
+      }),
+    );
   });
 
   it("returns LOCAL_STATE_STALE when the local pin cannot be parsed", async () => {
@@ -1012,7 +1033,6 @@ describe("app controller", () => {
     await expect(readLocalPin(cwd)).resolves.toEqual({
       workspaceId: "ws_123",
       projectId: "proj_new",
-      defaultAppId: "app_new",
     });
     await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(".prisma/\n");
   });
@@ -1099,7 +1119,6 @@ describe("app controller", () => {
     await expect(readLocalPin(cwd)).resolves.toEqual({
       workspaceId: "ws_123",
       projectId: "proj_new",
-      defaultAppId: "app_new",
     });
     stderr.buffer = "";
     client.GET.mockImplementation((pathName: string) => {
