@@ -556,6 +556,21 @@ async function createBranchApp(
     } as never,
   });
   if (result.error || !result.data) {
+    if (result.response.status === 409) {
+      const existingApps = await listComputeServices(client, {
+        projectId: options.projectId,
+        branchGitName: options.branchName,
+      });
+      const matched = existingApps.find((app) => app.name === options.appName);
+      if (matched) {
+        return {
+          appId: matched.id,
+          appName: matched.name,
+          region: matched.region ?? options.region,
+        };
+      }
+    }
+
     throw apiCallError(`Failed to create app "${options.appName}"`, result.response, result.error);
   }
 

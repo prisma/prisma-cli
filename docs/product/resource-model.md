@@ -215,9 +215,10 @@ this order:
 8. structured usage error when no app can be resolved non-interactively
 
 `.prisma/local.json` does not pin an app ID. The local pin binds the directory
-to a Workspace and Project; branches come from explicit targeting or Git, and
-apps are resolved within that branch. This avoids accidentally deploying
-feature-branch code into a service that belongs to `main`.
+to a Workspace and Project; branches come from explicit targeting, Git, or
+`main` when neither is available. Apps are resolved within that resolved branch,
+including the `main` fallback, which avoids accidentally deploying
+feature-branch code into a service owned by another branch.
 
 ### Branch Context Resolution
 
