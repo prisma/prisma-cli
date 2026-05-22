@@ -265,12 +265,25 @@ When a command acts on a project, branch, app, or deployment, the output should 
 Examples:
 
 - `app deploy` should state the resolved target that matters in the current slice
-- first `app deploy` should show Workspace, Project, Branch, App, Framework, and Runtime with source annotations before work begins
-- subsequent `app deploy` should show the resolved tuple without repeating first-run annotations
+- first local `app deploy` binding should show Workspace, Project, Branch, App, Framework, and Runtime with source annotations before work begins
+- subsequent `app deploy` calls should use a compact target header such as `Deploying ./j1 to j1 / main / j1`
 - `app logs` should state the deployment it resolved
 - `app list-deploys` should state which app or branch is being listed
 
 The CLI must not make users guess which target a command acted on.
+
+For `app deploy`, the setup block is a one-time local binding surface, not a
+per-run summary. Once `.prisma/local.json` has been written, retries and later
+deploys should feel like deploys, not setup. Do not repeat source annotations or
+ask `Customize settings?` again unless the user deletes the pin or passes a
+flag that explicitly changes targeting/configuration.
+
+Deploy progress should describe phases without claiming runtime success before
+health is known. Do not print `Status: running` or `Deployment is running at ...`.
+Use phase copy such as `Building locally...`, `Packaging artifact...`,
+`Uploading...`, `Starting deployment...`, and `Checking runtime health...`.
+On success, print `Deployed to <url>` and `Runtime logs: prisma app logs`.
+Human deploy output is stderr; `--json` is the machine-readable stdout path.
 
 ## Action and Data Commands
 

@@ -502,13 +502,17 @@ Behavior:
 - resolves or creates branch context from `--branch`, local Git branch, or `main`
 - resolves or creates app context inside the resolved branch from `--app`, `PRISMA_APP_ID`, `package.json#name`, or current directory name
 - does not prompt when there is no real choice; zero matching apps creates the inferred app
-- detects supported frameworks and shows the resolved framework/runtime settings before deploy
-- asks `Customize settings? (y/N)` only in interactive first-deploy flows, and only asks for Framework and HTTP port when the user opts in
+- detects supported frameworks and shows the resolved framework/runtime settings only while binding the directory for the first time
+- writes `.prisma/local.json` after Project binding succeeds and before build/deploy starts, so retries after a failed deploy do not repeat setup
+- asks `Customize settings? (y/N)` only while binding the directory for the first time, and only asks for Framework and HTTP port when the user opts in
+- subsequent deploys print a compact target header such as `Deploying ./j1 to j1 / main / j1`
+- deploy progress uses phase copy (`Building locally`, `Packaging artifact`, `Uploading`, `Starting deployment`, `Checking runtime health`) and never prints `Status: running` or `Deployment is running at ...`
+- success human output prints `Deployed to <url>` and `Runtime logs: prisma app logs`
 - accepts repeated `--env NAME=VALUE` flags
 - maps user-facing framework names to deploy build strategies
 - accepts `--build-type <auto|bun|nextjs|nuxt|astro|tanstack-start>` as a legacy passthrough, but `--framework` wins when both are passed
 - does not print secret values
-- returns app, deployment id, URL, and next steps
+- returns app, deployment id, URL, and next steps in `--json` output
 
 Examples:
 

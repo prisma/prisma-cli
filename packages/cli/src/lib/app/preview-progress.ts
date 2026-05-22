@@ -1,93 +1,90 @@
 import type { DeployProgress, PromoteProgress, UpdateEnvProgress } from "@prisma/compute-sdk";
 import type { Writable } from "node:stream";
 
+export interface PreviewDeployProgressState {
+  buildStarted: boolean;
+  buildCompleted: boolean;
+  archiveReady: boolean;
+  uploadCompleted: boolean;
+  versionId: string | null;
+  startRequested: boolean;
+  containerLive: boolean;
+  deploymentUrl: string | null;
+  promotedUrl: string | null;
+}
+
+export function createPreviewDeployProgressState(): PreviewDeployProgressState {
+  return {
+    buildStarted: false,
+    buildCompleted: false,
+    archiveReady: false,
+    uploadCompleted: false,
+    versionId: null,
+    startRequested: false,
+    containerLive: false,
+    deploymentUrl: null,
+    promotedUrl: null,
+  };
+}
+
 export function createPreviewDeployProgress(
   output: Writable,
   enabled: boolean,
+  state: PreviewDeployProgressState = createPreviewDeployProgressState(),
 ): DeployProgress | undefined {
-  if (!enabled) {
-    return undefined;
-  }
-
   const write = (line: string) => {
+    if (!enabled) {
+      return;
+    }
+
     output.write(`${line}\n`);
   };
 
   return {
     onBuildStart() {
-      write("Building application...");
+      state.buildStarted = true;
+      write("Building locally...");
     },
     onBuildComplete() {
-      write("Build complete.");
+      state.buildCompleted = true;
+      write("Building locally. Done.");
     },
     onArchiveCreating() {
-      write("Creating deployment artifact...");
+      write("Packaging artifact...");
     },
     onArchiveReady(byteLength) {
-      write(`Artifact ready (${(byteLength / 1024).toFixed(1)} KB).`);
+      state.archiveReady = true;
+      write(`Packaging artifact. ${formatArtifactSize(byteLength)}.`);
+    },
+    onUploadStart() {
+      write("Uploading...");
     },
     onVersionCreated(versionId) {
-      write(`Deployment ${versionId} created.`);
+      state.versionId = versionId;
     },
     onUploadComplete() {
-      write("Upload complete.");
+      state.uploadCompleted = true;
+      write("Uploading. Done.");
     },
     onStartRequested() {
+      state.startRequested = true;
       write("Starting deployment...");
     },
-    onStatusChange(status) {
-      write(`Status: ${status}`);
-    },
     onRunning(url) {
-      if (url) {
-        write(`Deployment is running at ${url}.`);
-        return;
-      }
-
-      write("Deployment is running.");
-    },
-    onPromoteStart() {
-      write("Promoting deployment...");
+      state.containerLive = true;
+      state.deploymentUrl = url;
+      write("Starting deployment. Container live.");
+      // TODO: replace this SDK "running" boundary with the platform health-passed signal.
+      write("Checking runtime health...");
     },
     onPromoted(url) {
-      if (url) {
-        write(`Promoted to ${url}.`);
-        return;
-      }
-
-      write("Promotion complete.");
-    },
-    onPromoteFailed(error) {
-      write(`Promotion failed${error?.message ? `: ${error.message}` : "."}`);
-    },
-    onOldVersionStopping(versionId) {
-      write(`Stopping previous deployment ${versionId}...`);
-    },
-    onOldVersionStopped(versionId) {
-      write(`Previous deployment ${versionId} stopped.`);
-    },
-    onOldVersionStopFailed(versionId) {
-      write(`Failed to stop previous deployment ${versionId} (non-fatal).`);
-    },
-    onOldVersionDeleting(versionId) {
-      write(`Deleting previous deployment ${versionId}...`);
-    },
-    onOldVersionDeleted(versionId) {
-      write(`Previous deployment ${versionId} deleted.`);
-    },
-    onOldVersionDeleteFailed(versionId) {
-      write(`Failed to delete previous deployment ${versionId} (non-fatal).`);
-    },
-    onCleanupDanglingVersion(versionId) {
-      write(`Cleaning up deployment ${versionId}...`);
-    },
-    onCleanupDanglingVersionComplete(versionId) {
-      write(`Deployment ${versionId} cleaned up.`);
-    },
-    onCleanupDanglingVersionFailed(versionId) {
-      write(`Failed to clean up deployment ${versionId}.`);
+      state.promotedUrl = url;
     },
   };
+}
+
+function formatArtifactSize(byteLength: number): string {
+  return `${(byteLength / 1024 / 1024).toFixed(1)} MB`;
 }
 
 export function createPreviewPromoteProgress(
