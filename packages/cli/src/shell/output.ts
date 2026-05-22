@@ -68,7 +68,7 @@ export function writeHumanError(
   error: CliError,
   options: { trace: boolean },
 ): void {
-  if (error.humanLines) {
+  if (error.humanLines && error.humanLines.length > 0) {
     const lines = [...error.humanLines];
     if (options.trace && error.debug) {
       lines.push("");

@@ -114,6 +114,10 @@ Deployment:  https://cv-... (unhealthy)
 Runtime logs: prisma app logs --deployment <id>
 ```
 
+If the failure happens after the local build but before the runtime is live, use
+`Deploy failed after the build completed.` as the headline and keep `Runtime:
+not started`.
+
 ## JSON Error Shape
 
 Commands run with `--json` should emit this envelope on failure:

@@ -46,7 +46,9 @@ export class CliError extends Error {
     this.docsUrl = options.docsUrl ?? null;
     this.exitCode = options.exitCode ?? 1;
     this.nextSteps = options.nextSteps ?? [];
-    this.humanLines = options.humanLines ?? null;
+    this.humanLines = options.humanLines && options.humanLines.length > 0
+      ? [...options.humanLines]
+      : null;
   }
 }
 

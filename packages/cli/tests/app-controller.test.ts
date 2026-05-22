@@ -527,6 +527,74 @@ describe("app controller", () => {
     expect(stderr.buffer).not.toContain("Deployment is running at");
   });
 
+  it("renders deploy-failure copy when failure happens before runtime starts", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    let appName = "";
+    const listApps = vi.fn().mockImplementation(async () => [
+      { id: "app_1", name: appName, region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+    ]);
+    const deployApp = vi.fn().mockImplementation(async (options: {
+      progress?: {
+        onBuildStart?: () => void;
+        onBuildComplete?: () => void;
+        onArchiveCreating?: () => void;
+        onArchiveReady?: (byteLength: number) => void;
+        onUploadStart?: () => void;
+      };
+    }) => {
+      options.progress?.onBuildStart?.();
+      options.progress?.onBuildComplete?.();
+      options.progress?.onArchiveCreating?.();
+      options.progress?.onArchiveReady?.(11_114_905);
+      options.progress?.onUploadStart?.();
+      throw new Error("Upload failed");
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    appName = path.basename(cwd);
+    await writeLocalPin(cwd, {
+      workspaceId: "ws_123",
+      projectId: "proj_123",
+    });
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDeploy(context, undefined, {
+      framework: "hono",
+    })).rejects.toMatchObject({
+      code: "DEPLOY_FAILED",
+      summary: "Deploy failed after the build completed.",
+      humanLines: expect.arrayContaining([
+        "Deploy failed after the build completed.",
+        "Build:       passed locally",
+        "Deploy:      artifact packaged, upload incomplete",
+        "Runtime:     not started",
+      ]),
+    });
+  });
+
   it("lets --framework win over legacy --build-type for deploy", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([

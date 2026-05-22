@@ -2487,6 +2487,9 @@ function appDeployFailedError(error: unknown, progress: PreviewDeployProgressSta
         ? "artifact packaged, upload incomplete"
         : "not started";
   const runtimeState = progress.containerLive ? "failed health check" : "not started";
+  const phaseHeadline = progress.containerLive
+    ? "Runtime failed after the build completed."
+    : "Deploy failed after the build completed.";
   const deploymentLine = progress.deploymentUrl
     ? `Deployment:  ${progress.deploymentUrl} (unhealthy)`
     : "Deployment:  unavailable";
@@ -2497,7 +2500,7 @@ function appDeployFailedError(error: unknown, progress: PreviewDeployProgressSta
   return new CliError({
     code: "DEPLOY_FAILED",
     domain: "app",
-    summary: "Runtime failed after the build completed.",
+    summary: phaseHeadline,
     why,
     fix: progress.versionId
       ? `Inspect runtime logs with prisma app logs --deployment ${progress.versionId}.`
@@ -2509,7 +2512,7 @@ function appDeployFailedError(error: unknown, progress: PreviewDeployProgressSta
       deploymentUrl: progress.deploymentUrl,
     },
     humanLines: [
-      "Runtime failed after the build completed.",
+      phaseHeadline,
       "",
       "Build:       passed locally",
       `Deploy:      ${deployState}`,
