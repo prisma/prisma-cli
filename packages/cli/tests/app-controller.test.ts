@@ -87,12 +87,7 @@ async function readLocalPin(cwd: string): Promise<unknown> {
 
 async function writeLocalPin(
   cwd: string,
-  pin: {
-    workspaceId: string;
-    projectId: string;
-    // Legacy pins may still contain an app id; deploy resolution ignores it.
-    defaultAppId?: string;
-  } | string,
+  pin: unknown | string,
 ): Promise<void> {
   await mkdir(path.join(cwd, ".prisma"), { recursive: true });
   await writeFile(
@@ -485,7 +480,6 @@ describe("app controller", () => {
     await writeLocalPin(cwd, {
       workspaceId: "ws_123",
       projectId: "proj_stale",
-      defaultAppId: "app_stale",
     });
     const stateDir = path.join(cwd, ".state");
     const { context, stderr } = await createTestCommandContext({
@@ -515,7 +509,6 @@ describe("app controller", () => {
     await expect(readLocalPin(cwd)).resolves.toEqual({
       workspaceId: "ws_123",
       projectId: "proj_stale",
-      defaultAppId: "app_stale",
     });
     expect(stderr.buffer).toContain("from PRISMA_PROJECT_ID");
   });
@@ -590,24 +583,10 @@ describe("app controller", () => {
     expect(deployApp).not.toHaveBeenCalled();
   });
 
-  it("ignores a legacy pinned app id and resolves the app inside the current branch", async () => {
+  it("returns LOCAL_STATE_STALE when the local pin has unsupported keys", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
-    const listApps = vi.fn().mockResolvedValue([]);
-    const deployApp = vi.fn().mockImplementation(async (options: { appName?: string }) => ({
-      projectId: "proj_123",
-      app: {
-        id: "app_branch",
-        name: options.appName ?? "branch-app",
-        region: "eu-central-1",
-        liveDeploymentId: "dep_123",
-        liveUrl: "https://branch-app.prisma.app",
-      },
-      deployment: {
-        id: "dep_123",
-        status: "running",
-        url: "https://branch-app.prisma.app",
-      },
-    }));
+    const listApps = vi.fn();
+    const deployApp = vi.fn();
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
@@ -627,7 +606,7 @@ describe("app controller", () => {
     await writeLocalPin(cwd, {
       workspaceId: "ws_123",
       projectId: "proj_123",
-      defaultAppId: "app_missing",
+      unsupportedKey: "not-supported",
     });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
@@ -642,19 +621,14 @@ describe("app controller", () => {
 
     await expect(runAppDeploy(context, undefined, {
       framework: "hono",
-    })).resolves.toMatchObject({
-      result: {
-        app: {
-          id: "app_branch",
-          name: path.basename(cwd),
-        },
+    })).rejects.toMatchObject({
+      code: "LOCAL_STATE_STALE",
+      meta: {
+        pinPath: ".prisma/local.json",
       },
     });
-    expect(deployApp).toHaveBeenCalledWith(
-      expect.objectContaining({
-        appName: path.basename(cwd),
-      }),
-    );
+    expect(listApps).not.toHaveBeenCalled();
+    expect(deployApp).not.toHaveBeenCalled();
   });
 
   it("returns LOCAL_STATE_STALE when the local pin cannot be parsed", async () => {

@@ -82,6 +82,11 @@ function isLocalResolutionPin(value: unknown): value is LocalResolutionPin {
     return false;
   }
 
+  const keys = Object.keys(value);
+  if (keys.length !== 2 || !keys.includes("workspaceId") || !keys.includes("projectId")) {
+    return false;
+  }
+
   const candidate = value as Partial<Record<keyof LocalResolutionPin, unknown>>;
   return typeof candidate.workspaceId === "string"
     && candidate.workspaceId.trim().length > 0
