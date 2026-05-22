@@ -74,27 +74,36 @@ When `PRISMA_SERVICE_TOKEN` is set and non-empty, the token is fully sufficient 
 Commands resolve project context in this order:
 
 1. explicit `--project <id-or-name>` when present
-2. durable platform mapping when available
-3. remembered local project context, revalidated against platform data
-4. `package.json` name matched exactly against accessible project id, name, or slug
-5. unambiguous project creation for commands that are allowed to create projects
-6. prompt in interactive mode, or structured failure in `--json` / `--no-interactive` mode
+2. `PRISMA_PROJECT_ID` when set for headless deploys
+3. `.prisma/local.json` project pin when present, revalidated against platform data
+4. durable platform mapping when available
+5. remembered local project context, revalidated against platform data
+6. `package.json` name matched exactly against accessible project id, name, or slug
+7. unambiguous project creation for commands that are allowed to create projects
+8. prompt in interactive mode, or structured failure in `--json` / `--no-interactive` mode
 
 `--project` is an escape hatch for ambiguous or unavailable automatic
 resolution, not a setup step. Only `app deploy` may create a missing project,
 and only when the inferred name is unambiguous.
+When `PRISMA_PROJECT_ID` is set, `app deploy` skips `.prisma/local.json` reads
+and does not write a new pin.
 
 ### App Selection
 
 Preview app commands that need an app resolve it in this order:
 
 1. `--app <name>`
-2. locally selected app for the resolved project when it still exists
-3. inferred app name from `package.json#name`
-4. current directory name
-5. create the inferred app when no existing app matches
-6. interactive picker only when multiple matching apps make the target ambiguous
-7. `APP_AMBIGUOUS` in non-interactive or `--json` mode when unresolved
+2. `PRISMA_APP_ID` when set for headless deploys
+3. `.prisma/local.json` default app pin when present, revalidated against platform data
+4. locally selected app for non-deploy commands when it still exists
+5. inferred app name from `package.json#name`
+6. current directory name
+7. create the inferred app when no existing app matches
+8. interactive picker only when multiple matching apps make the target ambiguous
+9. `APP_AMBIGUOUS` in non-interactive or `--json` mode when unresolved
+
+When `PRISMA_APP_ID` is set, `app deploy` skips `.prisma/local.json` reads and
+does not write a new pin.
 
 ### Branch
 
@@ -477,7 +486,7 @@ prisma-cli app run --build-type nextjs
 prisma-cli app run --build-type bun --entry server.ts --port 3000
 ```
 
-## `prisma-cli app deploy --project <id-or-name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start> --http-port <port> --env <name=value>`
+## `prisma-cli app deploy --project <id-or-name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start> --entry <path> --http-port <port> --env <name=value>`
 
 Purpose:
 
@@ -486,9 +495,9 @@ Purpose:
 Behavior:
 
 - requires auth
-- resolves or creates project context from `--project`, `package.json#name`, or current directory name
+- resolves or creates project context from `--project`, `PRISMA_PROJECT_ID`, `.prisma/local.json`, `package.json#name`, or current directory name
 - resolves branch context from `--branch`, local Git branch, or `main`
-- resolves or creates app context from `--app`, remembered app state, `package.json#name`, or current directory name
+- resolves or creates app context from `--app`, `PRISMA_APP_ID`, `.prisma/local.json`, `package.json#name`, or current directory name
 - does not prompt when there is no real choice; zero matching apps creates the inferred app
 - detects supported frameworks and shows the resolved framework/runtime settings before deploy
 - asks `Customize settings? (y/N)` only in interactive first-deploy flows, and only asks for Framework and HTTP port when the user opts in

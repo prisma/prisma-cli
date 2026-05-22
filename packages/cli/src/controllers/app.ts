@@ -265,6 +265,8 @@ export async function runAppDeploy(
   framework = customized.framework;
   runtime = customized.runtime;
 
+  // Customization can switch from a Bun-compatible framework to one that
+  // derives its entrypoint from build output, so validate --entry again after it.
   const buildType = framework.buildType;
   assertSupportedEntrypoint(buildType, options?.entrypoint, "deploy");
   const portMapping = parseDeployPortMapping(String(runtime.port));
@@ -1896,10 +1898,9 @@ async function resolveGitHeadPath(gitPath: string): Promise<string | null> {
     if (raw.startsWith(prefix)) {
       return path.join(path.resolve(path.dirname(gitPath), raw.slice(prefix.length).trim()), "HEAD");
     }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EISDIR" && (error as NodeJS.ErrnoException).code !== "EACCES") {
-      // ignore and try the normal directory shape below
-    }
+  } catch {
+    // Fall through to try the normal .git directory shape below.
+    // Common cases: EISDIR (normal git repo), EACCES, ENOENT.
   }
 
   try {
@@ -2023,7 +2024,7 @@ async function detectNextConfig(cwd: string): Promise<{ exists: boolean; standal
       const content = await readFile(filePath, "utf8");
       return {
         exists: true,
-        standalone: /\boutput\s*:\s*["']standalone["']/.test(content),
+        standalone: /\boutput\s*:\s*["'`]standalone["'`]/.test(content),
       };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
