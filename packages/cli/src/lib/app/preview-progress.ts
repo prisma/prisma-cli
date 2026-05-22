@@ -1,6 +1,9 @@
 import type { DeployProgress, PromoteProgress, UpdateEnvProgress } from "@prisma/compute-sdk";
 import type { Writable } from "node:stream";
 
+import { renderDeployOutputRows } from "./deploy-output";
+import type { ShellUi } from "../../shell/ui";
+
 export interface PreviewDeployProgressState {
   buildStarted: boolean;
   buildCompleted: boolean;
@@ -29,6 +32,7 @@ export function createPreviewDeployProgressState(): PreviewDeployProgressState {
 
 export function createPreviewDeployProgress(
   output: Writable,
+  ui: ShellUi,
   enabled: boolean,
   state: PreviewDeployProgressState = createPreviewDeployProgressState(),
 ): DeployProgress | undefined {
@@ -40,6 +44,12 @@ export function createPreviewDeployProgress(
     output.write(`${line}\n`);
   };
 
+  const writeRows = (rows: Parameters<typeof renderDeployOutputRows>[1]) => {
+    for (const line of renderDeployOutputRows(ui, rows)) {
+      write(line);
+    }
+  };
+
   return {
     onBuildStart() {
       state.buildStarted = true;
@@ -47,14 +57,10 @@ export function createPreviewDeployProgress(
     },
     onBuildComplete() {
       state.buildCompleted = true;
-      write("Building locally. Done.");
-    },
-    onArchiveCreating() {
-      write("Packaging artifact...");
     },
     onArchiveReady(byteLength) {
       state.archiveReady = true;
-      write(`Packaging artifact. ${formatArtifactSize(byteLength)}.`);
+      writeRows([{ label: "Built", value: formatArtifactSize(byteLength) }]);
     },
     onUploadStart() {
       write("Uploading...");
@@ -64,18 +70,16 @@ export function createPreviewDeployProgress(
     },
     onUploadComplete() {
       state.uploadCompleted = true;
-      write("Uploading. Done.");
+      writeRows([{ label: "Uploaded" }]);
     },
     onStartRequested() {
       state.startRequested = true;
-      write("Starting deployment...");
+      write("Deploying...");
     },
     onRunning(url) {
       state.containerLive = true;
       state.deploymentUrl = url;
-      write("Starting deployment. Container live.");
-      // TODO: replace this SDK "running" boundary with the platform health-passed signal.
-      write("Checking runtime health...");
+      writeRows([{ label: "Deployed" }]);
     },
     onPromoted(url) {
       state.promotedUrl = url;

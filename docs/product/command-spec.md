@@ -506,8 +506,8 @@ Behavior:
 - writes `.prisma/local.json` after Project binding succeeds and before build/deploy starts, so retries after a failed deploy do not repeat setup
 - asks `Customize settings? (y/N)` only while binding the directory for the first time, and only asks for Framework and HTTP port when the user opts in
 - subsequent deploys print a compact target header such as `Deploying ./j1 to j1 / main / j1`
-- deploy progress uses phase copy (`Building locally`, `Packaging artifact`, `Uploading`, `Starting deployment`, `Checking runtime health`) and never prints `Status: running` or `Deployment is running at ...`
-- success human output prints `Deployed to <url>` and `Runtime logs: prisma app logs`
+- deploy progress uses short stage copy (`Building locally...`, `Built <size>`, `Uploading...`, `Uploaded`, `Deploying...`, `Deployed`) and never prints `Status: running` or `Deployment is running at ...`
+- success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma app logs`
 - accepts repeated `--env NAME=VALUE` flags
 - maps user-facing framework names to deploy build strategies
 - accepts `--build-type <auto|bun|nextjs|nuxt|astro|tanstack-start>` as a legacy passthrough, but `--framework` wins when both are passed

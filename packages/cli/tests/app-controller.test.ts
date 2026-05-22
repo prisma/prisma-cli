@@ -371,7 +371,7 @@ describe("app controller", () => {
         written: true,
       },
     });
-    expect(stderr.buffer).toContain(`Set up ./${path.basename(cwd)}`);
+    expect(stderr.buffer).toContain(`Setting up your local directory ${cwd}`);
     expect(stderr.buffer).toContain("Project    my-app");
     expect(stderr.buffer).toContain("Branch     feat-j1");
     expect(stderr.buffer).toContain("Framework  Next.js");
@@ -426,12 +426,8 @@ describe("app controller", () => {
       humanLines: [
         "Build failed locally.",
         "",
-        "Build:    failed",
-        "Deploy:   not started",
-        "Runtime:  not started",
-        "URL:      not promoted",
+        "✗ Built       next build exited with code 1",
         "",
-        "Why: next build exited with code 1",
         "Fix: Inspect the build output above, fix the error, and redeploy.",
       ],
     });
@@ -439,7 +435,7 @@ describe("app controller", () => {
       workspaceId: "ws_123",
       projectId: "proj_123",
     });
-    expect(stderr.buffer).toContain("Bound this directory in .prisma/local.json. Subsequent commands target the same Project.");
+    expect(stderr.buffer).toContain("This directory is now linked to project Acme Dashboard.");
     expect(stderr.buffer).toContain("Building locally...");
   });
 
@@ -510,21 +506,23 @@ describe("app controller", () => {
     })).rejects.toMatchObject({
       code: "DEPLOY_FAILED",
       humanLines: expect.arrayContaining([
-        "Runtime failed after the build completed.",
-        "Build:       passed locally",
-        "Deploy:      artifact uploaded, container started",
-        "Runtime:     failed health check",
-        "Deployment:  https://cv-example.fra.prisma.build (unhealthy)",
-        "Runtime logs: prisma app logs --deployment dep_failed",
+        "The deployment started, but the app is not ready yet.",
+        "This is usually a missing env var, a failed DB connection,",
+        "or a crash on startup.",
+        "See what happened",
+        "prisma app logs --deployment dep_failed",
+        "URL",
+        "https://cv-example.fra.prisma.build",
       ]),
     });
     expect(stderr.buffer).toContain(`Deploying ./${path.basename(cwd)} to Acme Dashboard / main / ${path.basename(cwd)}`);
-    expect(stderr.buffer).toContain("Building locally. Done.");
-    expect(stderr.buffer).toContain("Packaging artifact. 10.6 MB.");
-    expect(stderr.buffer).toContain("Starting deployment. Container live.");
-    expect(stderr.buffer).toContain("Checking runtime health...");
+    expect(stderr.buffer).toContain("  Built      10.6 MB");
+    expect(stderr.buffer).toContain("  Uploaded");
+    expect(stderr.buffer).toContain("Deploying...");
+    expect(stderr.buffer).toContain("  Deployed");
     expect(stderr.buffer).not.toContain("Status: running");
     expect(stderr.buffer).not.toContain("Deployment is running at");
+    expect(stderr.buffer).not.toContain("Checking runtime health");
   });
 
   it("renders deploy-failure copy when failure happens before runtime starts", async () => {
@@ -588,9 +586,9 @@ describe("app controller", () => {
       summary: "Deploy failed after the build completed.",
       humanLines: expect.arrayContaining([
         "Deploy failed after the build completed.",
-        "Build:       passed locally",
-        "Deploy:      artifact packaged, upload incomplete",
-        "Runtime:     not started",
+        "The app built locally, but the artifact did not finish uploading.",
+        "Fix",
+        "Retry the command, or rerun with --trace for more detailed diagnostics.",
       ]),
     });
   });

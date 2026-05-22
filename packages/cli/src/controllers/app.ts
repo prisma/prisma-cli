@@ -33,6 +33,7 @@ import { requireComputeAuth } from "../lib/auth/guard";
 import { readAuthState } from "../lib/auth/auth-ops";
 import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
 import { parseEnvAssignments } from "../lib/app/env-vars";
+import { renderDeployOutputRows } from "../lib/app/deploy-output";
 import {
   DEFAULT_LOCAL_DEV_PORT,
   resolveLocalBuildType,
@@ -275,7 +276,7 @@ export async function runAppDeploy(
       projectId: target.project.id,
     });
     await ensureLocalResolutionPinGitignore(context.runtime.cwd);
-    maybeRenderLocalPinBound(context);
+    maybeRenderLocalPinBound(context, target.project.name);
   }
 
   const progressState = createPreviewDeployProgressState();
@@ -292,7 +293,7 @@ export async function runAppDeploy(
     portMapping,
     envVars,
     interaction: undefined,
-    progress: createPreviewDeployProgress(context.output.stderr, !context.flags.json && !context.flags.quiet, progressState),
+    progress: createPreviewDeployProgress(context.output.stderr, context.ui, !context.flags.json && !context.flags.quiet, progressState),
   }).catch((error) => {
     throw appDeployFailedError(error, progressState);
   });
@@ -2122,28 +2123,28 @@ async function maybeRenderDeploySetupBlock(
     return;
   }
 
-  const title = `Set up ${directory}`;
+  const title = `Setting up your local directory ${formatLocalDirectory(context.runtime.cwd, context.runtime.env)}`;
   const rows = details.firstDeploy
     ? [
         { label: "Workspace", value: details.workspaceName },
-        { label: "Project", value: details.projectName, annotation: details.projectAnnotation },
-        { label: "Branch", value: details.branchName, annotation: details.branchAnnotation },
-        { label: "App", value: details.appName, annotation: details.appAnnotation },
-        { label: "Framework", value: details.framework.displayName, annotation: details.framework.annotation },
-        { label: "Runtime", value: `HTTP ${details.runtime.port}`, annotation: details.runtime.annotation },
+        { label: "Project", value: details.projectName, origin: details.projectAnnotation },
+        { label: "Branch", value: details.branchName, origin: details.branchAnnotation },
+        { label: "App", value: details.appName, origin: details.appAnnotation },
+        { label: "Framework", value: details.framework.displayName, origin: details.framework.annotation },
+        { label: "Runtime", value: `HTTP ${details.runtime.port}`, origin: details.runtime.annotation },
       ]
     : [];
-  const lines = [title, "", ...renderDeploySetupRows(context, rows), ""];
+  const lines = [title, "", ...renderDeployOutputRows(context.ui, rows), ""];
 
   context.output.stderr.write(`${lines.join("\n")}\n`);
 }
 
-function maybeRenderLocalPinBound(context: CommandContext): void {
+function maybeRenderLocalPinBound(context: CommandContext, projectName: string): void {
   if (context.flags.json || context.flags.quiet) {
     return;
   }
 
-  context.output.stderr.write(`Bound this directory in ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH}. Subsequent commands target the same Project.\n`);
+  context.output.stderr.write(`This directory is now linked to project ${projectName}.\n\n`);
 }
 
 async function maybeCustomizeDeploySettings(
@@ -2216,28 +2217,17 @@ async function maybeCustomizeDeploySettings(
   ].filter((row): row is { label: string; value: string; annotation: string } => Boolean(row));
 
   if (changedRows.length > 0 && !context.flags.quiet && !context.flags.json) {
-    context.output.stderr.write(`${renderDeploySetupRows(context, changedRows).join("\n")}\n\n`);
+    context.output.stderr.write(`${renderDeployOutputRows(context.ui, changedRows.map((row) => ({
+      label: row.label,
+      value: row.value,
+      origin: row.annotation,
+    }))).join("\n")}\n\n`);
   }
 
   return {
     framework,
     runtime,
   };
-}
-
-function renderDeploySetupRows(
-  context: CommandContext,
-  rows: Array<{ label: string; value: string; annotation?: string }>,
-): string[] {
-  const labelWidth = Math.max(...rows.map((row) => row.label.length));
-  const valueWidth = Math.max(...rows.map((row) => row.value.length));
-
-  return rows.map((row) => {
-    const label = row.label.padEnd(labelWidth);
-    const value = row.value.padEnd(valueWidth);
-    const annotation = row.annotation ? `  ${context.ui.dim(row.annotation)}` : "";
-    return `  ${label}  ${value}${annotation}`.trimEnd();
-  });
 }
 
 function annotationForProjectResolution(resolution: ProjectResolution): string {
@@ -2290,6 +2280,18 @@ function validateDeployHttpPortText(value: string | undefined): string | undefin
 function formatDeployDirectory(cwd: string): string {
   const basename = path.basename(cwd);
   return basename ? `./${basename}` : ".";
+}
+
+function formatLocalDirectory(cwd: string, env: NodeJS.ProcessEnv): string {
+  const resolved = path.resolve(cwd);
+  const home = env.HOME ? path.resolve(env.HOME) : null;
+
+  if (home && (resolved === home || resolved.startsWith(`${home}${path.sep}`))) {
+    const relative = path.relative(home, resolved);
+    return relative ? `~/${relative}` : "~";
+  }
+
+  return resolved;
 }
 
 async function readCurrentWorkspaceId(context: CommandContext): Promise<string | null> {
@@ -2462,12 +2464,8 @@ function appDeployFailedError(error: unknown, progress: PreviewDeployProgressSta
       humanLines: [
         "Build failed locally.",
         "",
-        "Build:    failed",
-        "Deploy:   not started",
-        "Runtime:  not started",
-        "URL:      not promoted",
+        `✗ Built       ${why}`,
         "",
-        `Why: ${why}`,
         "Fix: Inspect the build output above, fix the error, and redeploy.",
       ],
       exitCode: 1,
@@ -2479,49 +2477,53 @@ function appDeployFailedError(error: unknown, progress: PreviewDeployProgressSta
     return deployFailedError("App deploy failed", error, ["prisma-cli app deploy"]);
   }
 
-  const deployState = progress.containerLive || progress.startRequested
-    ? "artifact uploaded, container started"
-    : progress.uploadCompleted
-      ? "artifact uploaded, container not started"
-      : progress.archiveReady
-        ? "artifact packaged, upload incomplete"
-        : "not started";
-  const runtimeState = progress.containerLive ? "failed health check" : "not started";
   const phaseHeadline = progress.containerLive
-    ? "Runtime failed after the build completed."
+    ? "The deployment started, but the app is not ready yet."
     : "Deploy failed after the build completed.";
-  const deploymentLine = progress.deploymentUrl
-    ? `Deployment:  ${progress.deploymentUrl} (unhealthy)`
-    : "Deployment:  unavailable";
-  const recoveryLine = progress.versionId
-    ? `Runtime logs: prisma app logs --deployment ${progress.versionId}`
-    : "Fix: Retry the command, or rerun with --trace for more detailed diagnostics.";
+  const recoveryLines = progress.versionId
+    ? ["See what happened", `prisma app logs --deployment ${progress.versionId}`]
+    : ["Fix", "Retry the command, or rerun with --trace for more detailed diagnostics."];
+  const urlLines = progress.deploymentUrl
+    ? ["", "URL", progress.deploymentUrl]
+    : [];
+  const humanLines = progress.containerLive
+    ? [
+        phaseHeadline,
+        "",
+        "This is usually a missing env var, a failed DB connection,",
+        "or a crash on startup.",
+        "",
+        ...recoveryLines,
+        ...urlLines,
+      ]
+    : [
+        phaseHeadline,
+        "",
+        progress.uploadCompleted
+          ? "The artifact uploaded, but the deployment did not start."
+          : progress.archiveReady
+            ? "The app built locally, but the artifact did not finish uploading."
+            : "The app built locally, but the deployment did not start.",
+        "",
+        ...recoveryLines,
+      ];
+  const fix = progress.versionId
+    ? `Inspect logs with prisma app logs --deployment ${progress.versionId}.`
+    : "Retry the command, or rerun with --trace for more detailed diagnostics.";
 
   return new CliError({
     code: "DEPLOY_FAILED",
     domain: "app",
     summary: phaseHeadline,
     why,
-    fix: progress.versionId
-      ? `Inspect runtime logs with prisma app logs --deployment ${progress.versionId}.`
-      : "Retry the command, or rerun with --trace for more detailed diagnostics.",
+    fix,
     debug,
     meta: {
-      phase: progress.containerLive ? "runtime_health" : "deploy",
+      phase: progress.containerLive ? "runtime_ready" : "deploy",
       deploymentId: progress.versionId,
       deploymentUrl: progress.deploymentUrl,
     },
-    humanLines: [
-      phaseHeadline,
-      "",
-      "Build:       passed locally",
-      `Deploy:      ${deployState}`,
-      `Runtime:     ${runtimeState}`,
-      deploymentLine,
-      "",
-      `Why: ${why}`,
-      recoveryLine,
-    ],
+    humanLines,
     exitCode: 1,
     nextSteps: [],
   });

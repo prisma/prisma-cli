@@ -91,32 +91,27 @@ Example:
 ```text
 Build failed locally.
 
-Build:    failed
-Deploy:   not started
-Runtime:  not started
-URL:      not promoted
+✗ Built       next build exited with code 1
 
-Why: next build exited with code 1
 Fix: Inspect the build output above, fix the error, and redeploy.
 ```
 
-Runtime failures after build should distinguish local build success from deployed
-runtime failure and point to runtime logs:
+If the deployment starts but the app is not ready yet, list the deployment URL
+and point to runtime logs without claiming a health-check result until the
+platform exposes one:
 
 ```text
-Runtime failed after the build completed.
+The deployment started, but the app is not ready yet.
 
-Build:       passed locally
-Deploy:      artifact uploaded, container started
-Runtime:     failed health check
-Deployment:  https://cv-... (unhealthy)
+This is usually a missing env var, a failed DB connection,
+or a crash on startup.
 
-Runtime logs: prisma app logs --deployment <id>
+See what happened
+prisma app logs --deployment <id>
+
+URL
+https://cv-...
 ```
-
-If the failure happens after the local build but before the runtime is live, use
-`Deploy failed after the build completed.` as the headline and keep `Runtime:
-not started`.
 
 ## JSON Error Shape
 

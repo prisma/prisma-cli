@@ -15,6 +15,7 @@ import type {
   AppUpdateEnvResult,
 } from "../types/app";
 import { renderList, renderShow, serializeList } from "../output/patterns";
+import { renderDeployOutputRows } from "../lib/app/deploy-output";
 
 export function renderAppBuild(
   context: CommandContext,
@@ -44,15 +45,15 @@ export function renderAppDeploy(
   descriptor: CommandDescriptor,
   result: AppDeployResult,
 ): string[] {
-  void context;
   void descriptor;
 
   const lines = [
-    result.deployment.url
-      ? `Deployed to ${result.deployment.url} in ${formatDuration(result.durationMs)}.`
-      : `Deployed in ${formatDuration(result.durationMs)}.`,
+    `Live in ${formatDuration(result.durationMs)}`,
+    ...(result.deployment.url ? [context.ui.link(result.deployment.url)] : []),
     "",
-    "Runtime logs: prisma app logs",
+    ...renderDeployOutputRows(context.ui, [
+      { label: "Logs", value: "prisma app logs" },
+    ]),
   ];
   return lines;
 }
