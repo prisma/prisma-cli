@@ -15,6 +15,14 @@ import type {
   AppBuildResult,
   AppDeployResult,
   AppDeploymentSummary,
+  AppDomainAddResult,
+  AppDomainDnsRecord,
+  AppDomainRemoveResult,
+  AppDomainRetryResult,
+  AppDomainShowResult,
+  AppDomainStatus,
+  AppDomainSummary,
+  AppDomainTarget,
   AppListEnvResult,
   AppListDeploysResult,
   AppOpenResult,
@@ -70,7 +78,12 @@ import {
   createPreviewUpdateEnvProgress,
   type PreviewDeployProgressState,
 } from "../lib/app/preview-progress";
-import { createPreviewAppProvider, type PreviewAppRecord } from "../lib/app/preview-provider";
+import {
+  createPreviewAppProvider,
+  PreviewDomainApiError,
+  type PreviewAppRecord,
+  type PreviewDomainRecord,
+} from "../lib/app/preview-provider";
 import { requireAuthenticatedAuthState } from "./auth";
 import { listRealWorkspaceProjects } from "./project";
 import { createSelectPromptPort } from "./select-prompt-port";
@@ -768,6 +781,209 @@ export async function runAppOpen(
   };
 }
 
+export async function runAppDomainAdd(
+  context: CommandContext,
+  hostname: string,
+  options?: {
+    appName?: string;
+    projectRef?: string;
+    branchName?: string;
+  },
+): Promise<CommandSuccess<AppDomainAddResult>> {
+  const normalizedHostname = normalizeDomainHostname(hostname);
+  const target = await resolveAppDomainTarget(context, options);
+
+  const added = await target.provider.addDomain({
+    appId: target.app.id,
+    hostname: normalizedHostname,
+  }).catch((error) => {
+    throw domainCommandError("add", error, normalizedHostname);
+  });
+
+  return {
+    command: "app.domain.add",
+    result: {
+      ...target.resultTarget,
+      domain: toAppDomainSummary(added.domain),
+      existing: added.existing,
+    },
+    warnings: [],
+    nextSteps: [
+      `prisma-cli app domain wait ${normalizedHostname}`,
+      `prisma-cli app domain show ${normalizedHostname}`,
+    ],
+  };
+}
+
+export async function runAppDomainShow(
+  context: CommandContext,
+  hostname: string,
+  options?: {
+    appName?: string;
+    projectRef?: string;
+    branchName?: string;
+  },
+): Promise<CommandSuccess<AppDomainShowResult>> {
+  const normalizedHostname = normalizeDomainHostname(hostname);
+  const target = await resolveAppDomainTarget(context, options);
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname);
+  const detail = await target.provider.showDomain(domain.id).catch((error) => {
+    throw domainCommandError("show", error, normalizedHostname);
+  });
+
+  return {
+    command: "app.domain.show",
+    result: {
+      ...target.resultTarget,
+      domain: toAppDomainSummary(detail),
+    },
+    warnings: [],
+    nextSteps: buildDomainShowNextSteps(detail),
+  };
+}
+
+export async function runAppDomainRemove(
+  context: CommandContext,
+  hostname: string,
+  options?: {
+    appName?: string;
+    projectRef?: string;
+    branchName?: string;
+  },
+): Promise<CommandSuccess<AppDomainRemoveResult>> {
+  const normalizedHostname = normalizeDomainHostname(hostname);
+  const target = await resolveAppDomainTarget(context, options);
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname);
+
+  await confirmDomainRemoval(context, target.resultTarget, normalizedHostname);
+
+  await target.provider.removeDomain(domain.id).catch((error) => {
+    throw domainCommandError("remove", error, normalizedHostname);
+  });
+
+  return {
+    command: "app.domain.remove",
+    result: {
+      ...target.resultTarget,
+      hostname: normalizedHostname,
+      removed: true,
+    },
+    warnings: [],
+    nextSteps: [],
+  };
+}
+
+export async function runAppDomainRetry(
+  context: CommandContext,
+  hostname: string,
+  options?: {
+    appName?: string;
+    projectRef?: string;
+    branchName?: string;
+  },
+): Promise<CommandSuccess<AppDomainRetryResult>> {
+  const normalizedHostname = normalizeDomainHostname(hostname);
+  const target = await resolveAppDomainTarget(context, options);
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname);
+  const retried = await target.provider.retryDomain(domain.id).catch((error) => {
+    throw domainCommandError("retry", error, normalizedHostname);
+  });
+
+  return {
+    command: "app.domain.retry",
+    result: {
+      ...target.resultTarget,
+      domain: toAppDomainSummary(retried),
+    },
+    warnings: [],
+    nextSteps: [`prisma-cli app domain wait ${normalizedHostname}`],
+  };
+}
+
+export async function runAppDomainWait(
+  context: CommandContext,
+  hostname: string,
+  options?: {
+    appName?: string;
+    projectRef?: string;
+    branchName?: string;
+    timeout?: string;
+  },
+): Promise<void> {
+  const normalizedHostname = normalizeDomainHostname(hostname);
+  const timeoutMs = parseDomainWaitTimeout(options?.timeout);
+  const target = await resolveAppDomainTarget(context, options);
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname);
+
+  if (!context.flags.json && !context.flags.quiet) {
+    context.output.stderr.write(
+      [
+        `app domain wait -> Waiting for ${normalizedHostname} to become active.`,
+        "",
+        `Workspace: ${target.resultTarget.workspace.name}   Project: ${target.resultTarget.project.name}   Branch: ${target.resultTarget.branch.name}   App: ${target.resultTarget.app.name}`,
+        "",
+      ].join("\n"),
+    );
+  }
+
+  const start = Date.now();
+  const deadline = start + timeoutMs;
+  const pollIntervalMs = readDomainWaitPollIntervalMs(context);
+  let lastStatus: AppDomainStatus | null = null;
+  let current = domain;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    emitDomainWaitStatus(context, {
+      hostname: normalizedHostname,
+      domainId: current.id,
+      previousStatus: lastStatus,
+      status: current.status,
+      elapsedMs: Date.now() - start,
+    });
+    lastStatus = current.status;
+
+    if (current.status === "active") {
+      if (!context.flags.json && !context.flags.quiet) {
+        context.output.stderr.write(`\n${normalizedHostname} is live at https://${normalizedHostname}\n`);
+      }
+      return;
+    }
+
+    if (current.status === "failed") {
+      throw new CliError({
+        code: "DOMAIN_VERIFICATION_FAILED",
+        domain: "app",
+        summary: `Custom domain "${normalizedHostname}" failed verification`,
+        why: formatDomainFailureWhy(current),
+        fix: `Fix the DNS record, then run prisma-cli app domain retry ${normalizedHostname}.`,
+        exitCode: 1,
+        nextSteps: [
+          `prisma-cli app domain show ${normalizedHostname}`,
+          `prisma-cli app domain retry ${normalizedHostname}`,
+        ],
+      });
+    }
+
+    if (timeoutMs === 0 || Date.now() >= deadline) {
+      throw new CliError({
+        code: "DOMAIN_VERIFICATION_TIMEOUT",
+        domain: "app",
+        summary: `Timed out waiting for "${normalizedHostname}" to become active`,
+        why: `The domain is still "${current.status}".`,
+        fix: `Run prisma-cli app domain show ${normalizedHostname} to inspect the current status, or retry wait with a longer --timeout.`,
+        exitCode: 2,
+        nextSteps: [`prisma-cli app domain show ${normalizedHostname}`],
+      });
+    }
+
+    await sleep(Math.min(pollIntervalMs, Math.max(deadline - Date.now(), 0)));
+    current = await target.provider.showDomain(current.id).catch((error) => {
+      throw domainCommandError("wait", error, normalizedHostname);
+    });
+  }
+}
+
 export async function runAppLogs(
   context: CommandContext,
   appName: string | undefined,
@@ -1130,6 +1346,428 @@ export async function runAppRemove(
     warnings,
     nextSteps: ["prisma-cli app deploy", "prisma-cli app list-deploys"],
   };
+}
+
+interface ResolvedAppDomainTarget {
+  provider: ReturnType<typeof createPreviewAppProvider>;
+  app: PreviewAppRecord;
+  resultTarget: AppDomainTarget;
+}
+
+async function resolveAppDomainTarget(
+  context: CommandContext,
+  options?: {
+    appName?: string;
+    projectRef?: string;
+    branchName?: string;
+  },
+): Promise<ResolvedAppDomainTarget> {
+  ensurePreviewAppMode(context);
+
+  const branch = resolveDomainBranch(options?.branchName);
+  if (toBranchKind(branch.name) !== "production") {
+    throw new CliError({
+      code: "BRANCH_NOT_DEPLOYABLE",
+      domain: "branch",
+      summary: "Custom domains require the production branch",
+      why: `Custom domains on preview branch "${branch.name}" are not supported in Public Beta.`,
+      fix: "Use --branch production, or attach the domain after promoting/deploying to the production branch.",
+      exitCode: 2,
+      nextSteps: ["prisma-cli app domain add <hostname> --branch production"],
+    });
+  }
+
+  const envProjectId = readDeployEnvOverride(context, PRISMA_PROJECT_ID_ENV_VAR);
+  const envAppId = readDeployEnvOverride(context, PRISMA_APP_ID_ENV_VAR);
+  const skipLocalPin = Boolean(envProjectId || envAppId);
+  const localPin = skipLocalPin
+    ? ({ kind: "missing" } satisfies LocalResolutionPinReadResult)
+    : await readLocalResolutionPin(context.runtime.cwd);
+  if (!skipLocalPin && localPin.kind === "invalid") {
+    throw localResolutionPinStaleError();
+  }
+
+  const { provider, target, projectId } = await requireProviderAndDeployProjectContext(context, options?.projectRef, {
+    allowCreate: false,
+    branch,
+    envProjectId,
+    localPin,
+  });
+  const apps = await listApps(context, provider, projectId, target.branch.name);
+  const selectedApp = await resolveDomainAppSelection(context, projectId, apps, {
+    explicitAppName: options?.appName,
+    explicitAppId: envAppId,
+  });
+
+  await context.stateStore.setSelectedApp(projectId, {
+    id: selectedApp.id,
+    name: selectedApp.name,
+  });
+
+  return {
+    provider,
+    app: selectedApp,
+    resultTarget: {
+      workspace: target.workspace,
+      project: target.project,
+      branch: target.branch,
+      app: {
+        id: selectedApp.id,
+        name: selectedApp.name,
+      },
+    },
+  };
+}
+
+function resolveDomainBranch(explicitBranchName: string | undefined): ResolvedDeployBranch {
+  return {
+    name: explicitBranchName?.trim() || "production",
+    annotation: explicitBranchName ? "set by --branch" : "production default",
+  };
+}
+
+async function resolveDomainAppSelection(
+  context: CommandContext,
+  projectId: string,
+  apps: PreviewAppRecord[],
+  options: {
+    explicitAppName: string | undefined;
+    explicitAppId: string | undefined;
+  },
+): Promise<PreviewAppRecord> {
+  if (options.explicitAppId) {
+    const matched = apps.find((app) => app.id === options.explicitAppId);
+    if (!matched) {
+      throw usageError(
+        "Selected app does not exist in the resolved production branch",
+        `The app "${options.explicitAppId}" from ${PRISMA_APP_ID_ENV_VAR} could not be found in resolved project "${projectId}".`,
+        `Unset ${PRISMA_APP_ID_ENV_VAR}, pass --app <name>, or deploy the app on the production branch.`,
+        ["prisma-cli app deploy --branch production"],
+        "app",
+      );
+    }
+    return matched;
+  }
+
+  const selectedApp = await resolveExistingAppSelection(context, projectId, apps, options.explicitAppName);
+  if (selectedApp) {
+    return selectedApp;
+  }
+
+  throw usageError(
+    "Custom domain requires an existing app on the production branch",
+    "The resolved production branch does not have an app that can receive a custom domain.",
+    "Deploy or promote an app to production first, then rerun the domain command.",
+    ["prisma-cli app deploy --branch production", "prisma-cli app show"],
+    "app",
+  );
+}
+
+async function resolveDomainByHostname(
+  provider: ReturnType<typeof createPreviewAppProvider>,
+  appId: string,
+  hostname: string,
+): Promise<PreviewDomainRecord> {
+  const domains = await provider.listDomains(appId).catch((error) => {
+    throw domainCommandError("show", error, hostname);
+  });
+  const matched = domains.find((domain) => sameDomainHostname(domain.hostname, hostname));
+  if (matched) {
+    return matched;
+  }
+
+  throw domainNotFoundError(hostname);
+}
+
+function normalizeDomainHostname(hostname: string): string {
+  const normalized = hostname.trim().replace(/\.$/, "").toLowerCase();
+  if (!isValidDomainHostname(normalized)) {
+    throw new CliError({
+      code: "DOMAIN_HOSTNAME_INVALID",
+      domain: "app",
+      summary: `Invalid custom domain "${hostname}"`,
+      why: "Custom domains must be valid hostnames without protocol, path, wildcard, or port.",
+      fix: "Pass a hostname like shop.acme.com.",
+      exitCode: 2,
+      nextSteps: ["prisma-cli app domain add shop.acme.com"],
+    });
+  }
+
+  return normalized;
+}
+
+function isValidDomainHostname(hostname: string): boolean {
+  if (hostname.length < 1 || hostname.length > 253) {
+    return false;
+  }
+  if (hostname.includes("://") || hostname.includes("/") || hostname.includes(":") || hostname.startsWith("*.")) {
+    return false;
+  }
+
+  const labels = hostname.split(".");
+  if (labels.length < 2) {
+    return false;
+  }
+
+  return labels.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label));
+}
+
+function sameDomainHostname(left: string, right: string): boolean {
+  return left.trim().replace(/\.$/, "").toLowerCase() === right.trim().replace(/\.$/, "").toLowerCase();
+}
+
+function toAppDomainSummary(domain: PreviewDomainRecord): AppDomainSummary {
+  return {
+    id: domain.id,
+    type: domain.type,
+    url: domain.url,
+    hostname: domain.hostname,
+    computeServiceId: domain.computeServiceId,
+    status: domain.status,
+    foundryStatus: domain.foundryStatus,
+    failureReason: domain.failureReason,
+    failureCategory: domain.failureCategory,
+    certExpiresAt: domain.certExpiresAt,
+    createdAt: domain.createdAt,
+    updatedAt: domain.updatedAt,
+    dnsRecords: domain.dnsRecords.map((record): AppDomainDnsRecord => ({
+      type: record.type,
+      name: record.name,
+      value: record.value,
+      ttl: record.ttl,
+    })),
+  };
+}
+
+function buildDomainShowNextSteps(domain: PreviewDomainRecord): string[] {
+  if (domain.status === "active") {
+    return [];
+  }
+  if (domain.status === "failed") {
+    return [`prisma-cli app domain retry ${domain.hostname}`];
+  }
+  return [`prisma-cli app domain wait ${domain.hostname}`];
+}
+
+async function confirmDomainRemoval(
+  context: CommandContext,
+  target: AppDomainTarget,
+  hostname: string,
+): Promise<void> {
+  if (context.flags.yes) {
+    return;
+  }
+
+  if (!canPrompt(context)) {
+    throw new CliError({
+      code: "CONFIRMATION_REQUIRED",
+      domain: "app",
+      summary: "Custom domain removal requires confirmation in the current mode",
+      why: "This command detaches a domain and cannot prompt for confirmation in the current mode.",
+      fix: `Pass --yes to confirm removal of "${hostname}", or rerun prisma-cli app domain remove in an interactive TTY.`,
+      exitCode: 1,
+      nextSteps: [`prisma-cli app domain remove ${hostname} --app ${target.app.name} --yes`],
+    });
+  }
+
+  const confirmed = await confirmPrompt({
+    input: context.runtime.stdin,
+    output: context.output.stderr,
+    message: `Detach ${hostname} from App "${target.app.name}"?`,
+    initialValue: false,
+  });
+
+  if (!confirmed) {
+    throw usageError(
+      "Custom domain removal canceled",
+      "The command was canceled before the domain was detached.",
+      "Rerun the command and confirm removal, or pass --yes.",
+      [`prisma-cli app domain remove ${hostname} --app ${target.app.name} --yes`],
+      "app",
+    );
+  }
+}
+
+function domainCommandError(
+  command: "add" | "show" | "remove" | "retry" | "wait",
+  error: unknown,
+  hostname: string,
+): CliError {
+  if (error instanceof PreviewDomainApiError) {
+    if (command === "add" && error.status === 400) {
+      return new CliError({
+        code: "DOMAIN_HOSTNAME_INVALID",
+        domain: "app",
+        summary: `Invalid custom domain "${hostname}"`,
+        why: error.message,
+        fix: "Pass a valid hostname like shop.acme.com and make sure DNS can be verified.",
+        debug: formatDebugDetails(error),
+        exitCode: 2,
+        nextSteps: ["prisma-cli app domain add shop.acme.com"],
+      });
+    }
+
+    if (command === "add" && error.status === 429) {
+      return new CliError({
+        code: "DOMAIN_QUOTA_EXCEEDED",
+        domain: "app",
+        summary: "Custom domain quota exceeded",
+        why: error.message,
+        fix: "Remove an existing custom domain before adding another one.",
+        debug: formatDebugDetails(error),
+        exitCode: 1,
+        nextSteps: ["prisma-cli app domain remove <hostname>"],
+      });
+    }
+
+    if (command === "add" && error.status === 422) {
+      return noDeploymentsError(
+        "Custom domain requires a live production deployment",
+        "The selected app does not have a promoted version that can receive a custom domain.",
+      );
+    }
+
+    if ((command === "show" || command === "remove" || command === "retry" || command === "wait") && error.status === 404) {
+      return domainNotFoundError(hostname);
+    }
+
+    if (command === "retry" && error.status === 409) {
+      return new CliError({
+        code: "DOMAIN_RETRY_NOT_ELIGIBLE",
+        domain: "app",
+        summary: `Custom domain "${hostname}" is not eligible for retry`,
+        why: error.message,
+        fix: "Wait for the current verification or TLS step to finish, then rerun retry if the domain fails.",
+        debug: formatDebugDetails(error),
+        exitCode: 1,
+        nextSteps: [`prisma-cli app domain show ${hostname}`],
+      });
+    }
+  }
+
+  return new CliError({
+    code: "DEPLOY_FAILED",
+    domain: "app",
+    summary: `Custom domain ${command} failed`,
+    why: error instanceof Error ? error.message : String(error),
+    fix: "Retry the command, or rerun with --trace for more detailed diagnostics.",
+    debug: formatDebugDetails(error),
+    exitCode: 1,
+    nextSteps: [`prisma-cli app domain show ${hostname}`],
+  });
+}
+
+function domainNotFoundError(hostname: string): CliError {
+  return new CliError({
+    code: "DOMAIN_NOT_FOUND",
+    domain: "app",
+    summary: `Custom domain "${hostname}" not found`,
+    why: "The hostname is not attached to the selected app.",
+    fix: "Check the hostname and selected app, or add the domain first.",
+    exitCode: 1,
+    nextSteps: [`prisma-cli app domain add ${hostname}`],
+  });
+}
+
+function formatDomainFailureWhy(domain: PreviewDomainRecord): string {
+  if (domain.failureReason) {
+    return domain.failureCategory
+      ? `${domain.failureCategory}: ${domain.failureReason}`
+      : domain.failureReason;
+  }
+
+  return "The platform reported a terminal failed state for this custom domain.";
+}
+
+function parseDomainWaitTimeout(value: string | undefined): number {
+  if (!value) {
+    return 15 * 60 * 1000;
+  }
+
+  const trimmed = value.trim().toLowerCase();
+  if (trimmed === "0") {
+    return 0;
+  }
+
+  const match = /^(\d+)(ms|s|m|h)$/.exec(trimmed);
+  if (!match) {
+    throw usageError(
+      `Invalid timeout "${value}"`,
+      "Timeout must be a duration such as 0, 30s, 15m, or 1h.",
+      "Pass --timeout 15m, or --timeout 0 to poll once.",
+      ["prisma-cli app domain wait shop.acme.com --timeout 15m"],
+      "app",
+    );
+  }
+
+  const amount = Number.parseInt(match[1], 10);
+  const unit = match[2];
+  const multiplier = unit === "h" ? 60 * 60 * 1000 : unit === "m" ? 60 * 1000 : unit === "s" ? 1000 : 1;
+  return amount * multiplier;
+}
+
+function readDomainWaitPollIntervalMs(context: CommandContext): number {
+  const raw = context.runtime.env.PRISMA_CLI_DOMAIN_WAIT_POLL_MS;
+  if (!raw) {
+    return 5_000;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 5_000;
+}
+
+function emitDomainWaitStatus(
+  context: CommandContext,
+  event: {
+    hostname: string;
+    domainId: string;
+    previousStatus: AppDomainStatus | null;
+    status: AppDomainStatus;
+    elapsedMs: number;
+  },
+): void {
+  if (context.flags.json) {
+    writeJsonEvent(context.output, {
+      type: "status",
+      command: "app.domain.wait",
+      timestamp: new Date().toISOString(),
+      data: {
+        hostname: event.hostname,
+        domainId: event.domainId,
+        previousStatus: event.previousStatus,
+        status: event.status,
+        elapsedMs: event.elapsedMs,
+      },
+    });
+    return;
+  }
+
+  if (context.flags.quiet) {
+    return;
+  }
+
+  if (event.previousStatus === event.status) {
+    return;
+  }
+
+  const transition = event.previousStatus
+    ? `${event.previousStatus} -> ${event.status}`
+    : event.status;
+  context.output.stderr.write(`  ${transition} (${formatElapsed(event.elapsedMs)})\n`);
+}
+
+function formatElapsed(milliseconds: number): string {
+  const seconds = Math.max(Math.floor(milliseconds / 1000), 0);
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+async function sleep(milliseconds: number): Promise<void> {
+  if (milliseconds <= 0) {
+    return;
+  }
+  await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function resolveDeployAppSelection(

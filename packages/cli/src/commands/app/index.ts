@@ -3,6 +3,11 @@ import { Command, Option } from "commander";
 import {
   runAppBuild,
   runAppDeploy,
+  runAppDomainAdd,
+  runAppDomainRemove,
+  runAppDomainRetry,
+  runAppDomainShow,
+  runAppDomainWait,
   runAppListEnv,
   runAppListDeploys,
   runAppLogs,
@@ -18,6 +23,10 @@ import {
 import {
   renderAppBuild,
   renderAppDeploy,
+  renderAppDomainAdd,
+  renderAppDomainRemove,
+  renderAppDomainRetry,
+  renderAppDomainShow,
   renderAppListEnv,
   renderAppListDeploys,
   renderAppOpen,
@@ -30,6 +39,10 @@ import {
   renderAppUpdateEnv,
   serializeAppBuild,
   serializeAppDeploy,
+  serializeAppDomainAdd,
+  serializeAppDomainRemove,
+  serializeAppDomainRetry,
+  serializeAppDomainShow,
   serializeAppListEnv,
   serializeAppListDeploys,
   serializeAppOpen,
@@ -49,6 +62,10 @@ import { PREVIEW_BUILD_TYPES } from "../../lib/app/preview-build";
 import type {
   AppBuildResult,
   AppDeployResult,
+  AppDomainAddResult,
+  AppDomainRemoveResult,
+  AppDomainRetryResult,
+  AppDomainShowResult,
   AppListEnvResult,
   AppListDeploysResult,
   AppOpenResult,
@@ -73,6 +90,7 @@ export function createAppCommand(runtime: CliRuntime): Command {
   app.addCommand(createListEnvCommand(runtime));
   app.addCommand(createShowCommand(runtime));
   app.addCommand(createOpenCommand(runtime));
+  app.addCommand(createDomainCommand(runtime));
   app.addCommand(createLogsCommand(runtime));
   app.addCommand(createListDeploysCommand(runtime));
   app.addCommand(createShowDeployCommand(runtime));
@@ -333,6 +351,178 @@ function createOpenCommand(runtime: CliRuntime): Command {
         renderHuman: (context, descriptor, result) => renderAppOpen(context, descriptor, result),
         renderJson: (result) => serializeAppOpen(result),
       },
+    );
+  });
+
+  return command;
+}
+
+function createDomainCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("domain"), runtime),
+    "app.domain",
+  );
+
+  addCompactGlobalFlags(command);
+
+  command.addCommand(createDomainAddCommand(runtime));
+  command.addCommand(createDomainShowCommand(runtime));
+  command.addCommand(createDomainRemoveCommand(runtime));
+  command.addCommand(createDomainRetryCommand(runtime));
+  command.addCommand(createDomainWaitCommand(runtime));
+
+  return command;
+}
+
+function addDomainTargetOptions(command: Command): Command {
+  return command
+    .addOption(new Option("--app <name>", "App name"))
+    .addOption(new Option("--project <id-or-name>", "Project id or name"))
+    .addOption(new Option("--branch <name>", "Branch name"));
+}
+
+function createDomainAddCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("add"), runtime),
+    "app.domain.add",
+  );
+
+  command.argument("<hostname>", "Custom domain hostname");
+  addDomainTargetOptions(command);
+  addGlobalFlags(command);
+
+  command.action(async (hostname: string, options) => {
+    const appName = (options as { app?: string }).app;
+    const projectRef = (options as { project?: string }).project;
+    const branchName = (options as { branch?: string }).branch;
+
+    await runCommand<AppDomainAddResult>(
+      runtime,
+      "app.domain.add",
+      options as Record<string, unknown>,
+      (context) => runAppDomainAdd(context, hostname, { appName, projectRef, branchName }),
+      {
+        renderHuman: (context, descriptor, result) => renderAppDomainAdd(context, descriptor, result),
+        renderJson: (result) => serializeAppDomainAdd(result),
+      },
+    );
+  });
+
+  return command;
+}
+
+function createDomainShowCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("show"), runtime),
+    "app.domain.show",
+  );
+
+  command.argument("<hostname>", "Custom domain hostname");
+  addDomainTargetOptions(command);
+  addGlobalFlags(command);
+
+  command.action(async (hostname: string, options) => {
+    const appName = (options as { app?: string }).app;
+    const projectRef = (options as { project?: string }).project;
+    const branchName = (options as { branch?: string }).branch;
+
+    await runCommand<AppDomainShowResult>(
+      runtime,
+      "app.domain.show",
+      options as Record<string, unknown>,
+      (context) => runAppDomainShow(context, hostname, { appName, projectRef, branchName }),
+      {
+        renderHuman: (context, descriptor, result) => renderAppDomainShow(context, descriptor, result),
+        renderJson: (result) => serializeAppDomainShow(result),
+      },
+    );
+  });
+
+  return command;
+}
+
+function createDomainRemoveCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("remove"), runtime),
+    "app.domain.remove",
+  );
+
+  command.argument("<hostname>", "Custom domain hostname");
+  addDomainTargetOptions(command);
+  addGlobalFlags(command);
+
+  command.action(async (hostname: string, options) => {
+    const appName = (options as { app?: string }).app;
+    const projectRef = (options as { project?: string }).project;
+    const branchName = (options as { branch?: string }).branch;
+
+    await runCommand<AppDomainRemoveResult>(
+      runtime,
+      "app.domain.remove",
+      options as Record<string, unknown>,
+      (context) => runAppDomainRemove(context, hostname, { appName, projectRef, branchName }),
+      {
+        renderHuman: (context, descriptor, result) => renderAppDomainRemove(context, descriptor, result),
+        renderJson: (result) => serializeAppDomainRemove(result),
+      },
+    );
+  });
+
+  return command;
+}
+
+function createDomainRetryCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("retry"), runtime),
+    "app.domain.retry",
+  );
+
+  command.argument("<hostname>", "Custom domain hostname");
+  addDomainTargetOptions(command);
+  addGlobalFlags(command);
+
+  command.action(async (hostname: string, options) => {
+    const appName = (options as { app?: string }).app;
+    const projectRef = (options as { project?: string }).project;
+    const branchName = (options as { branch?: string }).branch;
+
+    await runCommand<AppDomainRetryResult>(
+      runtime,
+      "app.domain.retry",
+      options as Record<string, unknown>,
+      (context) => runAppDomainRetry(context, hostname, { appName, projectRef, branchName }),
+      {
+        renderHuman: (context, descriptor, result) => renderAppDomainRetry(context, descriptor, result),
+        renderJson: (result) => serializeAppDomainRetry(result),
+      },
+    );
+  });
+
+  return command;
+}
+
+function createDomainWaitCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("wait"), runtime),
+    "app.domain.wait",
+  );
+
+  command.argument("<hostname>", "Custom domain hostname");
+  addDomainTargetOptions(command);
+  command.addOption(new Option("--timeout <duration>", "Maximum time to wait").default("15m"));
+  addGlobalFlags(command);
+
+  command.action(async (hostname: string, options) => {
+    const appName = (options as { app?: string }).app;
+    const projectRef = (options as { project?: string }).project;
+    const branchName = (options as { branch?: string }).branch;
+    const timeout = (options as { timeout?: string }).timeout;
+
+    await runStreamingCommand(
+      runtime,
+      "app.domain.wait",
+      options as Record<string, unknown>,
+      (context) => runAppDomainWait(context, hostname, { appName, projectRef, branchName, timeout }),
     );
   });
 

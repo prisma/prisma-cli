@@ -3,6 +3,11 @@ import type { CommandContext } from "../shell/runtime";
 import type {
   AppBuildResult,
   AppDeployResult,
+  AppDomainAddResult,
+  AppDomainRemoveResult,
+  AppDomainRetryResult,
+  AppDomainShowResult,
+  AppDomainStatus,
   AppListEnvResult,
   AppListDeploysResult,
   AppOpenResult,
@@ -272,6 +277,106 @@ export function serializeAppOpen(result: AppOpenResult) {
   return result;
 }
 
+export function renderAppDomainAdd(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: AppDomainAddResult,
+): string[] {
+  return renderShow(
+    {
+      title: result.existing
+        ? "Showing the existing custom domain for the selected app."
+        : "Adding a custom domain to the selected app.",
+      descriptor,
+      fields: [
+        ...domainTargetFields(result),
+        { key: "hostname", value: result.domain.hostname },
+        { key: "status", value: result.domain.status, tone: toneForDomainStatus(result.domain.status) },
+        ...domainDnsFields(result.domain),
+      ],
+    },
+    context.ui,
+  );
+}
+
+export function serializeAppDomainAdd(result: AppDomainAddResult) {
+  return result;
+}
+
+export function renderAppDomainShow(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: AppDomainShowResult,
+): string[] {
+  return renderShow(
+    {
+      title: "Showing custom domain status.",
+      descriptor,
+      fields: [
+        ...domainTargetFields(result),
+        { key: "hostname", value: result.domain.hostname },
+        { key: "status", value: result.domain.status, tone: toneForDomainStatus(result.domain.status) },
+        { key: "failure", value: formatDomainFailure(result.domain), tone: result.domain.failureReason ? "error" : "dim" },
+        ...domainFixFields(result.domain),
+        { key: "cert expires", value: formatOptionalUtcDate(result.domain.certExpiresAt), tone: result.domain.certExpiresAt ? "default" : "dim" },
+        { key: "created", value: formatUtcDate(result.domain.createdAt), tone: "dim" },
+        ...domainDnsFields(result.domain),
+      ],
+    },
+    context.ui,
+  );
+}
+
+export function serializeAppDomainShow(result: AppDomainShowResult) {
+  return result;
+}
+
+export function renderAppDomainRemove(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: AppDomainRemoveResult,
+): string[] {
+  return renderShow(
+    {
+      title: "Removing a custom domain from the selected app.",
+      descriptor,
+      fields: [
+        ...domainTargetFields(result),
+        { key: "hostname", value: result.hostname },
+        { key: "removed", value: result.removed ? "yes" : "no", tone: result.removed ? "success" : "dim" },
+      ],
+    },
+    context.ui,
+  );
+}
+
+export function serializeAppDomainRemove(result: AppDomainRemoveResult) {
+  return result;
+}
+
+export function renderAppDomainRetry(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: AppDomainRetryResult,
+): string[] {
+  return renderShow(
+    {
+      title: "Retrying custom domain verification.",
+      descriptor,
+      fields: [
+        ...domainTargetFields(result),
+        { key: "hostname", value: result.domain.hostname },
+        { key: "status", value: result.domain.status, tone: toneForDomainStatus(result.domain.status) },
+      ],
+    },
+    context.ui,
+  );
+}
+
+export function serializeAppDomainRetry(result: AppDomainRetryResult) {
+  return result;
+}
+
 export function renderAppPromote(
   context: CommandContext,
   descriptor: CommandDescriptor,
@@ -378,6 +483,83 @@ function toneForStatus(status: string): "success" | "warning" | "error" | "defau
   }
 
   return "default";
+}
+
+function toneForDomainStatus(status: AppDomainStatus): "success" | "warning" | "error" | "default" {
+  if (status === "active") {
+    return "success";
+  }
+
+  if (status === "failed") {
+    return "error";
+  }
+
+  if (status === "pending_dns" || status === "verifying" || status === "provisioning_tls" || status === "verified_routing_blocked") {
+    return "warning";
+  }
+
+  return "default";
+}
+
+function domainTargetFields(result: Pick<AppDomainAddResult, "workspace" | "project" | "branch" | "app">) {
+  return [
+    { key: "workspace", value: result.workspace.name },
+    { key: "project", value: result.project.name },
+    { key: "branch", value: result.branch.name },
+    { key: "app", value: result.app.name },
+  ];
+}
+
+function domainDnsFields(domain: Pick<AppDomainAddResult["domain"], "hostname" | "dnsRecords">) {
+  const records = domain.dnsRecords.length > 0
+    ? domain.dnsRecords
+    : [{ type: "CNAME", name: domain.hostname, value: "edge.prisma.app", ttl: 300 }];
+
+  return [{
+    key: "dns record",
+    value: records.map((record) => {
+      const ttl = record.ttl ? ` ttl ${record.ttl}` : "";
+      return `${record.type} ${record.name} -> ${record.value}${ttl}`;
+    }).join(", "),
+  }];
+}
+
+function formatDomainFailure(domain: AppDomainShowResult["domain"]): string {
+  if (!domain.failureReason) {
+    return "none";
+  }
+
+  return domain.failureCategory ? `${domain.failureCategory} - ${domain.failureReason}` : domain.failureReason;
+}
+
+function domainFixFields(domain: AppDomainShowResult["domain"]) {
+  if (!domain.failureReason) {
+    return [];
+  }
+
+  const dnsRecord = (domain.dnsRecords[0] ?? { type: "CNAME", name: domain.hostname, value: "edge.prisma.app" });
+  return [{
+    key: "fix",
+    value: `Add ${dnsRecord.type} ${dnsRecord.name} -> ${dnsRecord.value}, then run prisma-cli app domain retry ${domain.hostname}`,
+  }];
+}
+
+function formatOptionalUtcDate(value: string | null): string {
+  return value ? formatUtcDate(value) : "-";
+}
+
+function formatUtcDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const hours = String(date.getUTCHours()).padStart(2, "0");
+  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hours}:${minutes} UTC`;
 }
 
 function formatRecentDeployments(deployments: AppShowResult["recentDeployments"]): string {

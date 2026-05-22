@@ -51,6 +51,7 @@ The CLI should keep the meaning of these nouns stable:
 - `database`
 - `app`
 - `deployment`
+- `domain`
 
 If a noun means one thing in docs and a different thing in commands or output, the model is already drifting.
 
@@ -97,6 +98,14 @@ Build and release an app into a target branch.
 ### `logs`
 
 Resolve a deployment and show or stream its logs.
+
+### `wait`
+
+Block until a remote resource reaches a terminal state.
+
+Example:
+
+- `app domain wait`
 
 ### `promote`
 

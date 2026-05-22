@@ -171,6 +171,46 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: ["prisma-cli app open", "prisma-cli app open --app hello-world"],
   },
   {
+    id: "app.domain",
+    path: ["prisma", "app", "domain"],
+    description: "Manage custom domains for an app",
+    examples: [
+      "prisma-cli app domain add shop.acme.com",
+      "prisma-cli app domain wait shop.acme.com --timeout 15m",
+      "prisma-cli app domain retry shop.acme.com",
+    ],
+  },
+  {
+    id: "app.domain.add",
+    path: ["prisma", "app", "domain", "add"],
+    description: "Register a custom domain on the app's production branch",
+    examples: ["prisma-cli app domain add shop.acme.com"],
+  },
+  {
+    id: "app.domain.show",
+    path: ["prisma", "app", "domain", "show"],
+    description: "Show custom domain status and certificate details",
+    examples: ["prisma-cli app domain show shop.acme.com"],
+  },
+  {
+    id: "app.domain.remove",
+    path: ["prisma", "app", "domain", "remove"],
+    description: "Detach a custom domain from the app",
+    examples: ["prisma-cli app domain remove shop.acme.com --yes"],
+  },
+  {
+    id: "app.domain.retry",
+    path: ["prisma", "app", "domain", "retry"],
+    description: "Retry custom domain DNS verification and TLS provisioning",
+    examples: ["prisma-cli app domain retry shop.acme.com"],
+  },
+  {
+    id: "app.domain.wait",
+    path: ["prisma", "app", "domain", "wait"],
+    description: "Wait until a custom domain is active or failed",
+    examples: ["prisma-cli app domain wait shop.acme.com", "prisma-cli app domain wait shop.acme.com --timeout 0 --json"],
+  },
+  {
     id: "app.logs",
     path: ["prisma", "app", "logs"],
     description: "Stream logs for the app's current deployment",

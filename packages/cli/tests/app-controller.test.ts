@@ -65,6 +65,38 @@ function createProjectClient(projectId = "proj_123") {
   };
 }
 
+function createDomain(overrides: Partial<{
+  id: string;
+  hostname: string;
+  computeServiceId: string;
+  status: "pending_dns" | "verifying" | "verified_routing_blocked" | "provisioning_tls" | "active" | "failed" | "removing";
+  failureReason: string | null;
+  failureCategory: "dns" | "acme" | "storage" | "unknown" | null;
+}> = {}) {
+  return {
+    id: overrides.id ?? "dom_123",
+    type: "custom-domain" as const,
+    url: `https://api.prisma.io/v1/domains/${overrides.id ?? "dom_123"}`,
+    hostname: overrides.hostname ?? "shop.acme.com",
+    computeServiceId: overrides.computeServiceId ?? "app_1",
+    status: overrides.status ?? "pending_dns",
+    foundryStatus: overrides.status ?? "pending_dns",
+    failureReason: overrides.failureReason ?? null,
+    failureCategory: overrides.failureCategory ?? null,
+    certExpiresAt: null,
+    createdAt: "2026-05-22T09:14:00.000Z",
+    updatedAt: "2026-05-22T09:14:00.000Z",
+    dnsRecords: [
+      {
+        type: "CNAME",
+        name: overrides.hostname ?? "shop.acme.com",
+        value: "edge.prisma.app",
+        ttl: 300,
+      },
+    ],
+  };
+}
+
 async function writePackageJson(
   cwd: string,
   packageJson: {
@@ -257,6 +289,213 @@ describe("app controller", () => {
         },
       }),
     );
+  });
+
+  it("add_on_active_domain_does_not_retrigger_verification", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const activeDomain = createDomain({ status: "active" });
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "shop", region: "eu-central-1", liveDeploymentId: "dep_live", liveUrl: "https://shop.prisma.app" },
+    ]);
+    const addDomain = vi.fn().mockResolvedValue({
+      domain: activeDomain,
+      existing: true,
+    });
+    const retryDomain = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          listDomains: vi.fn(),
+          addDomain,
+          retryDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppDomainAdd(context, "Shop.Acme.com.", {
+      projectRef: "proj_123",
+      appName: "shop",
+    });
+
+    expect(addDomain).toHaveBeenCalledWith({
+      appId: "app_1",
+      hostname: "shop.acme.com",
+    });
+    expect(retryDomain).not.toHaveBeenCalled();
+    expect(result.result).toMatchObject({
+      workspace: {
+        id: "ws_123",
+        name: "Acme Inc",
+      },
+      project: {
+        id: "proj_123",
+        name: "Acme Dashboard",
+      },
+      branch: {
+        name: "production",
+        kind: "production",
+      },
+      app: {
+        id: "app_1",
+        name: "shop",
+      },
+      domain: {
+        hostname: "shop.acme.com",
+        status: "active",
+      },
+      existing: true,
+    });
+  });
+
+  it("domain add rejects preview branches", async () => {
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDomainAdd(context, "shop.acme.com", {
+      projectRef: "proj_123",
+      appName: "shop",
+      branchName: "feat/login",
+    })).rejects.toMatchObject({
+      code: "BRANCH_NOT_DEPLOYABLE",
+      domain: "branch",
+      exitCode: 2,
+    });
+  });
+
+  it("domain retry maps API 409 to DOMAIN_RETRY_NOT_ELIGIBLE", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "shop", region: "eu-central-1", liveDeploymentId: "dep_live", liveUrl: "https://shop.prisma.app" },
+    ]);
+    const listDomains = vi.fn().mockResolvedValue([
+      createDomain({ status: "provisioning_tls" }),
+    ]);
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      const retryDomain = vi.fn().mockRejectedValue(new actual.PreviewDomainApiError({
+        summary: "Failed to retry custom domain",
+        status: 409,
+        message: "Domain is not eligible for retry.",
+      }));
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          listDomains,
+          retryDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainRetry } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDomainRetry(context, "shop.acme.com", {
+      projectRef: "proj_123",
+      appName: "shop",
+    })).rejects.toMatchObject({
+      code: "DOMAIN_RETRY_NOT_ELIGIBLE",
+      domain: "app",
+    });
+  });
+
+  it("domain wait supports poll-once timeout mode", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "shop", region: "eu-central-1", liveDeploymentId: "dep_live", liveUrl: "https://shop.prisma.app" },
+    ]);
+    const listDomains = vi.fn().mockResolvedValue([
+      createDomain({ status: "verifying" }),
+    ]);
+    const showDomain = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          listDomains,
+          showDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainWait } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context, stdout } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      flags: {
+        json: true,
+      },
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDomainWait(context, "shop.acme.com", {
+      projectRef: "proj_123",
+      appName: "shop",
+      timeout: "0",
+    })).rejects.toMatchObject({
+      code: "DOMAIN_VERIFICATION_TIMEOUT",
+      domain: "app",
+      exitCode: 2,
+    });
+    expect(showDomain).not.toHaveBeenCalled();
+    expect(stdout.buffer).toContain("\"command\":\"app.domain.wait\"");
+    expect(stdout.buffer).toContain("\"status\":\"verifying\"");
   });
 
   it("infers project, branch, app, framework, and runtime for a first deploy", async () => {
