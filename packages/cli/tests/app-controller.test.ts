@@ -1,3 +1,4 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -64,6 +65,37 @@ function createProjectClient(projectId = "proj_123") {
   };
 }
 
+async function writePackageJson(
+  cwd: string,
+  packageJson: {
+    name?: string;
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  },
+): Promise<void> {
+  await writeFile(path.join(cwd, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`);
+}
+
+async function writeGitBranch(cwd: string, branchName: string): Promise<void> {
+  await mkdir(path.join(cwd, ".git"), { recursive: true });
+  await writeFile(path.join(cwd, ".git", "HEAD"), `ref: refs/heads/${branchName}\n`);
+}
+
+async function readLocalPin(cwd: string): Promise<unknown> {
+  return JSON.parse(await readFile(path.join(cwd, ".prisma/local.json"), "utf8"));
+}
+
+async function writeLocalPin(
+  cwd: string,
+  pin: unknown | string,
+): Promise<void> {
+  await mkdir(path.join(cwd, ".prisma"), { recursive: true });
+  await writeFile(
+    path.join(cwd, ".prisma/local.json"),
+    typeof pin === "string" ? pin : `${JSON.stringify(pin, null, 2)}\n`,
+  );
+}
+
 describe("app controller", () => {
   it("deploy selects the correct existing app when --app is provided", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
@@ -111,7 +143,10 @@ describe("app controller", () => {
       },
     });
 
-    const result = await runAppDeploy(context, "hello-world");
+    const result = await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      framework: "hono",
+    });
 
     expect(deployApp).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -129,11 +164,11 @@ describe("app controller", () => {
         name: "Acme Dashboard",
       },
       branch: {
-        name: "preview",
-        kind: "preview",
+        name: "main",
+        kind: "production",
       },
       resolution: {
-        projectSource: "remembered-local",
+        projectSource: "explicit",
       },
       app: {
         id: "app_1",
@@ -203,6 +238,7 @@ describe("app controller", () => {
     });
 
     await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
       entrypoint: "server.ts",
       buildType: "bun",
       httpPort: "8080",
@@ -221,6 +257,455 @@ describe("app controller", () => {
         },
       }),
     );
+  });
+
+  it("infers project, branch, app, framework, and runtime for a first deploy", async () => {
+    const client = {
+      token: "token",
+      GET: vi.fn().mockImplementation((pathName: string) => {
+        if (pathName === "/v1/projects") {
+          return {
+            data: {
+              data: [
+                {
+                  id: "proj_my_app",
+                  name: "my-app",
+                  slug: "my-app",
+                  workspace: {
+                    id: "ws_123",
+                    name: "Acme Inc",
+                  },
+                },
+              ],
+            },
+          };
+        }
+
+        throw new Error(`Unexpected path ${pathName}`);
+      }),
+    };
+    const requireComputeAuth = vi.fn().mockResolvedValue(client);
+    const listApps = vi.fn().mockResolvedValue([]);
+    const deployApp = vi.fn().mockImplementation(async (options: { appName?: string }) => ({
+      projectId: "proj_my_app",
+      app: {
+        id: "app_new",
+        name: options.appName ?? "my-app",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://my-app.prisma.app",
+      },
+    }));
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        createProject: vi.fn(),
+        listApps,
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writePackageJson(cwd, {
+      name: "my-app",
+      dependencies: {
+        next: "15.0.0",
+      },
+    });
+    await writeGitBranch(cwd, "feat-j1");
+    const stateDir = path.join(cwd, ".state");
+    const { context, stderr } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppDeploy(context, undefined);
+
+    expect(listApps).toHaveBeenCalledWith("proj_my_app", { branchName: "feat-j1" });
+    expect(deployApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "proj_my_app",
+        branchName: "feat-j1",
+        appName: "my-app",
+        buildType: "nextjs",
+        portMapping: { http: 3000 },
+      }),
+    );
+    expect(result.result).toMatchObject({
+      project: {
+        id: "proj_my_app",
+        name: "my-app",
+      },
+      branch: {
+        name: "feat-j1",
+        kind: "preview",
+      },
+      resolution: {
+        projectSource: "package-name",
+        targetName: "my-app",
+        targetNameSource: "package-name",
+      },
+      app: {
+        id: "app_new",
+        name: "my-app",
+      },
+      localPin: {
+        path: ".prisma/local.json",
+        written: true,
+      },
+    });
+    expect(stderr.buffer).toContain(`Set up ./${path.basename(cwd)}`);
+    expect(stderr.buffer).toContain("Project    my-app");
+    expect(stderr.buffer).toContain("Branch     feat-j1");
+    expect(stderr.buffer).toContain("Framework  Next.js");
+    expect(stderr.buffer).toContain("Runtime    HTTP 3000");
+    await expect(readLocalPin(cwd)).resolves.toEqual({
+      workspaceId: "ws_123",
+      projectId: "proj_my_app",
+    });
+    await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(".prisma/\n");
+  });
+
+  it("lets --framework win over legacy --build-type for deploy", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+    ]);
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+        liveUrl: "https://hello-world.prisma.app",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      framework: "hono",
+      buildType: "nextjs",
+    });
+
+    expect(deployApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        buildType: "bun",
+        portMapping: { http: 3000 },
+      }),
+    );
+  });
+
+  it("lets PRISMA_PROJECT_ID skip the local pin and resolve the project", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([]);
+    const deployApp = vi.fn().mockImplementation(async (options: { appName?: string }) => ({
+      projectId: "proj_123",
+      app: {
+        id: "app_env",
+        name: options.appName ?? "env-app",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+        liveUrl: "https://env-app.prisma.app",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://env-app.prisma.app",
+      },
+    }));
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd, {
+      workspaceId: "ws_123",
+      projectId: "proj_stale",
+    });
+    const stateDir = path.join(cwd, ".state");
+    const { context, stderr } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_PROJECT_ID: "proj_123",
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppDeploy(context, undefined, {
+      framework: "hono",
+    });
+
+    expect(deployApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "proj_123",
+        appName: path.basename(cwd),
+      }),
+    );
+    expect(result.result.project.id).toBe("proj_123");
+    expect(result.result.resolution.projectSource).toBe("env");
+    expect(result.result.localPin).toBeUndefined();
+    await expect(readLocalPin(cwd)).resolves.toEqual({
+      workspaceId: "ws_123",
+      projectId: "proj_stale",
+    });
+    expect(stderr.buffer).toContain("from PRISMA_PROJECT_ID");
+  });
+
+  it("returns FRAMEWORK_NOT_DETECTED before deploy when framework inference fails", async () => {
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDeploy(context, "hello-world")).rejects.toMatchObject({
+      code: "FRAMEWORK_NOT_DETECTED",
+      domain: "app",
+      exitCode: 2,
+    });
+  });
+
+  it("returns LOCAL_STATE_STALE when the pinned project is gone", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn();
+    const deployApp = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd, {
+      workspaceId: "ws_123",
+      projectId: "proj_missing",
+    });
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDeploy(context, undefined, {
+      framework: "hono",
+    })).rejects.toMatchObject({
+      code: "LOCAL_STATE_STALE",
+      domain: "project",
+      meta: {
+        pinPath: ".prisma/local.json",
+      },
+      fix: "Delete .prisma/local.json and re-run to re-bootstrap.",
+    });
+    expect(listApps).not.toHaveBeenCalled();
+    expect(deployApp).not.toHaveBeenCalled();
+  });
+
+  it("returns LOCAL_STATE_STALE when the local pin has unsupported keys", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn();
+    const deployApp = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd, {
+      workspaceId: "ws_123",
+      projectId: "proj_123",
+      unsupportedKey: "not-supported",
+    });
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDeploy(context, undefined, {
+      framework: "hono",
+    })).rejects.toMatchObject({
+      code: "LOCAL_STATE_STALE",
+      meta: {
+        pinPath: ".prisma/local.json",
+      },
+    });
+    expect(listApps).not.toHaveBeenCalled();
+    expect(deployApp).not.toHaveBeenCalled();
+  });
+
+  it("returns LOCAL_STATE_STALE when the local pin cannot be parsed", async () => {
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd, "{ nope");
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDeploy(context, undefined, {
+      framework: "hono",
+    })).rejects.toMatchObject({
+      code: "LOCAL_STATE_STALE",
+      meta: {
+        pinPath: ".prisma/local.json",
+      },
+    });
+  });
+
+  it("returns APP_AMBIGUOUS for duplicate app names in non-interactive mode", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+      { id: "app_2", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+    ]);
+    const deployApp = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      framework: "hono",
+    })).rejects.toMatchObject({
+      code: "APP_AMBIGUOUS",
+      domain: "app",
+      exitCode: 2,
+      meta: {
+        candidates: [
+          { id: "app_1", name: "hello-world" },
+          { id: "app_2", name: "hello-world" },
+        ],
+      },
+    });
+    expect(deployApp).not.toHaveBeenCalled();
   });
 
   it("rejects --entry together with --build-type nextjs for deploy", async () => {
@@ -273,11 +758,11 @@ describe("app controller", () => {
   it("interactive first deploy can create a new app when none is selected", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
-    const deployApp = vi.fn().mockResolvedValue({
+    const deployApp = vi.fn().mockImplementation(async (options: { appName?: string }) => ({
       projectId: "proj_123",
       app: {
         id: "app_new",
-        name: "hello-world",
+        name: options.appName ?? "hello-world",
         region: "eu-west-3",
         liveDeploymentId: "dep_123",
       },
@@ -286,7 +771,7 @@ describe("app controller", () => {
         status: "running",
         url: "https://hello-world.prisma.app",
       },
-    });
+    }));
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
@@ -314,25 +799,42 @@ describe("app controller", () => {
       },
     });
 
-    const result = await runAppDeploy(context, undefined);
+    const result = await runAppDeploy(context, undefined, {
+      projectRef: "proj_123",
+      framework: "hono",
+    });
 
     expect(deployApp).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: "proj_123",
         appId: undefined,
-        appName: undefined,
-        interaction: expect.any(Object),
+        appName: path.basename(cwd),
+        interaction: undefined,
       }),
     );
     expect(result.result.app).toEqual({
       id: "app_new",
-      name: "hello-world",
+      name: path.basename(cwd),
     });
   });
 
-  it("returns USAGE_ERROR for deploy without app selection in non-interactive mode", async () => {
+  it("auto-creates the inferred app without prompting in non-interactive mode", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
+    const deployApp = vi.fn().mockImplementation(async (options: { appName?: string }) => ({
+      projectId: "proj_123",
+      app: {
+        id: "app_new",
+        name: options.appName ?? "created-app",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://created-app.prisma.app",
+      },
+    }));
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
@@ -340,7 +842,7 @@ describe("app controller", () => {
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
         listApps,
-        deployApp: vi.fn(),
+        deployApp,
         listDeployments: vi.fn(),
         showDeployment: vi.fn(),
       })),
@@ -360,11 +862,17 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, undefined)).rejects.toMatchObject({
-      code: "USAGE_ERROR",
-      domain: "app",
-      summary: "App deploy requires an app selection in non-interactive mode",
+    await runAppDeploy(context, undefined, {
+      projectRef: "proj_123",
+      framework: "hono",
     });
+
+    expect(deployApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appName: path.basename(cwd),
+        interaction: undefined,
+      }),
+    );
   });
 
   it("creates a named new app with the default Frankfurt region in non-interactive mode", async () => {
@@ -411,7 +919,10 @@ describe("app controller", () => {
       },
     });
 
-    await runAppDeploy(context, "hello-world");
+    await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      framework: "hono",
+    });
 
     expect(deployApp).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -426,10 +937,10 @@ describe("app controller", () => {
 
   it("creates a project before first deploy when none is resolved", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
-    const createProject = vi.fn().mockResolvedValue({
+    const createProject = vi.fn(async (options: { name: string }) => ({
       id: "proj_new",
-      name: "next-smoke",
-    });
+      name: options.name,
+    }));
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi.fn().mockResolvedValue({
       projectId: "proj_new",
@@ -474,7 +985,9 @@ describe("app controller", () => {
       },
     });
 
-    const result = await runAppDeploy(context, "hello-world");
+    const result = await runAppDeploy(context, "hello-world", {
+      framework: "hono",
+    });
 
     expect(createProject).toHaveBeenCalledWith({
       name: path.basename(cwd),
@@ -491,6 +1004,11 @@ describe("app controller", () => {
       name: "hello-world",
     });
     expect(result.result.project.id).toBe("proj_new");
+    await expect(readLocalPin(cwd)).resolves.toEqual({
+      workspaceId: "ws_123",
+      projectId: "proj_new",
+    });
+    await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(".prisma/\n");
   });
 
   it("reuses the created project on second deploy instead of creating another one", async () => {
@@ -554,7 +1072,7 @@ describe("app controller", () => {
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({
+    const { context, stderr } = await createTestCommandContext({
       cwd,
       stateDir,
       isTTY: false,
@@ -565,7 +1083,18 @@ describe("app controller", () => {
       },
     });
 
-    await runAppDeploy(context, "hello-world");
+    const firstResult = await runAppDeploy(context, "hello-world", {
+      framework: "hono",
+    });
+    expect(firstResult.result.localPin).toEqual({
+      path: ".prisma/local.json",
+      written: true,
+    });
+    await expect(readLocalPin(cwd)).resolves.toEqual({
+      workspaceId: "ws_123",
+      projectId: "proj_new",
+    });
+    stderr.buffer = "";
     client.GET.mockImplementation((pathName: string) => {
       if (pathName === "/v1/projects") {
         return {
@@ -573,8 +1102,8 @@ describe("app controller", () => {
             data: [
               {
                 id: "proj_new",
-                name: "next-smoke",
-                slug: "next-smoke",
+                name: path.basename(cwd),
+                slug: path.basename(cwd),
                 workspace: {
                   id: "ws_123",
                   name: "Acme Inc",
@@ -587,9 +1116,15 @@ describe("app controller", () => {
 
       throw new Error(`Unexpected path ${pathName}`);
     });
-    await runAppDeploy(context, "hello-world");
+    const secondResult = await runAppDeploy(context, "hello-world", {
+      framework: "hono",
+    });
 
     expect(createProject).toHaveBeenCalledTimes(1);
+    expect(secondResult.result.localPin).toBeUndefined();
+    expect(stderr.buffer).toContain(`Deploying ./${path.basename(cwd)}`);
+    expect(stderr.buffer).not.toContain("Set up");
+    await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(".prisma/\n");
     expect(deployApp).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
@@ -648,7 +1183,9 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, "hello-world")).resolves.toMatchObject({
+    await expect(runAppDeploy(context, "hello-world", {
+      framework: "hono",
+    })).resolves.toMatchObject({
       result: {
         project: {
           id: "proj_new",
@@ -702,7 +1239,9 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, "hello-world")).rejects.toMatchObject({
+    await expect(runAppDeploy(context, "hello-world", {
+      framework: "hono",
+    })).rejects.toMatchObject({
       code: "AUTH_FORBIDDEN",
       domain: "auth",
       summary: "Could not create a new project for this deploy",
@@ -748,7 +1287,9 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, "hello-world")).rejects.toMatchObject({
+    await expect(runAppDeploy(context, "hello-world", {
+      framework: "hono",
+    })).rejects.toMatchObject({
       code: "DEPLOY_FAILED",
       domain: "app",
       summary: "Could not create a new project for this deploy",
@@ -758,7 +1299,7 @@ describe("app controller", () => {
     });
   });
 
-  it("reuses the saved app selection on a second deploy", async () => {
+  it("does not use saved app selection as the deploy target source", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_live" },
@@ -808,11 +1349,15 @@ describe("app controller", () => {
       name: "hello-world",
     });
 
-    await runAppDeploy(context, undefined);
+    await runAppDeploy(context, undefined, {
+      projectRef: "proj_123",
+      framework: "hono",
+    });
 
     expect(deployApp).toHaveBeenCalledWith(
       expect.objectContaining({
-        appId: "app_1",
+        appId: undefined,
+        appName: path.basename(cwd),
       }),
     );
   });
@@ -887,7 +1432,6 @@ describe("app controller", () => {
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
         listApps,
-        deployApp: vi.fn(),
         listDeployments: vi.fn(),
         showDeployment: vi.fn(),
       })),
@@ -2091,6 +2635,20 @@ describe("app controller", () => {
   it("does not reuse the wrong saved app when the resolved project changes", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient("proj_456"));
     const listApps = vi.fn().mockResolvedValue([]);
+    const deployApp = vi.fn().mockImplementation(async (options: { appName?: string }) => ({
+      projectId: "proj_456",
+      app: {
+        id: "app_new",
+        name: options.appName ?? "created-app",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://created-app.prisma.app",
+      },
+    }));
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
@@ -2098,7 +2656,7 @@ describe("app controller", () => {
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
         listApps,
-        deployApp: vi.fn(),
+        deployApp,
         listDeployments: vi.fn(),
         showDeployment: vi.fn(),
       })),
@@ -2125,11 +2683,17 @@ describe("app controller", () => {
       name: "hello-world",
     });
 
-    await expect(runAppDeploy(context, undefined)).rejects.toMatchObject({
-      code: "USAGE_ERROR",
-      domain: "app",
-      summary: "App deploy requires an app selection in non-interactive mode",
+    await runAppDeploy(context, undefined, {
+      projectRef: "proj_456",
+      framework: "hono",
     });
+
+    expect(deployApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "proj_456",
+        appName: path.basename(cwd),
+      }),
+    );
   });
 
   it("logs streams the live deployment for the selected app", async () => {

@@ -120,12 +120,18 @@ function formatProjectSource(source: ProjectShowResult["resolution"]["projectSou
   switch (source) {
     case "explicit":
       return "explicit";
+    case "env":
+      return "environment";
+    case "local-pin":
+      return "local pin";
     case "platform-mapping":
       return "platform mapping";
     case "remembered-local":
       return "remembered local context";
     case "package-name":
       return "package name";
+    case "directory-name":
+      return "directory name";
     case "created":
       return "created";
     case "prompt":

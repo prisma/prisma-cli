@@ -18,6 +18,13 @@ export interface ResolvedProjectTarget {
   resolution: ProjectResolution;
 }
 
+export type InferredTargetNameSource = "package-name" | "directory-name";
+
+export interface InferredTargetName {
+  name: string;
+  source: InferredTargetNameSource;
+}
+
 export interface ResolveProjectOptions {
   context: CommandContext;
   workspace: AuthWorkspace;
@@ -31,12 +38,17 @@ export interface ResolveProjectOptions {
 
 export async function resolveProjectTarget(options: ResolveProjectOptions): Promise<ResolvedProjectTarget> {
   const projects = await options.listProjects();
+  const inferredName = await inferTargetName(options.context.runtime.cwd);
 
   if (options.explicitProject) {
     return rememberIfRequested(
       options,
       resolveExplicitProject(options.explicitProject, projects, options.workspace),
       "explicit",
+      {
+        targetName: options.explicitProject,
+        targetNameSource: "explicit",
+      },
     );
   }
 
@@ -45,40 +57,48 @@ export async function resolveProjectTarget(options: ResolveProjectOptions): Prom
     return rememberIfRequested(options, platformMapping, "platform-mapping");
   }
 
-  const remembered = await options.context.stateStore.readRememberedProject(options.workspace.id);
   let staleRemembered = false;
-  if (remembered) {
-    const matched = projects.find((project) => project.id === remembered.id);
-    if (matched) {
-      return rememberIfRequested(options, matched, "remembered-local");
+
+  if (!options.allowCreate) {
+    const rememberedResult = await resolveRememberedProject(options, projects);
+    if (rememberedResult.target) {
+      return rememberedResult.target;
     }
-    staleRemembered = true;
+    staleRemembered = rememberedResult.stale;
   }
 
-  const packageName = await readPackageName(options.context.runtime.cwd);
+  const packageName = inferredName.source === "package-name" ? inferredName.name : null;
   if (packageName) {
     const matches = projects.filter((project) => projectMatchesPackageName(project, packageName));
     if (matches.length === 1) {
-      return rememberIfRequested(options, matches[0], "package-name");
+      return rememberIfRequested(options, matches[0], "package-name", {
+        targetName: packageName,
+        targetNameSource: "package-name",
+      });
     }
     if (matches.length > 1) {
-      return resolveAmbiguousProject(options, matches, "package-name");
+      return resolveAmbiguousProject(options, matches, packageName, "package-name");
     }
   }
 
   if (options.allowCreate && options.createProject) {
-    const inferredName = packageName ?? path.basename(options.context.runtime.cwd);
-    if (inferredName) {
-      const existing = projects.filter((project) => projectMatchesPackageName(project, inferredName));
+    if (inferredName.name) {
+      const existing = projects.filter((project) => projectMatchesPackageName(project, inferredName.name));
       if (existing.length === 1) {
-        return rememberIfRequested(options, existing[0], "package-name");
+        return rememberIfRequested(options, existing[0], inferredName.source, {
+          targetName: inferredName.name,
+          targetNameSource: inferredName.source,
+        });
       }
       if (existing.length > 1) {
-        return resolveAmbiguousProject(options, existing, "package-name");
+        return resolveAmbiguousProject(options, existing, inferredName.name, inferredName.source);
       }
 
-      const created = await options.createProject(inferredName);
-      return rememberIfRequested(options, created, "created");
+      const created = await options.createProject(inferredName.name);
+      return rememberIfRequested(options, created, "created", {
+        targetName: inferredName.name,
+        targetNameSource: inferredName.source,
+      });
     }
   }
 
@@ -98,6 +118,35 @@ export async function resolveProjectTarget(options: ResolveProjectOptions): Prom
   }
 
   throw projectUnresolvedError();
+}
+
+async function resolveRememberedProject(
+  options: ResolveProjectOptions,
+  projects: ProjectCandidate[],
+): Promise<{ target: ResolvedProjectTarget | null; stale: boolean }> {
+  const remembered = await options.context.stateStore.readRememberedProject(options.workspace.id);
+  if (!remembered) {
+    return {
+      target: null,
+      stale: false,
+    };
+  }
+
+  const matched = projects.find((project) => project.id === remembered.id);
+  if (!matched) {
+    return {
+      target: null,
+      stale: true,
+    };
+  }
+
+  return {
+    target: await rememberIfRequested(options, matched, "remembered-local", {
+      targetName: remembered.name,
+      targetNameSource: "remembered-local",
+    }),
+    stale: false,
+  };
 }
 
 export function projectNotFoundError(projectRef: string, workspace: AuthWorkspace): CliError {
@@ -181,6 +230,25 @@ export async function readPackageName(cwd: string): Promise<string | null> {
   }
 }
 
+export async function inferTargetName(cwd: string): Promise<InferredTargetName> {
+  const packageName = await readPackageName(cwd);
+  if (packageName && isValidInferredTargetName(packageName)) {
+    return {
+      name: packageName,
+      source: "package-name",
+    };
+  }
+
+  return {
+    name: path.basename(cwd),
+    source: "directory-name",
+  };
+}
+
+function isValidInferredTargetName(value: string): boolean {
+  return /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(value);
+}
+
 export function sortProjects<T extends Pick<ProjectCandidate, "id" | "name">>(projects: T[]): T[] {
   return projects
     .slice()
@@ -206,6 +274,7 @@ function resolveAmbiguousProject(
   options: ResolveProjectOptions,
   matches: ProjectCandidate[],
   projectRef: string,
+  targetNameSource: InferredTargetNameSource,
 ): Promise<ResolvedProjectTarget> {
   if (options.prompt && canPrompt(options.context)) {
     return options.prompt
@@ -216,7 +285,10 @@ function resolveAmbiguousProject(
           value: project,
         })),
       })
-      .then((selected) => rememberIfRequested(options, selected, "prompt"));
+      .then((selected) => rememberIfRequested(options, selected, "prompt", {
+        targetName: projectRef,
+        targetNameSource,
+      }));
   }
 
   throw projectAmbiguousError(projectRef, matches);
@@ -234,6 +306,7 @@ async function rememberIfRequested(
   options: ResolveProjectOptions,
   project: ProjectCandidate,
   projectSource: ProjectSource,
+  resolutionDetails?: Omit<ProjectResolution, "projectSource">,
 ): Promise<ResolvedProjectTarget> {
   if (options.remember) {
     await options.context.stateStore.setRememberedProject({
@@ -248,6 +321,7 @@ async function rememberIfRequested(
     project: toProjectSummary(project),
     resolution: {
       projectSource,
+      ...resolutionDetails,
     },
   };
 }

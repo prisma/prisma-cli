@@ -108,7 +108,7 @@ describe("app commands", () => {
     expect(appHelp.exitCode).toBe(0);
     expect(appHelp.stderr).toContain("Manage apps and deployments for a project");
     expect(appHelp.stderr).toContain("$ prisma-cli app deploy");
-    expect(appHelp.stderr).toContain("$ prisma-cli app deploy --app hello-world --build-type nextjs --http-port 3000");
+    expect(appHelp.stderr).toContain("$ prisma-cli app deploy --app my-app --framework nextjs --http-port 3000");
 
     expect(buildHelp.exitCode).toBe(0);
     expect(buildHelp.stderr).toContain("Build the app locally into a deployable artifact");
@@ -121,9 +121,10 @@ describe("app commands", () => {
     expect(deployHelp.exitCode).toBe(0);
     expect(deployHelp.stderr).toContain("Creates a new deployment for the app");
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy");
-    expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --app hello-world --build-type nextjs --http-port 3000");
+    expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --app my-app --framework nextjs --http-port 3000");
     expect(deployHelp.stderr).toContain("--entry <path>");
-    expect(deployHelp.stderr).toContain("--build-type <type>");
+    expect(deployHelp.stderr).toContain("--framework <name>");
+    expect(deployHelp.stderr).not.toContain("--build-type <type>");
     expect(deployHelp.stderr).toContain("--http-port <port>");
     expect(deployHelp.stderr).toContain("--env <name=value>");
 

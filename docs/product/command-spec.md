@@ -53,7 +53,7 @@ Out of scope for the current preview:
 - Long flags use kebab-case.
 - Boolean negation uses `--no-<flag>`.
 - `--json` and non-interactive mode must not block on prompts.
-- Public Beta does not read or write `prisma.config.ts`, `.prisma/settings.json`, or any repo config file for Project -> Branch -> App resolution.
+- Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for Project -> Branch -> App resolution. `.prisma/local.json` is a gitignored local pin/cache, not a declarative repo config file.
 - Remote commands do not silently change local context.
 
 ## Authentication
@@ -74,32 +74,47 @@ When `PRISMA_SERVICE_TOKEN` is set and non-empty, the token is fully sufficient 
 Commands resolve project context in this order:
 
 1. explicit `--project <id-or-name>` when present
-2. durable platform mapping when available
-3. remembered local project context, revalidated against platform data
-4. `package.json` name matched exactly against accessible project id, name, or slug
-5. unambiguous project creation for commands that are allowed to create projects
-6. prompt in interactive mode, or structured failure in `--json` / `--no-interactive` mode
+2. `PRISMA_PROJECT_ID` when set for headless deploys
+3. `.prisma/local.json` project pin when present, revalidated against platform data
+4. durable platform mapping when available
+5. remembered local project context, revalidated against platform data
+6. `package.json` name matched exactly against accessible project id, name, or slug
+7. unambiguous project creation for commands that are allowed to create projects
+8. prompt in interactive mode, or structured failure in `--json` / `--no-interactive` mode
 
 `--project` is an escape hatch for ambiguous or unavailable automatic
 resolution, not a setup step. Only `app deploy` may create a missing project,
 and only when the inferred name is unambiguous.
+When `PRISMA_PROJECT_ID` is set, `app deploy` skips `.prisma/local.json` reads
+and does not write a new pin.
 
 ### App Selection
 
 Preview app commands that need an app resolve it in this order:
 
 1. `--app <name>`
-2. locally selected app for the resolved project
-3. interactive select-or-create flow in TTY mode
-4. `USAGE_ERROR` in non-interactive or `--json` mode when unresolved
+2. `PRISMA_APP_ID` when set for headless deploys
+3. locally selected app for non-deploy commands when it still exists in the resolved branch
+4. inferred app name from `package.json#name`
+5. current directory name
+6. create the inferred app in the resolved branch when no existing app matches
+7. interactive picker only when multiple matching apps make the target ambiguous
+8. `APP_AMBIGUOUS` in non-interactive or `--json` mode when unresolved
+
+When `PRISMA_APP_ID` is set, `app deploy` skips `.prisma/local.json` reads and
+does not write a new pin.
+
+`.prisma/local.json` pins the directory to a Workspace and Project only. It does
+not pin an App ID. App services are branch-scoped; a service ID from `main`
+must not be reused automatically when the user deploys from `feat/billing`.
 
 ### Branch
 
 Commands that use branch context resolve it in this order:
 
-1. explicit branch argument when the command accepts one
-2. active branch context in local CLI state
-3. `preview`
+1. explicit branch argument or `--branch <name>` when the command accepts one
+2. active Git branch for local deploy workflows
+3. `main`
 
 `local` is local CLI context only. It is never a branch or deploy target.
 Production is a protected durable branch and must require explicit user intent.
@@ -474,7 +489,7 @@ prisma-cli app run --build-type nextjs
 prisma-cli app run --build-type bun --entry server.ts --port 3000
 ```
 
-## `prisma-cli app deploy --app <name> --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|tanstack-start> --http-port <port> --env <name=value>`
+## `prisma-cli app deploy --project <id-or-name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start> --entry <path> --http-port <port> --env <name=value>`
 
 Purpose:
 
@@ -483,10 +498,15 @@ Purpose:
 Behavior:
 
 - requires auth
-- resolves or creates project context
-- resolves or creates app context when required
+- resolves or creates project context from `--project`, `PRISMA_PROJECT_ID`, `.prisma/local.json`, `package.json#name`, or current directory name
+- resolves or creates branch context from `--branch`, local Git branch, or `main`
+- resolves or creates app context inside the resolved branch from `--app`, `PRISMA_APP_ID`, `package.json#name`, or current directory name
+- does not prompt when there is no real choice; zero matching apps creates the inferred app
+- detects supported frameworks and shows the resolved framework/runtime settings before deploy
+- asks `Customize settings? (y/N)` only in interactive first-deploy flows, and only asks for Framework and HTTP port when the user opts in
 - accepts repeated `--env NAME=VALUE` flags
-- uses the same supported build strategies as `app build`
+- maps user-facing framework names to deploy build strategies
+- accepts `--build-type <auto|bun|nextjs|nuxt|astro|tanstack-start>` as a legacy passthrough, but `--framework` wins when both are passed
 - does not print secret values
 - returns app, deployment id, URL, and next steps
 
@@ -494,11 +514,9 @@ Examples:
 
 ```bash
 prisma-cli app deploy
-prisma-cli app deploy --app hello-world --env DATABASE_URL=postgresql://example
-prisma-cli app deploy --app hello-world --build-type nextjs --http-port 3000
-prisma-cli app deploy --app hello-world --build-type nuxt
-prisma-cli app deploy --app hello-world --build-type astro
-prisma-cli app deploy --app hello-world --build-type tanstack-start
+prisma-cli app deploy --app my-app --env DATABASE_URL=postgresql://example
+prisma-cli app deploy --framework nextjs --http-port 3000
+prisma-cli app deploy --branch feat-login --framework hono --http-port 3000
 ```
 
 ## `prisma-cli project env`

@@ -29,6 +29,10 @@ export interface AppDeployResult {
     status: string;
     url: string | null;
   };
+  localPin?: {
+    path: string;
+    written: boolean;
+  };
 }
 
 export interface AppListEnvResult {

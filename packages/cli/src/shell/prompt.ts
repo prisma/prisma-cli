@@ -1,4 +1,4 @@
-import { isCancel, select, text } from "@clack/prompts";
+import { confirm, isCancel, select, text } from "@clack/prompts";
 import type { Readable, Writable } from "node:stream";
 
 import { usageError } from "./errors";
@@ -57,6 +57,30 @@ export async function textPrompt(options: {
       "Interactive prompt canceled",
       "The command was canceled before a value was entered.",
       "Re-run the command and provide a value to continue.",
+    );
+  }
+
+  return response;
+}
+
+export async function confirmPrompt(options: {
+  input: Readable;
+  output: Writable;
+  message: string;
+  initialValue?: boolean;
+}): Promise<boolean> {
+  const response = await confirm({
+    input: options.input,
+    output: options.output,
+    message: options.message,
+    initialValue: options.initialValue ?? false,
+  });
+
+  if (isCancel(response)) {
+    throw usageError(
+      "Interactive prompt canceled",
+      "The command was canceled before a confirmation was made.",
+      "Re-run the command and choose an option to continue.",
     );
   }
 

@@ -12,6 +12,7 @@ export interface PreviewAppRecord {
   id: string;
   name: string;
   region: string | null;
+  branchId?: string | null;
   liveDeploymentId: string | null;
   liveUrl: string | null;
 }
@@ -58,7 +59,7 @@ export interface PreviewRemovedAppRecord {
 
 export interface PreviewAppProvider {
   createProject(options: { name: string }): Promise<PreviewProjectRecord>;
-  listApps(projectId: string): Promise<PreviewAppRecord[]>;
+  listApps(projectId: string, options?: { branchName?: string }): Promise<PreviewAppRecord[]>;
   removeApp(appId: string): Promise<PreviewRemovedAppRecord>;
   promoteDeployment(options: {
     appId: string;
@@ -68,6 +69,7 @@ export interface PreviewAppProvider {
   deployApp(options: {
     cwd: string;
     projectId: string;
+    branchName?: string;
     appId?: string;
     appName?: string;
     region?: string;
@@ -122,34 +124,11 @@ export function createPreviewAppProvider(
       };
     },
 
-    async listApps(projectId) {
-      const servicesResult = await sdk.listServices({ projectId });
-      if (servicesResult.isErr()) {
-        throw new Error(servicesResult.error.message);
-      }
-
-      const serviceDetails = await Promise.all(
-        servicesResult.value.map(async (service) => {
-          const detailResult = await sdk.showService({ serviceId: service.id });
-          return detailResult.isOk()
-            ? detailResult.value
-            : {
-                id: service.id,
-                name: service.name,
-                region: service.region,
-                latestVersionId: null,
-                serviceEndpointDomain: undefined,
-              };
-        }),
-      );
-
-      return serviceDetails.map((service) => ({
-        id: service.id,
-        name: service.name,
-        region: service.region ?? null,
-        liveDeploymentId: service.latestVersionId ?? null,
-        liveUrl: toAbsoluteUrl(service.serviceEndpointDomain ?? null),
-      }));
+    async listApps(projectId, options) {
+      return listComputeServices(client, {
+        projectId,
+        branchGitName: options?.branchName,
+      });
     },
 
     async removeApp(appId) {
@@ -190,6 +169,25 @@ export function createPreviewAppProvider(
     },
 
     async deployApp(options) {
+      const resolvedApp = options.appId
+        ? {
+            appId: options.appId,
+            appName: options.appName,
+            region: options.region,
+          }
+        : options.branchName && options.appName
+          ? await createBranchApp(client, {
+              projectId: options.projectId,
+              branchName: options.branchName,
+              appName: options.appName,
+              region: options.region,
+            })
+          : {
+              appId: undefined,
+              appName: options.appName,
+              region: options.region,
+            };
+
       const deployResult = await sdk.deploy({
         strategy: new PreviewBuildStrategy({
           appPath: path.resolve(options.cwd),
@@ -197,9 +195,9 @@ export function createPreviewAppProvider(
           buildType: options.buildType,
         }),
         projectId: options.projectId,
-        serviceId: options.appId,
-        serviceName: options.appName,
-        region: options.region,
+        serviceId: resolvedApp.appId,
+        serviceName: resolvedApp.appName,
+        region: resolvedApp.region,
         portMapping: options.portMapping,
         envVars: options.envVars,
         timeoutSeconds: 120,
@@ -409,6 +407,193 @@ export function createPreviewAppProvider(
       }
     },
   };
+}
+
+interface RawBranchRecord {
+  id: string;
+  gitName: string;
+  isDefault: boolean;
+}
+
+interface RawComputeServiceRecord {
+  id: string;
+  name: string;
+  region: {
+    id: string;
+    name?: string;
+  };
+  projectId: string;
+  branchId: string | null;
+  latestVersionId: string | null;
+  serviceEndpointDomain: string | null;
+}
+
+interface RawApiErrorBody {
+  error?: {
+    code?: string;
+    message?: string;
+    hint?: string;
+  };
+}
+
+async function listBranches(
+  client: ManagementApiClient,
+  options: {
+    projectId: string;
+    gitName: string;
+  },
+): Promise<RawBranchRecord[]> {
+  const result = await client.GET("/v1/projects/{projectId}/branches", {
+    params: {
+      path: { projectId: options.projectId },
+      query: { gitName: options.gitName },
+    },
+  });
+  if (result.error || !result.data) {
+    throw apiCallError("Failed to list branches", result.response, result.error);
+  }
+
+  return result.data.data as RawBranchRecord[];
+}
+
+async function resolveOrCreateBranch(
+  client: ManagementApiClient,
+  options: {
+    projectId: string;
+    gitName: string;
+  },
+): Promise<RawBranchRecord> {
+  const existing = (await listBranches(client, options))[0];
+  if (existing) {
+    return existing;
+  }
+
+  const result = await client.POST("/v1/projects/{projectId}/branches", {
+    params: {
+      path: { projectId: options.projectId },
+    },
+    body: {
+      gitName: options.gitName,
+      isDefault: options.gitName === "main",
+    },
+  });
+  if (result.error || !result.data) {
+    if (result.response.status === 409) {
+      const raced = (await listBranches(client, options))[0];
+      if (raced) {
+        return raced;
+      }
+    }
+
+    throw apiCallError(`Failed to create branch "${options.gitName}"`, result.response, result.error);
+  }
+
+  return result.data.data as RawBranchRecord;
+}
+
+async function listComputeServices(
+  client: ManagementApiClient,
+  options: {
+    projectId: string;
+    branchGitName?: string;
+  },
+): Promise<PreviewAppRecord[]> {
+  const services: RawComputeServiceRecord[] = [];
+  let cursor: string | undefined;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const result = await client.GET("/v1/compute-services", {
+      params: {
+        query: {
+          projectId: options.projectId,
+          branchGitName: options.branchGitName,
+          cursor,
+        },
+      },
+    });
+    if (result.error || !result.data) {
+      throw apiCallError("Failed to list apps", result.response, result.error);
+    }
+
+    services.push(...result.data.data as RawComputeServiceRecord[]);
+
+    if (!result.data.pagination.hasMore || !result.data.pagination.nextCursor) {
+      break;
+    }
+    cursor = result.data.pagination.nextCursor;
+  }
+
+  return services.map((service) => ({
+    id: service.id,
+    name: service.name,
+    region: service.region.id ?? null,
+    branchId: service.branchId,
+    liveDeploymentId: service.latestVersionId ?? null,
+    liveUrl: toAbsoluteUrl(service.serviceEndpointDomain ?? null),
+  }));
+}
+
+async function createBranchApp(
+  client: ManagementApiClient,
+  options: {
+    projectId: string;
+    branchName: string;
+    appName: string;
+    region?: string;
+  },
+): Promise<{ appId: string; appName: string; region: string | undefined }> {
+  const branch = await resolveOrCreateBranch(client, {
+    projectId: options.projectId,
+    gitName: options.branchName,
+  });
+  const result = await client.POST("/v1/compute-services", {
+    body: {
+      projectId: options.projectId,
+      branchId: branch.id,
+      displayName: options.appName,
+      ...(options.region ? { regionId: options.region } : {}),
+    } as never,
+  });
+  if (result.error || !result.data) {
+    if (result.response.status === 409) {
+      const existingApps = await listComputeServices(client, {
+        projectId: options.projectId,
+        branchGitName: options.branchName,
+      });
+      const matched = existingApps.find((app) => app.name === options.appName);
+      if (matched) {
+        return {
+          appId: matched.id,
+          appName: matched.name,
+          region: matched.region ?? options.region,
+        };
+      }
+    }
+
+    throw apiCallError(`Failed to create app "${options.appName}"`, result.response, result.error);
+  }
+
+  const service = result.data.data as RawComputeServiceRecord;
+  return {
+    appId: service.id,
+    appName: service.name,
+    region: service.region.id ?? options.region,
+  };
+}
+
+function apiCallError(
+  summary: string,
+  response: Response,
+  error: RawApiErrorBody,
+): Error {
+  if (response.status === 404) {
+    return new Error("Resource Not Found");
+  }
+
+  const message = error.error?.message ?? `Management API returned HTTP ${response.status}.`;
+  const hint = error.error?.hint ? ` ${error.error.hint}` : "";
+  return new Error(`${summary}: ${message}${hint}`);
 }
 
 async function findAppForDeployment(

@@ -123,6 +123,8 @@ describe("project commands", () => {
         },
         resolution: {
           projectSource: "package-name",
+          targetName: "billing-api",
+          targetNameSource: "package-name",
         },
       },
       warnings: [],

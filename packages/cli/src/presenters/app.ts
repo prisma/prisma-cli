@@ -44,7 +44,7 @@ export function renderAppDeploy(
   descriptor: CommandDescriptor,
   result: AppDeployResult,
 ): string[] {
-  return renderShow(
+  const lines = renderShow(
     {
       title: "Deploying the selected app.",
       descriptor,
@@ -60,10 +60,15 @@ export function renderAppDeploy(
     },
     context.ui,
   );
+  if (result.localPin?.written) {
+    lines.push(`Bound this directory in ${result.localPin.path}. Subsequent commands target the same Project.`);
+  }
+  return lines;
 }
 
 export function serializeAppDeploy(result: AppDeployResult) {
-  return result;
+  const { localPin: _localPin, ...serialized } = result;
+  return serialized;
 }
 
 export function renderAppUpdateEnv(

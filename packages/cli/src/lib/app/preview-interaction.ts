@@ -36,7 +36,6 @@ export function createPreviewDeployInteraction(context: CommandContext): DeployI
         input: context.runtime.stdin,
         output: context.runtime.stderr,
         message: "App name",
-        placeholder: "hello-world",
         validate: (value) => (!value?.trim() ? "App name is required" : undefined),
       }).then((value) => value.trim());
     },

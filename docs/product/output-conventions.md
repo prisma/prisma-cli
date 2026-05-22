@@ -265,6 +265,8 @@ When a command acts on a project, branch, app, or deployment, the output should 
 Examples:
 
 - `app deploy` should state the resolved target that matters in the current slice
+- first `app deploy` should show Workspace, Project, Branch, App, Framework, and Runtime with source annotations before work begins
+- subsequent `app deploy` should show the resolved tuple without repeating first-run annotations
 - `app logs` should state the deployment it resolved
 - `app list-deploys` should state which app or branch is being listed
 
