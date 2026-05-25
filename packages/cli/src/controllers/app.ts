@@ -1666,10 +1666,23 @@ function domainCommandError(
     }
 
     if (command === "add" && error.status === 422) {
-      return noDeploymentsError(
-        "Custom domain requires a live production deployment",
-        "The selected app does not have a promoted version that can receive a custom domain.",
-      );
+      if (isDomainDnsError(error)) {
+        return domainDnsNotConfiguredError(hostname, error);
+      }
+
+      return new CliError({
+        code: "NO_DEPLOYMENTS",
+        domain: "app",
+        summary: "Custom domain requires a live production deployment",
+        why: "The selected production app does not have a promoted version that can receive a custom domain.",
+        fix: "Deploy the app to the production branch, then rerun the domain command.",
+        debug: formatDebugDetails(error),
+        exitCode: 1,
+        nextSteps: [
+          "prisma-cli app deploy --branch production",
+          `prisma-cli app domain add ${hostname}`,
+        ],
+      });
     }
 
     if ((command === "show" || command === "remove" || command === "retry" || command === "wait") && error.status === 404) {
@@ -1709,6 +1722,36 @@ function isDomainQuotaError(error: PreviewDomainApiError): boolean {
 
   const text = `${error.message} ${error.hint ?? ""}`.toLowerCase();
   return text.includes("quota") || text.includes("maximum") || text.includes("limit");
+}
+
+function isDomainDnsError(error: PreviewDomainApiError): boolean {
+  const text = `${error.message} ${error.hint ?? ""}`.toLowerCase();
+  return text.includes("dns") || text.includes("cname") || text.includes("a/aaaa");
+}
+
+function domainDnsNotConfiguredError(hostname: string, error: PreviewDomainApiError): CliError {
+  const target = extractDomainDnsTarget(error);
+  const record = target ? `CNAME ${hostname} -> ${target}` : `CNAME ${hostname} -> <Prisma DNS target>`;
+
+  return new CliError({
+    code: "DOMAIN_DNS_NOT_CONFIGURED",
+    domain: "app",
+    summary: `DNS is not configured for "${hostname}"`,
+    why: error.hint ?? error.message,
+    fix: `Add ${record} at your DNS provider, then rerun the domain command.`,
+    debug: formatDebugDetails(error),
+    exitCode: 1,
+    nextSteps: [
+      `add ${record}`,
+      `prisma-cli app domain add ${hostname}`,
+    ],
+  });
+}
+
+function extractDomainDnsTarget(error: PreviewDomainApiError): string | null {
+  const text = `${error.hint ?? ""} ${error.message}`;
+  const match = /\b((?:[a-z0-9-]+\.)+prisma\.build)\b/i.exec(text);
+  return match?.[1]?.toLowerCase() ?? null;
 }
 
 function domainNotFoundError(hostname: string): CliError {

@@ -173,6 +173,7 @@ These codes are the minimum stable set for the MVP:
 - `ROLLBACK_UNAVAILABLE`
 - `CONFIRMATION_REQUIRED`
 - `DOMAIN_HOSTNAME_INVALID`
+- `DOMAIN_DNS_NOT_CONFIGURED`
 - `DOMAIN_QUOTA_EXCEEDED`
 - `DOMAIN_NOT_FOUND`
 - `DOMAIN_RETRY_NOT_ELIGIBLE`
@@ -209,6 +210,7 @@ Recommended meanings:
 - `ROLLBACK_UNAVAILABLE`: no previous healthy production deployment exists
 - `CONFIRMATION_REQUIRED`: command cannot continue without confirmation in the current mode
 - `DOMAIN_HOSTNAME_INVALID`: custom-domain hostname is malformed or rejected by the platform
+- `DOMAIN_DNS_NOT_CONFIGURED`: custom-domain hostname does not yet point to the required Prisma DNS target
 - `DOMAIN_QUOTA_EXCEEDED`: selected app has reached its custom-domain quota
 - `DOMAIN_NOT_FOUND`: requested custom domain is not attached to the selected app
 - `DOMAIN_RETRY_NOT_ELIGIBLE`: requested custom domain is not in a state where verification can be retried

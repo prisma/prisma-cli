@@ -485,6 +485,65 @@ describe("app controller", () => {
     });
   });
 
+  it("domain add maps DNS preflight failures to DOMAIN_DNS_NOT_CONFIGURED", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "shop",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+        liveUrl: "https://shop.fra.prisma.build",
+      },
+    ]);
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      const addDomain = vi.fn().mockRejectedValue(new actual.PreviewDomainApiError({
+        summary: "Failed to add custom domain",
+        status: 422,
+        message: "No CNAME or A/AAAA records found for hostname.",
+        hint: "DNS verification failed: ensure the hostname CNAMEs to switchboard.fra.prisma.build.",
+      }));
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          addDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDomainAdd(context, "compute-test.amanv.dev", {
+      projectRef: "proj_123",
+      appName: "shop",
+    })).rejects.toMatchObject({
+      code: "DOMAIN_DNS_NOT_CONFIGURED",
+      domain: "app",
+      fix: "Add CNAME compute-test.amanv.dev -> switchboard.fra.prisma.build at your DNS provider, then rerun the domain command.",
+      nextSteps: [
+        "add CNAME compute-test.amanv.dev -> switchboard.fra.prisma.build",
+        "prisma-cli app domain add compute-test.amanv.dev",
+      ],
+    });
+  });
+
   it("domain add rejects preview branches", async () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppDomainAdd } = await import("../src/controllers/app");

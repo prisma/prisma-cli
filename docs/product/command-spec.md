@@ -771,6 +771,7 @@ Behavior:
 - is idempotent for a hostname already attached to the same app
 - does not re-trigger DNS verification for an existing row
 - prints DNS record instructions when available from the API
+- returns `DOMAIN_DNS_NOT_CONFIGURED` with a derived CNAME target when the API requires DNS to be pointed before registration can complete
 - rejects non-production `--branch` with `BRANCH_NOT_DEPLOYABLE`
 
 Examples:
