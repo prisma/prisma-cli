@@ -511,9 +511,10 @@ function domainTargetFields(result: Pick<AppDomainAddResult, "workspace" | "proj
 }
 
 function domainDnsFields(domain: Pick<AppDomainAddResult["domain"], "hostname" | "dnsRecords">) {
-  const records = domain.dnsRecords.length > 0
-    ? domain.dnsRecords
-    : [{ type: "CNAME", name: domain.hostname, value: "edge.prisma.app", ttl: 300 }];
+  const records = domain.dnsRecords;
+  if (records.length === 0) {
+    return [];
+  }
 
   return [{
     key: "dns record",
@@ -537,7 +538,14 @@ function domainFixFields(domain: AppDomainShowResult["domain"]) {
     return [];
   }
 
-  const dnsRecord = (domain.dnsRecords[0] ?? { type: "CNAME", name: domain.hostname, value: "edge.prisma.app" });
+  const dnsRecord = domain.dnsRecords[0];
+  if (!dnsRecord) {
+    return [{
+      key: "fix",
+      value: `Check the DNS target for ${domain.hostname}, then run prisma-cli app domain retry ${domain.hostname}`,
+    }];
+  }
+
   return [{
     key: "fix",
     value: `Add ${dnsRecord.type} ${dnsRecord.name} -> ${dnsRecord.value}, then run prisma-cli app domain retry ${domain.hostname}`,

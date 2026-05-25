@@ -804,7 +804,9 @@ export async function runAppDomainAdd(
     command: "app.domain.add",
     result: {
       ...target.resultTarget,
-      domain: toAppDomainSummary(added.domain),
+      domain: toAppDomainSummary(added.domain, {
+        cnameTarget: deriveSwitchboardTarget(target.app.liveUrl),
+      }),
       existing: added.existing,
     },
     warnings: [],
@@ -835,7 +837,9 @@ export async function runAppDomainShow(
     command: "app.domain.show",
     result: {
       ...target.resultTarget,
-      domain: toAppDomainSummary(detail),
+      domain: toAppDomainSummary(detail, {
+        cnameTarget: deriveSwitchboardTarget(target.app.liveUrl),
+      }),
     },
     warnings: [],
     nextSteps: buildDomainShowNextSteps(detail),
@@ -893,7 +897,9 @@ export async function runAppDomainRetry(
     command: "app.domain.retry",
     result: {
       ...target.resultTarget,
-      domain: toAppDomainSummary(retried),
+      domain: toAppDomainSummary(retried, {
+        cnameTarget: deriveSwitchboardTarget(target.app.liveUrl),
+      }),
     },
     warnings: [],
     nextSteps: [`prisma-cli app domain wait ${normalizedHostname}`],
@@ -1516,7 +1522,12 @@ function sameDomainHostname(left: string, right: string): boolean {
   return left.trim().replace(/\.$/, "").toLowerCase() === right.trim().replace(/\.$/, "").toLowerCase();
 }
 
-function toAppDomainSummary(domain: PreviewDomainRecord): AppDomainSummary {
+function toAppDomainSummary(
+  domain: PreviewDomainRecord,
+  options?: {
+    cnameTarget?: string | null;
+  },
+): AppDomainSummary {
   return {
     id: domain.id,
     type: domain.type,
@@ -1530,13 +1541,47 @@ function toAppDomainSummary(domain: PreviewDomainRecord): AppDomainSummary {
     certExpiresAt: domain.certExpiresAt,
     createdAt: domain.createdAt,
     updatedAt: domain.updatedAt,
-    dnsRecords: domain.dnsRecords.map((record): AppDomainDnsRecord => ({
+    dnsRecords: toAppDomainDnsRecords(domain, options?.cnameTarget),
+  };
+}
+
+function toAppDomainDnsRecords(
+  domain: Pick<PreviewDomainRecord, "hostname" | "dnsRecords">,
+  cnameTarget: string | null | undefined,
+): AppDomainDnsRecord[] {
+  if (domain.dnsRecords.length > 0) {
+    return domain.dnsRecords.map((record): AppDomainDnsRecord => ({
       type: record.type,
       name: record.name,
       value: record.value,
       ttl: record.ttl,
-    })),
-  };
+    }));
+  }
+
+  if (!cnameTarget) {
+    return [];
+  }
+
+  return [{
+    type: "CNAME",
+    name: domain.hostname,
+    value: cnameTarget,
+    ttl: 300,
+  }];
+}
+
+function deriveSwitchboardTarget(liveUrl: string | null | undefined): string | null {
+  if (!liveUrl) {
+    return null;
+  }
+
+  const hostname = liveUrl.replace(/^https?:\/\//, "").split("/")[0] ?? "";
+  const match = hostname.match(/\.([a-z0-9-]+)\.prisma\.build$/i);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  return `switchboard.${match[1].toLowerCase()}.prisma.build`;
 }
 
 function buildDomainShowNextSteps(domain: PreviewDomainRecord): string[] {
@@ -1607,7 +1652,7 @@ function domainCommandError(
       });
     }
 
-    if (command === "add" && error.status === 429) {
+    if (command === "add" && (error.status === 429 || isDomainQuotaError(error))) {
       return new CliError({
         code: "DOMAIN_QUOTA_EXCEEDED",
         domain: "app",
@@ -1655,6 +1700,15 @@ function domainCommandError(
     exitCode: 1,
     nextSteps: [`prisma-cli app domain show ${hostname}`],
   });
+}
+
+function isDomainQuotaError(error: PreviewDomainApiError): boolean {
+  if (error.status !== 409) {
+    return false;
+  }
+
+  const text = `${error.message} ${error.hint ?? ""}`.toLowerCase();
+  return text.includes("quota") || text.includes("maximum") || text.includes("limit");
 }
 
 function domainNotFoundError(hostname: string): CliError {

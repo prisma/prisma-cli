@@ -72,12 +72,14 @@ function createDomain(overrides: Partial<{
   status: "pending_dns" | "verifying" | "verified_routing_blocked" | "provisioning_tls" | "active" | "failed" | "removing";
   failureReason: string | null;
   failureCategory: "dns" | "acme" | "storage" | "unknown" | null;
+  dnsRecords: Array<{ type: string; name: string; value: string; ttl: number | null }>;
 }> = {}) {
+  const hostname = overrides.hostname ?? "shop.acme.com";
   return {
     id: overrides.id ?? "dom_123",
     type: "custom-domain" as const,
     url: `https://api.prisma.io/v1/domains/${overrides.id ?? "dom_123"}`,
-    hostname: overrides.hostname ?? "shop.acme.com",
+    hostname,
     computeServiceId: overrides.computeServiceId ?? "app_1",
     status: overrides.status ?? "pending_dns",
     foundryStatus: overrides.status ?? "pending_dns",
@@ -86,11 +88,11 @@ function createDomain(overrides: Partial<{
     certExpiresAt: null,
     createdAt: "2026-05-22T09:14:00.000Z",
     updatedAt: "2026-05-22T09:14:00.000Z",
-    dnsRecords: [
+    dnsRecords: overrides.dnsRecords ?? [
       {
         type: "CNAME",
-        name: overrides.hostname ?? "shop.acme.com",
-        value: "edge.prisma.app",
+        name: hostname,
+        value: "switchboard.fra.prisma.build",
         ttl: 300,
       },
     ],
@@ -362,8 +364,124 @@ describe("app controller", () => {
       domain: {
         hostname: "shop.acme.com",
         status: "active",
+        dnsRecords: [{
+          type: "CNAME",
+          name: "shop.acme.com",
+          value: "switchboard.fra.prisma.build",
+          ttl: 300,
+        }],
       },
       existing: true,
+    });
+  });
+
+  it("domain add derives regional DNS instructions when the API omits dns records", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "shop",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+        liveUrl: "https://shop.fra.prisma.build",
+      },
+    ]);
+    const addDomain = vi.fn().mockResolvedValue({
+      domain: createDomain({ status: "pending_dns", dnsRecords: [] }),
+      existing: false,
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          addDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppDomainAdd(context, "shop.acme.com", {
+      projectRef: "proj_123",
+      appName: "shop",
+    });
+
+    expect(result.result.domain.dnsRecords).toEqual([{
+      type: "CNAME",
+      name: "shop.acme.com",
+      value: "switchboard.fra.prisma.build",
+      ttl: 300,
+    }]);
+  });
+
+  it("domain add maps quota conflicts to DOMAIN_QUOTA_EXCEEDED", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "shop",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+        liveUrl: "https://shop.fra.prisma.build",
+      },
+    ]);
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      const addDomain = vi.fn().mockRejectedValue(new actual.PreviewDomainApiError({
+        summary: "Failed to add custom domain",
+        status: 409,
+        message: "Domain quota exceeded.",
+        hint: "This compute service has reached the maximum of 3 custom domains.",
+      }));
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          addDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDomainAdd(context, "shop.acme.com", {
+      projectRef: "proj_123",
+      appName: "shop",
+    })).rejects.toMatchObject({
+      code: "DOMAIN_QUOTA_EXCEEDED",
+      domain: "app",
     });
   });
 
