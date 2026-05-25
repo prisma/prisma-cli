@@ -1,4 +1,5 @@
 import { chmod, lstat, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -151,6 +152,56 @@ describe("preview build strategy", () => {
 
     expect((await lstat(copiedDependency)).isSymbolicLink()).toBe(false);
     await expect(readFile(path.join(copiedDependency, "index.js"), "utf8")).resolves.toContain("pg = true");
+  });
+
+  it("keeps pnpm transitive dependencies resolvable after flattening Next.js standalone packages", async () => {
+    const { stageNextjsStandaloneArtifact } = await import("../src/lib/app/preview-build");
+    const cwd = await createTempCwd();
+    const appPath = path.join(cwd, "app");
+    const standaloneDir = path.join(appPath, ".next", "standalone");
+    const artifactDir = path.join(cwd, "artifact");
+    const nextStorePackage = path.join(
+      standaloneDir,
+      "node_modules/.pnpm/next@16.2.3/node_modules/next",
+    );
+    const nextLink = path.join(standaloneDir, "node_modules/next");
+    const swcHelperPackage = path.join(
+      standaloneDir,
+      "node_modules/.pnpm/@swc+helpers@0.5.15/node_modules/@swc/helpers/_",
+    );
+    const swcHoistedLink = path.join(
+      standaloneDir,
+      "node_modules/.pnpm/node_modules/@swc/helpers",
+    );
+
+    await mkdir(path.join(nextStorePackage, "dist/shared/lib"), { recursive: true });
+    await writeFile(
+      path.join(nextStorePackage, "dist/shared/lib/constants.js"),
+      "module.exports = require('@swc/helpers/_/_interop_require_default');\n",
+      "utf8",
+    );
+    await mkdir(path.dirname(nextLink), { recursive: true });
+    await symlink(".pnpm/next@16.2.3/node_modules/next", nextLink, "dir");
+
+    await mkdir(swcHelperPackage, { recursive: true });
+    await writeFile(
+      path.join(swcHelperPackage, "_interop_require_default.js"),
+      "module.exports = { default: true };\n",
+      "utf8",
+    );
+    await mkdir(path.dirname(swcHoistedLink), { recursive: true });
+    await symlink("../../@swc+helpers@0.5.15/node_modules/@swc/helpers", swcHoistedLink, "dir");
+
+    await stageNextjsStandaloneArtifact({
+      standaloneDir,
+      artifactDir,
+      appPath,
+    });
+
+    const constants = path.join(artifactDir, "node_modules/next/dist/shared/lib/constants.js");
+    const requireFromNext = createRequire(constants);
+
+    expect(() => requireFromNext.resolve("@swc/helpers/_/_interop_require_default")).not.toThrow();
   });
 
   it("rejects Next.js standalone symlinks that escape the app directory", async () => {

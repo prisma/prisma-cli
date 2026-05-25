@@ -179,6 +179,7 @@ export async function stageNextjsStandaloneArtifact(options: {
     appRoot,
     sourceRoot,
   });
+  await hoistPnpmDependencies(path.join(artifactRoot, "node_modules"));
 }
 
 async function restageNextjsArtifact(artifactDir: string, appPath: string): Promise<void> {
@@ -204,6 +205,51 @@ async function restageNextjsArtifact(artifactDir: string, appPath: string): Prom
     await cp(staticDir, path.join(artifactDir, ".next", "static"), {
       recursive: true,
       verbatimSymlinks: true,
+    });
+  }
+}
+
+async function hoistPnpmDependencies(nodeModulesDir: string): Promise<void> {
+  const pnpmNodeModulesDir = path.join(nodeModulesDir, ".pnpm", "node_modules");
+  if (!await directoryExists(pnpmNodeModulesDir)) {
+    return;
+  }
+
+  const entries = await readdir(pnpmNodeModulesDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const sourcePath = path.join(pnpmNodeModulesDir, entry.name);
+
+    if (entry.name.startsWith("@") && entry.isDirectory()) {
+      const scopedEntries = await readdir(sourcePath, { withFileTypes: true });
+      for (const scopedEntry of scopedEntries) {
+        const scopedDestination = path.join(nodeModulesDir, entry.name, scopedEntry.name);
+        if (await pathExists(scopedDestination)) {
+          continue;
+        }
+
+        await mkdir(path.dirname(scopedDestination), { recursive: true });
+        await copyPathMaterializingSymlinks(
+          path.join(sourcePath, scopedEntry.name),
+          scopedDestination,
+          {
+            standaloneRoot: pnpmNodeModulesDir,
+            appRoot: nodeModulesDir,
+            sourceRoot: nodeModulesDir,
+          },
+        );
+      }
+      continue;
+    }
+
+    const destinationPath = path.join(nodeModulesDir, entry.name);
+    if (await pathExists(destinationPath)) {
+      continue;
+    }
+
+    await copyPathMaterializingSymlinks(sourcePath, destinationPath, {
+      standaloneRoot: pnpmNodeModulesDir,
+      appRoot: nodeModulesDir,
+      sourceRoot: nodeModulesDir,
     });
   }
 }
