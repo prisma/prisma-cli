@@ -286,7 +286,7 @@ health is known. Do not print `Status: running` or `Deployment is running at ...
 Use short stage copy such as `Building locally...`, `Built <size>`,
 `Uploading...`, `Uploaded`, `Deploying...`, and `Deployed`.
 On success, print `Live in <duration>`, the URL on its own line, and
-`Logs   prisma app logs`.
+`Logs   prisma-cli app logs`.
 Human deploy output is stderr; `--json` is the machine-readable stdout path.
 
 Deploy setup and result rows should share one table style: labels start two

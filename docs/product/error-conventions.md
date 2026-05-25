@@ -107,7 +107,7 @@ This is usually a missing env var, a failed DB connection,
 or a crash on startup.
 
 See what happened
-prisma app logs --deployment <id>
+prisma-cli app logs --deployment <id>
 
 URL
 https://cv-...

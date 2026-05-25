@@ -52,7 +52,7 @@ export function renderAppDeploy(
     ...(result.deployment.url ? [context.ui.link(result.deployment.url)] : []),
     "",
     ...renderDeployOutputRows(context.ui, [
-      { label: "Logs", value: "prisma app logs" },
+      { label: "Logs", value: "prisma-cli app logs" },
     ]),
   ];
   return lines;

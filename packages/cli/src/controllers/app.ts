@@ -2481,7 +2481,7 @@ function appDeployFailedError(error: unknown, progress: PreviewDeployProgressSta
     ? "The deployment started, but the app is not ready yet."
     : "Deploy failed after the build completed.";
   const recoveryLines = progress.versionId
-    ? ["See what happened", `prisma app logs --deployment ${progress.versionId}`]
+    ? ["See what happened", `prisma-cli app logs --deployment ${progress.versionId}`]
     : ["Fix", "Retry the command, or rerun with --trace for more detailed diagnostics."];
   const urlLines = progress.deploymentUrl
     ? ["", "URL", progress.deploymentUrl]
@@ -2508,7 +2508,7 @@ function appDeployFailedError(error: unknown, progress: PreviewDeployProgressSta
         ...recoveryLines,
       ];
   const fix = progress.versionId
-    ? `Inspect logs with prisma app logs --deployment ${progress.versionId}.`
+    ? `Inspect logs with prisma-cli app logs --deployment ${progress.versionId}.`
     : "Retry the command, or rerun with --trace for more detailed diagnostics.";
 
   return new CliError({

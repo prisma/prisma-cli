@@ -510,7 +510,7 @@ describe("app controller", () => {
         "This is usually a missing env var, a failed DB connection,",
         "or a crash on startup.",
         "See what happened",
-        "prisma app logs --deployment dep_failed",
+        "prisma-cli app logs --deployment dep_failed",
         "URL",
         "https://cv-example.fra.prisma.build",
       ]),
