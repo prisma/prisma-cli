@@ -1,6 +1,8 @@
 import events from "node:events";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import readline from "node:readline/promises";
+import type { Readable, Writable } from "node:stream";
 
 import {
   createManagementApiSdk,
@@ -29,13 +31,19 @@ export interface LoginOptions {
   port?: number;
   openUrl?: (url: string) => Promise<unknown> | unknown;
   env?: NodeJS.ProcessEnv;
+  input?: Readable;
+  output?: Writable;
 }
 
 export async function login(options: LoginOptions = {}): Promise<void> {
   const hostname = options.hostname ?? "localhost";
   const port = options.port ?? 0;
+  const input = options.input ?? process.stdin;
+  const output = options.output ?? process.stderr;
   const server = http.createServer();
   server.listen({ host: hostname, port });
+
+  const pasteAbort = new AbortController();
 
   try {
     const addressInfo = await events
@@ -51,9 +59,12 @@ export async function login(options: LoginOptions = {}): Promise<void> {
       authBaseUrl: options.authBaseUrl,
       openUrl: options.openUrl,
       env: options.env,
+      output,
     });
 
-    const authResult = new Promise<void>((resolve, reject) => {
+    let completed = false;
+
+    const httpResult = new Promise<void>((resolve, reject) => {
       server.on("request", async (req, res) => {
         const url = new URL(`http://${state.host}${req.url}`);
         if (url.pathname !== "/auth/callback") {
@@ -62,11 +73,22 @@ export async function login(options: LoginOptions = {}): Promise<void> {
           return;
         }
 
+        if (completed) {
+          // The paste path already completed the token exchange. Render the
+          // success page anyway so a late browser callback isn't left dangling.
+          const workspaceName = await state.resolveWorkspaceName();
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.end(renderSuccessPage(workspaceName));
+          return;
+        }
+
         try {
           await state.handleCallback(url);
+          completed = true;
         } catch (error) {
           res.statusCode = 400;
-          const message = error instanceof Error ? error.message : String(error);
+          const message =
+            error instanceof Error ? error.message : String(error);
           res.end(message);
           reject(error);
           return;
@@ -79,12 +101,51 @@ export async function login(options: LoginOptions = {}): Promise<void> {
       });
     });
 
+    const pasteResult = waitForPastedCallback({
+      input,
+      output,
+      signal: pasteAbort.signal,
+    }).then(async (pastedUrl) => {
+      if (pastedUrl === null || completed) return;
+      await state.handleCallback(pastedUrl);
+      completed = true;
+    });
+
     await state.openLoginPage();
-    await authResult;
+    await Promise.race([httpResult, pasteResult]);
   } finally {
+    pasteAbort.abort();
     if (server.listening) {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  }
+}
+
+async function waitForPastedCallback(options: {
+  input: Readable;
+  output: Writable;
+  signal: AbortSignal;
+}): Promise<URL | null> {
+  // Only offer the paste path when we have a TTY to read from. In CI or test
+  // contexts the browser-callback path is the only one that resolves.
+  const input = options.input as NodeJS.ReadStream;
+  if (!input.isTTY) return null;
+
+  const rl = readline.createInterface({
+    input: options.input,
+    output: options.output,
+  });
+  try {
+    const answer = await rl.question("Paste URL here: ", {
+      signal: options.signal,
+    });
+    const trimmed = answer.trim().replace(/^["']|["']$/g, "");
+    return new URL(trimmed);
+  } catch (error) {
+    if ((error as { name?: string } | null)?.name === "AbortError") return null;
+    throw error;
+  } finally {
+    rl.close();
   }
 }
 
@@ -94,6 +155,7 @@ class LoginState {
   private readonly sdk: ManagementApiSdk;
   private readonly openUrl: (url: string) => Promise<unknown> | unknown;
   private readonly tokenStorage: TokenStorage;
+  private readonly output?: Writable;
 
   constructor(
     private readonly options: {
@@ -105,9 +167,11 @@ class LoginState {
       authBaseUrl?: string;
       openUrl?: (url: string) => Promise<unknown> | unknown;
       env?: NodeJS.ProcessEnv;
+      output?: Writable;
     },
   ) {
-    this.tokenStorage = options.tokenStorage ?? new FileTokenStorage(options.env);
+    this.tokenStorage =
+      options.tokenStorage ?? new FileTokenStorage(options.env);
     this.sdk = createManagementApiSdk({
       clientId: options.clientId ?? CLIENT_ID,
       redirectUri: `http://${options.hostname}:${options.port}/auth/callback`,
@@ -116,6 +180,7 @@ class LoginState {
       authBaseUrl: options.authBaseUrl,
     });
     this.openUrl = options.openUrl ?? open;
+    this.output = options.output;
   }
 
   async openLoginPage(): Promise<void> {
@@ -131,7 +196,27 @@ class LoginState {
     this.latestState = state;
     this.latestVerifier = verifier;
 
-    await this.openUrl(url);
+    this.printLoginInstructions(url);
+
+    try {
+      await this.openUrl(url);
+    } catch {
+      // Browser may be unavailable (e.g. on a remote machine). The user can
+      // still complete sign-in by visiting the printed URL and pasting the
+      // resulting callback URL into the prompt.
+    }
+  }
+
+  private printLoginInstructions(url: string): void {
+    const output = this.output as (Writable & { isTTY?: boolean }) | undefined;
+    if (!output?.isTTY) return;
+
+    output.write(
+      `\nOpening your browser to sign in to Prisma...\n\n` +
+        `  ${url}\n\n` +
+        `If your browser didn't open, or you're on a remote machine, sign in using\n` +
+        `the URL above and copy+paste the resulting callback URL into the prompt.\n\n`,
+    );
   }
 
   async handleCallback(url: URL): Promise<void> {
@@ -159,7 +244,9 @@ class LoginState {
       if (error instanceof SDKAuthError) {
         throw new AuthError(error.message);
       }
-      throw new AuthError(error instanceof Error ? error.message : "Unknown error during login");
+      throw new AuthError(
+        error instanceof Error ? error.message : "Unknown error during login",
+      );
     }
   }
 
@@ -174,7 +261,9 @@ class LoginState {
         params: { path: { id: tokens.workspaceId } },
       });
       const name = data?.data?.name;
-      return typeof name === "string" && name.trim().length > 0 ? name.trim() : null;
+      return typeof name === "string" && name.trim().length > 0
+        ? name.trim()
+        : null;
     } catch {
       return null;
     }
