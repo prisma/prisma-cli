@@ -204,6 +204,41 @@ describe("preview build strategy", () => {
     expect(() => requireFromNext.resolve("@swc/helpers/_/_interop_require_default")).not.toThrow();
   });
 
+  it("places public and .next/static next to server.js when the entrypoint is nested (monorepo)", async () => {
+    const { restageNextjsArtifact } = await import("../src/lib/app/preview-build");
+    const cwd = await createTempCwd();
+    const appPath = path.join(cwd, "repo", "apps", "web");
+    const standaloneDir = path.join(appPath, ".next", "standalone");
+    const nestedServerDir = path.join(standaloneDir, "apps", "web");
+    const artifactDir = path.join(cwd, "artifact");
+
+    await mkdir(path.join(cwd, "repo", ".git"), { recursive: true });
+    await mkdir(nestedServerDir, { recursive: true });
+    await writeFile(path.join(nestedServerDir, "server.js"), "// nested server\n", "utf8");
+    await mkdir(path.join(standaloneDir, "node_modules"), { recursive: true });
+
+    await mkdir(path.join(appPath, "public"), { recursive: true });
+    await writeFile(path.join(appPath, "public", "hello.txt"), "hello\n", "utf8");
+    await mkdir(path.join(appPath, ".next", "static"), { recursive: true });
+    await writeFile(path.join(appPath, ".next", "static", "client.js"), "// static\n", "utf8");
+
+    // Seed an existing (incorrect) artifact directory to mirror what the SDK
+    // produces before the CLI re-stages it.
+    await mkdir(artifactDir, { recursive: true });
+
+    await restageNextjsArtifact(
+      { directory: artifactDir, entrypoint: "apps/web/server.js" },
+      appPath,
+    );
+
+    await expect(
+      readFile(path.join(artifactDir, "apps", "web", "public", "hello.txt"), "utf8"),
+    ).resolves.toContain("hello");
+    await expect(
+      readFile(path.join(artifactDir, "apps", "web", ".next", "static", "client.js"), "utf8"),
+    ).resolves.toContain("static");
+  });
+
   it("rejects Next.js standalone symlinks that escape the app directory", async () => {
     const { stageNextjsStandaloneArtifact } = await import("../src/lib/app/preview-build");
     const cwd = await createTempCwd();
