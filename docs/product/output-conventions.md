@@ -265,12 +265,35 @@ When a command acts on a project, branch, app, or deployment, the output should 
 Examples:
 
 - `app deploy` should state the resolved target that matters in the current slice
-- first `app deploy` should show Workspace, Project, Branch, App, Framework, and Runtime with source annotations before work begins
-- subsequent `app deploy` should show the resolved tuple without repeating first-run annotations
+- first local `app deploy` binding should show Workspace, Project, Branch, App, Framework, and Runtime with source annotations before work begins
+- subsequent `app deploy` calls should use a compact target header such as `Deploying ./j1 to j1 / main / j1`
 - `app logs` should state the deployment it resolved
 - `app list-deploys` should state which app or branch is being listed
 
 The CLI must not make users guess which target a command acted on.
+
+For `app deploy`, the setup block is a one-time local binding surface, not a
+per-run summary. Once `.prisma/local.json` has been written, retries and later
+deploys should feel like deploys, not setup. Do not repeat source annotations or
+ask `Customize settings?` again unless the user deletes the pin or passes a
+flag that explicitly changes targeting/configuration. The first setup title
+should read `Setting up your local directory <path>`, followed by the resolved
+table and then the plain-language note `This directory is now linked to project
+<name>.`
+
+Deploy progress should describe phases without claiming runtime success before
+health is known. Do not print `Status: running` or `Deployment is running at ...`.
+Use short stage copy such as `Building locally...`, `Built <size>`,
+`Uploading...`, `Uploaded`, `Deploying...`, and `Deployed`.
+On success, print `Live in <duration>`, the URL on its own line, and
+`Logs   prisma-cli app logs`.
+Human deploy output is stderr; `--json` is the machine-readable stdout path.
+
+Deploy setup and result rows should share one table style: labels start two
+spaces from the left margin, values align in one column, and optional origins
+align in a dim third column prefixed with `·`. Values should be the strongest
+part of the row; origins are secondary reassurance and must be dimmed only when
+color is enabled.
 
 ## Action and Data Commands
 

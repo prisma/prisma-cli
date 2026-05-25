@@ -15,6 +15,7 @@ import type {
   AppUpdateEnvResult,
 } from "../types/app";
 import { renderList, renderShow, serializeList } from "../output/patterns";
+import { renderDeployOutputRows } from "../lib/app/deploy-output";
 
 export function renderAppBuild(
   context: CommandContext,
@@ -44,31 +45,30 @@ export function renderAppDeploy(
   descriptor: CommandDescriptor,
   result: AppDeployResult,
 ): string[] {
-  const lines = renderShow(
-    {
-      title: "Deploying the selected app.",
-      descriptor,
-      fields: [
-        { key: "workspace", value: result.workspace.name },
-        { key: "project", value: result.project.name },
-        { key: "branch", value: result.branch.name },
-        { key: "app", value: result.app.name },
-        { key: "deployment", value: result.deployment.id },
-        { key: "status", value: result.deployment.status, tone: toneForStatus(result.deployment.status) },
-        ...(result.deployment.url ? [{ key: "url", value: result.deployment.url, tone: "link" as const }] : []),
-      ],
-    },
-    context.ui,
-  );
-  if (result.localPin?.written) {
-    lines.push(`Bound this directory in ${result.localPin.path}. Subsequent commands target the same Project.`);
-  }
+  void descriptor;
+
+  const lines = [
+    `Live in ${formatDuration(result.durationMs)}`,
+    ...(result.deployment.url ? [context.ui.link(result.deployment.url)] : []),
+    "",
+    ...renderDeployOutputRows(context.ui, [
+      { label: "Logs", value: "prisma-cli app logs" },
+    ]),
+  ];
   return lines;
 }
 
 export function serializeAppDeploy(result: AppDeployResult) {
   const { localPin: _localPin, ...serialized } = result;
   return serialized;
+}
+
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1000) {
+    return `${durationMs}ms`;
+  }
+
+  return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
 export function renderAppUpdateEnv(

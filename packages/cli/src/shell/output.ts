@@ -68,6 +68,18 @@ export function writeHumanError(
   error: CliError,
   options: { trace: boolean },
 ): void {
+  if (error.humanLines && error.humanLines.length > 0) {
+    const lines = [...error.humanLines];
+    if (options.trace && error.debug) {
+      lines.push("");
+      lines.push("Trace:");
+      lines.push(...error.debug.trimEnd().split("\n"));
+    }
+    lines.push(...renderNextSteps(error.nextSteps));
+    writeHumanLines(output, lines);
+    return;
+  }
+
   const lines = [renderSummaryLine(ui, "error", `${error.summary} [${error.code}]`)];
 
   if (error.where) {

@@ -29,6 +29,7 @@ export interface AppDeployResult {
     status: string;
     url: string | null;
   };
+  durationMs: number;
   localPin?: {
     path: string;
     written: boolean;

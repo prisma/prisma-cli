@@ -33,6 +33,7 @@ import { requireComputeAuth } from "../lib/auth/guard";
 import { readAuthState } from "../lib/auth/auth-ops";
 import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
 import { parseEnvAssignments } from "../lib/app/env-vars";
+import { renderDeployOutputRows } from "../lib/app/deploy-output";
 import {
   DEFAULT_LOCAL_DEV_PORT,
   resolveLocalBuildType,
@@ -64,8 +65,10 @@ import {
 import { PREVIEW_DEFAULT_REGION } from "../lib/app/preview-interaction";
 import {
   createPreviewDeployProgress,
+  createPreviewDeployProgressState,
   createPreviewPromoteProgress,
   createPreviewUpdateEnvProgress,
+  type PreviewDeployProgressState,
 } from "../lib/app/preview-progress";
 import { createPreviewAppProvider, type PreviewAppRecord } from "../lib/app/preview-provider";
 import { requireAuthenticatedAuthState } from "./auth";
@@ -239,7 +242,6 @@ export async function runAppDeploy(
 
   await maybeRenderDeploySetupBlock(context, {
     firstDeploy: selectedApp.firstDeploy,
-    showSubsequentAnnotations: skipLocalPin,
     workspaceName: target.workspace.name,
     projectName: target.project.name,
     projectAnnotation: annotationForProjectResolution(target.resolution),
@@ -267,7 +269,18 @@ export async function runAppDeploy(
   const buildType = framework.buildType;
   assertSupportedEntrypoint(buildType, options?.entrypoint, "deploy");
   const portMapping = parseDeployPortMapping(String(runtime.port));
+  const shouldWriteLocalPin = firstDeploy && !skipLocalPin;
+  if (shouldWriteLocalPin) {
+    await writeLocalResolutionPin(context.runtime.cwd, {
+      workspaceId: target.workspace.id,
+      projectId: target.project.id,
+    });
+    await ensureLocalResolutionPinGitignore(context.runtime.cwd);
+    maybeRenderLocalPinBound(context, target.project.name);
+  }
 
+  const progressState = createPreviewDeployProgressState();
+  const deployStartedAt = Date.now();
   const deployResult = await provider.deployApp({
     cwd: context.runtime.cwd,
     projectId,
@@ -280,24 +293,17 @@ export async function runAppDeploy(
     portMapping,
     envVars,
     interaction: undefined,
-    progress: createPreviewDeployProgress(context.output.stderr, !context.flags.json && !context.flags.quiet),
+    progress: createPreviewDeployProgress(context.output.stderr, context.ui, !context.flags.json && !context.flags.quiet, progressState),
   }).catch((error) => {
-    throw deployFailedError("App deploy failed", error, ["prisma-cli app list-deploys"]);
+    throw appDeployFailedError(error, progressState);
   });
+  const deployDurationMs = Date.now() - deployStartedAt;
 
   await context.stateStore.setSelectedApp(projectId, {
     id: deployResult.app.id,
     name: deployResult.app.name,
   });
   await context.stateStore.setKnownLiveDeployment(projectId, deployResult.app.id, deployResult.deployment.id);
-  const shouldWriteLocalPin = firstDeploy && !skipLocalPin;
-  if (shouldWriteLocalPin) {
-    await writeLocalResolutionPin(context.runtime.cwd, {
-      workspaceId: target.workspace.id,
-      projectId: target.project.id,
-    });
-    await ensureLocalResolutionPinGitignore(context.runtime.cwd);
-  }
 
   return {
     command: "app.deploy",
@@ -311,6 +317,7 @@ export async function runAppDeploy(
         name: deployResult.app.name,
       },
       deployment: deployResult.deployment,
+      durationMs: deployDurationMs,
       localPin: shouldWriteLocalPin
         ? {
             path: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
@@ -1772,12 +1779,13 @@ async function resolveDeployProjectContext(
     }, branch);
   }
 
-  if (options.localPin.kind === "present") {
-    if (options.localPin.pin.workspaceId !== workspace.id) {
+  const localPin = options.localPin;
+  if (localPin.kind === "present") {
+    if (localPin.pin.workspaceId !== workspace.id) {
       throw localResolutionPinStaleError();
     }
 
-    const project = projects.find((candidate) => candidate.id === options.localPin.pin.projectId);
+    const project = projects.find((candidate) => candidate.id === localPin.pin.projectId);
     if (!project) {
       throw localResolutionPinStaleError();
     }
@@ -2094,7 +2102,6 @@ async function maybeRenderDeploySetupBlock(
   context: CommandContext,
   details: {
     firstDeploy: boolean;
-    showSubsequentAnnotations?: boolean;
     workspaceName: string;
     projectName: string;
     projectAnnotation: string;
@@ -2110,27 +2117,34 @@ async function maybeRenderDeploySetupBlock(
     return;
   }
 
-  const title = `${details.firstDeploy ? "Set up" : "Deploying"} ${formatDeployDirectory(context.runtime.cwd)}`;
+  const directory = formatDeployDirectory(context.runtime.cwd);
+  if (!details.firstDeploy) {
+    context.output.stderr.write(`Deploying ${directory} to ${details.projectName} / ${details.branchName} / ${details.appName}\n\n`);
+    return;
+  }
+
+  const title = `Setting up your local directory ${formatLocalDirectory(context.runtime.cwd, context.runtime.env)}`;
   const rows = details.firstDeploy
     ? [
         { label: "Workspace", value: details.workspaceName },
-        { label: "Project", value: details.projectName, annotation: details.projectAnnotation },
-        { label: "Branch", value: details.branchName, annotation: details.branchAnnotation },
-        { label: "App", value: details.appName, annotation: details.appAnnotation },
-        { label: "Framework", value: details.framework.displayName, annotation: details.framework.annotation },
-        { label: "Runtime", value: `HTTP ${details.runtime.port}`, annotation: details.runtime.annotation },
+        { label: "Project", value: details.projectName, origin: details.projectAnnotation },
+        { label: "Branch", value: details.branchName, origin: details.branchAnnotation },
+        { label: "App", value: details.appName, origin: details.appAnnotation },
+        { label: "Framework", value: details.framework.displayName, origin: details.framework.annotation },
+        { label: "Runtime", value: `HTTP ${details.runtime.port}`, origin: details.runtime.annotation },
       ]
-    : [
-        { label: "Workspace", value: details.workspaceName },
-        { label: "Project", value: details.projectName, annotation: details.showSubsequentAnnotations ? details.projectAnnotation : undefined },
-        { label: "Branch", value: details.branchName, annotation: details.showSubsequentAnnotations ? details.branchAnnotation : undefined },
-        { label: "App", value: details.appName, annotation: details.showSubsequentAnnotations ? details.appAnnotation : undefined },
-      ];
-  const lines = details.firstDeploy
-    ? [title, "", ...renderDeploySetupRows(context, rows), ""]
-    : [title, ...renderDeploySetupRows(context, rows), ""];
+    : [];
+  const lines = [title, "", ...renderDeployOutputRows(context.ui, rows), ""];
 
   context.output.stderr.write(`${lines.join("\n")}\n`);
+}
+
+function maybeRenderLocalPinBound(context: CommandContext, projectName: string): void {
+  if (context.flags.json || context.flags.quiet) {
+    return;
+  }
+
+  context.output.stderr.write(`This directory is now linked to project ${projectName}.\n\n`);
 }
 
 async function maybeCustomizeDeploySettings(
@@ -2203,28 +2217,17 @@ async function maybeCustomizeDeploySettings(
   ].filter((row): row is { label: string; value: string; annotation: string } => Boolean(row));
 
   if (changedRows.length > 0 && !context.flags.quiet && !context.flags.json) {
-    context.output.stderr.write(`${renderDeploySetupRows(context, changedRows).join("\n")}\n\n`);
+    context.output.stderr.write(`${renderDeployOutputRows(context.ui, changedRows.map((row) => ({
+      label: row.label,
+      value: row.value,
+      origin: row.annotation,
+    }))).join("\n")}\n\n`);
   }
 
   return {
     framework,
     runtime,
   };
-}
-
-function renderDeploySetupRows(
-  context: CommandContext,
-  rows: Array<{ label: string; value: string; annotation?: string }>,
-): string[] {
-  const labelWidth = Math.max(...rows.map((row) => row.label.length));
-  const valueWidth = Math.max(...rows.map((row) => row.value.length));
-
-  return rows.map((row) => {
-    const label = row.label.padEnd(labelWidth);
-    const value = row.value.padEnd(valueWidth);
-    const annotation = row.annotation ? `  ${context.ui.dim(row.annotation)}` : "";
-    return `  ${label}  ${value}${annotation}`.trimEnd();
-  });
 }
 
 function annotationForProjectResolution(resolution: ProjectResolution): string {
@@ -2277,6 +2280,18 @@ function validateDeployHttpPortText(value: string | undefined): string | undefin
 function formatDeployDirectory(cwd: string): string {
   const basename = path.basename(cwd);
   return basename ? `./${basename}` : ".";
+}
+
+function formatLocalDirectory(cwd: string, env: NodeJS.ProcessEnv): string {
+  const resolved = path.resolve(cwd);
+  const home = env.HOME ? path.resolve(env.HOME) : null;
+
+  if (home && (resolved === home || resolved.startsWith(`${home}${path.sep}`))) {
+    const relative = path.relative(home, resolved);
+    return relative ? `~/${relative}` : "~";
+  }
+
+  return resolved;
 }
 
 async function readCurrentWorkspaceId(context: CommandContext): Promise<string | null> {
@@ -2430,6 +2445,87 @@ function deployFailedError(summary: string, error: unknown, nextSteps: string[])
     debug: formatDebugDetails(error),
     exitCode: 1,
     nextSteps,
+  });
+}
+
+function appDeployFailedError(error: unknown, progress: PreviewDeployProgressState): CliError {
+  const why = error instanceof Error ? error.message : String(error);
+  const debug = formatDebugDetails(error);
+
+  if (progress.buildStarted && !progress.buildCompleted) {
+    return new CliError({
+      code: "BUILD_FAILED",
+      domain: "app",
+      summary: "Build failed locally.",
+      why,
+      fix: "Inspect the build output above, fix the error, and redeploy.",
+      debug,
+      meta: { phase: "build" },
+      humanLines: [
+        "Build failed locally.",
+        "",
+        `✗ Built       ${why}`,
+        "",
+        "Fix: Inspect the build output above, fix the error, and redeploy.",
+      ],
+      exitCode: 1,
+      nextSteps: [],
+    });
+  }
+
+  if (!progress.buildStarted) {
+    return deployFailedError("App deploy failed", error, ["prisma-cli app deploy"]);
+  }
+
+  const phaseHeadline = progress.containerLive
+    ? "The deployment started, but the app is not ready yet."
+    : "Deploy failed after the build completed.";
+  const recoveryLines = progress.versionId
+    ? ["See what happened", `prisma-cli app logs --deployment ${progress.versionId}`]
+    : ["Fix", "Retry the command, or rerun with --trace for more detailed diagnostics."];
+  const urlLines = progress.deploymentUrl
+    ? ["", "URL", progress.deploymentUrl]
+    : [];
+  const humanLines = progress.containerLive
+    ? [
+        phaseHeadline,
+        "",
+        "This is usually a missing env var, a failed DB connection,",
+        "or a crash on startup.",
+        "",
+        ...recoveryLines,
+        ...urlLines,
+      ]
+    : [
+        phaseHeadline,
+        "",
+        progress.uploadCompleted
+          ? "The artifact uploaded, but the deployment did not start."
+          : progress.archiveReady
+            ? "The app built locally, but the artifact did not finish uploading."
+            : "The app built locally, but the deployment did not start.",
+        "",
+        ...recoveryLines,
+      ];
+  const fix = progress.versionId
+    ? `Inspect logs with prisma-cli app logs --deployment ${progress.versionId}.`
+    : "Retry the command, or rerun with --trace for more detailed diagnostics.";
+
+  return new CliError({
+    code: "DEPLOY_FAILED",
+    domain: "app",
+    summary: phaseHeadline,
+    why,
+    fix,
+    debug,
+    meta: {
+      phase: progress.containerLive ? "runtime_ready" : "deploy",
+      deploymentId: progress.versionId,
+      deploymentUrl: progress.deploymentUrl,
+    },
+    humanLines,
+    exitCode: 1,
+    nextSteps: [],
   });
 }
 

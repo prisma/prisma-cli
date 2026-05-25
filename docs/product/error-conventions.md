@@ -89,16 +89,28 @@ Human-readable errors should follow this shape:
 Example:
 
 ```text
-✘ Deployment failed during build [BUILD_FAILED]
-Branch: preview
-Why: Next.js build returned a non-zero exit code
-Fix: Inspect logs and redeploy after fixing the build
+Build failed locally.
 
-More: Re-run with --trace for deeper diagnostics
+✗ Built       next build exited with code 1
 
-Next steps:
-- prisma-cli app logs
-- fix the issue and rerun prisma-cli app deploy
+Fix: Inspect the build output above, fix the error, and redeploy.
+```
+
+If the deployment starts but the app is not ready yet, list the deployment URL
+and point to runtime logs without claiming a health-check result until the
+platform exposes one:
+
+```text
+The deployment started, but the app is not ready yet.
+
+This is usually a missing env var, a failed DB connection,
+or a crash on startup.
+
+See what happened
+prisma-cli app logs --deployment <id>
+
+URL
+https://cv-...
 ```
 
 ## JSON Error Shape

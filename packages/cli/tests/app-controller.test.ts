@@ -371,7 +371,7 @@ describe("app controller", () => {
         written: true,
       },
     });
-    expect(stderr.buffer).toContain(`Set up ./${path.basename(cwd)}`);
+    expect(stderr.buffer).toContain(`Setting up your local directory ${cwd}`);
     expect(stderr.buffer).toContain("Project    my-app");
     expect(stderr.buffer).toContain("Branch     feat-j1");
     expect(stderr.buffer).toContain("Framework  Next.js");
@@ -381,6 +381,216 @@ describe("app controller", () => {
       projectId: "proj_my_app",
     });
     await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(".prisma/\n");
+  });
+
+  it("writes the local binding before build failures and renders build-failure copy", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([]);
+    const deployApp = vi.fn().mockImplementation(async (options: { progress?: { onBuildStart?: () => void } }) => {
+      options.progress?.onBuildStart?.();
+      throw new Error("next build exited with code 1");
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        createProject: vi.fn(),
+        listApps,
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context, stderr } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      framework: "hono",
+    })).rejects.toMatchObject({
+      code: "BUILD_FAILED",
+      humanLines: [
+        "Build failed locally.",
+        "",
+        "✗ Built       next build exited with code 1",
+        "",
+        "Fix: Inspect the build output above, fix the error, and redeploy.",
+      ],
+    });
+    await expect(readLocalPin(cwd)).resolves.toEqual({
+      workspaceId: "ws_123",
+      projectId: "proj_123",
+    });
+    expect(stderr.buffer).toContain("This directory is now linked to project Acme Dashboard.");
+    expect(stderr.buffer).toContain("Building locally...");
+  });
+
+  it("renders runtime-failure copy with deployment logs after the container starts", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    let appName = "";
+    const listApps = vi.fn().mockImplementation(async () => [
+      { id: "app_1", name: appName, region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+    ]);
+    const deployApp = vi.fn().mockImplementation(async (options: {
+      progress?: {
+        onBuildStart?: () => void;
+        onBuildComplete?: () => void;
+        onArchiveCreating?: () => void;
+        onArchiveReady?: (byteLength: number) => void;
+        onUploadStart?: () => void;
+        onVersionCreated?: (versionId: string) => void;
+        onUploadComplete?: () => void;
+        onStartRequested?: () => void;
+        onRunning?: (url?: string) => void;
+      };
+    }) => {
+      options.progress?.onBuildStart?.();
+      options.progress?.onBuildComplete?.();
+      options.progress?.onArchiveCreating?.();
+      options.progress?.onArchiveReady?.(11_114_905);
+      options.progress?.onUploadStart?.();
+      options.progress?.onVersionCreated?.("dep_failed");
+      options.progress?.onUploadComplete?.();
+      options.progress?.onStartRequested?.();
+      options.progress?.onRunning?.("https://cv-example.fra.prisma.build");
+      throw new Error("Internal Server Error");
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    appName = path.basename(cwd);
+    await writeLocalPin(cwd, {
+      workspaceId: "ws_123",
+      projectId: "proj_123",
+    });
+    const stateDir = path.join(cwd, ".state");
+    const { context, stderr } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDeploy(context, undefined, {
+      framework: "hono",
+    })).rejects.toMatchObject({
+      code: "DEPLOY_FAILED",
+      humanLines: expect.arrayContaining([
+        "The deployment started, but the app is not ready yet.",
+        "This is usually a missing env var, a failed DB connection,",
+        "or a crash on startup.",
+        "See what happened",
+        "prisma-cli app logs --deployment dep_failed",
+        "URL",
+        "https://cv-example.fra.prisma.build",
+      ]),
+    });
+    expect(stderr.buffer).toContain(`Deploying ./${path.basename(cwd)} to Acme Dashboard / main / ${path.basename(cwd)}`);
+    expect(stderr.buffer).toContain("  Built      10.6 MB");
+    expect(stderr.buffer).toContain("  Uploaded");
+    expect(stderr.buffer).toContain("Deploying...");
+    expect(stderr.buffer).toContain("  Deployed");
+    expect(stderr.buffer).not.toContain("Status: running");
+    expect(stderr.buffer).not.toContain("Deployment is running at");
+    expect(stderr.buffer).not.toContain("Checking runtime health");
+  });
+
+  it("renders deploy-failure copy when failure happens before runtime starts", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    let appName = "";
+    const listApps = vi.fn().mockImplementation(async () => [
+      { id: "app_1", name: appName, region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+    ]);
+    const deployApp = vi.fn().mockImplementation(async (options: {
+      progress?: {
+        onBuildStart?: () => void;
+        onBuildComplete?: () => void;
+        onArchiveCreating?: () => void;
+        onArchiveReady?: (byteLength: number) => void;
+        onUploadStart?: () => void;
+      };
+    }) => {
+      options.progress?.onBuildStart?.();
+      options.progress?.onBuildComplete?.();
+      options.progress?.onArchiveCreating?.();
+      options.progress?.onArchiveReady?.(11_114_905);
+      options.progress?.onUploadStart?.();
+      throw new Error("Upload failed");
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    appName = path.basename(cwd);
+    await writeLocalPin(cwd, {
+      workspaceId: "ws_123",
+      projectId: "proj_123",
+    });
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDeploy(context, undefined, {
+      framework: "hono",
+    })).rejects.toMatchObject({
+      code: "DEPLOY_FAILED",
+      summary: "Deploy failed after the build completed.",
+      humanLines: expect.arrayContaining([
+        "Deploy failed after the build completed.",
+        "The app built locally, but the artifact did not finish uploading.",
+        "Fix",
+        "Retry the command, or rerun with --trace for more detailed diagnostics.",
+      ]),
+    });
   });
 
   it("lets --framework win over legacy --build-type for deploy", async () => {
@@ -510,7 +720,8 @@ describe("app controller", () => {
       workspaceId: "ws_123",
       projectId: "proj_stale",
     });
-    expect(stderr.buffer).toContain("from PRISMA_PROJECT_ID");
+    expect(stderr.buffer).toContain(`Deploying ./${path.basename(cwd)} to Acme Dashboard / main / ${path.basename(cwd)}`);
+    expect(stderr.buffer).not.toContain("from PRISMA_PROJECT_ID");
   });
 
   it("returns FRAMEWORK_NOT_DETECTED before deploy when framework inference fails", async () => {
