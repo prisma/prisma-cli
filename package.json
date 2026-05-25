@@ -5,6 +5,7 @@
   "scripts": {
     "build:cli": "pnpm --filter @prisma/cli build",
     "prepare:cli-publish": "node scripts/prepare-cli-publish.mjs",
+    "smoke:cli-nextjs": "node scripts/smoke-cli-nextjs-artifact.mjs",
     "test": "pnpm --filter @prisma/cli test",
     "prisma-cli": "tsx packages/cli/src/bin.ts",
     "prisma": "tsx packages/cli/src/bin.ts"

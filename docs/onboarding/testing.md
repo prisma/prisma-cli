@@ -17,6 +17,17 @@ pnpm build:cli
 pnpm prepare:cli-publish
 ```
 
+Run the Next.js artifact smoke before publishing a preview CLI build that
+touches build, archive, or deploy packaging. This uses the compiled
+`packages/cli/dist/cli.js` against `examples/next-smoke` and verifies that the
+staged standalone artifact can resolve Next's pnpm-managed transitive
+dependencies:
+
+```bash
+pnpm build:cli
+pnpm smoke:cli-nextjs
+```
+
 ## What To Test
 
 - Command behavior and resolution rules.
