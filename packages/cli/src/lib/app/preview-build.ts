@@ -1,4 +1,4 @@
-import { chmod, copyFile, cp, lstat, mkdir, readdir, readlink, rm, stat } from "node:fs/promises";
+import { chmod, copyFile, cp, lstat, mkdir, readdir, readFile, readlink, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -76,6 +76,10 @@ export async function executePreviewBuild(options: {
   const artifact = await strategy.execute();
 
   try {
+    if (buildType === "nextjs") {
+      await restageNextjsArtifact(artifact.directory, options.appPath);
+    }
+
     await normalizeArtifactSymlinks(artifact.directory, options.appPath);
     return {
       artifact,
@@ -168,11 +172,40 @@ export async function stageNextjsStandaloneArtifact(options: {
   const standaloneRoot = path.resolve(options.standaloneDir);
   const artifactRoot = path.resolve(options.artifactDir);
   const appRoot = path.resolve(options.appPath);
+  const sourceRoot = await resolveSourceRoot(appRoot);
 
   await copyPathMaterializingSymlinks(standaloneRoot, artifactRoot, {
     standaloneRoot,
     appRoot,
+    sourceRoot,
   });
+}
+
+async function restageNextjsArtifact(artifactDir: string, appPath: string): Promise<void> {
+  const standaloneDir = path.join(appPath, ".next", "standalone");
+
+  await rm(artifactDir, { recursive: true, force: true });
+  await stageNextjsStandaloneArtifact({
+    standaloneDir,
+    artifactDir,
+    appPath,
+  });
+
+  const publicDir = path.join(appPath, "public");
+  if (await directoryExists(publicDir)) {
+    await cp(publicDir, path.join(artifactDir, "public"), {
+      recursive: true,
+      verbatimSymlinks: true,
+    });
+  }
+
+  const staticDir = path.join(appPath, ".next", "static");
+  if (await directoryExists(staticDir)) {
+    await cp(staticDir, path.join(artifactDir, ".next", "static"), {
+      recursive: true,
+      verbatimSymlinks: true,
+    });
+  }
 }
 
 export async function normalizeArtifactSymlinks(
@@ -241,6 +274,7 @@ async function copyPathMaterializingSymlinks(
   options: {
     standaloneRoot: string;
     appRoot: string;
+    sourceRoot: string;
   },
 ): Promise<void> {
   const sourceStat = await lstat(sourcePath);
@@ -278,13 +312,17 @@ async function resolveSymlinkTarget(
   options: {
     standaloneRoot: string;
     appRoot: string;
+    sourceRoot: string;
   },
 ): Promise<string> {
   const linkTarget = await readlink(symlinkPath);
   const resolvedTarget = path.resolve(path.dirname(symlinkPath), linkTarget);
 
   if (await pathExists(resolvedTarget)) {
-    if (!isPathWithin(options.appRoot, resolvedTarget)) {
+    if (
+      !isPathWithin(options.appRoot, resolvedTarget) &&
+      !isPathWithin(options.sourceRoot, resolvedTarget)
+    ) {
       throw new Error(`Build artifact symlink escapes the app directory: ${resolvedTarget}`);
     }
 
@@ -311,6 +349,48 @@ async function pathExists(targetPath: string): Promise<boolean> {
   try {
     await stat(targetPath);
     return true;
+  } catch {
+    return false;
+  }
+}
+
+async function directoryExists(targetPath: string): Promise<boolean> {
+  try {
+    const targetStat = await stat(targetPath);
+    return targetStat.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function resolveSourceRoot(appRoot: string): Promise<string> {
+  let current = path.resolve(appRoot);
+
+  while (true) {
+    if (
+      await pathExists(path.join(current, ".git")) ||
+      await pathExists(path.join(current, "pnpm-workspace.yaml")) ||
+      await pathExists(path.join(current, "bun.lock")) ||
+      await pathExists(path.join(current, "bun.lockb")) ||
+      await packageJsonDeclaresWorkspaces(current)
+    ) {
+      return current;
+    }
+
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return path.resolve(appRoot);
+    }
+
+    current = parent;
+  }
+}
+
+async function packageJsonDeclaresWorkspaces(directory: string): Promise<boolean> {
+  try {
+    const content = await readFile(path.join(directory, "package.json"), "utf8");
+    const parsed = JSON.parse(content) as { workspaces?: unknown };
+    return Boolean(parsed.workspaces);
   } catch {
     return false;
   }

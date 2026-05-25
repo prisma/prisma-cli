@@ -18,6 +18,10 @@ describe("preview build strategy", () => {
     const nextBin = path.join(appPath, "node_modules", ".bin", "next");
 
     await mkdir(path.join(standaloneDir, ".next", "static"), { recursive: true });
+    await mkdir(path.join(appPath, ".next", "static"), { recursive: true });
+    await writeFile(path.join(appPath, ".next", "static", "client.js"), "console.log('static');\n", "utf8");
+    await mkdir(path.join(appPath, "public"), { recursive: true });
+    await writeFile(path.join(appPath, "public", "hello.txt"), "hello\n", "utf8");
     await mkdir(path.dirname(nextBin), { recursive: true });
     await writeFile(path.join(appPath, "next.config.ts"), "export default { output: 'standalone' };\n", "utf8");
     await writeFile(path.join(standaloneDir, "server.js"), "console.log('next');\n", "utf8");
@@ -33,6 +37,8 @@ describe("preview build strategy", () => {
     expect(result.buildType).toBe("nextjs");
     expect(result.artifact.entrypoint).toBe("server.js");
     expect(result.artifact.defaultPortMapping).toEqual({ http: 3000 });
+    await expect(readFile(path.join(result.artifact.directory, ".next", "static", "client.js"), "utf8")).resolves.toContain("static");
+    await expect(readFile(path.join(result.artifact.directory, "public", "hello.txt"), "utf8")).resolves.toContain("hello");
     await result.artifact.cleanup?.();
   });
 
@@ -117,6 +123,34 @@ describe("preview build strategy", () => {
     expect((await lstat(copiedFallbackTarget)).isSymbolicLink()).toBe(false);
     await expect(readFile(path.join(copiedStandaloneTarget, "index.js"), "utf8")).resolves.toContain("sharp = true");
     await expect(readFile(path.join(copiedFallbackTarget, "index.js"), "utf8")).resolves.toContain("semver = true");
+  });
+
+  it("stages Next.js standalone symlinks that resolve through the monorepo root", async () => {
+    const { stageNextjsStandaloneArtifact } = await import("../src/lib/app/preview-build");
+    const cwd = await createTempCwd();
+    const repoRoot = path.join(cwd, "repo");
+    const appPath = path.join(repoRoot, "apps", "web");
+    const standaloneDir = path.join(appPath, ".next", "standalone");
+    const artifactDir = path.join(cwd, "artifact");
+    const rootDependency = path.join(repoRoot, "node_modules", "pg");
+    const standaloneLink = path.join(standaloneDir, "node_modules", "pg");
+
+    await mkdir(path.join(repoRoot, ".git"), { recursive: true });
+    await mkdir(rootDependency, { recursive: true });
+    await writeFile(path.join(rootDependency, "index.js"), "export const pg = true;\n", "utf8");
+    await mkdir(path.dirname(standaloneLink), { recursive: true });
+    await symlink(path.relative(path.dirname(standaloneLink), rootDependency), standaloneLink, "dir");
+
+    await stageNextjsStandaloneArtifact({
+      standaloneDir,
+      artifactDir,
+      appPath,
+    });
+
+    const copiedDependency = path.join(artifactDir, "node_modules", "pg");
+
+    expect((await lstat(copiedDependency)).isSymbolicLink()).toBe(false);
+    await expect(readFile(path.join(copiedDependency, "index.js"), "utf8")).resolves.toContain("pg = true");
   });
 
   it("rejects Next.js standalone symlinks that escape the app directory", async () => {
