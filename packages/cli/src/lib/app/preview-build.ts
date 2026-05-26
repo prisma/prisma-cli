@@ -220,6 +220,7 @@ export async function restageNextjsArtifact(artifact: BuildArtifact, appPath: st
 }
 
 function nextjsServerSubpath(entrypoint: string): string {
+  // SDK emits posix-style entrypoints (path.posix.join).
   const dir = path.posix.dirname(entrypoint);
   return dir === "." ? "" : dir;
 }
