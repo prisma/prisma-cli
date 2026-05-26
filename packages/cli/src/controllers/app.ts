@@ -974,7 +974,7 @@ export async function runAppDomainWait(
         summary: `Timed out waiting for "${normalizedHostname}" to become active`,
         why: `The domain is still "${current.status}".`,
         fix: `Run prisma-cli app domain show ${normalizedHostname} to inspect the current status, or retry wait with a longer --timeout.`,
-        exitCode: 2,
+        exitCode: 1,
         nextSteps: [`prisma-cli app domain show ${normalizedHostname}`],
       });
     }

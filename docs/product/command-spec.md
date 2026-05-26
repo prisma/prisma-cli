@@ -857,7 +857,7 @@ Behavior:
 - polls domain detail until status is `active`, `failed`, or the timeout expires
 - defaults `--timeout` to `15m`
 - treats `--timeout 0` as poll-once snapshot mode
-- exits 0 on `active`, 1 on terminal `failed`, and 2 on timeout
+- exits 0 on `active`, and 1 on terminal `failed` or timeout
 - in `--json` mode, streams newline-delimited status events
 
 Examples:

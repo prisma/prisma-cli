@@ -769,7 +769,7 @@ describe("app controller", () => {
     })).rejects.toMatchObject({
       code: "DOMAIN_VERIFICATION_TIMEOUT",
       domain: "app",
-      exitCode: 2,
+      exitCode: 1,
     });
     expect(showDomain).not.toHaveBeenCalled();
     expect(stdout.buffer).toContain("\"command\":\"app.domain.wait\"");
