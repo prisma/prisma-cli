@@ -1,7 +1,7 @@
 import { AuthError as SDKAuthError } from "@prisma/management-api-sdk";
 import type { CommandDescriptor } from "./command-meta";
 import { getCommandDescriptor } from "./command-meta";
-import { CliError } from "./errors";
+import { authRequiredError, CliError } from "./errors";
 import { resolveGlobalFlags } from "./global-flags";
 import type { CommandSuccess } from "./output";
 import { cliErrorToJson, writeHumanError, writeHumanLines, writeJsonError, writeJsonEvent, writeJsonSuccess } from "./output";
@@ -20,16 +20,7 @@ function toCliError(error: unknown): CliError | null {
   if (error instanceof CliError) return error;
 
   if (error instanceof SDKAuthError) {
-    return new CliError({
-      code: "AUTH_REQUIRED",
-      domain: "auth",
-      summary: "Authentication required",
-      why: "This command needs an authenticated session.",
-      fix: "Run prisma-cli auth login, then retry the command.",
-      debug: error.message,
-      exitCode: 1,
-      nextSteps: ["prisma-cli auth login"],
-    });
+    return authRequiredError(["prisma-cli auth login"], { debug: error.message });
   }
 
   return null;

@@ -65,13 +65,17 @@ export function usageError(
   });
 }
 
-export function authRequiredError(nextSteps: string[] = ["prisma-cli auth login"]): CliError {
+export function authRequiredError(
+  nextSteps: string[] = ["prisma-cli auth login"],
+  options: { debug?: string | null } = {},
+): CliError {
   return new CliError({
     code: "AUTH_REQUIRED",
     domain: "auth",
     summary: "Authentication required",
     why: "This command needs an authenticated session.",
     fix: "Run prisma-cli auth login, or rerun the command in a TTY to sign in interactively.",
+    debug: options.debug,
     exitCode: 1,
     nextSteps,
   });

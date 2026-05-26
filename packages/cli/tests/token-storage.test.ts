@@ -114,4 +114,74 @@ describe("FileTokenStorage", () => {
       code: "ENOENT",
     });
   });
+
+  it("does not remove another caller's active lock after stale takeover", async () => {
+    const cwd = await createTempCwd();
+    const authFilePath = path.join(cwd, "auth.json");
+    const lockFilePath = `${authFilePath}.lock`;
+    const firstStorage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+    const secondStorage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+    const events: string[] = [];
+    let releaseFirst!: () => void;
+    let markFirstStarted!: () => void;
+    let releaseSecond!: () => void;
+    let markSecondStarted!: () => void;
+    const firstStarted = new Promise<void>((resolve) => {
+      markFirstStarted = resolve;
+    });
+    const firstReleased = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const secondStarted = new Promise<void>((resolve) => {
+      markSecondStarted = resolve;
+    });
+    const secondReleased = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+
+    const first = firstStorage.withRefreshLock(async () => {
+      events.push("first:start");
+      markFirstStarted();
+      await firstReleased;
+      events.push("first:end");
+    });
+
+    await firstStarted;
+    const firstLockId = await fs.readFile(lockFilePath, "utf8");
+    const staleTime = new Date(Date.now() - 31_000);
+    await fs.utimes(lockFilePath, staleTime, staleTime);
+
+    const second = secondStorage.withRefreshLock(async () => {
+      events.push("second:start");
+      markSecondStarted();
+      await secondReleased;
+      events.push("second:end");
+    });
+
+    await secondStarted;
+    const secondLockId = await fs.readFile(lockFilePath, "utf8");
+    expect(secondLockId).not.toEqual(firstLockId);
+
+    releaseFirst();
+    await first;
+
+    await expect(fs.readFile(lockFilePath, "utf8")).resolves.toBe(secondLockId);
+
+    releaseSecond();
+    await second;
+
+    expect(events).toEqual([
+      "first:start",
+      "second:start",
+      "first:end",
+      "second:end",
+    ]);
+    await expect(fs.stat(lockFilePath)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
 });

@@ -1,5 +1,6 @@
 import { CredentialsStore } from "@prisma/credentials-store";
 import type { TokenStorage, Tokens } from "@prisma/management-api-sdk";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getAuthFilePath } from "../lib/auth/client";
@@ -88,28 +89,34 @@ export class FileTokenStorage implements TokenStorage {
   }
 
   async withRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
-    await this.acquireRefreshLock();
+    const lockId = await this.acquireRefreshLock();
     try {
       return await fn();
     } finally {
-      await fs.unlink(this.lockFilePath).catch(() => {});
+      await this.releaseRefreshLock(lockId);
     }
   }
 
-  private async acquireRefreshLock(): Promise<void> {
+  private async acquireRefreshLock(): Promise<string> {
+    const lockId = randomUUID();
     await fs.mkdir(path.dirname(this.lockFilePath), { recursive: true });
 
     while (true) {
       try {
         const handle = await fs.open(this.lockFilePath, "wx");
-        await handle.close();
-        return;
+        try {
+          await handle.writeFile(lockId, "utf8");
+        } finally {
+          await handle.close();
+        }
+        return lockId;
       } catch (error) {
         const code = (error as NodeJS.ErrnoException).code;
         if (code !== "EEXIST") throw error;
 
-        if (await this.isRefreshLockStale()) {
-          await fs.unlink(this.lockFilePath).catch(() => {});
+        const staleLockId = await this.getStaleRefreshLockId();
+        if (staleLockId) {
+          await this.releaseRefreshLock(staleLockId);
           continue;
         }
 
@@ -118,9 +125,18 @@ export class FileTokenStorage implements TokenStorage {
     }
   }
 
-  private async isRefreshLockStale(): Promise<boolean> {
+  private async getStaleRefreshLockId(): Promise<string | null> {
+    const lockId = await fs.readFile(this.lockFilePath, "utf8").catch(() => null);
+    if (lockId === null) return null;
+
     const stats = await fs.stat(this.lockFilePath).catch(() => null);
-    if (!stats) return false;
-    return Date.now() - stats.mtimeMs > 30_000;
+    if (!stats) return null;
+    return Date.now() - stats.mtimeMs > 30_000 ? lockId : null;
+  }
+
+  private async releaseRefreshLock(lockId: string): Promise<void> {
+    const currentLockId = await fs.readFile(this.lockFilePath, "utf8").catch(() => null);
+    if (currentLockId !== lockId) return;
+    await fs.unlink(this.lockFilePath).catch(() => {});
   }
 }
