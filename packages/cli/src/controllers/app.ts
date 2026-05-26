@@ -84,10 +84,12 @@ import {
   type PreviewAppRecord,
   type PreviewDomainRecord,
 } from "../lib/app/preview-provider";
+import { formatDomainFailureFix } from "../lib/app/domain-guidance";
 import { requireAuthenticatedAuthState } from "./auth";
 import { listRealWorkspaceProjects } from "./project";
 import { createSelectPromptPort } from "./select-prompt-port";
 
+type AppDomainCommand = "add" | "show" | "remove" | "retry" | "wait";
 type DeployFramework = "nextjs" | "hono" | "tanstack-start";
 
 const DEPLOY_FRAMEWORKS = ["nextjs", "hono", "tanstack-start"] as const satisfies readonly DeployFramework[];
@@ -804,9 +806,7 @@ export async function runAppDomainAdd(
     command: "app.domain.add",
     result: {
       ...target.resultTarget,
-      domain: toAppDomainSummary(added.domain, {
-        cnameTarget: deriveSwitchboardTarget(target.app.liveUrl),
-      }),
+      domain: toAppDomainSummary(added.domain),
       existing: added.existing,
     },
     warnings: [],
@@ -828,7 +828,7 @@ export async function runAppDomainShow(
 ): Promise<CommandSuccess<AppDomainShowResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
   const target = await resolveAppDomainTarget(context, options);
-  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname);
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "show");
   const detail = await target.provider.showDomain(domain.id).catch((error) => {
     throw domainCommandError("show", error, normalizedHostname);
   });
@@ -837,9 +837,7 @@ export async function runAppDomainShow(
     command: "app.domain.show",
     result: {
       ...target.resultTarget,
-      domain: toAppDomainSummary(detail, {
-        cnameTarget: deriveSwitchboardTarget(target.app.liveUrl),
-      }),
+      domain: toAppDomainSummary(detail),
     },
     warnings: [],
     nextSteps: buildDomainShowNextSteps(detail),
@@ -857,7 +855,7 @@ export async function runAppDomainRemove(
 ): Promise<CommandSuccess<AppDomainRemoveResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
   const target = await resolveAppDomainTarget(context, options);
-  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname);
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "remove");
 
   await confirmDomainRemoval(context, target.resultTarget, normalizedHostname);
 
@@ -888,7 +886,7 @@ export async function runAppDomainRetry(
 ): Promise<CommandSuccess<AppDomainRetryResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
   const target = await resolveAppDomainTarget(context, options);
-  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname);
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "retry");
   const retried = await target.provider.retryDomain(domain.id).catch((error) => {
     throw domainCommandError("retry", error, normalizedHostname);
   });
@@ -897,9 +895,7 @@ export async function runAppDomainRetry(
     command: "app.domain.retry",
     result: {
       ...target.resultTarget,
-      domain: toAppDomainSummary(retried, {
-        cnameTarget: deriveSwitchboardTarget(target.app.liveUrl),
-      }),
+      domain: toAppDomainSummary(retried),
     },
     warnings: [],
     nextSteps: [`prisma-cli app domain wait ${normalizedHostname}`],
@@ -919,7 +915,7 @@ export async function runAppDomainWait(
   const normalizedHostname = normalizeDomainHostname(hostname);
   const timeoutMs = parseDomainWaitTimeout(options?.timeout);
   const target = await resolveAppDomainTarget(context, options);
-  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname);
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "wait");
 
   if (!context.flags.json && !context.flags.quiet) {
     context.output.stderr.write(
@@ -962,7 +958,7 @@ export async function runAppDomainWait(
         domain: "app",
         summary: `Custom domain "${normalizedHostname}" failed verification`,
         why: formatDomainFailureWhy(current),
-        fix: `Fix the DNS record, then run prisma-cli app domain retry ${normalizedHostname}.`,
+        fix: formatDomainFailureFix(current) ?? `Run prisma-cli app domain retry ${normalizedHostname}.`,
         exitCode: 1,
         nextSteps: [
           `prisma-cli app domain show ${normalizedHostname}`,
@@ -1473,9 +1469,10 @@ async function resolveDomainByHostname(
   provider: ReturnType<typeof createPreviewAppProvider>,
   appId: string,
   hostname: string,
+  command: AppDomainCommand,
 ): Promise<PreviewDomainRecord> {
   const domains = await provider.listDomains(appId).catch((error) => {
-    throw domainCommandError("show", error, hostname);
+    throw domainCommandError(command, error, hostname);
   });
   const matched = domains.find((domain) => sameDomainHostname(domain.hostname, hostname));
   if (matched) {
@@ -1522,12 +1519,7 @@ function sameDomainHostname(left: string, right: string): boolean {
   return left.trim().replace(/\.$/, "").toLowerCase() === right.trim().replace(/\.$/, "").toLowerCase();
 }
 
-function toAppDomainSummary(
-  domain: PreviewDomainRecord,
-  options?: {
-    cnameTarget?: string | null;
-  },
-): AppDomainSummary {
+function toAppDomainSummary(domain: PreviewDomainRecord): AppDomainSummary {
   return {
     id: domain.id,
     type: domain.type,
@@ -1541,47 +1533,17 @@ function toAppDomainSummary(
     certExpiresAt: domain.certExpiresAt,
     createdAt: domain.createdAt,
     updatedAt: domain.updatedAt,
-    dnsRecords: toAppDomainDnsRecords(domain, options?.cnameTarget),
+    dnsRecords: toAppDomainDnsRecords(domain),
   };
 }
 
-function toAppDomainDnsRecords(
-  domain: Pick<PreviewDomainRecord, "hostname" | "dnsRecords">,
-  cnameTarget: string | null | undefined,
-): AppDomainDnsRecord[] {
-  if (domain.dnsRecords.length > 0) {
-    return domain.dnsRecords.map((record): AppDomainDnsRecord => ({
-      type: record.type,
-      name: record.name,
-      value: record.value,
-      ttl: record.ttl,
-    }));
-  }
-
-  if (!cnameTarget) {
-    return [];
-  }
-
-  return [{
-    type: "CNAME",
-    name: domain.hostname,
-    value: cnameTarget,
-    ttl: 300,
-  }];
-}
-
-function deriveSwitchboardTarget(liveUrl: string | null | undefined): string | null {
-  if (!liveUrl) {
-    return null;
-  }
-
-  const hostname = liveUrl.replace(/^https?:\/\//, "").split("/")[0] ?? "";
-  const match = hostname.match(/\.([a-z0-9-]+)\.prisma\.build$/i);
-  if (!match?.[1]) {
-    return null;
-  }
-
-  return `switchboard.${match[1].toLowerCase()}.prisma.build`;
+function toAppDomainDnsRecords(domain: Pick<PreviewDomainRecord, "dnsRecords">): AppDomainDnsRecord[] {
+  return domain.dnsRecords.map((record) => ({
+    type: record.type,
+    name: record.name,
+    value: record.value,
+    ttl: record.ttl,
+  }));
 }
 
 function buildDomainShowNextSteps(domain: PreviewDomainRecord): string[] {
@@ -1634,11 +1596,15 @@ async function confirmDomainRemoval(
 }
 
 function domainCommandError(
-  command: "add" | "show" | "remove" | "retry" | "wait",
+  command: AppDomainCommand,
   error: unknown,
   hostname: string,
 ): CliError {
   if (error instanceof PreviewDomainApiError) {
+    if (command === "add" && (error.status === 400 || error.status === 422) && isDomainDnsError(error)) {
+      return domainDnsNotConfiguredError(hostname, error);
+    }
+
     if (command === "add" && error.status === 400) {
       return new CliError({
         code: "DOMAIN_HOSTNAME_INVALID",
@@ -1666,10 +1632,6 @@ function domainCommandError(
     }
 
     if (command === "add" && error.status === 422) {
-      if (isDomainDnsError(error)) {
-        return domainDnsNotConfiguredError(hostname, error);
-      }
-
       return new CliError({
         code: "NO_DEPLOYMENTS",
         domain: "app",
@@ -1726,25 +1688,36 @@ function isDomainQuotaError(error: PreviewDomainApiError): boolean {
 
 function isDomainDnsError(error: PreviewDomainApiError): boolean {
   const text = `${error.message} ${error.hint ?? ""}`.toLowerCase();
-  return text.includes("dns") || text.includes("cname") || text.includes("a/aaaa");
+  return (
+    text.includes("dns is not configured") ||
+    text.includes("dns verification failed") ||
+    text.includes("no cname") ||
+    text.includes("cname record") ||
+    text.includes("no a/aaaa") ||
+    /\bcname(?:s)?\s+to\b/.test(text)
+  );
 }
 
 function domainDnsNotConfiguredError(hostname: string, error: PreviewDomainApiError): CliError {
   const target = extractDomainDnsTarget(error);
-  const record = target ? `CNAME ${hostname} -> ${target}` : `CNAME ${hostname} -> <Prisma DNS target>`;
+  const record = target ? `CNAME ${hostname} -> ${target}` : null;
 
   return new CliError({
     code: "DOMAIN_DNS_NOT_CONFIGURED",
     domain: "app",
     summary: `DNS is not configured for "${hostname}"`,
     why: error.hint ?? error.message,
-    fix: `Add ${record} at your DNS provider, then rerun the domain command.`,
+    fix: record
+      ? `Add ${record} at your DNS provider, then rerun the domain command.`
+      : "The platform did not return the required DNS target. Re-run with --trace for the underlying API response details.",
     debug: formatDebugDetails(error),
     exitCode: 1,
-    nextSteps: [
-      `add ${record}`,
-      `prisma-cli app domain add ${hostname}`,
-    ],
+    nextSteps: record
+      ? [
+          `add ${record}`,
+          `prisma-cli app domain add ${hostname}`,
+        ]
+      : [`prisma-cli app domain add ${hostname} --trace`],
   });
 }
 

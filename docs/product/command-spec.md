@@ -770,8 +770,9 @@ Behavior:
 - registers the hostname against the selected app's compute service
 - is idempotent for a hostname already attached to the same app
 - does not re-trigger DNS verification for an existing row
-- prints DNS record instructions when available from the API
-- returns `DOMAIN_DNS_NOT_CONFIGURED` with a derived CNAME target when the API requires DNS to be pointed before registration can complete
+- prints DNS record instructions only when returned by the API
+- does not synthesize DNS records client-side when the API omits them
+- returns `DOMAIN_DNS_NOT_CONFIGURED` with a CNAME target only when the API error includes the required target
 - rejects non-production `--branch` with `BRANCH_NOT_DEPLOYABLE`
 
 Examples:
@@ -793,7 +794,7 @@ Behavior:
 - resolves the selected app
 - finds the domain by hostname within the selected app
 - includes failure category, failure reason, certificate expiry, and DNS record
-  instructions when available
+  instructions when returned by the API
 
 Examples:
 

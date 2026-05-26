@@ -21,6 +21,7 @@ import type {
 } from "../types/app";
 import { renderList, renderShow, serializeList } from "../output/patterns";
 import { renderDeployOutputRows } from "../lib/app/deploy-output";
+import { formatDomainFailureFix } from "../lib/app/domain-guidance";
 
 export function renderAppBuild(
   context: CommandContext,
@@ -513,7 +514,11 @@ function domainTargetFields(result: Pick<AppDomainAddResult, "workspace" | "proj
 function domainDnsFields(domain: Pick<AppDomainAddResult["domain"], "hostname" | "dnsRecords">) {
   const records = domain.dnsRecords;
   if (records.length === 0) {
-    return [];
+    return [{
+      key: "dns record",
+      value: "not provided by platform",
+      tone: "dim" as const,
+    }];
   }
 
   return [{
@@ -527,29 +532,16 @@ function domainDnsFields(domain: Pick<AppDomainAddResult["domain"], "hostname" |
 
 function formatDomainFailure(domain: AppDomainShowResult["domain"]): string {
   if (!domain.failureReason) {
-    return "none";
+    return domain.failureCategory ?? "none";
   }
 
   return domain.failureCategory ? `${domain.failureCategory} - ${domain.failureReason}` : domain.failureReason;
 }
 
 function domainFixFields(domain: AppDomainShowResult["domain"]) {
-  if (!domain.failureReason) {
-    return [];
-  }
+  const fix = formatDomainFailureFix(domain);
 
-  const dnsRecord = domain.dnsRecords[0];
-  if (!dnsRecord) {
-    return [{
-      key: "fix",
-      value: `Check the DNS target for ${domain.hostname}, then run prisma-cli app domain retry ${domain.hostname}`,
-    }];
-  }
-
-  return [{
-    key: "fix",
-    value: `Add ${dnsRecord.type} ${dnsRecord.name} -> ${dnsRecord.value}, then run prisma-cli app domain retry ${domain.hostname}`,
-  }];
+  return fix ? [{ key: "fix", value: fix }] : [];
 }
 
 function formatOptionalUtcDate(value: string | null): string {
