@@ -1,3 +1,4 @@
+import { AuthError as SDKAuthError } from "@prisma/management-api-sdk";
 import type { CommandDescriptor } from "./command-meta";
 import { getCommandDescriptor } from "./command-meta";
 import { CliError } from "./errors";
@@ -13,6 +14,25 @@ interface CommandPresenter<T> {
     result: T,
   ) => string[];
   renderJson?: (result: T) => unknown;
+}
+
+function toCliError(error: unknown): CliError | null {
+  if (error instanceof CliError) return error;
+
+  if (error instanceof SDKAuthError) {
+    return new CliError({
+      code: "AUTH_REQUIRED",
+      domain: "auth",
+      summary: "Authentication required",
+      why: "This command needs an authenticated session.",
+      fix: "Run prisma-cli auth login, then retry the command.",
+      debug: error.message,
+      exitCode: 1,
+      nextSteps: ["prisma-cli auth login"],
+    });
+  }
+
+  return null;
 }
 
 export async function runCommand<T>(
@@ -43,14 +63,15 @@ export async function runCommand<T>(
 
     writeHumanLines(context.output, presenter.renderHuman(context, descriptor, success.result));
   } catch (error) {
-    if (error instanceof CliError) {
+    const cliError = toCliError(error);
+    if (cliError) {
       if (flags.json) {
-        writeJsonError(context.output, commandName, error);
+        writeJsonError(context.output, commandName, cliError);
       } else {
-        writeHumanError(context.output, context.ui, error, { trace: flags.trace });
+        writeHumanError(context.output, context.ui, cliError, { trace: flags.trace });
       }
 
-      process.exitCode = error.exitCode;
+      process.exitCode = cliError.exitCode;
       return;
     }
 
@@ -81,21 +102,22 @@ export async function runStreamingCommand(
       });
     }
   } catch (error) {
-    if (error instanceof CliError) {
+    const cliError = toCliError(error);
+    if (cliError) {
       if (flags.json) {
         writeJsonEvent(context.output, {
           type: "error",
           command: commandName,
           timestamp: new Date().toISOString(),
-          error: cliErrorToJson(error),
+          error: cliErrorToJson(cliError),
           warnings: [],
-          nextSteps: error.nextSteps,
+          nextSteps: cliError.nextSteps,
         });
       } else {
-        writeHumanError(context.output, context.ui, error, { trace: flags.trace });
+        writeHumanError(context.output, context.ui, cliError, { trace: flags.trace });
       }
 
-      process.exitCode = error.exitCode;
+      process.exitCode = cliError.exitCode;
       return;
     }
 
