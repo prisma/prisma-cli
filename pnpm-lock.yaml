@@ -18,8 +18,8 @@ importers:
         specifier: ^1.2.0
         version: 1.2.0
       '@prisma/compute-sdk':
-        specifier: ^0.18.0
-        version: 0.18.0(@prisma/management-api-sdk@1.32.1)
+        specifier: ^0.19.0
+        version: 0.19.0(@prisma/management-api-sdk@1.32.1)
       '@prisma/credentials-store':
         specifier: ^7.7.0
         version: 7.7.0
@@ -283,8 +283,8 @@ packages:
   '@oxc-project/types@0.124.0':
     resolution: {integrity: sha512-VBFWMTBvHxS11Z5Lvlr3IWgrwhMTXV+Md+EQF0Xf60+wAdsGFTBx7X7K/hP4pi8N7dcm1RvcHwDxZ16Qx8keUg==}
 
-  '@prisma/compute-sdk@0.18.0':
-    resolution: {integrity: sha512-Cuq2mt08kpjfA99tLsSX3eyr2gdIp6QPkfApdT6Q5nnaez3OlAAkd4uJ/trBBTjWP+c8Xj1ZLXAb1QuE4ea0pw==}
+  '@prisma/compute-sdk@0.19.0':
+    resolution: {integrity: sha512-kUSElNqRgFC8RKuUpeVEKOifuH1XtuVczB0pJHqRV4mf8/DGO6Tmu1U64UAgATCJKhr13SYGtNsqBdM6e0Ej8w==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@prisma/management-api-sdk': '>=1.23.0'
@@ -1312,7 +1312,7 @@ snapshots:
 
   '@oxc-project/types@0.124.0': {}
 
-  '@prisma/compute-sdk@0.18.0(@prisma/management-api-sdk@1.32.1)':
+  '@prisma/compute-sdk@0.19.0(@prisma/management-api-sdk@1.32.1)':
     dependencies:
       '@prisma/management-api-sdk': 1.32.1
       better-result: 2.8.2

@@ -1,6 +1,6 @@
 {
   "name": "@prisma/cli",
-  "version": "3.0.0-alpha.12",
+  "version": "3.0.0-alpha.13",
   "description": "Preview of the unified Prisma CLI.",
   "type": "module",
   "bin": {
@@ -41,7 +41,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.2.0",
-    "@prisma/compute-sdk": "^0.18.0",
+    "@prisma/compute-sdk": "^0.19.0",
     "c12": "4.0.0-beta.4",
     "@prisma/credentials-store": "^7.7.0",
     "@prisma/management-api-sdk": "^1.32.1",
