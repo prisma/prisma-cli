@@ -8,9 +8,8 @@ export const CLI_RELEASE_BASE_VERSION = "3.0.0";
 export function resolveDevVersion(options) {
   const runNumber = requireValue(options.runNumber, "runNumber");
   const runAttempt = requireValue(options.runAttempt, "runAttempt");
-  const sha = shortSha(requireValue(options.sha, "sha"));
 
-  return `${CLI_RELEASE_BASE_VERSION}-dev.${runNumber}.${runAttempt}.sha${sha}`;
+  return `${CLI_RELEASE_BASE_VERSION}-dev.${runNumber}.${runAttempt}`;
 }
 
 export function resolvePrVersion(options) {
@@ -86,7 +85,6 @@ function main() {
     process.stdout.write(`version=${resolveDevVersion({
       runNumber: options["run-number"],
       runAttempt: options["run-attempt"],
-      sha: options.sha,
     })}\n`);
     return;
   }
