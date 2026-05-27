@@ -147,18 +147,6 @@ const DESCRIPTORS: CommandDescriptor[] = [
     ],
   },
   {
-    id: "app.update-env",
-    path: ["prisma", "app", "update-env"],
-    description: "Create a new deployment with updated environment variables.",
-    examples: ["prisma-cli app update-env --env DATABASE_URL=postgresql://example", "prisma-cli app update-env --app hello-world --env DATABASE_URL=postgresql://another"],
-  },
-  {
-    id: "app.list-env",
-    path: ["prisma", "app", "list-env"],
-    description: "List environment variable names for the selected app.",
-    examples: ["prisma-cli app list-env", "prisma-cli app list-env --app hello-world"],
-  },
-  {
     id: "app.show",
     path: ["prisma", "app", "show"],
     description: "Show the app and its current deployment",
@@ -253,7 +241,8 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: [
       "prisma-cli project env list --role production",
       "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production",
-      "prisma-cli project env rm STRIPE_KEY --role preview",
+      "prisma-cli project env add DATABASE_URL=postgresql://branch --branch feature/foo",
+      "prisma-cli project env remove STRIPE_KEY --role preview",
     ],
   },
   {
@@ -263,6 +252,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: [
       "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production",
       "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role preview",
+      "prisma-cli project env add DATABASE_URL=postgresql://branch --branch feature/foo",
       "API_URL=https://api.example prisma-cli project env add API_URL --project proj_123 --role preview",
     ],
   },
@@ -273,6 +263,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: [
       "prisma-cli project env update STRIPE_KEY=sk_new_xxx --role production",
       "prisma-cli project env update STRIPE_KEY=sk_new_xxx --role preview",
+      "prisma-cli project env update DATABASE_URL=postgresql://branch --branch feature/foo",
     ],
   },
   {
@@ -282,15 +273,17 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: [
       "prisma-cli project env list --role production",
       "prisma-cli project env list --role preview",
+      "prisma-cli project env list --branch feature/foo",
     ],
   },
   {
-    id: "project.env.rm",
-    path: ["prisma", "project", "env", "rm"],
+    id: "project.env.remove",
+    path: ["prisma", "project", "env", "remove"],
     description: "Remove an environment variable from a scope.",
     examples: [
-      "prisma-cli project env rm STRIPE_KEY --role production",
-      "prisma-cli project env rm STRIPE_KEY --role preview",
+      "prisma-cli project env remove STRIPE_KEY --role production",
+      "prisma-cli project env remove STRIPE_KEY --role preview",
+      "prisma-cli project env remove DATABASE_URL --branch feature/foo",
     ],
   },
 ];
