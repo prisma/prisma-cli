@@ -116,7 +116,7 @@ export async function runEnvAdd(
           : {}),
         key,
         value,
-      } as never,
+      },
     },
   );
   if (error || !data) {
