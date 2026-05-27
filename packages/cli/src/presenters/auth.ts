@@ -16,13 +16,9 @@ export function renderAuthSuccess(
       rows.push({ key: "provider", value: providerLabel(result.provider) });
     }
 
-    if (result.user) {
-      rows.push({ key: "user", value: result.user.email });
-    } else {
-      const credentialLabel = credentialUserLabel(result);
-      if (credentialLabel) {
-        rows.push({ key: "user", value: credentialLabel });
-      }
+    const userLabel = authUserLabel(result);
+    if (userLabel) {
+      rows.push({ key: "user", value: userLabel });
     }
 
     if (result.workspace?.name) {
@@ -63,13 +59,7 @@ export function renderAuthSuccess(
       fields: result.authenticated
         ? [
             { key: "status", value: "signed in", tone: "success" as const },
-            ...(() => {
-              if (result.user) {
-                return [{ key: "user", value: result.user.email }];
-              }
-              const credentialLabel = credentialUserLabel(result);
-              return credentialLabel ? [{ key: "user", value: credentialLabel }] : [];
-            })(),
+            ...authUserRows(result),
             ...(result.provider
               ? [{ key: "provider", value: providerLabel(result.provider) }]
               : []),
@@ -93,6 +83,15 @@ function providerLabel(provider: AuthProviderId | null): string {
   }
 
   return "";
+}
+
+function authUserLabel(result: AuthStateResult): string | null {
+  return result.user?.email ?? credentialUserLabel(result);
+}
+
+function authUserRows(result: AuthStateResult): Parameters<typeof renderShow>[0]["fields"] {
+  const userLabel = authUserLabel(result);
+  return userLabel ? [{ key: "user", value: userLabel }] : [];
 }
 
 function credentialUserLabel(result: AuthStateResult): string | null {

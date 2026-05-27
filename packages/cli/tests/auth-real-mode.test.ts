@@ -201,6 +201,7 @@ describe("real auth mode", () => {
           email: "real@example.com",
         },
         workspace: null,
+        credential: null,
       },
     ).join("");
 
@@ -233,6 +234,7 @@ describe("real auth mode", () => {
           id: "ws_real",
           name: "Real Workspace",
         },
+        credential: null,
       },
     ).join("");
 
