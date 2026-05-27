@@ -25,7 +25,7 @@ describe("prepare cli publish", () => {
           name: "@prisma/cli",
           private: true,
           version: "3.0.0-development",
-          description: "Beta of the unified Prisma CLI.",
+          description: "Command-line interface for the Prisma Developer Platform.",
           type: "module",
           engines: {
             node: ">=20",
@@ -60,7 +60,7 @@ describe("prepare cli publish", () => {
     expect(manifest).toEqual({
       name: "@prisma/cli",
       version: "3.0.0-development",
-      description: "Beta of the unified Prisma CLI.",
+      description: "Command-line interface for the Prisma Developer Platform.",
       type: "module",
       bin: {
         "prisma-cli": "./dist/cli.js",
@@ -103,7 +103,7 @@ describe("prepare cli publish", () => {
         {
           name: "@prisma/cli",
           version: "3.0.0-development",
-          description: "Beta of the unified Prisma CLI.",
+          description: "Command-line interface for the Prisma Developer Platform.",
           type: "module",
           dependencies: {},
         },
@@ -141,7 +141,7 @@ describe("prepare cli publish", () => {
         {
           name: "@prisma/cli",
           version: "3.0.0-development",
-          description: "Beta of the unified Prisma CLI.",
+          description: "Command-line interface for the Prisma Developer Platform.",
           type: "module",
           dependencies: {},
         },
