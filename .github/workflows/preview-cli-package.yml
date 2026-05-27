@@ -32,7 +32,17 @@ jobs:
       - name: Enable pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@10.30.0 --activate
+          PNPM_VERSION="$(node -p 'const pm = require("./package.json").packageManager; const match = pm && pm.match(/^pnpm@(.+)$/); if (!match) throw new Error("packageManager must be pnpm@<version>"); match[1]')"
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
+          echo "PNPM_STORE_PATH=$(pnpm store path)" >> "$GITHUB_ENV"
+
+      - name: Cache pnpm store
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ env.PNPM_STORE_PATH }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
