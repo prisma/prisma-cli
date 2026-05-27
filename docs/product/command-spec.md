@@ -4,6 +4,7 @@
 
 This document defines the public beta command surface. It is the source of
 truth for command names, target resolution, and structured behavior.
+This file is authoritative for command group scope during beta.
 
 ## Scope
 

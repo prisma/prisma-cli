@@ -20,15 +20,16 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
         with:
           version: 10.30.0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 24
           cache: pnpm
@@ -44,12 +45,15 @@ jobs:
             --pr-number '${{ github.event.pull_request.number }}' >> "$GITHUB_OUTPUT"
 
       - name: Run focused CLI tests
+        id: cli_tests
         run: pnpm --filter @prisma/cli test
 
       - name: Build CLI package
+        id: cli_build
         run: pnpm --filter @prisma/cli build
 
       - name: Prepare staged preview package
+        id: prepare_preview
         run: node scripts/prepare-cli-publish.mjs .publish/cli --version '${{ steps.cli_version.outputs.version }}'
 
       - name: Publish installable PR preview
@@ -64,9 +68,12 @@ jobs:
             echo "## Preview CLI Package"
             echo
             echo "- Version: \`${{ steps.cli_version.outputs.version }}\`"
-            echo "- Package checks: passed"
-            echo "- pkg.pr.new publish: \`${{ steps.publish_preview.outcome }}\`"
-            if [ '${{ steps.publish_preview.outcome }}' != 'success' ]; then
+            echo "- CLI tests: \`${{ steps.cli_tests.outcome || 'skipped' }}\`"
+            echo "- Build: \`${{ steps.cli_build.outcome || 'skipped' }}\`"
+            echo "- Package staging: \`${{ steps.prepare_preview.outcome || 'skipped' }}\`"
+            echo "- pkg.pr.new publish: \`${{ steps.publish_preview.outcome || 'skipped' }}\`"
+            PUBLISH_OUTCOME="${{ steps.publish_preview.outcome || 'skipped' }}"
+            if [ "${PUBLISH_OUTCOME}" != "success" ]; then
               echo
               echo "pkg.pr.new publishing is best-effort while \`CLI_PR_PREVIEW_REQUIRED\` is not \`true\`. If this failed, confirm the pkg.pr.new GitHub App is installed for this repository and rerun the workflow."
             fi

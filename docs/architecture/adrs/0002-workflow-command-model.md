@@ -18,10 +18,13 @@ Commands are grouped by developer workflow. The canonical command shape is:
 prisma <group> <action>
 ```
 
-The beta implementation includes only these groups:
+The beta implementation includes the command groups defined in
+`docs/product/command-spec.md`, which is authoritative for beta command-group
+scope. At the time of this ADR, those groups are:
 
 - `auth`
 - `project`
+- `git`
 - `branch`
 - `app`
 
