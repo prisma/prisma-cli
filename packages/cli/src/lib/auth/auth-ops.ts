@@ -1,5 +1,11 @@
+import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { FileTokenStorage } from "../../adapters/token-storage";
-import type { AuthStateResult } from "../../types/auth";
+import type {
+  AuthCredential,
+  AuthStateResult,
+  AuthUser,
+  AuthWorkspace,
+} from "../../types/auth";
 import { SERVICE_TOKEN_ENV_VAR } from "./client";
 import { requireComputeAuth } from "./guard";
 import { login } from "./login";
@@ -10,7 +16,9 @@ function decodeJwtPayload(token: string): Record<string, unknown> {
   try {
     const payload = token.split(".")[1];
     if (!payload) return {};
-    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Record<string, unknown>;
+    return JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8"),
+    ) as Record<string, unknown>;
   } catch {
     return {};
   }
@@ -60,17 +68,35 @@ export async function readAuthState(env: NodeJS.ProcessEnv): Promise<AuthStateRe
       provider: null,
       user: null,
       workspace: null,
+      credential: null,
     };
   }
 
+  const client = await requireComputeAuth(env);
+  const currentPrincipal = await readCurrentPrincipalAuthState(client);
+  if (currentPrincipal) {
+    return currentPrincipal;
+  }
+
   const claims = decodeJwtPayload(tokens.accessToken);
-  return buildAuthState({ workspaceIdFromCredential: tokens.workspaceId, claims, env });
+  return buildAuthState({
+    workspaceIdFromCredential: tokens.workspaceId,
+    claims,
+    env,
+    client,
+  });
 }
 
 async function readServiceTokenAuthState(
   token: string,
   env: NodeJS.ProcessEnv,
 ): Promise<AuthStateResult> {
+  const client = await requireComputeAuth(env);
+  const currentPrincipal = await readCurrentPrincipalAuthState(client);
+  if (currentPrincipal) {
+    return currentPrincipal;
+  }
+
   const claims = decodeJwtPayload(token);
   const workspaceId = workspaceIdFromClaims(claims);
 
@@ -84,25 +110,33 @@ async function readServiceTokenAuthState(
       provider: null,
       user: null,
       workspace: null,
+      credential: null,
     };
   }
 
-  return buildAuthState({ workspaceIdFromCredential: workspaceId, claims, env });
+  return buildAuthState({
+    workspaceIdFromCredential: workspaceId,
+    claims,
+    env,
+    client,
+  });
 }
 
 async function buildAuthState({
   workspaceIdFromCredential,
   claims,
   env,
+  client,
 }: {
   workspaceIdFromCredential: string;
   claims: Record<string, unknown>;
   env: NodeJS.ProcessEnv;
+  client?: ManagementApiClient | null;
 }): Promise<AuthStateResult> {
   let workspaceId = workspaceIdFromCredential;
   let workspaceName = workspaceIdFromCredential;
 
-  const client = await requireComputeAuth(env);
+  client ??= await requireComputeAuth(env);
 
   if (client) {
     try {
@@ -111,7 +145,7 @@ async function buildAuthState({
       });
       // A 401 from the workspace lookup means the credential the caller
       // presented is fundamentally invalid (revoked, wrong signing key,
-      // expired) — surface signed-out state instead of returning a
+      // expired) - surface signed-out state instead of returning a
       // workspace shape that makes a broken token look fine. Other
       // statuses (404/5xx/network) keep the silent fallback so transient
       // lookup failures do not turn `auth whoami` into a hard error.
@@ -121,6 +155,7 @@ async function buildAuthState({
           provider: null,
           user: null,
           workspace: null,
+          credential: null,
         };
       }
       if (data?.data?.id) {
@@ -131,7 +166,7 @@ async function buildAuthState({
         workspaceName = data.data.name;
       }
     } catch {
-      // fall through — use workspaceId as name
+      // fall through - use workspaceId as name
     }
   }
 
@@ -144,7 +179,66 @@ async function buildAuthState({
       id: workspaceId,
       name: workspaceName,
     },
+    credential: null,
   };
+}
+
+type CurrentPrincipalResponse = {
+  data?: {
+    user: (AuthUser & { id: string; name: string | null }) | null;
+    workspace: AuthWorkspace | null;
+    credential: AuthCredential;
+  };
+};
+
+type CurrentPrincipalClient = ManagementApiClient & {
+  GET(
+    path: "/v1/me",
+  ): Promise<{
+    data?: CurrentPrincipalResponse;
+    error?: unknown;
+    response?: { status: number };
+  }>;
+};
+
+async function readCurrentPrincipalAuthState(
+  client: ManagementApiClient | null,
+): Promise<AuthStateResult | null> {
+  if (!client) return null;
+
+  try {
+    const { data, response } = await (client as CurrentPrincipalClient).GET("/v1/me");
+
+    if (response?.status === 401) {
+      return {
+        authenticated: false,
+        provider: null,
+        user: null,
+        workspace: null,
+        credential: null,
+      };
+    }
+
+    const principal = data?.data;
+    if (!principal) return null;
+    if (!principal.credential) return null;
+
+    return {
+      authenticated: true,
+      provider: null,
+      user: principal.user
+        ? {
+            id: principal.user.id,
+            email: principal.user.email,
+            name: principal.user.name,
+          }
+        : null,
+      workspace: principal.workspace,
+      credential: principal.credential,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function performLogout(env: NodeJS.ProcessEnv): Promise<void> {

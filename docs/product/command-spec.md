@@ -156,12 +156,55 @@ In `--json`, `result` uses this shape:
   "authenticated": true,
   "provider": "github",
   "user": {
+    "id": "usr_123",
+    "email": "alice@example.com",
+    "name": "Alice"
+  },
+  "workspace": {
+    "id": "wksp_123",
+    "name": "Acme Inc"
+  },
+  "credential": {
+    "type": "oauth",
+    "id": null,
+    "name": null
+  }
+}
+```
+
+For service-token sessions, `user` is `null` and `credential` identifies the token when the API can resolve it:
+
+```json
+{
+  "authenticated": true,
+  "provider": null,
+  "user": null,
+  "workspace": {
+    "id": "wksp_123",
+    "name": "Acme Inc"
+  },
+  "credential": {
+    "type": "service_token",
+    "id": "itgr_123",
+    "name": "ci-deploys-prod"
+  }
+}
+```
+
+Fallback auth states may omit user details when the deployed Management API does not yet expose `/v1/me`:
+
+```json
+{
+  "authenticated": true,
+  "provider": "github",
+  "user": {
     "email": "alice@example.com"
   },
   "workspace": {
-    "id": "ws_123",
+    "id": "wksp_123",
     "name": "Acme Inc"
-  }
+  },
+  "credential": null
 }
 ```
 
@@ -169,8 +212,9 @@ Rules:
 
 - `authenticated` is always present
 - `provider` is `github`, `google`, or `null`
-- `user` contains the current user email or is `null`
+- `user` contains the current user id, email, and display name when known, a fallback email-only object during rollout, or `null`
 - `workspace` is the active workspace or `null`
+- `credential` identifies the active credential when known, or is `null`
 - signed-out state is an empty auth state, not an error
 
 ## `prisma-cli version`

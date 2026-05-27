@@ -97,6 +97,7 @@ async function resolveCurrentAuthState(dependencies: AuthUseCaseDependencies): P
       provider: null,
       user: null,
       workspace: null,
+      credential: null,
     };
   }
 
@@ -110,6 +111,7 @@ async function resolveCurrentAuthState(dependencies: AuthUseCaseDependencies): P
       provider: null,
       user: null,
       workspace: null,
+      credential: null,
     };
   }
 
@@ -117,8 +119,15 @@ async function resolveCurrentAuthState(dependencies: AuthUseCaseDependencies): P
     authenticated: true,
     provider: provider.id,
     user: {
+      id: user.id,
       email: user.email,
+      name: user.name,
     },
     workspace,
+    credential: {
+      type: "oauth",
+      id: null,
+      name: null,
+    },
   };
 }

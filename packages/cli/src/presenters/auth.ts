@@ -18,6 +18,11 @@ export function renderAuthSuccess(
 
     if (result.user) {
       rows.push({ key: "user", value: result.user.email });
+    } else {
+      const credentialLabel = credentialUserLabel(result);
+      if (credentialLabel) {
+        rows.push({ key: "user", value: credentialLabel });
+      }
     }
 
     if (result.workspace?.name) {
@@ -58,9 +63,19 @@ export function renderAuthSuccess(
       fields: result.authenticated
         ? [
             { key: "status", value: "signed in", tone: "success" as const },
-            ...(result.user ? [{ key: "user", value: result.user.email }] : []),
-            ...(result.provider ? [{ key: "provider", value: providerLabel(result.provider) }] : []),
-            ...(result.workspace?.name ? [{ key: "workspace", value: result.workspace.name }] : []),
+            ...(() => {
+              if (result.user) {
+                return [{ key: "user", value: result.user.email }];
+              }
+              const credentialLabel = credentialUserLabel(result);
+              return credentialLabel ? [{ key: "user", value: credentialLabel }] : [];
+            })(),
+            ...(result.provider
+              ? [{ key: "provider", value: providerLabel(result.provider) }]
+              : []),
+            ...(result.workspace?.name
+              ? [{ key: "workspace", value: result.workspace.name }]
+              : []),
           ]
         : [{ key: "status", value: "signed out", tone: "dim" as const }],
     },
@@ -78,4 +93,20 @@ function providerLabel(provider: AuthProviderId | null): string {
   }
 
   return "";
+}
+
+function credentialUserLabel(result: AuthStateResult): string | null {
+  if (result.credential?.type === "service_token") {
+    return result.credential.name
+      ? `<service token: ${result.credential.name}>`
+      : "<service token>";
+  }
+
+  if (result.credential?.type === "management_token") {
+    return result.credential.name
+      ? `<management token: ${result.credential.name}>`
+      : "<management token>";
+  }
+
+  return null;
 }
