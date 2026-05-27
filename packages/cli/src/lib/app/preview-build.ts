@@ -343,6 +343,9 @@ async function copyPathMaterializingSymlinks(
 
   if (sourceStat.isSymbolicLink()) {
     const resolvedTarget = await resolveSymlinkTarget(sourcePath, options);
+    if (resolvedTarget === null) {
+      return;
+    }
     await copyPathMaterializingSymlinks(resolvedTarget, destinationPath, options);
     return;
   }
@@ -376,7 +379,7 @@ async function resolveSymlinkTarget(
     appRoot: string;
     sourceRoot: string;
   },
-): Promise<string> {
+): Promise<string | null> {
   const linkTarget = await readlink(symlinkPath);
   const resolvedTarget = path.resolve(path.dirname(symlinkPath), linkTarget);
 
@@ -402,9 +405,27 @@ async function resolveSymlinkTarget(
     }
   }
 
+  // pnpm's hoist layer (.pnpm/node_modules/*) contains speculative links that
+  // are routinely dangling — Next's tracer doesn't always align with what pnpm
+  // populated. Drop these silently. Dangling links elsewhere still throw so a
+  // real missing dep doesn't get masked.
+  if (isPnpmHoistLink(symlinkPath)) {
+    return null;
+  }
+
   throw new Error(
     `Next.js standalone symlink target is missing: ${symlinkPath} -> ${linkTarget} (resolved to ${resolvedTarget})`,
   );
+}
+
+function isPnpmHoistLink(symlinkPath: string): boolean {
+  const parts = path.dirname(symlinkPath).split(path.sep);
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (parts[i] === ".pnpm" && parts[i + 1] === "node_modules") {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function pathExists(targetPath: string): Promise<boolean> {
