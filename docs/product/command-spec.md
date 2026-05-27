@@ -773,6 +773,7 @@ Behavior:
 - prints DNS record instructions only when returned by the API
 - does not synthesize DNS records client-side when the API omits them
 - returns `DOMAIN_DNS_NOT_CONFIGURED` with a CNAME target only when the API error includes the required target
+- returns `DOMAIN_ALREADY_REGISTERED` when the hostname is attached outside the selected app
 - rejects non-production `--branch` with `BRANCH_NOT_DEPLOYABLE`
 
 Examples:
@@ -834,6 +835,7 @@ Behavior:
 - resolves the selected app
 - finds the domain by hostname within the selected app
 - calls the domain retry endpoint
+- prints DNS record instructions and failure guidance when returned by the API
 - returns `DOMAIN_RETRY_NOT_ELIGIBLE` when the API reports the domain is not in
   a retryable state
 

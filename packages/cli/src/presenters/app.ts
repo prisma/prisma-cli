@@ -317,8 +317,7 @@ export function renderAppDomainShow(
         ...domainTargetFields(result),
         { key: "hostname", value: result.domain.hostname },
         { key: "status", value: result.domain.status, tone: toneForDomainStatus(result.domain.status) },
-        { key: "failure", value: formatDomainFailure(result.domain), tone: result.domain.failureReason ? "error" : "dim" },
-        ...domainFixFields(result.domain),
+        ...domainFailureFields(result.domain),
         { key: "cert expires", value: formatOptionalUtcDate(result.domain.certExpiresAt), tone: result.domain.certExpiresAt ? "default" : "dim" },
         { key: "created", value: formatUtcDate(result.domain.createdAt), tone: "dim" },
         ...domainDnsFields(result.domain),
@@ -368,6 +367,8 @@ export function renderAppDomainRetry(
         ...domainTargetFields(result),
         { key: "hostname", value: result.domain.hostname },
         { key: "status", value: result.domain.status, tone: toneForDomainStatus(result.domain.status) },
+        ...domainFailureFields(result.domain),
+        ...domainDnsFields(result.domain),
       ],
     },
     context.ui,
@@ -536,6 +537,19 @@ function formatDomainFailure(domain: AppDomainShowResult["domain"]): string {
   }
 
   return domain.failureCategory ? `${domain.failureCategory} - ${domain.failureReason}` : domain.failureReason;
+}
+
+function domainFailureFields(domain: AppDomainShowResult["domain"]) {
+  const tone = hasDomainFailure(domain) ? "error" : "dim";
+
+  return [
+    { key: "failure", value: formatDomainFailure(domain), tone },
+    ...domainFixFields(domain),
+  ];
+}
+
+function hasDomainFailure(domain: AppDomainShowResult["domain"]): boolean {
+  return Boolean(domain.failureCategory || domain.failureReason);
 }
 
 function domainFixFields(domain: AppDomainShowResult["domain"]) {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { getCommandDescriptor } from "../src/shell/command-meta";
-import { renderAppDomainAdd, renderAppDomainShow } from "../src/presenters/app";
-import type { AppDomainAddResult, AppDomainShowResult, AppDomainSummary } from "../src/types/app";
+import { renderAppDomainAdd, renderAppDomainRetry, renderAppDomainShow } from "../src/presenters/app";
+import type { AppDomainAddResult, AppDomainRetryResult, AppDomainShowResult, AppDomainSummary } from "../src/types/app";
 import { createTestCommandContext } from "./helpers";
 
 function createDomain(overrides: Partial<AppDomainSummary> = {}): AppDomainSummary {
@@ -79,5 +79,50 @@ describe("app domain presenters", () => {
 
     expect(lines).toContain("Retry TLS issuance");
     expect(lines).not.toContain("Add CNAME");
+  });
+
+  it("renders failure categories without reasons as errors", async () => {
+    const { context } = await createTestCommandContext({});
+    context.ui.error = (text) => `error(${text})`;
+    context.ui.dim = (text) => `dim(${text})`;
+    const result: AppDomainShowResult = {
+      ...createTarget(),
+      domain: createDomain({
+        status: "failed",
+        failureCategory: "acme",
+        failureReason: null,
+      }),
+    };
+
+    const lines = renderAppDomainShow(
+      context,
+      getCommandDescriptor("app.domain.show"),
+      result,
+    ).join("\n");
+
+    expect(lines).toContain("error(acme)");
+    expect(lines).not.toContain("dim(acme)");
+  });
+
+  it("includes DNS and recovery guidance in retry output", async () => {
+    const { context } = await createTestCommandContext({});
+    const result: AppDomainRetryResult = {
+      ...createTarget(),
+      domain: createDomain({
+        status: "failed",
+        failureCategory: "dns",
+        failureReason: "CNAME record not found",
+      }),
+    };
+
+    const lines = renderAppDomainRetry(
+      context,
+      getCommandDescriptor("app.domain.retry"),
+      result,
+    ).join("\n");
+
+    expect(lines).toContain("dns record");
+    expect(lines).toContain("CNAME shop.acme.com -> switchboard.fra.prisma.build ttl 300");
+    expect(lines).toContain("Add CNAME shop.acme.com -> switchboard.fra.prisma.build, then run prisma-cli app domain retry shop.acme.com.");
   });
 });

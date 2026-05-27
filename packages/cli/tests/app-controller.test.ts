@@ -480,6 +480,66 @@ describe("app controller", () => {
     });
   });
 
+  it("domain add maps already-registered conflicts to DOMAIN_ALREADY_REGISTERED", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "shop",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+        liveUrl: "https://shop.fra.prisma.build",
+      },
+    ]);
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      const addDomain = vi.fn().mockRejectedValue(new actual.PreviewDomainApiError({
+        summary: "Failed to add custom domain",
+        status: 409,
+        message: "Hostname already registered.",
+        hint: "This hostname is already registered to another compute service.",
+      }));
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          addDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDomainAdd(context, "shop.acme.com", {
+      projectRef: "proj_123",
+      appName: "shop",
+    })).rejects.toMatchObject({
+      code: "DOMAIN_ALREADY_REGISTERED",
+      domain: "app",
+      summary: "Custom domain \"shop.acme.com\" is already registered",
+      fix: "Select the app that owns this hostname and remove it there, or contact support if you cannot access it.",
+      nextSteps: [
+        "Select the owning app and remove shop.acme.com there.",
+        "Contact Prisma support if you cannot access the owning app.",
+      ],
+    });
+  });
+
   it("domain add maps DNS preflight failures to DOMAIN_DNS_NOT_CONFIGURED", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([

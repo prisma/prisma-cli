@@ -1631,6 +1631,10 @@ function domainCommandError(
       });
     }
 
+    if (command === "add" && error.status === 409) {
+      return domainAlreadyRegisteredError(hostname, error);
+    }
+
     if (command === "add" && error.status === 422) {
       return new CliError({
         code: "NO_DEPLOYMENTS",
@@ -1684,6 +1688,22 @@ function isDomainQuotaError(error: PreviewDomainApiError): boolean {
 
   const text = `${error.message} ${error.hint ?? ""}`.toLowerCase();
   return text.includes("quota") || text.includes("maximum") || text.includes("limit");
+}
+
+function domainAlreadyRegisteredError(hostname: string, error: PreviewDomainApiError): CliError {
+  return new CliError({
+    code: "DOMAIN_ALREADY_REGISTERED",
+    domain: "app",
+    summary: `Custom domain "${hostname}" is already registered`,
+    why: error.hint ?? error.message,
+    fix: "Select the app that owns this hostname and remove it there, or contact support if you cannot access it.",
+    debug: formatDebugDetails(error),
+    exitCode: 1,
+    nextSteps: [
+      `Select the owning app and remove ${hostname} there.`,
+      "Contact Prisma support if you cannot access the owning app.",
+    ],
+  });
 }
 
 function isDomainDnsError(error: PreviewDomainApiError): boolean {
