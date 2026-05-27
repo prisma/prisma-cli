@@ -471,4 +471,29 @@ describe("project commands", () => {
     expect(stderr).not.toContain("project link");
     expect(stderr).not.toContain("linked project");
   });
+
+  it("registers project env remove and rm alias help", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    const removeHelp = await executeCli({
+      argv: ["project", "env", "remove", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const rmHelp = await executeCli({
+      argv: ["project", "env", "rm", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(removeHelp.exitCode).toBe(0);
+    expect(removeHelp.stderr).toContain("project env remove");
+    expect(removeHelp.stderr).toContain("--branch <git-name>");
+    expect(rmHelp.exitCode).toBe(0);
+    expect(rmHelp.stderr).toContain("project env remove");
+    expect(rmHelp.stderr).toContain("--role <role>");
+  });
 });

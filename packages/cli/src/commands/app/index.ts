@@ -8,7 +8,6 @@ import {
   runAppDomainRetry,
   runAppDomainShow,
   runAppDomainWait,
-  runAppListEnv,
   runAppListDeploys,
   runAppLogs,
   runAppOpen,
@@ -18,7 +17,6 @@ import {
   runAppShow,
   runAppRun,
   runAppShowDeploy,
-  runAppUpdateEnv,
 } from "../../controllers/app";
 import {
   renderAppBuild,
@@ -27,7 +25,6 @@ import {
   renderAppDomainRemove,
   renderAppDomainRetry,
   renderAppDomainShow,
-  renderAppListEnv,
   renderAppListDeploys,
   renderAppOpen,
   renderAppPromote,
@@ -36,14 +33,12 @@ import {
   renderAppShow,
   renderAppRun,
   renderAppShowDeploy,
-  renderAppUpdateEnv,
   serializeAppBuild,
   serializeAppDeploy,
   serializeAppDomainAdd,
   serializeAppDomainRemove,
   serializeAppDomainRetry,
   serializeAppDomainShow,
-  serializeAppListEnv,
   serializeAppListDeploys,
   serializeAppOpen,
   serializeAppPromote,
@@ -52,7 +47,6 @@ import {
   serializeAppShow,
   serializeAppRun,
   serializeAppShowDeploy,
-  serializeAppUpdateEnv,
 } from "../../presenters/app";
 import { attachCommandDescriptor } from "../../shell/command-meta";
 import { addCompactGlobalFlags, addGlobalFlags } from "../../shell/global-flags";
@@ -66,7 +60,6 @@ import type {
   AppDomainRemoveResult,
   AppDomainRetryResult,
   AppDomainShowResult,
-  AppListEnvResult,
   AppListDeploysResult,
   AppOpenResult,
   AppPromoteResult,
@@ -75,7 +68,6 @@ import type {
   AppShowResult,
   AppRunResult,
   AppShowDeployResult,
-  AppUpdateEnvResult,
 } from "../../types/app";
 
 export function createAppCommand(runtime: CliRuntime): Command {
@@ -86,8 +78,6 @@ export function createAppCommand(runtime: CliRuntime): Command {
   app.addCommand(createBuildCommand(runtime));
   app.addCommand(createRunCommand(runtime));
   app.addCommand(createDeployCommand(runtime));
-  app.addCommand(createUpdateEnvCommand(runtime));
-  app.addCommand(createListEnvCommand(runtime));
   app.addCommand(createShowCommand(runtime));
   app.addCommand(createOpenCommand(runtime));
   app.addCommand(createDomainCommand(runtime));
@@ -225,71 +215,6 @@ function createDeployCommand(runtime: CliRuntime): Command {
       {
         renderHuman: (context, descriptor, result) => renderAppDeploy(context, descriptor, result),
         renderJson: (result) => serializeAppDeploy(result),
-      },
-    );
-  });
-
-  return command;
-}
-
-function createUpdateEnvCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(
-    configureRuntimeCommand(new Command("update-env"), runtime),
-    "app.update-env",
-  );
-
-  command
-    .addOption(new Option("--app <name>", "App name"))
-    .addOption(new Option("--project <id-or-name>", "Project id or name"))
-    .addOption(
-      new Option("--env <name=value>", "Environment variable")
-        .argParser(collectRepeatableValues),
-    );
-  addGlobalFlags(command);
-
-  command.action(async (options) => {
-    const appName = (options as { app?: string }).app;
-    const envAssignments = (options as { env?: string[] }).env;
-    const projectRef = (options as { project?: string }).project;
-
-    await runCommand<AppUpdateEnvResult>(
-      runtime,
-      "app.update-env",
-      options as Record<string, unknown>,
-      (context) => runAppUpdateEnv(context, appName, envAssignments, projectRef),
-      {
-        renderHuman: (context, descriptor, result) => renderAppUpdateEnv(context, descriptor, result),
-        renderJson: (result) => serializeAppUpdateEnv(result),
-      },
-    );
-  });
-
-  return command;
-}
-
-function createListEnvCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(
-    configureRuntimeCommand(new Command("list-env"), runtime),
-    "app.list-env",
-  );
-
-  command
-    .addOption(new Option("--app <name>", "App name"))
-    .addOption(new Option("--project <id-or-name>", "Project id or name"));
-  addGlobalFlags(command);
-
-  command.action(async (options) => {
-    const appName = (options as { app?: string }).app;
-    const projectRef = (options as { project?: string }).project;
-
-    await runCommand<AppListEnvResult>(
-      runtime,
-      "app.list-env",
-      options as Record<string, unknown>,
-      (context) => runAppListEnv(context, appName, projectRef),
-      {
-        renderHuman: (context, descriptor, result) => renderAppListEnv(context, descriptor, result),
-        renderJson: (result) => serializeAppListEnv(result),
       },
     );
   });

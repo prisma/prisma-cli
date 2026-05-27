@@ -36,13 +36,6 @@ export interface AppDeployResult {
   };
 }
 
-export interface AppListEnvResult {
-  projectId: string;
-  app: AppSummary | null;
-  deployment: AppDeploymentSummary | null;
-  variables: string[];
-}
-
 export interface AppListDeploysResult {
   projectId: string;
   app: AppSummary | null;
@@ -80,13 +73,6 @@ export interface AppRunResult {
   entrypoint: string | null;
   port: number;
   command: string;
-}
-
-export interface AppUpdateEnvResult {
-  projectId: string;
-  app: AppSummary;
-  deployment: AppDeploymentSummary;
-  variables: string[];
 }
 
 export interface AppPromoteResult {

@@ -8,7 +8,6 @@ import type {
   AppDomainRetryResult,
   AppDomainShowResult,
   AppDomainStatus,
-  AppListEnvResult,
   AppListDeploysResult,
   AppOpenResult,
   AppPromoteResult,
@@ -17,7 +16,6 @@ import type {
   AppShowResult,
   AppRunResult,
   AppShowDeployResult,
-  AppUpdateEnvResult,
 } from "../types/app";
 import { renderList, renderShow, serializeList } from "../output/patterns";
 import { renderDeployOutputRows } from "../lib/app/deploy-output";
@@ -75,60 +73,6 @@ function formatDuration(durationMs: number): string {
   }
 
   return `${(durationMs / 1000).toFixed(1)}s`;
-}
-
-export function renderAppUpdateEnv(
-  context: CommandContext,
-  descriptor: CommandDescriptor,
-  result: AppUpdateEnvResult,
-): string[] {
-  return renderShow(
-    {
-      title: "Updating environment variables for the selected app.",
-      descriptor,
-      fields: [
-        { key: "project", value: result.projectId },
-        { key: "app", value: result.app.name },
-        { key: "deployment", value: result.deployment.id },
-        { key: "status", value: result.deployment.status, tone: toneForStatus(result.deployment.status) },
-        ...(result.deployment.url ? [{ key: "url", value: result.deployment.url, tone: "link" as const }] : []),
-        { key: "variables", value: formatVariableNames(result.variables), tone: result.variables.length > 0 ? "default" : "dim" },
-      ],
-    },
-    context.ui,
-  );
-}
-
-export function serializeAppUpdateEnv(result: AppUpdateEnvResult) {
-  return result;
-}
-
-export function renderAppListEnv(
-  context: CommandContext,
-  descriptor: CommandDescriptor,
-  result: AppListEnvResult,
-): string[] {
-  return renderShow(
-    {
-      title: "Listing environment variables for the selected app.",
-      descriptor,
-      fields: [
-        { key: "project", value: result.projectId },
-        { key: "app", value: result.app?.name ?? "not selected", tone: result.app ? "default" : "dim" },
-        {
-          key: "deployment",
-          value: result.deployment?.id ?? "none",
-          tone: result.deployment ? toneForStatus(result.deployment.status) : "dim",
-        },
-        { key: "variables", value: formatVariableNames(result.variables), tone: result.variables.length > 0 ? "default" : "dim" },
-      ],
-    },
-    context.ui,
-  );
-}
-
-export function serializeAppListEnv(result: AppListEnvResult) {
-  return result;
 }
 
 export function renderAppListDeploys(
@@ -584,12 +528,4 @@ function formatRecentDeployments(deployments: AppShowResult["recentDeployments"]
   return deployments
     .map((deployment) => `${deployment.id}${deployment.live ? " (live)" : ""}`)
     .join(", ");
-}
-
-function formatVariableNames(variables: string[]): string {
-  if (variables.length === 0) {
-    return "none";
-  }
-
-  return variables.join(", ");
 }

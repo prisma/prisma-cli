@@ -157,12 +157,55 @@ In `--json`, `result` uses this shape:
   "authenticated": true,
   "provider": "github",
   "user": {
+    "id": "usr_123",
+    "email": "alice@example.com",
+    "name": "Alice"
+  },
+  "workspace": {
+    "id": "wksp_123",
+    "name": "Acme Inc"
+  },
+  "credential": {
+    "type": "oauth",
+    "id": null,
+    "name": null
+  }
+}
+```
+
+For service-token sessions, `user` is `null` and `credential` identifies the token when the API can resolve it:
+
+```json
+{
+  "authenticated": true,
+  "provider": null,
+  "user": null,
+  "workspace": {
+    "id": "wksp_123",
+    "name": "Acme Inc"
+  },
+  "credential": {
+    "type": "service_token",
+    "id": "itgr_123",
+    "name": "ci-deploys-prod"
+  }
+}
+```
+
+Fallback auth states may omit user details when the deployed Management API does not yet expose `/v1/me`:
+
+```json
+{
+  "authenticated": true,
+  "provider": "github",
+  "user": {
     "email": "alice@example.com"
   },
   "workspace": {
-    "id": "ws_123",
+    "id": "wksp_123",
     "name": "Acme Inc"
-  }
+  },
+  "credential": null
 }
 ```
 
@@ -170,8 +213,9 @@ Rules:
 
 - `authenticated` is always present
 - `provider` is `github`, `google`, or `null`
-- `user` contains the current user email or is `null`
+- `user` contains the current user id, email, and display name when known, a fallback email-only object during rollout, or `null`
 - `workspace` is the active workspace or `null`
+- `credential` identifies the active credential when known, or is `null`
 - signed-out state is an empty auth state, not an error
 
 ## `prisma-cli version`
@@ -536,23 +580,23 @@ prisma-cli app deploy --branch feat-login --framework hono --http-port 3000
 ## `prisma-cli project env`
 
 Manage durable, platform-stored environment variables for the resolved
-project. Replaces the legacy `prisma app update-env` / `prisma app
-list-env` workflow, which mutated env vars on a single Foundry version
-and is now deprecated. The `env` namespace operates on the
+project. The `env` namespace operates on the
 platform-managed `/v1/environment-variables` API; values are stored
 encrypted at rest and **never returned** by the platform — read-back
 is not supported in Beta.
 
 ### Scope flags
 
-The `--role` flag is recognized on every `env` verb:
+Every write targets exactly one scope:
 
 - `--role <production|preview>` targets a project template.
-- For write verbs (`add`, `update`, `rm`), `--role` is required
+- `--branch <git-name>` targets a preview branch override.
+- `--role` and `--branch` are mutually exclusive.
+- For write verbs (`add`, `update`, `remove`), one scope flag is required
   so the CLI never silently writes to production.
 - For read verbs (`list`), omitting `--role` defaults to `--role production`.
 
-### `prisma-cli project env add KEY=VALUE --role <production|preview>`
+### `prisma-cli project env add KEY=VALUE (--role <production|preview> | --branch <git-name>)`
 
 Purpose:
 
@@ -567,6 +611,8 @@ Behavior:
 - KEY without `=VALUE` reads the value from the current process environment
 - if a variable with the same key already exists in the scope, the
   command fails with a clear error directing to `env update`
+- branch-only variables are allowed; the CLI warns when the key does
+  not exist in the preview template
 - the response carries metadata only — the value is never echoed back
 
 Examples:
@@ -574,10 +620,11 @@ Examples:
 ```bash
 prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production
 prisma-cli project env add STRIPE_KEY=sk_test_xxx --role preview
+prisma-cli project env add DATABASE_URL=postgresql://branch --branch feature/foo
 API_URL=https://api.example prisma-cli project env add API_URL --project proj_123 --role preview
 ```
 
-### `prisma-cli project env update KEY=VALUE --role <production|preview>`
+### `prisma-cli project env update KEY=VALUE (--role <production|preview> | --branch <git-name>)`
 
 Purpose:
 
@@ -599,9 +646,10 @@ Examples:
 ```bash
 prisma-cli project env update STRIPE_KEY=sk_new_xxx --role production
 prisma-cli project env update STRIPE_KEY=sk_new_xxx --role preview
+prisma-cli project env update DATABASE_URL=postgresql://branch --branch feature/foo
 ```
 
-### `prisma-cli project env list [--role <production|preview>]`
+### `prisma-cli project env list [--role <production|preview> | --branch <git-name>]`
 
 Purpose:
 
@@ -611,6 +659,8 @@ Behavior:
 
 - requires auth and a resolved project; accepts `--project <id-or-name>` as an explicit fallback
 - defaults to `--role production` when `--role` is not supplied
+- `--branch` lists the resolved preview branch view: preview defaults
+  plus branch overrides, with source metadata
 - never prints values (never-reveal)
 - emits `key`, `id`, `last updated`, and a `scope` annotation per row
 
@@ -619,9 +669,10 @@ Examples:
 ```bash
 prisma-cli project env list
 prisma-cli project env list --role preview
+prisma-cli project env list --branch feature/foo
 ```
 
-### `prisma-cli project env rm KEY --role <production|preview>`
+### `prisma-cli project env remove KEY (--role <production|preview> | --branch <git-name>)`
 
 Purpose:
 
@@ -631,62 +682,15 @@ Behavior:
 
 - requires auth and a resolved project; accepts `--project <id-or-name>` as an explicit fallback
 - looks the variable up by natural key in the scope and `DELETE`s it
+- `rm` is supported as an alias for `remove`
 - returns a focused error when no matching variable exists
 
 Examples:
 
 ```bash
-prisma-cli project env rm STRIPE_KEY --role production
-prisma-cli project env rm STRIPE_KEY --role preview
-```
-
-## `prisma-cli app update-env --app <name> --env <name=value>`
-
-> **Deprecated.** Use `prisma-cli project env add` instead. The legacy command
-> still works for backward compatibility but emits a deprecation
-> warning and will be removed in a future release.
-
-Purpose:
-
-- create a new deployment with updated environment variables
-
-Behavior:
-
-- requires auth and project context
-- resolves the selected app
-- accepts repeated `--env NAME=VALUE` flags
-- returns the new deployment
-- does not print secret values
-
-Examples:
-
-```bash
-prisma-cli app update-env --env DATABASE_URL=postgresql://example
-prisma-cli app update-env --app hello-world --env DATABASE_URL=postgresql://another
-```
-
-## `prisma-cli app list-env --app <name>`
-
-> **Deprecated.** Use `prisma-cli project env list` instead. The legacy command
-> still works for backward compatibility but emits a deprecation
-> warning and will be removed in a future release.
-
-Purpose:
-
-- list environment variable names for the selected app
-
-Behavior:
-
-- requires auth and project context
-- resolves the selected app
-- returns variable names only
-- does not print values
-
-Examples:
-
-```bash
-prisma-cli app list-env
-prisma-cli app list-env --app hello-world
+prisma-cli project env remove STRIPE_KEY --role production
+prisma-cli project env remove STRIPE_KEY --role preview
+prisma-cli project env remove DATABASE_URL --branch feature/foo
 ```
 
 ## `prisma-cli app show --app <name>`
