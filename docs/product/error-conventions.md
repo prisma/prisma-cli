@@ -172,6 +172,14 @@ These codes are the minimum stable set for the MVP:
 - `PROMOTE_SOURCE_INVALID`
 - `ROLLBACK_UNAVAILABLE`
 - `CONFIRMATION_REQUIRED`
+- `DOMAIN_HOSTNAME_INVALID`
+- `DOMAIN_DNS_NOT_CONFIGURED`
+- `DOMAIN_ALREADY_REGISTERED`
+- `DOMAIN_QUOTA_EXCEEDED`
+- `DOMAIN_NOT_FOUND`
+- `DOMAIN_RETRY_NOT_ELIGIBLE`
+- `DOMAIN_VERIFICATION_FAILED`
+- `DOMAIN_VERIFICATION_TIMEOUT`
 - `REMOVE_FAILED`
 - `FEATURE_UNAVAILABLE`
 - `REPO_PROVIDER_UNSUPPORTED`
@@ -202,6 +210,14 @@ Recommended meanings:
 - `PROMOTE_SOURCE_INVALID`: source for promote is missing, invalid, or not promotable
 - `ROLLBACK_UNAVAILABLE`: no previous healthy production deployment exists
 - `CONFIRMATION_REQUIRED`: command cannot continue without confirmation in the current mode
+- `DOMAIN_HOSTNAME_INVALID`: custom-domain hostname is malformed or rejected by the platform
+- `DOMAIN_DNS_NOT_CONFIGURED`: custom-domain hostname does not yet point to the required Prisma DNS target
+- `DOMAIN_ALREADY_REGISTERED`: custom-domain hostname is already attached outside the selected app
+- `DOMAIN_QUOTA_EXCEEDED`: selected app has reached its custom-domain quota
+- `DOMAIN_NOT_FOUND`: requested custom domain is not attached to the selected app
+- `DOMAIN_RETRY_NOT_ELIGIBLE`: requested custom domain is not in a state where verification can be retried
+- `DOMAIN_VERIFICATION_FAILED`: custom-domain verification reached a terminal failed state
+- `DOMAIN_VERIFICATION_TIMEOUT`: custom-domain verification did not reach a terminal state before the requested timeout
 - `REMOVE_FAILED`: app removal could not complete remotely
 - `FEATURE_UNAVAILABLE`: the command exists in the CLI model, but the current preview cannot support it yet
 - `REPO_PROVIDER_UNSUPPORTED`: repository connection received a non-GitHub repository URL

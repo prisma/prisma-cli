@@ -65,6 +65,42 @@ describe("app commands", () => {
       stateDir,
       fixturePath,
     });
+    const domainHelp = await executeCli({
+      argv: ["app", "domain", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const domainAddHelp = await executeCli({
+      argv: ["app", "domain", "add", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const domainShowHelp = await executeCli({
+      argv: ["app", "domain", "show", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const domainRemoveHelp = await executeCli({
+      argv: ["app", "domain", "remove", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const domainRetryHelp = await executeCli({
+      argv: ["app", "domain", "retry", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const domainWaitHelp = await executeCli({
+      argv: ["app", "domain", "wait", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
     const logsHelp = await executeCli({
       argv: ["app", "logs", "--help"],
       cwd,
@@ -143,6 +179,27 @@ describe("app commands", () => {
     expect(openHelp.exitCode).toBe(0);
     expect(openHelp.stderr).toContain("Open the app's live URL");
     expect(openHelp.stderr).toContain("$ prisma-cli app open");
+
+    expect(domainHelp.exitCode).toBe(0);
+    expect(domainHelp.stderr).toContain("Manage custom domains for an app");
+    expect(domainHelp.stderr).toContain("$ prisma-cli app domain add shop.acme.com");
+
+    expect(domainAddHelp.exitCode).toBe(0);
+    expect(domainAddHelp.stderr).toContain("Register a custom domain on the app's production branch");
+    expect(domainAddHelp.stderr).toContain("--branch <name>");
+
+    expect(domainShowHelp.exitCode).toBe(0);
+    expect(domainShowHelp.stderr).toContain("Show custom domain status and certificate details");
+
+    expect(domainRemoveHelp.exitCode).toBe(0);
+    expect(domainRemoveHelp.stderr).toContain("Detach a custom domain from the app");
+
+    expect(domainRetryHelp.exitCode).toBe(0);
+    expect(domainRetryHelp.stderr).toContain("Retry custom domain DNS verification and TLS provisioning");
+
+    expect(domainWaitHelp.exitCode).toBe(0);
+    expect(domainWaitHelp.stderr).toContain("Wait until a custom domain is active or failed");
+    expect(domainWaitHelp.stderr).toContain("--timeout <duration>");
 
     expect(logsHelp.exitCode).toBe(0);
     expect(logsHelp.stderr).toContain("Stream logs for the app's current deployment");

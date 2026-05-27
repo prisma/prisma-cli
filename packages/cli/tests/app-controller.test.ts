@@ -65,6 +65,40 @@ function createProjectClient(projectId = "proj_123") {
   };
 }
 
+function createDomain(overrides: Partial<{
+  id: string;
+  hostname: string;
+  computeServiceId: string;
+  status: "pending_dns" | "verifying" | "verified_routing_blocked" | "provisioning_tls" | "active" | "failed" | "removing";
+  failureReason: string | null;
+  failureCategory: "dns" | "acme" | "storage" | "unknown" | null;
+  dnsRecords: Array<{ type: string; name: string; value: string; ttl: number | null }>;
+}> = {}) {
+  const hostname = overrides.hostname ?? "shop.acme.com";
+  return {
+    id: overrides.id ?? "dom_123",
+    type: "custom-domain" as const,
+    url: `https://api.prisma.io/v1/domains/${overrides.id ?? "dom_123"}`,
+    hostname,
+    computeServiceId: overrides.computeServiceId ?? "app_1",
+    status: overrides.status ?? "pending_dns",
+    foundryStatus: overrides.status ?? "pending_dns",
+    failureReason: overrides.failureReason ?? null,
+    failureCategory: overrides.failureCategory ?? null,
+    certExpiresAt: null,
+    createdAt: "2026-05-22T09:14:00.000Z",
+    updatedAt: "2026-05-22T09:14:00.000Z",
+    dnsRecords: overrides.dnsRecords ?? [
+      {
+        type: "CNAME",
+        name: hostname,
+        value: "switchboard.fra.prisma.build",
+        ttl: 300,
+      },
+    ],
+  };
+}
+
 async function writePackageJson(
   cwd: string,
   packageJson: {
@@ -257,6 +291,549 @@ describe("app controller", () => {
         },
       }),
     );
+  });
+
+  it("add_on_active_domain_does_not_retrigger_verification", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const activeDomain = createDomain({ status: "active" });
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "shop", region: "eu-central-1", liveDeploymentId: "dep_live", liveUrl: "https://shop.prisma.app" },
+    ]);
+    const addDomain = vi.fn().mockResolvedValue({
+      domain: activeDomain,
+      existing: true,
+    });
+    const retryDomain = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          listDomains: vi.fn(),
+          addDomain,
+          retryDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppDomainAdd(context, "Shop.Acme.com.", {
+      projectRef: "proj_123",
+      appName: "shop",
+    });
+
+    expect(addDomain).toHaveBeenCalledWith({
+      appId: "app_1",
+      hostname: "shop.acme.com",
+    });
+    expect(retryDomain).not.toHaveBeenCalled();
+    expect(result.result).toMatchObject({
+      workspace: {
+        id: "ws_123",
+        name: "Acme Inc",
+      },
+      project: {
+        id: "proj_123",
+        name: "Acme Dashboard",
+      },
+      branch: {
+        name: "production",
+        kind: "production",
+      },
+      app: {
+        id: "app_1",
+        name: "shop",
+      },
+      domain: {
+        hostname: "shop.acme.com",
+        status: "active",
+        dnsRecords: [{
+          type: "CNAME",
+          name: "shop.acme.com",
+          value: "switchboard.fra.prisma.build",
+          ttl: 300,
+        }],
+      },
+      existing: true,
+    });
+  });
+
+  it("domain add does not synthesize DNS records when the API omits them", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "shop",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+        liveUrl: "https://shop.fra.prisma.build",
+      },
+    ]);
+    const addDomain = vi.fn().mockResolvedValue({
+      domain: createDomain({ status: "pending_dns", dnsRecords: [] }),
+      existing: false,
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          addDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppDomainAdd(context, "shop.acme.com", {
+      projectRef: "proj_123",
+      appName: "shop",
+    });
+
+    expect(result.result.domain.dnsRecords).toEqual([]);
+  });
+
+  it("domain add maps quota conflicts to DOMAIN_QUOTA_EXCEEDED", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "shop",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+        liveUrl: "https://shop.fra.prisma.build",
+      },
+    ]);
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      const addDomain = vi.fn().mockRejectedValue(new actual.PreviewDomainApiError({
+        summary: "Failed to add custom domain",
+        status: 409,
+        message: "Domain quota exceeded.",
+        hint: "This compute service has reached the maximum of 3 custom domains.",
+      }));
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          addDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDomainAdd(context, "shop.acme.com", {
+      projectRef: "proj_123",
+      appName: "shop",
+    })).rejects.toMatchObject({
+      code: "DOMAIN_QUOTA_EXCEEDED",
+      domain: "app",
+    });
+  });
+
+  it("domain add maps already-registered conflicts to DOMAIN_ALREADY_REGISTERED", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "shop",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+        liveUrl: "https://shop.fra.prisma.build",
+      },
+    ]);
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      const addDomain = vi.fn().mockRejectedValue(new actual.PreviewDomainApiError({
+        summary: "Failed to add custom domain",
+        status: 409,
+        message: "Hostname already registered.",
+        hint: "This hostname is already registered to another compute service.",
+      }));
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          addDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDomainAdd(context, "shop.acme.com", {
+      projectRef: "proj_123",
+      appName: "shop",
+    })).rejects.toMatchObject({
+      code: "DOMAIN_ALREADY_REGISTERED",
+      domain: "app",
+      summary: "Custom domain \"shop.acme.com\" is already registered",
+      fix: "Select the app that owns this hostname and remove it there, or contact support if you cannot access it.",
+      nextSteps: [
+        "Select the owning app and remove shop.acme.com there.",
+        "Contact Prisma support if you cannot access the owning app.",
+      ],
+    });
+  });
+
+  it("domain add maps DNS preflight failures to DOMAIN_DNS_NOT_CONFIGURED", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "shop",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+        liveUrl: "https://shop.fra.prisma.build",
+      },
+    ]);
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      const addDomain = vi.fn().mockRejectedValue(new actual.PreviewDomainApiError({
+        summary: "Failed to add custom domain",
+        status: 400,
+        message: "No CNAME or A/AAAA records found for hostname.",
+        hint: "DNS verification failed: ensure the hostname CNAMEs to switchboard.fra.prisma.build.",
+      }));
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          addDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDomainAdd(context, "compute-test.amanv.dev", {
+      projectRef: "proj_123",
+      appName: "shop",
+    })).rejects.toMatchObject({
+      code: "DOMAIN_DNS_NOT_CONFIGURED",
+      domain: "app",
+      fix: "Add CNAME compute-test.amanv.dev -> switchboard.fra.prisma.build at your DNS provider, then rerun the domain command.",
+      nextSteps: [
+        "add CNAME compute-test.amanv.dev -> switchboard.fra.prisma.build",
+        "prisma-cli app domain add compute-test.amanv.dev",
+      ],
+    });
+  });
+
+  it("domain add does not invent a DNS target when the API omits one", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "shop",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+        liveUrl: "https://shop.fra.prisma.build",
+      },
+    ]);
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      const addDomain = vi.fn().mockRejectedValue(new actual.PreviewDomainApiError({
+        summary: "Failed to add custom domain",
+        status: 400,
+        message: "DNS is not configured for hostname compute-test.amanv.dev.",
+        hint: "DNS verification failed.",
+      }));
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          addDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDomainAdd(context, "compute-test.amanv.dev", {
+      projectRef: "proj_123",
+      appName: "shop",
+    })).rejects.toMatchObject({
+      code: "DOMAIN_DNS_NOT_CONFIGURED",
+      domain: "app",
+      fix: "The platform did not return the required DNS target. Re-run with --trace for the underlying API response details.",
+      nextSteps: ["prisma-cli app domain add compute-test.amanv.dev --trace"],
+    });
+  });
+
+  it("domain remove reports list-domain failures with the remove command label", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "shop",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+        liveUrl: "https://shop.fra.prisma.build",
+      },
+    ]);
+    const listDomains = vi.fn().mockRejectedValue(new Error("list failed"));
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          listDomains,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainRemove } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      flags: { yes: true },
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDomainRemove(context, "shop.acme.com", {
+      projectRef: "proj_123",
+      appName: "shop",
+    })).rejects.toMatchObject({
+      code: "DEPLOY_FAILED",
+      summary: "Custom domain remove failed",
+    });
+  });
+
+  it("domain add rejects preview branches", async () => {
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDomainAdd(context, "shop.acme.com", {
+      projectRef: "proj_123",
+      appName: "shop",
+      branchName: "feat/login",
+    })).rejects.toMatchObject({
+      code: "BRANCH_NOT_DEPLOYABLE",
+      domain: "branch",
+      exitCode: 2,
+    });
+  });
+
+  it("domain retry maps API 409 to DOMAIN_RETRY_NOT_ELIGIBLE", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "shop", region: "eu-central-1", liveDeploymentId: "dep_live", liveUrl: "https://shop.prisma.app" },
+    ]);
+    const listDomains = vi.fn().mockResolvedValue([
+      createDomain({ status: "provisioning_tls" }),
+    ]);
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      const retryDomain = vi.fn().mockRejectedValue(new actual.PreviewDomainApiError({
+        summary: "Failed to retry custom domain",
+        status: 409,
+        message: "Domain is not eligible for retry.",
+      }));
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          listDomains,
+          retryDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainRetry } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDomainRetry(context, "shop.acme.com", {
+      projectRef: "proj_123",
+      appName: "shop",
+    })).rejects.toMatchObject({
+      code: "DOMAIN_RETRY_NOT_ELIGIBLE",
+      domain: "app",
+    });
+  });
+
+  it("domain wait supports poll-once timeout mode", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "shop", region: "eu-central-1", liveDeploymentId: "dep_live", liveUrl: "https://shop.prisma.app" },
+    ]);
+    const listDomains = vi.fn().mockResolvedValue([
+      createDomain({ status: "verifying" }),
+    ]);
+    const showDomain = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          listDomains,
+          showDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainWait } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context, stdout } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      flags: {
+        json: true,
+      },
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDomainWait(context, "shop.acme.com", {
+      projectRef: "proj_123",
+      appName: "shop",
+      timeout: "0",
+    })).rejects.toMatchObject({
+      code: "DOMAIN_VERIFICATION_TIMEOUT",
+      domain: "app",
+      exitCode: 1,
+    });
+    expect(showDomain).not.toHaveBeenCalled();
+    expect(stdout.buffer).toContain("\"command\":\"app.domain.wait\"");
+    expect(stdout.buffer).toContain("\"status\":\"verifying\"");
   });
 
   it("infers project, branch, app, framework, and runtime for a first deploy", async () => {

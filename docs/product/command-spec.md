@@ -76,7 +76,7 @@ When `PRISMA_SERVICE_TOKEN` is set and non-empty, the token is fully sufficient 
 Commands resolve project context in this order:
 
 1. explicit `--project <id-or-name>` when present
-2. `PRISMA_PROJECT_ID` when set for headless deploys
+2. `PRISMA_PROJECT_ID` when set for headless deploy/domain commands
 3. `.prisma/local.json` project pin when present, revalidated against platform data
 4. durable platform mapping when available
 5. remembered local project context, revalidated against platform data
@@ -87,15 +87,15 @@ Commands resolve project context in this order:
 `--project` is an escape hatch for ambiguous or unavailable automatic
 resolution, not a setup step. Only `app deploy` may create a missing project,
 and only when the inferred name is unambiguous.
-When `PRISMA_PROJECT_ID` is set, `app deploy` skips `.prisma/local.json` reads
-and does not write a new pin.
+When `PRISMA_PROJECT_ID` is set, `app deploy` and `app domain` commands skip
+`.prisma/local.json` reads and do not write a new pin.
 
 ### App Selection
 
 Preview app commands that need an app resolve it in this order:
 
 1. `--app <name>`
-2. `PRISMA_APP_ID` when set for headless deploys
+2. `PRISMA_APP_ID` when set for headless deploy/domain commands
 3. locally selected app for non-deploy commands when it still exists in the resolved branch
 4. inferred app name from `package.json#name`
 5. current directory name
@@ -103,12 +103,15 @@ Preview app commands that need an app resolve it in this order:
 7. interactive picker only when multiple matching apps make the target ambiguous
 8. `APP_AMBIGUOUS` in non-interactive or `--json` mode when unresolved
 
-When `PRISMA_APP_ID` is set, `app deploy` skips `.prisma/local.json` reads and
-does not write a new pin.
+When `PRISMA_APP_ID` is set, `app deploy` and `app domain` commands skip
+`.prisma/local.json` reads and do not write a new pin.
 
 `.prisma/local.json` pins the directory to a Workspace and Project only. It does
 not pin an App ID. App services are branch-scoped; a service ID from `main`
 must not be reused automatically when the user deploys from `feat/billing`.
+
+`app domain` commands do not create apps. They resolve an existing app on the
+resolved production Branch and fail when none exists.
 
 ### Branch
 
@@ -120,6 +123,10 @@ Commands that use branch context resolve it in this order:
 
 `local` is local CLI context only. It is never a branch or deploy target.
 Production is a protected durable branch and must require explicit user intent.
+
+`app domain` commands default to the production Branch. During Public Beta,
+custom domains are supported only on production Branches. Passing a
+non-production `--branch` fails with `BRANCH_NOT_DEPLOYABLE`.
 
 ## Command Result Envelopes
 
@@ -718,6 +725,148 @@ Examples:
 ```bash
 prisma-cli app open
 prisma-cli app open --app hello-world
+```
+
+## `prisma-cli app domain`
+
+Purpose:
+
+- manage custom domains for an app's production Branch runtime
+
+Behavior:
+
+- requires auth and project context
+- resolves the selected app on the production Branch
+- supports only production Branch custom domains during Public Beta
+- does not expose workspace-wide domain listing until the Management API has a
+  workspace-scoped list endpoint
+
+Commands:
+
+- `add <hostname>` registers a custom domain
+- `show <hostname>` shows status, certificate detail, and fix hints
+- `remove <hostname>` detaches a custom domain
+- `retry <hostname>` re-triggers DNS verification and TLS issuance
+- `wait <hostname>` blocks until `active`, terminal `failed`, or timeout
+
+Examples:
+
+```bash
+prisma-cli app domain add shop.acme.com
+prisma-cli app domain wait shop.acme.com --timeout 15m
+prisma-cli app domain retry shop.acme.com
+```
+
+## `prisma-cli app domain add <hostname>`
+
+Purpose:
+
+- register a custom domain on the selected app's production Branch
+
+Behavior:
+
+- requires auth and project context
+- resolves the selected app
+- registers the hostname against the selected app's compute service
+- is idempotent for a hostname already attached to the same app
+- does not re-trigger DNS verification for an existing row
+- prints DNS record instructions only when returned by the API
+- does not synthesize DNS records client-side when the API omits them
+- returns `DOMAIN_DNS_NOT_CONFIGURED` with a CNAME target only when the API error includes the required target
+- returns `DOMAIN_ALREADY_REGISTERED` when the hostname is attached outside the selected app
+- rejects non-production `--branch` with `BRANCH_NOT_DEPLOYABLE`
+
+Examples:
+
+```bash
+prisma-cli app domain add shop.acme.com
+prisma-cli app domain add shop.acme.com --app shop --branch production
+```
+
+## `prisma-cli app domain show <hostname>`
+
+Purpose:
+
+- show status and recovery guidance for one custom domain
+
+Behavior:
+
+- requires auth and project context
+- resolves the selected app
+- finds the domain by hostname within the selected app
+- includes failure category, failure reason, certificate expiry, and DNS record
+  instructions when returned by the API
+
+Examples:
+
+```bash
+prisma-cli app domain show checkout.acme.com
+```
+
+## `prisma-cli app domain remove <hostname>`
+
+Purpose:
+
+- detach a custom domain from the selected app
+
+Behavior:
+
+- requires auth and project context
+- resolves the selected app
+- requires confirmation unless `-y` or `--yes` is passed
+- deletes the domain binding by id after resolving the hostname
+
+Examples:
+
+```bash
+prisma-cli app domain remove old.acme.com
+prisma-cli app domain remove old.acme.com --yes
+```
+
+## `prisma-cli app domain retry <hostname>`
+
+Purpose:
+
+- re-trigger DNS verification and TLS issuance for a failed or stuck domain
+
+Behavior:
+
+- requires auth and project context
+- resolves the selected app
+- finds the domain by hostname within the selected app
+- calls the domain retry endpoint
+- prints DNS record instructions and failure guidance when returned by the API
+- returns `DOMAIN_RETRY_NOT_ELIGIBLE` when the API reports the domain is not in
+  a retryable state
+
+Examples:
+
+```bash
+prisma-cli app domain retry checkout.acme.com
+```
+
+## `prisma-cli app domain wait <hostname>`
+
+Purpose:
+
+- block until a custom domain reaches `active`, terminal `failed`, or timeout
+
+Behavior:
+
+- requires auth and project context
+- resolves the selected app
+- finds the domain by hostname within the selected app
+- polls domain detail until status is `active`, `failed`, or the timeout expires
+- defaults `--timeout` to `15m`
+- treats `--timeout 0` as poll-once snapshot mode
+- exits 0 on `active`, and 1 on terminal `failed` or timeout
+- in `--json` mode, streams newline-delimited status events
+
+Examples:
+
+```bash
+prisma-cli app domain wait shop.acme.com
+prisma-cli app domain wait shop.acme.com --timeout 0 --json
 ```
 
 ## `prisma-cli app logs --app <name> --deployment <id>`
