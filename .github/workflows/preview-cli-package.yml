@@ -1,0 +1,57 @@
+name: Preview CLI Package
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+concurrency:
+  group: preview-cli-package-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10.30.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve preview version
+        id: cli_version
+        run: |
+          HEAD_SHA='${{ github.event.pull_request.head.sha }}'
+          SHORT_SHA="${HEAD_SHA::12}"
+          VERSION="3.0.0-pr.${{ github.event.pull_request.number }}.sha${SHORT_SHA}"
+          printf 'version=%s\n' "${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Run focused CLI tests
+        run: pnpm --filter @prisma/cli test
+
+      - name: Build CLI package
+        run: pnpm --filter @prisma/cli build
+
+      - name: Prepare staged preview package
+        run: node scripts/prepare-cli-publish.mjs .publish/cli --version '${{ steps.cli_version.outputs.version }}'
+
+      - name: Publish installable PR preview
+        run: pnpm exec pkg-pr-new publish --bin --comment=update .publish/cli

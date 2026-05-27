@@ -1,4 +1,4 @@
-# ADR 0001 - Preview Package And Publishing
+# ADR 0001 - Package Channels And Publishing
 
 ## Status
 
@@ -6,40 +6,46 @@ Accepted
 
 ## Context
 
-The Prisma CLI preview needs a public package identity that can coexist with the
-existing Prisma CLI while development moves quickly. Contributors also need to
-understand how release preparation works without assuming local publishing is
-expected.
+The new Prisma CLI needs the primary `@prisma/cli` package identity while the
+team is still iterating through beta. Contributors also need clear test channels
+for integrated `main` builds and unmerged trusted pull requests without assuming
+local publishing is expected.
 
 ## Decision
 
-Preview releases use the `@prisma/cli` package name and the `preview` npm
+Official beta releases use the `@prisma/cli` package name and the `latest` npm
 dist-tag. The package exposes a `prisma-cli` binary so it can coexist with the
 existing `prisma` executable.
 
-Release preparation is staged through the repository scripts and manual GitHub
-Actions workflows. Version bumps are merged through pull requests before
-publishing. The prepare workflow opens the version bump PR, and the publish
-workflow reads the already-merged version from `packages/cli/package.json`,
-publishes it, and creates the matching release tag. The publish workflow must
-not push release commits directly to `main`.
+The committed `packages/cli/package.json` version is a development placeholder.
+Release versions are injected into the staged package by CI:
 
-The publish workflow is prepared for npm trusted publishing with provenance and
-publishes with:
+- Manual official releases compute the next `3.0.0-beta.N`, publish to
+  `latest`, and create `cli-v<version>`.
+- Pushes to `main` publish unique dev builds to the `dev` dist-tag.
+- Trusted same-repo pull requests publish installable pkg.pr.new previews for
+  the exact commit. Fork pull requests do not publish preview packages
+  automatically.
+
+The publish workflow is prepared for npm trusted publishing with provenance.
+Official releases publish with:
 
 ```bash
-npm publish --access public --tag preview --provenance
+npm publish --access public --tag latest --provenance
 ```
 
 Local development should build and stage the package, but should not publish it.
 
 ## Consequences
 
-- Public docs should refer to `@prisma/cli@preview` for preview package usage.
+- Public docs should refer to `@prisma/cli` for official beta package usage.
+- Team testing can use `@prisma/cli@dev` for latest integrated `main` or PR
+  preview comments for exact unmerged commits.
 - Project scripts may map `prisma` to `prisma-cli` when testing the future
   command shape locally.
 - The npm package should contain only the staged package files: built `dist`,
   package README, license, and package manifest.
-- Publishing remains manual and gated until the release owner runs the workflow.
-- Preview version changes must be reviewed and merged before publishing so
-  repository rules that require pull requests are respected.
+- Official publishing remains manual and gated until a maintainer runs the
+  workflow.
+- Release version bumps are not committed through pull requests; npm versions
+  and `cli-v<version>` tags are the release record.

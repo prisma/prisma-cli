@@ -18,7 +18,7 @@ Commands are grouped by developer workflow. The canonical command shape is:
 prisma <group> <action>
 ```
 
-The preview implementation includes only these groups:
+The beta implementation includes only these groups:
 
 - `auth`
 - `project`

@@ -11,6 +11,7 @@
     "prisma": "tsx packages/cli/src/bin.ts"
   },
   "devDependencies": {
+    "pkg-pr-new": "^0.0.75",
     "tsx": "^4.19.2"
   }
 }

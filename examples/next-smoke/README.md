@@ -4,7 +4,7 @@ Manual smoke app for exercising the local source Prisma CLI from inside this rep
 
 This example is intentionally not part of the root pnpm workspace. Install it only when you want to run manual end-to-end checks.
 
-This example already sets `output: "standalone"` in `next.config.ts`, which is required for Next.js deploys in the current preview.
+This example already sets `output: "standalone"` in `next.config.ts`, which is required for Next.js deploys in the current beta.
 
 ## Manual Flow
 

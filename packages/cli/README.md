@@ -1,11 +1,11 @@
-# Prisma CLI Preview
+# Prisma CLI Beta
 
-Preview npm package for the unified Prisma CLI.
+Beta npm package for the unified Prisma CLI.
 
 Install:
 
 ```bash
-pnpm add -D @prisma/cli@preview
+pnpm add -D @prisma/cli
 ```
 
 Run:
@@ -22,6 +22,6 @@ executable.
 
 Notes:
 
-- This is a preview package and may change quickly.
+- This is a beta package and may change quickly.
 - `prisma.config.ts` stores linked project context for this CLI.
 - Environment variable values passed with `--env` are not printed back to the terminal.

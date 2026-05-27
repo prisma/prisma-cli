@@ -1,20 +1,130 @@
-name: Release CLI
+name: Publish CLI
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Validate the release without publishing, tagging, or pushing
+        description: Validate the next official beta release without publishing or tagging
         required: false
         type: boolean
         default: false
 
 concurrency:
-  group: release-cli-main
+  group: publish-cli-${{ github.event_name }}
   cancel-in-progress: false
 
 jobs:
-  release:
+  publish-dev:
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10.30.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve dev version
+        id: cli_version
+        run: |
+          SHORT_SHA="${GITHUB_SHA::12}"
+          VERSION="3.0.0-dev.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}.sha${SHORT_SHA}"
+          printf 'version=%s\n' "${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Fail if version already exists on npm
+        run: |
+          PACKAGE='@prisma/cli'
+          VERSION='${{ steps.cli_version.outputs.version }}'
+          if npm view "${PACKAGE}@${VERSION}" version >/dev/null 2>&1; then
+            echo "${PACKAGE}@${VERSION} already exists on npm."
+            exit 1
+          fi
+
+      - name: Run focused CLI tests
+        run: pnpm --filter @prisma/cli test
+
+      - name: Build CLI package
+        run: pnpm --filter @prisma/cli build
+
+      - name: Prepare staged publish package
+        run: node scripts/prepare-cli-publish.mjs .publish/cli --version '${{ steps.cli_version.outputs.version }}'
+
+      - name: Audit staged package contents
+        working-directory: .publish/cli
+        run: |
+          PACK_JSON="$(npm pack --dry-run --json)"
+          PACK_JSON="${PACK_JSON}" node -e "
+            const pack = JSON.parse(process.env.PACK_JSON)[0]
+            const files = pack.files.map((file) => file.path).sort()
+            const forbidden = files.filter((file) =>
+              file.startsWith('src/') ||
+              file.startsWith('tests/') ||
+              file.startsWith('fixtures/') ||
+              file.startsWith('docs/') ||
+              file.startsWith('.prisma/') ||
+              file.startsWith('.publish/')
+            )
+            if (forbidden.length) {
+              console.error('Forbidden files in npm package:', forbidden.join(', '))
+              process.exit(1)
+            }
+            for (const required of ['dist/cli.js', 'README.md', 'LICENSE', 'package.json']) {
+              if (!files.includes(required)) {
+                console.error('Missing required package file:', required)
+                process.exit(1)
+              }
+            }
+          "
+
+      - name: Smoke test staged tarball install
+        run: |
+          TARBALL="$(cd .publish/cli && npm pack --silent)"
+          TMPDIR="$(mktemp -d)"
+          cat > "${TMPDIR}/package.json" <<'EOF'
+          {
+            "name": "cli-publish-smoke",
+            "private": true
+          }
+          EOF
+          pnpm add -D "${PWD}/.publish/cli/${TARBALL}" --dir "${TMPDIR}"
+          (
+            cd "${TMPDIR}"
+            pnpm prisma-cli --help
+            pnpm prisma-cli auth whoami --json
+          )
+
+      - name: Publish dev package to npm
+        working-directory: .publish/cli
+        run: npm publish --access public --tag dev --provenance
+
+      - name: Summarize dev publish
+        run: |
+          VERSION='${{ steps.cli_version.outputs.version }}'
+          {
+            echo "## Publish CLI Dev"
+            echo
+            echo "- npm package: \`@prisma/cli@${VERSION}\`"
+            echo "- npm dist-tag: \`dev\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish-official:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -24,7 +134,7 @@ jobs:
       - name: Ensure workflow runs from main
         run: |
           if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
-            echo "This workflow only releases from main."
+            echo "This workflow only publishes official releases from main."
             exit 1
           fi
 
@@ -45,10 +155,24 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Resolve CLI version
+      - name: Resolve next beta version
         id: cli_version
         run: |
-          VERSION="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('packages/cli/package.json', 'utf8')).version)")"
+          PACKAGE='@prisma/cli'
+          LATEST="$(npm view "${PACKAGE}" dist-tags.latest --silent 2>/dev/null || true)"
+
+          if [[ -z "${LATEST}" || "${LATEST}" =~ ^2\. ]]; then
+            VERSION="3.0.0-beta.0"
+          elif [[ "${LATEST}" =~ ^3\.0\.0-beta\.([0-9]+)$ ]]; then
+            NEXT_NUMBER="$((${BASH_REMATCH[1]} + 1))"
+            VERSION="3.0.0-beta.${NEXT_NUMBER}"
+          else
+            echo "Cannot compute the next beta from npm latest (${LATEST})."
+            echo "Expected no latest, a 2.x legacy latest, or 3.0.0-beta.N."
+            exit 1
+          fi
+
+          printf 'latest=%s\n' "${LATEST}" >> "$GITHUB_OUTPUT"
           printf 'version=%s\n' "${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Fail if version already exists on npm
@@ -76,7 +200,7 @@ jobs:
         run: pnpm --filter @prisma/cli build
 
       - name: Prepare staged publish package
-        run: node scripts/prepare-cli-publish.mjs .publish/cli
+        run: node scripts/prepare-cli-publish.mjs .publish/cli --version '${{ steps.cli_version.outputs.version }}'
 
       - name: Audit staged package contents
         working-directory: .publish/cli
@@ -131,10 +255,10 @@ jobs:
             exit 1
           fi
 
-      - name: Publish to npm
+      - name: Publish official package to npm
         if: ${{ !inputs.dry_run }}
         working-directory: .publish/cli
-        run: npm publish --access public --tag preview --provenance
+        run: npm publish --access public --tag latest --provenance
 
       - name: Create and push release tag
         if: ${{ !inputs.dry_run }}
@@ -147,9 +271,11 @@ jobs:
       - name: Summarize release
         run: |
           VERSION='${{ steps.cli_version.outputs.version }}'
+          LATEST='${{ steps.cli_version.outputs.latest }}'
           {
-            echo "## Release CLI"
+            echo "## Publish CLI Official"
             echo
+            echo "- Previous npm latest: \`${LATEST:-none}\`"
             echo "- Version: \`${VERSION}\`"
             echo "- Dry run: \`${{ inputs.dry_run }}\`"
             if [ '${{ inputs.dry_run }}' = 'true' ]; then
@@ -157,7 +283,7 @@ jobs:
               echo "- Tag/push: skipped"
             else
               echo "- npm package: \`@prisma/cli@${VERSION}\`"
-              echo "- npm dist-tag: \`preview\`"
+              echo "- npm dist-tag: \`latest\`"
               echo "- git tag: \`cli-v${VERSION}\`"
             fi
           } >> "$GITHUB_STEP_SUMMARY"

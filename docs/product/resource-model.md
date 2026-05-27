@@ -103,7 +103,7 @@ Rules:
 - the app name is registered within the resolved project
 - the runtime app service is scoped by branch in the platform model
 - the app may be selected or created as part of app deployment workflows
-- app selection is local CLI state when needed for the preview package
+- app selection is local CLI state when needed for the beta package
 
 ### Deployment
 
@@ -134,7 +134,7 @@ It matters because:
 ### Environment Variables
 
 Environment variables are deploy-time inputs, not top-level CLI resources in the
-preview command model.
+beta command model.
 
 Rules:
 
@@ -150,13 +150,13 @@ top-level target-context group is `branch`, not `env`.
 
 ### Schema and Database
 
-`schema` and `database` are out of scope for the current preview package, but
+`schema` and `database` are out of scope for the current beta package, but
 they remain part of the long-term hierarchy.
 
 - `schema` stays a local code artifact
 - `database` stays a branch-bound resource
 
-The preview package must not redefine project or branch in a way that makes
+The beta package must not redefine project or branch in a way that makes
 future schema, database, and migration workflows awkward.
 
 ## Relationships
