@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Next Smoke",
-  description: "Manual smoke app for the local Prisma CLI preview",
+  description: "Manual smoke app for the local Prisma CLI beta",
 };
 
 export default function RootLayout({

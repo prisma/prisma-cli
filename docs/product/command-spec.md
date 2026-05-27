@@ -1,13 +1,14 @@
-# Prisma CLI Preview Command Spec
+# Prisma CLI Beta Command Spec
 
 ## Purpose
 
-This document defines the public preview command surface. It is the source of
+This document defines the public beta command surface. It is the source of
 truth for command names, target resolution, and structured behavior.
+This file is authoritative for command group scope during beta.
 
 ## Scope
 
-The preview package includes these command groups:
+The beta package includes these command groups:
 
 - `auth`
 - `project` (includes `project env` subgroup)
@@ -15,7 +16,7 @@ The preview package includes these command groups:
 - `branch`
 - `app`
 
-The preview package also includes one top-level utility command:
+The beta package also includes one top-level utility command:
 
 - `version`
 
@@ -24,7 +25,7 @@ The preview package also includes one top-level utility command:
 The Git repository connection slice uses the `git` group. It does not add a
 provider-specific `GitHub` group.
 
-Out of scope for the current preview:
+Out of scope for the current beta:
 
 - `init`
 - `schema`
@@ -193,7 +194,7 @@ In `--json`, `result` uses this shape:
 {
   "cli": {
     "name": "prisma-cli",
-    "version": "3.0.0-alpha.3"
+    "version": "3.0.0-beta.0"
   },
   "node": {
     "version": "v24.14.1"
@@ -208,7 +209,7 @@ In `--json`, `result` uses this shape:
 
 Rules:
 
-- `cli.name` is the published package's `bin` name (`prisma-cli` in the current preview).
+- `cli.name` is the published package's `bin` name (`prisma-cli` in the current beta).
 - `cli.version` is the published package version.
 - `node.version` mirrors `process.version` exactly, including the leading `v`.
 - `os.platform` and `os.arch` mirror `process.platform` and `process.arch`.
@@ -466,7 +467,7 @@ Purpose:
 Behavior:
 
 - detects supported project shapes when `--build-type auto` is used
-- supports Bun, Next.js, Nuxt, Astro, and TanStack Start app builds in the preview package
+- supports Bun, Next.js, Nuxt, Astro, and TanStack Start app builds in the beta package
 - fails with `USAGE_ERROR` when framework detection is ambiguous
 
 Examples:

@@ -1,0 +1,80 @@
+name: Preview CLI Package
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+concurrency:
+  group: preview-cli-package-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+        with:
+          version: 10.30.0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve preview version
+        id: cli_version
+        run: |
+          node scripts/resolve-cli-version.mjs pr \
+            --sha '${{ github.event.pull_request.head.sha }}' \
+            --pr-number '${{ github.event.pull_request.number }}' >> "$GITHUB_OUTPUT"
+
+      - name: Run focused CLI tests
+        id: cli_tests
+        run: pnpm --filter @prisma/cli test
+
+      - name: Build CLI package
+        id: cli_build
+        run: pnpm --filter @prisma/cli build
+
+      - name: Prepare staged preview package
+        id: prepare_preview
+        run: node scripts/prepare-cli-publish.mjs .publish/cli --version '${{ steps.cli_version.outputs.version }}'
+
+      - name: Publish installable PR preview
+        id: publish_preview
+        continue-on-error: ${{ vars.CLI_PR_PREVIEW_REQUIRED != 'true' }}
+        run: pnpm exec pkg-pr-new publish --bin --comment=update .publish/cli
+
+      - name: Summarize PR preview publish
+        if: ${{ always() }}
+        run: |
+          {
+            echo "## Preview CLI Package"
+            echo
+            echo "- Version: \`${{ steps.cli_version.outputs.version }}\`"
+            echo "- CLI tests: \`${{ steps.cli_tests.outcome || 'skipped' }}\`"
+            echo "- Build: \`${{ steps.cli_build.outcome || 'skipped' }}\`"
+            echo "- Package staging: \`${{ steps.prepare_preview.outcome || 'skipped' }}\`"
+            echo "- pkg.pr.new publish: \`${{ steps.publish_preview.outcome || 'skipped' }}\`"
+            PUBLISH_OUTCOME="${{ steps.publish_preview.outcome || 'skipped' }}"
+            if [ "${PUBLISH_OUTCOME}" != "success" ]; then
+              echo
+              echo "pkg.pr.new publishing is best-effort while \`CLI_PR_PREVIEW_REQUIRED\` is not \`true\`. If this failed, confirm the pkg.pr.new GitHub App is installed for this repository and rerun the workflow."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
