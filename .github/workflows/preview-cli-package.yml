@@ -54,4 +54,21 @@ jobs:
         run: node scripts/prepare-cli-publish.mjs .publish/cli --version '${{ steps.cli_version.outputs.version }}'
 
       - name: Publish installable PR preview
+        id: publish_preview
+        continue-on-error: true
         run: pnpm exec pkg-pr-new publish --bin --comment=update .publish/cli
+
+      - name: Summarize PR preview publish
+        if: ${{ always() }}
+        run: |
+          {
+            echo "## Preview CLI Package"
+            echo
+            echo "- Version: \`${{ steps.cli_version.outputs.version }}\`"
+            echo "- Package checks: passed"
+            echo "- pkg.pr.new publish: \`${{ steps.publish_preview.outcome }}\`"
+            if [ '${{ steps.publish_preview.outcome }}' != 'success' ]; then
+              echo
+              echo "pkg.pr.new publishing is best-effort. If this failed, confirm the pkg.pr.new GitHub App is installed for this repository and rerun the workflow."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

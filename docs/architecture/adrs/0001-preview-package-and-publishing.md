@@ -25,7 +25,8 @@ Release versions are injected into the staged package by CI:
 - Pushes to `main` publish unique dev builds to the `dev` dist-tag.
 - Trusted same-repo pull requests publish installable pkg.pr.new previews for
   the exact commit. Fork pull requests do not publish preview packages
-  automatically.
+  automatically. Preview publishing is best-effort because it depends on the
+  pkg.pr.new GitHub App being installed for the repository.
 
 The publish workflow is prepared for npm trusted publishing with provenance.
 Official releases publish with:

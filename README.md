@@ -155,7 +155,8 @@ Release channels:
   publishes a unique dev version with the `dev` dist-tag.
 - PR preview packages: trusted same-repo pull requests get an installable
   pkg.pr.new comment for the exact commit. Fork PRs do not publish preview
-  packages automatically.
+  packages automatically. Preview publishing is best-effort and requires the
+  pkg.pr.new GitHub App to be installed for this repository.
 
 For an official beta release:
 

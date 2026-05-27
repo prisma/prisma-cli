@@ -66,7 +66,8 @@ The `latest` dist-tag points at the latest manually published beta.
 The `dev` dist-tag points at the latest successful `main` build. Trusted
 same-repo pull requests receive pkg.pr.new preview comments for testing exact
 unmerged commits. Fork pull requests do not publish preview packages
-automatically.
+automatically. Preview publishing is best-effort and requires the pkg.pr.new
+GitHub App to be installed for this repository.
 
 Do not publish from a local checkout unless the release owner has explicitly
 asked you to do so. Release publishing is intended to happen through the
