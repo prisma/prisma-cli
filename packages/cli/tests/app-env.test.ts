@@ -352,6 +352,45 @@ describe("env add", () => {
     );
   });
 
+  it("reports a branch creation API failure when no response is available", async () => {
+    const client = createMockClient();
+    client.envGET
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [makeBranchRow({ id: "br_main", gitName: "main", isDefault: true })],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      });
+    client.POST.mockResolvedValueOnce({
+      error: {
+        error: {
+          message: "Branch service is unavailable.",
+        },
+      },
+    });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runEnvAdd(context, "DATABASE_URL=postgresql://branch", {
+        branchName: "feature/new",
+      }),
+    ).rejects.toMatchObject({
+      code: "ENV_API_ERROR",
+      summary: 'Failed to create branch "feature/new"',
+      why: "Branch service is unavailable.",
+    });
+    expect(client.POST).toHaveBeenCalledTimes(1);
+  });
+
   it("does not create a missing branch when the project has no default branch", async () => {
     const client = createMockClient();
     client.envGET

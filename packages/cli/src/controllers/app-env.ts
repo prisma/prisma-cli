@@ -434,7 +434,7 @@ async function resolveOrCreateBranch(
     },
   );
   if (error || !data) {
-    if (response.status === 409) {
+    if (response?.status === 409) {
       const raced = (await listBranchesByName(client, projectId, branchName))[0];
       if (raced) {
         return raced;
