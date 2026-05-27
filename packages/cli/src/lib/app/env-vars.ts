@@ -3,7 +3,7 @@ import { usageError } from "../../shell/errors";
 export function parseEnvAssignments(
   assignments: string[] | undefined,
   options: {
-    commandName: "deploy" | "update-env";
+    commandName: "deploy";
     requireAtLeastOne?: boolean;
   },
 ): Record<string, string> {

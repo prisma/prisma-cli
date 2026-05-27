@@ -10,7 +10,10 @@ import type {
 import { renderList, renderShow, serializeList } from "../output/patterns";
 
 function scopeLabel(scope: EnvScopeDescriptor): string {
-  return scope.role;
+  if (scope.kind === "role") {
+    return scope.role ?? "unknown";
+  }
+  return `branch:${scope.branchName ?? scope.branchId ?? "unknown"}`;
 }
 
 export function renderEnvAdd(
@@ -86,7 +89,7 @@ export function renderEnvList(
       },
       items: result.variables.map((variable) => ({
         noun: "variable",
-        label: variable.key,
+        label: `${variable.key} (${variable.source})`,
         id: variable.id,
         status: variable.isManagedBySystem ? "default" : null,
       })),
@@ -106,7 +109,7 @@ export function serializeEnvList(result: EnvListResult) {
       },
       items: result.variables.map((variable) => ({
         noun: "variable",
-        label: variable.key,
+        label: `${variable.key} (${variable.source})`,
         id: variable.id,
         status: variable.isManagedBySystem ? "default" : null,
       })),
