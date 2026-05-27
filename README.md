@@ -23,7 +23,7 @@ Example workflow:
 ```bash
 pnpm prisma-cli auth login
 pnpm prisma-cli app deploy --env DATABASE_URL=postgresql://example
-pnpm prisma-cli app list-env
+pnpm prisma-cli project env list --role preview
 ```
 
 If you want local project scripts that look like the future command shape, add:
@@ -86,6 +86,7 @@ The CLI groups commands by developer workflow:
 
 - `auth`
 - `project`
+- `git`
 - `branch`
 - `app`
 
@@ -117,6 +118,9 @@ Start here when changing command behavior:
 
 See `CONTRIBUTING.md` for local development and contribution guidance.
 See `ARCHITECTURE.md` for the short architecture entrypoint.
+
+The npm package README lives at `packages/cli/README.md` and is copied into the
+staged publish artifact.
 
 ## Community
 

@@ -1,7 +1,7 @@
 {
   "name": "@prisma/cli",
   "version": "3.0.0-development",
-  "description": "Beta of the unified Prisma CLI.",
+  "description": "Command-line interface for the Prisma Developer Platform.",
   "type": "module",
   "bin": {
     "prisma-cli": "./dist/cli.js"
