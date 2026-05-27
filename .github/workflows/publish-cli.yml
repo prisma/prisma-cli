@@ -43,9 +43,10 @@ jobs:
       - name: Resolve dev version
         id: cli_version
         run: |
-          SHORT_SHA="${GITHUB_SHA::12}"
-          VERSION="3.0.0-dev.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}.sha${SHORT_SHA}"
-          printf 'version=%s\n' "${VERSION}" >> "$GITHUB_OUTPUT"
+          node scripts/resolve-cli-version.mjs dev \
+            --sha "${GITHUB_SHA}" \
+            --run-number "${GITHUB_RUN_NUMBER}" \
+            --run-attempt "${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
       - name: Fail if version already exists on npm
         run: |
@@ -160,20 +161,7 @@ jobs:
         run: |
           PACKAGE='@prisma/cli'
           LATEST="$(npm view "${PACKAGE}" dist-tags.latest --silent 2>/dev/null || true)"
-
-          if [[ -z "${LATEST}" || "${LATEST}" =~ ^2\. ]]; then
-            VERSION="3.0.0-beta.0"
-          elif [[ "${LATEST}" =~ ^3\.0\.0-beta\.([0-9]+)$ ]]; then
-            NEXT_NUMBER="$((${BASH_REMATCH[1]} + 1))"
-            VERSION="3.0.0-beta.${NEXT_NUMBER}"
-          else
-            echo "Cannot compute the next beta from npm latest (${LATEST})."
-            echo "Expected no latest, a 2.x legacy latest, or 3.0.0-beta.N."
-            exit 1
-          fi
-
-          printf 'latest=%s\n' "${LATEST}" >> "$GITHUB_OUTPUT"
-          printf 'version=%s\n' "${VERSION}" >> "$GITHUB_OUTPUT"
+          node scripts/resolve-cli-version.mjs next-beta --latest "${LATEST}" >> "$GITHUB_OUTPUT"
 
       - name: Fail if version already exists on npm
         run: |

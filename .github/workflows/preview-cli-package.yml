@@ -39,10 +39,9 @@ jobs:
       - name: Resolve preview version
         id: cli_version
         run: |
-          HEAD_SHA='${{ github.event.pull_request.head.sha }}'
-          SHORT_SHA="${HEAD_SHA::12}"
-          VERSION="3.0.0-pr.${{ github.event.pull_request.number }}.sha${SHORT_SHA}"
-          printf 'version=%s\n' "${VERSION}" >> "$GITHUB_OUTPUT"
+          node scripts/resolve-cli-version.mjs pr \
+            --sha '${{ github.event.pull_request.head.sha }}' \
+            --pr-number '${{ github.event.pull_request.number }}' >> "$GITHUB_OUTPUT"
 
       - name: Run focused CLI tests
         run: pnpm --filter @prisma/cli test
@@ -55,7 +54,7 @@ jobs:
 
       - name: Publish installable PR preview
         id: publish_preview
-        continue-on-error: true
+        continue-on-error: ${{ vars.CLI_PR_PREVIEW_REQUIRED != 'true' }}
         run: pnpm exec pkg-pr-new publish --bin --comment=update .publish/cli
 
       - name: Summarize PR preview publish
@@ -69,6 +68,6 @@ jobs:
             echo "- pkg.pr.new publish: \`${{ steps.publish_preview.outcome }}\`"
             if [ '${{ steps.publish_preview.outcome }}' != 'success' ]; then
               echo
-              echo "pkg.pr.new publishing is best-effort. If this failed, confirm the pkg.pr.new GitHub App is installed for this repository and rerun the workflow."
+              echo "pkg.pr.new publishing is best-effort while \`CLI_PR_PREVIEW_REQUIRED\` is not \`true\`. If this failed, confirm the pkg.pr.new GitHub App is installed for this repository and rerun the workflow."
             fi
           } >> "$GITHUB_STEP_SUMMARY"

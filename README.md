@@ -156,7 +156,9 @@ Release channels:
 - PR preview packages: trusted same-repo pull requests get an installable
   pkg.pr.new comment for the exact commit. Fork PRs do not publish preview
   packages automatically. Preview publishing is best-effort and requires the
-  pkg.pr.new GitHub App to be installed for this repository.
+  pkg.pr.new GitHub App to be installed for this repository. Once that app is
+  installed, set the repository variable `CLI_PR_PREVIEW_REQUIRED=true` to make
+  preview publishing failures block CI.
 
 For an official beta release:
 
