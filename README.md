@@ -152,7 +152,9 @@ Release channels:
   it computes the next `3.0.0-beta.N`, publishes with the `latest` dist-tag, and
   creates `cli-v<version>`.
 - `@prisma/cli@dev`: latest successful `main` build. Every push to `main`
-  publishes a unique dev version with the `dev` dist-tag.
+  publishes a unique `3.0.0-dev.<run_number>.<run_attempt>` version with the
+  `dev` dist-tag. Commit traceability comes from npm provenance and the GitHub
+  Actions run.
 - PR preview packages: trusted same-repo pull requests get an installable
   pkg.pr.new comment for the exact commit. Fork PRs do not publish preview
   packages automatically. Preview publishing is best-effort and requires the

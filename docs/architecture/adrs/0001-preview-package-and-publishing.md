@@ -22,7 +22,9 @@ Release versions are injected into the staged package by CI:
 
 - Manual official releases compute the next `3.0.0-beta.N`, publish to
   `latest`, and create `cli-v<version>`.
-- Pushes to `main` publish unique dev builds to the `dev` dist-tag.
+- Pushes to `main` publish unique `3.0.0-dev.<run_number>.<run_attempt>`
+  builds to the `dev` dist-tag. Commit traceability comes from npm provenance
+  and the GitHub Actions run.
 - Trusted same-repo pull requests publish installable pkg.pr.new previews for
   the exact commit. Fork pull requests do not publish preview packages
   automatically. Preview publishing is best-effort because it depends on the

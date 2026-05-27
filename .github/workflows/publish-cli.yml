@@ -56,7 +56,6 @@ jobs:
         id: cli_version
         run: |
           node scripts/resolve-cli-version.mjs dev \
-            --sha "${GITHUB_SHA}" \
             --run-number "${GITHUB_RUN_NUMBER}" \
             --run-attempt "${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 

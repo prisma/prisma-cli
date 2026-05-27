@@ -35,8 +35,7 @@ describe("resolve cli version", () => {
     expect(resolveDevVersion({
       runNumber: "123",
       runAttempt: "2",
-      sha: "abcdef1234567890",
-    })).toBe("3.0.0-dev.123.2.shaabcdef123456");
+    })).toBe("3.0.0-dev.123.2");
   });
 
   it("computes an exact PR preview version", () => {
