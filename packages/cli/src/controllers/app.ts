@@ -23,7 +23,6 @@ import type {
   AppDomainStatus,
   AppDomainSummary,
   AppDomainTarget,
-  AppListEnvResult,
   AppListDeploysResult,
   AppOpenResult,
   AppPromoteResult,
@@ -32,7 +31,6 @@ import type {
   AppShowResult,
   AppRunResult,
   AppShowDeployResult,
-  AppUpdateEnvResult,
 } from "../types/app";
 import type { AuthWorkspace } from "../types/auth";
 import type { BranchKind } from "../types/branch";
@@ -75,7 +73,6 @@ import {
   createPreviewDeployProgress,
   createPreviewDeployProgressState,
   createPreviewPromoteProgress,
-  createPreviewUpdateEnvProgress,
   type PreviewDeployProgressState,
 } from "../lib/app/preview-progress";
 import {
@@ -342,191 +339,6 @@ export async function runAppDeploy(
     },
     warnings: [],
     nextSteps: ["prisma-cli app list-deploys", `prisma-cli app show-deploy ${deployResult.deployment.id}`],
-  };
-}
-
-export async function runAppUpdateEnv(
-  context: CommandContext,
-  appName: string | undefined,
-  envAssignments: string[] | undefined,
-  projectRef?: string,
-): Promise<CommandSuccess<AppUpdateEnvResult>> {
-  ensurePreviewAppMode(context);
-  emitLegacyEnvDeprecationWarning(context, "app update-env", "project env add");
-
-  const envVars = parseEnvAssignments(envAssignments, {
-    commandName: "update-env",
-    requireAtLeastOne: true,
-  });
-  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
-  const apps = await listApps(context, provider, projectId, target.branch.name);
-  const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
-
-  if (!selectedApp) {
-    throw noDeploymentsError(
-      "No deployments available to update environment variables",
-      "The resolved project does not have any deployed app yet.",
-    );
-  }
-
-  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
-    throw deployFailedError("Failed to inspect app deployments", error, ["prisma-cli app list-deploys"]);
-  });
-
-  if (deploymentsResult.deployments.length === 0) {
-    throw noDeploymentsError(
-      "No deployments available to update environment variables",
-      `The selected app "${deploymentsResult.app.name}" does not have any deployments yet.`,
-    );
-  }
-
-  const updateResult = await provider.updateAppEnv({
-    appId: deploymentsResult.app.id,
-    envVars,
-    progress: createPreviewUpdateEnvProgress(context.output.stderr, !context.flags.json && !context.flags.quiet),
-    promoteProgress: createPreviewPromoteProgress(context.output.stderr, !context.flags.json && !context.flags.quiet),
-  }).catch((error) => {
-    throw deployFailedError("Failed to update app environment variables", error, ["prisma-cli app list-env"]);
-  });
-
-  await context.stateStore.setSelectedApp(projectId, {
-    id: updateResult.app.id,
-    name: updateResult.app.name,
-  });
-  await context.stateStore.setKnownLiveDeployment(projectId, updateResult.app.id, updateResult.deployment.id);
-
-  return {
-    command: "app.update-env",
-    result: {
-      projectId: updateResult.projectId,
-      app: {
-        id: updateResult.app.id,
-        name: updateResult.app.name,
-      },
-      deployment: updateResult.deployment,
-      variables: updateResult.variables,
-    },
-    warnings: [],
-    nextSteps: ["prisma-cli app list-env", `prisma-cli app show-deploy ${updateResult.deployment.id}`],
-  };
-}
-
-export async function runAppListEnv(
-  context: CommandContext,
-  appName: string | undefined,
-  projectRef?: string,
-): Promise<CommandSuccess<AppListEnvResult>> {
-  ensurePreviewAppMode(context);
-  emitLegacyEnvDeprecationWarning(context, "app list-env", "project env list");
-
-  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
-  const apps = await listApps(context, provider, projectId, target.branch.name);
-  const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
-
-  if (!selectedApp) {
-    return {
-      command: "app.list-env",
-      result: {
-        projectId,
-        app: null,
-        deployment: null,
-        variables: [],
-      },
-      warnings: [],
-      nextSteps: ["prisma-cli app deploy"],
-    };
-  }
-
-  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
-    throw deployFailedError("Failed to inspect app deployments", error, ["prisma-cli app list-deploys"]);
-  });
-  const knownLiveDeploymentId = await context.stateStore.readKnownLiveDeployment(projectId, deploymentsResult.app.id);
-  const missingKnownLiveDeploymentId = knownLiveDeploymentId
-    && !deploymentsResult.deployments.some((candidate) => candidate.id === knownLiveDeploymentId)
-      ? knownLiveDeploymentId
-      : null;
-  const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
-    context,
-    projectId,
-    deploymentsResult.app,
-    deploymentsResult.deployments,
-  );
-  const deployments = applyLiveDeploymentHint(deploymentsResult.deployments, currentLiveDeploymentId)
-    .slice()
-    .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
-  const deployment = currentLiveDeploymentId
-    ? deployments.find((candidate) => candidate.id === currentLiveDeploymentId) ?? null
-    : null;
-
-  await context.stateStore.setSelectedApp(projectId, {
-    id: deploymentsResult.app.id,
-    name: deploymentsResult.app.name,
-  });
-
-  if (missingKnownLiveDeploymentId) {
-    const envResult = await provider.listAppEnvNames({
-      appId: deploymentsResult.app.id,
-      deploymentId: missingKnownLiveDeploymentId,
-    }).catch((error) => {
-      throw deployFailedError("Failed to inspect app environment variables", error, ["prisma-cli app list-deploys"]);
-    });
-
-    return {
-      command: "app.list-env",
-      result: {
-        projectId,
-        app: {
-          id: envResult.app.id,
-          name: envResult.app.name,
-        },
-        deployment: envResult.deployment,
-        variables: envResult.variables,
-      },
-      warnings: [],
-      nextSteps: [`prisma-cli app show-deploy ${envResult.deployment.id}`],
-    };
-  }
-
-  if (!deployment) {
-    return {
-      command: "app.list-env",
-      result: {
-        projectId,
-        app: {
-          id: deploymentsResult.app.id,
-          name: deploymentsResult.app.name,
-        },
-        deployment: null,
-        variables: [],
-      },
-      warnings: [],
-      nextSteps: ["prisma-cli app deploy"],
-    };
-  }
-
-  const envResult = await provider.listAppEnvNames({
-    appId: deploymentsResult.app.id,
-    deploymentId: deployment.id,
-  }).catch((error) => {
-    throw deployFailedError("Failed to inspect app environment variables", error, ["prisma-cli app list-deploys"]);
-  });
-
-  return {
-    command: "app.list-env",
-    result: {
-      projectId,
-      app: {
-        id: envResult.app.id,
-        name: envResult.app.name,
-      },
-      deployment: {
-        ...deployment,
-        live: deployment.live ?? envResult.deployment.live,
-      },
-      variables: envResult.variables,
-    },
-    warnings: [],
-    nextSteps: deployment.id ? [`prisma-cli app show-deploy ${deployment.id}`] : ["prisma-cli app deploy"],
   };
 }
 
@@ -3461,28 +3273,4 @@ function toOptionalEnvVars(
   envVars: Record<string, string>,
 ): Record<string, string> | undefined {
   return Object.keys(envVars).length > 0 ? envVars : undefined;
-}
-
-/**
- * Emits a deprecation banner to stderr when the legacy single-shot
- * env-var commands are invoked. The banner is suppressed in --json
- * mode so machine consumers keep their JSON channel clean; --json
- * users discover the deprecation via release notes and the new
- * `prisma-cli project env` namespace's output anyway.
- *
- * Removal of these legacy commands is deliberately scoped out of the
- * Public Beta — see the Compute Beta plan, sub-track 3B.1, where the
- * Terminal team picks an explicit removal milestone.
- */
-function emitLegacyEnvDeprecationWarning(
-  context: CommandContext,
-  legacyCommand: string,
-  replacement: string,
-): void {
-  if (context.flags.json) {
-    return;
-  }
-
-  const message = `[deprecation] \`prisma-cli ${legacyCommand}\` is deprecated. Use \`prisma-cli ${replacement}\` instead.`;
-  context.runtime.stderr.write(`${message}\n`);
 }
