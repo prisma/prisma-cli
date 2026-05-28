@@ -1,11 +1,6 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { FileTokenStorage } from "../../adapters/token-storage";
-import type {
-  AuthCredential,
-  AuthStateResult,
-  AuthUser,
-  AuthWorkspace,
-} from "../../types/auth";
+import type { AuthStateResult } from "../../types/auth";
 import { SERVICE_TOKEN_ENV_VAR } from "./client";
 import { requireComputeAuth } from "./guard";
 import { login } from "./login";
@@ -183,31 +178,13 @@ async function buildAuthState({
   };
 }
 
-type CurrentPrincipalResponse = {
-  data?: {
-    user: (AuthUser & { id: string; name: string | null }) | null;
-    workspace: AuthWorkspace | null;
-    credential: AuthCredential;
-  };
-};
-
-type CurrentPrincipalClient = ManagementApiClient & {
-  GET(
-    path: "/v1/me",
-  ): Promise<{
-    data?: CurrentPrincipalResponse;
-    error?: unknown;
-    response?: { status: number };
-  }>;
-};
-
 async function readCurrentPrincipalAuthState(
   client: ManagementApiClient | null,
 ): Promise<AuthStateResult | null> {
   if (!client) return null;
 
   try {
-    const { data, response } = await (client as CurrentPrincipalClient).GET("/v1/me");
+    const { data, response } = await client.GET("/v1/me");
 
     if (response?.status === 401) {
       return {
