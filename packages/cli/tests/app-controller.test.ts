@@ -103,6 +103,7 @@ async function writePackageJson(
   cwd: string,
   packageJson: {
     name?: string;
+    module?: string;
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
   },
@@ -1195,9 +1196,15 @@ describe("app controller", () => {
       expectedBuildType: "bun",
     },
     {
-      name: "Bun from --framework bun",
+      name: "Bun from --framework bun with --entry",
       framework: "bun",
       entrypoint: "src/server.ts",
+      expectedBuildType: "bun",
+    },
+    {
+      name: "Bun from --framework bun with package.json module",
+      packageJson: { module: "index.ts" },
+      framework: "bun",
       expectedBuildType: "bun",
     },
     {
