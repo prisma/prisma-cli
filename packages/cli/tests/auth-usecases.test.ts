@@ -13,6 +13,7 @@ describe("auth use cases", () => {
       provider: null,
       user: null,
       workspace: null,
+      credential: null,
     });
   });
 
@@ -30,11 +31,18 @@ describe("auth use cases", () => {
       authenticated: true,
       provider: "github",
       user: {
+        id: "usr_456",
         email: "bob@example.com",
+        name: "Bob Example",
       },
       workspace: {
         id: "ws_123",
         name: "Acme Inc",
+      },
+      credential: {
+        type: "oauth",
+        id: null,
+        name: null,
       },
     });
 
@@ -60,6 +68,7 @@ describe("auth use cases", () => {
       provider: null,
       user: null,
       workspace: null,
+      credential: null,
     });
 
     expect(readState().authSession).toBeNull();

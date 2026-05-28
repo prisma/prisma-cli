@@ -13,6 +13,72 @@ function encodeJwt(claims: Record<string, unknown>): string {
 }
 
 describe("readAuthState", () => {
+  it("resolves the current OAuth principal from /v1/me when available", async () => {
+    const getTokens = vi.fn().mockResolvedValue({
+      workspaceId: "cmmxlp7ae1251zyfs8mdpnavm",
+      accessToken: encodeJwt({ sub: "user:usr_123" }),
+      refreshToken: "refresh-token",
+    });
+    const requireComputeAuth = vi.fn().mockResolvedValue({
+      GET: vi.fn().mockImplementation((pathName: string) => {
+        if (pathName === "/v1/me") {
+          return {
+            data: {
+              data: {
+                user: {
+                  id: "usr_123",
+                  email: "luan@example.com",
+                  name: "Luan",
+                },
+                workspace: {
+                  id: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
+                  name: "Sandpit",
+                },
+                credential: {
+                  type: "oauth",
+                  id: null,
+                  name: null,
+                },
+              },
+            },
+          };
+        }
+
+        throw new Error(`Unexpected path ${pathName}`);
+      }),
+    });
+
+    vi.doMock("../src/adapters/token-storage", () => ({
+      FileTokenStorage: vi.fn().mockImplementation(() => ({
+        getTokens,
+      })),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+
+    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+
+    await expect(readAuthState({} as NodeJS.ProcessEnv)).resolves.toEqual({
+      authenticated: true,
+      provider: null,
+      user: {
+        id: "usr_123",
+        email: "luan@example.com",
+        name: "Luan",
+      },
+      workspace: {
+        id: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
+        name: "Sandpit",
+      },
+      credential: {
+        type: "oauth",
+        id: null,
+        name: null,
+      },
+    });
+  });
+
   it("normalizes the workspace id to the canonical API id and returns the user email", async () => {
     const getTokens = vi.fn().mockResolvedValue({
       workspaceId: "cmmxlp7ae1251zyfs8mdpnavm",
@@ -58,6 +124,7 @@ describe("readAuthState", () => {
         id: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
         name: "Sandpit",
       },
+      credential: null,
     });
   });
 
@@ -139,6 +206,25 @@ describe("readAuthState", () => {
     const getTokens = vi.fn();
     const requireComputeAuth = vi.fn().mockResolvedValue({
       GET: vi.fn().mockImplementation((pathName: string, request?: { params?: { path?: { id?: string } } }) => {
+        if (pathName === "/v1/me") {
+          return {
+            data: {
+              data: {
+                user: null,
+                workspace: {
+                  id: "wksp_clitq5hfg0000qv0gtg9nv9fy",
+                  name: "Prisma Platform",
+                },
+                credential: {
+                  type: "service_token",
+                  id: "itgr_ci",
+                  name: "ci-deploys-prod",
+                },
+              },
+            },
+          };
+        }
+
         if (pathName === "/v1/workspaces/{id}" && request?.params?.path?.id === "clitq5hfg0000qv0gtg9nv9fy") {
           return {
             data: {
@@ -171,10 +257,15 @@ describe("readAuthState", () => {
     ).resolves.toEqual({
       authenticated: true,
       provider: null,
-      user: { email: "service@example.com" },
+      user: null,
       workspace: {
         id: "wksp_clitq5hfg0000qv0gtg9nv9fy",
         name: "Prisma Platform",
+      },
+      credential: {
+        type: "service_token",
+        id: "itgr_ci",
+        name: "ci-deploys-prod",
       },
     });
 
@@ -246,6 +337,7 @@ describe("readAuthState", () => {
       provider: null,
       user: null,
       workspace: null,
+      credential: null,
     });
   });
 
@@ -282,6 +374,7 @@ describe("readAuthState", () => {
         id: "clitq5hfg0000qv0gtg9nv9fy",
         name: "clitq5hfg0000qv0gtg9nv9fy",
       },
+      credential: null,
     });
   });
 
@@ -310,6 +403,7 @@ describe("readAuthState", () => {
         id: "clitq5hfg0000qv0gtg9nv9fy",
         name: "clitq5hfg0000qv0gtg9nv9fy",
       },
+      credential: null,
     });
   });
 
@@ -332,6 +426,7 @@ describe("readAuthState", () => {
       provider: null,
       user: null,
       workspace: null,
+      credential: null,
     });
     expect(getTokens).not.toHaveBeenCalled();
   });

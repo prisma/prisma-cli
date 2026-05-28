@@ -19,6 +19,7 @@ describe("project use cases", () => {
           id: "ws_123",
           name: "Acme Inc",
         },
+        credential: null,
       }),
     ).resolves.toEqual({
       workspace: {

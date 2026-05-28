@@ -22,13 +22,13 @@ importers:
         version: 1.2.0
       '@prisma/compute-sdk':
         specifier: ^0.19.0
-        version: 0.19.0(@prisma/management-api-sdk@1.33.1)
+        version: 0.19.0(@prisma/management-api-sdk@1.34.0)
       '@prisma/credentials-store':
         specifier: ^7.7.0
         version: 7.7.0
       '@prisma/management-api-sdk':
-        specifier: ^1.33.1
-        version: 1.33.1
+        specifier: ^1.34.0
+        version: 1.34.0
       c12:
         specifier: 4.0.0-beta.4
         version: 4.0.0-beta.4(jiti@2.6.1)(magicast@0.3.5)
@@ -295,8 +295,8 @@ packages:
   '@prisma/credentials-store@7.7.0':
     resolution: {integrity: sha512-SVaMCL1Q8rFPKQB5W9B7HDuRdD/KyBfKjCgZfnlN+sqrAXIrUGU/m/whcRgkuvygB5GFPAeeZ/4QgvvH0vPSWg==}
 
-  '@prisma/management-api-sdk@1.33.1':
-    resolution: {integrity: sha512-AQU0x6ceI5w32hAZc034H3IcSZQcd5K40tegiDYh7uNT0wlSVYMd4eRhXHdImz2aZafGzZqAQH5cmH23eCr+sA==}
+  '@prisma/management-api-sdk@1.34.0':
+    resolution: {integrity: sha512-l0UE58T/6rS9/tIe7Qv/ffQr3XUeUMGZwPhVig8VIoMKvidhtg8/UO84emUqAzQBQDG52GQP+VRtv3xFchrnjw==}
 
   '@quansync/fs@1.0.0':
     resolution: {integrity: sha512-4TJ3DFtlf1L5LDMaM6CanJ/0lckGNtJcMjQ1NAV6zDmA0tEHKZtxNKin8EgPaVX1YzljbxckyT2tJrpQKAtngQ==}
@@ -1319,9 +1319,9 @@ snapshots:
 
   '@oxc-project/types@0.124.0': {}
 
-  '@prisma/compute-sdk@0.19.0(@prisma/management-api-sdk@1.33.1)':
+  '@prisma/compute-sdk@0.19.0(@prisma/management-api-sdk@1.34.0)':
     dependencies:
-      '@prisma/management-api-sdk': 1.33.1
+      '@prisma/management-api-sdk': 1.34.0
       better-result: 2.8.2
       tar-stream: 3.1.8
       tiny-invariant: 1.3.3
@@ -1337,7 +1337,7 @@ snapshots:
     dependencies:
       xdg-app-paths: 8.3.0
 
-  '@prisma/management-api-sdk@1.33.1':
+  '@prisma/management-api-sdk@1.34.0':
     dependencies:
       openapi-fetch: 0.14.0
 
