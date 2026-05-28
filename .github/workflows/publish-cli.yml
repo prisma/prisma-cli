@@ -270,15 +270,19 @@ jobs:
         working-directory: .publish/cli
         run: npm publish --access public --tag latest --provenance
 
-      - name: Create and push release tag
+      - name: Create release tag
         if: ${{ !inputs.dry_run }}
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           VERSION='${{ steps.cli_version.outputs.version }}'
           TAG="cli-v${VERSION}"
-          git tag "${TAG}"
-          git -c http.https://github.com/.extraheader="AUTHORIZATION: bearer ${GITHUB_TOKEN}" push origin "refs/tags/${TAG}"
+          SHA="$(git rev-parse HEAD)"
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref="refs/tags/${TAG}" \
+            -f sha="${SHA}"
 
       - name: Summarize release
         run: |
@@ -292,7 +296,7 @@ jobs:
             echo "- Dry run: \`${{ inputs.dry_run }}\`"
             if [ '${{ inputs.dry_run }}' = 'true' ]; then
               echo "- Publish: skipped"
-              echo "- Tag/push: skipped"
+              echo "- Tag creation: skipped"
             else
               echo "- npm package: \`@prisma/cli@${VERSION}\`"
               echo "- npm dist-tag: \`latest\`"
