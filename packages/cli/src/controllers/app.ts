@@ -45,7 +45,7 @@ import {
   resolveLocalBuildType,
   runLocalApp,
 } from "../lib/app/local-dev";
-import { readBunPackageJson, type BunPackageJsonLike } from "../lib/app/bun-project";
+import { readBunPackageEntrypoint, readBunPackageJson, type BunPackageJsonLike } from "../lib/app/bun-project";
 import {
   inferTargetName,
   projectNotFoundError,
@@ -94,9 +94,13 @@ import { listRealWorkspaceProjects } from "./project";
 import { createSelectPromptPort } from "./select-prompt-port";
 
 type AppDomainCommand = "add" | "show" | "remove" | "retry" | "wait";
-type DeployFramework = "nextjs" | "hono" | "tanstack-start";
+type DeployFramework = "nextjs" | "hono" | "tanstack-start" | "bun";
 
-const DEPLOY_FRAMEWORKS = ["nextjs", "hono", "tanstack-start"] as const satisfies readonly DeployFramework[];
+const DEPLOY_FRAMEWORKS = ["nextjs", "hono", "tanstack-start", "bun"] as const satisfies readonly DeployFramework[];
+const TANSTACK_START_PACKAGES = [
+  "@tanstack/react-start",
+  "@tanstack/solid-start",
+] as const;
 const FRAMEWORK_DEFAULT_HTTP_PORT = 3000;
 const PRISMA_PROJECT_ID_ENV_VAR = "PRISMA_PROJECT_ID";
 const PRISMA_APP_ID_ENV_VAR = "PRISMA_APP_ID";
@@ -210,7 +214,6 @@ export async function runAppDeploy(
     createProjectName?: string;
     branchName?: string;
     entrypoint?: string;
-    buildType?: string;
     framework?: string;
     httpPort?: string;
     envAssignments?: string[];
@@ -234,18 +237,10 @@ export async function runAppDeploy(
     throw localResolutionPinStaleError();
   }
 
-  const explicitBuildType = Boolean(options?.buildType && options.buildType !== "auto");
+  const branch = await resolveDeployBranch(context, options?.branchName);
   if (options?.httpPort) {
     parseDeployHttpPort(options.httpPort);
   }
-  assertSupportedEntrypointForRequestedDeployShape({
-    requestedFramework: options?.framework,
-    requestedBuildType: options?.buildType,
-    explicitBuildType,
-    entrypoint: options?.entrypoint,
-  });
-
-  const branch = await resolveDeployBranch(context, options?.branchName);
   const { provider, target, projectId } = await requireProviderAndDeployProjectContext(context, options?.projectRef, {
     branch,
     createProjectName: options?.createProjectName,
@@ -266,8 +261,7 @@ export async function runAppDeploy(
 
   let framework = await resolveDeployFramework(context, {
     requestedFramework: options?.framework,
-    requestedBuildType: options?.buildType,
-    explicitBuildType,
+    entrypoint: options?.entrypoint,
   });
   let runtime = resolveDeployRuntime(options?.httpPort, framework);
   assertSupportedEntrypoint(framework.buildType, options?.entrypoint, "deploy");
@@ -296,7 +290,7 @@ export async function runAppDeploy(
     runtime,
     firstDeploy: selectedApp.firstDeploy,
     explicitFramework: Boolean(options?.framework),
-    explicitBuildType,
+    explicitEntrypoint: Boolean(options?.entrypoint),
     explicitHttpPort: Boolean(options?.httpPort),
   });
   framework = customized.framework;
@@ -306,6 +300,7 @@ export async function runAppDeploy(
   // derives its entrypoint from build output, so validate --entry again after it.
   const buildType = framework.buildType;
   assertSupportedEntrypoint(buildType, options?.entrypoint, "deploy");
+  const entrypoint = await resolveDeployEntrypoint(context.runtime.cwd, framework, options?.entrypoint);
   const portMapping = parseDeployPortMapping(String(runtime.port));
 
   const progressState = createPreviewDeployProgressState();
@@ -317,7 +312,7 @@ export async function runAppDeploy(
     appId: selectedApp.appId,
     appName: selectedApp.appName,
     region: selectedApp.region,
-    entrypoint: options?.entrypoint,
+    entrypoint,
     buildType,
     portMapping,
     envVars,
@@ -2589,24 +2584,20 @@ async function resolveDeployFramework(
   context: CommandContext,
   options: {
     requestedFramework: string | undefined;
-    requestedBuildType: string | undefined;
-    explicitBuildType: boolean;
+    entrypoint: string | undefined;
   },
 ): Promise<ResolvedDeployFramework> {
   if (options.requestedFramework) {
     return frameworkFromUserFacingValue(options.requestedFramework, "set by --framework");
   }
 
-  if (options.explicitBuildType) {
-    const buildType = normalizeBuildType(options.requestedBuildType);
-    if (buildType !== "auto") {
-      return {
-        key: buildType,
-        buildType,
-        displayName: formatBuildTypeName(buildType),
-        annotation: "set by --build-type",
-      };
-    }
+  if (options.entrypoint) {
+    return {
+      key: "bun",
+      buildType: "bun",
+      displayName: "Bun",
+      annotation: "set by --entry",
+    };
   }
 
   const detected = await detectDeployFramework(context.runtime.cwd);
@@ -2634,24 +2625,30 @@ function resolveDeployRuntime(
   };
 }
 
-function assertSupportedEntrypointForRequestedDeployShape(options: {
-  requestedFramework: string | undefined;
-  requestedBuildType: string | undefined;
-  explicitBuildType: boolean;
-  entrypoint: string | undefined;
-}): void {
-  if (options.requestedFramework) {
-    const framework = frameworkFromUserFacingValue(options.requestedFramework, "set by --framework");
-    assertSupportedEntrypoint(framework.buildType, options.entrypoint, "deploy");
-    return;
+async function resolveDeployEntrypoint(
+  cwd: string,
+  framework: ResolvedDeployFramework,
+  explicitEntrypoint: string | undefined,
+): Promise<string | undefined> {
+  if (explicitEntrypoint || framework.key !== "hono") {
+    return explicitEntrypoint;
   }
 
-  if (!options.explicitBuildType) {
-    return;
+  const packageJson = await readBunPackageJson(cwd);
+  if (readBunPackageEntrypoint(packageJson)) {
+    return undefined;
   }
 
-  const buildType = normalizeBuildType(options.requestedBuildType);
-  assertSupportedEntrypoint(buildType, options.entrypoint, "deploy");
+  const defaultEntrypoint = "src/index.ts";
+  try {
+    await access(path.join(cwd, defaultEntrypoint));
+    return defaultEntrypoint;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+    return undefined;
+  }
 }
 
 async function detectDeployFramework(cwd: string): Promise<ResolvedDeployFramework | null> {
@@ -2680,7 +2677,7 @@ async function detectDeployFramework(cwd: string): Promise<ResolvedDeployFramewo
     };
   }
 
-  if (hasPackageDependency(packageJson, "@tanstack/start")) {
+  if (hasAnyPackageDependency(packageJson, TANSTACK_START_PACKAGES)) {
     return {
       key: "tanstack-start",
       buildType: "tanstack-start",
@@ -2698,6 +2695,7 @@ async function detectNextConfig(cwd: string): Promise<{ exists: boolean; standal
     "next.config.mjs",
     "next.config.cjs",
     "next.config.ts",
+    "next.config.mts",
   ];
 
   for (const candidate of candidates) {
@@ -2726,6 +2724,10 @@ function hasPackageDependency(packageJson: BunPackageJsonLike | null, dependency
     || hasDependency(packageJson?.devDependencies, dependencyName);
 }
 
+function hasAnyPackageDependency(packageJson: BunPackageJsonLike | null, dependencyNames: readonly string[]): boolean {
+  return dependencyNames.some((dependencyName) => hasPackageDependency(packageJson, dependencyName));
+}
+
 function hasDependency(dependencies: unknown, dependencyName: string): boolean {
   return Boolean(
     dependencies
@@ -2752,9 +2754,17 @@ function frameworkFromUserFacingValue(value: string, annotation: string): Resolv
         displayName: "Hono",
         annotation,
       };
+    case "bun":
+      return {
+        key: "bun",
+        buildType: "bun",
+        displayName: "Bun",
+        annotation,
+      };
     case "tanstack":
     case "tanstack-start":
-    case "@tanstack/start":
+    case "@tanstack/react-start":
+    case "@tanstack/solid-start":
       return {
         key: "tanstack-start",
         buildType: "tanstack-start",
@@ -2767,7 +2777,7 @@ function frameworkFromUserFacingValue(value: string, annotation: string): Resolv
 }
 
 function frameworkNotDetectedError(cwd: string | undefined, requestedFramework?: string): CliError {
-  const supported = "Next.js, Hono, TanStack Start";
+  const supported = "Next.js, Hono, TanStack Start, Bun";
   const directory = cwd ? ` in ${formatDeployDirectory(cwd)}` : "";
 
   return new CliError({
@@ -2777,12 +2787,14 @@ function frameworkNotDetectedError(cwd: string | undefined, requestedFramework?:
       ? `Unsupported framework "${requestedFramework}"`
       : `Cannot detect a supported framework${directory}`,
     why: `Supported Beta frameworks: ${supported}.`,
-    fix: "Add one of these frameworks as a dependency, or pass --framework <nextjs|hono|tanstack-start>.",
+    fix: "Add one of these frameworks as a dependency, pass --framework <nextjs|hono|tanstack-start|bun>, or pass --entry <path> for a Bun app.",
     exitCode: 2,
     nextSteps: [
       "prisma-cli app deploy --framework nextjs",
       "prisma-cli app deploy --framework hono",
       "prisma-cli app deploy --framework tanstack-start",
+      "prisma-cli app deploy --framework bun --entry server.ts",
+      "prisma-cli app deploy --entry server.ts",
     ],
   });
 }
@@ -2828,7 +2840,7 @@ async function maybeCustomizeDeploySettings(
     runtime: ResolvedDeployRuntime;
     firstDeploy: boolean;
     explicitFramework: boolean;
-    explicitBuildType: boolean;
+    explicitEntrypoint: boolean;
     explicitHttpPort: boolean;
   },
 ): Promise<{ framework: ResolvedDeployFramework; runtime: ResolvedDeployRuntime }> {
@@ -2836,7 +2848,7 @@ async function maybeCustomizeDeploySettings(
     !options.firstDeploy
     || context.flags.yes
     || options.explicitFramework
-    || options.explicitBuildType
+    || options.explicitEntrypoint
     || options.explicitHttpPort
     || !canPrompt(context)
   ) {
@@ -2912,6 +2924,8 @@ function frameworkDisplayName(framework: DeployFramework): string {
       return "Hono";
     case "tanstack-start":
       return "TanStack Start";
+    case "bun":
+      return "Bun";
   }
 }
 
@@ -2965,7 +2979,7 @@ function isPreviewBuildType(value: string): value is PreviewBuildType {
   return (PREVIEW_BUILD_TYPES as readonly string[]).includes(value);
 }
 
-function getBuildTypeExamples(commandName: "build" | "deploy"): string[] {
+function getBuildTypeExamples(commandName: "build"): string[] {
   return RESOLVED_PREVIEW_BUILD_TYPES.map((buildType) => {
     const entrypoint = buildType === "bun" ? " --entry server.ts" : "";
     return `prisma-cli app ${commandName} --build-type ${buildType}${entrypoint}`;
@@ -2980,6 +2994,19 @@ function assertSupportedEntrypoint(
   // Framework strategies derive their runtime entrypoints from build output.
   // Only Bun consumes a user-provided source entrypoint; auto may fall back to Bun.
   if (buildType !== "auto" && buildType !== "bun" && entrypoint) {
+    if (commandName === "deploy") {
+      throw usageError(
+        `App deploy does not accept --entry with ${formatBuildTypeName(buildType)}`,
+        `${formatBuildTypeName(buildType)} apps derive their runtime entrypoint from build output.`,
+        "Remove --entry, or use --framework bun when you want to target a Bun entrypoint directly.",
+        [
+          `prisma-cli app deploy --framework ${buildType}`,
+          "prisma-cli app deploy --framework bun --entry server.ts",
+        ],
+        "app",
+      );
+    }
+
     throw usageError(
       `App ${commandName} does not accept --entry with --build-type ${buildType}`,
       `${formatBuildTypeName(buildType)} apps do not use an entrypoint flag in the current preview.`,
