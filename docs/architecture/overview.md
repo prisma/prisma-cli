@@ -59,9 +59,9 @@ Local state boundaries are also explicit:
 - Active branch and app selection are local CLI state.
 - Secret values must not be printed in human output or structured output.
 
-## Public Preview Constraints
+## Public Beta Constraints
 
-The preview package should remain small and predictable:
+The beta package should remain small and predictable:
 
 - The implemented command groups are `auth`, `project`, `branch`, and `app`.
 - The CLI must not introduce product-specific namespaces.

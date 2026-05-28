@@ -1,20 +1,20 @@
 # Prisma CLI
 
-Preview of the unified Prisma CLI.
+Beta of the unified Prisma CLI.
 
 This repository contains the unified Prisma command-line experience. The current
 implementation focuses on app deployment workflows while preserving the
 long-term command model for Prisma projects, branches, schemas, databases, and
 apps.
 
-Preview releases use `@prisma/cli` under the `preview` dist-tag during early
-development. The package exposes a `prisma-cli` binary so it can coexist with
-the existing `prisma` executable.
+Official beta releases use the primary `@prisma/cli` package line. The package
+exposes a `prisma-cli` binary so it can coexist with the existing `prisma`
+executable.
 
 ## Install
 
 ```bash
-pnpm add -D @prisma/cli@preview
+pnpm add -D @prisma/cli
 pnpm prisma-cli --help
 ```
 
@@ -23,7 +23,7 @@ Example workflow:
 ```bash
 pnpm prisma-cli auth login
 pnpm prisma-cli app deploy --env DATABASE_URL=postgresql://example
-pnpm prisma-cli app list-env
+pnpm prisma-cli project env list --role preview
 ```
 
 If you want local project scripts that look like the future command shape, add:
@@ -86,6 +86,7 @@ The CLI groups commands by developer workflow:
 
 - `auth`
 - `project`
+- `git`
 - `branch`
 - `app`
 
@@ -95,7 +96,7 @@ The canonical command shape is:
 prisma <group> <action>
 ```
 
-The preview package includes app build, run, deploy, environment-variable,
+The beta package includes app build, run, deploy, environment-variable,
 deployment inspection, promotion, rollback, and removal commands. The product
 model intentionally keeps room for future schema, database, and migration
 workflows without introducing product-specific namespaces.
@@ -118,9 +119,12 @@ Start here when changing command behavior:
 See `CONTRIBUTING.md` for local development and contribution guidance.
 See `ARCHITECTURE.md` for the short architecture entrypoint.
 
+The npm package README lives at `packages/cli/README.md` and is copied into the
+staged publish artifact.
+
 ## Community
 
-Issues and feedback are welcome while the CLI is in public preview. Pull
+Issues and feedback are welcome while the CLI is in public beta. Pull
 requests should be tied to an existing issue or maintainer agreement so product
 behavior, docs, and tests stay aligned.
 
@@ -139,22 +143,34 @@ inside an example only when you want to run manual end-to-end checks.
 
 ## Publishing
 
-Publishing is intentionally manual and gated through GitHub Actions. The
-workflow publishes the version that is already merged in
-`packages/cli/package.json`; it does not bump versions or push commits to
-`main`.
+Publishing happens through the `Publish CLI` GitHub Actions workflow. Do not
+publish from a local checkout unless the release owner explicitly asks you to do
+so.
 
-The prerelease line uses `3.0.0-alpha.N`. The release workflow is configured to
-publish to the `preview` dist-tag. Do not publish from a local checkout unless
-the release owner explicitly asks you to do so.
+The committed `packages/cli/package.json` version is a development placeholder.
+Release versions are injected by CI when the staged npm package is prepared.
 
-For a preview release:
+Release channels:
 
-1. Run the `Prepare CLI Release` GitHub Actions workflow with `dry_run: true`.
-2. Run the same workflow with `dry_run: false` to open a version bump PR.
-3. Merge the PR to `main`.
-4. Run the `Release CLI` GitHub Actions workflow with `dry_run: true`.
-5. Run the same workflow with `dry_run: false`.
+- `@prisma/cli` / `latest`: official beta releases. Run `Publish CLI` manually;
+  it computes the next `3.0.0-beta.N`, publishes with the `latest` dist-tag, and
+  creates `cli-v<version>`.
+- `@prisma/cli@dev`: latest successful `main` build. Every push to `main`
+  publishes a unique `3.0.0-dev.<run_number>.<run_attempt>` version with the
+  `dev` dist-tag. Commit traceability comes from npm provenance and the GitHub
+  Actions run.
+- PR preview packages: trusted same-repo pull requests get an installable
+  pkg.pr.new comment for the exact commit. Fork PRs do not publish preview
+  packages automatically. Preview publishing is best-effort and requires the
+  pkg.pr.new GitHub App to be installed for this repository. Once that app is
+  installed, set the repository variable `CLI_PR_PREVIEW_REQUIRED=true` to make
+  preview publishing failures block CI.
+
+For an official beta release:
+
+1. Run `Publish CLI` with `dry_run: true`.
+2. Check the computed version and package checks.
+3. Run `Publish CLI` with `dry_run: false`.
 
 If a release workflow fails after the npm publish step, check npm before
 rerunning. The package version may already be published even if tag creation

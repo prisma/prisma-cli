@@ -27,7 +27,13 @@ import { listRealWorkspaceProjects } from "./project";
 interface ResolvedScope {
   scope: EnvScope;
   descriptor: EnvScopeDescriptor;
-  apiTarget: { class: EnvVarRole; branchId: null };
+  apiTarget: { class: EnvVarRole; branchId: string | null };
+}
+
+interface EnvCommandFlags {
+  roleName?: string;
+  branchName?: string;
+  projectRef?: string;
 }
 
 interface RawEnvironmentVariable {
@@ -39,6 +45,12 @@ interface RawEnvironmentVariable {
   updatedAt: string;
 }
 
+interface RawBranchRecord {
+  id: string;
+  gitName: string;
+  isDefault: boolean;
+}
+
 function defaultRoleScope(): EnvScope {
   return { kind: "role", role: "production" };
 }
@@ -46,22 +58,24 @@ function defaultRoleScope(): EnvScope {
 export async function runEnvAdd(
   context: CommandContext,
   rawAssignment: string | undefined,
-  flags: { roleName?: string; projectRef?: string },
+  flags: EnvCommandFlags,
 ): Promise<CommandSuccess<EnvAddResult>> {
   const { key, value } = parseKeyValuePositional(rawAssignment, "add", context.runtime.env);
   const scope = resolveEnvScope(flags, { requireExplicit: true, command: "add" });
   if (!scope) {
     throw usageError(
-      `prisma-cli project env add requires --role`,
+      `prisma-cli project env add requires --role or --branch`,
       "Writing without an explicit scope is rejected.",
-      "Pass --role production or --role preview.",
+      "Pass --role production, --role preview, or --branch <git-name>.",
       [`prisma-cli project env add ${key}=${value} --role production`],
       "app",
     );
   }
 
   const { client, projectId } = await requireClientAndProject(context, flags.projectRef);
-  const resolved = resolveScopeToApi(scope);
+  const resolved = await resolveScopeToApi(client, projectId, scope, {
+    createBranchIfMissing: true,
+  });
 
   const existing = await findVariableByNaturalKey(client, projectId, key, resolved);
 
@@ -74,10 +88,22 @@ export async function runEnvAdd(
       fix: "Use `prisma-cli project env update` to change an existing variable's value.",
       exitCode: 1,
       nextSteps: [
-        `prisma-cli project env update ${key}=<new-value> --role ${scope.role}`,
+        `prisma-cli project env update ${key}=<new-value> ${formatScopeFlag(scope)}`,
       ],
     });
   }
+
+  const warnings =
+    scope.kind === "branch" &&
+    !(await findVariableByNaturalKey(client, projectId, key, {
+      scope: { kind: "role", role: "preview" },
+      descriptor: { kind: "role", role: "preview" },
+      apiTarget: { class: "preview", branchId: null },
+    }))
+      ? [
+          `Variable "${key}" does not exist in preview. It will only exist on ${formatScopeLabel(scope)}.`,
+        ]
+      : [];
 
   const { data, error, response } = await client.POST(
     "/v1/environment-variables",
@@ -85,6 +111,9 @@ export async function runEnvAdd(
       body: {
         projectId,
         class: resolved.apiTarget.class,
+        ...(resolved.apiTarget.branchId !== null
+          ? { branchId: resolved.apiTarget.branchId }
+          : {}),
         key,
         value,
       },
@@ -101,7 +130,7 @@ export async function runEnvAdd(
       scope: resolved.descriptor,
       variable: toMetadata(data.data as RawEnvironmentVariable, resolved.descriptor),
     },
-    warnings: [],
+    warnings,
     nextSteps: [],
   };
 }
@@ -109,22 +138,24 @@ export async function runEnvAdd(
 export async function runEnvUpdate(
   context: CommandContext,
   rawAssignment: string | undefined,
-  flags: { roleName?: string; projectRef?: string },
+  flags: EnvCommandFlags,
 ): Promise<CommandSuccess<EnvUpdateResult>> {
   const { key, value } = parseKeyValuePositional(rawAssignment, "update", context.runtime.env);
   const scope = resolveEnvScope(flags, { requireExplicit: true, command: "update" });
   if (!scope) {
     throw usageError(
-      `prisma-cli project env update requires --role`,
+      `prisma-cli project env update requires --role or --branch`,
       "Writing without an explicit scope is rejected.",
-      "Pass --role production or --role preview.",
+      "Pass --role production, --role preview, or --branch <git-name>.",
       [`prisma-cli project env update ${key}=${value} --role production`],
       "app",
     );
   }
 
   const { client, projectId } = await requireClientAndProject(context, flags.projectRef);
-  const resolved = resolveScopeToApi(scope);
+  const resolved = await resolveScopeToApi(client, projectId, scope, {
+    createBranchIfMissing: false,
+  });
 
   const existing = await findVariableByNaturalKey(client, projectId, key, resolved);
 
@@ -137,7 +168,7 @@ export async function runEnvUpdate(
       fix: "Use `prisma-cli project env add` to create a new variable.",
       exitCode: 1,
       nextSteps: [
-        `prisma-cli project env add ${key}=<value> --role ${scope.role}`,
+        `prisma-cli project env add ${key}=<value> ${formatScopeFlag(scope)}`,
       ],
     });
   }
@@ -167,13 +198,15 @@ export async function runEnvUpdate(
 
 export async function runEnvList(
   context: CommandContext,
-  flags: { roleName?: string; projectRef?: string },
+  flags: EnvCommandFlags,
 ): Promise<CommandSuccess<EnvListResult>> {
   const explicit = resolveEnvScope(flags, { requireExplicit: false, command: "list" });
   const scope = explicit ?? defaultRoleScope();
 
   const { client, projectId } = await requireClientAndProject(context, flags.projectRef);
-  const resolved = resolveScopeToApi(scope);
+  const resolved = await resolveScopeToApi(client, projectId, scope, {
+    createBranchIfMissing: false,
+  });
   const variables = await listVariables(client, projectId, resolved);
 
   return {
@@ -185,39 +218,41 @@ export async function runEnvList(
     },
     warnings: [],
     nextSteps: variables.length === 0
-      ? [`prisma-cli project env add KEY=value --role ${scope.role}`]
+      ? [`prisma-cli project env add KEY=value ${formatScopeFlag(scope)}`]
       : [],
   };
 }
 
-export async function runEnvRm(
+export async function runEnvRemove(
   context: CommandContext,
   key: string | undefined,
-  flags: { roleName?: string; projectRef?: string },
+  flags: EnvCommandFlags,
 ): Promise<CommandSuccess<EnvRmResult>> {
   if (!key) {
     throw usageError(
-      "prisma-cli project env rm requires KEY",
+      "prisma-cli project env remove requires KEY",
       "No KEY positional argument was supplied.",
       "Pass the variable name to remove, e.g. STRIPE_KEY.",
-      ["prisma-cli project env rm STRIPE_KEY --role production"],
+      ["prisma-cli project env remove STRIPE_KEY --role production"],
       "app",
     );
   }
 
-  const scope = resolveEnvScope(flags, { requireExplicit: true, command: "rm" });
+  const scope = resolveEnvScope(flags, { requireExplicit: true, command: "remove" });
   if (!scope) {
     throw usageError(
-      "prisma-cli project env rm requires --role",
+      "prisma-cli project env remove requires --role or --branch",
       "Writing without an explicit scope is rejected.",
-      "Pass --role production or --role preview.",
-      [`prisma-cli project env rm ${key} --role production`],
+      "Pass --role production, --role preview, or --branch <git-name>.",
+      [`prisma-cli project env remove ${key} --role production`],
       "app",
     );
   }
 
   const { client, projectId } = await requireClientAndProject(context, flags.projectRef);
-  const resolved = resolveScopeToApi(scope);
+  const resolved = await resolveScopeToApi(client, projectId, scope, {
+    createBranchIfMissing: false,
+  });
   const existing = await findVariableByNaturalKey(client, projectId, key, resolved);
   if (!existing) {
     throw new CliError({
@@ -228,7 +263,7 @@ export async function runEnvRm(
       fix: "Run prisma-cli project env list with the same scope to see the available variables.",
       exitCode: 1,
       nextSteps: [
-        `prisma-cli project env list --role ${scope.role}`,
+        `prisma-cli project env list ${formatScopeFlag(scope)}`,
       ],
     });
   }
@@ -244,7 +279,7 @@ export async function runEnvRm(
   }
 
   return {
-    command: "project.env.rm",
+    command: "project.env.remove",
     result: {
       projectId,
       scope: resolved.descriptor,
@@ -280,12 +315,173 @@ async function requireClientAndProject(
   return { client, projectId: target.project.id };
 }
 
-function resolveScopeToApi(scope: EnvScope): ResolvedScope {
+async function resolveScopeToApi(
+  client: ManagementApiClient,
+  projectId: string,
+  scope: EnvScope,
+  options: { createBranchIfMissing: boolean },
+): Promise<ResolvedScope> {
+  if (scope.kind === "role") {
+    return {
+      scope,
+      descriptor: { kind: "role", role: scope.role },
+      apiTarget: { class: scope.role, branchId: null },
+    };
+  }
+
+  const branch = options.createBranchIfMissing
+    ? await resolveOrCreateBranch(client, projectId, scope.branchName)
+    : await resolveExistingBranch(client, projectId, scope.branchName);
+
+  if (branch.isDefault) {
+    throw new CliError({
+      code: "ENV_BRANCH_SCOPE_IS_PRODUCTION",
+      domain: "app",
+      summary: `Branch "${scope.branchName}" is the default branch`,
+      why: "Production variables are project-level only; branch overrides apply to preview branches.",
+      fix: "Use --role production for the default branch.",
+      exitCode: 1,
+      nextSteps: ["prisma-cli project env list --role production"],
+    });
+  }
+
   return {
     scope,
-    descriptor: { kind: "role", role: scope.role },
-    apiTarget: { class: scope.role, branchId: null },
+    descriptor: {
+      kind: "branch",
+      branchName: branch.gitName,
+      branchId: branch.id,
+    },
+    apiTarget: { class: "preview", branchId: branch.id },
   };
+}
+
+function formatScopeFlag(scope: EnvScope): string {
+  if (scope.kind === "role") {
+    return `--role ${scope.role}`;
+  }
+  return `--branch ${scope.branchName}`;
+}
+
+async function listBranchesByName(
+  client: ManagementApiClient,
+  projectId: string,
+  branchName: string,
+): Promise<RawBranchRecord[]> {
+  const { data, error, response } = await client.GET(
+    "/v1/projects/{projectId}/branches",
+    {
+      params: {
+        path: { projectId },
+        query: { gitName: branchName },
+      },
+    },
+  );
+  if (error || !data) {
+    throw apiCallError(`Failed to resolve branch "${branchName}"`, response, error);
+  }
+
+  return data.data as RawBranchRecord[];
+}
+
+async function resolveExistingBranch(
+  client: ManagementApiClient,
+  projectId: string,
+  branchName: string,
+): Promise<RawBranchRecord> {
+  const branch = (await listBranchesByName(client, projectId, branchName))[0];
+  if (!branch) {
+    throw new CliError({
+      code: "ENV_BRANCH_NOT_FOUND",
+      domain: "app",
+      summary: `Branch "${branchName}" not found`,
+      why: "Branch update, list, and remove commands only target existing preview branches.",
+      fix: "Create the branch by deploying it, or use `project env add --branch` to create its first override.",
+      exitCode: 1,
+      nextSteps: [`prisma-cli project env add KEY=value --branch ${branchName}`],
+    });
+  }
+  return branch;
+}
+
+async function resolveOrCreateBranch(
+  client: ManagementApiClient,
+  projectId: string,
+  branchName: string,
+): Promise<RawBranchRecord> {
+  const existing = (await listBranchesByName(client, projectId, branchName))[0];
+  if (existing) {
+    return existing;
+  }
+
+  if (!(await projectHasDefaultBranch(client, projectId))) {
+    throw new CliError({
+      code: "ENV_BRANCH_CREATE_REQUIRES_DEFAULT_BRANCH",
+      domain: "app",
+      summary: `Cannot create branch "${branchName}" from project env`,
+      why: "Creating the first branch would make it the project default, but branch overrides are preview-only.",
+      fix: "Create or deploy the default branch first, then add the branch override.",
+      exitCode: 1,
+      nextSteps: ["prisma-cli app deploy --branch main"],
+    });
+  }
+
+  const { data, error, response } = await client.POST(
+    "/v1/projects/{projectId}/branches",
+    {
+      params: { path: { projectId } },
+      body: { gitName: branchName, isDefault: false },
+    },
+  );
+  if (error || !data) {
+    if (response?.status === 409) {
+      const raced = (await listBranchesByName(client, projectId, branchName))[0];
+      if (raced) {
+        return raced;
+      }
+    }
+
+    throw apiCallError(`Failed to create branch "${branchName}"`, response, error);
+  }
+
+  return data.data as RawBranchRecord;
+}
+
+async function projectHasDefaultBranch(
+  client: ManagementApiClient,
+  projectId: string,
+): Promise<boolean> {
+  let cursor: string | undefined;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const query: Record<string, string | undefined> = {};
+    if (cursor !== undefined) {
+      query.cursor = cursor;
+    }
+
+    const result = await client.GET(
+      "/v1/projects/{projectId}/branches",
+      {
+        params: {
+          path: { projectId },
+          query,
+        },
+      },
+    );
+    if (result.error || !result.data) {
+      throw apiCallError("Failed to check project default branch", result.response, result.error);
+    }
+
+    if ((result.data.data as RawBranchRecord[]).some((branch) => branch.isDefault)) {
+      return true;
+    }
+
+    if (!result.data.pagination.hasMore || !result.data.pagination.nextCursor) {
+      return false;
+    }
+    cursor = result.data.pagination.nextCursor;
+  }
 }
 
 async function findVariableByNaturalKey(
@@ -308,7 +504,7 @@ async function findVariableByNaturalKey(
   }
 
   const matches = (data.data as RawEnvironmentVariable[]).filter((row) =>
-    rowMatchesScope(row, resolved),
+    rowMatchesExactScope(row, resolved),
   );
   return matches[0] ?? null;
 }
@@ -353,27 +549,79 @@ async function listVariables(
     cursor = result.data.pagination.nextCursor;
   }
 
-  return collected;
+  return materializeEffectiveRows(collected, resolved);
 }
 
 function rowMatchesScope(
   row: RawEnvironmentVariable,
   resolved: ResolvedScope,
 ): boolean {
-  return row.branchId === null && row.class === resolved.apiTarget.class;
+  if (row.class !== resolved.apiTarget.class) {
+    return false;
+  }
+
+  if (resolved.apiTarget.branchId === null) {
+    return row.branchId === null;
+  }
+
+  return row.branchId === null || row.branchId === resolved.apiTarget.branchId;
+}
+
+function rowMatchesExactScope(
+  row: RawEnvironmentVariable,
+  resolved: ResolvedScope,
+): boolean {
+  return row.class === resolved.apiTarget.class &&
+    row.branchId === resolved.apiTarget.branchId;
+}
+
+function materializeEffectiveRows(
+  rows: RawEnvironmentVariable[],
+  resolved: ResolvedScope,
+): RawEnvironmentVariable[] {
+  if (resolved.apiTarget.branchId === null) {
+    return rows;
+  }
+
+  const byKey = new Map<string, RawEnvironmentVariable>();
+  for (const row of rows) {
+    if (row.branchId === null && !byKey.has(row.key)) {
+      byKey.set(row.key, row);
+    }
+  }
+  for (const row of rows) {
+    if (row.branchId === resolved.apiTarget.branchId) {
+      byKey.set(row.key, row);
+    }
+  }
+
+  return [...byKey.values()].sort((left, right) => left.key.localeCompare(right.key));
 }
 
 function toMetadata(
   row: RawEnvironmentVariable,
-  scope: EnvScopeDescriptor,
+  requestedScope: EnvScopeDescriptor,
 ): EnvVariableMetadata {
+  const rowScope =
+    row.branchId === null
+      ? ({ kind: "role", role: row.class } satisfies EnvScopeDescriptor)
+      : requestedScope;
+
   return {
     id: row.id,
     key: row.key,
-    scope,
+    scope: rowScope,
+    source: formatDescriptorLabel(rowScope),
     isManagedBySystem: row.isManagedBySystem,
     updatedAt: row.updatedAt,
   };
+}
+
+function formatDescriptorLabel(scope: EnvScopeDescriptor): string {
+  if (scope.kind === "role") {
+    return scope.role ?? "unknown";
+  }
+  return `branch:${scope.branchName ?? scope.branchId ?? "unknown"}`;
 }
 
 interface ApiErrorBody {

@@ -32,7 +32,7 @@ Fresh external scaffold:
 mkdir my-bun-app
 cd my-bun-app
 bun init --yes
-pnpm add -D @prisma/cli@preview
+pnpm add -D @prisma/cli
 ```
 
 Then replace `index.ts` with a `Bun.serve(...)` server and run:
@@ -53,7 +53,7 @@ What this validates:
 - first deploy can carry deploy-time environment variables like `DATABASE_URL`
 - second deploy reuses saved local app selection from `.prisma/cli/state.json`
 - `app list-env` shows variable names without exposing values
-- the preview build flow can package and deploy a simple Bun server
+- the beta build flow can package and deploy a simple Bun server
 
 Local files intentionally ignored in this example:
 
