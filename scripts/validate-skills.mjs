@@ -69,7 +69,17 @@ function listSkillFiles(root, skillsDir = SKILLS_DIR) {
 }
 
 export function validateSkillFile(filePath, root) {
-  const content = readFileSync(filePath, "utf8");
+  let content;
+  try {
+    content = readFileSync(filePath, "utf8");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      file: relative(root, filePath),
+      errors: [`Unable to read file: ${message}`],
+    };
+  }
+
   const errors = validateSkillMd(content);
   if (errors.length === 0) return null;
   return {

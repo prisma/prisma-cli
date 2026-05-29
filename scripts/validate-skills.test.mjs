@@ -1,7 +1,7 @@
 import { deepStrictEqual, strictEqual } from "node:assert/strict";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, normalize } from "node:path";
 import { describe, it } from "node:test";
 import { MAX_DESCRIPTION_LENGTH, runCheck, validateSkillMd } from "./validate-skills.mjs";
 
@@ -80,7 +80,18 @@ description: broken yaml: this colon breaks parsing
 
     const offences = runCheck({ root });
     strictEqual(offences.length, 1);
-    strictEqual(offences[0].file, "skills/bad-skill/SKILL.md");
+    strictEqual(normalize(offences[0].file), normalize(join("skills", "bad-skill", "SKILL.md")));
     strictEqual(offences[0].errors[0].startsWith("frontmatter parse error:"), true);
+  });
+
+  it("reports unreadable explicit files without aborting", () => {
+    const root = mkdtempSync(join(tmpdir(), "validate-skills-missing-"));
+    const missingSkill = join(root, "missing", "SKILL.md");
+
+    const offences = runCheck({ root, files: [missingSkill] });
+
+    strictEqual(offences.length, 1);
+    strictEqual(normalize(offences[0].file), normalize(join("missing", "SKILL.md")));
+    strictEqual(offences[0].errors[0].startsWith("Unable to read file:"), true);
   });
 });

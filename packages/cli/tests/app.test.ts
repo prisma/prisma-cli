@@ -149,7 +149,7 @@ describe("app commands", () => {
     expect(deployHelp.stderr).toContain("Agent skills for guided Next.js deploys");
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy");
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --app my-app --framework nextjs --http-port 3000");
-    expect(deployHelp.stderr).toContain("$ pnpm dlx skills@latest add prisma/prisma-cli/skills#cli-v<version> --all");
+    expect(deployHelp.stderr).toContain("$ pnpm dlx skills@latest add prisma/prisma-cli/skills#cli-v<cli-version> --all");
     expect(deployHelp.stderr).toContain("--entry <path>");
     expect(deployHelp.stderr).toContain("--framework <name>");
     expect(deployHelp.stderr).not.toContain("--build-type <type>");
