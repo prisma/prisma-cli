@@ -170,6 +170,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
   command
     .addOption(new Option("--app <name>", "App name"))
     .addOption(new Option("--project <id-or-name>", "Project id or name"))
+    .addOption(new Option("--create-project <name>", "Create and link a new Project before deploying"))
     .addOption(new Option("--branch <name>", "Branch name"))
     .addOption(
       new Option("--framework <name>", "Framework to deploy")
@@ -198,6 +199,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
     const httpPort = (options as { httpPort?: string }).httpPort;
     const envAssignments = (options as { env?: string[] }).env;
     const projectRef = (options as { project?: string }).project;
+    const createProjectName = (options as { createProject?: string }).createProject;
 
     await runCommand<AppDeployResult>(
       runtime,
@@ -205,6 +207,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
       options as Record<string, unknown>,
       (context) => runAppDeploy(context, appName, {
         projectRef,
+        createProjectName,
         branchName,
         entrypoint: entry,
         buildType,

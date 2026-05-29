@@ -54,7 +54,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "project",
     path: ["prisma", "project"],
     description: "Manage and inspect your Prisma projects",
-    examples: ["prisma-cli project list", "prisma-cli project show"],
+    examples: ["prisma-cli project list", "prisma-cli project link proj_123", "prisma-cli project create my-app"],
   },
   {
     id: "app",
@@ -88,6 +88,18 @@ const DESCRIPTORS: CommandDescriptor[] = [
     path: ["prisma", "project", "show"],
     description: "Show which project is active for this directory",
     examples: ["prisma-cli project show", "prisma-cli project show --project proj_123 --json"],
+  },
+  {
+    id: "project.create",
+    path: ["prisma", "project", "create"],
+    description: "Create a Project and link this directory",
+    examples: ["prisma-cli project create my-app", "prisma-cli project create my-app --json"],
+  },
+  {
+    id: "project.link",
+    path: ["prisma", "project", "link"],
+    description: "Link this directory to an existing Project",
+    examples: ["prisma-cli project link proj_123", "prisma-cli project link \"Acme Dashboard\" --json"],
   },
   {
     id: "git.connect",
@@ -141,6 +153,8 @@ const DESCRIPTORS: CommandDescriptor[] = [
     description: "Creates a new deployment for the app",
     examples: [
       "prisma-cli app deploy",
+      "prisma-cli app deploy --project proj_123",
+      "prisma-cli app deploy --create-project my-app --yes",
       "prisma-cli app deploy --app my-app --env DATABASE_URL=postgresql://example",
       "prisma-cli app deploy --app my-app --framework nextjs --http-port 3000",
       "prisma-cli app deploy --branch feat-login --framework hono",
