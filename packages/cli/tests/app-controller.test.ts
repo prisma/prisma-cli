@@ -376,6 +376,61 @@ describe("app controller", () => {
     });
   });
 
+  it("domain add lets explicit --project skip stale local pins", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const domain = createDomain({ status: "active" });
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "shop", region: "eu-central-1", liveDeploymentId: "dep_live", liveUrl: "https://shop.prisma.app" },
+    ]);
+    const addDomain = vi.fn().mockResolvedValue({
+      domain,
+      existing: false,
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          addDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd, {
+      workspaceId: "ws_123",
+      projectId: "proj_stale",
+      unsupportedKey: "not-supported",
+    });
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppDomainAdd(context, "shop.acme.com", {
+      projectRef: "proj_123",
+      appName: "shop",
+    });
+
+    expect(addDomain).toHaveBeenCalledWith({
+      appId: "app_1",
+      hostname: "shop.acme.com",
+    });
+    expect(result.result.project.id).toBe("proj_123");
+  });
+
   it("domain add does not synthesize DNS records when the API omits them", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([

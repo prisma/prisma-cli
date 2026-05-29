@@ -1204,7 +1204,7 @@ async function resolveAppDomainTarget(
 
   const envProjectId = readDeployEnvOverride(context, PRISMA_PROJECT_ID_ENV_VAR);
   const envAppId = readDeployEnvOverride(context, PRISMA_APP_ID_ENV_VAR);
-  const skipLocalPin = Boolean(envProjectId);
+  const skipLocalPin = Boolean(envProjectId || options?.projectRef);
   const localPin = skipLocalPin
     ? ({ kind: "missing" } satisfies LocalResolutionPinReadResult)
     : await readLocalResolutionPin(context.runtime.cwd);
