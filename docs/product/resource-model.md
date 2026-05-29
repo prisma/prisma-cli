@@ -193,20 +193,18 @@ Commands resolve project context in this order:
 2. `PRISMA_PROJECT_ID` when set for headless deploy/domain commands
 3. `.prisma/local.json` project pin when present, revalidated against platform data
 4. durable platform mapping when available
-5. remembered local project context, revalidated against platform data
-6. `package.json` name matched exactly against an existing accessible Project for non-mutating resolution
-7. explicit setup choice: `project link`, `project create`, interactive setup picker, `app deploy --project`, or `app deploy --create-project`
-8. structured failure in `--json` / `--no-interactive` mode
+5. explicit setup choice: `project link`, `project create`, interactive setup picker, `app deploy --project`, or `app deploy --create-project`
+6. structured failure when no explicit or durable Project binding exists
 
-Remembered local project context is an internal convenience after successful
-resolution. It must be revalidated before use and must not be described to users
-as durable linking. Package names and directory names may be suggested during
-setup, but they do not authorize Project creation by themselves.
+Package names and directory names may suggest setup defaults and matching
+Project candidates, but they do not select Project scope. Remembered local
+context may help with app/deployment convenience after a Project is explicit,
+but it is not a Project binding source.
 
-`app deploy` is stricter than general inspection commands: if the directory is
-not pinned and no explicit Project source is provided, it enters explicit setup
-or fails with `PROJECT_SETUP_REQUIRED` instead of using package-name or
-remembered-local inference.
+Project-scoped commands require explicit or durable Project context. If the
+directory is not pinned and no explicit Project source is provided, they fail
+with `PROJECT_SETUP_REQUIRED`; `app deploy` may enter explicit interactive setup
+before failing.
 
 ### App Selection Resolution
 

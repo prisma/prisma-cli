@@ -86,7 +86,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
   {
     id: "project.show",
     path: ["prisma", "project", "show"],
-    description: "Show which project is active for this directory",
+    description: "Show this directory's Project binding",
     examples: ["prisma-cli project show", "prisma-cli project show --project proj_123 --json"],
   },
   {

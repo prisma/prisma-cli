@@ -80,10 +80,8 @@ Commands resolve project context in this order:
 2. `PRISMA_PROJECT_ID` when set for headless deploy/domain commands
 3. `.prisma/local.json` project pin when present, revalidated against platform data
 4. durable platform mapping when available
-5. remembered local project context, revalidated against platform data
-6. `package.json` name matched exactly against an existing accessible Project for non-mutating resolution
-7. explicit setup choice from `project link`, `project create`, an interactive setup picker, `app deploy --project`, or `app deploy --create-project`
-8. structured failure in `--json` / `--no-interactive` mode
+5. explicit setup choice from `project link`, `project create`, an interactive setup picker, `app deploy --project`, or `app deploy --create-project`
+6. structured failure when no explicit or durable Project binding exists
 
 `--project` is an explicit Project choice. When used from an unbound directory
 with `app deploy`, it writes `.prisma/local.json` after validation and before
@@ -93,10 +91,13 @@ suggest setup defaults, but they never authorize Project creation by themselves.
 When `PRISMA_PROJECT_ID` is set, `app deploy` and `app domain` commands skip
 `.prisma/local.json` reads and do not write a new pin.
 
-`app deploy` is stricter than general inspection commands: it does not use
-package-name matching or remembered local context as Project scope. Without a
-pin, durable mapping, env var, or explicit Project flag, it enters explicit
-setup or fails with `PROJECT_SETUP_REQUIRED`.
+Project-scoped commands never use package-name matching, directory-name
+matching, or remembered local context as selected Project scope. Local metadata
+may suggest setup defaults and candidate Projects, but only explicit input or
+durable state may select a Project. Without a pin, durable mapping, supported
+env var, or explicit Project flag, Project-scoped commands fail with
+`PROJECT_SETUP_REQUIRED`; `app deploy` may enter explicit interactive setup
+before failing.
 
 ### App Selection
 
@@ -376,17 +377,19 @@ prisma-cli project list --json
 
 Purpose:
 
-- show the Prisma project resolved for this directory
+- show this directory's Prisma Project binding
 
 Behavior:
 
 - requires auth
-- resolves project context without creating projects
+- inspects explicit or durable project context without creating projects
 - does not prompt for project selection
 - does not mutate local state
 - `--project <id-or-name>` resolves only the explicit project
-- returns Workspace, Project, and `resolution.projectSource`
-- fails with `PROJECT_UNRESOLVED`, `PROJECT_NOT_FOUND`, `PROJECT_AMBIGUOUS`, or `LOCAL_STATE_STALE` when resolution cannot continue safely
+- when bound, returns Workspace, Project, and `resolution.projectSource`
+- when unbound, exits successfully with `project: null`, `resolution.projectSource: "unbound"`, a suggested Project name, matching Project candidates, and recovery commands
+- package names and directory names only power unbound suggestions
+- fails with `PROJECT_NOT_FOUND`, `PROJECT_AMBIGUOUS`, or `LOCAL_STATE_STALE` when explicit or durable binding validation cannot continue safely
 
 Examples:
 

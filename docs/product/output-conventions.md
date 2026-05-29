@@ -220,11 +220,13 @@ Human output should:
 Recommended header shape:
 
 ```text
-project show → Showing the project resolved for this directory.
+project show → No Project linked to this directory.
 
-│  project:    Acme Dashboard
 │  workspace:  Acme Inc
-│  source:     package-name
+│  project:    unbound
+│  suggested:  billing-api (package name)
+│  match:      Billing API
+│  next:       prisma-cli project link <id-or-name>
 │
 │  Read more   docs/product/command-spec.md#prisma-cli-project-show
 ```
