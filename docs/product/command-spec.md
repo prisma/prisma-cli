@@ -627,7 +627,7 @@ Behavior:
 - accepts repeated `--env NAME=VALUE` flags
 - maps user-facing framework names to deploy build strategies
 - uses `src/index.ts` as the Hono deploy entrypoint when the app has no `package.json#main` or `package.json#module` and that file exists
-- supports vanilla Bun apps with `--framework bun --entry <path>`
+- supports vanilla Bun apps with `--framework bun` using `package.json#main` or `package.json#module`, or with `--entry <path>`
 - treats `--entry <path>` without `--framework` as a Bun app deploy
 - does not print secret values
 - returns app, deployment id, URL, and next steps in `--json` output

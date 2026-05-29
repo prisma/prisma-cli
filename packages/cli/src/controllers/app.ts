@@ -2646,12 +2646,17 @@ async function resolveDeployEntrypoint(
   framework: ResolvedDeployFramework,
   explicitEntrypoint: string | undefined,
 ): Promise<string | undefined> {
-  if (explicitEntrypoint || framework.key !== "hono") {
+  if (explicitEntrypoint || framework.buildType !== "bun") {
     return explicitEntrypoint;
   }
 
   const packageJson = await readBunPackageJson(cwd);
-  if (readBunPackageEntrypoint(packageJson)) {
+  const packageEntrypoint = readBunPackageEntrypoint(packageJson);
+  if (packageEntrypoint) {
+    return packageEntrypoint;
+  }
+
+  if (framework.key !== "hono") {
     return undefined;
   }
 

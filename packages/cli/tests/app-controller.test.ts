@@ -1205,6 +1205,7 @@ describe("app controller", () => {
       name: "Bun from --framework bun with package.json module",
       packageJson: { module: "index.ts" },
       framework: "bun",
+      expectedEntrypoint: "index.ts",
       expectedBuildType: "bun",
     },
     {
