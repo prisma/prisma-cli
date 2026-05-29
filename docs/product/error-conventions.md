@@ -160,6 +160,7 @@ These codes are the minimum stable set for the MVP:
 - `USAGE_ERROR`
 - `AUTH_REQUIRED`
 - `PROJECT_UNRESOLVED`
+- `PROJECT_SETUP_REQUIRED`
 - `PROJECT_NOT_FOUND`
 - `PROJECT_AMBIGUOUS`
 - `APP_AMBIGUOUS`
@@ -198,10 +199,11 @@ Recommended meanings:
 - `USAGE_ERROR`: invalid arguments or invalid command combination
 - `AUTH_REQUIRED`: command needs an authenticated session
 - `PROJECT_UNRESOLVED`: command needs project context and none could be resolved
+- `PROJECT_SETUP_REQUIRED`: `app deploy` needs an explicit Project setup choice before it can continue
 - `PROJECT_NOT_FOUND`: requested project does not exist or is not accessible
 - `PROJECT_AMBIGUOUS`: multiple safe project candidates matched
 - `APP_AMBIGUOUS`: multiple apps matched the inferred or explicit app target
-- `LOCAL_STATE_STALE`: remembered local project context no longer matches platform data and continuing would be ambiguous
+- `LOCAL_STATE_STALE`: local Project pin or remembered context no longer matches platform data and continuing would be ambiguous
 - `BRANCH_NOT_DEPLOYABLE`: command tried to deploy to a non-deployable branch context
 - `FRAMEWORK_NOT_DETECTED`: app deploy could not detect a supported Beta framework and no explicit framework/build type was provided
 - `DEPLOYMENT_NOT_FOUND`: requested deployment id does not exist
