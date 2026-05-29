@@ -591,7 +591,7 @@ prisma-cli app run --build-type nextjs
 prisma-cli app run --build-type bun --entry server.ts --port 3000
 ```
 
-## `prisma-cli app deploy --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start> --entry <path> --http-port <port> --env <name=value>`
+## `prisma-cli app deploy --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start|bun> --entry <path> --http-port <port> --env <name=value>`
 
 Purpose:
 
@@ -626,7 +626,9 @@ Behavior:
 - success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma-cli app logs`
 - accepts repeated `--env NAME=VALUE` flags
 - maps user-facing framework names to deploy build strategies
-- accepts `--build-type <auto|bun|nextjs|nuxt|astro|tanstack-start>` as a legacy passthrough, but `--framework` wins when both are passed
+- uses `src/index.ts` as the Hono deploy entrypoint when the app has no `package.json#main` or `package.json#module` and that file exists
+- supports vanilla Bun apps with `--framework bun` using `package.json#main` or `package.json#module`, or with `--entry <path>`
+- treats `--entry <path>` without `--framework` as a Bun app deploy
 - does not print secret values
 - returns app, deployment id, URL, and next steps in `--json` output
 
@@ -639,6 +641,8 @@ prisma-cli app deploy --create-project my-app --yes
 prisma-cli app deploy --app my-app --env DATABASE_URL=postgresql://example
 prisma-cli app deploy --framework nextjs --http-port 3000
 prisma-cli app deploy --branch feat-login --framework hono --http-port 3000
+prisma-cli app deploy --framework bun --entry src/server.ts --http-port 3000
+prisma-cli app deploy --entry src/server.ts --http-port 3000
 ```
 
 ## `prisma-cli project env`

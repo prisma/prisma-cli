@@ -103,6 +103,7 @@ async function writePackageJson(
   cwd: string,
   packageJson: {
     name?: string;
+    module?: string;
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
   },
@@ -373,6 +374,61 @@ describe("app controller", () => {
       },
       existing: true,
     });
+  });
+
+  it("domain add lets explicit --project skip stale local pins", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const domain = createDomain({ status: "active" });
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "shop", region: "eu-central-1", liveDeploymentId: "dep_live", liveUrl: "https://shop.prisma.app" },
+    ]);
+    const addDomain = vi.fn().mockResolvedValue({
+      domain,
+      existing: false,
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          addDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd, {
+      workspaceId: "ws_123",
+      projectId: "proj_stale",
+      unsupportedKey: "not-supported",
+    });
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppDomainAdd(context, "shop.acme.com", {
+      projectRef: "proj_123",
+      appName: "shop",
+    });
+
+    expect(addDomain).toHaveBeenCalledWith({
+      appId: "app_1",
+      hostname: "shop.acme.com",
+    });
+    expect(result.result.project.id).toBe("proj_123");
   });
 
   it("domain add does not synthesize DNS records when the API omits them", async () => {
@@ -1171,65 +1227,123 @@ describe("app controller", () => {
     });
   });
 
-  it("lets --framework win over legacy --build-type for deploy", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
-    const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
-    ]);
-    const deployApp = vi.fn().mockResolvedValue({
-      projectId: "proj_123",
-      app: {
-        id: "app_1",
-        name: "hello-world",
-        region: "eu-central-1",
-        liveDeploymentId: "dep_123",
-        liveUrl: "https://hello-world.prisma.app",
-      },
-      deployment: {
-        id: "dep_123",
-        status: "running",
-        url: "https://hello-world.prisma.app",
-      },
-    });
+  it.each([
+    {
+      name: "Next.js from package.json",
+      packageJson: { dependencies: { next: "15.0.0" } },
+      expectedBuildType: "nextjs",
+    },
+    {
+      name: "Next.js from next.config.mts",
+      files: { "next.config.mts": "export default { output: \"standalone\" }\n" },
+      expectedBuildType: "nextjs",
+    },
+    {
+      name: "Hono from package.json",
+      packageJson: { dependencies: { hono: "4.0.0" } },
+      files: { "src/index.ts": "export default { fetch: () => new Response('ok') }\n" },
+      expectedEntrypoint: "src/index.ts",
+      expectedBuildType: "bun",
+    },
+    {
+      name: "Bun from --entry",
+      entrypoint: "src/server.ts",
+      expectedBuildType: "bun",
+    },
+    {
+      name: "Bun from --framework bun with --entry",
+      framework: "bun",
+      entrypoint: "src/server.ts",
+      expectedBuildType: "bun",
+    },
+    {
+      name: "Bun from --framework bun with package.json module",
+      packageJson: { module: "index.ts" },
+      framework: "bun",
+      expectedEntrypoint: "index.ts",
+      expectedBuildType: "bun",
+    },
+    {
+      name: "TanStack Start React from package.json",
+      packageJson: { dependencies: { "@tanstack/react-start": "1.0.0" } },
+      expectedBuildType: "tanstack-start",
+    },
+    {
+      name: "TanStack Start Solid from package.json",
+      packageJson: { dependencies: { "@tanstack/solid-start": "1.0.0" } },
+      expectedBuildType: "tanstack-start",
+    },
+  ])(
+    "detects deploy framework: $name",
+    async ({ packageJson, files, framework, entrypoint, expectedEntrypoint, expectedBuildType }) => {
+      const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+      const listApps = vi.fn().mockResolvedValue([
+        { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+      ]);
+      const deployApp = vi.fn().mockResolvedValue({
+        projectId: "proj_123",
+        app: {
+          id: "app_1",
+          name: "hello-world",
+          region: "eu-central-1",
+          liveDeploymentId: "dep_123",
+          liveUrl: "https://hello-world.prisma.app",
+        },
+        deployment: {
+          id: "dep_123",
+          status: "running",
+          url: "https://hello-world.prisma.app",
+        },
+      });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
-    }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => ({
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
-    }));
+      vi.doMock("../src/lib/auth/guard", () => ({
+        requireComputeAuth,
+      }));
+      vi.doMock("../src/lib/app/preview-provider", () => ({
+        createPreviewAppProvider: vi.fn(() => ({
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        })),
+      }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
-    const { runAppDeploy } = await import("../src/controllers/app");
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({
-      cwd,
-      stateDir,
-      env: {
-        ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
-      },
-    });
+      const { createTempCwd, createTestCommandContext } = await import("./helpers");
+      const { runAppDeploy } = await import("../src/controllers/app");
+      const cwd = await createTempCwd();
+      if (packageJson) {
+        await writePackageJson(cwd, packageJson);
+      }
+      for (const [fileName, content] of Object.entries(files ?? {})) {
+        const filePath = path.join(cwd, fileName);
+        await mkdir(path.dirname(filePath), { recursive: true });
+        await writeFile(filePath, content);
+      }
+      const stateDir = path.join(cwd, ".state");
+      const { context } = await createTestCommandContext({
+        cwd,
+        stateDir,
+        env: {
+          ...process.env,
+          PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+        },
+      });
 
-    await runAppDeploy(context, "hello-world", {
-      projectRef: "proj_123",
-      framework: "hono",
-      buildType: "nextjs",
-    });
+      await runAppDeploy(context, "hello-world", {
+        projectRef: "proj_123",
+        framework,
+        entrypoint,
+      });
 
-    expect(deployApp).toHaveBeenCalledWith(
-      expect.objectContaining({
-        buildType: "bun",
-        portMapping: { http: 3000 },
-      }),
-    );
-  });
+      expect(deployApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entrypoint: expectedEntrypoint ?? entrypoint,
+          buildType: expectedBuildType,
+          portMapping: { http: 3000 },
+        }),
+      );
+    },
+  );
 
   it("lets PRISMA_PROJECT_ID skip the local pin and resolve the project", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
@@ -1771,7 +1885,7 @@ describe("app controller", () => {
     expect(deployApp).not.toHaveBeenCalled();
   });
 
-  it("rejects --entry together with --build-type nextjs for deploy", async () => {
+  it("rejects --entry together with --framework nextjs for deploy", async () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
@@ -1786,12 +1900,12 @@ describe("app controller", () => {
     });
 
     await expect(runAppDeploy(context, "hello-world", {
-      buildType: "nextjs",
+      framework: "nextjs",
       entrypoint: "server.js",
     })).rejects.toMatchObject({
       code: "USAGE_ERROR",
       domain: "app",
-      summary: "App deploy does not accept --entry with --build-type nextjs",
+      summary: "App deploy does not accept --entry with Next.js",
     });
   });
 

@@ -255,7 +255,7 @@ describe("app env vars", () => {
         "deploy",
         "--app",
         "hello-world",
-        "--build-type",
+        "--framework",
         "nextjs",
         "--http-port",
         "3000",
@@ -304,7 +304,7 @@ describe("app env vars", () => {
       "hello-world",
       {
         entrypoint: undefined,
-        buildType: "nextjs",
+        framework: "nextjs",
         httpPort: "3000",
         envAssignments: ["DATABASE_URL=postgresql://example"],
         projectRef: "proj_123",
