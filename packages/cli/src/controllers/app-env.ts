@@ -21,7 +21,6 @@ import type {
   EnvVariableMetadata,
 } from "../types/app-env";
 import { requireAuthenticatedAuthState } from "./auth";
-import { createSelectPromptPort } from "./select-prompt-port";
 import { listRealWorkspaceProjects } from "./project";
 
 interface ResolvedScope {
@@ -72,7 +71,7 @@ export async function runEnvAdd(
     );
   }
 
-  const { client, projectId } = await requireClientAndProject(context, flags.projectRef);
+  const { client, projectId } = await requireClientAndProject(context, flags.projectRef, "project env add");
   const resolved = await resolveScopeToApi(client, projectId, scope, {
     createBranchIfMissing: true,
   });
@@ -152,7 +151,7 @@ export async function runEnvUpdate(
     );
   }
 
-  const { client, projectId } = await requireClientAndProject(context, flags.projectRef);
+  const { client, projectId } = await requireClientAndProject(context, flags.projectRef, "project env update");
   const resolved = await resolveScopeToApi(client, projectId, scope, {
     createBranchIfMissing: false,
   });
@@ -203,7 +202,7 @@ export async function runEnvList(
   const explicit = resolveEnvScope(flags, { requireExplicit: false, command: "list" });
   const scope = explicit ?? defaultRoleScope();
 
-  const { client, projectId } = await requireClientAndProject(context, flags.projectRef);
+  const { client, projectId } = await requireClientAndProject(context, flags.projectRef, "project env list");
   const resolved = await resolveScopeToApi(client, projectId, scope, {
     createBranchIfMissing: false,
   });
@@ -249,7 +248,7 @@ export async function runEnvRemove(
     );
   }
 
-  const { client, projectId } = await requireClientAndProject(context, flags.projectRef);
+  const { client, projectId } = await requireClientAndProject(context, flags.projectRef, "project env remove");
   const resolved = await resolveScopeToApi(client, projectId, scope, {
     createBranchIfMissing: false,
   });
@@ -293,6 +292,7 @@ export async function runEnvRemove(
 async function requireClientAndProject(
   context: CommandContext,
   explicitProject: string | undefined,
+  commandName: string,
 ): Promise<{ client: ManagementApiClient; projectId: string }> {
   const authState = await requireAuthenticatedAuthState(context);
   const client = await requireComputeAuth(context.runtime.env);
@@ -308,8 +308,7 @@ async function requireClientAndProject(
     workspace: authState.workspace,
     explicitProject,
     listProjects: () => listRealWorkspaceProjects(client, authState.workspace!),
-    prompt: createSelectPromptPort(context),
-    remember: true,
+    commandName,
   });
 
   return { client, projectId: target.project.id };
