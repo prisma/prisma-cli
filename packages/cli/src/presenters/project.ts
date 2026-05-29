@@ -4,9 +4,11 @@ import type {
   GitRepositoryConnection,
   ProjectListResult,
   ProjectRepositoryConnectionResult,
+  ProjectSetupResult,
   ProjectShowResult,
 } from "../types/project";
 import { renderList, renderMutate, renderShow, serializeList } from "../output/patterns";
+import { renderSummaryLine } from "../shell/ui";
 
 export function renderProjectList(
   context: CommandContext,
@@ -67,6 +69,27 @@ export function renderProjectShow(
 }
 
 export function serializeProjectShow(result: ProjectShowResult) {
+  return result;
+}
+
+export function renderProjectSetup(
+  context: CommandContext,
+  _descriptor: CommandDescriptor,
+  result: ProjectSetupResult,
+): string[] {
+  const lines = result.action === "created"
+    ? [renderSummaryLine(context.ui, "success", `Created Project "${result.project.name}"`)]
+    : [];
+
+  lines.push(
+    renderSummaryLine(context.ui, "success", `Linked "${result.directory}" to Project "${result.project.name}"`),
+    `Saved ${result.localPin.path}`,
+  );
+
+  return lines;
+}
+
+export function serializeProjectSetup(result: ProjectSetupResult) {
   return result;
 }
 

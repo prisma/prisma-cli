@@ -12,7 +12,16 @@ import {
   sortProjects,
   type ProjectCandidate,
 } from "../lib/project/resolution";
-import { authRequiredError, CliError, usageError, workspaceRequiredError } from "../shell/errors";
+import {
+  bindProjectToDirectory,
+  isValidProjectSetupName,
+  projectCreateFailedError,
+  projectSetupNameRequiredError,
+  resolveProjectForSetup,
+  toProjectSummary,
+} from "../lib/project/setup";
+import { createPreviewAppProvider } from "../lib/app/preview-provider";
+import { authRequiredError, CliError, featureUnavailableError, usageError, workspaceRequiredError } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
 import { canPrompt, type CommandContext } from "../shell/runtime";
 import { renderSummaryLine } from "../shell/ui";
@@ -21,6 +30,7 @@ import type {
   GitRepositoryConnection,
   ProjectListResult,
   ProjectRepositoryConnectionResult,
+  ProjectSetupResult,
   ProjectShowResult,
 } from "../types/project";
 import { createCliUseCaseGateways } from "../use-cases/create-cli-gateways";
@@ -96,6 +106,91 @@ export async function runProjectShow(
     result,
     warnings: [],
     nextSteps: [],
+  };
+}
+
+export async function runProjectCreate(
+  context: CommandContext,
+  projectName: string,
+): Promise<CommandSuccess<ProjectSetupResult>> {
+  const authState = await requireAuthenticatedAuthState(context);
+  const workspace = authState.workspace;
+  if (!workspace) {
+    throw workspaceRequiredError();
+  }
+
+  if (!isValidProjectSetupName(projectName)) {
+    throw projectSetupNameRequiredError("project create");
+  }
+
+  if (!isRealMode(context)) {
+    throw featureUnavailableError(
+      "Project create is not available in fixture mode",
+      "Creating Projects requires live platform integration.",
+      "Rerun without fixture mode enabled to create a Project.",
+      ["prisma-cli auth login"],
+      "project",
+    );
+  }
+
+  const client = await requireComputeAuth(context.runtime.env);
+  if (!client) {
+    throw authRequiredError();
+  }
+
+  const provider = createPreviewAppProvider(client);
+  const name = projectName.trim();
+  const created = await provider.createProject({ name }).catch((error) => {
+    throw projectCreateFailedError(error, name, workspace, {
+      nextSteps: ["prisma-cli project list", "prisma-cli project link <id-or-name>"],
+      permissionFix: "Grant the token permission to create Projects in this workspace, or link an existing Project.",
+      fallbackFix: "Retry the command, or choose an existing Project with prisma-cli project link <id-or-name>.",
+    });
+  });
+  const result = await bindProjectToDirectory(context, workspace, {
+    id: created.id,
+    name: created.name,
+  }, "created");
+
+  return {
+    command: "project.create",
+    result,
+    warnings: [],
+    nextSteps: ["prisma-cli app deploy"],
+  };
+}
+
+export async function runProjectLink(
+  context: CommandContext,
+  projectRef: string,
+): Promise<CommandSuccess<ProjectSetupResult>> {
+  const authState = await requireAuthenticatedAuthState(context);
+  const workspace = authState.workspace;
+  if (!workspace) {
+    throw workspaceRequiredError();
+  }
+
+  if (!projectRef || !projectRef.trim()) {
+    throw usageError(
+      "Project link requires a Project id or name",
+      "The command cannot choose a Project without an explicit id or name.",
+      "Pass the Project id or name as the first argument.",
+      ["prisma-cli project link proj_123"],
+      "project",
+    );
+  }
+
+  const projects = isRealMode(context)
+    ? await listRealProjectsForLink(context, workspace)
+    : listFixtureWorkspaceProjects(context, workspace);
+  const project = resolveProjectForSetup(projectRef.trim(), projects, workspace);
+  const result = await bindProjectToDirectory(context, workspace, toProjectSummary(project), "linked");
+
+  return {
+    command: "project.link",
+    result,
+    warnings: [],
+    nextSteps: ["prisma-cli app deploy"],
   };
 }
 
@@ -281,6 +376,18 @@ async function resolveProjectShowInRealMode(
     listProjects: () => listRealWorkspaceProjects(client, workspace),
     remember: false,
   });
+}
+
+async function listRealProjectsForLink(
+  context: CommandContext,
+  workspace: AuthWorkspace,
+): Promise<ProjectCandidate[]> {
+  const client = await requireComputeAuth(context.runtime.env);
+  if (!client) {
+    throw authRequiredError();
+  }
+
+  return listRealWorkspaceProjects(client, workspace);
 }
 
 async function resolveProjectShowInFixtureMode(

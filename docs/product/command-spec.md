@@ -81,15 +81,22 @@ Commands resolve project context in this order:
 3. `.prisma/local.json` project pin when present, revalidated against platform data
 4. durable platform mapping when available
 5. remembered local project context, revalidated against platform data
-6. `package.json` name matched exactly against accessible project id, name, or slug
-7. unambiguous project creation for commands that are allowed to create projects
-8. prompt in interactive mode, or structured failure in `--json` / `--no-interactive` mode
+6. `package.json` name matched exactly against an existing accessible Project for non-mutating resolution
+7. explicit setup choice from `project link`, `project create`, an interactive setup picker, `app deploy --project`, or `app deploy --create-project`
+8. structured failure in `--json` / `--no-interactive` mode
 
-`--project` is an escape hatch for ambiguous or unavailable automatic
-resolution, not a setup step. Only `app deploy` may create a missing project,
-and only when the inferred name is unambiguous.
+`--project` is an explicit Project choice. When used from an unbound directory
+with `app deploy`, it writes `.prisma/local.json` after validation and before
+the deployment starts. `--create-project <name>` is the explicit deploy-time
+choice to create and bind a new Project. Package names and directory names may
+suggest setup defaults, but they never authorize Project creation by themselves.
 When `PRISMA_PROJECT_ID` is set, `app deploy` and `app domain` commands skip
 `.prisma/local.json` reads and do not write a new pin.
+
+`app deploy` is stricter than general inspection commands: it does not use
+package-name matching or remembered local context as Project scope. Without a
+pin, durable mapping, env var, or explicit Project flag, it enters explicit
+setup or fails with `PROJECT_SETUP_REQUIRED`.
 
 ### App Selection
 
@@ -103,9 +110,6 @@ Preview app commands that need an app resolve it in this order:
 6. create the inferred app in the resolved branch when no existing app matches
 7. interactive picker only when multiple matching apps make the target ambiguous
 8. `APP_AMBIGUOUS` in non-interactive or `--json` mode when unresolved
-
-When `PRISMA_APP_ID` is set, `app deploy` and `app domain` commands skip
-`.prisma/local.json` reads and do not write a new pin.
 
 `.prisma/local.json` pins the directory to a Workspace and Project only. It does
 not pin an App ID. App services are branch-scoped; a service ID from `main`
@@ -392,6 +396,50 @@ prisma-cli project show --json
 prisma-cli project show --project proj_123 --json
 ```
 
+## `prisma-cli project create <name>`
+
+Purpose:
+
+- create a Prisma Project and bind the current directory to it
+
+Behavior:
+
+- requires auth
+- creates a Project in the authenticated workspace
+- writes `.prisma/local.json` with Workspace and Project IDs
+- ensures `.prisma/` is ignored by Git
+- does not create a Branch, App, Deployment, database, or Git repository connection
+- fails if the platform rejects Project creation
+
+Examples:
+
+```bash
+prisma-cli project create my-app
+prisma-cli project create my-app --json
+```
+
+## `prisma-cli project link <id-or-name>`
+
+Purpose:
+
+- bind the current directory to an existing Prisma Project
+
+Behavior:
+
+- requires auth
+- resolves exactly one Project by id or name in the authenticated workspace
+- writes `.prisma/local.json` with Workspace and Project IDs
+- ensures `.prisma/` is ignored by Git
+- does not create remote resources
+- fails with `PROJECT_NOT_FOUND` or `PROJECT_AMBIGUOUS` when the Project cannot be selected safely
+
+Examples:
+
+```bash
+prisma-cli project link proj_123
+prisma-cli project link "Acme Dashboard" --json
+```
+
 ## `prisma-cli git connect [git-url]`
 
 Purpose:
@@ -543,7 +591,7 @@ prisma-cli app run --build-type nextjs
 prisma-cli app run --build-type bun --entry server.ts --port 3000
 ```
 
-## `prisma-cli app deploy --project <id-or-name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start> --entry <path> --http-port <port> --env <name=value>`
+## `prisma-cli app deploy --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start> --entry <path> --http-port <port> --env <name=value>`
 
 Purpose:
 
@@ -552,14 +600,28 @@ Purpose:
 Behavior:
 
 - requires auth
-- resolves or creates project context from `--project`, `PRISMA_PROJECT_ID`, `.prisma/local.json`, `package.json#name`, or current directory name
+- resolves project context from `--project`, `--create-project`, `PRISMA_PROJECT_ID`, `.prisma/local.json`, durable platform mapping, or an interactive setup choice
+- does not infer and create Project context from `package.json#name` or current directory name without explicit setup
+- when no Project is resolved in interactive mode, asks which Project the directory should use:
+
+  ```text
+  ? Which Project should this directory use?
+    ❯ Acme Dashboard
+      Billing API
+      Create a new Project
+      Cancel
+  ```
+
+- when "Create a new Project" is selected, prompts for a Project name with the package/directory name as a suggestion
+- when no Project is resolved in `--json` / `--no-interactive` mode, fails with `PROJECT_SETUP_REQUIRED`
+- `--yes` alone does not choose Project scope; use `--project` or `--create-project`
+- `--project` and `--create-project` are mutually exclusive with each other and with `PRISMA_PROJECT_ID`
 - resolves or creates branch context from `--branch`, local Git branch, or `main`
 - resolves or creates app context inside the resolved branch from `--app`, `PRISMA_APP_ID`, `package.json#name`, or current directory name
 - does not prompt when there is no real choice; zero matching apps creates the inferred app
-- detects supported frameworks and shows the resolved framework/runtime settings only while binding the directory for the first time
 - writes `.prisma/local.json` after Project binding succeeds and before build/deploy starts, so retries after a failed deploy do not repeat setup
 - asks `Customize settings? (y/N)` only while binding the directory for the first time, and only asks for Framework and HTTP port when the user opts in
-- subsequent deploys print a compact target header such as `Deploying ./j1 to j1 / main / j1`
+- after setup, deploy prints `Deploying to <Project> / <Branch> / <App>`; later deploys print a compact target header such as `Deploying ./j1 to j1 / main / j1`
 - deploy progress uses short stage copy (`Building locally...`, `Built <size>`, `Uploading...`, `Uploaded`, `Deploying...`, `Deployed`) and never prints `Status: running` or `Deployment is running at ...`
 - success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma-cli app logs`
 - accepts repeated `--env NAME=VALUE` flags
@@ -572,6 +634,8 @@ Examples:
 
 ```bash
 prisma-cli app deploy
+prisma-cli app deploy --project proj_123
+prisma-cli app deploy --create-project my-app --yes
 prisma-cli app deploy --app my-app --env DATABASE_URL=postgresql://example
 prisma-cli app deploy --framework nextjs --http-port 3000
 prisma-cli app deploy --branch feat-login --framework hono --http-port 3000

@@ -425,7 +425,7 @@ describe("project commands", () => {
     expect(JSON.parse(result.stdout).error.code).toBe("PROJECT_UNRESOLVED");
   });
 
-  it("shows Public Beta project and git help without project link", async () => {
+  it("shows Public Beta project, setup, and git help", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
 
@@ -437,6 +437,18 @@ describe("project commands", () => {
     });
     const showHelp = await executeCli({
       argv: ["project", "show", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const createHelp = await executeCli({
+      argv: ["project", "create", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const linkHelp = await executeCli({
+      argv: ["project", "link", "--help"],
       cwd,
       stateDir,
       fixturePath,
@@ -459,17 +471,19 @@ describe("project commands", () => {
       stateDir,
       fixturePath,
     });
-    const stderr = stripAnsi(`${projectHelp.stderr}\n${showHelp.stderr}\n${gitHelp.stderr}\n${connectRepoHelp.stderr}\n${disconnectRepoHelp.stderr}`);
+    const stderr = stripAnsi(`${projectHelp.stderr}\n${showHelp.stderr}\n${createHelp.stderr}\n${linkHelp.stderr}\n${gitHelp.stderr}\n${connectRepoHelp.stderr}\n${disconnectRepoHelp.stderr}`);
 
     expect(projectHelp.exitCode).toBe(0);
+    expect(createHelp.exitCode).toBe(0);
+    expect(linkHelp.exitCode).toBe(0);
     expect(gitHelp.exitCode).toBe(0);
     expect(stderr).toContain("project → Manage and inspect your Prisma projects");
     expect(stderr).toContain("git → Manage Git repository connections for a project");
     expect(stderr).toContain("Show which project is active for this directory");
+    expect(stderr).toContain("Create a Project and link this directory");
+    expect(stderr).toContain("Link this directory to an existing Project");
     expect(stderr).toContain("Connect the resolved project to a GitHub repository");
     expect(stderr).toContain("Disconnect the GitHub repository from the resolved project");
-    expect(stderr).not.toContain("project link");
-    expect(stderr).not.toContain("linked project");
   });
 
   it("registers project env remove and rm alias help", async () => {

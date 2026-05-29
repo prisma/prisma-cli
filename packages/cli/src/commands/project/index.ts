@@ -1,9 +1,11 @@
 import { Command } from "commander";
 
-import { runProjectList, runProjectShow } from "../../controllers/project";
+import { runProjectCreate, runProjectLink, runProjectList, runProjectShow } from "../../controllers/project";
 import {
+  renderProjectSetup,
   renderProjectList,
   renderProjectShow,
+  serializeProjectSetup,
   serializeProjectList,
   serializeProjectShow,
 } from "../../presenters/project";
@@ -11,7 +13,7 @@ import { attachCommandDescriptor } from "../../shell/command-meta";
 import { addCompactGlobalFlags, addGlobalFlags } from "../../shell/global-flags";
 import { runCommand } from "../../shell/command-runner";
 import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
-import type { ProjectListResult, ProjectShowResult } from "../../types/project";
+import type { ProjectListResult, ProjectSetupResult, ProjectShowResult } from "../../types/project";
 import { createEnvCommand } from "../env";
 
 export function createProjectCommand(runtime: CliRuntime): Command {
@@ -21,9 +23,55 @@ export function createProjectCommand(runtime: CliRuntime): Command {
 
   project.addCommand(createProjectListCommand(runtime));
   project.addCommand(createProjectShowCommand(runtime));
+  project.addCommand(createProjectCreateCommand(runtime));
+  project.addCommand(createProjectLinkCommand(runtime));
   project.addCommand(createEnvCommand(runtime));
 
   return project;
+}
+
+function createProjectCreateCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("create"), runtime), "project.create");
+
+  command.argument("<name>", "Project name");
+  addGlobalFlags(command);
+
+  command.action(async (name, options) => {
+    await runCommand<ProjectSetupResult>(
+      runtime,
+      "project.create",
+      options as Record<string, unknown>,
+      (context) => runProjectCreate(context, String(name)),
+      {
+        renderHuman: (context, descriptor, result) => renderProjectSetup(context, descriptor, result),
+        renderJson: (result) => serializeProjectSetup(result),
+      },
+    );
+  });
+
+  return command;
+}
+
+function createProjectLinkCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("link"), runtime), "project.link");
+
+  command.argument("<id-or-name>", "Project id or name");
+  addGlobalFlags(command);
+
+  command.action(async (projectRef, options) => {
+    await runCommand<ProjectSetupResult>(
+      runtime,
+      "project.link",
+      options as Record<string, unknown>,
+      (context) => runProjectLink(context, String(projectRef)),
+      {
+        renderHuman: (context, descriptor, result) => renderProjectSetup(context, descriptor, result),
+        renderJson: (result) => serializeProjectSetup(result),
+      },
+    );
+  });
+
+  return command;
 }
 
 function createProjectListCommand(runtime: CliRuntime): Command {

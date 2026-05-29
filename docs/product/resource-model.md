@@ -38,8 +38,8 @@ Rules:
 - `project` is not the same thing as `app`
 - Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for project resolution
 - `.prisma/local.json` is a gitignored local pin/cache for Workspace and Project IDs; it is not a declarative repo config file
-- `app deploy` may create missing project context only when resolution is unambiguous
-- other commands must not create project context implicitly
+- Project setup is explicit: users choose an existing Project or explicitly create a new one before remote work starts
+- `app deploy` may orchestrate Project setup, but it must not silently choose or create Project scope
 - everything under a project happens in a branch
 
 ### Branch
@@ -190,15 +190,23 @@ Long-term, branch is where app and database relationships meet.
 Commands resolve project context in this order:
 
 1. explicit `--project <id-or-name>` when present
-2. durable platform mapping when available
-3. remembered local project context, revalidated against platform data
-4. `package.json` name matched exactly against accessible project id, name, or slug
-5. unambiguous project creation for commands that are allowed to create projects
-6. prompt in interactive mode, or structured failure in `--json` / `--no-interactive` mode
+2. `PRISMA_PROJECT_ID` when set for headless deploy/domain commands
+3. `.prisma/local.json` project pin when present, revalidated against platform data
+4. durable platform mapping when available
+5. remembered local project context, revalidated against platform data
+6. `package.json` name matched exactly against an existing accessible Project for non-mutating resolution
+7. explicit setup choice: `project link`, `project create`, interactive setup picker, `app deploy --project`, or `app deploy --create-project`
+8. structured failure in `--json` / `--no-interactive` mode
 
 Remembered local project context is an internal convenience after successful
 resolution. It must be revalidated before use and must not be described to users
-as durable linking. Only `app deploy` may create projects implicitly.
+as durable linking. Package names and directory names may be suggested during
+setup, but they do not authorize Project creation by themselves.
+
+`app deploy` is stricter than general inspection commands: if the directory is
+not pinned and no explicit Project source is provided, it enters explicit setup
+or fails with `PROJECT_SETUP_REQUIRED` instead of using package-name or
+remembered-local inference.
 
 ### App Selection Resolution
 

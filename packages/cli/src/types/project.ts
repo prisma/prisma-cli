@@ -33,6 +33,17 @@ export interface ProjectShowResult {
   resolution: ProjectResolution;
 }
 
+export interface ProjectSetupResult {
+  workspace: AuthWorkspace;
+  project: ProjectSummary;
+  directory: string;
+  localPin: {
+    path: string;
+    written: true;
+  };
+  action: "created" | "linked";
+}
+
 export interface GitRepositoryConnection {
   id: string | null;
   provider: "github";

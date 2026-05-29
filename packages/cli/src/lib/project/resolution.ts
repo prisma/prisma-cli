@@ -298,7 +298,7 @@ function projectMatchesPackageName(project: ProjectCandidate, packageName: strin
   return project.id === packageName || project.name === packageName || project.slug === packageName;
 }
 
-async function resolveDurablePlatformMapping(): Promise<ProjectCandidate | null> {
+export async function resolveDurablePlatformMapping(): Promise<ProjectCandidate | null> {
   return null;
 }
 
