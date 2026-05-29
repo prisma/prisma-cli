@@ -86,6 +86,7 @@ describe("auth commands", () => {
       },
       warnings: [],
       nextSteps: [],
+      nextActions: [],
     });
   });
 
@@ -118,6 +119,7 @@ describe("auth commands", () => {
       },
       warnings: [],
       nextSteps: ["prisma-cli auth login"],
+      nextActions: [],
     });
   });
 

@@ -90,6 +90,7 @@ export async function runStreamingCommand(
         result: null,
         warnings: [],
         nextSteps: [],
+        nextActions: [],
       });
     }
   } catch (error) {
@@ -103,6 +104,7 @@ export async function runStreamingCommand(
           error: cliErrorToJson(cliError),
           warnings: [],
           nextSteps: cliError.nextSteps,
+          nextActions: cliError.nextActions,
         });
       } else {
         writeHumanError(context.output, context.ui, cliError, { trace: flags.trace });

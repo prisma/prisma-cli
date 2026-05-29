@@ -39,12 +39,21 @@ describe("project controller", () => {
       resolution: {
         projectSource: "unbound",
       },
+      localBinding: {
+        status: "not-linked",
+      },
       candidates: [],
       recoveryCommands: [
         "prisma-cli project link <id-or-name>",
         "prisma-cli project show --project <id-or-name>",
       ],
     });
+    expect(result.nextActions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "user-choice",
+        journey: "project-setup",
+      }),
+    ]));
   });
 
   it("links an existing project and writes the local pin", async () => {

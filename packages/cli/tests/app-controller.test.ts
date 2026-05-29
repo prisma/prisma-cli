@@ -1133,6 +1133,69 @@ describe("app controller", () => {
     expect(stderr.buffer).toContain("Building locally...");
   });
 
+  it("surfaces a concrete Next.js standalone-output recovery action", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([]);
+    const deployApp = vi.fn().mockImplementation(async (options: { progress?: { onBuildStart?: () => void } }) => {
+      options.progress?.onBuildStart?.();
+      throw new Error('Next.js build did not produce standalone output. Add output: "standalone" to your next.config file.');
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        createProject: vi.fn(),
+        listApps,
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      framework: "nextjs",
+    })).rejects.toMatchObject({
+      code: "BUILD_FAILED",
+      fix: "Add output: \"standalone\" to next.config.*, then rerun deploy.",
+      humanLines: [
+        "Build failed locally.",
+        "",
+        "✗ Built       Next.js build did not produce standalone output. Add output: \"standalone\" to your next.config file.",
+        "",
+        "Fix: Add output: \"standalone\" to next.config.*, then rerun deploy.",
+      ],
+      nextSteps: ["Add output: \"standalone\" to next.config.*, then rerun prisma-cli app deploy"],
+      nextActions: [
+        expect.objectContaining({
+          kind: "edit-file",
+          journey: "deploy-app",
+          label: "Add Next.js standalone output",
+        }),
+        expect.objectContaining({
+          kind: "run-command",
+          command: "prisma-cli app deploy",
+        }),
+      ],
+    });
+  });
+
   it("renders runtime-failure copy with deployment logs after the container starts", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     let appName = "";
@@ -1530,6 +1593,24 @@ describe("app controller", () => {
           `prisma-cli app deploy --create-project ${path.basename(cwd)}`,
         ]),
       },
+      nextActions: [
+        expect.objectContaining({
+          kind: "user-choice",
+          journey: "project-setup",
+        }),
+        expect.objectContaining({
+          kind: "run-command",
+          command: "prisma-cli project link <id-or-name>",
+        }),
+        expect.objectContaining({
+          kind: "run-command",
+          command: `prisma-cli app deploy --create-project ${path.basename(cwd)}`,
+        }),
+        expect.objectContaining({
+          kind: "run-command",
+          command: "prisma-cli app deploy --project <id-or-name>",
+        }),
+      ],
     });
     expect(createProject).not.toHaveBeenCalled();
     expect(listApps).not.toHaveBeenCalled();
@@ -2821,6 +2902,12 @@ describe("app controller", () => {
           },
         ],
       },
+      nextActions: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "user-choice",
+          journey: "project-setup",
+        }),
+      ]),
     });
     expect(listApps).not.toHaveBeenCalled();
   });

@@ -147,7 +147,16 @@ describe("real project mode", () => {
         { id: "proj_123", name: "Acme Dashboard" },
         { id: "proj_456", name: "Billing API" },
       ],
+      localBinding: {
+        status: "not-linked",
+      },
     });
+    expect(result.nextActions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "user-choice",
+        journey: "project-setup",
+      }),
+    ]));
   });
 
   it("resolves an explicit project in real mode", async () => {

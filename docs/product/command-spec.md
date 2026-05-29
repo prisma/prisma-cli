@@ -365,6 +365,9 @@ Behavior:
 - lists projects visible to the active workspace
 - does not resolve the current directory
 - does not mutate local state
+- when the current directory is not linked, human output adds one setup hint after the list
+- in JSON, unlinked directories include a `user-choice` `nextActions` entry for Project setup
+- listed Projects are not marked selected unless durable local binding actually selects one
 
 Examples:
 
@@ -387,7 +390,8 @@ Behavior:
 - does not mutate local state
 - `--project <id-or-name>` resolves only the explicit project
 - when bound, returns Workspace, Project, and `resolution.projectSource`
-- when unbound, exits successfully with `project: null`, `resolution.projectSource: "unbound"`, a suggested Project name, matching Project candidates, and recovery commands
+- when unbound, human output says `project: Not linked` and shows link/create next steps
+- when unbound, JSON exits successfully with `project: null`, `localBinding.status: "not-linked"`, `resolution.projectSource: "unbound"`, a suggested Project name, matching Project candidates, recovery commands, and `user-choice` `nextActions`
 - package names and directory names only power unbound suggestions
 - fails with `PROJECT_NOT_FOUND`, `PROJECT_AMBIGUOUS`, or `LOCAL_STATE_STALE` when explicit or durable binding validation cannot continue safely
 
@@ -617,6 +621,7 @@ Behavior:
 
 - when "Create a new Project" is selected, prompts for a Project name with the package/directory name as a suggestion
 - when no Project is resolved in `--json` / `--no-interactive` mode, fails with `PROJECT_SETUP_REQUIRED`
+- `PROJECT_SETUP_REQUIRED` preserves readable recovery commands in `nextSteps` and includes structured `nextActions` for choosing, linking, creating, or retrying with an explicit Project
 - `--yes` alone does not choose Project scope; use `--project` or `--create-project`
 - `--project` and `--create-project` are mutually exclusive with each other and with `PRISMA_PROJECT_ID`
 - resolves or creates branch context from `--branch`, local Git branch, or `main`

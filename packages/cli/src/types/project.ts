@@ -20,9 +20,14 @@ export interface ProjectResolution {
   targetNameSource?: "explicit" | "env" | "local-pin" | "package-name" | "directory-name" | "platform-mapping" | "prompt";
 }
 
+export interface ProjectLocalBindingState {
+  status: "linked" | "not-linked" | "invalid";
+}
+
 export interface ProjectListResult {
   workspace: AuthWorkspace;
   projects: ProjectSummary[];
+  localBinding?: ProjectLocalBindingState;
 }
 
 export interface ProjectSetupSuggestion {
@@ -41,6 +46,9 @@ export interface BoundProjectShowResult {
 export interface UnboundProjectShowResult extends ProjectSetupSuggestion {
   workspace: AuthWorkspace;
   project: null;
+  localBinding: {
+    status: "not-linked";
+  };
   resolution: ProjectResolution & {
     projectSource: "unbound";
   };

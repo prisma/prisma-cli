@@ -194,12 +194,15 @@ The CLI must work well for both humans and agents.
 
 That means:
 
-- default output is human-readable
-- structured output is explicit
+- default output is concise, human-readable, and calm
+- structured output is explicit enough for agents to make safe choices
+- human output and JSON output describe the same truth, but may render it differently
 - targeting rules are deterministic
 - risky actions are surfaced clearly
 - nouns and verbs stay stable across help, docs, and output
 - shared UX rules stay centralized rather than reinvented per command group
+- local metadata may suggest defaults, but must not be presented as target selection
+- missing context ends with clear next actions, not implicit resolution
 
 ## No Dead Ends
 

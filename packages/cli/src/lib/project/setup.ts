@@ -12,6 +12,7 @@ import {
   projectNotFoundError,
   type ProjectCandidate,
 } from "./resolution";
+export { formatCommandArgument } from "../../shell/command-arguments";
 
 export function isValidProjectSetupName(projectName: string): boolean {
   return projectName.trim().length > 0;
@@ -108,10 +109,6 @@ export function projectCreateFailedError(
     exitCode: 1,
     nextSteps: options.nextSteps,
   });
-}
-
-export function formatCommandArgument(value: string): string {
-  return /^[A-Za-z0-9._/-]+$/.test(value) ? value : JSON.stringify(value);
 }
 
 function formatSetupDirectory(cwd: string): string {

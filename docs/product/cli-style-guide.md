@@ -64,15 +64,14 @@ Recommended symbols:
 Human-oriented command output in TTY mode should usually start with a compact header:
 
 ```text
-project show → No Project linked to this directory.
+project show → This directory is not linked to a Prisma Project.
 
 │  workspace:  Acme Inc
-│  project:    unbound
-│  suggested:  billing-api (package name)
-│  match:      Billing API
-│  next:       prisma-cli project link <id-or-name>
-│
-│  Read more   docs/product/command-spec.md#prisma-cli-project-show
+│  project:    Not linked
+
+Next steps:
+- Link an existing Project: prisma-cli project link <id-or-name>
+- Create a new Project: prisma-cli project create billing-api
 ```
 
 Rules:
@@ -84,6 +83,7 @@ Rules:
 - prefer display labels in default human output and keep opaque ids in JSON unless a later verbose mode explicitly asks for them
 - mask sensitive values rather than omitting their presence entirely when the value matters to the flow
 - include only rows that are actually known for the current command
+- use human labels such as `Not linked` instead of internal resolution terms such as `unbound`
 - include a `Read more` row that points to the source-of-truth repo doc or anchor until a stable public docs URL exists
 - leave one blank line between the header block and the body
 

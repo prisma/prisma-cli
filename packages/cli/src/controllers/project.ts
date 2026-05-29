@@ -8,12 +8,14 @@ import {
 } from "../adapters/git";
 import { requireComputeAuth } from "../lib/auth/guard";
 import {
+  buildProjectSetupNextActions,
   inspectProjectBinding,
   resolveProjectTarget,
   sortProjects,
   type ProjectCandidate,
   type ResolvedProjectTarget,
 } from "../lib/project/resolution";
+import { readLocalResolutionPin } from "../lib/project/local-pin";
 import {
   bindProjectToDirectory,
   isValidProjectSetupName,
@@ -54,6 +56,23 @@ function isRealMode(context: CommandContext): boolean {
   return !context.runtime.fixturePath && !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH;
 }
 
+async function readProjectListLocalBinding(
+  cwd: string,
+  workspace: AuthWorkspace,
+  projects: Array<Pick<ProjectCandidate, "id">>,
+): Promise<ProjectListResult["localBinding"]> {
+  const pin = await readLocalResolutionPin(cwd);
+  if (pin.kind === "present") {
+    return pin.pin.workspaceId === workspace.id && projects.some((project) => project.id === pin.pin.projectId)
+      ? { status: "linked" }
+      : { status: "invalid" };
+  }
+  if (pin.kind === "invalid") {
+    return { status: "invalid" };
+  }
+  return { status: "not-linked" };
+}
+
 export async function runProjectList(context: CommandContext): Promise<CommandSuccess<ProjectListResult>> {
   const authState = await requireAuthenticatedAuthState(context);
   const workspace = authState.workspace;
@@ -66,27 +85,48 @@ export async function runProjectList(context: CommandContext): Promise<CommandSu
     if (!client) {
       throw authRequiredError();
     }
+    const projects = sortProjects(await listRealWorkspaceProjects(client, workspace));
+    const localBinding = await readProjectListLocalBinding(context.runtime.cwd, workspace, projects);
+    const nextActions = buildProjectListNextActions(localBinding);
 
     return {
       command: "project.list",
       result: {
         workspace,
-        projects: sortProjects(await listRealWorkspaceProjects(client, workspace)).map(toProjectSummary),
+        projects: projects.map(toProjectSummary),
+        localBinding,
       },
       warnings: [],
       nextSteps: [],
+      nextActions,
     };
   }
 
   const projectUseCases = createProjectUseCases(createCliUseCaseGateways(context));
   const result = await projectUseCases.list(authState);
+  const localBinding = await readProjectListLocalBinding(context.runtime.cwd, workspace, result.projects);
+  const nextActions = buildProjectListNextActions(localBinding);
 
   return {
     command: "project.list",
-    result,
+    result: {
+      ...result,
+      localBinding,
+    },
     warnings: [],
     nextSteps: [],
+    nextActions,
   };
+}
+
+function buildProjectListNextActions(localBinding: ProjectListResult["localBinding"]) {
+  return localBinding?.status === "linked"
+    ? []
+    : buildProjectSetupNextActions({
+        reason: localBinding?.status === "invalid"
+          ? "This directory has an invalid local Project binding. Ask the user which Prisma Project to link before running Project-scoped commands."
+          : "This directory is not linked to a Prisma Project. Project list shows available Projects, but none is selected for this directory.",
+      });
 }
 
 export async function runProjectShow(
@@ -108,6 +148,13 @@ export async function runProjectShow(
     result,
     warnings: [],
     nextSteps: [],
+    nextActions: result.project === null
+      ? buildProjectSetupNextActions({
+          commandName: "project show",
+          suggestedProjectName: result.suggestedProjectName,
+          reason: "This directory is not linked to a Prisma Project. Package and directory names can suggest setup defaults, but they do not select a Project.",
+        })
+      : [],
   };
 }
 
