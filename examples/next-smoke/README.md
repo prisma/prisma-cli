@@ -16,7 +16,7 @@ pnpm prisma app deploy --app next-smoke
 pnpm prisma app list-deploys
 pnpm prisma app show-deploy <deployment-id>
 pnpm prisma app deploy
-pnpm prisma app deploy --app next-smoke --build-type nextjs --http-port 3000
+pnpm prisma app deploy --app next-smoke --framework nextjs --http-port 3000
 ```
 
 What this validates:
@@ -26,7 +26,7 @@ What this validates:
 - first deploy bootstraps an example-local `prisma.config.ts` when no project is linked
 - first deploy can create or reuse the `next-smoke` app
 - first deploy uses the Next.js standalone build path without needing `--http-port`
-- `--build-type nextjs --http-port 3000` is available as an explicit repair or override path
+- `--framework nextjs --http-port 3000` is available as an explicit repair or override path
 - second deploy reuses saved local app selection from `.prisma/cli/state.json`
 
 Local files intentionally ignored in this example:
