@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { stageCliPublishPackage } from "../../../scripts/prepare-cli-publish.mjs";
+import { isTransientPkgPrNewWorkflowError } from "../../../scripts/publish-cli-pr-preview.mjs";
 
 function createTempCwd(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), "prisma-cli-"));
@@ -162,5 +163,27 @@ describe("prepare cli publish", () => {
 
     expect(topLevelFiles.sort()).toEqual(["LICENSE", "README.md", "dist", "package.json"]);
     expect(distFiles).toEqual(["cli.js"]);
+  });
+});
+
+describe("publish cli pr preview", () => {
+  it("retries only the transient pkg.pr.new workflow registration race", () => {
+    expect(
+      isTransientPkgPrNewWorkflowError(
+        'Check failed (404): {"url":"/check","statusCode":404,"statusMessage":"Not Found","message":"There is no workflow defined for yP4Cr6lrKy","stack":""}',
+      ),
+    ).toBe(true);
+
+    expect(
+      isTransientPkgPrNewWorkflowError(
+        'Publishing failed (400): {"message":"package.json is invalid"}',
+      ),
+    ).toBe(false);
+
+    expect(
+      isTransientPkgPrNewWorkflowError(
+        'Check failed (404): {"message":"The app https://github.com/apps/pkg-pr-new is not installed on prisma/prisma-cli."}',
+      ),
+    ).toBe(false);
   });
 });
