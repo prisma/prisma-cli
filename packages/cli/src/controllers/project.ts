@@ -8,9 +8,11 @@ import {
 } from "../adapters/git";
 import { requireComputeAuth } from "../lib/auth/guard";
 import {
+  inspectProjectBinding,
   resolveProjectTarget,
   sortProjects,
   type ProjectCandidate,
+  type ResolvedProjectTarget,
 } from "../lib/project/resolution";
 import {
   bindProjectToDirectory,
@@ -211,7 +213,7 @@ export async function runGitConnect(
       throw authRequiredError();
     }
 
-    const target = await resolveProjectShowInRealMode(context, workspace, options.project);
+    const target = await resolveRequiredProjectInRealMode(context, workspace, options.project, "git connect");
     const repository = await resolveRepositoryForConnect(context, gitUrl);
     const api = client as unknown as SourceRepositoryApiClient;
     const existing = await readFirstSourceRepository(api, target.project.id);
@@ -258,7 +260,7 @@ export async function runGitConnect(
     };
   }
 
-  const target = await resolveProjectShowInFixtureMode(context, workspace, options.project);
+  const target = await resolveRequiredProjectInFixtureMode(context, workspace, options.project, "git connect");
   const repository = await resolveRepositoryForConnect(context, gitUrl);
   const existingConnection = await context.stateStore.readRepositoryConnection(target.project.id);
 
@@ -308,7 +310,7 @@ export async function runGitDisconnect(
       throw authRequiredError();
     }
 
-    const target = await resolveProjectShowInRealMode(context, workspace, options.project);
+    const target = await resolveRequiredProjectInRealMode(context, workspace, options.project, "git disconnect");
     const api = client as unknown as SourceRepositoryApiClient;
     const existing = await readFirstSourceRepository(api, target.project.id);
 
@@ -339,7 +341,7 @@ export async function runGitDisconnect(
     };
   }
 
-  const target = await resolveProjectShowInFixtureMode(context, workspace, options.project);
+  const target = await resolveRequiredProjectInFixtureMode(context, workspace, options.project, "git disconnect");
   const existingConnection = await context.stateStore.readRepositoryConnection(target.project.id);
 
   if (!existingConnection) {
@@ -369,12 +371,32 @@ async function resolveProjectShowInRealMode(
     throw authRequiredError();
   }
 
+  return inspectProjectBinding({
+    context,
+    workspace,
+    explicitProject,
+    listProjects: () => listRealWorkspaceProjects(client, workspace),
+    commandName: "project show",
+  });
+}
+
+async function resolveRequiredProjectInRealMode(
+  context: CommandContext,
+  workspace: AuthWorkspace,
+  explicitProject: string | undefined,
+  commandName: string,
+): Promise<ResolvedProjectTarget> {
+  const client = await requireComputeAuth(context.runtime.env);
+  if (!client) {
+    throw authRequiredError();
+  }
+
   return resolveProjectTarget({
     context,
     workspace,
     explicitProject,
     listProjects: () => listRealWorkspaceProjects(client, workspace),
-    remember: false,
+    commandName,
   });
 }
 
@@ -395,12 +417,27 @@ async function resolveProjectShowInFixtureMode(
   workspace: AuthWorkspace,
   explicitProject: string | undefined,
 ): Promise<ProjectShowResult> {
+  return inspectProjectBinding({
+    context,
+    workspace,
+    explicitProject,
+    listProjects: async () => listFixtureWorkspaceProjects(context, workspace),
+    commandName: "project show",
+  });
+}
+
+async function resolveRequiredProjectInFixtureMode(
+  context: CommandContext,
+  workspace: AuthWorkspace,
+  explicitProject: string | undefined,
+  commandName: string,
+): Promise<ResolvedProjectTarget> {
   return resolveProjectTarget({
     context,
     workspace,
     explicitProject,
     listProjects: async () => listFixtureWorkspaceProjects(context, workspace),
-    remember: false,
+    commandName,
   });
 }
 
@@ -1137,11 +1174,4 @@ function repoConnectionFixForStatus(status: number): string {
   }
 
   return "Re-run with --trace for the underlying API response details.";
-}
-
-function toProjectSummary(project: ProjectCandidate) {
-  return {
-    id: project.id,
-    name: project.name,
-  };
 }

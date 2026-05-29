@@ -360,7 +360,9 @@ export async function runAppListDeploys(
 ): Promise<CommandSuccess<AppListDeploysResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef, {
+    commandName: "app list-deploys",
+  });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
@@ -419,7 +421,9 @@ export async function runAppShow(
 ): Promise<CommandSuccess<AppShowResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef, {
+    commandName: "app show",
+  });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
@@ -536,7 +540,9 @@ export async function runAppOpen(
 ): Promise<CommandSuccess<AppOpenResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef, {
+    commandName: "app open",
+  });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
@@ -616,7 +622,7 @@ export async function runAppDomainAdd(
   },
 ): Promise<CommandSuccess<AppDomainAddResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
-  const target = await resolveAppDomainTarget(context, options);
+  const target = await resolveAppDomainTarget(context, options, `app domain add ${normalizedHostname}`);
 
   const added = await target.provider.addDomain({
     appId: target.app.id,
@@ -650,7 +656,7 @@ export async function runAppDomainShow(
   },
 ): Promise<CommandSuccess<AppDomainShowResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
-  const target = await resolveAppDomainTarget(context, options);
+  const target = await resolveAppDomainTarget(context, options, `app domain show ${normalizedHostname}`);
   const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "show");
   const detail = await target.provider.showDomain(domain.id).catch((error) => {
     throw domainCommandError("show", error, normalizedHostname);
@@ -677,7 +683,7 @@ export async function runAppDomainRemove(
   },
 ): Promise<CommandSuccess<AppDomainRemoveResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
-  const target = await resolveAppDomainTarget(context, options);
+  const target = await resolveAppDomainTarget(context, options, `app domain remove ${normalizedHostname}`);
   const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "remove");
 
   await confirmDomainRemoval(context, target.resultTarget, normalizedHostname);
@@ -708,7 +714,7 @@ export async function runAppDomainRetry(
   },
 ): Promise<CommandSuccess<AppDomainRetryResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
-  const target = await resolveAppDomainTarget(context, options);
+  const target = await resolveAppDomainTarget(context, options, `app domain retry ${normalizedHostname}`);
   const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "retry");
   const retried = await target.provider.retryDomain(domain.id).catch((error) => {
     throw domainCommandError("retry", error, normalizedHostname);
@@ -737,7 +743,7 @@ export async function runAppDomainWait(
 ): Promise<void> {
   const normalizedHostname = normalizeDomainHostname(hostname);
   const timeoutMs = parseDomainWaitTimeout(options?.timeout);
-  const target = await resolveAppDomainTarget(context, options);
+  const target = await resolveAppDomainTarget(context, options, `app domain wait ${normalizedHostname}`);
   const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "wait");
 
   if (!context.flags.json && !context.flags.quiet) {
@@ -817,7 +823,9 @@ export async function runAppLogs(
 ): Promise<void> {
   ensurePreviewAppMode(context);
 
-  const { provider, target: resolvedTarget, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const { provider, target: resolvedTarget, projectId } = await requireProviderAndProjectContext(context, projectRef, {
+    commandName: "app logs",
+  });
   const target = deploymentId
     ? await resolveExplicitLogDeployment(context, provider, projectId, resolvedTarget.branch.name, appName, deploymentId)
     : await resolveLiveLogDeployment(context, provider, projectId, resolvedTarget.branch.name, appName);
@@ -1013,7 +1021,9 @@ export async function runAppPromote(
 ): Promise<CommandSuccess<AppPromoteResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef, {
+    commandName: "app promote",
+  });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "promote");
   const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
@@ -1079,7 +1089,9 @@ export async function runAppRollback(
 ): Promise<CommandSuccess<AppRollbackResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef, {
+    commandName: "app rollback",
+  });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "rollback");
   const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
@@ -1146,7 +1158,9 @@ export async function runAppRemove(
 ): Promise<CommandSuccess<AppRemoveResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef, {
+    commandName: "app remove",
+  });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "remove");
 
@@ -1186,6 +1200,7 @@ async function resolveAppDomainTarget(
     projectRef?: string;
     branchName?: string;
   },
+  commandName = "app domain",
 ): Promise<ResolvedAppDomainTarget> {
   ensurePreviewAppMode(context);
 
@@ -1204,18 +1219,11 @@ async function resolveAppDomainTarget(
 
   const envProjectId = readDeployEnvOverride(context, PRISMA_PROJECT_ID_ENV_VAR);
   const envAppId = readDeployEnvOverride(context, PRISMA_APP_ID_ENV_VAR);
-  const skipLocalPin = Boolean(envProjectId || options?.projectRef);
-  const localPin = skipLocalPin
-    ? ({ kind: "missing" } satisfies LocalResolutionPinReadResult)
-    : await readLocalResolutionPin(context.runtime.cwd);
-  if (!skipLocalPin && localPin.kind === "invalid") {
-    throw localResolutionPinStaleError();
-  }
 
-  const { provider, target, projectId } = await requireProviderAndDeployProjectContext(context, options?.projectRef, {
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, options?.projectRef, {
     branch,
+    commandName,
     envProjectId,
-    localPin,
   });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveDomainAppSelection(context, projectId, apps, {
@@ -2102,9 +2110,9 @@ async function listApps(
         domain: "project",
         summary: "Project not found",
         why: `The resolved project "${projectId}" does not exist in the authenticated workspace or is no longer accessible.`,
-        fix: "Pass --project <id-or-name>, or run prisma-cli project show to inspect resolution for this directory.",
+        fix: "Pass --project <id-or-name>, or run prisma-cli project show to inspect this directory's binding.",
         exitCode: 1,
-        nextSteps: ["prisma-cli project show", "prisma-cli app deploy --project <id-or-name>"],
+        nextSteps: ["prisma-cli project show", "prisma-cli project link <id-or-name>"],
       });
     }
 
@@ -2169,6 +2177,8 @@ async function requireProviderAndProjectContext(
   explicitProject: string | undefined,
   options?: {
     branch?: ResolvedDeployBranch;
+    commandName?: string;
+    envProjectId?: string;
   },
 ): Promise<{
   client: ManagementApiClient;
@@ -2217,6 +2227,7 @@ async function resolveProjectContext(
   explicitProject: string | undefined,
   options?: {
     branch?: ResolvedDeployBranch;
+    commandName?: string;
   },
 ): Promise<ResolvedAppProjectContext> {
   const authState = await requireAuthenticatedAuthState(context);
@@ -2228,8 +2239,9 @@ async function resolveProjectContext(
     context,
     workspace: authState.workspace,
     explicitProject,
+    envProjectId: options?.envProjectId,
     listProjects: () => listRealWorkspaceProjects(client, authState.workspace!),
-    remember: true,
+    commandName: options?.commandName,
   });
   const branch = options?.branch ?? await resolveDeployBranch(context, undefined);
 
@@ -3222,12 +3234,12 @@ function localResolutionPinStaleError(): CliError {
     domain: "project",
     summary: "Local project binding is stale",
     why: `The target recorded in ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} is no longer available in the selected workspace.`,
-    fix: `Delete ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} and re-run to re-bootstrap.`,
+    fix: `Delete ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH}, then choose a Project explicitly.`,
     meta: {
       pinPath: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
     },
     exitCode: 1,
-    nextSteps: ["prisma-cli app deploy"],
+    nextSteps: ["prisma-cli project list", "prisma-cli project link <id-or-name>", "prisma-cli app deploy --project <id-or-name>"],
   });
 }
 

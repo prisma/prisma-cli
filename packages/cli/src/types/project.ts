@@ -10,16 +10,14 @@ export type ProjectSource =
   | "env"
   | "local-pin"
   | "platform-mapping"
-  | "remembered-local"
-  | "package-name"
-  | "directory-name"
   | "created"
-  | "prompt";
+  | "prompt"
+  | "unbound";
 
 export interface ProjectResolution {
   projectSource: ProjectSource;
   targetName?: string | null;
-  targetNameSource?: "explicit" | "env" | "local-pin" | "package-name" | "directory-name" | "remembered-local" | "platform-mapping" | "prompt";
+  targetNameSource?: "explicit" | "env" | "local-pin" | "package-name" | "directory-name" | "platform-mapping" | "prompt";
 }
 
 export interface ProjectListResult {
@@ -27,11 +25,28 @@ export interface ProjectListResult {
   projects: ProjectSummary[];
 }
 
-export interface ProjectShowResult {
+export interface ProjectSetupSuggestion {
+  suggestedProjectName: string;
+  suggestedProjectNameSource: "package-name" | "directory-name";
+  candidates: ProjectSummary[];
+  recoveryCommands: string[];
+}
+
+export interface BoundProjectShowResult {
   workspace: AuthWorkspace;
   project: ProjectSummary;
   resolution: ProjectResolution;
 }
+
+export interface UnboundProjectShowResult extends ProjectSetupSuggestion {
+  workspace: AuthWorkspace;
+  project: null;
+  resolution: ProjectResolution & {
+    projectSource: "unbound";
+  };
+}
+
+export type ProjectShowResult = BoundProjectShowResult | UnboundProjectShowResult;
 
 export interface ProjectSetupResult {
   workspace: AuthWorkspace;
@@ -70,6 +85,6 @@ export interface GitRepositoryConnection {
   updatedAt: string | null;
 }
 
-export interface ProjectRepositoryConnectionResult extends ProjectShowResult {
-  repositoryConnection: GitRepositoryConnection | null;
+export interface ProjectRepositoryConnectionResult extends BoundProjectShowResult {
+  repositoryConnection: GitRepositoryConnection;
 }

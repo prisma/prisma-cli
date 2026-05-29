@@ -54,9 +54,29 @@ export function renderProjectShow(
   descriptor: CommandDescriptor,
   result: ProjectShowResult,
 ): string[] {
+  if (result.project === null) {
+    return renderShow(
+      {
+        title: "No Project linked to this directory.",
+        descriptor,
+        fields: [
+          { key: "workspace", value: result.workspace.name },
+          { key: "project", value: "unbound", tone: "warning" },
+          {
+            key: "suggested",
+            value: `${result.suggestedProjectName} (${formatSuggestionSource(result.suggestedProjectNameSource)})`,
+          },
+          { key: "match", value: formatCandidateList(result.candidates) },
+          { key: "next", value: result.recoveryCommands[0] ?? "prisma-cli project link <id-or-name>" },
+        ],
+      },
+      context.ui,
+    );
+  }
+
   return renderShow(
     {
-      title: "Showing the project Prisma resolves for this directory.",
+      title: "Showing this directory's Project binding.",
       descriptor,
       fields: [
         { key: "workspace", value: result.workspace.name },
@@ -149,17 +169,29 @@ function formatProjectSource(source: ProjectShowResult["resolution"]["projectSou
       return "local pin";
     case "platform-mapping":
       return "platform mapping";
-    case "remembered-local":
-      return "remembered local context";
-    case "package-name":
-      return "package name";
-    case "directory-name":
-      return "directory name";
     case "created":
       return "created";
     case "prompt":
       return "prompt";
+    case "unbound":
+      return "unbound";
   }
+}
+
+function formatSuggestionSource(source: "package-name" | "directory-name"): string {
+  switch (source) {
+    case "package-name":
+      return "package name";
+    case "directory-name":
+      return "directory name";
+  }
+}
+
+function formatCandidateList(candidates: Array<{ name: string }>): string {
+  if (candidates.length === 0) {
+    return "none";
+  }
+  return candidates.map((project) => project.name).join(", ");
 }
 
 function formatGitConnectionDetail(status: GitRepositoryConnection["status"]): string {

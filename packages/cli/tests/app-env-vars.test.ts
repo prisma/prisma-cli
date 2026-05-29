@@ -1,4 +1,5 @@
 import path from "node:path";
+import { writeFile } from "node:fs/promises";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -126,6 +127,96 @@ describe("app env vars", () => {
         API_TOKEN: "",
       }),
     ).toEqual(["API_TOKEN", "DATABASE_URL", "ZOO"]);
+  });
+
+  it("project env list requires explicit or durable Project binding", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runEnvList } = await import("../src/controllers/app-env");
+    const cwd = await createTempCwd();
+    await writeFile(path.join(cwd, "package.json"), `${JSON.stringify({ name: "acme-dashboard" }, null, 2)}\n`);
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runEnvList(context, {})).rejects.toMatchObject({
+      code: "PROJECT_SETUP_REQUIRED",
+      domain: "project",
+      meta: {
+        suggestedProjectName: "acme-dashboard",
+        suggestedProjectNameSource: "package-name",
+        candidates: [
+          {
+            id: "proj_123",
+            name: "Acme Dashboard",
+          },
+        ],
+        recoveryCommands: expect.arrayContaining([
+          "prisma-cli project link <id-or-name>",
+          "prisma-cli project env list --project <id-or-name>",
+        ]),
+      },
+    });
+  });
+
+  it("project env list uses an explicit Project", async () => {
+    const client = {
+      token: "token",
+      GET: vi.fn().mockImplementation((pathName: string) => {
+        if (pathName === "/v1/projects") {
+          return createProjectClient().GET(pathName);
+        }
+        if (pathName === "/v1/environment-variables") {
+          return {
+            data: {
+              data: [],
+              pagination: {
+                hasMore: false,
+                nextCursor: null,
+              },
+            },
+          };
+        }
+        throw new Error(`Unexpected path ${pathName}`);
+      }),
+    };
+    const requireComputeAuth = vi.fn().mockResolvedValue(client);
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runEnvList } = await import("../src/controllers/app-env");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runEnvList(context, { projectRef: "proj_123" });
+
+    expect(result.result).toMatchObject({
+      projectId: "proj_123",
+      variables: [],
+    });
   });
 
   it("passes env vars to provider deploy without surfacing values", async () => {
