@@ -603,6 +603,7 @@ Behavior:
 - resolves project context from `--project`, `--create-project`, `PRISMA_PROJECT_ID`, `.prisma/local.json`, durable platform mapping, or an interactive setup choice
 - does not infer and create Project context from `package.json#name` or current directory name without explicit setup
 - when no Project is resolved in interactive mode, asks which Project the directory should use:
+
   ```text
   ? Which Project should this directory use?
     ❯ Acme Dashboard
@@ -610,6 +611,7 @@ Behavior:
       Create a new Project
       Cancel
   ```
+
 - when "Create a new Project" is selected, prompts for a Project name with the package/directory name as a suggestion
 - when no Project is resolved in `--json` / `--no-interactive` mode, fails with `PROJECT_SETUP_REQUIRED`
 - `--yes` alone does not choose Project scope; use `--project` or `--create-project`

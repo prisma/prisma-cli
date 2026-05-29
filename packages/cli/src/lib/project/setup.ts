@@ -87,8 +87,8 @@ export function projectCreateFailedError(
 
   if (status === 401 || status === 403) {
     return new CliError({
-      code: "AUTH_FORBIDDEN",
-      domain: "auth",
+      code: "PROJECT_CREATE_FAILED",
+      domain: "project",
       summary: `Could not create Project "${projectName}"`,
       why: `The platform rejected the Project create in workspace "${workspace.name}" (HTTP ${status}).`,
       fix: options.permissionFix,

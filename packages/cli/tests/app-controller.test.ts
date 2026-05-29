@@ -2281,7 +2281,7 @@ describe("app controller", () => {
     await expect(readPrismaConfig(cwd)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("surfaces AUTH_FORBIDDEN when explicit deploy-time project creation is rejected with 401", async () => {
+  it("returns PROJECT_CREATE_FAILED when explicit deploy-time project creation is rejected with 401", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const createProject = vi.fn().mockRejectedValue(new Error("Authentication failed (HTTP 401)"));
 
@@ -2317,8 +2317,8 @@ describe("app controller", () => {
       createProjectName: "next-smoke",
       framework: "hono",
     })).rejects.toMatchObject({
-      code: "AUTH_FORBIDDEN",
-      domain: "auth",
+      code: "PROJECT_CREATE_FAILED",
+      domain: "project",
       summary: 'Could not create Project "next-smoke"',
       why: expect.stringContaining("HTTP 401"),
       fix: expect.stringContaining("--project"),
