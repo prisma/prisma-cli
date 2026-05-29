@@ -1,3 +1,6 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 beforeEach(() => {
@@ -62,6 +65,15 @@ function expectNoApiCalls(client: MockClient) {
   expect(client.POST).not.toHaveBeenCalled();
   expect(client.PATCH).not.toHaveBeenCalled();
   expect(client.DELETE).not.toHaveBeenCalled();
+}
+
+async function writeLocalPin(cwd: string, projectId = "proj_123") {
+  await mkdir(path.join(cwd, ".prisma"), { recursive: true });
+  await writeFile(
+    path.join(cwd, ".prisma/local.json"),
+    `${JSON.stringify({ workspaceId: "ws_123", projectId }, null, 2)}\n`,
+    "utf8",
+  );
 }
 
 async function loadControllers(client: MockClient, projectId: string) {
@@ -144,6 +156,7 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvAdd(
@@ -224,6 +237,7 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -266,6 +280,7 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvAdd(
@@ -336,6 +351,7 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await controllers.runEnvAdd(context, "DATABASE_URL=postgresql://branch", {
@@ -377,6 +393,7 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -406,6 +423,7 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -424,6 +442,7 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -442,6 +461,7 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -457,6 +477,7 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -474,6 +495,7 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -505,6 +527,7 @@ describe("env update", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvUpdate(
@@ -538,6 +561,7 @@ describe("env update", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -587,6 +611,7 @@ describe("env update", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await controllers.runEnvUpdate(
@@ -609,6 +634,7 @@ describe("env update", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -637,6 +663,7 @@ describe("env list", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvList(context, {
@@ -673,6 +700,7 @@ describe("env list", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvList(context, {});
@@ -728,6 +756,7 @@ describe("env list", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvList(context, {
@@ -768,6 +797,7 @@ describe("env remove", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvRemove(context, "STRIPE_KEY", {
@@ -797,6 +827,7 @@ describe("env remove", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -844,6 +875,7 @@ describe("env remove", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await controllers.runEnvRemove(context, "DATABASE_URL", {

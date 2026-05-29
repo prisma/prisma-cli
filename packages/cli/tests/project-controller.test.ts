@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 describe("project controller", () => {
-  it("returns PROJECT_UNRESOLVED when automatic resolution cannot choose a project", async () => {
+  it("returns an unbound binding inspection when no durable Project source exists", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
@@ -32,9 +32,18 @@ describe("project controller", () => {
     });
 
     const { runProjectShow } = await import("../src/controllers/project");
-    await expect(runProjectShow(context, undefined)).rejects.toMatchObject({
-      code: "PROJECT_UNRESOLVED",
-      domain: "project",
+    const result = await runProjectShow(context, undefined);
+
+    expect(result.result).toMatchObject({
+      project: null,
+      resolution: {
+        projectSource: "unbound",
+      },
+      candidates: [],
+      recoveryCommands: [
+        "prisma-cli project link <id-or-name>",
+        "prisma-cli project show --project <id-or-name>",
+      ],
     });
   });
 

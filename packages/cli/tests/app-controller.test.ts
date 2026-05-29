@@ -964,7 +964,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
         PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
@@ -2593,6 +2592,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppListDeploys } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -2626,6 +2626,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppListDeploys } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -2688,6 +2689,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppListDeploys } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -2712,6 +2714,56 @@ describe("app controller", () => {
     ]);
   });
 
+  it("show requires Project setup even when package name matches a Project", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        createProject: vi.fn(),
+        listApps,
+        deployApp: vi.fn(),
+        listDeployments: vi.fn(),
+        promoteDeployment: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppShow } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writePackageJson(cwd, { name: "acme-dashboard" });
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppShow(context, "hello-world")).rejects.toMatchObject({
+      code: "PROJECT_SETUP_REQUIRED",
+      domain: "project",
+      meta: {
+        suggestedProjectName: "acme-dashboard",
+        suggestedProjectNameSource: "package-name",
+        candidates: [
+          {
+            id: "proj_123",
+            name: "Acme Dashboard",
+          },
+        ],
+      },
+    });
+    expect(listApps).not.toHaveBeenCalled();
+  });
+
   it("show returns undeployed state when the resolved project has no apps", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
@@ -2733,6 +2785,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppShow } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -2808,6 +2861,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppShow } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -2907,6 +2961,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppShow } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -3178,6 +3233,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppOpen } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -3246,6 +3302,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppOpen } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -3312,6 +3369,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppOpen } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -3375,6 +3433,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppOpen } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -3440,6 +3499,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppPromote } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -3515,6 +3575,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppPromote } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -3579,6 +3640,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppRollback } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -3662,6 +3724,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppRollback } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -3741,6 +3804,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppRollback } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -3802,6 +3866,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppRollback } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -3914,6 +3979,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppLogs } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -3965,6 +4031,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppLogs } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context, stdout } = await createTestCommandContext({
       cwd,
@@ -4011,6 +4078,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppLogs } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -4058,6 +4126,7 @@ describe("app controller", () => {
 
     const { createTempCwd, executeCli } = await import("./helpers");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
 
     const result = await executeCli({
@@ -4121,6 +4190,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppRemove } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -4191,6 +4261,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppRemove } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -4238,6 +4309,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppRemove } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -4282,6 +4354,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppRemove } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -4330,6 +4403,7 @@ describe("app controller", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppRemove } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
