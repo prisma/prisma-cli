@@ -180,10 +180,10 @@ export function buildProjectSetupNextActions(options: {
   createCommand?: string;
   reason?: string;
 } = {}): NextAction[] {
-  const commands = ["prisma-cli project list", "prisma-cli project link <id-or-name>"];
-  if (options.commandName) {
-    commands.push(`prisma-cli ${options.commandName} --project <id-or-name>`);
-  }
+  const recoveryCommands = buildProjectRecoveryCommands(options.commandName);
+  const linkCommand = recoveryCommands[0] ?? "prisma-cli project link <id-or-name>";
+  const retryCommand = recoveryCommands[1];
+  const commands = ["prisma-cli project list", ...recoveryCommands];
 
   const actions: NextAction[] = [
     {
@@ -198,7 +198,7 @@ export function buildProjectSetupNextActions(options: {
       kind: "run-command",
       journey: "project-setup",
       label: "Link the chosen Project",
-      command: "prisma-cli project link <id-or-name>",
+      command: linkCommand,
       reason: "Linking writes the durable local Project binding for this directory.",
     },
   ];
@@ -220,7 +220,7 @@ export function buildProjectSetupNextActions(options: {
       kind: "run-command",
       journey: "recover",
       label: "Retry with an explicit Project",
-      command: `prisma-cli ${options.commandName} --project <id-or-name>`,
+      command: retryCommand ?? `prisma-cli ${options.commandName} --project <id-or-name>`,
     });
   }
 
