@@ -1753,7 +1753,7 @@ describe("app controller", () => {
       meta: {
         pinPath: ".prisma/local.json",
       },
-      fix: "Delete .prisma/local.json and re-run to re-bootstrap.",
+      fix: "Delete .prisma/local.json, then choose a Project explicitly.",
     });
     expect(listApps).not.toHaveBeenCalled();
     expect(deployApp).not.toHaveBeenCalled();

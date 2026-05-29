@@ -86,5 +86,5 @@ export interface GitRepositoryConnection {
 }
 
 export interface ProjectRepositoryConnectionResult extends BoundProjectShowResult {
-  repositoryConnection: GitRepositoryConnection | null;
+  repositoryConnection: GitRepositoryConnection;
 }

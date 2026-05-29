@@ -19,11 +19,8 @@ export interface ProjectCandidate extends ProjectSummary {
   workspace: AuthWorkspace;
 }
 
-export interface ResolvedProjectTarget {
-  workspace: AuthWorkspace;
-  project: ProjectSummary;
-  resolution: ProjectResolution;
-}
+export type ResolvedProjectTarget = BoundProjectShowResult;
+type BoundProjectSource = Exclude<ProjectSource, "unbound">;
 
 export type InferredTargetNameSource = "package-name" | "directory-name";
 
@@ -43,51 +40,10 @@ export interface ResolveProjectOptions {
 
 export async function resolveProjectTarget(options: ResolveProjectOptions): Promise<ResolvedProjectTarget> {
   const projects = await options.listProjects();
+  const target = await resolveBoundProjectTarget(options, projects, { allowEnvProjectId: true });
 
-  if (options.explicitProject) {
-    return resolvedTarget(options.workspace, resolveExplicitProject(options.explicitProject, projects, options.workspace), "explicit", {
-      targetName: options.explicitProject,
-      targetNameSource: "explicit",
-    });
-  }
-
-  if (options.envProjectId) {
-    const project = projects.find((candidate) => candidate.id === options.envProjectId);
-    if (!project) {
-      throw projectNotFoundError(options.envProjectId, options.workspace);
-    }
-    return resolvedTarget(options.workspace, project, "env", {
-      targetName: options.envProjectId,
-      targetNameSource: "env",
-    });
-  }
-
-  const localPin = await readLocalResolutionPin(options.context.runtime.cwd);
-  if (localPin.kind === "invalid") {
-    throw localStateStaleError();
-  }
-  if (localPin.kind === "present") {
-    if (localPin.pin.workspaceId !== options.workspace.id) {
-      throw localStateStaleError();
-    }
-
-    const project = projects.find((candidate) => candidate.id === localPin.pin.projectId);
-    if (!project) {
-      throw localStateStaleError();
-    }
-
-    return resolvedTarget(options.workspace, project, "local-pin", {
-      targetName: project.name,
-      targetNameSource: "local-pin",
-    });
-  }
-
-  const platformMapping = await resolveDurablePlatformMapping();
-  if (platformMapping && platformMapping.workspace.id === options.workspace.id) {
-    return resolvedTarget(options.workspace, platformMapping, "platform-mapping", {
-      targetName: platformMapping.name,
-      targetNameSource: "platform-mapping",
-    });
+  if (target) {
+    return target;
   }
 
   throw await projectSetupRequiredError({
@@ -99,40 +55,10 @@ export async function resolveProjectTarget(options: ResolveProjectOptions): Prom
 
 export async function inspectProjectBinding(options: ResolveProjectOptions): Promise<ProjectShowResult> {
   const projects = await options.listProjects();
+  const target = await resolveBoundProjectTarget(options, projects, { allowEnvProjectId: false });
 
-  if (options.explicitProject) {
-    return resolvedTarget(options.workspace, resolveExplicitProject(options.explicitProject, projects, options.workspace), "explicit", {
-      targetName: options.explicitProject,
-      targetNameSource: "explicit",
-    });
-  }
-
-  const localPin = await readLocalResolutionPin(options.context.runtime.cwd);
-  if (localPin.kind === "invalid") {
-    throw localStateStaleError();
-  }
-  if (localPin.kind === "present") {
-    if (localPin.pin.workspaceId !== options.workspace.id) {
-      throw localStateStaleError();
-    }
-
-    const project = projects.find((candidate) => candidate.id === localPin.pin.projectId);
-    if (!project) {
-      throw localStateStaleError();
-    }
-
-    return resolvedTarget(options.workspace, project, "local-pin", {
-      targetName: project.name,
-      targetNameSource: "local-pin",
-    });
-  }
-
-  const platformMapping = await resolveDurablePlatformMapping();
-  if (platformMapping && platformMapping.workspace.id === options.workspace.id) {
-    return resolvedTarget(options.workspace, platformMapping, "platform-mapping", {
-      targetName: platformMapping.name,
-      targetNameSource: "platform-mapping",
-    });
+  if (target) {
+    return target;
   }
 
   return {
@@ -233,7 +159,7 @@ export async function projectSetupRequiredError(options: {
     summary: "Choose a Project before running this command",
     why: `This directory is not linked to a Prisma Project, and ${commandLabel} will not choose one from package or directory names.`,
     fix: "Link the directory to an existing Project, or pass --project <id-or-name> for this command.",
-    meta: suggestion,
+    meta: { ...suggestion },
     exitCode: 1,
     nextSteps: ["prisma-cli project list", ...suggestion.recoveryCommands],
   });
@@ -307,10 +233,66 @@ export async function resolveDurablePlatformMapping(): Promise<ProjectCandidate 
   return null;
 }
 
+async function resolveBoundProjectTarget(
+  options: ResolveProjectOptions,
+  projects: ProjectCandidate[],
+  settings: {
+    allowEnvProjectId: boolean;
+  },
+): Promise<BoundProjectShowResult | null> {
+  if (options.explicitProject) {
+    return resolvedTarget(options.workspace, resolveExplicitProject(options.explicitProject, projects, options.workspace), "explicit", {
+      targetName: options.explicitProject,
+      targetNameSource: "explicit",
+    });
+  }
+
+  if (settings.allowEnvProjectId && options.envProjectId) {
+    const project = projects.find((candidate) => candidate.id === options.envProjectId);
+    if (!project) {
+      throw projectNotFoundError(options.envProjectId, options.workspace);
+    }
+    return resolvedTarget(options.workspace, project, "env", {
+      targetName: options.envProjectId,
+      targetNameSource: "env",
+    });
+  }
+
+  const localPin = await readLocalResolutionPin(options.context.runtime.cwd);
+  if (localPin.kind === "invalid") {
+    throw localStateStaleError();
+  }
+  if (localPin.kind === "present") {
+    if (localPin.pin.workspaceId !== options.workspace.id) {
+      throw localStateStaleError();
+    }
+
+    const project = projects.find((candidate) => candidate.id === localPin.pin.projectId);
+    if (!project) {
+      throw localStateStaleError();
+    }
+
+    return resolvedTarget(options.workspace, project, "local-pin", {
+      targetName: project.name,
+      targetNameSource: "local-pin",
+    });
+  }
+
+  const platformMapping = await resolveDurablePlatformMapping();
+  if (platformMapping && platformMapping.workspace.id === options.workspace.id) {
+    return resolvedTarget(options.workspace, platformMapping, "platform-mapping", {
+      targetName: platformMapping.name,
+      targetNameSource: "platform-mapping",
+    });
+  }
+
+  return null;
+}
+
 function resolvedTarget(
   workspace: AuthWorkspace,
   project: ProjectCandidate,
-  projectSource: ProjectSource,
+  projectSource: BoundProjectSource,
   resolutionDetails?: Omit<ProjectResolution, "projectSource">,
 ): BoundProjectShowResult {
   return {

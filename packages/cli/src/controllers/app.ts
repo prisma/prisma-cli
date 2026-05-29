@@ -2232,6 +2232,7 @@ async function resolveProjectContext(
   explicitProject: string | undefined,
   options?: {
     branch?: ResolvedDeployBranch;
+    commandName?: string;
   },
 ): Promise<ResolvedAppProjectContext> {
   const authState = await requireAuthenticatedAuthState(context);
@@ -3237,12 +3238,12 @@ function localResolutionPinStaleError(): CliError {
     domain: "project",
     summary: "Local project binding is stale",
     why: `The target recorded in ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} is no longer available in the selected workspace.`,
-    fix: `Delete ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} and re-run to re-bootstrap.`,
+    fix: `Delete ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH}, then choose a Project explicitly.`,
     meta: {
       pinPath: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
     },
     exitCode: 1,
-    nextSteps: ["prisma-cli app deploy"],
+    nextSteps: ["prisma-cli project list", "prisma-cli project link <id-or-name>", "prisma-cli app deploy --project <id-or-name>"],
   });
 }
 

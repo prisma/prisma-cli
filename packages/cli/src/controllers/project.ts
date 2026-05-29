@@ -1175,10 +1175,3 @@ function repoConnectionFixForStatus(status: number): string {
 
   return "Re-run with --trace for the underlying API response details.";
 }
-
-function toProjectSummary(project: ProjectCandidate) {
-  return {
-    id: project.id,
-    name: project.name,
-  };
-}
