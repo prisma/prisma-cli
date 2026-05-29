@@ -431,6 +431,67 @@ describe("app controller", () => {
     expect(result.result.project.id).toBe("proj_123");
   });
 
+  it("domain add requires Project setup instead of entering interactive setup", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const createProject = vi.fn();
+    const listApps = vi.fn();
+    const addDomain = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      return {
+        ...actual,
+        createPreviewAppProvider: vi.fn(() => ({
+          createProject,
+          listApps,
+          addDomain,
+        })),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writePackageJson(cwd, { name: "acme-dashboard" });
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: true,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDomainAdd(context, "shop.acme.com", {
+      appName: "shop",
+    })).rejects.toMatchObject({
+      code: "PROJECT_SETUP_REQUIRED",
+      domain: "project",
+      meta: {
+        suggestedProjectName: "acme-dashboard",
+        suggestedProjectNameSource: "package-name",
+        candidates: [
+          {
+            id: "proj_123",
+            name: "Acme Dashboard",
+          },
+        ],
+        recoveryCommands: expect.arrayContaining([
+          "prisma-cli project link <id-or-name>",
+          "prisma-cli app domain add shop.acme.com --project <id-or-name>",
+        ]),
+      },
+    });
+    expect(createProject).not.toHaveBeenCalled();
+    expect(listApps).not.toHaveBeenCalled();
+    expect(addDomain).not.toHaveBeenCalled();
+  });
+
   it("domain add does not synthesize DNS records when the API omits them", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([

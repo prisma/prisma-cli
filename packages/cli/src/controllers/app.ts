@@ -622,7 +622,7 @@ export async function runAppDomainAdd(
   },
 ): Promise<CommandSuccess<AppDomainAddResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
-  const target = await resolveAppDomainTarget(context, options);
+  const target = await resolveAppDomainTarget(context, options, `app domain add ${normalizedHostname}`);
 
   const added = await target.provider.addDomain({
     appId: target.app.id,
@@ -656,7 +656,7 @@ export async function runAppDomainShow(
   },
 ): Promise<CommandSuccess<AppDomainShowResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
-  const target = await resolveAppDomainTarget(context, options);
+  const target = await resolveAppDomainTarget(context, options, `app domain show ${normalizedHostname}`);
   const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "show");
   const detail = await target.provider.showDomain(domain.id).catch((error) => {
     throw domainCommandError("show", error, normalizedHostname);
@@ -683,7 +683,7 @@ export async function runAppDomainRemove(
   },
 ): Promise<CommandSuccess<AppDomainRemoveResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
-  const target = await resolveAppDomainTarget(context, options);
+  const target = await resolveAppDomainTarget(context, options, `app domain remove ${normalizedHostname}`);
   const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "remove");
 
   await confirmDomainRemoval(context, target.resultTarget, normalizedHostname);
@@ -714,7 +714,7 @@ export async function runAppDomainRetry(
   },
 ): Promise<CommandSuccess<AppDomainRetryResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
-  const target = await resolveAppDomainTarget(context, options);
+  const target = await resolveAppDomainTarget(context, options, `app domain retry ${normalizedHostname}`);
   const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "retry");
   const retried = await target.provider.retryDomain(domain.id).catch((error) => {
     throw domainCommandError("retry", error, normalizedHostname);
@@ -743,7 +743,7 @@ export async function runAppDomainWait(
 ): Promise<void> {
   const normalizedHostname = normalizeDomainHostname(hostname);
   const timeoutMs = parseDomainWaitTimeout(options?.timeout);
-  const target = await resolveAppDomainTarget(context, options);
+  const target = await resolveAppDomainTarget(context, options, `app domain wait ${normalizedHostname}`);
   const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "wait");
 
   if (!context.flags.json && !context.flags.quiet) {
@@ -1200,6 +1200,7 @@ async function resolveAppDomainTarget(
     projectRef?: string;
     branchName?: string;
   },
+  commandName = "app domain",
 ): Promise<ResolvedAppDomainTarget> {
   ensurePreviewAppMode(context);
 
@@ -1218,18 +1219,11 @@ async function resolveAppDomainTarget(
 
   const envProjectId = readDeployEnvOverride(context, PRISMA_PROJECT_ID_ENV_VAR);
   const envAppId = readDeployEnvOverride(context, PRISMA_APP_ID_ENV_VAR);
-  const skipLocalPin = Boolean(envProjectId || options?.projectRef);
-  const localPin = skipLocalPin
-    ? ({ kind: "missing" } satisfies LocalResolutionPinReadResult)
-    : await readLocalResolutionPin(context.runtime.cwd);
-  if (!skipLocalPin && localPin.kind === "invalid") {
-    throw localResolutionPinStaleError();
-  }
 
-  const { provider, target, projectId } = await requireProviderAndDeployProjectContext(context, options?.projectRef, {
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, options?.projectRef, {
     branch,
+    commandName,
     envProjectId,
-    localPin,
   });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveDomainAppSelection(context, projectId, apps, {
@@ -2184,6 +2178,7 @@ async function requireProviderAndProjectContext(
   options?: {
     branch?: ResolvedDeployBranch;
     commandName?: string;
+    envProjectId?: string;
   },
 ): Promise<{
   client: ManagementApiClient;
@@ -2244,6 +2239,7 @@ async function resolveProjectContext(
     context,
     workspace: authState.workspace,
     explicitProject,
+    envProjectId: options?.envProjectId,
     listProjects: () => listRealWorkspaceProjects(client, authState.workspace!),
     commandName: options?.commandName,
   });
