@@ -65,7 +65,12 @@ Run tests:
 
 ```bash
 pnpm test
+pnpm lint:skills
+pnpm test:skills
 ```
+
+`pnpm install` also wires the local skill cluster into supported agent
+runtimes, including `.agents/skills/` and `.claude/skills/`.
 
 Build the package:
 
@@ -104,6 +109,13 @@ workflows without introducing product-specific namespaces.
 ## Documentation
 
 The public docs start at `docs/README.md`.
+
+Agent skills for guided Next.js deploys live in `skills/`. Install the cluster
+into an app project with:
+
+```bash
+pnpm dlx skills@latest add prisma/prisma-cli/skills#cli-v<cli-version> --all
+```
 
 Product behavior is defined in `docs/product`.
 

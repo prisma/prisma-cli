@@ -139,11 +139,14 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "app.deploy",
     path: ["prisma", "app", "deploy"],
     description: "Creates a new deployment for the app",
+    longDescription:
+      "Agent skills for guided Next.js deploys are available from the Prisma CLI skill cluster.",
     examples: [
       "prisma-cli app deploy",
       "prisma-cli app deploy --app my-app --env DATABASE_URL=postgresql://example",
       "prisma-cli app deploy --app my-app --framework nextjs --http-port 3000",
       "prisma-cli app deploy --branch feat-login --framework hono",
+      "pnpm dlx skills@latest add prisma/prisma-cli/skills#cli-v<version> --all",
     ],
   },
   {
