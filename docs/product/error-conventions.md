@@ -161,6 +161,7 @@ These codes are the minimum stable set for the MVP:
 - `AUTH_REQUIRED`
 - `PROJECT_UNRESOLVED`
 - `PROJECT_SETUP_REQUIRED`
+- `PROJECT_CREATE_FAILED`
 - `PROJECT_NOT_FOUND`
 - `PROJECT_AMBIGUOUS`
 - `APP_AMBIGUOUS`
@@ -200,6 +201,7 @@ Recommended meanings:
 - `AUTH_REQUIRED`: command needs an authenticated session
 - `PROJECT_UNRESOLVED`: command needs project context and none could be resolved
 - `PROJECT_SETUP_REQUIRED`: `app deploy` needs an explicit Project setup choice before it can continue
+- `PROJECT_CREATE_FAILED`: Project creation failed before deployment or linking could continue
 - `PROJECT_NOT_FOUND`: requested project does not exist or is not accessible
 - `PROJECT_AMBIGUOUS`: multiple safe project candidates matched
 - `APP_AMBIGUOUS`: multiple apps matched the inferred or explicit app target

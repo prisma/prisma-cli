@@ -8,17 +8,18 @@ import {
 } from "../adapters/git";
 import { requireComputeAuth } from "../lib/auth/guard";
 import {
-  projectAmbiguousError,
-  projectNotFoundError,
   resolveProjectTarget,
   sortProjects,
   type ProjectCandidate,
 } from "../lib/project/resolution";
 import {
-  ensureLocalResolutionPinGitignore,
-  LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
-  writeLocalResolutionPin,
-} from "../lib/project/local-pin";
+  bindProjectToDirectory,
+  isValidProjectSetupName,
+  projectCreateFailedError,
+  projectSetupNameRequiredError,
+  resolveProjectForSetup,
+  toProjectSummary,
+} from "../lib/project/setup";
 import { createPreviewAppProvider } from "../lib/app/preview-provider";
 import { authRequiredError, CliError, featureUnavailableError, usageError, workspaceRequiredError } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
@@ -29,7 +30,6 @@ import type {
   GitRepositoryConnection,
   ProjectListResult,
   ProjectRepositoryConnectionResult,
-  ProjectSummary,
   ProjectSetupResult,
   ProjectShowResult,
 } from "../types/project";
@@ -120,13 +120,7 @@ export async function runProjectCreate(
   }
 
   if (!isValidProjectSetupName(projectName)) {
-    throw usageError(
-      "Project create requires a name",
-      "The project name must be a non-empty value.",
-      "Pass the Project name as the first argument.",
-      ["prisma-cli project create my-app"],
-      "project",
-    );
+    throw projectSetupNameRequiredError("project create");
   }
 
   if (!isRealMode(context)) {
@@ -145,8 +139,13 @@ export async function runProjectCreate(
   }
 
   const provider = createPreviewAppProvider(client);
-  const created = await provider.createProject({ name: projectName.trim() }).catch((error) => {
-    throw projectCreateFailedError(error);
+  const name = projectName.trim();
+  const created = await provider.createProject({ name }).catch((error) => {
+    throw projectCreateFailedError(error, name, workspace, {
+      nextSteps: ["prisma-cli project list", "prisma-cli project link <id-or-name>"],
+      permissionFix: "Grant the token permission to create Projects in this workspace, or link an existing Project.",
+      fallbackFix: "Retry the command, or choose an existing Project with prisma-cli project link <id-or-name>.",
+    });
   });
   const result = await bindProjectToDirectory(context, workspace, {
     id: created.id,
@@ -184,7 +183,7 @@ export async function runProjectLink(
   const projects = isRealMode(context)
     ? await listRealProjectsForLink(context, workspace)
     : listFixtureWorkspaceProjects(context, workspace);
-  const project = resolveProjectForLink(projectRef.trim(), projects, workspace);
+  const project = resolveProjectForSetup(projectRef.trim(), projects, workspace);
   const result = await bindProjectToDirectory(context, workspace, toProjectSummary(project), "linked");
 
   return {
@@ -437,67 +436,6 @@ export function listFixtureWorkspaceProjects(
       workspace,
     })),
   );
-}
-
-export function resolveProjectForLink(
-  projectRef: string,
-  projects: ProjectCandidate[],
-  workspace: AuthWorkspace,
-): ProjectCandidate {
-  const matches = projects.filter((project) => project.id === projectRef || project.name === projectRef);
-  if (matches.length === 1) {
-    return matches[0]!;
-  }
-  if (matches.length > 1) {
-    throw projectAmbiguousError(projectRef, matches);
-  }
-  throw projectNotFoundError(projectRef, workspace);
-}
-
-export async function bindProjectToDirectory(
-  context: CommandContext,
-  workspace: AuthWorkspace,
-  project: ProjectSummary,
-  action: ProjectSetupResult["action"],
-): Promise<ProjectSetupResult> {
-  await writeLocalResolutionPin(context.runtime.cwd, {
-    workspaceId: workspace.id,
-    projectId: project.id,
-  });
-  await ensureLocalResolutionPinGitignore(context.runtime.cwd);
-
-  return {
-    workspace,
-    project,
-    directory: formatSetupDirectory(context.runtime.cwd),
-    localPin: {
-      path: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
-      written: true,
-    },
-    action,
-  };
-}
-
-function formatSetupDirectory(cwd: string): string {
-  const basename = cwd.split(/[\\/]/).filter(Boolean).pop();
-  return basename ? `./${basename}` : ".";
-}
-
-function isValidProjectSetupName(projectName: string): boolean {
-  return projectName.trim().length > 0;
-}
-
-function projectCreateFailedError(error: unknown): CliError {
-  return new CliError({
-    code: "DEPLOY_FAILED",
-    domain: "project",
-    summary: "Could not create Project",
-    why: error instanceof Error ? error.message : String(error),
-    fix: "Retry the command, or choose an existing Project with prisma-cli project link <id-or-name>.",
-    debug: error instanceof Error ? error.stack ?? error.message : String(error),
-    exitCode: 1,
-    nextSteps: ["prisma-cli project list", "prisma-cli project link <id-or-name>"],
-  });
 }
 
 interface SourceRepositoryResponse {

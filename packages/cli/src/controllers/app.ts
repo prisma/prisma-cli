@@ -56,10 +56,16 @@ import {
   sortProjects,
 } from "../lib/project/resolution";
 import {
-  ensureLocalResolutionPinGitignore,
+  bindProjectToDirectory,
+  formatCommandArgument,
+  projectCreateFailedError,
+  projectSetupNameRequiredError,
+  resolveProjectForSetup,
+  toProjectSummary,
+} from "../lib/project/setup";
+import {
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
   readLocalResolutionPin,
-  writeLocalResolutionPin,
   type LocalResolutionPinReadResult,
 } from "../lib/project/local-pin";
 import {
@@ -84,7 +90,7 @@ import {
 } from "../lib/app/preview-provider";
 import { formatDomainFailureFix } from "../lib/app/domain-guidance";
 import { requireAuthenticatedAuthState } from "./auth";
-import { listRealWorkspaceProjects, resolveProjectForLink } from "./project";
+import { listRealWorkspaceProjects } from "./project";
 import { createSelectPromptPort } from "./select-prompt-port";
 
 type AppDomainCommand = "add" | "show" | "remove" | "retry" | "wait";
@@ -246,15 +252,16 @@ export async function runAppDeploy(
     envProjectId,
     localPin,
   });
-
-  const shouldWriteLocalPin = Boolean(target.localPinAction);
-  if (shouldWriteLocalPin) {
-    await writeLocalResolutionPin(context.runtime.cwd, {
-      workspaceId: target.workspace.id,
-      projectId: target.project.id,
-    });
-    await ensureLocalResolutionPinGitignore(context.runtime.cwd);
-    maybeRenderProjectLinked(context, target.project.name);
+  let localPinResult: { path: string; written: true } | undefined;
+  if (target.localPinAction) {
+    const setupResult = await bindProjectToDirectory(
+      context,
+      target.workspace,
+      target.project,
+      target.localPinAction,
+    );
+    localPinResult = setupResult.localPin;
+    maybeRenderProjectLinked(context, setupResult.directory, setupResult.project.name, setupResult.localPin.path);
   }
 
   let framework = await resolveDeployFramework(context, {
@@ -273,12 +280,12 @@ export async function runAppDeploy(
   const selectedApp = await resolveDeployAppSelection(context, projectId, apps, {
     explicitAppName: appName,
     explicitAppId: envAppId,
-    firstDeploy: shouldWriteLocalPin,
+    firstDeploy: Boolean(target.localPinAction),
     inferName: () => inferTargetName(context.runtime.cwd),
   });
 
   await maybeRenderDeploySetupBlock(context, {
-    includeDirectory: !shouldWriteLocalPin,
+    includeDirectory: !target.localPinAction,
     projectName: target.project.name,
     branchName: target.branch.name,
     appName: selectedApp.displayName,
@@ -340,12 +347,7 @@ export async function runAppDeploy(
       },
       deployment: deployResult.deployment,
       durationMs: deployDurationMs,
-      localPin: shouldWriteLocalPin
-        ? {
-            path: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
-            written: true,
-          }
-        : undefined,
+      localPin: localPinResult,
     },
     warnings: [],
     nextSteps: ["prisma-cli app list-deploys", `prisma-cli app show-deploy ${deployResult.deployment.id}`],
@@ -2167,7 +2169,6 @@ async function requireProviderAndProjectContext(
   context: CommandContext,
   explicitProject: string | undefined,
   options?: {
-    allowCreate?: boolean;
     branch?: ResolvedDeployBranch;
   },
 ): Promise<{
@@ -2177,7 +2178,7 @@ async function requireProviderAndProjectContext(
   projectId: string;
 }> {
   const { client, provider } = await requirePreviewAppProviderWithClient(context);
-  const target = await resolveProjectContext(context, client, provider, explicitProject, options);
+  const target = await resolveProjectContext(context, client, explicitProject, options);
   return {
     client,
     provider,
@@ -2214,10 +2215,8 @@ async function requireProviderAndDeployProjectContext(
 async function resolveProjectContext(
   context: CommandContext,
   client: ManagementApiClient,
-  provider: ReturnType<typeof createPreviewAppProvider>,
   explicitProject: string | undefined,
   options?: {
-    allowCreate?: boolean;
     branch?: ResolvedDeployBranch;
   },
 ): Promise<ResolvedAppProjectContext> {
@@ -2231,20 +2230,6 @@ async function resolveProjectContext(
     workspace: authState.workspace,
     explicitProject,
     listProjects: () => listRealWorkspaceProjects(client, authState.workspace!),
-    createProject: options?.allowCreate
-      ? async (name) => {
-          const project = await provider.createProject({ name }).catch((error) => {
-            throw createProjectForSetupError(error, name, authState.workspace!);
-          });
-          return {
-            id: project.id,
-            name: project.name,
-            workspace: authState.workspace!,
-          };
-        }
-      : undefined,
-    allowCreate: options?.allowCreate,
-    prompt: createSelectPromptPort(context),
     remember: true,
   });
   const branch = options?.branch ?? await resolveDeployBranch(context, undefined);
@@ -2280,7 +2265,7 @@ async function resolveDeployProjectContext(
   const projects = await listRealWorkspaceProjects(client, workspace);
 
   if (explicitProject) {
-    const project = resolveProjectForLink(explicitProject, projects, workspace);
+    const project = resolveProjectForSetup(explicitProject, projects, workspace);
     return withDeployBranch({
       workspace,
       project: toProjectSummary(project),
@@ -2450,7 +2435,15 @@ async function createProjectForDeploySetup(
   workspace: AuthWorkspace,
 ): Promise<ProjectCandidate> {
   const created = await provider.createProject({ name: projectName }).catch((error) => {
-    throw createProjectForSetupError(error, projectName, workspace);
+    throw projectCreateFailedError(error, projectName, workspace, {
+      nextSteps: [
+        "prisma-cli project list",
+        "prisma-cli app deploy --project <id-or-name>",
+        `prisma-cli app deploy --create-project ${formatCommandArgument(projectName)}`,
+      ],
+      permissionFix: "Choose an existing Project with --project, or grant the token permission to create Projects in this workspace.",
+      fallbackFix: "Choose an existing Project with --project, or retry after addressing the platform error above.",
+    });
   });
 
   return {
@@ -2470,13 +2463,6 @@ function withDeployBranch(
       name: branch.name,
       kind: toBranchKind(branch.name),
     },
-  };
-}
-
-function toProjectSummary(project: Pick<ProjectCandidate, "id" | "name">): ProjectSummary {
-  return {
-    id: project.id,
-    name: project.name,
   };
 }
 
@@ -2518,16 +2504,6 @@ function validateProjectSetupNameText(value: string | undefined, fallback: strin
   }
 
   return "Enter a Project name.";
-}
-
-function projectSetupNameRequiredError(command: string): CliError {
-  return usageError(
-    "Project create requires a name",
-    "The project name must be a non-empty value.",
-    "Pass a Project name explicitly.",
-    [`prisma-cli ${command} my-app`],
-    "project",
-  );
 }
 
 interface ResolvedDeployBranch {
@@ -2829,14 +2805,19 @@ async function maybeRenderDeploySetupBlock(
   context.output.stderr.write(`${prefix} ${details.projectName} / ${details.branchName} / ${details.appName}\n\n`);
 }
 
-function maybeRenderProjectLinked(context: CommandContext, projectName: string): void {
+function maybeRenderProjectLinked(
+  context: CommandContext,
+  directory: string,
+  projectName: string,
+  localPinPath: string,
+): void {
   if (context.flags.json || context.flags.quiet) {
     return;
   }
 
   context.output.stderr.write(
-    `${context.ui.success("✔")} Linked "${formatDeployDirectory(context.runtime.cwd)}" to Project "${projectName}"\n`
-      + `Saved ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH}\n\n`,
+    `${context.ui.success("✔")} Linked "${directory}" to Project "${projectName}"\n`
+      + `Saved ${localPinPath}\n\n`,
   );
 }
 
@@ -3238,71 +3219,6 @@ function projectSetupRequiredError(
       createCommand,
     ],
   });
-}
-
-function createProjectForSetupError(error: unknown, projectName: string, workspace: AuthWorkspace): CliError {
-  const status = extractHttpStatus(error);
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  const nextSteps = [
-    "prisma-cli project list",
-    "prisma-cli app deploy --project <id-or-name>",
-    `prisma-cli app deploy --create-project ${formatCommandArgument(projectName)}`,
-  ];
-
-  if (status === 401 || status === 403) {
-    return new CliError({
-      code: "AUTH_FORBIDDEN",
-      domain: "auth",
-      summary: `Could not create Project "${projectName}"`,
-      why: `The platform rejected the Project create in workspace "${workspace.name}" (HTTP ${status}).`,
-      fix: "Choose an existing Project with --project, or grant the token permission to create Projects in this workspace.",
-      debug: formatDebugDetails(error),
-      exitCode: 1,
-      nextSteps,
-    });
-  }
-
-  return new CliError({
-    code: "DEPLOY_FAILED",
-    domain: "app",
-    summary: `Could not create Project "${projectName}"`,
-    why: errorMessage,
-    fix: "Choose an existing Project with --project, or retry after addressing the platform error above.",
-    debug: formatDebugDetails(error),
-    exitCode: 1,
-    nextSteps,
-  });
-}
-
-function formatCommandArgument(value: string): string {
-  return /^[A-Za-z0-9._/-]+$/.test(value) ? value : JSON.stringify(value);
-}
-
-function extractHttpStatus(error: unknown): number | null {
-  if (!error || typeof error !== "object") {
-    return null;
-  }
-
-  const candidate = error as { statusCode?: unknown; status?: unknown; message?: unknown };
-  if (typeof candidate.statusCode === "number") {
-    return candidate.statusCode;
-  }
-  if (typeof candidate.status === "number") {
-    return candidate.status;
-  }
-
-  // The compute-sdk re-throws AuthenticationError / ApiError as plain
-  // Error instances whose `message` carries the "(HTTP <code>)" suffix.
-  // Match that suffix as a last resort so this UX still triggers for
-  // service tokens running through that path.
-  if (typeof candidate.message === "string") {
-    const match = /\(HTTP (\d{3})\)/.exec(candidate.message);
-    if (match) {
-      return Number.parseInt(match[1], 10);
-    }
-  }
-
-  return null;
 }
 
 function noDeploymentsError(summary: string, why: string): CliError {

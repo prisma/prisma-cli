@@ -133,4 +133,54 @@ describe("project controller", () => {
     await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).resolves.toContain('"projectId": "proj_new"');
     await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(".prisma/\n");
   });
+
+  it("returns PROJECT_CREATE_FAILED when project creation fails", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const createProject = vi.fn().mockRejectedValue(new Error("Internal Server Error (HTTP 503)"));
+
+    vi.doMock("../src/lib/auth/auth-ops", () => ({
+      readAuthState: vi.fn().mockResolvedValue({
+        authenticated: true,
+        provider: null,
+        user: {
+          email: "test@example.com",
+        },
+        workspace: {
+          id: "ws_123",
+          name: "Acme Inc",
+        },
+      }),
+      performLogin: vi.fn(),
+      performLogout: vi.fn(),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        createProject,
+      })),
+    }));
+
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const { runProjectCreate } = await import("../src/controllers/project");
+    await expect(runProjectCreate(context, "New Dashboard")).rejects.toMatchObject({
+      code: "PROJECT_CREATE_FAILED",
+      domain: "project",
+      summary: 'Could not create Project "New Dashboard"',
+      why: expect.stringContaining("Internal Server Error"),
+      nextSteps: expect.arrayContaining(["prisma-cli project link <id-or-name>"]),
+    });
+  });
 });

@@ -2326,7 +2326,7 @@ describe("app controller", () => {
     });
   });
 
-  it("returns DEPLOY_FAILED when explicit deploy-time project creation fails", async () => {
+  it("returns PROJECT_CREATE_FAILED when explicit deploy-time project creation fails", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const createProject = vi.fn().mockRejectedValue(new Error("Internal Server Error (HTTP 503)"));
 
@@ -2362,8 +2362,8 @@ describe("app controller", () => {
       createProjectName: "next-smoke",
       framework: "hono",
     })).rejects.toMatchObject({
-      code: "DEPLOY_FAILED",
-      domain: "app",
+      code: "PROJECT_CREATE_FAILED",
+      domain: "project",
       summary: 'Could not create Project "next-smoke"',
       why: expect.stringContaining("Internal Server Error"),
       fix: expect.stringContaining("--project"),
