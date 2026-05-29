@@ -241,6 +241,10 @@ export async function runAppDeploy(
   if (options?.httpPort) {
     parseDeployHttpPort(options.httpPort);
   }
+  assertSupportedEntrypointForRequestedDeployShape({
+    requestedFramework: options?.framework,
+    entrypoint: options?.entrypoint,
+  });
   const { provider, target, projectId } = await requireProviderAndDeployProjectContext(context, options?.projectRef, {
     branch,
     createProjectName: options?.createProjectName,
@@ -2623,6 +2627,18 @@ function resolveDeployRuntime(
     port: FRAMEWORK_DEFAULT_HTTP_PORT,
     annotation: `${framework.displayName} default`,
   };
+}
+
+function assertSupportedEntrypointForRequestedDeployShape(options: {
+  requestedFramework: string | undefined;
+  entrypoint: string | undefined;
+}): void {
+  if (!options.requestedFramework) {
+    return;
+  }
+
+  const framework = frameworkFromUserFacingValue(options.requestedFramework, "set by --framework");
+  assertSupportedEntrypoint(framework.buildType, options.entrypoint, "deploy");
 }
 
 async function resolveDeployEntrypoint(
