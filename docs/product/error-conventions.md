@@ -133,7 +133,8 @@ Commands run with `--json` should emit this envelope on failure:
     "docsUrl": null
   },
   "warnings": [],
-  "nextSteps": []
+  "nextSteps": [],
+  "nextActions": []
 }
 ```
 
@@ -150,7 +151,7 @@ Rules:
 - `error.where` points to the relevant location when applicable
 - `error.meta` is structured, not free-form prose
 - `error.docsUrl` may be `null` when no per-code doc exists yet
-- `warnings` and `nextSteps` are always present
+- `warnings`, `nextSteps`, and `nextActions` are always present
 - agents and CI should branch on structured error fields, not prose strings
 
 ## MVP Error Codes

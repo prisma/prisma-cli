@@ -1,3 +1,5 @@
+import type { NextAction } from "./next-actions";
+
 export type ErrorDomain = "cli" | "auth" | "project" | "branch" | "app";
 export type ErrorSeverity = "error";
 
@@ -13,6 +15,7 @@ export interface CliErrorOptions {
   docsUrl?: string | null;
   exitCode?: number;
   nextSteps?: string[];
+  nextActions?: NextAction[];
   humanLines?: string[];
 }
 
@@ -29,6 +32,7 @@ export class CliError extends Error {
   readonly docsUrl: string | null;
   readonly exitCode: number;
   readonly nextSteps: string[];
+  readonly nextActions: NextAction[];
   readonly humanLines: string[] | null;
 
   constructor(options: CliErrorOptions) {
@@ -46,6 +50,7 @@ export class CliError extends Error {
     this.docsUrl = options.docsUrl ?? null;
     this.exitCode = options.exitCode ?? 1;
     this.nextSteps = options.nextSteps ?? [];
+    this.nextActions = options.nextActions ?? [];
     this.humanLines = options.humanLines && options.humanLines.length > 0
       ? [...options.humanLines]
       : null;

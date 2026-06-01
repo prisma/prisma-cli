@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { formatCommandArgument } from "../../shell/command-arguments";
 import { CliError } from "../../shell/errors";
+import type { NextAction } from "../../shell/next-actions";
 import type { CommandContext } from "../../shell/runtime";
 import type { AuthWorkspace } from "../../types/auth";
 import type {
@@ -64,6 +66,9 @@ export async function inspectProjectBinding(options: ResolveProjectOptions): Pro
   return {
     workspace: options.workspace,
     project: null,
+    localBinding: {
+      status: "not-linked",
+    },
     resolution: {
       projectSource: "unbound",
     },
@@ -162,7 +167,64 @@ export async function projectSetupRequiredError(options: {
     meta: { ...suggestion },
     exitCode: 1,
     nextSteps: ["prisma-cli project list", ...suggestion.recoveryCommands],
+    nextActions: buildProjectSetupNextActions({
+      commandName: options.commandName,
+      suggestedProjectName: suggestion.suggestedProjectName,
+    }),
   });
+}
+
+export function buildProjectSetupNextActions(options: {
+  commandName?: string;
+  suggestedProjectName?: string;
+  createCommand?: string;
+  reason?: string;
+} = {}): NextAction[] {
+  const recoveryCommands = buildProjectRecoveryCommands(options.commandName);
+  const linkCommand = recoveryCommands[0] ?? "prisma-cli project link <id-or-name>";
+  const retryCommand = recoveryCommands[1];
+  const commands = ["prisma-cli project list", ...recoveryCommands];
+
+  const actions: NextAction[] = [
+    {
+      kind: "user-choice",
+      journey: "project-setup",
+      label: "Ask the user which Prisma Project this directory should use",
+      commands,
+      reason: options.reason
+        ?? "This directory is not linked to a Prisma Project. Package and directory names are suggestions only, not a safe Project selection.",
+    },
+    {
+      kind: "run-command",
+      journey: "project-setup",
+      label: "Link the chosen Project",
+      command: linkCommand,
+      reason: "Linking writes the durable local Project binding for this directory.",
+    },
+  ];
+
+  const createCommand = options.createCommand
+    ?? (options.suggestedProjectName ? `prisma-cli project create ${formatCommandArgument(options.suggestedProjectName)}` : undefined);
+  if (createCommand) {
+    actions.push({
+      kind: "run-command",
+      journey: "project-setup",
+      label: "Create and link a new Project",
+      command: createCommand,
+      reason: "Use this when the user wants a new Prisma Project instead of an existing one.",
+    });
+  }
+
+  if (options.commandName) {
+    actions.push({
+      kind: "run-command",
+      journey: "recover",
+      label: "Retry with an explicit Project",
+      command: retryCommand ?? `prisma-cli ${options.commandName} --project <id-or-name>`,
+    });
+  }
+
+  return actions;
 }
 
 export async function readPackageName(cwd: string): Promise<string | null> {

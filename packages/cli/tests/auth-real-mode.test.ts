@@ -177,6 +177,7 @@ describe("real auth mode", () => {
       },
       warnings: [],
       nextSteps: [],
+      nextActions: [],
     });
   });
 

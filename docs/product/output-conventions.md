@@ -220,15 +220,14 @@ Human output should:
 Recommended header shape:
 
 ```text
-project show → No Project linked to this directory.
+project show → This directory is not linked to a Prisma Project.
 
 │  workspace:  Acme Inc
-│  project:    unbound
-│  suggested:  billing-api (package name)
-│  match:      Billing API
-│  next:       prisma-cli project link <id-or-name>
-│
-│  Read more   docs/product/command-spec.md#prisma-cli-project-show
+│  project:    Not linked
+
+Next steps:
+- Link an existing Project: prisma-cli project link <id-or-name>
+- Create a new Project: prisma-cli project create billing-api
 ```
 
 Rules:
@@ -238,6 +237,7 @@ Rules:
 - show only metadata that is relevant to the current invocation
 - include `Read more` when a stable repo doc reference exists
 - prefer display labels in default human output and keep opaque ids in JSON unless a later verbose mode explicitly asks for them
+- do not expose agent-only reasoning in human output when a clear status and next step is enough
 
 Recommended summary lines:
 
@@ -341,7 +341,8 @@ Recommended envelope:
   "command": "app.deploy",
   "result": {},
   "warnings": [],
-  "nextSteps": []
+  "nextSteps": [],
+  "nextActions": []
 }
 ```
 
@@ -352,7 +353,26 @@ Required conventions:
 - `result` holds command-specific data
 - `warnings` is always present
 - `nextSteps` is always present, even if empty
+- `nextActions` is always present, even if empty
 - human-readable guidance that matters to automation should also be represented in structured fields, not only on stderr
+
+`nextSteps` remains a compatibility surface for readable commands. `nextActions`
+is the structured surface for agents and automation:
+
+```ts
+type NextAction = {
+  kind: "run-command" | "user-choice" | "edit-file" | "done"
+  journey: "project-setup" | "deploy-app" | "inspect" | "recover"
+  label: string
+  command?: string
+  commands?: string[]
+  reason?: string
+}
+```
+
+Use `user-choice` when the next move requires the caller or user to choose a
+target. Do not encode local package names, directory names, or nearby matches as
+a selected target; put them in command-specific suggestion fields instead.
 
 ## Streaming JSON Shape
 
@@ -417,6 +437,14 @@ context, status, decoration, and errors stay on stderr.
   "nextSteps": [
     "prisma-cli app list-deploys --app hello-world",
     "prisma-cli app show-deploy dep_045"
+  ],
+  "nextActions": [
+    {
+      "kind": "run-command",
+      "journey": "inspect",
+      "label": "View deployment logs",
+      "command": "prisma-cli app logs"
+    }
   ]
 }
 ```
@@ -427,4 +455,6 @@ Human output and JSON output should describe the same underlying model.
 
 The CLI should never require users or agents to learn different meanings for the same command.
 
-Human output may be richer in layout and interaction, but not richer in meaning.
+Human output should stay optimized for people. JSON should carry the same model
+with enough explicit structure for agents to recognize stop points, user-choice
+moments, and safe recovery actions.

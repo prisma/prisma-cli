@@ -1,4 +1,5 @@
 import type { CommandDescriptor } from "../shell/command-meta";
+import { formatCommandArgument } from "../shell/command-arguments";
 import type { CommandContext } from "../shell/runtime";
 import type {
   GitRepositoryConnection,
@@ -8,14 +9,14 @@ import type {
   ProjectShowResult,
 } from "../types/project";
 import { renderList, renderMutate, renderShow, serializeList } from "../output/patterns";
-import { renderSummaryLine } from "../shell/ui";
+import { renderNextSteps, renderSummaryLine } from "../shell/ui";
 
 export function renderProjectList(
   context: CommandContext,
   descriptor: CommandDescriptor,
   result: ProjectListResult,
 ): string[] {
-  return renderList(
+  const lines = renderList(
     {
       title: "Listing projects for the authenticated workspace.",
       descriptor,
@@ -33,20 +34,29 @@ export function renderProjectList(
     },
     context.ui,
   );
+
+  if (result.localBinding?.status === "not-linked" || result.localBinding?.status === "invalid") {
+    lines.push(...renderNextSteps(["Link the chosen Project: prisma-cli project link <id-or-name>"]));
+  }
+
+  return lines;
 }
 
 export function serializeProjectList(result: ProjectListResult) {
-  return serializeList({
-    context: {
-      workspace: result.workspace.name,
-    },
-    items: result.projects.map((project) => ({
-      noun: "project",
-      label: project.name,
-      id: project.id,
-      status: null,
-    })),
-  });
+  return {
+    ...serializeList({
+      context: {
+        workspace: result.workspace.name,
+      },
+      items: result.projects.map((project) => ({
+        noun: "project",
+        label: project.name,
+        id: project.id,
+        status: null,
+      })),
+    }),
+    localBinding: result.localBinding ?? null,
+  };
 }
 
 export function renderProjectShow(
@@ -55,23 +65,24 @@ export function renderProjectShow(
   result: ProjectShowResult,
 ): string[] {
   if (result.project === null) {
-    return renderShow(
+    const lines = renderShow(
       {
-        title: "No Project linked to this directory.",
+        title: "This directory is not linked to a Prisma Project.",
         descriptor,
         fields: [
           { key: "workspace", value: result.workspace.name },
-          { key: "project", value: "unbound", tone: "warning" },
-          {
-            key: "suggested",
-            value: `${result.suggestedProjectName} (${formatSuggestionSource(result.suggestedProjectNameSource)})`,
-          },
-          { key: "match", value: formatCandidateList(result.candidates) },
-          { key: "next", value: result.recoveryCommands[0] ?? "prisma-cli project link <id-or-name>" },
+          { key: "project", value: "Not linked", tone: "warning" },
         ],
       },
       context.ui,
     );
+
+    lines.push(...renderNextSteps([
+      "Link an existing Project: prisma-cli project link <id-or-name>",
+      `Create a new Project: prisma-cli project create ${formatCommandArgument(result.suggestedProjectName)}`,
+    ]));
+
+    return lines;
   }
 
   return renderShow(
@@ -176,22 +187,6 @@ function formatProjectSource(source: ProjectShowResult["resolution"]["projectSou
     case "unbound":
       return "unbound";
   }
-}
-
-function formatSuggestionSource(source: "package-name" | "directory-name"): string {
-  switch (source) {
-    case "package-name":
-      return "package name";
-    case "directory-name":
-      return "directory name";
-  }
-}
-
-function formatCandidateList(candidates: Array<{ name: string }>): string {
-  if (candidates.length === 0) {
-    return "none";
-  }
-  return candidates.map((project) => project.name).join(", ");
 }
 
 function formatGitConnectionDetail(status: GitRepositoryConnection["status"]): string {

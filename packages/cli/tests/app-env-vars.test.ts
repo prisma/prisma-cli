@@ -167,6 +167,12 @@ describe("app env vars", () => {
           "prisma-cli project env list --project <id-or-name>",
         ]),
       },
+      nextActions: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "user-choice",
+          journey: "project-setup",
+        }),
+      ]),
     });
   });
 

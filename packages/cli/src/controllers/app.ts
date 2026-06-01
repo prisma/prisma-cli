@@ -47,6 +47,7 @@ import {
 } from "../lib/app/local-dev";
 import { readBunPackageEntrypoint, readBunPackageJson, type BunPackageJsonLike } from "../lib/app/bun-project";
 import {
+  buildProjectSetupNextActions,
   inferTargetName,
   projectNotFoundError,
   resolveDurablePlatformMapping,
@@ -3152,12 +3153,36 @@ function appDeployFailedError(error: unknown, progress: PreviewDeployProgressSta
   const debug = formatDebugDetails(error);
 
   if (progress.buildStarted && !progress.buildCompleted) {
+    const standaloneOutputFailure = isNextStandaloneOutputFailure(why);
+    const fix = standaloneOutputFailure
+      ? "Add output: \"standalone\" to next.config.*, then rerun deploy."
+      : "Inspect the build output above, fix the error, and redeploy.";
+    const nextSteps = standaloneOutputFailure
+      ? ["Add output: \"standalone\" to next.config.*, then rerun prisma-cli app deploy"]
+      : [];
+    const nextActions = standaloneOutputFailure
+      ? [
+          {
+            kind: "edit-file" as const,
+            journey: "deploy-app" as const,
+            label: "Add Next.js standalone output",
+            reason: "Prisma Compute needs Next.js standalone output to build a deployable server artifact.",
+          },
+          {
+            kind: "run-command" as const,
+            journey: "deploy-app" as const,
+            label: "Rerun deploy",
+            command: "prisma-cli app deploy",
+          },
+        ]
+      : [];
+
     return new CliError({
       code: "BUILD_FAILED",
       domain: "app",
       summary: "Build failed locally.",
       why,
-      fix: "Inspect the build output above, fix the error, and redeploy.",
+      fix,
       debug,
       meta: { phase: "build" },
       humanLines: [
@@ -3165,10 +3190,11 @@ function appDeployFailedError(error: unknown, progress: PreviewDeployProgressSta
         "",
         `✗ Built       ${why}`,
         "",
-        "Fix: Inspect the build output above, fix the error, and redeploy.",
+        `Fix: ${fix}`,
       ],
       exitCode: 1,
-      nextSteps: [],
+      nextSteps,
+      nextActions,
     });
   }
 
@@ -3278,7 +3304,16 @@ function projectSetupRequiredError(
       "prisma-cli app deploy --project <id-or-name>",
       createCommand,
     ],
+    nextActions: buildProjectSetupNextActions({
+      commandName: "app deploy",
+      createCommand,
+      reason: "This directory is not linked to a Prisma Project. Ask the user which Project to use before deploying; package and directory names are setup suggestions only.",
+    }),
   });
+}
+
+function isNextStandaloneOutputFailure(message: string): boolean {
+  return /next\.?js/i.test(message) && /standalone output/i.test(message);
 }
 
 function noDeploymentsError(summary: string, why: string): CliError {
