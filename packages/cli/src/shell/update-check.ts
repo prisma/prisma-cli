@@ -59,22 +59,26 @@ export async function maybeWriteCachedUpdateNotification(runtime: CliRuntime): P
     return;
   }
 
-  const cacheDir = resolveUpdateCheckCacheDir(runtime);
-  const store = new UpdateCheckStore(cacheDir);
-  const state = await store.read();
-  const latestVersion = state?.latestVersion;
+  try {
+    const cacheDir = resolveUpdateCheckCacheDir(runtime);
+    const store = new UpdateCheckStore(cacheDir);
+    const state = await store.read();
+    const latestVersion = state?.latestVersion;
 
-  if (latestVersion && isInstalledVersionStale(getCliVersion(), latestVersion) && shouldNotify(state)) {
-    runtime.stderr.write(renderUpdateNotification(latestVersion, selectUpdateInstruction(runtime.env)));
-    await store.write({
-      ...state,
-      packageName: "@prisma/cli",
-      installedVersion: getCliVersion(),
-      notifiedAt: new Date().toISOString(),
-    });
+    if (latestVersion && isInstalledVersionStale(getCliVersion(), latestVersion) && shouldNotify(state)) {
+      runtime.stderr.write(renderUpdateNotification(latestVersion, selectUpdateInstruction(runtime.env)));
+      await store.write({
+        ...state,
+        packageName: "@prisma/cli",
+        installedVersion: getCliVersion(),
+        notifiedAt: new Date().toISOString(),
+      });
+    }
+
+    await scheduleRemoteDiscovery(runtime, store, state, cacheDir);
+  } catch {
+    return;
   }
-
-  await scheduleRemoteDiscovery(runtime, store, state, cacheDir);
 }
 
 export async function runUpdateDiscovery(options: {

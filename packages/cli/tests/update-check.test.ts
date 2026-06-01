@@ -1,5 +1,5 @@
 import path from "node:path";
-import { access, readFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 import { getCliVersion } from "../src/lib/version";
@@ -112,6 +112,25 @@ describe("automatic update check", () => {
 
     expect(result.stderr).toContain("Update available");
     await expect(access(path.join(stateDir, "update-check.json"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("continues with the original command result when cached update state is unreadable", async () => {
+    const { cwd, stateDir, updateCheckDir } = await createUpdateCheckTestDirs();
+    await mkdir(updateCheckDir, { recursive: true });
+    await writeFile(path.join(updateCheckDir, "update-check.json"), "{not json", "utf8");
+
+    const result = await executeCli({
+      argv: ["auth", "whoami"],
+      cwd,
+      stateDir,
+      fixturePath,
+      isTTY: true,
+      env: enableUpdateCheck(updateCheckDir),
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toContain("SyntaxError");
+    expect(result.stderr).toContain("auth whoami");
   });
 
   it("does not show the same cached update notice again inside the notification interval", async () => {
