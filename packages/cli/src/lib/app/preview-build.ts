@@ -330,6 +330,10 @@ function isPathWithin(rootPath: string, candidatePath: string): boolean {
   );
 }
 
+function isPathWithinWorkspaceDependency(sourceRoot: string, candidatePath: string): boolean {
+  return isPathWithin(path.join(sourceRoot, "node_modules"), candidatePath);
+}
+
 async function copyPathMaterializingSymlinks(
   sourcePath: string,
   destinationPath: string,
@@ -386,7 +390,7 @@ async function resolveSymlinkTarget(
   if (await pathExists(resolvedTarget)) {
     if (
       !isPathWithin(options.appRoot, resolvedTarget) &&
-      !isPathWithin(options.sourceRoot, resolvedTarget)
+      !isPathWithinWorkspaceDependency(options.sourceRoot, resolvedTarget)
     ) {
       throw new Error(`Build artifact symlink escapes the app directory: ${resolvedTarget}`);
     }
