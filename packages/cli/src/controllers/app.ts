@@ -1699,11 +1699,15 @@ async function sleep(milliseconds: number, signal: AbortSignal): Promise<void> {
   }
   signal.throwIfAborted();
   await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(resolve, milliseconds);
-    signal.addEventListener("abort", () => {
+    const onAbort = () => {
       clearTimeout(timeout);
       reject(signal.reason);
-    }, { once: true });
+    };
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }
 

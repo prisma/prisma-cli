@@ -948,11 +948,15 @@ function writeInstallWaitStatus(
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   signal.throwIfAborted();
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => {
+    const onAbort = () => {
       clearTimeout(timeout);
       reject(signal.reason);
-    }, { once: true });
+    };
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }
 
