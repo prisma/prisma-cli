@@ -13,6 +13,7 @@ export interface CliErrorOptions {
   docsUrl?: string | null;
   exitCode?: number;
   nextSteps?: string[];
+  humanLines?: string[] | null;
 }
 
 export class CliError extends Error {
@@ -28,6 +29,7 @@ export class CliError extends Error {
   readonly docsUrl: string | null;
   readonly exitCode: number;
   readonly nextSteps: string[];
+  readonly humanLines: string[] | null;
 
   constructor(options: CliErrorOptions) {
     super(options.summary);
@@ -44,6 +46,7 @@ export class CliError extends Error {
     this.docsUrl = options.docsUrl ?? null;
     this.exitCode = options.exitCode ?? 1;
     this.nextSteps = options.nextSteps ?? [];
+    this.humanLines = options.humanLines ?? null;
   }
 }
 

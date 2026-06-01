@@ -67,7 +67,7 @@ import {
   createPreviewPromoteProgress,
   createPreviewUpdateEnvProgress,
 } from "../lib/app/preview-progress";
-import { createPreviewAppProvider, type PreviewAppRecord } from "../lib/app/preview-provider";
+import { createPreviewAppProvider, type PreviewAppRecord, type PreviewDeploymentRecord } from "../lib/app/preview-provider";
 import { requireAuthenticatedAuthState } from "./auth";
 import { listRealWorkspaceProjects } from "./project";
 import { createSelectPromptPort } from "./select-prompt-port";
@@ -191,6 +191,7 @@ export async function runAppDeploy(
     framework?: string;
     httpPort?: string;
     envAssignments?: string[];
+    prod?: boolean;
   },
 ): Promise<CommandSuccess<AppDeployResult>> {
   ensurePreviewAppMode(context);
@@ -261,6 +262,13 @@ export async function runAppDeploy(
   });
   framework = customized.framework;
   runtime = customized.runtime;
+
+  await enforceProductionDeployGate(context, provider, {
+    appId: selectedApp.appId,
+    appName: selectedApp.displayName,
+    branchKind: target.branch.kind,
+    prod: options?.prod === true,
+  });
 
   // Customization can switch from a Bun-compatible framework to one that
   // derives its entrypoint from build output, so validate --entry again after it.
@@ -1214,6 +1222,183 @@ async function resolveDeployAppSelection(
   };
 }
 
+async function enforceProductionDeployGate(
+  context: CommandContext,
+  provider: ReturnType<typeof createPreviewAppProvider>,
+  options: {
+    appId: string | undefined;
+    appName: string;
+    branchKind: BranchKind;
+    prod: boolean;
+  },
+): Promise<void> {
+  if (options.branchKind !== "production") {
+    return;
+  }
+
+  if (!options.appId) {
+    renderFirstProductionDeployLine(context, options.appName);
+    return;
+  }
+
+  const deploymentsResult = await provider.listDeployments(options.appId).catch((error) => {
+    throw deployFailedError("Failed to inspect production deployments", error, ["prisma-cli app list-deploys"]);
+  });
+  const currentLiveDeployment = resolveCurrentProductionDeployment(deploymentsResult);
+  if (!currentLiveDeployment) {
+    renderFirstProductionDeployLine(context, options.appName);
+    return;
+  }
+
+  if (!options.prod) {
+    throw productionDeployRequiresFlagError();
+  }
+
+  if (context.flags.yes) {
+    renderProductionDeployYesLine(context);
+    return;
+  }
+
+  if (!canPrompt(context)) {
+    throw productionDeployConfirmationRequiredError(options.appName);
+  }
+
+  renderProductionDeployConfirmation(context, currentLiveDeployment);
+  const confirmed = await confirmPrompt({
+    input: context.runtime.stdin,
+    output: context.output.stderr,
+    message: "Deploy to production?",
+    initialValue: false,
+  });
+
+  if (!confirmed) {
+    throw productionDeployCancelledError();
+  }
+}
+
+function resolveCurrentProductionDeployment(result: {
+  app: PreviewAppRecord;
+  deployments: PreviewDeploymentRecord[];
+}): PreviewDeploymentRecord | null {
+  if (result.deployments.length === 0) {
+    return null;
+  }
+
+  if (result.app.liveDeploymentId) {
+    const live = result.deployments.find((deployment) => deployment.id === result.app.liveDeploymentId);
+    if (live) {
+      return live;
+    }
+  }
+
+  return result.deployments.find((deployment) => deployment.live === true) ?? result.deployments[0] ?? null;
+}
+
+function renderFirstProductionDeployLine(context: CommandContext, appName: string): void {
+  if (context.flags.json || context.flags.quiet) {
+    return;
+  }
+
+  context.output.stderr.write(`First deploy of "${appName}" -- promoting to production.\n\n`);
+}
+
+function renderProductionDeployYesLine(context: CommandContext): void {
+  if (context.flags.json || context.flags.quiet) {
+    return;
+  }
+
+  context.output.stderr.write("Deploying to production (--prod --yes).\n\n");
+}
+
+function renderProductionDeployConfirmation(
+  context: CommandContext,
+  currentLiveDeployment: PreviewDeploymentRecord,
+): void {
+  if (context.flags.json || context.flags.quiet) {
+    return;
+  }
+
+  const lines = [
+    "This will deploy to production and replace the live deployment.",
+    "",
+    `  Current live:  ${currentLiveDeployment.id} deployed ${formatDeploymentAge(currentLiveDeployment.createdAt)}`,
+    "  New deploy:    will be built from your local code",
+    "",
+  ];
+  context.output.stderr.write(`${lines.join("\n")}\n`);
+}
+
+function formatDeploymentAge(createdAt: string): string {
+  const createdAtMs = Date.parse(createdAt);
+  if (!Number.isFinite(createdAtMs)) {
+    return createdAt;
+  }
+
+  const elapsedMs = Math.max(0, Date.now() - createdAtMs);
+  const units = [
+    { label: "day", ms: 24 * 60 * 60 * 1000 },
+    { label: "hour", ms: 60 * 60 * 1000 },
+    { label: "minute", ms: 60 * 1000 },
+  ];
+
+  for (const unit of units) {
+    if (elapsedMs >= unit.ms) {
+      const value = Math.floor(elapsedMs / unit.ms);
+      return `${value} ${unit.label}${value === 1 ? "" : "s"} ago`;
+    }
+  }
+
+  return "less than a minute ago";
+}
+
+function productionDeployRequiresFlagError(): CliError {
+  return new CliError({
+    code: "PROD_DEPLOY_REQUIRES_FLAG",
+    domain: "app",
+    summary: "Production deploy requires --prod",
+    why: "The resolved Branch is production and this App already has a production deployment.",
+    fix: "Re-run with --prod, or deploy from a preview Branch.",
+    exitCode: 2,
+    nextSteps: ["prisma-cli app deploy --prod"],
+    humanLines: [
+      "This would deploy to production.",
+      "",
+      "Production deploys require explicit intent. Re-run with:",
+      "",
+      "  prisma app deploy --prod",
+      "",
+      "Or deploy a preview from a feature branch:",
+      "",
+      "  git checkout -b <branch-name>",
+      "  prisma app deploy",
+    ],
+  });
+}
+
+function productionDeployConfirmationRequiredError(appName: string): CliError {
+  return new CliError({
+    code: "CONFIRMATION_REQUIRED",
+    domain: "app",
+    summary: "Production deploy requires confirmation in the current mode",
+    why: "This command cannot prompt for production deploy confirmation in the current mode.",
+    fix: `Pass --prod --yes to confirm deployment of "${appName}" to production.`,
+    exitCode: 1,
+    nextSteps: ["prisma-cli app deploy --prod --yes"],
+  });
+}
+
+function productionDeployCancelledError(): CliError {
+  return new CliError({
+    code: "CONFIRMATION_REQUIRED",
+    domain: "app",
+    summary: "Production deploy cancelled",
+    why: null,
+    fix: null,
+    exitCode: 0,
+    humanLines: ["Cancelled."],
+  });
+}
+
 async function resolveAmbiguousDeployApp(
   context: CommandContext,
   matches: PreviewAppRecord[],
@@ -1753,7 +1938,7 @@ async function resolveDeployProjectContext(
       prompt: createSelectPromptPort(context),
       remember: true,
     });
-    return withDeployBranch(resolved, branch);
+    return withRemoteDeployBranch(client, resolved, branch);
   }
 
   if (options.envProjectId) {
@@ -1761,7 +1946,7 @@ async function resolveDeployProjectContext(
     if (!project) {
       throw projectNotFoundError(options.envProjectId, workspace);
     }
-    return withDeployBranch({
+    return withRemoteDeployBranch(client, {
       workspace,
       project: toProjectSummary(project),
       resolution: {
@@ -1782,7 +1967,7 @@ async function resolveDeployProjectContext(
       throw localResolutionPinStaleError();
     }
 
-    return withDeployBranch({
+    return withRemoteDeployBranch(client, {
       workspace,
       project: toProjectSummary(project),
       resolution: {
@@ -1802,20 +1987,130 @@ async function resolveDeployProjectContext(
     prompt: createSelectPromptPort(context),
     remember: true,
   });
-  return withDeployBranch(resolved, branch);
+  return withRemoteDeployBranch(client, resolved, branch);
 }
 
-function withDeployBranch(
+async function withRemoteDeployBranch(
+  client: ManagementApiClient,
   target: Omit<ResolvedAppProjectContext, "branch">,
   branch: ResolvedDeployBranch,
-): ResolvedAppProjectContext {
+): Promise<ResolvedAppProjectContext> {
+  const remoteBranch = await resolveOrCreateRemoteDeployBranch(client, {
+    projectId: target.project.id,
+    branchName: branch.name,
+  });
+
   return {
     ...target,
     branch: {
-      name: branch.name,
-      kind: toBranchKind(branch.name),
+      name: remoteBranch.name,
+      kind: remoteBranch.kind,
     },
   };
+}
+
+interface RawDeployBranchRecord {
+  id: string;
+  gitName: string;
+  isDefault?: boolean;
+  role?: BranchKind | null;
+}
+
+async function resolveOrCreateRemoteDeployBranch(
+  client: ManagementApiClient,
+  options: {
+    projectId: string;
+    branchName: string;
+  },
+): Promise<{ id: string; name: string; kind: BranchKind }> {
+  const existing = (await listRemoteDeployBranches(client, options))[0];
+  const record = existing ?? await createRemoteDeployBranch(client, options);
+  const kind = requireBranchRole(record, options.branchName);
+
+  return {
+    id: record.id,
+    name: record.gitName,
+    kind,
+  };
+}
+
+async function listRemoteDeployBranches(
+  client: ManagementApiClient,
+  options: {
+    projectId: string;
+    branchName: string;
+  },
+): Promise<RawDeployBranchRecord[]> {
+  const result = await client.GET("/v1/projects/{projectId}/branches", {
+    params: {
+      path: { projectId: options.projectId },
+      query: { gitName: options.branchName },
+    },
+  });
+  if (result.error || !result.data) {
+    throw branchResolutionFailedError("Failed to list branches", result.error);
+  }
+
+  return result.data.data as RawDeployBranchRecord[];
+}
+
+async function createRemoteDeployBranch(
+  client: ManagementApiClient,
+  options: {
+    projectId: string;
+    branchName: string;
+  },
+): Promise<RawDeployBranchRecord> {
+  const result = await client.POST("/v1/projects/{projectId}/branches", {
+    params: {
+      path: { projectId: options.projectId },
+    },
+    body: {
+      gitName: options.branchName,
+    } as never,
+  });
+  if (result.error || !result.data) {
+    if (result.response.status === 409) {
+      const raced = (await listRemoteDeployBranches(client, options))[0];
+      if (raced) {
+        return raced;
+      }
+    }
+
+    throw branchResolutionFailedError(`Failed to create branch "${options.branchName}"`, result.error);
+  }
+
+  return result.data.data as RawDeployBranchRecord;
+}
+
+function requireBranchRole(record: RawDeployBranchRecord, requestedBranchName: string): BranchKind {
+  if (record.role === "production" || record.role === "preview") {
+    return record.role;
+  }
+
+  throw branchRoleUnavailableError(requestedBranchName);
+}
+
+function branchRoleUnavailableError(branchName: string): CliError {
+  return featureUnavailableError(
+    "Branch role is unavailable",
+    `The resolved Branch "${branchName}" did not include a role in the Management API response.`,
+    "Wait for Branch roles to land in the platform API, then retry this deploy.",
+    [],
+    "branch",
+  );
+}
+
+function branchResolutionFailedError(summary: string, error: unknown): CliError {
+  return new CliError({
+    code: "DEPLOY_FAILED",
+    domain: "branch",
+    summary,
+    why: summarizeUnknownError(error),
+    fix: "Retry the deploy, or pass --branch <name> to deploy a specific Branch.",
+    exitCode: 1,
+    nextSteps: ["prisma-cli app deploy --branch <name>"],
+  });
 }
 
 function toProjectSummary(project: Pick<ProjectCandidate, "id" | "name">): ProjectSummary {
@@ -2272,6 +2567,10 @@ function validateDeployHttpPortText(value: string | undefined): string | undefin
   } catch (error) {
     return error instanceof CliError ? error.summary : String(error);
   }
+}
+
+function summarizeUnknownError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function formatDeployDirectory(cwd: string): string {

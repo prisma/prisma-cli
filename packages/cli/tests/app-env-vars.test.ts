@@ -37,9 +37,16 @@ afterEach(() => {
 });
 
 function createProjectClient() {
+  const branchRecord = (branchName: string) => ({
+    id: `branch_${branchName.replace(/[^a-z0-9]+/gi, "_")}`,
+    gitName: branchName,
+    isDefault: branchName === "main",
+    role: "preview",
+  });
+
   return {
     token: "token",
-    GET: vi.fn().mockImplementation((pathName: string) => {
+    GET: vi.fn().mockImplementation((pathName: string, request?: { params?: { query?: { gitName?: string } } }) => {
       if (pathName === "/v1/projects") {
         return {
           data: {
@@ -54,6 +61,27 @@ function createProjectClient() {
                 },
               },
             ],
+          },
+        };
+      }
+
+      if (pathName === "/v1/projects/{projectId}/branches") {
+        const branchName = request?.params?.query?.gitName ?? "main";
+        return {
+          data: {
+            data: [branchRecord(branchName)],
+          },
+        };
+      }
+
+      throw new Error(`Unexpected path ${pathName}`);
+    }),
+    POST: vi.fn().mockImplementation((pathName: string, request?: { body?: { gitName?: string } }) => {
+      if (pathName === "/v1/projects/{projectId}/branches") {
+        const branchName = request?.body?.gitName ?? "main";
+        return {
+          data: {
+            data: branchRecord(branchName),
           },
         };
       }
@@ -605,7 +633,7 @@ describe("app env vars", () => {
     );
   });
 
-  it("parses deploy build, port, explicit project, and JSON output through the CLI command layer", async () => {
+  it("parses deploy build, port, prod, explicit project, and JSON output through the CLI command layer", async () => {
     const runAppDeploy = vi.fn().mockResolvedValue({
       command: "app.deploy",
       result: {
@@ -664,6 +692,7 @@ describe("app env vars", () => {
         "DATABASE_URL=postgresql://example",
         "--project",
         "proj_123",
+        "--prod",
         "--json",
       ],
       cwd,
@@ -709,6 +738,7 @@ describe("app env vars", () => {
         httpPort: "3000",
         envAssignments: ["DATABASE_URL=postgresql://example"],
         projectRef: "proj_123",
+        prod: true,
       },
     );
   });

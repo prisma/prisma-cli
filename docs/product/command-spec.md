@@ -489,7 +489,7 @@ prisma-cli app run --build-type nextjs
 prisma-cli app run --build-type bun --entry server.ts --port 3000
 ```
 
-## `prisma-cli app deploy --project <id-or-name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start> --entry <path> --http-port <port> --env <name=value>`
+## `prisma-cli app deploy --project <id-or-name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start> --entry <path> --http-port <port> --env <name=value> --prod`
 
 Purpose:
 
@@ -500,7 +500,10 @@ Behavior:
 - requires auth
 - resolves or creates project context from `--project`, `PRISMA_PROJECT_ID`, `.prisma/local.json`, `package.json#name`, or current directory name
 - resolves or creates branch context from `--branch`, local Git branch, or `main`
+- treats only the resolved Branch `role` as production authority; branch name, `main`, `production`, and `isDefault` are not production authority
 - resolves or creates app context inside the resolved branch from `--app`, `PRISMA_APP_ID`, `package.json#name`, or current directory name
+- auto-promotes the first production deploy for an App without `--prod`
+- requires `--prod` for subsequent deploys to a production Branch; `--yes` only skips the confirmation prompt when `--prod` is also present
 - does not prompt when there is no real choice; zero matching apps creates the inferred app
 - detects supported frameworks and shows the resolved framework/runtime settings before deploy
 - asks `Customize settings? (y/N)` only in interactive first-deploy flows, and only asks for Framework and HTTP port when the user opts in
@@ -517,6 +520,7 @@ prisma-cli app deploy
 prisma-cli app deploy --app my-app --env DATABASE_URL=postgresql://example
 prisma-cli app deploy --framework nextjs --http-port 3000
 prisma-cli app deploy --branch feat-login --framework hono --http-port 3000
+prisma-cli app deploy --prod --yes
 ```
 
 ## `prisma-cli project env`

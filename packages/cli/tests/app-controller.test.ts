@@ -33,15 +33,31 @@ afterEach(() => {
   vi.doUnmock("../src/lib/auth/auth-ops");
   vi.doUnmock("../src/lib/auth/guard");
   vi.doUnmock("../src/lib/app/preview-provider");
+  vi.doUnmock("../src/shell/prompt");
   vi.doUnmock("open");
   vi.resetModules();
   vi.restoreAllMocks();
 });
 
-function createProjectClient(projectId = "proj_123") {
+function createProjectClient(
+  projectId = "proj_123",
+  options: {
+    branchRole?: "preview" | "production" | null;
+    branchExists?: boolean;
+    isDefault?: boolean;
+  } = {},
+) {
+  const branchRole = options.branchRole === undefined ? "preview" : options.branchRole;
+  const branchRecord = (branchName: string) => ({
+    id: `branch_${branchName.replace(/[^a-z0-9]+/gi, "_")}`,
+    gitName: branchName,
+    isDefault: options.isDefault ?? branchName === "main",
+    ...(branchRole === null ? {} : { role: branchRole }),
+  });
+
   return {
     token: "token",
-    GET: vi.fn().mockImplementation((pathName: string) => {
+    GET: vi.fn().mockImplementation((pathName: string, request?: { params?: { query?: { gitName?: string } } }) => {
       if (pathName === "/v1/projects") {
         return {
           data: {
@@ -56,6 +72,27 @@ function createProjectClient(projectId = "proj_123") {
                 },
               },
             ],
+          },
+        };
+      }
+
+      if (pathName === "/v1/projects/{projectId}/branches") {
+        const branchName = request?.params?.query?.gitName ?? "main";
+        return {
+          data: {
+            data: options.branchExists === false ? [] : [branchRecord(branchName)],
+          },
+        };
+      }
+
+      throw new Error(`Unexpected path ${pathName}`);
+    }),
+    POST: vi.fn().mockImplementation((pathName: string, request?: { body?: { gitName?: string } }) => {
+      if (pathName === "/v1/projects/{projectId}/branches") {
+        const branchName = request?.body?.gitName ?? "main";
+        return {
+          data: {
+            data: branchRecord(branchName),
           },
         };
       }
@@ -165,7 +202,7 @@ describe("app controller", () => {
       },
       branch: {
         name: "main",
-        kind: "production",
+        kind: "preview",
       },
       resolution: {
         projectSource: "explicit",
@@ -184,6 +221,357 @@ describe("app controller", () => {
       id: "app_1",
       name: "hello-world",
     });
+  });
+
+  it("auto-promotes the first production deploy without --prod", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient("proj_123", { branchRole: "production" }));
+    const app = { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: null, liveUrl: null };
+    const listApps = vi.fn().mockResolvedValue([app]);
+    const listDeployments = vi.fn().mockResolvedValue({ app, deployments: [] });
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_123",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        deployApp,
+        listDeployments,
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context, stderr } = await createTestCommandContext({ cwd, stateDir: path.join(cwd, ".state") });
+
+    await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      framework: "hono",
+    });
+
+    expect(listDeployments).toHaveBeenCalledWith("app_1");
+    expect(deployApp).toHaveBeenCalled();
+    expect(stderr.buffer).toContain('First deploy of "hello-world" -- promoting to production.');
+  });
+
+  it("blocks a subsequent production deploy without --prod", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient("proj_123", { branchRole: "production" }));
+    const app = { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_live", liveUrl: null };
+    const listApps = vi.fn().mockResolvedValue([app]);
+    const listDeployments = vi.fn().mockResolvedValue({
+      app,
+      deployments: [
+        {
+          id: "dep_live",
+          status: "running",
+          createdAt: "2026-05-29T05:00:00.000Z",
+          url: "https://hello-world.prisma.app",
+          live: true,
+        },
+      ],
+    });
+    const deployApp = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        deployApp,
+        listDeployments,
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context } = await createTestCommandContext({ cwd, stateDir: path.join(cwd, ".state") });
+
+    let error: unknown;
+    try {
+      await runAppDeploy(context, "hello-world", {
+        projectRef: "proj_123",
+        framework: "hono",
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toMatchObject({
+      code: "PROD_DEPLOY_REQUIRES_FLAG",
+      exitCode: 2,
+      humanLines: [
+        "This would deploy to production.",
+        "",
+        "Production deploys require explicit intent. Re-run with:",
+        "",
+        "  prisma app deploy --prod",
+        "",
+        "Or deploy a preview from a feature branch:",
+        "",
+        "  git checkout -b <branch-name>",
+        "  prisma app deploy",
+      ],
+    });
+    expect(deployApp).not.toHaveBeenCalled();
+  });
+
+  it("asks for confirmation on a subsequent production deploy with --prod", async () => {
+    const confirmPrompt = vi.fn().mockResolvedValue(true);
+    vi.doMock("../src/shell/prompt", async () => {
+      const actual = await vi.importActual<typeof import("../src/shell/prompt")>("../src/shell/prompt");
+      return {
+        ...actual,
+        confirmPrompt,
+      };
+    });
+
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient("proj_123", { branchRole: "production" }));
+    const app = { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_live", liveUrl: null };
+    const listApps = vi.fn().mockResolvedValue([app]);
+    const listDeployments = vi.fn().mockResolvedValue({
+      app,
+      deployments: [
+        {
+          id: "dep_live",
+          status: "running",
+          createdAt: "2026-05-29T05:00:00.000Z",
+          url: "https://hello-world.prisma.app",
+          live: true,
+        },
+      ],
+    });
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_new",
+      },
+      deployment: {
+        id: "dep_new",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        deployApp,
+        listDeployments,
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context, stderr } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      isTTY: true,
+    });
+
+    await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      framework: "hono",
+      prod: true,
+    });
+
+    expect(stderr.buffer).toContain("This will deploy to production and replace the live deployment.");
+    expect(confirmPrompt).toHaveBeenCalledWith(expect.objectContaining({
+      message: "Deploy to production?",
+      initialValue: false,
+    }));
+    expect(deployApp).toHaveBeenCalled();
+  });
+
+  it("allows a subsequent production deploy with --prod --yes without prompting", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient("proj_123", { branchRole: "production" }));
+    const app = { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_live", liveUrl: null };
+    const listApps = vi.fn().mockResolvedValue([app]);
+    const listDeployments = vi.fn().mockResolvedValue({
+      app,
+      deployments: [
+        {
+          id: "dep_live",
+          status: "running",
+          createdAt: "2026-05-29T05:00:00.000Z",
+          url: "https://hello-world.prisma.app",
+          live: true,
+        },
+      ],
+    });
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_new",
+      },
+      deployment: {
+        id: "dep_new",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        deployApp,
+        listDeployments,
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context, stderr } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      flags: { yes: true },
+    });
+
+    await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      framework: "hono",
+      prod: true,
+    });
+
+    expect(stderr.buffer).toContain("Deploying to production (--prod --yes).");
+    expect(deployApp).toHaveBeenCalled();
+  });
+
+  it("does not let --yes grant production authority without --prod", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient("proj_123", { branchRole: "production" }));
+    const app = { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_live", liveUrl: null };
+    const listApps = vi.fn().mockResolvedValue([app]);
+    const listDeployments = vi.fn().mockResolvedValue({
+      app,
+      deployments: [
+        {
+          id: "dep_live",
+          status: "running",
+          createdAt: "2026-05-29T05:00:00.000Z",
+          url: "https://hello-world.prisma.app",
+          live: true,
+        },
+      ],
+    });
+    const deployApp = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        deployApp,
+        listDeployments,
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      flags: { yes: true },
+    });
+
+    await expect(runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      framework: "hono",
+    })).rejects.toMatchObject({
+      code: "PROD_DEPLOY_REQUIRES_FLAG",
+      exitCode: 2,
+    });
+    expect(deployApp).not.toHaveBeenCalled();
+  });
+
+  it("does not treat branch name or isDefault as production authority", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient("proj_123", {
+      branchRole: "preview",
+      isDefault: true,
+    }));
+    const app = { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_live", liveUrl: null };
+    const listApps = vi.fn().mockResolvedValue([app]);
+    const listDeployments = vi.fn();
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_new",
+      },
+      deployment: {
+        id: "dep_new",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        listApps,
+        deployApp,
+        listDeployments,
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context } = await createTestCommandContext({ cwd, stateDir: path.join(cwd, ".state") });
+
+    const result = await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      branchName: "production",
+      framework: "hono",
+    });
+
+    expect(result.result.branch).toEqual({
+      name: "production",
+      kind: "preview",
+    });
+    expect(listDeployments).not.toHaveBeenCalled();
+    expect(deployApp).toHaveBeenCalled();
   });
 
   it("forwards deploy build options and HTTP port overrides to the provider", async () => {
@@ -281,8 +669,24 @@ describe("app controller", () => {
           };
         }
 
+        if (pathName === "/v1/projects/{projectId}/branches") {
+          return {
+            data: {
+              data: [
+                {
+                  id: "branch_feat_j1",
+                  gitName: "feat-j1",
+                  isDefault: false,
+                  role: "preview",
+                },
+              ],
+            },
+          };
+        }
+
         throw new Error(`Unexpected path ${pathName}`);
       }),
+      POST: vi.fn(),
     };
     const requireComputeAuth = vi.fn().mockResolvedValue(client);
     const listApps = vi.fn().mockResolvedValue([]);
@@ -1095,7 +1499,7 @@ describe("app controller", () => {
       projectId: "proj_new",
     });
     stderr.buffer = "";
-    client.GET.mockImplementation((pathName: string) => {
+    client.GET.mockImplementation((pathName: string, request?: { params?: { query?: { gitName?: string } } }) => {
       if (pathName === "/v1/projects") {
         return {
           data: {
@@ -1108,6 +1512,22 @@ describe("app controller", () => {
                   id: "ws_123",
                   name: "Acme Inc",
                 },
+              },
+            ],
+          },
+        };
+      }
+
+      if (pathName === "/v1/projects/{projectId}/branches") {
+        const branchName = request?.params?.query?.gitName ?? "main";
+        return {
+          data: {
+            data: [
+              {
+                id: `branch_${branchName.replace(/[^a-z0-9]+/gi, "_")}`,
+                gitName: branchName,
+                isDefault: branchName === "main",
+                role: "preview",
               },
             ],
           },
