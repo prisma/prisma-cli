@@ -542,6 +542,7 @@ export function createPreviewAppProvider(
 
       if (result.isErr()) {
         if (CancelledError.is(result.error)) {
+          // Stopping a log stream is an expected user action, not a failed operation.
           return;
         }
 
