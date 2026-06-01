@@ -90,7 +90,7 @@ None.
 
 ### Phase 3 - Install Context Recommendations
 
-**Status** ☐ Not started
+**Status** ✓ Complete
 
 **Goal** Add best-effort recommendations that match the detected invocation or install context, while preserving the safe docs fallback.
 
@@ -110,15 +110,15 @@ None.
 
 **Acceptance Criteria**
 
-**AC3.1** Eligible local npm usage recommends `npm install --save-dev @prisma/cli@latest`.
+**AC3.1** [x] Eligible local npm usage recommends `npm install --save-dev @prisma/cli@latest`.
 
-**AC3.2** Eligible confidently detected global npm usage recommends `npm install --global @prisma/cli@latest`.
+**AC3.2** [x] Eligible confidently detected global npm usage recommends `npm install --global @prisma/cli@latest`.
 
-**AC3.3** Eligible local pnpm and Bun usage recommend package-manager-appropriate dev-dependency update commands.
+**AC3.3** [x] Eligible local pnpm and Bun usage recommend package-manager-appropriate dev-dependency update commands.
 
-**AC3.4** Ambiguous, ephemeral, dev, and PR-preview invocations do not receive misleading persistent-install commands.
+**AC3.4** [x] Ambiguous, ephemeral, dev, and PR-preview invocations do not receive misleading persistent-install commands.
 
-**AC3.5** Fallback notification copy includes `https://prisma.io/docs` and no command-specific guess.
+**AC3.5** [x] Fallback notification copy includes `https://prisma.io/docs` and no command-specific guess.
 
 ### Phase 4 - Packaging, Documentation, and Verification
 

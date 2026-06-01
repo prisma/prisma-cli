@@ -3,7 +3,7 @@ import { access, readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 import { getCliVersion } from "../src/lib/version";
-import { runUpdateDiscovery, UpdateCheckStore } from "../src/shell/update-check";
+import { runUpdateDiscovery, selectUpdateInstruction, UpdateCheckStore } from "../src/shell/update-check";
 import { createTempCwd, executeCli } from "./helpers";
 
 const fixturePath = path.resolve("fixtures/mock-api.json");
@@ -229,6 +229,59 @@ describe("automatic update check", () => {
       }),
     ).resolves.toBeUndefined();
     await expect(access(path.join(updateCheckDir, "update-check.json"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it.each([
+    {
+      name: "local npm",
+      env: { npm_config_user_agent: "npm/10.9.0 node/v24.14.1 darwin arm64" },
+      argv: ["node", "/repo/node_modules/.bin/prisma-cli"],
+      expected: { type: "command", value: "npm install --save-dev @prisma/cli@latest" },
+    },
+    {
+      name: "global npm",
+      env: { npm_config_user_agent: "npm/10.9.0 node/v24.14.1 darwin arm64", npm_config_global: "true" },
+      argv: ["node", "/usr/local/bin/prisma-cli"],
+      expected: { type: "command", value: "npm install --global @prisma/cli@latest" },
+    },
+    {
+      name: "local pnpm",
+      env: { npm_config_user_agent: "pnpm/10.30.0 npm/? node/v24.14.1 darwin arm64" },
+      argv: ["node", "/repo/node_modules/.bin/prisma-cli"],
+      expected: { type: "command", value: "pnpm add -D @prisma/cli@latest" },
+    },
+    {
+      name: "local bun",
+      env: { npm_config_user_agent: "bun/1.3.0 npm/? node/v24.14.1 darwin arm64" },
+      argv: ["node", "/repo/node_modules/.bin/prisma-cli"],
+      expected: { type: "command", value: "bun add -d @prisma/cli@latest" },
+    },
+    {
+      name: "npx",
+      env: { npm_lifecycle_event: "npx" },
+      argv: ["node", "/Users/alice/.npm/_npx/123/node_modules/.bin/prisma-cli"],
+      expected: { type: "docs", value: "https://prisma.io/docs" },
+    },
+    {
+      name: "pnpx",
+      env: { npm_lifecycle_event: "pnpx", npm_config_user_agent: "pnpm/10.30.0" },
+      argv: ["node", "/repo/node_modules/.bin/prisma-cli"],
+      expected: { type: "docs", value: "https://prisma.io/docs" },
+    },
+    {
+      name: "bunx",
+      env: { npm_config_user_agent: "bun/1.3.0" },
+      argv: ["node", "/Users/alice/.bun/install/cache/@prisma/cli/prisma-cli"],
+      expected: { type: "docs", value: "https://prisma.io/docs" },
+    },
+    {
+      name: "unknown",
+      env: {},
+      argv: ["node", "/some/path/prisma-cli"],
+      expected: { type: "docs", value: "https://prisma.io/docs" },
+    },
+  ])("selects update instructions for $name", ({ env, argv, expected }) => {
+    expect(selectUpdateInstruction(env, argv)).toEqual(expected);
   });
 });
 

@@ -21,6 +21,11 @@ export interface UpdateCheckState {
   notifiedAt?: string;
 }
 
+interface UpdateInstruction {
+  type: "command" | "docs";
+  value: string;
+}
+
 export class UpdateCheckStore {
   private readonly filePath: string;
 
@@ -60,7 +65,7 @@ export async function maybeWriteCachedUpdateNotification(runtime: CliRuntime): P
   const latestVersion = state?.latestVersion;
 
   if (latestVersion && isInstalledVersionStale(getCliVersion(), latestVersion) && shouldNotify(state)) {
-    runtime.stderr.write(renderUpdateNotification(latestVersion));
+    runtime.stderr.write(renderUpdateNotification(latestVersion, selectUpdateInstruction(runtime.env)));
     await store.write({
       ...state,
       packageName: "@prisma/cli",
@@ -185,12 +190,69 @@ async function scheduleRemoteDiscovery(
   child.unref();
 }
 
-function renderUpdateNotification(latestVersion: string): string {
+export function selectUpdateInstruction(
+  env: NodeJS.ProcessEnv,
+  processArgv: readonly string[] = process.argv,
+): UpdateInstruction {
+  const entrypoint = (processArgv[1] ?? "").replace(/\\/g, "/").toLowerCase();
+  const userAgent = env.npm_config_user_agent?.toLowerCase() ?? "";
+  const lifecycle = env.npm_lifecycle_event?.toLowerCase() ?? "";
+
+  if (isEphemeralInvocation(entrypoint, lifecycle)) {
+    return docsInstruction();
+  }
+
+  if (entrypoint.includes("/node_modules/.bin/")) {
+    if (userAgent.startsWith("pnpm")) {
+      return commandInstruction("pnpm add -D @prisma/cli@latest");
+    }
+
+    if (userAgent.startsWith("bun")) {
+      return commandInstruction("bun add -d @prisma/cli@latest");
+    }
+
+    if (userAgent.startsWith("npm")) {
+      return commandInstruction("npm install --save-dev @prisma/cli@latest");
+    }
+  }
+
+  if (env.npm_config_global === "true" || isLikelyGlobalNpmEntrypoint(entrypoint)) {
+    return commandInstruction("npm install --global @prisma/cli@latest");
+  }
+
+  return docsInstruction();
+}
+
+function renderUpdateNotification(latestVersion: string, instruction: UpdateInstruction): string {
   return [
     `Update available: ${getCliName()} ${getCliVersion()} -> ${latestVersion}`,
-    `See ${FALLBACK_INSTALL_DOCS_URL} for update instructions.`,
+    renderUpdateInstruction(instruction),
     "",
   ].join("\n");
+}
+
+function renderUpdateInstruction(instruction: UpdateInstruction): string {
+  if (instruction.type === "command") {
+    return `Run ${instruction.value} to update.`;
+  }
+
+  return `See ${instruction.value} for update instructions.`;
+}
+
+function isEphemeralInvocation(entrypoint: string, lifecycle: string): boolean {
+  return lifecycle === "npx" || lifecycle === "pnpx" || entrypoint.includes("/_npx/") || entrypoint.includes("/.bun/");
+}
+
+function isLikelyGlobalNpmEntrypoint(entrypoint: string): boolean {
+  return /\/npm\/prisma-cli(\.cmd|\.exe)?$/.test(entrypoint) || /\/npm-global\/bin\/prisma-cli$/.test(entrypoint);
+}
+
+function commandInstruction(value: string): UpdateInstruction {
+  return { type: "command", value };
+}
+
+function docsInstruction(): UpdateInstruction {
+  return { type: "docs", value: FALLBACK_INSTALL_DOCS_URL };
 }
 
 function resolveUpdateCheckCacheDir(runtime: CliRuntime): string {
