@@ -22,7 +22,7 @@ None.
 
 ### Phase 1 - Cached Notification Slice
 
-**Status** ☐ Not started
+**Status** ✓ Complete
 
 **Goal** Add the shell-level update-check model and render a notification from cached state without doing remote network discovery yet. This proves stream behavior, eligibility rules, state isolation, and command-continuation behavior end to end.
 
@@ -44,17 +44,17 @@ None.
 
 **Acceptance Criteria**
 
-**AC1.1** A cached stale-version record prints exactly one concise update notice to stderr before an eligible command's human output, and the original command still exits with its normal exit code.
+**AC1.1** [x] A cached stale-version record prints exactly one concise update notice to stderr before an eligible command's human output, and the original command still exits with its normal exit code.
 
-**AC1.2** The same cached state produces no stdout changes.
+**AC1.2** [x] The same cached state produces no stdout changes.
 
-**AC1.3** Notification is suppressed in `--json`, `--quiet`, CI, non-TTY stderr, `NO_UPDATE_NOTIFIER`, and default unit-test mode.
+**AC1.3** [x] Notification is suppressed in `--json`, `--quiet`, CI, non-TTY stderr, `NO_UPDATE_NOTIFIER`, and default unit-test mode.
 
-**AC1.4** The update-check state file is outside project-local `.prisma/local.json` and outside the repo-local CLI state file.
+**AC1.4** [x] The update-check state file is outside project-local `.prisma/local.json` and outside the repo-local CLI state file.
 
-**AC1.5** The fallback notification includes `https://prisma.io/docs` and no package-manager-specific command guess.
+**AC1.5** [x] The fallback notification includes `https://prisma.io/docs` and no package-manager-specific command guess.
 
-**AC1.6** Tests cover successful command continuation, error command continuation, and at least one early root utility path such as `--version` or help.
+**AC1.6** [x] Tests cover successful command continuation, error command continuation, and at least one early root utility path such as `--version` or help.
 
 ### Phase 2 - Background Remote Discovery
 
