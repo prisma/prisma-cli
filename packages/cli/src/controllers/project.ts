@@ -890,6 +890,7 @@ async function waitForInstalledRepository(
   let inspectableInstallationCount = 0;
 
   while (Date.now() <= deadline) {
+    context.runtime.signal.throwIfAborted();
     const installations = await listScmInstallations(api, workspaceId);
 
     const lookup = await findRepositoryInInstallations(api, installations, repository);
@@ -903,7 +904,7 @@ async function waitForInstalledRepository(
       break;
     }
 
-    await sleep(Math.min(intervalMs, remainingMs));
+    await sleep(Math.min(intervalMs, remainingMs), context.runtime.signal);
   }
 
   return { match: null, inspectableInstallationCount };
@@ -944,8 +945,15 @@ function writeInstallWaitStatus(
   context.output.stderr.write(`${lines.join("\n")}\n`);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timeout);
+      reject(signal.reason);
+    }, { once: true });
+  });
 }
 
 async function listScmInstallations(
