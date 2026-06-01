@@ -1,2 +1,0 @@
-Out-of-scope decision: `pnpm install` ran the repository `prepare` script and generated `.agents/skills` symlinks. These are local setup artifacts, so they should remain uncommitted unless the operator explicitly asks to version them.
-Unrelated bug: Phase 1 targeted verification unexpectedly ran the full Vitest suite and exposed an `app-build.test.ts` failure where a standalone symlink escape was not rejected. This is outside cancellation propagation, but it blocks the requested all-verifications-green commit flow unless confirmed pre-existing or fixed separately.
