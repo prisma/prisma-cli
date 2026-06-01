@@ -9,12 +9,13 @@ export interface BunPackageJsonLike {
   devDependencies?: unknown;
 }
 
-export async function readBunPackageJson(appPath: string): Promise<BunPackageJsonLike | null> {
+export async function readBunPackageJson(appPath: string, signal?: AbortSignal): Promise<BunPackageJsonLike | null> {
   const packageJsonPath = path.join(appPath, "package.json");
 
   let content: string;
+  signal?.throwIfAborted();
   try {
-    content = await readFile(packageJsonPath, "utf8");
+    content = await readFile(packageJsonPath, { encoding: "utf8", signal });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return null;
@@ -49,8 +50,9 @@ export function readBunPackageEntrypoint(packageJson: BunPackageJsonLike | null)
 export async function resolveBunEntrypoint(
   appPath: string,
   explicitEntrypoint: string | undefined,
+  signal?: AbortSignal,
 ): Promise<string> {
-  const packageJson = await readBunPackageJson(appPath);
+  const packageJson = await readBunPackageJson(appPath, signal);
   const candidate = explicitEntrypoint ?? readBunPackageEntrypoint(packageJson);
 
   if (!candidate) {
@@ -71,9 +73,13 @@ export async function resolveBunEntrypoint(
   }
 
   const entrypointPath = path.join(appPath, normalized);
+  signal?.throwIfAborted();
   try {
+    // access does not accept AbortSignal; check before and after the filesystem boundary.
     await access(entrypointPath);
-  } catch {
+    signal?.throwIfAborted();
+  } catch (error) {
+    if (signal?.aborted) throw error;
     throw new Error(`Entrypoint file does not exist: ${entrypointPath}`);
   }
 

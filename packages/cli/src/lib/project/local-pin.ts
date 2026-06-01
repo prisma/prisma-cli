@@ -13,9 +13,10 @@ export type LocalResolutionPinReadResult =
   | { kind: "invalid" }
   | { kind: "present"; pin: LocalResolutionPin };
 
-export async function readLocalResolutionPin(cwd: string): Promise<LocalResolutionPinReadResult> {
+export async function readLocalResolutionPin(cwd: string, signal?: AbortSignal): Promise<LocalResolutionPinReadResult> {
+  signal?.throwIfAborted();
   try {
-    const raw = await readFile(path.join(cwd, LOCAL_RESOLUTION_PIN_RELATIVE_PATH), "utf8");
+    const raw = await readFile(path.join(cwd, LOCAL_RESOLUTION_PIN_RELATIVE_PATH), { encoding: "utf8", signal });
     const parsed = JSON.parse(raw) as unknown;
     if (!isLocalResolutionPin(parsed)) {
       return { kind: "invalid" };
@@ -39,21 +40,27 @@ export async function readLocalResolutionPin(cwd: string): Promise<LocalResoluti
 export async function writeLocalResolutionPin(
   cwd: string,
   pin: LocalResolutionPin,
+  signal?: AbortSignal,
 ): Promise<void> {
   const prismaDir = path.join(cwd, ".prisma");
+  signal?.throwIfAborted();
+  // mkdir does not accept AbortSignal; check before the filesystem boundary.
   await mkdir(prismaDir, { recursive: true });
   const pinPath = path.join(cwd, LOCAL_RESOLUTION_PIN_RELATIVE_PATH);
   const tmpPath = path.join(prismaDir, `local.${process.pid}.${Date.now()}.tmp`);
-  await writeFile(tmpPath, `${JSON.stringify(pin, null, 2)}\n`, "utf8");
+  await writeFile(tmpPath, `${JSON.stringify(pin, null, 2)}\n`, { encoding: "utf8", signal });
+  signal?.throwIfAborted();
+  // rename does not accept AbortSignal; check before the filesystem boundary.
   await rename(tmpPath, pinPath);
 }
 
-export async function ensureLocalResolutionPinGitignore(cwd: string): Promise<void> {
+export async function ensureLocalResolutionPinGitignore(cwd: string, signal?: AbortSignal): Promise<void> {
   const gitignorePath = path.join(cwd, ".gitignore");
   let existing: string | null = null;
 
+  signal?.throwIfAborted();
   try {
-    existing = await readFile(gitignorePath, "utf8");
+    existing = await readFile(gitignorePath, { encoding: "utf8", signal });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       throw error;
@@ -61,7 +68,7 @@ export async function ensureLocalResolutionPinGitignore(cwd: string): Promise<vo
   }
 
   if (existing === null) {
-    await writeFile(gitignorePath, ".prisma/\n", "utf8");
+    await writeFile(gitignorePath, ".prisma/\n", { encoding: "utf8", signal });
     return;
   }
 
@@ -74,7 +81,7 @@ export async function ensureLocalResolutionPinGitignore(cwd: string): Promise<vo
   }
 
   const next = existing.endsWith("\n") ? `${existing}.prisma/\n` : `${existing}\n.prisma/\n`;
-  await writeFile(gitignorePath, next, "utf8");
+  await writeFile(gitignorePath, next, { encoding: "utf8", signal });
 }
 
 function isLocalResolutionPin(value: unknown): value is LocalResolutionPin {

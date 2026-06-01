@@ -60,13 +60,14 @@ export function resolveLocalStateFilePath(stateDir: string): string {
 export class LocalStateStore {
   private readonly stateFilePath: string;
 
-  constructor(stateDir: string) {
+  constructor(stateDir: string, private readonly signal?: AbortSignal) {
     this.stateFilePath = resolveLocalStateFilePath(stateDir);
   }
 
   async read(): Promise<LocalState> {
+    this.signal?.throwIfAborted();
     try {
-      const raw = await readFile(this.stateFilePath, "utf8");
+      const raw = await readFile(this.stateFilePath, { encoding: "utf8", signal: this.signal });
       const parsed = JSON.parse(raw) as Partial<LocalState>;
       return {
         auth: parsed.auth ?? structuredClone(DEFAULT_STATE.auth),
@@ -93,8 +94,10 @@ export class LocalStateStore {
   }
 
   async write(state: LocalState): Promise<void> {
+    this.signal?.throwIfAborted();
+    // mkdir does not accept AbortSignal; check before the filesystem boundary.
     await mkdir(path.dirname(this.stateFilePath), { recursive: true });
-    await writeFile(this.stateFilePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+    await writeFile(this.stateFilePath, `${JSON.stringify(state, null, 2)}\n`, { encoding: "utf8", signal: this.signal });
   }
 
   async setAuthSession(session: NonNullable<LocalState["auth"]>): Promise<LocalState> {

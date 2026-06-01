@@ -298,7 +298,7 @@ async function requireClientAndProject(
   commandName: string,
 ): Promise<{ client: ManagementApiClient; projectId: string }> {
   const authState = await requireAuthenticatedAuthState(context);
-  const client = await requireComputeAuth(context.runtime.env);
+  const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
   if (!client) {
     throw authRequiredError(["prisma-cli auth login"]);
   }

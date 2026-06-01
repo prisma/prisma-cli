@@ -25,7 +25,7 @@ export async function runAuthLogin(
   let result: AuthStateResult;
 
   if (isRealMode(context)) {
-    await performLogin(context.runtime.env);
+    await performLogin(context.runtime.env, context.runtime.signal);
     result = await readAuthState(context.runtime.env, context.runtime.signal);
   } else {
     const useCases = createAuthUseCases(createCliUseCaseGateways(context));
@@ -39,7 +39,7 @@ export async function runAuthLogout(context: CommandContext): Promise<CommandSuc
   let result: AuthStateResult;
 
   if (isRealMode(context)) {
-    await performLogout(context.runtime.env);
+    await performLogout(context.runtime.env, context.runtime.signal);
     result = await readAuthState(context.runtime.env, context.runtime.signal);
   } else {
     const useCases = createAuthUseCases(createCliUseCaseGateways(context));
@@ -73,7 +73,7 @@ export async function requireAuthenticatedAuthState(context: CommandContext): Pr
       throw authRequiredError();
     }
 
-    await performLogin(context.runtime.env);
+    await performLogin(context.runtime.env, context.runtime.signal);
     return readAuthState(context.runtime.env, context.runtime.signal);
   }
 

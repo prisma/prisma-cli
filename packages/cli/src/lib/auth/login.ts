@@ -29,6 +29,7 @@ export interface LoginOptions {
   port?: number;
   openUrl?: (url: string) => Promise<unknown> | unknown;
   env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
 }
 
 export async function login(options: LoginOptions = {}): Promise<void> {
@@ -51,6 +52,7 @@ export async function login(options: LoginOptions = {}): Promise<void> {
       authBaseUrl: options.authBaseUrl,
       openUrl: options.openUrl,
       env: options.env,
+      signal: options.signal,
     });
 
     const authResult = new Promise<void>((resolve, reject) => {
@@ -79,6 +81,7 @@ export async function login(options: LoginOptions = {}): Promise<void> {
       });
     });
 
+    options.signal?.throwIfAborted();
     await state.openLoginPage();
     await authResult;
   } finally {
@@ -105,9 +108,10 @@ class LoginState {
       authBaseUrl?: string;
       openUrl?: (url: string) => Promise<unknown> | unknown;
       env?: NodeJS.ProcessEnv;
+      signal?: AbortSignal;
     },
   ) {
-    this.tokenStorage = options.tokenStorage ?? new FileTokenStorage(options.env);
+    this.tokenStorage = options.tokenStorage ?? new FileTokenStorage(options.env, options.signal);
     this.sdk = createManagementApiSdk({
       clientId: options.clientId ?? CLIENT_ID,
       redirectUri: `http://${options.hostname}:${options.port}/auth/callback`,
@@ -119,6 +123,7 @@ class LoginState {
   }
 
   async openLoginPage(): Promise<void> {
+    this.options.signal?.throwIfAborted();
     const { url, state, verifier } = await this.sdk.getLoginUrl({
       scope: "workspace:admin offline_access",
       additionalParams: {
@@ -131,7 +136,10 @@ class LoginState {
     this.latestState = state;
     this.latestVerifier = verifier;
 
+    this.options.signal?.throwIfAborted();
+    // Browser launch cannot consume AbortSignal; check immediately before and after the boundary.
     await this.openUrl(url);
+    this.options.signal?.throwIfAborted();
   }
 
   async handleCallback(url: URL): Promise<void> {
@@ -172,6 +180,7 @@ class LoginState {
 
       const { data } = await this.sdk.client.GET("/v1/workspaces/{id}", {
         params: { path: { id: tokens.workspaceId } },
+        signal: this.options.signal,
       });
       const name = data?.data?.name;
       return typeof name === "string" && name.trim().length > 0 ? name.trim() : null;

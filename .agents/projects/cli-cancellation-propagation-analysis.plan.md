@@ -115,7 +115,7 @@ None.
 
 ### Phase 5: Filesystem And Token Storage Boundaries
 
-**Status:** ☐ Not started
+**Status:** ✓ Complete
 
 **Goal:** Push cancellation through local filesystem and credential-storage helpers while documenting unsupported external boundaries.
 
@@ -132,11 +132,11 @@ None.
 
 **Acceptance Criteria:**
 
-- **AC1:** Supported `readFile` and `writeFile` calls receive the command signal where reachable from command execution.
-- **AC2:** Unsupported filesystem and credential-store boundaries have immediate abort checks and short comments at the boundary.
-- **AC3:** Token refresh-lock wait exits promptly on abort.
-- **AC4:** No local race-based cancellation wrappers are introduced.
-- **AC5:** `pnpm --filter @prisma/cli test -- token-storage.test.ts app-state.test.ts app-bun-compat.test.ts project-controller.test.ts app-controller.test.ts` passes, or equivalent targeted filters if filenames change.
+- [x] **AC1:** Supported `readFile` and `writeFile` calls receive the command signal where reachable from command execution.
+- [x] **AC2:** Unsupported filesystem and credential-store boundaries have immediate abort checks and short comments at the boundary.
+- [x] **AC3:** Token refresh-lock wait exits promptly on abort.
+- [x] **AC4:** No local race-based cancellation wrappers are introduced.
+- [x] **AC5:** `pnpm --filter @prisma/cli test -- token-storage.test.ts app-state.test.ts app-bun-compat.test.ts project-controller.test.ts app-controller.test.ts` passes, or equivalent targeted filters if filenames change.
 
 ### Phase 6: End-To-End Verification And Cleanup
 

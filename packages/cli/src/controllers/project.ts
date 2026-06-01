@@ -64,7 +64,7 @@ async function readProjectListLocalBinding(
   workspace: AuthWorkspace,
   projects: Array<Pick<ProjectCandidate, "id">>,
 ): Promise<ProjectListResult["localBinding"]> {
-  const pin = await readLocalResolutionPin(cwd);
+  const pin = await readLocalResolutionPin(cwd, context.runtime.signal);
   if (pin.kind === "present") {
     return pin.pin.workspaceId === workspace.id && projects.some((project) => project.id === pin.pin.projectId)
       ? { status: "linked" }
@@ -84,7 +84,7 @@ export async function runProjectList(context: CommandContext): Promise<CommandSu
   }
 
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(context.runtime.env);
+    const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
     if (!client) {
       throw authRequiredError();
     }
@@ -186,7 +186,7 @@ export async function runProjectCreate(
     );
   }
 
-  const client = await requireComputeAuth(context.runtime.env);
+  const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
   if (!client) {
     throw authRequiredError();
   }
@@ -226,7 +226,7 @@ export async function runProjectLink(
   let provider: ReturnType<typeof createPreviewAppProvider> | null = null;
   let projects: ProjectCandidate[];
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(context.runtime.env);
+    const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
     if (!client) {
       throw authRequiredError();
     }
@@ -319,7 +319,7 @@ async function projectLinkTargetRequiredError(
   context: CommandContext,
   projects: ProjectCandidate[],
 ): Promise<CliError> {
-  const suggestedName = await inferTargetName(context.runtime.cwd);
+  const suggestedName = await inferTargetName(context.runtime.cwd, context.runtime.signal);
   const createCommand = `prisma-cli project create ${formatCommandArgument(suggestedName.name)}`;
   const recoveryCommands = [
     "prisma-cli project link <id-or-name>",
@@ -360,7 +360,7 @@ export async function runGitConnect(
   }
 
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(context.runtime.env);
+    const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
     if (!client) {
       throw authRequiredError();
     }
@@ -457,7 +457,7 @@ export async function runGitDisconnect(
   }
 
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(context.runtime.env);
+    const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
     if (!client) {
       throw authRequiredError();
     }
@@ -518,7 +518,7 @@ async function resolveProjectShowInRealMode(
   workspace: AuthWorkspace,
   explicitProject: string | undefined,
 ): Promise<ProjectShowResult> {
-  const client = await requireComputeAuth(context.runtime.env);
+  const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
   if (!client) {
     throw authRequiredError();
   }
@@ -538,7 +538,7 @@ async function resolveRequiredProjectInRealMode(
   explicitProject: string | undefined,
   commandName: string,
 ): Promise<ResolvedProjectTarget> {
-  const client = await requireComputeAuth(context.runtime.env);
+  const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
   if (!client) {
     throw authRequiredError();
   }
@@ -1111,9 +1111,13 @@ async function openInstallUrlIfInteractive(
   }
 
   try {
+    context.runtime.signal.throwIfAborted();
+    // Browser launch cannot consume AbortSignal; check immediately before and after the boundary.
     await open(installUrl);
+    context.runtime.signal.throwIfAborted();
     return true;
-  } catch {
+  } catch (error) {
+    if (context.runtime.signal.aborted) throw error;
     return false;
   }
 }

@@ -236,7 +236,7 @@ export async function runAppDeploy(
   const skipLocalPin = Boolean(envProjectId || options?.projectRef || options?.createProjectName);
   const localPin = skipLocalPin
     ? ({ kind: "missing" } satisfies LocalResolutionPinReadResult)
-    : await readLocalResolutionPin(context.runtime.cwd);
+    : await readLocalResolutionPin(context.runtime.cwd, context.runtime.signal);
   if (!skipLocalPin && localPin.kind === "invalid") {
     throw localResolutionPinStaleError();
   }
@@ -283,7 +283,7 @@ export async function runAppDeploy(
     explicitAppName: appName,
     explicitAppId: envAppId,
     firstDeploy: Boolean(target.localPinAction),
-    inferName: () => inferTargetName(context.runtime.cwd),
+    inferName: () => inferTargetName(context.runtime.cwd, context.runtime.signal),
   });
 
   await maybeRenderDeploySetupBlock(context, {
@@ -308,7 +308,7 @@ export async function runAppDeploy(
   // derives its entrypoint from build output, so validate --entry again after it.
   const buildType = framework.buildType;
   assertSupportedEntrypoint(buildType, options?.entrypoint, "deploy");
-  const entrypoint = await resolveDeployEntrypoint(context.runtime.cwd, framework, options?.entrypoint);
+  const entrypoint = await resolveDeployEntrypoint(context.runtime.cwd, framework, options?.entrypoint, context.runtime.signal);
   const portMapping = parseDeployPortMapping(String(runtime.port));
 
   const progressState = createPreviewDeployProgressState();
@@ -598,7 +598,10 @@ export async function runAppOpen(
 
   const shouldOpen = canPrompt(context);
   if (shouldOpen) {
+    context.runtime.signal.throwIfAborted();
+    // Browser launch cannot consume AbortSignal; check immediately before and after the boundary.
     await open(deploymentsResult.app.liveUrl);
+    context.runtime.signal.throwIfAborted();
   }
 
   return {
@@ -2149,18 +2152,18 @@ async function requirePreviewAppProvider(context: CommandContext) {
 async function requirePreviewAppProviderWithClient(
   context: CommandContext,
 ): Promise<{ client: ManagementApiClient; provider: ReturnType<typeof createPreviewAppProvider> }> {
-  const client = await requireComputeAuth(context.runtime.env);
+  const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
   if (!client) {
     throw authRequiredError(["prisma-cli auth login"]);
   }
 
   return {
     client,
-    provider: createPreviewAppProvider(client, createPreviewLogAuthOptions(context.runtime.env)),
+    provider: createPreviewAppProvider(client, createPreviewLogAuthOptions(context.runtime.env, context.runtime.signal)),
   };
 }
 
-function createPreviewLogAuthOptions(env: NodeJS.ProcessEnv) {
+function createPreviewLogAuthOptions(env: NodeJS.ProcessEnv, signal: AbortSignal) {
   const rawToken = env[SERVICE_TOKEN_ENV_VAR]?.trim();
   if (rawToken) {
     return {
@@ -2169,7 +2172,7 @@ function createPreviewLogAuthOptions(env: NodeJS.ProcessEnv) {
     };
   }
 
-  const tokenStorage = new FileTokenStorage(env);
+  const tokenStorage = new FileTokenStorage(env, signal);
   return {
     baseUrl: getApiBaseUrl(env),
     getToken: async () => {
@@ -2385,7 +2388,7 @@ async function resolveDeployProjectContext(
     return withDeployBranch(resolved, branch);
   }
 
-  const suggestedName = await inferTargetName(context.runtime.cwd);
+  const suggestedName = await inferTargetName(context.runtime.cwd, context.runtime.signal);
   throw projectSetupRequiredError(projects, suggestedName);
 }
 
@@ -2501,7 +2504,7 @@ async function resolveDeployBranch(context: CommandContext, explicitBranchName: 
     };
   }
 
-  const gitBranch = await readLocalGitBranch(context.runtime.cwd);
+  const gitBranch = await readLocalGitBranch(context.runtime.cwd, context.runtime.signal);
   if (gitBranch) {
     return {
       name: gitBranch,
@@ -2515,42 +2518,49 @@ async function resolveDeployBranch(context: CommandContext, explicitBranchName: 
   };
 }
 
-async function readLocalGitBranch(cwd: string): Promise<string | null> {
+async function readLocalGitBranch(cwd: string, signal: AbortSignal): Promise<string | null> {
   const gitPath = path.join(cwd, ".git");
-  const headPath = await resolveGitHeadPath(gitPath);
+  const headPath = await resolveGitHeadPath(gitPath, signal);
   if (!headPath) {
     return null;
   }
 
   try {
-    const head = (await readFile(headPath, "utf8")).trim();
+    const head = (await readFile(headPath, { encoding: "utf8", signal })).trim();
     const refPrefix = "ref: refs/heads/";
     if (head.startsWith(refPrefix)) {
       return head.slice(refPrefix.length);
     }
-  } catch {
+  } catch (error) {
+    if (signal.aborted) throw error;
     return null;
   }
 
   return null;
 }
 
-async function resolveGitHeadPath(gitPath: string): Promise<string | null> {
+async function resolveGitHeadPath(gitPath: string, signal: AbortSignal): Promise<string | null> {
+  signal.throwIfAborted();
   try {
-    const raw = await readFile(gitPath, "utf8");
+    const raw = await readFile(gitPath, { encoding: "utf8", signal });
     const prefix = "gitdir:";
     if (raw.startsWith(prefix)) {
       return path.join(path.resolve(path.dirname(gitPath), raw.slice(prefix.length).trim()), "HEAD");
     }
-  } catch {
+  } catch (error) {
+    if (signal.aborted) throw error;
     // Fall through to try the normal .git directory shape below.
     // Common cases: EISDIR (normal git repo), EACCES, ENOENT.
   }
 
+  signal.throwIfAborted();
   try {
+    // access does not accept AbortSignal; check before and after the filesystem boundary.
     await access(path.join(gitPath, "HEAD"));
+    signal.throwIfAborted();
     return path.join(gitPath, "HEAD");
-  } catch {
+  } catch (error) {
+    if (signal.aborted) throw error;
     return null;
   }
 }
@@ -2587,7 +2597,7 @@ async function resolveDeployFramework(
     };
   }
 
-  const detected = await detectDeployFramework(context.runtime.cwd);
+  const detected = await detectDeployFramework(context.runtime.cwd, context.runtime.signal);
   if (detected) {
     return detected;
   }
@@ -2628,12 +2638,13 @@ async function resolveDeployEntrypoint(
   cwd: string,
   framework: ResolvedDeployFramework,
   explicitEntrypoint: string | undefined,
+  signal: AbortSignal,
 ): Promise<string | undefined> {
   if (explicitEntrypoint || framework.buildType !== "bun") {
     return explicitEntrypoint;
   }
 
-  const packageJson = await readBunPackageJson(cwd);
+  const packageJson = await readBunPackageJson(cwd, signal);
   const packageEntrypoint = readBunPackageEntrypoint(packageJson);
   if (packageEntrypoint) {
     return packageEntrypoint;
@@ -2644,10 +2655,14 @@ async function resolveDeployEntrypoint(
   }
 
   const defaultEntrypoint = "src/index.ts";
+  signal.throwIfAborted();
   try {
+    // access does not accept AbortSignal; check before and after the filesystem boundary.
     await access(path.join(cwd, defaultEntrypoint));
+    signal.throwIfAborted();
     return defaultEntrypoint;
   } catch (error) {
+    if (signal.aborted) throw error;
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       throw error;
     }
@@ -2655,9 +2670,9 @@ async function resolveDeployEntrypoint(
   }
 }
 
-async function detectDeployFramework(cwd: string): Promise<ResolvedDeployFramework | null> {
-  const packageJson = await readBunPackageJson(cwd);
-  const nextConfig = await detectNextConfig(cwd);
+async function detectDeployFramework(cwd: string, signal: AbortSignal): Promise<ResolvedDeployFramework | null> {
+  const packageJson = await readBunPackageJson(cwd, signal);
+  const nextConfig = await detectNextConfig(cwd, signal);
 
   if (nextConfig.exists || hasPackageDependency(packageJson, "next")) {
     return {
@@ -2693,7 +2708,7 @@ async function detectDeployFramework(cwd: string): Promise<ResolvedDeployFramewo
   return null;
 }
 
-async function detectNextConfig(cwd: string): Promise<{ exists: boolean; standalone: boolean }> {
+async function detectNextConfig(cwd: string, signal: AbortSignal): Promise<{ exists: boolean; standalone: boolean }> {
   const candidates = [
     "next.config.js",
     "next.config.mjs",
@@ -2704,13 +2719,15 @@ async function detectNextConfig(cwd: string): Promise<{ exists: boolean; standal
 
   for (const candidate of candidates) {
     const filePath = path.join(cwd, candidate);
+    signal.throwIfAborted();
     try {
-      const content = await readFile(filePath, "utf8");
+      const content = await readFile(filePath, { encoding: "utf8", signal });
       return {
         exists: true,
         standalone: /\boutput\s*:\s*["'`]standalone["'`]/.test(content),
       };
     } catch (error) {
+      if (signal.aborted) throw error;
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
       }
@@ -3057,7 +3074,7 @@ async function requireLocalBuildType(
   // Local dev server support is intentionally narrower than deploy build support.
   // Nuxt, Astro, and TanStack Start can deploy via SDK strategies, but app run
   // only starts the local dev servers currently documented for the preview.
-  const resolvedBuildType = await resolveLocalBuildType(context.runtime.cwd, buildType);
+  const resolvedBuildType = await resolveLocalBuildType(context.runtime.cwd, buildType, context.runtime.signal);
   if (resolvedBuildType) {
     return resolvedBuildType;
   }

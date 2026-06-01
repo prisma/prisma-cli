@@ -65,8 +65,9 @@ export class MockApi {
     this.data = data;
   }
 
-  static async load(fixturePath: string): Promise<MockApi> {
-    const raw = await readFile(fixturePath, "utf8");
+  static async load(fixturePath: string, signal?: AbortSignal): Promise<MockApi> {
+    signal?.throwIfAborted();
+    const raw = await readFile(fixturePath, { encoding: "utf8", signal });
     return new MockApi(JSON.parse(raw) as MockApiData);
   }
 

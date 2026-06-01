@@ -62,7 +62,7 @@ export async function createCommandContext(
   // Load the mock API only when fixture mode is explicitly enabled.
   let loadedApi: MockApi | undefined;
   if (fixturePath) {
-    loadedApi = await MockApi.load(fixturePath);
+    loadedApi = await MockApi.load(fixturePath, runtime.signal);
   }
 
   return {
@@ -75,7 +75,7 @@ export async function createCommandContext(
 
       return loadedApi;
     },
-    stateStore: new LocalStateStore(stateDir),
+    stateStore: new LocalStateStore(stateDir, runtime.signal),
     output: {
       stdout: runtime.stdout,
       stderr: runtime.stderr,

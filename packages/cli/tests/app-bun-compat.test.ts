@@ -32,6 +32,17 @@ describe("bun compatibility", () => {
     await expect(resolveBunEntrypoint(cwd, undefined)).resolves.toBe("index.ts");
   });
 
+  it("rejects Bun package reads when the command signal is already aborted", async () => {
+    const cwd = await createTempCwd();
+    const controller = new AbortController();
+    const reason = new Error("cancelled");
+    controller.abort(reason);
+
+    const { readBunPackageJson } = await import("../src/lib/app/bun-project");
+
+    await expect(readBunPackageJson(cwd, controller.signal)).rejects.toBe(reason);
+  });
+
   it("detects a Bun project when package.json uses module instead of main", async () => {
     const cwd = await createTempCwd();
 

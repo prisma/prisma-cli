@@ -32,8 +32,8 @@ function workspaceIdFromClaims(claims: Record<string, unknown>): string | null {
   return id.length > 0 ? id : null;
 }
 
-export async function performLogin(env: NodeJS.ProcessEnv): Promise<void> {
-  await login({ tokenStorage: new FileTokenStorage(env), env });
+export async function performLogin(env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<void> {
+  await login({ tokenStorage: new FileTokenStorage(env, signal), env, signal });
 }
 
 export async function readAuthState(env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<AuthStateResult> {
@@ -54,7 +54,7 @@ export async function readAuthState(env: NodeJS.ProcessEnv, signal?: AbortSignal
     return readServiceTokenAuthState(serviceToken, env, signal);
   }
 
-  const tokenStorage = new FileTokenStorage(env);
+  const tokenStorage = new FileTokenStorage(env, signal);
   const tokens = await tokenStorage.getTokens();
 
   if (!tokens) {
@@ -67,7 +67,7 @@ export async function readAuthState(env: NodeJS.ProcessEnv, signal?: AbortSignal
     };
   }
 
-  const client = await requireComputeAuth(env);
+  const client = await requireComputeAuth(env, signal);
   const currentPrincipal = await readCurrentPrincipalAuthState(client, signal);
   if (currentPrincipal) {
     return currentPrincipal;
@@ -88,7 +88,7 @@ async function readServiceTokenAuthState(
   env: NodeJS.ProcessEnv,
   signal?: AbortSignal,
 ): Promise<AuthStateResult> {
-  const client = await requireComputeAuth(env);
+  const client = await requireComputeAuth(env, signal);
   const currentPrincipal = await readCurrentPrincipalAuthState(client, signal);
   if (currentPrincipal) {
     return currentPrincipal;
@@ -136,7 +136,7 @@ async function buildAuthState({
   let workspaceId = workspaceIdFromCredential;
   let workspaceName = workspaceIdFromCredential;
 
-  client ??= await requireComputeAuth(env);
+  client ??= await requireComputeAuth(env, signal);
 
   if (client) {
     try {
@@ -225,6 +225,6 @@ async function readCurrentPrincipalAuthState(
   }
 }
 
-export async function performLogout(env: NodeJS.ProcessEnv): Promise<void> {
-  await new FileTokenStorage(env).clearTokens();
+export async function performLogout(env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<void> {
+  await new FileTokenStorage(env, signal).clearTokens();
 }
