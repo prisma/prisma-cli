@@ -35,9 +35,9 @@ function mockClient(extra: Partial<{
         return {
           data: {
             data: [
-              { id: "proj_456", name: "Billing API", slug: "billing-api", workspace: { id: "ws_123", name: "Acme Inc" } },
+              { id: "proj_456", name: "Billing API", slug: "billing-api", url: "https://prisma.build/acme/billing-api", workspace: { id: "ws_123", name: "Acme Inc" } },
               { id: "proj_999", name: "Alpha", slug: "alpha", workspace: { id: "ws_other", name: "Other" } },
-              { id: "proj_123", name: "Acme Dashboard", slug: "acme-dashboard", workspace: { id: "ws_123", name: "Acme Inc" } },
+              { id: "proj_123", name: "Acme Dashboard", slug: "acme-dashboard", url: "https://prisma.build/acme/acme-dashboard", workspace: { id: "ws_123", name: "Acme Inc" } },
             ],
           },
         };
@@ -144,8 +144,8 @@ describe("real project mode", () => {
         name: "Acme Inc",
       },
       projects: [
-        { id: "proj_123", name: "Acme Dashboard" },
-        { id: "proj_456", name: "Billing API" },
+        { id: "proj_123", name: "Acme Dashboard", url: "https://prisma.build/acme/acme-dashboard" },
+        { id: "proj_456", name: "Billing API", url: "https://prisma.build/acme/billing-api" },
       ],
       localBinding: {
         status: "not-linked",
@@ -191,6 +191,7 @@ describe("real project mode", () => {
         project: {
           id: "proj_123",
           name: "Acme Dashboard",
+          url: "https://prisma.build/acme/acme-dashboard",
         },
         resolution: {
           projectSource: "explicit",

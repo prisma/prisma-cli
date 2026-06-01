@@ -37,10 +37,11 @@ function listSortedWorkspaceProjects(projectGateway: ProjectGateway, workspaceId
     .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id));
 }
 
-function toProjectSummary(project: { id: string; name: string }): ProjectSummary {
+function toProjectSummary(project: { id: string; name: string; url?: string }): ProjectSummary {
   return {
     id: project.id,
     name: project.name,
+    ...(project.url ? { url: project.url } : {}),
   };
 }
 

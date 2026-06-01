@@ -29,6 +29,7 @@ interface ProjectRecord {
   id: string;
   name: string;
   slug: string;
+  url?: string;
   workspaceId: string;
 }
 
