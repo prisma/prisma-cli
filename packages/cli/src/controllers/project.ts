@@ -63,8 +63,9 @@ async function readProjectListLocalBinding(
   cwd: string,
   workspace: AuthWorkspace,
   projects: Array<Pick<ProjectCandidate, "id">>,
+  signal: AbortSignal,
 ): Promise<ProjectListResult["localBinding"]> {
-  const pin = await readLocalResolutionPin(cwd, context.runtime.signal);
+  const pin = await readLocalResolutionPin(cwd, signal);
   if (pin.kind === "present") {
     return pin.pin.workspaceId === workspace.id && projects.some((project) => project.id === pin.pin.projectId)
       ? { status: "linked" }
@@ -89,7 +90,7 @@ export async function runProjectList(context: CommandContext): Promise<CommandSu
       throw authRequiredError();
     }
     const projects = sortProjects(await listRealWorkspaceProjects(client, workspace, context.runtime.signal));
-    const localBinding = await readProjectListLocalBinding(context.runtime.cwd, workspace, projects);
+    const localBinding = await readProjectListLocalBinding(context.runtime.cwd, workspace, projects, context.runtime.signal);
     const nextActions = buildProjectListNextActions(localBinding);
 
     return {
@@ -368,7 +369,7 @@ export async function runGitConnect(
     const target = await resolveRequiredProjectInRealMode(context, workspace, options.project, "git connect");
     const repository = await resolveRepositoryForConnect(context, gitUrl);
     const api = client as unknown as SourceRepositoryApiClient;
-    const existing = await readFirstSourceRepository(api, target.project.id);
+    const existing = await readFirstSourceRepository(api, target.project.id, context.runtime.signal);
 
     if (existing) {
       const existingConnection = toRepositoryConnection(existing);
@@ -395,6 +396,7 @@ export async function runGitConnect(
         providerRepositoryId: resolvedRepository.repository.id,
         installationId: resolvedRepository.installation.id,
       },
+      signal: context.runtime.signal,
     });
 
     if (error || !data) {
@@ -464,7 +466,7 @@ export async function runGitDisconnect(
 
     const target = await resolveRequiredProjectInRealMode(context, workspace, options.project, "git disconnect");
     const api = client as unknown as SourceRepositoryApiClient;
-    const existing = await readFirstSourceRepository(api, target.project.id);
+    const existing = await readFirstSourceRepository(api, target.project.id, context.runtime.signal);
 
     if (!existing) {
       throw repoNotConnectedError();
@@ -476,6 +478,7 @@ export async function runGitDisconnect(
           id: existing.id,
         },
       },
+      signal: context.runtime.signal,
     });
 
     if (error) {
@@ -805,13 +808,13 @@ async function resolveInstalledRepository(
   workspaceId: string,
   repository: GitHubRepositoryReference,
 ): Promise<InstalledRepositoryMatch> {
-  const installations = await listScmInstallations(api, workspaceId);
-  const lookup = await findRepositoryInInstallations(api, installations, repository);
+  const installations = await listScmInstallations(api, workspaceId, context.runtime.signal);
+  const lookup = await findRepositoryInInstallations(api, installations, repository, context.runtime.signal);
   if (lookup.match) {
     return lookup.match;
   }
 
-  const installUrl = await createGitHubInstallIntent(api, workspaceId);
+  const installUrl = await createGitHubInstallIntent(api, workspaceId, context.runtime.signal);
   const canWait = canPrompt(context);
   const opened = await openInstallUrlIfInteractive(context, installUrl);
 
@@ -841,6 +844,7 @@ async function findRepositoryInInstallations(
   api: SourceRepositoryApiClient,
   installations: ScmInstallationResponse[],
   repository: GitHubRepositoryReference,
+  signal: AbortSignal,
 ): Promise<InstallationRepositoryLookup> {
   let inspectableInstallationCount = 0;
 
@@ -849,7 +853,7 @@ async function findRepositoryInInstallations(
       continue;
     }
 
-    const matchedRepository = await findRepositoryInInstallationIfAvailable(api, installation.id, repository);
+    const matchedRepository = await findRepositoryInInstallationIfAvailable(api, installation.id, repository, signal);
     if (matchedRepository === "unavailable") {
       continue;
     }
@@ -891,9 +895,9 @@ async function waitForInstalledRepository(
 
   while (Date.now() <= deadline) {
     context.runtime.signal.throwIfAborted();
-    const installations = await listScmInstallations(api, workspaceId);
+    const installations = await listScmInstallations(api, workspaceId, context.runtime.signal);
 
-    const lookup = await findRepositoryInInstallations(api, installations, repository);
+    const lookup = await findRepositoryInInstallations(api, installations, repository, context.runtime.signal);
     inspectableInstallationCount = lookup.inspectableInstallationCount;
     if (lookup.match) {
       return { match: lookup.match, inspectableInstallationCount };
@@ -963,6 +967,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 async function listScmInstallations(
   api: SourceRepositoryApiClient,
   workspaceId: string,
+  signal: AbortSignal,
 ): Promise<ScmInstallationResponse[]> {
   const installations: ScmInstallationResponse[] = [];
   let cursor: string | undefined;
@@ -977,6 +982,7 @@ async function listScmInstallations(
           ...(cursor ? { cursor } : {}),
         },
       },
+      signal,
     });
 
     if (error || !data) {
@@ -999,6 +1005,7 @@ async function findRepositoryInInstallation(
   api: SourceRepositoryApiClient,
   installationId: string,
   repository: GitHubRepositoryReference,
+  signal: AbortSignal,
 ): Promise<ScmRepositoryResponse | null> {
   const expectedFullName = repository.fullName.toLowerCase();
   let cursor: string | undefined;
@@ -1015,6 +1022,7 @@ async function findRepositoryInInstallation(
           ...(cursor ? { cursor } : {}),
         },
       },
+      signal,
     });
 
     if (error || !data) {
@@ -1064,10 +1072,12 @@ async function findRepositoryInInstallationIfAvailable(
   api: SourceRepositoryApiClient,
   installationId: string,
   repository: GitHubRepositoryReference,
+  signal: AbortSignal,
 ): Promise<ScmRepositoryResponse | null | "unavailable"> {
   try {
-    return await findRepositoryInInstallation(api, installationId, repository);
+    return await findRepositoryInInstallation(api, installationId, repository, signal);
   } catch (error) {
+    if (signal.aborted) throw error;
     if (isUnavailableScmInstallationError(error)) {
       return "unavailable";
     }
@@ -1087,12 +1097,14 @@ function isUnavailableScmInstallationError(error: unknown): boolean {
 async function createGitHubInstallIntent(
   api: SourceRepositoryApiClient,
   workspaceId: string,
+  signal: AbortSignal,
 ): Promise<string> {
   const { data, error, response } = await api.POST("/v1/scm-installations/install-intents", {
     body: {
       provider: "github",
       workspaceId,
     },
+    signal,
   });
 
   if (error || !data) {
@@ -1125,6 +1137,7 @@ async function openInstallUrlIfInteractive(
 async function readFirstSourceRepository(
   api: SourceRepositoryApiClient,
   projectId: string,
+  signal: AbortSignal,
 ): Promise<SourceRepositoryResponse | null> {
   const { data, error, response } = await api.GET("/v1/source-repositories", {
     params: {
@@ -1133,6 +1146,7 @@ async function readFirstSourceRepository(
         limit: 1,
       },
     },
+    signal,
   });
 
   if (error || !data) {

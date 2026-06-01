@@ -140,7 +140,7 @@ None.
 
 ### Phase 6: End-To-End Verification And Cleanup
 
-**Status:** ☐ Not started
+**Status:** ✓ Complete
 
 **Goal:** Prove cancellation behavior across the CLI surface and remove inconsistencies left by incremental propagation.
 
@@ -157,11 +157,11 @@ None.
 
 **Acceptance Criteria:**
 
-- **AC1:** No remaining CLI-owned polling loop uses a non-signal-aware sleep.
-- **AC2:** No supported SDK, child-process, or filesystem boundary lacks the propagated command signal where the upstream API accepts it.
-- **AC3:** Unsupported boundaries are guarded and documented locally without fake cancellation wrappers.
-- **AC4:** Human and JSON cancellation output are stable for regular and streaming commands.
-- **AC5:** `pnpm --filter @prisma/cli test` passes.
-- **AC6:** `pnpm --filter @prisma/cli build` passes.
+- [x] **AC1:** No remaining CLI-owned polling loop uses a non-signal-aware sleep.
+- [x] **AC2:** No supported SDK, child-process, or filesystem boundary lacks the propagated command signal where the upstream API accepts it.
+- [x] **AC3:** Unsupported boundaries are guarded and documented locally without fake cancellation wrappers.
+- [x] **AC4:** Human and JSON cancellation output are stable for regular and streaming commands.
+- [x] **AC5:** `pnpm --filter @prisma/cli test` passes.
+- [x] **AC6:** `pnpm --filter @prisma/cli build` passes.
 
 ## Revision Log
