@@ -43,7 +43,7 @@ None.
 
 ### Phase 2: Command And Controller Signal Plumbing
 
-**Status:** ☐ Not started
+**Status:** ✓ Complete
 
 **Goal:** Thread the command signal through controller and command-handler boundaries so deeper I/O phases can consume it without broad follow-up signature churn.
 
@@ -60,10 +60,10 @@ None.
 
 **Acceptance Criteria:**
 
-- **AC1:** TypeScript requires new async I/O call sites in controllers/libs/adapters to consciously accept or ignore a signal.
-- **AC2:** Existing controller tests pass after runtime construction updates.
-- **AC3:** No command handler installs OS signal listeners or creates a command-lifetime controller.
-- **AC4:** `pnpm --filter @prisma/cli test -- auth.test.ts project.test.ts app.test.ts branch.test.ts` passes, or equivalent targeted filters if filenames change.
+- [x] **AC1:** TypeScript requires new async I/O call sites in controllers/libs/adapters to consciously accept or ignore a signal.
+- [x] **AC2:** Existing controller tests pass after runtime construction updates.
+- [x] **AC3:** No command handler installs OS signal listeners or creates a command-lifetime controller.
+- [x] **AC4:** `pnpm --filter @prisma/cli test -- auth.test.ts project.test.ts app.test.ts branch.test.ts` passes, or equivalent targeted filters if filenames change.
 
 ### Phase 3: SDK And Provider Cancellation
 

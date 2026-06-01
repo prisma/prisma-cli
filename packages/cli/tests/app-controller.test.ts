@@ -1033,7 +1033,10 @@ describe("app controller", () => {
       projectRef: "proj_my_app",
     });
 
-    expect(listApps).toHaveBeenCalledWith("proj_my_app", { branchName: "feat-j1" });
+    expect(listApps).toHaveBeenCalledWith("proj_my_app", {
+      branchName: "feat-j1",
+      signal: context.runtime.signal,
+    });
     expect(deployApp).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: "proj_my_app",
@@ -1041,6 +1044,7 @@ describe("app controller", () => {
         appName: "my-app",
         buildType: "nextjs",
         portMapping: { http: 3000 },
+        signal: context.runtime.signal,
       }),
     );
     expect(result.result).toMatchObject({
@@ -4222,6 +4226,7 @@ describe("app controller", () => {
 
     expect(streamDeploymentLogs).toHaveBeenCalledWith(expect.objectContaining({
       deploymentId: "dep_live",
+      signal: context.runtime.signal,
     }));
     expect(stdout.buffer).toBe("hello from live\n");
   });

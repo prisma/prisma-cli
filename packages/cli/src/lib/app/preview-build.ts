@@ -64,6 +64,7 @@ export async function executePreviewBuild(options: {
   appPath: string;
   entrypoint?: string;
   buildType?: PreviewBuildType;
+  signal?: AbortSignal;
 }): Promise<{
   artifact: BuildArtifact;
   buildType: ResolvedPreviewBuildType;
@@ -95,6 +96,7 @@ export async function resolvePreviewBuildStrategy(options: {
   appPath: string;
   entrypoint?: string;
   buildType: PreviewBuildType;
+  signal?: AbortSignal;
 }): Promise<{
   strategy: BuildStrategy;
   buildType: ResolvedPreviewBuildType;

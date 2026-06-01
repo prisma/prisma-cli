@@ -124,6 +124,7 @@ export async function runAppBuild(
       appPath: context.runtime.cwd,
       entrypoint,
       buildType,
+      signal: context.runtime.signal,
     });
 
     return {
@@ -180,6 +181,7 @@ export async function runAppRun(
       entrypoint,
       port,
       env: context.runtime.env,
+      signal: context.runtime.signal,
     });
   } catch (error) {
     throw runFailedError("Local app run failed", error);
@@ -323,6 +325,7 @@ export async function runAppDeploy(
     portMapping,
     envVars,
     interaction: undefined,
+    signal: context.runtime.signal,
     progress: createPreviewDeployProgress(context.output.stderr, context.ui, !context.flags.json && !context.flags.quiet, progressState),
   }).catch((error) => {
     throw appDeployFailedError(error, progressState);
@@ -850,6 +853,7 @@ export async function runAppLogs(
 
   await provider.streamDeploymentLogs({
     deploymentId: target.deployment.id,
+    signal: context.runtime.signal,
     onRecord: (record) => writeLogRecord(context, record),
   }).catch((error) => {
     throw deployFailedError("Failed to stream app logs", error, [
@@ -2105,7 +2109,7 @@ async function listApps(
   projectId: string,
   branchName?: string,
 ) {
-  return provider.listApps(projectId, { branchName }).then(sortApps).catch((error) => {
+  return provider.listApps(projectId, { branchName, signal: context.runtime.signal }).then(sortApps).catch((error) => {
     if (isMissingProjectError(error)) {
       throw new CliError({
         code: "PROJECT_NOT_FOUND",

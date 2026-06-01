@@ -105,7 +105,7 @@ export class PreviewDomainApiError extends Error {
 
 export interface PreviewAppProvider {
   createProject(options: { name: string }): Promise<PreviewProjectRecord>;
-  listApps(projectId: string, options?: { branchName?: string }): Promise<PreviewAppRecord[]>;
+  listApps(projectId: string, options?: { branchName?: string; signal?: AbortSignal }): Promise<PreviewAppRecord[]>;
   removeApp(appId: string): Promise<PreviewRemovedAppRecord>;
   listDomains(appId: string): Promise<PreviewDomainRecord[]>;
   addDomain(options: { appId: string; hostname: string }): Promise<{ domain: PreviewDomainRecord; existing: boolean }>;
@@ -129,6 +129,7 @@ export interface PreviewAppProvider {
     portMapping?: PortMapping;
     envVars?: Record<string, string>;
     interaction?: unknown;
+    signal?: AbortSignal;
     progress?: unknown;
   }): Promise<PreviewDeployRecord>;
   updateAppEnv(options: {

@@ -64,6 +64,7 @@ export async function runLocalApp(options: {
   entrypoint?: string;
   port: number;
   env: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
   spawnImpl?: typeof spawn;
 }): Promise<LocalRunResult> {
   const spawnImpl = options.spawnImpl ?? spawn;
