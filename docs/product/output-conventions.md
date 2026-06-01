@@ -220,13 +220,14 @@ Human output should:
 Recommended header shape:
 
 ```text
-project show → Showing the project resolved for this directory.
+project show → This directory is not linked to a Prisma Project.
 
-│  project:    Acme Dashboard
 │  workspace:  Acme Inc
-│  source:     package-name
-│
-│  Read more   docs/product/command-spec.md#prisma-cli-project-show
+│  project:    Not linked
+
+Next steps:
+- Link an existing Project: prisma-cli project link <id-or-name>
+- Create a new Project: prisma-cli project create billing-api
 ```
 
 Rules:
@@ -236,6 +237,7 @@ Rules:
 - show only metadata that is relevant to the current invocation
 - include `Read more` when a stable repo doc reference exists
 - prefer display labels in default human output and keep opaque ids in JSON unless a later verbose mode explicitly asks for them
+- do not expose agent-only reasoning in human output when a clear status and next step is enough
 
 Recommended summary lines:
 
@@ -265,12 +267,43 @@ When a command acts on a project, branch, app, or deployment, the output should 
 Examples:
 
 - `app deploy` should state the resolved target that matters in the current slice
-- first `app deploy` should show Workspace, Project, Branch, App, Framework, and Runtime with source annotations before work begins
-- subsequent `app deploy` should show the resolved tuple without repeating first-run annotations
+- first local `app deploy` binding should make the Project choice explicit before work begins
+- subsequent `app deploy` calls should use a compact target header such as `Deploying ./j1 to j1 / main / j1`
 - `app logs` should state the deployment it resolved
 - `app list-deploys` should state which app or branch is being listed
 
 The CLI must not make users guess which target a command acted on.
+
+For `app deploy`, Project setup is a one-time local binding surface, not a
+per-run summary. If no Project is resolved in interactive mode, ask which
+Project the directory should use with an arrow-key selection prompt. The picker
+lists existing Projects, then `Create a new Project`, then `Cancel`; do not add
+a manual id/name entry to the picker. If the user chooses to create a Project,
+prompt for a Project name using the package/directory name as an editable
+suggestion. Once `.prisma/local.json` has been written, retries and later
+deploys should feel like deploys, not setup.
+
+After setup, keep the confirmation compact:
+
+```text
+✔ Linked "./my-app" to Project "Acme Dashboard"
+Saved .prisma/local.json
+
+Deploying to Acme Dashboard / feat-login / my-app
+```
+
+Deploy progress should describe phases without claiming runtime success before
+health is known. Do not print `Status: running` or `Deployment is running at ...`.
+Use short stage copy such as `Building locally...`, `Built <size>`,
+`Uploading...`, `Uploaded`, `Deploying...`, and `Deployed`.
+On success, print `Live in <duration>`, the URL on its own line, and
+`Logs   prisma-cli app logs`.
+Human deploy output is stderr; `--json` is the machine-readable stdout path.
+
+Deploy result rows use one compact style: labels start two spaces from the left
+margin and values align in one column. Avoid repeating a full Workspace /
+Project / Branch / App / Framework / Runtime table in the setup path unless a
+future command needs that extra detail.
 
 ## Action and Data Commands
 
@@ -308,7 +341,8 @@ Recommended envelope:
   "command": "app.deploy",
   "result": {},
   "warnings": [],
-  "nextSteps": []
+  "nextSteps": [],
+  "nextActions": []
 }
 ```
 
@@ -319,7 +353,26 @@ Required conventions:
 - `result` holds command-specific data
 - `warnings` is always present
 - `nextSteps` is always present, even if empty
+- `nextActions` is always present, even if empty
 - human-readable guidance that matters to automation should also be represented in structured fields, not only on stderr
+
+`nextSteps` remains a compatibility surface for readable commands. `nextActions`
+is the structured surface for agents and automation:
+
+```ts
+type NextAction = {
+  kind: "run-command" | "user-choice" | "edit-file" | "done"
+  journey: "project-setup" | "deploy-app" | "inspect" | "recover"
+  label: string
+  command?: string
+  commands?: string[]
+  reason?: string
+}
+```
+
+Use `user-choice` when the next move requires the caller or user to choose a
+target. Do not encode local package names, directory names, or nearby matches as
+a selected target; put them in command-specific suggestion fields instead.
 
 ## Streaming JSON Shape
 
@@ -384,6 +437,14 @@ context, status, decoration, and errors stay on stderr.
   "nextSteps": [
     "prisma-cli app list-deploys --app hello-world",
     "prisma-cli app show-deploy dep_045"
+  ],
+  "nextActions": [
+    {
+      "kind": "run-command",
+      "journey": "inspect",
+      "label": "View deployment logs",
+      "command": "prisma-cli app logs"
+    }
   ]
 }
 ```
@@ -394,4 +455,6 @@ Human output and JSON output should describe the same underlying model.
 
 The CLI should never require users or agents to learn different meanings for the same command.
 
-Human output may be richer in layout and interaction, but not richer in meaning.
+Human output should stay optimized for people. JSON should carry the same model
+with enough explicit structure for agents to recognize stop points, user-choice
+moments, and safe recovery actions.

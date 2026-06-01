@@ -11,7 +11,7 @@ long-term architecture boundaries.
 
 | ADR | Status | Decision |
 | --- | --- | --- |
-| [0001](0001-preview-package-and-publishing.md) | Accepted | Use `@prisma/cli` with the `preview` dist-tag and `prisma-cli` binary for public preview releases. |
+| [0001](0001-preview-package-and-publishing.md) | Accepted | Use `@prisma/cli` latest for official beta releases, `dev` for integrated main builds, and PR previews for trusted unmerged work. |
 | [0002](0002-workflow-command-model.md) | Accepted | Group commands by developer workflow using `prisma <group> <action>`. |
 | [0003](0003-structured-output-and-errors.md) | Accepted | Treat structured output and stable error codes as public contracts. |
 

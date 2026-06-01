@@ -1,19 +1,22 @@
 import type { CommandDescriptor } from "../shell/command-meta";
+import { formatCommandArgument } from "../shell/command-arguments";
 import type { CommandContext } from "../shell/runtime";
 import type {
   GitRepositoryConnection,
   ProjectListResult,
   ProjectRepositoryConnectionResult,
+  ProjectSetupResult,
   ProjectShowResult,
 } from "../types/project";
 import { renderList, renderMutate, renderShow, serializeList } from "../output/patterns";
+import { renderNextSteps, renderSummaryLine } from "../shell/ui";
 
 export function renderProjectList(
   context: CommandContext,
   descriptor: CommandDescriptor,
   result: ProjectListResult,
 ): string[] {
-  return renderList(
+  const lines = renderList(
     {
       title: "Listing projects for the authenticated workspace.",
       descriptor,
@@ -31,20 +34,29 @@ export function renderProjectList(
     },
     context.ui,
   );
+
+  if (result.localBinding?.status === "not-linked" || result.localBinding?.status === "invalid") {
+    lines.push(...renderNextSteps(["Link the chosen Project: prisma-cli project link <id-or-name>"]));
+  }
+
+  return lines;
 }
 
 export function serializeProjectList(result: ProjectListResult) {
-  return serializeList({
-    context: {
-      workspace: result.workspace.name,
-    },
-    items: result.projects.map((project) => ({
-      noun: "project",
-      label: project.name,
-      id: project.id,
-      status: null,
-    })),
-  });
+  return {
+    ...serializeList({
+      context: {
+        workspace: result.workspace.name,
+      },
+      items: result.projects.map((project) => ({
+        noun: "project",
+        label: project.name,
+        id: project.id,
+        status: null,
+      })),
+    }),
+    localBinding: result.localBinding ?? null,
+  };
 }
 
 export function renderProjectShow(
@@ -52,9 +64,30 @@ export function renderProjectShow(
   descriptor: CommandDescriptor,
   result: ProjectShowResult,
 ): string[] {
+  if (result.project === null) {
+    const lines = renderShow(
+      {
+        title: "This directory is not linked to a Prisma Project.",
+        descriptor,
+        fields: [
+          { key: "workspace", value: result.workspace.name },
+          { key: "project", value: "Not linked", tone: "warning" },
+        ],
+      },
+      context.ui,
+    );
+
+    lines.push(...renderNextSteps([
+      "Link an existing Project: prisma-cli project link <id-or-name>",
+      `Create a new Project: prisma-cli project create ${formatCommandArgument(result.suggestedProjectName)}`,
+    ]));
+
+    return lines;
+  }
+
   return renderShow(
     {
-      title: "Showing the project Prisma resolves for this directory.",
+      title: "Showing this directory's Project binding.",
       descriptor,
       fields: [
         { key: "workspace", value: result.workspace.name },
@@ -67,6 +100,27 @@ export function renderProjectShow(
 }
 
 export function serializeProjectShow(result: ProjectShowResult) {
+  return result;
+}
+
+export function renderProjectSetup(
+  context: CommandContext,
+  _descriptor: CommandDescriptor,
+  result: ProjectSetupResult,
+): string[] {
+  const lines = result.action === "created"
+    ? [renderSummaryLine(context.ui, "success", `Created Project "${result.project.name}"`)]
+    : [];
+
+  lines.push(
+    renderSummaryLine(context.ui, "success", `Linked "${result.directory}" to Project "${result.project.name}"`),
+    `Saved ${result.localPin.path}`,
+  );
+
+  return lines;
+}
+
+export function serializeProjectSetup(result: ProjectSetupResult) {
   return result;
 }
 
@@ -126,16 +180,12 @@ function formatProjectSource(source: ProjectShowResult["resolution"]["projectSou
       return "local pin";
     case "platform-mapping":
       return "platform mapping";
-    case "remembered-local":
-      return "remembered local context";
-    case "package-name":
-      return "package name";
-    case "directory-name":
-      return "directory name";
     case "created":
       return "created";
     case "prompt":
       return "prompt";
+    case "unbound":
+      return "unbound";
   }
 }
 

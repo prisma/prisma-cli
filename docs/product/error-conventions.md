@@ -89,16 +89,28 @@ Human-readable errors should follow this shape:
 Example:
 
 ```text
-✘ Deployment failed during build [BUILD_FAILED]
-Branch: preview
-Why: Next.js build returned a non-zero exit code
-Fix: Inspect logs and redeploy after fixing the build
+Build failed locally.
 
-More: Re-run with --trace for deeper diagnostics
+✗ Built       next build exited with code 1
 
-Next steps:
-- prisma-cli app logs
-- fix the issue and rerun prisma-cli app deploy
+Fix: Inspect the build output above, fix the error, and redeploy.
+```
+
+If the deployment starts but the app is not ready yet, list the deployment URL
+and point to runtime logs without claiming a health-check result until the
+platform exposes one:
+
+```text
+The deployment started, but the app is not ready yet.
+
+This is usually a missing env var, a failed DB connection,
+or a crash on startup.
+
+See what happened
+prisma-cli app logs --deployment <id>
+
+URL
+https://cv-...
 ```
 
 ## JSON Error Shape
@@ -121,7 +133,8 @@ Commands run with `--json` should emit this envelope on failure:
     "docsUrl": null
   },
   "warnings": [],
-  "nextSteps": []
+  "nextSteps": [],
+  "nextActions": []
 }
 ```
 
@@ -138,7 +151,7 @@ Rules:
 - `error.where` points to the relevant location when applicable
 - `error.meta` is structured, not free-form prose
 - `error.docsUrl` may be `null` when no per-code doc exists yet
-- `warnings` and `nextSteps` are always present
+- `warnings`, `nextSteps`, and `nextActions` are always present
 - agents and CI should branch on structured error fields, not prose strings
 
 ## MVP Error Codes
@@ -147,7 +160,8 @@ These codes are the minimum stable set for the MVP:
 
 - `USAGE_ERROR`
 - `AUTH_REQUIRED`
-- `PROJECT_UNRESOLVED`
+- `PROJECT_SETUP_REQUIRED`
+- `PROJECT_CREATE_FAILED`
 - `PROJECT_NOT_FOUND`
 - `PROJECT_AMBIGUOUS`
 - `APP_AMBIGUOUS`
@@ -161,6 +175,14 @@ These codes are the minimum stable set for the MVP:
 - `PROMOTE_SOURCE_INVALID`
 - `ROLLBACK_UNAVAILABLE`
 - `CONFIRMATION_REQUIRED`
+- `DOMAIN_HOSTNAME_INVALID`
+- `DOMAIN_DNS_NOT_CONFIGURED`
+- `DOMAIN_ALREADY_REGISTERED`
+- `DOMAIN_QUOTA_EXCEEDED`
+- `DOMAIN_NOT_FOUND`
+- `DOMAIN_RETRY_NOT_ELIGIBLE`
+- `DOMAIN_VERIFICATION_FAILED`
+- `DOMAIN_VERIFICATION_TIMEOUT`
 - `REMOVE_FAILED`
 - `FEATURE_UNAVAILABLE`
 - `REPO_PROVIDER_UNSUPPORTED`
@@ -178,11 +200,12 @@ Recommended meanings:
 
 - `USAGE_ERROR`: invalid arguments or invalid command combination
 - `AUTH_REQUIRED`: command needs an authenticated session
-- `PROJECT_UNRESOLVED`: command needs project context and none could be resolved
+- `PROJECT_SETUP_REQUIRED`: command needs explicit or durable Project context before it can continue
+- `PROJECT_CREATE_FAILED`: Project creation failed before deployment or linking could continue
 - `PROJECT_NOT_FOUND`: requested project does not exist or is not accessible
 - `PROJECT_AMBIGUOUS`: multiple safe project candidates matched
 - `APP_AMBIGUOUS`: multiple apps matched the inferred or explicit app target
-- `LOCAL_STATE_STALE`: remembered local project context no longer matches platform data and continuing would be ambiguous
+- `LOCAL_STATE_STALE`: local Project pin no longer matches platform data and continuing would be ambiguous
 - `BRANCH_NOT_DEPLOYABLE`: command tried to deploy to a non-deployable branch context
 - `FRAMEWORK_NOT_DETECTED`: app deploy could not detect a supported Beta framework and no explicit framework/build type was provided
 - `DEPLOYMENT_NOT_FOUND`: requested deployment id does not exist
@@ -192,6 +215,14 @@ Recommended meanings:
 - `PROMOTE_SOURCE_INVALID`: source for promote is missing, invalid, or not promotable
 - `ROLLBACK_UNAVAILABLE`: no previous healthy production deployment exists
 - `CONFIRMATION_REQUIRED`: command cannot continue without confirmation in the current mode
+- `DOMAIN_HOSTNAME_INVALID`: custom-domain hostname is malformed or rejected by the platform
+- `DOMAIN_DNS_NOT_CONFIGURED`: custom-domain hostname does not yet point to the required Prisma DNS target
+- `DOMAIN_ALREADY_REGISTERED`: custom-domain hostname is already attached outside the selected app
+- `DOMAIN_QUOTA_EXCEEDED`: selected app has reached its custom-domain quota
+- `DOMAIN_NOT_FOUND`: requested custom domain is not attached to the selected app
+- `DOMAIN_RETRY_NOT_ELIGIBLE`: requested custom domain is not in a state where verification can be retried
+- `DOMAIN_VERIFICATION_FAILED`: custom-domain verification reached a terminal failed state
+- `DOMAIN_VERIFICATION_TIMEOUT`: custom-domain verification did not reach a terminal state before the requested timeout
 - `REMOVE_FAILED`: app removal could not complete remotely
 - `FEATURE_UNAVAILABLE`: the command exists in the CLI model, but the current preview cannot support it yet
 - `REPO_PROVIDER_UNSUPPORTED`: repository connection received a non-GitHub repository URL

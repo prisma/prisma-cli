@@ -1,4 +1,4 @@
-import { chmod, copyFile, cp, lstat, mkdir, readdir, readlink, rm, stat } from "node:fs/promises";
+import { chmod, copyFile, cp, lstat, mkdir, readdir, readFile, readlink, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -76,6 +76,10 @@ export async function executePreviewBuild(options: {
   const artifact = await strategy.execute();
 
   try {
+    if (buildType === "nextjs") {
+      await restageNextjsArtifact(artifact, options.appPath);
+    }
+
     await normalizeArtifactSymlinks(artifact.directory, options.appPath);
     return {
       artifact,
@@ -168,11 +172,102 @@ export async function stageNextjsStandaloneArtifact(options: {
   const standaloneRoot = path.resolve(options.standaloneDir);
   const artifactRoot = path.resolve(options.artifactDir);
   const appRoot = path.resolve(options.appPath);
+  const sourceRoot = await resolveSourceRoot(appRoot);
 
   await copyPathMaterializingSymlinks(standaloneRoot, artifactRoot, {
     standaloneRoot,
     appRoot,
+    sourceRoot,
   });
+  await hoistPnpmDependencies(path.join(artifactRoot, "node_modules"));
+}
+
+export async function restageNextjsArtifact(artifact: BuildArtifact, appPath: string): Promise<void> {
+  const artifactDir = artifact.directory;
+  const standaloneDir = path.join(appPath, ".next", "standalone");
+
+  await rm(artifactDir, { recursive: true, force: true });
+  await stageNextjsStandaloneArtifact({
+    standaloneDir,
+    artifactDir,
+    appPath,
+  });
+
+  // The SDK's Next.js strategy reports the entrypoint relative to the
+  // artifact root (e.g. "server.js" for single-app, "apps/web/server.js"
+  // for a monorepo). Next expects public/ and .next/static/ to live next
+  // to server.js, so re-stage them at the same subpath.
+  const serverSubpath = nextjsServerSubpath(artifact.entrypoint);
+  const serverDir = serverSubpath
+    ? path.join(artifactDir, serverSubpath)
+    : artifactDir;
+
+  const publicDir = path.join(appPath, "public");
+  if (await directoryExists(publicDir)) {
+    await cp(publicDir, path.join(serverDir, "public"), {
+      recursive: true,
+      verbatimSymlinks: true,
+    });
+  }
+
+  const staticDir = path.join(appPath, ".next", "static");
+  if (await directoryExists(staticDir)) {
+    await cp(staticDir, path.join(serverDir, ".next", "static"), {
+      recursive: true,
+      verbatimSymlinks: true,
+    });
+  }
+}
+
+function nextjsServerSubpath(entrypoint: string): string {
+  // SDK emits posix-style entrypoints (path.posix.join).
+  const dir = path.posix.dirname(entrypoint);
+  return dir === "." ? "" : dir;
+}
+
+async function hoistPnpmDependencies(nodeModulesDir: string): Promise<void> {
+  const pnpmNodeModulesDir = path.join(nodeModulesDir, ".pnpm", "node_modules");
+  if (!await directoryExists(pnpmNodeModulesDir)) {
+    return;
+  }
+
+  const entries = await readdir(pnpmNodeModulesDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const sourcePath = path.join(pnpmNodeModulesDir, entry.name);
+
+    if (entry.name.startsWith("@") && entry.isDirectory()) {
+      const scopedEntries = await readdir(sourcePath, { withFileTypes: true });
+      for (const scopedEntry of scopedEntries) {
+        const scopedDestination = path.join(nodeModulesDir, entry.name, scopedEntry.name);
+        if (await pathExists(scopedDestination)) {
+          continue;
+        }
+
+        await mkdir(path.dirname(scopedDestination), { recursive: true });
+        await copyPathMaterializingSymlinks(
+          path.join(sourcePath, scopedEntry.name),
+          scopedDestination,
+          {
+            standaloneRoot: pnpmNodeModulesDir,
+            appRoot: nodeModulesDir,
+            sourceRoot: nodeModulesDir,
+          },
+        );
+      }
+      continue;
+    }
+
+    const destinationPath = path.join(nodeModulesDir, entry.name);
+    if (await pathExists(destinationPath)) {
+      continue;
+    }
+
+    await copyPathMaterializingSymlinks(sourcePath, destinationPath, {
+      standaloneRoot: pnpmNodeModulesDir,
+      appRoot: nodeModulesDir,
+      sourceRoot: nodeModulesDir,
+    });
+  }
 }
 
 export async function normalizeArtifactSymlinks(
@@ -241,12 +336,16 @@ async function copyPathMaterializingSymlinks(
   options: {
     standaloneRoot: string;
     appRoot: string;
+    sourceRoot: string;
   },
 ): Promise<void> {
   const sourceStat = await lstat(sourcePath);
 
   if (sourceStat.isSymbolicLink()) {
     const resolvedTarget = await resolveSymlinkTarget(sourcePath, options);
+    if (resolvedTarget === null) {
+      return;
+    }
     await copyPathMaterializingSymlinks(resolvedTarget, destinationPath, options);
     return;
   }
@@ -278,13 +377,17 @@ async function resolveSymlinkTarget(
   options: {
     standaloneRoot: string;
     appRoot: string;
+    sourceRoot: string;
   },
-): Promise<string> {
+): Promise<string | null> {
   const linkTarget = await readlink(symlinkPath);
   const resolvedTarget = path.resolve(path.dirname(symlinkPath), linkTarget);
 
   if (await pathExists(resolvedTarget)) {
-    if (!isPathWithin(options.appRoot, resolvedTarget)) {
+    if (
+      !isPathWithin(options.appRoot, resolvedTarget) &&
+      !isPathWithin(options.sourceRoot, resolvedTarget)
+    ) {
       throw new Error(`Build artifact symlink escapes the app directory: ${resolvedTarget}`);
     }
 
@@ -302,15 +405,75 @@ async function resolveSymlinkTarget(
     }
   }
 
+  // pnpm's hoist layer (.pnpm/node_modules/*) contains speculative links that
+  // are routinely dangling — Next's tracer doesn't always align with what pnpm
+  // populated. Drop these silently. Dangling links elsewhere still throw so a
+  // real missing dep doesn't get masked.
+  if (isPnpmHoistLink(symlinkPath)) {
+    return null;
+  }
+
   throw new Error(
     `Next.js standalone symlink target is missing: ${symlinkPath} -> ${linkTarget} (resolved to ${resolvedTarget})`,
   );
+}
+
+function isPnpmHoistLink(symlinkPath: string): boolean {
+  const parts = path.dirname(symlinkPath).split(path.sep);
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (parts[i] === ".pnpm" && parts[i + 1] === "node_modules") {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function pathExists(targetPath: string): Promise<boolean> {
   try {
     await stat(targetPath);
     return true;
+  } catch {
+    return false;
+  }
+}
+
+async function directoryExists(targetPath: string): Promise<boolean> {
+  try {
+    const targetStat = await stat(targetPath);
+    return targetStat.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function resolveSourceRoot(appRoot: string): Promise<string> {
+  let current = path.resolve(appRoot);
+
+  while (true) {
+    if (
+      await pathExists(path.join(current, ".git")) ||
+      await pathExists(path.join(current, "pnpm-workspace.yaml")) ||
+      await pathExists(path.join(current, "bun.lock")) ||
+      await pathExists(path.join(current, "bun.lockb")) ||
+      await packageJsonDeclaresWorkspaces(current)
+    ) {
+      return current;
+    }
+
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return path.resolve(appRoot);
+    }
+
+    current = parent;
+  }
+}
+
+async function packageJsonDeclaresWorkspaces(directory: string): Promise<boolean> {
+  try {
+    const content = await readFile(path.join(directory, "package.json"), "utf8");
+    const parsed = JSON.parse(content) as { workspaces?: unknown };
+    return Boolean(parsed.workspaces);
   } catch {
     return false;
   }

@@ -16,8 +16,9 @@ export function renderAuthSuccess(
       rows.push({ key: "provider", value: providerLabel(result.provider) });
     }
 
-    if (result.user) {
-      rows.push({ key: "user", value: result.user.email });
+    const userLabel = authUserLabel(result);
+    if (userLabel) {
+      rows.push({ key: "user", value: userLabel });
     }
 
     if (result.workspace?.name) {
@@ -58,9 +59,13 @@ export function renderAuthSuccess(
       fields: result.authenticated
         ? [
             { key: "status", value: "signed in", tone: "success" as const },
-            ...(result.user ? [{ key: "user", value: result.user.email }] : []),
-            ...(result.provider ? [{ key: "provider", value: providerLabel(result.provider) }] : []),
-            ...(result.workspace?.name ? [{ key: "workspace", value: result.workspace.name }] : []),
+            ...authUserRows(result),
+            ...(result.provider
+              ? [{ key: "provider", value: providerLabel(result.provider) }]
+              : []),
+            ...(result.workspace?.name
+              ? [{ key: "workspace", value: result.workspace.name }]
+              : []),
           ]
         : [{ key: "status", value: "signed out", tone: "dim" as const }],
     },
@@ -78,4 +83,29 @@ function providerLabel(provider: AuthProviderId | null): string {
   }
 
   return "";
+}
+
+function authUserLabel(result: AuthStateResult): string | null {
+  return result.user?.email ?? credentialUserLabel(result);
+}
+
+function authUserRows(result: AuthStateResult): Parameters<typeof renderShow>[0]["fields"] {
+  const userLabel = authUserLabel(result);
+  return userLabel ? [{ key: "user", value: userLabel }] : [];
+}
+
+function credentialUserLabel(result: AuthStateResult): string | null {
+  if (result.credential?.type === "service_token") {
+    return result.credential.name
+      ? `<service token: ${result.credential.name}>`
+      : "<service token>";
+  }
+
+  if (result.credential?.type === "management_token") {
+    return result.credential.name
+      ? `<management token: ${result.credential.name}>`
+      : "<management token>";
+  }
+
+  return null;
 }

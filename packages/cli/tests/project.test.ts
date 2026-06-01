@@ -20,41 +20,11 @@ async function writePackageJson(cwd: string, name: string) {
   await writeFile(path.join(cwd, "package.json"), `${JSON.stringify({ name }, null, 2)}\n`, "utf8");
 }
 
-async function writeStaleProjectState(stateDir: string) {
-  await mkdir(stateDir, { recursive: true });
+async function writeLocalPin(cwd: string, pin: unknown | string) {
+  await mkdir(path.join(cwd, ".prisma"), { recursive: true });
   await writeFile(
-    path.join(stateDir, "state.json"),
-    `${JSON.stringify(
-      {
-        auth: {
-          provider: "github",
-          userId: "usr_456",
-          workspaceId: "ws_123",
-        },
-        project: {
-          rememberedByWorkspace: {
-            ws_123: {
-              id: "proj_missing",
-              name: "Missing Project",
-              workspaceId: "ws_123",
-            },
-          },
-          lastResolved: {
-            id: "proj_missing",
-            name: "Missing Project",
-            workspaceId: "ws_123",
-          },
-          repositoryConnectionsByProject: {},
-        },
-        branch: { active: "preview" },
-        app: {
-          selectedByProject: {},
-          knownLiveDeploymentByProject: {},
-        },
-      },
-      null,
-      2,
-    )}\n`,
+    path.join(cwd, ".prisma/local.json"),
+    typeof pin === "string" ? pin : `${JSON.stringify(pin, null, 2)}\n`,
     "utf8",
   );
 }
@@ -70,6 +40,23 @@ async function createAmbiguousFixture(cwd: string): Promise<string> {
     workspaceId: "ws_123",
   });
   const nextPath = path.join(cwd, "ambiguous-fixture.json");
+  await writeFile(nextPath, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+  return nextPath;
+}
+
+async function createAppleFixture(cwd: string): Promise<string> {
+  const raw = JSON.parse(await readFile(fixturePath, "utf8")) as {
+    projects: Array<{ id: string; name: string; slug: string; workspaceId: string }>;
+  };
+  raw.projects = [
+    {
+      id: "proj_apple",
+      name: "apple",
+      slug: "apple",
+      workspaceId: "ws_123",
+    },
+  ];
+  const nextPath = path.join(cwd, "apple-fixture.json");
   await writeFile(nextPath, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
   return nextPath;
 }
@@ -90,11 +77,47 @@ describe("project commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "project list → Listing projects for the authenticated workspace.\n\n│  workspace:  Acme Inc\n│  ⚬ project:  Acme Dashboard\n│  ⚬ project:  Billing API\n",
+      "project list → Listing projects for the authenticated workspace.\n\n│  workspace:  Acme Inc\n│  ⚬ project:  Acme Dashboard\n│  ⚬ project:  Billing API\n\nNext step:\n- Link the chosen Project: prisma-cli project link <id-or-name>\n",
     );
   });
 
-  it("shows the project resolved from package.json in JSON mode", async () => {
+  it("adds a Project setup next action to project list JSON when unlinked", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await login(cwd, stateDir);
+
+    const result = await executeCli({
+      argv: ["project", "list", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.result).toMatchObject({
+      localBinding: {
+        status: "not-linked",
+      },
+      items: expect.arrayContaining([
+        expect.objectContaining({ name: "Acme Dashboard", status: null }),
+      ]),
+    });
+    expect(payload.nextActions).toEqual([
+      expect.objectContaining({
+        kind: "user-choice",
+        journey: "project-setup",
+        label: "Ask the user which Prisma Project this directory should use",
+      }),
+      expect.objectContaining({
+        kind: "run-command",
+        command: "prisma-cli project link <id-or-name>",
+      }),
+    ]);
+  });
+
+  it("shows unbound suggestions from package.json in JSON mode", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     await writePackageJson(cwd, "billing-api");
@@ -109,7 +132,7 @@ describe("project commands", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
-    expect(JSON.parse(result.stdout)).toEqual({
+    expect(JSON.parse(result.stdout)).toMatchObject({
       ok: true,
       command: "project.show",
       result: {
@@ -117,18 +140,51 @@ describe("project commands", () => {
           id: "ws_123",
           name: "Acme Inc",
         },
-        project: {
-          id: "proj_456",
-          name: "Billing API",
+        project: null,
+        localBinding: {
+          status: "not-linked",
         },
         resolution: {
-          projectSource: "package-name",
-          targetName: "billing-api",
-          targetNameSource: "package-name",
+          projectSource: "unbound",
         },
+        suggestedProjectName: "billing-api",
+        suggestedProjectNameSource: "package-name",
+        candidates: [
+          {
+            id: "proj_456",
+            name: "Billing API",
+          },
+        ],
+        recoveryCommands: [
+          "prisma-cli project link <id-or-name>",
+          "prisma-cli project show --project <id-or-name>",
+        ],
       },
       warnings: [],
       nextSteps: [],
+      nextActions: [
+        expect.objectContaining({
+          kind: "user-choice",
+          journey: "project-setup",
+          commands: [
+            "prisma-cli project list",
+            "prisma-cli project link <id-or-name>",
+            "prisma-cli project show --project <id-or-name>",
+          ],
+        }),
+        expect.objectContaining({
+          kind: "run-command",
+          command: "prisma-cli project link <id-or-name>",
+        }),
+        expect.objectContaining({
+          kind: "run-command",
+          command: "prisma-cli project create billing-api",
+        }),
+        expect.objectContaining({
+          kind: "run-command",
+          command: "prisma-cli project show --project <id-or-name>",
+        }),
+      ],
     });
   });
 
@@ -148,6 +204,37 @@ describe("project commands", () => {
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout).result.resolution.projectSource).toBe("explicit");
     expect(state.project?.lastResolved ?? null).toBe(null);
+    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("shows the pinned project from local state", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writeLocalPin(cwd, {
+      workspaceId: "ws_123",
+      projectId: "proj_123",
+    });
+    await login(cwd, stateDir);
+
+    const result = await executeCli({
+      argv: ["project", "show", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout).result).toMatchObject({
+      project: {
+        id: "proj_123",
+        name: "Acme Dashboard",
+      },
+      resolution: {
+        projectSource: "local-pin",
+        targetName: "Acme Dashboard",
+        targetNameSource: "local-pin",
+      },
+    });
   });
 
   it("returns PROJECT_NOT_FOUND for an inaccessible explicit project", async () => {
@@ -166,7 +253,7 @@ describe("project commands", () => {
     expect(JSON.parse(result.stdout).error.code).toBe("PROJECT_NOT_FOUND");
   });
 
-  it("returns PROJECT_UNRESOLVED when automatic resolution has no safe source", async () => {
+  it("shows an unbound directory when there is no safe source", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     await login(cwd, stateDir);
@@ -178,11 +265,30 @@ describe("project commands", () => {
       fixturePath,
     });
 
-    expect(result.exitCode).toBe(1);
-    expect(JSON.parse(result.stdout).error.code).toBe("PROJECT_UNRESOLVED");
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.result).toMatchObject({
+      project: null,
+      localBinding: {
+        status: "not-linked",
+      },
+      resolution: {
+        projectSource: "unbound",
+      },
+      suggestedProjectName: path.basename(cwd),
+      suggestedProjectNameSource: "directory-name",
+      candidates: [],
+    });
+    expect(payload.nextActions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "user-choice",
+        journey: "project-setup",
+      }),
+    ]));
   });
 
-  it("treats a primitive package.json root as missing package metadata", async () => {
+  it("uses the directory name as the suggestion when package metadata is unusable", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     await writeFile(path.join(cwd, "package.json"), "null\n", "utf8");
@@ -195,8 +301,15 @@ describe("project commands", () => {
       fixturePath,
     });
 
-    expect(result.exitCode).toBe(1);
-    expect(JSON.parse(result.stdout).error.code).toBe("PROJECT_UNRESOLVED");
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout).result).toMatchObject({
+      project: null,
+      resolution: {
+        projectSource: "unbound",
+      },
+      suggestedProjectName: path.basename(cwd),
+      suggestedProjectNameSource: "directory-name",
+    });
   });
 
   it("does not prompt for project selection in interactive human mode", async () => {
@@ -213,13 +326,51 @@ describe("project commands", () => {
     });
     const stderr = stripAnsi(result.stderr);
 
-    expect(result.exitCode).toBe(1);
-    expect(stderr).toContain("No project is resolved for this directory [PROJECT_UNRESOLVED]");
-    expect(stderr).toContain("prisma-cli project list");
+    expect(result.exitCode).toBe(0);
+    expect(stderr).toContain("This directory is not linked to a Prisma Project.");
+    expect(stderr).toContain("project:    Not linked");
+    expect(stderr).toContain("Link an existing Project: prisma-cli project link <id-or-name>");
+    expect(stderr).not.toContain("match:");
     expect(stderr).not.toContain("Select a project");
   });
 
-  it("returns PROJECT_AMBIGUOUS when package inference matches multiple projects", async () => {
+  it("does not suggest linking a nearby-looking Project in human output", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const appleFixturePath = await createAppleFixture(cwd);
+    await writePackageJson(cwd, "pear");
+    await login(cwd, stateDir, appleFixturePath);
+
+    const result = await executeCli({
+      argv: ["project", "show"],
+      cwd,
+      stateDir,
+      fixturePath: appleFixturePath,
+    });
+    const stderr = stripAnsi(result.stderr);
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr).toContain("project:    Not linked");
+    expect(stderr).not.toContain("apple");
+    expect(stderr).not.toContain("match:");
+    expect(stderr).toContain("Create a new Project: prisma-cli project create pear");
+
+    const jsonResult = await executeCli({
+      argv: ["project", "show", "--json"],
+      cwd,
+      stateDir,
+      fixturePath: appleFixturePath,
+    });
+    const payload = JSON.parse(jsonResult.stdout);
+
+    expect(payload.result.candidates).toEqual([]);
+    expect(payload.nextActions[0]).toMatchObject({
+      kind: "user-choice",
+      journey: "project-setup",
+    });
+  });
+
+  it("shows all matching candidates when package inference matches multiple projects", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     const ambiguousFixturePath = await createAmbiguousFixture(cwd);
@@ -233,14 +384,33 @@ describe("project commands", () => {
       fixturePath: ambiguousFixturePath,
     });
 
-    expect(result.exitCode).toBe(1);
-    expect(JSON.parse(result.stdout).error.code).toBe("PROJECT_AMBIGUOUS");
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.result).toMatchObject({
+      project: null,
+      localBinding: {
+        status: "not-linked",
+      },
+      resolution: {
+        projectSource: "unbound",
+      },
+      suggestedProjectName: "acme-dashboard",
+      candidates: [
+        { id: "proj_123", name: "Acme Dashboard" },
+        { id: "proj_321", name: "Acme Dashboard" },
+      ],
+    });
   });
 
-  it("returns LOCAL_STATE_STALE when remembered context is invalid and continuing is ambiguous", async () => {
+  it("returns LOCAL_STATE_STALE when the local pin is invalid", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
-    await writeStaleProjectState(stateDir);
+    await writeLocalPin(cwd, {
+      workspaceId: "ws_123",
+      projectId: "proj_missing",
+    });
+    await login(cwd, stateDir);
 
     const result = await executeCli({
       argv: ["project", "show", "--json"],
@@ -288,6 +458,7 @@ describe("project commands", () => {
       },
       warnings: [],
       nextSteps: [],
+      nextActions: [],
     });
     expect(state.project.repositoryConnectionsByProject.proj_123.repository.fullName).toBe("prisma/prisma-cli");
   });
@@ -409,7 +580,7 @@ describe("project commands", () => {
     expect(JSON.parse(result.stdout).error.code).toBe("REPO_PROVIDER_UNSUPPORTED");
   });
 
-  it("returns PROJECT_UNRESOLVED for repository connection without a resolved project", async () => {
+  it("returns PROJECT_SETUP_REQUIRED for repository connection without a Project binding", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     await login(cwd, stateDir);
@@ -422,10 +593,10 @@ describe("project commands", () => {
     });
 
     expect(result.exitCode).toBe(1);
-    expect(JSON.parse(result.stdout).error.code).toBe("PROJECT_UNRESOLVED");
+    expect(JSON.parse(result.stdout).error.code).toBe("PROJECT_SETUP_REQUIRED");
   });
 
-  it("shows Public Beta project and git help without project link", async () => {
+  it("shows Public Beta project, setup, and git help", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
 
@@ -437,6 +608,18 @@ describe("project commands", () => {
     });
     const showHelp = await executeCli({
       argv: ["project", "show", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const createHelp = await executeCli({
+      argv: ["project", "create", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const linkHelp = await executeCli({
+      argv: ["project", "link", "--help"],
       cwd,
       stateDir,
       fixturePath,
@@ -459,16 +642,43 @@ describe("project commands", () => {
       stateDir,
       fixturePath,
     });
-    const stderr = stripAnsi(`${projectHelp.stderr}\n${showHelp.stderr}\n${gitHelp.stderr}\n${connectRepoHelp.stderr}\n${disconnectRepoHelp.stderr}`);
+    const stderr = stripAnsi(`${projectHelp.stderr}\n${showHelp.stderr}\n${createHelp.stderr}\n${linkHelp.stderr}\n${gitHelp.stderr}\n${connectRepoHelp.stderr}\n${disconnectRepoHelp.stderr}`);
 
     expect(projectHelp.exitCode).toBe(0);
+    expect(createHelp.exitCode).toBe(0);
+    expect(linkHelp.exitCode).toBe(0);
     expect(gitHelp.exitCode).toBe(0);
     expect(stderr).toContain("project → Manage and inspect your Prisma projects");
     expect(stderr).toContain("git → Manage Git repository connections for a project");
-    expect(stderr).toContain("Show which project is active for this directory");
+    expect(stderr).toContain("Show this directory's Project binding");
+    expect(stderr).toContain("Create a Project and link this directory");
+    expect(stderr).toContain("Link this directory to an existing Project");
     expect(stderr).toContain("Connect the resolved project to a GitHub repository");
     expect(stderr).toContain("Disconnect the GitHub repository from the resolved project");
-    expect(stderr).not.toContain("project link");
-    expect(stderr).not.toContain("linked project");
+  });
+
+  it("registers project env remove and rm alias help", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    const removeHelp = await executeCli({
+      argv: ["project", "env", "remove", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const rmHelp = await executeCli({
+      argv: ["project", "env", "rm", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(removeHelp.exitCode).toBe(0);
+    expect(removeHelp.stderr).toContain("project env remove");
+    expect(removeHelp.stderr).toContain("--branch <git-name>");
+    expect(rmHelp.exitCode).toBe(0);
+    expect(rmHelp.stderr).toContain("project env remove");
+    expect(rmHelp.stderr).toContain("--role <role>");
   });
 });

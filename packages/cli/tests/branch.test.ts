@@ -75,6 +75,7 @@ describe("branch commands", () => {
       },
       warnings: [],
       nextSteps: ["prisma-cli app deploy --app <name>"],
+      nextActions: [],
     });
   });
 
@@ -110,6 +111,7 @@ describe("branch commands", () => {
       },
       warnings: [],
       nextSteps: ["prisma-cli app deploy --app <name>"],
+      nextActions: [],
     });
   });
 
@@ -145,6 +147,7 @@ describe("branch commands", () => {
       },
       warnings: [],
       nextSteps: ["prisma-cli app deploy --app <name>"],
+      nextActions: [],
     });
   });
 
@@ -265,6 +268,7 @@ describe("branch commands", () => {
       },
       warnings: [],
       nextSteps: [],
+      nextActions: [],
     });
   });
 
@@ -309,6 +313,7 @@ describe("branch commands", () => {
       },
       warnings: [],
       nextSteps: [],
+      nextActions: [],
     });
   });
 
@@ -346,6 +351,7 @@ describe("branch commands", () => {
       },
       warnings: ["Production is protected and durable. Use with care."],
       nextSteps: ["prisma-cli branch show"],
+      nextActions: [],
     });
   });
 
@@ -410,6 +416,7 @@ describe("branch commands", () => {
       },
       warnings: [],
       nextSteps: ["prisma-cli branch list"],
+      nextActions: [],
     });
   });
 
@@ -442,6 +449,7 @@ describe("branch commands", () => {
       },
       warnings: [],
       nextSteps: ["prisma-cli branch list"],
+      nextActions: [],
     });
   });
 
@@ -474,6 +482,7 @@ describe("branch commands", () => {
       },
       warnings: [],
       nextSteps: ["prisma-cli branch list"],
+      nextActions: [],
     });
   });
 

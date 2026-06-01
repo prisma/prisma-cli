@@ -7,6 +7,7 @@ import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { envVarNames } from "./env-vars";
 import { PreviewBuildStrategy } from "./preview-build";
 import type { PreviewBuildType } from "./preview-build";
+import type { BranchKind } from "../../types/branch";
 
 export interface PreviewAppRecord {
   id: string;
@@ -20,6 +21,12 @@ export interface PreviewAppRecord {
 export interface PreviewProjectRecord {
   id: string;
   name: string;
+}
+
+export interface PreviewBranchRecord {
+  id: string;
+  name: string;
+  role: BranchKind;
 }
 
 export interface PreviewDeploymentRecord {
@@ -57,10 +64,62 @@ export interface PreviewRemovedAppRecord {
   name: string;
 }
 
+export type PreviewDomainStatus =
+  | "pending_dns"
+  | "verifying"
+  | "verified_routing_blocked"
+  | "provisioning_tls"
+  | "active"
+  | "failed"
+  | "removing";
+
+export interface PreviewDomainDnsRecord {
+  type: string;
+  name: string;
+  value: string;
+  ttl: number | null;
+}
+
+export interface PreviewDomainRecord {
+  id: string;
+  type: "custom-domain";
+  url: string;
+  hostname: string;
+  computeServiceId: string;
+  status: PreviewDomainStatus;
+  foundryStatus: string;
+  failureReason: string | null;
+  failureCategory: "dns" | "acme" | "storage" | "unknown" | null;
+  certExpiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  dnsRecords: PreviewDomainDnsRecord[];
+}
+
+export class PreviewDomainApiError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+  readonly hint: string | null;
+
+  constructor(options: { summary: string; status: number; message: string; code?: string | null; hint?: string | null }) {
+    super(`${options.summary}: ${options.message}${options.hint ? ` ${options.hint}` : ""}`);
+    this.name = "PreviewDomainApiError";
+    this.status = options.status;
+    this.code = options.code ?? null;
+    this.hint = options.hint ?? null;
+  }
+}
+
 export interface PreviewAppProvider {
   createProject(options: { name: string }): Promise<PreviewProjectRecord>;
+  resolveBranch(projectId: string, options: { branchName: string }): Promise<PreviewBranchRecord>;
   listApps(projectId: string, options?: { branchName?: string }): Promise<PreviewAppRecord[]>;
   removeApp(appId: string): Promise<PreviewRemovedAppRecord>;
+  listDomains(appId: string): Promise<PreviewDomainRecord[]>;
+  addDomain(options: { appId: string; hostname: string }): Promise<{ domain: PreviewDomainRecord; existing: boolean }>;
+  showDomain(domainId: string): Promise<PreviewDomainRecord>;
+  removeDomain(domainId: string): Promise<void>;
+  retryDomain(domainId: string): Promise<PreviewDomainRecord>;
   promoteDeployment(options: {
     appId: string;
     deploymentId: string;
@@ -131,6 +190,19 @@ export function createPreviewAppProvider(
       });
     },
 
+    async resolveBranch(projectId, options) {
+      const branch = await resolveOrCreateBranch(client, {
+        projectId,
+        gitName: options.branchName,
+      });
+
+      return {
+        id: branch.id,
+        name: branch.gitName,
+        role: branch.role,
+      };
+    },
+
     async removeApp(appId) {
       const appResult = await sdk.showService({ serviceId: appId });
       if (appResult.isErr()) {
@@ -152,6 +224,81 @@ export function createPreviewAppProvider(
         id: appResult.value.id,
         name: appResult.value.name,
       };
+    },
+
+    async listDomains(appId) {
+      return listComputeServiceDomains(client, appId);
+    },
+
+    async addDomain(options) {
+      const result = await client.POST("/v1/compute-services/{computeServiceId}/domains", {
+        params: {
+          path: { computeServiceId: options.appId },
+        },
+        body: {
+          hostname: options.hostname,
+        },
+      });
+
+      if (result.error || !result.data) {
+        if (result.response.status === 409) {
+          const existing = (await listComputeServiceDomains(client, options.appId))
+            .find((domain) => sameHostname(domain.hostname, options.hostname));
+          if (existing) {
+            return {
+              domain: existing,
+              existing: true,
+            };
+          }
+        }
+
+        throw domainApiCallError("Failed to add custom domain", result.response, result.error);
+      }
+
+      return {
+        domain: normalizeDomainRecord(result.data.data),
+        existing: false,
+      };
+    },
+
+    async showDomain(domainId) {
+      const result = await client.GET("/v1/domains/{domainId}", {
+        params: {
+          path: { domainId },
+        },
+      });
+
+      if (result.error || !result.data) {
+        throw domainApiCallError("Failed to show custom domain", result.response, result.error);
+      }
+
+      return normalizeDomainRecord(result.data.data);
+    },
+
+    async removeDomain(domainId) {
+      const result = await client.DELETE("/v1/domains/{domainId}", {
+        params: {
+          path: { domainId },
+        },
+      });
+
+      if (result.error) {
+        throw domainApiCallError("Failed to remove custom domain", result.response, result.error);
+      }
+    },
+
+    async retryDomain(domainId) {
+      const result = await client.POST("/v1/domains/{domainId}/retry", {
+        params: {
+          path: { domainId },
+        },
+      });
+
+      if (result.error || !result.data) {
+        throw domainApiCallError("Failed to retry custom domain", result.response, result.error);
+      }
+
+      return normalizeDomainRecord(result.data.data);
     },
 
     async promoteDeployment(options) {
@@ -413,6 +560,7 @@ interface RawBranchRecord {
   id: string;
   gitName: string;
   isDefault: boolean;
+  role: BranchKind;
 }
 
 interface RawComputeServiceRecord {
@@ -436,6 +584,29 @@ interface RawApiErrorBody {
   };
 }
 
+interface RawDomainDnsRecord {
+  type?: unknown;
+  name?: unknown;
+  value?: unknown;
+  ttl?: unknown;
+}
+
+interface RawDomainRecord {
+  id: string;
+  type: "custom-domain";
+  url: string;
+  hostname: string;
+  computeServiceId: string;
+  status: PreviewDomainStatus;
+  foundryStatus: string;
+  failureReason: string | null;
+  failureCategory: "dns" | "acme" | "storage" | "unknown" | null;
+  certExpiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  dnsRecords?: RawDomainDnsRecord[] | null;
+}
+
 async function listBranches(
   client: ManagementApiClient,
   options: {
@@ -453,7 +624,12 @@ async function listBranches(
     throw apiCallError("Failed to list branches", result.response, result.error);
   }
 
-  return result.data.data as RawBranchRecord[];
+  return result.data.data.map((branch) => ({
+    id: branch.id,
+    gitName: branch.gitName,
+    isDefault: branch.isDefault,
+    role: branch.role,
+  }));
 }
 
 async function resolveOrCreateBranch(
@@ -474,7 +650,6 @@ async function resolveOrCreateBranch(
     },
     body: {
       gitName: options.gitName,
-      isDefault: options.gitName === "main",
     },
   });
   if (result.error || !result.data) {
@@ -488,7 +663,13 @@ async function resolveOrCreateBranch(
     throw apiCallError(`Failed to create branch "${options.gitName}"`, result.response, result.error);
   }
 
-  return result.data.data as RawBranchRecord;
+  const branch = result.data.data;
+  return {
+    id: branch.id,
+    gitName: branch.gitName,
+    isDefault: branch.isDefault,
+    role: branch.role,
+  };
 }
 
 async function listComputeServices(
@@ -532,6 +713,70 @@ async function listComputeServices(
     liveDeploymentId: service.latestVersionId ?? null,
     liveUrl: toAbsoluteUrl(service.serviceEndpointDomain ?? null),
   }));
+}
+
+async function listComputeServiceDomains(
+  client: ManagementApiClient,
+  computeServiceId: string,
+): Promise<PreviewDomainRecord[]> {
+  const result = await client.GET("/v1/compute-services/{computeServiceId}/domains", {
+    params: {
+      path: { computeServiceId },
+    },
+  });
+
+  if (result.error || !result.data) {
+    throw domainApiCallError("Failed to list custom domains", result.response, result.error);
+  }
+
+  return result.data.data.map((domain) => normalizeDomainRecord(domain));
+}
+
+function normalizeDomainRecord(domain: RawDomainRecord): PreviewDomainRecord {
+  return {
+    id: domain.id,
+    type: domain.type,
+    url: domain.url,
+    hostname: domain.hostname,
+    computeServiceId: domain.computeServiceId,
+    status: domain.status,
+    foundryStatus: domain.foundryStatus,
+    failureReason: domain.failureReason,
+    failureCategory: domain.failureCategory,
+    certExpiresAt: domain.certExpiresAt,
+    createdAt: domain.createdAt,
+    updatedAt: domain.updatedAt,
+    dnsRecords: normalizeDomainDnsRecords(domain.dnsRecords),
+  };
+}
+
+function normalizeDomainDnsRecords(records: RawDomainDnsRecord[] | null | undefined): PreviewDomainDnsRecord[] {
+  if (!Array.isArray(records)) {
+    return [];
+  }
+
+  return records
+    .map((record) => {
+      if (typeof record.type !== "string" || typeof record.name !== "string" || typeof record.value !== "string") {
+        return null;
+      }
+
+      return {
+        type: record.type,
+        name: record.name,
+        value: record.value,
+        ttl: typeof record.ttl === "number" ? record.ttl : null,
+      };
+    })
+    .filter((record): record is PreviewDomainDnsRecord => Boolean(record));
+}
+
+function sameHostname(left: string, right: string): boolean {
+  return normalizeHostnameForComparison(left) === normalizeHostnameForComparison(right);
+}
+
+function normalizeHostnameForComparison(hostname: string): string {
+  return hostname.trim().replace(/\.$/, "").toLowerCase();
 }
 
 async function createBranchApp(
@@ -594,6 +839,20 @@ function apiCallError(
   const message = error.error?.message ?? `Management API returned HTTP ${response.status}.`;
   const hint = error.error?.hint ? ` ${error.error.hint}` : "";
   return new Error(`${summary}: ${message}${hint}`);
+}
+
+function domainApiCallError(
+  summary: string,
+  response: Response,
+  error: RawApiErrorBody,
+): PreviewDomainApiError {
+  return new PreviewDomainApiError({
+    summary,
+    status: response.status,
+    code: error.error?.code ?? null,
+    message: error.error?.message ?? `Management API returned HTTP ${response.status}.`,
+    hint: error.error?.hint ?? null,
+  });
 }
 
 async function findAppForDeployment(

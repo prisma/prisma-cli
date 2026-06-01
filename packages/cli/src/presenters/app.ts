@@ -3,7 +3,11 @@ import type { CommandContext } from "../shell/runtime";
 import type {
   AppBuildResult,
   AppDeployResult,
-  AppListEnvResult,
+  AppDomainAddResult,
+  AppDomainRemoveResult,
+  AppDomainRetryResult,
+  AppDomainShowResult,
+  AppDomainStatus,
   AppListDeploysResult,
   AppOpenResult,
   AppPromoteResult,
@@ -12,9 +16,10 @@ import type {
   AppShowResult,
   AppRunResult,
   AppShowDeployResult,
-  AppUpdateEnvResult,
 } from "../types/app";
 import { renderList, renderShow, serializeList } from "../output/patterns";
+import { renderDeployOutputRows } from "../lib/app/deploy-output";
+import { formatDomainFailureFix } from "../lib/app/domain-guidance";
 
 export function renderAppBuild(
   context: CommandContext,
@@ -44,25 +49,16 @@ export function renderAppDeploy(
   descriptor: CommandDescriptor,
   result: AppDeployResult,
 ): string[] {
-  const lines = renderShow(
-    {
-      title: "Deploying the selected app.",
-      descriptor,
-      fields: [
-        { key: "workspace", value: result.workspace.name },
-        { key: "project", value: result.project.name },
-        { key: "branch", value: result.branch.name },
-        { key: "app", value: result.app.name },
-        { key: "deployment", value: result.deployment.id },
-        { key: "status", value: result.deployment.status, tone: toneForStatus(result.deployment.status) },
-        ...(result.deployment.url ? [{ key: "url", value: result.deployment.url, tone: "link" as const }] : []),
-      ],
-    },
-    context.ui,
-  );
-  if (result.localPin?.written) {
-    lines.push(`Bound this directory in ${result.localPin.path}. Subsequent commands target the same Project.`);
-  }
+  void descriptor;
+
+  const lines = [
+    `Live in ${formatDuration(result.durationMs)}`,
+    ...(result.deployment.url ? [context.ui.link(result.deployment.url)] : []),
+    "",
+    ...renderDeployOutputRows(context.ui, [
+      { label: "Logs", value: "prisma-cli app logs" },
+    ]),
+  ];
   return lines;
 }
 
@@ -71,58 +67,12 @@ export function serializeAppDeploy(result: AppDeployResult) {
   return serialized;
 }
 
-export function renderAppUpdateEnv(
-  context: CommandContext,
-  descriptor: CommandDescriptor,
-  result: AppUpdateEnvResult,
-): string[] {
-  return renderShow(
-    {
-      title: "Updating environment variables for the selected app.",
-      descriptor,
-      fields: [
-        { key: "project", value: result.projectId },
-        { key: "app", value: result.app.name },
-        { key: "deployment", value: result.deployment.id },
-        { key: "status", value: result.deployment.status, tone: toneForStatus(result.deployment.status) },
-        ...(result.deployment.url ? [{ key: "url", value: result.deployment.url, tone: "link" as const }] : []),
-        { key: "variables", value: formatVariableNames(result.variables), tone: result.variables.length > 0 ? "default" : "dim" },
-      ],
-    },
-    context.ui,
-  );
-}
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1000) {
+    return `${durationMs}ms`;
+  }
 
-export function serializeAppUpdateEnv(result: AppUpdateEnvResult) {
-  return result;
-}
-
-export function renderAppListEnv(
-  context: CommandContext,
-  descriptor: CommandDescriptor,
-  result: AppListEnvResult,
-): string[] {
-  return renderShow(
-    {
-      title: "Listing environment variables for the selected app.",
-      descriptor,
-      fields: [
-        { key: "project", value: result.projectId },
-        { key: "app", value: result.app?.name ?? "not selected", tone: result.app ? "default" : "dim" },
-        {
-          key: "deployment",
-          value: result.deployment?.id ?? "none",
-          tone: result.deployment ? toneForStatus(result.deployment.status) : "dim",
-        },
-        { key: "variables", value: formatVariableNames(result.variables), tone: result.variables.length > 0 ? "default" : "dim" },
-      ],
-    },
-    context.ui,
-  );
-}
-
-export function serializeAppListEnv(result: AppListEnvResult) {
-  return result;
+  return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
 export function renderAppListDeploys(
@@ -272,6 +222,107 @@ export function serializeAppOpen(result: AppOpenResult) {
   return result;
 }
 
+export function renderAppDomainAdd(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: AppDomainAddResult,
+): string[] {
+  return renderShow(
+    {
+      title: result.existing
+        ? "Showing the existing custom domain for the selected app."
+        : "Adding a custom domain to the selected app.",
+      descriptor,
+      fields: [
+        ...domainTargetFields(result),
+        { key: "hostname", value: result.domain.hostname },
+        { key: "status", value: result.domain.status, tone: toneForDomainStatus(result.domain.status) },
+        ...domainDnsFields(result.domain),
+      ],
+    },
+    context.ui,
+  );
+}
+
+export function serializeAppDomainAdd(result: AppDomainAddResult) {
+  return result;
+}
+
+export function renderAppDomainShow(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: AppDomainShowResult,
+): string[] {
+  return renderShow(
+    {
+      title: "Showing custom domain status.",
+      descriptor,
+      fields: [
+        ...domainTargetFields(result),
+        { key: "hostname", value: result.domain.hostname },
+        { key: "status", value: result.domain.status, tone: toneForDomainStatus(result.domain.status) },
+        ...domainFailureFields(result.domain),
+        { key: "cert expires", value: formatOptionalUtcDate(result.domain.certExpiresAt), tone: result.domain.certExpiresAt ? "default" : "dim" },
+        { key: "created", value: formatUtcDate(result.domain.createdAt), tone: "dim" },
+        ...domainDnsFields(result.domain),
+      ],
+    },
+    context.ui,
+  );
+}
+
+export function serializeAppDomainShow(result: AppDomainShowResult) {
+  return result;
+}
+
+export function renderAppDomainRemove(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: AppDomainRemoveResult,
+): string[] {
+  return renderShow(
+    {
+      title: "Removing a custom domain from the selected app.",
+      descriptor,
+      fields: [
+        ...domainTargetFields(result),
+        { key: "hostname", value: result.hostname },
+        { key: "removed", value: result.removed ? "yes" : "no", tone: result.removed ? "success" : "dim" },
+      ],
+    },
+    context.ui,
+  );
+}
+
+export function serializeAppDomainRemove(result: AppDomainRemoveResult) {
+  return result;
+}
+
+export function renderAppDomainRetry(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: AppDomainRetryResult,
+): string[] {
+  return renderShow(
+    {
+      title: "Retrying custom domain verification.",
+      descriptor,
+      fields: [
+        ...domainTargetFields(result),
+        { key: "hostname", value: result.domain.hostname },
+        { key: "status", value: result.domain.status, tone: toneForDomainStatus(result.domain.status) },
+        ...domainFailureFields(result.domain),
+        ...domainDnsFields(result.domain),
+      ],
+    },
+    context.ui,
+  );
+}
+
+export function serializeAppDomainRetry(result: AppDomainRetryResult) {
+  return result;
+}
+
 export function renderAppPromote(
   context: CommandContext,
   descriptor: CommandDescriptor,
@@ -380,6 +431,95 @@ function toneForStatus(status: string): "success" | "warning" | "error" | "defau
   return "default";
 }
 
+function toneForDomainStatus(status: AppDomainStatus): "success" | "warning" | "error" | "default" {
+  if (status === "active") {
+    return "success";
+  }
+
+  if (status === "failed") {
+    return "error";
+  }
+
+  if (status === "pending_dns" || status === "verifying" || status === "provisioning_tls" || status === "verified_routing_blocked") {
+    return "warning";
+  }
+
+  return "default";
+}
+
+function domainTargetFields(result: Pick<AppDomainAddResult, "workspace" | "project" | "branch" | "app">) {
+  return [
+    { key: "workspace", value: result.workspace.name },
+    { key: "project", value: result.project.name },
+    { key: "branch", value: result.branch.name },
+    { key: "app", value: result.app.name },
+  ];
+}
+
+function domainDnsFields(domain: Pick<AppDomainAddResult["domain"], "hostname" | "dnsRecords">) {
+  const records = domain.dnsRecords;
+  if (records.length === 0) {
+    return [{
+      key: "dns record",
+      value: "not provided by platform",
+      tone: "dim" as const,
+    }];
+  }
+
+  return [{
+    key: "dns record",
+    value: records.map((record) => {
+      const ttl = record.ttl ? ` ttl ${record.ttl}` : "";
+      return `${record.type} ${record.name} -> ${record.value}${ttl}`;
+    }).join(", "),
+  }];
+}
+
+function formatDomainFailure(domain: AppDomainShowResult["domain"]): string {
+  if (!domain.failureReason) {
+    return domain.failureCategory ?? "none";
+  }
+
+  return domain.failureCategory ? `${domain.failureCategory} - ${domain.failureReason}` : domain.failureReason;
+}
+
+function domainFailureFields(domain: AppDomainShowResult["domain"]) {
+  const tone = hasDomainFailure(domain) ? "error" : "dim";
+
+  return [
+    { key: "failure", value: formatDomainFailure(domain), tone },
+    ...domainFixFields(domain),
+  ];
+}
+
+function hasDomainFailure(domain: AppDomainShowResult["domain"]): boolean {
+  return Boolean(domain.failureCategory || domain.failureReason);
+}
+
+function domainFixFields(domain: AppDomainShowResult["domain"]) {
+  const fix = formatDomainFailureFix(domain);
+
+  return fix ? [{ key: "fix", value: fix }] : [];
+}
+
+function formatOptionalUtcDate(value: string | null): string {
+  return value ? formatUtcDate(value) : "-";
+}
+
+function formatUtcDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const hours = String(date.getUTCHours()).padStart(2, "0");
+  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hours}:${minutes} UTC`;
+}
+
 function formatRecentDeployments(deployments: AppShowResult["recentDeployments"]): string {
   if (deployments.length === 0) {
     return "none";
@@ -388,12 +528,4 @@ function formatRecentDeployments(deployments: AppShowResult["recentDeployments"]
   return deployments
     .map((deployment) => `${deployment.id}${deployment.live ? " (live)" : ""}`)
     .join(", ");
-}
-
-function formatVariableNames(variables: string[]): string {
-  if (variables.length === 0) {
-    return "none";
-  }
-
-  return variables.join(", ");
 }
