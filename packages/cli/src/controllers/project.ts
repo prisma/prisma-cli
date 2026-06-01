@@ -88,7 +88,7 @@ export async function runProjectList(context: CommandContext): Promise<CommandSu
     if (!client) {
       throw authRequiredError();
     }
-    const projects = sortProjects(await listRealWorkspaceProjects(client, workspace));
+    const projects = sortProjects(await listRealWorkspaceProjects(client, workspace, context.runtime.signal));
     const localBinding = await readProjectListLocalBinding(context.runtime.cwd, workspace, projects);
     const nextActions = buildProjectListNextActions(localBinding);
 
@@ -193,7 +193,7 @@ export async function runProjectCreate(
 
   const provider = createPreviewAppProvider(client);
   const name = projectName.trim();
-  const created = await provider.createProject({ name }).catch((error) => {
+  const created = await provider.createProject({ name, signal: context.runtime.signal }).catch((error) => {
     throw projectCreateFailedError(error, name, workspace, {
       nextSteps: ["prisma-cli project list", "prisma-cli project link <id-or-name>"],
       permissionFix: "Grant the token permission to create Projects in this workspace, or link an existing Project.",
@@ -231,7 +231,7 @@ export async function runProjectLink(
       throw authRequiredError();
     }
     provider = createPreviewAppProvider(client);
-    projects = await listRealWorkspaceProjects(client, workspace);
+    projects = await listRealWorkspaceProjects(client, workspace, context.runtime.signal);
   } else {
     projects = listFixtureWorkspaceProjects(context, workspace);
   }
@@ -278,7 +278,7 @@ async function resolveInteractiveProjectLinkSetup(
           "project",
         );
       }
-      return createProjectForLinkSetup(provider, projectName, workspace);
+      return createProjectForLinkSetup(provider, projectName, workspace, context.runtime.signal);
     },
     cancel: {
       why: "Project link needs a Project before it can continue.",
@@ -294,8 +294,9 @@ async function createProjectForLinkSetup(
   provider: ReturnType<typeof createPreviewAppProvider>,
   projectName: string,
   workspace: AuthWorkspace,
+  signal: AbortSignal,
 ): Promise<ProjectCandidate> {
-  const created = await provider.createProject({ name: projectName }).catch((error) => {
+  const created = await provider.createProject({ name: projectName, signal }).catch((error) => {
     throw projectCreateFailedError(error, projectName, workspace, {
       nextSteps: [
         "prisma-cli project list",
@@ -526,7 +527,7 @@ async function resolveProjectShowInRealMode(
     context,
     workspace,
     explicitProject,
-    listProjects: () => listRealWorkspaceProjects(client, workspace),
+    listProjects: () => listRealWorkspaceProjects(client, workspace, context.runtime.signal),
     commandName: "project show",
   });
 }
@@ -546,7 +547,7 @@ async function resolveRequiredProjectInRealMode(
     context,
     workspace,
     explicitProject,
-    listProjects: () => listRealWorkspaceProjects(client, workspace),
+    listProjects: () => listRealWorkspaceProjects(client, workspace, context.runtime.signal),
     commandName,
   });
 }
@@ -583,8 +584,9 @@ async function resolveRequiredProjectInFixtureMode(
 export async function listRealWorkspaceProjects(
   client: ManagementApiClient,
   workspace: AuthWorkspace,
+  signal?: AbortSignal,
 ): Promise<ProjectCandidate[]> {
-  const { data } = await client.GET("/v1/projects", {});
+  const { data } = await client.GET("/v1/projects", { signal });
   return sortProjects(
     (data?.data ?? [])
       .filter((project) => project.workspace.id === workspace.id)

@@ -53,7 +53,7 @@ describe("real auth mode", () => {
     const result = await runAuthLogin(context, {});
 
     expect(performLogin).toHaveBeenCalledWith(context.runtime.env);
-    expect(readAuthState).toHaveBeenCalledWith(context.runtime.env);
+    expect(readAuthState).toHaveBeenCalledWith(context.runtime.env, context.runtime.signal);
     expect(result.result).toMatchObject({
       authenticated: true,
       provider: null,

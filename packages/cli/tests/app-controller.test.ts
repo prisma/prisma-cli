@@ -343,6 +343,7 @@ describe("app controller", () => {
     expect(addDomain).toHaveBeenCalledWith({
       appId: "app_1",
       hostname: "shop.acme.com",
+      signal: context.runtime.signal,
     });
     expect(retryDomain).not.toHaveBeenCalled();
     expect(result.result).toMatchObject({
@@ -427,6 +428,7 @@ describe("app controller", () => {
     expect(addDomain).toHaveBeenCalledWith({
       appId: "app_1",
       hostname: "shop.acme.com",
+      signal: context.runtime.signal,
     });
     expect(result.result.project.id).toBe("proj_123");
   });
@@ -1873,7 +1875,10 @@ describe("app controller", () => {
       framework: "hono",
     });
 
-    expect(createProject).toHaveBeenCalledWith({ name: "interactive-project" });
+    expect(createProject).toHaveBeenCalledWith({
+      name: "interactive-project",
+      signal: context.runtime.signal,
+    });
     expect(result.result).toMatchObject({
       project: {
         id: "proj_new",
@@ -2392,6 +2397,7 @@ describe("app controller", () => {
 
     expect(createProject).toHaveBeenCalledWith({
       name: "launchpad",
+      signal: context.runtime.signal,
     });
     expect(deployApp).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2614,7 +2620,10 @@ describe("app controller", () => {
         },
       },
     });
-    expect(createProject).toHaveBeenCalledWith({ name: "next-smoke" });
+    expect(createProject).toHaveBeenCalledWith({
+      name: "next-smoke",
+      signal: context.runtime.signal,
+    });
     await expect(readPrismaConfig(cwd)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -4443,7 +4452,7 @@ describe("app controller", () => {
 
     const result = await runAppRemove(context, "hello-world");
 
-    expect(removeApp).toHaveBeenCalledWith("app_1");
+    expect(removeApp).toHaveBeenCalledWith("app_1", { signal: context.runtime.signal });
     expect(result.result).toEqual({
       projectId: "proj_123",
       app: {
@@ -4512,7 +4521,7 @@ describe("app controller", () => {
         placeholder: "hello-world",
       }),
     );
-    expect(removeApp).toHaveBeenCalledWith("app_1");
+    expect(removeApp).toHaveBeenCalledWith("app_1", { signal: context.runtime.signal });
   });
 
   it("remove returns CONFIRMATION_REQUIRED in non-interactive mode without --yes", async () => {

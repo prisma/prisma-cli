@@ -384,7 +384,7 @@ export async function runAppListDeploys(
     };
   }
 
-  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+  const deploymentsResult = await provider.listDeployments(selectedApp.id, { signal: context.runtime.signal }).catch((error) => {
     throw deployFailedError("Failed to list app deployments", error, ["prisma-cli app deploy"]);
   });
   const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
@@ -447,7 +447,7 @@ export async function runAppShow(
     };
   }
 
-  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+  const deploymentsResult = await provider.listDeployments(selectedApp.id, { signal: context.runtime.signal }).catch((error) => {
     throw deployFailedError("Failed to inspect app", error, ["prisma-cli app list-deploys"]);
   });
   const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
@@ -492,7 +492,7 @@ export async function runAppShowDeploy(
   ensurePreviewAppMode(context);
 
   const provider = await requirePreviewAppProvider(context);
-  const deployment = await provider.showDeployment(deploymentId).catch((error) => {
+  const deployment = await provider.showDeployment(deploymentId, { signal: context.runtime.signal }).catch((error) => {
     throw deployFailedError("Failed to show deployment", error, ["prisma-cli app list-deploys"]);
   });
 
@@ -558,7 +558,7 @@ export async function runAppOpen(
     );
   }
 
-  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+  const deploymentsResult = await provider.listDeployments(selectedApp.id, { signal: context.runtime.signal }).catch((error) => {
     throw deployFailedError("Failed to resolve app URL", error, ["prisma-cli app show"]);
   });
   const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
@@ -632,6 +632,7 @@ export async function runAppDomainAdd(
   const added = await target.provider.addDomain({
     appId: target.app.id,
     hostname: normalizedHostname,
+    signal: context.runtime.signal,
   }).catch((error) => {
     throw domainCommandError("add", error, normalizedHostname);
   });
@@ -662,8 +663,8 @@ export async function runAppDomainShow(
 ): Promise<CommandSuccess<AppDomainShowResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
   const target = await resolveAppDomainTarget(context, options, `app domain show ${normalizedHostname}`);
-  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "show");
-  const detail = await target.provider.showDomain(domain.id).catch((error) => {
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "show", context.runtime.signal);
+  const detail = await target.provider.showDomain(domain.id, { signal: context.runtime.signal }).catch((error) => {
     throw domainCommandError("show", error, normalizedHostname);
   });
 
@@ -689,11 +690,11 @@ export async function runAppDomainRemove(
 ): Promise<CommandSuccess<AppDomainRemoveResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
   const target = await resolveAppDomainTarget(context, options, `app domain remove ${normalizedHostname}`);
-  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "remove");
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "remove", context.runtime.signal);
 
   await confirmDomainRemoval(context, target.resultTarget, normalizedHostname);
 
-  await target.provider.removeDomain(domain.id).catch((error) => {
+  await target.provider.removeDomain(domain.id, { signal: context.runtime.signal }).catch((error) => {
     throw domainCommandError("remove", error, normalizedHostname);
   });
 
@@ -720,8 +721,8 @@ export async function runAppDomainRetry(
 ): Promise<CommandSuccess<AppDomainRetryResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
   const target = await resolveAppDomainTarget(context, options, `app domain retry ${normalizedHostname}`);
-  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "retry");
-  const retried = await target.provider.retryDomain(domain.id).catch((error) => {
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "retry", context.runtime.signal);
+  const retried = await target.provider.retryDomain(domain.id, { signal: context.runtime.signal }).catch((error) => {
     throw domainCommandError("retry", error, normalizedHostname);
   });
 
@@ -749,7 +750,7 @@ export async function runAppDomainWait(
   const normalizedHostname = normalizeDomainHostname(hostname);
   const timeoutMs = parseDomainWaitTimeout(options?.timeout);
   const target = await resolveAppDomainTarget(context, options, `app domain wait ${normalizedHostname}`);
-  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "wait");
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "wait", context.runtime.signal);
 
   if (!context.flags.json && !context.flags.quiet) {
     context.output.stderr.write(
@@ -814,7 +815,7 @@ export async function runAppDomainWait(
     }
 
     await sleep(Math.min(pollIntervalMs, Math.max(deadline - Date.now(), 0)));
-    current = await target.provider.showDomain(current.id).catch((error) => {
+    current = await target.provider.showDomain(current.id, { signal: context.runtime.signal }).catch((error) => {
       throw domainCommandError("wait", error, normalizedHostname);
     });
   }
@@ -882,7 +883,7 @@ async function resolveExplicitLogDeployment(
       );
     }
 
-    const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+    const deploymentsResult = await provider.listDeployments(selectedApp.id, { signal: context.runtime.signal }).catch((error) => {
       throw deployFailedError("Failed to list app deployments", error, ["prisma-cli app list-deploys"]);
     });
     const deployment = requireDeploymentForApp(deploymentsResult.deployments, deploymentId, selectedApp.name);
@@ -898,7 +899,7 @@ async function resolveExplicitLogDeployment(
     };
   }
 
-  const shown = await provider.showDeployment(deploymentId).catch((error) => {
+  const shown = await provider.showDeployment(deploymentId, { signal: context.runtime.signal }).catch((error) => {
     throw deployFailedError("Failed to show deployment", error, ["prisma-cli app list-deploys"]);
   });
 
@@ -968,7 +969,7 @@ async function resolveLiveLogDeployment(
     );
   }
 
-  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+  const deploymentsResult = await provider.listDeployments(selectedApp.id, { signal: context.runtime.signal }).catch((error) => {
     throw deployFailedError("Failed to list app deployments", error, ["prisma-cli app list-deploys"]);
   });
   const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
@@ -1032,7 +1033,7 @@ export async function runAppPromote(
   });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "promote");
-  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+  const deploymentsResult = await provider.listDeployments(selectedApp.id, { signal: context.runtime.signal }).catch((error) => {
     throw deployFailedError("Failed to list app deployments", error, ["prisma-cli app list-deploys"]);
   });
   const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
@@ -1057,6 +1058,7 @@ export async function runAppPromote(
     await provider.promoteDeployment({
       appId: selectedApp.id,
       deploymentId: targetDeployment.id,
+      signal: context.runtime.signal,
       progress: createPreviewPromoteProgress(
         context.output.stderr,
         !context.flags.json && !context.flags.quiet,
@@ -1100,7 +1102,7 @@ export async function runAppRollback(
   });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "rollback");
-  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+  const deploymentsResult = await provider.listDeployments(selectedApp.id, { signal: context.runtime.signal }).catch((error) => {
     throw deployFailedError("Failed to list app deployments", error, ["prisma-cli app list-deploys"]);
   });
   const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
@@ -1126,6 +1128,7 @@ export async function runAppRollback(
     await provider.promoteDeployment({
       appId: selectedApp.id,
       deploymentId: targetDeployment.id,
+      signal: context.runtime.signal,
       progress: createPreviewPromoteProgress(
         context.output.stderr,
         !context.flags.json && !context.flags.quiet,
@@ -1172,7 +1175,7 @@ export async function runAppRemove(
 
   await confirmAppRemoval(context, selectedApp);
 
-  const removedApp = await provider.removeApp(selectedApp.id).catch((error) => {
+  const removedApp = await provider.removeApp(selectedApp.id, { signal: context.runtime.signal }).catch((error) => {
     throw removeFailedError("Failed to remove app", error, ["prisma-cli app show", "prisma-cli app list-deploys"]);
   });
 
@@ -1306,8 +1309,9 @@ async function resolveDomainByHostname(
   appId: string,
   hostname: string,
   command: AppDomainCommand,
+  signal: AbortSignal,
 ): Promise<PreviewDomainRecord> {
-  const domains = await provider.listDomains(appId).catch((error) => {
+  const domains = await provider.listDomains(appId, { signal }).catch((error) => {
     throw domainCommandError(command, error, hostname);
   });
   const matched = domains.find((domain) => sameDomainHostname(domain.hostname, hostname));
@@ -2246,7 +2250,7 @@ async function resolveProjectContext(
     workspace: authState.workspace,
     explicitProject,
     envProjectId: options?.envProjectId,
-    listProjects: () => listRealWorkspaceProjects(client, authState.workspace!),
+    listProjects: () => listRealWorkspaceProjects(client, authState.workspace!, context.runtime.signal),
     commandName: options?.commandName,
   });
   const branch = options?.branch ?? await resolveDeployBranch(context, undefined);
@@ -2279,7 +2283,7 @@ async function resolveDeployProjectContext(
   }
 
   const branch = options.branch ?? await resolveDeployBranch(context, undefined);
-  const projects = await listRealWorkspaceProjects(client, workspace);
+  const projects = await listRealWorkspaceProjects(client, workspace, context.runtime.signal);
 
   if (explicitProject) {
     const project = resolveProjectForSetup(explicitProject, projects, workspace);
@@ -2301,7 +2305,7 @@ async function resolveDeployProjectContext(
       throw projectSetupNameRequiredError("app deploy --create-project");
     }
 
-    const created = await createProjectForDeploySetup(provider, projectName, workspace);
+    const created = await createProjectForDeploySetup(provider, projectName, workspace, context.runtime.signal);
     return withDeployBranch({
       workspace,
       project: toProjectSummary(created),
@@ -2383,7 +2387,7 @@ async function resolveInteractiveDeployProjectSetup(
   const setup = await promptForProjectSetupChoice({
     context,
     projects,
-    createProject: (projectName) => createProjectForDeploySetup(provider, projectName, workspace),
+    createProject: (projectName) => createProjectForDeploySetup(provider, projectName, workspace, context.runtime.signal),
     cancel: {
       why: "Deploy needs a Project before it can continue.",
       fix: "Choose an existing Project or create a new one, then rerun deploy.",
@@ -2407,8 +2411,9 @@ async function createProjectForDeploySetup(
   provider: ReturnType<typeof createPreviewAppProvider>,
   projectName: string,
   workspace: AuthWorkspace,
+  signal: AbortSignal,
 ): Promise<ProjectCandidate> {
-  const created = await provider.createProject({ name: projectName }).catch((error) => {
+  const created = await provider.createProject({ name: projectName, signal }).catch((error) => {
     throw projectCreateFailedError(error, projectName, workspace, {
       nextSteps: [
         "prisma-cli project list",
@@ -2966,7 +2971,7 @@ async function readCurrentWorkspaceId(context: CommandContext): Promise<string |
     return state.auth.workspaceId;
   }
 
-  const authState = await readAuthState(context.runtime.env);
+  const authState = await readAuthState(context.runtime.env, context.runtime.signal);
   return authState.workspace?.id ?? null;
 }
 

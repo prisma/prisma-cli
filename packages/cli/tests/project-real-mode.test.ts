@@ -136,7 +136,7 @@ describe("real project mode", () => {
 
     const result = await runProjectList(context);
 
-    expect(readAuthState).toHaveBeenCalledWith(context.runtime.env);
+    expect(readAuthState).toHaveBeenCalledWith(context.runtime.env, context.runtime.signal);
     expect(requireComputeAuth).toHaveBeenCalledWith(context.runtime.env);
     expect(result.result).toEqual({
       workspace: {

@@ -104,17 +104,18 @@ export class PreviewDomainApiError extends Error {
 }
 
 export interface PreviewAppProvider {
-  createProject(options: { name: string }): Promise<PreviewProjectRecord>;
+  createProject(options: { name: string; signal?: AbortSignal }): Promise<PreviewProjectRecord>;
   listApps(projectId: string, options?: { branchName?: string; signal?: AbortSignal }): Promise<PreviewAppRecord[]>;
-  removeApp(appId: string): Promise<PreviewRemovedAppRecord>;
-  listDomains(appId: string): Promise<PreviewDomainRecord[]>;
-  addDomain(options: { appId: string; hostname: string }): Promise<{ domain: PreviewDomainRecord; existing: boolean }>;
-  showDomain(domainId: string): Promise<PreviewDomainRecord>;
-  removeDomain(domainId: string): Promise<void>;
-  retryDomain(domainId: string): Promise<PreviewDomainRecord>;
+  removeApp(appId: string, options?: { signal?: AbortSignal }): Promise<PreviewRemovedAppRecord>;
+  listDomains(appId: string, options?: { signal?: AbortSignal }): Promise<PreviewDomainRecord[]>;
+  addDomain(options: { appId: string; hostname: string; signal?: AbortSignal }): Promise<{ domain: PreviewDomainRecord; existing: boolean }>;
+  showDomain(domainId: string, options?: { signal?: AbortSignal }): Promise<PreviewDomainRecord>;
+  removeDomain(domainId: string, options?: { signal?: AbortSignal }): Promise<void>;
+  retryDomain(domainId: string, options?: { signal?: AbortSignal }): Promise<PreviewDomainRecord>;
   promoteDeployment(options: {
     appId: string;
     deploymentId: string;
+    signal?: AbortSignal;
     progress?: unknown;
   }): Promise<void>;
   deployApp(options: {
@@ -135,18 +136,20 @@ export interface PreviewAppProvider {
   updateAppEnv(options: {
     appId: string;
     envVars: Record<string, string>;
+    signal?: AbortSignal;
     progress?: unknown;
     promoteProgress?: unknown;
   }): Promise<PreviewEnvRecord>;
   listAppEnvNames(options: {
     appId: string;
     deploymentId: string;
+    signal?: AbortSignal;
   }): Promise<PreviewEnvRecord>;
-  listDeployments(appId: string): Promise<{
+  listDeployments(appId: string, options?: { signal?: AbortSignal }): Promise<{
     app: PreviewAppRecord;
     deployments: PreviewDeploymentRecord[];
   }>;
-  showDeployment(deploymentId: string): Promise<PreviewShownDeploymentRecord | null>;
+  showDeployment(deploymentId: string, options?: { signal?: AbortSignal }): Promise<PreviewShownDeploymentRecord | null>;
   streamDeploymentLogs(options: {
     deploymentId: string;
     signal?: AbortSignal;
@@ -165,7 +168,7 @@ export function createPreviewAppProvider(
 
   return {
     async createProject(options) {
-      const projectResult = await sdk.createProject({ name: options.name });
+      const projectResult = await sdk.createProject({ name: options.name, signal: options.signal });
       if (projectResult.isErr()) {
         throw new Error(projectResult.error.message);
       }
@@ -178,13 +181,14 @@ export function createPreviewAppProvider(
 
     async listApps(projectId, options) {
       return listComputeServices(client, {
-        projectId,
-        branchGitName: options?.branchName,
+          projectId,
+          branchGitName: options?.branchName,
+          signal: options?.signal,
       });
     },
 
-    async removeApp(appId) {
-      const appResult = await sdk.showService({ serviceId: appId });
+    async removeApp(appId, options) {
+      const appResult = await sdk.showService({ serviceId: appId, signal: options?.signal });
       if (appResult.isErr()) {
         throw new Error(appResult.error.message);
       }
@@ -194,6 +198,7 @@ export function createPreviewAppProvider(
         keepService: false,
         timeoutSeconds: 120,
         pollIntervalMs: 2_000,
+        signal: options?.signal,
       });
 
       if (destroyResult.isErr()) {
@@ -206,8 +211,8 @@ export function createPreviewAppProvider(
       };
     },
 
-    async listDomains(appId) {
-      return listComputeServiceDomains(client, appId);
+    async listDomains(appId, options) {
+      return listComputeServiceDomains(client, appId, options?.signal);
     },
 
     async addDomain(options) {
@@ -218,11 +223,12 @@ export function createPreviewAppProvider(
         body: {
           hostname: options.hostname,
         },
+        signal: options.signal,
       });
 
       if (result.error || !result.data) {
         if (result.response.status === 409) {
-          const existing = (await listComputeServiceDomains(client, options.appId))
+          const existing = (await listComputeServiceDomains(client, options.appId, options.signal))
             .find((domain) => sameHostname(domain.hostname, options.hostname));
           if (existing) {
             return {
@@ -241,11 +247,12 @@ export function createPreviewAppProvider(
       };
     },
 
-    async showDomain(domainId) {
+    async showDomain(domainId, options) {
       const result = await client.GET("/v1/domains/{domainId}", {
         params: {
           path: { domainId },
         },
+        signal: options?.signal,
       });
 
       if (result.error || !result.data) {
@@ -255,11 +262,12 @@ export function createPreviewAppProvider(
       return normalizeDomainRecord(result.data.data);
     },
 
-    async removeDomain(domainId) {
+    async removeDomain(domainId, options) {
       const result = await client.DELETE("/v1/domains/{domainId}", {
         params: {
           path: { domainId },
         },
+        signal: options?.signal,
       });
 
       if (result.error) {
@@ -267,11 +275,12 @@ export function createPreviewAppProvider(
       }
     },
 
-    async retryDomain(domainId) {
+    async retryDomain(domainId, options) {
       const result = await client.POST("/v1/domains/{domainId}/retry", {
         params: {
           path: { domainId },
         },
+        signal: options?.signal,
       });
 
       if (result.error || !result.data) {
@@ -287,6 +296,7 @@ export function createPreviewAppProvider(
         versionId: options.deploymentId,
         timeoutSeconds: 120,
         pollIntervalMs: 2000,
+        signal: options.signal,
         progress: options.progress as never,
       });
 
@@ -308,6 +318,7 @@ export function createPreviewAppProvider(
               branchName: options.branchName,
               appName: options.appName,
               region: options.region,
+              signal: options.signal,
             })
           : {
               appId: undefined,
@@ -320,6 +331,7 @@ export function createPreviewAppProvider(
           appPath: path.resolve(options.cwd),
           entrypoint: options.entrypoint,
           buildType: options.buildType,
+          signal: options.signal,
         }),
         projectId: options.projectId,
         serviceId: resolvedApp.appId,
@@ -330,6 +342,7 @@ export function createPreviewAppProvider(
         timeoutSeconds: 120,
         pollIntervalMs: 2000,
         interaction: options.interaction as never,
+        signal: options.signal,
         progress: options.progress as never,
       });
 
@@ -362,6 +375,7 @@ export function createPreviewAppProvider(
         envVars: options.envVars,
         timeoutSeconds: 120,
         pollIntervalMs: 2000,
+        signal: options.signal,
         progress: options.progress as never,
       });
 
@@ -374,6 +388,7 @@ export function createPreviewAppProvider(
         versionId: updateResult.value.versionId,
         timeoutSeconds: 120,
         pollIntervalMs: 2000,
+        signal: options.signal,
         progress: options.promoteProgress as never,
       });
 
@@ -382,8 +397,8 @@ export function createPreviewAppProvider(
       }
 
       const [serviceResult, versionResult] = await Promise.all([
-        sdk.showService({ serviceId: options.appId }),
-        sdk.showVersion({ versionId: updateResult.value.versionId }),
+        sdk.showService({ serviceId: options.appId, signal: options.signal }),
+        sdk.showVersion({ versionId: updateResult.value.versionId, signal: options.signal }),
       ]);
 
       if (serviceResult.isErr()) {
@@ -416,8 +431,8 @@ export function createPreviewAppProvider(
 
     async listAppEnvNames(options) {
       const [serviceResult, versionResult] = await Promise.all([
-        sdk.showService({ serviceId: options.appId }),
-        sdk.showVersion({ versionId: options.deploymentId }),
+        sdk.showService({ serviceId: options.appId, signal: options.signal }),
+        sdk.showVersion({ versionId: options.deploymentId, signal: options.signal }),
       ]);
 
       if (serviceResult.isErr()) {
@@ -448,10 +463,10 @@ export function createPreviewAppProvider(
       };
     },
 
-    async listDeployments(appId) {
+    async listDeployments(appId, options) {
       const [appResult, versionsResult] = await Promise.all([
-        sdk.showService({ serviceId: appId }),
-        sdk.listVersions({ serviceId: appId }),
+        sdk.showService({ serviceId: appId, signal: options?.signal }),
+        sdk.listVersions({ serviceId: appId, signal: options?.signal }),
       ]);
 
       if (appResult.isErr()) {
@@ -486,8 +501,8 @@ export function createPreviewAppProvider(
       };
     },
 
-    async showDeployment(deploymentId) {
-      const deploymentResult = await sdk.showVersion({ versionId: deploymentId });
+    async showDeployment(deploymentId, options) {
+      const deploymentResult = await sdk.showVersion({ versionId: deploymentId, signal: options?.signal });
       if (deploymentResult.isErr()) {
         if (ApiError.is(deploymentResult.error) && deploymentResult.error.statusCode === 404) {
           return null;
@@ -496,7 +511,7 @@ export function createPreviewAppProvider(
         throw new Error(deploymentResult.error.message);
       }
 
-      const app = await findAppForDeployment(sdk, deploymentId);
+      const app = await findAppForDeployment(sdk, deploymentId, options?.signal);
 
       return {
         app,
@@ -591,6 +606,7 @@ async function listBranches(
   options: {
     projectId: string;
     gitName: string;
+    signal?: AbortSignal;
   },
 ): Promise<RawBranchRecord[]> {
   const result = await client.GET("/v1/projects/{projectId}/branches", {
@@ -598,6 +614,7 @@ async function listBranches(
       path: { projectId: options.projectId },
       query: { gitName: options.gitName },
     },
+    signal: options.signal,
   });
   if (result.error || !result.data) {
     throw apiCallError("Failed to list branches", result.response, result.error);
@@ -611,6 +628,7 @@ async function resolveOrCreateBranch(
   options: {
     projectId: string;
     gitName: string;
+    signal?: AbortSignal;
   },
 ): Promise<RawBranchRecord> {
   const existing = (await listBranches(client, options))[0];
@@ -626,6 +644,7 @@ async function resolveOrCreateBranch(
       gitName: options.gitName,
       isDefault: options.gitName === "main",
     },
+    signal: options.signal,
   });
   if (result.error || !result.data) {
     if (result.response.status === 409) {
@@ -646,6 +665,7 @@ async function listComputeServices(
   options: {
     projectId: string;
     branchGitName?: string;
+    signal?: AbortSignal;
   },
 ): Promise<PreviewAppRecord[]> {
   const services: RawComputeServiceRecord[] = [];
@@ -661,6 +681,7 @@ async function listComputeServices(
           cursor,
         },
       },
+      signal: options.signal,
     });
     if (result.error || !result.data) {
       throw apiCallError("Failed to list apps", result.response, result.error);
@@ -687,11 +708,13 @@ async function listComputeServices(
 async function listComputeServiceDomains(
   client: ManagementApiClient,
   computeServiceId: string,
+  signal?: AbortSignal,
 ): Promise<PreviewDomainRecord[]> {
   const result = await client.GET("/v1/compute-services/{computeServiceId}/domains", {
     params: {
       path: { computeServiceId },
     },
+    signal,
   });
 
   if (result.error || !result.data) {
@@ -755,11 +778,13 @@ async function createBranchApp(
     branchName: string;
     appName: string;
     region?: string;
+    signal?: AbortSignal;
   },
 ): Promise<{ appId: string; appName: string; region: string | undefined }> {
   const branch = await resolveOrCreateBranch(client, {
     projectId: options.projectId,
     gitName: options.branchName,
+    signal: options.signal,
   });
   const result = await client.POST("/v1/compute-services", {
     body: {
@@ -768,12 +793,14 @@ async function createBranchApp(
       displayName: options.appName,
       ...(options.region ? { regionId: options.region } : {}),
     } as never,
+    signal: options.signal,
   });
   if (result.error || !result.data) {
     if (result.response.status === 409) {
       const existingApps = await listComputeServices(client, {
         projectId: options.projectId,
         branchGitName: options.branchName,
+        signal: options.signal,
       });
       const matched = existingApps.find((app) => app.name === options.appName);
       if (matched) {
@@ -827,20 +854,21 @@ function domainApiCallError(
 async function findAppForDeployment(
   sdk: ComputeClient,
   deploymentId: string,
+  signal?: AbortSignal,
 ): Promise<PreviewAppRecord | null> {
-  const projectsResult = await sdk.listProjects();
+  const projectsResult = await sdk.listProjects({ signal });
   if (projectsResult.isErr()) {
     throw new Error(projectsResult.error.message);
   }
 
   for (const project of projectsResult.value) {
-    const servicesResult = await sdk.listServices({ projectId: project.id });
+    const servicesResult = await sdk.listServices({ projectId: project.id, signal });
     if (servicesResult.isErr()) {
       throw new Error(servicesResult.error.message);
     }
 
     for (const service of servicesResult.value) {
-      const detailResult = await sdk.showService({ serviceId: service.id });
+      const detailResult = await sdk.showService({ serviceId: service.id, signal });
       if (detailResult.isErr()) {
         throw new Error(detailResult.error.message);
       }
@@ -857,7 +885,7 @@ async function findAppForDeployment(
         return app;
       }
 
-      const versionsResult = await sdk.listVersions({ serviceId: service.id });
+      const versionsResult = await sdk.listVersions({ serviceId: service.id, signal });
       if (versionsResult.isErr()) {
         throw new Error(versionsResult.error.message);
       }

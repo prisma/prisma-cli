@@ -116,6 +116,7 @@ export async function runEnvAdd(
         key,
         value,
       },
+      signal: context.runtime.signal,
     },
   );
   if (error || !data) {
@@ -177,6 +178,7 @@ export async function runEnvUpdate(
     {
       params: { path: { envVarId: existing.id } },
       body: { value },
+      signal: context.runtime.signal,
     },
   );
   if (error || !data) {
@@ -271,6 +273,7 @@ export async function runEnvRemove(
     "/v1/environment-variables/{envVarId}",
     {
       params: { path: { envVarId: existing.id } },
+      signal: context.runtime.signal,
     },
   );
   if (error) {
@@ -307,7 +310,7 @@ async function requireClientAndProject(
     context,
     workspace: authState.workspace,
     explicitProject,
-    listProjects: () => listRealWorkspaceProjects(client, authState.workspace!),
+    listProjects: () => listRealWorkspaceProjects(client, authState.workspace!, context.runtime.signal),
     commandName,
   });
 

@@ -67,7 +67,7 @@ None.
 
 ### Phase 3: SDK And Provider Cancellation
 
-**Status:** ☐ Not started
+**Status:** ✓ Complete
 
 **Goal:** Propagate cancellation through Management API and Compute SDK boundaries, especially app deploy and logs.
 
@@ -83,11 +83,11 @@ None.
 
 **Acceptance Criteria:**
 
-- **AC1:** Representative Management API calls receive the same `AbortSignal` from command context.
-- **AC2:** Representative Compute SDK calls receive the same `AbortSignal` from command context.
-- **AC3:** App log stream cancellation produces `COMMAND_CANCELED` through command-runner mapping.
-- **AC4:** Preview build strategy methods accept and forward the signal without changing build selection behavior.
-- **AC5:** `pnpm --filter @prisma/cli test -- app-provider.test.ts app-build.test.ts auth-ops.test.ts app-env.test.ts project.test.ts` passes, or equivalent targeted filters if filenames change.
+- [x] **AC1:** Representative Management API calls receive the same `AbortSignal` from command context.
+- [x] **AC2:** Representative Compute SDK calls receive the same `AbortSignal` from command context.
+- [x] **AC3:** App log stream cancellation produces `COMMAND_CANCELED` through command-runner mapping.
+- [x] **AC4:** Preview build strategy methods accept and forward the signal without changing build selection behavior.
+- [x] **AC5:** `pnpm --filter @prisma/cli test -- app-provider.test.ts app-build.test.ts auth-ops.test.ts app-env.test.ts project.test.ts` passes, or equivalent targeted filters if filenames change.
 
 ### Phase 4: Polling, Sleeps, And Local Processes
 

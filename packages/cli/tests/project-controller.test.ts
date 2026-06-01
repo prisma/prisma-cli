@@ -136,7 +136,10 @@ describe("project controller", () => {
     const { runProjectCreate } = await import("../src/controllers/project");
     const result = await runProjectCreate(context, "New Dashboard");
 
-    expect(createProject).toHaveBeenCalledWith({ name: "New Dashboard" });
+    expect(createProject).toHaveBeenCalledWith({
+      name: "New Dashboard",
+      signal: context.runtime.signal,
+    });
     expect(result.result).toMatchObject({
       project: {
         id: "proj_new",
@@ -218,7 +221,10 @@ describe("project controller", () => {
     const { runProjectLink } = await import("../src/controllers/project");
     const result = await runProjectLink(context, undefined);
 
-    expect(createProject).toHaveBeenCalledWith({ name: "Interactive Project" });
+    expect(createProject).toHaveBeenCalledWith({
+      name: "Interactive Project",
+      signal: context.runtime.signal,
+    });
     expect(result.result).toMatchObject({
       project: {
         id: "proj_new",

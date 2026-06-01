@@ -32,28 +32,32 @@ export class PreviewBuildStrategy implements BuildStrategy {
   readonly #appPath: string;
   readonly #entrypoint?: string;
   readonly #buildType: PreviewBuildType;
+  readonly #signal?: AbortSignal;
 
-  constructor(options: { appPath: string; entrypoint?: string; buildType?: PreviewBuildType }) {
+  constructor(options: { appPath: string; entrypoint?: string; buildType?: PreviewBuildType; signal?: AbortSignal }) {
     this.#appPath = options.appPath;
     this.#entrypoint = options.entrypoint;
     this.#buildType = options.buildType ?? "auto";
+    this.#signal = options.signal;
   }
 
-  async canBuild(): Promise<boolean> {
+  async canBuild(signal = this.#signal): Promise<boolean> {
     const { strategy } = await resolvePreviewBuildStrategy({
       appPath: this.#appPath,
       entrypoint: this.#entrypoint,
       buildType: this.#buildType,
+      signal,
     });
 
-    return strategy.canBuild();
+    return strategy.canBuild(signal);
   }
 
-  async execute(): Promise<BuildArtifact> {
+  async execute(signal = this.#signal): Promise<BuildArtifact> {
     const { artifact } = await executePreviewBuild({
       appPath: this.#appPath,
       entrypoint: this.#entrypoint,
       buildType: this.#buildType,
+      signal,
     });
 
     return artifact;
@@ -73,8 +77,9 @@ export async function executePreviewBuild(options: {
     appPath: options.appPath,
     entrypoint: options.entrypoint,
     buildType: options.buildType ?? "auto",
+    signal: options.signal,
   });
-  const artifact = await strategy.execute();
+  const artifact = await strategy.execute(options.signal);
 
   try {
     if (buildType === "nextjs") {
@@ -124,7 +129,7 @@ export async function resolvePreviewBuildStrategy(options: {
       buildType,
     });
 
-    if (await strategy.canBuild()) {
+    if (await strategy.canBuild(options.signal)) {
       return {
         buildType,
         strategy,
