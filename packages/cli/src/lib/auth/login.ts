@@ -75,6 +75,10 @@ export async function login(options: LoginOptions = {}): Promise<void> {
 
         try {
           await state.handleCallback(url);
+          const workspaceName = await state.resolveWorkspaceName();
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.end(renderSuccessPage(workspaceName));
+          settle(resolve);
         } catch (error) {
           res.statusCode = 400;
           const message = error instanceof Error ? error.message : String(error);
@@ -82,11 +86,6 @@ export async function login(options: LoginOptions = {}): Promise<void> {
           settle(() => reject(error));
           return;
         }
-
-        const workspaceName = await state.resolveWorkspaceName();
-        res.setHeader("Content-Type", "text/html; charset=utf-8");
-        res.end(renderSuccessPage(workspaceName));
-        settle(resolve);
       });
     });
 
@@ -193,6 +192,7 @@ class LoginState {
       const name = data?.data?.name;
       return typeof name === "string" && name.trim().length > 0 ? name.trim() : null;
     } catch {
+      this.options.signal?.throwIfAborted();
       return null;
     }
   }

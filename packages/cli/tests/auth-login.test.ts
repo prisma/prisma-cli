@@ -97,6 +97,55 @@ describe("auth login callback", () => {
       },
     })).rejects.toBe(reason);
   });
+
+  it("rejects when the command signal aborts during workspace lookup", async () => {
+    const controller = new AbortController();
+    const reason = new DOMException("Command canceled", "AbortError");
+    const tokenStorage: TokenStorage = {
+      getTokens: vi.fn().mockResolvedValue({
+        workspaceId: "ws_123",
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+      }),
+      setTokens: vi.fn().mockResolvedValue(undefined),
+      clearTokens: vi.fn().mockResolvedValue(undefined),
+    };
+    let redirectUri: string | undefined;
+
+    vi.doMock("@prisma/management-api-sdk", () => ({
+      AuthError: class SDKAuthError extends Error {},
+      createManagementApiSdk: vi.fn().mockImplementation((sdkOptions: { redirectUri: string }) => {
+        redirectUri = sdkOptions.redirectUri;
+
+        return {
+          getLoginUrl: vi.fn().mockReturnValue({
+            url: "https://auth.example.test/login",
+            state: "state_123",
+            verifier: "verifier_123",
+          }),
+          handleCallback: vi.fn().mockResolvedValue(undefined),
+          client: {
+            GET: vi.fn().mockImplementation(() => {
+              controller.abort(reason);
+              throw reason;
+            }),
+          },
+        };
+      }),
+    }));
+
+    const { login } = await import("../src/lib/auth/login");
+
+    await expect(login({
+      hostname: "127.0.0.1",
+      tokenStorage,
+      signal: controller.signal,
+      openUrl: async () => {
+        expect(redirectUri).toBeDefined();
+        await fetch(`${redirectUri}?code=code_123&state=state_123`);
+      },
+    })).rejects.toBe(reason);
+  });
 });
 
 async function requestSuccessPage(options: {

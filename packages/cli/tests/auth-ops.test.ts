@@ -407,6 +407,60 @@ describe("readAuthState", () => {
     });
   });
 
+  it("rejects when cancellation aborts the current principal lookup", async () => {
+    const controller = new AbortController();
+    const reason = new DOMException("Command canceled", "AbortError");
+    const requireComputeAuth = vi.fn().mockResolvedValue({
+      GET: vi.fn().mockImplementation(() => {
+        controller.abort(reason);
+        throw reason;
+      }),
+    });
+
+    vi.doMock("../src/adapters/token-storage", () => ({
+      FileTokenStorage: vi.fn().mockImplementation(() => ({
+        getTokens: vi.fn(),
+      })),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
+
+    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
+
+    await expect(
+      readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv, controller.signal),
+    ).rejects.toBe(reason);
+  });
+
+  it("rejects when cancellation aborts the workspace fallback lookup", async () => {
+    const controller = new AbortController();
+    const reason = new DOMException("Command canceled", "AbortError");
+    const requireComputeAuth = vi.fn().mockResolvedValue({
+      GET: vi.fn().mockImplementation((pathName: string) => {
+        if (pathName === "/v1/me") {
+          return { data: { data: null } };
+        }
+
+        controller.abort(reason);
+        throw reason;
+      }),
+    });
+
+    vi.doMock("../src/adapters/token-storage", () => ({
+      FileTokenStorage: vi.fn().mockImplementation(() => ({
+        getTokens: vi.fn(),
+      })),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
+
+    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
+
+    await expect(
+      readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv, controller.signal),
+    ).rejects.toBe(reason);
+  });
+
   it("returns signed-out state when PRISMA_SERVICE_TOKEN does not carry a workspace subject", async () => {
     const getTokens = vi.fn();
     vi.doMock("../src/adapters/token-storage", () => ({

@@ -167,6 +167,7 @@ async function buildAuthState({
         workspaceName = data.data.name;
       }
     } catch {
+      signal?.throwIfAborted();
       // fall through - use workspaceId as name
     }
   }
@@ -221,6 +222,7 @@ async function readCurrentPrincipalAuthState(
       credential: principal.credential,
     };
   } catch {
+    signal?.throwIfAborted();
     return null;
   }
 }
