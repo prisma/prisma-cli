@@ -44,7 +44,7 @@
     "@prisma/compute-sdk": "^0.19.0",
     "@prisma/credentials-store": "^7.8.0",
     "@prisma/management-api-sdk": "^1.35.0",
-    "c12": "4.0.0-beta.4",
+    "c12": "4.0.0-beta.5",
     "colorette": "^2.0.20",
     "commander": "^12.1.0",
     "magicast": "^0.3.5",

@@ -36,8 +36,8 @@ importers:
         specifier: ^1.35.0
         version: 1.35.0
       c12:
-        specifier: 4.0.0-beta.4
-        version: 4.0.0-beta.4(jiti@2.7.0)(magicast@0.3.5)
+        specifier: 4.0.0-beta.5
+        version: 4.0.0-beta.5(jiti@2.7.0)(magicast@0.3.5)
       colorette:
         specifier: ^2.0.20
         version: 2.0.20
@@ -830,8 +830,8 @@ packages:
     resolution: {integrity: sha512-tjwM5exMg6BGRI+kNmTntNsvdZS1X8BFYS6tnJ2hdH0kVxM6/eVZ2xy+FqStSWvYmtfFMDLIxurorHwDKfDz5Q==}
     engines: {node: '>=18'}
 
-  c12@4.0.0-beta.4:
-    resolution: {integrity: sha512-gcWQAloC/SwGx4U7l3iQdalUQQLLXwYS1d3SqIwFj4UUrTXh8L9yGkBcA00B0gxELMwbxtsrt6VrAxtSgqZZoA==}
+  c12@4.0.0-beta.5:
+    resolution: {integrity: sha512-yWGCPCQGJeFq4R0mFg5HOhC3Rg+B0PCdM+ldXWUhughoGgeeq8/tjRmXh4/lmhKWyhf+KOFxB/JMXf0Yv1Fd5A==}
     peerDependencies:
       chokidar: ^5
       dotenv: '*'
@@ -1872,7 +1872,7 @@ snapshots:
     dependencies:
       run-applescript: 7.1.0
 
-  c12@4.0.0-beta.4(jiti@2.7.0)(magicast@0.3.5):
+  c12@4.0.0-beta.5(jiti@2.7.0)(magicast@0.3.5):
     dependencies:
       confbox: 0.2.4
       defu: 6.1.7
