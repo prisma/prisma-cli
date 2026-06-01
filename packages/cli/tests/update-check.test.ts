@@ -25,7 +25,7 @@ describe("automatic update check", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain(`Update available: prisma-cli ${getCliVersion()} -> ${nextMajorVersion()}`);
-    expect(result.stderr).toContain("See https://prisma.io/docs for update instructions.");
+    expect(result.stderr).toContain("See https://www.prisma.io/docs/orm/tools/prisma-cli for update instructions.");
     expect(result.stderr.indexOf("Update available")).toBeLessThan(result.stderr.indexOf("auth whoami"));
   });
 
@@ -131,6 +131,10 @@ describe("automatic update check", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).not.toContain("SyntaxError");
     expect(result.stderr).toContain("auth whoami");
+    expect(await readUpdateCheckState(updateCheckDir)).toMatchObject({
+      packageName: "@prisma/cli",
+      installedVersion: getCliVersion(),
+    });
   });
 
   it("does not show the same cached update notice again inside the notification interval", async () => {
@@ -235,6 +239,30 @@ describe("automatic update check", () => {
     });
   });
 
+  it("preserves notification throttling when remote discovery succeeds", async () => {
+    const { updateCheckDir } = await createUpdateCheckTestDirs();
+    await new UpdateCheckStore(updateCheckDir).write({
+      packageName: "@prisma/cli",
+      installedVersion: getCliVersion(),
+      latestVersion: "9.8.6",
+      checkedAt: "2026-01-01T00:00:00.000Z",
+      notifiedAt: "2026-01-01T01:00:00.000Z",
+    });
+
+    await runUpdateDiscovery({
+      cacheDir: updateCheckDir,
+      installedVersion: getCliVersion(),
+      now: new Date("2026-01-02T00:00:00.000Z"),
+      fetchImpl: async () => new Response(JSON.stringify({ "dist-tags": { latest: "9.8.7" } })),
+    });
+
+    expect(await readUpdateCheckState(updateCheckDir)).toMatchObject({
+      latestVersion: "9.8.7",
+      checkedAt: "2026-01-02T00:00:00.000Z",
+      notifiedAt: "2026-01-01T01:00:00.000Z",
+    });
+  });
+
   it("ignores failed remote discovery without surfacing errors", async () => {
     const { updateCheckDir } = await createUpdateCheckTestDirs();
 
@@ -279,25 +307,25 @@ describe("automatic update check", () => {
       name: "npx",
       env: { npm_lifecycle_event: "npx" },
       argv: ["node", "/Users/alice/.npm/_npx/123/node_modules/.bin/prisma-cli"],
-      expected: { type: "docs", value: "https://prisma.io/docs" },
+      expected: { type: "docs", value: "https://www.prisma.io/docs/orm/tools/prisma-cli" },
     },
     {
       name: "pnpx",
       env: { npm_lifecycle_event: "pnpx", npm_config_user_agent: "pnpm/10.30.0" },
       argv: ["node", "/repo/node_modules/.bin/prisma-cli"],
-      expected: { type: "docs", value: "https://prisma.io/docs" },
+      expected: { type: "docs", value: "https://www.prisma.io/docs/orm/tools/prisma-cli" },
     },
     {
       name: "bunx",
       env: { npm_config_user_agent: "bun/1.3.0" },
       argv: ["node", "/Users/alice/.bun/install/cache/@prisma/cli/prisma-cli"],
-      expected: { type: "docs", value: "https://prisma.io/docs" },
+      expected: { type: "docs", value: "https://www.prisma.io/docs/orm/tools/prisma-cli" },
     },
     {
       name: "unknown",
       env: {},
       argv: ["node", "/some/path/prisma-cli"],
-      expected: { type: "docs", value: "https://prisma.io/docs" },
+      expected: { type: "docs", value: "https://www.prisma.io/docs/orm/tools/prisma-cli" },
     },
   ])("selects update instructions for $name", ({ env, argv, expected }) => {
     expect(selectUpdateInstruction(env, argv)).toEqual(expected);

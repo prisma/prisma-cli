@@ -8,7 +8,7 @@ import { getCliName, getCliVersion } from "../lib/version";
 import type { CliRuntime } from "./runtime";
 
 const UPDATE_CHECK_FILE_NAME = "update-check.json";
-const FALLBACK_INSTALL_DOCS_URL = "https://prisma.io/docs"; // TODO: replace with the canonical CLI installation docs URL.
+const FALLBACK_INSTALL_DOCS_URL = "https://www.prisma.io/docs/orm/tools/prisma-cli";
 const NOTIFICATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const REGISTRY_URL = "https://registry.npmjs.org/@prisma%2fcli";
 const REGISTRY_TIMEOUT_MS = 3_000;
@@ -37,7 +37,7 @@ export class UpdateCheckStore {
     try {
       return JSON.parse(await readFile(this.filePath, "utf8")) as UpdateCheckState;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      if (isUnreadableCacheError(error)) {
         return null;
       }
 
@@ -94,7 +94,10 @@ export async function runUpdateDiscovery(options: {
       return;
     }
 
-    await new UpdateCheckStore(options.cacheDir).write({
+    const store = new UpdateCheckStore(options.cacheDir);
+    const previousState = await store.read();
+    await store.write({
+      ...previousState,
       packageName: "@prisma/cli",
       installedVersion: options.installedVersion,
       latestVersion,
@@ -103,6 +106,11 @@ export async function runUpdateDiscovery(options: {
   } catch {
     return;
   }
+}
+
+function isUnreadableCacheError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === "ENOENT" || code === "EACCES" || code === "EPERM" || error instanceof SyntaxError;
 }
 
 export async function runUpdateDiscoveryWorker(env: NodeJS.ProcessEnv = process.env): Promise<void> {

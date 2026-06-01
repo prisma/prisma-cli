@@ -75,7 +75,7 @@ docs instead of guessing a package-manager command:
 
 ```text
 Update available: prisma-cli <current> -> <latest>
-See https://prisma.io/docs for update instructions.
+See https://www.prisma.io/docs/orm/tools/prisma-cli for update instructions.
 ```
 
 ## Human Output
