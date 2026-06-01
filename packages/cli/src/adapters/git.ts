@@ -11,11 +11,12 @@ export interface GitHubRepositoryReference {
   url: string;
 }
 
-export async function readGitOriginRemote(cwd: string): Promise<string | null> {
+export async function readGitOriginRemote(cwd: string, signal?: AbortSignal): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync("git", ["config", "--get", "remote.origin.url"], {
       cwd,
       timeout: 5_000,
+      signal,
     });
     const remote = stdout.trim();
     return remote.length > 0 ? remote : null;

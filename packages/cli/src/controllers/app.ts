@@ -188,7 +188,7 @@ export async function runAppRun(
   }
 
   if (runResult.signal === "SIGINT" || runResult.signal === "SIGTERM") {
-    process.exitCode = runResult.signal === "SIGINT" ? 130 : 143;
+    throw new DOMException("Command canceled", "AbortError");
   } else if (runResult.exitCode !== 0) {
     throw runFailedError(
       "Local app run failed",
@@ -814,7 +814,7 @@ export async function runAppDomainWait(
       });
     }
 
-    await sleep(Math.min(pollIntervalMs, Math.max(deadline - Date.now(), 0)));
+    await sleep(Math.min(pollIntervalMs, Math.max(deadline - Date.now(), 0)), context.runtime.signal);
     current = await target.provider.showDomain(current.id, { signal: context.runtime.signal }).catch((error) => {
       throw domainCommandError("wait", error, normalizedHostname);
     });
@@ -1693,11 +1693,18 @@ function formatElapsed(milliseconds: number): string {
   return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
 }
 
-async function sleep(milliseconds: number): Promise<void> {
+async function sleep(milliseconds: number, signal: AbortSignal): Promise<void> {
   if (milliseconds <= 0) {
     return;
   }
-  await new Promise((resolve) => setTimeout(resolve, milliseconds));
+  signal.throwIfAborted();
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(resolve, milliseconds);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timeout);
+      reject(signal.reason);
+    }, { once: true });
+  });
 }
 
 async function resolveDeployAppSelection(

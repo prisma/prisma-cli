@@ -91,7 +91,7 @@ None.
 
 ### Phase 4: Polling, Sleeps, And Local Processes
 
-**Status:** ☐ Not started
+**Status:** ✓ Complete
 
 **Goal:** Make CLI-owned waiting and subprocess execution responsive to cancellation.
 
@@ -107,11 +107,11 @@ None.
 
 **Acceptance Criteria:**
 
-- **AC1:** Signal-aware sleeps reject immediately when already aborted and reject without waiting for the full interval when aborted during sleep.
-- **AC2:** Polling loops do not perform an extra API call after cancellation is observed.
-- **AC3:** Local app process cancellation does not produce `RUN_FAILED` for `SIGINT` or `SIGTERM` cancellation paths.
-- **AC4:** Git adapter cancellation is test-covered at the process boundary.
-- **AC5:** `pnpm --filter @prisma/cli test -- app-local-dev.test.ts git-adapter.test.ts project-controller.test.ts app-controller.test.ts` passes, or equivalent targeted filters if filenames change.
+- [x] **AC1:** Signal-aware sleeps reject immediately when already aborted and reject without waiting for the full interval when aborted during sleep.
+- [x] **AC2:** Polling loops do not perform an extra API call after cancellation is observed.
+- [x] **AC3:** Local app process cancellation does not produce `RUN_FAILED` for `SIGINT` or `SIGTERM` cancellation paths.
+- [x] **AC4:** Git adapter cancellation is test-covered at the process boundary.
+- [x] **AC5:** `pnpm --filter @prisma/cli test -- app-local-dev.test.ts git-adapter.test.ts project-controller.test.ts app-controller.test.ts` passes, or equivalent targeted filters if filenames change.
 
 ### Phase 5: Filesystem And Token Storage Boundaries
 

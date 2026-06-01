@@ -779,7 +779,7 @@ async function resolveRepositoryForConnect(
   context: CommandContext,
   gitUrl: string | undefined,
 ): Promise<GitHubRepositoryReference> {
-  const remoteUrl = gitUrl ?? await readGitOriginRemote(context.runtime.cwd);
+  const remoteUrl = gitUrl ?? await readGitOriginRemote(context.runtime.cwd, context.runtime.signal);
 
   if (!remoteUrl) {
     throw usageError(
