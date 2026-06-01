@@ -391,6 +391,7 @@ Behavior:
 - does not mutate local state
 - `--project <id-or-name>` resolves only the explicit project
 - when bound, returns Workspace, Project, and `resolution.projectSource`
+- when bound, human output shows the local repo path, the `<workspace> / <project>` platform label, and the Project URL; it does not show the internal resolution source
 - when unbound, human output says `project: Not linked` and shows link/create next steps
 - when unbound, JSON exits successfully with `project: null`, `localBinding.status: "not-linked"`, `resolution.projectSource: "unbound"`, a suggested Project name, matching Project candidates, recovery commands, and `user-choice` `nextActions`
 - package names and directory names only power unbound suggestions

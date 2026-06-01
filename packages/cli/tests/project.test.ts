@@ -7,10 +7,16 @@ import { createTempCwd, executeCli } from "./helpers";
 
 const fixturePath = path.resolve("fixtures/mock-api.json");
 
-async function login(cwd: string, stateDir: string, selectedFixturePath = fixturePath) {
+async function login(
+  cwd: string,
+  stateDir: string,
+  selectedFixturePath = fixturePath,
+  env?: NodeJS.ProcessEnv,
+) {
   await executeCli({
     argv: ["auth", "login", "--provider", "github", "--user", "usr_456"],
     cwd,
+    env,
     stateDir,
     fixturePath: selectedFixturePath,
   });
@@ -31,12 +37,13 @@ async function writeLocalPin(cwd: string, pin: unknown | string) {
 
 async function createAmbiguousFixture(cwd: string): Promise<string> {
   const raw = JSON.parse(await readFile(fixturePath, "utf8")) as {
-    projects: Array<{ id: string; name: string; slug: string; workspaceId: string }>;
+    projects: Array<{ id: string; name: string; slug: string; url?: string; workspaceId: string }>;
   };
   raw.projects.push({
     id: "proj_321",
     name: "Acme Dashboard",
     slug: "acme-dashboard",
+    url: "https://prisma.build/acme/acme-dashboard-2",
     workspaceId: "ws_123",
   });
   const nextPath = path.join(cwd, "ambiguous-fixture.json");
@@ -46,17 +53,44 @@ async function createAmbiguousFixture(cwd: string): Promise<string> {
 
 async function createAppleFixture(cwd: string): Promise<string> {
   const raw = JSON.parse(await readFile(fixturePath, "utf8")) as {
-    projects: Array<{ id: string; name: string; slug: string; workspaceId: string }>;
+    projects: Array<{ id: string; name: string; slug: string; url?: string; workspaceId: string }>;
   };
   raw.projects = [
     {
       id: "proj_apple",
       name: "apple",
       slug: "apple",
+      url: "https://prisma.build/acme/apple",
       workspaceId: "ws_123",
     },
   ];
   const nextPath = path.join(cwd, "apple-fixture.json");
+  await writeFile(nextPath, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+  return nextPath;
+}
+
+async function createEdithOrangeFixture(cwd: string): Promise<string> {
+  const raw = JSON.parse(await readFile(fixturePath, "utf8")) as {
+    workspaces: Array<{ id: string; name: string; slug: string }>;
+    projects: Array<{ id: string; name: string; slug: string; url?: string; workspaceId: string }>;
+  };
+  raw.workspaces = [
+    {
+      id: "ws_123",
+      name: "Edith",
+      slug: "edith",
+    },
+  ];
+  raw.projects = [
+    {
+      id: "proj_orange",
+      name: "orange",
+      slug: "orange",
+      url: "https://prisma.build/edith/orange",
+      workspaceId: "ws_123",
+    },
+  ];
+  const nextPath = path.join(cwd, "edith-orange-fixture.json");
   await writeFile(nextPath, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
   return nextPath;
 }
@@ -366,6 +400,7 @@ describe("project commands", () => {
       project: {
         id: "proj_123",
         name: "Acme Dashboard",
+        url: "https://prisma.build/acme/acme-dashboard",
       },
       resolution: {
         projectSource: "local-pin",
@@ -373,6 +408,39 @@ describe("project commands", () => {
         targetNameSource: "local-pin",
       },
     });
+  });
+
+  it("shows a polished bound project block in human mode", async () => {
+    const home = await createTempCwd();
+    const cwd = path.join(home, "code", "apple");
+    await mkdir(cwd, { recursive: true });
+    const stateDir = path.join(cwd, ".state");
+    const edithFixturePath = await createEdithOrangeFixture(cwd);
+    const env = {
+      ...process.env,
+      HOME: home,
+    };
+    await writeLocalPin(cwd, {
+      workspaceId: "ws_123",
+      projectId: "proj_orange",
+    });
+    await login(cwd, stateDir, edithFixturePath, env);
+
+    const result = await executeCli({
+      argv: ["project", "show"],
+      cwd,
+      env,
+      stateDir,
+      fixturePath: edithFixturePath,
+      isTTY: true,
+    });
+    const stderr = stripAnsi(result.stderr);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(stderr).toBe(
+      "project show → This directory is linked to the following platform project.\n\n│  local repo  ~/code/apple\n│  platform    Edith / orange\n│\n│  → https://prisma.build/edith/orange\n",
+    );
   });
 
   it("returns PROJECT_NOT_FOUND for an inaccessible explicit project", async () => {

@@ -375,9 +375,10 @@ function buildProjectRecoveryCommands(commandName: string | undefined): string[]
   return commands;
 }
 
-function toProjectSummary(project: Pick<ProjectCandidate, "id" | "name">): ProjectSummary {
+function toProjectSummary(project: Pick<ProjectCandidate, "id" | "name" | "url">): ProjectSummary {
   return {
     id: project.id,
     name: project.name,
+    ...(project.url ? { url: project.url } : {}),
   };
 }

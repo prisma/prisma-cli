@@ -1,4 +1,7 @@
+import path from "node:path";
+
 import type { CommandDescriptor } from "../shell/command-meta";
+import { formatDescriptorLabel } from "../shell/command-meta";
 import { formatCommandArgument } from "../shell/command-arguments";
 import type { CommandContext } from "../shell/runtime";
 import type {
@@ -9,7 +12,7 @@ import type {
   ProjectShowResult,
 } from "../types/project";
 import { renderList, renderMutate, renderShow, serializeList } from "../output/patterns";
-import { renderNextSteps, renderSummaryLine } from "../shell/ui";
+import { padDisplay, renderNextSteps, renderSummaryLine } from "../shell/ui";
 
 export function renderProjectList(
   context: CommandContext,
@@ -88,18 +91,7 @@ export function renderProjectShow(
     return lines;
   }
 
-  return renderShow(
-    {
-      title: "Showing this directory's Project binding.",
-      descriptor,
-      fields: [
-        { key: "workspace", value: result.workspace.name },
-        { key: "project", value: result.project.name },
-        { key: "resolution", value: formatProjectSource(result.resolution.projectSource) },
-      ],
-    },
-    context.ui,
-  );
+  return renderBoundProjectShow(context, descriptor, result);
 }
 
 export function serializeProjectShow(result: ProjectShowResult) {
@@ -173,23 +165,40 @@ export function renderGitDisconnect(
   );
 }
 
-function formatProjectSource(source: ProjectShowResult["resolution"]["projectSource"]): string {
-  switch (source) {
-    case "explicit":
-      return "explicit";
-    case "env":
-      return "environment";
-    case "local-pin":
-      return "local pin";
-    case "platform-mapping":
-      return "platform mapping";
-    case "created":
-      return "created";
-    case "prompt":
-      return "prompt";
-    case "unbound":
-      return "unbound";
+function renderBoundProjectShow(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: Exclude<ProjectShowResult, { project: null }>,
+): string[] {
+  const { ui } = context;
+  const rail = ui.dim("│");
+  const keyWidth = "local repo".length;
+  const platform = `${result.workspace.name} / ${result.project.name}`;
+  const lines = [
+    `${ui.strong(formatDescriptorLabel(descriptor))} ${ui.dim("→")} ${ui.dim("This directory is linked to the following platform project.")}`,
+    "",
+    `${rail}  ${ui.accent(padDisplay("local repo", keyWidth))}  ${formatLocalRepoPath(context.runtime.cwd, context.runtime.env)}`,
+    `${rail}  ${ui.accent(padDisplay("platform", keyWidth))}  ${ui.strong(platform)}`,
+  ];
+
+  if (result.project.url) {
+    lines.push(rail);
+    lines.push(`${rail}  ${ui.dim("→")} ${ui.link(result.project.url)}`);
   }
+
+  return lines;
+}
+
+function formatLocalRepoPath(cwd: string, env: NodeJS.ProcessEnv): string {
+  const resolved = path.resolve(cwd);
+  const home = env.HOME ? path.resolve(env.HOME) : null;
+
+  if (home && (resolved === home || resolved.startsWith(`${home}${path.sep}`))) {
+    const relative = path.relative(home, resolved);
+    return relative ? `~/${relative}` : "~";
+  }
+
+  return resolved;
 }
 
 function formatGitConnectionDetail(status: GitRepositoryConnection["status"]): string {

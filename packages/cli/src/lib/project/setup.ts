@@ -65,10 +65,11 @@ export async function bindProjectToDirectory(
   };
 }
 
-export function toProjectSummary(project: Pick<ProjectCandidate, "id" | "name">): ProjectSummary {
+export function toProjectSummary(project: Pick<ProjectCandidate, "id" | "name" | "url">): ProjectSummary {
   return {
     id: project.id,
     name: project.name,
+    ...(project.url ? { url: project.url } : {}),
   };
 }
 

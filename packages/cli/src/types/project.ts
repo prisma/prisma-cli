@@ -3,6 +3,7 @@ import type { AuthWorkspace } from "./auth";
 export interface ProjectSummary {
   id: string;
   name: string;
+  url?: string;
 }
 
 export type ProjectSource =

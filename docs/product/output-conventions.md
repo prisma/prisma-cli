@@ -217,7 +217,18 @@ Human output should:
 - keep header metadata compact and aligned
 - avoid placeholder rows for unknown values
 
-Recommended header shape:
+Recommended header shape for a bound Project:
+
+```text
+project show → This directory is linked to the following platform project.
+
+│  local repo  ~/code/apple
+│  platform    Edith / orange
+│
+│  → https://prisma.build/edith/orange
+```
+
+Recommended recovery shape for an unbound Project:
 
 ```text
 project show → This directory is not linked to a Prisma Project.
@@ -238,6 +249,8 @@ Rules:
 - include `Read more` when a stable repo doc reference exists
 - prefer display labels in default human output and keep opaque ids in JSON unless a later verbose mode explicitly asks for them
 - do not expose agent-only reasoning in human output when a clear status and next step is enough
+- for bound `project show`, show the local repo, platform project label, and Project URL instead of the internal resolution source
+- keep explicit recovery examples when a command has a distinct not-linked or setup-required state
 
 Recommended summary lines:
 

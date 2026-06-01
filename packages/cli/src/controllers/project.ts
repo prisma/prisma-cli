@@ -591,6 +591,7 @@ export async function listRealWorkspaceProjects(
       .map((project) => ({
         id: project.id,
         name: project.name,
+        ...("url" in project && typeof project.url === "string" ? { url: project.url } : {}),
         slug: "slug" in project && typeof project.slug === "string" ? project.slug : null,
         workspace: {
           id: project.workspace.id,
@@ -608,6 +609,7 @@ export function listFixtureWorkspaceProjects(
     context.api.listProjectsForWorkspace(workspace.id).map((project) => ({
       id: project.id,
       name: project.name,
+      ...(project.url ? { url: project.url } : {}),
       slug: project.slug,
       workspace,
     })),
