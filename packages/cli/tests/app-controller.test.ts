@@ -1733,6 +1733,84 @@ describe("app controller", () => {
     expect(stderr.buffer).toContain(`Linked "./${path.basename(cwd)}" to Project "Acme Dashboard"`);
   });
 
+  it("interactive first deploy previews detected framework and runtime before the customization prompt", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const createProject = vi.fn();
+    const listApps = vi.fn().mockResolvedValue([]);
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_new",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        createProject,
+        listApps,
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writePackageJson(cwd, {
+      name: "hello-world",
+      dependencies: {
+        next: "15.0.0",
+      },
+    });
+    const stateDir = path.join(cwd, ".state");
+    const { context, stderr } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: true,
+      stdinText: "\r\r",
+      env: {
+        ...process.env,
+        PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await runAppDeploy(context, "hello-world");
+
+    expect(deployApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        buildType: "nextjs",
+        portMapping: { http: 3000 },
+      }),
+    );
+
+    const targetIndex = stderr.buffer.indexOf("Deploying to Acme Dashboard / main / hello-world");
+    const detectedIndex = stderr.buffer.indexOf("Detected Next.js");
+    const promptIndex = stderr.buffer.indexOf("Customize build settings?");
+
+    expect(targetIndex).toBeGreaterThanOrEqual(0);
+    expect(detectedIndex).toBeGreaterThan(targetIndex);
+    expect(stderr.buffer).toContain("framework:");
+    expect(stderr.buffer).toContain("runtime:");
+    expect(stderr.buffer).toContain("Next.js");
+    expect(stderr.buffer).toContain("HTTP 3000");
+    expect(stderr.buffer).not.toContain("Using deploy settings:");
+    expect(stderr.buffer).not.toContain("build:");
+    expect(promptIndex).toBeGreaterThan(detectedIndex);
+  });
+
   it("interactive first deploy can create a new Project from an editable suggested name", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const createProject = vi.fn().mockResolvedValue({

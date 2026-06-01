@@ -635,7 +635,8 @@ Behavior:
 - resolves or creates app context inside the resolved branch from `--app`, `PRISMA_APP_ID`, `package.json#name`, or current directory name
 - does not prompt when there is no real choice; zero matching apps creates the inferred app
 - writes `.prisma/local.json` after Project binding succeeds and before build/deploy starts, so retries after a failed deploy do not repeat setup
-- asks `Customize settings? (y/N)` only while binding the directory for the first time, and only asks for Framework and HTTP port when the user opts in
+- before asking `Customize build settings? (y/N)`, previews the detected framework and runtime so the user can see the defaults they are accepting or changing
+- asks `Customize build settings? (y/N)` only while binding the directory for the first time, and only asks for Framework and HTTP port when the user opts in
 - after setup, deploy prints `Deploying to <Project> / <Branch> / <App>`; later deploys print a compact target header such as `Deploying ./j1 to j1 / main / j1`
 - deploy progress uses short stage copy (`Building locally...`, `Built <size>`, `Uploading...`, `Uploaded`, `Deploying...`, `Deployed`) and never prints `Status: running` or `Deployment is running at ...`
 - success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma-cli app logs`
