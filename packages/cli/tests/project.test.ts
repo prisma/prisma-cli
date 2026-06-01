@@ -143,6 +143,28 @@ describe("project commands", () => {
     await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).resolves.toContain('"projectId": "proj_123"');
   });
 
+  it("disambiguates duplicate Project names in the bare project link picker", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const ambiguousFixturePath = await createAmbiguousFixture(cwd);
+    await login(cwd, stateDir, ambiguousFixturePath);
+
+    const result = await executeCli({
+      argv: ["project", "link"],
+      cwd,
+      stateDir,
+      fixturePath: ambiguousFixturePath,
+      isTTY: true,
+      stdinText: "\r",
+    });
+    const stderr = stripAnsi(result.stderr);
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr).toContain("Acme Dashboard (proj_123)");
+    expect(stderr).toContain("Acme Dashboard (proj_321)");
+    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).resolves.toContain('"projectId": "proj_123"');
+  });
+
   it("lets the user cancel bare project link without writing local state", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");

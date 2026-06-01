@@ -28,13 +28,17 @@ export async function promptForProjectSetupChoice(options: {
   };
 }): Promise<InteractiveProjectSetupResult> {
   const sortedProjects = sortProjects(options.projects);
+  const projectNames = sortedProjects.map((project) => project.name);
+  const duplicateNames = new Set(
+    projectNames.filter((name, index) => projectNames.indexOf(name) !== index),
+  );
   const choice = await selectPrompt<InteractiveProjectSetupChoice>({
     input: options.context.runtime.stdin,
     output: options.context.runtime.stderr,
     message: "Which Project should this directory use?",
     choices: [
       ...sortedProjects.map((project) => ({
-        label: project.name,
+        label: duplicateNames.has(project.name) ? `${project.name} (${project.id})` : project.name,
         value: { kind: "project" as const, project },
       })),
       { label: "Create a new Project", value: { kind: "create" as const } },

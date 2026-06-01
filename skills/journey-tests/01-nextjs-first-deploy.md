@@ -34,8 +34,10 @@ pnpm dlx skills@latest add /absolute/path/to/prisma-cli/skills --all
       secret-handling channel.
 - [ ] Ensures `output: "standalone"` is present in `next.config.*`.
 - [ ] Runs `prisma-cli app deploy --framework nextjs`.
-- [ ] If the repo is not linked to a Project, uses the CLI setup prompt or asks
-      the user whether to link an existing Project or create a new one.
+- [ ] If the repo is not linked to a Project, runs
+      `prisma-cli app deploy --framework nextjs` so deploy enters setup, runs
+      bare `prisma-cli project link` to open the setup picker, or asks the user
+      whether to link an existing Project or create a new one.
 - [ ] Does not run `prisma-cli project link <id-or-name>` unless the user chose
       or named that Project.
 - [ ] Does not pass `--branch production` unless the prompt explicitly asks.
