@@ -17,11 +17,11 @@ interface CommandPresenter<T> {
 }
 
 function toCliError(error: unknown, runtime: CliRuntime): CliError | null {
-  if (error instanceof CliError) return error;
-
   if (isCancellationError(error) || runtime.signal.aborted) {
     return commandCanceledError();
   }
+
+  if (error instanceof CliError) return error;
 
   if (error instanceof SDKAuthError) {
     return authRequiredError(["prisma-cli auth login"], { debug: error.message });

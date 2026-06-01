@@ -3,6 +3,7 @@ import { PassThrough, Writable } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand, runStreamingCommand } from "../src/shell/command-runner";
+import { CliError } from "../src/shell/errors";
 import type { CliRuntime } from "../src/shell/runtime";
 import { createTempCwd } from "./helpers";
 
@@ -138,6 +139,41 @@ describe("command runner auth errors", () => {
     expect(stderr.buffer).toContain("Command canceled [COMMAND_CANCELED]");
     expect(stderr.buffer).not.toContain("raw implementation error");
     expect(stderr.buffer).not.toContain("More: Re-run with --trace");
+  });
+
+  it("lets runtime cancellation override wrapped CLI errors", async () => {
+    const { runtime, stdout } = await createRuntime(["--json", "app", "run"]);
+    const controller = new AbortController();
+    runtime.signal = controller.signal;
+
+    await runCommand(
+      runtime,
+      "app.run",
+      {},
+      async () => {
+        controller.abort();
+        throw new CliError({
+          code: "RUN_FAILED",
+          domain: "app",
+          summary: "Local app run failed",
+          why: "The child process was aborted.",
+          fix: "Retry the command.",
+        });
+      },
+      {
+        renderHuman: () => [],
+      },
+    );
+
+    expect(process.exitCode).toBe(130);
+    expect(JSON.parse(stdout.buffer)).toMatchObject({
+      ok: false,
+      command: "app.run",
+      error: {
+        code: "COMMAND_CANCELED",
+        domain: "cli",
+      },
+    });
   });
 
   it("shows SDK auth details only with trace enabled", async () => {
