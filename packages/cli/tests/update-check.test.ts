@@ -1,9 +1,9 @@
 import path from "node:path";
-import { access } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 import { getCliVersion } from "../src/lib/version";
-import { UpdateCheckStore } from "../src/shell/update-check";
+import { runUpdateDiscovery, UpdateCheckStore } from "../src/shell/update-check";
 import { createTempCwd, executeCli } from "./helpers";
 
 const fixturePath = path.resolve("fixtures/mock-api.json");
@@ -139,6 +139,97 @@ describe("automatic update check", () => {
     expect(first.stderr).toContain("Update available");
     expect(second.stderr).not.toContain("Update available");
   });
+
+  it("records a remote discovery attempt without printing a notice in the same invocation", async () => {
+    const { cwd, stateDir, updateCheckDir } = await createUpdateCheckTestDirs();
+
+    const result = await executeCli({
+      argv: ["auth", "whoami"],
+      cwd,
+      stateDir,
+      fixturePath,
+      isTTY: true,
+      env: enableUpdateCheck(updateCheckDir),
+    });
+    const state = await readUpdateCheckState(updateCheckDir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toContain("Update available");
+    expect(state).toMatchObject({
+      packageName: "@prisma/cli",
+      installedVersion: getCliVersion(),
+    });
+    expect(state.checkedAt).toEqual(expect.any(String));
+  });
+
+  it("does not record remote discovery attempts for suppressed invocations", async () => {
+    const { cwd, stateDir, updateCheckDir } = await createUpdateCheckTestDirs();
+
+    await executeCli({
+      argv: ["--json", "auth", "whoami"],
+      cwd,
+      stateDir,
+      fixturePath,
+      isTTY: true,
+      env: enableUpdateCheck(updateCheckDir),
+    });
+
+    await expect(access(path.join(updateCheckDir, "update-check.json"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("skips remote discovery attempts inside the 24-hour interval", async () => {
+    const { cwd, stateDir, updateCheckDir } = await createUpdateCheckTestDirs();
+    const checkedAt = new Date().toISOString();
+    await new UpdateCheckStore(updateCheckDir).write({
+      packageName: "@prisma/cli",
+      installedVersion: getCliVersion(),
+      checkedAt,
+    });
+
+    await executeCli({
+      argv: ["auth", "whoami"],
+      cwd,
+      stateDir,
+      fixturePath,
+      isTTY: true,
+      env: enableUpdateCheck(updateCheckDir),
+    });
+
+    expect((await readUpdateCheckState(updateCheckDir)).checkedAt).toBe(checkedAt);
+  });
+
+  it("persists successful remote discovery results from injected registry metadata", async () => {
+    const { updateCheckDir } = await createUpdateCheckTestDirs();
+
+    await runUpdateDiscovery({
+      cacheDir: updateCheckDir,
+      installedVersion: getCliVersion(),
+      now: new Date("2026-01-02T00:00:00.000Z"),
+      fetchImpl: async () => new Response(JSON.stringify({ "dist-tags": { latest: "9.8.7" } })),
+    });
+
+    expect(await readUpdateCheckState(updateCheckDir)).toMatchObject({
+      packageName: "@prisma/cli",
+      installedVersion: getCliVersion(),
+      latestVersion: "9.8.7",
+      checkedAt: "2026-01-02T00:00:00.000Z",
+    });
+  });
+
+  it("ignores failed remote discovery without surfacing errors", async () => {
+    const { updateCheckDir } = await createUpdateCheckTestDirs();
+
+    await expect(
+      runUpdateDiscovery({
+        cacheDir: updateCheckDir,
+        installedVersion: getCliVersion(),
+        fetchImpl: async () => {
+          throw new Error("network down");
+        },
+      }),
+    ).resolves.toBeUndefined();
+    await expect(access(path.join(updateCheckDir, "update-check.json"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
 });
 
 async function createUpdateCheckTestDirs() {
@@ -164,6 +255,10 @@ async function seedStaleUpdate(updateCheckDir: string): Promise<void> {
     latestVersion: nextMajorVersion(),
     checkedAt: new Date().toISOString(),
   });
+}
+
+async function readUpdateCheckState(updateCheckDir: string) {
+  return JSON.parse(await readFile(path.join(updateCheckDir, "update-check.json"), "utf8")) as Record<string, unknown>;
 }
 
 function nextMajorVersion(): string {

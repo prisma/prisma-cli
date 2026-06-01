@@ -1,6 +1,8 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 
 import { getCliName, getCliVersion } from "../lib/version";
 import type { CliRuntime } from "./runtime";
@@ -8,6 +10,8 @@ import type { CliRuntime } from "./runtime";
 const UPDATE_CHECK_FILE_NAME = "update-check.json";
 const FALLBACK_INSTALL_DOCS_URL = "https://prisma.io/docs"; // TODO: replace with the canonical CLI installation docs URL.
 const NOTIFICATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const REGISTRY_URL = "https://registry.npmjs.org/@prisma%2fcli";
+const REGISTRY_TIMEOUT_MS = 3_000;
 
 export interface UpdateCheckState {
   packageName?: string;
@@ -37,38 +41,77 @@ export class UpdateCheckStore {
   }
 
   async write(state: UpdateCheckState): Promise<void> {
-    await mkdir(path.dirname(this.filePath), { recursive: true });
-    await writeFile(this.filePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+    const dir = path.dirname(this.filePath);
+    const tempPath = path.join(dir, `${UPDATE_CHECK_FILE_NAME}.${process.pid}.${randomUUID()}.tmp`);
+    await mkdir(dir, { recursive: true });
+    await writeFile(tempPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+    await rename(tempPath, this.filePath);
   }
 }
 
 export async function maybeWriteCachedUpdateNotification(runtime: CliRuntime): Promise<void> {
-  if (!canShowUpdateNotification(runtime)) {
+  if (!canRunUpdateCheck(runtime)) {
     return;
   }
 
-  const store = new UpdateCheckStore(resolveUpdateCheckCacheDir(runtime));
+  const cacheDir = resolveUpdateCheckCacheDir(runtime);
+  const store = new UpdateCheckStore(cacheDir);
   const state = await store.read();
   const latestVersion = state?.latestVersion;
 
-  if (!latestVersion || !isInstalledVersionStale(getCliVersion(), latestVersion)) {
+  if (latestVersion && isInstalledVersionStale(getCliVersion(), latestVersion) && shouldNotify(state)) {
+    runtime.stderr.write(renderUpdateNotification(latestVersion));
+    await store.write({
+      ...state,
+      packageName: "@prisma/cli",
+      installedVersion: getCliVersion(),
+      notifiedAt: new Date().toISOString(),
+    });
+  }
+
+  await scheduleRemoteDiscovery(runtime, store, state, cacheDir);
+}
+
+export async function runUpdateDiscovery(options: {
+  cacheDir: string;
+  installedVersion: string;
+  registryUrl?: string;
+  fetchImpl?: typeof fetch;
+  now?: Date;
+}): Promise<void> {
+  try {
+    const latestVersion = await fetchLatestVersion(options.registryUrl ?? REGISTRY_URL, options.fetchImpl ?? fetch);
+    if (!latestVersion) {
+      return;
+    }
+
+    await new UpdateCheckStore(options.cacheDir).write({
+      packageName: "@prisma/cli",
+      installedVersion: options.installedVersion,
+      latestVersion,
+      checkedAt: (options.now ?? new Date()).toISOString(),
+    });
+  } catch {
+    return;
+  }
+}
+
+export async function runUpdateDiscoveryWorker(env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  const cacheDir = env.PRISMA_CLI_UPDATE_CHECK_DIR;
+  const installedVersion = env.PRISMA_CLI_UPDATE_CHECK_INSTALLED_VERSION;
+
+  if (!cacheDir || !installedVersion) {
     return;
   }
 
-  if (state.notifiedAt && Date.now() - Date.parse(state.notifiedAt) < NOTIFICATION_INTERVAL_MS) {
-    return;
-  }
-
-  runtime.stderr.write(renderUpdateNotification(latestVersion));
-  await store.write({
-    ...state,
-    packageName: "@prisma/cli",
-    installedVersion: getCliVersion(),
-    notifiedAt: new Date().toISOString(),
+  await runUpdateDiscovery({
+    cacheDir,
+    installedVersion,
+    registryUrl: env.PRISMA_CLI_UPDATE_CHECK_REGISTRY_URL,
   });
 }
 
-function canShowUpdateNotification(runtime: CliRuntime): boolean {
+function canRunUpdateCheck(runtime: CliRuntime): boolean {
   if (runtime.env.NO_UPDATE_NOTIFIER !== undefined) {
     return false;
   }
@@ -94,6 +137,52 @@ function canShowUpdateNotification(runtime: CliRuntime): boolean {
   }
 
   return true;
+}
+
+function shouldNotify(state: UpdateCheckState): boolean {
+  return !state.notifiedAt || isAtLeastIntervalAgo(state.notifiedAt);
+}
+
+async function scheduleRemoteDiscovery(
+  runtime: CliRuntime,
+  store: UpdateCheckStore,
+  state: UpdateCheckState | null,
+  cacheDir: string,
+): Promise<void> {
+  if (state?.checkedAt && !isAtLeastIntervalAgo(state.checkedAt)) {
+    return;
+  }
+
+  const checkedAt = new Date().toISOString();
+  await store.write({
+    ...state,
+    packageName: "@prisma/cli",
+    installedVersion: getCliVersion(),
+    checkedAt,
+  });
+
+  if (isTestRuntime(runtime.env)) {
+    return;
+  }
+
+  const entrypoint = process.argv[1];
+  if (!entrypoint) {
+    return;
+  }
+
+  const child = spawn(process.execPath, [entrypoint], {
+    detached: true,
+    stdio: "ignore",
+    env: {
+      ...process.env,
+      PRISMA_CLI_RUN_UPDATE_CHECK_WORKER: "1",
+      PRISMA_CLI_UPDATE_CHECK_DIR: cacheDir,
+      PRISMA_CLI_UPDATE_CHECK_INSTALLED_VERSION: getCliVersion(),
+      PRISMA_CLI_UPDATE_CHECK_REGISTRY_URL:
+        runtime.env.PRISMA_CLI_UPDATE_CHECK_REGISTRY_URL ?? REGISTRY_URL,
+    },
+  });
+  child.unref();
 }
 
 function renderUpdateNotification(latestVersion: string): string {
@@ -125,6 +214,11 @@ function resolveUpdateCheckCacheDir(runtime: CliRuntime): string {
 
 function isTestRuntime(env: NodeJS.ProcessEnv): boolean {
   return env.VITEST !== undefined || env.NODE_ENV === "test";
+}
+
+function isAtLeastIntervalAgo(value: string): boolean {
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) || Date.now() - timestamp >= NOTIFICATION_INTERVAL_MS;
 }
 
 function isInstalledVersionStale(installedVersion: string, latestVersion: string): boolean {
@@ -204,4 +298,28 @@ function comparePrereleasePart(left: string, right: string): number {
   if (rightNumber !== null) return 1;
 
   return left.localeCompare(right);
+}
+
+async function fetchLatestVersion(registryUrl: string, fetchImpl: typeof fetch): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REGISTRY_TIMEOUT_MS);
+
+  try {
+    const response = await fetchImpl(registryUrl, {
+      signal: controller.signal,
+      headers: {
+        accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const metadata = await response.json() as { "dist-tags"?: { latest?: unknown } };
+    const latest = metadata["dist-tags"]?.latest;
+    return typeof latest === "string" ? latest : null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }

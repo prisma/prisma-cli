@@ -58,7 +58,7 @@ None.
 
 ### Phase 2 - Background Remote Discovery
 
-**Status** ☐ Not started
+**Status** ✓ Complete
 
 **Goal** Add 24-hour npm `latest` discovery that runs opportunistically without blocking the original command.
 
@@ -78,15 +78,15 @@ None.
 
 **Acceptance Criteria**
 
-**AC2.1** When the interval has elapsed, the CLI attempts remote discovery at most once per 24 hours per user/package identity.
+**AC2.1** [x] When the interval has elapsed, the CLI attempts remote discovery at most once per 24 hours per user/package identity.
 
-**AC2.2** A slow or failing registry lookup does not delay command output, does not change the command exit code, and emits no warning or error.
+**AC2.2** [x] A slow or failing registry lookup does not delay command output, does not change the command exit code, and emits no warning or error.
 
-**AC2.3** A successful lookup for a newer latest version is persisted and becomes visible as a notification on a later eligible invocation.
+**AC2.3** [x] A successful lookup for a newer latest version is persisted and becomes visible as a notification on a later eligible invocation.
 
-**AC2.4** Network discovery is skipped for CI, `--json`, `--quiet`, non-TTY stderr, `NO_UPDATE_NOTIFIER`, and default unit-test mode.
+**AC2.4** [x] Network discovery is skipped for CI, `--json`, `--quiet`, non-TTY stderr, `NO_UPDATE_NOTIFIER`, and default unit-test mode.
 
-**AC2.5** Tests use injected or stubbed registry behavior; they do not reach the real npm registry.
+**AC2.5** [x] Tests use injected or stubbed registry behavior; they do not reach the real npm registry.
 
 ### Phase 3 - Install Context Recommendations
 
