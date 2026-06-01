@@ -56,6 +56,7 @@ import {
   type ProjectCandidate,
   sortProjects,
 } from "../lib/project/resolution";
+import { promptForProjectSetupChoice } from "../lib/project/interactive-setup";
 import {
   bindProjectToDirectory,
   formatCommandArgument,
@@ -2369,75 +2370,32 @@ async function resolveDeployProjectContext(
   throw projectSetupRequiredError(projects, suggestedName);
 }
 
-type DeployProjectSetupChoice =
-  | { kind: "project"; project: ProjectCandidate }
-  | { kind: "create" }
-  | { kind: "cancel" };
-
 async function resolveInteractiveDeployProjectSetup(
   context: CommandContext,
   provider: ReturnType<typeof createPreviewAppProvider>,
   workspace: AuthWorkspace,
   projects: ProjectCandidate[],
 ): Promise<Omit<ResolvedAppProjectContext, "branch">> {
-  const sortedProjects = sortProjects(projects);
-  const choice = await selectPrompt<DeployProjectSetupChoice>({
-    input: context.runtime.stdin,
-    output: context.runtime.stderr,
-    message: "Which Project should this directory use?",
-    choices: [
-      ...sortedProjects.map((project) => ({
-        label: project.name,
-        value: { kind: "project" as const, project },
-      })),
-      { label: "Create a new Project", value: { kind: "create" as const } },
-      { label: "Cancel", value: { kind: "cancel" as const } },
-    ],
+  const setup = await promptForProjectSetupChoice({
+    context,
+    projects,
+    createProject: (projectName) => createProjectForDeploySetup(provider, projectName, workspace),
+    cancel: {
+      why: "Deploy needs a Project before it can continue.",
+      fix: "Choose an existing Project or create a new one, then rerun deploy.",
+      nextSteps: ["prisma-cli app deploy --project <id-or-name>", "prisma-cli app deploy --create-project <name>"],
+    },
   });
-
-  if (choice.kind === "cancel") {
-    throw usageError(
-      "Project setup canceled",
-      "Deploy needs a Project before it can continue.",
-      "Choose an existing Project or create a new one, then rerun deploy.",
-      ["prisma-cli app deploy --project <id-or-name>", "prisma-cli app deploy --create-project <name>"],
-      "project",
-    );
-  }
-
-  if (choice.kind === "project") {
-    return {
-      workspace,
-      project: toProjectSummary(choice.project),
-      resolution: {
-        projectSource: "prompt",
-        targetName: choice.project.name,
-        targetNameSource: "prompt",
-      },
-      localPinAction: "linked",
-    };
-  }
-
-  const suggestedName = await inferTargetName(context.runtime.cwd);
-  const rawName = await textPrompt({
-    input: context.runtime.stdin,
-    output: context.runtime.stderr,
-    message: "Project name",
-    placeholder: suggestedName.name,
-    validate: (value) => validateProjectSetupNameText(value, suggestedName.name),
-  });
-  const projectName = rawName.trim() || suggestedName.name;
-  const created = await createProjectForDeploySetup(provider, projectName, workspace);
 
   return {
     workspace,
-    project: toProjectSummary(created),
+    project: setup.project,
     resolution: {
-      projectSource: "created",
-      targetName: projectName,
-      targetNameSource: rawName.trim() ? "prompt" : suggestedName.source,
+      projectSource: setup.action === "created" ? "created" : "prompt",
+      targetName: setup.targetName,
+      targetNameSource: setup.targetNameSource,
     },
-    localPinAction: "created",
+    localPinAction: setup.action,
   };
 }
 
@@ -2508,14 +2466,6 @@ function assertExclusiveDeployProjectInputs(options: {
     ],
     "project",
   );
-}
-
-function validateProjectSetupNameText(value: string | undefined, fallback: string): string | undefined {
-  if ((value?.trim() || fallback).trim().length > 0) {
-    return undefined;
-  }
-
-  return "Enter a Project name.";
 }
 
 interface ResolvedDeployBranch {

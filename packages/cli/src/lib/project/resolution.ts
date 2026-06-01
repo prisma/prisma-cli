@@ -189,7 +189,7 @@ export function buildProjectSetupNextActions(options: {
     {
       kind: "user-choice",
       journey: "project-setup",
-      label: "Ask the user which Prisma Project this directory should use",
+      label: "Ask the user whether to link an existing Project or create a new one",
       commands,
       reason: options.reason
         ?? "This directory is not linked to a Prisma Project. Package and directory names are suggestions only, not a safe Project selection.",

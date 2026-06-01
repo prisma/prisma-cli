@@ -98,8 +98,8 @@ const DESCRIPTORS: CommandDescriptor[] = [
   {
     id: "project.link",
     path: ["prisma", "project", "link"],
-    description: "Link this directory to an existing Project",
-    examples: ["prisma-cli project link proj_123", "prisma-cli project link \"Acme Dashboard\" --json"],
+    description: "Link this directory to a Project",
+    examples: ["prisma-cli project link", "prisma-cli project link proj_123", "prisma-cli project link \"Acme Dashboard\" --json"],
   },
   {
     id: "git.connect",

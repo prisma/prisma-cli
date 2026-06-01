@@ -77,7 +77,7 @@ describe("project commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "project list → Listing projects for the authenticated workspace.\n\n│  workspace:  Acme Inc\n│  ⚬ project:  Acme Dashboard\n│  ⚬ project:  Billing API\n\nNext step:\n- Link the chosen Project: prisma-cli project link <id-or-name>\n",
+      "project list → Listing projects for the authenticated workspace.\n\n│  workspace:  Acme Inc\n│  ⚬ project:  Acme Dashboard\n│  ⚬ project:  Billing API\n\nNext steps:\n- Link an existing Project you choose: prisma-cli project link <id-or-name>\n- Create a new Project: prisma-cli project create <name>\n",
     );
   });
 
@@ -108,13 +108,151 @@ describe("project commands", () => {
       expect.objectContaining({
         kind: "user-choice",
         journey: "project-setup",
-        label: "Ask the user which Prisma Project this directory should use",
+        label: "Ask the user whether to link an existing Project or create a new one",
       }),
       expect.objectContaining({
         kind: "run-command",
         command: "prisma-cli project link <id-or-name>",
       }),
+      expect.objectContaining({
+        kind: "run-command",
+        command: "prisma-cli project create <name>",
+      }),
     ]);
+  });
+
+  it("prompts for a Project when bare project link runs interactively", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await login(cwd, stateDir);
+
+    const result = await executeCli({
+      argv: ["project", "link"],
+      cwd,
+      stateDir,
+      fixturePath,
+      isTTY: true,
+      stdinText: "\r",
+    });
+    const stderr = stripAnsi(result.stderr);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(stderr).toContain("Which Project should this directory use?");
+    expect(stderr).toContain(`Linked "./${path.basename(cwd)}" to Project "Acme Dashboard"`);
+    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).resolves.toContain('"projectId": "proj_123"');
+  });
+
+  it("disambiguates duplicate Project names in the bare project link picker", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const ambiguousFixturePath = await createAmbiguousFixture(cwd);
+    await login(cwd, stateDir, ambiguousFixturePath);
+
+    const result = await executeCli({
+      argv: ["project", "link"],
+      cwd,
+      stateDir,
+      fixturePath: ambiguousFixturePath,
+      isTTY: true,
+      stdinText: "\r",
+    });
+    const stderr = stripAnsi(result.stderr);
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr).toContain("Acme Dashboard (proj_123)");
+    expect(stderr).toContain("Acme Dashboard (proj_321)");
+    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).resolves.toContain('"projectId": "proj_123"');
+  });
+
+  it("lets the user cancel bare project link without writing local state", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await login(cwd, stateDir);
+
+    const result = await executeCli({
+      argv: ["project", "link"],
+      cwd,
+      stateDir,
+      fixturePath,
+      isTTY: true,
+      stdinText: "\u001B[B\u001B[B\u001B[B\r",
+    });
+    const stderr = stripAnsi(result.stderr);
+
+    expect(result.exitCode).toBe(2);
+    expect(stderr).toContain("Project setup canceled");
+    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("returns PROJECT_LINK_TARGET_REQUIRED for bare project link in JSON mode", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writePackageJson(cwd, "pear");
+    await login(cwd, stateDir);
+
+    const result = await executeCli({
+      argv: ["project", "link", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toBe("");
+    expect(payload.error).toMatchObject({
+      code: "PROJECT_LINK_TARGET_REQUIRED",
+      meta: {
+        suggestedProjectName: "pear",
+        suggestedProjectNameSource: "package-name",
+        candidates: expect.arrayContaining([
+          expect.objectContaining({ id: "proj_123", name: "Acme Dashboard" }),
+          expect.objectContaining({ id: "proj_456", name: "Billing API" }),
+        ]),
+        recoveryCommands: [
+          "prisma-cli project link <id-or-name>",
+          "prisma-cli project create pear",
+        ],
+      },
+    });
+    expect(payload.nextActions).toEqual([
+      expect.objectContaining({
+        kind: "user-choice",
+        journey: "project-setup",
+        label: "Ask the user whether to link an existing Project or create a new one",
+      }),
+      expect.objectContaining({
+        kind: "run-command",
+        command: "prisma-cli project link <id-or-name>",
+      }),
+      expect.objectContaining({
+        kind: "run-command",
+        command: "prisma-cli project create pear",
+      }),
+    ]);
+    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("does not let --yes choose a Project for bare project link", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await login(cwd, stateDir);
+
+    const result = await executeCli({
+      argv: ["project", "link", "--yes"],
+      cwd,
+      stateDir,
+      fixturePath,
+      isTTY: true,
+      stdinText: "\r",
+    });
+    const stderr = stripAnsi(result.stderr);
+
+    expect(result.exitCode).toBe(2);
+    expect(stderr).toContain("PROJECT_LINK_TARGET_REQUIRED");
+    expect(stderr).not.toContain("Which Project should this directory use?");
+    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("shows unbound suggestions from package.json in JSON mode", async () => {
@@ -329,7 +467,7 @@ describe("project commands", () => {
     expect(result.exitCode).toBe(0);
     expect(stderr).toContain("This directory is not linked to a Prisma Project.");
     expect(stderr).toContain("project:    Not linked");
-    expect(stderr).toContain("Link an existing Project: prisma-cli project link <id-or-name>");
+    expect(stderr).toContain("Link an existing Project you choose: prisma-cli project link <id-or-name>");
     expect(stderr).not.toContain("match:");
     expect(stderr).not.toContain("Select a project");
   });
@@ -652,7 +790,7 @@ describe("project commands", () => {
     expect(stderr).toContain("git → Manage Git repository connections for a project");
     expect(stderr).toContain("Show this directory's Project binding");
     expect(stderr).toContain("Create a Project and link this directory");
-    expect(stderr).toContain("Link this directory to an existing Project");
+    expect(stderr).toContain("Link this directory to a Project");
     expect(stderr).toContain("Connect the resolved project to a GitHub repository");
     expect(stderr).toContain("Disconnect the GitHub repository from the resolved project");
   });

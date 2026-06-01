@@ -18,6 +18,14 @@ export function isValidProjectSetupName(projectName: string): boolean {
   return projectName.trim().length > 0;
 }
 
+export function validateProjectSetupNameText(value: string | undefined, fallback: string): string | undefined {
+  if ((value?.trim() || fallback).trim().length > 0) {
+    return undefined;
+  }
+
+  return "Enter a Project name.";
+}
+
 export function resolveProjectForSetup(
   projectRef: string,
   projects: ProjectCandidate[],

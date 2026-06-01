@@ -161,6 +161,7 @@ These codes are the minimum stable set for the MVP:
 - `USAGE_ERROR`
 - `AUTH_REQUIRED`
 - `PROJECT_SETUP_REQUIRED`
+- `PROJECT_LINK_TARGET_REQUIRED`
 - `PROJECT_CREATE_FAILED`
 - `PROJECT_NOT_FOUND`
 - `PROJECT_AMBIGUOUS`
@@ -200,6 +201,7 @@ Recommended meanings:
 - `USAGE_ERROR`: invalid arguments or invalid command combination
 - `AUTH_REQUIRED`: command needs an authenticated session
 - `PROJECT_SETUP_REQUIRED`: command needs explicit or durable Project context before it can continue
+- `PROJECT_LINK_TARGET_REQUIRED`: `project link` needs the user to choose an existing Project or create a new one
 - `PROJECT_CREATE_FAILED`: Project creation failed before deployment or linking could continue
 - `PROJECT_NOT_FOUND`: requested project does not exist or is not accessible
 - `PROJECT_AMBIGUOUS`: multiple safe project candidates matched
