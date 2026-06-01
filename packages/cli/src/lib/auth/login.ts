@@ -56,6 +56,15 @@ export async function login(options: LoginOptions = {}): Promise<void> {
     });
 
     const authResult = new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        reject(options.signal?.reason);
+      };
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+      const settle = (callback: () => void) => {
+        options.signal?.removeEventListener("abort", onAbort);
+        callback();
+      };
+
       server.on("request", async (req, res) => {
         const url = new URL(`http://${state.host}${req.url}`);
         if (url.pathname !== "/auth/callback") {
@@ -70,20 +79,19 @@ export async function login(options: LoginOptions = {}): Promise<void> {
           res.statusCode = 400;
           const message = error instanceof Error ? error.message : String(error);
           res.end(message);
-          reject(error);
+          settle(() => reject(error));
           return;
         }
 
         const workspaceName = await state.resolveWorkspaceName();
         res.setHeader("Content-Type", "text/html; charset=utf-8");
         res.end(renderSuccessPage(workspaceName));
-        resolve();
+        settle(resolve);
       });
     });
 
     options.signal?.throwIfAborted();
-    await state.openLoginPage();
-    await authResult;
+    await Promise.all([state.openLoginPage(), authResult]);
   } finally {
     if (server.listening) {
       await new Promise<void>((resolve) => server.close(() => resolve()));

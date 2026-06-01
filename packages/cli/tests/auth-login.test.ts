@@ -64,6 +64,39 @@ describe("auth login callback", () => {
     expect(result.body).toContain("height: 36px;");
     expect(result.body).toContain("fill: currentColor !important;");
   });
+
+  it("rejects when the command signal aborts while waiting for the callback", async () => {
+    vi.doMock("@prisma/management-api-sdk", () => ({
+      AuthError: class SDKAuthError extends Error {},
+      createManagementApiSdk: vi.fn().mockReturnValue({
+        getLoginUrl: vi.fn().mockReturnValue({
+          url: "https://auth.example.test/login",
+          state: "state_123",
+          verifier: "verifier_123",
+        }),
+        handleCallback: vi.fn(),
+        client: { GET: vi.fn() },
+      }),
+    }));
+    const controller = new AbortController();
+    const reason = new DOMException("Command canceled", "AbortError");
+    const tokenStorage: TokenStorage = {
+      getTokens: vi.fn(),
+      setTokens: vi.fn(),
+      clearTokens: vi.fn(),
+    };
+
+    const { login } = await import("../src/lib/auth/login");
+
+    await expect(login({
+      hostname: "127.0.0.1",
+      tokenStorage,
+      signal: controller.signal,
+      openUrl: () => {
+        controller.abort(reason);
+      },
+    })).rejects.toBe(reason);
+  });
 });
 
 async function requestSuccessPage(options: {
