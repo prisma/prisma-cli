@@ -55,7 +55,7 @@ function createProjectCreateCommand(runtime: CliRuntime): Command {
 function createProjectLinkCommand(runtime: CliRuntime): Command {
   const command = attachCommandDescriptor(configureRuntimeCommand(new Command("link"), runtime), "project.link");
 
-  command.argument("<id-or-name>", "Project id or name");
+  command.argument("[id-or-name]", "Project id or name");
   addGlobalFlags(command);
 
   command.action(async (projectRef, options) => {
@@ -63,7 +63,7 @@ function createProjectLinkCommand(runtime: CliRuntime): Command {
       runtime,
       "project.link",
       options as Record<string, unknown>,
-      (context) => runProjectLink(context, String(projectRef)),
+      (context) => runProjectLink(context, typeof projectRef === "string" ? projectRef : undefined),
       {
         renderHuman: (context, descriptor, result) => renderProjectSetup(context, descriptor, result),
         renderJson: (result) => serializeProjectSetup(result),

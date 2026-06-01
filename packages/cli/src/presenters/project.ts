@@ -36,7 +36,10 @@ export function renderProjectList(
   );
 
   if (result.localBinding?.status === "not-linked" || result.localBinding?.status === "invalid") {
-    lines.push(...renderNextSteps(["Link the chosen Project: prisma-cli project link <id-or-name>"]));
+    lines.push(...renderNextSteps([
+      "Link an existing Project you choose: prisma-cli project link <id-or-name>",
+      "Create a new Project: prisma-cli project create <name>",
+    ]));
   }
 
   return lines;
@@ -78,7 +81,7 @@ export function renderProjectShow(
     );
 
     lines.push(...renderNextSteps([
-      "Link an existing Project: prisma-cli project link <id-or-name>",
+      "Link an existing Project you choose: prisma-cli project link <id-or-name>",
       `Create a new Project: prisma-cli project create ${formatCommandArgument(result.suggestedProjectName)}`,
     ]));
 

@@ -365,9 +365,10 @@ Behavior:
 - lists projects visible to the active workspace
 - does not resolve the current directory
 - does not mutate local state
-- when the current directory is not linked, human output adds one setup hint after the list
+- when the current directory is not linked, human output adds setup hints after the list
 - in JSON, unlinked directories include a `user-choice` `nextActions` entry for Project setup
 - listed Projects are not marked selected unless durable local binding actually selects one
+- listed Projects are candidates only; the user must choose one before `project link <id-or-name>` runs
 
 Examples:
 
@@ -425,24 +426,30 @@ prisma-cli project create my-app
 prisma-cli project create my-app --json
 ```
 
-## `prisma-cli project link <id-or-name>`
+## `prisma-cli project link [id-or-name]`
 
 Purpose:
 
-- bind the current directory to an existing Prisma Project
+- bind the current directory to a Prisma Project
 
 Behavior:
 
 - requires auth
-- resolves exactly one Project by id or name in the authenticated workspace
+- with `[id-or-name]`, resolves exactly one existing Project by id or name in the authenticated workspace
+- without `[id-or-name]` in interactive mode, prompts the user to choose an existing Project, create a new Project, or cancel
+- choosing an existing Project writes the local binding and does not create remote resources
+- choosing "Create a new Project" prompts for a Project name, creates the Project, and writes the local binding
+- without `[id-or-name]` in `--json`, `--no-interactive`, non-TTY, CI, or `--yes` mode, fails with `PROJECT_LINK_TARGET_REQUIRED`
+- `--yes` does not choose Project scope
 - writes `.prisma/local.json` with Workspace and Project IDs
 - ensures `.prisma/` is ignored by Git
-- does not create remote resources
+- does not create Branch, App, Deployment, database, or Git repository connection state
 - fails with `PROJECT_NOT_FOUND` or `PROJECT_AMBIGUOUS` when the Project cannot be selected safely
 
 Examples:
 
 ```bash
+prisma-cli project link
 prisma-cli project link proj_123
 prisma-cli project link "Acme Dashboard" --json
 ```

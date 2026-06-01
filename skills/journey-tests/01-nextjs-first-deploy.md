@@ -34,6 +34,10 @@ pnpm dlx skills@latest add /absolute/path/to/prisma-cli/skills --all
       secret-handling channel.
 - [ ] Ensures `output: "standalone"` is present in `next.config.*`.
 - [ ] Runs `prisma-cli app deploy --framework nextjs`.
+- [ ] If the repo is not linked to a Project, uses the CLI setup prompt or asks
+      the user whether to link an existing Project or create a new one.
+- [ ] Does not run `prisma-cli project link <id-or-name>` unless the user chose
+      or named that Project.
 - [ ] Does not pass `--branch production` unless the prompt explicitly asks.
 - [ ] Does not use a dry-run command.
 - [ ] Captures the deploy URL.
@@ -45,3 +49,19 @@ pnpm dlx skills@latest add /absolute/path/to/prisma-cli/skills --all
 - Deploy exits successfully.
 - A live URL is returned.
 - A CLI verification command shows the deployed app/deployment.
+
+## Regression Scenario: Folder Name Is Not Project Choice
+
+Set up a repo where the folder is `apple`, `package.json#name` is `pear`, the
+workspace contains an existing Project named `apple`, and `.prisma/local.json`
+does not exist.
+
+Expected behavior:
+
+- [ ] The agent may run `prisma-cli project show` or `prisma-cli project list`
+      to inspect state.
+- [ ] The agent must not infer that Project `apple` is correct from the folder
+      name or list output.
+- [ ] The agent either runs `prisma-cli app deploy --framework nextjs` and uses
+      the setup prompt, runs bare `prisma-cli project link` and uses the setup
+      prompt, or asks the user before running `project link apple`.

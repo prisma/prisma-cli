@@ -9,15 +9,18 @@ import {
 import { requireComputeAuth } from "../lib/auth/guard";
 import {
   buildProjectSetupNextActions,
+  inferTargetName,
   inspectProjectBinding,
   resolveProjectTarget,
   sortProjects,
   type ProjectCandidate,
   type ResolvedProjectTarget,
 } from "../lib/project/resolution";
+import { promptForProjectSetupChoice } from "../lib/project/interactive-setup";
 import { readLocalResolutionPin } from "../lib/project/local-pin";
 import {
   bindProjectToDirectory,
+  formatCommandArgument,
   isValidProjectSetupName,
   projectCreateFailedError,
   projectSetupNameRequiredError,
@@ -123,6 +126,7 @@ function buildProjectListNextActions(localBinding: ProjectListResult["localBindi
   return localBinding?.status === "linked"
     ? []
     : buildProjectSetupNextActions({
+        createCommand: "prisma-cli project create <name>",
         reason: localBinding?.status === "invalid"
           ? "This directory has an invalid local Project binding. Ask the user which Prisma Project to link before running Project-scoped commands."
           : "This directory is not linked to a Prisma Project. Project list shows available Projects, but none is selected for this directory.",
@@ -211,7 +215,7 @@ export async function runProjectCreate(
 
 export async function runProjectLink(
   context: CommandContext,
-  projectRef: string,
+  projectRef: string | undefined,
 ): Promise<CommandSuccess<ProjectSetupResult>> {
   const authState = await requireAuthenticatedAuthState(context);
   const workspace = authState.workspace;
@@ -219,21 +223,33 @@ export async function runProjectLink(
     throw workspaceRequiredError();
   }
 
-  if (!projectRef || !projectRef.trim()) {
-    throw usageError(
-      "Project link requires a Project id or name",
-      "The command cannot choose a Project without an explicit id or name.",
-      "Pass the Project id or name as the first argument.",
-      ["prisma-cli project link proj_123"],
-      "project",
-    );
+  let provider: ReturnType<typeof createPreviewAppProvider> | null = null;
+  let projects: ProjectCandidate[];
+  if (isRealMode(context)) {
+    const client = await requireComputeAuth(context.runtime.env);
+    if (!client) {
+      throw authRequiredError();
+    }
+    provider = createPreviewAppProvider(client);
+    projects = await listRealWorkspaceProjects(client, workspace);
+  } else {
+    projects = listFixtureWorkspaceProjects(context, workspace);
   }
 
-  const projects = isRealMode(context)
-    ? await listRealProjectsForLink(context, workspace)
-    : listFixtureWorkspaceProjects(context, workspace);
-  const project = resolveProjectForSetup(projectRef.trim(), projects, workspace);
-  const result = await bindProjectToDirectory(context, workspace, toProjectSummary(project), "linked");
+  let result: ProjectSetupResult;
+  if (projectRef?.trim()) {
+    const project = resolveProjectForSetup(projectRef.trim(), projects, workspace);
+    result = await bindProjectToDirectory(context, workspace, toProjectSummary(project), "linked");
+  } else if (canPrompt(context) && !context.flags.yes) {
+    result = await resolveInteractiveProjectLinkSetup(
+      context,
+      workspace,
+      projects,
+      provider,
+    );
+  } else {
+    throw await projectLinkTargetRequiredError(context, projects);
+  }
 
   return {
     command: "project.link",
@@ -241,6 +257,94 @@ export async function runProjectLink(
     warnings: [],
     nextSteps: ["prisma-cli app deploy"],
   };
+}
+
+async function resolveInteractiveProjectLinkSetup(
+  context: CommandContext,
+  workspace: AuthWorkspace,
+  projects: ProjectCandidate[],
+  provider: ReturnType<typeof createPreviewAppProvider> | null,
+): Promise<ProjectSetupResult> {
+  const setup = await promptForProjectSetupChoice({
+    context,
+    projects,
+    createProject: (projectName) => {
+      if (!provider) {
+        throw featureUnavailableError(
+          "Project create is not available in fixture mode",
+          "Creating Projects requires live platform integration.",
+          "Rerun without fixture mode enabled to create a Project.",
+          ["prisma-cli auth login"],
+          "project",
+        );
+      }
+      return createProjectForLinkSetup(provider, projectName, workspace);
+    },
+    cancel: {
+      why: "Project link needs a Project before it can continue.",
+      fix: "Choose an existing Project or create a new one, then rerun project link.",
+      nextSteps: ["prisma-cli project link <id-or-name>", "prisma-cli project create <name>"],
+    },
+  });
+
+  return bindProjectToDirectory(context, workspace, setup.project, setup.action);
+}
+
+async function createProjectForLinkSetup(
+  provider: ReturnType<typeof createPreviewAppProvider>,
+  projectName: string,
+  workspace: AuthWorkspace,
+): Promise<ProjectCandidate> {
+  const created = await provider.createProject({ name: projectName }).catch((error) => {
+    throw projectCreateFailedError(error, projectName, workspace, {
+      nextSteps: [
+        "prisma-cli project list",
+        "prisma-cli project link <id-or-name>",
+        `prisma-cli project create ${formatCommandArgument(projectName)}`,
+      ],
+      permissionFix: "Grant the token permission to create Projects in this workspace, or link an existing Project.",
+      fallbackFix: "Retry the command, or choose an existing Project with prisma-cli project link <id-or-name>.",
+    });
+  });
+
+  return {
+    id: created.id,
+    name: created.name,
+    workspace,
+  };
+}
+
+async function projectLinkTargetRequiredError(
+  context: CommandContext,
+  projects: ProjectCandidate[],
+): Promise<CliError> {
+  const suggestedName = await inferTargetName(context.runtime.cwd);
+  const createCommand = `prisma-cli project create ${formatCommandArgument(suggestedName.name)}`;
+  const recoveryCommands = [
+    "prisma-cli project link <id-or-name>",
+    createCommand,
+  ];
+
+  return new CliError({
+    code: "PROJECT_LINK_TARGET_REQUIRED",
+    domain: "project",
+    summary: "Choose a Project to link this directory",
+    why: "This directory is not linked to a Prisma Project. Existing Projects are candidates until the user chooses one, and package or directory names are suggestions only.",
+    fix: "Run prisma-cli project link in a TTY to choose from the setup list, pass a Project id or name, or create a new Project.",
+    meta: {
+      suggestedProjectName: suggestedName.name,
+      suggestedProjectNameSource: suggestedName.source,
+      candidates: sortProjects(projects).map(toProjectSummary),
+      recoveryCommands,
+    },
+    exitCode: 2,
+    nextSteps: ["prisma-cli project list", ...recoveryCommands],
+    nextActions: buildProjectSetupNextActions({
+      suggestedProjectName: suggestedName.name,
+      createCommand,
+      reason: "Project link needs the user to choose an existing Project or create a new one. Existing Projects, package names, and directory names are candidates only, not selections.",
+    }),
+  });
 }
 
 export async function runGitConnect(
@@ -445,18 +549,6 @@ async function resolveRequiredProjectInRealMode(
     listProjects: () => listRealWorkspaceProjects(client, workspace),
     commandName,
   });
-}
-
-async function listRealProjectsForLink(
-  context: CommandContext,
-  workspace: AuthWorkspace,
-): Promise<ProjectCandidate[]> {
-  const client = await requireComputeAuth(context.runtime.env);
-  if (!client) {
-    throw authRequiredError();
-  }
-
-  return listRealWorkspaceProjects(client, workspace);
 }
 
 async function resolveProjectShowInFixtureMode(

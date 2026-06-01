@@ -52,10 +52,18 @@ Next.js app, report a Prisma CLI issue, or understand the deploy model?"
 ## Canonical Model
 
 The Prisma CLI deploy flow resolves `workspace -> project -> branch -> app`.
-`app deploy` is allowed to create missing project, branch, and app state when
-the target is unambiguous. The agent should help the user prepare the local app,
-run the CLI, and interpret the result; it should not recreate the CLI's
-resolution rules in its own logic.
+Project selection is a user-choice boundary: listed Projects, package names, and
+folder names are candidates or suggestions, not permission for the agent to
+choose. The agent should help the user prepare the local app, run the CLI, and
+interpret the result; it should not recreate Project, Branch, or App resolution
+rules in its own logic.
+
+For deploy goals from an unlinked repo, prefer `prisma-cli app deploy` so the
+CLI can enter setup. If the user wants to connect the repo first, use bare
+`prisma-cli project link` in interactive mode. Only run
+`prisma-cli project link <id-or-name>` after the user named or chose that
+Project, and only run `prisma-cli project create <name>` after the user
+confirmed the new Project name.
 
 ## Checklist
 
