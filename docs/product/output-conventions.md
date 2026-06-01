@@ -290,6 +290,12 @@ After setup, keep the confirmation compact:
 Saved .prisma/local.json
 
 Deploying to Acme Dashboard / feat-login / my-app
+
+Detected Next.js
+│  framework:  Next.js
+│  runtime:    HTTP 3000
+
+? Customize build settings? No
 ```
 
 Deploy progress should describe phases without claiming runtime success before

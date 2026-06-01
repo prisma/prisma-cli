@@ -39,7 +39,7 @@ import { requireComputeAuth } from "../lib/auth/guard";
 import { readAuthState } from "../lib/auth/auth-ops";
 import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
 import { parseEnvAssignments } from "../lib/app/env-vars";
-import { renderDeployOutputRows } from "../lib/app/deploy-output";
+import { renderDeployOutputRows, renderDeploySettingsPreview } from "../lib/app/deploy-output";
 import {
   DEFAULT_LOCAL_DEV_PORT,
   resolveLocalBuildType,
@@ -2842,10 +2842,15 @@ async function maybeCustomizeDeploySettings(
     };
   }
 
+  maybeRenderDeploySettingsPreview(context, {
+    framework: options.framework,
+    runtime: options.runtime,
+  });
+
   const shouldCustomize = await confirmPrompt({
     input: context.runtime.stdin,
     output: context.runtime.stderr,
-    message: "Customize settings?",
+    message: "Customize build settings?",
     initialValue: false,
   });
 
@@ -2898,6 +2903,26 @@ async function maybeCustomizeDeploySettings(
     framework,
     runtime,
   };
+}
+
+function maybeRenderDeploySettingsPreview(
+  context: CommandContext,
+  options: {
+    framework: ResolvedDeployFramework;
+    runtime: ResolvedDeployRuntime;
+  },
+): void {
+  if (context.flags.quiet || context.flags.json) {
+    return;
+  }
+
+  context.output.stderr.write(
+    `Detected ${options.framework.displayName}\n`
+      + `${renderDeploySettingsPreview(context.ui, [
+        { key: "framework", value: options.framework.displayName },
+        { key: "runtime", value: `HTTP ${options.runtime.port}` },
+      ]).join("\n")}\n\n`,
+  );
 }
 
 function frameworkDisplayName(framework: DeployFramework): string {
