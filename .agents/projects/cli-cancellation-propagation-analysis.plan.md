@@ -17,7 +17,7 @@ None.
 
 ### Phase 1: Runtime Root And Central Cancellation Error
 
-**Status:** ☐ Not started
+**Status:** ✓ Complete
 
 **Goal:** Establish a thin end-to-end cancellation path from CLI entry to command-runner error output before changing deeper I/O code.
 
@@ -35,11 +35,11 @@ None.
 
 **Acceptance Criteria:**
 
-- **AC1:** A handler that aborts through `runtime.signal` returns a formatted `COMMAND_CANCELED` error for regular commands.
-- **AC2:** A streaming handler that aborts through `runtime.signal` emits a streaming error event instead of raw exception output.
-- **AC3:** Cancellation exits with code `130` and does not alter success output shapes.
-- **AC4:** Existing CLI shell tests pass with no command surface changes.
-- **AC5:** `pnpm --filter @prisma/cli test -- shell.test.ts command-runner-auth.test.ts prompt.test.ts` passes, or equivalent targeted Vitest filters if filenames change.
+- [x] **AC1:** A handler that aborts through `runtime.signal` returns a formatted `COMMAND_CANCELED` error for regular commands.
+- [x] **AC2:** A streaming handler that aborts through `runtime.signal` emits a streaming error event instead of raw exception output.
+- [x] **AC3:** Cancellation exits with code `130` and does not alter success output shapes.
+- [x] **AC4:** Existing CLI shell tests pass with no command surface changes.
+- [x] **AC5:** `pnpm --filter @prisma/cli test -- shell.test.ts command-runner-auth.test.ts prompt.test.ts` passes, or equivalent targeted Vitest filters if filenames change.
 
 ### Phase 2: Command And Controller Signal Plumbing
 

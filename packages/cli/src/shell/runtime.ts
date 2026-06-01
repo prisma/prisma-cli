@@ -14,6 +14,7 @@ export const DEFAULT_STATE_DIR_NAME = path.join(".prisma", "cli");
 export interface CliRuntime {
   cwd: string;
   argv: string[];
+  signal: AbortSignal;
   stdin: NodeJS.ReadStream;
   stdout: NodeJS.WriteStream;
   stderr: NodeJS.WriteStream;

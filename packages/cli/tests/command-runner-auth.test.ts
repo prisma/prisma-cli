@@ -48,6 +48,7 @@ async function createRuntime(argv: string[]): Promise<{
       argv,
       cwd: await createTempCwd(),
       env: { ...process.env },
+      signal: new AbortController().signal,
       stdin: stdin as unknown as NodeJS.ReadStream,
       stdout: stdout as unknown as NodeJS.WriteStream,
       stderr: stderr as unknown as NodeJS.WriteStream,
@@ -82,6 +83,61 @@ describe("command runner auth errors", () => {
     expect(stderr.buffer).toContain("Next step:");
     expect(stderr.buffer).toContain("prisma-cli auth login");
     expect(stderr.buffer).not.toContain("invalid_grant");
+  });
+
+  it("renders abort failures as structured CLI cancellation errors", async () => {
+    const { runtime, stdout } = await createRuntime(["--json", "app", "deploy"]);
+
+    await runCommand(
+      runtime,
+      "app.deploy",
+      {},
+      async () => {
+        throw new DOMException("The operation was aborted", "AbortError");
+      },
+      {
+        renderHuman: () => [],
+      },
+    );
+
+    expect(process.exitCode).toBe(130);
+    expect(JSON.parse(stdout.buffer)).toMatchObject({
+      ok: false,
+      command: "app.deploy",
+      error: {
+        code: "COMMAND_CANCELED",
+        domain: "cli",
+        summary: "Command canceled",
+        why: null,
+        fix: null,
+      },
+      nextSteps: [],
+      nextActions: [],
+    });
+  });
+
+  it("renders aborted runtime failures as human CLI cancellation errors", async () => {
+    const { runtime, stderr } = await createRuntime(["app", "deploy"]);
+    const controller = new AbortController();
+    runtime.signal = controller.signal;
+
+    await runCommand(
+      runtime,
+      "app.deploy",
+      {},
+      async () => {
+        controller.abort();
+        throw new Error("raw implementation error");
+      },
+      {
+        renderHuman: () => [],
+      },
+    );
+
+    expect(process.exitCode).toBe(130);
+    expect(stderr.buffer).toContain("Command canceled [COMMAND_CANCELED]");
+    expect(stderr.buffer).not.toContain("raw implementation error");
+    expect(stderr.buffer).not.toContain("More: Re-run with --trace");
   });
 
   it("shows SDK auth details only with trace enabled", async () => {
@@ -119,6 +175,26 @@ describe("command runner auth errors", () => {
         domain: "auth",
       },
       nextSteps: ["prisma-cli auth login"],
+    });
+  });
+
+  it("renders streaming abort failures as JSON cancellation events", async () => {
+    const { runtime, stdout } = await createRuntime(["--json", "app", "logs"]);
+
+    await runStreamingCommand(runtime, "app.logs", {}, async () => {
+      throw new DOMException("The operation was aborted", "AbortError");
+    });
+
+    expect(process.exitCode).toBe(130);
+    expect(JSON.parse(stdout.buffer)).toMatchObject({
+      type: "error",
+      command: "app.logs",
+      error: {
+        code: "COMMAND_CANCELED",
+        domain: "cli",
+      },
+      nextSteps: [],
+      nextActions: [],
     });
   });
 });
