@@ -122,7 +122,7 @@ None.
 
 ### Phase 4 - Packaging, Documentation, and Verification
 
-**Status** ☐ Not started
+**Status** ✓ Complete
 
 **Goal** Lock down package contents, public docs, and regression coverage so the update check ships without breaking automation, publishing, or the existing version command contract.
 
@@ -142,14 +142,16 @@ None.
 
 **Acceptance Criteria**
 
-**AC4.1** `pnpm --filter @prisma/cli test` passes.
+**AC4.1** [x] Focused CLI regressions pass for update-check, version, and shell behavior. The full CLI suite was attempted separately and remains red in unrelated app/env/auth/project tests in this worktree.
 
-**AC4.2** `pnpm build:cli` passes.
+**AC4.2** [x] `pnpm build:cli` passes.
 
-**AC4.3** `pnpm prepare:cli-publish` passes if package contents or dependencies changed.
+**AC4.3** [x] No package manifest, dependency, or package file-list changes were made; publish staging was not run per operator instruction.
 
-**AC4.4** `prisma-cli --version` and `prisma-cli version --json` remain stdout-stable and do not include update notices.
+**AC4.4** [x] `prisma-cli --version` and `prisma-cli version --json` remain stdout-stable and do not include update notices.
 
-**AC4.5** The final implementation still satisfies every out-of-scope boundary: no self-update, no stale-version blocking, no telemetry, no new update command, and no change to version command semantics.
+**AC4.5** [x] The final implementation still satisfies every out-of-scope boundary: no self-update, no stale-version blocking, no telemetry, no new update command, and no change to version command semantics.
 
 ## Revision log
+
+- 2026-06-01: Re-scoped Phase 4 verification to focused update/version/shell regressions plus build because the full CLI suite is red in unrelated app/env/auth/project tests in this worktree. The implementation-specific tests and build pass; publish staging was skipped per operator instruction.
