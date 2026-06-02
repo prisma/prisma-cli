@@ -16,7 +16,7 @@
   "devDependencies": {
     "gray-matter": "^4.0.3",
     "pkg-pr-new": "^0.0.75",
-    "skills": "^1.5.7",
-    "tsx": "^4.19.2"
+    "skills": "^1.5.9",
+    "tsx": "^4.22.4"
   }
 }

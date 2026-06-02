@@ -9,6 +9,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function mockPreviewBuildStrategy() {
+  return vi.fn().mockImplementation(function (options: object) {
+    return { options };
+  });
+}
+
 describe("preview app provider", () => {
   it("forwards build strategy options and port mapping into compute deploy", async () => {
     const deploy = vi.fn().mockResolvedValue({
@@ -24,7 +30,7 @@ describe("preview app provider", () => {
         serviceEndpointDomain: "hello-world.fra.prisma.build",
       },
     });
-    const PreviewBuildStrategy = vi.fn().mockImplementation((options: object) => ({ options }));
+    const PreviewBuildStrategy = mockPreviewBuildStrategy();
 
     vi.doMock("../src/lib/app/preview-build", () => ({
       PreviewBuildStrategy,
@@ -78,7 +84,7 @@ describe("preview app provider", () => {
         serviceEndpointDomain: "hello-world.fra.prisma.build",
       },
     });
-    const PreviewBuildStrategy = vi.fn().mockImplementation((options: object) => ({ options }));
+    const PreviewBuildStrategy = mockPreviewBuildStrategy();
     const client = {
       GET: vi.fn().mockResolvedValue({
         data: {
@@ -198,7 +204,7 @@ describe("preview app provider", () => {
         serviceEndpointDomain: "hello-world.fra.prisma.build",
       },
     });
-    const PreviewBuildStrategy = vi.fn().mockImplementation((options: object) => ({ options }));
+    const PreviewBuildStrategy = mockPreviewBuildStrategy();
     const client = {
       GET: vi.fn().mockImplementation((pathName: string) => {
         if (pathName === "/v1/projects/{projectId}/branches") {

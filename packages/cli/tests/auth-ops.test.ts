@@ -12,6 +12,12 @@ function encodeJwt(claims: Record<string, unknown>): string {
   return `header.${payload}.signature`;
 }
 
+function mockFileTokenStorage(getTokens: ReturnType<typeof vi.fn>) {
+  return vi.fn().mockImplementation(function () {
+    return { getTokens };
+  });
+}
+
 describe("readAuthState", () => {
   it("resolves the current OAuth principal from /v1/me when available", async () => {
     const getTokens = vi.fn().mockResolvedValue({
@@ -49,9 +55,7 @@ describe("readAuthState", () => {
     });
 
     vi.doMock("../src/adapters/token-storage", () => ({
-      FileTokenStorage: vi.fn().mockImplementation(() => ({
-        getTokens,
-      })),
+      FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
@@ -104,9 +108,7 @@ describe("readAuthState", () => {
     });
 
     vi.doMock("../src/adapters/token-storage", () => ({
-      FileTokenStorage: vi.fn().mockImplementation(() => ({
-        getTokens,
-      })),
+      FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
@@ -147,9 +149,7 @@ describe("readAuthState", () => {
     });
 
     vi.doMock("../src/adapters/token-storage", () => ({
-      FileTokenStorage: vi.fn().mockImplementation(() => ({
-        getTokens,
-      })),
+      FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
@@ -184,9 +184,7 @@ describe("readAuthState", () => {
     });
 
     vi.doMock("../src/adapters/token-storage", () => ({
-      FileTokenStorage: vi.fn().mockImplementation(() => ({
-        getTokens,
-      })),
+      FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
@@ -241,9 +239,7 @@ describe("readAuthState", () => {
     });
 
     vi.doMock("../src/adapters/token-storage", () => ({
-      FileTokenStorage: vi.fn().mockImplementation(() => ({
-        getTokens,
-      })),
+      FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
@@ -291,7 +287,7 @@ describe("readAuthState", () => {
     });
 
     vi.doMock("../src/adapters/token-storage", () => ({
-      FileTokenStorage: vi.fn().mockImplementation(() => ({ getTokens })),
+      FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
 
@@ -321,9 +317,7 @@ describe("readAuthState", () => {
     });
 
     vi.doMock("../src/adapters/token-storage", () => ({
-      FileTokenStorage: vi.fn().mockImplementation(() => ({
-        getTokens: vi.fn(),
-      })),
+      FileTokenStorage: mockFileTokenStorage(vi.fn()),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
 
@@ -355,9 +349,7 @@ describe("readAuthState", () => {
     });
 
     vi.doMock("../src/adapters/token-storage", () => ({
-      FileTokenStorage: vi.fn().mockImplementation(() => ({
-        getTokens: vi.fn(),
-      })),
+      FileTokenStorage: mockFileTokenStorage(vi.fn()),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
 
@@ -384,9 +376,7 @@ describe("readAuthState", () => {
     });
 
     vi.doMock("../src/adapters/token-storage", () => ({
-      FileTokenStorage: vi.fn().mockImplementation(() => ({
-        getTokens: vi.fn(),
-      })),
+      FileTokenStorage: mockFileTokenStorage(vi.fn()),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
 
@@ -464,7 +454,7 @@ describe("readAuthState", () => {
   it("returns signed-out state when PRISMA_SERVICE_TOKEN does not carry a workspace subject", async () => {
     const getTokens = vi.fn();
     vi.doMock("../src/adapters/token-storage", () => ({
-      FileTokenStorage: vi.fn().mockImplementation(() => ({ getTokens })),
+      FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth: vi.fn(),
@@ -489,7 +479,7 @@ describe("readAuthState", () => {
     const getTokens = vi.fn().mockResolvedValue(null);
 
     vi.doMock("../src/adapters/token-storage", () => ({
-      FileTokenStorage: vi.fn().mockImplementation(() => ({ getTokens })),
+      FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth: vi.fn(),
