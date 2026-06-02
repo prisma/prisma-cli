@@ -113,7 +113,7 @@ the result, and route CLI / Compute feedback to the right Prisma channel.
 
 ## Beta notes
 
-- Requires Node.js 20 or newer.
+- Requires Node.js 22.12 or newer.
 - This is a beta package and may change quickly.
 - Official beta releases publish as `@prisma/cli`.
 - The package binary is `prisma-cli`, not `prisma`, during beta.

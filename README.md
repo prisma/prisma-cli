@@ -46,7 +46,7 @@ pnpm prisma app deploy
 
 Requirements:
 
-- Node.js 20+
+- Node.js 22.12 or newer
 - pnpm 10+
 
 Install dependencies:
