@@ -20,9 +20,14 @@ export async function readGitOriginRemote(cwd: string, signal?: AbortSignal): Pr
     });
     const remote = stdout.trim();
     return remote.length > 0 ? remote : null;
-  } catch {
+  } catch (error) {
+    if (signal?.aborted || isAbortError(error)) throw error;
     return null;
   }
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
 }
 
 export function parseGitHubRepositoryUrl(value: string): GitHubRepositoryReference | null {

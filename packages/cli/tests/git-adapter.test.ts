@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseGitHubRepositoryUrl } from "../src/adapters/git";
+import { parseGitHubRepositoryUrl, readGitOriginRemote } from "../src/adapters/git";
 
 describe("git adapter", () => {
   it("parses supported GitHub repository URLs", () => {
@@ -38,5 +38,14 @@ describe("git adapter", () => {
     expect(parseGitHubRepositoryUrl("https://gitlab.com/prisma/prisma-cli")).toBeNull();
     expect(parseGitHubRepositoryUrl("https://github.com/prisma/prisma-cli/issues")).toBeNull();
     expect(parseGitHubRepositoryUrl("not a url")).toBeNull();
+  });
+
+  it("preserves cancellation while reading the origin remote", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(readGitOriginRemote(process.cwd(), controller.signal)).rejects.toMatchObject({
+      name: "AbortError",
+    });
   });
 });

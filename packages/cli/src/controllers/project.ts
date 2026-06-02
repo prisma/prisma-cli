@@ -108,7 +108,7 @@ export async function runProjectList(context: CommandContext): Promise<CommandSu
 
   const projectUseCases = createProjectUseCases(createCliUseCaseGateways(context));
   const result = await projectUseCases.list(authState);
-  const localBinding = await readProjectListLocalBinding(context.runtime.cwd, workspace, result.projects);
+  const localBinding = await readProjectListLocalBinding(context.runtime.cwd, workspace, result.projects, context.runtime.signal);
   const nextActions = buildProjectListNextActions(localBinding);
 
   return {
@@ -692,6 +692,7 @@ interface SourceRepositoryApiClient {
         providerRepositoryId: number;
         installationId?: string;
       };
+      signal?: AbortSignal;
     },
   ): Promise<SourceRepositoryApiResult<{ data: SourceRepositoryResponse }>>;
   GET(
@@ -704,6 +705,7 @@ interface SourceRepositoryApiClient {
           limit?: number;
         };
       };
+      signal?: AbortSignal;
     },
   ): Promise<SourceRepositoryApiResult<{
     data: SourceRepositoryResponse[];
@@ -722,6 +724,7 @@ interface SourceRepositoryApiClient {
           limit?: number;
         };
       };
+      signal?: AbortSignal;
     },
   ): Promise<SourceRepositoryApiResult<{
     data: ScmInstallationResponse[];
@@ -742,6 +745,7 @@ interface SourceRepositoryApiClient {
           limit?: number;
         };
       };
+      signal?: AbortSignal;
     },
   ): Promise<SourceRepositoryApiResult<{
     data: ScmRepositoryResponse[];
@@ -757,6 +761,7 @@ interface SourceRepositoryApiClient {
         provider: "github";
         workspaceId: string;
       };
+      signal?: AbortSignal;
     },
   ): Promise<SourceRepositoryApiResult<{
     data: {
@@ -774,6 +779,7 @@ interface SourceRepositoryApiClient {
           id: string;
         };
       };
+      signal?: AbortSignal;
     },
   ): Promise<SourceRepositoryApiResult<unknown>>;
 }

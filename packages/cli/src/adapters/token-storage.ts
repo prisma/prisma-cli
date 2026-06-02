@@ -128,16 +128,23 @@ export class FileTokenStorage implements TokenStorage {
 
     while (true) {
       this.signal?.throwIfAborted();
+      let lockFileCreated = false;
       try {
         // open does not accept AbortSignal; check before the filesystem boundary.
         const handle = await fs.open(this.lockFilePath, "wx");
+        lockFileCreated = true;
         try {
-          await handle.writeFile(lockId, { encoding: "utf8", signal: this.signal });
+          this.signal?.throwIfAborted();
+          await handle.writeFile(lockId, { encoding: "utf8" });
+          this.signal?.throwIfAborted();
         } finally {
           await handle.close();
         }
         return lockId;
       } catch (error) {
+        if (lockFileCreated) {
+          await fs.unlink(this.lockFilePath).catch(() => undefined);
+        }
         const code = (error as NodeJS.ErrnoException).code;
         if (code !== "EEXIST") throw error;
 
