@@ -97,7 +97,9 @@ export class LocalStateStore {
     this.signal?.throwIfAborted();
     // mkdir does not accept AbortSignal; check before the filesystem boundary.
     await mkdir(path.dirname(this.stateFilePath), { recursive: true });
-    await writeFile(this.stateFilePath, `${JSON.stringify(state, null, 2)}\n`, { encoding: "utf8", signal: this.signal });
+    this.signal?.throwIfAborted();
+    await writeFile(this.stateFilePath, `${JSON.stringify(state, null, 2)}\n`, { encoding: "utf8" });
+    this.signal?.throwIfAborted();
   }
 
   async setAuthSession(session: NonNullable<LocalState["auth"]>): Promise<LocalState> {
