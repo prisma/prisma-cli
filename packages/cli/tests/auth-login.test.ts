@@ -80,7 +80,7 @@ describe("auth login callback", () => {
           state: "state_123",
           verifier: "verifier_123",
         }),
-        handleCallback: vi.fn(),
+        handleCallback: vi.fn().mockReturnValue(new Promise(() => {})),
         client: { GET: vi.fn() },
       }),
     }));
