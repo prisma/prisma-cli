@@ -18,7 +18,9 @@ import { CLIENT_ID, getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "./client";
  */
 export async function requireComputeAuth(
   env: NodeJS.ProcessEnv = process.env,
+  signal?: AbortSignal,
 ): Promise<ManagementApiClient | null> {
+  signal?.throwIfAborted();
   const rawToken = env[SERVICE_TOKEN_ENV_VAR];
 
   if (rawToken !== undefined) {
@@ -34,7 +36,7 @@ export async function requireComputeAuth(
     });
   }
 
-  const tokenStorage = new FileTokenStorage(env);
+  const tokenStorage = new FileTokenStorage(env, signal);
   const tokens = await tokenStorage.getTokens();
 
   if (!tokens) {

@@ -63,8 +63,9 @@ async function readProjectListLocalBinding(
   cwd: string,
   workspace: AuthWorkspace,
   projects: Array<Pick<ProjectCandidate, "id">>,
+  signal: AbortSignal,
 ): Promise<ProjectListResult["localBinding"]> {
-  const pin = await readLocalResolutionPin(cwd);
+  const pin = await readLocalResolutionPin(cwd, signal);
   if (pin.kind === "present") {
     return pin.pin.workspaceId === workspace.id && projects.some((project) => project.id === pin.pin.projectId)
       ? { status: "linked" }
@@ -84,12 +85,12 @@ export async function runProjectList(context: CommandContext): Promise<CommandSu
   }
 
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(context.runtime.env);
+    const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
     if (!client) {
       throw authRequiredError();
     }
-    const projects = sortProjects(await listRealWorkspaceProjects(client, workspace));
-    const localBinding = await readProjectListLocalBinding(context.runtime.cwd, workspace, projects);
+    const projects = sortProjects(await listRealWorkspaceProjects(client, workspace, context.runtime.signal));
+    const localBinding = await readProjectListLocalBinding(context.runtime.cwd, workspace, projects, context.runtime.signal);
     const nextActions = buildProjectListNextActions(localBinding);
 
     return {
@@ -107,7 +108,7 @@ export async function runProjectList(context: CommandContext): Promise<CommandSu
 
   const projectUseCases = createProjectUseCases(createCliUseCaseGateways(context));
   const result = await projectUseCases.list(authState);
-  const localBinding = await readProjectListLocalBinding(context.runtime.cwd, workspace, result.projects);
+  const localBinding = await readProjectListLocalBinding(context.runtime.cwd, workspace, result.projects, context.runtime.signal);
   const nextActions = buildProjectListNextActions(localBinding);
 
   return {
@@ -186,14 +187,14 @@ export async function runProjectCreate(
     );
   }
 
-  const client = await requireComputeAuth(context.runtime.env);
+  const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
   if (!client) {
     throw authRequiredError();
   }
 
   const provider = createPreviewAppProvider(client);
   const name = projectName.trim();
-  const created = await provider.createProject({ name }).catch((error) => {
+  const created = await provider.createProject({ name, signal: context.runtime.signal }).catch((error) => {
     throw projectCreateFailedError(error, name, workspace, {
       nextSteps: ["prisma-cli project list", "prisma-cli project link <id-or-name>"],
       permissionFix: "Grant the token permission to create Projects in this workspace, or link an existing Project.",
@@ -226,12 +227,12 @@ export async function runProjectLink(
   let provider: ReturnType<typeof createPreviewAppProvider> | null = null;
   let projects: ProjectCandidate[];
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(context.runtime.env);
+    const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
     if (!client) {
       throw authRequiredError();
     }
     provider = createPreviewAppProvider(client);
-    projects = await listRealWorkspaceProjects(client, workspace);
+    projects = await listRealWorkspaceProjects(client, workspace, context.runtime.signal);
   } else {
     projects = listFixtureWorkspaceProjects(context, workspace);
   }
@@ -278,7 +279,7 @@ async function resolveInteractiveProjectLinkSetup(
           "project",
         );
       }
-      return createProjectForLinkSetup(provider, projectName, workspace);
+      return createProjectForLinkSetup(provider, projectName, workspace, context.runtime.signal);
     },
     cancel: {
       why: "Project link needs a Project before it can continue.",
@@ -294,8 +295,9 @@ async function createProjectForLinkSetup(
   provider: ReturnType<typeof createPreviewAppProvider>,
   projectName: string,
   workspace: AuthWorkspace,
+  signal: AbortSignal,
 ): Promise<ProjectCandidate> {
-  const created = await provider.createProject({ name: projectName }).catch((error) => {
+  const created = await provider.createProject({ name: projectName, signal }).catch((error) => {
     throw projectCreateFailedError(error, projectName, workspace, {
       nextSteps: [
         "prisma-cli project list",
@@ -318,7 +320,7 @@ async function projectLinkTargetRequiredError(
   context: CommandContext,
   projects: ProjectCandidate[],
 ): Promise<CliError> {
-  const suggestedName = await inferTargetName(context.runtime.cwd);
+  const suggestedName = await inferTargetName(context.runtime.cwd, context.runtime.signal);
   const createCommand = `prisma-cli project create ${formatCommandArgument(suggestedName.name)}`;
   const recoveryCommands = [
     "prisma-cli project link <id-or-name>",
@@ -359,7 +361,7 @@ export async function runGitConnect(
   }
 
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(context.runtime.env);
+    const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
     if (!client) {
       throw authRequiredError();
     }
@@ -367,7 +369,7 @@ export async function runGitConnect(
     const target = await resolveRequiredProjectInRealMode(context, workspace, options.project, "git connect");
     const repository = await resolveRepositoryForConnect(context, gitUrl);
     const api = client as unknown as SourceRepositoryApiClient;
-    const existing = await readFirstSourceRepository(api, target.project.id);
+    const existing = await readFirstSourceRepository(api, target.project.id, context.runtime.signal);
 
     if (existing) {
       const existingConnection = toRepositoryConnection(existing);
@@ -394,6 +396,7 @@ export async function runGitConnect(
         providerRepositoryId: resolvedRepository.repository.id,
         installationId: resolvedRepository.installation.id,
       },
+      signal: context.runtime.signal,
     });
 
     if (error || !data) {
@@ -456,14 +459,14 @@ export async function runGitDisconnect(
   }
 
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(context.runtime.env);
+    const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
     if (!client) {
       throw authRequiredError();
     }
 
     const target = await resolveRequiredProjectInRealMode(context, workspace, options.project, "git disconnect");
     const api = client as unknown as SourceRepositoryApiClient;
-    const existing = await readFirstSourceRepository(api, target.project.id);
+    const existing = await readFirstSourceRepository(api, target.project.id, context.runtime.signal);
 
     if (!existing) {
       throw repoNotConnectedError();
@@ -475,6 +478,7 @@ export async function runGitDisconnect(
           id: existing.id,
         },
       },
+      signal: context.runtime.signal,
     });
 
     if (error) {
@@ -517,7 +521,7 @@ async function resolveProjectShowInRealMode(
   workspace: AuthWorkspace,
   explicitProject: string | undefined,
 ): Promise<ProjectShowResult> {
-  const client = await requireComputeAuth(context.runtime.env);
+  const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
   if (!client) {
     throw authRequiredError();
   }
@@ -526,7 +530,7 @@ async function resolveProjectShowInRealMode(
     context,
     workspace,
     explicitProject,
-    listProjects: () => listRealWorkspaceProjects(client, workspace),
+    listProjects: () => listRealWorkspaceProjects(client, workspace, context.runtime.signal),
     commandName: "project show",
   });
 }
@@ -537,7 +541,7 @@ async function resolveRequiredProjectInRealMode(
   explicitProject: string | undefined,
   commandName: string,
 ): Promise<ResolvedProjectTarget> {
-  const client = await requireComputeAuth(context.runtime.env);
+  const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
   if (!client) {
     throw authRequiredError();
   }
@@ -546,7 +550,7 @@ async function resolveRequiredProjectInRealMode(
     context,
     workspace,
     explicitProject,
-    listProjects: () => listRealWorkspaceProjects(client, workspace),
+    listProjects: () => listRealWorkspaceProjects(client, workspace, context.runtime.signal),
     commandName,
   });
 }
@@ -583,8 +587,9 @@ async function resolveRequiredProjectInFixtureMode(
 export async function listRealWorkspaceProjects(
   client: ManagementApiClient,
   workspace: AuthWorkspace,
+  signal?: AbortSignal,
 ): Promise<ProjectCandidate[]> {
-  const { data } = await client.GET("/v1/projects", {});
+  const { data } = await client.GET("/v1/projects", { signal });
   return sortProjects(
     (data?.data ?? [])
       .filter((project) => project.workspace.id === workspace.id)
@@ -687,6 +692,7 @@ interface SourceRepositoryApiClient {
         providerRepositoryId: number;
         installationId?: string;
       };
+      signal?: AbortSignal;
     },
   ): Promise<SourceRepositoryApiResult<{ data: SourceRepositoryResponse }>>;
   GET(
@@ -699,6 +705,7 @@ interface SourceRepositoryApiClient {
           limit?: number;
         };
       };
+      signal?: AbortSignal;
     },
   ): Promise<SourceRepositoryApiResult<{
     data: SourceRepositoryResponse[];
@@ -717,6 +724,7 @@ interface SourceRepositoryApiClient {
           limit?: number;
         };
       };
+      signal?: AbortSignal;
     },
   ): Promise<SourceRepositoryApiResult<{
     data: ScmInstallationResponse[];
@@ -737,6 +745,7 @@ interface SourceRepositoryApiClient {
           limit?: number;
         };
       };
+      signal?: AbortSignal;
     },
   ): Promise<SourceRepositoryApiResult<{
     data: ScmRepositoryResponse[];
@@ -752,6 +761,7 @@ interface SourceRepositoryApiClient {
         provider: "github";
         workspaceId: string;
       };
+      signal?: AbortSignal;
     },
   ): Promise<SourceRepositoryApiResult<{
     data: {
@@ -769,6 +779,7 @@ interface SourceRepositoryApiClient {
           id: string;
         };
       };
+      signal?: AbortSignal;
     },
   ): Promise<SourceRepositoryApiResult<unknown>>;
 }
@@ -777,7 +788,7 @@ async function resolveRepositoryForConnect(
   context: CommandContext,
   gitUrl: string | undefined,
 ): Promise<GitHubRepositoryReference> {
-  const remoteUrl = gitUrl ?? await readGitOriginRemote(context.runtime.cwd);
+  const remoteUrl = gitUrl ?? await readGitOriginRemote(context.runtime.cwd, context.runtime.signal);
 
   if (!remoteUrl) {
     throw usageError(
@@ -803,13 +814,13 @@ async function resolveInstalledRepository(
   workspaceId: string,
   repository: GitHubRepositoryReference,
 ): Promise<InstalledRepositoryMatch> {
-  const installations = await listScmInstallations(api, workspaceId);
-  const lookup = await findRepositoryInInstallations(api, installations, repository);
+  const installations = await listScmInstallations(api, workspaceId, context.runtime.signal);
+  const lookup = await findRepositoryInInstallations(api, installations, repository, context.runtime.signal);
   if (lookup.match) {
     return lookup.match;
   }
 
-  const installUrl = await createGitHubInstallIntent(api, workspaceId);
+  const installUrl = await createGitHubInstallIntent(api, workspaceId, context.runtime.signal);
   const canWait = canPrompt(context);
   const opened = await openInstallUrlIfInteractive(context, installUrl);
 
@@ -839,6 +850,7 @@ async function findRepositoryInInstallations(
   api: SourceRepositoryApiClient,
   installations: ScmInstallationResponse[],
   repository: GitHubRepositoryReference,
+  signal: AbortSignal,
 ): Promise<InstallationRepositoryLookup> {
   let inspectableInstallationCount = 0;
 
@@ -847,7 +859,7 @@ async function findRepositoryInInstallations(
       continue;
     }
 
-    const matchedRepository = await findRepositoryInInstallationIfAvailable(api, installation.id, repository);
+    const matchedRepository = await findRepositoryInInstallationIfAvailable(api, installation.id, repository, signal);
     if (matchedRepository === "unavailable") {
       continue;
     }
@@ -888,9 +900,10 @@ async function waitForInstalledRepository(
   let inspectableInstallationCount = 0;
 
   while (Date.now() <= deadline) {
-    const installations = await listScmInstallations(api, workspaceId);
+    context.runtime.signal.throwIfAborted();
+    const installations = await listScmInstallations(api, workspaceId, context.runtime.signal);
 
-    const lookup = await findRepositoryInInstallations(api, installations, repository);
+    const lookup = await findRepositoryInInstallations(api, installations, repository, context.runtime.signal);
     inspectableInstallationCount = lookup.inspectableInstallationCount;
     if (lookup.match) {
       return { match: lookup.match, inspectableInstallationCount };
@@ -901,7 +914,7 @@ async function waitForInstalledRepository(
       break;
     }
 
-    await sleep(Math.min(intervalMs, remainingMs));
+    await sleep(Math.min(intervalMs, remainingMs), context.runtime.signal);
   }
 
   return { match: null, inspectableInstallationCount };
@@ -942,13 +955,25 @@ function writeInstallWaitStatus(
   context.output.stderr.write(`${lines.join("\n")}\n`);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(signal.reason);
+    };
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 async function listScmInstallations(
   api: SourceRepositoryApiClient,
   workspaceId: string,
+  signal: AbortSignal,
 ): Promise<ScmInstallationResponse[]> {
   const installations: ScmInstallationResponse[] = [];
   let cursor: string | undefined;
@@ -963,6 +988,7 @@ async function listScmInstallations(
           ...(cursor ? { cursor } : {}),
         },
       },
+      signal,
     });
 
     if (error || !data) {
@@ -985,6 +1011,7 @@ async function findRepositoryInInstallation(
   api: SourceRepositoryApiClient,
   installationId: string,
   repository: GitHubRepositoryReference,
+  signal: AbortSignal,
 ): Promise<ScmRepositoryResponse | null> {
   const expectedFullName = repository.fullName.toLowerCase();
   let cursor: string | undefined;
@@ -1001,6 +1028,7 @@ async function findRepositoryInInstallation(
           ...(cursor ? { cursor } : {}),
         },
       },
+      signal,
     });
 
     if (error || !data) {
@@ -1050,10 +1078,12 @@ async function findRepositoryInInstallationIfAvailable(
   api: SourceRepositoryApiClient,
   installationId: string,
   repository: GitHubRepositoryReference,
+  signal: AbortSignal,
 ): Promise<ScmRepositoryResponse | null | "unavailable"> {
   try {
-    return await findRepositoryInInstallation(api, installationId, repository);
+    return await findRepositoryInInstallation(api, installationId, repository, signal);
   } catch (error) {
+    if (signal.aborted) throw error;
     if (isUnavailableScmInstallationError(error)) {
       return "unavailable";
     }
@@ -1073,12 +1103,14 @@ function isUnavailableScmInstallationError(error: unknown): boolean {
 async function createGitHubInstallIntent(
   api: SourceRepositoryApiClient,
   workspaceId: string,
+  signal: AbortSignal,
 ): Promise<string> {
   const { data, error, response } = await api.POST("/v1/scm-installations/install-intents", {
     body: {
       provider: "github",
       workspaceId,
     },
+    signal,
   });
 
   if (error || !data) {
@@ -1097,9 +1129,13 @@ async function openInstallUrlIfInteractive(
   }
 
   try {
+    context.runtime.signal.throwIfAborted();
+    // Browser launch cannot consume AbortSignal; check immediately before and after the boundary.
     await open(installUrl);
+    context.runtime.signal.throwIfAborted();
     return true;
-  } catch {
+  } catch (error) {
+    if (context.runtime.signal.aborted) throw error;
     return false;
   }
 }
@@ -1107,6 +1143,7 @@ async function openInstallUrlIfInteractive(
 async function readFirstSourceRepository(
   api: SourceRepositoryApiClient,
   projectId: string,
+  signal: AbortSignal,
 ): Promise<SourceRepositoryResponse | null> {
   const { data, error, response } = await api.GET("/v1/source-repositories", {
     params: {
@@ -1115,6 +1152,7 @@ async function readFirstSourceRepository(
         limit: 1,
       },
     },
+    signal,
   });
 
   if (error || !data) {

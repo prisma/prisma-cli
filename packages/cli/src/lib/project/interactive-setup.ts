@@ -65,7 +65,7 @@ export async function promptForProjectSetupChoice(options: {
     };
   }
 
-  const suggestedName = await inferTargetName(options.context.runtime.cwd);
+  const suggestedName = await inferTargetName(options.context.runtime.cwd, options.context.runtime.signal);
   const rawName = await textPrompt({
     input: options.context.runtime.stdin,
     output: options.context.runtime.stderr,

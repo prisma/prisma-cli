@@ -155,6 +155,7 @@ function resolveRuntime(options: RunCliOptions): CliRuntime {
     argv: options.argv ?? process.argv.slice(2),
     cwd: options.cwd ?? process.env.INIT_CWD ?? process.cwd(),
     env: options.env ?? process.env,
+    signal: options.signal ?? new AbortController().signal,
     stdin: options.stdin ?? process.stdin,
     stdout: options.stdout ?? process.stdout,
     stderr: options.stderr ?? process.stderr,

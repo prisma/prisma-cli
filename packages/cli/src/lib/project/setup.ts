@@ -50,8 +50,8 @@ export async function bindProjectToDirectory(
   await writeLocalResolutionPin(context.runtime.cwd, {
     workspaceId: workspace.id,
     projectId: project.id,
-  });
-  await ensureLocalResolutionPinGitignore(context.runtime.cwd);
+  }, context.runtime.signal);
+  await ensureLocalResolutionPinGitignore(context.runtime.cwd, context.runtime.signal);
 
   return {
     workspace,

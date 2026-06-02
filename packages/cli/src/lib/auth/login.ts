@@ -31,6 +31,7 @@ export interface LoginOptions {
   port?: number;
   openUrl?: (url: string) => Promise<unknown> | unknown;
   env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
   input?: Readable;
   output?: Writable;
 }
@@ -60,6 +61,7 @@ export async function login(options: LoginOptions = {}): Promise<void> {
       authBaseUrl: options.authBaseUrl,
       openUrl: options.openUrl,
       env: options.env,
+      signal: options.signal,
       output,
     });
 
@@ -85,6 +87,15 @@ export async function login(options: LoginOptions = {}): Promise<void> {
     };
 
     const httpResult = new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        reject(options.signal?.reason);
+      };
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+      const settle = (callback: () => void) => {
+        options.signal?.removeEventListener("abort", onAbort);
+        callback();
+      };
+
       server.on("request", async (req, res) => {
         const url = new URL(`http://${state.host}${req.url}`);
         if (url.pathname !== "/auth/callback") {
@@ -104,37 +115,34 @@ export async function login(options: LoginOptions = {}): Promise<void> {
 
         try {
           await completeOnce(url);
+          const workspaceName = await state.resolveWorkspaceName();
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.end(renderSuccessPage(workspaceName));
+          settle(resolve);
         } catch (error) {
           res.statusCode = 400;
           const message =
             error instanceof Error ? error.message : String(error);
           res.end(message);
-          reject(error);
+          settle(() => reject(error));
           return;
         }
-
-        const workspaceName = await state.resolveWorkspaceName();
-        res.setHeader("Content-Type", "text/html; charset=utf-8");
-        res.end(renderSuccessPage(workspaceName));
-        resolve();
       });
     });
 
-    await state.openLoginPage(interactive);
-
+    options.signal?.throwIfAborted();
     // Only race the paste flow when stdin is a TTY we can actually prompt on.
     // Without one (CI, pipes, tests) the browser callback is the only path.
-    if (interactive) {
-      const pasteResult = consumePastedCallback({
+    const callbackResult = interactive
+      ? Promise.race([httpResult, consumePastedCallback({
         input,
         output,
         signal: pasteAbort.signal,
         complete: completeOnce,
-      });
-      await Promise.race([httpResult, pasteResult]);
-    } else {
-      await httpResult;
-    }
+      })])
+      : httpResult;
+
+    await Promise.all([state.openLoginPage(interactive), callbackResult]);
   } finally {
     pasteAbort.abort();
     if (server.listening) {
@@ -220,11 +228,12 @@ class LoginState {
       authBaseUrl?: string;
       openUrl?: (url: string) => Promise<unknown> | unknown;
       env?: NodeJS.ProcessEnv;
+      signal?: AbortSignal;
       output?: Writable;
     },
   ) {
     this.tokenStorage =
-      options.tokenStorage ?? new FileTokenStorage(options.env);
+      options.tokenStorage ?? new FileTokenStorage(options.env, options.signal);
     this.sdk = createManagementApiSdk({
       clientId: options.clientId ?? CLIENT_ID,
       redirectUri: `http://${options.hostname}:${options.port}/auth/callback`,
@@ -237,6 +246,7 @@ class LoginState {
   }
 
   async openLoginPage(interactive: boolean): Promise<void> {
+    this.options.signal?.throwIfAborted();
     const { url, state, verifier } = await this.sdk.getLoginUrl({
       scope: "workspace:admin offline_access",
       additionalParams: {
@@ -248,6 +258,9 @@ class LoginState {
 
     this.latestState = state;
     this.latestVerifier = verifier;
+
+    this.options.signal?.throwIfAborted();
+    // Browser launch cannot consume AbortSignal; check immediately before and after the boundary.
 
     // The instructions describe the paste fallback, which only exists on a TTY.
     if (interactive) {
@@ -262,6 +275,7 @@ class LoginState {
       // the failure instead of waiting on a callback that will never arrive.
       if (!interactive) throw error;
     }
+    this.options.signal?.throwIfAborted();
   }
 
   private printLoginInstructions(url: string): void {
@@ -316,12 +330,14 @@ class LoginState {
 
       const { data } = await this.sdk.client.GET("/v1/workspaces/{id}", {
         params: { path: { id: tokens.workspaceId } },
+        signal: this.options.signal,
       });
       const name = data?.data?.name;
       return typeof name === "string" && name.trim().length > 0
         ? name.trim()
         : null;
     } catch {
+      this.options.signal?.throwIfAborted();
       return null;
     }
   }

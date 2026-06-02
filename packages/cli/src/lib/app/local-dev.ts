@@ -34,6 +34,7 @@ interface CommandCandidate {
 export async function resolveLocalBuildType(
   appPath: string,
   buildType: PreviewBuildType,
+  signal?: AbortSignal,
 ): Promise<LocalBuildType | null> {
   if (buildType === "bun" || buildType === "nextjs") {
     return buildType;
@@ -43,15 +44,15 @@ export async function resolveLocalBuildType(
     return null;
   }
 
-  return detectLocalBuildType(appPath);
+  return detectLocalBuildType(appPath, signal);
 }
 
-export async function detectLocalBuildType(appPath: string): Promise<LocalBuildType | null> {
-  if (await isNextProject(appPath)) {
+export async function detectLocalBuildType(appPath: string, signal?: AbortSignal): Promise<LocalBuildType | null> {
+  if (await isNextProject(appPath, signal)) {
     return "nextjs";
   }
 
-  if (await isBunProject(appPath)) {
+  if (await isBunProject(appPath, signal)) {
     return "bun";
   }
 
@@ -64,6 +65,7 @@ export async function runLocalApp(options: {
   entrypoint?: string;
   port: number;
   env: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
   spawnImpl?: typeof spawn;
 }): Promise<LocalRunResult> {
   const spawnImpl = options.spawnImpl ?? spawn;
@@ -99,6 +101,7 @@ export async function runLocalApp(options: {
           ...options.env,
           PORT: String(options.port),
         },
+        signal: options.signal,
       },
       spawnImpl,
       "Could not find the Next.js CLI. Install it with `npm install next` or ensure npx/bunx is available.",
@@ -114,7 +117,7 @@ export async function runLocalApp(options: {
     };
   }
 
-  const entrypoint = await resolveBunEntrypoint(options.appPath, options.entrypoint);
+  const entrypoint = await resolveBunEntrypoint(options.appPath, options.entrypoint, options.signal);
   const command = await runWithFallback(
     [
       {
@@ -129,6 +132,7 @@ export async function runLocalApp(options: {
         ...options.env,
         PORT: String(options.port),
       },
+      signal: options.signal,
     },
     spawnImpl,
     "Bun is required to run this app locally. Install it from https://bun.sh.",
@@ -144,36 +148,48 @@ export async function runLocalApp(options: {
   };
 }
 
-async function isNextProject(appPath: string): Promise<boolean> {
+async function isNextProject(appPath: string, signal?: AbortSignal): Promise<boolean> {
   for (const fileName of NEXT_CONFIG_FILENAMES) {
+    signal?.throwIfAborted();
     try {
+      // access does not accept AbortSignal; check before and after the filesystem boundary.
       await access(path.join(appPath, fileName));
+      signal?.throwIfAborted();
       return true;
-    } catch {
+    } catch (error) {
+      if (signal?.aborted) throw error;
       // ignore missing files
     }
   }
 
-  const packageJson = await readBunPackageJson(appPath);
+  const packageJson = await readBunPackageJson(appPath, signal);
   return hasDependency(packageJson, "next");
 }
 
-async function isBunProject(appPath: string): Promise<boolean> {
+async function isBunProject(appPath: string, signal?: AbortSignal): Promise<boolean> {
+  signal?.throwIfAborted();
   try {
+    // access does not accept AbortSignal; check before and after the filesystem boundary.
     await access(path.join(appPath, "bun.lock"));
+    signal?.throwIfAborted();
     return true;
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) throw error;
     // ignore missing file
   }
 
+  signal?.throwIfAborted();
   try {
+    // access does not accept AbortSignal; check before and after the filesystem boundary.
     await access(path.join(appPath, "bun.lockb"));
+    signal?.throwIfAborted();
     return true;
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) throw error;
     // ignore missing file
   }
 
-  const packageJson = await readBunPackageJson(appPath);
+  const packageJson = await readBunPackageJson(appPath, signal);
   if (!packageJson) {
     return false;
   }

@@ -32,11 +32,11 @@ function workspaceIdFromClaims(claims: Record<string, unknown>): string | null {
   return id.length > 0 ? id : null;
 }
 
-export async function performLogin(env: NodeJS.ProcessEnv): Promise<void> {
-  await login({ tokenStorage: new FileTokenStorage(env), env });
+export async function performLogin(env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<void> {
+  await login({ tokenStorage: new FileTokenStorage(env, signal), env, signal });
 }
 
-export async function readAuthState(env: NodeJS.ProcessEnv): Promise<AuthStateResult> {
+export async function readAuthState(env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<AuthStateResult> {
   // PRISMA_SERVICE_TOKEN is the headless / CI auth surface. When it is set, derive
   // auth state from the token itself and intentionally skip FileTokenStorage,
   // so behavior is independent of any OAuth session that happens to be stored
@@ -51,10 +51,10 @@ export async function readAuthState(env: NodeJS.ProcessEnv): Promise<AuthStateRe
         `${SERVICE_TOKEN_ENV_VAR} is set but empty. Provide a valid token or unset the variable.`,
       );
     }
-    return readServiceTokenAuthState(serviceToken, env);
+    return readServiceTokenAuthState(serviceToken, env, signal);
   }
 
-  const tokenStorage = new FileTokenStorage(env);
+  const tokenStorage = new FileTokenStorage(env, signal);
   const tokens = await tokenStorage.getTokens();
 
   if (!tokens) {
@@ -67,8 +67,8 @@ export async function readAuthState(env: NodeJS.ProcessEnv): Promise<AuthStateRe
     };
   }
 
-  const client = await requireComputeAuth(env);
-  const currentPrincipal = await readCurrentPrincipalAuthState(client);
+  const client = await requireComputeAuth(env, signal);
+  const currentPrincipal = await readCurrentPrincipalAuthState(client, signal);
   if (currentPrincipal) {
     return currentPrincipal;
   }
@@ -79,15 +79,17 @@ export async function readAuthState(env: NodeJS.ProcessEnv): Promise<AuthStateRe
     claims,
     env,
     client,
+    signal,
   });
 }
 
 async function readServiceTokenAuthState(
   token: string,
   env: NodeJS.ProcessEnv,
+  signal?: AbortSignal,
 ): Promise<AuthStateResult> {
-  const client = await requireComputeAuth(env);
-  const currentPrincipal = await readCurrentPrincipalAuthState(client);
+  const client = await requireComputeAuth(env, signal);
+  const currentPrincipal = await readCurrentPrincipalAuthState(client, signal);
   if (currentPrincipal) {
     return currentPrincipal;
   }
@@ -114,6 +116,7 @@ async function readServiceTokenAuthState(
     claims,
     env,
     client,
+    signal,
   });
 }
 
@@ -122,21 +125,24 @@ async function buildAuthState({
   claims,
   env,
   client,
+  signal,
 }: {
   workspaceIdFromCredential: string;
   claims: Record<string, unknown>;
   env: NodeJS.ProcessEnv;
   client?: ManagementApiClient | null;
+  signal?: AbortSignal;
 }): Promise<AuthStateResult> {
   let workspaceId = workspaceIdFromCredential;
   let workspaceName = workspaceIdFromCredential;
 
-  client ??= await requireComputeAuth(env);
+  client ??= await requireComputeAuth(env, signal);
 
   if (client) {
     try {
       const { data, response } = await client.GET("/v1/workspaces/{id}", {
         params: { path: { id: workspaceIdFromCredential } },
+        signal,
       });
       // A 401 from the workspace lookup means the credential the caller
       // presented is fundamentally invalid (revoked, wrong signing key,
@@ -161,6 +167,7 @@ async function buildAuthState({
         workspaceName = data.data.name;
       }
     } catch {
+      signal?.throwIfAborted();
       // fall through - use workspaceId as name
     }
   }
@@ -180,11 +187,12 @@ async function buildAuthState({
 
 async function readCurrentPrincipalAuthState(
   client: ManagementApiClient | null,
+  signal?: AbortSignal,
 ): Promise<AuthStateResult | null> {
   if (!client) return null;
 
   try {
-    const { data, response } = await client.GET("/v1/me");
+    const { data, response } = await client.GET("/v1/me", { signal });
 
     if (response?.status === 401) {
       return {
@@ -214,10 +222,11 @@ async function readCurrentPrincipalAuthState(
       credential: principal.credential,
     };
   } catch {
+    signal?.throwIfAborted();
     return null;
   }
 }
 
-export async function performLogout(env: NodeJS.ProcessEnv): Promise<void> {
-  await new FileTokenStorage(env).clearTokens();
+export async function performLogout(env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<void> {
+  await new FileTokenStorage(env, signal).clearTokens();
 }

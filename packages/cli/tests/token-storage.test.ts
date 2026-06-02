@@ -91,6 +91,40 @@ describe("FileTokenStorage", () => {
     });
   });
 
+  it("stops waiting for the refresh lock when the command signal is aborted", async () => {
+    const cwd = await createTempCwd();
+    const authFilePath = path.join(cwd, "auth.json");
+    const firstStorage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+    const controller = new AbortController();
+    const secondStorage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv, controller.signal);
+    const reason = new Error("cancelled");
+    let releaseFirst!: () => void;
+    const firstReleased = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let markFirstStarted!: () => void;
+    const firstStarted = new Promise<void>((resolve) => {
+      markFirstStarted = resolve;
+    });
+
+    const first = firstStorage.withRefreshLock(async () => {
+      markFirstStarted();
+      await firstReleased;
+    });
+    await firstStarted;
+
+    const second = secondStorage.withRefreshLock(async () => undefined);
+    controller.abort(reason);
+
+    await expect(second).rejects.toBe(reason);
+    releaseFirst();
+    await first;
+  });
+
   it("replaces stale refresh locks", async () => {
     const cwd = await createTempCwd();
     const authFilePath = path.join(cwd, "auth.json");

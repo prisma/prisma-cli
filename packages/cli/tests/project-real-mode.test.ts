@@ -136,8 +136,8 @@ describe("real project mode", () => {
 
     const result = await runProjectList(context);
 
-    expect(readAuthState).toHaveBeenCalledWith(context.runtime.env);
-    expect(requireComputeAuth).toHaveBeenCalledWith(context.runtime.env);
+    expect(readAuthState).toHaveBeenCalledWith(context.runtime.env, context.runtime.signal);
+    expect(requireComputeAuth).toHaveBeenCalledWith(context.runtime.env, context.runtime.signal);
     expect(result.result).toEqual({
       workspace: {
         id: "ws_123",
@@ -347,6 +347,7 @@ describe("real project mode", () => {
           cursor: "2",
         },
       },
+      signal: context.runtime.signal,
     });
     expect(result.result.repositoryConnection).toMatchObject({
       id: "srcrepo_123",
@@ -751,6 +752,7 @@ describe("real project mode", () => {
         providerRepositoryId: 123456,
         installationId: "scminstall_123",
       },
+      signal: context.runtime.signal,
     });
     expect(stderr.buffer).toContain("Waiting for GitHub App installation or repository access approval");
     expect(result.result.repositoryConnection?.repository.fullName).toBe("prisma/prisma-cli");
@@ -1062,6 +1064,7 @@ describe("real project mode", () => {
           id: "srcrepo_123",
         },
       },
+      signal: context.runtime.signal,
     });
     expect(result.result.repositoryConnection?.repository.fullName).toBe("prisma/prisma-cli");
   });

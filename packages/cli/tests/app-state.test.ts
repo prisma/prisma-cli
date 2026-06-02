@@ -54,6 +54,16 @@ describe("app local state", () => {
     });
   });
 
+  it("rejects local state reads when the command signal is already aborted", async () => {
+    const cwd = await createTempCwd();
+    const controller = new AbortController();
+    const reason = new Error("cancelled");
+    controller.abort(reason);
+    const store = new LocalStateStore(path.join(cwd, DEFAULT_STATE_DIR_NAME), controller.signal);
+
+    await expect(store.read()).rejects.toBe(reason);
+  });
+
   it("persists known live deployments by project and app id", async () => {
     const cwd = await createTempCwd();
     const store = new LocalStateStore(path.join(cwd, DEFAULT_STATE_DIR_NAME));

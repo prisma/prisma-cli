@@ -124,6 +124,7 @@ export async function runAppBuild(
       appPath: context.runtime.cwd,
       entrypoint,
       buildType,
+      signal: context.runtime.signal,
     });
 
     return {
@@ -180,13 +181,14 @@ export async function runAppRun(
       entrypoint,
       port,
       env: context.runtime.env,
+      signal: context.runtime.signal,
     });
   } catch (error) {
     throw runFailedError("Local app run failed", error);
   }
 
   if (runResult.signal === "SIGINT" || runResult.signal === "SIGTERM") {
-    process.exitCode = runResult.signal === "SIGINT" ? 130 : 143;
+    throw new DOMException("Command canceled", "AbortError");
   } else if (runResult.exitCode !== 0) {
     throw runFailedError(
       "Local app run failed",
@@ -234,7 +236,7 @@ export async function runAppDeploy(
   const skipLocalPin = Boolean(envProjectId || options?.projectRef || options?.createProjectName);
   const localPin = skipLocalPin
     ? ({ kind: "missing" } satisfies LocalResolutionPinReadResult)
-    : await readLocalResolutionPin(context.runtime.cwd);
+    : await readLocalResolutionPin(context.runtime.cwd, context.runtime.signal);
   if (!skipLocalPin && localPin.kind === "invalid") {
     throw localResolutionPinStaleError();
   }
@@ -281,7 +283,7 @@ export async function runAppDeploy(
     explicitAppName: appName,
     explicitAppId: envAppId,
     firstDeploy: Boolean(target.localPinAction),
-    inferName: () => inferTargetName(context.runtime.cwd),
+    inferName: () => inferTargetName(context.runtime.cwd, context.runtime.signal),
   });
 
   await maybeRenderDeploySetupBlock(context, {
@@ -306,7 +308,7 @@ export async function runAppDeploy(
   // derives its entrypoint from build output, so validate --entry again after it.
   const buildType = framework.buildType;
   assertSupportedEntrypoint(buildType, options?.entrypoint, "deploy");
-  const entrypoint = await resolveDeployEntrypoint(context.runtime.cwd, framework, options?.entrypoint);
+  const entrypoint = await resolveDeployEntrypoint(context.runtime.cwd, framework, options?.entrypoint, context.runtime.signal);
   const portMapping = parseDeployPortMapping(String(runtime.port));
 
   const progressState = createPreviewDeployProgressState();
@@ -323,6 +325,7 @@ export async function runAppDeploy(
     portMapping,
     envVars,
     interaction: undefined,
+    signal: context.runtime.signal,
     progress: createPreviewDeployProgress(context.output.stderr, context.ui, !context.flags.json && !context.flags.quiet, progressState),
   }).catch((error) => {
     throw appDeployFailedError(error, progressState);
@@ -381,7 +384,7 @@ export async function runAppListDeploys(
     };
   }
 
-  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+  const deploymentsResult = await provider.listDeployments(selectedApp.id, { signal: context.runtime.signal }).catch((error) => {
     throw deployFailedError("Failed to list app deployments", error, ["prisma-cli app deploy"]);
   });
   const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
@@ -444,7 +447,7 @@ export async function runAppShow(
     };
   }
 
-  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+  const deploymentsResult = await provider.listDeployments(selectedApp.id, { signal: context.runtime.signal }).catch((error) => {
     throw deployFailedError("Failed to inspect app", error, ["prisma-cli app list-deploys"]);
   });
   const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
@@ -489,7 +492,7 @@ export async function runAppShowDeploy(
   ensurePreviewAppMode(context);
 
   const provider = await requirePreviewAppProvider(context);
-  const deployment = await provider.showDeployment(deploymentId).catch((error) => {
+  const deployment = await provider.showDeployment(deploymentId, { signal: context.runtime.signal }).catch((error) => {
     throw deployFailedError("Failed to show deployment", error, ["prisma-cli app list-deploys"]);
   });
 
@@ -555,7 +558,7 @@ export async function runAppOpen(
     );
   }
 
-  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+  const deploymentsResult = await provider.listDeployments(selectedApp.id, { signal: context.runtime.signal }).catch((error) => {
     throw deployFailedError("Failed to resolve app URL", error, ["prisma-cli app show"]);
   });
   const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
@@ -595,7 +598,10 @@ export async function runAppOpen(
 
   const shouldOpen = canPrompt(context);
   if (shouldOpen) {
+    context.runtime.signal.throwIfAborted();
+    // Browser launch cannot consume AbortSignal; check immediately before and after the boundary.
     await open(deploymentsResult.app.liveUrl);
+    context.runtime.signal.throwIfAborted();
   }
 
   return {
@@ -629,6 +635,7 @@ export async function runAppDomainAdd(
   const added = await target.provider.addDomain({
     appId: target.app.id,
     hostname: normalizedHostname,
+    signal: context.runtime.signal,
   }).catch((error) => {
     throw domainCommandError("add", error, normalizedHostname);
   });
@@ -659,8 +666,8 @@ export async function runAppDomainShow(
 ): Promise<CommandSuccess<AppDomainShowResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
   const target = await resolveAppDomainTarget(context, options, `app domain show ${normalizedHostname}`);
-  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "show");
-  const detail = await target.provider.showDomain(domain.id).catch((error) => {
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "show", context.runtime.signal);
+  const detail = await target.provider.showDomain(domain.id, { signal: context.runtime.signal }).catch((error) => {
     throw domainCommandError("show", error, normalizedHostname);
   });
 
@@ -686,11 +693,11 @@ export async function runAppDomainRemove(
 ): Promise<CommandSuccess<AppDomainRemoveResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
   const target = await resolveAppDomainTarget(context, options, `app domain remove ${normalizedHostname}`);
-  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "remove");
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "remove", context.runtime.signal);
 
   await confirmDomainRemoval(context, target.resultTarget, normalizedHostname);
 
-  await target.provider.removeDomain(domain.id).catch((error) => {
+  await target.provider.removeDomain(domain.id, { signal: context.runtime.signal }).catch((error) => {
     throw domainCommandError("remove", error, normalizedHostname);
   });
 
@@ -717,8 +724,8 @@ export async function runAppDomainRetry(
 ): Promise<CommandSuccess<AppDomainRetryResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
   const target = await resolveAppDomainTarget(context, options, `app domain retry ${normalizedHostname}`);
-  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "retry");
-  const retried = await target.provider.retryDomain(domain.id).catch((error) => {
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "retry", context.runtime.signal);
+  const retried = await target.provider.retryDomain(domain.id, { signal: context.runtime.signal }).catch((error) => {
     throw domainCommandError("retry", error, normalizedHostname);
   });
 
@@ -746,7 +753,7 @@ export async function runAppDomainWait(
   const normalizedHostname = normalizeDomainHostname(hostname);
   const timeoutMs = parseDomainWaitTimeout(options?.timeout);
   const target = await resolveAppDomainTarget(context, options, `app domain wait ${normalizedHostname}`);
-  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "wait");
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "wait", context.runtime.signal);
 
   if (!context.flags.json && !context.flags.quiet) {
     context.output.stderr.write(
@@ -810,8 +817,8 @@ export async function runAppDomainWait(
       });
     }
 
-    await sleep(Math.min(pollIntervalMs, Math.max(deadline - Date.now(), 0)));
-    current = await target.provider.showDomain(current.id).catch((error) => {
+    await sleep(Math.min(pollIntervalMs, Math.max(deadline - Date.now(), 0)), context.runtime.signal);
+    current = await target.provider.showDomain(current.id, { signal: context.runtime.signal }).catch((error) => {
       throw domainCommandError("wait", error, normalizedHostname);
     });
   }
@@ -850,6 +857,7 @@ export async function runAppLogs(
 
   await provider.streamDeploymentLogs({
     deploymentId: target.deployment.id,
+    signal: context.runtime.signal,
     onRecord: (record) => writeLogRecord(context, record),
   }).catch((error) => {
     throw deployFailedError("Failed to stream app logs", error, [
@@ -878,7 +886,7 @@ async function resolveExplicitLogDeployment(
       );
     }
 
-    const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+    const deploymentsResult = await provider.listDeployments(selectedApp.id, { signal: context.runtime.signal }).catch((error) => {
       throw deployFailedError("Failed to list app deployments", error, ["prisma-cli app list-deploys"]);
     });
     const deployment = requireDeploymentForApp(deploymentsResult.deployments, deploymentId, selectedApp.name);
@@ -894,7 +902,7 @@ async function resolveExplicitLogDeployment(
     };
   }
 
-  const shown = await provider.showDeployment(deploymentId).catch((error) => {
+  const shown = await provider.showDeployment(deploymentId, { signal: context.runtime.signal }).catch((error) => {
     throw deployFailedError("Failed to show deployment", error, ["prisma-cli app list-deploys"]);
   });
 
@@ -964,7 +972,7 @@ async function resolveLiveLogDeployment(
     );
   }
 
-  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+  const deploymentsResult = await provider.listDeployments(selectedApp.id, { signal: context.runtime.signal }).catch((error) => {
     throw deployFailedError("Failed to list app deployments", error, ["prisma-cli app list-deploys"]);
   });
   const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
@@ -1028,7 +1036,7 @@ export async function runAppPromote(
   });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "promote");
-  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+  const deploymentsResult = await provider.listDeployments(selectedApp.id, { signal: context.runtime.signal }).catch((error) => {
     throw deployFailedError("Failed to list app deployments", error, ["prisma-cli app list-deploys"]);
   });
   const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
@@ -1053,6 +1061,7 @@ export async function runAppPromote(
     await provider.promoteDeployment({
       appId: selectedApp.id,
       deploymentId: targetDeployment.id,
+      signal: context.runtime.signal,
       progress: createPreviewPromoteProgress(
         context.output.stderr,
         !context.flags.json && !context.flags.quiet,
@@ -1096,7 +1105,7 @@ export async function runAppRollback(
   });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "rollback");
-  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
+  const deploymentsResult = await provider.listDeployments(selectedApp.id, { signal: context.runtime.signal }).catch((error) => {
     throw deployFailedError("Failed to list app deployments", error, ["prisma-cli app list-deploys"]);
   });
   const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
@@ -1122,6 +1131,7 @@ export async function runAppRollback(
     await provider.promoteDeployment({
       appId: selectedApp.id,
       deploymentId: targetDeployment.id,
+      signal: context.runtime.signal,
       progress: createPreviewPromoteProgress(
         context.output.stderr,
         !context.flags.json && !context.flags.quiet,
@@ -1168,7 +1178,7 @@ export async function runAppRemove(
 
   await confirmAppRemoval(context, selectedApp);
 
-  const removedApp = await provider.removeApp(selectedApp.id).catch((error) => {
+  const removedApp = await provider.removeApp(selectedApp.id, { signal: context.runtime.signal }).catch((error) => {
     throw removeFailedError("Failed to remove app", error, ["prisma-cli app show", "prisma-cli app list-deploys"]);
   });
 
@@ -1302,8 +1312,9 @@ async function resolveDomainByHostname(
   appId: string,
   hostname: string,
   command: AppDomainCommand,
+  signal: AbortSignal,
 ): Promise<PreviewDomainRecord> {
-  const domains = await provider.listDomains(appId).catch((error) => {
+  const domains = await provider.listDomains(appId, { signal }).catch((error) => {
     throw domainCommandError(command, error, hostname);
   });
   const matched = domains.find((domain) => sameDomainHostname(domain.hostname, hostname));
@@ -1685,11 +1696,22 @@ function formatElapsed(milliseconds: number): string {
   return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
 }
 
-async function sleep(milliseconds: number): Promise<void> {
+async function sleep(milliseconds: number, signal: AbortSignal): Promise<void> {
   if (milliseconds <= 0) {
     return;
   }
-  await new Promise((resolve) => setTimeout(resolve, milliseconds));
+  signal.throwIfAborted();
+  await new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(signal.reason);
+    };
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 async function resolveDeployAppSelection(
@@ -2105,7 +2127,7 @@ async function listApps(
   projectId: string,
   branchName?: string,
 ) {
-  return provider.listApps(projectId, { branchName }).then(sortApps).catch((error) => {
+  return provider.listApps(projectId, { branchName, signal: context.runtime.signal }).then(sortApps).catch((error) => {
     if (isMissingProjectError(error)) {
       throw new CliError({
         code: "PROJECT_NOT_FOUND",
@@ -2130,18 +2152,18 @@ async function requirePreviewAppProvider(context: CommandContext) {
 async function requirePreviewAppProviderWithClient(
   context: CommandContext,
 ): Promise<{ client: ManagementApiClient; provider: ReturnType<typeof createPreviewAppProvider> }> {
-  const client = await requireComputeAuth(context.runtime.env);
+  const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
   if (!client) {
     throw authRequiredError(["prisma-cli auth login"]);
   }
 
   return {
     client,
-    provider: createPreviewAppProvider(client, createPreviewLogAuthOptions(context.runtime.env)),
+    provider: createPreviewAppProvider(client, createPreviewLogAuthOptions(context.runtime.env, context.runtime.signal)),
   };
 }
 
-function createPreviewLogAuthOptions(env: NodeJS.ProcessEnv) {
+function createPreviewLogAuthOptions(env: NodeJS.ProcessEnv, signal: AbortSignal) {
   const rawToken = env[SERVICE_TOKEN_ENV_VAR]?.trim();
   if (rawToken) {
     return {
@@ -2150,7 +2172,7 @@ function createPreviewLogAuthOptions(env: NodeJS.ProcessEnv) {
     };
   }
 
-  const tokenStorage = new FileTokenStorage(env);
+  const tokenStorage = new FileTokenStorage(env, signal);
   return {
     baseUrl: getApiBaseUrl(env),
     getToken: async () => {
@@ -2242,7 +2264,7 @@ async function resolveProjectContext(
     workspace: authState.workspace,
     explicitProject,
     envProjectId: options?.envProjectId,
-    listProjects: () => listRealWorkspaceProjects(client, authState.workspace!),
+    listProjects: () => listRealWorkspaceProjects(client, authState.workspace!, context.runtime.signal),
     commandName: options?.commandName,
   });
   const branch = options?.branch ?? await resolveDeployBranch(context, undefined);
@@ -2275,7 +2297,7 @@ async function resolveDeployProjectContext(
   }
 
   const branch = options.branch ?? await resolveDeployBranch(context, undefined);
-  const projects = await listRealWorkspaceProjects(client, workspace);
+  const projects = await listRealWorkspaceProjects(client, workspace, context.runtime.signal);
 
   if (explicitProject) {
     const project = resolveProjectForSetup(explicitProject, projects, workspace);
@@ -2297,7 +2319,7 @@ async function resolveDeployProjectContext(
       throw projectSetupNameRequiredError("app deploy --create-project");
     }
 
-    const created = await createProjectForDeploySetup(provider, projectName, workspace);
+    const created = await createProjectForDeploySetup(provider, projectName, workspace, context.runtime.signal);
     return withDeployBranch({
       workspace,
       project: toProjectSummary(created),
@@ -2366,7 +2388,7 @@ async function resolveDeployProjectContext(
     return withDeployBranch(resolved, branch);
   }
 
-  const suggestedName = await inferTargetName(context.runtime.cwd);
+  const suggestedName = await inferTargetName(context.runtime.cwd, context.runtime.signal);
   throw projectSetupRequiredError(projects, suggestedName);
 }
 
@@ -2379,7 +2401,7 @@ async function resolveInteractiveDeployProjectSetup(
   const setup = await promptForProjectSetupChoice({
     context,
     projects,
-    createProject: (projectName) => createProjectForDeploySetup(provider, projectName, workspace),
+    createProject: (projectName) => createProjectForDeploySetup(provider, projectName, workspace, context.runtime.signal),
     cancel: {
       why: "Deploy needs a Project before it can continue.",
       fix: "Choose an existing Project or create a new one, then rerun deploy.",
@@ -2403,8 +2425,9 @@ async function createProjectForDeploySetup(
   provider: ReturnType<typeof createPreviewAppProvider>,
   projectName: string,
   workspace: AuthWorkspace,
+  signal: AbortSignal,
 ): Promise<ProjectCandidate> {
-  const created = await provider.createProject({ name: projectName }).catch((error) => {
+  const created = await provider.createProject({ name: projectName, signal }).catch((error) => {
     throw projectCreateFailedError(error, projectName, workspace, {
       nextSteps: [
         "prisma-cli project list",
@@ -2481,7 +2504,7 @@ async function resolveDeployBranch(context: CommandContext, explicitBranchName: 
     };
   }
 
-  const gitBranch = await readLocalGitBranch(context.runtime.cwd);
+  const gitBranch = await readLocalGitBranch(context.runtime.cwd, context.runtime.signal);
   if (gitBranch) {
     return {
       name: gitBranch,
@@ -2495,42 +2518,49 @@ async function resolveDeployBranch(context: CommandContext, explicitBranchName: 
   };
 }
 
-async function readLocalGitBranch(cwd: string): Promise<string | null> {
+async function readLocalGitBranch(cwd: string, signal: AbortSignal): Promise<string | null> {
   const gitPath = path.join(cwd, ".git");
-  const headPath = await resolveGitHeadPath(gitPath);
+  const headPath = await resolveGitHeadPath(gitPath, signal);
   if (!headPath) {
     return null;
   }
 
   try {
-    const head = (await readFile(headPath, "utf8")).trim();
+    const head = (await readFile(headPath, { encoding: "utf8", signal })).trim();
     const refPrefix = "ref: refs/heads/";
     if (head.startsWith(refPrefix)) {
       return head.slice(refPrefix.length);
     }
-  } catch {
+  } catch (error) {
+    if (signal.aborted) throw error;
     return null;
   }
 
   return null;
 }
 
-async function resolveGitHeadPath(gitPath: string): Promise<string | null> {
+async function resolveGitHeadPath(gitPath: string, signal: AbortSignal): Promise<string | null> {
+  signal.throwIfAborted();
   try {
-    const raw = await readFile(gitPath, "utf8");
+    const raw = await readFile(gitPath, { encoding: "utf8", signal });
     const prefix = "gitdir:";
     if (raw.startsWith(prefix)) {
       return path.join(path.resolve(path.dirname(gitPath), raw.slice(prefix.length).trim()), "HEAD");
     }
-  } catch {
+  } catch (error) {
+    if (signal.aborted) throw error;
     // Fall through to try the normal .git directory shape below.
     // Common cases: EISDIR (normal git repo), EACCES, ENOENT.
   }
 
+  signal.throwIfAborted();
   try {
+    // access does not accept AbortSignal; check before and after the filesystem boundary.
     await access(path.join(gitPath, "HEAD"));
+    signal.throwIfAborted();
     return path.join(gitPath, "HEAD");
-  } catch {
+  } catch (error) {
+    if (signal.aborted) throw error;
     return null;
   }
 }
@@ -2567,7 +2597,7 @@ async function resolveDeployFramework(
     };
   }
 
-  const detected = await detectDeployFramework(context.runtime.cwd);
+  const detected = await detectDeployFramework(context.runtime.cwd, context.runtime.signal);
   if (detected) {
     return detected;
   }
@@ -2608,12 +2638,13 @@ async function resolveDeployEntrypoint(
   cwd: string,
   framework: ResolvedDeployFramework,
   explicitEntrypoint: string | undefined,
+  signal: AbortSignal,
 ): Promise<string | undefined> {
   if (explicitEntrypoint || framework.buildType !== "bun") {
     return explicitEntrypoint;
   }
 
-  const packageJson = await readBunPackageJson(cwd);
+  const packageJson = await readBunPackageJson(cwd, signal);
   const packageEntrypoint = readBunPackageEntrypoint(packageJson);
   if (packageEntrypoint) {
     return packageEntrypoint;
@@ -2624,10 +2655,14 @@ async function resolveDeployEntrypoint(
   }
 
   const defaultEntrypoint = "src/index.ts";
+  signal.throwIfAborted();
   try {
+    // access does not accept AbortSignal; check before and after the filesystem boundary.
     await access(path.join(cwd, defaultEntrypoint));
+    signal.throwIfAborted();
     return defaultEntrypoint;
   } catch (error) {
+    if (signal.aborted) throw error;
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       throw error;
     }
@@ -2635,9 +2670,9 @@ async function resolveDeployEntrypoint(
   }
 }
 
-async function detectDeployFramework(cwd: string): Promise<ResolvedDeployFramework | null> {
-  const packageJson = await readBunPackageJson(cwd);
-  const nextConfig = await detectNextConfig(cwd);
+async function detectDeployFramework(cwd: string, signal: AbortSignal): Promise<ResolvedDeployFramework | null> {
+  const packageJson = await readBunPackageJson(cwd, signal);
+  const nextConfig = await detectNextConfig(cwd, signal);
 
   if (nextConfig.exists || hasPackageDependency(packageJson, "next")) {
     return {
@@ -2673,7 +2708,7 @@ async function detectDeployFramework(cwd: string): Promise<ResolvedDeployFramewo
   return null;
 }
 
-async function detectNextConfig(cwd: string): Promise<{ exists: boolean; standalone: boolean }> {
+async function detectNextConfig(cwd: string, signal: AbortSignal): Promise<{ exists: boolean; standalone: boolean }> {
   const candidates = [
     "next.config.js",
     "next.config.mjs",
@@ -2684,13 +2719,15 @@ async function detectNextConfig(cwd: string): Promise<{ exists: boolean; standal
 
   for (const candidate of candidates) {
     const filePath = path.join(cwd, candidate);
+    signal.throwIfAborted();
     try {
-      const content = await readFile(filePath, "utf8");
+      const content = await readFile(filePath, { encoding: "utf8", signal });
       return {
         exists: true,
         standalone: /\boutput\s*:\s*["'`]standalone["'`]/.test(content),
       };
     } catch (error) {
+      if (signal.aborted) throw error;
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
       }
@@ -2962,7 +2999,7 @@ async function readCurrentWorkspaceId(context: CommandContext): Promise<string |
     return state.auth.workspaceId;
   }
 
-  const authState = await readAuthState(context.runtime.env);
+  const authState = await readAuthState(context.runtime.env, context.runtime.signal);
   return authState.workspace?.id ?? null;
 }
 
@@ -3037,7 +3074,7 @@ async function requireLocalBuildType(
   // Local dev server support is intentionally narrower than deploy build support.
   // Nuxt, Astro, and TanStack Start can deploy via SDK strategies, but app run
   // only starts the local dev servers currently documented for the preview.
-  const resolvedBuildType = await resolveLocalBuildType(context.runtime.cwd, buildType);
+  const resolvedBuildType = await resolveLocalBuildType(context.runtime.cwd, buildType, context.runtime.signal);
   if (resolvedBuildType) {
     return resolvedBuildType;
   }
