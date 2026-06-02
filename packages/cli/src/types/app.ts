@@ -36,13 +36,6 @@ export interface AppDeployResult {
   };
 }
 
-export interface AppListEnvResult {
-  projectId: string;
-  app: AppSummary | null;
-  deployment: AppDeploymentSummary | null;
-  variables: string[];
-}
-
 export interface AppListDeploysResult {
   projectId: string;
   app: AppSummary | null;
@@ -82,13 +75,6 @@ export interface AppRunResult {
   command: string;
 }
 
-export interface AppUpdateEnvResult {
-  projectId: string;
-  app: AppSummary;
-  deployment: AppDeploymentSummary;
-  variables: string[];
-}
-
 export interface AppPromoteResult {
   projectId: string;
   app: AppSummary;
@@ -106,4 +92,66 @@ export interface AppRemoveResult {
   projectId: string;
   app: AppSummary;
   removed: true;
+}
+
+export type AppDomainStatus =
+  | "pending_dns"
+  | "verifying"
+  | "verified_routing_blocked"
+  | "provisioning_tls"
+  | "active"
+  | "failed"
+  | "removing";
+
+export type AppDomainFailureCategory = "dns" | "acme" | "storage" | "unknown" | null;
+
+export interface AppDomainDnsRecord {
+  type: string;
+  name: string;
+  value: string;
+  ttl: number | null;
+}
+
+export interface AppDomainSummary {
+  id: string;
+  type: "custom-domain";
+  url: string;
+  hostname: string;
+  computeServiceId: string;
+  status: AppDomainStatus;
+  foundryStatus: string;
+  failureReason: string | null;
+  failureCategory: AppDomainFailureCategory;
+  certExpiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  dnsRecords: AppDomainDnsRecord[];
+}
+
+export interface AppDomainTarget {
+  workspace: AuthWorkspace;
+  project: ProjectSummary;
+  branch: {
+    name: string;
+    kind: BranchKind;
+  };
+  app: AppSummary;
+}
+
+export interface AppDomainAddResult extends AppDomainTarget {
+  domain: AppDomainSummary;
+  existing: boolean;
+}
+
+export interface AppDomainShowResult extends AppDomainTarget {
+  domain: AppDomainSummary;
+}
+
+export interface AppDomainRemoveResult extends AppDomainTarget {
+  hostname: string;
+  removed: true;
+}
+
+export interface AppDomainRetryResult extends AppDomainTarget {
+  domain: AppDomainSummary;
 }

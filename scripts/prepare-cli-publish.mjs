@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 export async function stageCliPublishPackage(options = {}) {
   const sourceDir = options.sourceDir ?? path.join(getRepoRoot(), "packages/cli");
   const outputDir = options.outputDir ?? path.join(getRepoRoot(), ".publish/cli");
+  const publishVersion = options.publishVersion;
 
   await ensureBuildArtifacts(sourceDir);
 
@@ -23,7 +24,7 @@ export async function stageCliPublishPackage(options = {}) {
 
   const publishManifest = {
     name: sourceManifest.name,
-    version: sourceManifest.version,
+    version: publishVersion ?? sourceManifest.version,
     description: sourceManifest.description,
     type: sourceManifest.type,
     bin: {
@@ -74,11 +75,54 @@ function removeUndefinedFields(value) {
 }
 
 async function main() {
-  const outputDir = process.argv[2];
+  const { outputDir, publishVersion } = parseCliArgs(process.argv.slice(2));
   const stagedPath = await stageCliPublishPackage(
-    outputDir ? { outputDir: path.resolve(outputDir) } : {},
+    {
+      ...(outputDir ? { outputDir: path.resolve(outputDir) } : {}),
+      ...(publishVersion ? { publishVersion } : {}),
+    },
   );
   process.stdout.write(`${stagedPath}\n`);
+}
+
+function parseCliArgs(args) {
+  let outputDir;
+  let publishVersion = process.env.CLI_PUBLISH_VERSION;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg === "--version") {
+      const nextArg = args[index + 1];
+      if (!nextArg || nextArg.startsWith("--")) {
+        throw new Error("--version requires a value.");
+      }
+      publishVersion = nextArg;
+      index += 1;
+      continue;
+    }
+
+    if (arg?.startsWith("--version=")) {
+      publishVersion = arg.slice("--version=".length);
+      continue;
+    }
+
+    if (arg?.startsWith("--")) {
+      throw new Error(`Unknown option: ${arg}`);
+    }
+
+    if (outputDir) {
+      throw new Error(`Unexpected argument: ${arg}`);
+    }
+
+    outputDir = arg;
+  }
+
+  if (publishVersion !== undefined && publishVersion.trim() === "") {
+    throw new Error("Publish version cannot be empty.");
+  }
+
+  return { outputDir, publishVersion };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

@@ -38,8 +38,8 @@ Rules:
 - `project` is not the same thing as `app`
 - Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for project resolution
 - `.prisma/local.json` is a gitignored local pin/cache for Workspace and Project IDs; it is not a declarative repo config file
-- `app deploy` may create missing project context only when resolution is unambiguous
-- other commands must not create project context implicitly
+- Project setup is explicit: users choose an existing Project or explicitly create a new one before remote work starts
+- `app deploy` may orchestrate Project setup, but it must not silently choose or create Project scope
 - everything under a project happens in a branch
 
 ### Branch
@@ -103,7 +103,7 @@ Rules:
 - the app name is registered within the resolved project
 - the runtime app service is scoped by branch in the platform model
 - the app may be selected or created as part of app deployment workflows
-- app selection is local CLI state when needed for the preview package
+- app selection is local CLI state when needed for the beta package
 
 ### Deployment
 
@@ -134,7 +134,7 @@ It matters because:
 ### Environment Variables
 
 Environment variables are deploy-time inputs, not top-level CLI resources in the
-preview command model.
+beta command model.
 
 Rules:
 
@@ -150,13 +150,13 @@ top-level target-context group is `branch`, not `env`.
 
 ### Schema and Database
 
-`schema` and `database` are out of scope for the current preview package, but
+`schema` and `database` are out of scope for the current beta package, but
 they remain part of the long-term hierarchy.
 
 - `schema` stays a local code artifact
 - `database` stays a branch-bound resource
 
-The preview package must not redefine project or branch in a way that makes
+The beta package must not redefine project or branch in a way that makes
 future schema, database, and migration workflows awkward.
 
 ## Relationships
@@ -190,15 +190,21 @@ Long-term, branch is where app and database relationships meet.
 Commands resolve project context in this order:
 
 1. explicit `--project <id-or-name>` when present
-2. durable platform mapping when available
-3. remembered local project context, revalidated against platform data
-4. `package.json` name matched exactly against accessible project id, name, or slug
-5. unambiguous project creation for commands that are allowed to create projects
-6. prompt in interactive mode, or structured failure in `--json` / `--no-interactive` mode
+2. `PRISMA_PROJECT_ID` when set for headless deploy/domain commands
+3. `.prisma/local.json` project pin when present, revalidated against platform data
+4. durable platform mapping when available
+5. explicit setup choice: `project link`, `project create`, interactive setup picker, `app deploy --project`, or `app deploy --create-project`
+6. structured failure when no explicit or durable Project binding exists
 
-Remembered local project context is an internal convenience after successful
-resolution. It must be revalidated before use and must not be described to users
-as durable linking. Only `app deploy` may create projects implicitly.
+Package names and directory names may suggest setup defaults and matching
+Project candidates, but they do not select Project scope. Remembered local
+context may help with app/deployment convenience after a Project is explicit,
+but it is not a Project binding source.
+
+Project-scoped commands require explicit or durable Project context. If the
+directory is not pinned and no explicit Project source is provided, they fail
+with `PROJECT_SETUP_REQUIRED`; `app deploy` may enter explicit interactive setup
+before failing.
 
 ### App Selection Resolution
 

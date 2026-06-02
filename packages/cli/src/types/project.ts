@@ -3,6 +3,7 @@ import type { AuthWorkspace } from "./auth";
 export interface ProjectSummary {
   id: string;
   name: string;
+  url?: string;
 }
 
 export type ProjectSource =
@@ -10,27 +11,61 @@ export type ProjectSource =
   | "env"
   | "local-pin"
   | "platform-mapping"
-  | "remembered-local"
-  | "package-name"
-  | "directory-name"
   | "created"
-  | "prompt";
+  | "prompt"
+  | "unbound";
 
 export interface ProjectResolution {
   projectSource: ProjectSource;
   targetName?: string | null;
-  targetNameSource?: "explicit" | "env" | "local-pin" | "package-name" | "directory-name" | "remembered-local" | "platform-mapping" | "prompt";
+  targetNameSource?: "explicit" | "env" | "local-pin" | "package-name" | "directory-name" | "platform-mapping" | "prompt";
+}
+
+export interface ProjectLocalBindingState {
+  status: "linked" | "not-linked" | "invalid";
 }
 
 export interface ProjectListResult {
   workspace: AuthWorkspace;
   projects: ProjectSummary[];
+  localBinding?: ProjectLocalBindingState;
 }
 
-export interface ProjectShowResult {
+export interface ProjectSetupSuggestion {
+  suggestedProjectName: string;
+  suggestedProjectNameSource: "package-name" | "directory-name";
+  candidates: ProjectSummary[];
+  recoveryCommands: string[];
+}
+
+export interface BoundProjectShowResult {
   workspace: AuthWorkspace;
   project: ProjectSummary;
   resolution: ProjectResolution;
+}
+
+export interface UnboundProjectShowResult extends ProjectSetupSuggestion {
+  workspace: AuthWorkspace;
+  project: null;
+  localBinding: {
+    status: "not-linked";
+  };
+  resolution: ProjectResolution & {
+    projectSource: "unbound";
+  };
+}
+
+export type ProjectShowResult = BoundProjectShowResult | UnboundProjectShowResult;
+
+export interface ProjectSetupResult {
+  workspace: AuthWorkspace;
+  project: ProjectSummary;
+  directory: string;
+  localPin: {
+    path: string;
+    written: true;
+  };
+  action: "created" | "linked";
 }
 
 export interface GitRepositoryConnection {
@@ -59,6 +94,6 @@ export interface GitRepositoryConnection {
   updatedAt: string | null;
 }
 
-export interface ProjectRepositoryConnectionResult extends ProjectShowResult {
-  repositoryConnection: GitRepositoryConnection | null;
+export interface ProjectRepositoryConnectionResult extends BoundProjectShowResult {
+  repositoryConnection: GitRepositoryConnection;
 }

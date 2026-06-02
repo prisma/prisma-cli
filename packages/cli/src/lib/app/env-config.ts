@@ -2,22 +2,25 @@ import { usageError } from "../../shell/errors";
 
 export type EnvVarRole = "production" | "preview";
 
-export type EnvScope = { kind: "role"; role: EnvVarRole };
+export type EnvScope =
+  | { kind: "role"; role: EnvVarRole }
+  | { kind: "branch"; branchName: string };
 
 export interface ScopeFlagInput {
   roleName?: string;
+  branchName?: string;
 }
 
 export interface ScopeOptions {
   requireExplicit: boolean;
-  command: "add" | "update" | "rm" | "list";
+  command: "add" | "update" | "remove" | "list";
 }
 
 const VALID_ROLES: ReadonlySet<string> = new Set(["production", "preview"]);
 
-function positionalHint(command: "add" | "update" | "rm" | "list"): string {
+function positionalHint(command: ScopeOptions["command"]): string {
   if (command === "add" || command === "update") return "KEY=value ";
-  if (command === "rm") return "KEY ";
+  if (command === "remove") return "KEY ";
   return "";
 }
 
@@ -25,6 +28,19 @@ export function resolveEnvScope(
   flags: ScopeFlagInput,
   options: ScopeOptions,
 ): EnvScope | null {
+  if (flags.roleName && flags.branchName) {
+    throw usageError(
+      `prisma-cli project env ${options.command} accepts either --role or --branch`,
+      "--role targets a project-level config map; --branch targets a preview branch override.",
+      "Pass exactly one scope flag.",
+      [
+        `prisma-cli project env ${options.command} ${positionalHint(options.command)}--role preview`,
+        `prisma-cli project env ${options.command} ${positionalHint(options.command)}--branch feature/foo`,
+      ],
+      "app",
+    );
+  }
+
   if (flags.roleName) {
     if (!VALID_ROLES.has(flags.roleName)) {
       throw usageError(
@@ -42,15 +58,20 @@ export function resolveEnvScope(
     return { kind: "role", role: flags.roleName as EnvVarRole };
   }
 
+  if (flags.branchName) {
+    return { kind: "branch", branchName: flags.branchName };
+  }
+
   if (options.requireExplicit) {
     const positional = positionalHint(options.command);
     throw usageError(
-      `prisma-cli project env ${options.command} requires --role`,
+      `prisma-cli project env ${options.command} requires --role or --branch`,
       "Writing without an explicit scope is rejected so the command never silently targets production.",
-      "Pass --role production or --role preview.",
+      "Pass --role production, --role preview, or --branch <git-name>.",
       [
         `prisma-cli project env ${options.command} ${positional}--role production`,
         `prisma-cli project env ${options.command} ${positional}--role preview`,
+        `prisma-cli project env ${options.command} ${positional}--branch feature/foo`,
       ],
       "app",
     );
@@ -113,7 +134,7 @@ export function parseKeyValuePositional(
     throw usageError(
       `KEY=VALUE argument has an empty value`,
       `"${raw}" has an empty value after the = separator.`,
-      `Pass a non-empty value, or use prisma-cli project env rm to remove a variable.`,
+      `Pass a non-empty value, or use prisma-cli project env remove to remove a variable.`,
       [`prisma-cli project env ${command} ${key}=value --role production`],
       "app",
     );
@@ -126,14 +147,14 @@ const KEY_SHAPE = /^[A-Z_][A-Z0-9_]*$/;
 
 export function validateKey(
   key: string,
-  command: "add" | "update" | "rm",
+  command: "add" | "update" | "remove",
 ): void {
   if (key.length === 0) {
     throw usageError(
       `Variable key cannot be empty`,
       "An empty key was passed.",
       "Pass an env-var key, e.g. STRIPE_KEY.",
-      [`prisma-cli project env ${command} STRIPE_KEY${command === "rm" ? "" : "=value"} --role production`],
+      [`prisma-cli project env ${command} STRIPE_KEY${command === "remove" ? "" : "=value"} --role production`],
       "app",
     );
   }
@@ -153,12 +174,15 @@ export function validateKey(
       `Variable key "${key}" must match the POSIX env-var shape`,
       "Keys must start with an uppercase letter or underscore and contain only uppercase letters, digits, and underscores.",
       "Rename the key to match [A-Z_][A-Z0-9_]*.",
-      [`prisma-cli project env ${command} STRIPE_KEY${command === "rm" ? "" : "=value"} --role production`],
+      [`prisma-cli project env ${command} STRIPE_KEY${command === "remove" ? "" : "=value"} --role production`],
       "app",
     );
   }
 }
 
 export function formatScopeLabel(scope: EnvScope): string {
-  return scope.role;
+  if (scope.kind === "role") {
+    return scope.role;
+  }
+  return `branch:${scope.branchName}`;
 }

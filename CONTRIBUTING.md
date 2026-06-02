@@ -10,7 +10,7 @@ is unclear, update the relevant product doc before changing the command surface.
 
 Requirements:
 
-- Node.js 20 or newer
+- Node.js 22.12 or newer
 - pnpm 10
 
 Install dependencies:
@@ -58,15 +58,23 @@ The CLI must preserve the unified command model:
 - Keep the canonical command shape as `prisma <group> <action>`.
 - Keep stdout for machine-readable data and stderr for human-oriented status.
 
-## Package Preview
+## Package Channels
 
-Preview releases use `@prisma/cli` and expose the `prisma-cli` binary. The
-release workflow is configured to publish prerelease versions under the
-`preview` dist-tag until the CLI is ready for broader use.
+Official beta releases use `@prisma/cli` and expose the `prisma-cli` binary.
+The `latest` dist-tag points at the latest manually published beta.
+
+The `dev` dist-tag points at the latest successful `main` build, published as
+`3.0.0-dev.<run_number>.<run_attempt>`. Commit traceability comes from npm
+provenance and the GitHub Actions run. Trusted same-repo pull requests receive
+pkg.pr.new preview comments for testing exact unmerged commits. Fork pull
+requests do not publish preview packages automatically. Preview publishing is
+best-effort and requires the pkg.pr.new GitHub App to be installed for this
+repository. Once that app is installed, set the repository variable
+`CLI_PR_PREVIEW_REQUIRED=true` to make preview publishing failures block CI.
 
 Do not publish from a local checkout unless the release owner has explicitly
 asked you to do so. Release publishing is intended to happen through the
-configured GitHub Actions workflow.
+configured `Publish CLI` GitHub Actions workflow.
 
 ## Pull Requests
 

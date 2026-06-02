@@ -15,7 +15,14 @@ import type {
   AppBuildResult,
   AppDeployResult,
   AppDeploymentSummary,
-  AppListEnvResult,
+  AppDomainAddResult,
+  AppDomainDnsRecord,
+  AppDomainRemoveResult,
+  AppDomainRetryResult,
+  AppDomainShowResult,
+  AppDomainStatus,
+  AppDomainSummary,
+  AppDomainTarget,
   AppListDeploysResult,
   AppOpenResult,
   AppPromoteResult,
@@ -24,7 +31,6 @@ import type {
   AppShowResult,
   AppRunResult,
   AppShowDeployResult,
-  AppUpdateEnvResult,
 } from "../types/app";
 import type { AuthWorkspace } from "../types/auth";
 import type { BranchKind } from "../types/branch";
@@ -33,26 +39,35 @@ import { requireComputeAuth } from "../lib/auth/guard";
 import { readAuthState } from "../lib/auth/auth-ops";
 import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
 import { parseEnvAssignments } from "../lib/app/env-vars";
-import { renderDeployOutputRows } from "../lib/app/deploy-output";
+import { renderDeployOutputRows, renderDeploySettingsPreview } from "../lib/app/deploy-output";
 import {
   DEFAULT_LOCAL_DEV_PORT,
   resolveLocalBuildType,
   runLocalApp,
 } from "../lib/app/local-dev";
-import { readBunPackageJson, type BunPackageJsonLike } from "../lib/app/bun-project";
+import { readBunPackageEntrypoint, readBunPackageJson, type BunPackageJsonLike } from "../lib/app/bun-project";
 import {
+  buildProjectSetupNextActions,
   inferTargetName,
   projectNotFoundError,
+  resolveDurablePlatformMapping,
   resolveProjectTarget,
   type InferredTargetName,
-  type InferredTargetNameSource,
   type ProjectCandidate,
+  sortProjects,
 } from "../lib/project/resolution";
+import { promptForProjectSetupChoice } from "../lib/project/interactive-setup";
 import {
-  ensureLocalResolutionPinGitignore,
+  bindProjectToDirectory,
+  formatCommandArgument,
+  projectCreateFailedError,
+  projectSetupNameRequiredError,
+  resolveProjectForSetup,
+  toProjectSummary,
+} from "../lib/project/setup";
+import {
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
   readLocalResolutionPin,
-  writeLocalResolutionPin,
   type LocalResolutionPinReadResult,
 } from "../lib/project/local-pin";
 import {
@@ -67,17 +82,27 @@ import {
   createPreviewDeployProgress,
   createPreviewDeployProgressState,
   createPreviewPromoteProgress,
-  createPreviewUpdateEnvProgress,
   type PreviewDeployProgressState,
 } from "../lib/app/preview-progress";
-import { createPreviewAppProvider, type PreviewAppRecord } from "../lib/app/preview-provider";
+import {
+  createPreviewAppProvider,
+  PreviewDomainApiError,
+  type PreviewAppRecord,
+  type PreviewDomainRecord,
+} from "../lib/app/preview-provider";
+import { formatDomainFailureFix } from "../lib/app/domain-guidance";
 import { requireAuthenticatedAuthState } from "./auth";
 import { listRealWorkspaceProjects } from "./project";
 import { createSelectPromptPort } from "./select-prompt-port";
 
-type DeployFramework = "nextjs" | "hono" | "tanstack-start";
+type AppDomainCommand = "add" | "show" | "remove" | "retry" | "wait";
+type DeployFramework = "nextjs" | "hono" | "tanstack-start" | "bun";
 
-const DEPLOY_FRAMEWORKS = ["nextjs", "hono", "tanstack-start"] as const satisfies readonly DeployFramework[];
+const DEPLOY_FRAMEWORKS = ["nextjs", "hono", "tanstack-start", "bun"] as const satisfies readonly DeployFramework[];
+const TANSTACK_START_PACKAGES = [
+  "@tanstack/react-start",
+  "@tanstack/solid-start",
+] as const;
 const FRAMEWORK_DEFAULT_HTTP_PORT = 3000;
 const PRISMA_PROJECT_ID_ENV_VAR = "PRISMA_PROJECT_ID";
 const PRISMA_APP_ID_ENV_VAR = "PRISMA_APP_ID";
@@ -188,9 +213,9 @@ export async function runAppDeploy(
   appName: string | undefined,
   options?: {
     projectRef?: string;
+    createProjectName?: string;
     branchName?: string;
     entrypoint?: string;
-    buildType?: string;
     framework?: string;
     httpPort?: string;
     envAssignments?: string[];
@@ -200,7 +225,13 @@ export async function runAppDeploy(
 
   const envProjectId = readDeployEnvOverride(context, PRISMA_PROJECT_ID_ENV_VAR);
   const envAppId = readDeployEnvOverride(context, PRISMA_APP_ID_ENV_VAR);
-  const skipLocalPin = Boolean(envProjectId || envAppId);
+  assertExclusiveDeployProjectInputs({
+    projectRef: options?.projectRef,
+    createProjectName: options?.createProjectName,
+    envProjectId,
+  });
+
+  const skipLocalPin = Boolean(envProjectId || options?.projectRef || options?.createProjectName);
   const localPin = skipLocalPin
     ? ({ kind: "missing" } satisfies LocalResolutionPinReadResult)
     : await readLocalResolutionPin(context.runtime.cwd);
@@ -208,15 +239,35 @@ export async function runAppDeploy(
     throw localResolutionPinStaleError();
   }
 
-  const explicitBuildType = Boolean(options?.buildType && options.buildType !== "auto");
   const branch = await resolveDeployBranch(context, options?.branchName);
   if (options?.httpPort) {
     parseDeployHttpPort(options.httpPort);
   }
+  assertSupportedEntrypointForRequestedDeployShape({
+    requestedFramework: options?.framework,
+    entrypoint: options?.entrypoint,
+  });
+  const { provider, target, projectId } = await requireProviderAndDeployProjectContext(context, options?.projectRef, {
+    branch,
+    createProjectName: options?.createProjectName,
+    envProjectId,
+    localPin,
+  });
+  let localPinResult: { path: string; written: true } | undefined;
+  if (target.localPinAction) {
+    const setupResult = await bindProjectToDirectory(
+      context,
+      target.workspace,
+      target.project,
+      target.localPinAction,
+    );
+    localPinResult = setupResult.localPin;
+    maybeRenderProjectLinked(context, setupResult.directory, setupResult.project.name, setupResult.localPin.path);
+  }
+
   let framework = await resolveDeployFramework(context, {
     requestedFramework: options?.framework,
-    requestedBuildType: options?.buildType,
-    explicitBuildType,
+    entrypoint: options?.entrypoint,
   });
   let runtime = resolveDeployRuntime(options?.httpPort, framework);
   assertSupportedEntrypoint(framework.buildType, options?.entrypoint, "deploy");
@@ -225,32 +276,19 @@ export async function runAppDeploy(
       commandName: "deploy",
     }),
   );
-  const firstDeploy = !skipLocalPin && localPin.kind === "missing";
-  const { provider, target, projectId } = await requireProviderAndDeployProjectContext(context, options?.projectRef, {
-    allowCreate: true,
-    branch,
-    envProjectId,
-    localPin,
-  });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveDeployAppSelection(context, projectId, apps, {
     explicitAppName: appName,
     explicitAppId: envAppId,
-    firstDeploy,
+    firstDeploy: Boolean(target.localPinAction),
     inferName: () => inferTargetName(context.runtime.cwd),
   });
 
   await maybeRenderDeploySetupBlock(context, {
-    firstDeploy: selectedApp.firstDeploy,
-    workspaceName: target.workspace.name,
+    includeDirectory: !target.localPinAction,
     projectName: target.project.name,
-    projectAnnotation: annotationForProjectResolution(target.resolution),
     branchName: target.branch.name,
-    branchAnnotation: branch.annotation,
     appName: selectedApp.displayName,
-    appAnnotation: selectedApp.annotation,
-    framework,
-    runtime,
   });
 
   const customized = await maybeCustomizeDeploySettings(context, {
@@ -258,7 +296,7 @@ export async function runAppDeploy(
     runtime,
     firstDeploy: selectedApp.firstDeploy,
     explicitFramework: Boolean(options?.framework),
-    explicitBuildType,
+    explicitEntrypoint: Boolean(options?.entrypoint),
     explicitHttpPort: Boolean(options?.httpPort),
   });
   framework = customized.framework;
@@ -268,16 +306,8 @@ export async function runAppDeploy(
   // derives its entrypoint from build output, so validate --entry again after it.
   const buildType = framework.buildType;
   assertSupportedEntrypoint(buildType, options?.entrypoint, "deploy");
+  const entrypoint = await resolveDeployEntrypoint(context.runtime.cwd, framework, options?.entrypoint);
   const portMapping = parseDeployPortMapping(String(runtime.port));
-  const shouldWriteLocalPin = firstDeploy && !skipLocalPin;
-  if (shouldWriteLocalPin) {
-    await writeLocalResolutionPin(context.runtime.cwd, {
-      workspaceId: target.workspace.id,
-      projectId: target.project.id,
-    });
-    await ensureLocalResolutionPinGitignore(context.runtime.cwd);
-    maybeRenderLocalPinBound(context, target.project.name);
-  }
 
   const progressState = createPreviewDeployProgressState();
   const deployStartedAt = Date.now();
@@ -288,7 +318,7 @@ export async function runAppDeploy(
     appId: selectedApp.appId,
     appName: selectedApp.appName,
     region: selectedApp.region,
-    entrypoint: options?.entrypoint,
+    entrypoint,
     buildType,
     portMapping,
     envVars,
@@ -318,200 +348,10 @@ export async function runAppDeploy(
       },
       deployment: deployResult.deployment,
       durationMs: deployDurationMs,
-      localPin: shouldWriteLocalPin
-        ? {
-            path: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
-            written: true,
-          }
-        : undefined,
+      localPin: localPinResult,
     },
     warnings: [],
     nextSteps: ["prisma-cli app list-deploys", `prisma-cli app show-deploy ${deployResult.deployment.id}`],
-  };
-}
-
-export async function runAppUpdateEnv(
-  context: CommandContext,
-  appName: string | undefined,
-  envAssignments: string[] | undefined,
-  projectRef?: string,
-): Promise<CommandSuccess<AppUpdateEnvResult>> {
-  ensurePreviewAppMode(context);
-  emitLegacyEnvDeprecationWarning(context, "app update-env", "project env add");
-
-  const envVars = parseEnvAssignments(envAssignments, {
-    commandName: "update-env",
-    requireAtLeastOne: true,
-  });
-  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
-  const apps = await listApps(context, provider, projectId, target.branch.name);
-  const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
-
-  if (!selectedApp) {
-    throw noDeploymentsError(
-      "No deployments available to update environment variables",
-      "The resolved project does not have any deployed app yet.",
-    );
-  }
-
-  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
-    throw deployFailedError("Failed to inspect app deployments", error, ["prisma-cli app list-deploys"]);
-  });
-
-  if (deploymentsResult.deployments.length === 0) {
-    throw noDeploymentsError(
-      "No deployments available to update environment variables",
-      `The selected app "${deploymentsResult.app.name}" does not have any deployments yet.`,
-    );
-  }
-
-  const updateResult = await provider.updateAppEnv({
-    appId: deploymentsResult.app.id,
-    envVars,
-    progress: createPreviewUpdateEnvProgress(context.output.stderr, !context.flags.json && !context.flags.quiet),
-    promoteProgress: createPreviewPromoteProgress(context.output.stderr, !context.flags.json && !context.flags.quiet),
-  }).catch((error) => {
-    throw deployFailedError("Failed to update app environment variables", error, ["prisma-cli app list-env"]);
-  });
-
-  await context.stateStore.setSelectedApp(projectId, {
-    id: updateResult.app.id,
-    name: updateResult.app.name,
-  });
-  await context.stateStore.setKnownLiveDeployment(projectId, updateResult.app.id, updateResult.deployment.id);
-
-  return {
-    command: "app.update-env",
-    result: {
-      projectId: updateResult.projectId,
-      app: {
-        id: updateResult.app.id,
-        name: updateResult.app.name,
-      },
-      deployment: updateResult.deployment,
-      variables: updateResult.variables,
-    },
-    warnings: [],
-    nextSteps: ["prisma-cli app list-env", `prisma-cli app show-deploy ${updateResult.deployment.id}`],
-  };
-}
-
-export async function runAppListEnv(
-  context: CommandContext,
-  appName: string | undefined,
-  projectRef?: string,
-): Promise<CommandSuccess<AppListEnvResult>> {
-  ensurePreviewAppMode(context);
-  emitLegacyEnvDeprecationWarning(context, "app list-env", "project env list");
-
-  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
-  const apps = await listApps(context, provider, projectId, target.branch.name);
-  const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
-
-  if (!selectedApp) {
-    return {
-      command: "app.list-env",
-      result: {
-        projectId,
-        app: null,
-        deployment: null,
-        variables: [],
-      },
-      warnings: [],
-      nextSteps: ["prisma-cli app deploy"],
-    };
-  }
-
-  const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
-    throw deployFailedError("Failed to inspect app deployments", error, ["prisma-cli app list-deploys"]);
-  });
-  const knownLiveDeploymentId = await context.stateStore.readKnownLiveDeployment(projectId, deploymentsResult.app.id);
-  const missingKnownLiveDeploymentId = knownLiveDeploymentId
-    && !deploymentsResult.deployments.some((candidate) => candidate.id === knownLiveDeploymentId)
-      ? knownLiveDeploymentId
-      : null;
-  const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
-    context,
-    projectId,
-    deploymentsResult.app,
-    deploymentsResult.deployments,
-  );
-  const deployments = applyLiveDeploymentHint(deploymentsResult.deployments, currentLiveDeploymentId)
-    .slice()
-    .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
-  const deployment = currentLiveDeploymentId
-    ? deployments.find((candidate) => candidate.id === currentLiveDeploymentId) ?? null
-    : null;
-
-  await context.stateStore.setSelectedApp(projectId, {
-    id: deploymentsResult.app.id,
-    name: deploymentsResult.app.name,
-  });
-
-  if (missingKnownLiveDeploymentId) {
-    const envResult = await provider.listAppEnvNames({
-      appId: deploymentsResult.app.id,
-      deploymentId: missingKnownLiveDeploymentId,
-    }).catch((error) => {
-      throw deployFailedError("Failed to inspect app environment variables", error, ["prisma-cli app list-deploys"]);
-    });
-
-    return {
-      command: "app.list-env",
-      result: {
-        projectId,
-        app: {
-          id: envResult.app.id,
-          name: envResult.app.name,
-        },
-        deployment: envResult.deployment,
-        variables: envResult.variables,
-      },
-      warnings: [],
-      nextSteps: [`prisma-cli app show-deploy ${envResult.deployment.id}`],
-    };
-  }
-
-  if (!deployment) {
-    return {
-      command: "app.list-env",
-      result: {
-        projectId,
-        app: {
-          id: deploymentsResult.app.id,
-          name: deploymentsResult.app.name,
-        },
-        deployment: null,
-        variables: [],
-      },
-      warnings: [],
-      nextSteps: ["prisma-cli app deploy"],
-    };
-  }
-
-  const envResult = await provider.listAppEnvNames({
-    appId: deploymentsResult.app.id,
-    deploymentId: deployment.id,
-  }).catch((error) => {
-    throw deployFailedError("Failed to inspect app environment variables", error, ["prisma-cli app list-deploys"]);
-  });
-
-  return {
-    command: "app.list-env",
-    result: {
-      projectId,
-      app: {
-        id: envResult.app.id,
-        name: envResult.app.name,
-      },
-      deployment: {
-        ...deployment,
-        live: deployment.live ?? envResult.deployment.live,
-      },
-      variables: envResult.variables,
-    },
-    warnings: [],
-    nextSteps: deployment.id ? [`prisma-cli app show-deploy ${deployment.id}`] : ["prisma-cli app deploy"],
   };
 }
 
@@ -522,7 +362,9 @@ export async function runAppListDeploys(
 ): Promise<CommandSuccess<AppListDeploysResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef, {
+    commandName: "app list-deploys",
+  });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
@@ -581,7 +423,9 @@ export async function runAppShow(
 ): Promise<CommandSuccess<AppShowResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef, {
+    commandName: "app show",
+  });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
@@ -698,7 +542,9 @@ export async function runAppOpen(
 ): Promise<CommandSuccess<AppOpenResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef, {
+    commandName: "app open",
+  });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveExistingAppSelection(context, projectId, apps, appName);
 
@@ -768,6 +614,209 @@ export async function runAppOpen(
   };
 }
 
+export async function runAppDomainAdd(
+  context: CommandContext,
+  hostname: string,
+  options?: {
+    appName?: string;
+    projectRef?: string;
+    branchName?: string;
+  },
+): Promise<CommandSuccess<AppDomainAddResult>> {
+  const normalizedHostname = normalizeDomainHostname(hostname);
+  const target = await resolveAppDomainTarget(context, options, `app domain add ${normalizedHostname}`);
+
+  const added = await target.provider.addDomain({
+    appId: target.app.id,
+    hostname: normalizedHostname,
+  }).catch((error) => {
+    throw domainCommandError("add", error, normalizedHostname);
+  });
+
+  return {
+    command: "app.domain.add",
+    result: {
+      ...target.resultTarget,
+      domain: toAppDomainSummary(added.domain),
+      existing: added.existing,
+    },
+    warnings: [],
+    nextSteps: [
+      `prisma-cli app domain wait ${normalizedHostname}`,
+      `prisma-cli app domain show ${normalizedHostname}`,
+    ],
+  };
+}
+
+export async function runAppDomainShow(
+  context: CommandContext,
+  hostname: string,
+  options?: {
+    appName?: string;
+    projectRef?: string;
+    branchName?: string;
+  },
+): Promise<CommandSuccess<AppDomainShowResult>> {
+  const normalizedHostname = normalizeDomainHostname(hostname);
+  const target = await resolveAppDomainTarget(context, options, `app domain show ${normalizedHostname}`);
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "show");
+  const detail = await target.provider.showDomain(domain.id).catch((error) => {
+    throw domainCommandError("show", error, normalizedHostname);
+  });
+
+  return {
+    command: "app.domain.show",
+    result: {
+      ...target.resultTarget,
+      domain: toAppDomainSummary(detail),
+    },
+    warnings: [],
+    nextSteps: buildDomainShowNextSteps(detail),
+  };
+}
+
+export async function runAppDomainRemove(
+  context: CommandContext,
+  hostname: string,
+  options?: {
+    appName?: string;
+    projectRef?: string;
+    branchName?: string;
+  },
+): Promise<CommandSuccess<AppDomainRemoveResult>> {
+  const normalizedHostname = normalizeDomainHostname(hostname);
+  const target = await resolveAppDomainTarget(context, options, `app domain remove ${normalizedHostname}`);
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "remove");
+
+  await confirmDomainRemoval(context, target.resultTarget, normalizedHostname);
+
+  await target.provider.removeDomain(domain.id).catch((error) => {
+    throw domainCommandError("remove", error, normalizedHostname);
+  });
+
+  return {
+    command: "app.domain.remove",
+    result: {
+      ...target.resultTarget,
+      hostname: normalizedHostname,
+      removed: true,
+    },
+    warnings: [],
+    nextSteps: [],
+  };
+}
+
+export async function runAppDomainRetry(
+  context: CommandContext,
+  hostname: string,
+  options?: {
+    appName?: string;
+    projectRef?: string;
+    branchName?: string;
+  },
+): Promise<CommandSuccess<AppDomainRetryResult>> {
+  const normalizedHostname = normalizeDomainHostname(hostname);
+  const target = await resolveAppDomainTarget(context, options, `app domain retry ${normalizedHostname}`);
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "retry");
+  const retried = await target.provider.retryDomain(domain.id).catch((error) => {
+    throw domainCommandError("retry", error, normalizedHostname);
+  });
+
+  return {
+    command: "app.domain.retry",
+    result: {
+      ...target.resultTarget,
+      domain: toAppDomainSummary(retried),
+    },
+    warnings: [],
+    nextSteps: [`prisma-cli app domain wait ${normalizedHostname}`],
+  };
+}
+
+export async function runAppDomainWait(
+  context: CommandContext,
+  hostname: string,
+  options?: {
+    appName?: string;
+    projectRef?: string;
+    branchName?: string;
+    timeout?: string;
+  },
+): Promise<void> {
+  const normalizedHostname = normalizeDomainHostname(hostname);
+  const timeoutMs = parseDomainWaitTimeout(options?.timeout);
+  const target = await resolveAppDomainTarget(context, options, `app domain wait ${normalizedHostname}`);
+  const domain = await resolveDomainByHostname(target.provider, target.app.id, normalizedHostname, "wait");
+
+  if (!context.flags.json && !context.flags.quiet) {
+    context.output.stderr.write(
+      [
+        `app domain wait -> Waiting for ${normalizedHostname} to become active.`,
+        "",
+        `Workspace: ${target.resultTarget.workspace.name}   Project: ${target.resultTarget.project.name}   Branch: ${target.resultTarget.branch.name}   App: ${target.resultTarget.app.name}`,
+        "",
+      ].join("\n"),
+    );
+  }
+
+  const start = Date.now();
+  const deadline = start + timeoutMs;
+  const pollIntervalMs = readDomainWaitPollIntervalMs(context);
+  let lastStatus: AppDomainStatus | null = null;
+  let current = domain;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    emitDomainWaitStatus(context, {
+      hostname: normalizedHostname,
+      domainId: current.id,
+      previousStatus: lastStatus,
+      status: current.status,
+      elapsedMs: Date.now() - start,
+    });
+    lastStatus = current.status;
+
+    if (current.status === "active") {
+      if (!context.flags.json && !context.flags.quiet) {
+        context.output.stderr.write(`\n${normalizedHostname} is live at https://${normalizedHostname}\n`);
+      }
+      return;
+    }
+
+    if (current.status === "failed") {
+      throw new CliError({
+        code: "DOMAIN_VERIFICATION_FAILED",
+        domain: "app",
+        summary: `Custom domain "${normalizedHostname}" failed verification`,
+        why: formatDomainFailureWhy(current),
+        fix: formatDomainFailureFix(current) ?? `Run prisma-cli app domain retry ${normalizedHostname}.`,
+        exitCode: 1,
+        nextSteps: [
+          `prisma-cli app domain show ${normalizedHostname}`,
+          `prisma-cli app domain retry ${normalizedHostname}`,
+        ],
+      });
+    }
+
+    if (timeoutMs === 0 || Date.now() >= deadline) {
+      throw new CliError({
+        code: "DOMAIN_VERIFICATION_TIMEOUT",
+        domain: "app",
+        summary: `Timed out waiting for "${normalizedHostname}" to become active`,
+        why: `The domain is still "${current.status}".`,
+        fix: `Run prisma-cli app domain show ${normalizedHostname} to inspect the current status, or retry wait with a longer --timeout.`,
+        exitCode: 1,
+        nextSteps: [`prisma-cli app domain show ${normalizedHostname}`],
+      });
+    }
+
+    await sleep(Math.min(pollIntervalMs, Math.max(deadline - Date.now(), 0)));
+    current = await target.provider.showDomain(current.id).catch((error) => {
+      throw domainCommandError("wait", error, normalizedHostname);
+    });
+  }
+}
+
 export async function runAppLogs(
   context: CommandContext,
   appName: string | undefined,
@@ -776,7 +825,9 @@ export async function runAppLogs(
 ): Promise<void> {
   ensurePreviewAppMode(context);
 
-  const { provider, target: resolvedTarget, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const { provider, target: resolvedTarget, projectId } = await requireProviderAndProjectContext(context, projectRef, {
+    commandName: "app logs",
+  });
   const target = deploymentId
     ? await resolveExplicitLogDeployment(context, provider, projectId, resolvedTarget.branch.name, appName, deploymentId)
     : await resolveLiveLogDeployment(context, provider, projectId, resolvedTarget.branch.name, appName);
@@ -972,7 +1023,9 @@ export async function runAppPromote(
 ): Promise<CommandSuccess<AppPromoteResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef, {
+    commandName: "app promote",
+  });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "promote");
   const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
@@ -1038,7 +1091,9 @@ export async function runAppRollback(
 ): Promise<CommandSuccess<AppRollbackResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef, {
+    commandName: "app rollback",
+  });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "rollback");
   const deploymentsResult = await provider.listDeployments(selectedApp.id).catch((error) => {
@@ -1105,7 +1160,9 @@ export async function runAppRemove(
 ): Promise<CommandSuccess<AppRemoveResult>> {
   ensurePreviewAppMode(context);
 
-  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef);
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, projectRef, {
+    commandName: "app remove",
+  });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await requireReleaseAppSelection(context, projectId, apps, appName, "remove");
 
@@ -1130,6 +1187,509 @@ export async function runAppRemove(
     warnings,
     nextSteps: ["prisma-cli app deploy", "prisma-cli app list-deploys"],
   };
+}
+
+interface ResolvedAppDomainTarget {
+  provider: ReturnType<typeof createPreviewAppProvider>;
+  app: PreviewAppRecord;
+  resultTarget: AppDomainTarget;
+}
+
+async function resolveAppDomainTarget(
+  context: CommandContext,
+  options?: {
+    appName?: string;
+    projectRef?: string;
+    branchName?: string;
+  },
+  commandName = "app domain",
+): Promise<ResolvedAppDomainTarget> {
+  ensurePreviewAppMode(context);
+
+  const branch = resolveDomainBranch(options?.branchName);
+  if (toBranchKind(branch.name) !== "production") {
+    throw new CliError({
+      code: "BRANCH_NOT_DEPLOYABLE",
+      domain: "branch",
+      summary: "Custom domains require the production branch",
+      why: `Custom domains on preview branch "${branch.name}" are not supported in Public Beta.`,
+      fix: "Use --branch production, or attach the domain after promoting/deploying to the production branch.",
+      exitCode: 2,
+      nextSteps: ["prisma-cli app domain add <hostname> --branch production"],
+    });
+  }
+
+  const envProjectId = readDeployEnvOverride(context, PRISMA_PROJECT_ID_ENV_VAR);
+  const envAppId = readDeployEnvOverride(context, PRISMA_APP_ID_ENV_VAR);
+
+  const { provider, target, projectId } = await requireProviderAndProjectContext(context, options?.projectRef, {
+    branch,
+    commandName,
+    envProjectId,
+  });
+  const apps = await listApps(context, provider, projectId, target.branch.name);
+  const selectedApp = await resolveDomainAppSelection(context, projectId, apps, {
+    explicitAppName: options?.appName,
+    explicitAppId: envAppId,
+  });
+
+  await context.stateStore.setSelectedApp(projectId, {
+    id: selectedApp.id,
+    name: selectedApp.name,
+  });
+
+  return {
+    provider,
+    app: selectedApp,
+    resultTarget: {
+      workspace: target.workspace,
+      project: target.project,
+      branch: target.branch,
+      app: {
+        id: selectedApp.id,
+        name: selectedApp.name,
+      },
+    },
+  };
+}
+
+function resolveDomainBranch(explicitBranchName: string | undefined): ResolvedDeployBranch {
+  return {
+    name: explicitBranchName?.trim() || "production",
+    annotation: explicitBranchName ? "set by --branch" : "production default",
+  };
+}
+
+async function resolveDomainAppSelection(
+  context: CommandContext,
+  projectId: string,
+  apps: PreviewAppRecord[],
+  options: {
+    explicitAppName: string | undefined;
+    explicitAppId: string | undefined;
+  },
+): Promise<PreviewAppRecord> {
+  if (options.explicitAppId) {
+    const matched = apps.find((app) => app.id === options.explicitAppId);
+    if (!matched) {
+      throw usageError(
+        "Selected app does not exist in the resolved production branch",
+        `The app "${options.explicitAppId}" from ${PRISMA_APP_ID_ENV_VAR} could not be found in resolved project "${projectId}".`,
+        `Unset ${PRISMA_APP_ID_ENV_VAR}, pass --app <name>, or deploy the app on the production branch.`,
+        ["prisma-cli app deploy --branch production"],
+        "app",
+      );
+    }
+    return matched;
+  }
+
+  const selectedApp = await resolveExistingAppSelection(context, projectId, apps, options.explicitAppName);
+  if (selectedApp) {
+    return selectedApp;
+  }
+
+  throw usageError(
+    "Custom domain requires an existing app on the production branch",
+    "The resolved production branch does not have an app that can receive a custom domain.",
+    "Deploy or promote an app to production first, then rerun the domain command.",
+    ["prisma-cli app deploy --branch production", "prisma-cli app show"],
+    "app",
+  );
+}
+
+async function resolveDomainByHostname(
+  provider: ReturnType<typeof createPreviewAppProvider>,
+  appId: string,
+  hostname: string,
+  command: AppDomainCommand,
+): Promise<PreviewDomainRecord> {
+  const domains = await provider.listDomains(appId).catch((error) => {
+    throw domainCommandError(command, error, hostname);
+  });
+  const matched = domains.find((domain) => sameDomainHostname(domain.hostname, hostname));
+  if (matched) {
+    return matched;
+  }
+
+  throw domainNotFoundError(hostname);
+}
+
+function normalizeDomainHostname(hostname: string): string {
+  const normalized = hostname.trim().replace(/\.$/, "").toLowerCase();
+  if (!isValidDomainHostname(normalized)) {
+    throw new CliError({
+      code: "DOMAIN_HOSTNAME_INVALID",
+      domain: "app",
+      summary: `Invalid custom domain "${hostname}"`,
+      why: "Custom domains must be valid hostnames without protocol, path, wildcard, or port.",
+      fix: "Pass a hostname like shop.acme.com.",
+      exitCode: 2,
+      nextSteps: ["prisma-cli app domain add shop.acme.com"],
+    });
+  }
+
+  return normalized;
+}
+
+function isValidDomainHostname(hostname: string): boolean {
+  if (hostname.length < 1 || hostname.length > 253) {
+    return false;
+  }
+  if (hostname.includes("://") || hostname.includes("/") || hostname.includes(":") || hostname.startsWith("*.")) {
+    return false;
+  }
+
+  const labels = hostname.split(".");
+  if (labels.length < 2) {
+    return false;
+  }
+
+  return labels.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label));
+}
+
+function sameDomainHostname(left: string, right: string): boolean {
+  return left.trim().replace(/\.$/, "").toLowerCase() === right.trim().replace(/\.$/, "").toLowerCase();
+}
+
+function toAppDomainSummary(domain: PreviewDomainRecord): AppDomainSummary {
+  return {
+    id: domain.id,
+    type: domain.type,
+    url: domain.url,
+    hostname: domain.hostname,
+    computeServiceId: domain.computeServiceId,
+    status: domain.status,
+    foundryStatus: domain.foundryStatus,
+    failureReason: domain.failureReason,
+    failureCategory: domain.failureCategory,
+    certExpiresAt: domain.certExpiresAt,
+    createdAt: domain.createdAt,
+    updatedAt: domain.updatedAt,
+    dnsRecords: toAppDomainDnsRecords(domain),
+  };
+}
+
+function toAppDomainDnsRecords(domain: Pick<PreviewDomainRecord, "dnsRecords">): AppDomainDnsRecord[] {
+  return domain.dnsRecords.map((record) => ({
+    type: record.type,
+    name: record.name,
+    value: record.value,
+    ttl: record.ttl,
+  }));
+}
+
+function buildDomainShowNextSteps(domain: PreviewDomainRecord): string[] {
+  if (domain.status === "active") {
+    return [];
+  }
+  if (domain.status === "failed") {
+    return [`prisma-cli app domain retry ${domain.hostname}`];
+  }
+  return [`prisma-cli app domain wait ${domain.hostname}`];
+}
+
+async function confirmDomainRemoval(
+  context: CommandContext,
+  target: AppDomainTarget,
+  hostname: string,
+): Promise<void> {
+  if (context.flags.yes) {
+    return;
+  }
+
+  if (!canPrompt(context)) {
+    throw new CliError({
+      code: "CONFIRMATION_REQUIRED",
+      domain: "app",
+      summary: "Custom domain removal requires confirmation in the current mode",
+      why: "This command detaches a domain and cannot prompt for confirmation in the current mode.",
+      fix: `Pass --yes to confirm removal of "${hostname}", or rerun prisma-cli app domain remove in an interactive TTY.`,
+      exitCode: 1,
+      nextSteps: [`prisma-cli app domain remove ${hostname} --app ${target.app.name} --yes`],
+    });
+  }
+
+  const confirmed = await confirmPrompt({
+    input: context.runtime.stdin,
+    output: context.output.stderr,
+    message: `Detach ${hostname} from App "${target.app.name}"?`,
+    initialValue: false,
+  });
+
+  if (!confirmed) {
+    throw usageError(
+      "Custom domain removal canceled",
+      "The command was canceled before the domain was detached.",
+      "Rerun the command and confirm removal, or pass --yes.",
+      [`prisma-cli app domain remove ${hostname} --app ${target.app.name} --yes`],
+      "app",
+    );
+  }
+}
+
+function domainCommandError(
+  command: AppDomainCommand,
+  error: unknown,
+  hostname: string,
+): CliError {
+  if (error instanceof PreviewDomainApiError) {
+    if (command === "add" && (error.status === 400 || error.status === 422) && isDomainDnsError(error)) {
+      return domainDnsNotConfiguredError(hostname, error);
+    }
+
+    if (command === "add" && error.status === 400) {
+      return new CliError({
+        code: "DOMAIN_HOSTNAME_INVALID",
+        domain: "app",
+        summary: `Invalid custom domain "${hostname}"`,
+        why: error.message,
+        fix: "Pass a valid hostname like shop.acme.com and make sure DNS can be verified.",
+        debug: formatDebugDetails(error),
+        exitCode: 2,
+        nextSteps: ["prisma-cli app domain add shop.acme.com"],
+      });
+    }
+
+    if (command === "add" && (error.status === 429 || isDomainQuotaError(error))) {
+      return new CliError({
+        code: "DOMAIN_QUOTA_EXCEEDED",
+        domain: "app",
+        summary: "Custom domain quota exceeded",
+        why: error.message,
+        fix: "Remove an existing custom domain before adding another one.",
+        debug: formatDebugDetails(error),
+        exitCode: 1,
+        nextSteps: ["prisma-cli app domain remove <hostname>"],
+      });
+    }
+
+    if (command === "add" && error.status === 409) {
+      return domainAlreadyRegisteredError(hostname, error);
+    }
+
+    if (command === "add" && error.status === 422) {
+      return new CliError({
+        code: "NO_DEPLOYMENTS",
+        domain: "app",
+        summary: "Custom domain requires a live production deployment",
+        why: "The selected production app does not have a promoted version that can receive a custom domain.",
+        fix: "Deploy the app to the production branch, then rerun the domain command.",
+        debug: formatDebugDetails(error),
+        exitCode: 1,
+        nextSteps: [
+          "prisma-cli app deploy --branch production",
+          `prisma-cli app domain add ${hostname}`,
+        ],
+      });
+    }
+
+    if ((command === "show" || command === "remove" || command === "retry" || command === "wait") && error.status === 404) {
+      return domainNotFoundError(hostname);
+    }
+
+    if (command === "retry" && error.status === 409) {
+      return new CliError({
+        code: "DOMAIN_RETRY_NOT_ELIGIBLE",
+        domain: "app",
+        summary: `Custom domain "${hostname}" is not eligible for retry`,
+        why: error.message,
+        fix: "Wait for the current verification or TLS step to finish, then rerun retry if the domain fails.",
+        debug: formatDebugDetails(error),
+        exitCode: 1,
+        nextSteps: [`prisma-cli app domain show ${hostname}`],
+      });
+    }
+  }
+
+  return new CliError({
+    code: "DEPLOY_FAILED",
+    domain: "app",
+    summary: `Custom domain ${command} failed`,
+    why: error instanceof Error ? error.message : String(error),
+    fix: "Retry the command, or rerun with --trace for more detailed diagnostics.",
+    debug: formatDebugDetails(error),
+    exitCode: 1,
+    nextSteps: [`prisma-cli app domain show ${hostname}`],
+  });
+}
+
+function isDomainQuotaError(error: PreviewDomainApiError): boolean {
+  if (error.status !== 409) {
+    return false;
+  }
+
+  const text = `${error.message} ${error.hint ?? ""}`.toLowerCase();
+  return text.includes("quota") || text.includes("maximum") || text.includes("limit");
+}
+
+function domainAlreadyRegisteredError(hostname: string, error: PreviewDomainApiError): CliError {
+  return new CliError({
+    code: "DOMAIN_ALREADY_REGISTERED",
+    domain: "app",
+    summary: `Custom domain "${hostname}" is already registered`,
+    why: error.hint ?? error.message,
+    fix: "Select the app that owns this hostname and remove it there, or contact support if you cannot access it.",
+    debug: formatDebugDetails(error),
+    exitCode: 1,
+    nextSteps: [
+      `Select the owning app and remove ${hostname} there.`,
+      "Contact Prisma support if you cannot access the owning app.",
+    ],
+  });
+}
+
+function isDomainDnsError(error: PreviewDomainApiError): boolean {
+  const text = `${error.message} ${error.hint ?? ""}`.toLowerCase();
+  return (
+    text.includes("dns is not configured") ||
+    text.includes("dns verification failed") ||
+    text.includes("no cname") ||
+    text.includes("cname record") ||
+    text.includes("no a/aaaa") ||
+    /\bcname(?:s)?\s+to\b/.test(text)
+  );
+}
+
+function domainDnsNotConfiguredError(hostname: string, error: PreviewDomainApiError): CliError {
+  const target = extractDomainDnsTarget(error);
+  const record = target ? `CNAME ${hostname} -> ${target}` : null;
+
+  return new CliError({
+    code: "DOMAIN_DNS_NOT_CONFIGURED",
+    domain: "app",
+    summary: `DNS is not configured for "${hostname}"`,
+    why: error.hint ?? error.message,
+    fix: record
+      ? `Add ${record} at your DNS provider, then rerun the domain command.`
+      : "The platform did not return the required DNS target. Re-run with --trace for the underlying API response details.",
+    debug: formatDebugDetails(error),
+    exitCode: 1,
+    nextSteps: record
+      ? [
+          `add ${record}`,
+          `prisma-cli app domain add ${hostname}`,
+        ]
+      : [`prisma-cli app domain add ${hostname} --trace`],
+  });
+}
+
+function extractDomainDnsTarget(error: PreviewDomainApiError): string | null {
+  const text = `${error.hint ?? ""} ${error.message}`;
+  const match = /\b((?:[a-z0-9-]+\.)+prisma\.build)\b/i.exec(text);
+  return match?.[1]?.toLowerCase() ?? null;
+}
+
+function domainNotFoundError(hostname: string): CliError {
+  return new CliError({
+    code: "DOMAIN_NOT_FOUND",
+    domain: "app",
+    summary: `Custom domain "${hostname}" not found`,
+    why: "The hostname is not attached to the selected app.",
+    fix: "Check the hostname and selected app, or add the domain first.",
+    exitCode: 1,
+    nextSteps: [`prisma-cli app domain add ${hostname}`],
+  });
+}
+
+function formatDomainFailureWhy(domain: PreviewDomainRecord): string {
+  if (domain.failureReason) {
+    return domain.failureCategory
+      ? `${domain.failureCategory}: ${domain.failureReason}`
+      : domain.failureReason;
+  }
+
+  return "The platform reported a terminal failed state for this custom domain.";
+}
+
+function parseDomainWaitTimeout(value: string | undefined): number {
+  if (!value) {
+    return 15 * 60 * 1000;
+  }
+
+  const trimmed = value.trim().toLowerCase();
+  if (trimmed === "0") {
+    return 0;
+  }
+
+  const match = /^(\d+)(ms|s|m|h)$/.exec(trimmed);
+  if (!match) {
+    throw usageError(
+      `Invalid timeout "${value}"`,
+      "Timeout must be a duration such as 0, 30s, 15m, or 1h.",
+      "Pass --timeout 15m, or --timeout 0 to poll once.",
+      ["prisma-cli app domain wait shop.acme.com --timeout 15m"],
+      "app",
+    );
+  }
+
+  const amount = Number.parseInt(match[1], 10);
+  const unit = match[2];
+  const multiplier = unit === "h" ? 60 * 60 * 1000 : unit === "m" ? 60 * 1000 : unit === "s" ? 1000 : 1;
+  return amount * multiplier;
+}
+
+function readDomainWaitPollIntervalMs(context: CommandContext): number {
+  const raw = context.runtime.env.PRISMA_CLI_DOMAIN_WAIT_POLL_MS;
+  if (!raw) {
+    return 5_000;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 5_000;
+}
+
+function emitDomainWaitStatus(
+  context: CommandContext,
+  event: {
+    hostname: string;
+    domainId: string;
+    previousStatus: AppDomainStatus | null;
+    status: AppDomainStatus;
+    elapsedMs: number;
+  },
+): void {
+  if (context.flags.json) {
+    writeJsonEvent(context.output, {
+      type: "status",
+      command: "app.domain.wait",
+      timestamp: new Date().toISOString(),
+      data: {
+        hostname: event.hostname,
+        domainId: event.domainId,
+        previousStatus: event.previousStatus,
+        status: event.status,
+        elapsedMs: event.elapsedMs,
+      },
+    });
+    return;
+  }
+
+  if (context.flags.quiet) {
+    return;
+  }
+
+  if (event.previousStatus === event.status) {
+    return;
+  }
+
+  const transition = event.previousStatus
+    ? `${event.previousStatus} -> ${event.status}`
+    : event.status;
+  context.output.stderr.write(`  ${transition} (${formatElapsed(event.elapsedMs)})\n`);
+}
+
+function formatElapsed(milliseconds: number): string {
+  const seconds = Math.max(Math.floor(milliseconds / 1000), 0);
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+async function sleep(milliseconds: number): Promise<void> {
+  if (milliseconds <= 0) {
+    return;
+  }
+  await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function resolveDeployAppSelection(
@@ -1552,9 +2112,9 @@ async function listApps(
         domain: "project",
         summary: "Project not found",
         why: `The resolved project "${projectId}" does not exist in the authenticated workspace or is no longer accessible.`,
-        fix: "Pass --project <id-or-name>, or run prisma-cli project show to inspect resolution for this directory.",
+        fix: "Pass --project <id-or-name>, or run prisma-cli project show to inspect this directory's binding.",
         exitCode: 1,
-        nextSteps: ["prisma-cli project show", "prisma-cli app deploy --project <id-or-name>"],
+        nextSteps: ["prisma-cli project show", "prisma-cli project link <id-or-name>"],
       });
     }
 
@@ -1611,14 +2171,16 @@ interface ResolvedAppProjectContext {
     kind: BranchKind;
   };
   resolution: ProjectResolution;
+  localPinAction?: "created" | "linked";
 }
 
 async function requireProviderAndProjectContext(
   context: CommandContext,
   explicitProject: string | undefined,
   options?: {
-    allowCreate?: boolean;
     branch?: ResolvedDeployBranch;
+    commandName?: string;
+    envProjectId?: string;
   },
 ): Promise<{
   client: ManagementApiClient;
@@ -1627,7 +2189,7 @@ async function requireProviderAndProjectContext(
   projectId: string;
 }> {
   const { client, provider } = await requirePreviewAppProviderWithClient(context);
-  const target = await resolveProjectContext(context, client, provider, explicitProject, options);
+  const target = await resolveProjectContext(context, client, explicitProject, options);
   return {
     client,
     provider,
@@ -1640,8 +2202,8 @@ async function requireProviderAndDeployProjectContext(
   context: CommandContext,
   explicitProject: string | undefined,
   options: {
-    allowCreate?: boolean;
     branch?: ResolvedDeployBranch;
+    createProjectName?: string;
     envProjectId?: string;
     localPin: LocalResolutionPinReadResult;
   },
@@ -1664,11 +2226,10 @@ async function requireProviderAndDeployProjectContext(
 async function resolveProjectContext(
   context: CommandContext,
   client: ManagementApiClient,
-  provider: ReturnType<typeof createPreviewAppProvider>,
   explicitProject: string | undefined,
   options?: {
-    allowCreate?: boolean;
     branch?: ResolvedDeployBranch;
+    commandName?: string;
   },
 ): Promise<ResolvedAppProjectContext> {
   const authState = await requireAuthenticatedAuthState(context);
@@ -1680,26 +2241,9 @@ async function resolveProjectContext(
     context,
     workspace: authState.workspace,
     explicitProject,
+    envProjectId: options?.envProjectId,
     listProjects: () => listRealWorkspaceProjects(client, authState.workspace!),
-    createProject: options?.allowCreate
-      ? async (name) => {
-          const project = await provider.createProject({ name }).catch((error) => {
-            throw createProjectOnFirstDeployError({
-              error,
-              inferredName: name,
-              workspaceName: authState.workspace!.name,
-            });
-          });
-          return {
-            id: project.id,
-            name: project.name,
-            workspace: authState.workspace!,
-          };
-        }
-      : undefined,
-    allowCreate: options?.allowCreate,
-    prompt: createSelectPromptPort(context),
-    remember: true,
+    commandName: options?.commandName,
   });
   const branch = options?.branch ?? await resolveDeployBranch(context, undefined);
 
@@ -1718,8 +2262,8 @@ async function resolveDeployProjectContext(
   provider: ReturnType<typeof createPreviewAppProvider>,
   explicitProject: string | undefined,
   options: {
-    allowCreate?: boolean;
     branch?: ResolvedDeployBranch;
+    createProjectName?: string;
     envProjectId?: string;
     localPin: LocalResolutionPinReadResult;
   },
@@ -1732,35 +2276,38 @@ async function resolveDeployProjectContext(
 
   const branch = options.branch ?? await resolveDeployBranch(context, undefined);
   const projects = await listRealWorkspaceProjects(client, workspace);
-  const createProject = options.allowCreate
-    ? async (name: string) => {
-        const project = await provider.createProject({ name }).catch((error) => {
-          throw createProjectOnFirstDeployError({
-            error,
-            inferredName: name,
-            workspaceName: workspace.name,
-          });
-        });
-        return {
-          id: project.id,
-          name: project.name,
-          workspace,
-        };
-      }
-    : undefined;
 
   if (explicitProject) {
-    const resolved = await resolveProjectTarget({
-      context,
+    const project = resolveProjectForSetup(explicitProject, projects, workspace);
+    return withDeployBranch({
       workspace,
-      explicitProject,
-      listProjects: async () => projects,
-      createProject,
-      allowCreate: options.allowCreate,
-      prompt: createSelectPromptPort(context),
-      remember: true,
-    });
-    return withDeployBranch(resolved, branch);
+      project: toProjectSummary(project),
+      resolution: {
+        projectSource: "explicit",
+        targetName: explicitProject,
+        targetNameSource: "explicit",
+      },
+      localPinAction: "linked",
+    }, branch);
+  }
+
+  if (options.createProjectName) {
+    const projectName = options.createProjectName.trim();
+    if (!projectName) {
+      throw projectSetupNameRequiredError("app deploy --create-project");
+    }
+
+    const created = await createProjectForDeploySetup(provider, projectName, workspace);
+    return withDeployBranch({
+      workspace,
+      project: toProjectSummary(created),
+      resolution: {
+        projectSource: "created",
+        targetName: projectName,
+        targetNameSource: "explicit",
+      },
+      localPinAction: "created",
+    }, branch);
   }
 
   if (options.envProjectId) {
@@ -1801,16 +2348,79 @@ async function resolveDeployProjectContext(
     }, branch);
   }
 
-  const resolved = await resolveProjectTarget({
+  const platformMapping = await resolveDurablePlatformMapping();
+  if (platformMapping && platformMapping.workspace.id === workspace.id) {
+    return withDeployBranch({
+      workspace,
+      project: toProjectSummary(platformMapping),
+      resolution: {
+        projectSource: "platform-mapping",
+        targetName: platformMapping.name,
+        targetNameSource: "platform-mapping",
+      },
+    }, branch);
+  }
+
+  if (canPrompt(context) && !context.flags.yes) {
+    const resolved = await resolveInteractiveDeployProjectSetup(context, provider, workspace, projects);
+    return withDeployBranch(resolved, branch);
+  }
+
+  const suggestedName = await inferTargetName(context.runtime.cwd);
+  throw projectSetupRequiredError(projects, suggestedName);
+}
+
+async function resolveInteractiveDeployProjectSetup(
+  context: CommandContext,
+  provider: ReturnType<typeof createPreviewAppProvider>,
+  workspace: AuthWorkspace,
+  projects: ProjectCandidate[],
+): Promise<Omit<ResolvedAppProjectContext, "branch">> {
+  const setup = await promptForProjectSetupChoice({
     context,
-    workspace,
-    listProjects: async () => projects,
-    createProject,
-    allowCreate: options.allowCreate,
-    prompt: createSelectPromptPort(context),
-    remember: true,
+    projects,
+    createProject: (projectName) => createProjectForDeploySetup(provider, projectName, workspace),
+    cancel: {
+      why: "Deploy needs a Project before it can continue.",
+      fix: "Choose an existing Project or create a new one, then rerun deploy.",
+      nextSteps: ["prisma-cli app deploy --project <id-or-name>", "prisma-cli app deploy --create-project <name>"],
+    },
   });
-  return withDeployBranch(resolved, branch);
+
+  return {
+    workspace,
+    project: setup.project,
+    resolution: {
+      projectSource: setup.action === "created" ? "created" : "prompt",
+      targetName: setup.targetName,
+      targetNameSource: setup.targetNameSource,
+    },
+    localPinAction: setup.action,
+  };
+}
+
+async function createProjectForDeploySetup(
+  provider: ReturnType<typeof createPreviewAppProvider>,
+  projectName: string,
+  workspace: AuthWorkspace,
+): Promise<ProjectCandidate> {
+  const created = await provider.createProject({ name: projectName }).catch((error) => {
+    throw projectCreateFailedError(error, projectName, workspace, {
+      nextSteps: [
+        "prisma-cli project list",
+        "prisma-cli app deploy --project <id-or-name>",
+        `prisma-cli app deploy --create-project ${formatCommandArgument(projectName)}`,
+      ],
+      permissionFix: "Choose an existing Project with --project, or grant the token permission to create Projects in this workspace.",
+      fallbackFix: "Choose an existing Project with --project, or retry after addressing the platform error above.",
+    });
+  });
+
+  return {
+    id: created.id,
+    name: created.name,
+    workspace,
+  };
 }
 
 function withDeployBranch(
@@ -1826,15 +2436,36 @@ function withDeployBranch(
   };
 }
 
-function toProjectSummary(project: Pick<ProjectCandidate, "id" | "name">): ProjectSummary {
-  return {
-    id: project.id,
-    name: project.name,
-  };
-}
-
 function toBranchKind(name: string): BranchKind {
   return name === "production" || name === "main" ? "production" : "preview";
+}
+
+function assertExclusiveDeployProjectInputs(options: {
+  projectRef: string | undefined;
+  createProjectName: string | undefined;
+  envProjectId: string | undefined;
+}): void {
+  const provided = [
+    options.projectRef ? "--project" : null,
+    options.createProjectName ? "--create-project" : null,
+    options.envProjectId ? PRISMA_PROJECT_ID_ENV_VAR : null,
+  ].filter((value): value is string => Boolean(value));
+
+  if (provided.length <= 1) {
+    return;
+  }
+
+  throw usageError(
+    "Project selection is ambiguous",
+    `${provided.join(", ")} cannot be used together.`,
+    "Choose exactly one Project source for this deploy.",
+    [
+      "prisma-cli app deploy --project <id-or-name>",
+      "prisma-cli app deploy --create-project <name>",
+      `unset ${PRISMA_PROJECT_ID_ENV_VAR}`,
+    ],
+    "project",
+  );
 }
 
 interface ResolvedDeployBranch {
@@ -1920,24 +2551,20 @@ async function resolveDeployFramework(
   context: CommandContext,
   options: {
     requestedFramework: string | undefined;
-    requestedBuildType: string | undefined;
-    explicitBuildType: boolean;
+    entrypoint: string | undefined;
   },
 ): Promise<ResolvedDeployFramework> {
   if (options.requestedFramework) {
     return frameworkFromUserFacingValue(options.requestedFramework, "set by --framework");
   }
 
-  if (options.explicitBuildType) {
-    const buildType = normalizeBuildType(options.requestedBuildType);
-    if (buildType !== "auto") {
-      return {
-        key: buildType,
-        buildType,
-        displayName: formatBuildTypeName(buildType),
-        annotation: "set by --build-type",
-      };
-    }
+  if (options.entrypoint) {
+    return {
+      key: "bun",
+      buildType: "bun",
+      displayName: "Bun",
+      annotation: "set by --entry",
+    };
   }
 
   const detected = await detectDeployFramework(context.runtime.cwd);
@@ -1963,6 +2590,49 @@ function resolveDeployRuntime(
     port: FRAMEWORK_DEFAULT_HTTP_PORT,
     annotation: `${framework.displayName} default`,
   };
+}
+
+function assertSupportedEntrypointForRequestedDeployShape(options: {
+  requestedFramework: string | undefined;
+  entrypoint: string | undefined;
+}): void {
+  if (!options.requestedFramework) {
+    return;
+  }
+
+  const framework = frameworkFromUserFacingValue(options.requestedFramework, "set by --framework");
+  assertSupportedEntrypoint(framework.buildType, options.entrypoint, "deploy");
+}
+
+async function resolveDeployEntrypoint(
+  cwd: string,
+  framework: ResolvedDeployFramework,
+  explicitEntrypoint: string | undefined,
+): Promise<string | undefined> {
+  if (explicitEntrypoint || framework.buildType !== "bun") {
+    return explicitEntrypoint;
+  }
+
+  const packageJson = await readBunPackageJson(cwd);
+  const packageEntrypoint = readBunPackageEntrypoint(packageJson);
+  if (packageEntrypoint) {
+    return packageEntrypoint;
+  }
+
+  if (framework.key !== "hono") {
+    return undefined;
+  }
+
+  const defaultEntrypoint = "src/index.ts";
+  try {
+    await access(path.join(cwd, defaultEntrypoint));
+    return defaultEntrypoint;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+    return undefined;
+  }
 }
 
 async function detectDeployFramework(cwd: string): Promise<ResolvedDeployFramework | null> {
@@ -1991,7 +2661,7 @@ async function detectDeployFramework(cwd: string): Promise<ResolvedDeployFramewo
     };
   }
 
-  if (hasPackageDependency(packageJson, "@tanstack/start")) {
+  if (hasAnyPackageDependency(packageJson, TANSTACK_START_PACKAGES)) {
     return {
       key: "tanstack-start",
       buildType: "tanstack-start",
@@ -2009,6 +2679,7 @@ async function detectNextConfig(cwd: string): Promise<{ exists: boolean; standal
     "next.config.mjs",
     "next.config.cjs",
     "next.config.ts",
+    "next.config.mts",
   ];
 
   for (const candidate of candidates) {
@@ -2037,6 +2708,10 @@ function hasPackageDependency(packageJson: BunPackageJsonLike | null, dependency
     || hasDependency(packageJson?.devDependencies, dependencyName);
 }
 
+function hasAnyPackageDependency(packageJson: BunPackageJsonLike | null, dependencyNames: readonly string[]): boolean {
+  return dependencyNames.some((dependencyName) => hasPackageDependency(packageJson, dependencyName));
+}
+
 function hasDependency(dependencies: unknown, dependencyName: string): boolean {
   return Boolean(
     dependencies
@@ -2063,9 +2738,17 @@ function frameworkFromUserFacingValue(value: string, annotation: string): Resolv
         displayName: "Hono",
         annotation,
       };
+    case "bun":
+      return {
+        key: "bun",
+        buildType: "bun",
+        displayName: "Bun",
+        annotation,
+      };
     case "tanstack":
     case "tanstack-start":
-    case "@tanstack/start":
+    case "@tanstack/react-start":
+    case "@tanstack/solid-start":
       return {
         key: "tanstack-start",
         buildType: "tanstack-start",
@@ -2078,7 +2761,7 @@ function frameworkFromUserFacingValue(value: string, annotation: string): Resolv
 }
 
 function frameworkNotDetectedError(cwd: string | undefined, requestedFramework?: string): CliError {
-  const supported = "Next.js, Hono, TanStack Start";
+  const supported = "Next.js, Hono, TanStack Start, Bun";
   const directory = cwd ? ` in ${formatDeployDirectory(cwd)}` : "";
 
   return new CliError({
@@ -2088,12 +2771,14 @@ function frameworkNotDetectedError(cwd: string | undefined, requestedFramework?:
       ? `Unsupported framework "${requestedFramework}"`
       : `Cannot detect a supported framework${directory}`,
     why: `Supported Beta frameworks: ${supported}.`,
-    fix: "Add one of these frameworks as a dependency, or pass --framework <nextjs|hono|tanstack-start>.",
+    fix: "Add one of these frameworks as a dependency, pass --framework <nextjs|hono|tanstack-start|bun>, or pass --entry <path> for a Bun app.",
     exitCode: 2,
     nextSteps: [
       "prisma-cli app deploy --framework nextjs",
       "prisma-cli app deploy --framework hono",
       "prisma-cli app deploy --framework tanstack-start",
+      "prisma-cli app deploy --framework bun --entry server.ts",
+      "prisma-cli app deploy --entry server.ts",
     ],
   });
 }
@@ -2101,16 +2786,10 @@ function frameworkNotDetectedError(cwd: string | undefined, requestedFramework?:
 async function maybeRenderDeploySetupBlock(
   context: CommandContext,
   details: {
-    firstDeploy: boolean;
-    workspaceName: string;
+    includeDirectory: boolean;
     projectName: string;
-    projectAnnotation: string;
     branchName: string;
-    branchAnnotation: string;
     appName: string;
-    appAnnotation: string;
-    framework: ResolvedDeployFramework;
-    runtime: ResolvedDeployRuntime;
   },
 ): Promise<void> {
   if (context.flags.json || context.flags.quiet) {
@@ -2118,33 +2797,24 @@ async function maybeRenderDeploySetupBlock(
   }
 
   const directory = formatDeployDirectory(context.runtime.cwd);
-  if (!details.firstDeploy) {
-    context.output.stderr.write(`Deploying ${directory} to ${details.projectName} / ${details.branchName} / ${details.appName}\n\n`);
-    return;
-  }
-
-  const title = `Setting up your local directory ${formatLocalDirectory(context.runtime.cwd, context.runtime.env)}`;
-  const rows = details.firstDeploy
-    ? [
-        { label: "Workspace", value: details.workspaceName },
-        { label: "Project", value: details.projectName, origin: details.projectAnnotation },
-        { label: "Branch", value: details.branchName, origin: details.branchAnnotation },
-        { label: "App", value: details.appName, origin: details.appAnnotation },
-        { label: "Framework", value: details.framework.displayName, origin: details.framework.annotation },
-        { label: "Runtime", value: `HTTP ${details.runtime.port}`, origin: details.runtime.annotation },
-      ]
-    : [];
-  const lines = [title, "", ...renderDeployOutputRows(context.ui, rows), ""];
-
-  context.output.stderr.write(`${lines.join("\n")}\n`);
+  const prefix = details.includeDirectory ? `Deploying ${directory} to` : "Deploying to";
+  context.output.stderr.write(`${prefix} ${details.projectName} / ${details.branchName} / ${details.appName}\n\n`);
 }
 
-function maybeRenderLocalPinBound(context: CommandContext, projectName: string): void {
+function maybeRenderProjectLinked(
+  context: CommandContext,
+  directory: string,
+  projectName: string,
+  localPinPath: string,
+): void {
   if (context.flags.json || context.flags.quiet) {
     return;
   }
 
-  context.output.stderr.write(`This directory is now linked to project ${projectName}.\n\n`);
+  context.output.stderr.write(
+    `${context.ui.success("✔")} Linked "${directory}" to Project "${projectName}"\n`
+      + `Saved ${localPinPath}\n\n`,
+  );
 }
 
 async function maybeCustomizeDeploySettings(
@@ -2154,7 +2824,7 @@ async function maybeCustomizeDeploySettings(
     runtime: ResolvedDeployRuntime;
     firstDeploy: boolean;
     explicitFramework: boolean;
-    explicitBuildType: boolean;
+    explicitEntrypoint: boolean;
     explicitHttpPort: boolean;
   },
 ): Promise<{ framework: ResolvedDeployFramework; runtime: ResolvedDeployRuntime }> {
@@ -2162,7 +2832,7 @@ async function maybeCustomizeDeploySettings(
     !options.firstDeploy
     || context.flags.yes
     || options.explicitFramework
-    || options.explicitBuildType
+    || options.explicitEntrypoint
     || options.explicitHttpPort
     || !canPrompt(context)
   ) {
@@ -2172,10 +2842,15 @@ async function maybeCustomizeDeploySettings(
     };
   }
 
+  maybeRenderDeploySettingsPreview(context, {
+    framework: options.framework,
+    runtime: options.runtime,
+  });
+
   const shouldCustomize = await confirmPrompt({
     input: context.runtime.stdin,
     output: context.runtime.stderr,
-    message: "Customize settings?",
+    message: "Customize build settings?",
     initialValue: false,
   });
 
@@ -2230,27 +2905,24 @@ async function maybeCustomizeDeploySettings(
   };
 }
 
-function annotationForProjectResolution(resolution: ProjectResolution): string {
-  switch (resolution.projectSource) {
-    case "explicit":
-      return "set by --project";
-    case "env":
-      return `from ${PRISMA_PROJECT_ID_ENV_VAR}`;
-    case "local-pin":
-      return "from local pin";
-    case "created":
-      return resolution.targetNameSource === "directory-name"
-        ? "created from directory name"
-        : "created from package.json";
-    case "package-name":
-    case "directory-name":
-      return "linked to existing project";
-    case "platform-mapping":
-    case "remembered-local":
-      return "linked to existing project";
-    case "prompt":
-      return "selected by you";
+function maybeRenderDeploySettingsPreview(
+  context: CommandContext,
+  options: {
+    framework: ResolvedDeployFramework;
+    runtime: ResolvedDeployRuntime;
+  },
+): void {
+  if (context.flags.quiet || context.flags.json) {
+    return;
   }
+
+  context.output.stderr.write(
+    `Detected ${options.framework.displayName}\n`
+      + `${renderDeploySettingsPreview(context.ui, [
+        { key: "framework", value: options.framework.displayName },
+        { key: "runtime", value: `HTTP ${options.runtime.port}` },
+      ]).join("\n")}\n\n`,
+  );
 }
 
 function frameworkDisplayName(framework: DeployFramework): string {
@@ -2261,6 +2933,8 @@ function frameworkDisplayName(framework: DeployFramework): string {
       return "Hono";
     case "tanstack-start":
       return "TanStack Start";
+    case "bun":
+      return "Bun";
   }
 }
 
@@ -2280,18 +2954,6 @@ function validateDeployHttpPortText(value: string | undefined): string | undefin
 function formatDeployDirectory(cwd: string): string {
   const basename = path.basename(cwd);
   return basename ? `./${basename}` : ".";
-}
-
-function formatLocalDirectory(cwd: string, env: NodeJS.ProcessEnv): string {
-  const resolved = path.resolve(cwd);
-  const home = env.HOME ? path.resolve(env.HOME) : null;
-
-  if (home && (resolved === home || resolved.startsWith(`${home}${path.sep}`))) {
-    const relative = path.relative(home, resolved);
-    return relative ? `~/${relative}` : "~";
-  }
-
-  return resolved;
 }
 
 async function readCurrentWorkspaceId(context: CommandContext): Promise<string | null> {
@@ -2326,7 +2988,7 @@ function isPreviewBuildType(value: string): value is PreviewBuildType {
   return (PREVIEW_BUILD_TYPES as readonly string[]).includes(value);
 }
 
-function getBuildTypeExamples(commandName: "build" | "deploy"): string[] {
+function getBuildTypeExamples(commandName: "build"): string[] {
   return RESOLVED_PREVIEW_BUILD_TYPES.map((buildType) => {
     const entrypoint = buildType === "bun" ? " --entry server.ts" : "";
     return `prisma-cli app ${commandName} --build-type ${buildType}${entrypoint}`;
@@ -2341,6 +3003,19 @@ function assertSupportedEntrypoint(
   // Framework strategies derive their runtime entrypoints from build output.
   // Only Bun consumes a user-provided source entrypoint; auto may fall back to Bun.
   if (buildType !== "auto" && buildType !== "bun" && entrypoint) {
+    if (commandName === "deploy") {
+      throw usageError(
+        `App deploy does not accept --entry with ${formatBuildTypeName(buildType)}`,
+        `${formatBuildTypeName(buildType)} apps derive their runtime entrypoint from build output.`,
+        "Remove --entry, or use --framework bun when you want to target a Bun entrypoint directly.",
+        [
+          `prisma-cli app deploy --framework ${buildType}`,
+          "prisma-cli app deploy --framework bun --entry server.ts",
+        ],
+        "app",
+      );
+    }
+
     throw usageError(
       `App ${commandName} does not accept --entry with --build-type ${buildType}`,
       `${formatBuildTypeName(buildType)} apps do not use an entrypoint flag in the current preview.`,
@@ -2453,12 +3128,36 @@ function appDeployFailedError(error: unknown, progress: PreviewDeployProgressSta
   const debug = formatDebugDetails(error);
 
   if (progress.buildStarted && !progress.buildCompleted) {
+    const standaloneOutputFailure = isNextStandaloneOutputFailure(why);
+    const fix = standaloneOutputFailure
+      ? "Add output: \"standalone\" to next.config.*, then rerun deploy."
+      : "Inspect the build output above, fix the error, and redeploy.";
+    const nextSteps = standaloneOutputFailure
+      ? ["Add output: \"standalone\" to next.config.*, then rerun prisma-cli app deploy"]
+      : [];
+    const nextActions = standaloneOutputFailure
+      ? [
+          {
+            kind: "edit-file" as const,
+            journey: "deploy-app" as const,
+            label: "Add Next.js standalone output",
+            reason: "Prisma Compute needs Next.js standalone output to build a deployable server artifact.",
+          },
+          {
+            kind: "run-command" as const,
+            journey: "deploy-app" as const,
+            label: "Rerun deploy",
+            command: "prisma-cli app deploy",
+          },
+        ]
+      : [];
+
     return new CliError({
       code: "BUILD_FAILED",
       domain: "app",
       summary: "Build failed locally.",
       why,
-      fix: "Inspect the build output above, fix the error, and redeploy.",
+      fix,
       debug,
       meta: { phase: "build" },
       humanLines: [
@@ -2466,10 +3165,11 @@ function appDeployFailedError(error: unknown, progress: PreviewDeployProgressSta
         "",
         `✗ Built       ${why}`,
         "",
-        "Fix: Inspect the build output above, fix the error, and redeploy.",
+        `Fix: ${fix}`,
       ],
       exitCode: 1,
-      nextSteps: [],
+      nextSteps,
+      nextActions,
     });
   }
 
@@ -2535,12 +3235,12 @@ function localResolutionPinStaleError(): CliError {
     domain: "project",
     summary: "Local project binding is stale",
     why: `The target recorded in ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} is no longer available in the selected workspace.`,
-    fix: `Delete ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} and re-run to re-bootstrap.`,
+    fix: `Delete ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH}, then choose a Project explicitly.`,
     meta: {
       pinPath: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
     },
     exitCode: 1,
-    nextSteps: ["prisma-cli app deploy"],
+    nextSteps: ["prisma-cli project list", "prisma-cli project link <id-or-name>", "prisma-cli app deploy --project <id-or-name>"],
   });
 }
 
@@ -2549,78 +3249,46 @@ function readDeployEnvOverride(context: CommandContext, name: string): string | 
   return value ? value : undefined;
 }
 
-/**
- * `app deploy` falls into "create a new project on first deploy" when no
- * existing project matches the package.json name (or the cwd basename as a
- * fallback). When the create call fails the user often doesn't realise the
- * CLI was attempting to create a project at all — they thought the deploy
- * would find an existing project. Surface that context, and recommend the
- * explicit `--project` flag as the unambiguous way out.
- */
-function createProjectOnFirstDeployError(options: {
-  error: unknown;
-  inferredName: string;
-  workspaceName: string;
-}): CliError {
-  const { error, inferredName, workspaceName } = options;
-  const status = extractHttpStatus(error);
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  const inferredContext = `No existing project matched the package.json name \`${inferredName}\`, so the CLI attempted to create one.`;
-  const nextSteps = [
-    "prisma-cli project list",
-    "prisma-cli app deploy --project <id-or-name>",
-  ];
-
-  if (status === 401 || status === 403) {
-    return new CliError({
-      code: "AUTH_FORBIDDEN",
-      domain: "auth",
-      summary: "Could not create a new project for this deploy",
-      why: `${inferredContext} The platform rejected the create (HTTP ${status}).`,
-      fix: `Pass --project <id-or-name> to deploy into an existing project, or grant the service token project-create permission on workspace \`${workspaceName}\`.`,
-      debug: formatDebugDetails(error),
-      exitCode: 1,
-      nextSteps,
-    });
-  }
+function projectSetupRequiredError(
+  projects: ProjectCandidate[],
+  suggestedName: InferredTargetName,
+): CliError {
+  const createCommand = `prisma-cli app deploy --create-project ${formatCommandArgument(suggestedName.name)}`;
 
   return new CliError({
-    code: "DEPLOY_FAILED",
-    domain: "app",
-    summary: "Could not create a new project for this deploy",
-    why: `${inferredContext} ${errorMessage}`.trim(),
-    fix: "Pass --project <id-or-name> to deploy into an existing project, or retry after addressing the platform error above.",
-    debug: formatDebugDetails(error),
+    code: "PROJECT_SETUP_REQUIRED",
+    domain: "project",
+    summary: "Choose a Project before deploying this directory",
+    why: "This directory is not linked to a Prisma Project, and deploy will not choose or create one implicitly.",
+    fix: "Choose an existing Project with --project, create one with --create-project, or rerun interactively to pick from the setup list.",
+    meta: {
+      candidates: sortProjects(projects).map((project) => ({
+        id: project.id,
+        name: project.name,
+      })),
+      suggestedProjectName: suggestedName.name,
+      suggestedProjectNameSource: suggestedName.source,
+      recoveryCommands: [
+        "prisma-cli app deploy --project <id-or-name>",
+        createCommand,
+      ],
+    },
     exitCode: 1,
-    nextSteps,
+    nextSteps: [
+      "prisma-cli project list",
+      "prisma-cli app deploy --project <id-or-name>",
+      createCommand,
+    ],
+    nextActions: buildProjectSetupNextActions({
+      commandName: "app deploy",
+      createCommand,
+      reason: "This directory is not linked to a Prisma Project. Ask the user which Project to use before deploying; package and directory names are setup suggestions only.",
+    }),
   });
 }
 
-function extractHttpStatus(error: unknown): number | null {
-  if (!error || typeof error !== "object") {
-    return null;
-  }
-
-  const candidate = error as { statusCode?: unknown; status?: unknown; message?: unknown };
-  if (typeof candidate.statusCode === "number") {
-    return candidate.statusCode;
-  }
-  if (typeof candidate.status === "number") {
-    return candidate.status;
-  }
-
-  // The compute-sdk re-throws AuthenticationError / ApiError as plain
-  // Error instances whose `message` carries the "(HTTP <code>)" suffix.
-  // Match that suffix as a last resort so this UX still triggers for
-  // service tokens running through that path.
-  if (typeof candidate.message === "string") {
-    const match = /\(HTTP (\d{3})\)/.exec(candidate.message);
-    if (match) {
-      return Number.parseInt(match[1], 10);
-    }
-  }
-
-  return null;
+function isNextStandaloneOutputFailure(message: string): boolean {
+  return /next\.?js/i.test(message) && /standalone output/i.test(message);
 }
 
 function noDeploymentsError(summary: string, why: string): CliError {
@@ -2733,28 +3401,4 @@ function toOptionalEnvVars(
   envVars: Record<string, string>,
 ): Record<string, string> | undefined {
   return Object.keys(envVars).length > 0 ? envVars : undefined;
-}
-
-/**
- * Emits a deprecation banner to stderr when the legacy single-shot
- * env-var commands are invoked. The banner is suppressed in --json
- * mode so machine consumers keep their JSON channel clean; --json
- * users discover the deprecation via release notes and the new
- * `prisma-cli project env` namespace's output anyway.
- *
- * Removal of these legacy commands is deliberately scoped out of the
- * Public Beta — see the Compute Beta plan, sub-track 3B.1, where the
- * Terminal team picks an explicit removal milestone.
- */
-function emitLegacyEnvDeprecationWarning(
-  context: CommandContext,
-  legacyCommand: string,
-  replacement: string,
-): void {
-  if (context.flags.json) {
-    return;
-  }
-
-  const message = `[deprecation] \`prisma-cli ${legacyCommand}\` is deprecated. Use \`prisma-cli ${replacement}\` instead.`;
-  context.runtime.stderr.write(`${message}\n`);
 }

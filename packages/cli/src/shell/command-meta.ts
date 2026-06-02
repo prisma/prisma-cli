@@ -54,7 +54,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "project",
     path: ["prisma", "project"],
     description: "Manage and inspect your Prisma projects",
-    examples: ["prisma-cli project list", "prisma-cli project show"],
+    examples: ["prisma-cli project list", "prisma-cli project link proj_123", "prisma-cli project create my-app"],
   },
   {
     id: "app",
@@ -86,8 +86,20 @@ const DESCRIPTORS: CommandDescriptor[] = [
   {
     id: "project.show",
     path: ["prisma", "project", "show"],
-    description: "Show which project is active for this directory",
+    description: "Show this directory's Project binding",
     examples: ["prisma-cli project show", "prisma-cli project show --project proj_123 --json"],
+  },
+  {
+    id: "project.create",
+    path: ["prisma", "project", "create"],
+    description: "Create a Project and link this directory",
+    examples: ["prisma-cli project create my-app", "prisma-cli project create my-app --json"],
+  },
+  {
+    id: "project.link",
+    path: ["prisma", "project", "link"],
+    description: "Link this directory to a Project",
+    examples: ["prisma-cli project link", "prisma-cli project link proj_123", "prisma-cli project link \"Acme Dashboard\" --json"],
   },
   {
     id: "git.connect",
@@ -139,24 +151,18 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "app.deploy",
     path: ["prisma", "app", "deploy"],
     description: "Creates a new deployment for the app",
+    longDescription:
+      "Agent skills for guided Next.js deploys are available from the Prisma CLI skill cluster.",
     examples: [
       "prisma-cli app deploy",
+      "prisma-cli app deploy --project proj_123",
+      "prisma-cli app deploy --create-project my-app --yes",
       "prisma-cli app deploy --app my-app --env DATABASE_URL=postgresql://example",
       "prisma-cli app deploy --app my-app --framework nextjs --http-port 3000",
       "prisma-cli app deploy --branch feat-login --framework hono",
+      "pnpm dlx skills@latest add prisma/prisma-cli/skills#cli-v<cli-version> --all",
+      "prisma-cli app deploy --framework bun --entry src/server.ts",
     ],
-  },
-  {
-    id: "app.update-env",
-    path: ["prisma", "app", "update-env"],
-    description: "Create a new deployment with updated environment variables.",
-    examples: ["prisma-cli app update-env --env DATABASE_URL=postgresql://example", "prisma-cli app update-env --app hello-world --env DATABASE_URL=postgresql://another"],
-  },
-  {
-    id: "app.list-env",
-    path: ["prisma", "app", "list-env"],
-    description: "List environment variable names for the selected app.",
-    examples: ["prisma-cli app list-env", "prisma-cli app list-env --app hello-world"],
   },
   {
     id: "app.show",
@@ -169,6 +175,46 @@ const DESCRIPTORS: CommandDescriptor[] = [
     path: ["prisma", "app", "open"],
     description: "Open the app's live URL",
     examples: ["prisma-cli app open", "prisma-cli app open --app hello-world"],
+  },
+  {
+    id: "app.domain",
+    path: ["prisma", "app", "domain"],
+    description: "Manage custom domains for an app",
+    examples: [
+      "prisma-cli app domain add shop.acme.com",
+      "prisma-cli app domain wait shop.acme.com --timeout 15m",
+      "prisma-cli app domain retry shop.acme.com",
+    ],
+  },
+  {
+    id: "app.domain.add",
+    path: ["prisma", "app", "domain", "add"],
+    description: "Register a custom domain on the app's production branch",
+    examples: ["prisma-cli app domain add shop.acme.com"],
+  },
+  {
+    id: "app.domain.show",
+    path: ["prisma", "app", "domain", "show"],
+    description: "Show custom domain status and certificate details",
+    examples: ["prisma-cli app domain show shop.acme.com"],
+  },
+  {
+    id: "app.domain.remove",
+    path: ["prisma", "app", "domain", "remove"],
+    description: "Detach a custom domain from the app",
+    examples: ["prisma-cli app domain remove shop.acme.com --yes"],
+  },
+  {
+    id: "app.domain.retry",
+    path: ["prisma", "app", "domain", "retry"],
+    description: "Retry custom domain DNS verification and TLS provisioning",
+    examples: ["prisma-cli app domain retry shop.acme.com"],
+  },
+  {
+    id: "app.domain.wait",
+    path: ["prisma", "app", "domain", "wait"],
+    description: "Wait until a custom domain is active or failed",
+    examples: ["prisma-cli app domain wait shop.acme.com", "prisma-cli app domain wait shop.acme.com --timeout 0 --json"],
   },
   {
     id: "app.logs",
@@ -213,7 +259,8 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: [
       "prisma-cli project env list --role production",
       "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production",
-      "prisma-cli project env rm STRIPE_KEY --role preview",
+      "prisma-cli project env add DATABASE_URL=postgresql://branch --branch feature/foo",
+      "prisma-cli project env remove STRIPE_KEY --role preview",
     ],
   },
   {
@@ -223,6 +270,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: [
       "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production",
       "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role preview",
+      "prisma-cli project env add DATABASE_URL=postgresql://branch --branch feature/foo",
       "API_URL=https://api.example prisma-cli project env add API_URL --project proj_123 --role preview",
     ],
   },
@@ -233,6 +281,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: [
       "prisma-cli project env update STRIPE_KEY=sk_new_xxx --role production",
       "prisma-cli project env update STRIPE_KEY=sk_new_xxx --role preview",
+      "prisma-cli project env update DATABASE_URL=postgresql://branch --branch feature/foo",
     ],
   },
   {
@@ -242,15 +291,17 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: [
       "prisma-cli project env list --role production",
       "prisma-cli project env list --role preview",
+      "prisma-cli project env list --branch feature/foo",
     ],
   },
   {
-    id: "project.env.rm",
-    path: ["prisma", "project", "env", "rm"],
+    id: "project.env.remove",
+    path: ["prisma", "project", "env", "remove"],
     description: "Remove an environment variable from a scope.",
     examples: [
-      "prisma-cli project env rm STRIPE_KEY --role production",
-      "prisma-cli project env rm STRIPE_KEY --role preview",
+      "prisma-cli project env remove STRIPE_KEY --role production",
+      "prisma-cli project env remove STRIPE_KEY --role preview",
+      "prisma-cli project env remove DATABASE_URL --branch feature/foo",
     ],
   },
 ];

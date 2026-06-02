@@ -1,12 +1,12 @@
-export interface EnvScopeDescriptor {
-  kind: "role";
-  role: "production" | "preview";
-}
+export type EnvScopeDescriptor =
+  | { kind: "role"; role: "production" | "preview" }
+  | { kind: "branch"; branchName: string; branchId: string };
 
 export interface EnvVariableMetadata {
   id: string;
   key: string;
   scope: EnvScopeDescriptor;
+  source: string;
   isManagedBySystem: boolean;
   updatedAt: string;
 }

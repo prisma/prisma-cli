@@ -120,6 +120,67 @@ describe("real auth mode", () => {
     );
   });
 
+  it("returns service-token identity in real auth JSON output", async () => {
+    const readAuthState = vi.fn().mockResolvedValue({
+      authenticated: true,
+      provider: null,
+      user: null,
+      workspace: {
+        id: "wksp_real",
+        name: "Real Workspace",
+      },
+      credential: {
+        type: "service_token",
+        id: "itgr_ci",
+        name: "ci-deploys-prod",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/auth-ops", () => ({
+      performLogin: vi.fn(),
+      readAuthState,
+      performLogout: vi.fn(),
+    }));
+
+    const { createTempCwd, executeCli } = await import("./helpers");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    const result = await executeCli({
+      argv: ["auth", "whoami", "--json"],
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toEqual({
+      ok: true,
+      command: "auth.whoami",
+      result: {
+        authenticated: true,
+        provider: null,
+        user: null,
+        workspace: {
+          id: "wksp_real",
+          name: "Real Workspace",
+        },
+        credential: {
+          type: "service_token",
+          id: "itgr_ci",
+          name: "ci-deploys-prod",
+        },
+      },
+      warnings: [],
+      nextSteps: [],
+      nextActions: [],
+    });
+  });
+
   it("omits empty provider and workspace rows in auth output", async () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const cwd = await createTempCwd();
@@ -141,6 +202,7 @@ describe("real auth mode", () => {
           email: "real@example.com",
         },
         workspace: null,
+        credential: null,
       },
     ).join("");
 
@@ -173,6 +235,7 @@ describe("real auth mode", () => {
           id: "ws_real",
           name: "Real Workspace",
         },
+        credential: null,
       },
     ).join("");
 
@@ -181,5 +244,42 @@ describe("real auth mode", () => {
     expect(plain).toContain("status:     signed in");
     expect(plain).not.toContain("user:");
     expect(plain).not.toContain("<>");
+  });
+
+  it("shows service-token identity when no human user is present", async () => {
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    const output = renderAuthSuccess(
+      context,
+      getCommandDescriptor("auth.whoami"),
+      "auth.whoami",
+      {
+        authenticated: true,
+        provider: null,
+        user: null,
+        workspace: {
+          id: "wksp_real",
+          name: "Real Workspace",
+        },
+        credential: {
+          type: "service_token",
+          id: "itgr_ci",
+          name: "ci-deploys-prod",
+        },
+      },
+    ).join("");
+
+    const plain = stripAnsi(output);
+
+    expect(plain).toContain("status:     signed in");
+    expect(plain).toContain("user:       <service token: ci-deploys-prod>");
+    expect(plain).toContain("workspace:  Real Workspace");
   });
 });

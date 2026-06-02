@@ -1,13 +1,14 @@
-# Prisma CLI Preview Command Spec
+# Prisma CLI Beta Command Spec
 
 ## Purpose
 
-This document defines the public preview command surface. It is the source of
+This document defines the public beta command surface. It is the source of
 truth for command names, target resolution, and structured behavior.
+This file is authoritative for command group scope during beta.
 
 ## Scope
 
-The preview package includes these command groups:
+The beta package includes these command groups:
 
 - `auth`
 - `project` (includes `project env` subgroup)
@@ -15,7 +16,7 @@ The preview package includes these command groups:
 - `branch`
 - `app`
 
-The preview package also includes one top-level utility command:
+The beta package also includes one top-level utility command:
 
 - `version`
 
@@ -24,7 +25,7 @@ The preview package also includes one top-level utility command:
 The Git repository connection slice uses the `git` group. It does not add a
 provider-specific `GitHub` group.
 
-Out of scope for the current preview:
+Out of scope for the current beta:
 
 - `init`
 - `schema`
@@ -63,6 +64,8 @@ The CLI accepts two authentication sources, in this fixed precedence:
 1. `PRISMA_SERVICE_TOKEN` environment variable — long-lived service token, intended for CI and other headless contexts.
 2. Stored OAuth session — created by `prisma-cli auth login`, kept in the OS-appropriate credentials store, refreshed automatically.
 
+Stored OAuth sessions include a short-lived access token and a refresh token. Commands refresh the access token automatically when the API rejects it, coordinate refreshes across concurrent CLI processes, and tolerate short refresh-token rotation races. If the stored session cannot be refreshed, commands fail with a structured `AUTH_REQUIRED` error instead of surfacing SDK stack traces.
+
 When `PRISMA_SERVICE_TOKEN` is set and non-empty, the token is fully sufficient for authenticated commands. If `PRISMA_SERVICE_TOKEN` is set but empty or only whitespace, commands fail with an auth configuration error instead of falling back to stored OAuth. The CLI does not read any locally stored OAuth session when a non-empty service token is present, so behavior is identical on a fresh runner and a developer machine that happens to be signed in. The active workspace is derived from the token's `sub` claim; no additional flag or environment variable is required for the common case where the token is scoped to a single workspace.
 
 `auth login` and `auth logout` operate on the stored OAuth session. They do not affect the `PRISMA_SERVICE_TOKEN` environment variable.
@@ -74,26 +77,34 @@ When `PRISMA_SERVICE_TOKEN` is set and non-empty, the token is fully sufficient 
 Commands resolve project context in this order:
 
 1. explicit `--project <id-or-name>` when present
-2. `PRISMA_PROJECT_ID` when set for headless deploys
+2. `PRISMA_PROJECT_ID` when set for headless deploy/domain commands
 3. `.prisma/local.json` project pin when present, revalidated against platform data
 4. durable platform mapping when available
-5. remembered local project context, revalidated against platform data
-6. `package.json` name matched exactly against accessible project id, name, or slug
-7. unambiguous project creation for commands that are allowed to create projects
-8. prompt in interactive mode, or structured failure in `--json` / `--no-interactive` mode
+5. explicit setup choice from `project link`, `project create`, an interactive setup picker, `app deploy --project`, or `app deploy --create-project`
+6. structured failure when no explicit or durable Project binding exists
 
-`--project` is an escape hatch for ambiguous or unavailable automatic
-resolution, not a setup step. Only `app deploy` may create a missing project,
-and only when the inferred name is unambiguous.
-When `PRISMA_PROJECT_ID` is set, `app deploy` skips `.prisma/local.json` reads
-and does not write a new pin.
+`--project` is an explicit Project choice. When used from an unbound directory
+with `app deploy`, it writes `.prisma/local.json` after validation and before
+the deployment starts. `--create-project <name>` is the explicit deploy-time
+choice to create and bind a new Project. Package names and directory names may
+suggest setup defaults, but they never authorize Project creation by themselves.
+When `PRISMA_PROJECT_ID` is set, `app deploy` and `app domain` commands skip
+`.prisma/local.json` reads and do not write a new pin.
+
+Project-scoped commands never use package-name matching, directory-name
+matching, or remembered local context as selected Project scope. Local metadata
+may suggest setup defaults and candidate Projects, but only explicit input or
+durable state may select a Project. Without a pin, durable mapping, supported
+env var, or explicit Project flag, Project-scoped commands fail with
+`PROJECT_SETUP_REQUIRED`; `app deploy` may enter explicit interactive setup
+before failing.
 
 ### App Selection
 
 Preview app commands that need an app resolve it in this order:
 
 1. `--app <name>`
-2. `PRISMA_APP_ID` when set for headless deploys
+2. `PRISMA_APP_ID` when set for headless deploy/domain commands
 3. locally selected app for non-deploy commands when it still exists in the resolved branch
 4. inferred app name from `package.json#name`
 5. current directory name
@@ -101,12 +112,12 @@ Preview app commands that need an app resolve it in this order:
 7. interactive picker only when multiple matching apps make the target ambiguous
 8. `APP_AMBIGUOUS` in non-interactive or `--json` mode when unresolved
 
-When `PRISMA_APP_ID` is set, `app deploy` skips `.prisma/local.json` reads and
-does not write a new pin.
-
 `.prisma/local.json` pins the directory to a Workspace and Project only. It does
 not pin an App ID. App services are branch-scoped; a service ID from `main`
 must not be reused automatically when the user deploys from `feat/billing`.
+
+`app domain` commands do not create apps. They resolve an existing app on the
+resolved production Branch and fail when none exists.
 
 ### Branch
 
@@ -118,6 +129,10 @@ Commands that use branch context resolve it in this order:
 
 `local` is local CLI context only. It is never a branch or deploy target.
 Production is a protected durable branch and must require explicit user intent.
+
+`app domain` commands default to the production Branch. During Public Beta,
+custom domains are supported only on production Branches. Passing a
+non-production `--branch` fails with `BRANCH_NOT_DEPLOYABLE`.
 
 ## Command Result Envelopes
 
@@ -147,12 +162,55 @@ In `--json`, `result` uses this shape:
   "authenticated": true,
   "provider": "github",
   "user": {
+    "id": "usr_123",
+    "email": "alice@example.com",
+    "name": "Alice"
+  },
+  "workspace": {
+    "id": "wksp_123",
+    "name": "Acme Inc"
+  },
+  "credential": {
+    "type": "oauth",
+    "id": null,
+    "name": null
+  }
+}
+```
+
+For service-token sessions, `user` is `null` and `credential` identifies the token when the API can resolve it:
+
+```json
+{
+  "authenticated": true,
+  "provider": null,
+  "user": null,
+  "workspace": {
+    "id": "wksp_123",
+    "name": "Acme Inc"
+  },
+  "credential": {
+    "type": "service_token",
+    "id": "itgr_123",
+    "name": "ci-deploys-prod"
+  }
+}
+```
+
+Fallback auth states may omit user details when the deployed Management API does not yet expose `/v1/me`:
+
+```json
+{
+  "authenticated": true,
+  "provider": "github",
+  "user": {
     "email": "alice@example.com"
   },
   "workspace": {
-    "id": "ws_123",
+    "id": "wksp_123",
     "name": "Acme Inc"
-  }
+  },
+  "credential": null
 }
 ```
 
@@ -160,8 +218,9 @@ Rules:
 
 - `authenticated` is always present
 - `provider` is `github`, `google`, or `null`
-- `user` contains the current user email or is `null`
+- `user` contains the current user id, email, and display name when known, a fallback email-only object during rollout, or `null`
 - `workspace` is the active workspace or `null`
+- `credential` identifies the active credential when known, or is `null`
 - signed-out state is an empty auth state, not an error
 
 ## `prisma-cli version`
@@ -184,7 +243,7 @@ In `--json`, `result` uses this shape:
 {
   "cli": {
     "name": "prisma-cli",
-    "version": "3.0.0-alpha.3"
+    "version": "3.0.0-beta.0"
   },
   "node": {
     "version": "v24.14.1"
@@ -199,7 +258,7 @@ In `--json`, `result` uses this shape:
 
 Rules:
 
-- `cli.name` is the published package's `bin` name (`prisma-cli` in the current preview).
+- `cli.name` is the published package's `bin` name (`prisma-cli` in the current beta).
 - `cli.version` is the published package version.
 - `node.version` mirrors `process.version` exactly, including the leading `v`.
 - `os.platform` and `os.arch` mirror `process.platform` and `process.arch`.
@@ -306,6 +365,10 @@ Behavior:
 - lists projects visible to the active workspace
 - does not resolve the current directory
 - does not mutate local state
+- when the current directory is not linked, human output adds setup hints after the list
+- in JSON, unlinked directories include a `user-choice` `nextActions` entry for Project setup
+- listed Projects are not marked selected unless durable local binding actually selects one
+- listed Projects are candidates only; the user must choose one before `project link <id-or-name>` runs
 
 Examples:
 
@@ -318,17 +381,21 @@ prisma-cli project list --json
 
 Purpose:
 
-- show the Prisma project resolved for this directory
+- show this directory's Prisma Project binding
 
 Behavior:
 
 - requires auth
-- resolves project context without creating projects
+- inspects explicit or durable project context without creating projects
 - does not prompt for project selection
 - does not mutate local state
 - `--project <id-or-name>` resolves only the explicit project
-- returns Workspace, Project, and `resolution.projectSource`
-- fails with `PROJECT_UNRESOLVED`, `PROJECT_NOT_FOUND`, `PROJECT_AMBIGUOUS`, or `LOCAL_STATE_STALE` when resolution cannot continue safely
+- when bound, returns Workspace, Project, and `resolution.projectSource`
+- when bound, human output shows the local repo path, the `<workspace> / <project>` platform label, and the Project URL; it does not show the internal resolution source
+- when unbound, human output says `project: Not linked` and shows link/create next steps
+- when unbound, JSON exits successfully with `project: null`, `localBinding.status: "not-linked"`, `resolution.projectSource: "unbound"`, a suggested Project name, matching Project candidates, recovery commands, and `user-choice` `nextActions`
+- package names and directory names only power unbound suggestions
+- fails with `PROJECT_NOT_FOUND`, `PROJECT_AMBIGUOUS`, or `LOCAL_STATE_STALE` when explicit or durable binding validation cannot continue safely
 
 Examples:
 
@@ -336,6 +403,56 @@ Examples:
 prisma-cli project show
 prisma-cli project show --json
 prisma-cli project show --project proj_123 --json
+```
+
+## `prisma-cli project create <name>`
+
+Purpose:
+
+- create a Prisma Project and bind the current directory to it
+
+Behavior:
+
+- requires auth
+- creates a Project in the authenticated workspace
+- writes `.prisma/local.json` with Workspace and Project IDs
+- ensures `.prisma/` is ignored by Git
+- does not create a Branch, App, Deployment, database, or Git repository connection
+- fails if the platform rejects Project creation
+
+Examples:
+
+```bash
+prisma-cli project create my-app
+prisma-cli project create my-app --json
+```
+
+## `prisma-cli project link [id-or-name]`
+
+Purpose:
+
+- bind the current directory to a Prisma Project
+
+Behavior:
+
+- requires auth
+- with `[id-or-name]`, resolves exactly one existing Project by id or name in the authenticated workspace
+- without `[id-or-name]` in interactive mode, prompts the user to choose an existing Project, create a new Project, or cancel
+- choosing an existing Project writes the local binding and does not create remote resources
+- choosing "Create a new Project" prompts for a Project name, creates the Project, and writes the local binding
+- without `[id-or-name]` in `--json`, `--no-interactive`, non-TTY, CI, or `--yes` mode, fails with `PROJECT_LINK_TARGET_REQUIRED`
+- `--yes` does not choose Project scope
+- writes `.prisma/local.json` with Workspace and Project IDs
+- ensures `.prisma/` is ignored by Git
+- does not create Branch, App, Deployment, database, or Git repository connection state
+- fails with `PROJECT_NOT_FOUND` or `PROJECT_AMBIGUOUS` when the Project cannot be selected safely
+
+Examples:
+
+```bash
+prisma-cli project link
+prisma-cli project link proj_123
+prisma-cli project link "Acme Dashboard" --json
 ```
 
 ## `prisma-cli git connect [git-url]`
@@ -457,7 +574,7 @@ Purpose:
 Behavior:
 
 - detects supported project shapes when `--build-type auto` is used
-- supports Bun, Next.js, Nuxt, Astro, and TanStack Start app builds in the preview package
+- supports Bun, Next.js, Nuxt, Astro, and TanStack Start app builds in the beta package
 - fails with `USAGE_ERROR` when framework detection is ambiguous
 
 Examples:
@@ -489,7 +606,7 @@ prisma-cli app run --build-type nextjs
 prisma-cli app run --build-type bun --entry server.ts --port 3000
 ```
 
-## `prisma-cli app deploy --project <id-or-name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start> --entry <path> --http-port <port> --env <name=value>`
+## `prisma-cli app deploy --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start|bun> --entry <path> --http-port <port> --env <name=value>`
 
 Purpose:
 
@@ -498,19 +615,37 @@ Purpose:
 Behavior:
 
 - requires auth
-- resolves or creates project context from `--project`, `PRISMA_PROJECT_ID`, `.prisma/local.json`, `package.json#name`, or current directory name
+- resolves project context from `--project`, `--create-project`, `PRISMA_PROJECT_ID`, `.prisma/local.json`, durable platform mapping, or an interactive setup choice
+- does not infer and create Project context from `package.json#name` or current directory name without explicit setup
+- when no Project is resolved in interactive mode, asks which Project the directory should use:
+
+  ```text
+  ? Which Project should this directory use?
+    ❯ Acme Dashboard
+      Billing API
+      Create a new Project
+      Cancel
+  ```
+
+- when "Create a new Project" is selected, prompts for a Project name with the package/directory name as a suggestion
+- when no Project is resolved in `--json` / `--no-interactive` mode, fails with `PROJECT_SETUP_REQUIRED`
+- `PROJECT_SETUP_REQUIRED` preserves readable recovery commands in `nextSteps` and includes structured `nextActions` for choosing, linking, creating, or retrying with an explicit Project
+- `--yes` alone does not choose Project scope; use `--project` or `--create-project`
+- `--project` and `--create-project` are mutually exclusive with each other and with `PRISMA_PROJECT_ID`
 - resolves or creates branch context from `--branch`, local Git branch, or `main`
 - resolves or creates app context inside the resolved branch from `--app`, `PRISMA_APP_ID`, `package.json#name`, or current directory name
 - does not prompt when there is no real choice; zero matching apps creates the inferred app
-- detects supported frameworks and shows the resolved framework/runtime settings only while binding the directory for the first time
 - writes `.prisma/local.json` after Project binding succeeds and before build/deploy starts, so retries after a failed deploy do not repeat setup
-- asks `Customize settings? (y/N)` only while binding the directory for the first time, and only asks for Framework and HTTP port when the user opts in
-- subsequent deploys print a compact target header such as `Deploying ./j1 to j1 / main / j1`
+- before asking `Customize build settings? (y/N)`, previews the detected framework and runtime so the user can see the defaults they are accepting or changing
+- asks `Customize build settings? (y/N)` only while binding the directory for the first time, and only asks for Framework and HTTP port when the user opts in
+- after setup, deploy prints `Deploying to <Project> / <Branch> / <App>`; later deploys print a compact target header such as `Deploying ./j1 to j1 / main / j1`
 - deploy progress uses short stage copy (`Building locally...`, `Built <size>`, `Uploading...`, `Uploaded`, `Deploying...`, `Deployed`) and never prints `Status: running` or `Deployment is running at ...`
 - success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma-cli app logs`
 - accepts repeated `--env NAME=VALUE` flags
 - maps user-facing framework names to deploy build strategies
-- accepts `--build-type <auto|bun|nextjs|nuxt|astro|tanstack-start>` as a legacy passthrough, but `--framework` wins when both are passed
+- uses `src/index.ts` as the Hono deploy entrypoint when the app has no `package.json#main` or `package.json#module` and that file exists
+- supports vanilla Bun apps with `--framework bun` using `package.json#main` or `package.json#module`, or with `--entry <path>`
+- treats `--entry <path>` without `--framework` as a Bun app deploy
 - does not print secret values
 - returns app, deployment id, URL, and next steps in `--json` output
 
@@ -518,31 +653,35 @@ Examples:
 
 ```bash
 prisma-cli app deploy
+prisma-cli app deploy --project proj_123
+prisma-cli app deploy --create-project my-app --yes
 prisma-cli app deploy --app my-app --env DATABASE_URL=postgresql://example
 prisma-cli app deploy --framework nextjs --http-port 3000
 prisma-cli app deploy --branch feat-login --framework hono --http-port 3000
+prisma-cli app deploy --framework bun --entry src/server.ts --http-port 3000
+prisma-cli app deploy --entry src/server.ts --http-port 3000
 ```
 
 ## `prisma-cli project env`
 
 Manage durable, platform-stored environment variables for the resolved
-project. Replaces the legacy `prisma app update-env` / `prisma app
-list-env` workflow, which mutated env vars on a single Foundry version
-and is now deprecated. The `env` namespace operates on the
+project. The `env` namespace operates on the
 platform-managed `/v1/environment-variables` API; values are stored
 encrypted at rest and **never returned** by the platform — read-back
 is not supported in Beta.
 
 ### Scope flags
 
-The `--role` flag is recognized on every `env` verb:
+Every write targets exactly one scope:
 
 - `--role <production|preview>` targets a project template.
-- For write verbs (`add`, `update`, `rm`), `--role` is required
+- `--branch <git-name>` targets a preview branch override.
+- `--role` and `--branch` are mutually exclusive.
+- For write verbs (`add`, `update`, `remove`), one scope flag is required
   so the CLI never silently writes to production.
 - For read verbs (`list`), omitting `--role` defaults to `--role production`.
 
-### `prisma-cli project env add KEY=VALUE --role <production|preview>`
+### `prisma-cli project env add KEY=VALUE (--role <production|preview> | --branch <git-name>)`
 
 Purpose:
 
@@ -557,6 +696,8 @@ Behavior:
 - KEY without `=VALUE` reads the value from the current process environment
 - if a variable with the same key already exists in the scope, the
   command fails with a clear error directing to `env update`
+- branch-only variables are allowed; the CLI warns when the key does
+  not exist in the preview template
 - the response carries metadata only — the value is never echoed back
 
 Examples:
@@ -564,10 +705,11 @@ Examples:
 ```bash
 prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production
 prisma-cli project env add STRIPE_KEY=sk_test_xxx --role preview
+prisma-cli project env add DATABASE_URL=postgresql://branch --branch feature/foo
 API_URL=https://api.example prisma-cli project env add API_URL --project proj_123 --role preview
 ```
 
-### `prisma-cli project env update KEY=VALUE --role <production|preview>`
+### `prisma-cli project env update KEY=VALUE (--role <production|preview> | --branch <git-name>)`
 
 Purpose:
 
@@ -589,9 +731,10 @@ Examples:
 ```bash
 prisma-cli project env update STRIPE_KEY=sk_new_xxx --role production
 prisma-cli project env update STRIPE_KEY=sk_new_xxx --role preview
+prisma-cli project env update DATABASE_URL=postgresql://branch --branch feature/foo
 ```
 
-### `prisma-cli project env list [--role <production|preview>]`
+### `prisma-cli project env list [--role <production|preview> | --branch <git-name>]`
 
 Purpose:
 
@@ -601,6 +744,8 @@ Behavior:
 
 - requires auth and a resolved project; accepts `--project <id-or-name>` as an explicit fallback
 - defaults to `--role production` when `--role` is not supplied
+- `--branch` lists the resolved preview branch view: preview defaults
+  plus branch overrides, with source metadata
 - never prints values (never-reveal)
 - emits `key`, `id`, `last updated`, and a `scope` annotation per row
 
@@ -609,9 +754,10 @@ Examples:
 ```bash
 prisma-cli project env list
 prisma-cli project env list --role preview
+prisma-cli project env list --branch feature/foo
 ```
 
-### `prisma-cli project env rm KEY --role <production|preview>`
+### `prisma-cli project env remove KEY (--role <production|preview> | --branch <git-name>)`
 
 Purpose:
 
@@ -621,62 +767,15 @@ Behavior:
 
 - requires auth and a resolved project; accepts `--project <id-or-name>` as an explicit fallback
 - looks the variable up by natural key in the scope and `DELETE`s it
+- `rm` is supported as an alias for `remove`
 - returns a focused error when no matching variable exists
 
 Examples:
 
 ```bash
-prisma-cli project env rm STRIPE_KEY --role production
-prisma-cli project env rm STRIPE_KEY --role preview
-```
-
-## `prisma-cli app update-env --app <name> --env <name=value>`
-
-> **Deprecated.** Use `prisma-cli project env add` instead. The legacy command
-> still works for backward compatibility but emits a deprecation
-> warning and will be removed in a future release.
-
-Purpose:
-
-- create a new deployment with updated environment variables
-
-Behavior:
-
-- requires auth and project context
-- resolves the selected app
-- accepts repeated `--env NAME=VALUE` flags
-- returns the new deployment
-- does not print secret values
-
-Examples:
-
-```bash
-prisma-cli app update-env --env DATABASE_URL=postgresql://example
-prisma-cli app update-env --app hello-world --env DATABASE_URL=postgresql://another
-```
-
-## `prisma-cli app list-env --app <name>`
-
-> **Deprecated.** Use `prisma-cli project env list` instead. The legacy command
-> still works for backward compatibility but emits a deprecation
-> warning and will be removed in a future release.
-
-Purpose:
-
-- list environment variable names for the selected app
-
-Behavior:
-
-- requires auth and project context
-- resolves the selected app
-- returns variable names only
-- does not print values
-
-Examples:
-
-```bash
-prisma-cli app list-env
-prisma-cli app list-env --app hello-world
+prisma-cli project env remove STRIPE_KEY --role production
+prisma-cli project env remove STRIPE_KEY --role preview
+prisma-cli project env remove DATABASE_URL --branch feature/foo
 ```
 
 ## `prisma-cli app show --app <name>`
@@ -716,6 +815,148 @@ Examples:
 ```bash
 prisma-cli app open
 prisma-cli app open --app hello-world
+```
+
+## `prisma-cli app domain`
+
+Purpose:
+
+- manage custom domains for an app's production Branch runtime
+
+Behavior:
+
+- requires auth and project context
+- resolves the selected app on the production Branch
+- supports only production Branch custom domains during Public Beta
+- does not expose workspace-wide domain listing until the Management API has a
+  workspace-scoped list endpoint
+
+Commands:
+
+- `add <hostname>` registers a custom domain
+- `show <hostname>` shows status, certificate detail, and fix hints
+- `remove <hostname>` detaches a custom domain
+- `retry <hostname>` re-triggers DNS verification and TLS issuance
+- `wait <hostname>` blocks until `active`, terminal `failed`, or timeout
+
+Examples:
+
+```bash
+prisma-cli app domain add shop.acme.com
+prisma-cli app domain wait shop.acme.com --timeout 15m
+prisma-cli app domain retry shop.acme.com
+```
+
+## `prisma-cli app domain add <hostname>`
+
+Purpose:
+
+- register a custom domain on the selected app's production Branch
+
+Behavior:
+
+- requires auth and project context
+- resolves the selected app
+- registers the hostname against the selected app's compute service
+- is idempotent for a hostname already attached to the same app
+- does not re-trigger DNS verification for an existing row
+- prints DNS record instructions only when returned by the API
+- does not synthesize DNS records client-side when the API omits them
+- returns `DOMAIN_DNS_NOT_CONFIGURED` with a CNAME target only when the API error includes the required target
+- returns `DOMAIN_ALREADY_REGISTERED` when the hostname is attached outside the selected app
+- rejects non-production `--branch` with `BRANCH_NOT_DEPLOYABLE`
+
+Examples:
+
+```bash
+prisma-cli app domain add shop.acme.com
+prisma-cli app domain add shop.acme.com --app shop --branch production
+```
+
+## `prisma-cli app domain show <hostname>`
+
+Purpose:
+
+- show status and recovery guidance for one custom domain
+
+Behavior:
+
+- requires auth and project context
+- resolves the selected app
+- finds the domain by hostname within the selected app
+- includes failure category, failure reason, certificate expiry, and DNS record
+  instructions when returned by the API
+
+Examples:
+
+```bash
+prisma-cli app domain show checkout.acme.com
+```
+
+## `prisma-cli app domain remove <hostname>`
+
+Purpose:
+
+- detach a custom domain from the selected app
+
+Behavior:
+
+- requires auth and project context
+- resolves the selected app
+- requires confirmation unless `-y` or `--yes` is passed
+- deletes the domain binding by id after resolving the hostname
+
+Examples:
+
+```bash
+prisma-cli app domain remove old.acme.com
+prisma-cli app domain remove old.acme.com --yes
+```
+
+## `prisma-cli app domain retry <hostname>`
+
+Purpose:
+
+- re-trigger DNS verification and TLS issuance for a failed or stuck domain
+
+Behavior:
+
+- requires auth and project context
+- resolves the selected app
+- finds the domain by hostname within the selected app
+- calls the domain retry endpoint
+- prints DNS record instructions and failure guidance when returned by the API
+- returns `DOMAIN_RETRY_NOT_ELIGIBLE` when the API reports the domain is not in
+  a retryable state
+
+Examples:
+
+```bash
+prisma-cli app domain retry checkout.acme.com
+```
+
+## `prisma-cli app domain wait <hostname>`
+
+Purpose:
+
+- block until a custom domain reaches `active`, terminal `failed`, or timeout
+
+Behavior:
+
+- requires auth and project context
+- resolves the selected app
+- finds the domain by hostname within the selected app
+- polls domain detail until status is `active`, `failed`, or the timeout expires
+- defaults `--timeout` to `15m`
+- treats `--timeout 0` as poll-once snapshot mode
+- exits 0 on `active`, and 1 on terminal `failed` or timeout
+- in `--json` mode, streams newline-delimited status events
+
+Examples:
+
+```bash
+prisma-cli app domain wait shop.acme.com
+prisma-cli app domain wait shop.acme.com --timeout 0 --json
 ```
 
 ## `prisma-cli app logs --app <name> --deployment <id>`

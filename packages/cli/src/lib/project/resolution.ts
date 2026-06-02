@@ -1,22 +1,28 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { formatCommandArgument } from "../../shell/command-arguments";
 import { CliError } from "../../shell/errors";
-import { canPrompt, type CommandContext } from "../../shell/runtime";
+import type { NextAction } from "../../shell/next-actions";
+import type { CommandContext } from "../../shell/runtime";
 import type { AuthWorkspace } from "../../types/auth";
-import type { ProjectResolution, ProjectSource, ProjectSummary } from "../../types/project";
-import type { SelectPromptPort } from "../../use-cases/contracts";
+import type {
+  BoundProjectShowResult,
+  ProjectResolution,
+  ProjectSetupSuggestion,
+  ProjectSource,
+  ProjectSummary,
+  ProjectShowResult,
+} from "../../types/project";
+import { LOCAL_RESOLUTION_PIN_RELATIVE_PATH, readLocalResolutionPin } from "./local-pin";
 
 export interface ProjectCandidate extends ProjectSummary {
   slug?: string | null;
   workspace: AuthWorkspace;
 }
 
-export interface ResolvedProjectTarget {
-  workspace: AuthWorkspace;
-  project: ProjectSummary;
-  resolution: ProjectResolution;
-}
+export type ResolvedProjectTarget = BoundProjectShowResult;
+type BoundProjectSource = Exclude<ProjectSource, "unbound">;
 
 export type InferredTargetNameSource = "package-name" | "directory-name";
 
@@ -29,123 +35,48 @@ export interface ResolveProjectOptions {
   context: CommandContext;
   workspace: AuthWorkspace;
   explicitProject?: string;
+  envProjectId?: string;
+  commandName?: string;
   listProjects(): Promise<ProjectCandidate[]>;
-  createProject?: (name: string) => Promise<ProjectCandidate>;
-  prompt?: SelectPromptPort;
-  allowCreate?: boolean;
-  remember?: boolean;
 }
 
 export async function resolveProjectTarget(options: ResolveProjectOptions): Promise<ResolvedProjectTarget> {
   const projects = await options.listProjects();
-  const inferredName = await inferTargetName(options.context.runtime.cwd);
+  const target = await resolveBoundProjectTarget(options, projects, { allowEnvProjectId: true });
 
-  if (options.explicitProject) {
-    return rememberIfRequested(
-      options,
-      resolveExplicitProject(options.explicitProject, projects, options.workspace),
-      "explicit",
-      {
-        targetName: options.explicitProject,
-        targetNameSource: "explicit",
-      },
-    );
+  if (target) {
+    return target;
   }
 
-  const platformMapping = await resolveDurablePlatformMapping();
-  if (platformMapping) {
-    return rememberIfRequested(options, platformMapping, "platform-mapping");
-  }
-
-  let staleRemembered = false;
-
-  if (!options.allowCreate) {
-    const rememberedResult = await resolveRememberedProject(options, projects);
-    if (rememberedResult.target) {
-      return rememberedResult.target;
-    }
-    staleRemembered = rememberedResult.stale;
-  }
-
-  const packageName = inferredName.source === "package-name" ? inferredName.name : null;
-  if (packageName) {
-    const matches = projects.filter((project) => projectMatchesPackageName(project, packageName));
-    if (matches.length === 1) {
-      return rememberIfRequested(options, matches[0], "package-name", {
-        targetName: packageName,
-        targetNameSource: "package-name",
-      });
-    }
-    if (matches.length > 1) {
-      return resolveAmbiguousProject(options, matches, packageName, "package-name");
-    }
-  }
-
-  if (options.allowCreate && options.createProject) {
-    if (inferredName.name) {
-      const existing = projects.filter((project) => projectMatchesPackageName(project, inferredName.name));
-      if (existing.length === 1) {
-        return rememberIfRequested(options, existing[0], inferredName.source, {
-          targetName: inferredName.name,
-          targetNameSource: inferredName.source,
-        });
-      }
-      if (existing.length > 1) {
-        return resolveAmbiguousProject(options, existing, inferredName.name, inferredName.source);
-      }
-
-      const created = await options.createProject(inferredName.name);
-      return rememberIfRequested(options, created, "created", {
-        targetName: inferredName.name,
-        targetNameSource: inferredName.source,
-      });
-    }
-  }
-
-  if (options.prompt && canPrompt(options.context) && projects.length > 0) {
-    const selected = await options.prompt.select({
-      message: "Select a project",
-      choices: sortProjects(projects).map((project) => ({
-        label: `${project.name} (${project.id})`,
-        value: project,
-      })),
-    });
-    return rememberIfRequested(options, selected, "prompt");
-  }
-
-  if (staleRemembered && projects.length > 1) {
-    throw localStateStaleError();
-  }
-
-  throw projectUnresolvedError();
+  throw await projectSetupRequiredError({
+    cwd: options.context.runtime.cwd,
+    projects,
+    commandName: options.commandName,
+  });
 }
 
-async function resolveRememberedProject(
-  options: ResolveProjectOptions,
-  projects: ProjectCandidate[],
-): Promise<{ target: ResolvedProjectTarget | null; stale: boolean }> {
-  const remembered = await options.context.stateStore.readRememberedProject(options.workspace.id);
-  if (!remembered) {
-    return {
-      target: null,
-      stale: false,
-    };
-  }
+export async function inspectProjectBinding(options: ResolveProjectOptions): Promise<ProjectShowResult> {
+  const projects = await options.listProjects();
+  const target = await resolveBoundProjectTarget(options, projects, { allowEnvProjectId: false });
 
-  const matched = projects.find((project) => project.id === remembered.id);
-  if (!matched) {
-    return {
-      target: null,
-      stale: true,
-    };
+  if (target) {
+    return target;
   }
 
   return {
-    target: await rememberIfRequested(options, matched, "remembered-local", {
-      targetName: remembered.name,
-      targetNameSource: "remembered-local",
+    workspace: options.workspace,
+    project: null,
+    localBinding: {
+      status: "not-linked",
+    },
+    resolution: {
+      projectSource: "unbound",
+    },
+    ...await buildProjectSetupSuggestion({
+      cwd: options.context.runtime.cwd,
+      projects,
+      commandName: options.commandName ?? "project show",
     }),
-    stale: false,
   };
 }
 
@@ -186,28 +117,114 @@ export function projectAmbiguousError(projectRef: string | null, matches: Projec
   });
 }
 
-export function projectUnresolvedError(): CliError {
-  return new CliError({
-    code: "PROJECT_UNRESOLVED",
-    domain: "project",
-    summary: "No project is resolved for this directory",
-    why: "No project could be resolved from explicit input, platform mappings, remembered local context, or package metadata.",
-    fix: "Pass --project <id-or-name> on the command that needs a project, or add a package.json name that matches an accessible project.",
-    exitCode: 1,
-    nextSteps: ["prisma-cli project list", "prisma-cli project show --project <id-or-name>"],
-  });
-}
-
 export function localStateStaleError(): CliError {
   return new CliError({
     code: "LOCAL_STATE_STALE",
     domain: "project",
-    summary: "Remembered project context is stale",
-    why: "The remembered project is no longer available in the selected workspace, and automatic resolution would be ambiguous.",
-    fix: "Pass --project <id-or-name> to choose the project explicitly.",
+    summary: "Local project binding is stale",
+    why: `The target recorded in ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} is no longer available in the selected workspace.`,
+    fix: `Delete ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH}, then choose a Project explicitly.`,
+    meta: {
+      pinPath: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
+    },
     exitCode: 1,
-    nextSteps: ["prisma-cli project list"],
+    nextSteps: ["prisma-cli project list", "prisma-cli project link <id-or-name>"],
   });
+}
+
+export async function buildProjectSetupSuggestion(options: {
+  cwd: string;
+  projects: ProjectCandidate[];
+  commandName?: string;
+}): Promise<ProjectSetupSuggestion> {
+  const suggestedName = await inferTargetName(options.cwd);
+  const candidates = sortProjects(
+    options.projects.filter((project) => projectMatchesSuggestedName(project, suggestedName.name)),
+  ).map(toProjectSummary);
+
+  return {
+    suggestedProjectName: suggestedName.name,
+    suggestedProjectNameSource: suggestedName.source,
+    candidates,
+    recoveryCommands: buildProjectRecoveryCommands(options.commandName),
+  };
+}
+
+export async function projectSetupRequiredError(options: {
+  cwd: string;
+  projects: ProjectCandidate[];
+  commandName?: string;
+}): Promise<CliError> {
+  const suggestion = await buildProjectSetupSuggestion(options);
+  const commandLabel = options.commandName ? `prisma-cli ${options.commandName}` : "this command";
+
+  return new CliError({
+    code: "PROJECT_SETUP_REQUIRED",
+    domain: "project",
+    summary: "Choose a Project before running this command",
+    why: `This directory is not linked to a Prisma Project, and ${commandLabel} will not choose one from package or directory names.`,
+    fix: "Link the directory to an existing Project, or pass --project <id-or-name> for this command.",
+    meta: { ...suggestion },
+    exitCode: 1,
+    nextSteps: ["prisma-cli project list", ...suggestion.recoveryCommands],
+    nextActions: buildProjectSetupNextActions({
+      commandName: options.commandName,
+      suggestedProjectName: suggestion.suggestedProjectName,
+    }),
+  });
+}
+
+export function buildProjectSetupNextActions(options: {
+  commandName?: string;
+  suggestedProjectName?: string;
+  createCommand?: string;
+  reason?: string;
+} = {}): NextAction[] {
+  const recoveryCommands = buildProjectRecoveryCommands(options.commandName);
+  const linkCommand = recoveryCommands[0] ?? "prisma-cli project link <id-or-name>";
+  const retryCommand = recoveryCommands[1];
+  const commands = ["prisma-cli project list", ...recoveryCommands];
+
+  const actions: NextAction[] = [
+    {
+      kind: "user-choice",
+      journey: "project-setup",
+      label: "Ask the user whether to link an existing Project or create a new one",
+      commands,
+      reason: options.reason
+        ?? "This directory is not linked to a Prisma Project. Package and directory names are suggestions only, not a safe Project selection.",
+    },
+    {
+      kind: "run-command",
+      journey: "project-setup",
+      label: "Link the chosen Project",
+      command: linkCommand,
+      reason: "Linking writes the durable local Project binding for this directory.",
+    },
+  ];
+
+  const createCommand = options.createCommand
+    ?? (options.suggestedProjectName ? `prisma-cli project create ${formatCommandArgument(options.suggestedProjectName)}` : undefined);
+  if (createCommand) {
+    actions.push({
+      kind: "run-command",
+      journey: "project-setup",
+      label: "Create and link a new Project",
+      command: createCommand,
+      reason: "Use this when the user wants a new Prisma Project instead of an existing one.",
+    });
+  }
+
+  if (options.commandName) {
+    actions.push({
+      kind: "run-command",
+      journey: "recover",
+      label: "Retry with an explicit Project",
+      command: retryCommand ?? `prisma-cli ${options.commandName} --project <id-or-name>`,
+    });
+  }
+
+  return actions;
 }
 
 export async function readPackageName(cwd: string): Promise<string | null> {
@@ -270,54 +287,78 @@ function resolveExplicitProject(
   throw projectNotFoundError(projectRef, workspace);
 }
 
-function resolveAmbiguousProject(
-  options: ResolveProjectOptions,
-  matches: ProjectCandidate[],
-  projectRef: string,
-  targetNameSource: InferredTargetNameSource,
-): Promise<ResolvedProjectTarget> {
-  if (options.prompt && canPrompt(options.context)) {
-    return options.prompt
-      .select({
-        message: "Select a project",
-        choices: sortProjects(matches).map((project) => ({
-          label: `${project.name} (${project.id})`,
-          value: project,
-        })),
-      })
-      .then((selected) => rememberIfRequested(options, selected, "prompt", {
-        targetName: projectRef,
-        targetNameSource,
-      }));
-  }
-
-  throw projectAmbiguousError(projectRef, matches);
+function projectMatchesSuggestedName(project: ProjectCandidate, suggestedName: string): boolean {
+  return project.id === suggestedName || project.name === suggestedName || project.slug === suggestedName;
 }
 
-function projectMatchesPackageName(project: ProjectCandidate, packageName: string): boolean {
-  return project.id === packageName || project.name === packageName || project.slug === packageName;
-}
-
-async function resolveDurablePlatformMapping(): Promise<ProjectCandidate | null> {
+export async function resolveDurablePlatformMapping(): Promise<ProjectCandidate | null> {
   return null;
 }
 
-async function rememberIfRequested(
+async function resolveBoundProjectTarget(
   options: ResolveProjectOptions,
-  project: ProjectCandidate,
-  projectSource: ProjectSource,
-  resolutionDetails?: Omit<ProjectResolution, "projectSource">,
-): Promise<ResolvedProjectTarget> {
-  if (options.remember) {
-    await options.context.stateStore.setRememberedProject({
-      id: project.id,
-      name: project.name,
-      workspaceId: options.workspace.id,
+  projects: ProjectCandidate[],
+  settings: {
+    allowEnvProjectId: boolean;
+  },
+): Promise<BoundProjectShowResult | null> {
+  if (options.explicitProject) {
+    return resolvedTarget(options.workspace, resolveExplicitProject(options.explicitProject, projects, options.workspace), "explicit", {
+      targetName: options.explicitProject,
+      targetNameSource: "explicit",
     });
   }
 
+  if (settings.allowEnvProjectId && options.envProjectId) {
+    const project = projects.find((candidate) => candidate.id === options.envProjectId);
+    if (!project) {
+      throw projectNotFoundError(options.envProjectId, options.workspace);
+    }
+    return resolvedTarget(options.workspace, project, "env", {
+      targetName: options.envProjectId,
+      targetNameSource: "env",
+    });
+  }
+
+  const localPin = await readLocalResolutionPin(options.context.runtime.cwd);
+  if (localPin.kind === "invalid") {
+    throw localStateStaleError();
+  }
+  if (localPin.kind === "present") {
+    if (localPin.pin.workspaceId !== options.workspace.id) {
+      throw localStateStaleError();
+    }
+
+    const project = projects.find((candidate) => candidate.id === localPin.pin.projectId);
+    if (!project) {
+      throw localStateStaleError();
+    }
+
+    return resolvedTarget(options.workspace, project, "local-pin", {
+      targetName: project.name,
+      targetNameSource: "local-pin",
+    });
+  }
+
+  const platformMapping = await resolveDurablePlatformMapping();
+  if (platformMapping && platformMapping.workspace.id === options.workspace.id) {
+    return resolvedTarget(options.workspace, platformMapping, "platform-mapping", {
+      targetName: platformMapping.name,
+      targetNameSource: "platform-mapping",
+    });
+  }
+
+  return null;
+}
+
+function resolvedTarget(
+  workspace: AuthWorkspace,
+  project: ProjectCandidate,
+  projectSource: BoundProjectSource,
+  resolutionDetails?: Omit<ProjectResolution, "projectSource">,
+): BoundProjectShowResult {
   return {
-    workspace: options.workspace,
+    workspace,
     project: toProjectSummary(project),
     resolution: {
       projectSource,
@@ -326,9 +367,18 @@ async function rememberIfRequested(
   };
 }
 
-function toProjectSummary(project: Pick<ProjectCandidate, "id" | "name">): ProjectSummary {
+function buildProjectRecoveryCommands(commandName: string | undefined): string[] {
+  const commands = ["prisma-cli project link <id-or-name>"];
+  if (commandName) {
+    commands.push(`prisma-cli ${commandName} --project <id-or-name>`);
+  }
+  return commands;
+}
+
+function toProjectSummary(project: Pick<ProjectCandidate, "id" | "name" | "url">): ProjectSummary {
   return {
     id: project.id,
     name: project.name,
+    ...(project.url ? { url: project.url } : {}),
   };
 }

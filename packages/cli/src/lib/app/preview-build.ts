@@ -77,7 +77,7 @@ export async function executePreviewBuild(options: {
 
   try {
     if (buildType === "nextjs") {
-      await restageNextjsArtifact(artifact.directory, options.appPath);
+      await restageNextjsArtifact(artifact, options.appPath);
     }
 
     await normalizeArtifactSymlinks(artifact.directory, options.appPath);
@@ -182,7 +182,8 @@ export async function stageNextjsStandaloneArtifact(options: {
   await hoistPnpmDependencies(path.join(artifactRoot, "node_modules"));
 }
 
-async function restageNextjsArtifact(artifactDir: string, appPath: string): Promise<void> {
+export async function restageNextjsArtifact(artifact: BuildArtifact, appPath: string): Promise<void> {
+  const artifactDir = artifact.directory;
   const standaloneDir = path.join(appPath, ".next", "standalone");
 
   await rm(artifactDir, { recursive: true, force: true });
@@ -192,9 +193,18 @@ async function restageNextjsArtifact(artifactDir: string, appPath: string): Prom
     appPath,
   });
 
+  // The SDK's Next.js strategy reports the entrypoint relative to the
+  // artifact root (e.g. "server.js" for single-app, "apps/web/server.js"
+  // for a monorepo). Next expects public/ and .next/static/ to live next
+  // to server.js, so re-stage them at the same subpath.
+  const serverSubpath = nextjsServerSubpath(artifact.entrypoint);
+  const serverDir = serverSubpath
+    ? path.join(artifactDir, serverSubpath)
+    : artifactDir;
+
   const publicDir = path.join(appPath, "public");
   if (await directoryExists(publicDir)) {
-    await cp(publicDir, path.join(artifactDir, "public"), {
+    await cp(publicDir, path.join(serverDir, "public"), {
       recursive: true,
       verbatimSymlinks: true,
     });
@@ -202,11 +212,17 @@ async function restageNextjsArtifact(artifactDir: string, appPath: string): Prom
 
   const staticDir = path.join(appPath, ".next", "static");
   if (await directoryExists(staticDir)) {
-    await cp(staticDir, path.join(artifactDir, ".next", "static"), {
+    await cp(staticDir, path.join(serverDir, ".next", "static"), {
       recursive: true,
       verbatimSymlinks: true,
     });
   }
+}
+
+function nextjsServerSubpath(entrypoint: string): string {
+  // SDK emits posix-style entrypoints (path.posix.join).
+  const dir = path.posix.dirname(entrypoint);
+  return dir === "." ? "" : dir;
 }
 
 async function hoistPnpmDependencies(nodeModulesDir: string): Promise<void> {
@@ -327,6 +343,9 @@ async function copyPathMaterializingSymlinks(
 
   if (sourceStat.isSymbolicLink()) {
     const resolvedTarget = await resolveSymlinkTarget(sourcePath, options);
+    if (resolvedTarget === null) {
+      return;
+    }
     await copyPathMaterializingSymlinks(resolvedTarget, destinationPath, options);
     return;
   }
@@ -360,7 +379,7 @@ async function resolveSymlinkTarget(
     appRoot: string;
     sourceRoot: string;
   },
-): Promise<string> {
+): Promise<string | null> {
   const linkTarget = await readlink(symlinkPath);
   const resolvedTarget = path.resolve(path.dirname(symlinkPath), linkTarget);
 
@@ -386,9 +405,27 @@ async function resolveSymlinkTarget(
     }
   }
 
+  // pnpm's hoist layer (.pnpm/node_modules/*) contains speculative links that
+  // are routinely dangling — Next's tracer doesn't always align with what pnpm
+  // populated. Drop these silently. Dangling links elsewhere still throw so a
+  // real missing dep doesn't get masked.
+  if (isPnpmHoistLink(symlinkPath)) {
+    return null;
+  }
+
   throw new Error(
     `Next.js standalone symlink target is missing: ${symlinkPath} -> ${linkTarget} (resolved to ${resolvedTarget})`,
   );
+}
+
+function isPnpmHoistLink(symlinkPath: string): boolean {
+  const parts = path.dirname(symlinkPath).split(path.sep);
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (parts[i] === ".pnpm" && parts[i + 1] === "node_modules") {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function pathExists(targetPath: string): Promise<boolean> {

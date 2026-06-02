@@ -1,3 +1,5 @@
+import type { NextAction } from "./next-actions";
+
 export type ErrorDomain = "cli" | "auth" | "project" | "branch" | "app";
 export type ErrorSeverity = "error";
 
@@ -13,6 +15,7 @@ export interface CliErrorOptions {
   docsUrl?: string | null;
   exitCode?: number;
   nextSteps?: string[];
+  nextActions?: NextAction[];
   humanLines?: string[];
 }
 
@@ -29,6 +32,7 @@ export class CliError extends Error {
   readonly docsUrl: string | null;
   readonly exitCode: number;
   readonly nextSteps: string[];
+  readonly nextActions: NextAction[];
   readonly humanLines: string[] | null;
 
   constructor(options: CliErrorOptions) {
@@ -46,6 +50,7 @@ export class CliError extends Error {
     this.docsUrl = options.docsUrl ?? null;
     this.exitCode = options.exitCode ?? 1;
     this.nextSteps = options.nextSteps ?? [];
+    this.nextActions = options.nextActions ?? [];
     this.humanLines = options.humanLines && options.humanLines.length > 0
       ? [...options.humanLines]
       : null;
@@ -70,13 +75,17 @@ export function usageError(
   });
 }
 
-export function authRequiredError(nextSteps: string[] = ["prisma-cli auth login"]): CliError {
+export function authRequiredError(
+  nextSteps: string[] = ["prisma-cli auth login"],
+  options: { debug?: string | null } = {},
+): CliError {
   return new CliError({
     code: "AUTH_REQUIRED",
     domain: "auth",
     summary: "Authentication required",
     why: "This command needs an authenticated session.",
     fix: "Run prisma-cli auth login, or rerun the command in a TTY to sign in interactively.",
+    debug: options.debug,
     exitCode: 1,
     nextSteps,
   });

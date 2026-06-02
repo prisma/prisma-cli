@@ -2,11 +2,20 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import stripAnsi from "strip-ansi";
 
+import { formatCommandArgument } from "../src/shell/command-arguments";
 import { createTempCwd, executeCli } from "./helpers";
 
 const fixturePath = path.resolve("fixtures/mock-api.json");
 
 describe("shell behavior", () => {
+  it("formats command arguments for shell-safe next steps", () => {
+    expect(formatCommandArgument("billing-api")).toBe("billing-api");
+    expect(formatCommandArgument("-rf")).toBe("'-rf'");
+    expect(formatCommandArgument("my app")).toBe("'my app'");
+    expect(formatCommandArgument("owner's app")).toBe("'owner'\\''s app'");
+    expect(formatCommandArgument("$(rm -rf /)")).toBe("'$(rm -rf /)'");
+  });
+
   it("renders root help with workflow groups", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");

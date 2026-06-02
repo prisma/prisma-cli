@@ -1,4 +1,5 @@
 import path from "node:path";
+import { writeFile } from "node:fs/promises";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -128,6 +129,102 @@ describe("app env vars", () => {
     ).toEqual(["API_TOKEN", "DATABASE_URL", "ZOO"]);
   });
 
+  it("project env list requires explicit or durable Project binding", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runEnvList } = await import("../src/controllers/app-env");
+    const cwd = await createTempCwd();
+    await writeFile(path.join(cwd, "package.json"), `${JSON.stringify({ name: "acme-dashboard" }, null, 2)}\n`);
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runEnvList(context, {})).rejects.toMatchObject({
+      code: "PROJECT_SETUP_REQUIRED",
+      domain: "project",
+      meta: {
+        suggestedProjectName: "acme-dashboard",
+        suggestedProjectNameSource: "package-name",
+        candidates: [
+          {
+            id: "proj_123",
+            name: "Acme Dashboard",
+          },
+        ],
+        recoveryCommands: expect.arrayContaining([
+          "prisma-cli project link <id-or-name>",
+          "prisma-cli project env list --project <id-or-name>",
+        ]),
+      },
+      nextActions: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "user-choice",
+          journey: "project-setup",
+        }),
+      ]),
+    });
+  });
+
+  it("project env list uses an explicit Project", async () => {
+    const client = {
+      token: "token",
+      GET: vi.fn().mockImplementation((pathName: string) => {
+        if (pathName === "/v1/projects") {
+          return createProjectClient().GET(pathName);
+        }
+        if (pathName === "/v1/environment-variables") {
+          return {
+            data: {
+              data: [],
+              pagination: {
+                hasMore: false,
+                nextCursor: null,
+              },
+            },
+          };
+        }
+        throw new Error(`Unexpected path ${pathName}`);
+      }),
+    };
+    const requireComputeAuth = vi.fn().mockResolvedValue(client);
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runEnvList } = await import("../src/controllers/app-env");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runEnvList(context, { projectRef: "proj_123" });
+
+    expect(result.result).toMatchObject({
+      projectId: "proj_123",
+      variables: [],
+    });
+  });
+
   it("passes env vars to provider deploy without surfacing values", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
@@ -204,407 +301,6 @@ describe("app env vars", () => {
     expect(JSON.stringify(result.result)).not.toContain("enabled");
   });
 
-  it("returns NO_DEPLOYMENTS when updating env vars for an app without deployments", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
-    const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
-    ]);
-    const listDeployments = vi.fn().mockResolvedValue({
-      app: { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
-      deployments: [],
-    });
-
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
-    }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => ({
-        createProject: vi.fn(),
-        listApps,
-        removeApp: vi.fn(),
-        promoteDeployment: vi.fn(),
-        deployApp: vi.fn(),
-        updateAppEnv: vi.fn(),
-        listAppEnvNames: vi.fn(),
-        listDeployments,
-        showDeployment: vi.fn(),
-      })),
-    }));
-
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
-    const { runAppUpdateEnv } = await import("../src/controllers/app");
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({
-      cwd,
-      stateDir,
-      env: {
-        ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
-      },
-    });
-
-    await expect(
-      runAppUpdateEnv(context, "hello-world", ["DATABASE_URL=postgresql://example"]),
-    ).rejects.toMatchObject({
-      code: "NO_DEPLOYMENTS",
-      domain: "app",
-    });
-  });
-
-  it("updates env vars, stores the new live deployment, and returns variable names only", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
-    const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_old", liveUrl: "https://hello-world.prisma.app" },
-    ]);
-    const listDeployments = vi.fn().mockResolvedValue({
-      app: { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_old", liveUrl: "https://hello-world.prisma.app" },
-      deployments: [
-        { id: "dep_old", status: "running", createdAt: "2026-04-14T10:00:00.000Z", url: "https://preview-old.prisma.app", live: true },
-      ],
-    });
-    const updateAppEnv = vi.fn().mockResolvedValue({
-      projectId: "proj_123",
-      app: {
-        id: "app_1",
-        name: "hello-world",
-        region: "eu-central-1",
-        liveDeploymentId: "dep_new",
-        liveUrl: "https://hello-world.prisma.app",
-      },
-      deployment: {
-        id: "dep_new",
-        status: "running",
-        createdAt: "2026-04-14T11:00:00.000Z",
-        url: "https://preview-new.prisma.app",
-        live: true,
-      },
-      variables: ["DATABASE_URL", "FEATURE_FLAG"],
-    });
-
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
-    }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => ({
-        createProject: vi.fn(),
-        listApps,
-        removeApp: vi.fn(),
-        promoteDeployment: vi.fn(),
-        deployApp: vi.fn(),
-        updateAppEnv,
-        listAppEnvNames: vi.fn(),
-        listDeployments,
-        showDeployment: vi.fn(),
-      })),
-    }));
-
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
-    const { runAppUpdateEnv } = await import("../src/controllers/app");
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({
-      cwd,
-      stateDir,
-      env: {
-        ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
-      },
-    });
-
-    const result = await runAppUpdateEnv(
-      context,
-      "hello-world",
-      ["DATABASE_URL=postgresql://example", "FEATURE_FLAG=enabled"],
-    );
-
-    expect(updateAppEnv).toHaveBeenCalledWith(
-      expect.objectContaining({
-        appId: "app_1",
-        envVars: {
-          DATABASE_URL: "postgresql://example",
-          FEATURE_FLAG: "enabled",
-        },
-      }),
-    );
-    expect(result.result).toEqual({
-      projectId: "proj_123",
-      app: {
-        id: "app_1",
-        name: "hello-world",
-      },
-      deployment: {
-        id: "dep_new",
-        status: "running",
-        createdAt: "2026-04-14T11:00:00.000Z",
-        url: "https://preview-new.prisma.app",
-        live: true,
-      },
-      variables: ["DATABASE_URL", "FEATURE_FLAG"],
-    });
-    expect(JSON.stringify(result.result)).not.toContain("postgresql://example");
-    expect(JSON.stringify(result.result)).not.toContain("enabled");
-    await expect(context.stateStore.readKnownLiveDeployment("proj_123", "app_1")).resolves.toBe("dep_new");
-  });
-
-  it("lists variable names for the resolved live deployment", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
-    const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: "https://hello-world.prisma.app" },
-    ]);
-    const listDeployments = vi.fn().mockResolvedValue({
-      app: { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: "https://hello-world.prisma.app" },
-      deployments: [
-        { id: "dep_old", status: "running", createdAt: "2026-04-14T09:00:00.000Z", url: "https://preview-old.prisma.app", live: null },
-        { id: "dep_live", status: "running", createdAt: "2026-04-14T10:00:00.000Z", url: "https://preview-live.prisma.app", live: null },
-      ],
-    });
-    const listAppEnvNames = vi.fn().mockResolvedValue({
-      projectId: "proj_123",
-      app: {
-        id: "app_1",
-        name: "hello-world",
-        region: "eu-central-1",
-        liveDeploymentId: "dep_live",
-        liveUrl: "https://hello-world.prisma.app",
-      },
-      deployment: {
-        id: "dep_live",
-        status: "running",
-        createdAt: "2026-04-14T10:00:00.000Z",
-        url: "https://preview-live.prisma.app",
-        live: true,
-      },
-      variables: ["DATABASE_URL", "FEATURE_FLAG"],
-    });
-
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
-    }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => ({
-        createProject: vi.fn(),
-        listApps,
-        removeApp: vi.fn(),
-        promoteDeployment: vi.fn(),
-        deployApp: vi.fn(),
-        updateAppEnv: vi.fn(),
-        listAppEnvNames,
-        listDeployments,
-        showDeployment: vi.fn(),
-      })),
-    }));
-
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
-    const { runAppListEnv } = await import("../src/controllers/app");
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({
-      cwd,
-      stateDir,
-      env: {
-        ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
-      },
-    });
-
-    await context.stateStore.setKnownLiveDeployment("proj_123", "app_1", "dep_live");
-
-    const result = await runAppListEnv(context, "hello-world");
-
-    expect(listAppEnvNames).toHaveBeenCalledWith({
-      appId: "app_1",
-      deploymentId: "dep_live",
-    });
-    expect(result.result).toEqual({
-      projectId: "proj_123",
-      app: {
-        id: "app_1",
-        name: "hello-world",
-      },
-      deployment: {
-        id: "dep_live",
-        status: "running",
-        createdAt: "2026-04-14T10:00:00.000Z",
-        url: "https://preview-live.prisma.app",
-        live: true,
-      },
-      variables: ["DATABASE_URL", "FEATURE_FLAG"],
-    });
-  });
-
-  it("uses the saved known-live deployment when provider version listing lags", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
-    const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: "https://hello-world.prisma.app" },
-    ]);
-    const listDeployments = vi.fn().mockResolvedValue({
-      app: { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: "https://hello-world.prisma.app" },
-      deployments: [
-        { id: "dep_old", status: "running", createdAt: "2026-04-14T09:00:00.000Z", url: "https://preview-old.prisma.app", live: null },
-      ],
-    });
-    const listAppEnvNames = vi.fn().mockResolvedValue({
-      projectId: "proj_123",
-      app: {
-        id: "app_1",
-        name: "hello-world",
-        region: "eu-central-1",
-        liveDeploymentId: "dep_new",
-        liveUrl: "https://hello-world.prisma.app",
-      },
-      deployment: {
-        id: "dep_new",
-        status: "running",
-        createdAt: "2026-04-14T11:00:00.000Z",
-        url: "https://preview-new.prisma.app",
-        live: true,
-      },
-      variables: ["DATABASE_URL"],
-    });
-
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
-    }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => ({
-        createProject: vi.fn(),
-        listApps,
-        removeApp: vi.fn(),
-        promoteDeployment: vi.fn(),
-        deployApp: vi.fn(),
-        updateAppEnv: vi.fn(),
-        listAppEnvNames,
-        listDeployments,
-        showDeployment: vi.fn(),
-      })),
-    }));
-
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
-    const { runAppListEnv } = await import("../src/controllers/app");
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({
-      cwd,
-      stateDir,
-      env: {
-        ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
-      },
-    });
-
-    await context.stateStore.setKnownLiveDeployment("proj_123", "app_1", "dep_new");
-
-    const result = await runAppListEnv(context, "hello-world");
-
-    expect(listAppEnvNames).toHaveBeenCalledWith({
-      appId: "app_1",
-      deploymentId: "dep_new",
-    });
-    expect(result.result.deployment?.id).toBe("dep_new");
-    expect(result.result.variables).toEqual(["DATABASE_URL"]);
-  });
-
-  it("returns an empty success state when listing env vars before any app exists", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
-    const listApps = vi.fn().mockResolvedValue([]);
-
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
-    }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => ({
-        createProject: vi.fn(),
-        listApps,
-        removeApp: vi.fn(),
-        promoteDeployment: vi.fn(),
-        deployApp: vi.fn(),
-        updateAppEnv: vi.fn(),
-        listAppEnvNames: vi.fn(),
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
-    }));
-
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
-    const { runAppListEnv } = await import("../src/controllers/app");
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({
-      cwd,
-      stateDir,
-      env: {
-        ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
-      },
-    });
-
-    await expect(runAppListEnv(context, undefined)).resolves.toMatchObject({
-      result: {
-        projectId: "proj_123",
-        app: null,
-        deployment: null,
-        variables: [],
-      },
-    });
-  });
-
-  it("renders app update-env successfully through the CLI command layer", async () => {
-    const runAppUpdateEnv = vi.fn().mockResolvedValue({
-      command: "app.update-env",
-      result: {
-        projectId: "proj_123",
-        app: {
-          id: "app_1",
-          name: "hello-world",
-        },
-        deployment: {
-          id: "dep_123",
-          status: "running",
-          createdAt: "2026-04-14T11:00:00.000Z",
-          url: "https://preview.prisma.app",
-          live: true,
-        },
-        variables: ["DATABASE_URL"],
-      },
-      warnings: [],
-      nextSteps: ["prisma-cli app list-env"],
-    });
-
-    vi.doMock("../src/controllers/app", async () => {
-      const actual = await vi.importActual<typeof import("../src/controllers/app")>("../src/controllers/app");
-      return {
-        ...actual,
-        runAppUpdateEnv,
-      };
-    });
-
-    const { createTempCwd, executeCli } = await import("./helpers");
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-
-    const result = await executeCli({
-      argv: ["app", "update-env", "--app", "hello-world", "--env", "DATABASE_URL=postgresql://example"],
-      cwd,
-      stateDir,
-      env: {
-        ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
-      },
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain("app update-env");
-    expect(result.stderr).toContain("DATABASE_URL");
-    expect(result.stderr).not.toContain("postgresql://example");
-    expect(runAppUpdateEnv).toHaveBeenCalledWith(
-      expect.anything(),
-      "hello-world",
-      ["DATABASE_URL=postgresql://example"],
-      undefined,
-    );
-  });
-
   it("parses deploy build, port, explicit project, and JSON output through the CLI command layer", async () => {
     const runAppDeploy = vi.fn().mockResolvedValue({
       command: "app.deploy",
@@ -656,7 +352,7 @@ describe("app env vars", () => {
         "deploy",
         "--app",
         "hello-world",
-        "--build-type",
+        "--framework",
         "nextjs",
         "--http-port",
         "3000",
@@ -705,7 +401,7 @@ describe("app env vars", () => {
       "hello-world",
       {
         entrypoint: undefined,
-        buildType: "nextjs",
+        framework: "nextjs",
         httpPort: "3000",
         envAssignments: ["DATABASE_URL=postgresql://example"],
         projectRef: "proj_123",

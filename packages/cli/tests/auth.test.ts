@@ -70,15 +70,23 @@ describe("auth commands", () => {
         authenticated: true,
         provider: "github",
         user: {
+          id: "usr_456",
           email: "bob@example.com",
+          name: "Bob Example",
         },
         workspace: {
           id: "ws_123",
           name: "Acme Inc",
         },
+        credential: {
+          type: "oauth",
+          id: null,
+          name: null,
+        },
       },
       warnings: [],
       nextSteps: [],
+      nextActions: [],
     });
   });
 
@@ -111,6 +119,7 @@ describe("auth commands", () => {
       },
       warnings: [],
       nextSteps: ["prisma-cli auth login"],
+      nextActions: [],
     });
   });
 

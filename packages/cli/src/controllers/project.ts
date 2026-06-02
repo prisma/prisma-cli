@@ -8,11 +8,27 @@ import {
 } from "../adapters/git";
 import { requireComputeAuth } from "../lib/auth/guard";
 import {
+  buildProjectSetupNextActions,
+  inferTargetName,
+  inspectProjectBinding,
   resolveProjectTarget,
   sortProjects,
   type ProjectCandidate,
+  type ResolvedProjectTarget,
 } from "../lib/project/resolution";
-import { authRequiredError, CliError, usageError, workspaceRequiredError } from "../shell/errors";
+import { promptForProjectSetupChoice } from "../lib/project/interactive-setup";
+import { readLocalResolutionPin } from "../lib/project/local-pin";
+import {
+  bindProjectToDirectory,
+  formatCommandArgument,
+  isValidProjectSetupName,
+  projectCreateFailedError,
+  projectSetupNameRequiredError,
+  resolveProjectForSetup,
+  toProjectSummary,
+} from "../lib/project/setup";
+import { createPreviewAppProvider } from "../lib/app/preview-provider";
+import { authRequiredError, CliError, featureUnavailableError, usageError, workspaceRequiredError } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
 import { canPrompt, type CommandContext } from "../shell/runtime";
 import { renderSummaryLine } from "../shell/ui";
@@ -21,6 +37,7 @@ import type {
   GitRepositoryConnection,
   ProjectListResult,
   ProjectRepositoryConnectionResult,
+  ProjectSetupResult,
   ProjectShowResult,
 } from "../types/project";
 import { createCliUseCaseGateways } from "../use-cases/create-cli-gateways";
@@ -42,6 +59,23 @@ function isRealMode(context: CommandContext): boolean {
   return !context.runtime.fixturePath && !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH;
 }
 
+async function readProjectListLocalBinding(
+  cwd: string,
+  workspace: AuthWorkspace,
+  projects: Array<Pick<ProjectCandidate, "id">>,
+): Promise<ProjectListResult["localBinding"]> {
+  const pin = await readLocalResolutionPin(cwd);
+  if (pin.kind === "present") {
+    return pin.pin.workspaceId === workspace.id && projects.some((project) => project.id === pin.pin.projectId)
+      ? { status: "linked" }
+      : { status: "invalid" };
+  }
+  if (pin.kind === "invalid") {
+    return { status: "invalid" };
+  }
+  return { status: "not-linked" };
+}
+
 export async function runProjectList(context: CommandContext): Promise<CommandSuccess<ProjectListResult>> {
   const authState = await requireAuthenticatedAuthState(context);
   const workspace = authState.workspace;
@@ -54,27 +88,49 @@ export async function runProjectList(context: CommandContext): Promise<CommandSu
     if (!client) {
       throw authRequiredError();
     }
+    const projects = sortProjects(await listRealWorkspaceProjects(client, workspace));
+    const localBinding = await readProjectListLocalBinding(context.runtime.cwd, workspace, projects);
+    const nextActions = buildProjectListNextActions(localBinding);
 
     return {
       command: "project.list",
       result: {
         workspace,
-        projects: sortProjects(await listRealWorkspaceProjects(client, workspace)).map(toProjectSummary),
+        projects: projects.map(toProjectSummary),
+        localBinding,
       },
       warnings: [],
       nextSteps: [],
+      nextActions,
     };
   }
 
   const projectUseCases = createProjectUseCases(createCliUseCaseGateways(context));
   const result = await projectUseCases.list(authState);
+  const localBinding = await readProjectListLocalBinding(context.runtime.cwd, workspace, result.projects);
+  const nextActions = buildProjectListNextActions(localBinding);
 
   return {
     command: "project.list",
-    result,
+    result: {
+      ...result,
+      localBinding,
+    },
     warnings: [],
     nextSteps: [],
+    nextActions,
   };
+}
+
+function buildProjectListNextActions(localBinding: ProjectListResult["localBinding"]) {
+  return localBinding?.status === "linked"
+    ? []
+    : buildProjectSetupNextActions({
+        createCommand: "prisma-cli project create <name>",
+        reason: localBinding?.status === "invalid"
+          ? "This directory has an invalid local Project binding. Ask the user which Prisma Project to link before running Project-scoped commands."
+          : "This directory is not linked to a Prisma Project. Project list shows available Projects, but none is selected for this directory.",
+      });
 }
 
 export async function runProjectShow(
@@ -96,7 +152,199 @@ export async function runProjectShow(
     result,
     warnings: [],
     nextSteps: [],
+    nextActions: result.project === null
+      ? buildProjectSetupNextActions({
+          commandName: "project show",
+          suggestedProjectName: result.suggestedProjectName,
+          reason: "This directory is not linked to a Prisma Project. Package and directory names can suggest setup defaults, but they do not select a Project.",
+        })
+      : [],
   };
+}
+
+export async function runProjectCreate(
+  context: CommandContext,
+  projectName: string,
+): Promise<CommandSuccess<ProjectSetupResult>> {
+  const authState = await requireAuthenticatedAuthState(context);
+  const workspace = authState.workspace;
+  if (!workspace) {
+    throw workspaceRequiredError();
+  }
+
+  if (!isValidProjectSetupName(projectName)) {
+    throw projectSetupNameRequiredError("project create");
+  }
+
+  if (!isRealMode(context)) {
+    throw featureUnavailableError(
+      "Project create is not available in fixture mode",
+      "Creating Projects requires live platform integration.",
+      "Rerun without fixture mode enabled to create a Project.",
+      ["prisma-cli auth login"],
+      "project",
+    );
+  }
+
+  const client = await requireComputeAuth(context.runtime.env);
+  if (!client) {
+    throw authRequiredError();
+  }
+
+  const provider = createPreviewAppProvider(client);
+  const name = projectName.trim();
+  const created = await provider.createProject({ name }).catch((error) => {
+    throw projectCreateFailedError(error, name, workspace, {
+      nextSteps: ["prisma-cli project list", "prisma-cli project link <id-or-name>"],
+      permissionFix: "Grant the token permission to create Projects in this workspace, or link an existing Project.",
+      fallbackFix: "Retry the command, or choose an existing Project with prisma-cli project link <id-or-name>.",
+    });
+  });
+  const result = await bindProjectToDirectory(context, workspace, {
+    id: created.id,
+    name: created.name,
+  }, "created");
+
+  return {
+    command: "project.create",
+    result,
+    warnings: [],
+    nextSteps: ["prisma-cli app deploy"],
+  };
+}
+
+export async function runProjectLink(
+  context: CommandContext,
+  projectRef: string | undefined,
+): Promise<CommandSuccess<ProjectSetupResult>> {
+  const authState = await requireAuthenticatedAuthState(context);
+  const workspace = authState.workspace;
+  if (!workspace) {
+    throw workspaceRequiredError();
+  }
+
+  let provider: ReturnType<typeof createPreviewAppProvider> | null = null;
+  let projects: ProjectCandidate[];
+  if (isRealMode(context)) {
+    const client = await requireComputeAuth(context.runtime.env);
+    if (!client) {
+      throw authRequiredError();
+    }
+    provider = createPreviewAppProvider(client);
+    projects = await listRealWorkspaceProjects(client, workspace);
+  } else {
+    projects = listFixtureWorkspaceProjects(context, workspace);
+  }
+
+  let result: ProjectSetupResult;
+  if (projectRef?.trim()) {
+    const project = resolveProjectForSetup(projectRef.trim(), projects, workspace);
+    result = await bindProjectToDirectory(context, workspace, toProjectSummary(project), "linked");
+  } else if (canPrompt(context) && !context.flags.yes) {
+    result = await resolveInteractiveProjectLinkSetup(
+      context,
+      workspace,
+      projects,
+      provider,
+    );
+  } else {
+    throw await projectLinkTargetRequiredError(context, projects);
+  }
+
+  return {
+    command: "project.link",
+    result,
+    warnings: [],
+    nextSteps: ["prisma-cli app deploy"],
+  };
+}
+
+async function resolveInteractiveProjectLinkSetup(
+  context: CommandContext,
+  workspace: AuthWorkspace,
+  projects: ProjectCandidate[],
+  provider: ReturnType<typeof createPreviewAppProvider> | null,
+): Promise<ProjectSetupResult> {
+  const setup = await promptForProjectSetupChoice({
+    context,
+    projects,
+    createProject: (projectName) => {
+      if (!provider) {
+        throw featureUnavailableError(
+          "Project create is not available in fixture mode",
+          "Creating Projects requires live platform integration.",
+          "Rerun without fixture mode enabled to create a Project.",
+          ["prisma-cli auth login"],
+          "project",
+        );
+      }
+      return createProjectForLinkSetup(provider, projectName, workspace);
+    },
+    cancel: {
+      why: "Project link needs a Project before it can continue.",
+      fix: "Choose an existing Project or create a new one, then rerun project link.",
+      nextSteps: ["prisma-cli project link <id-or-name>", "prisma-cli project create <name>"],
+    },
+  });
+
+  return bindProjectToDirectory(context, workspace, setup.project, setup.action);
+}
+
+async function createProjectForLinkSetup(
+  provider: ReturnType<typeof createPreviewAppProvider>,
+  projectName: string,
+  workspace: AuthWorkspace,
+): Promise<ProjectCandidate> {
+  const created = await provider.createProject({ name: projectName }).catch((error) => {
+    throw projectCreateFailedError(error, projectName, workspace, {
+      nextSteps: [
+        "prisma-cli project list",
+        "prisma-cli project link <id-or-name>",
+        `prisma-cli project create ${formatCommandArgument(projectName)}`,
+      ],
+      permissionFix: "Grant the token permission to create Projects in this workspace, or link an existing Project.",
+      fallbackFix: "Retry the command, or choose an existing Project with prisma-cli project link <id-or-name>.",
+    });
+  });
+
+  return {
+    id: created.id,
+    name: created.name,
+    workspace,
+  };
+}
+
+async function projectLinkTargetRequiredError(
+  context: CommandContext,
+  projects: ProjectCandidate[],
+): Promise<CliError> {
+  const suggestedName = await inferTargetName(context.runtime.cwd);
+  const createCommand = `prisma-cli project create ${formatCommandArgument(suggestedName.name)}`;
+  const recoveryCommands = [
+    "prisma-cli project link <id-or-name>",
+    createCommand,
+  ];
+
+  return new CliError({
+    code: "PROJECT_LINK_TARGET_REQUIRED",
+    domain: "project",
+    summary: "Choose a Project to link this directory",
+    why: "This directory is not linked to a Prisma Project. Existing Projects are candidates until the user chooses one, and package or directory names are suggestions only.",
+    fix: "Run prisma-cli project link in a TTY to choose from the setup list, pass a Project id or name, or create a new Project.",
+    meta: {
+      suggestedProjectName: suggestedName.name,
+      suggestedProjectNameSource: suggestedName.source,
+      candidates: sortProjects(projects).map(toProjectSummary),
+      recoveryCommands,
+    },
+    exitCode: 2,
+    nextSteps: ["prisma-cli project list", ...recoveryCommands],
+    nextActions: buildProjectSetupNextActions({
+      suggestedProjectName: suggestedName.name,
+      createCommand,
+      reason: "Project link needs the user to choose an existing Project or create a new one. Existing Projects, package names, and directory names are candidates only, not selections.",
+    }),
+  });
 }
 
 export async function runGitConnect(
@@ -116,7 +364,7 @@ export async function runGitConnect(
       throw authRequiredError();
     }
 
-    const target = await resolveProjectShowInRealMode(context, workspace, options.project);
+    const target = await resolveRequiredProjectInRealMode(context, workspace, options.project, "git connect");
     const repository = await resolveRepositoryForConnect(context, gitUrl);
     const api = client as unknown as SourceRepositoryApiClient;
     const existing = await readFirstSourceRepository(api, target.project.id);
@@ -163,7 +411,7 @@ export async function runGitConnect(
     };
   }
 
-  const target = await resolveProjectShowInFixtureMode(context, workspace, options.project);
+  const target = await resolveRequiredProjectInFixtureMode(context, workspace, options.project, "git connect");
   const repository = await resolveRepositoryForConnect(context, gitUrl);
   const existingConnection = await context.stateStore.readRepositoryConnection(target.project.id);
 
@@ -213,7 +461,7 @@ export async function runGitDisconnect(
       throw authRequiredError();
     }
 
-    const target = await resolveProjectShowInRealMode(context, workspace, options.project);
+    const target = await resolveRequiredProjectInRealMode(context, workspace, options.project, "git disconnect");
     const api = client as unknown as SourceRepositoryApiClient;
     const existing = await readFirstSourceRepository(api, target.project.id);
 
@@ -244,7 +492,7 @@ export async function runGitDisconnect(
     };
   }
 
-  const target = await resolveProjectShowInFixtureMode(context, workspace, options.project);
+  const target = await resolveRequiredProjectInFixtureMode(context, workspace, options.project, "git disconnect");
   const existingConnection = await context.stateStore.readRepositoryConnection(target.project.id);
 
   if (!existingConnection) {
@@ -274,12 +522,32 @@ async function resolveProjectShowInRealMode(
     throw authRequiredError();
   }
 
+  return inspectProjectBinding({
+    context,
+    workspace,
+    explicitProject,
+    listProjects: () => listRealWorkspaceProjects(client, workspace),
+    commandName: "project show",
+  });
+}
+
+async function resolveRequiredProjectInRealMode(
+  context: CommandContext,
+  workspace: AuthWorkspace,
+  explicitProject: string | undefined,
+  commandName: string,
+): Promise<ResolvedProjectTarget> {
+  const client = await requireComputeAuth(context.runtime.env);
+  if (!client) {
+    throw authRequiredError();
+  }
+
   return resolveProjectTarget({
     context,
     workspace,
     explicitProject,
     listProjects: () => listRealWorkspaceProjects(client, workspace),
-    remember: false,
+    commandName,
   });
 }
 
@@ -288,12 +556,27 @@ async function resolveProjectShowInFixtureMode(
   workspace: AuthWorkspace,
   explicitProject: string | undefined,
 ): Promise<ProjectShowResult> {
+  return inspectProjectBinding({
+    context,
+    workspace,
+    explicitProject,
+    listProjects: async () => listFixtureWorkspaceProjects(context, workspace),
+    commandName: "project show",
+  });
+}
+
+async function resolveRequiredProjectInFixtureMode(
+  context: CommandContext,
+  workspace: AuthWorkspace,
+  explicitProject: string | undefined,
+  commandName: string,
+): Promise<ResolvedProjectTarget> {
   return resolveProjectTarget({
     context,
     workspace,
     explicitProject,
     listProjects: async () => listFixtureWorkspaceProjects(context, workspace),
-    remember: false,
+    commandName,
   });
 }
 
@@ -308,6 +591,7 @@ export async function listRealWorkspaceProjects(
       .map((project) => ({
         id: project.id,
         name: project.name,
+        ...("url" in project && typeof project.url === "string" ? { url: project.url } : {}),
         slug: "slug" in project && typeof project.slug === "string" ? project.slug : null,
         workspace: {
           id: project.workspace.id,
@@ -325,6 +609,7 @@ export function listFixtureWorkspaceProjects(
     context.api.listProjectsForWorkspace(workspace.id).map((project) => ({
       id: project.id,
       name: project.name,
+      ...(project.url ? { url: project.url } : {}),
       slug: project.slug,
       workspace,
     })),
@@ -1030,11 +1315,4 @@ function repoConnectionFixForStatus(status: number): string {
   }
 
   return "Re-run with --trace for the underlying API response details.";
-}
-
-function toProjectSummary(project: ProjectCandidate) {
-  return {
-    id: project.id,
-    name: project.name,
-  };
 }

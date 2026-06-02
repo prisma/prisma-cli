@@ -1,6 +1,7 @@
 import type { Writable } from "node:stream";
 
 import type { CliError } from "./errors";
+import type { NextAction } from "./next-actions";
 import type { ShellUi } from "./ui";
 import { renderNextSteps, renderSummaryLine } from "./ui";
 
@@ -9,6 +10,7 @@ export interface CommandSuccess<T> {
   result: T;
   warnings: string[];
   nextSteps: string[];
+  nextActions?: NextAction[];
 }
 
 export interface CliOutput {
@@ -17,7 +19,7 @@ export interface CliOutput {
 }
 
 export function writeJsonSuccess<T>(output: CliOutput, success: CommandSuccess<T>): void {
-  output.stdout.write(`${JSON.stringify({ ok: true, ...success }, null, 2)}\n`);
+  output.stdout.write(`${JSON.stringify({ ok: true, nextActions: [], ...success }, null, 2)}\n`);
 }
 
 export function writeJsonEvent(output: CliOutput, event: Record<string, unknown>): void {
@@ -47,6 +49,7 @@ export function writeJsonError(output: CliOutput, command: string, error: CliErr
         error: cliErrorToJson(error),
         warnings: [],
         nextSteps: error.nextSteps,
+        nextActions: error.nextActions,
       },
       null,
       2,

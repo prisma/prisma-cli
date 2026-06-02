@@ -2,7 +2,7 @@
 
 The repository currently contains one publishable package:
 
-- `packages/cli`: the public Prisma CLI preview package
+- `packages/cli`: the public Prisma CLI beta package
 
 The root workspace owns shared scripts, docs, release preparation, and examples.
 

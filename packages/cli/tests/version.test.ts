@@ -47,6 +47,7 @@ describe("version", () => {
       },
       warnings: [],
       nextSteps: [],
+      nextActions: [],
     });
   });
 
@@ -101,6 +102,7 @@ describe("version", () => {
       },
       warnings: [],
       nextSteps: [],
+      nextActions: [],
     });
     expect(["bunx", "npx", "global", "dev", "unknown"]).toContain(payload.result.invocation);
   });

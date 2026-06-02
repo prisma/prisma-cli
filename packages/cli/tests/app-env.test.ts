@@ -1,3 +1,6 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 beforeEach(() => {
@@ -64,6 +67,15 @@ function expectNoApiCalls(client: MockClient) {
   expect(client.DELETE).not.toHaveBeenCalled();
 }
 
+async function writeLocalPin(cwd: string, projectId = "proj_123") {
+  await mkdir(path.join(cwd, ".prisma"), { recursive: true });
+  await writeFile(
+    path.join(cwd, ".prisma/local.json"),
+    `${JSON.stringify({ workspaceId: "ws_123", projectId }, null, 2)}\n`,
+    "utf8",
+  );
+}
+
 async function loadControllers(client: MockClient, projectId: string) {
   vi.resetModules();
   void projectId;
@@ -116,6 +128,19 @@ function makeVariableRow(overrides: Partial<{
   };
 }
 
+function makeBranchRow(overrides: Partial<{
+  id: string;
+  gitName: string;
+  isDefault: boolean;
+}> = {}) {
+  return {
+    id: "br_feature",
+    gitName: "feature/foo",
+    isDefault: false,
+    ...overrides,
+  };
+}
+
 describe("env add", () => {
   it("creates a new variable on the production template via POST", async () => {
     const client = createMockClient();
@@ -131,6 +156,7 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvAdd(
@@ -211,6 +237,7 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -224,17 +251,223 @@ describe("env add", () => {
     expect(client.POST).not.toHaveBeenCalled();
   });
 
+  it("creates a preview branch override and warns when there is no preview default", async () => {
+    const client = createMockClient();
+    client.envGET
+      .mockResolvedValueOnce({
+        data: { data: [makeBranchRow()], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      });
+    client.POST.mockResolvedValueOnce({
+      data: {
+        data: makeVariableRow({
+          key: "DATABASE_URL",
+          branchId: "br_feature",
+          class: "preview",
+        }),
+      },
+      response: { status: 201 },
+    });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    const { context } = await createTestCommandContext({ cwd });
+
+    const result = await controllers.runEnvAdd(
+      context,
+      "DATABASE_URL=postgresql://branch",
+      { branchName: "feature/foo" },
+    );
+
+    expect(client.POST).toHaveBeenCalledWith(
+      "/v1/environment-variables",
+      expect.objectContaining({
+        body: {
+          projectId: "proj_123",
+          class: "preview",
+          branchId: "br_feature",
+          key: "DATABASE_URL",
+          value: "postgresql://branch",
+        },
+      }),
+    );
+    expect(result.result.scope).toEqual({
+      kind: "branch",
+      branchName: "feature/foo",
+      branchId: "br_feature",
+    });
+    expect(result.warnings[0]).toContain("does not exist in preview");
+    expect(JSON.stringify(result)).not.toContain("postgresql://branch");
+  });
+
+  it("creates the branch before adding its first override", async () => {
+    const client = createMockClient();
+    client.envGET
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [makeBranchRow({ id: "br_main", gitName: "main", isDefault: true })],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      });
+    client.POST
+      .mockResolvedValueOnce({
+        data: { data: makeBranchRow({ id: "br_new", gitName: "feature/new" }) },
+        response: { status: 201 },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: makeVariableRow({
+            key: "DATABASE_URL",
+            branchId: "br_new",
+            class: "preview",
+          }),
+        },
+        response: { status: 201 },
+      });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    const { context } = await createTestCommandContext({ cwd });
+
+    await controllers.runEnvAdd(context, "DATABASE_URL=postgresql://branch", {
+      branchName: "feature/new",
+    });
+
+    expect(client.POST).toHaveBeenNthCalledWith(
+      1,
+      "/v1/projects/{projectId}/branches",
+      expect.objectContaining({
+        params: { path: { projectId: "proj_123" } },
+        body: { gitName: "feature/new", isDefault: false },
+      }),
+    );
+  });
+
+  it("reports a branch creation API failure when no response is available", async () => {
+    const client = createMockClient();
+    client.envGET
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [makeBranchRow({ id: "br_main", gitName: "main", isDefault: true })],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      });
+    client.POST.mockResolvedValueOnce({
+      error: {
+        error: {
+          message: "Branch service is unavailable.",
+        },
+      },
+    });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runEnvAdd(context, "DATABASE_URL=postgresql://branch", {
+        branchName: "feature/new",
+      }),
+    ).rejects.toMatchObject({
+      code: "ENV_API_ERROR",
+      summary: 'Failed to create branch "feature/new"',
+      why: "Branch service is unavailable.",
+    });
+    expect(client.POST).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not create a missing branch when the project has no default branch", async () => {
+    const client = createMockClient();
+    client.envGET
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runEnvAdd(context, "DATABASE_URL=postgresql://branch", {
+        branchName: "feature/new",
+      }),
+    ).rejects.toMatchObject({
+      code: "ENV_BRANCH_CREATE_REQUIRES_DEFAULT_BRANCH",
+      summary: expect.stringContaining("Cannot create branch"),
+    });
+    expect(client.POST).not.toHaveBeenCalled();
+  });
+
+  it("rejects mutually exclusive role and branch scopes", async () => {
+    const client = createMockClient();
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runEnvAdd(context, "STRIPE_KEY=sk", {
+        roleName: "preview",
+        branchName: "feature/foo",
+      }),
+    ).rejects.toMatchObject({
+      summary: expect.stringContaining("either --role or --branch"),
+    });
+    expectNoApiCalls(client);
+  });
+
   it("rejects when --role is not provided (fail-fast on writes)", async () => {
     const client = createMockClient();
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
       controllers.runEnvAdd(context, "STRIPE_KEY=sk", {}),
     ).rejects.toMatchObject({
-      summary: expect.stringContaining("requires --role"),
+      summary: expect.stringContaining("requires --role or --branch"),
     });
     expectNoApiCalls(client);
   });
@@ -244,6 +477,7 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -261,6 +495,7 @@ describe("env add", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -292,6 +527,7 @@ describe("env update", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvUpdate(
@@ -325,6 +561,7 @@ describe("env update", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
@@ -338,17 +575,72 @@ describe("env update", () => {
     expect(client.PATCH).not.toHaveBeenCalled();
   });
 
+  it("updates an existing branch override", async () => {
+    const client = createMockClient();
+    client.envGET
+      .mockResolvedValueOnce({
+        data: { data: [makeBranchRow()], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [
+            makeVariableRow({
+              id: "envvar_branch",
+              key: "DATABASE_URL",
+              class: "preview",
+              branchId: "br_feature",
+            }),
+          ],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      });
+    client.PATCH.mockResolvedValueOnce({
+      data: {
+        data: makeVariableRow({
+          id: "envvar_branch",
+          key: "DATABASE_URL",
+          class: "preview",
+          branchId: "br_feature",
+        }),
+      },
+      response: { status: 200 },
+    });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    const { context } = await createTestCommandContext({ cwd });
+
+    await controllers.runEnvUpdate(
+      context,
+      "DATABASE_URL=postgresql://new",
+      { branchName: "feature/foo" },
+    );
+
+    expect(client.PATCH).toHaveBeenCalledWith(
+      "/v1/environment-variables/{envVarId}",
+      expect.objectContaining({
+        params: { path: { envVarId: "envvar_branch" } },
+        body: { value: "postgresql://new" },
+      }),
+    );
+  });
+
   it("rejects when --role is not provided (fail-fast on writes)", async () => {
     const client = createMockClient();
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
       controllers.runEnvUpdate(context, "STRIPE_KEY=sk", {}),
     ).rejects.toMatchObject({
-      summary: expect.stringContaining("requires --role"),
+      summary: expect.stringContaining("requires --role or --branch"),
     });
     expectNoApiCalls(client);
   });
@@ -371,6 +663,7 @@ describe("env list", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvList(context, {
@@ -407,6 +700,7 @@ describe("env list", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvList(context, {});
@@ -424,9 +718,68 @@ describe("env list", () => {
     );
     expect(result.result.scope).toEqual({ kind: "role", role: "production" });
   });
+
+  it("lists a resolved branch view with preview defaults and branch overrides", async () => {
+    const client = createMockClient();
+    client.envGET
+      .mockResolvedValueOnce({
+        data: { data: [makeBranchRow()], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [
+            makeVariableRow({
+              id: "envvar_preview",
+              key: "DATABASE_URL",
+              class: "preview",
+              branchId: null,
+            }),
+            makeVariableRow({
+              id: "envvar_api",
+              key: "API_URL",
+              class: "preview",
+              branchId: null,
+            }),
+            makeVariableRow({
+              id: "envvar_branch",
+              key: "DATABASE_URL",
+              class: "preview",
+              branchId: "br_feature",
+            }),
+          ],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    const { context } = await createTestCommandContext({ cwd });
+
+    const result = await controllers.runEnvList(context, {
+      branchName: "feature/foo",
+    });
+
+    expect(result.result.scope).toEqual({
+      kind: "branch",
+      branchName: "feature/foo",
+      branchId: "br_feature",
+    });
+    expect(result.result.variables.map((variable) => ({
+      key: variable.key,
+      id: variable.id,
+      source: variable.source,
+    }))).toEqual([
+      { key: "API_URL", id: "envvar_api", source: "preview" },
+      { key: "DATABASE_URL", id: "envvar_branch", source: "branch:feature/foo" },
+    ]);
+  });
 });
 
-describe("env rm", () => {
+describe("env remove", () => {
   it("looks up the row and DELETEs it on the happy path", async () => {
     const client = createMockClient();
     client.envGET.mockResolvedValueOnce({
@@ -444,9 +797,10 @@ describe("env rm", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
-    const result = await controllers.runEnvRm(context, "STRIPE_KEY", {
+    const result = await controllers.runEnvRemove(context, "STRIPE_KEY", {
       roleName: "production",
     });
 
@@ -473,16 +827,67 @@ describe("env rm", () => {
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
-      controllers.runEnvRm(context, "STRIPE_KEY", {
+      controllers.runEnvRemove(context, "STRIPE_KEY", {
         roleName: "production",
       }),
     ).rejects.toMatchObject({
       code: "ENV_VARIABLE_NOT_FOUND",
     });
     expect(client.DELETE).not.toHaveBeenCalled();
+  });
+
+  it("removes a branch override without touching the preview default", async () => {
+    const client = createMockClient();
+    client.envGET
+      .mockResolvedValueOnce({
+        data: { data: [makeBranchRow()], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [
+            makeVariableRow({
+              id: "envvar_preview",
+              key: "DATABASE_URL",
+              class: "preview",
+              branchId: null,
+            }),
+            makeVariableRow({
+              id: "envvar_branch",
+              key: "DATABASE_URL",
+              class: "preview",
+              branchId: "br_feature",
+            }),
+          ],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      });
+    client.DELETE.mockResolvedValueOnce({
+      data: undefined,
+      response: { status: 204 },
+    });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    const { context } = await createTestCommandContext({ cwd });
+
+    await controllers.runEnvRemove(context, "DATABASE_URL", {
+      branchName: "feature/foo",
+    });
+
+    expect(client.DELETE).toHaveBeenCalledWith(
+      "/v1/environment-variables/{envVarId}",
+      expect.objectContaining({
+        params: { path: { envVarId: "envvar_branch" } },
+      }),
+    );
   });
 
   it("rejects when --role is not provided (fail-fast on writes)", async () => {
@@ -493,162 +898,10 @@ describe("env rm", () => {
     const { context } = await createTestCommandContext({ cwd });
 
     await expect(
-      controllers.runEnvRm(context, "STRIPE_KEY", {}),
+      controllers.runEnvRemove(context, "STRIPE_KEY", {}),
     ).rejects.toMatchObject({
-      summary: expect.stringContaining("requires --role"),
+      summary: expect.stringContaining("requires --role or --branch"),
     });
     expectNoApiCalls(client);
-  });
-});
-
-/**
- * Shared scaffolding for the legacy `app update-env` / `app list-env`
- * deprecation tests. The two flows share an auth gate, project
- * resolution, and preview-provider seam; centralizing the mock keeps the
- * tests focused on the deprecation banner contract instead of the
- * provider stub shape, and means a future change to either of those
- * underlying dependencies needs to be reflected in exactly one place.
- */
-function mockLegacyEnvDependencies(
-  overrides: {
-    updateAppEnv?: ReturnType<typeof vi.fn>;
-    listAppEnvNames?: ReturnType<typeof vi.fn>;
-  } = {},
-): void {
-  vi.doMock("../src/lib/auth/auth-ops", () => ({
-    readAuthState: vi.fn().mockResolvedValue({
-      authenticated: true,
-      provider: null,
-      user: {
-        email: "test@example.com",
-      },
-      workspace: {
-        id: "ws_123",
-        name: "Acme Inc",
-      },
-    }),
-    performLogin: vi.fn(),
-    performLogout: vi.fn(),
-  }));
-  vi.doMock("../src/lib/auth/guard", () => ({
-    requireComputeAuth: vi.fn().mockResolvedValue(createMockClient()),
-  }));
-
-  const appRecord = {
-    id: "app_1",
-    name: "hello-world",
-    region: null,
-    liveDeploymentId: "dep_1",
-    liveUrl: null,
-  };
-  const deploymentRecord = {
-    id: "dep_1",
-    status: "running",
-    createdAt: "2026-05-08T10:00:00.000Z",
-    url: null,
-    live: null,
-  };
-
-  vi.doMock("../src/lib/app/preview-provider", () => ({
-    createPreviewAppProvider: vi.fn(() => ({
-      listApps: vi.fn().mockResolvedValue([appRecord]),
-      listDeployments: vi.fn().mockResolvedValue({
-        app: appRecord,
-        deployments: [deploymentRecord],
-      }),
-      ...(overrides.updateAppEnv ? { updateAppEnv: overrides.updateAppEnv } : {}),
-      ...(overrides.listAppEnvNames
-        ? { listAppEnvNames: overrides.listAppEnvNames }
-        : {}),
-    })),
-  }));
-}
-
-const legacyEnvProviderResponse = () => ({
-  projectId: "proj_123",
-  app: {
-    id: "app_1",
-    name: "hello-world",
-    region: null,
-    liveDeploymentId: "dep_1",
-    liveUrl: null,
-  },
-  deployment: {
-    id: "dep_1",
-    status: "running",
-    createdAt: "2026-05-08T10:00:00.000Z",
-    url: null,
-    live: true,
-  },
-  variables: ["FOO"],
-});
-
-const updateAppEnvHappyPath = () =>
-  vi.fn().mockResolvedValue(legacyEnvProviderResponse());
-
-const listAppEnvNamesHappyPath = () =>
-  vi.fn().mockResolvedValue(legacyEnvProviderResponse());
-
-describe("legacy env command deprecation warnings", () => {
-  it("prints a deprecation banner to stderr from `app update-env`", async () => {
-    mockLegacyEnvDependencies({ updateAppEnv: updateAppEnvHappyPath() });
-
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
-    const { runAppUpdateEnv } = await import("../src/controllers/app");
-    const cwd = await createTempCwd();
-    const { context, stderr } = await createTestCommandContext({ cwd });
-
-    await runAppUpdateEnv(context, "hello-world", ["FOO=bar"]);
-
-    expect(stderr.buffer).toContain("[deprecation]");
-    expect(stderr.buffer).toContain("prisma-cli app update-env");
-    expect(stderr.buffer).toContain("prisma-cli project env add");
-  });
-
-  it("suppresses the deprecation banner under --json", async () => {
-    mockLegacyEnvDependencies({ updateAppEnv: updateAppEnvHappyPath() });
-
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
-    const { runAppUpdateEnv } = await import("../src/controllers/app");
-    const cwd = await createTempCwd();
-    const { context, stderr } = await createTestCommandContext({
-      cwd,
-      flags: { json: true },
-    });
-
-    await runAppUpdateEnv(context, "hello-world", ["FOO=bar"]);
-
-    expect(stderr.buffer).not.toContain("[deprecation]");
-  });
-
-  it("prints a deprecation banner to stderr from `app list-env`", async () => {
-    mockLegacyEnvDependencies({ listAppEnvNames: listAppEnvNamesHappyPath() });
-
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
-    const { runAppListEnv } = await import("../src/controllers/app");
-    const cwd = await createTempCwd();
-    const { context, stderr } = await createTestCommandContext({ cwd });
-
-    await runAppListEnv(context, "hello-world");
-
-    expect(stderr.buffer).toContain("[deprecation]");
-    expect(stderr.buffer).toContain("prisma-cli app list-env");
-    expect(stderr.buffer).toContain("prisma-cli project env list");
-  });
-
-  it("suppresses the `app list-env` deprecation banner under --json", async () => {
-    mockLegacyEnvDependencies({ listAppEnvNames: listAppEnvNamesHappyPath() });
-
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
-    const { runAppListEnv } = await import("../src/controllers/app");
-    const cwd = await createTempCwd();
-    const { context, stderr } = await createTestCommandContext({
-      cwd,
-      flags: { json: true },
-    });
-
-    await runAppListEnv(context, "hello-world");
-
-    expect(stderr.buffer).not.toContain("[deprecation]");
   });
 });

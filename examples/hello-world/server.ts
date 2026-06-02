@@ -12,7 +12,7 @@ const server = Bun.serve({
       });
     }
 
-    return new Response("Hello from the Prisma CLI preview!\n", {
+    return new Response("Hello from the Prisma CLI beta!\n", {
       headers: {
         "content-type": "text/plain; charset=utf-8",
       },
