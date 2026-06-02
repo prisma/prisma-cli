@@ -18,6 +18,7 @@ Human-oriented stderr output may include:
 - command headers
 - progress
 - warnings
+- automatic update notifications
 - help text
 - target context
 - final human-readable success or failure summaries
@@ -44,6 +45,38 @@ Non-TTY or piped behavior:
 - headers collapse to plain text or are omitted when they add no value
 
 This keeps pipes, captures, and automation clean.
+
+## Automatic Update Notifications
+
+The CLI may print an advisory update notification before normal command output
+when all of these are true:
+
+- stderr is a TTY
+- `--json` is not active
+- `--quiet` is not active
+- CI is not detected
+- `NO_UPDATE_NOTIFIER` is not set
+- cached update-check state already shows a newer official `@prisma/cli`
+  version
+
+The notification is human-only stderr output. It must never be written to
+stdout, must not change the original command exit code, and must not block the
+original command on network discovery.
+
+Recommended shape:
+
+```text
+Update available: prisma-cli <current> -> <latest>
+Run <package-manager command> to update.
+```
+
+When the CLI cannot confidently infer the install context, link to installation
+docs instead of guessing a package-manager command:
+
+```text
+Update available: prisma-cli <current> -> <latest>
+See https://www.prisma.io/docs/orm/tools/prisma-cli for update instructions.
+```
 
 ## Human Output
 

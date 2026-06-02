@@ -54,6 +54,10 @@ Out of scope for the current beta:
 - Long flags use kebab-case.
 - Boolean negation uses `--no-<flag>`.
 - `--json` and non-interactive mode must not block on prompts.
+- Automatic update checks are advisory and skipped in CI, `--json`, `--quiet`,
+  non-TTY stderr, and when `NO_UPDATE_NOTIFIER` is set. When shown, update
+  notifications are stderr-only human output and do not change the original
+  command result.
 - Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for Project -> Branch -> App resolution. `.prisma/local.json` is a gitignored local pin/cache, not a declarative repo config file.
 - Remote commands do not silently change local context.
 
