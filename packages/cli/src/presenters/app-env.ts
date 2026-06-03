@@ -13,7 +13,24 @@ function scopeLabel(scope: EnvScopeDescriptor): string {
   if (scope.kind === "role") {
     return scope.role ?? "unknown";
   }
+  if (scope.kind === "overview") {
+    return "overview";
+  }
   return `branch:${scope.branchName ?? scope.branchId ?? "unknown"}`;
+}
+
+function listTargetLabel(result: EnvListResult): string {
+  const target = result.target;
+  if (target.source === "overview") {
+    return "overview";
+  }
+
+  if (target.branchName) {
+    const suffix = target.branchExists === false ? " (not created yet)" : "";
+    return `branch:${target.branchName} -> ${target.envMap}${suffix}`;
+  }
+
+  return scopeLabel(result.scope);
 }
 
 export function renderEnvAdd(
@@ -84,8 +101,8 @@ export function renderEnvList(
       title: "Listing environment variables for the selected scope.",
       descriptor,
       parentContext: {
-        key: "scope",
-        value: scopeLabel(result.scope),
+        key: "target",
+        value: listTargetLabel(result),
       },
       items: result.variables.map((variable) => ({
         noun: "variable",
@@ -103,9 +120,10 @@ export function serializeEnvList(result: EnvListResult) {
   return {
     projectId: result.projectId,
     scope: result.scope,
+    target: result.target,
     ...serializeList({
       context: {
-        scope: scopeLabel(result.scope),
+        target: listTargetLabel(result),
       },
       items: result.variables.map((variable) => ({
         noun: "variable",

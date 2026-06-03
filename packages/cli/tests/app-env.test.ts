@@ -76,6 +76,11 @@ async function writeLocalPin(cwd: string, projectId = "proj_123") {
   );
 }
 
+async function writeGitHead(cwd: string, branchName: string) {
+  await mkdir(path.join(cwd, ".git"), { recursive: true });
+  await writeFile(path.join(cwd, ".git", "HEAD"), `ref: refs/heads/${branchName}\n`, "utf8");
+}
+
 async function loadControllers(client: MockClient, projectId: string) {
   vi.resetModules();
   void projectId;
@@ -131,11 +136,13 @@ function makeVariableRow(overrides: Partial<{
 function makeBranchRow(overrides: Partial<{
   id: string;
   gitName: string;
+  role: "production" | "preview";
   isDefault: boolean;
 }> = {}) {
   return {
     id: "br_feature",
     gitName: "feature/foo",
+    role: "preview",
     isDefault: false,
     ...overrides,
   };
@@ -682,6 +689,10 @@ describe("env list", () => {
       }),
     );
     expect(result.result.scope).toEqual({ kind: "role", role: "production" });
+    expect(result.result.target).toEqual({
+      source: "explicit",
+      envMap: "production",
+    });
     expect(result.result.variables.map((v) => v.key)).toEqual([
       "STRIPE_KEY",
       "SENDGRID_KEY",
@@ -690,17 +701,116 @@ describe("env list", () => {
     expect(flattened).not.toMatch(/"value"\s*:/);
   });
 
-  it("defaults to --role production when no scope flag is provided", async () => {
+  it("infers the active Git preview branch when no scope flag is provided", async () => {
     const client = createMockClient();
-    client.envGET.mockResolvedValueOnce({
-      data: { data: [], pagination: { hasMore: false, nextCursor: null } },
-      response: { status: 200 },
-    });
+    client.envGET
+      .mockResolvedValueOnce({
+        data: {
+          data: [makeBranchRow({ id: "br_feature", gitName: "feature/foo", role: "preview" })],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [
+            makeVariableRow({
+              id: "envvar_preview",
+              key: "DATABASE_URL",
+              class: "preview",
+              branchId: null,
+            }),
+            makeVariableRow({
+              id: "envvar_branch",
+              key: "DATABASE_URL",
+              class: "preview",
+              branchId: "br_feature",
+            }),
+          ],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      });
 
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd);
+    await writeGitHead(cwd, "feature/foo");
+    const { context } = await createTestCommandContext({ cwd });
+
+    const result = await controllers.runEnvList(context, {});
+
+    expect(client.GET).toHaveBeenCalledWith(
+      "/v1/projects/{projectId}/branches",
+      expect.objectContaining({
+        params: {
+          path: { projectId: "proj_123" },
+          query: { gitName: "feature/foo" },
+        },
+      }),
+    );
+    expect(client.GET).toHaveBeenCalledWith(
+      "/v1/environment-variables",
+      expect.objectContaining({
+        params: {
+          query: expect.objectContaining({
+            projectId: "proj_123",
+            class: "preview",
+          }),
+        },
+      }),
+    );
+    expect(result.result.scope).toEqual({
+      kind: "branch",
+      branchName: "feature/foo",
+      branchId: "br_feature",
+    });
+    expect(result.result.target).toEqual({
+      source: "local-git",
+      branchName: "feature/foo",
+      branchId: "br_feature",
+      branchRole: "preview",
+      branchExists: true,
+      envMap: "preview",
+    });
+    expect(result.result.variables.map((variable) => ({
+      key: variable.key,
+      id: variable.id,
+      source: variable.source,
+    }))).toEqual([
+      { key: "DATABASE_URL", id: "envvar_branch", source: "branch:feature/foo" },
+    ]);
+  });
+
+  it("infers the active Git production branch when no scope flag is provided", async () => {
+    const client = createMockClient();
+    client.envGET
+      .mockResolvedValueOnce({
+        data: {
+          data: [makeBranchRow({
+            id: "br_main",
+            gitName: "main",
+            role: "production",
+            isDefault: true,
+          })],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [makeVariableRow({ id: "envvar_prod", key: "STRIPE_KEY", class: "production" })],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    await writeGitHead(cwd, "main");
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvList(context, {});
@@ -717,6 +827,123 @@ describe("env list", () => {
       }),
     );
     expect(result.result.scope).toEqual({ kind: "role", role: "production" });
+    expect(result.result.target).toEqual({
+      source: "local-git",
+      branchName: "main",
+      branchId: "br_main",
+      branchRole: "production",
+      branchExists: true,
+      envMap: "production",
+    });
+    expect(result.result.variables.map((variable) => ({
+      key: variable.key,
+      source: variable.source,
+    }))).toEqual([
+      { key: "STRIPE_KEY", source: "production" },
+    ]);
+  });
+
+  it("shows preview template metadata when the active Git branch has no Platform branch yet", async () => {
+    const client = createMockClient();
+    client.envGET
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [
+            makeVariableRow({
+              id: "envvar_preview",
+              key: "API_URL",
+              class: "preview",
+              branchId: null,
+            }),
+            makeVariableRow({
+              id: "envvar_other_branch",
+              key: "DATABASE_URL",
+              class: "preview",
+              branchId: "br_other",
+            }),
+          ],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    await writeGitHead(cwd, "feature/not-created");
+    const { context } = await createTestCommandContext({ cwd });
+
+    const result = await controllers.runEnvList(context, {});
+
+    expect(result.result.scope).toEqual({ kind: "role", role: "preview" });
+    expect(result.result.target).toEqual({
+      source: "local-git",
+      branchName: "feature/not-created",
+      branchExists: false,
+      envMap: "preview",
+    });
+    expect(result.result.variables.map((variable) => ({
+      key: variable.key,
+      source: variable.source,
+    }))).toEqual([
+      { key: "API_URL", source: "preview" },
+    ]);
+  });
+
+  it("shows a production and preview overview when no local Git branch exists", async () => {
+    const client = createMockClient();
+    client.envGET.mockResolvedValueOnce({
+      data: {
+        data: [
+          makeVariableRow({ id: "envvar_preview", key: "API_URL", class: "preview" }),
+          makeVariableRow({ id: "envvar_prod", key: "STRIPE_KEY", class: "production" }),
+          makeVariableRow({
+            id: "envvar_branch",
+            key: "DATABASE_URL",
+            class: "preview",
+            branchId: "br_feature",
+          }),
+        ],
+        pagination: { hasMore: false, nextCursor: null },
+      },
+      response: { status: 200 },
+    });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    const { context } = await createTestCommandContext({ cwd });
+
+    const result = await controllers.runEnvList(context, {});
+
+    expect(client.GET).toHaveBeenCalledWith(
+      "/v1/environment-variables",
+      expect.objectContaining({
+        params: {
+          query: {
+            projectId: "proj_123",
+          },
+        },
+      }),
+    );
+    expect(result.result.scope).toEqual({ kind: "overview" });
+    expect(result.result.target).toEqual({
+      source: "overview",
+      envMap: "overview",
+    });
+    expect(result.result.variables.map((variable) => ({
+      key: variable.key,
+      source: variable.source,
+    }))).toEqual([
+      { key: "STRIPE_KEY", source: "production" },
+      { key: "API_URL", source: "preview" },
+    ]);
   });
 
   it("lists a resolved branch view with preview defaults and branch overrides", async () => {
@@ -767,6 +994,14 @@ describe("env list", () => {
       kind: "branch",
       branchName: "feature/foo",
       branchId: "br_feature",
+    });
+    expect(result.result.target).toEqual({
+      source: "explicit",
+      branchName: "feature/foo",
+      branchId: "br_feature",
+      branchRole: "preview",
+      branchExists: true,
+      envMap: "preview",
     });
     expect(result.result.variables.map((variable) => ({
       key: variable.key,
