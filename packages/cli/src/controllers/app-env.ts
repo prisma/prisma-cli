@@ -31,12 +31,20 @@ interface ResolvedScope {
   apiTarget: { class: EnvVarRole; branchId: string | null };
 }
 
-interface ResolvedListScope {
-  descriptor: EnvScopeDescriptor;
-  target: EnvListTarget;
-  apiTarget: { class: EnvVarRole; branchId: string | null } | null;
-  addScope: EnvScope;
-}
+type ResolvedListScope =
+  | {
+      kind: "scoped";
+      descriptor: EnvScopeDescriptor;
+      target: EnvListTarget;
+      apiTarget: { class: EnvVarRole; branchId: string | null };
+      addScope: EnvScope;
+    }
+  | {
+      kind: "overview";
+      descriptor: { kind: "overview" };
+      target: EnvListTarget;
+      addScope: EnvScope;
+    };
 
 interface EnvCommandFlags {
   roleName?: string;
@@ -216,7 +224,7 @@ export async function runEnvList(
     cwd: context.runtime.cwd,
     signal: context.runtime.signal,
   });
-  const variables = resolved.apiTarget
+  const variables = resolved.kind === "scoped"
     ? await listVariables(client, projectId, {
         scope: resolved.addScope,
         descriptor: resolved.descriptor,
@@ -386,6 +394,7 @@ async function resolveListScopeToApi(
       signal: options.signal,
     });
     return {
+      kind: "scoped",
       descriptor: resolved.descriptor,
       target: targetFromExplicitScope(resolved.descriptor),
       apiTarget: resolved.apiTarget,
@@ -398,6 +407,7 @@ async function resolveListScopeToApi(
     const branch = (await listBranchesByName(client, projectId, gitBranch, options.signal))[0];
     if (!branch) {
       return {
+        kind: "scoped",
         descriptor: { kind: "role", role: "preview" },
         target: {
           source: "local-git",
@@ -412,6 +422,7 @@ async function resolveListScopeToApi(
 
     if (branch.role === "production") {
       return {
+        kind: "scoped",
         descriptor: { kind: "role", role: "production" },
         target: {
           source: "local-git",
@@ -427,6 +438,7 @@ async function resolveListScopeToApi(
     }
 
     return {
+      kind: "scoped",
       descriptor: {
         kind: "branch",
         branchName: branch.gitName,
@@ -446,12 +458,12 @@ async function resolveListScopeToApi(
   }
 
   return {
+    kind: "overview",
     descriptor: { kind: "overview" },
     target: {
       source: "overview",
       envMap: "overview",
     },
-    apiTarget: null,
     addScope: { kind: "role", role: "preview" },
   };
 }
@@ -649,41 +661,10 @@ async function listVariables(
   resolved: ResolvedScope,
   signal: AbortSignal,
 ): Promise<RawEnvironmentVariable[]> {
-  const collected: RawEnvironmentVariable[] = [];
-  let cursor: string | undefined;
-
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const query: Record<string, string | undefined> = {
-      projectId,
-      class: resolved.apiTarget.class,
-    };
-    if (cursor !== undefined) {
-      query.cursor = cursor;
-    }
-
-    const result = await client.GET("/v1/environment-variables", {
-      params: { query },
-      signal,
-    });
-    if (result.error || !result.data) {
-      throw apiCallError(
-        `Failed to list environment variables`,
-        result.response,
-        result.error,
-      );
-    }
-
-    const page = (result.data.data as RawEnvironmentVariable[]).filter((row) =>
-      rowMatchesScope(row, resolved),
-    );
-    collected.push(...page);
-
-    if (!result.data.pagination.hasMore || !result.data.pagination.nextCursor) {
-      break;
-    }
-    cursor = result.data.pagination.nextCursor;
-  }
+  const collected = await collectEnvironmentVariables(client, projectId, signal, {
+    className: resolved.apiTarget.class,
+    filter: (row) => rowMatchesScope(row, resolved),
+  });
 
   return materializeEffectiveRows(collected, resolved);
 }
@@ -693,12 +674,35 @@ async function listOverviewVariables(
   projectId: string,
   signal: AbortSignal,
 ): Promise<RawEnvironmentVariable[]> {
+  const collected = await collectEnvironmentVariables(client, projectId, signal, {
+    filter: (row) =>
+      row.branchId === null && (row.class === "production" || row.class === "preview"),
+  });
+
+  return collected.sort((left, right) => {
+    const roleOrder = roleSortOrder(left.class) - roleSortOrder(right.class);
+    return roleOrder !== 0 ? roleOrder : left.key.localeCompare(right.key);
+  });
+}
+
+async function collectEnvironmentVariables(
+  client: ManagementApiClient,
+  projectId: string,
+  signal: AbortSignal,
+  options: {
+    className?: EnvVarRole;
+    filter(row: RawEnvironmentVariable): boolean;
+  },
+): Promise<RawEnvironmentVariable[]> {
   const collected: RawEnvironmentVariable[] = [];
   let cursor: string | undefined;
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const query: Record<string, string | undefined> = { projectId };
+    if (options.className !== undefined) {
+      query.class = options.className;
+    }
     if (cursor !== undefined) {
       query.cursor = cursor;
     }
@@ -715,9 +719,7 @@ async function listOverviewVariables(
       );
     }
 
-    const page = (result.data.data as RawEnvironmentVariable[]).filter((row) =>
-      row.branchId === null && (row.class === "production" || row.class === "preview")
-    );
+    const page = (result.data.data as RawEnvironmentVariable[]).filter(options.filter);
     collected.push(...page);
 
     if (!result.data.pagination.hasMore || !result.data.pagination.nextCursor) {
@@ -726,10 +728,7 @@ async function listOverviewVariables(
     cursor = result.data.pagination.nextCursor;
   }
 
-  return collected.sort((left, right) => {
-    const roleOrder = roleSortOrder(left.class) - roleSortOrder(right.class);
-    return roleOrder !== 0 ? roleOrder : left.key.localeCompare(right.key);
-  });
+  return collected;
 }
 
 function roleSortOrder(role: EnvVarRole): number {
