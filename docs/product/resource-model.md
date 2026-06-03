@@ -59,9 +59,8 @@ Rules:
 - preview branches are disposable by default
 - non-production branches can become durable later
 - `local` is local CLI context only, not a branch
-- active branch context is local CLI state, not `prisma.config.ts`
-- selecting a branch changes local CLI context only; it does not create remote
-  state by itself
+- branch context comes from explicit targeting, Git, or safe command defaults,
+  not `prisma.config.ts`
 
 Examples of preview branches:
 
@@ -71,8 +70,8 @@ Examples of preview branches:
 - `pr-123`
 
 Branch role and durability are product concepts in the current docs. The preview
-command JSON for `branch list` and `branch show` does not expose dedicated
-`role` or `durability` fields yet.
+command JSON for `branch list` exposes `role`; `durability` remains target-model
+until the Management API returns it everywhere.
 
 ### Branch Role And Durability
 
@@ -231,13 +230,13 @@ feature-branch code into a service owned by another branch.
 Commands that use branch context resolve it in this order:
 
 1. explicit branch argument when the command accepts one
-2. active branch context in local CLI state
-3. `preview`
+2. local Git branch when available
+3. `main`
 
 Consequences:
 
 - `local` never becomes a branch or deploy target
-- first remote app work defaults to `preview`
+- first remote app work falls back to `main` when no Git branch is available
 - production requires explicit user intent
 
 ### Inspect Resolution

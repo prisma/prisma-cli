@@ -104,8 +104,6 @@ Current MVP commands map to patterns like this:
 | `git connect` | `mutate` |
 | `git disconnect` | `mutate` |
 | `branch list` | `list` |
-| `branch show` | `show` |
-| `branch use` | `mutate` |
 
 No current MVP command uses `verify` or `inspect`, but new commands must still choose one existing pattern rather than inventing a new one casually.
 

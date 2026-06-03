@@ -9,19 +9,16 @@ const fixturePath = path.resolve("fixtures/mock-api.json");
 export async function createUseCaseGateways(options?: {
   authSession?: AuthSessionRecord | null;
   projectId?: string | null;
-  activeBranch?: string;
 }): Promise<{
   gateways: CliUseCaseGateways;
   readState: () => {
     authSession: AuthSessionRecord | null;
     projectId: string | null;
-    activeBranch: string;
   };
 }> {
   const api = await MockApi.load(fixturePath);
   let authSession = options?.authSession ?? null;
   let projectId = options?.projectId ?? null;
-  let activeBranch = options?.activeBranch ?? "preview";
 
   return {
     gateways: {
@@ -53,20 +50,9 @@ export async function createUseCaseGateways(options?: {
         getProjectForWorkspace: (workspaceId, projectId) => api.getProjectForWorkspace(workspaceId, projectId),
       },
       branchGateway: {
-        listBranchesForProject: (projectId) =>
-          api.listBranchesForProject(projectId).map((branch) => ({
-            ...branch,
-            kind: branch.name === "production" ? "production" : "preview",
-          })),
+        listBranchesForProject: (projectId) => api.listBranchesForProject(projectId),
         getBranchForProject: (projectId, name) => {
-          const branch = api.getBranchForProject(projectId, name);
-
-          return branch
-            ? {
-                ...branch,
-                kind: branch.name === "production" ? "production" : "preview",
-              }
-            : undefined;
+          return api.getBranchForProject(projectId, name);
         },
         getDeployment: (deploymentId) => api.getDeployment(deploymentId),
       },
@@ -82,17 +68,10 @@ export async function createUseCaseGateways(options?: {
           authSession = null;
         },
       },
-      branchStateGateway: {
-        readActiveBranch: async () => activeBranch,
-        writeActiveBranch: async (branchName) => {
-          activeBranch = branchName;
-        },
-      },
     },
     readState: () => ({
       authSession,
       projectId,
-      activeBranch,
     }),
   };
 }

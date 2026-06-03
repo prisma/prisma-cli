@@ -66,7 +66,6 @@ Display one resource or one current context.
 Examples:
 
 - `project show`
-- `branch show`
 - `app show-deploy`
 
 ### `list`
@@ -87,9 +86,7 @@ Change local CLI context only.
 
 `use` changes local active context only.
 
-Example:
-
-- `branch use production`
+No current branch command uses `use`; branch targeting follows explicit flags or source context.
 
 ### `deploy`
 
@@ -156,9 +153,7 @@ MVP rule:
 2. local active context is next
 3. safe command defaults come last
 
-Only `branch use` changes local active branch context.
-
-Other commands may act on remote state, but they must not silently mutate local context.
+Commands may act on remote state, but they must not silently mutate local context.
 
 ## Production Must Be Intentionally Harder
 

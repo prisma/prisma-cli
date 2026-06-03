@@ -1,7 +1,6 @@
 import type { CommandContext } from "../shell/runtime";
 import type {
   BranchGateway,
-  BranchStateGateway,
   IdentityGateway,
   ProjectGateway,
   ProjectStateGateway,
@@ -14,7 +13,6 @@ export interface CliUseCaseGateways {
   branchGateway: BranchGateway;
   projectStateGateway: ProjectStateGateway;
   sessionGateway: SessionGateway;
-  branchStateGateway: BranchStateGateway;
 }
 
 export function createCliUseCaseGateways(context: CommandContext): CliUseCaseGateways {
@@ -48,18 +46,9 @@ export function createCliUseCaseGateways(context: CommandContext): CliUseCaseGat
     },
     branchGateway: {
       listBranchesForProject: (projectId) =>
-        context.api.listBranchesForProject(projectId).map((branch) => ({
-          ...branch,
-          kind: branch.name === "production" ? "production" : "preview",
-        })),
+        context.api.listBranchesForProject(projectId),
       getBranchForProject: (projectId, name) => {
-        const branch = context.api.getBranchForProject(projectId, name);
-        return branch
-          ? {
-              ...branch,
-              kind: branch.name === "production" ? "production" : "preview",
-            }
-          : undefined;
+        return context.api.getBranchForProject(projectId, name);
       },
       getDeployment: (deploymentId) => context.api.getDeployment(deploymentId),
     },
@@ -79,15 +68,6 @@ export function createCliUseCaseGateways(context: CommandContext): CliUseCaseGat
       },
       clearAuthSession: async () => {
         await context.stateStore.clearAuthSession();
-      },
-    },
-    branchStateGateway: {
-      readActiveBranch: async () => {
-        const state = await context.stateStore.read();
-        return state.branch.active;
-      },
-      writeActiveBranch: async (branchName) => {
-        await context.stateStore.setActiveBranch(branchName);
       },
     },
   };

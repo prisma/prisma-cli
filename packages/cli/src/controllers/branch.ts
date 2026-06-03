@@ -1,20 +1,35 @@
-import { featureUnavailableError, usageError } from "../shell/errors";
+import type { ManagementApiClient } from "@prisma/management-api-sdk";
+
+import { authRequiredError, CliError, workspaceRequiredError } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
-import { canPrompt, type CommandContext } from "../shell/runtime";
-import type { BranchShowResult, BranchListResult } from "../types/branch";
+import type { CommandContext } from "../shell/runtime";
+import type { BranchListResult, BranchRole, BranchSummary } from "../types/branch";
 import { createCliUseCaseGateways } from "../use-cases/create-cli-gateways";
 import { createBranchUseCases } from "../use-cases/branch";
+import { requireComputeAuth } from "../lib/auth/guard";
+import { resolveProjectTarget } from "../lib/project/resolution";
+import { requireAuthenticatedAuthState } from "./auth";
+import { listRealWorkspaceProjects } from "./project";
 import { createSelectPromptPort } from "./select-prompt-port";
-
-const PREVIEW_BRANCH_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 function isRealMode(context: CommandContext): boolean {
   return !context.runtime.fixturePath && !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH;
 }
 
+interface RawBranchRecord {
+  id: string;
+  gitName: string;
+  role: BranchRole;
+}
+
 export async function runBranchList(context: CommandContext): Promise<CommandSuccess<BranchListResult>> {
   if (isRealMode(context)) {
-    throw branchCommandsUnavailableError();
+    return {
+      command: "branch.list",
+      result: await listRealBranches(context),
+      warnings: [],
+      nextSteps: [],
+    };
   }
 
   const useCases = createBranchUseCases(createCliUseCaseGateways(context));
@@ -28,122 +43,81 @@ export async function runBranchList(context: CommandContext): Promise<CommandSuc
   };
 }
 
-export async function runBranchShow(context: CommandContext): Promise<CommandSuccess<BranchShowResult>> {
-  if (isRealMode(context)) {
-    throw branchCommandsUnavailableError();
+async function listRealBranches(context: CommandContext): Promise<BranchListResult> {
+  const authState = await requireAuthenticatedAuthState(context);
+  const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
+  if (!client) {
+    throw authRequiredError(["prisma-cli auth login"]);
   }
 
-  const useCases = createBranchUseCases(createCliUseCaseGateways(context));
-  const result = await useCases.show();
-
-  return {
-    command: "branch.show",
-    result,
-    warnings: [],
-    nextSteps:
-      result.branch.kind === "preview" && !result.branch.remoteState ? ["prisma-cli app deploy"] : [],
-  };
-}
-
-export async function runBranchUse(
-  context: CommandContext,
-  branchName: string | undefined,
-): Promise<CommandSuccess<BranchShowResult>> {
-  if (isRealMode(context)) {
-    throw branchCommandsUnavailableError();
+  const workspace = authState.workspace;
+  if (!workspace) {
+    throw workspaceRequiredError();
   }
 
-  const useCases = createBranchUseCases(createCliUseCaseGateways(context));
-  const resolvedBranchName = await resolveBranchNameForUse(context, useCases, branchName);
-  validateBranchName(resolvedBranchName);
-
-  const result = await useCases.use(resolvedBranchName);
-  const warnings = result.branch.kind === "production" ? ["Production is protected and durable. Use with care."] : [];
-
-  return {
-    command: "branch.use",
-    result,
-    warnings,
-    nextSteps:
-      result.branch.kind === "preview" && !result.branch.remoteState
-        ? ["prisma-cli branch show", "prisma-cli app deploy"]
-        : ["prisma-cli branch show"],
-  };
-}
-
-async function resolveBranchNameForUse(
-  context: CommandContext,
-  useCases: ReturnType<typeof createBranchUseCases>,
-  branchName: string | undefined,
-): Promise<string> {
-  if (branchName) {
-    return branchName;
-  }
-
-  if (!canPrompt(context)) {
-    throw branchSelectionRequiredError();
-  }
-
-  const result = await useCases.list();
-  const prompt = createSelectPromptPort(context);
-
-  return prompt.select({
-    message: "Select a branch",
-    choices: result.branches.map((branch) => ({
-      label: renderBranchChoiceLabel(branch),
-      value: branch.name,
-    })),
+  const target = await resolveProjectTarget({
+    context,
+    workspace,
+    listProjects: () => listRealWorkspaceProjects(client, workspace, context.runtime.signal),
+    prompt: createSelectPromptPort(context),
+    remember: true,
   });
+
+  const branches = await listBranches(client, target.project.id, context.runtime.signal);
+
+  return {
+    projectId: target.project.id,
+    projectName: target.project.name,
+    branches: branches.map(toBranchSummary),
+  };
 }
 
-function renderBranchChoiceLabel(branch: BranchListResult["branches"][number]): string {
-  const markers = [];
-
-  if (branch.active) {
-    markers.push("active");
+async function listBranches(
+  client: ManagementApiClient,
+  projectId: string,
+  signal: AbortSignal,
+): Promise<RawBranchRecord[]> {
+  const { data, error, response } = await client.GET("/v1/projects/{projectId}/branches", {
+    params: { path: { projectId } },
+    signal,
+  });
+  if (error || !data) {
+    throw branchApiError("Failed to list branches", response, error);
   }
 
-  if (!branch.remoteState) {
-    markers.push("not created yet");
-  }
-
-  return markers.length > 0 ? `${branch.name} (${markers.join(", ")})` : branch.name;
+  return data.data as RawBranchRecord[];
 }
 
-function validateBranchName(branchName: string): void {
-  if (branchName === "production") {
-    return;
-  }
-
-  if (PREVIEW_BRANCH_PATTERN.test(branchName)) {
-    return;
-  }
-
-  throw usageError(
-    "Branch name must use the documented form",
-    "Branch names must be production or a lowercase preview slug such as preview or feat-auth.",
-    "Use production or a lowercase preview branch name with letters, numbers, and hyphens.",
-    ["prisma-cli branch list"],
-    "branch",
-  );
+function toBranchSummary(branch: RawBranchRecord): BranchSummary {
+  return {
+    id: branch.id,
+    name: branch.gitName,
+    role: branch.role,
+    envMap: branch.role,
+  };
 }
 
-function branchSelectionRequiredError() {
-  return usageError(
-    "Branch use requires a target in non-interactive mode",
-    "This command cannot prompt for branch selection in the current mode.",
-    "Re-run prisma-cli branch use in a TTY, or pass a branch name explicitly.",
-    ["prisma-cli branch list"],
-    "branch",
-  );
+interface ApiErrorBody {
+  error?: {
+    code?: string;
+    message?: string;
+    hint?: string;
+  };
 }
 
-function branchCommandsUnavailableError() {
-  return featureUnavailableError(
-    "Branch commands are not available in this preview",
-    "The current preview cannot resolve or change remote branch context yet.",
-    "Use prisma-cli app deploy for preview app deployment workflows.",
-    ["prisma-cli app deploy --app <name>"],
-    "branch",
-  );
+function branchApiError(
+  summary: string,
+  response: Response | undefined,
+  error: ApiErrorBody | undefined,
+): CliError {
+  const status = response?.status ?? 0;
+  return new CliError({
+    code: error?.error?.code ?? "BRANCH_API_ERROR",
+    domain: "branch",
+    summary,
+    why: error?.error?.message ?? `The Management API returned status ${status || "unknown"}.`,
+    fix: error?.error?.hint ?? "Re-run with --trace for the underlying API response details.",
+    exitCode: 1,
+    nextSteps: [],
+  });
 }

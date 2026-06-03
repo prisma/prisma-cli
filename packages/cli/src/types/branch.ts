@@ -1,36 +1,14 @@
-export type BranchKind = "preview" | "production";
-
-export interface LiveDeploymentSummary {
-  id: string;
-  status: string;
-  url: string | null;
-}
+export type BranchRole = "preview" | "production";
 
 export interface BranchSummary {
   id: string;
   name: string;
-  kind: BranchKind;
-  active: boolean;
-  remoteState: boolean;
-}
-
-export interface BranchDetail {
-  name: string;
-  kind: BranchKind;
-  active: true;
-  remoteState: boolean;
-  liveDeployment: LiveDeploymentSummary | null;
+  role: BranchRole;
+  envMap: BranchRole;
 }
 
 export interface BranchListResult {
-  projectId: string | null;
-  projectName: string | null;
-  activeBranch: string;
+  projectId: string;
+  projectName: string;
   branches: BranchSummary[];
-}
-
-export interface BranchShowResult {
-  projectId: string | null;
-  projectName: string | null;
-  branch: BranchDetail;
 }

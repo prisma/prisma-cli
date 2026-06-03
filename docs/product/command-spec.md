@@ -538,35 +538,15 @@ Purpose:
 Behavior:
 
 - shows known remote branches for the resolved project
-- marks active context
+- shows each branch's name, role, and resolved env map
 - does not create remote state
-- does not expose branch `role` or `durability` fields yet
+- does not expose durability, protection, deployment, or env override annotations yet
 
 Examples:
 
 ```bash
 prisma-cli branch list
 prisma-cli branch list --json
-```
-
-## `prisma-cli branch show`
-
-Purpose:
-
-- show the Platform branch matching your current Git branch
-
-Behavior:
-
-- reads local branch context
-- shows resolved project context when known
-- does not mutate local or remote state
-- does not expose branch `role` or `durability` fields yet
-
-Examples:
-
-```bash
-prisma-cli branch show
-prisma-cli branch show --json
 ```
 
 ## `prisma-cli app build --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|tanstack-start>`
