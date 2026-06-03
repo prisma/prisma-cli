@@ -258,7 +258,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
     path: ["prisma", "project", "env"],
     description: "Manage environment variables for the active project",
     examples: [
-      "prisma-cli project env list --role production",
+      "prisma-cli project env list",
       "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production",
       "prisma-cli project env add DATABASE_URL=postgresql://branch --branch feature/foo",
       "prisma-cli project env remove STRIPE_KEY --role preview",
@@ -290,6 +290,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
     path: ["prisma", "project", "env", "list"],
     description: "List environment variable metadata for a scope (no values).",
     examples: [
+      "prisma-cli project env list",
       "prisma-cli project env list --role production",
       "prisma-cli project env list --role preview",
       "prisma-cli project env list --branch feature/foo",

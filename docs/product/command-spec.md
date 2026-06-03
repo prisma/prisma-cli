@@ -687,7 +687,9 @@ Every write targets exactly one scope:
 - `--role` and `--branch` are mutually exclusive.
 - For write verbs (`add`, `update`, `remove`), one scope flag is required
   so the CLI never silently writes to production.
-- For read verbs (`list`), omitting `--role` defaults to `--role production`.
+- For read verbs (`list`), omitting `--role` or `--branch` resolves from
+  the active local Git branch when one exists; outside a Git branch it
+  shows a production/preview project-level overview.
 
 ### `prisma-cli project env add KEY=VALUE (--role <production|preview> | --branch <git-name>)`
 
@@ -751,11 +753,20 @@ Purpose:
 Behavior:
 
 - requires auth and a resolved project; accepts `--project <id-or-name>` as an explicit fallback
-- defaults to `--role production` when `--role` is not supplied
-- `--branch` lists the resolved preview branch view: preview defaults
+- explicit `--role production|preview` lists that project-level map
+- explicit `--branch` lists the resolved preview branch view: preview defaults
   plus branch overrides, with source metadata
+- with no scope and an active local Git branch, resolves the matching
+  Platform Branch and lists the env map for its role; preview Branches
+  include preview defaults plus Branch overrides
+- with no scope and an active local Git branch that has no Platform
+  Branch yet, lists preview template metadata and marks the target as
+  not created yet
+- with no scope and no local Git branch, lists an overview of the
+  production and preview project-level maps, excluding Branch overrides
 - never prints values (never-reveal)
-- emits `key`, `id`, `last updated`, and a `scope` annotation per row
+- emits `key`, `id`, `last updated`, and source/scope annotations per
+  row, plus resolved target metadata for human and JSON output
 
 Examples:
 

@@ -1,6 +1,16 @@
 export type EnvScopeDescriptor =
   | { kind: "role"; role: "production" | "preview" }
-  | { kind: "branch"; branchName: string; branchId: string };
+  | { kind: "branch"; branchName: string; branchId: string }
+  | { kind: "overview" };
+
+export interface EnvListTarget {
+  source: "explicit" | "local-git" | "overview";
+  envMap: "production" | "preview" | "overview";
+  branchName?: string;
+  branchId?: string;
+  branchRole?: "production" | "preview";
+  branchExists?: boolean;
+}
 
 export interface EnvVariableMetadata {
   id: string;
@@ -26,6 +36,7 @@ export interface EnvUpdateResult {
 export interface EnvListResult {
   projectId: string;
   scope: EnvScopeDescriptor;
+  target: EnvListTarget;
   variables: EnvVariableMetadata[];
 }
 

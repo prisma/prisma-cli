@@ -8,12 +8,14 @@ import {
   type EnvVarRole,
 } from "../lib/app/env-config";
 import { requireComputeAuth } from "../lib/auth/guard";
+import { readLocalGitBranch } from "../lib/git/local-branch";
 import { authRequiredError, CliError, usageError, workspaceRequiredError } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
 import type { CommandContext } from "../shell/runtime";
 import { resolveProjectTarget } from "../lib/project/resolution";
 import type {
   EnvAddResult,
+  EnvListTarget,
   EnvListResult,
   EnvRmResult,
   EnvScopeDescriptor,
@@ -27,6 +29,13 @@ interface ResolvedScope {
   scope: EnvScope;
   descriptor: EnvScopeDescriptor;
   apiTarget: { class: EnvVarRole; branchId: string | null };
+}
+
+interface ResolvedListScope {
+  descriptor: EnvScopeDescriptor;
+  target: EnvListTarget;
+  apiTarget: { class: EnvVarRole; branchId: string | null } | null;
+  addScope: EnvScope;
 }
 
 interface EnvCommandFlags {
@@ -47,11 +56,8 @@ interface RawEnvironmentVariable {
 interface RawBranchRecord {
   id: string;
   gitName: string;
+  role: EnvVarRole;
   isDefault: boolean;
-}
-
-function defaultRoleScope(): EnvScope {
-  return { kind: "role", role: "production" };
 }
 
 export async function runEnvAdd(
@@ -204,25 +210,31 @@ export async function runEnvList(
   flags: EnvCommandFlags,
 ): Promise<CommandSuccess<EnvListResult>> {
   const explicit = resolveEnvScope(flags, { requireExplicit: false, command: "list" });
-  const scope = explicit ?? defaultRoleScope();
 
   const { client, projectId } = await requireClientAndProject(context, flags.projectRef, "project env list");
-  const resolved = await resolveScopeToApi(client, projectId, scope, {
-    createBranchIfMissing: false,
+  const resolved = await resolveListScopeToApi(client, projectId, explicit, {
+    cwd: context.runtime.cwd,
     signal: context.runtime.signal,
   });
-  const variables = await listVariables(client, projectId, resolved, context.runtime.signal);
+  const variables = resolved.apiTarget
+    ? await listVariables(client, projectId, {
+        scope: resolved.addScope,
+        descriptor: resolved.descriptor,
+        apiTarget: resolved.apiTarget,
+      }, context.runtime.signal)
+    : await listOverviewVariables(client, projectId, context.runtime.signal);
 
   return {
     command: "project.env.list",
     result: {
       projectId,
       scope: resolved.descriptor,
+      target: resolved.target,
       variables: variables.map((row) => toMetadata(row, resolved.descriptor)),
     },
     warnings: [],
     nextSteps: variables.length === 0
-      ? [`prisma-cli project env add KEY=value ${formatScopeFlag(scope)}`]
+      ? [`prisma-cli project env add KEY=value ${formatScopeFlag(resolved.addScope)}`]
       : [],
   };
 }
@@ -339,13 +351,13 @@ async function resolveScopeToApi(
     ? await resolveOrCreateBranch(client, projectId, scope.branchName, options.signal)
     : await resolveExistingBranch(client, projectId, scope.branchName, options.signal);
 
-  if (branch.isDefault) {
+  if (branch.role === "production") {
     throw new CliError({
       code: "ENV_BRANCH_SCOPE_IS_PRODUCTION",
       domain: "app",
-      summary: `Branch "${scope.branchName}" is the default branch`,
+      summary: `Branch "${scope.branchName}" is the production branch`,
       why: "Production variables are project-level only; branch overrides apply to preview branches.",
-      fix: "Use --role production for the default branch.",
+      fix: "Use --role production for the production branch.",
       exitCode: 1,
       nextSteps: ["prisma-cli project env list --role production"],
     });
@@ -359,6 +371,113 @@ async function resolveScopeToApi(
       branchId: branch.id,
     },
     apiTarget: { class: "preview", branchId: branch.id },
+  };
+}
+
+async function resolveListScopeToApi(
+  client: ManagementApiClient,
+  projectId: string,
+  explicit: EnvScope | undefined,
+  options: { cwd: string; signal: AbortSignal },
+): Promise<ResolvedListScope> {
+  if (explicit) {
+    const resolved = await resolveScopeToApi(client, projectId, explicit, {
+      createBranchIfMissing: false,
+      signal: options.signal,
+    });
+    return {
+      descriptor: resolved.descriptor,
+      target: targetFromExplicitScope(resolved.descriptor),
+      apiTarget: resolved.apiTarget,
+      addScope: resolved.scope,
+    };
+  }
+
+  const gitBranch = await readLocalGitBranch(options.cwd, options.signal);
+  if (gitBranch) {
+    const branch = (await listBranchesByName(client, projectId, gitBranch, options.signal))[0];
+    if (!branch) {
+      return {
+        descriptor: { kind: "role", role: "preview" },
+        target: {
+          source: "local-git",
+          branchName: gitBranch,
+          branchExists: false,
+          envMap: "preview",
+        },
+        apiTarget: { class: "preview", branchId: null },
+        addScope: { kind: "branch", branchName: gitBranch },
+      };
+    }
+
+    if (branch.role === "production") {
+      return {
+        descriptor: { kind: "role", role: "production" },
+        target: {
+          source: "local-git",
+          branchName: branch.gitName,
+          branchId: branch.id,
+          branchRole: branch.role,
+          branchExists: true,
+          envMap: "production",
+        },
+        apiTarget: { class: "production", branchId: null },
+        addScope: { kind: "role", role: "production" },
+      };
+    }
+
+    return {
+      descriptor: {
+        kind: "branch",
+        branchName: branch.gitName,
+        branchId: branch.id,
+      },
+      target: {
+        source: "local-git",
+        branchName: branch.gitName,
+        branchId: branch.id,
+        branchRole: branch.role,
+        branchExists: true,
+        envMap: "preview",
+      },
+      apiTarget: { class: "preview", branchId: branch.id },
+      addScope: { kind: "branch", branchName: branch.gitName },
+    };
+  }
+
+  return {
+    descriptor: { kind: "overview" },
+    target: {
+      source: "overview",
+      envMap: "overview",
+    },
+    apiTarget: null,
+    addScope: { kind: "role", role: "preview" },
+  };
+}
+
+function targetFromExplicitScope(scope: EnvScopeDescriptor): EnvListTarget {
+  if (scope.kind === "branch") {
+    return {
+      source: "explicit",
+      branchName: scope.branchName,
+      branchId: scope.branchId,
+      branchRole: "preview",
+      branchExists: true,
+      envMap: "preview",
+    };
+  }
+
+  if (scope.kind === "role") {
+    return {
+      source: "explicit",
+      envMap: scope.role,
+    };
+  }
+
+  return {
+    source: "overview",
+    envMap: "overview",
   };
 }
 
@@ -569,6 +688,54 @@ async function listVariables(
   return materializeEffectiveRows(collected, resolved);
 }
 
+async function listOverviewVariables(
+  client: ManagementApiClient,
+  projectId: string,
+  signal: AbortSignal,
+): Promise<RawEnvironmentVariable[]> {
+  const collected: RawEnvironmentVariable[] = [];
+  let cursor: string | undefined;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const query: Record<string, string | undefined> = { projectId };
+    if (cursor !== undefined) {
+      query.cursor = cursor;
+    }
+
+    const result = await client.GET("/v1/environment-variables", {
+      params: { query },
+      signal,
+    });
+    if (result.error || !result.data) {
+      throw apiCallError(
+        `Failed to list environment variables`,
+        result.response,
+        result.error,
+      );
+    }
+
+    const page = (result.data.data as RawEnvironmentVariable[]).filter((row) =>
+      row.branchId === null && (row.class === "production" || row.class === "preview")
+    );
+    collected.push(...page);
+
+    if (!result.data.pagination.hasMore || !result.data.pagination.nextCursor) {
+      break;
+    }
+    cursor = result.data.pagination.nextCursor;
+  }
+
+  return collected.sort((left, right) => {
+    const roleOrder = roleSortOrder(left.class) - roleSortOrder(right.class);
+    return roleOrder !== 0 ? roleOrder : left.key.localeCompare(right.key);
+  });
+}
+
+function roleSortOrder(role: EnvVarRole): number {
+  return role === "production" ? 0 : 1;
+}
+
 function rowMatchesScope(
   row: RawEnvironmentVariable,
   resolved: ResolvedScope,
@@ -637,6 +804,9 @@ function toMetadata(
 function formatDescriptorLabel(scope: EnvScopeDescriptor): string {
   if (scope.kind === "role") {
     return scope.role ?? "unknown";
+  }
+  if (scope.kind === "overview") {
+    return "overview";
   }
   return `branch:${scope.branchName ?? scope.branchId ?? "unknown"}`;
 }

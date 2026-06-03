@@ -57,6 +57,7 @@ Useful next commands:
 npx prisma-cli app logs
 npx prisma-cli app open
 npx prisma-cli project env add DATABASE_URL=postgresql://example --role preview
+npx prisma-cli project env list
 npx prisma-cli project env list --role preview
 ```
 
