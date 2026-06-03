@@ -12,6 +12,315 @@ afterEach(() => {
 });
 
 describe("preview build strategy", () => {
+  it("creates prisma.app.json with inferred Next.js settings", async () => {
+    const { PRISMA_APP_CONFIG_SCHEMA_URL, resolveOrCreatePreviewBuildSettings } = await import("../src/lib/app/preview-build");
+    const cwd = await createTempCwd();
+    const appPath = path.join(cwd, "app");
+
+    await mkdir(appPath, { recursive: true });
+    await writeFile(
+      path.join(appPath, "package.json"),
+      JSON.stringify({
+        packageManager: "bun@1.2.0",
+        scripts: {
+          build: "prisma generate && next build",
+        },
+        dependencies: {
+          next: "15.0.0",
+        },
+      }, null, 2),
+      "utf8",
+    );
+
+    const resolution = await resolveOrCreatePreviewBuildSettings({
+      appPath,
+      buildType: "nextjs",
+    });
+
+    expect(resolution.status).toBe("created");
+    expect(resolution.relativeConfigPath).toBe("prisma.app.json");
+    expect(resolution.settings).toEqual({
+      buildCommand: "bun run build",
+      buildCommandSource: "package.json scripts.build",
+      outputDirectory: ".next/standalone",
+      outputDirectorySource: "Next.js output",
+    });
+    await expect(readFile(path.join(appPath, "prisma.app.json"), "utf8")).resolves.toBe(`${JSON.stringify({
+      $schema: PRISMA_APP_CONFIG_SCHEMA_URL,
+      buildCommand: "bun run build",
+      outputDirectory: ".next/standalone",
+    }, null, 2)}\n`);
+  });
+
+  it("creates TanStack and Hono build config defaults", async () => {
+    const { resolveOrCreatePreviewBuildSettings } = await import("../src/lib/app/preview-build");
+    const cwd = await createTempCwd();
+    const tanstackPath = path.join(cwd, "tanstack");
+    const honoPath = path.join(cwd, "hono");
+
+    await mkdir(tanstackPath, { recursive: true });
+    await writeFile(
+      path.join(tanstackPath, "package.json"),
+      JSON.stringify({
+        dependencies: {
+          "@tanstack/react-start": "1.0.0",
+        },
+      }, null, 2),
+      "utf8",
+    );
+    await mkdir(honoPath, { recursive: true });
+    await writeFile(
+      path.join(honoPath, "package.json"),
+      JSON.stringify({
+        dependencies: {
+          hono: "4.0.0",
+        },
+      }, null, 2),
+      "utf8",
+    );
+
+    await expect(resolveOrCreatePreviewBuildSettings({
+      appPath: tanstackPath,
+      buildType: "tanstack-start",
+    })).resolves.toMatchObject({
+      status: "created",
+      settings: {
+        buildCommand: "vite build",
+        outputDirectory: ".output",
+      },
+    });
+    await expect(resolveOrCreatePreviewBuildSettings({
+      appPath: honoPath,
+      buildType: "bun",
+    })).resolves.toMatchObject({
+      status: "created",
+      settings: {
+        buildCommand: null,
+        outputDirectory: ".",
+      },
+    });
+  });
+
+  it("uses an existing prisma.app.json without overwriting it", async () => {
+    const { resolveOrCreatePreviewBuildSettings } = await import("../src/lib/app/preview-build");
+    const cwd = await createTempCwd();
+    const appPath = path.join(cwd, "app");
+    const configPath = path.join(appPath, "prisma.app.json");
+    const config = {
+      $schema: "custom-schema",
+      buildCommand: null,
+      outputDirectory: "custom-output",
+    };
+
+    await mkdir(appPath, { recursive: true });
+    await writeFile(
+      path.join(appPath, "package.json"),
+      JSON.stringify({
+        scripts: {
+          build: "next build",
+        },
+        dependencies: {
+          next: "15.0.0",
+        },
+      }, null, 2),
+      "utf8",
+    );
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+
+    await expect(resolveOrCreatePreviewBuildSettings({
+      appPath,
+      buildType: "nextjs",
+    })).resolves.toMatchObject({
+      status: "used",
+      settings: {
+        buildCommand: null,
+        buildCommandSource: null,
+        outputDirectory: "custom-output",
+        outputDirectorySource: null,
+      },
+    });
+    await expect(readFile(configPath, "utf8")).resolves.toBe(`${JSON.stringify(config, null, 2)}\n`);
+  });
+
+  it("rejects invalid prisma.app.json files", async () => {
+    const { resolveOrCreatePreviewBuildSettings } = await import("../src/lib/app/preview-build");
+    const cwd = await createTempCwd();
+    const invalidJsonPath = path.join(cwd, "invalid-json");
+    const escapingPath = path.join(cwd, "escaping-output");
+
+    await mkdir(invalidJsonPath, { recursive: true });
+    await writeFile(path.join(invalidJsonPath, "prisma.app.json"), "{ nope\n", "utf8");
+    await mkdir(escapingPath, { recursive: true });
+    await writeFile(
+      path.join(escapingPath, "prisma.app.json"),
+      JSON.stringify({
+        buildCommand: "bun run build",
+        outputDirectory: "../dist",
+      }, null, 2),
+      "utf8",
+    );
+
+    await expect(resolveOrCreatePreviewBuildSettings({
+      appPath: invalidJsonPath,
+      buildType: "nextjs",
+    })).rejects.toMatchObject({
+      code: "APP_CONFIG_INVALID",
+      domain: "app",
+    });
+    await expect(resolveOrCreatePreviewBuildSettings({
+      appPath: escapingPath,
+      buildType: "nextjs",
+    })).rejects.toMatchObject({
+      code: "APP_CONFIG_INVALID",
+      domain: "app",
+    });
+  });
+
+  it("resolves package.json build scripts and literal framework output directories", async () => {
+    const { resolvePreviewBuildSettings } = await import("../src/lib/app/preview-build");
+    const cwd = await createTempCwd();
+    const appPath = path.join(cwd, "app");
+
+    await mkdir(appPath, { recursive: true });
+    await writeFile(
+      path.join(appPath, "package.json"),
+      JSON.stringify({
+        packageManager: "pnpm@10.0.0",
+        scripts: {
+          build: "prisma generate && next build",
+        },
+        dependencies: {
+          next: "15.0.0",
+        },
+      }, null, 2),
+      "utf8",
+    );
+    await writeFile(
+      path.join(appPath, "next.config.js"),
+      "module.exports = { output: 'standalone', distDir: 'build' };\n",
+      "utf8",
+    );
+
+    await expect(resolvePreviewBuildSettings({
+      appPath,
+      buildType: "nextjs",
+    })).resolves.toEqual({
+      buildCommand: "pnpm run build",
+      buildCommandSource: "package.json scripts.build",
+      outputDirectory: "build/standalone",
+      outputDirectorySource: "next.config distDir",
+    });
+  });
+
+  it("detects the package manager for package.json build scripts", async () => {
+    const { resolvePreviewBuildSettings } = await import("../src/lib/app/preview-build");
+    const cases = [
+      { lockfile: "bun.lock", command: "bun run build" },
+      { lockfile: "pnpm-lock.yaml", command: "pnpm run build" },
+      { lockfile: "yarn.lock", command: "yarn run build" },
+      { lockfile: "package-lock.json", command: "npm run build" },
+    ];
+
+    for (const testCase of cases) {
+      const cwd = await createTempCwd();
+      const appPath = path.join(cwd, "app");
+
+      await mkdir(appPath, { recursive: true });
+      await writeFile(
+        path.join(appPath, "package.json"),
+        JSON.stringify({
+          scripts: {
+            build: "next build",
+          },
+          dependencies: {
+            next: "15.0.0",
+          },
+        }, null, 2),
+        "utf8",
+      );
+      await writeFile(path.join(appPath, testCase.lockfile), "", "utf8");
+
+      await expect(resolvePreviewBuildSettings({
+        appPath,
+        buildType: "nextjs",
+      })).resolves.toMatchObject({
+        buildCommand: testCase.command,
+        buildCommandSource: "package.json scripts.build",
+      });
+    }
+  });
+
+  it("runs package.json build scripts before staging Next.js output", async () => {
+    const cwd = await createTempCwd();
+    const appPath = path.join(cwd, "app");
+
+    await mkdir(appPath, { recursive: true });
+    await writeFile(
+      path.join(appPath, "package.json"),
+      JSON.stringify({
+        packageManager: "npm@10.0.0",
+        scripts: {
+          build: "node build.mjs",
+        },
+        dependencies: {
+          next: "15.0.0",
+        },
+      }, null, 2),
+      "utf8",
+    );
+    await writeFile(
+      path.join(appPath, "build.mjs"),
+      [
+        "import { mkdir, writeFile } from 'node:fs/promises';",
+        "await mkdir('.next/standalone', { recursive: true });",
+        "await mkdir('.next/static', { recursive: true });",
+        "await mkdir('public', { recursive: true });",
+        "await writeFile('.next/standalone/server.js', \"console.log('next');\\n\");",
+        "await writeFile('.next/static/client.js', \"console.log('static');\\n\");",
+        "await writeFile('public/hello.txt', 'hello\\n');",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const { executePreviewBuild } = await import("../src/lib/app/preview-build");
+    const result = await executePreviewBuild({
+      appPath,
+      buildType: "nextjs",
+    });
+
+    expect(result.buildType).toBe("nextjs");
+    expect(result.artifact.entrypoint).toBe("server.js");
+    await expect(readFile(path.join(result.artifact.directory, ".next", "static", "client.js"), "utf8")).resolves.toContain("static");
+    await expect(readFile(path.join(result.artifact.directory, "public", "hello.txt"), "utf8")).resolves.toContain("hello");
+    await result.artifact.cleanup?.();
+  });
+
+  it("skips the build command when prisma.app.json sets buildCommand to null", async () => {
+    const cwd = await createTempCwd();
+    const appPath = path.join(cwd, "app");
+    const outputDir = path.join(appPath, ".next", "standalone");
+
+    await mkdir(outputDir, { recursive: true });
+    await writeFile(path.join(outputDir, "server.js"), "console.log('prebuilt');\n", "utf8");
+
+    const { executePreviewBuild } = await import("../src/lib/app/preview-build");
+    const result = await executePreviewBuild({
+      appPath,
+      buildType: "nextjs",
+      buildSettings: {
+        buildCommand: null,
+        buildCommandSource: null,
+        outputDirectory: ".next/standalone",
+        outputDirectorySource: null,
+      },
+    });
+
+    expect(result.buildType).toBe("nextjs");
+    expect(result.artifact.entrypoint).toBe("server.js");
+    await expect(readFile(path.join(result.artifact.directory, "server.js"), "utf8")).resolves.toContain("prebuilt");
+    await result.artifact.cleanup?.();
+  });
+
   it("returns the Next.js default HTTP port mapping in the built artifact", async () => {
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");

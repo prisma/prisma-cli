@@ -4,6 +4,7 @@ import path from "node:path";
 export interface BunPackageJsonLike {
   main?: unknown;
   module?: unknown;
+  packageManager?: unknown;
   scripts?: unknown;
   dependencies?: unknown;
   devDependencies?: unknown;

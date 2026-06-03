@@ -147,8 +147,8 @@ async function writePackageJson(
   packageJson: {
     name?: string;
     module?: string;
-    dependencies?: Record<string, string>;
-    devDependencies?: Record<string, string>;
+    dependencies?: Record<string, string | undefined>;
+    devDependencies?: Record<string, string | undefined>;
   },
 ): Promise<void> {
   await writeFile(path.join(cwd, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`);
@@ -161,6 +161,10 @@ async function writeGitBranch(cwd: string, branchName: string): Promise<void> {
 
 async function readLocalPin(cwd: string): Promise<unknown> {
   return JSON.parse(await readFile(path.join(cwd, ".prisma/local.json"), "utf8"));
+}
+
+async function readPrismaAppConfig(cwd: string): Promise<unknown> {
+  return JSON.parse(await readFile(path.join(cwd, "prisma.app.json"), "utf8"));
 }
 
 async function writeLocalPin(
@@ -372,7 +376,6 @@ describe("app controller", () => {
     await runAppDeploy(context, "hello-world", {
       projectRef: "proj_123",
       entrypoint: "server.ts",
-      buildType: "bun",
       httpPort: "8080",
       envAssignments: ["DATABASE_URL=postgresql://example"],
     });
@@ -1170,6 +1173,12 @@ describe("app controller", () => {
         branchName: "feat-j1",
         appName: "my-app",
         buildType: "nextjs",
+        buildSettings: {
+          buildCommand: "next build",
+          buildCommandSource: "Next.js default",
+          outputDirectory: ".next/standalone",
+          outputDirectorySource: "Next.js output",
+        },
         portMapping: { http: 3000 },
         signal: context.runtime.signal,
       }),
@@ -1200,11 +1209,107 @@ describe("app controller", () => {
     expect(stderr.buffer).toContain(`Linked "./${path.basename(cwd)}" to Project "my-app"`);
     expect(stderr.buffer).toContain("Saved .prisma/local.json");
     expect(stderr.buffer).toContain("Deploying to my-app / feat-j1 / my-app");
+    expect(stderr.buffer).toContain("Created prisma.app.json");
+    expect(stderr.buffer).toContain("Build Command");
+    expect(stderr.buffer).toContain("next build");
+    expect(stderr.buffer).toContain("Output Directory");
+    expect(stderr.buffer).toContain(".next/standalone");
+    await expect(readPrismaAppConfig(cwd)).resolves.toEqual({
+      $schema: "https://pris.ly/schemas/prisma-app-config.v1.json",
+      buildCommand: "next build",
+      outputDirectory: ".next/standalone",
+    });
     await expect(readLocalPin(cwd)).resolves.toEqual({
       workspaceId: "ws_123",
       projectId: "proj_my_app",
     });
     await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(".prisma/\n");
+  });
+
+  it("uses existing prisma.app.json deploy settings", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+    ]);
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+        liveUrl: "https://hello-world.prisma.app",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
+        listApps,
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writePackageJson(cwd, {
+      name: "hello-world",
+      dependencies: {
+        next: "15.0.0",
+      },
+    });
+    await writeFile(
+      path.join(cwd, "prisma.app.json"),
+      `${JSON.stringify({
+        $schema: "https://pris.ly/schemas/prisma-app-config.v1.json",
+        buildCommand: "bun run build",
+        outputDirectory: ".next/standalone",
+      }, null, 2)}\n`,
+      "utf8",
+    );
+    const stateDir = path.join(cwd, ".state");
+    const { context, stderr } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      framework: "nextjs",
+    });
+
+    expect(deployApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        buildType: "nextjs",
+        buildSettings: {
+          buildCommand: "bun run build",
+          buildCommandSource: null,
+          outputDirectory: ".next/standalone",
+          outputDirectorySource: null,
+        },
+      }),
+    );
+    expect(stderr.buffer).toContain("Using prisma.app.json");
+    expect(stderr.buffer).toContain("Build Command");
+    expect(stderr.buffer).toContain("bun run build");
+    expect(stderr.buffer).toContain("Output Directory");
+    expect(stderr.buffer).toContain(".next/standalone");
   });
 
   it("writes the local binding before build failures and renders build-failure copy", async () => {
