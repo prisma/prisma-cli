@@ -77,15 +77,33 @@ async function listBranches(
   projectId: string,
   signal: AbortSignal,
 ): Promise<RawBranchRecord[]> {
-  const { data, error, response } = await client.GET("/v1/projects/{projectId}/branches", {
-    params: { path: { projectId } },
-    signal,
-  });
-  if (error || !data) {
-    throw branchApiError("Failed to list branches", response, error);
+  const collected: RawBranchRecord[] = [];
+  let cursor: string | undefined;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const query: Record<string, string | undefined> = {};
+    if (cursor !== undefined) {
+      query.cursor = cursor;
+    }
+
+    const { data, error, response } = await client.GET("/v1/projects/{projectId}/branches", {
+      params: { path: { projectId }, query },
+      signal,
+    });
+    if (error || !data) {
+      throw branchApiError("Failed to list branches", response, error);
+    }
+
+    collected.push(...data.data as RawBranchRecord[]);
+
+    if (!data.pagination.hasMore || !data.pagination.nextCursor) {
+      break;
+    }
+    cursor = data.pagination.nextCursor;
   }
 
-  return data.data as RawBranchRecord[];
+  return collected;
 }
 
 function toBranchSummary(branch: RawBranchRecord): BranchSummary {

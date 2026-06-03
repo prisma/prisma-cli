@@ -14,7 +14,7 @@ afterEach(() => {
 
 function createMockClient() {
   return {
-    GET: vi.fn().mockImplementation((pathName: string) => {
+    GET: vi.fn().mockImplementation((pathName: string, request?: { params?: { query?: { cursor?: string } } }) => {
       if (pathName === "/v1/projects") {
         return {
           data: {
@@ -32,13 +32,25 @@ function createMockClient() {
       }
 
       if (pathName === "/v1/projects/{projectId}/branches") {
+        const cursor = request?.params?.query?.cursor;
+        if (cursor === "cursor_2") {
+          return {
+            data: {
+              data: [
+                { id: "br_feature", gitName: "feature/auth", role: "preview" },
+              ],
+              pagination: { hasMore: false, nextCursor: null },
+            },
+            response: { status: 200 },
+          };
+        }
+
         return {
           data: {
             data: [
               { id: "br_main", gitName: "main", role: "production" },
-              { id: "br_feature", gitName: "feature/auth", role: "preview" },
             ],
-            pagination: { hasMore: false, nextCursor: null },
+            pagination: { hasMore: true, nextCursor: "cursor_2" },
           },
           response: { status: 200 },
         };
@@ -93,7 +105,13 @@ describe("branch controller", () => {
     expect(client.GET).toHaveBeenCalledWith(
       "/v1/projects/{projectId}/branches",
       expect.objectContaining({
-        params: { path: { projectId: "proj_123" } },
+        params: { path: { projectId: "proj_123" }, query: {} },
+      }),
+    );
+    expect(client.GET).toHaveBeenCalledWith(
+      "/v1/projects/{projectId}/branches",
+      expect.objectContaining({
+        params: { path: { projectId: "proj_123" }, query: { cursor: "cursor_2" } },
       }),
     );
     expect(result).toEqual({
