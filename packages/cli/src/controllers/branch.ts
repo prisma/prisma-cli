@@ -68,8 +68,25 @@ async function listRealBranches(context: CommandContext): Promise<BranchListResu
   return {
     projectId: target.project.id,
     projectName: target.project.name,
-    branches: branches.map(toBranchSummary),
+    branches: sortBranches(branches.map(toBranchSummary)),
   };
+}
+
+function sortBranches(branches: BranchSummary[]): BranchSummary[] {
+  return branches.slice().sort((left, right) => {
+    const leftRank = branchOrder(left);
+    const rightRank = branchOrder(right);
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    return left.name.localeCompare(right.name);
+  });
+}
+
+function branchOrder(branch: BranchSummary): number {
+  return branch.role === "production" ? 0 : 1;
 }
 
 async function listBranches(

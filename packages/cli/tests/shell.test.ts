@@ -95,7 +95,7 @@ describe("shell behavior", () => {
     expect(projectResult.stderr).toContain("Global options:");
 
     expect(branchResult.exitCode).toBe(0);
-    expect(branchResult.stderr).toContain("branch → View your active Platform branches");
+    expect(branchResult.stderr).toContain("branch → View your Platform branches");
     expect(branchResult.stderr).toContain("Global options:");
   });
 

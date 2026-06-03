@@ -37,7 +37,7 @@ function createMockClient() {
           return {
             data: {
               data: [
-                { id: "br_feature", gitName: "feature/auth", role: "preview" },
+                { id: "br_main", gitName: "main", role: "production" },
               ],
               pagination: { hasMore: false, nextCursor: null },
             },
@@ -48,7 +48,7 @@ function createMockClient() {
         return {
           data: {
             data: [
-              { id: "br_main", gitName: "main", role: "production" },
+              { id: "br_feature", gitName: "feature/auth", role: "preview" },
             ],
             pagination: { hasMore: true, nextCursor: "cursor_2" },
           },

@@ -533,14 +533,14 @@ prisma-cli git disconnect --json
 
 Purpose:
 
-- list active Platform branches for the resolved project
+- list Platform branches for the resolved project
 
 Behavior:
 
 - shows known remote branches for the resolved project
-- shows each branch's name, role, and resolved env map
+- shows each branch's name, role, and role-derived env map (`production` for `role=production`, `preview` for `role=preview`)
 - does not create remote state
-- does not expose durability, protection, deployment, or env override annotations yet
+- does not include branch-specific env overrides, durability, protection, or deployment metadata
 
 Examples:
 

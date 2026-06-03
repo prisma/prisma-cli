@@ -68,7 +68,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
   {
     id: "branch",
     path: ["prisma", "branch"],
-    description: "View your active Platform branches",
+    description: "View your Platform branches",
     examples: ["prisma-cli branch list"],
   },
   {
@@ -120,7 +120,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
   {
     id: "branch.list",
     path: ["prisma", "branch", "list"],
-    description: "List active Platform branches for the resolved project",
+    description: "List Platform branches for the resolved project",
     examples: ["prisma-cli branch list", "prisma-cli branch list --json"],
   },
   {

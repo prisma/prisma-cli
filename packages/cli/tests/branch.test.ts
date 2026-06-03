@@ -114,13 +114,13 @@ describe("branch commands", () => {
     });
 
     expect(branchHelp.exitCode).toBe(0);
-    expect(branchHelp.stderr).toContain("View your active Platform branches");
+    expect(branchHelp.stderr).toContain("View your Platform branches");
     expect(branchHelp.stderr).toContain("$ prisma-cli branch list");
     expect(branchHelp.stderr).not.toContain("branch show");
     expect(branchHelp.stderr).not.toContain("branch use");
 
     expect(listHelp.exitCode).toBe(0);
-    expect(listHelp.stderr).toContain("List active Platform branches for the resolved project");
+    expect(listHelp.stderr).toContain("List Platform branches for the resolved project");
     expect(listHelp.stderr).toContain("$ prisma-cli branch list");
     expect(listHelp.stderr).toContain("$ prisma-cli branch list --json");
   });
