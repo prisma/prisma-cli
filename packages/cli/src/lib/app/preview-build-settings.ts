@@ -2,6 +2,8 @@ import { exec } from "node:child_process";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { parseModule, type ASTNode } from "magicast";
+
 import { CliError } from "../../shell/errors";
 import { readBunPackageJson, type BunPackageJsonLike } from "./bun-project";
 import type { ResolvedPreviewBuildType } from "./preview-build";
@@ -15,6 +17,11 @@ export const PRISMA_APP_CONFIG_SCHEMA_URL = "https://pris.ly/schemas/prisma-app-
 interface ResolvedBuildCommand {
   command: string | null;
   source: string | null;
+}
+
+interface StaticNextConfig {
+  distDir?: string;
+  output?: "standalone" | "export";
 }
 
 export interface PreviewBuildSettings {
@@ -214,24 +221,15 @@ function normalizeConfigOutputDirectory(configPath: string, value: unknown): str
     throw invalidPrismaAppConfigError(configPath, "The outputDirectory field must be a non-empty string.");
   }
 
-  const normalized = path.normalize(value.trim());
-  if (
-    path.isAbsolute(normalized) ||
-    normalized === ".." ||
-    normalized.startsWith(`..${path.sep}`) ||
-    normalized.includes(`${path.sep}..${path.sep}`)
-  ) {
+  const normalized = normalizeRelativePath(value);
+  if (!normalized) {
     throw invalidPrismaAppConfigError(
       configPath,
       "The outputDirectory field must be a relative path inside the app directory.",
     );
   }
 
-  if (normalized === ".") {
-    return ".";
-  }
-
-  return normalized.split(path.sep).join("/");
+  return normalized;
 }
 
 function invalidPrismaAppConfigError(configPath: string, why: string): CliError {
@@ -296,6 +294,13 @@ async function resolveFrameworkBuildCommand(
 ): Promise<ResolvedBuildCommand> {
   if (hasBuildScript(packageJson)) {
     const packageManager = await resolvePackageManager(appPath, packageJson, fallback.signal);
+    if (!packageManager) {
+      return {
+        command: fallback.command,
+        source: fallback.source,
+      };
+    }
+
     return {
       command: `${packageManager} run build`,
       source: "package.json scripts.build",
@@ -321,7 +326,7 @@ async function resolvePackageManager(
   appPath: string,
   packageJson: BunPackageJsonLike | null,
   signal?: AbortSignal,
-): Promise<PackageManager> {
+): Promise<PackageManager | undefined> {
   const fromPackageManager = packageManagerFromPackageJson(packageJson?.packageManager);
   if (fromPackageManager) {
     return fromPackageManager;
@@ -342,8 +347,6 @@ async function resolvePackageManager(
   if (await pathExists(path.join(appPath, "package-lock.json"), signal)) {
     return "npm";
   }
-
-  return "bun";
 }
 
 function packageManagerFromPackageJson(value: unknown): PackageManager | null {
@@ -407,7 +410,7 @@ async function resolveNextOutputRoot(appPath: string, signal?: AbortSignal): Pro
   return config.distDir ?? ".next";
 }
 
-async function readNextConfig(appPath: string, signal?: AbortSignal): Promise<{ distDir?: string }> {
+async function readNextConfig(appPath: string, signal?: AbortSignal): Promise<StaticNextConfig> {
   for (const fileName of NEXT_CONFIG_FILENAMES) {
     const filePath = path.join(appPath, fileName);
     let content: string;
@@ -421,9 +424,7 @@ async function readNextConfig(appPath: string, signal?: AbortSignal): Promise<{ 
       throw error;
     }
 
-    return {
-      distDir: readStaticDistDir(content),
-    };
+    return readStaticNextConfig(content);
   }
 
   return {};
@@ -432,29 +433,31 @@ async function readNextConfig(appPath: string, signal?: AbortSignal): Promise<{ 
 const NEXT_CONFIG_FILENAMES = [
   "next.config.js",
   "next.config.mjs",
-  "next.config.cjs",
   "next.config.ts",
   "next.config.mts",
 ] as const;
 
-function readStaticDistDir(content: string): string | undefined {
-  const match = /\bdistDir\s*:\s*["'`]([^"'`]+)["'`]/.exec(content);
-  const rawDistDir = match?.[1]?.trim();
-  if (!rawDistDir) {
-    return undefined;
-  }
+function readStaticNextConfig(content: string): StaticNextConfig {
+  try {
+    const module = parseModule(content);
+    const program = asAstNode(module.$ast);
+    const bindings = program ? collectStaticBindings(program) : new Map<string, AstNode>();
+    const configObject = program ? findExportedConfigObject(program, bindings) : null;
+    if (!configObject) {
+      return {};
+    }
 
-  const normalized = path.normalize(rawDistDir);
-  if (
-    path.isAbsolute(normalized) ||
-    normalized === ".." ||
-    normalized.startsWith(`..${path.sep}`) ||
-    normalized.includes(`${path.sep}..${path.sep}`)
-  ) {
-    return undefined;
-  }
+    const rawDistDir = readStaticStringProperty(configObject, "distDir");
+    const output = readStaticStringProperty(configObject, "output");
+    const distDir = rawDistDir ? normalizeRelativePath(rawDistDir) : undefined;
 
-  return normalized.split(path.sep).join("/");
+    return {
+      distDir,
+      output: output === "standalone" || output === "export" ? output : undefined,
+    };
+  } catch {
+    return {};
+  }
 }
 
 export function joinPosix(...parts: string[]): string {
@@ -474,6 +477,171 @@ export function nextOutputRootFromStandaloneDirectory(outputDirectory: string): 
 
   const dirname = path.posix.dirname(normalized);
   return dirname === "." ? "." : dirname;
+}
+
+type AstNode = ASTNode & { type: string; [key: string]: unknown };
+
+function asAstNode(value: unknown): AstNode | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const type = (value as { type?: unknown }).type;
+  return typeof type === "string" ? value as AstNode : null;
+}
+
+function astNodes(value: unknown): AstNode[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map(asAstNode).filter((node): node is AstNode => Boolean(node));
+}
+
+function collectStaticBindings(program: AstNode): Map<string, AstNode> {
+  const bindings = new Map<string, AstNode>();
+  for (const statement of astNodes(program.body)) {
+    if (statement.type !== "VariableDeclaration") {
+      continue;
+    }
+
+    for (const declaration of astNodes(statement.declarations)) {
+      const id = asAstNode(declaration.id);
+      const init = asAstNode(declaration.init);
+      if (id?.type === "Identifier" && typeof id.name === "string" && init) {
+        bindings.set(id.name, init);
+      }
+    }
+  }
+
+  return bindings;
+}
+
+function findExportedConfigObject(program: AstNode, bindings: Map<string, AstNode>): AstNode | null {
+  for (const statement of astNodes(program.body)) {
+    if (statement.type === "ExportDefaultDeclaration") {
+      return resolveConfigObject(statement.declaration, bindings);
+    }
+
+    if (statement.type !== "ExpressionStatement") {
+      continue;
+    }
+
+    const expression = asAstNode(statement.expression);
+    if (expression?.type !== "AssignmentExpression" || expression.operator !== "=") {
+      continue;
+    }
+
+    if (isModuleExports(expression.left)) {
+      return resolveConfigObject(expression.right, bindings);
+    }
+  }
+
+  return null;
+}
+
+function resolveConfigObject(value: unknown, bindings: Map<string, AstNode>, depth = 0): AstNode | null {
+  if (depth > 4) {
+    return null;
+  }
+
+  const node = unwrapStaticExpression(asAstNode(value));
+  if (!node) {
+    return null;
+  }
+
+  if (node.type === "ObjectExpression") {
+    return node;
+  }
+
+  if (node.type === "Identifier" && typeof node.name === "string") {
+    return resolveConfigObject(bindings.get(node.name), bindings, depth + 1);
+  }
+
+  if (node.type === "CallExpression") {
+    return resolveConfigObject(astNodes(node.arguments)[0], bindings, depth + 1);
+  }
+
+  return null;
+}
+
+function unwrapStaticExpression(node: AstNode | null): AstNode | null {
+  let current = node;
+  while (
+    current?.type === "TSAsExpression" ||
+    current?.type === "TSSatisfiesExpression" ||
+    current?.type === "TSNonNullExpression"
+  ) {
+    current = asAstNode(current.expression);
+  }
+
+  return current;
+}
+
+function isModuleExports(value: unknown): boolean {
+  const node = asAstNode(value);
+  if (node?.type !== "MemberExpression" || node.computed === true) {
+    return false;
+  }
+
+  const object = asAstNode(node.object);
+  const property = asAstNode(node.property);
+  return object?.type === "Identifier" &&
+    object.name === "module" &&
+    property?.type === "Identifier" &&
+    property.name === "exports";
+}
+
+function readStaticStringProperty(objectExpression: AstNode, propertyName: string): string | undefined {
+  for (const property of astNodes(objectExpression.properties)) {
+    if (property.type !== "ObjectProperty" || property.computed === true) {
+      continue;
+    }
+
+    if (propertyKeyName(property.key) !== propertyName) {
+      continue;
+    }
+
+    const value = unwrapStaticExpression(asAstNode(property.value));
+    if (value?.type === "StringLiteral" && typeof value.value === "string") {
+      const trimmed = value.value.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    }
+  }
+
+  return undefined;
+}
+
+function propertyKeyName(value: unknown): string | undefined {
+  const key = asAstNode(value);
+  if (key?.type === "Identifier" && typeof key.name === "string") {
+    return key.name;
+  }
+
+  if (key?.type === "StringLiteral" && typeof key.value === "string") {
+    return key.value;
+  }
+
+  return undefined;
+}
+
+function normalizeRelativePath(value: string): string | undefined {
+  const raw = value.trim().replace(/\\/g, "/");
+  if (raw.length === 0 || raw.split("/").includes("..")) {
+    return undefined;
+  }
+
+  const normalized = path.posix.normalize(raw);
+  const segments = normalized.split("/");
+  if (
+    path.win32.isAbsolute(value) ||
+    path.posix.isAbsolute(normalized) ||
+    segments.includes("..")
+  ) {
+    return undefined;
+  }
+
+  return normalized === "." ? "." : normalized;
 }
 
 async function pathExists(targetPath: string, signal?: AbortSignal): Promise<boolean> {

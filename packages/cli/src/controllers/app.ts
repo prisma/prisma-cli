@@ -2739,7 +2739,6 @@ async function detectNextConfig(cwd: string, signal: AbortSignal): Promise<{ exi
   const candidates = [
     "next.config.js",
     "next.config.mjs",
-    "next.config.cjs",
     "next.config.ts",
     "next.config.mts",
   ];

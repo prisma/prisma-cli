@@ -212,6 +212,82 @@ describe("preview build strategy", () => {
     });
   });
 
+  it("only reads Next.js distDir from the exported config object", async () => {
+    const { resolvePreviewBuildSettings } = await import("../src/lib/app/preview-build");
+    const cwd = await createTempCwd();
+    const appPath = path.join(cwd, "app");
+
+    await mkdir(appPath, { recursive: true });
+    await writeFile(
+      path.join(appPath, "package.json"),
+      JSON.stringify({
+        packageManager: "pnpm@10.0.0",
+        scripts: {
+          build: "next build",
+        },
+        dependencies: {
+          next: "15.0.0",
+        },
+      }, null, 2),
+      "utf8",
+    );
+    await writeFile(
+      path.join(appPath, "next.config.ts"),
+      [
+        "const unrelated = { distDir: 'wrong' };",
+        "const nextConfig = { output: 'standalone', distDir: 'build' } satisfies object;",
+        "export default defineConfig(nextConfig);",
+      ].join("\n"),
+      "utf8",
+    );
+
+    await expect(resolvePreviewBuildSettings({
+      appPath,
+      buildType: "nextjs",
+    })).resolves.toMatchObject({
+      outputDirectory: "build/standalone",
+      outputDirectorySource: "next.config distDir",
+    });
+  });
+
+  it("ignores commented or unrelated Next.js distDir values", async () => {
+    const { resolvePreviewBuildSettings } = await import("../src/lib/app/preview-build");
+    const cwd = await createTempCwd();
+    const appPath = path.join(cwd, "app");
+
+    await mkdir(appPath, { recursive: true });
+    await writeFile(
+      path.join(appPath, "package.json"),
+      JSON.stringify({
+        packageManager: "pnpm@10.0.0",
+        scripts: {
+          build: "next build",
+        },
+        dependencies: {
+          next: "15.0.0",
+        },
+      }, null, 2),
+      "utf8",
+    );
+    await writeFile(
+      path.join(appPath, "next.config.js"),
+      [
+        "// distDir: 'commented'",
+        "const unrelated = { distDir: 'wrong' };",
+        "module.exports = { output: 'standalone' };",
+      ].join("\n"),
+      "utf8",
+    );
+
+    await expect(resolvePreviewBuildSettings({
+      appPath,
+      buildType: "nextjs",
+    })).resolves.toMatchObject({
+      outputDirectory: ".next/standalone",
+      outputDirectorySource: "Next.js output",
+    });
+  });
+
   it("detects the package manager for package.json build scripts", async () => {
     const { resolvePreviewBuildSettings } = await import("../src/lib/app/preview-build");
     const cases = [
@@ -248,6 +324,58 @@ describe("preview build strategy", () => {
         buildCommandSource: "package.json scripts.build",
       });
     }
+  });
+
+  it("uses the framework build command when scripts.build exists but no package manager is detected", async () => {
+    const { resolvePreviewBuildSettings } = await import("../src/lib/app/preview-build");
+    const cwd = await createTempCwd();
+    const appPath = path.join(cwd, "app");
+
+    await mkdir(appPath, { recursive: true });
+    await writeFile(
+      path.join(appPath, "package.json"),
+      JSON.stringify({
+        scripts: {
+          build: "custom-build",
+        },
+        dependencies: {
+          next: "15.0.0",
+        },
+      }, null, 2),
+      "utf8",
+    );
+
+    await expect(resolvePreviewBuildSettings({
+      appPath,
+      buildType: "nextjs",
+    })).resolves.toMatchObject({
+      buildCommand: "next build",
+      buildCommandSource: "Next.js default",
+    });
+  });
+
+  it("does not detect unsupported next.config.cjs files as Next.js", async () => {
+    const { resolvePreviewBuildStrategy } = await import("../src/lib/app/preview-build");
+    const cwd = await createTempCwd();
+    const appPath = path.join(cwd, "app");
+
+    await mkdir(appPath, { recursive: true });
+    await writeFile(
+      path.join(appPath, "package.json"),
+      JSON.stringify({
+        module: "index.ts",
+      }, null, 2),
+      "utf8",
+    );
+    await writeFile(path.join(appPath, "index.ts"), "export default { fetch: () => new Response('ok') };\n", "utf8");
+    await writeFile(path.join(appPath, "next.config.cjs"), "module.exports = { output: 'standalone' };\n", "utf8");
+
+    await expect(resolvePreviewBuildStrategy({
+      appPath,
+      buildType: "auto",
+    })).resolves.toMatchObject({
+      buildType: "bun",
+    });
   });
 
   it("runs package.json build scripts before staging Next.js output", async () => {

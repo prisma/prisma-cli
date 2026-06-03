@@ -363,7 +363,6 @@ class PreviewBunBuild implements BuildStrategy {
 const NEXT_CONFIG_FILENAMES = [
   "next.config.js",
   "next.config.mjs",
-  "next.config.cjs",
   "next.config.ts",
   "next.config.mts",
 ] as const;
