@@ -17,6 +17,7 @@ import { writeHumanError, writeJsonError, writeJsonSuccess } from "./shell/outpu
 import { disposePromptState } from "./shell/prompt";
 import { configureRuntimeCommand, createCommandContext, type CliRuntime } from "./shell/runtime";
 import { createShellUi } from "./shell/ui";
+import { maybeWriteCachedUpdateNotification } from "./shell/update-check";
 
 export interface RunCliOptions extends Partial<CliRuntime> {
   argv?: string[];
@@ -28,6 +29,8 @@ export async function runCli(options: RunCliOptions = {}): Promise<number> {
   process.exitCode = 0;
 
   try {
+    await maybeWriteCachedUpdateNotification(runtime);
+
     if (runtime.argv.includes("--version")) {
       return await handleVersionFlag(runtime);
     }
@@ -152,6 +155,7 @@ function resolveRuntime(options: RunCliOptions): CliRuntime {
     argv: options.argv ?? process.argv.slice(2),
     cwd: options.cwd ?? process.env.INIT_CWD ?? process.cwd(),
     env: options.env ?? process.env,
+    signal: options.signal ?? new AbortController().signal,
     stdin: options.stdin ?? process.stdin,
     stdout: options.stdout ?? process.stdout,
     stderr: options.stderr ?? process.stderr,

@@ -441,6 +441,7 @@ describe("app controller", () => {
     expect(addDomain).toHaveBeenCalledWith({
       appId: "app_1",
       hostname: "shop.acme.com",
+      signal: context.runtime.signal,
     });
     expect(retryDomain).not.toHaveBeenCalled();
     expect(result.result).toMatchObject({
@@ -526,6 +527,7 @@ describe("app controller", () => {
     expect(addDomain).toHaveBeenCalledWith({
       appId: "app_1",
       hostname: "shop.acme.com",
+      signal: context.runtime.signal,
     });
     expect(result.result.project.id).toBe("proj_123");
   });
@@ -1158,7 +1160,10 @@ describe("app controller", () => {
       projectRef: "proj_my_app",
     });
 
-    expect(listApps).toHaveBeenCalledWith("proj_my_app", { branchName: "feat-j1" });
+    expect(listApps).toHaveBeenCalledWith("proj_my_app", {
+      branchName: "feat-j1",
+      signal: context.runtime.signal,
+    });
     expect(deployApp).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: "proj_my_app",
@@ -1166,6 +1171,7 @@ describe("app controller", () => {
         appName: "my-app",
         buildType: "nextjs",
         portMapping: { http: 3000 },
+        signal: context.runtime.signal,
       }),
     );
     expect(result.result).toMatchObject({
@@ -1866,6 +1872,85 @@ describe("app controller", () => {
     expect(stderr.buffer).toContain(`Linked "./${path.basename(cwd)}" to Project "Acme Dashboard"`);
   });
 
+  it("interactive first deploy previews detected framework and runtime before the customization prompt", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const createProject = vi.fn();
+    const listApps = vi.fn().mockResolvedValue([]);
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_new",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        createProject,
+        resolveBranch: createResolveBranch(),
+        listApps,
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writePackageJson(cwd, {
+      name: "hello-world",
+      dependencies: {
+        next: "15.0.0",
+      },
+    });
+    const stateDir = path.join(cwd, ".state");
+    const { context, stderr } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: true,
+      stdinText: "\r\r",
+      env: {
+        ...process.env,
+        PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await runAppDeploy(context, "hello-world");
+
+    expect(deployApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        buildType: "nextjs",
+        portMapping: { http: 3000 },
+      }),
+    );
+
+    const targetIndex = stderr.buffer.indexOf("Deploying to Acme Dashboard / main / hello-world");
+    const detectedIndex = stderr.buffer.indexOf("Detected Next.js");
+    const promptIndex = stderr.buffer.indexOf("Customize build settings?");
+
+    expect(targetIndex).toBeGreaterThanOrEqual(0);
+    expect(detectedIndex).toBeGreaterThan(targetIndex);
+    expect(stderr.buffer).toContain("framework:");
+    expect(stderr.buffer).toContain("runtime:");
+    expect(stderr.buffer).toContain("Next.js");
+    expect(stderr.buffer).toContain("HTTP 3000");
+    expect(stderr.buffer).not.toContain("Using deploy settings:");
+    expect(stderr.buffer).not.toContain("build:");
+    expect(promptIndex).toBeGreaterThan(detectedIndex);
+  });
+
   it("interactive first deploy can create a new Project from an editable suggested name", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const createProject = vi.fn().mockResolvedValue({
@@ -1925,7 +2010,10 @@ describe("app controller", () => {
       framework: "hono",
     });
 
-    expect(createProject).toHaveBeenCalledWith({ name: "interactive-project" });
+    expect(createProject).toHaveBeenCalledWith({
+      name: "interactive-project",
+      signal: context.runtime.signal,
+    });
     expect(result.result).toMatchObject({
       project: {
         id: "proj_new",
@@ -2452,6 +2540,7 @@ describe("app controller", () => {
 
     expect(createProject).toHaveBeenCalledWith({
       name: "launchpad",
+      signal: context.runtime.signal,
     });
     expect(deployApp).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2692,7 +2781,10 @@ describe("app controller", () => {
         },
       },
     });
-    expect(createProject).toHaveBeenCalledWith({ name: "next-smoke" });
+    expect(createProject).toHaveBeenCalledWith({
+      name: "next-smoke",
+      signal: context.runtime.signal,
+    });
     await expect(readPrismaConfig(cwd)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -4330,6 +4422,7 @@ describe("app controller", () => {
 
     expect(streamDeploymentLogs).toHaveBeenCalledWith(expect.objectContaining({
       deploymentId: "dep_live",
+      signal: context.runtime.signal,
     }));
     expect(stdout.buffer).toBe("hello from live\n");
   });
@@ -4550,7 +4643,7 @@ describe("app controller", () => {
 
     const result = await runAppRemove(context, "hello-world");
 
-    expect(removeApp).toHaveBeenCalledWith("app_1");
+    expect(removeApp).toHaveBeenCalledWith("app_1", { signal: context.runtime.signal });
     expect(result.result).toEqual({
       projectId: "proj_123",
       app: {
@@ -4620,7 +4713,7 @@ describe("app controller", () => {
         placeholder: "hello-world",
       }),
     );
-    expect(removeApp).toHaveBeenCalledWith("app_1");
+    expect(removeApp).toHaveBeenCalledWith("app_1", { signal: context.runtime.signal });
   });
 
   it("remove returns CONFIRMATION_REQUIRED in non-interactive mode without --yes", async () => {

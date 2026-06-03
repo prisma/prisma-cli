@@ -319,6 +319,7 @@ describe("preview build strategy", () => {
     const escapeTarget = path.join(cwd, "escape");
     const escapeLink = path.join(standaloneDir, "node_modules/escape");
 
+    await mkdir(path.join(appPath, ".git"), { recursive: true });
     await mkdir(escapeTarget, { recursive: true });
     await writeFile(path.join(escapeTarget, "index.js"), "export const escaped = true;\n", "utf8");
     await mkdir(path.dirname(escapeLink), { recursive: true });

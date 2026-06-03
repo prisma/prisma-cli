@@ -161,6 +161,7 @@ These codes are the minimum stable set for the MVP:
 - `USAGE_ERROR`
 - `AUTH_REQUIRED`
 - `PROJECT_SETUP_REQUIRED`
+- `PROJECT_LINK_TARGET_REQUIRED`
 - `PROJECT_CREATE_FAILED`
 - `PROJECT_NOT_FOUND`
 - `PROJECT_AMBIGUOUS`
@@ -195,12 +196,14 @@ These codes are the minimum stable set for the MVP:
 - `RUN_FAILED`
 - `DEPLOY_FAILED`
 - `VERSION_UNAVAILABLE`
+- `COMMAND_CANCELED`
 
 Recommended meanings:
 
 - `USAGE_ERROR`: invalid arguments or invalid command combination
 - `AUTH_REQUIRED`: command needs an authenticated session
 - `PROJECT_SETUP_REQUIRED`: command needs explicit or durable Project context before it can continue
+- `PROJECT_LINK_TARGET_REQUIRED`: `project link` needs the user to choose an existing Project or create a new one
 - `PROJECT_CREATE_FAILED`: Project creation failed before deployment or linking could continue
 - `PROJECT_NOT_FOUND`: requested project does not exist or is not accessible
 - `PROJECT_AMBIGUOUS`: multiple safe project candidates matched
@@ -235,6 +238,7 @@ Recommended meanings:
 - `RUN_FAILED`: local framework run command could not be started or exited unsuccessfully
 - `DEPLOY_FAILED`: deployment or post-build health failed
 - `VERSION_UNAVAILABLE`: CLI could not read its own bundled package metadata to report a version (defensive; not expected in normal installs)
+- `COMMAND_CANCELED`: command execution was canceled by a runtime cancellation signal such as `SIGINT` or `SIGTERM`
 
 ## Exit Codes
 
@@ -243,8 +247,11 @@ The MVP should use these process exit codes:
 - `0`: success
 - `1`: runtime or command failure
 - `2`: usage or configuration error
+- `130`: command cancellation
 
 Stable structured error codes, not exit code granularity, are the main branching surface for agents and CI.
+
+Cancellation intentionally uses `130` instead of the generic runtime failure code because it has established shell semantics for interrupted commands and is useful to operators and process supervisors. Agents and CI should still branch on `COMMAND_CANCELED` rather than the numeric exit code.
 
 ## Production Safety
 

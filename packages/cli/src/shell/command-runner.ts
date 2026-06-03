@@ -1,7 +1,7 @@
 import { AuthError as SDKAuthError } from "@prisma/management-api-sdk";
 import type { CommandDescriptor } from "./command-meta";
 import { getCommandDescriptor } from "./command-meta";
-import { authRequiredError, CliError } from "./errors";
+import { authRequiredError, CliError, commandCanceledError } from "./errors";
 import { resolveGlobalFlags } from "./global-flags";
 import type { CommandSuccess } from "./output";
 import { cliErrorToJson, writeHumanError, writeHumanLines, writeJsonError, writeJsonEvent, writeJsonSuccess } from "./output";
@@ -16,7 +16,11 @@ interface CommandPresenter<T> {
   renderJson?: (result: T) => unknown;
 }
 
-function toCliError(error: unknown): CliError | null {
+function toCliError(error: unknown, runtime: CliRuntime): CliError | null {
+  if (isCancellationError(error) || runtime.signal.aborted) {
+    return commandCanceledError();
+  }
+
   if (error instanceof CliError) return error;
 
   if (error instanceof SDKAuthError) {
@@ -24,6 +28,14 @@ function toCliError(error: unknown): CliError | null {
   }
 
   return null;
+}
+
+function isCancellationError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.name === "AbortError" || error.name === "CancelledError";
 }
 
 export async function runCommand<T>(
@@ -54,7 +66,7 @@ export async function runCommand<T>(
 
     writeHumanLines(context.output, presenter.renderHuman(context, descriptor, success.result));
   } catch (error) {
-    const cliError = toCliError(error);
+    const cliError = toCliError(error, runtime);
     if (cliError) {
       if (flags.json) {
         writeJsonError(context.output, commandName, cliError);
@@ -94,7 +106,7 @@ export async function runStreamingCommand(
       });
     }
   } catch (error) {
-    const cliError = toCliError(error);
+    const cliError = toCliError(error, runtime);
     if (cliError) {
       if (flags.json) {
         writeJsonEvent(context.output, {

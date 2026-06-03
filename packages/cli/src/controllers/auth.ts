@@ -25,8 +25,8 @@ export async function runAuthLogin(
   let result: AuthStateResult;
 
   if (isRealMode(context)) {
-    await performLogin(context.runtime.env);
-    result = await readAuthState(context.runtime.env);
+    await performLogin(context.runtime.env, context.runtime.signal);
+    result = await readAuthState(context.runtime.env, context.runtime.signal);
   } else {
     const useCases = createAuthUseCases(createCliUseCaseGateways(context));
     result = await loginWithSelectionFlow(context, useCases, options);
@@ -39,8 +39,8 @@ export async function runAuthLogout(context: CommandContext): Promise<CommandSuc
   let result: AuthStateResult;
 
   if (isRealMode(context)) {
-    await performLogout(context.runtime.env);
-    result = await readAuthState(context.runtime.env);
+    await performLogout(context.runtime.env, context.runtime.signal);
+    result = await readAuthState(context.runtime.env, context.runtime.signal);
   } else {
     const useCases = createAuthUseCases(createCliUseCaseGateways(context));
     result = await useCases.logout();
@@ -53,7 +53,7 @@ export async function runAuthWhoAmI(context: CommandContext): Promise<CommandSuc
   let result: AuthStateResult;
 
   if (isRealMode(context)) {
-    result = await readAuthState(context.runtime.env);
+    result = await readAuthState(context.runtime.env, context.runtime.signal);
   } else {
     const useCases = createAuthUseCases(createCliUseCaseGateways(context));
     result = await useCases.whoami();
@@ -64,7 +64,7 @@ export async function runAuthWhoAmI(context: CommandContext): Promise<CommandSuc
 
 export async function requireAuthenticatedAuthState(context: CommandContext): Promise<AuthStateResult> {
   if (isRealMode(context)) {
-    const current = await readAuthState(context.runtime.env);
+    const current = await readAuthState(context.runtime.env, context.runtime.signal);
     if (current.authenticated) {
       return current;
     }
@@ -73,8 +73,8 @@ export async function requireAuthenticatedAuthState(context: CommandContext): Pr
       throw authRequiredError();
     }
 
-    await performLogin(context.runtime.env);
-    return readAuthState(context.runtime.env);
+    await performLogin(context.runtime.env, context.runtime.signal);
+    return readAuthState(context.runtime.env, context.runtime.signal);
   }
 
   const useCases = createAuthUseCases(createCliUseCaseGateways(context));

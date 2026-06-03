@@ -32,28 +32,32 @@ export class PreviewBuildStrategy implements BuildStrategy {
   readonly #appPath: string;
   readonly #entrypoint?: string;
   readonly #buildType: PreviewBuildType;
+  readonly #signal?: AbortSignal;
 
-  constructor(options: { appPath: string; entrypoint?: string; buildType?: PreviewBuildType }) {
+  constructor(options: { appPath: string; entrypoint?: string; buildType?: PreviewBuildType; signal?: AbortSignal }) {
     this.#appPath = options.appPath;
     this.#entrypoint = options.entrypoint;
     this.#buildType = options.buildType ?? "auto";
+    this.#signal = options.signal;
   }
 
-  async canBuild(): Promise<boolean> {
+  async canBuild(signal = this.#signal): Promise<boolean> {
     const { strategy } = await resolvePreviewBuildStrategy({
       appPath: this.#appPath,
       entrypoint: this.#entrypoint,
       buildType: this.#buildType,
+      signal,
     });
 
-    return strategy.canBuild();
+    return strategy.canBuild(signal);
   }
 
-  async execute(): Promise<BuildArtifact> {
+  async execute(signal = this.#signal): Promise<BuildArtifact> {
     const { artifact } = await executePreviewBuild({
       appPath: this.#appPath,
       entrypoint: this.#entrypoint,
       buildType: this.#buildType,
+      signal,
     });
 
     return artifact;
@@ -64,6 +68,7 @@ export async function executePreviewBuild(options: {
   appPath: string;
   entrypoint?: string;
   buildType?: PreviewBuildType;
+  signal?: AbortSignal;
 }): Promise<{
   artifact: BuildArtifact;
   buildType: ResolvedPreviewBuildType;
@@ -72,15 +77,16 @@ export async function executePreviewBuild(options: {
     appPath: options.appPath,
     entrypoint: options.entrypoint,
     buildType: options.buildType ?? "auto",
+    signal: options.signal,
   });
-  const artifact = await strategy.execute();
+  const artifact = await strategy.execute(options.signal);
 
   try {
     if (buildType === "nextjs") {
-      await restageNextjsArtifact(artifact, options.appPath);
+      await restageNextjsArtifact(artifact, options.appPath, options.signal);
     }
 
-    await normalizeArtifactSymlinks(artifact.directory, options.appPath);
+    await normalizeArtifactSymlinks(artifact.directory, options.appPath, options.signal);
     return {
       artifact,
       buildType,
@@ -95,6 +101,7 @@ export async function resolvePreviewBuildStrategy(options: {
   appPath: string;
   entrypoint?: string;
   buildType: PreviewBuildType;
+  signal?: AbortSignal;
 }): Promise<{
   strategy: BuildStrategy;
   buildType: ResolvedPreviewBuildType;
@@ -104,6 +111,7 @@ export async function resolvePreviewBuildStrategy(options: {
       appPath: options.appPath,
       entrypoint: options.entrypoint,
       buildType: options.buildType,
+      signal: options.signal,
     });
 
     return {
@@ -120,9 +128,10 @@ export async function resolvePreviewBuildStrategy(options: {
       appPath: options.appPath,
       entrypoint: options.entrypoint,
       buildType,
+      signal: options.signal,
     });
 
-    if (await strategy.canBuild()) {
+    if (await strategy.canBuild(options.signal)) {
       return {
         buildType,
         strategy,
@@ -136,6 +145,7 @@ export async function resolvePreviewBuildStrategy(options: {
       appPath: options.appPath,
       entrypoint: options.entrypoint,
       buildType: "bun",
+      signal: options.signal,
     }),
   };
 }
@@ -144,6 +154,7 @@ async function createPreviewBuildStrategy(options: {
   appPath: string;
   entrypoint?: string;
   buildType: ResolvedPreviewBuildType;
+  signal?: AbortSignal;
 }): Promise<BuildStrategy> {
   switch (options.buildType) {
     case "nextjs":
@@ -155,7 +166,7 @@ async function createPreviewBuildStrategy(options: {
     case "tanstack-start":
       return new TanstackStartBuild({ appPath: options.appPath });
     case "bun": {
-      const entrypoint = await resolveBunEntrypoint(options.appPath, options.entrypoint);
+      const entrypoint = await resolveBunEntrypoint(options.appPath, options.entrypoint, options.signal);
       return new BunBuild({
         appPath: options.appPath,
         entrypoint,
@@ -168,29 +179,32 @@ export async function stageNextjsStandaloneArtifact(options: {
   standaloneDir: string;
   artifactDir: string;
   appPath: string;
+  signal?: AbortSignal;
 }): Promise<void> {
   const standaloneRoot = path.resolve(options.standaloneDir);
   const artifactRoot = path.resolve(options.artifactDir);
   const appRoot = path.resolve(options.appPath);
-  const sourceRoot = await resolveSourceRoot(appRoot);
+  const sourceRoot = await resolveSourceRoot(appRoot, options.signal);
 
   await copyPathMaterializingSymlinks(standaloneRoot, artifactRoot, {
     standaloneRoot,
     appRoot,
     sourceRoot,
+    signal: options.signal,
   });
-  await hoistPnpmDependencies(path.join(artifactRoot, "node_modules"));
+  await hoistPnpmDependencies(path.join(artifactRoot, "node_modules"), options.signal);
 }
 
-export async function restageNextjsArtifact(artifact: BuildArtifact, appPath: string): Promise<void> {
+export async function restageNextjsArtifact(artifact: BuildArtifact, appPath: string, signal?: AbortSignal): Promise<void> {
   const artifactDir = artifact.directory;
   const standaloneDir = path.join(appPath, ".next", "standalone");
 
-  await rm(artifactDir, { recursive: true, force: true });
+  await unsupportedFilesystemBoundary(signal, () => rm(artifactDir, { recursive: true, force: true }));
   await stageNextjsStandaloneArtifact({
     standaloneDir,
     artifactDir,
     appPath,
+    signal,
   });
 
   // The SDK's Next.js strategy reports the entrypoint relative to the
@@ -203,19 +217,19 @@ export async function restageNextjsArtifact(artifact: BuildArtifact, appPath: st
     : artifactDir;
 
   const publicDir = path.join(appPath, "public");
-  if (await directoryExists(publicDir)) {
-    await cp(publicDir, path.join(serverDir, "public"), {
+  if (await directoryExists(publicDir, signal)) {
+    await unsupportedFilesystemBoundary(signal, () => cp(publicDir, path.join(serverDir, "public"), {
       recursive: true,
       verbatimSymlinks: true,
-    });
+    }));
   }
 
   const staticDir = path.join(appPath, ".next", "static");
-  if (await directoryExists(staticDir)) {
-    await cp(staticDir, path.join(serverDir, ".next", "static"), {
+  if (await directoryExists(staticDir, signal)) {
+    await unsupportedFilesystemBoundary(signal, () => cp(staticDir, path.join(serverDir, ".next", "static"), {
       recursive: true,
       verbatimSymlinks: true,
-    });
+    }));
   }
 }
 
@@ -225,25 +239,25 @@ function nextjsServerSubpath(entrypoint: string): string {
   return dir === "." ? "" : dir;
 }
 
-async function hoistPnpmDependencies(nodeModulesDir: string): Promise<void> {
+async function hoistPnpmDependencies(nodeModulesDir: string, signal?: AbortSignal): Promise<void> {
   const pnpmNodeModulesDir = path.join(nodeModulesDir, ".pnpm", "node_modules");
-  if (!await directoryExists(pnpmNodeModulesDir)) {
+  if (!await directoryExists(pnpmNodeModulesDir, signal)) {
     return;
   }
 
-  const entries = await readdir(pnpmNodeModulesDir, { withFileTypes: true });
+  const entries = await unsupportedFilesystemBoundary(signal, () => readdir(pnpmNodeModulesDir, { withFileTypes: true }));
   for (const entry of entries) {
     const sourcePath = path.join(pnpmNodeModulesDir, entry.name);
 
     if (entry.name.startsWith("@") && entry.isDirectory()) {
-      const scopedEntries = await readdir(sourcePath, { withFileTypes: true });
+      const scopedEntries = await unsupportedFilesystemBoundary(signal, () => readdir(sourcePath, { withFileTypes: true }));
       for (const scopedEntry of scopedEntries) {
         const scopedDestination = path.join(nodeModulesDir, entry.name, scopedEntry.name);
-        if (await pathExists(scopedDestination)) {
+        if (await pathExists(scopedDestination, signal)) {
           continue;
         }
 
-        await mkdir(path.dirname(scopedDestination), { recursive: true });
+        await unsupportedFilesystemBoundary(signal, () => mkdir(path.dirname(scopedDestination), { recursive: true }));
         await copyPathMaterializingSymlinks(
           path.join(sourcePath, scopedEntry.name),
           scopedDestination,
@@ -251,6 +265,7 @@ async function hoistPnpmDependencies(nodeModulesDir: string): Promise<void> {
             standaloneRoot: pnpmNodeModulesDir,
             appRoot: nodeModulesDir,
             sourceRoot: nodeModulesDir,
+            signal,
           },
         );
       }
@@ -258,7 +273,7 @@ async function hoistPnpmDependencies(nodeModulesDir: string): Promise<void> {
     }
 
     const destinationPath = path.join(nodeModulesDir, entry.name);
-    if (await pathExists(destinationPath)) {
+    if (await pathExists(destinationPath, signal)) {
       continue;
     }
 
@@ -266,6 +281,7 @@ async function hoistPnpmDependencies(nodeModulesDir: string): Promise<void> {
       standaloneRoot: pnpmNodeModulesDir,
       appRoot: nodeModulesDir,
       sourceRoot: nodeModulesDir,
+      signal,
     });
   }
 }
@@ -273,6 +289,7 @@ async function hoistPnpmDependencies(nodeModulesDir: string): Promise<void> {
 export async function normalizeArtifactSymlinks(
   artifactDir: string,
   appPath: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const normalizedArtifactDir = path.resolve(artifactDir);
   const normalizedAppPath = path.resolve(appPath);
@@ -280,7 +297,7 @@ export async function normalizeArtifactSymlinks(
   await walkDirectory(normalizedArtifactDir);
 
   async function walkDirectory(directory: string): Promise<void> {
-    const entries = await readdir(directory, { withFileTypes: true });
+    const entries = await unsupportedFilesystemBoundary(signal, () => readdir(directory, { withFileTypes: true }));
 
     for (const entry of entries) {
       const fullPath = path.join(directory, entry.name);
@@ -294,7 +311,7 @@ export async function normalizeArtifactSymlinks(
         continue;
       }
 
-      const target = await readlink(fullPath);
+      const target = await unsupportedFilesystemBoundary(signal, () => readlink(fullPath));
       const resolvedTarget = path.resolve(path.dirname(fullPath), target);
 
       if (isPathWithin(normalizedArtifactDir, resolvedTarget)) {
@@ -305,12 +322,12 @@ export async function normalizeArtifactSymlinks(
         throw new Error(`Build artifact symlink escapes the app directory: ${resolvedTarget}`);
       }
 
-      const targetStat = await stat(resolvedTarget);
-      await rm(fullPath, { force: true, recursive: true });
-      await cp(resolvedTarget, fullPath, {
+      const targetStat = await unsupportedFilesystemBoundary(signal, () => stat(resolvedTarget));
+      await unsupportedFilesystemBoundary(signal, () => rm(fullPath, { force: true, recursive: true }));
+      await unsupportedFilesystemBoundary(signal, () => cp(resolvedTarget, fullPath, {
         recursive: targetStat.isDirectory(),
         dereference: true,
-      });
+      }));
 
       if (targetStat.isDirectory()) {
         await walkDirectory(fullPath);
@@ -330,6 +347,10 @@ function isPathWithin(rootPath: string, candidatePath: string): boolean {
   );
 }
 
+function isPathWithinWorkspaceDependency(sourceRoot: string, candidatePath: string): boolean {
+  return isPathWithin(path.join(sourceRoot, "node_modules"), candidatePath);
+}
+
 async function copyPathMaterializingSymlinks(
   sourcePath: string,
   destinationPath: string,
@@ -337,9 +358,10 @@ async function copyPathMaterializingSymlinks(
     standaloneRoot: string;
     appRoot: string;
     sourceRoot: string;
+    signal?: AbortSignal;
   },
 ): Promise<void> {
-  const sourceStat = await lstat(sourcePath);
+  const sourceStat = await unsupportedFilesystemBoundary(options.signal, () => lstat(sourcePath));
 
   if (sourceStat.isSymbolicLink()) {
     const resolvedTarget = await resolveSymlinkTarget(sourcePath, options);
@@ -351,9 +373,9 @@ async function copyPathMaterializingSymlinks(
   }
 
   if (sourceStat.isDirectory()) {
-    await mkdir(destinationPath, { recursive: true });
+    await unsupportedFilesystemBoundary(options.signal, () => mkdir(destinationPath, { recursive: true }));
 
-    const entries = await readdir(sourcePath, { withFileTypes: true });
+    const entries = await unsupportedFilesystemBoundary(options.signal, () => readdir(sourcePath, { withFileTypes: true }));
     for (const entry of entries) {
       await copyPathMaterializingSymlinks(
         path.join(sourcePath, entry.name),
@@ -366,9 +388,9 @@ async function copyPathMaterializingSymlinks(
   }
 
   if (sourceStat.isFile()) {
-    await mkdir(path.dirname(destinationPath), { recursive: true });
-    await copyFile(sourcePath, destinationPath);
-    await chmod(destinationPath, sourceStat.mode);
+    await unsupportedFilesystemBoundary(options.signal, () => mkdir(path.dirname(destinationPath), { recursive: true }));
+    await unsupportedFilesystemBoundary(options.signal, () => copyFile(sourcePath, destinationPath));
+    await unsupportedFilesystemBoundary(options.signal, () => chmod(destinationPath, sourceStat.mode));
   }
 }
 
@@ -378,15 +400,16 @@ async function resolveSymlinkTarget(
     standaloneRoot: string;
     appRoot: string;
     sourceRoot: string;
+    signal?: AbortSignal;
   },
 ): Promise<string | null> {
-  const linkTarget = await readlink(symlinkPath);
+  const linkTarget = await unsupportedFilesystemBoundary(options.signal, () => readlink(symlinkPath));
   const resolvedTarget = path.resolve(path.dirname(symlinkPath), linkTarget);
 
-  if (await pathExists(resolvedTarget)) {
+  if (await pathExists(resolvedTarget, options.signal)) {
     if (
       !isPathWithin(options.appRoot, resolvedTarget) &&
-      !isPathWithin(options.sourceRoot, resolvedTarget)
+      !isPathWithinWorkspaceDependency(options.sourceRoot, resolvedTarget)
     ) {
       throw new Error(`Build artifact symlink escapes the app directory: ${resolvedTarget}`);
     }
@@ -400,7 +423,7 @@ async function resolveSymlinkTarget(
       path.relative(options.standaloneRoot, resolvedTarget),
     );
 
-    if (await pathExists(fallbackTarget)) {
+    if (await pathExists(fallbackTarget, options.signal)) {
       return fallbackTarget;
     }
   }
@@ -428,34 +451,36 @@ function isPnpmHoistLink(symlinkPath: string): boolean {
   return false;
 }
 
-async function pathExists(targetPath: string): Promise<boolean> {
+async function pathExists(targetPath: string, signal?: AbortSignal): Promise<boolean> {
   try {
-    await stat(targetPath);
+    await unsupportedFilesystemBoundary(signal, () => stat(targetPath));
     return true;
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) throw error;
     return false;
   }
 }
 
-async function directoryExists(targetPath: string): Promise<boolean> {
+async function directoryExists(targetPath: string, signal?: AbortSignal): Promise<boolean> {
   try {
-    const targetStat = await stat(targetPath);
+    const targetStat = await unsupportedFilesystemBoundary(signal, () => stat(targetPath));
     return targetStat.isDirectory();
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) throw error;
     return false;
   }
 }
 
-async function resolveSourceRoot(appRoot: string): Promise<string> {
+async function resolveSourceRoot(appRoot: string, signal?: AbortSignal): Promise<string> {
   let current = path.resolve(appRoot);
 
   while (true) {
     if (
-      await pathExists(path.join(current, ".git")) ||
-      await pathExists(path.join(current, "pnpm-workspace.yaml")) ||
-      await pathExists(path.join(current, "bun.lock")) ||
-      await pathExists(path.join(current, "bun.lockb")) ||
-      await packageJsonDeclaresWorkspaces(current)
+      await pathExists(path.join(current, ".git"), signal) ||
+      await pathExists(path.join(current, "pnpm-workspace.yaml"), signal) ||
+      await pathExists(path.join(current, "bun.lock"), signal) ||
+      await pathExists(path.join(current, "bun.lockb"), signal) ||
+      await packageJsonDeclaresWorkspaces(current, signal)
     ) {
       return current;
     }
@@ -469,12 +494,22 @@ async function resolveSourceRoot(appRoot: string): Promise<string> {
   }
 }
 
-async function packageJsonDeclaresWorkspaces(directory: string): Promise<boolean> {
+async function packageJsonDeclaresWorkspaces(directory: string, signal?: AbortSignal): Promise<boolean> {
+  signal?.throwIfAborted();
   try {
-    const content = await readFile(path.join(directory, "package.json"), "utf8");
+    const content = await readFile(path.join(directory, "package.json"), { encoding: "utf8", signal });
     const parsed = JSON.parse(content) as { workspaces?: unknown };
     return Boolean(parsed.workspaces);
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) throw error;
     return false;
   }
+}
+
+async function unsupportedFilesystemBoundary<T>(signal: AbortSignal | undefined, operation: () => Promise<T>): Promise<T> {
+  // These Node fs promise APIs do not accept AbortSignal; check immediately before and after the boundary.
+  signal?.throwIfAborted();
+  const result = await operation();
+  signal?.throwIfAborted();
+  return result;
 }

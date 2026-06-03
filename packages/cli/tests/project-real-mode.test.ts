@@ -35,9 +35,9 @@ function mockClient(extra: Partial<{
         return {
           data: {
             data: [
-              { id: "proj_456", name: "Billing API", slug: "billing-api", workspace: { id: "ws_123", name: "Acme Inc" } },
+              { id: "proj_456", name: "Billing API", slug: "billing-api", url: "https://prisma.build/acme/billing-api", workspace: { id: "ws_123", name: "Acme Inc" } },
               { id: "proj_999", name: "Alpha", slug: "alpha", workspace: { id: "ws_other", name: "Other" } },
-              { id: "proj_123", name: "Acme Dashboard", slug: "acme-dashboard", workspace: { id: "ws_123", name: "Acme Inc" } },
+              { id: "proj_123", name: "Acme Dashboard", slug: "acme-dashboard", url: "https://prisma.build/acme/acme-dashboard", workspace: { id: "ws_123", name: "Acme Inc" } },
             ],
           },
         };
@@ -136,16 +136,16 @@ describe("real project mode", () => {
 
     const result = await runProjectList(context);
 
-    expect(readAuthState).toHaveBeenCalledWith(context.runtime.env);
-    expect(requireComputeAuth).toHaveBeenCalledWith(context.runtime.env);
+    expect(readAuthState).toHaveBeenCalledWith(context.runtime.env, context.runtime.signal);
+    expect(requireComputeAuth).toHaveBeenCalledWith(context.runtime.env, context.runtime.signal);
     expect(result.result).toEqual({
       workspace: {
         id: "ws_123",
         name: "Acme Inc",
       },
       projects: [
-        { id: "proj_123", name: "Acme Dashboard" },
-        { id: "proj_456", name: "Billing API" },
+        { id: "proj_123", name: "Acme Dashboard", url: "https://prisma.build/acme/acme-dashboard" },
+        { id: "proj_456", name: "Billing API", url: "https://prisma.build/acme/billing-api" },
       ],
       localBinding: {
         status: "not-linked",
@@ -191,6 +191,7 @@ describe("real project mode", () => {
         project: {
           id: "proj_123",
           name: "Acme Dashboard",
+          url: "https://prisma.build/acme/acme-dashboard",
         },
         resolution: {
           projectSource: "explicit",
@@ -346,6 +347,7 @@ describe("real project mode", () => {
           cursor: "2",
         },
       },
+      signal: context.runtime.signal,
     });
     expect(result.result.repositoryConnection).toMatchObject({
       id: "srcrepo_123",
@@ -750,6 +752,7 @@ describe("real project mode", () => {
         providerRepositoryId: 123456,
         installationId: "scminstall_123",
       },
+      signal: context.runtime.signal,
     });
     expect(stderr.buffer).toContain("Waiting for GitHub App installation or repository access approval");
     expect(result.result.repositoryConnection?.repository.fullName).toBe("prisma/prisma-cli");
@@ -1061,6 +1064,7 @@ describe("real project mode", () => {
           id: "srcrepo_123",
         },
       },
+      signal: context.runtime.signal,
     });
     expect(result.result.repositoryConnection?.repository.fullName).toBe("prisma/prisma-cli");
   });

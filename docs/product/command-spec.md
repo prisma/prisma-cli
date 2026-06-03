@@ -54,6 +54,10 @@ Out of scope for the current beta:
 - Long flags use kebab-case.
 - Boolean negation uses `--no-<flag>`.
 - `--json` and non-interactive mode must not block on prompts.
+- Automatic update checks are advisory and skipped in CI, `--json`, `--quiet`,
+  non-TTY stderr, and when `NO_UPDATE_NOTIFIER` is set. When shown, update
+  notifications are stderr-only human output and do not change the original
+  command result.
 - Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for Project -> Branch -> App resolution. `.prisma/local.json` is a gitignored local pin/cache, not a declarative repo config file.
 - Remote commands do not silently change local context.
 
@@ -365,9 +369,10 @@ Behavior:
 - lists projects visible to the active workspace
 - does not resolve the current directory
 - does not mutate local state
-- when the current directory is not linked, human output adds one setup hint after the list
+- when the current directory is not linked, human output adds setup hints after the list
 - in JSON, unlinked directories include a `user-choice` `nextActions` entry for Project setup
 - listed Projects are not marked selected unless durable local binding actually selects one
+- listed Projects are candidates only; the user must choose one before `project link <id-or-name>` runs
 
 Examples:
 
@@ -390,6 +395,7 @@ Behavior:
 - does not mutate local state
 - `--project <id-or-name>` resolves only the explicit project
 - when bound, returns Workspace, Project, and `resolution.projectSource`
+- when bound, human output shows the local repo path, the `<workspace> / <project>` platform label, and the Project URL; it does not show the internal resolution source
 - when unbound, human output says `project: Not linked` and shows link/create next steps
 - when unbound, JSON exits successfully with `project: null`, `localBinding.status: "not-linked"`, `resolution.projectSource: "unbound"`, a suggested Project name, matching Project candidates, recovery commands, and `user-choice` `nextActions`
 - package names and directory names only power unbound suggestions
@@ -425,24 +431,30 @@ prisma-cli project create my-app
 prisma-cli project create my-app --json
 ```
 
-## `prisma-cli project link <id-or-name>`
+## `prisma-cli project link [id-or-name]`
 
 Purpose:
 
-- bind the current directory to an existing Prisma Project
+- bind the current directory to a Prisma Project
 
 Behavior:
 
 - requires auth
-- resolves exactly one Project by id or name in the authenticated workspace
+- with `[id-or-name]`, resolves exactly one existing Project by id or name in the authenticated workspace
+- without `[id-or-name]` in interactive mode, prompts the user to choose an existing Project, create a new Project, or cancel
+- choosing an existing Project writes the local binding and does not create remote resources
+- choosing "Create a new Project" prompts for a Project name, creates the Project, and writes the local binding
+- without `[id-or-name]` in `--json`, `--no-interactive`, non-TTY, CI, or `--yes` mode, fails with `PROJECT_LINK_TARGET_REQUIRED`
+- `--yes` does not choose Project scope
 - writes `.prisma/local.json` with Workspace and Project IDs
 - ensures `.prisma/` is ignored by Git
-- does not create remote resources
+- does not create Branch, App, Deployment, database, or Git repository connection state
 - fails with `PROJECT_NOT_FOUND` or `PROJECT_AMBIGUOUS` when the Project cannot be selected safely
 
 Examples:
 
 ```bash
+prisma-cli project link
 prisma-cli project link proj_123
 prisma-cli project link "Acme Dashboard" --json
 ```
@@ -631,7 +643,8 @@ Behavior:
 - requires `--prod` for subsequent deploys to a production Branch; `--yes` only skips the confirmation prompt when `--prod` is also present
 - does not prompt when there is no real choice; zero matching apps creates the inferred app
 - writes `.prisma/local.json` after Project binding succeeds and before build/deploy starts, so retries after a failed deploy do not repeat setup
-- asks `Customize settings? (y/N)` only while binding the directory for the first time, and only asks for Framework and HTTP port when the user opts in
+- before asking `Customize build settings? (y/N)`, previews the detected framework and runtime so the user can see the defaults they are accepting or changing
+- asks `Customize build settings? (y/N)` only while binding the directory for the first time, and only asks for Framework and HTTP port when the user opts in
 - after setup, deploy prints `Deploying to <Project> / <Branch> / <App>`; later deploys print a compact target header such as `Deploying ./j1 to j1 / main / j1`
 - deploy progress uses short stage copy (`Building locally...`, `Built <size>`, `Uploading...`, `Uploaded`, `Deploying...`, `Deployed`) and never prints `Status: running` or `Deployment is running at ...`
 - success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma-cli app logs`

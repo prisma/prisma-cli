@@ -48,18 +48,21 @@
       "id": "proj_123",
       "name": "Acme Dashboard",
       "slug": "acme-dashboard",
+      "url": "https://prisma.build/acme/acme-dashboard",
       "workspaceId": "ws_123"
     },
     {
       "id": "proj_456",
       "name": "Billing API",
       "slug": "billing-api",
+      "url": "https://prisma.build/acme/billing-api",
       "workspaceId": "ws_123"
     },
     {
       "id": "proj_789",
       "name": "Website",
       "slug": "website",
+      "url": "https://prisma.build/prisma/website",
       "workspaceId": "ws_456"
     }
   ],

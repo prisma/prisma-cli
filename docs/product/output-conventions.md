@@ -18,6 +18,7 @@ Human-oriented stderr output may include:
 - command headers
 - progress
 - warnings
+- automatic update notifications
 - help text
 - target context
 - final human-readable success or failure summaries
@@ -44,6 +45,38 @@ Non-TTY or piped behavior:
 - headers collapse to plain text or are omitted when they add no value
 
 This keeps pipes, captures, and automation clean.
+
+## Automatic Update Notifications
+
+The CLI may print an advisory update notification before normal command output
+when all of these are true:
+
+- stderr is a TTY
+- `--json` is not active
+- `--quiet` is not active
+- CI is not detected
+- `NO_UPDATE_NOTIFIER` is not set
+- cached update-check state already shows a newer official `@prisma/cli`
+  version
+
+The notification is human-only stderr output. It must never be written to
+stdout, must not change the original command exit code, and must not block the
+original command on network discovery.
+
+Recommended shape:
+
+```text
+Update available: prisma-cli <current> -> <latest>
+Run <package-manager command> to update.
+```
+
+When the CLI cannot confidently infer the install context, link to installation
+docs instead of guessing a package-manager command:
+
+```text
+Update available: prisma-cli <current> -> <latest>
+See https://www.prisma.io/docs/orm/tools/prisma-cli for update instructions.
+```
 
 ## Human Output
 
@@ -217,7 +250,18 @@ Human output should:
 - keep header metadata compact and aligned
 - avoid placeholder rows for unknown values
 
-Recommended header shape:
+Recommended header shape for a bound Project:
+
+```text
+project show → This directory is linked to the following platform project.
+
+│  local repo  ~/code/apple
+│  platform    Edith / orange
+│
+│  → https://prisma.build/edith/orange
+```
+
+Recommended recovery shape for an unbound Project:
 
 ```text
 project show → This directory is not linked to a Prisma Project.
@@ -226,7 +270,7 @@ project show → This directory is not linked to a Prisma Project.
 │  project:    Not linked
 
 Next steps:
-- Link an existing Project: prisma-cli project link <id-or-name>
+- Link an existing Project you choose: prisma-cli project link <id-or-name>
 - Create a new Project: prisma-cli project create billing-api
 ```
 
@@ -238,6 +282,8 @@ Rules:
 - include `Read more` when a stable repo doc reference exists
 - prefer display labels in default human output and keep opaque ids in JSON unless a later verbose mode explicitly asks for them
 - do not expose agent-only reasoning in human output when a clear status and next step is enough
+- for bound `project show`, show the local repo, platform project label, and Project URL instead of the internal resolution source
+- keep explicit recovery examples when a command has a distinct not-linked or setup-required state
 
 Recommended summary lines:
 
@@ -290,6 +336,12 @@ After setup, keep the confirmation compact:
 Saved .prisma/local.json
 
 Deploying to Acme Dashboard / feat-login / my-app
+
+Detected Next.js
+│  framework:  Next.js
+│  runtime:    HTTP 3000
+
+? Customize build settings? No
 ```
 
 Deploy progress should describe phases without claiming runtime success before

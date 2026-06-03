@@ -74,9 +74,10 @@ export async function runEnvAdd(
   const { client, projectId } = await requireClientAndProject(context, flags.projectRef, "project env add");
   const resolved = await resolveScopeToApi(client, projectId, scope, {
     createBranchIfMissing: true,
+    signal: context.runtime.signal,
   });
 
-  const existing = await findVariableByNaturalKey(client, projectId, key, resolved);
+  const existing = await findVariableByNaturalKey(client, projectId, key, resolved, context.runtime.signal);
 
   if (existing) {
     throw new CliError({
@@ -98,7 +99,7 @@ export async function runEnvAdd(
       scope: { kind: "role", role: "preview" },
       descriptor: { kind: "role", role: "preview" },
       apiTarget: { class: "preview", branchId: null },
-    }))
+    }, context.runtime.signal))
       ? [
           `Variable "${key}" does not exist in preview. It will only exist on ${formatScopeLabel(scope)}.`,
         ]
@@ -116,6 +117,7 @@ export async function runEnvAdd(
         key,
         value,
       },
+      signal: context.runtime.signal,
     },
   );
   if (error || !data) {
@@ -154,9 +156,10 @@ export async function runEnvUpdate(
   const { client, projectId } = await requireClientAndProject(context, flags.projectRef, "project env update");
   const resolved = await resolveScopeToApi(client, projectId, scope, {
     createBranchIfMissing: false,
+    signal: context.runtime.signal,
   });
 
-  const existing = await findVariableByNaturalKey(client, projectId, key, resolved);
+  const existing = await findVariableByNaturalKey(client, projectId, key, resolved, context.runtime.signal);
 
   if (!existing) {
     throw new CliError({
@@ -177,6 +180,7 @@ export async function runEnvUpdate(
     {
       params: { path: { envVarId: existing.id } },
       body: { value },
+      signal: context.runtime.signal,
     },
   );
   if (error || !data) {
@@ -205,8 +209,9 @@ export async function runEnvList(
   const { client, projectId } = await requireClientAndProject(context, flags.projectRef, "project env list");
   const resolved = await resolveScopeToApi(client, projectId, scope, {
     createBranchIfMissing: false,
+    signal: context.runtime.signal,
   });
-  const variables = await listVariables(client, projectId, resolved);
+  const variables = await listVariables(client, projectId, resolved, context.runtime.signal);
 
   return {
     command: "project.env.list",
@@ -251,8 +256,9 @@ export async function runEnvRemove(
   const { client, projectId } = await requireClientAndProject(context, flags.projectRef, "project env remove");
   const resolved = await resolveScopeToApi(client, projectId, scope, {
     createBranchIfMissing: false,
+    signal: context.runtime.signal,
   });
-  const existing = await findVariableByNaturalKey(client, projectId, key, resolved);
+  const existing = await findVariableByNaturalKey(client, projectId, key, resolved, context.runtime.signal);
   if (!existing) {
     throw new CliError({
       code: "ENV_VARIABLE_NOT_FOUND",
@@ -271,6 +277,7 @@ export async function runEnvRemove(
     "/v1/environment-variables/{envVarId}",
     {
       params: { path: { envVarId: existing.id } },
+      signal: context.runtime.signal,
     },
   );
   if (error) {
@@ -295,7 +302,7 @@ async function requireClientAndProject(
   commandName: string,
 ): Promise<{ client: ManagementApiClient; projectId: string }> {
   const authState = await requireAuthenticatedAuthState(context);
-  const client = await requireComputeAuth(context.runtime.env);
+  const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
   if (!client) {
     throw authRequiredError(["prisma-cli auth login"]);
   }
@@ -307,7 +314,7 @@ async function requireClientAndProject(
     context,
     workspace: authState.workspace,
     explicitProject,
-    listProjects: () => listRealWorkspaceProjects(client, authState.workspace!),
+    listProjects: () => listRealWorkspaceProjects(client, authState.workspace!, context.runtime.signal),
     commandName,
   });
 
@@ -318,7 +325,7 @@ async function resolveScopeToApi(
   client: ManagementApiClient,
   projectId: string,
   scope: EnvScope,
-  options: { createBranchIfMissing: boolean },
+  options: { createBranchIfMissing: boolean; signal: AbortSignal },
 ): Promise<ResolvedScope> {
   if (scope.kind === "role") {
     return {
@@ -329,8 +336,8 @@ async function resolveScopeToApi(
   }
 
   const branch = options.createBranchIfMissing
-    ? await resolveOrCreateBranch(client, projectId, scope.branchName)
-    : await resolveExistingBranch(client, projectId, scope.branchName);
+    ? await resolveOrCreateBranch(client, projectId, scope.branchName, options.signal)
+    : await resolveExistingBranch(client, projectId, scope.branchName, options.signal);
 
   if (branch.isDefault) {
     throw new CliError({
@@ -366,6 +373,7 @@ async function listBranchesByName(
   client: ManagementApiClient,
   projectId: string,
   branchName: string,
+  signal: AbortSignal,
 ): Promise<RawBranchRecord[]> {
   const { data, error, response } = await client.GET(
     "/v1/projects/{projectId}/branches",
@@ -374,6 +382,7 @@ async function listBranchesByName(
         path: { projectId },
         query: { gitName: branchName },
       },
+      signal,
     },
   );
   if (error || !data) {
@@ -387,8 +396,9 @@ async function resolveExistingBranch(
   client: ManagementApiClient,
   projectId: string,
   branchName: string,
+  signal: AbortSignal,
 ): Promise<RawBranchRecord> {
-  const branch = (await listBranchesByName(client, projectId, branchName))[0];
+  const branch = (await listBranchesByName(client, projectId, branchName, signal))[0];
   if (!branch) {
     throw new CliError({
       code: "ENV_BRANCH_NOT_FOUND",
@@ -407,13 +417,14 @@ async function resolveOrCreateBranch(
   client: ManagementApiClient,
   projectId: string,
   branchName: string,
+  signal: AbortSignal,
 ): Promise<RawBranchRecord> {
-  const existing = (await listBranchesByName(client, projectId, branchName))[0];
+  const existing = (await listBranchesByName(client, projectId, branchName, signal))[0];
   if (existing) {
     return existing;
   }
 
-  if (!(await projectHasDefaultBranch(client, projectId))) {
+  if (!(await projectHasDefaultBranch(client, projectId, signal))) {
     throw new CliError({
       code: "ENV_BRANCH_CREATE_REQUIRES_DEFAULT_BRANCH",
       domain: "app",
@@ -430,11 +441,12 @@ async function resolveOrCreateBranch(
     {
       params: { path: { projectId } },
       body: { gitName: branchName, isDefault: false },
+      signal,
     },
   );
   if (error || !data) {
     if (response?.status === 409) {
-      const raced = (await listBranchesByName(client, projectId, branchName))[0];
+      const raced = (await listBranchesByName(client, projectId, branchName, signal))[0];
       if (raced) {
         return raced;
       }
@@ -449,6 +461,7 @@ async function resolveOrCreateBranch(
 async function projectHasDefaultBranch(
   client: ManagementApiClient,
   projectId: string,
+  signal: AbortSignal,
 ): Promise<boolean> {
   let cursor: string | undefined;
 
@@ -466,6 +479,7 @@ async function projectHasDefaultBranch(
           path: { projectId },
           query,
         },
+        signal,
       },
     );
     if (result.error || !result.data) {
@@ -488,6 +502,7 @@ async function findVariableByNaturalKey(
   projectId: string,
   key: string,
   resolved: ResolvedScope,
+  signal: AbortSignal,
 ): Promise<RawEnvironmentVariable | null> {
   const { data, error, response } = await client.GET("/v1/environment-variables", {
     params: {
@@ -497,6 +512,7 @@ async function findVariableByNaturalKey(
         key,
       },
     },
+    signal,
   });
   if (error || !data) {
     throw apiCallError(`Failed to look up ${key}`, response, error);
@@ -512,6 +528,7 @@ async function listVariables(
   client: ManagementApiClient,
   projectId: string,
   resolved: ResolvedScope,
+  signal: AbortSignal,
 ): Promise<RawEnvironmentVariable[]> {
   const collected: RawEnvironmentVariable[] = [];
   let cursor: string | undefined;
@@ -528,6 +545,7 @@ async function listVariables(
 
     const result = await client.GET("/v1/environment-variables", {
       params: { query },
+      signal,
     });
     if (result.error || !result.data) {
       throw apiCallError(

@@ -30,10 +30,12 @@ describe("project use cases", () => {
         {
           id: "proj_123",
           name: "Acme Dashboard",
+          url: "https://prisma.build/acme/acme-dashboard",
         },
         {
           id: "proj_456",
           name: "Billing API",
+          url: "https://prisma.build/acme/billing-api",
         },
       ],
     });

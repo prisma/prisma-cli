@@ -91,6 +91,18 @@ export function authRequiredError(
   });
 }
 
+export function commandCanceledError(): CliError {
+  return new CliError({
+    code: "COMMAND_CANCELED",
+    domain: "cli",
+    summary: "Command canceled",
+    why: null,
+    fix: null,
+    exitCode: 130,
+    humanLines: ["Command canceled [COMMAND_CANCELED]"],
+  });
+}
+
 export function workspaceRequiredError(): CliError {
   return usageError(
     "Workspace required",

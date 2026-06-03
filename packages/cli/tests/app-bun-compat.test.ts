@@ -11,6 +11,15 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function mockBuildStrategy(createInstance: (options: object) => object = () => ({
+  canBuild: vi.fn(),
+  execute: vi.fn(),
+})) {
+  return vi.fn().mockImplementation(function (options: object) {
+    return createInstance(options);
+  });
+}
+
 describe("bun compatibility", () => {
   it("resolves the Bun entrypoint from package.json module", async () => {
     const cwd = await createTempCwd();
@@ -30,6 +39,17 @@ describe("bun compatibility", () => {
     const { resolveBunEntrypoint } = await import("../src/lib/app/bun-project");
 
     await expect(resolveBunEntrypoint(cwd, undefined)).resolves.toBe("index.ts");
+  });
+
+  it("rejects Bun package reads when the command signal is already aborted", async () => {
+    const cwd = await createTempCwd();
+    const controller = new AbortController();
+    const reason = new Error("cancelled");
+    controller.abort(reason);
+
+    const { readBunPackageJson } = await import("../src/lib/app/bun-project");
+
+    await expect(readBunPackageJson(cwd, controller.signal)).rejects.toBe(reason);
   });
 
   it("detects a Bun project when package.json uses module instead of main", async () => {
@@ -70,16 +90,16 @@ describe("bun compatibility", () => {
     );
     await writeFile(path.join(cwd, "index.ts"), "console.log('hello');\n", "utf8");
 
-    const bunBuild = vi.fn().mockImplementation((options: object) => ({
+    const bunBuild = mockBuildStrategy((options: object) => ({
       options,
       canBuild: vi.fn().mockResolvedValue(true),
       execute: vi.fn(),
     }));
-    const nextjsBuild = vi.fn().mockImplementation(() => ({
+    const nextjsBuild = mockBuildStrategy(() => ({
       canBuild: vi.fn().mockResolvedValue(false),
       execute: vi.fn(),
     }));
-    const otherFrameworkBuild = vi.fn().mockImplementation(() => ({
+    const otherFrameworkBuild = mockBuildStrategy(() => ({
       canBuild: vi.fn().mockResolvedValue(false),
       execute: vi.fn(),
     }));
@@ -110,23 +130,23 @@ describe("bun compatibility", () => {
   it("auto-detects SDK framework strategies before falling back to Bun", async () => {
     const cwd = await createTempCwd();
 
-    const bunBuild = vi.fn().mockImplementation(() => ({
+    const bunBuild = mockBuildStrategy(() => ({
       canBuild: vi.fn().mockResolvedValue(true),
       execute: vi.fn(),
     }));
-    const nextjsBuild = vi.fn().mockImplementation(() => ({
+    const nextjsBuild = mockBuildStrategy(() => ({
       canBuild: vi.fn().mockResolvedValue(false),
       execute: vi.fn(),
     }));
-    const nuxtBuild = vi.fn().mockImplementation(() => ({
+    const nuxtBuild = mockBuildStrategy(() => ({
       canBuild: vi.fn().mockResolvedValue(true),
       execute: vi.fn(),
     }));
-    const astroBuild = vi.fn().mockImplementation(() => ({
+    const astroBuild = mockBuildStrategy(() => ({
       canBuild: vi.fn().mockResolvedValue(true),
       execute: vi.fn(),
     }));
-    const tanstackStartBuild = vi.fn().mockImplementation(() => ({
+    const tanstackStartBuild = mockBuildStrategy(() => ({
       canBuild: vi.fn().mockResolvedValue(true),
       execute: vi.fn(),
     }));
@@ -157,7 +177,7 @@ describe("bun compatibility", () => {
   it("resolves explicit SDK framework build strategies", async () => {
     const cwd = await createTempCwd();
 
-    const buildStrategy = vi.fn().mockImplementation(() => ({
+    const buildStrategy = mockBuildStrategy(() => ({
       canBuild: vi.fn(),
       execute: vi.fn(),
     }));

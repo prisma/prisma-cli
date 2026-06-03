@@ -18,6 +18,14 @@ export function isValidProjectSetupName(projectName: string): boolean {
   return projectName.trim().length > 0;
 }
 
+export function validateProjectSetupNameText(value: string | undefined, fallback: string): string | undefined {
+  if ((value?.trim() || fallback).trim().length > 0) {
+    return undefined;
+  }
+
+  return "Enter a Project name.";
+}
+
 export function resolveProjectForSetup(
   projectRef: string,
   projects: ProjectCandidate[],
@@ -42,8 +50,8 @@ export async function bindProjectToDirectory(
   await writeLocalResolutionPin(context.runtime.cwd, {
     workspaceId: workspace.id,
     projectId: project.id,
-  });
-  await ensureLocalResolutionPinGitignore(context.runtime.cwd);
+  }, context.runtime.signal);
+  await ensureLocalResolutionPinGitignore(context.runtime.cwd, context.runtime.signal);
 
   return {
     workspace,
@@ -57,10 +65,11 @@ export async function bindProjectToDirectory(
   };
 }
 
-export function toProjectSummary(project: Pick<ProjectCandidate, "id" | "name">): ProjectSummary {
+export function toProjectSummary(project: Pick<ProjectCandidate, "id" | "name" | "url">): ProjectSummary {
   return {
     id: project.id,
     name: project.name,
+    ...(project.url ? { url: project.url } : {}),
   };
 }
 

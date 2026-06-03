@@ -1,6 +1,8 @@
 import events from "node:events";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import readline from "node:readline/promises";
+import type { Readable, Writable } from "node:stream";
 
 import {
   createManagementApiSdk,
@@ -29,13 +31,21 @@ export interface LoginOptions {
   port?: number;
   openUrl?: (url: string) => Promise<unknown> | unknown;
   env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
+  input?: Readable;
+  output?: Writable;
 }
 
 export async function login(options: LoginOptions = {}): Promise<void> {
   const hostname = options.hostname ?? "localhost";
   const port = options.port ?? 0;
+  const input = options.input ?? process.stdin;
+  const output = options.output ?? process.stderr;
+  const interactive = (input as NodeJS.ReadStream).isTTY === true;
   const server = http.createServer();
   server.listen({ host: hostname, port });
+
+  const pasteAbort = new AbortController();
 
   try {
     const addressInfo = await events
@@ -51,9 +61,41 @@ export async function login(options: LoginOptions = {}): Promise<void> {
       authBaseUrl: options.authBaseUrl,
       openUrl: options.openUrl,
       env: options.env,
+      signal: options.signal,
+      output,
     });
 
-    const authResult = new Promise<void>((resolve, reject) => {
+    let completed = false;
+    let completion: Promise<void> | undefined;
+
+    // The browser redirect and a pasted callback URL can both deliver the same
+    // auth code. Funnel both through one in-flight promise so the token
+    // exchange runs at most once; clear it on failure so a retry can try again.
+    const completeOnce = (url: URL): Promise<void> => {
+      if (!completion) {
+        completion = state.handleCallback(url).then(
+          () => {
+            completed = true;
+          },
+          (error) => {
+            completion = undefined;
+            throw error;
+          },
+        );
+      }
+      return completion;
+    };
+
+    const httpResult = new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        reject(options.signal?.reason);
+      };
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+      const settle = (callback: () => void) => {
+        options.signal?.removeEventListener("abort", onAbort);
+        callback();
+      };
+
       server.on("request", async (req, res) => {
         const url = new URL(`http://${state.host}${req.url}`);
         if (url.pathname !== "/auth/callback") {
@@ -62,29 +104,109 @@ export async function login(options: LoginOptions = {}): Promise<void> {
           return;
         }
 
-        try {
-          await state.handleCallback(url);
-        } catch (error) {
-          res.statusCode = 400;
-          const message = error instanceof Error ? error.message : String(error);
-          res.end(message);
-          reject(error);
+        if (completed) {
+          // The paste path already completed the token exchange. Render the
+          // success page anyway so a late browser callback isn't left dangling.
+          const workspaceName = await state.resolveWorkspaceName();
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.end(renderSuccessPage(workspaceName));
           return;
         }
 
-        const workspaceName = await state.resolveWorkspaceName();
-        res.setHeader("Content-Type", "text/html; charset=utf-8");
-        res.end(renderSuccessPage(workspaceName));
-        resolve();
+        try {
+          await completeOnce(url);
+          const workspaceName = await state.resolveWorkspaceName();
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.end(renderSuccessPage(workspaceName));
+          settle(resolve);
+        } catch (error) {
+          res.statusCode = 400;
+          const message =
+            error instanceof Error ? error.message : String(error);
+          res.end(message);
+          settle(() => reject(error));
+          return;
+        }
       });
     });
 
-    await state.openLoginPage();
-    await authResult;
+    options.signal?.throwIfAborted();
+    // Only race the paste flow when stdin is a TTY we can actually prompt on.
+    // Without one (CI, pipes, tests) the browser callback is the only path.
+    const callbackResult = interactive
+      ? Promise.race([httpResult, consumePastedCallback({
+        input,
+        output,
+        signal: pasteAbort.signal,
+        complete: completeOnce,
+      })])
+      : httpResult;
+
+    await Promise.all([state.openLoginPage(interactive), callbackResult]);
   } finally {
+    pasteAbort.abort();
     if (server.listening) {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  }
+}
+
+async function consumePastedCallback(options: {
+  input: Readable;
+  output: Writable;
+  signal: AbortSignal;
+  complete: (url: URL) => Promise<void>;
+}): Promise<void> {
+  // Defensive: callers only start this on a TTY. Without one there is nowhere
+  // to paste, so let the browser callback be the only path that resolves.
+  const input = options.input as NodeJS.ReadStream;
+  if (!input.isTTY) return;
+
+  const rl = readline.createInterface({
+    input: options.input,
+    output: options.output,
+  });
+  try {
+    // Keep prompting until a paste completes sign-in. A premature Enter or a
+    // wrong paste shows a hint and re-asks instead of ending the whole login;
+    // the browser callback stays open the whole time and can still win.
+    for (;;) {
+      let answer: string;
+      try {
+        answer = await rl.question("Paste the callback URL here: ", {
+          signal: options.signal,
+        });
+      } catch (error) {
+        // The browser callback won the race and aborted us. Stop prompting.
+        if ((error as { name?: string } | null)?.name === "AbortError") return;
+        throw error;
+      }
+
+      const trimmed = answer.trim().replace(/^["']|["']$/g, "");
+      let url: URL;
+      try {
+        if (!trimmed) throw new Error("empty input");
+        url = new URL(trimmed);
+      } catch {
+        options.output.write(
+          "That didn't look like a URL. Paste the full localhost callback URL and try again.\n",
+        );
+        continue;
+      }
+
+      try {
+        await options.complete(url);
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        options.output.write(
+          `Sign-in didn't complete (${message}). Paste the callback URL to try again.\n`,
+        );
+        continue;
+      }
+    }
+  } finally {
+    rl.close();
   }
 }
 
@@ -94,6 +216,7 @@ class LoginState {
   private readonly sdk: ManagementApiSdk;
   private readonly openUrl: (url: string) => Promise<unknown> | unknown;
   private readonly tokenStorage: TokenStorage;
+  private readonly output?: Writable;
 
   constructor(
     private readonly options: {
@@ -105,9 +228,12 @@ class LoginState {
       authBaseUrl?: string;
       openUrl?: (url: string) => Promise<unknown> | unknown;
       env?: NodeJS.ProcessEnv;
+      signal?: AbortSignal;
+      output?: Writable;
     },
   ) {
-    this.tokenStorage = options.tokenStorage ?? new FileTokenStorage(options.env);
+    this.tokenStorage =
+      options.tokenStorage ?? new FileTokenStorage(options.env, options.signal);
     this.sdk = createManagementApiSdk({
       clientId: options.clientId ?? CLIENT_ID,
       redirectUri: `http://${options.hostname}:${options.port}/auth/callback`,
@@ -116,9 +242,11 @@ class LoginState {
       authBaseUrl: options.authBaseUrl,
     });
     this.openUrl = options.openUrl ?? open;
+    this.output = options.output;
   }
 
-  async openLoginPage(): Promise<void> {
+  async openLoginPage(interactive: boolean): Promise<void> {
+    this.options.signal?.throwIfAborted();
     const { url, state, verifier } = await this.sdk.getLoginUrl({
       scope: "workspace:admin offline_access",
       additionalParams: {
@@ -131,7 +259,35 @@ class LoginState {
     this.latestState = state;
     this.latestVerifier = verifier;
 
-    await this.openUrl(url);
+    this.options.signal?.throwIfAborted();
+    // Browser launch cannot consume AbortSignal; check immediately before and after the boundary.
+
+    // The instructions describe the paste fallback, which only exists on a TTY.
+    if (interactive) {
+      this.printLoginInstructions(url);
+    }
+
+    try {
+      await this.openUrl(url);
+    } catch (error) {
+      // On a TTY the user can finish via the pasted-URL prompt, so a failed
+      // browser launch is non-fatal. Without one there is no fallback — surface
+      // the failure instead of waiting on a callback that will never arrive.
+      if (!interactive) throw error;
+    }
+    this.options.signal?.throwIfAborted();
+  }
+
+  private printLoginInstructions(url: string): void {
+    const output = this.output;
+    if (!output) return;
+
+    output.write(
+      `\nOpen this URL to sign in: ${url}\n\n` +
+        `If the browser opens on another machine, finish sign-in there. When it\n` +
+        `redirects to localhost, copy the full localhost URL from the address bar\n` +
+        `and paste it here.\n\n`,
+    );
   }
 
   async handleCallback(url: URL): Promise<void> {
@@ -159,7 +315,9 @@ class LoginState {
       if (error instanceof SDKAuthError) {
         throw new AuthError(error.message);
       }
-      throw new AuthError(error instanceof Error ? error.message : "Unknown error during login");
+      throw new AuthError(
+        error instanceof Error ? error.message : "Unknown error during login",
+      );
     }
   }
 
@@ -172,10 +330,14 @@ class LoginState {
 
       const { data } = await this.sdk.client.GET("/v1/workspaces/{id}", {
         params: { path: { id: tokens.workspaceId } },
+        signal: this.options.signal,
       });
       const name = data?.data?.name;
-      return typeof name === "string" && name.trim().length > 0 ? name.trim() : null;
+      return typeof name === "string" && name.trim().length > 0
+        ? name.trim()
+        : null;
     } catch {
+      this.options.signal?.throwIfAborted();
       return null;
     }
   }

@@ -52,6 +52,7 @@ export async function resolveProjectTarget(options: ResolveProjectOptions): Prom
     cwd: options.context.runtime.cwd,
     projects,
     commandName: options.commandName,
+    signal: options.context.runtime.signal,
   });
 }
 
@@ -76,6 +77,7 @@ export async function inspectProjectBinding(options: ResolveProjectOptions): Pro
       cwd: options.context.runtime.cwd,
       projects,
       commandName: options.commandName ?? "project show",
+      signal: options.context.runtime.signal,
     }),
   };
 }
@@ -136,8 +138,9 @@ export async function buildProjectSetupSuggestion(options: {
   cwd: string;
   projects: ProjectCandidate[];
   commandName?: string;
+  signal?: AbortSignal;
 }): Promise<ProjectSetupSuggestion> {
-  const suggestedName = await inferTargetName(options.cwd);
+  const suggestedName = await inferTargetName(options.cwd, options.signal);
   const candidates = sortProjects(
     options.projects.filter((project) => projectMatchesSuggestedName(project, suggestedName.name)),
   ).map(toProjectSummary);
@@ -154,6 +157,7 @@ export async function projectSetupRequiredError(options: {
   cwd: string;
   projects: ProjectCandidate[];
   commandName?: string;
+  signal?: AbortSignal;
 }): Promise<CliError> {
   const suggestion = await buildProjectSetupSuggestion(options);
   const commandLabel = options.commandName ? `prisma-cli ${options.commandName}` : "this command";
@@ -189,7 +193,7 @@ export function buildProjectSetupNextActions(options: {
     {
       kind: "user-choice",
       journey: "project-setup",
-      label: "Ask the user which Prisma Project this directory should use",
+      label: "Ask the user whether to link an existing Project or create a new one",
       commands,
       reason: options.reason
         ?? "This directory is not linked to a Prisma Project. Package and directory names are suggestions only, not a safe Project selection.",
@@ -227,9 +231,10 @@ export function buildProjectSetupNextActions(options: {
   return actions;
 }
 
-export async function readPackageName(cwd: string): Promise<string | null> {
+export async function readPackageName(cwd: string, signal?: AbortSignal): Promise<string | null> {
+  signal?.throwIfAborted();
   try {
-    const raw = await readFile(path.join(cwd, "package.json"), "utf8");
+    const raw = await readFile(path.join(cwd, "package.json"), { encoding: "utf8", signal });
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object") {
       return null;
@@ -247,8 +252,8 @@ export async function readPackageName(cwd: string): Promise<string | null> {
   }
 }
 
-export async function inferTargetName(cwd: string): Promise<InferredTargetName> {
-  const packageName = await readPackageName(cwd);
+export async function inferTargetName(cwd: string, signal?: AbortSignal): Promise<InferredTargetName> {
+  const packageName = await readPackageName(cwd, signal);
   if (packageName && isValidInferredTargetName(packageName)) {
     return {
       name: packageName,
@@ -320,7 +325,7 @@ async function resolveBoundProjectTarget(
     });
   }
 
-  const localPin = await readLocalResolutionPin(options.context.runtime.cwd);
+  const localPin = await readLocalResolutionPin(options.context.runtime.cwd, options.context.runtime.signal);
   if (localPin.kind === "invalid") {
     throw localStateStaleError();
   }
@@ -375,9 +380,10 @@ function buildProjectRecoveryCommands(commandName: string | undefined): string[]
   return commands;
 }
 
-function toProjectSummary(project: Pick<ProjectCandidate, "id" | "name">): ProjectSummary {
+function toProjectSummary(project: Pick<ProjectCandidate, "id" | "name" | "url">): ProjectSummary {
   return {
     id: project.id,
     name: project.name,
+    ...(project.url ? { url: project.url } : {}),
   };
 }

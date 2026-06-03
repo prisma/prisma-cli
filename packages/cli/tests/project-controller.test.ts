@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -136,7 +136,10 @@ describe("project controller", () => {
     const { runProjectCreate } = await import("../src/controllers/project");
     const result = await runProjectCreate(context, "New Dashboard");
 
-    expect(createProject).toHaveBeenCalledWith({ name: "New Dashboard" });
+    expect(createProject).toHaveBeenCalledWith({
+      name: "New Dashboard",
+      signal: context.runtime.signal,
+    });
     expect(result.result).toMatchObject({
       project: {
         id: "proj_new",
@@ -150,6 +153,93 @@ describe("project controller", () => {
     });
     await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).resolves.toContain('"projectId": "proj_new"');
     await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(".prisma/\n");
+  });
+
+  it("bare project link can create a new project from the interactive setup picker", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue({
+      token: "token",
+      GET: vi.fn().mockResolvedValue({
+        data: {
+          data: [
+            {
+              id: "proj_123",
+              name: "Acme Dashboard",
+              slug: "acme-dashboard",
+              workspace: {
+                id: "ws_123",
+                name: "Acme Inc",
+              },
+            },
+          ],
+        },
+      }),
+    });
+    const createProject = vi.fn().mockResolvedValue({
+      id: "proj_new",
+      name: "Interactive Project",
+    });
+
+    vi.doMock("../src/lib/auth/auth-ops", () => ({
+      readAuthState: vi.fn().mockResolvedValue({
+        authenticated: true,
+        provider: null,
+        user: {
+          email: "test@example.com",
+        },
+        workspace: {
+          id: "ws_123",
+          name: "Acme Inc",
+        },
+      }),
+      performLogin: vi.fn(),
+      performLogout: vi.fn(),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        createProject,
+      })),
+    }));
+
+    const cwd = await createTempCwd();
+    await writeFile(path.join(cwd, "package.json"), `${JSON.stringify({ name: "suggested-name" }, null, 2)}\n`, "utf8");
+    const stateDir = path.join(cwd, ".state");
+    const { context, stderr } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: true,
+      stdinText: "\u001B[B\rInteractive Project\r",
+      env: {
+        ...process.env,
+        PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const { runProjectLink } = await import("../src/controllers/project");
+    const result = await runProjectLink(context, undefined);
+
+    expect(createProject).toHaveBeenCalledWith({
+      name: "Interactive Project",
+      signal: context.runtime.signal,
+    });
+    expect(result.result).toMatchObject({
+      project: {
+        id: "proj_new",
+        name: "Interactive Project",
+      },
+      localPin: {
+        path: ".prisma/local.json",
+        written: true,
+      },
+      action: "created",
+    });
+    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).resolves.toContain('"projectId": "proj_new"');
+    expect(stderr.buffer).toContain("Which Project should this directory use?");
+    expect(stderr.buffer).toContain("Project name");
+    expect(stderr.buffer).toContain("suggested-name");
   });
 
   it("returns PROJECT_CREATE_FAILED when project creation fails", async () => {

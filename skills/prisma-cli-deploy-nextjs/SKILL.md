@@ -33,9 +33,14 @@ Prisma CLI beta.
 ## Key Concepts
 
 - **The CLI owns target resolution.** `prisma-cli app deploy` resolves or
-  creates project, branch, and app state. Prefer the bare command for a fresh,
-  unambiguous app; add `--project`, `--branch`, or `--app` only when the user
-  asks for a specific target or the CLI reports ambiguity.
+  creates Project setup, Branch, and App state. Prefer the bare command for a
+  fresh deploy; add `--project`, `--branch`, or `--app` only when the user asks
+  for a specific target or the CLI reports ambiguity.
+- **Project setup is a user choice.** `project show` and `project list` expose
+  state and candidates; they do not select a Project. Do not link from folder
+  name, package name, or a plausible list match. Use `prisma-cli app deploy` to
+  enter setup, or use bare `prisma-cli project link` when the user wants to
+  connect the repo first.
 - **First deploy binds the directory.** Successful project binding writes local
   `.prisma/` state. Treat that as local CLI state, not committed app config.
 - **Next.js deploy uses standalone output today.** If the app does not already
@@ -111,10 +116,17 @@ Check `next.config.js`, `next.config.mjs`, `next.config.cjs`, or
 
 ### 4. Deploy
 
-For a first deploy to an unambiguous target, prefer:
+For a first deploy from an unlinked repo, prefer:
 
 ```bash
 prisma-cli app deploy --framework nextjs
+```
+
+If the user explicitly wants to link the repo before deploying, run the
+interactive setup primitive:
+
+```bash
+prisma-cli project link
 ```
 
 Use explicit flags only when they express user intent or repair ambiguity:
@@ -122,6 +134,11 @@ Use explicit flags only when they express user intent or repair ambiguity:
 ```bash
 prisma-cli app deploy --project <id-or-name> --app <name> --branch <name> --framework nextjs
 ```
+
+Only run `prisma-cli project link <id-or-name>` after the user named or chose
+that Project. Only run `prisma-cli project create <name>` or
+`prisma-cli app deploy --create-project <name>` after the user confirmed the new
+Project name.
 
 Do not use `--branch production` for a first deploy unless the user explicitly
 asks for production. The default remote deploy path is preview-oriented.
@@ -149,6 +166,8 @@ CLI showed them, and the verification command that passed.
 - Do not add a dry-run step. The current CLI does not expose a deploy dry run.
 - Do not duplicate project, branch, or app resolution in the agent. Let the CLI
   decide, then interpret its output.
+- Do not run `project link <id-or-name>` just because a listed Project looks
+  plausible. Ask the user or use the CLI setup picker first.
 - Do not print secret values from `--env`, `.env`, or platform env commands.
 - Do not silently retarget production. Production requires explicit intent.
 - Do not continue with another framework under this skill; route unsupported
@@ -176,6 +195,8 @@ Route requests for those gaps to `prisma-cli-feedback`.
 - [ ] Confirmed `@prisma/cli` / `prisma-cli` is available.
 - [ ] Confirmed auth with `prisma-cli auth whoami` or completed login.
 - [ ] Ensured `output: "standalone"` is present in Next.js config.
+- [ ] Did not link or create a Project unless the user explicitly chose the
+      Project or confirmed the new Project name.
 - [ ] Ran `prisma-cli app deploy --framework nextjs`.
 - [ ] Verified success with URL plus `app show --json` or `app list-deploys --json`.
 - [ ] Routed CLI/platform gaps to `prisma-cli-feedback`.

@@ -8,6 +8,7 @@ export default defineConfig({
   clean: true,
   shims: true,
   unbundle: true,
+  fixedExtension: false,
   outDir: "dist",
   dts: false,
 });

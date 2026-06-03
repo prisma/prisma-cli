@@ -61,7 +61,20 @@ Recommended symbols:
 - Banners are reserved for `init` and similar first-run experiences.
 - Outside those flows, focus on status, context, result, and next steps.
 
-Human-oriented command output in TTY mode should usually start with a compact header:
+Human-oriented command output in TTY mode should usually start with a compact header.
+
+Bound state:
+
+```text
+project show → This directory is linked to the following platform project.
+
+│  local repo  ~/code/apple
+│  platform    Edith / orange
+│
+│  → https://prisma.build/edith/orange
+```
+
+Recovery state:
 
 ```text
 project show → This directory is not linked to a Prisma Project.
@@ -70,7 +83,7 @@ project show → This directory is not linked to a Prisma Project.
 │  project:    Not linked
 
 Next steps:
-- Link an existing Project: prisma-cli project link <id-or-name>
+- Link an existing Project you choose: prisma-cli project link <id-or-name>
 - Create a new Project: prisma-cli project create billing-api
 ```
 
@@ -84,6 +97,8 @@ Rules:
 - mask sensitive values rather than omitting their presence entirely when the value matters to the flow
 - include only rows that are actually known for the current command
 - use human labels such as `Not linked` instead of internal resolution terms such as `unbound`
+- hide internal resolution terms such as `local pin` from default human output when the visible binding is clearer
+- document distinct success and recovery states when a command's terminal output materially differs
 - include a `Read more` row that points to the source-of-truth repo doc or anchor until a stable public docs URL exists
 - leave one blank line between the header block and the body
 

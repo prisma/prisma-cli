@@ -44,6 +44,7 @@ describe("app local dev commands", () => {
       appPath: cwd,
       entrypoint: "server.ts",
       buildType: "bun",
+      signal: context.runtime.signal,
     });
     expect(result.result).toEqual({
       directory: "/tmp/compute-build/app",
@@ -86,6 +87,7 @@ describe("app local dev commands", () => {
       appPath: cwd,
       entrypoint: undefined,
       buildType: "astro",
+      signal: context.runtime.signal,
     });
     expect(result.result).toEqual({
       directory: "/tmp/compute-build/app",
@@ -228,6 +230,7 @@ describe("app local dev commands", () => {
       entrypoint: "server.ts",
       port: 4000,
       env: context.runtime.env,
+      signal: context.runtime.signal,
     });
     expect(result.result).toEqual({
       framework: "bun",
