@@ -68,8 +68,8 @@ const DESCRIPTORS: CommandDescriptor[] = [
   {
     id: "branch",
     path: ["prisma", "branch"],
-    description: "View your active Platform branches",
-    examples: ["prisma-cli branch list", "prisma-cli branch show"],
+    description: "View your Platform branches",
+    examples: ["prisma-cli branch list"],
   },
   {
     id: "git",
@@ -120,20 +120,8 @@ const DESCRIPTORS: CommandDescriptor[] = [
   {
     id: "branch.list",
     path: ["prisma", "branch", "list"],
-    description: "List active Platform branches for the resolved project",
+    description: "List Platform branches for the resolved project",
     examples: ["prisma-cli branch list", "prisma-cli branch list --json"],
-  },
-  {
-    id: "branch.show",
-    path: ["prisma", "branch", "show"],
-    description: "Show the Platform branch matching your current Git branch",
-    examples: ["prisma-cli branch show", "prisma-cli branch show --json"],
-  },
-  {
-    id: "branch.use",
-    path: ["prisma", "branch", "use"],
-    description: "Change the local default branch context.",
-    examples: ["prisma-cli branch use", "prisma-cli branch use production"],
   },
   {
     id: "app.build",

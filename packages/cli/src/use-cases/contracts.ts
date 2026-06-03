@@ -1,5 +1,5 @@
 import type { AuthProviderId, AuthStateResult, AuthUser, AuthWorkspace } from "../types/auth";
-import type { BranchKind, BranchListResult, BranchShowResult, LiveDeploymentSummary } from "../types/branch";
+import type { BranchListResult, BranchRole } from "../types/branch";
 import type { ProjectSummary } from "../types/project";
 
 export interface ProviderInfo {
@@ -20,11 +20,14 @@ export interface RemoteBranchRecord {
   id: string;
   projectId: string;
   name: string;
-  kind: BranchKind;
+  role: BranchRole;
   currentDeploymentId: string | null;
 }
 
-export interface DeploymentRecord extends LiveDeploymentSummary {
+export interface DeploymentRecord {
+  id: string;
+  status: string;
+  url: string | null;
   projectId: string;
   branch: string;
 }
@@ -62,11 +65,6 @@ export interface SessionGateway {
   readAuthSession(): Promise<AuthSessionRecord | null>;
   writeAuthSession(session: AuthSessionRecord): Promise<void>;
   clearAuthSession(): Promise<void>;
-}
-
-export interface BranchStateGateway {
-  readActiveBranch(): Promise<string>;
-  writeActiveBranch(branchName: string): Promise<void>;
 }
 
 export interface ProjectStateGateway {
@@ -110,6 +108,4 @@ export interface ProjectUseCases {
 
 export interface BranchUseCases {
   list(): Promise<BranchListResult>;
-  show(): Promise<BranchShowResult>;
-  use(branchName: string): Promise<BranchShowResult>;
 }

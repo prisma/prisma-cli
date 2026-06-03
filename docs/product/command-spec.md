@@ -533,40 +533,20 @@ prisma-cli git disconnect --json
 
 Purpose:
 
-- list active Platform branches for the resolved project
+- list Platform branches for the resolved project
 
 Behavior:
 
 - shows known remote branches for the resolved project
-- marks active context
+- shows each branch's name, role, and role-derived env map (`production` for `role=production`, `preview` for `role=preview`)
 - does not create remote state
-- does not expose branch `role` or `durability` fields yet
+- does not include branch-specific env overrides, durability, protection, or deployment metadata
 
 Examples:
 
 ```bash
 prisma-cli branch list
 prisma-cli branch list --json
-```
-
-## `prisma-cli branch show`
-
-Purpose:
-
-- show the Platform branch matching your current Git branch
-
-Behavior:
-
-- reads local branch context
-- shows resolved project context when known
-- does not mutate local or remote state
-- does not expose branch `role` or `durability` fields yet
-
-Examples:
-
-```bash
-prisma-cli branch show
-prisma-cli branch show --json
 ```
 
 ## `prisma-cli app build --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|tanstack-start>`

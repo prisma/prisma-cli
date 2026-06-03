@@ -37,6 +37,7 @@ interface BranchRecord {
   id: string;
   projectId: string;
   name: string;
+  role: "production" | "preview";
   currentDeploymentId: string | null;
 }
 

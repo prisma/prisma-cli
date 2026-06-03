@@ -1,9 +1,7 @@
-import type { BranchDetail, BranchKind, BranchSummary, BranchListResult, BranchShowResult } from "../types/branch";
+import type { BranchSummary, BranchListResult } from "../types/branch";
 import type {
-  DeploymentRecord,
   BranchUseCases,
   BranchGateway,
-  BranchStateGateway,
   ProjectGateway,
   ProjectStateGateway,
   RemoteBranchRecord,
@@ -11,7 +9,6 @@ import type {
 
 interface BranchUseCaseDependencies {
   branchGateway: BranchGateway;
-  branchStateGateway: BranchStateGateway;
   projectGateway: ProjectGateway;
   projectStateGateway: ProjectStateGateway;
 }
@@ -19,51 +16,22 @@ interface BranchUseCaseDependencies {
 export function createBranchUseCases(dependencies: BranchUseCaseDependencies): BranchUseCases {
   return {
     list: async (): Promise<BranchListResult> => {
-      const [projectId, activeBranch] = await Promise.all([
-        dependencies.projectStateGateway.readRememberedProjectId(),
-        dependencies.branchStateGateway.readActiveBranch(),
-      ]);
+      const projectId = await dependencies.projectStateGateway.readRememberedProjectId();
+      if (!projectId) {
+        return {
+          projectId: "",
+          projectName: "not resolved",
+          branches: [],
+        };
+      }
+
       const remoteBranches = await listRemoteBranches(dependencies.branchGateway, projectId);
       const projectName = resolveProjectName(dependencies.projectGateway, projectId);
 
       return {
         projectId,
-        projectName,
-        activeBranch,
-        branches: buildBranchSummaries(activeBranch, remoteBranches),
-      };
-    },
-    show: async (): Promise<BranchShowResult> => {
-      const [projectId, activeBranch] = await Promise.all([
-        dependencies.projectStateGateway.readRememberedProjectId(),
-        dependencies.branchStateGateway.readActiveBranch(),
-      ]);
-      const projectName = resolveProjectName(dependencies.projectGateway, projectId);
-
-      return {
-        projectId,
-        projectName,
-        branch: buildBranchDetail(
-          dependencies.branchGateway,
-          projectId,
-          activeBranch,
-        ),
-      };
-    },
-    use: async (branchName: string): Promise<BranchShowResult> => {
-      await dependencies.branchStateGateway.writeActiveBranch(branchName);
-
-      const projectId = await dependencies.projectStateGateway.readRememberedProjectId();
-      const projectName = resolveProjectName(dependencies.projectGateway, projectId);
-
-      return {
-        projectId,
-        projectName,
-        branch: buildBranchDetail(
-          dependencies.branchGateway,
-          projectId,
-          branchName,
-        ),
+        projectName: projectName ?? "not resolved",
+        branches: buildBranchSummaries(remoteBranches),
       };
     },
   };
@@ -88,62 +56,13 @@ async function listRemoteBranches(
   return branchGateway.listBranchesForProject(projectId);
 }
 
-function buildBranchSummaries(
-  activeBranch: string,
-  remoteBranches: RemoteBranchRecord[],
-): BranchSummary[] {
-  const byName = new Map<string, BranchSummary>();
-
-  for (const branch of remoteBranches) {
-    byName.set(branch.name, {
-      id: branch.id,
-      name: branch.name,
-      kind: branch.kind,
-      active: activeBranch === branch.name,
-      remoteState: true,
-    });
-  }
-
-  if (!byName.has(activeBranch)) {
-    byName.set(activeBranch, {
-      id: activeBranch,
-      name: activeBranch,
-      kind: toBranchKind(activeBranch),
-      active: true,
-      remoteState: false,
-    });
-  }
-
-  return sortBranches([...byName.values()]);
-}
-
-function buildBranchDetail(
-  branchGateway: BranchGateway,
-  projectId: string | null,
-  branchName: string,
-): BranchDetail {
-  const kind = toBranchKind(branchName);
-  const remoteBranch =
-    projectId ? branchGateway.getBranchForProject(projectId, branchName) : undefined;
-
-  return {
-    name: branchName,
-    kind,
-    active: true,
-    remoteState: Boolean(remoteBranch),
-    liveDeployment:
-      remoteBranch && remoteBranch.currentDeploymentId
-        ? toLiveDeployment(branchGateway.getDeployment(remoteBranch.currentDeploymentId))
-        : null,
-  };
-}
-
-function toBranchKind(name: string): BranchKind {
-  if (name === "production") {
-    return "production";
-  }
-
-  return "preview";
+function buildBranchSummaries(remoteBranches: RemoteBranchRecord[]): BranchSummary[] {
+  return sortBranches(remoteBranches.map((branch) => ({
+    id: branch.id,
+    name: branch.name,
+    role: branch.role,
+    envMap: branch.role,
+  })));
 }
 
 function sortBranches(branches: BranchSummary[]): BranchSummary[] {
@@ -162,21 +81,9 @@ function sortBranches(branches: BranchSummary[]): BranchSummary[] {
 }
 
 function branchOrder(branch: BranchSummary): number {
-  if (branch.name === "production") {
+  if (branch.role === "production") {
     return 0;
   }
 
   return 1;
-}
-
-function toLiveDeployment(deployment: DeploymentRecord | undefined) {
-  if (!deployment) {
-    return null;
-  }
-
-  return {
-    id: deployment.id,
-    status: deployment.status,
-    url: deployment.url,
-  };
 }

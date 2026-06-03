@@ -1,100 +1,131 @@
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
 
-import { runBranchList, runBranchShow, runBranchUse } from "../src/controllers/branch";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
 import { createTempCwd, createTestCommandContext } from "./helpers";
 
-const fixturePath = path.resolve("fixtures/mock-api.json");
+afterEach(() => {
+  vi.doUnmock("../src/lib/auth/auth-ops");
+  vi.doUnmock("../src/lib/auth/guard");
+  vi.resetModules();
+  vi.restoreAllMocks();
+});
+
+function createMockClient() {
+  return {
+    GET: vi.fn().mockImplementation((pathName: string, request?: { params?: { query?: { cursor?: string } } }) => {
+      if (pathName === "/v1/projects") {
+        return {
+          data: {
+            data: [
+              {
+                id: "proj_123",
+                name: "Acme Dashboard",
+                slug: "acme-dashboard",
+                workspace: { id: "ws_123", name: "Acme Inc" },
+              },
+            ],
+          },
+          response: { status: 200 },
+        };
+      }
+
+      if (pathName === "/v1/projects/{projectId}/branches") {
+        const cursor = request?.params?.query?.cursor;
+        if (cursor === "cursor_2") {
+          return {
+            data: {
+              data: [
+                { id: "br_main", gitName: "main", role: "production" },
+              ],
+              pagination: { hasMore: false, nextCursor: null },
+            },
+            response: { status: 200 },
+          };
+        }
+
+        return {
+          data: {
+            data: [
+              { id: "br_feature", gitName: "feature/auth", role: "preview" },
+            ],
+            pagination: { hasMore: true, nextCursor: "cursor_2" },
+          },
+          response: { status: 200 },
+        };
+      }
+
+      throw new Error(`Unexpected path ${pathName}`);
+    }),
+  };
+}
+
+async function writeLocalPin(cwd: string, projectId = "proj_123") {
+  await mkdir(path.join(cwd, ".prisma"), { recursive: true });
+  await writeFile(
+    path.join(cwd, ".prisma/local.json"),
+    `${JSON.stringify({ workspaceId: "ws_123", projectId }, null, 2)}\n`,
+    "utf8",
+  );
+}
+
+async function loadController(client: ReturnType<typeof createMockClient>) {
+  vi.resetModules();
+
+  vi.doMock("../src/lib/auth/auth-ops", () => ({
+    readAuthState: vi.fn().mockResolvedValue({
+      authenticated: true,
+      provider: null,
+      user: { email: "test@example.com" },
+      workspace: { id: "ws_123", name: "Acme Inc" },
+      credential: null,
+    }),
+    performLogin: vi.fn(),
+    performLogout: vi.fn(),
+  }));
+  vi.doMock("../src/lib/auth/guard", () => ({
+    requireComputeAuth: vi.fn().mockResolvedValue(client),
+  }));
+
+  return import("../src/controllers/branch");
+}
 
 describe("branch controller", () => {
-  it("returns FEATURE_UNAVAILABLE for branch list in preview mode", async () => {
+  it("lists real Platform branches for the resolved project", async () => {
+    const client = createMockClient();
+    const { runBranchList } = await loadController(client);
     const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
     const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({
-      cwd,
-      stateDir,
-      env: {
-        ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+    const { context } = await createTestCommandContext({ cwd, stateDir });
+
+    const result = await runBranchList(context);
+
+    expect(client.GET).toHaveBeenCalledWith(
+      "/v1/projects/{projectId}/branches",
+      expect.objectContaining({
+        params: { path: { projectId: "proj_123" }, query: {} },
+      }),
+    );
+    expect(client.GET).toHaveBeenCalledWith(
+      "/v1/projects/{projectId}/branches",
+      expect.objectContaining({
+        params: { path: { projectId: "proj_123" }, query: { cursor: "cursor_2" } },
+      }),
+    );
+    expect(result).toEqual({
+      command: "branch.list",
+      result: {
+        projectId: "proj_123",
+        projectName: "Acme Dashboard",
+        branches: [
+          { id: "br_main", name: "main", role: "production", envMap: "production" },
+          { id: "br_feature", name: "feature/auth", role: "preview", envMap: "preview" },
+        ],
       },
-    });
-
-    await expect(runBranchList(context)).rejects.toMatchObject({
-      code: "FEATURE_UNAVAILABLE",
-      domain: "branch",
-      summary: "Branch commands are not available in this preview",
-    });
-  });
-
-  it("returns FEATURE_UNAVAILABLE for branch show in preview mode", async () => {
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({
-      cwd,
-      stateDir,
-      env: {
-        ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
-      },
-    });
-
-    await expect(runBranchShow(context)).rejects.toMatchObject({
-      code: "FEATURE_UNAVAILABLE",
-      domain: "branch",
-      summary: "Branch commands are not available in this preview",
-    });
-  });
-
-  it("returns FEATURE_UNAVAILABLE for branch use in preview mode", async () => {
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({
-      cwd,
-      stateDir,
-      env: {
-        ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
-      },
-    });
-
-    await expect(runBranchUse(context, "preview")).rejects.toMatchObject({
-      code: "FEATURE_UNAVAILABLE",
-      domain: "branch",
-      summary: "Branch commands are not available in this preview",
-    });
-  });
-
-  it("returns a structured usage error when branch use cannot prompt and no target is provided", async () => {
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({
-      cwd,
-      stateDir,
-      fixturePath,
-      isTTY: false,
-    });
-
-    await expect(runBranchUse(context, undefined)).rejects.toMatchObject({
-      code: "USAGE_ERROR",
-      domain: "branch",
-      summary: "Branch use requires a target in non-interactive mode",
-    });
-  });
-
-  it("returns a structured usage error for an invalid branch name", async () => {
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({
-      cwd,
-      stateDir,
-      fixturePath,
-      isTTY: false,
-    });
-
-    await expect(runBranchUse(context, "Preview Space")).rejects.toMatchObject({
-      code: "USAGE_ERROR",
-      domain: "branch",
-      summary: "Branch name must use the documented form",
+      warnings: [],
+      nextSteps: [],
     });
   });
 });
