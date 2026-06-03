@@ -27,6 +27,7 @@ export {
   PRISMA_APP_CONFIG_SCHEMA_URL,
   resolveOrCreatePreviewBuildSettings,
   resolvePreviewBuildSettings,
+  type PreviewBuildSettingsBuildType,
   type PreviewBuildSettings,
   type PreviewBuildSettingsResolution,
 } from "./preview-build-settings";

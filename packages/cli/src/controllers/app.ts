@@ -75,6 +75,7 @@ import {
   PREVIEW_BUILD_TYPES,
   RESOLVED_PREVIEW_BUILD_TYPES,
   resolveOrCreatePreviewBuildSettings,
+  type PreviewBuildSettingsBuildType,
   type PreviewBuildSettingsResolution,
   type ResolvedPreviewBuildType,
   type PreviewBuildType,
@@ -320,16 +321,12 @@ export async function runAppDeploy(
   const buildType = framework.buildType;
   assertSupportedEntrypoint(buildType, options?.entrypoint, "deploy");
   const entrypoint = await resolveDeployEntrypoint(context.runtime.cwd, framework, options?.entrypoint, context.runtime.signal);
-  const buildSettingsResolution = usesPreviewBuildSettings(buildType)
-    ? await resolveOrCreatePreviewBuildSettings({
-        appPath: context.runtime.cwd,
-        buildType,
-        signal: context.runtime.signal,
-      })
-    : null;
-  if (buildSettingsResolution) {
-    maybeRenderDeployBuildSettings(context, buildSettingsResolution);
-  }
+  const buildSettingsResolution = await resolveOrCreatePreviewBuildSettings({
+    appPath: context.runtime.cwd,
+    buildType,
+    signal: context.runtime.signal,
+  });
+  maybeRenderDeployBuildSettings(context, buildSettingsResolution);
   const portMapping = parseDeployPortMapping(String(runtime.port));
 
   const progressState = createPreviewDeployProgressState();
@@ -343,7 +340,7 @@ export async function runAppDeploy(
     region: selectedApp.region,
     entrypoint,
     buildType,
-    buildSettings: buildSettingsResolution?.settings,
+    buildSettings: buildSettingsResolution.settings,
     portMapping,
     envVars,
     interaction: undefined,
@@ -2597,7 +2594,7 @@ async function resolveGitHeadPath(gitPath: string, signal: AbortSignal): Promise
 
 interface ResolvedDeployFramework {
   key: string;
-  buildType: ResolvedPreviewBuildType;
+  buildType: PreviewBuildSettingsBuildType;
   displayName: string;
   annotation: string;
 }
@@ -2866,10 +2863,6 @@ async function maybeRenderDeploySetupBlock(
   const directory = formatDeployDirectory(context.runtime.cwd);
   const prefix = details.includeDirectory ? `Deploying ${directory} to` : "Deploying to";
   context.output.stderr.write(`${prefix} ${details.projectName} / ${details.branchName} / ${details.appName}\n\n`);
-}
-
-function usesPreviewBuildSettings(buildType: ResolvedPreviewBuildType): boolean {
-  return buildType === "nextjs" || buildType === "tanstack-start" || buildType === "bun";
 }
 
 function maybeRenderDeployBuildSettings(

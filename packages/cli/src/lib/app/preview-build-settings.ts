@@ -7,6 +7,7 @@ import { readBunPackageJson, type BunPackageJsonLike } from "./bun-project";
 import type { ResolvedPreviewBuildType } from "./preview-build";
 
 type PackageManager = "bun" | "pnpm" | "yarn" | "npm";
+export type PreviewBuildSettingsBuildType = Extract<ResolvedPreviewBuildType, "nextjs" | "tanstack-start" | "bun">;
 
 export const PRISMA_APP_CONFIG_FILENAME = "prisma.app.json";
 export const PRISMA_APP_CONFIG_SCHEMA_URL = "https://pris.ly/schemas/prisma-app-config.v1.json";
@@ -32,7 +33,7 @@ export interface PreviewBuildSettingsResolution {
 
 export async function resolveOrCreatePreviewBuildSettings(options: {
   appPath: string;
-  buildType: ResolvedPreviewBuildType;
+  buildType: PreviewBuildSettingsBuildType;
   signal?: AbortSignal;
 }): Promise<PreviewBuildSettingsResolution> {
   const configPath = path.join(options.appPath, PRISMA_APP_CONFIG_FILENAME);
@@ -95,7 +96,7 @@ export async function resolveOrCreatePreviewBuildSettings(options: {
 
 export async function resolvePreviewBuildSettings(options: {
   appPath: string;
-  buildType: ResolvedPreviewBuildType;
+  buildType: PreviewBuildSettingsBuildType;
   signal?: AbortSignal;
 }): Promise<PreviewBuildSettings> {
   switch (options.buildType) {
@@ -128,7 +129,7 @@ export async function resolvePreviewBuildSettings(options: {
         outputDirectorySource: "TanStack Start output",
       };
     }
-    default: {
+    case "bun": {
       const packageJson = await readBunPackageJson(options.appPath, options.signal);
       const buildCommand = await resolveFrameworkBuildCommand(options.appPath, packageJson, {
         command: null,
