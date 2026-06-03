@@ -64,6 +64,14 @@ function createProjectClient() {
   };
 }
 
+function createResolveBranch(role: "preview" | "production" = "preview") {
+  return vi.fn().mockImplementation((_projectId: string, options: { branchName: string }) => Promise.resolve({
+    id: `branch_${options.branchName.replace(/[^a-z0-9]+/gi, "_")}`,
+    name: options.branchName,
+    role,
+  }));
+}
+
 describe("app env vars", () => {
   it("parses repeated env assignments and allows empty values", async () => {
     const { parseEnvAssignments } = await import("../src/lib/app/env-vars");
@@ -251,6 +259,7 @@ describe("app env vars", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         removeApp: vi.fn(),
@@ -301,7 +310,7 @@ describe("app env vars", () => {
     expect(JSON.stringify(result.result)).not.toContain("enabled");
   });
 
-  it("parses deploy build, port, explicit project, and JSON output through the CLI command layer", async () => {
+  it("parses deploy build, port, prod, explicit project, and JSON output through the CLI command layer", async () => {
     const runAppDeploy = vi.fn().mockResolvedValue({
       command: "app.deploy",
       result: {
@@ -360,6 +369,7 @@ describe("app env vars", () => {
         "DATABASE_URL=postgresql://example",
         "--project",
         "proj_123",
+        "--prod",
         "--json",
       ],
       cwd,
@@ -405,6 +415,7 @@ describe("app env vars", () => {
         httpPort: "3000",
         envAssignments: ["DATABASE_URL=postgresql://example"],
         projectRef: "proj_123",
+        prod: true,
       },
     );
   });

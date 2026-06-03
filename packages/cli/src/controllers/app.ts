@@ -90,6 +90,7 @@ import {
   type PreviewAppRecord,
   type PreviewDomainRecord,
 } from "../lib/app/preview-provider";
+import { enforceProductionDeployGate } from "../lib/app/production-deploy-gate";
 import { formatDomainFailureFix } from "../lib/app/domain-guidance";
 import { requireAuthenticatedAuthState } from "./auth";
 import { listRealWorkspaceProjects } from "./project";
@@ -221,6 +222,7 @@ export async function runAppDeploy(
     framework?: string;
     httpPort?: string;
     envAssignments?: string[];
+    prod?: boolean;
   },
 ): Promise<CommandSuccess<AppDeployResult>> {
   ensurePreviewAppMode(context);
@@ -303,6 +305,13 @@ export async function runAppDeploy(
   });
   framework = customized.framework;
   runtime = customized.runtime;
+
+  await enforceProductionDeployGate(context, provider, {
+    appId: selectedApp.appId,
+    appName: selectedApp.displayName,
+    branchKind: target.branch.kind,
+    prod: options?.prod === true,
+  });
 
   // Customization can switch from a Bun-compatible framework to one that
   // derives its entrypoint from build output, so validate --entry again after it.
@@ -2301,7 +2310,7 @@ async function resolveDeployProjectContext(
 
   if (explicitProject) {
     const project = resolveProjectForSetup(explicitProject, projects, workspace);
-    return withDeployBranch({
+    return withRemoteDeployBranch(provider, {
       workspace,
       project: toProjectSummary(project),
       resolution: {
@@ -2310,7 +2319,7 @@ async function resolveDeployProjectContext(
         targetNameSource: "explicit",
       },
       localPinAction: "linked",
-    }, branch);
+    }, branch, context.runtime.signal);
   }
 
   if (options.createProjectName) {
@@ -2320,7 +2329,7 @@ async function resolveDeployProjectContext(
     }
 
     const created = await createProjectForDeploySetup(provider, projectName, workspace, context.runtime.signal);
-    return withDeployBranch({
+    return withRemoteDeployBranch(provider, {
       workspace,
       project: toProjectSummary(created),
       resolution: {
@@ -2329,7 +2338,7 @@ async function resolveDeployProjectContext(
         targetNameSource: "explicit",
       },
       localPinAction: "created",
-    }, branch);
+    }, branch, context.runtime.signal);
   }
 
   if (options.envProjectId) {
@@ -2337,7 +2346,7 @@ async function resolveDeployProjectContext(
     if (!project) {
       throw projectNotFoundError(options.envProjectId, workspace);
     }
-    return withDeployBranch({
+    return withRemoteDeployBranch(provider, {
       workspace,
       project: toProjectSummary(project),
       resolution: {
@@ -2345,7 +2354,7 @@ async function resolveDeployProjectContext(
         targetName: options.envProjectId,
         targetNameSource: "env",
       },
-    }, branch);
+    }, branch, context.runtime.signal);
   }
 
   const localPin = options.localPin;
@@ -2359,7 +2368,7 @@ async function resolveDeployProjectContext(
       throw localResolutionPinStaleError();
     }
 
-    return withDeployBranch({
+    return withRemoteDeployBranch(provider, {
       workspace,
       project: toProjectSummary(project),
       resolution: {
@@ -2367,12 +2376,12 @@ async function resolveDeployProjectContext(
         targetName: project.name,
         targetNameSource: "local-pin",
       },
-    }, branch);
+    }, branch, context.runtime.signal);
   }
 
   const platformMapping = await resolveDurablePlatformMapping();
   if (platformMapping && platformMapping.workspace.id === workspace.id) {
-    return withDeployBranch({
+    return withRemoteDeployBranch(provider, {
       workspace,
       project: toProjectSummary(platformMapping),
       resolution: {
@@ -2380,12 +2389,12 @@ async function resolveDeployProjectContext(
         targetName: platformMapping.name,
         targetNameSource: "platform-mapping",
       },
-    }, branch);
+    }, branch, context.runtime.signal);
   }
 
   if (canPrompt(context) && !context.flags.yes) {
     const resolved = await resolveInteractiveDeployProjectSetup(context, provider, workspace, projects);
-    return withDeployBranch(resolved, branch);
+    return withRemoteDeployBranch(provider, resolved, branch, context.runtime.signal);
   }
 
   const suggestedName = await inferTargetName(context.runtime.cwd, context.runtime.signal);
@@ -2446,15 +2455,22 @@ async function createProjectForDeploySetup(
   };
 }
 
-function withDeployBranch(
+async function withRemoteDeployBranch(
+  provider: ReturnType<typeof createPreviewAppProvider>,
   target: Omit<ResolvedAppProjectContext, "branch">,
   branch: ResolvedDeployBranch,
-): ResolvedAppProjectContext {
+  signal: AbortSignal,
+): Promise<ResolvedAppProjectContext> {
+  const remoteBranch = await provider.resolveBranch(target.project.id, {
+    branchName: branch.name,
+    signal,
+  });
+
   return {
     ...target,
     branch: {
-      name: branch.name,
-      kind: toBranchKind(branch.name),
+      name: remoteBranch.name,
+      kind: remoteBranch.role,
     },
   };
 }

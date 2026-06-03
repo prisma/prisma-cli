@@ -33,15 +33,29 @@ afterEach(() => {
   vi.doUnmock("../src/lib/auth/auth-ops");
   vi.doUnmock("../src/lib/auth/guard");
   vi.doUnmock("../src/lib/app/preview-provider");
+  vi.doUnmock("../src/shell/prompt");
   vi.doUnmock("open");
   vi.resetModules();
   vi.restoreAllMocks();
 });
 
-function createProjectClient(projectId = "proj_123") {
+function createProjectClient(
+  projectId = "proj_123",
+  options: {
+    branchExists?: boolean;
+    isDefault?: boolean;
+  } = {},
+) {
+  const branchRecord = (branchName: string) => ({
+    id: `branch_${branchName.replace(/[^a-z0-9]+/gi, "_")}`,
+    gitName: branchName,
+    isDefault: options.isDefault ?? branchName === "main",
+    role: "preview",
+  });
+
   return {
     token: "token",
-    GET: vi.fn().mockImplementation((pathName: string) => {
+    GET: vi.fn().mockImplementation((pathName: string, request?: { params?: { query?: { gitName?: string } } }) => {
       if (pathName === "/v1/projects") {
         return {
           data: {
@@ -60,9 +74,38 @@ function createProjectClient(projectId = "proj_123") {
         };
       }
 
+      if (pathName === "/v1/projects/{projectId}/branches") {
+        const branchName = request?.params?.query?.gitName ?? "main";
+        return {
+          data: {
+            data: options.branchExists === false ? [] : [branchRecord(branchName)],
+          },
+        };
+      }
+
+      throw new Error(`Unexpected path ${pathName}`);
+    }),
+    POST: vi.fn().mockImplementation((pathName: string, request?: { body?: { gitName?: string } }) => {
+      if (pathName === "/v1/projects/{projectId}/branches") {
+        const branchName = request?.body?.gitName ?? "main";
+        return {
+          data: {
+            data: branchRecord(branchName),
+          },
+        };
+      }
+
       throw new Error(`Unexpected path ${pathName}`);
     }),
   };
+}
+
+function createResolveBranch(role: "preview" | "production" = "preview") {
+  return vi.fn().mockImplementation((_projectId: string, options: { branchName: string }) => Promise.resolve({
+    id: `branch_${options.branchName.replace(/[^a-z0-9]+/gi, "_")}`,
+    name: options.branchName,
+    role,
+  }));
 }
 
 function createDomain(overrides: Partial<{
@@ -158,6 +201,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         deployApp,
         listDeployments: vi.fn(),
@@ -200,7 +244,7 @@ describe("app controller", () => {
       },
       branch: {
         name: "main",
-        kind: "production",
+        kind: "preview",
       },
       resolution: {
         projectSource: "explicit",
@@ -219,6 +263,58 @@ describe("app controller", () => {
       id: "app_1",
       name: "hello-world",
     });
+  });
+
+  it("does not treat branch name as production authority", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const app = { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_live", liveUrl: null };
+    const listApps = vi.fn().mockResolvedValue([app]);
+    const listDeployments = vi.fn();
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_new",
+      },
+      deployment: {
+        id: "dep_new",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
+        listApps,
+        deployApp,
+        listDeployments,
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context } = await createTestCommandContext({ cwd, stateDir: path.join(cwd, ".state") });
+
+    const result = await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      branchName: "production",
+      framework: "hono",
+    });
+
+    expect(result.result.branch).toEqual({
+      name: "production",
+      kind: "preview",
+    });
+    expect(listDeployments).not.toHaveBeenCalled();
+    expect(deployApp).toHaveBeenCalled();
   });
 
   it("forwards deploy build options and HTTP port overrides to the provider", async () => {
@@ -247,6 +343,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         removeApp: vi.fn(),
@@ -314,6 +411,7 @@ describe("app controller", () => {
       return {
         ...actual,
         createPreviewAppProvider: vi.fn(() => ({
+          resolveBranch: createResolveBranch(),
           listApps,
           listDomains: vi.fn(),
           addDomain,
@@ -396,6 +494,7 @@ describe("app controller", () => {
       return {
         ...actual,
         createPreviewAppProvider: vi.fn(() => ({
+          resolveBranch: createResolveBranch(),
           listApps,
           addDomain,
         })),
@@ -447,6 +546,7 @@ describe("app controller", () => {
       return {
         ...actual,
         createPreviewAppProvider: vi.fn(() => ({
+          resolveBranch: createResolveBranch(),
           createProject,
           listApps,
           addDomain,
@@ -518,6 +618,7 @@ describe("app controller", () => {
       return {
         ...actual,
         createPreviewAppProvider: vi.fn(() => ({
+          resolveBranch: createResolveBranch(),
           listApps,
           addDomain,
         })),
@@ -571,6 +672,7 @@ describe("app controller", () => {
       return {
         ...actual,
         createPreviewAppProvider: vi.fn(() => ({
+          resolveBranch: createResolveBranch(),
           listApps,
           addDomain,
         })),
@@ -625,6 +727,7 @@ describe("app controller", () => {
       return {
         ...actual,
         createPreviewAppProvider: vi.fn(() => ({
+          resolveBranch: createResolveBranch(),
           listApps,
           addDomain,
         })),
@@ -685,6 +788,7 @@ describe("app controller", () => {
       return {
         ...actual,
         createPreviewAppProvider: vi.fn(() => ({
+          resolveBranch: createResolveBranch(),
           listApps,
           addDomain,
         })),
@@ -744,6 +848,7 @@ describe("app controller", () => {
       return {
         ...actual,
         createPreviewAppProvider: vi.fn(() => ({
+          resolveBranch: createResolveBranch(),
           listApps,
           addDomain,
         })),
@@ -795,6 +900,7 @@ describe("app controller", () => {
       return {
         ...actual,
         createPreviewAppProvider: vi.fn(() => ({
+          resolveBranch: createResolveBranch(),
           listApps,
           listDomains,
         })),
@@ -871,6 +977,7 @@ describe("app controller", () => {
       return {
         ...actual,
         createPreviewAppProvider: vi.fn(() => ({
+          resolveBranch: createResolveBranch(),
           listApps,
           listDomains,
           retryDomain,
@@ -918,6 +1025,7 @@ describe("app controller", () => {
       return {
         ...actual,
         createPreviewAppProvider: vi.fn(() => ({
+          resolveBranch: createResolveBranch(),
           listApps,
           listDomains,
           showDomain,
@@ -977,8 +1085,24 @@ describe("app controller", () => {
           };
         }
 
+        if (pathName === "/v1/projects/{projectId}/branches") {
+          return {
+            data: {
+              data: [
+                {
+                  id: "branch_feat_j1",
+                  gitName: "feat-j1",
+                  isDefault: false,
+                  role: "preview",
+                },
+              ],
+            },
+          };
+        }
+
         throw new Error(`Unexpected path ${pathName}`);
       }),
+      POST: vi.fn(),
     };
     const requireComputeAuth = vi.fn().mockResolvedValue(client);
     const listApps = vi.fn().mockResolvedValue([]);
@@ -1002,6 +1126,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         deployApp,
@@ -1095,6 +1220,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         deployApp,
@@ -1152,6 +1278,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         deployApp,
@@ -1238,6 +1365,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         deployApp,
         listDeployments: vi.fn(),
@@ -1316,6 +1444,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         deployApp,
         listDeployments: vi.fn(),
@@ -1430,6 +1559,7 @@ describe("app controller", () => {
       }));
       vi.doMock("../src/lib/app/preview-provider", () => ({
         createPreviewAppProvider: vi.fn(() => ({
+          resolveBranch: createResolveBranch(),
           listApps,
           deployApp,
           listDeployments: vi.fn(),
@@ -1498,6 +1628,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         deployApp,
         listDeployments: vi.fn(),
@@ -1556,6 +1687,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject,
         listApps,
         deployApp,
@@ -1697,6 +1829,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject,
         listApps,
         deployApp,
@@ -1764,6 +1897,7 @@ describe("app controller", () => {
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
         createProject,
+        resolveBranch: createResolveBranch(),
         listApps,
         deployApp,
         listDeployments: vi.fn(),
@@ -1844,6 +1978,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject,
         listApps,
         deployApp,
@@ -1910,6 +2045,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps: vi.fn(),
         deployApp: vi.fn(),
         listDeployments: vi.fn(),
@@ -1949,6 +2085,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         deployApp,
         listDeployments: vi.fn(),
@@ -1998,6 +2135,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         deployApp,
         listDeployments: vi.fn(),
@@ -2075,6 +2213,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         deployApp,
         listDeployments: vi.fn(),
@@ -2183,6 +2322,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         deployApp,
         listDeployments: vi.fn(),
@@ -2246,6 +2386,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         deployApp,
         listDeployments: vi.fn(),
@@ -2303,6 +2444,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         deployApp,
         listDeployments: vi.fn(),
@@ -2367,6 +2509,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject,
         listApps,
         deployApp,
@@ -2481,6 +2624,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject,
         listApps,
         deployApp,
@@ -2517,7 +2661,7 @@ describe("app controller", () => {
       projectId: "proj_new",
     });
     stderr.buffer = "";
-    client.GET.mockImplementation((pathName: string) => {
+    client.GET.mockImplementation((pathName: string, request?: { params?: { query?: { gitName?: string } } }) => {
       if (pathName === "/v1/projects") {
         return {
           data: {
@@ -2530,6 +2674,22 @@ describe("app controller", () => {
                   id: "ws_123",
                   name: "Acme Inc",
                 },
+              },
+            ],
+          },
+        };
+      }
+
+      if (pathName === "/v1/projects/{projectId}/branches") {
+        const branchName = request?.params?.query?.gitName ?? "main";
+        return {
+          data: {
+            data: [
+              {
+                id: `branch_${branchName.replace(/[^a-z0-9]+/gi, "_")}`,
+                gitName: branchName,
+                isDefault: branchName === "main",
+                role: "preview",
               },
             ],
           },
@@ -2582,6 +2742,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject,
         listApps: vi.fn().mockResolvedValue([]),
         deployApp,
@@ -2636,6 +2797,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject,
         listApps: vi.fn().mockResolvedValue([]),
         deployApp: vi.fn(),
@@ -2681,6 +2843,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject,
         listApps: vi.fn().mockResolvedValue([]),
         deployApp: vi.fn(),
@@ -2742,6 +2905,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         deployApp,
         listDeployments: vi.fn(),
@@ -2815,6 +2979,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         deployApp: vi.fn(),
         listDeployments,
@@ -2850,6 +3015,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         listDeployments: vi.fn(),
         showDeployment: vi.fn(),
@@ -2912,6 +3078,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         deployApp: vi.fn(),
         listDeployments,
@@ -2956,6 +3123,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         deployApp: vi.fn(),
@@ -3012,6 +3180,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         deployApp: vi.fn(),
@@ -3088,6 +3257,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         deployApp: vi.fn(),
@@ -3188,6 +3358,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         deployApp: vi.fn(),
@@ -3243,6 +3414,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps: vi.fn(),
         deployApp: vi.fn(),
         listDeployments: vi.fn(),
@@ -3303,6 +3475,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps: vi.fn(),
         deployApp: vi.fn(),
         listDeployments: vi.fn(),
@@ -3353,6 +3526,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps: vi.fn(),
         deployApp: vi.fn(),
         listDeployments: vi.fn(),
@@ -3394,6 +3568,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps: vi.fn(),
         deployApp: vi.fn(),
         listDeployments: vi.fn(),
@@ -3460,6 +3635,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         deployApp: vi.fn(),
@@ -3529,6 +3705,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         deployApp: vi.fn(),
@@ -3596,6 +3773,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         deployApp: vi.fn(),
@@ -3660,6 +3838,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         deployApp: vi.fn(),
@@ -3726,6 +3905,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         promoteDeployment,
@@ -3802,6 +3982,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         promoteDeployment,
@@ -3867,6 +4048,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         promoteDeployment,
@@ -3951,6 +4133,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         promoteDeployment,
@@ -4031,6 +4214,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         promoteDeployment,
@@ -4093,6 +4277,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         promoteDeployment: vi.fn(),
@@ -4145,6 +4330,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         deployApp,
         listDeployments: vi.fn(),
@@ -4208,6 +4394,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         listDeployments,
         showDeployment: vi.fn(),
@@ -4261,6 +4448,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         listDeployments,
         showDeployment: vi.fn(),
@@ -4308,6 +4496,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         listDeployments,
         showDeployment: vi.fn(),
@@ -4357,6 +4546,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         listApps,
         listDeployments,
         showDeployment: vi.fn(),
@@ -4417,6 +4607,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         removeApp,
@@ -4488,6 +4679,7 @@ describe("app controller", () => {
     });
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         removeApp,
@@ -4536,6 +4728,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         removeApp,
@@ -4581,6 +4774,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         removeApp,
@@ -4630,6 +4824,7 @@ describe("app controller", () => {
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
       createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
         createProject: vi.fn(),
         listApps,
         removeApp,

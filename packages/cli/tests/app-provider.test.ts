@@ -16,6 +16,41 @@ function mockPreviewBuildStrategy() {
 }
 
 describe("preview app provider", () => {
+  it("resolves branch role from the API without deriving it from name or isDefault", async () => {
+    const client = {
+      GET: vi.fn().mockResolvedValue({
+        data: {
+          data: [{
+            id: "br_production",
+            gitName: "production",
+            isDefault: true,
+            role: "preview",
+          }],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      }),
+      POST: vi.fn(),
+    };
+
+    vi.doMock("@prisma/compute-sdk", () => ({
+      ApiError: { is: () => false },
+      ComputeClient: class {},
+    }));
+
+    const { createPreviewAppProvider } = await import("../src/lib/app/preview-provider");
+
+    const provider = createPreviewAppProvider(client as never);
+    await expect(provider.resolveBranch("proj_123", {
+      branchName: "production",
+    })).resolves.toEqual({
+      id: "br_production",
+      name: "production",
+      role: "preview",
+    });
+    expect(client.POST).not.toHaveBeenCalled();
+  });
+
   it("forwards build strategy options and port mapping into compute deploy", async () => {
     const deploy = vi.fn().mockResolvedValue({
       isErr: () => false,
@@ -101,6 +136,7 @@ describe("preview app provider", () => {
                 id: "br_billing",
                 gitName: "feat/billing",
                 isDefault: false,
+                role: "preview",
               },
             },
             response: { status: 201 },
@@ -166,7 +202,6 @@ describe("preview app provider", () => {
       expect.objectContaining({
         body: {
           gitName: "feat/billing",
-          isDefault: false,
         },
       }),
     );
@@ -214,6 +249,7 @@ describe("preview app provider", () => {
                 id: "br_billing",
                 gitName: "feat/billing",
                 isDefault: false,
+                role: "preview",
               }],
               pagination: { hasMore: false, nextCursor: null },
             },

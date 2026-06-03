@@ -7,6 +7,7 @@ import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { envVarNames } from "./env-vars";
 import { PreviewBuildStrategy } from "./preview-build";
 import type { PreviewBuildType } from "./preview-build";
+import type { BranchKind } from "../../types/branch";
 
 export interface PreviewAppRecord {
   id: string;
@@ -20,6 +21,12 @@ export interface PreviewAppRecord {
 export interface PreviewProjectRecord {
   id: string;
   name: string;
+}
+
+export interface PreviewBranchRecord {
+  id: string;
+  name: string;
+  role: BranchKind;
 }
 
 export interface PreviewDeploymentRecord {
@@ -105,6 +112,7 @@ export class PreviewDomainApiError extends Error {
 
 export interface PreviewAppProvider {
   createProject(options: { name: string; signal?: AbortSignal }): Promise<PreviewProjectRecord>;
+  resolveBranch(projectId: string, options: { branchName: string; signal?: AbortSignal }): Promise<PreviewBranchRecord>;
   listApps(projectId: string, options?: { branchName?: string; signal?: AbortSignal }): Promise<PreviewAppRecord[]>;
   removeApp(appId: string, options?: { signal?: AbortSignal }): Promise<PreviewRemovedAppRecord>;
   listDomains(appId: string, options?: { signal?: AbortSignal }): Promise<PreviewDomainRecord[]>;
@@ -181,10 +189,24 @@ export function createPreviewAppProvider(
 
     async listApps(projectId, options) {
       return listComputeServices(client, {
-          projectId,
-          branchGitName: options?.branchName,
-          signal: options?.signal,
+        projectId,
+        branchGitName: options?.branchName,
+        signal: options?.signal,
       });
+    },
+
+    async resolveBranch(projectId, options) {
+      const branch = await resolveOrCreateBranch(client, {
+        projectId,
+        gitName: options.branchName,
+        signal: options.signal,
+      });
+
+      return {
+        id: branch.id,
+        name: branch.gitName,
+        role: branch.role,
+      };
     },
 
     async removeApp(appId, options) {
@@ -556,6 +578,7 @@ interface RawBranchRecord {
   id: string;
   gitName: string;
   isDefault: boolean;
+  role: BranchKind;
 }
 
 interface RawComputeServiceRecord {
@@ -621,7 +644,12 @@ async function listBranches(
     throw apiCallError("Failed to list branches", result.response, result.error);
   }
 
-  return result.data.data as RawBranchRecord[];
+  return result.data.data.map((branch) => ({
+    id: branch.id,
+    gitName: branch.gitName,
+    isDefault: branch.isDefault,
+    role: branch.role,
+  }));
 }
 
 async function resolveOrCreateBranch(
@@ -643,7 +671,6 @@ async function resolveOrCreateBranch(
     },
     body: {
       gitName: options.gitName,
-      isDefault: options.gitName === "main",
     },
     signal: options.signal,
   });
@@ -658,7 +685,13 @@ async function resolveOrCreateBranch(
     throw apiCallError(`Failed to create branch "${options.gitName}"`, result.response, result.error);
   }
 
-  return result.data.data as RawBranchRecord;
+  const branch = result.data.data;
+  return {
+    id: branch.id,
+    gitName: branch.gitName,
+    isDefault: branch.isDefault,
+    role: branch.role,
+  };
 }
 
 async function listComputeServices(

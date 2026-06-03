@@ -610,7 +610,7 @@ prisma-cli app run --build-type nextjs
 prisma-cli app run --build-type bun --entry server.ts --port 3000
 ```
 
-## `prisma-cli app deploy --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start|bun> --entry <path> --http-port <port> --env <name=value>`
+## `prisma-cli app deploy --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start|bun> --entry <path> --http-port <port> --env <name=value> --prod`
 
 Purpose:
 
@@ -637,7 +637,10 @@ Behavior:
 - `--yes` alone does not choose Project scope; use `--project` or `--create-project`
 - `--project` and `--create-project` are mutually exclusive with each other and with `PRISMA_PROJECT_ID`
 - resolves or creates branch context from `--branch`, local Git branch, or `main`
+- treats only the resolved Branch `role` as production authority; branch name, `main`, `production`, and `isDefault` are not production authority
 - resolves or creates app context inside the resolved branch from `--app`, `PRISMA_APP_ID`, `package.json#name`, or current directory name
+- auto-promotes the first production deploy for an App without `--prod`
+- requires `--prod` for subsequent deploys to a production Branch; `--yes` only skips the confirmation prompt when `--prod` is also present
 - does not prompt when there is no real choice; zero matching apps creates the inferred app
 - writes `.prisma/local.json` after Project binding succeeds and before build/deploy starts, so retries after a failed deploy do not repeat setup
 - before asking `Customize build settings? (y/N)`, previews the detected framework and runtime so the user can see the defaults they are accepting or changing
@@ -662,6 +665,7 @@ prisma-cli app deploy --create-project my-app --yes
 prisma-cli app deploy --app my-app --env DATABASE_URL=postgresql://example
 prisma-cli app deploy --framework nextjs --http-port 3000
 prisma-cli app deploy --branch feat-login --framework hono --http-port 3000
+prisma-cli app deploy --prod --yes
 prisma-cli app deploy --framework bun --entry src/server.ts --http-port 3000
 prisma-cli app deploy --entry src/server.ts --http-port 3000
 ```

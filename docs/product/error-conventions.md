@@ -172,6 +172,7 @@ These codes are the minimum stable set for the MVP:
 - `DEPLOYMENT_NOT_FOUND`
 - `NO_DEPLOYMENTS`
 - `NO_PREVIOUS_DEPLOYMENT`
+- `PROD_DEPLOY_REQUIRES_FLAG`
 - `PROMOTE_SOURCE_INVALID`
 - `ROLLBACK_UNAVAILABLE`
 - `CONFIRMATION_REQUIRED`
@@ -213,6 +214,7 @@ Recommended meanings:
 - `DEPLOYMENT_NOT_FOUND`: requested deployment id does not exist
 - `NO_DEPLOYMENTS`: command resolved a branch or app but found no deployments
 - `NO_PREVIOUS_DEPLOYMENT`: rollback could not find an earlier deployment for the selected app
+- `PROD_DEPLOY_REQUIRES_FLAG`: app deploy resolved a production Branch with a prior production deployment, but `--prod` was not passed
 - `PROMOTE_SOURCE_INVALID`: source for promote is missing, invalid, or not promotable
 - `ROLLBACK_UNAVAILABLE`: no previous healthy production deployment exists
 - `CONFIRMATION_REQUIRED`: command cannot continue without confirmation in the current mode

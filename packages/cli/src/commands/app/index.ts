@@ -181,7 +181,8 @@ function createDeployCommand(runtime: CliRuntime): Command {
     .addOption(
       new Option("--env <name=value>", "Environment variable")
         .argParser(collectRepeatableValues),
-    );
+    )
+    .addOption(new Option("--prod", "Confirm intent to deploy to production"));
   addGlobalFlags(command);
 
   command.action(async (options) => {
@@ -193,6 +194,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
     const envAssignments = (options as { env?: string[] }).env;
     const projectRef = (options as { project?: string }).project;
     const createProjectName = (options as { createProject?: string }).createProject;
+    const prod = (options as { prod?: boolean }).prod;
 
     await runCommand<AppDeployResult>(
       runtime,
@@ -206,6 +208,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
         framework,
         httpPort,
         envAssignments,
+        prod: prod === true,
       }),
       {
         renderHuman: (context, descriptor, result) => renderAppDeploy(context, descriptor, result),
