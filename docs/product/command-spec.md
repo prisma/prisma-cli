@@ -687,7 +687,7 @@ Every write targets exactly one scope:
   the active local Git branch when one exists; outside a Git branch it
   shows a production/preview project-level overview.
 
-### `prisma-cli project env add KEY=VALUE (--role <production|preview> | --branch <git-name>)`
+### `prisma-cli project env add (KEY=VALUE | --file <path>) (--role <production|preview> | --branch <git-name>)`
 
 Purpose:
 
@@ -700,6 +700,12 @@ Behavior:
 - KEY=VALUE is parsed from a single positional; KEY must match
   `[A-Z_][A-Z0-9_]*`
 - KEY without `=VALUE` reads the value from the current process environment
+- `--file <path>` reads KEY=VALUE assignments from a dotenv file relative to
+  the current directory; `--file` is mutually exclusive with the positional
+  assignment
+- file imports validate the whole file before writing; duplicate keys, invalid
+  keys, empty values, or existing target variables fail before any variables are
+  created
 - if a variable with the same key already exists in the scope, the
   command fails with a clear error directing to `env update`
 - branch-only variables are allowed; the CLI warns when the key does
@@ -711,11 +717,13 @@ Examples:
 ```bash
 prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production
 prisma-cli project env add STRIPE_KEY=sk_test_xxx --role preview
+prisma-cli project env add --file .env --role preview
 prisma-cli project env add DATABASE_URL=postgresql://branch --branch feature/foo
+prisma-cli project env add --file .env.local --branch feature/foo
 API_URL=https://api.example prisma-cli project env add API_URL --project proj_123 --role preview
 ```
 
-### `prisma-cli project env update KEY=VALUE (--role <production|preview> | --branch <git-name>)`
+### `prisma-cli project env update (KEY=VALUE | --file <path>) (--role <production|preview> | --branch <git-name>)`
 
 Purpose:
 
@@ -728,6 +736,12 @@ Behavior:
 - KEY=VALUE is parsed from a single positional; KEY must match
   `[A-Z_][A-Z0-9_]*`
 - KEY without `=VALUE` reads the value from the current process environment
+- `--file <path>` reads KEY=VALUE assignments from a dotenv file relative to
+  the current directory; `--file` is mutually exclusive with the positional
+  assignment
+- file imports validate the whole file before writing; duplicate keys, invalid
+  keys, empty values, or missing target variables fail before any variables are
+  updated
 - if no variable with the key exists in the scope, the command fails
   with a clear error directing to `env add`
 - the response carries metadata only — the value is never echoed back
@@ -737,6 +751,7 @@ Examples:
 ```bash
 prisma-cli project env update STRIPE_KEY=sk_new_xxx --role production
 prisma-cli project env update STRIPE_KEY=sk_new_xxx --role preview
+prisma-cli project env update --file .env --role production
 prisma-cli project env update DATABASE_URL=postgresql://branch --branch feature/foo
 ```
 

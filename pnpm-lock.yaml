@@ -37,13 +37,16 @@ importers:
         version: 1.35.0
       c12:
         specifier: 4.0.0-beta.5
-        version: 4.0.0-beta.5(jiti@2.7.0)(magicast@0.5.3)
+        version: 4.0.0-beta.5(dotenv@17.4.2)(jiti@2.7.0)(magicast@0.5.3)
       colorette:
         specifier: ^2.0.20
         version: 2.0.20
       commander:
         specifier: ^14.0.3
         version: 14.0.3
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
       magicast:
         specifier: ^0.5.3
         version: 0.5.3
@@ -908,6 +911,10 @@ packages:
 
   destr@2.0.5:
     resolution: {integrity: sha512-ugFTXCtDZunbzasqBxrK93Ik/DRYsO6S/fedkWEMKqt04xZ4csmnmwGDBAb07QWNaGMAmnTIemsYZCksjATwsA==}
+
+  dotenv@17.4.2:
+    resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
+    engines: {node: '>=12'}
 
   dts-resolver@2.1.3:
     resolution: {integrity: sha512-bihc7jPC90VrosXNzK0LTE2cuLP6jr0Ro8jk+kMugHReJVLIpHz/xadeq3MhuwyO4TD4OA3L1Q8pBBFRc08Tsw==}
@@ -1909,7 +1916,7 @@ snapshots:
     dependencies:
       run-applescript: 7.1.0
 
-  c12@4.0.0-beta.5(jiti@2.7.0)(magicast@0.5.3):
+  c12@4.0.0-beta.5(dotenv@17.4.2)(jiti@2.7.0)(magicast@0.5.3):
     dependencies:
       confbox: 0.2.4
       defu: 6.1.7
@@ -1918,6 +1925,7 @@ snapshots:
       pkg-types: 2.3.1
       rc9: 3.0.1
     optionalDependencies:
+      dotenv: 17.4.2
       jiti: 2.7.0
       magicast: 0.5.3
 
@@ -1945,6 +1953,8 @@ snapshots:
   defu@6.1.7: {}
 
   destr@2.0.5: {}
+
+  dotenv@17.4.2: {}
 
   dts-resolver@2.1.3: {}
 

@@ -7,6 +7,7 @@ import {
   type EnvScope,
   type EnvVarRole,
 } from "../lib/app/env-config";
+import { readEnvFileAssignments, type EnvFileAssignment } from "../lib/app/env-file";
 import { requireComputeAuth } from "../lib/auth/guard";
 import { readLocalGitBranch } from "../lib/git/local-branch";
 import { authRequiredError, CliError, usageError, workspaceRequiredError } from "../shell/errors";
@@ -20,15 +21,20 @@ import type {
   EnvRmResult,
   EnvScopeDescriptor,
   EnvUpdateResult,
-  EnvVariableMetadata,
 } from "../types/app-env";
+import {
+  apiCallError,
+  findVariableByNaturalKey,
+  type RawEnvironmentVariable,
+  type ResolvedEnvApiScope,
+  toMetadata,
+} from "./app-env-api";
+import { runEnvAddFile, runEnvUpdateFile } from "./app-env-file";
 import { requireAuthenticatedAuthState } from "./auth";
 import { listRealWorkspaceProjects } from "./project";
 
-interface ResolvedScope {
+interface ResolvedScope extends ResolvedEnvApiScope {
   scope: EnvScope;
-  descriptor: EnvScopeDescriptor;
-  apiTarget: { class: EnvVarRole; branchId: string | null };
 }
 
 type ResolvedListScope =
@@ -50,16 +56,16 @@ interface EnvCommandFlags {
   roleName?: string;
   branchName?: string;
   projectRef?: string;
+  filePath?: string;
 }
 
-interface RawEnvironmentVariable {
-  id: string;
-  key: string;
-  branchId: string | null;
-  class: "production" | "preview";
-  isManagedBySystem: boolean;
-  updatedAt: string;
-}
+type EnvWriteSource =
+  | { kind: "single"; rawAssignment: string | undefined }
+  | { kind: "file"; filePath: string };
+
+type ResolvedEnvWriteInput =
+  | { kind: "single"; key: string; value: string }
+  | { kind: "file"; filePath: string; assignments: EnvFileAssignment[] };
 
 interface RawBranchRecord {
   id: string;
@@ -73,49 +79,54 @@ export async function runEnvAdd(
   rawAssignment: string | undefined,
   flags: EnvCommandFlags,
 ): Promise<CommandSuccess<EnvAddResult>> {
-  const { key, value } = parseKeyValuePositional(rawAssignment, "add", context.runtime.env);
+  const source = resolveEnvWriteSource(rawAssignment, flags.filePath, "add");
   const scope = resolveEnvScope(flags, { requireExplicit: true, command: "add" });
   if (!scope) {
     throw usageError(
       `prisma-cli project env add requires --role or --branch`,
       "Writing without an explicit scope is rejected.",
       "Pass --role production, --role preview, or --branch <git-name>.",
-      [`prisma-cli project env add ${key}=${value} --role production`],
+      ["prisma-cli project env add KEY=value --role production"],
       "app",
     );
   }
 
+  const input = await resolveEnvWriteInput(context, source, "add");
   const { client, projectId } = await requireClientAndProject(context, flags.projectRef, "project env add");
   const resolved = await resolveScopeToApi(client, projectId, scope, {
     createBranchIfMissing: true,
     signal: context.runtime.signal,
   });
 
-  const existing = await findVariableByNaturalKey(client, projectId, key, resolved, context.runtime.signal);
+  if (input.kind === "file") {
+    return runEnvAddFile(context, client, projectId, resolved, input.filePath, input.assignments);
+  }
+
+  const existing = await findVariableByNaturalKey(client, projectId, input.key, resolved, context.runtime.signal);
 
   if (existing) {
     throw new CliError({
       code: "ENV_VARIABLE_ALREADY_EXISTS",
       domain: "app",
-      summary: `Variable "${key}" already exists in ${formatScopeLabel(scope)}`,
+      summary: `Variable "${input.key}" already exists in ${formatScopeLabel(scope)}`,
       why: "A variable with this key already exists in the targeted scope.",
       fix: "Use `prisma-cli project env update` to change an existing variable's value.",
       exitCode: 1,
       nextSteps: [
-        `prisma-cli project env update ${key}=<new-value> ${formatScopeFlag(scope)}`,
+        `prisma-cli project env update ${input.key}=<new-value> ${formatScopeFlag(scope)}`,
       ],
     });
   }
 
   const warnings =
     scope.kind === "branch" &&
-    !(await findVariableByNaturalKey(client, projectId, key, {
+    !(await findVariableByNaturalKey(client, projectId, input.key, {
       scope: { kind: "role", role: "preview" },
       descriptor: { kind: "role", role: "preview" },
       apiTarget: { class: "preview", branchId: null },
     }, context.runtime.signal))
       ? [
-          `Variable "${key}" does not exist in preview. It will only exist on ${formatScopeLabel(scope)}.`,
+          `Variable "${input.key}" does not exist in preview. It will only exist on ${formatScopeLabel(scope)}.`,
         ]
       : [];
 
@@ -126,16 +137,16 @@ export async function runEnvAdd(
         projectId,
         class: resolved.apiTarget.class,
         ...(resolved.apiTarget.branchId !== null
-          ? { branchId: resolved.apiTarget.branchId }
-          : {}),
-        key,
-        value,
+            ? { branchId: resolved.apiTarget.branchId }
+            : {}),
+        key: input.key,
+        value: input.value,
       },
       signal: context.runtime.signal,
     },
   );
   if (error || !data) {
-    throw apiCallError(`Failed to add ${key}`, response, error);
+    throw apiCallError(`Failed to add ${input.key}`, response, error);
   }
 
   return {
@@ -155,36 +166,41 @@ export async function runEnvUpdate(
   rawAssignment: string | undefined,
   flags: EnvCommandFlags,
 ): Promise<CommandSuccess<EnvUpdateResult>> {
-  const { key, value } = parseKeyValuePositional(rawAssignment, "update", context.runtime.env);
+  const source = resolveEnvWriteSource(rawAssignment, flags.filePath, "update");
   const scope = resolveEnvScope(flags, { requireExplicit: true, command: "update" });
   if (!scope) {
     throw usageError(
       `prisma-cli project env update requires --role or --branch`,
       "Writing without an explicit scope is rejected.",
       "Pass --role production, --role preview, or --branch <git-name>.",
-      [`prisma-cli project env update ${key}=${value} --role production`],
+      ["prisma-cli project env update KEY=value --role production"],
       "app",
     );
   }
 
+  const input = await resolveEnvWriteInput(context, source, "update");
   const { client, projectId } = await requireClientAndProject(context, flags.projectRef, "project env update");
   const resolved = await resolveScopeToApi(client, projectId, scope, {
     createBranchIfMissing: false,
     signal: context.runtime.signal,
   });
 
-  const existing = await findVariableByNaturalKey(client, projectId, key, resolved, context.runtime.signal);
+  if (input.kind === "file") {
+    return runEnvUpdateFile(context, client, projectId, resolved, input.filePath, input.assignments);
+  }
+
+  const existing = await findVariableByNaturalKey(client, projectId, input.key, resolved, context.runtime.signal);
 
   if (!existing) {
     throw new CliError({
       code: "ENV_VARIABLE_NOT_FOUND",
       domain: "app",
-      summary: `Variable "${key}" not found in ${formatScopeLabel(scope)}`,
+      summary: `Variable "${input.key}" not found in ${formatScopeLabel(scope)}`,
       why: "No variable with this key exists in the targeted scope.",
       fix: "Use `prisma-cli project env add` to create a new variable.",
       exitCode: 1,
       nextSteps: [
-        `prisma-cli project env add ${key}=<value> ${formatScopeFlag(scope)}`,
+        `prisma-cli project env add ${input.key}=<value> ${formatScopeFlag(scope)}`,
       ],
     });
   }
@@ -193,12 +209,12 @@ export async function runEnvUpdate(
     "/v1/environment-variables/{envVarId}",
     {
       params: { path: { envVarId: existing.id } },
-      body: { value },
+      body: { value: input.value },
       signal: context.runtime.signal,
     },
   );
   if (error || !data) {
-    throw apiCallError(`Failed to update value for ${key}`, response, error);
+    throw apiCallError(`Failed to update value for ${input.key}`, response, error);
   }
 
   return {
@@ -210,6 +226,72 @@ export async function runEnvUpdate(
     },
     warnings: [],
     nextSteps: [],
+  };
+}
+
+function resolveEnvWriteSource(
+  rawAssignment: string | undefined,
+  filePath: string | undefined,
+  command: "add" | "update",
+): EnvWriteSource {
+  if (filePath !== undefined && rawAssignment !== undefined) {
+    throw usageError(
+      `prisma-cli project env ${command} accepts either KEY=VALUE or --file`,
+      "The command received both a positional assignment and a dotenv file path.",
+      "Pass one input source.",
+      [
+        `prisma-cli project env ${command} KEY=value --role preview`,
+        `prisma-cli project env ${command} --file .env --role preview`,
+      ],
+      "app",
+    );
+  }
+
+  if (filePath !== undefined) {
+    if (filePath.length === 0) {
+      throw usageError(
+        `prisma-cli project env ${command} --file requires a path`,
+        "The --file flag was passed without a file path.",
+        "Pass a readable dotenv file path.",
+        [`prisma-cli project env ${command} --file .env --role preview`],
+        "app",
+      );
+    }
+    return { kind: "file", filePath };
+  }
+
+  if (rawAssignment === undefined) {
+    throw usageError(
+      `prisma-cli project env ${command} requires KEY=VALUE or --file`,
+      "No environment variable input was supplied.",
+      "Pass a single KEY=VALUE assignment or a dotenv file path.",
+      [
+        `prisma-cli project env ${command} KEY=value --role preview`,
+        `prisma-cli project env ${command} --file .env --role preview`,
+      ],
+      "app",
+    );
+  }
+
+  return { kind: "single", rawAssignment };
+}
+
+async function resolveEnvWriteInput(
+  context: CommandContext,
+  source: EnvWriteSource,
+  command: "add" | "update",
+): Promise<ResolvedEnvWriteInput> {
+  if (source.kind === "file") {
+    return {
+      kind: "file",
+      filePath: source.filePath,
+      assignments: await readEnvFileAssignments(context.runtime.cwd, source.filePath, command),
+    };
+  }
+
+  return {
+    kind: "single",
+    ...parseKeyValuePositional(source.rawAssignment, command, context.runtime.env),
   };
 }
 
@@ -628,33 +710,6 @@ async function projectHasDefaultBranch(
   }
 }
 
-async function findVariableByNaturalKey(
-  client: ManagementApiClient,
-  projectId: string,
-  key: string,
-  resolved: ResolvedScope,
-  signal: AbortSignal,
-): Promise<RawEnvironmentVariable | null> {
-  const { data, error, response } = await client.GET("/v1/environment-variables", {
-    params: {
-      query: {
-        projectId,
-        class: resolved.apiTarget.class,
-        key,
-      },
-    },
-    signal,
-  });
-  if (error || !data) {
-    throw apiCallError(`Failed to look up ${key}`, response, error);
-  }
-
-  const matches = (data.data as RawEnvironmentVariable[]).filter((row) =>
-    rowMatchesExactScope(row, resolved),
-  );
-  return matches[0] ?? null;
-}
-
 async function listVariables(
   client: ManagementApiClient,
   projectId: string,
@@ -750,14 +805,6 @@ function rowMatchesScope(
   return row.branchId === null || row.branchId === resolved.apiTarget.branchId;
 }
 
-function rowMatchesExactScope(
-  row: RawEnvironmentVariable,
-  resolved: ResolvedScope,
-): boolean {
-  return row.class === resolved.apiTarget.class &&
-    row.branchId === resolved.apiTarget.branchId;
-}
-
 function materializeEffectiveRows(
   rows: RawEnvironmentVariable[],
   resolved: ResolvedScope,
@@ -779,66 +826,4 @@ function materializeEffectiveRows(
   }
 
   return [...byKey.values()].sort((left, right) => left.key.localeCompare(right.key));
-}
-
-function toMetadata(
-  row: RawEnvironmentVariable,
-  requestedScope: EnvScopeDescriptor,
-): EnvVariableMetadata {
-  const rowScope =
-    row.branchId === null
-      ? ({ kind: "role", role: row.class } satisfies EnvScopeDescriptor)
-      : requestedScope;
-
-  return {
-    id: row.id,
-    key: row.key,
-    scope: rowScope,
-    source: formatDescriptorLabel(rowScope),
-    isManagedBySystem: row.isManagedBySystem,
-    updatedAt: row.updatedAt,
-  };
-}
-
-function formatDescriptorLabel(scope: EnvScopeDescriptor): string {
-  if (scope.kind === "role") {
-    return scope.role ?? "unknown";
-  }
-  if (scope.kind === "overview") {
-    return "overview";
-  }
-  return `branch:${scope.branchName ?? scope.branchId ?? "unknown"}`;
-}
-
-interface ApiErrorBody {
-  error?: {
-    code?: string;
-    message?: string;
-    hint?: string;
-  };
-}
-
-function apiCallError(
-  summary: string,
-  response: Response | undefined,
-  error: ApiErrorBody | undefined,
-): CliError {
-  const status = response?.status ?? 0;
-  const apiCode = error?.error?.code;
-  const apiMessage = error?.error?.message;
-  const apiHint = error?.error?.hint;
-
-  if (status === 401 || status === 403) {
-    return authRequiredError(["prisma auth login"]);
-  }
-
-  return new CliError({
-    code: apiCode ?? "ENV_API_ERROR",
-    domain: "app",
-    summary,
-    why: apiMessage ?? `The Management API returned status ${status || "unknown"}.`,
-    fix: apiHint ?? "Re-run with --trace for the underlying API response details.",
-    exitCode: 1,
-    nextSteps: [],
-  });
 }

@@ -21,17 +21,30 @@ export interface EnvVariableMetadata {
   updatedAt: string;
 }
 
-export interface EnvAddResult {
-  projectId: string;
-  scope: EnvScopeDescriptor;
-  variable: EnvVariableMetadata;
+export interface EnvFileMetadata {
+  path: string;
+  count: number;
 }
 
-export interface EnvUpdateResult {
+export interface EnvSingleWriteResult {
   projectId: string;
   scope: EnvScopeDescriptor;
   variable: EnvVariableMetadata;
+  variables?: never;
+  file?: never;
 }
+
+export interface EnvFileWriteResult {
+  projectId: string;
+  scope: EnvScopeDescriptor;
+  variable?: never;
+  variables: EnvVariableMetadata[];
+  file: EnvFileMetadata;
+}
+
+export type EnvAddResult = EnvSingleWriteResult | EnvFileWriteResult;
+
+export type EnvUpdateResult = EnvSingleWriteResult | EnvFileWriteResult;
 
 export interface EnvListResult {
   projectId: string;
