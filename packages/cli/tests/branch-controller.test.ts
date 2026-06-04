@@ -70,6 +70,24 @@ async function writeLocalPin(cwd: string, projectId = "proj_123") {
   );
 }
 
+function expectedBranchVerboseContext() {
+  return {
+    workspace: {
+      id: "ws_123",
+      name: "Acme Inc",
+    },
+    project: {
+      id: "proj_123",
+      name: "Acme Dashboard",
+    },
+    resolution: {
+      projectSource: "local-pin",
+      targetName: "Acme Dashboard",
+      targetNameSource: "local-pin",
+    },
+  };
+}
+
 async function loadController(client: ReturnType<typeof createMockClient>) {
   vi.resetModules();
 
@@ -119,6 +137,7 @@ describe("branch controller", () => {
       result: {
         projectId: "proj_123",
         projectName: "Acme Dashboard",
+        verboseContext: expectedBranchVerboseContext(),
         branches: [
           { id: "br_main", name: "main", role: "production", envMap: "production" },
           { id: "br_feature", name: "feature/auth", role: "preview", envMap: "preview" },

@@ -14,7 +14,8 @@ import type {
   ProjectShowResult,
 } from "../types/project";
 import { renderMutate, renderShow, serializeList } from "../output/patterns";
-import { padDisplay, renderNextSteps, renderSummaryLine } from "../shell/ui";
+import { padDisplay, renderNextSteps, renderSummaryLine, renderVerboseBlock } from "../shell/ui";
+import { renderResolvedProjectContextBlock } from "./verbose-context";
 
 export function renderProjectList(
   context: CommandContext,
@@ -91,6 +92,13 @@ export function renderProjectShow(
       },
       context.ui,
     );
+
+    lines.push(...renderVerboseBlock(context.ui, [
+      { key: "workspace", value: result.workspace.name },
+      { key: "workspace id", value: result.workspace.id, tone: "dim" },
+      { key: "project source", value: "unbound" },
+      { key: "suggested name", value: `${result.suggestedProjectName} (${result.suggestedProjectNameSource})` },
+    ], { title: "Resolved context" }));
 
     lines.push(...renderNextSteps([
       "Link an existing Project you choose: prisma-cli project link <id-or-name>",
@@ -194,6 +202,12 @@ function renderBoundProjectShow(
     lines.push(rail);
     lines.push(`${rail}  ${ui.dim("→")} ${ui.link(result.project.url)}`);
   }
+
+  lines.push(...renderResolvedProjectContextBlock(context.ui, {
+    workspace: result.workspace,
+    project: result.project,
+    resolution: result.resolution,
+  }));
 
   return lines;
 }

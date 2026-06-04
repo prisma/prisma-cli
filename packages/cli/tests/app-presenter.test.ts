@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { getCommandDescriptor } from "../src/shell/command-meta";
-import { renderAppDomainAdd, renderAppDomainRetry, renderAppDomainShow } from "../src/presenters/app";
-import type { AppDomainAddResult, AppDomainRetryResult, AppDomainShowResult, AppDomainSummary } from "../src/types/app";
+import { renderAppDeploy, renderAppDomainAdd, renderAppDomainRetry, renderAppDomainShow, serializeAppDeploy } from "../src/presenters/app";
+import type {
+  AppDeployResult,
+  AppDomainAddResult,
+  AppDomainRetryResult,
+  AppDomainShowResult,
+  AppDomainSummary,
+} from "../src/types/app";
 import { createTestCommandContext } from "./helpers";
 
 function createDomain(overrides: Partial<AppDomainSummary> = {}): AppDomainSummary {
@@ -37,6 +43,42 @@ function createTarget() {
     project: { id: "proj_123", name: "Acme Dashboard" },
     branch: { name: "production", kind: "production" as const },
     app: { id: "app_1", name: "shop" },
+  };
+}
+
+function createDeployResult(): AppDeployResult {
+  return {
+    workspace: { id: "wksp_123", name: "Prisma Team" },
+    project: { id: "proj_123", name: "Billing API" },
+    branch: { id: "br_main", name: "main", kind: "production" },
+    resolution: {
+      projectSource: "local-pin",
+      targetName: "Billing API",
+      targetNameSource: "local-pin",
+    },
+    app: { id: "app_123", name: "api" },
+    deployment: {
+      id: "dep_123",
+      status: "running",
+      url: "https://api.prisma.build",
+    },
+    deploySettings: {
+      framework: {
+        key: "hono",
+        buildType: "bun",
+        name: "Hono",
+        source: "detected from package.json",
+      },
+      entrypoint: "src/index.ts",
+      httpPort: 8080,
+      region: "fra",
+      envVars: ["DATABASE_URL"],
+    },
+    durationMs: 12_345,
+    localPin: {
+      path: ".prisma/local.json",
+      written: true,
+    },
   };
 }
 
@@ -124,5 +166,53 @@ describe("app domain presenters", () => {
     expect(lines).toContain("dns record");
     expect(lines).toContain("CNAME shop.acme.com -> switchboard.fra.prisma.build ttl 300");
     expect(lines).toContain("Add CNAME shop.acme.com -> switchboard.fra.prisma.build, then run prisma-cli app domain retry shop.acme.com.");
+  });
+});
+
+describe("app deploy presenter", () => {
+  it("adds safe resolved context when verbose output is enabled", async () => {
+    const { context } = await createTestCommandContext({
+      flags: { verbose: true },
+      env: { ...process.env, HOME: "/Users/aman" },
+      cwd: "/Users/aman/dev/app",
+    });
+    const result = createDeployResult();
+
+    const lines = renderAppDeploy(
+      context,
+      getCommandDescriptor("app.deploy"),
+      result,
+    ).join("\n");
+
+    expect(lines).toContain("Resolved context:");
+    expect(lines).toContain("workspace:");
+    expect(lines).toContain("Prisma Team");
+    expect(lines).toContain("project source:");
+    expect(lines).toContain(".prisma/local.json");
+    expect(lines).toContain("branch id:");
+    expect(lines).toContain("br_main");
+    expect(lines).toContain("deploy duration:");
+    expect(lines).toContain("Deploy settings:");
+    expect(lines).toContain("framework:");
+    expect(lines).toContain("Hono (bun)");
+    expect(lines).toContain("entrypoint:");
+    expect(lines).toContain("src/index.ts");
+    expect(lines).toContain("http port:");
+    expect(lines).toContain("8080");
+    expect(lines).toContain("env vars:");
+    expect(lines).toContain("DATABASE_URL");
+    expect(lines).not.toContain("postgresql://");
+  });
+
+  it("keeps verbose-only deploy details out of JSON serialization", () => {
+    const json = JSON.parse(JSON.stringify(serializeAppDeploy(createDeployResult())));
+
+    expect(json).not.toHaveProperty("deploySettings");
+    expect(json).not.toHaveProperty("localPin");
+    expect(json.branch).toEqual({
+      name: "main",
+      kind: "production",
+    });
+    expect(json.branch).not.toHaveProperty("id");
   });
 });

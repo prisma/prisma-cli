@@ -68,6 +68,11 @@ async function listRealBranches(context: CommandContext): Promise<BranchListResu
   return {
     projectId: target.project.id,
     projectName: target.project.name,
+    verboseContext: {
+      workspace,
+      project: target.project,
+      resolution: target.resolution,
+    },
     branches: sortBranches(branches.map(toBranchSummary)),
   };
 }

@@ -36,6 +36,13 @@ export interface FieldRow {
   tone?: "default" | "dim";
 }
 
+export interface VerboseRow {
+  key: string;
+  value: string;
+  tone?: "default" | "dim" | "success" | "warning" | "link";
+  sensitive?: boolean;
+}
+
 const DEFAULT_WIDTH = 80;
 
 export function createShellUi(runtime: CliRuntime, flags: GlobalFlags): ShellUi {
@@ -139,6 +146,22 @@ export function renderNextSteps(steps: string[]): string[] {
   ];
 }
 
+export function renderVerboseBlock(ui: ShellUi, rows: VerboseRow[], options: { title?: string } = {}): string[] {
+  if (!ui.verbose || rows.length === 0) {
+    return [];
+  }
+
+  const title = options.title ?? "Details";
+  const keyWidth = Math.max(...rows.map((row) => stringWidth(`${row.key}:`)));
+  const rail = ui.dim("│");
+
+  return [
+    "",
+    `${ui.dim(title)}:`,
+    ...rows.map((row) => `${rail}  ${ui.accent(padDisplay(`${row.key}:`, keyWidth))}  ${formatVerboseValue(ui, row)}`),
+  ];
+}
+
 export function formatColumns(columns: string[], widths: number[]): string {
   return columns.map((value, index) => padDisplay(value, widths[index])).join("   ").trimEnd();
 }
@@ -183,6 +206,28 @@ function formatHeaderValue(ui: ShellUi, row: HeaderRow): string {
 
   if (row.tone === "dim") {
     return ui.dim(value);
+  }
+
+  if (row.tone === "link") {
+    return ui.link(value);
+  }
+
+  return value;
+}
+
+function formatVerboseValue(ui: ShellUi, row: VerboseRow): string {
+  const value = row.sensitive ? maskValue(row.value) : row.value;
+
+  if (row.tone === "dim") {
+    return ui.dim(value);
+  }
+
+  if (row.tone === "success") {
+    return ui.success(value);
+  }
+
+  if (row.tone === "warning") {
+    return ui.warning(value);
   }
 
   if (row.tone === "link") {

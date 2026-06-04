@@ -67,6 +67,24 @@ function expectNoApiCalls(client: MockClient) {
   expect(client.DELETE).not.toHaveBeenCalled();
 }
 
+function expectedEnvVerboseContext() {
+  return {
+    workspace: {
+      id: "ws_123",
+      name: "Acme Inc",
+    },
+    project: {
+      id: "proj_123",
+      name: "Acme Dashboard",
+    },
+    resolution: {
+      projectSource: "local-pin",
+      targetName: "Acme Dashboard",
+      targetNameSource: "local-pin",
+    },
+  };
+}
+
 async function writeLocalPin(cwd: string, projectId = "proj_123") {
   await mkdir(path.join(cwd, ".prisma"), { recursive: true });
   await writeFile(
@@ -1415,6 +1433,7 @@ describe("env remove", () => {
     );
     expect(result.result).toEqual({
       projectId: "proj_123",
+      verboseContext: expectedEnvVerboseContext(),
       scope: { kind: "role", role: "production" },
       key: "STRIPE_KEY",
     });

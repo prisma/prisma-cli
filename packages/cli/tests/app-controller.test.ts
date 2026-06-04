@@ -54,6 +54,29 @@ function withBranchDatabaseProviderDefaults<T extends Record<string, unknown>>(p
   };
 }
 
+function expectedAppVerboseContext() {
+  return {
+    workspace: {
+      id: "ws_123",
+      name: "Acme Inc",
+    },
+    project: {
+      id: "proj_123",
+      name: "Acme Dashboard",
+    },
+    branch: {
+      id: null,
+      name: "main",
+      kind: "production",
+    },
+    resolution: {
+      projectSource: "local-pin",
+      targetName: "Acme Dashboard",
+      targetNameSource: "local-pin",
+    },
+  };
+}
+
 function createDomain(overrides: Partial<{
   id: string;
   hostname: string;
@@ -256,6 +279,7 @@ describe("app controller", () => {
     });
 
     expect(result.result.branch).toEqual({
+      id: "branch_production",
       name: "production",
       kind: "preview",
     });
@@ -3154,6 +3178,7 @@ describe("app controller", () => {
 
     expect(result.result).toEqual({
       projectId: "proj_123",
+      verboseContext: expectedAppVerboseContext(),
       app: null,
       liveDeployment: null,
       liveUrl: null,
@@ -3231,6 +3256,7 @@ describe("app controller", () => {
 
     expect(result.result).toEqual({
       projectId: "proj_123",
+      verboseContext: expectedAppVerboseContext(),
       app: {
         id: "app_1",
         name: "hello-world",
@@ -3683,6 +3709,7 @@ describe("app controller", () => {
     expect(openUrl).not.toHaveBeenCalled();
     expect(result.result).toEqual({
       projectId: "proj_123",
+      verboseContext: expectedAppVerboseContext(),
       app: {
         id: "app_1",
         name: "hello-world",
@@ -3885,6 +3912,7 @@ describe("app controller", () => {
     );
     expect(result.result).toEqual({
       projectId: "proj_123",
+      verboseContext: expectedAppVerboseContext(),
       app: {
         id: "app_1",
         name: "hello-world",
@@ -4028,6 +4056,7 @@ describe("app controller", () => {
     );
     expect(result.result).toEqual({
       projectId: "proj_123",
+      verboseContext: expectedAppVerboseContext(),
       app: {
         id: "app_1",
         name: "hello-world",
@@ -4592,6 +4621,7 @@ describe("app controller", () => {
     expect(removeApp).toHaveBeenCalledWith("app_1", { signal: context.runtime.signal });
     expect(result.result).toEqual({
       projectId: "proj_123",
+      verboseContext: expectedAppVerboseContext(),
       app: {
         id: "app_1",
         name: "hello-world",

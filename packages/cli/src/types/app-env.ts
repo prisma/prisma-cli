@@ -1,3 +1,12 @@
+import type { AuthWorkspace } from "./auth";
+import type { ProjectResolution, ProjectSummary } from "./project";
+
+export interface EnvResolvedContext {
+  workspace: AuthWorkspace;
+  project: ProjectSummary;
+  resolution: ProjectResolution;
+}
+
 export type EnvScopeDescriptor =
   | { kind: "role"; role: "production" | "preview" }
   | { kind: "branch"; branchName: string; branchId: string }
@@ -28,6 +37,7 @@ export interface EnvFileMetadata {
 
 export interface EnvSingleWriteResult {
   projectId: string;
+  verboseContext?: EnvResolvedContext;
   scope: EnvScopeDescriptor;
   variable: EnvVariableMetadata;
   variables?: never;
@@ -36,6 +46,7 @@ export interface EnvSingleWriteResult {
 
 export interface EnvFileWriteResult {
   projectId: string;
+  verboseContext?: EnvResolvedContext;
   scope: EnvScopeDescriptor;
   variable?: never;
   variables: EnvVariableMetadata[];
@@ -48,6 +59,7 @@ export type EnvUpdateResult = EnvSingleWriteResult | EnvFileWriteResult;
 
 export interface EnvListResult {
   projectId: string;
+  verboseContext?: EnvResolvedContext;
   scope: EnvScopeDescriptor;
   target: EnvListTarget;
   variables: EnvVariableMetadata[];
@@ -55,6 +67,7 @@ export interface EnvListResult {
 
 export interface EnvRmResult {
   projectId: string;
+  verboseContext?: EnvResolvedContext;
   scope: EnvScopeDescriptor;
   key: string;
 }

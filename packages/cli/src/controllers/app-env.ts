@@ -19,6 +19,7 @@ import type {
   EnvListTarget,
   EnvListResult,
   EnvRmResult,
+  EnvResolvedContext,
   EnvScopeDescriptor,
   EnvUpdateResult,
 } from "../types/app-env";
@@ -92,14 +93,14 @@ export async function runEnvAdd(
   }
 
   const input = await resolveEnvWriteInput(context, source, "add");
-  const { client, projectId } = await requireClientAndProject(context, flags.projectRef, "project env add");
+  const { client, projectId, verboseContext } = await requireClientAndProject(context, flags.projectRef, "project env add");
   const resolved = await resolveScopeToApi(client, projectId, scope, {
     createBranchIfMissing: true,
     signal: context.runtime.signal,
   });
 
   if (input.kind === "file") {
-    return runEnvAddFile(context, client, projectId, resolved, input.filePath, input.assignments);
+    return runEnvAddFile(context, client, projectId, resolved, input.filePath, input.assignments, verboseContext);
   }
 
   const existing = await findVariableByNaturalKey(client, projectId, input.key, resolved, context.runtime.signal);
@@ -121,7 +122,6 @@ export async function runEnvAdd(
   const warnings =
     scope.kind === "branch" &&
     !(await findVariableByNaturalKey(client, projectId, input.key, {
-      scope: { kind: "role", role: "preview" },
       descriptor: { kind: "role", role: "preview" },
       apiTarget: { class: "preview", branchId: null },
     }, context.runtime.signal))
@@ -153,6 +153,7 @@ export async function runEnvAdd(
     command: "project.env.add",
     result: {
       projectId,
+      verboseContext,
       scope: resolved.descriptor,
       variable: toMetadata(data.data as RawEnvironmentVariable, resolved.descriptor),
     },
@@ -179,14 +180,14 @@ export async function runEnvUpdate(
   }
 
   const input = await resolveEnvWriteInput(context, source, "update");
-  const { client, projectId } = await requireClientAndProject(context, flags.projectRef, "project env update");
+  const { client, projectId, verboseContext } = await requireClientAndProject(context, flags.projectRef, "project env update");
   const resolved = await resolveScopeToApi(client, projectId, scope, {
     createBranchIfMissing: false,
     signal: context.runtime.signal,
   });
 
   if (input.kind === "file") {
-    return runEnvUpdateFile(context, client, projectId, resolved, input.filePath, input.assignments);
+    return runEnvUpdateFile(context, client, projectId, resolved, input.filePath, input.assignments, verboseContext);
   }
 
   const existing = await findVariableByNaturalKey(client, projectId, input.key, resolved, context.runtime.signal);
@@ -221,6 +222,7 @@ export async function runEnvUpdate(
     command: "project.env.update",
     result: {
       projectId,
+      verboseContext,
       scope: resolved.descriptor,
       variable: toMetadata(data.data as RawEnvironmentVariable, resolved.descriptor),
     },
@@ -301,8 +303,8 @@ export async function runEnvList(
 ): Promise<CommandSuccess<EnvListResult>> {
   const explicit = resolveEnvScope(flags, { requireExplicit: false, command: "list" });
 
-  const { client, projectId } = await requireClientAndProject(context, flags.projectRef, "project env list");
-  const resolved = await resolveListScopeToApi(client, projectId, explicit, {
+  const { client, projectId, verboseContext } = await requireClientAndProject(context, flags.projectRef, "project env list");
+  const resolved = await resolveListScopeToApi(client, projectId, explicit ?? undefined, {
     cwd: context.runtime.cwd,
     signal: context.runtime.signal,
   });
@@ -318,6 +320,7 @@ export async function runEnvList(
     command: "project.env.list",
     result: {
       projectId,
+      verboseContext,
       scope: resolved.descriptor,
       target: resolved.target,
       variables: variables.map((row) => toMetadata(row, resolved.descriptor)),
@@ -355,7 +358,7 @@ export async function runEnvRemove(
     );
   }
 
-  const { client, projectId } = await requireClientAndProject(context, flags.projectRef, "project env remove");
+  const { client, projectId, verboseContext } = await requireClientAndProject(context, flags.projectRef, "project env remove");
   const resolved = await resolveScopeToApi(client, projectId, scope, {
     createBranchIfMissing: false,
     signal: context.runtime.signal,
@@ -390,6 +393,7 @@ export async function runEnvRemove(
     command: "project.env.remove",
     result: {
       projectId,
+      verboseContext,
       scope: resolved.descriptor,
       key,
     },
@@ -402,7 +406,7 @@ async function requireClientAndProject(
   context: CommandContext,
   explicitProject: string | undefined,
   commandName: string,
-): Promise<{ client: ManagementApiClient; projectId: string }> {
+): Promise<{ client: ManagementApiClient; projectId: string; verboseContext: EnvResolvedContext }> {
   const authState = await requireAuthenticatedAuthState(context);
   const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
   if (!client) {
@@ -420,7 +424,15 @@ async function requireClientAndProject(
     commandName,
   });
 
-  return { client, projectId: target.project.id };
+  return {
+    client,
+    projectId: target.project.id,
+    verboseContext: {
+      workspace: authState.workspace,
+      project: target.project,
+      resolution: target.resolution,
+    },
+  };
 }
 
 async function resolveScopeToApi(
