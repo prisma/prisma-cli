@@ -111,7 +111,7 @@ describe("project commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "project list → Listing projects for the authenticated workspace.\n\n│  workspace:  Acme Inc\n│  ⚬ project:  Acme Dashboard\n│  ⚬ project:  Billing API\n\nNext steps:\n- Link an existing Project you choose: prisma-cli project link <id-or-name>\n- Create a new Project: prisma-cli project create <name>\n",
+      "project list → Listing projects for the authenticated workspace.\n\n│  workspace:  Acme Inc\n│\n│  name            id\n│  Acme Dashboard  proj_123\n│  Billing API     proj_456\n\nNext steps:\n- Link an existing Project you choose: prisma-cli project link <id-or-name>\n- Create a new Project: prisma-cli project create <name>\n",
     );
   });
 
@@ -135,7 +135,7 @@ describe("project commands", () => {
         status: "not-linked",
       },
       items: expect.arrayContaining([
-        expect.objectContaining({ name: "Acme Dashboard", status: null }),
+        expect.objectContaining({ name: "Acme Dashboard", id: "proj_123", status: null }),
       ]),
     });
     expect(payload.nextActions).toEqual([
@@ -441,6 +441,46 @@ describe("project commands", () => {
     expect(stderr).toBe(
       "project show → This directory is linked to the following platform project.\n\n│  local repo  ~/code/apple\n│  platform    Edith / orange\n│\n│  → https://prisma.build/edith/orange\n",
     );
+  });
+
+  it("returns LOCAL_PROJECT_WORKSPACE_MISMATCH when the local pin belongs to another workspace", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writeLocalPin(cwd, {
+      workspaceId: "ws_other",
+      projectId: "proj_123",
+    });
+    await login(cwd, stateDir);
+
+    const result = await executeCli({
+      argv: ["project", "show", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      command: "project.show",
+      error: {
+        code: "LOCAL_PROJECT_WORKSPACE_MISMATCH",
+        domain: "project",
+        meta: {
+          pinPath: ".prisma/local.json",
+          pinnedWorkspaceId: "ws_other",
+          pinnedProjectId: "proj_123",
+          activeWorkspaceId: "ws_123",
+          activeWorkspaceName: "Acme Inc",
+        },
+      },
+      nextSteps: [
+        "prisma-cli auth login",
+        "prisma-cli project list",
+        "prisma-cli project link <id-or-name>",
+      ],
+    });
   });
 
   it("returns PROJECT_NOT_FOUND for an inaccessible explicit project", async () => {
