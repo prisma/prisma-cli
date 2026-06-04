@@ -130,6 +130,7 @@ Rules:
 - the title uses a present participle such as `Listing`
 - the first row in the card is the parent scope
 - each list row uses `⚬` and repeats the same item noun
+- `project list` may render a compact name/id table instead of bullet rows because project errors and recovery commands use ids as stable handles
 - annotations are limited to one per row and use:
   - `(active)` for current context
   - `(default)` when the command defines a default item

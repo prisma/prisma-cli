@@ -367,12 +367,14 @@ Behavior:
 
 - requires auth
 - lists projects visible to the active workspace
+- human output shows each Project's name and id
 - does not resolve the current directory
 - does not mutate local state
 - when the current directory is not linked, human output adds setup hints after the list
 - in JSON, unlinked directories include a `user-choice` `nextActions` entry for Project setup
 - listed Projects are not marked selected unless durable local binding actually selects one
 - listed Projects are candidates only; the user must choose one before `project link <id-or-name>` runs
+- `branches` is intentionally deferred until `/v1/projects` exposes a branch count in this same response; the CLI must not make per-project branch-list requests to render `project list`
 
 Examples:
 
@@ -399,7 +401,7 @@ Behavior:
 - when unbound, human output says `project: Not linked` and shows link/create next steps
 - when unbound, JSON exits successfully with `project: null`, `localBinding.status: "not-linked"`, `resolution.projectSource: "unbound"`, a suggested Project name, matching Project candidates, recovery commands, and `user-choice` `nextActions`
 - package names and directory names only power unbound suggestions
-- fails with `PROJECT_NOT_FOUND`, `PROJECT_AMBIGUOUS`, or `LOCAL_STATE_STALE` when explicit or durable binding validation cannot continue safely
+- fails with `PROJECT_NOT_FOUND`, `PROJECT_AMBIGUOUS`, `LOCAL_PROJECT_WORKSPACE_MISMATCH`, or `LOCAL_STATE_STALE` when explicit or durable binding validation cannot continue safely
 
 Examples:
 

@@ -1,8 +1,10 @@
 import path from "node:path";
 
+import stringWidth from "string-width";
+
+import { formatCommandArgument } from "../shell/command-arguments";
 import type { CommandDescriptor } from "../shell/command-meta";
 import { formatDescriptorLabel } from "../shell/command-meta";
-import { formatCommandArgument } from "../shell/command-arguments";
 import type { CommandContext } from "../shell/runtime";
 import type {
   GitRepositoryConnection,
@@ -11,7 +13,7 @@ import type {
   ProjectSetupResult,
   ProjectShowResult,
 } from "../types/project";
-import { renderList, renderMutate, renderShow, serializeList } from "../output/patterns";
+import { renderMutate, renderShow, serializeList } from "../output/patterns";
 import { padDisplay, renderNextSteps, renderSummaryLine } from "../shell/ui";
 
 export function renderProjectList(
@@ -19,24 +21,31 @@ export function renderProjectList(
   descriptor: CommandDescriptor,
   result: ProjectListResult,
 ): string[] {
-  const lines = renderList(
-    {
-      title: "Listing projects for the authenticated workspace.",
-      descriptor,
-      parentContext: {
-        key: "workspace",
-        value: result.workspace.name,
-      },
-      items: result.projects.map((project) => ({
-        noun: "project",
-        label: project.name,
-        id: project.id,
-        status: null,
-      })),
-      emptyMessage: "No projects found.",
-    },
-    context.ui,
-  );
+  const ui = context.ui;
+  const rail = ui.dim("│");
+  const lines = [
+    `${ui.strong(formatDescriptorLabel(descriptor))} ${ui.dim("→")} ${ui.dim("Listing projects for the authenticated workspace.")}`,
+    "",
+  ];
+  lines.push(`${rail}  ${ui.accent("workspace:")}  ${result.workspace.name}`);
+
+  if (result.projects.length === 0) {
+    lines.push(`${rail}  ${ui.dim("No projects found.")}`);
+    if (result.localBinding?.status === "not-linked" || result.localBinding?.status === "invalid") {
+      lines.push(...renderNextSteps([
+        "Link an existing Project you choose: prisma-cli project link <id-or-name>",
+        "Create a new Project: prisma-cli project create <name>",
+      ]));
+    }
+    return lines;
+  }
+
+  const nameWidth = Math.max("name".length, ...result.projects.map((project) => stringWidth(project.name)));
+  lines.push(rail);
+  lines.push(`${rail}  ${ui.accent(padDisplay("name", nameWidth))}  ${ui.accent("id")}`);
+  for (const project of result.projects) {
+    lines.push(`${rail}  ${padDisplay(project.name, nameWidth)}  ${project.id}`);
+  }
 
   if (result.localBinding?.status === "not-linked" || result.localBinding?.status === "invalid") {
     lines.push(...renderNextSteps([
