@@ -146,6 +146,31 @@ export async function createEnvironmentVariable(
   return normalizeEnvironmentVariable(result.data.data as RawEnvironmentVariableRecord);
 }
 
+export async function updateEnvironmentVariable(
+  client: ManagementApiClient,
+  options: {
+    envVarId: string;
+    value: string;
+    signal?: AbortSignal;
+  },
+): Promise<PreviewEnvironmentVariableRecord> {
+  const result = await client.PATCH("/v1/environment-variables/{envVarId}", {
+    params: {
+      path: { envVarId: options.envVarId },
+    },
+    body: {
+      value: options.value,
+    },
+    signal: options.signal,
+  });
+
+  if (result.error || !result.data) {
+    throw apiCallError("Failed to update environment variable", result.response, result.error);
+  }
+
+  return normalizeEnvironmentVariable(result.data.data as RawEnvironmentVariableRecord);
+}
+
 function normalizeEnvironmentVariable(variable: RawEnvironmentVariableRecord): PreviewEnvironmentVariableRecord {
   return {
     id: variable.id,

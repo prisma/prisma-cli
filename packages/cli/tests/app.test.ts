@@ -239,4 +239,19 @@ describe("app commands", () => {
     expect(listEnv.exitCode).not.toBe(0);
     expect(listEnv.stderr).toContain("unknown command");
   });
+
+  it("rejects mutually exclusive deploy database flags", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    const result = await executeCli({
+      argv: ["app", "deploy", "--db", "--no-db", "--yes"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("app deploy accepts either --db or --no-db");
+  });
 });

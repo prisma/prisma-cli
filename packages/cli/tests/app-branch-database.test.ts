@@ -3,6 +3,8 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createProjectClient, createResolveBranch } from "./helpers/mock-factories";
+
 beforeEach(() => {
   process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_ID = "proj_123";
   process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME = "Acme Dashboard";
@@ -40,75 +42,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function createProjectClient(
-  projectId = "proj_123",
-  options: {
-    branchExists?: boolean;
-    isDefault?: boolean;
-  } = {},
-) {
-  const branchRecord = (branchName: string) => ({
-    id: `branch_${branchName.replace(/[^a-z0-9]+/gi, "_")}`,
-    gitName: branchName,
-    isDefault: options.isDefault ?? branchName === "main",
-    role: "preview",
-  });
-
-  return {
-    token: "token",
-    GET: vi.fn().mockImplementation((pathName: string, request?: { params?: { query?: { gitName?: string } } }) => {
-      if (pathName === "/v1/projects") {
-        return {
-          data: {
-            data: [
-              {
-                id: projectId,
-                name: projectId === "proj_456" ? "Billing API" : "Acme Dashboard",
-                slug: projectId === "proj_456" ? "billing-api" : "acme-dashboard",
-                workspace: {
-                  id: "ws_123",
-                  name: "Acme Inc",
-                },
-              },
-            ],
-          },
-        };
-      }
-
-      if (pathName === "/v1/projects/{projectId}/branches") {
-        const branchName = request?.params?.query?.gitName ?? "main";
-        return {
-          data: {
-            data: options.branchExists === false ? [] : [branchRecord(branchName)],
-          },
-        };
-      }
-
-      throw new Error(`Unexpected path ${pathName}`);
-    }),
-    POST: vi.fn().mockImplementation((pathName: string, request?: { body?: { gitName?: string } }) => {
-      if (pathName === "/v1/projects/{projectId}/branches") {
-        const branchName = request?.body?.gitName ?? "main";
-        return {
-          data: {
-            data: branchRecord(branchName),
-          },
-        };
-      }
-
-      throw new Error(`Unexpected path ${pathName}`);
-    }),
-  };
-}
-
-function createResolveBranch(role: "preview" | "production" = "preview") {
-  return vi.fn().mockImplementation((_projectId: string, options: { branchName: string }) => Promise.resolve({
-    id: `branch_${options.branchName.replace(/[^a-z0-9]+/gi, "_")}`,
-    name: options.branchName,
-    role,
-  }));
-}
-
 describe("app deploy branch database setup", () => {
   it("deploy --db creates a branch database, applies schema, and writes branch env overrides before deploying", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
@@ -131,6 +64,7 @@ describe("app deploy branch database setup", () => {
       isManagedBySystem: false,
     }));
     const listEnvironmentVariables = vi.fn().mockResolvedValue([]);
+    const updateEnvironmentVariable = vi.fn();
     const deployApp = vi.fn().mockResolvedValue({
       projectId: "proj_123",
       app: {
@@ -172,6 +106,7 @@ describe("app deploy branch database setup", () => {
         createBranchDatabase,
         listEnvironmentVariables,
         createEnvironmentVariable,
+        updateEnvironmentVariable,
         deployApp,
         listDeployments: vi.fn(),
         showDeployment: vi.fn(),
@@ -264,6 +199,7 @@ describe("app deploy branch database setup", () => {
     ]);
     const createBranchDatabase = vi.fn();
     const createEnvironmentVariable = vi.fn();
+    const updateEnvironmentVariable = vi.fn();
     const deployApp = vi.fn().mockResolvedValue({
       projectId: "proj_123",
       app: {
@@ -288,6 +224,15 @@ describe("app deploy branch database setup", () => {
           isManagedBySystem: false,
         }];
       }
+      if (options.key === "DIRECT_URL") {
+        return [{
+          id: "env_direct_url",
+          key: "DIRECT_URL",
+          branchId,
+          className: "preview",
+          isManagedBySystem: false,
+        }];
+      }
       return [];
     });
 
@@ -305,6 +250,7 @@ describe("app deploy branch database setup", () => {
         createBranchDatabase,
         listEnvironmentVariables,
         createEnvironmentVariable,
+        updateEnvironmentVariable,
         deployApp,
         listDeployments: vi.fn(),
         showDeployment: vi.fn(),
@@ -337,12 +283,140 @@ describe("app deploy branch database setup", () => {
 
     expect(createBranchDatabase).not.toHaveBeenCalled();
     expect(createEnvironmentVariable).not.toHaveBeenCalled();
+    expect(updateEnvironmentVariable).not.toHaveBeenCalled();
     expect(deployApp).toHaveBeenCalled();
     expect(result.result.branchDatabase).toEqual({
       status: "skipped",
       reason: "branch-env-exists",
-      envVars: ["DATABASE_URL"],
+      envVars: ["DATABASE_URL", "DIRECT_URL"],
       schema: null,
+    });
+  });
+
+  it("deploy --db repairs partial branch database env wiring", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const branchId = "branch_feature_db";
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+    ]);
+    const createBranchDatabase = vi.fn().mockResolvedValue({
+      id: "db_1",
+      name: "feature/db",
+      branchId,
+      databaseUrl: "postgres://pooled",
+      directUrl: "postgres://direct",
+    });
+    const createEnvironmentVariable = vi.fn().mockResolvedValue({
+      id: "env_direct_url",
+      key: "DIRECT_URL",
+      branchId,
+      className: "preview",
+      isManagedBySystem: false,
+    });
+    const updateEnvironmentVariable = vi.fn().mockResolvedValue({
+      id: "env_database_url",
+      key: "DATABASE_URL",
+      branchId,
+      className: "preview",
+      isManagedBySystem: false,
+    });
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
+    const listEnvironmentVariables = vi.fn().mockImplementation(async (options: { key?: string }) => {
+      if (options.key === "DATABASE_URL") {
+        return [{
+          id: "env_database_url",
+          key: "DATABASE_URL",
+          branchId,
+          className: "preview",
+          isManagedBySystem: false,
+        }];
+      }
+      return [];
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/branch-database", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/branch-database")>();
+      return {
+        ...actual,
+        runBranchDatabaseSchemaSetup: vi.fn().mockResolvedValue({
+          command: "db-push",
+          schemaPath: "prisma/schema.prisma",
+        }),
+      };
+    });
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: vi.fn().mockResolvedValue({
+          id: branchId,
+          name: "feature/db",
+          role: "preview",
+        }),
+        listApps,
+        createBranchDatabase,
+        listEnvironmentVariables,
+        createEnvironmentVariable,
+        updateEnvironmentVariable,
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, "prisma"), { recursive: true });
+    await writeFile(path.join(cwd, "prisma/schema.prisma"), "datasource db { provider = \"postgresql\" url = env(\"DATABASE_URL\") }\n");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      flags: {
+        yes: true,
+      },
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      branchName: "feature/db",
+      framework: "hono",
+      db: true,
+    });
+
+    expect(createBranchDatabase).toHaveBeenCalled();
+    expect(updateEnvironmentVariable).toHaveBeenCalledWith({
+      envVarId: "env_database_url",
+      value: "postgres://pooled",
+      signal: context.runtime.signal,
+    });
+    expect(createEnvironmentVariable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "DIRECT_URL",
+        value: "postgres://direct",
+      }),
+    );
+    expect(result.result.branchDatabase).toMatchObject({
+      status: "created",
+      envVars: ["DATABASE_URL", "DIRECT_URL"],
     });
   });
 
@@ -367,6 +441,7 @@ describe("app deploy branch database setup", () => {
       className: "preview",
       isManagedBySystem: false,
     });
+    const updateEnvironmentVariable = vi.fn();
     const deployApp = vi.fn().mockResolvedValue({
       projectId: "proj_123",
       app: {
@@ -413,6 +488,7 @@ describe("app deploy branch database setup", () => {
         createBranchDatabase,
         listEnvironmentVariables: vi.fn().mockResolvedValue([]),
         createEnvironmentVariable,
+        updateEnvironmentVariable,
         deployApp,
         listDeployments: vi.fn(),
         showDeployment: vi.fn(),
@@ -466,6 +542,7 @@ describe("app deploy branch database setup", () => {
         createBranchDatabase,
         listEnvironmentVariables: vi.fn().mockResolvedValue([]),
         createEnvironmentVariable: vi.fn(),
+        updateEnvironmentVariable: vi.fn(),
         deployApp,
         listDeployments: vi.fn(),
         showDeployment: vi.fn(),
@@ -500,5 +577,97 @@ describe("app deploy branch database setup", () => {
     });
     expect(createBranchDatabase).not.toHaveBeenCalled();
     expect(deployApp).not.toHaveBeenCalled();
+  });
+
+  it("stops deploy when branch database schema setup fails", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const branchId = "branch_feature_db";
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+    ]);
+    const createBranchDatabase = vi.fn().mockResolvedValue({
+      id: "db_1",
+      name: "feature/db",
+      branchId,
+      databaseUrl: "postgres://pooled",
+      directUrl: "postgres://direct",
+    });
+    const createEnvironmentVariable = vi.fn();
+    const updateEnvironmentVariable = vi.fn();
+    const deployApp = vi.fn();
+    const runBranchDatabaseSchemaSetup = vi.fn().mockRejectedValue(new Error("Migration failed"));
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/branch-database", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/branch-database")>();
+      return {
+        ...actual,
+        runBranchDatabaseSchemaSetup,
+      };
+    });
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: vi.fn().mockResolvedValue({
+          id: branchId,
+          name: "feature/db",
+          role: "preview",
+        }),
+        listApps,
+        createBranchDatabase,
+        listEnvironmentVariables: vi.fn().mockResolvedValue([]),
+        createEnvironmentVariable,
+        updateEnvironmentVariable,
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, "prisma"), { recursive: true });
+    await writeFile(path.join(cwd, "prisma/schema.prisma"), "datasource db { provider = \"postgresql\" url = env(\"DATABASE_URL\") }\n");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      flags: {
+        yes: true,
+      },
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      branchName: "feature/db",
+      framework: "hono",
+      db: true,
+    })).rejects.toMatchObject({
+      code: "SCHEMA_SETUP_FAILED",
+      domain: "app",
+    });
+    expect(createBranchDatabase).toHaveBeenCalled();
+    expect(createEnvironmentVariable).not.toHaveBeenCalled();
+    expect(updateEnvironmentVariable).not.toHaveBeenCalled();
+    expect(deployApp).not.toHaveBeenCalled();
+  });
+
+  it("chooses a deterministic schema.prisma when multiple schemas exist", async () => {
+    const { createTempCwd } = await import("./helpers");
+    const { inspectBranchDatabaseSignal } = await import("../src/lib/app/branch-database");
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, "packages/a/prisma"), { recursive: true });
+    await mkdir(path.join(cwd, "prisma"), { recursive: true });
+    await writeFile(path.join(cwd, "packages/a/prisma/schema.prisma"), "");
+    await writeFile(path.join(cwd, "prisma/schema.prisma"), "");
+
+    const signal = await inspectBranchDatabaseSignal(cwd, new AbortController().signal);
+
+    expect(signal.schema?.path).toBe(path.join(cwd, "prisma/schema.prisma"));
   });
 });

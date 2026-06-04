@@ -79,7 +79,7 @@ import {
   type PreviewBuildType,
 } from "../lib/app/preview-build";
 import { PREVIEW_DEFAULT_REGION } from "../lib/app/preview-interaction";
-import { maybeSetupBranchDatabase } from "../lib/app/branch-database-deploy";
+import { maybeSetupBranchDatabase, type BranchDatabaseDeployBranch } from "../lib/app/branch-database-deploy";
 import {
   createPreviewDeployProgress,
   createPreviewDeployProgressState,
@@ -322,7 +322,7 @@ export async function runAppDeploy(
   assertSupportedEntrypoint(buildType, options?.entrypoint, "deploy");
   const entrypoint = await resolveDeployEntrypoint(context.runtime.cwd, framework, options?.entrypoint, context.runtime.signal);
   const portMapping = parseDeployPortMapping(String(runtime.port));
-  const branchDatabaseSetup = await maybeSetupBranchDatabase(context, provider, projectId, target.branch, {
+  const branchDatabaseSetup = await maybeSetupBranchDatabase(context, provider, projectId, toBranchDatabaseDeployBranch(target.branch), {
     db: options?.db,
     inlineEnvVars: envVars,
   });
@@ -2206,7 +2206,7 @@ interface ResolvedAppProjectContext {
   workspace: AuthWorkspace;
   project: ProjectSummary;
   branch: {
-    id: string;
+    id: string | null;
     name: string;
     kind: BranchKind;
   };
@@ -2270,6 +2270,7 @@ async function resolveProjectContext(
   options?: {
     branch?: ResolvedDeployBranch;
     commandName?: string;
+    envProjectId?: string;
   },
 ): Promise<ResolvedAppProjectContext> {
   const authState = await requireAuthenticatedAuthState(context);
@@ -2290,6 +2291,7 @@ async function resolveProjectContext(
   return {
     ...resolved,
     branch: {
+      id: await resolveExistingAppBranchId(client, resolved.project.id, branch.name, context.runtime.signal),
       name: branch.name,
       kind: toBranchKind(branch.name),
     },
@@ -2489,8 +2491,48 @@ function toBranchKind(name: string): BranchKind {
   return name === "production" || name === "main" ? "production" : "preview";
 }
 
+async function resolveExistingAppBranchId(
+  client: ManagementApiClient,
+  projectId: string,
+  branchName: string,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const result = await client.GET("/v1/projects/{projectId}/branches", {
+    params: {
+      path: { projectId },
+      query: { gitName: branchName },
+    },
+    signal,
+  });
+  if (result.error || !result.data) {
+    throw new CliError({
+      code: "BRANCH_RESOLUTION_FAILED",
+      domain: "app",
+      summary: `Failed to resolve branch "${branchName}"`,
+      why: result.error instanceof Error ? result.error.message : `Management API returned HTTP ${result.response.status}.`,
+      fix: "Retry the command, or pass --branch with an existing Git branch name.",
+      exitCode: 1,
+      nextSteps: [`prisma-cli app deploy --branch ${formatCommandArgument(branchName)}`],
+    });
+  }
+
+  return result.data.data[0]?.id ?? null;
+}
+
 function toResultBranch(branch: ResolvedAppProjectContext["branch"]): AppDeployResult["branch"] {
   return {
+    name: branch.name,
+    kind: branch.kind,
+  };
+}
+
+function toBranchDatabaseDeployBranch(branch: ResolvedAppProjectContext["branch"]): BranchDatabaseDeployBranch {
+  if (!branch.id) {
+    throw new Error(`Deploy branch "${branch.name}" was not resolved remotely.`);
+  }
+
+  return {
+    id: branch.id,
     name: branch.name,
     kind: branch.kind,
   };

@@ -49,6 +49,7 @@ import {
   serializeAppShowDeploy,
 } from "../../presenters/app";
 import { attachCommandDescriptor } from "../../shell/command-meta";
+import { usageError } from "../../shell/errors";
 import { addCompactGlobalFlags, addGlobalFlags } from "../../shell/global-flags";
 import { runCommand, runStreamingCommand } from "../../shell/command-runner";
 import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
@@ -198,22 +199,38 @@ function createDeployCommand(runtime: CliRuntime): Command {
     const createProjectName = (options as { createProject?: string }).createProject;
     const prod = (options as { prod?: boolean }).prod;
     const db = (options as { db?: boolean }).db;
+    const hasDbConflict = hasFlag(runtime.argv, "--db") && hasFlag(runtime.argv, "--no-db");
 
     await runCommand<AppDeployResult>(
       runtime,
       "app.deploy",
       options as Record<string, unknown>,
-      (context) => runAppDeploy(context, appName, {
-        projectRef,
-        createProjectName,
-        branchName,
-        entrypoint: entry,
-        framework,
-        httpPort,
-        envAssignments,
-        prod: prod === true,
-        db,
-      }),
+      (context) => {
+        if (hasDbConflict) {
+          throw usageError(
+            "app deploy accepts either --db or --no-db",
+            "--db requests branch database setup, while --no-db disables it.",
+            "Pass exactly one database setup flag.",
+            [
+              "prisma-cli app deploy --db",
+              "prisma-cli app deploy --no-db",
+            ],
+            "app",
+          );
+        }
+
+        return runAppDeploy(context, appName, {
+          projectRef,
+          createProjectName,
+          branchName,
+          entrypoint: entry,
+          framework,
+          httpPort,
+          envAssignments,
+          prod: prod === true,
+          db,
+        });
+      },
       {
         renderHuman: (context, descriptor, result) => renderAppDeploy(context, descriptor, result),
         renderJson: (result) => serializeAppDeploy(result),
@@ -222,6 +239,10 @@ function createDeployCommand(runtime: CliRuntime): Command {
   });
 
   return command;
+}
+
+function hasFlag(argv: string[], flag: string): boolean {
+  return argv.some((arg) => arg === flag || arg.startsWith(`${flag}=`));
 }
 
 function createShowCommand(runtime: CliRuntime): Command {

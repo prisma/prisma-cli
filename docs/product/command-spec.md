@@ -631,9 +631,11 @@ Behavior:
 - accepts repeated `--env NAME=VALUE` flags
 - supports `--db` for preview Branches to create a new empty Prisma Postgres database, apply the local Prisma schema when one exists, and write branch-scoped `DATABASE_URL` and `DIRECT_URL` overrides through the existing `project env` storage
 - supports `--no-db` to suppress automatic database prompting for the deploy
+- `--db` and `--no-db` are mutually exclusive; passing both is rejected
 - `--yes` alone never creates a database; CI must pass `--db --yes` to create and wire one
 - branch database setup only runs for preview Branches; production database env vars are managed with `project env`
-- branch database setup never overwrites an existing branch-scoped `DATABASE_URL`; when the branch already has one, `--db` leaves it unchanged and continues
+- branch database setup never overwrites fully wired branch database env vars; when the branch already has both `DATABASE_URL` and `DIRECT_URL`, `--db` leaves them unchanged and continues
+- when only one branch database env var exists, explicit `--db` treats it as partial setup and repairs the pair by writing fresh branch database env values
 - branch database setup does not clone or infer schema from another database; it only creates an empty database and optionally applies schema from local code
 - when `prisma/migrations` exists next to `schema.prisma`, schema setup runs `prisma migrate deploy`; otherwise a found `schema.prisma` runs `prisma db push`
 - when no `schema.prisma` is found, `--db` still creates the database and env overrides but skips schema setup

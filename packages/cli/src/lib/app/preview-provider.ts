@@ -12,6 +12,7 @@ import {
   createBranchDatabase,
   createEnvironmentVariable,
   listEnvironmentVariables,
+  updateEnvironmentVariable,
   type PreviewBranchDatabaseRecord,
   type PreviewEnvironmentVariableRecord,
 } from "./preview-branch-database";
@@ -143,6 +144,11 @@ export interface PreviewAppProvider {
     value: string;
     signal?: AbortSignal;
   }): Promise<PreviewEnvironmentVariableRecord>;
+  updateEnvironmentVariable(options: {
+    envVarId: string;
+    value: string;
+    signal?: AbortSignal;
+  }): Promise<PreviewEnvironmentVariableRecord>;
   listApps(projectId: string, options?: { branchName?: string; signal?: AbortSignal }): Promise<PreviewAppRecord[]>;
   removeApp(appId: string, options?: { signal?: AbortSignal }): Promise<PreviewRemovedAppRecord>;
   listDomains(appId: string, options?: { signal?: AbortSignal }): Promise<PreviewDomainRecord[]>;
@@ -249,6 +255,10 @@ export function createPreviewAppProvider(
 
     async createEnvironmentVariable(options) {
       return createEnvironmentVariable(client, options);
+    },
+
+    async updateEnvironmentVariable(options) {
+      return updateEnvironmentVariable(client, options);
     },
 
     async removeApp(appId, options) {

@@ -92,7 +92,7 @@ export async function maybeSetupBranchDatabase(
     .map((variable) => variable.key)
     .sort();
 
-  if (envState.branchDatabaseUrl) {
+  if (hasCompleteBranchDatabaseEnv(envState)) {
     const warning = options.db === true
       ? `Branch "${branch.name}" already has DATABASE_URL. Leaving branch database env vars unchanged.`
       : null;
@@ -111,6 +111,10 @@ export async function maybeSetupBranchDatabase(
         : undefined,
       warnings: warning ? [warning] : [],
     };
+  }
+
+  if (options.db !== true && envState.branchDatabaseUrl) {
+    return emptyBranchDatabaseSetupOutcome();
   }
 
   const hasSignal = hasBranchDatabaseSignal(localSignal) || Boolean(envState.previewDatabaseUrl);
@@ -141,7 +145,7 @@ export async function maybeSetupBranchDatabase(
     }
   }
 
-  return setupBranchDatabase(context, provider, projectId, branch, localSignal);
+  return setupBranchDatabase(context, provider, projectId, branch, localSignal, envState);
 }
 
 async function setupBranchDatabase(
@@ -150,6 +154,7 @@ async function setupBranchDatabase(
   projectId: string,
   branch: BranchDatabaseDeployBranch,
   signal: BranchDatabaseSignal,
+  envState: BranchDatabaseEnvState,
 ): Promise<BranchDatabaseSetupOutcome> {
   emitBranchDatabaseProgress(context, "pending", "Creating branch database");
   const database = await provider.createBranchDatabase({
@@ -180,7 +185,7 @@ async function setupBranchDatabase(
     skippedSchemaWarning = "No schema.prisma file was found. Branch database env vars were created, but schema setup was skipped.";
   }
 
-  const envVars = await createBranchDatabaseEnvVars(context, provider, projectId, branch, database);
+  const envVars = await upsertBranchDatabaseEnvVars(context, provider, projectId, branch, database, envState);
   emitBranchDatabaseProgress(context, "success", `Added branch env override${envVars.length === 1 ? "" : "s"} ${envVars.join(", ")}`);
   if (skippedSchemaWarning) {
     emitBranchDatabaseWarning(context, skippedSchemaWarning);
@@ -206,41 +211,76 @@ async function setupBranchDatabase(
   };
 }
 
-async function createBranchDatabaseEnvVars(
+async function upsertBranchDatabaseEnvVars(
   context: CommandContext,
   provider: PreviewAppProvider,
   projectId: string,
   branch: BranchDatabaseDeployBranch,
   database: PreviewBranchDatabaseRecord,
+  envState: BranchDatabaseEnvState,
 ): Promise<string[]> {
-  const created: string[] = [];
-  await provider.createEnvironmentVariable({
+  const written: string[] = [];
+  await upsertBranchDatabaseEnvVar(context, provider, {
     projectId,
     branchId: branch.id,
     className: "preview",
     key: "DATABASE_URL",
     value: database.databaseUrl,
-    signal: context.runtime.signal,
-  }).catch((error) => {
-    throw branchDatabaseSetupFailedError("Failed to write DATABASE_URL", error, branch.name);
+    existing: envState.branchDatabaseUrl,
+    branchName: branch.name,
   });
-  created.push("DATABASE_URL");
+  written.push("DATABASE_URL");
 
   if (database.directUrl) {
-    await provider.createEnvironmentVariable({
+    await upsertBranchDatabaseEnvVar(context, provider, {
       projectId,
       branchId: branch.id,
       className: "preview",
       key: "DIRECT_URL",
       value: database.directUrl,
-      signal: context.runtime.signal,
-    }).catch((error) => {
-      throw branchDatabaseSetupFailedError("Failed to write DIRECT_URL", error, branch.name);
+      existing: envState.branchDirectUrl,
+      branchName: branch.name,
     });
-    created.push("DIRECT_URL");
+    written.push("DIRECT_URL");
   }
 
-  return created;
+  return written;
+}
+
+async function upsertBranchDatabaseEnvVar(
+  context: CommandContext,
+  provider: PreviewAppProvider,
+  options: {
+    projectId: string;
+    branchId: string;
+    className: "preview";
+    key: "DATABASE_URL" | "DIRECT_URL";
+    value: string;
+    existing: PreviewEnvironmentVariableRecord | null;
+    branchName: string;
+  },
+): Promise<void> {
+  if (options.existing) {
+    await provider.updateEnvironmentVariable({
+      envVarId: options.existing.id,
+      value: options.value,
+      signal: context.runtime.signal,
+    }).catch((error) => {
+      throw branchDatabaseSetupFailedError(`Failed to update ${options.key}`, error, options.branchName);
+    });
+    return;
+  }
+
+  await provider.createEnvironmentVariable({
+    projectId: options.projectId,
+    branchId: options.branchId,
+    className: options.className,
+    key: options.key,
+    value: options.value,
+    signal: context.runtime.signal,
+  }).catch((error) => {
+    throw branchDatabaseSetupFailedError(`Failed to write ${options.key}`, error, options.branchName);
+  });
 }
 
 async function inspectBranchDatabaseEnv(
@@ -280,6 +320,10 @@ function findEnvVar(
 
 function hasInlineDatabaseEnvVars(envVars: Record<string, string> | undefined): boolean {
   return Boolean(envVars && ("DATABASE_URL" in envVars || "DIRECT_URL" in envVars));
+}
+
+function hasCompleteBranchDatabaseEnv(envState: BranchDatabaseEnvState): boolean {
+  return Boolean(envState.branchDatabaseUrl && envState.branchDirectUrl);
 }
 
 function maybeRenderBranchDatabaseSignal(

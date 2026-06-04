@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import type { Dirent } from "node:fs";
 import { access, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
@@ -58,18 +59,19 @@ export async function inspectBranchDatabaseSignal(
 ): Promise<BranchDatabaseSignal> {
   const state: ScanState = {
     filesVisited: 0,
-    schemaPath: null,
+    schemaCandidates: [],
     databaseUrlReferences: [],
   };
 
   await scanDirectory(cwd, cwd, 0, state, signal);
 
-  const hasMigrations = state.schemaPath
-    ? await hasMigrationsDirectory(path.dirname(state.schemaPath), signal)
+  const schemaPath = selectSchemaPath(cwd, state.schemaCandidates);
+  const hasMigrations = schemaPath
+    ? await hasMigrationsDirectory(path.dirname(schemaPath), signal)
     : false;
-  const schema = state.schemaPath
+  const schema = schemaPath
     ? {
-        path: state.schemaPath,
+        path: schemaPath,
         hasMigrations,
         command: hasMigrations
           ? "migrate-deploy" as const
@@ -113,7 +115,7 @@ export async function runBranchDatabaseSchemaSetup(options: {
 
 interface ScanState {
   filesVisited: number;
-  schemaPath: string | null;
+  schemaCandidates: string[];
   databaseUrlReferences: string[];
 }
 
@@ -130,7 +132,7 @@ async function scanDirectory(
     return;
   }
 
-  let entries: Awaited<ReturnType<typeof readdir>>;
+  let entries: Dirent[];
   try {
     entries = await readdir(directory, { withFileTypes: true });
   } catch (error) {
@@ -139,6 +141,7 @@ async function scanDirectory(
     }
     throw error;
   }
+  entries.sort((left, right) => left.name.localeCompare(right.name));
 
   for (const entry of entries) {
     signal.throwIfAborted();
@@ -160,8 +163,8 @@ async function scanDirectory(
 
     state.filesVisited += 1;
 
-    if (!state.schemaPath && entry.name === "schema.prisma") {
-      state.schemaPath = entryPath;
+    if (entry.name === "schema.prisma") {
+      state.schemaCandidates.push(entryPath);
     }
 
     if (
@@ -172,6 +175,20 @@ async function scanDirectory(
       state.databaseUrlReferences.push(path.relative(cwd, entryPath) || entry.name);
     }
   }
+}
+
+function selectSchemaPath(cwd: string, candidates: string[]): string | null {
+  return candidates
+    .map((candidate) => ({
+      absolute: candidate,
+      relative: path.relative(cwd, candidate) || "schema.prisma",
+    }))
+    .sort((left, right) => {
+      if (left.relative === "schema.prisma") return -1;
+      if (right.relative === "schema.prisma") return 1;
+      return left.relative.length - right.relative.length
+        || left.relative.localeCompare(right.relative);
+    })[0]?.absolute ?? null;
 }
 
 async function hasMigrationsDirectory(schemaDirectory: string, signal: AbortSignal): Promise<boolean> {
@@ -222,6 +239,7 @@ async function runPrismaCommand(options: {
   args: string[];
   env: Record<string, string>;
 }): Promise<void> {
+  const shouldPipeOutput = !options.context.flags.json && !options.context.flags.quiet;
   const child = spawn("npx", options.args, {
     cwd: options.context.runtime.cwd,
     env: {
@@ -229,10 +247,10 @@ async function runPrismaCommand(options: {
       ...options.env,
     },
     signal: options.context.runtime.signal,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: shouldPipeOutput ? ["ignore", "pipe", "pipe"] : ["ignore", "ignore", "ignore"],
   });
 
-  if (!options.context.flags.json && !options.context.flags.quiet) {
+  if (shouldPipeOutput) {
     child.stdout?.pipe(options.context.output.stderr, { end: false });
     child.stderr?.pipe(options.context.output.stderr, { end: false });
   }
