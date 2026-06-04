@@ -23,6 +23,19 @@ export interface AppDeployResult {
     kind: BranchKind;
   };
   resolution: ProjectResolution;
+  branchDatabase?: {
+    status: "created" | "skipped";
+    reason?: string;
+    database?: {
+      id: string;
+      name: string;
+    };
+    envVars: string[];
+    schema: {
+      command: "migrate-deploy" | "db-push";
+      path: string;
+    } | null;
+  };
   app: AppSummary;
   deployment: {
     id: string;

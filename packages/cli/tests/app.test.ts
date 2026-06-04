@@ -150,6 +150,8 @@ describe("app commands", () => {
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy");
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --project proj_123");
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --create-project my-app --yes");
+    expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --db");
+    expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --db --yes");
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --app my-app --framework nextjs --http-port 3000");
     expect(deployHelp.stderr).toContain("$ pnpm dlx skills@latest add prisma/prisma-cli/skills#cli-v<cli-version> --all");
     expect(deployHelp.stderr).toContain("--entry <path>");
@@ -158,6 +160,8 @@ describe("app commands", () => {
     expect(deployHelp.stderr).not.toContain("--build-type <type>");
     expect(deployHelp.stderr).toContain("--http-port <port>");
     expect(deployHelp.stderr).toContain("--env <name=value>");
+    expect(deployHelp.stderr).toContain("--db");
+    expect(deployHelp.stderr).toContain("--no-db");
 
     expect(showHelp.exitCode).toBe(0);
     expect(showHelp.stderr).toContain("Show the app and its current deployment");
@@ -234,5 +238,20 @@ describe("app commands", () => {
     expect(updateEnv.stderr).toContain("unknown command");
     expect(listEnv.exitCode).not.toBe(0);
     expect(listEnv.stderr).toContain("unknown command");
+  });
+
+  it("rejects mutually exclusive deploy database flags", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    const result = await executeCli({
+      argv: ["app", "deploy", "--db", "--no-db", "--yes"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("app deploy accepts either --db or --no-db");
   });
 });

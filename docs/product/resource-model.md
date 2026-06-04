@@ -149,14 +149,22 @@ top-level target-context group is `branch`, not `env`.
 
 ### Schema and Database
 
-`schema` and `database` are out of scope for the current beta package, but
-they remain part of the long-term hierarchy.
+`schema` stays a local code artifact. `database` stays a branch-bound remote
+resource.
 
-- `schema` stays a local code artifact
-- `database` stays a branch-bound resource
+The beta package does not expose a standalone database command group yet. The
+current database surface is limited to `app deploy --db`, which can create an
+empty Prisma Postgres database for a preview Branch, apply the local
+`schema.prisma` shape when available, and write normal branch-scoped
+environment variable overrides.
 
-The beta package must not redefine project or branch in a way that makes
-future schema, database, and migration workflows awkward.
+Rules:
+
+- database wiring uses the existing environment-variable model
+- `DATABASE_URL` is written as a preview Branch override, not a separate app binding
+- branch database setup never overwrites an existing branch-scoped `DATABASE_URL`
+- schema setup is sourced only from local code; the CLI does not clone or infer schema from another database
+- production database configuration is managed through explicit environment-variable commands
 
 ## Relationships
 
