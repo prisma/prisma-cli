@@ -171,6 +171,25 @@ export async function updateEnvironmentVariable(
   return normalizeEnvironmentVariable(result.data.data as RawEnvironmentVariableRecord);
 }
 
+export async function deleteEnvironmentVariable(
+  client: ManagementApiClient,
+  options: {
+    envVarId: string;
+    signal?: AbortSignal;
+  },
+): Promise<void> {
+  const result = await client.DELETE("/v1/environment-variables/{envVarId}", {
+    params: {
+      path: { envVarId: options.envVarId },
+    },
+    signal: options.signal,
+  });
+
+  if (result.error) {
+    throw apiCallError("Failed to delete environment variable", result.response, result.error);
+  }
+}
+
 function normalizeEnvironmentVariable(variable: RawEnvironmentVariableRecord): PreviewEnvironmentVariableRecord {
   return {
     id: variable.id,

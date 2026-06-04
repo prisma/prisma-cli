@@ -193,7 +193,6 @@ These codes are the minimum stable set for the MVP:
 - `REPO_ALREADY_CONNECTED`
 - `REPO_CONNECTION_FAILED`
 - `BUILD_FAILED`
-- `BRANCH_RESOLUTION_FAILED`
 - `BRANCH_DATABASE_SETUP_FAILED`
 - `SCHEMA_SETUP_FAILED`
 - `RUN_FAILED`
@@ -238,7 +237,6 @@ Recommended meanings:
 - `REPO_ALREADY_CONNECTED`: a project already has a different GitHub repository connected
 - `REPO_CONNECTION_FAILED`: the Management API repository connection operation failed
 - `BUILD_FAILED`: build failed before a healthy deployment existed
-- `BRANCH_RESOLUTION_FAILED`: the CLI could not inspect the selected branch before running an app command
 - `BRANCH_DATABASE_SETUP_FAILED`: preview Branch database creation or branch env-var wiring failed before deployment started
 - `SCHEMA_SETUP_FAILED`: local Prisma schema setup against a newly created Branch database failed before deployment started
 - `RUN_FAILED`: local framework run command could not be started or exited unsuccessfully

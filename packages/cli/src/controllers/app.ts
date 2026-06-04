@@ -2291,7 +2291,7 @@ async function resolveProjectContext(
   return {
     ...resolved,
     branch: {
-      id: await resolveExistingAppBranchId(client, resolved.project.id, branch.name, context.runtime.signal),
+      id: null,
       name: branch.name,
       kind: toBranchKind(branch.name),
     },
@@ -2489,34 +2489,6 @@ async function withRemoteDeployBranch(
 
 function toBranchKind(name: string): BranchKind {
   return name === "production" || name === "main" ? "production" : "preview";
-}
-
-async function resolveExistingAppBranchId(
-  client: ManagementApiClient,
-  projectId: string,
-  branchName: string,
-  signal: AbortSignal,
-): Promise<string | null> {
-  const result = await client.GET("/v1/projects/{projectId}/branches", {
-    params: {
-      path: { projectId },
-      query: { gitName: branchName },
-    },
-    signal,
-  });
-  if (result.error || !result.data) {
-    throw new CliError({
-      code: "BRANCH_RESOLUTION_FAILED",
-      domain: "app",
-      summary: `Failed to resolve branch "${branchName}"`,
-      why: result.error instanceof Error ? result.error.message : `Management API returned HTTP ${result.response.status}.`,
-      fix: "Retry the command, or pass --branch with an existing Git branch name.",
-      exitCode: 1,
-      nextSteps: [`prisma-cli app deploy --branch ${formatCommandArgument(branchName)}`],
-    });
-  }
-
-  return result.data.data[0]?.id ?? null;
 }
 
 function toResultBranch(branch: ResolvedAppProjectContext["branch"]): AppDeployResult["branch"] {

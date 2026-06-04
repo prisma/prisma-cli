@@ -48,6 +48,7 @@ function withBranchDatabaseProviderDefaults<T extends Record<string, unknown>>(p
     listEnvironmentVariables: vi.fn().mockResolvedValue([]),
     createEnvironmentVariable: vi.fn(),
     updateEnvironmentVariable: vi.fn(),
+    deleteEnvironmentVariable: vi.fn(),
     ...provider,
   };
 }

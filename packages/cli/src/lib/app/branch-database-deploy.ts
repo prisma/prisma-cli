@@ -242,6 +242,13 @@ async function upsertBranchDatabaseEnvVars(
       branchName: branch.name,
     });
     written.push("DIRECT_URL");
+  } else if (envState.branchDirectUrl) {
+    await provider.deleteEnvironmentVariable({
+      envVarId: envState.branchDirectUrl.id,
+      signal: context.runtime.signal,
+    }).catch((error) => {
+      throw branchDatabaseSetupFailedError("Failed to remove stale DIRECT_URL", error, branch.name);
+    });
   }
 
   return written;

@@ -10,6 +10,7 @@ import type { PreviewBuildType } from "./preview-build";
 import type { BranchKind } from "../../types/branch";
 import {
   createBranchDatabase,
+  deleteEnvironmentVariable,
   createEnvironmentVariable,
   listEnvironmentVariables,
   updateEnvironmentVariable,
@@ -144,11 +145,8 @@ export interface PreviewAppProvider {
     value: string;
     signal?: AbortSignal;
   }): Promise<PreviewEnvironmentVariableRecord>;
-  updateEnvironmentVariable(options: {
-    envVarId: string;
-    value: string;
-    signal?: AbortSignal;
-  }): Promise<PreviewEnvironmentVariableRecord>;
+  updateEnvironmentVariable(options: { envVarId: string; value: string; signal?: AbortSignal }): Promise<PreviewEnvironmentVariableRecord>;
+  deleteEnvironmentVariable(options: { envVarId: string; signal?: AbortSignal }): Promise<void>;
   listApps(projectId: string, options?: { branchName?: string; signal?: AbortSignal }): Promise<PreviewAppRecord[]>;
   removeApp(appId: string, options?: { signal?: AbortSignal }): Promise<PreviewRemovedAppRecord>;
   listDomains(appId: string, options?: { signal?: AbortSignal }): Promise<PreviewDomainRecord[]>;
@@ -259,6 +257,10 @@ export function createPreviewAppProvider(
 
     async updateEnvironmentVariable(options) {
       return updateEnvironmentVariable(client, options);
+    },
+
+    async deleteEnvironmentVariable(options) {
+      return deleteEnvironmentVariable(client, options);
     },
 
     async removeApp(appId, options) {
