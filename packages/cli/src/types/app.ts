@@ -32,7 +32,8 @@ export interface AppDeployResult {
     };
     envVars: string[];
     schema: {
-      command: "migrate-deploy" | "db-push";
+      command: "migrate-deploy" | "db-push" | "prisma-next-db-init";
+      source: "prisma-orm" | "prisma-next";
       path: string;
     } | null;
   };

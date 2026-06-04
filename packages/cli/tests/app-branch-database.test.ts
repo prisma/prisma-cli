@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -38,11 +39,117 @@ afterEach(() => {
   vi.doUnmock("../src/lib/app/branch-database");
   vi.doUnmock("../src/lib/app/branch-database-deploy");
   vi.doUnmock("../src/shell/prompt");
+  vi.doUnmock("node:child_process");
   vi.resetModules();
   vi.restoreAllMocks();
 });
 
 describe("app deploy branch database setup", () => {
+  it("runs the expected schema setup commands for Prisma Next and Prisma ORM", async () => {
+    const spawn = vi.fn().mockImplementation(() => {
+      const child = new EventEmitter();
+      queueMicrotask(() => child.emit("close", 0, null));
+      return child;
+    });
+    vi.doMock("node:child_process", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("node:child_process")>();
+      return {
+        ...actual,
+        spawn,
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runBranchDatabaseSchemaSetup } = await import("../src/lib/app/branch-database");
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, "prisma"), { recursive: true });
+    await writeFile(path.join(cwd, "prisma/schema.prisma"), "datasource db { provider = \"postgresql\" url = env(\"DATABASE_URL\") }\n");
+    await writeFile(path.join(cwd, "prisma-next.config.ts"), [
+      'import { defineConfig } from "@prisma-next/postgres/config";',
+      "",
+      "export default defineConfig({ contract: './src/prisma/contract.prisma' });",
+      "",
+    ].join("\n"));
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      flags: {
+        quiet: true,
+      },
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await runBranchDatabaseSchemaSetup({
+      context,
+      schema: {
+        kind: "prisma-next",
+        path: path.join(cwd, "prisma-next.config.ts"),
+        command: "prisma-next-db-init",
+        hasMigrations: false,
+        target: "postgresql",
+      },
+      databaseUrl: "postgres://pooled",
+      directUrl: "postgres://direct",
+    });
+
+    expect(spawn).toHaveBeenNthCalledWith(
+      1,
+      "npx",
+      ["--no-install", "prisma-next", "contract", "emit", "--config", "prisma-next.config.ts"],
+      expect.objectContaining({
+        cwd,
+        env: expect.objectContaining({
+          DATABASE_URL: "postgres://pooled",
+          DIRECT_URL: "postgres://direct",
+        }),
+        stdio: ["ignore", "ignore", "ignore"],
+      }),
+    );
+    expect(spawn).toHaveBeenNthCalledWith(
+      2,
+      "npx",
+      ["--no-install", "prisma-next", "db", "init", "--config", "prisma-next.config.ts", "--db", "postgres://pooled"],
+      expect.objectContaining({
+        cwd,
+        env: expect.objectContaining({
+          DATABASE_URL: "postgres://pooled",
+          DIRECT_URL: "postgres://direct",
+        }),
+        stdio: ["ignore", "ignore", "ignore"],
+      }),
+    );
+
+    spawn.mockClear();
+    await runBranchDatabaseSchemaSetup({
+      context,
+      schema: {
+        kind: "prisma-orm",
+        path: path.join(cwd, "prisma/schema.prisma"),
+        command: "db-push",
+        hasMigrations: false,
+        target: "postgresql",
+      },
+      databaseUrl: "postgres://pooled",
+      directUrl: null,
+    });
+
+    expect(spawn).toHaveBeenCalledWith(
+      "npx",
+      ["--no-install", "prisma", "db", "push", "--schema", "prisma/schema.prisma"],
+      expect.objectContaining({
+        cwd,
+        env: expect.objectContaining({
+          DATABASE_URL: "postgres://pooled",
+        }),
+        stdio: ["ignore", "ignore", "ignore"],
+      }),
+    );
+    expect(spawn.mock.calls[0]?.[1]).not.toContain("--skip-generate");
+  });
+
   it("deploy --db creates a branch database, applies schema, and writes branch env overrides before deploying", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const branchId = "branch_feature_db";
@@ -82,6 +189,7 @@ describe("app deploy branch database setup", () => {
     });
     const runBranchDatabaseSchemaSetup = vi.fn().mockResolvedValue({
       command: "db-push",
+      source: "prisma-orm",
       schemaPath: "prisma/schema.prisma",
     });
 
@@ -186,7 +294,142 @@ describe("app deploy branch database setup", () => {
       envVars: ["DATABASE_URL", "DIRECT_URL"],
       schema: {
         command: "db-push",
+        source: "prisma-orm",
         path: "prisma/schema.prisma",
+      },
+    });
+  });
+
+  it("deploy --db creates a branch database and applies a Prisma Next config before deploying", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const branchId = "branch_feature_next";
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+    ]);
+    const createBranchDatabase = vi.fn().mockResolvedValue({
+      id: "db_1",
+      name: "feature/next",
+      branchId,
+      databaseUrl: "postgres://pooled",
+      directUrl: "postgres://direct",
+    });
+    const createEnvironmentVariable = vi.fn().mockImplementation(async (options: { key: string; branchId?: string; className: string }) => ({
+      id: `env_${options.key.toLowerCase()}`,
+      key: options.key,
+      branchId: options.branchId ?? null,
+      className: options.className,
+      isManagedBySystem: false,
+    }));
+    const runBranchDatabaseSchemaSetup = vi.fn().mockResolvedValue({
+      command: "prisma-next-db-init",
+      source: "prisma-next",
+      schemaPath: "prisma-next.config.ts",
+    });
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+        liveUrl: "https://hello-world.prisma.app",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/branch-database", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/branch-database")>();
+      return {
+        ...actual,
+        runBranchDatabaseSchemaSetup,
+      };
+    });
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: vi.fn().mockResolvedValue({
+          id: branchId,
+          name: "feature/next",
+          role: "preview",
+        }),
+        listApps,
+        createBranchDatabase,
+        listEnvironmentVariables: vi.fn().mockResolvedValue([]),
+        createEnvironmentVariable,
+        updateEnvironmentVariable: vi.fn(),
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writeFile(path.join(cwd, "prisma-next.config.ts"), [
+      'import { defineConfig } from "@prisma-next/postgres/config";',
+      "",
+      "export default defineConfig({",
+      "  db: { connection: process.env.DATABASE_URL! },",
+      "});",
+      "",
+    ].join("\n"));
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      flags: {
+        yes: true,
+      },
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      branchName: "feature/next",
+      framework: "hono",
+      db: true,
+    });
+
+    expect(runBranchDatabaseSchemaSetup).toHaveBeenCalledWith(
+      expect.objectContaining({
+        databaseUrl: "postgres://pooled",
+        directUrl: "postgres://direct",
+        schema: expect.objectContaining({
+          kind: "prisma-next",
+          path: path.join(cwd, "prisma-next.config.ts"),
+          command: "prisma-next-db-init",
+          hasMigrations: false,
+          target: "postgresql",
+        }),
+      }),
+    );
+    expect(createEnvironmentVariable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "DATABASE_URL",
+        value: "postgres://pooled",
+      }),
+    );
+    expect(runBranchDatabaseSchemaSetup.mock.invocationCallOrder[0]).toBeLessThan(deployApp.mock.invocationCallOrder[0]);
+    expect(result.result.branchDatabase).toEqual({
+      status: "created",
+      database: {
+        id: "db_1",
+        name: "feature/next",
+      },
+      envVars: ["DATABASE_URL", "DIRECT_URL"],
+      schema: {
+        command: "prisma-next-db-init",
+        source: "prisma-next",
+        path: "prisma-next.config.ts",
       },
     });
   });
@@ -350,6 +593,7 @@ describe("app deploy branch database setup", () => {
         ...actual,
         runBranchDatabaseSchemaSetup: vi.fn().mockResolvedValue({
           command: "db-push",
+          source: "prisma-orm",
           schemaPath: "prisma/schema.prisma",
         }),
       };
@@ -472,6 +716,7 @@ describe("app deploy branch database setup", () => {
         ...actual,
         runBranchDatabaseSchemaSetup: vi.fn().mockResolvedValue({
           command: "db-push",
+          source: "prisma-orm",
           schemaPath: "prisma/schema.prisma",
         }),
       };
@@ -589,6 +834,7 @@ describe("app deploy branch database setup", () => {
         ...actual,
         runBranchDatabaseSchemaSetup: vi.fn().mockResolvedValue({
           command: "db-push",
+          source: "prisma-orm",
           schemaPath: "prisma/schema.prisma",
         }),
       };
@@ -805,6 +1051,7 @@ describe("app deploy branch database setup", () => {
         ...actual,
         runBranchDatabaseSchemaSetup: vi.fn().mockResolvedValue({
           command: "db-push",
+          source: "prisma-orm",
           schemaPath: "prisma/schema.prisma",
         }),
       };
@@ -873,5 +1120,116 @@ describe("app deploy branch database setup", () => {
     const signal = await inspectBranchDatabaseSignal(cwd, new AbortController().signal);
 
     expect(signal.schema?.path).toBe(path.join(cwd, "prisma/schema.prisma"));
+  });
+
+  it("prefers a Prisma Next config over schema.prisma when both exist", async () => {
+    const { createTempCwd } = await import("./helpers");
+    const { inspectBranchDatabaseSignal } = await import("../src/lib/app/branch-database");
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, "prisma"), { recursive: true });
+    await writeFile(path.join(cwd, "prisma/schema.prisma"), "datasource db { provider = \"postgresql\" url = env(\"DATABASE_URL\") }\n");
+    await writeFile(path.join(cwd, "prisma-next.config.ts"), [
+      'import { defineConfig } from "@prisma-next/postgres/config";',
+      "",
+      "export default defineConfig({",
+      "  db: { connection: process.env.DATABASE_URL! },",
+      "});",
+      "",
+    ].join("\n"));
+
+    const signal = await inspectBranchDatabaseSignal(cwd, new AbortController().signal);
+
+    expect(signal.schema).toMatchObject({
+      kind: "prisma-next",
+      path: path.join(cwd, "prisma-next.config.ts"),
+      command: "prisma-next-db-init",
+      target: "postgresql",
+    });
+    expect(signal.unsupportedSchema).toBeNull();
+  });
+
+  it("treats non-Postgres Prisma Next configs as unsupported branch database signals", async () => {
+    const { createTempCwd } = await import("./helpers");
+    const { hasBranchDatabaseSignal, inspectBranchDatabaseSignal } = await import("../src/lib/app/branch-database");
+    const cwd = await createTempCwd();
+    await writeFile(path.join(cwd, "prisma-next.config.ts"), [
+      'import { defineConfig } from "@prisma-next/mongo/config";',
+      "",
+      "export default defineConfig({",
+      "  db: { connection: process.env.DATABASE_URL! },",
+      "});",
+      "",
+    ].join("\n"));
+
+    const signal = await inspectBranchDatabaseSignal(cwd, new AbortController().signal);
+
+    expect(signal.schema).toBeNull();
+    expect(signal.unsupportedSchema).toMatchObject({
+      kind: "prisma-next",
+      path: path.join(cwd, "prisma-next.config.ts"),
+      target: "mongodb",
+    });
+    expect(hasBranchDatabaseSignal(signal)).toBe(false);
+  });
+
+  it("rejects --db for non-Postgres Prisma Next configs before creating a branch database", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const createBranchDatabase = vi.fn();
+    const deployApp = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: createResolveBranch(),
+        listApps: vi.fn().mockResolvedValue([
+          { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+        ]),
+        createBranchDatabase,
+        listEnvironmentVariables: vi.fn().mockResolvedValue([]),
+        createEnvironmentVariable: vi.fn(),
+        updateEnvironmentVariable: vi.fn(),
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writeFile(path.join(cwd, "prisma-next.config.ts"), [
+      'import { defineConfig } from "@prisma-next/sqlite/config";',
+      "",
+      "export default defineConfig({",
+      "  db: { connection: process.env.DATABASE_URL! },",
+      "});",
+      "",
+    ].join("\n"));
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      flags: {
+        yes: true,
+      },
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      branchName: "feature/db",
+      framework: "hono",
+      db: true,
+    })).rejects.toMatchObject({
+      code: "USAGE_ERROR",
+      domain: "app",
+      summary: "Branch database setup is not available for this Prisma schema",
+    });
+    expect(createBranchDatabase).not.toHaveBeenCalled();
+    expect(deployApp).not.toHaveBeenCalled();
   });
 });
