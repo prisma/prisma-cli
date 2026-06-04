@@ -326,7 +326,7 @@ describe("preview build strategy", () => {
     }
   });
 
-  it("uses the framework build command when scripts.build exists but no package manager is detected", async () => {
+  it("uses the literal package.json build script when no package manager is detected", async () => {
     const { resolvePreviewBuildSettings } = await import("../src/lib/app/preview-build");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
@@ -349,8 +349,8 @@ describe("preview build strategy", () => {
       appPath,
       buildType: "nextjs",
     })).resolves.toMatchObject({
-      buildCommand: "next build",
-      buildCommandSource: "Next.js default",
+      buildCommand: "custom-build",
+      buildCommandSource: "package.json scripts.build",
     });
   });
 
@@ -362,16 +362,15 @@ describe("preview build strategy", () => {
     await mkdir(appPath, { recursive: true });
     await writeFile(
       path.join(appPath, "package.json"),
-      JSON.stringify({
-        module: "index.ts",
-      }, null, 2),
+      `${JSON.stringify({}, null, 2)}\n`,
       "utf8",
     );
-    await writeFile(path.join(appPath, "index.ts"), "export default { fetch: () => new Response('ok') };\n", "utf8");
+    await writeFile(path.join(appPath, "server.ts"), "export default { fetch: () => new Response('ok') };\n", "utf8");
     await writeFile(path.join(appPath, "next.config.cjs"), "module.exports = { output: 'standalone' };\n", "utf8");
 
     await expect(resolvePreviewBuildStrategy({
       appPath,
+      entrypoint: "server.ts",
       buildType: "auto",
     })).resolves.toMatchObject({
       buildType: "bun",

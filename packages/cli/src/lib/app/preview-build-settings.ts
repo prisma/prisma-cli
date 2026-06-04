@@ -292,12 +292,13 @@ async function resolveFrameworkBuildCommand(
     signal?: AbortSignal;
   },
 ): Promise<ResolvedBuildCommand> {
-  if (hasBuildScript(packageJson)) {
+  const buildScript = readBuildScript(packageJson);
+  if (buildScript) {
     const packageManager = await resolvePackageManager(appPath, packageJson, fallback.signal);
     if (!packageManager) {
       return {
-        command: fallback.command,
-        source: fallback.source,
+        command: buildScript,
+        source: "package.json scripts.build",
       };
     }
 
@@ -313,13 +314,18 @@ async function resolveFrameworkBuildCommand(
   };
 }
 
-function hasBuildScript(packageJson: BunPackageJsonLike | null): boolean {
+function readBuildScript(packageJson: BunPackageJsonLike | null): string | null {
   if (!packageJson?.scripts || typeof packageJson.scripts !== "object") {
-    return false;
+    return null;
   }
 
   const scripts = packageJson.scripts as Record<string, unknown>;
-  return typeof scripts.build === "string" && scripts.build.trim().length > 0;
+  if (typeof scripts.build !== "string") {
+    return null;
+  }
+
+  const buildScript = scripts.build.trim();
+  return buildScript.length > 0 ? buildScript : null;
 }
 
 async function resolvePackageManager(
