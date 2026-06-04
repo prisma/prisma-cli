@@ -73,6 +73,91 @@ function createResolveBranch(role: "preview" | "production" = "preview") {
 }
 
 describe("app env vars", () => {
+  it("parses dotenv file contents without expanding values", async () => {
+    const { parseEnvFileContents } = await import("../src/lib/app/env-file");
+
+    expect(
+      parseEnvFileContents(
+        [
+          "# local settings",
+          "API_URL=https://api.example",
+          "QUOTED=\"hello world\"",
+          "export FEATURE_FLAG=enabled",
+          "LITERAL=${API_URL}/v1",
+        ].join("\n"),
+        ".env",
+        "add",
+      ),
+    ).toEqual([
+      { key: "API_URL", value: "https://api.example" },
+      { key: "QUOTED", value: "hello world" },
+      { key: "FEATURE_FLAG", value: "enabled" },
+      { key: "LITERAL", value: "${API_URL}/v1" },
+    ]);
+  });
+
+  it("parses multiline dotenv values without treating nested KEY= text as assignments", async () => {
+    const { parseEnvFileContents } = await import("../src/lib/app/env-file");
+
+    expect(
+      parseEnvFileContents(
+        [
+          "CERT=\"-----BEGIN CERT-----",
+          "API_URL=https://inside.example",
+          "-----END CERT-----\"",
+          "API_URL=https://api.example",
+        ].join("\n"),
+        ".env",
+        "add",
+      ),
+    ).toEqual([
+      {
+        key: "CERT",
+        value: "-----BEGIN CERT-----\nAPI_URL=https://inside.example\n-----END CERT-----",
+      },
+      { key: "API_URL", value: "https://api.example" },
+    ]);
+  });
+
+  it("rejects invalid dotenv file entries without leaking values", async () => {
+    const { parseEnvFileContents } = await import("../src/lib/app/env-file");
+
+    expect(() =>
+      parseEnvFileContents("API_URL=https://first\nAPI_URL=https://second\n", ".env", "add"),
+    ).toThrowError(expect.objectContaining({
+      code: "USAGE_ERROR",
+      summary: 'Duplicate environment variable "API_URL" in ".env"',
+    }));
+
+    expect(() =>
+      parseEnvFileContents("lowercase-key=secret\n", ".env", "add"),
+    ).toThrowError(expect.objectContaining({
+      code: "USAGE_ERROR",
+      summary: 'Invalid environment variable "lowercase-key" in ".env"',
+    }));
+
+    const longKey = `A${"B".repeat(256)}`;
+    expect(() =>
+      parseEnvFileContents(`${longKey}=secret\n`, ".env", "add"),
+    ).toThrowError(expect.objectContaining({
+      code: "USAGE_ERROR",
+      why: expect.stringContaining("exceeds the 256-character limit"),
+    }));
+
+    let emptyValueError: unknown;
+    try {
+      parseEnvFileContents("EMPTY=\n", ".env", "add");
+    } catch (error) {
+      emptyValueError = error;
+    }
+
+    expect(emptyValueError).toMatchObject({
+      code: "USAGE_ERROR",
+      summary: 'Environment variable "EMPTY" in ".env" has an empty value',
+    });
+    expect(JSON.stringify(emptyValueError)).not.toContain("secret");
+  });
+
   it("parses repeated env assignments and allows empty values", async () => {
     const { parseEnvAssignments } = await import("../src/lib/app/env-vars");
 
@@ -231,6 +316,92 @@ describe("app env vars", () => {
       projectId: "proj_123",
       variables: [],
     });
+  });
+
+  it("parses project env add --file through the CLI command layer", async () => {
+    const runEnvAdd = vi.fn().mockResolvedValue({
+      command: "project.env.add",
+      result: {
+        projectId: "proj_123",
+        scope: { kind: "role", role: "preview" },
+        variables: [
+          {
+            id: "envvar_api",
+            key: "API_URL",
+            scope: { kind: "role", role: "preview" },
+            source: "preview",
+            isManagedBySystem: false,
+            updatedAt: "2026-05-08T10:00:00.000Z",
+          },
+        ],
+        file: {
+          path: ".env",
+          count: 1,
+        },
+      },
+      warnings: [],
+      nextSteps: [],
+    });
+
+    vi.doMock("../src/controllers/app-env", async () => {
+      const actual = await vi.importActual<typeof import("../src/controllers/app-env")>("../src/controllers/app-env");
+      return {
+        ...actual,
+        runEnvAdd,
+      };
+    });
+
+    const { createTempCwd, executeCli } = await import("./helpers");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    const result = await executeCli({
+      argv: [
+        "project",
+        "env",
+        "add",
+        "--file",
+        ".env",
+        "--role",
+        "preview",
+        "--project",
+        "proj_123",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      command: "project.env.add",
+      result: {
+        file: {
+          path: ".env",
+          count: 1,
+        },
+        variables: [
+          {
+            key: "API_URL",
+          },
+        ],
+      },
+    });
+    expect(runEnvAdd).toHaveBeenCalledWith(
+      expect.anything(),
+      undefined,
+      {
+        roleName: "preview",
+        branchName: undefined,
+        projectRef: "proj_123",
+        filePath: ".env",
+      },
+    );
   });
 
   it("passes env vars to provider deploy without surfacing values", async () => {

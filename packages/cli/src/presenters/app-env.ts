@@ -38,6 +38,27 @@ export function renderEnvAdd(
   descriptor: CommandDescriptor,
   result: EnvAddResult,
 ): string[] {
+  if (result.variables !== undefined) {
+    return renderList(
+      {
+        title: "Setting new environment variables from file.",
+        descriptor,
+        parentContext: {
+          key: "target",
+          value: `${scopeLabel(result.scope)} from ${result.file.path}`,
+        },
+        items: result.variables.map((variable) => ({
+          noun: "variable",
+          label: `${variable.key} (${variable.source})`,
+          id: variable.id,
+          status: variable.isManagedBySystem ? "default" : null,
+        })),
+        emptyMessage: "No environment variables imported.",
+      },
+      context.ui,
+    );
+  }
+
   return renderShow(
     {
       title: "Setting a new environment variable.",
@@ -67,6 +88,27 @@ export function renderEnvUpdate(
   descriptor: CommandDescriptor,
   result: EnvUpdateResult,
 ): string[] {
+  if (result.variables !== undefined) {
+    return renderList(
+      {
+        title: "Replacing environment variable values from file.",
+        descriptor,
+        parentContext: {
+          key: "target",
+          value: `${scopeLabel(result.scope)} from ${result.file.path}`,
+        },
+        items: result.variables.map((variable) => ({
+          noun: "variable",
+          label: `${variable.key} (${variable.source})`,
+          id: variable.id,
+          status: variable.isManagedBySystem ? "default" : null,
+        })),
+        emptyMessage: "No environment variables updated.",
+      },
+      context.ui,
+    );
+  }
+
   return renderShow(
     {
       title: "Replacing the environment variable's value.",

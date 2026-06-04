@@ -250,6 +250,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: [
       "prisma-cli project env list",
       "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production",
+      "prisma-cli project env add --file .env --role preview",
       "prisma-cli project env add DATABASE_URL=postgresql://branch --branch feature/foo",
       "prisma-cli project env remove STRIPE_KEY --role preview",
     ],
@@ -261,7 +262,9 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: [
       "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production",
       "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role preview",
+      "prisma-cli project env add --file .env --role preview",
       "prisma-cli project env add DATABASE_URL=postgresql://branch --branch feature/foo",
+      "prisma-cli project env add --file .env.local --branch feature/foo",
       "API_URL=https://api.example prisma-cli project env add API_URL --project proj_123 --role preview",
     ],
   },
@@ -272,6 +275,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: [
       "prisma-cli project env update STRIPE_KEY=sk_new_xxx --role production",
       "prisma-cli project env update STRIPE_KEY=sk_new_xxx --role preview",
+      "prisma-cli project env update --file .env --role production",
       "prisma-cli project env update DATABASE_URL=postgresql://branch --branch feature/foo",
     ],
   },

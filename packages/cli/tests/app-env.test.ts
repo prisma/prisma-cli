@@ -231,6 +231,125 @@ describe("env add", () => {
     );
   });
 
+  it("creates variables from a dotenv file via POST without surfacing values", async () => {
+    const client = createMockClient();
+    client.envGET
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      });
+    client.POST
+      .mockResolvedValueOnce({
+        data: { data: makeVariableRow({ id: "envvar_api", key: "API_URL", class: "preview" }) },
+        response: { status: 201 },
+      })
+      .mockResolvedValueOnce({
+        data: { data: makeVariableRow({ id: "envvar_stripe", key: "STRIPE_KEY", class: "preview" }) },
+        response: { status: 201 },
+      });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    await writeFile(
+      path.join(cwd, ".env"),
+      "API_URL=https://api.example\nSTRIPE_KEY=sk_test_xxx\n",
+      "utf8",
+    );
+    const { context } = await createTestCommandContext({ cwd });
+
+    const result = await controllers.runEnvAdd(
+      context,
+      undefined,
+      { roleName: "preview", filePath: ".env" },
+    );
+
+    expect(client.POST).toHaveBeenNthCalledWith(
+      1,
+      "/v1/environment-variables",
+      expect.objectContaining({
+        body: {
+          projectId: "proj_123",
+          class: "preview",
+          key: "API_URL",
+          value: "https://api.example",
+        },
+      }),
+    );
+    expect(client.POST).toHaveBeenNthCalledWith(
+      2,
+      "/v1/environment-variables",
+      expect.objectContaining({
+        body: {
+          projectId: "proj_123",
+          class: "preview",
+          key: "STRIPE_KEY",
+          value: "sk_test_xxx",
+        },
+      }),
+    );
+    expect(result.result).toMatchObject({
+      file: { path: ".env", count: 2 },
+      variables: [
+        { key: "API_URL", id: "envvar_api" },
+        { key: "STRIPE_KEY", id: "envvar_stripe" },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain("https://api.example");
+    expect(JSON.stringify(result)).not.toContain("sk_test_xxx");
+  });
+
+  it("preflights add --file conflicts before writing", async () => {
+    const client = createMockClient();
+    client.envGET
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [makeVariableRow({ key: "STRIPE_KEY", class: "preview" })],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    await writeFile(
+      path.join(cwd, ".env"),
+      "API_URL=https://api.example\nSTRIPE_KEY=sk_test_xxx\n",
+      "utf8",
+    );
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runEnvAdd(context, undefined, {
+        roleName: "preview",
+        filePath: ".env",
+      }),
+    ).rejects.toMatchObject({
+      code: "ENV_VARIABLE_ALREADY_EXISTS",
+      meta: {
+        keys: ["STRIPE_KEY"],
+      },
+      nextSteps: [
+        "# existing keys: \"STRIPE_KEY\"",
+        "prisma-cli project env update --file .env.existing --role preview",
+        "# new keys only",
+        "prisma-cli project env add --file .env.new --role preview",
+      ],
+    });
+    expect(client.POST).not.toHaveBeenCalled();
+  });
+
   it("fails when the variable already exists", async () => {
     const client = createMockClient();
     client.envGET.mockResolvedValueOnce({
@@ -315,6 +434,120 @@ describe("env add", () => {
     });
     expect(result.warnings[0]).toContain("does not exist in preview");
     expect(JSON.stringify(result)).not.toContain("postgresql://branch");
+  });
+
+  it("creates branch-scoped variables from a dotenv file", async () => {
+    const client = createMockClient();
+    client.envGET
+      .mockResolvedValueOnce({
+        data: { data: [makeBranchRow()], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      });
+    client.POST.mockResolvedValueOnce({
+      data: {
+        data: makeVariableRow({
+          key: "DATABASE_URL",
+          branchId: "br_feature",
+          class: "preview",
+        }),
+      },
+      response: { status: 201 },
+    });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    await writeFile(path.join(cwd, ".env.local"), "DATABASE_URL=postgresql://branch\n", "utf8");
+    const { context } = await createTestCommandContext({ cwd });
+
+    const result = await controllers.runEnvAdd(context, undefined, {
+      branchName: "feature/foo",
+      filePath: ".env.local",
+    });
+
+    expect(client.POST).toHaveBeenCalledWith(
+      "/v1/environment-variables",
+      expect.objectContaining({
+        body: {
+          projectId: "proj_123",
+          class: "preview",
+          branchId: "br_feature",
+          key: "DATABASE_URL",
+          value: "postgresql://branch",
+        },
+      }),
+    );
+    expect(result.result.scope).toEqual({
+      kind: "branch",
+      branchName: "feature/foo",
+      branchId: "br_feature",
+    });
+    expect(result.warnings[0]).toContain("does not exist in preview");
+  });
+
+  it("reports partial state when add --file fails mid-apply", async () => {
+    const client = createMockClient();
+    client.envGET
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      });
+    client.POST
+      .mockResolvedValueOnce({
+        data: { data: makeVariableRow({ id: "envvar_api", key: "API_URL", class: "preview" }) },
+        response: { status: 201 },
+      })
+      .mockResolvedValueOnce({
+        error: {
+          error: {
+            message: "Environment variable service is unavailable.",
+          },
+        },
+        response: { status: 503 },
+      });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    await writeFile(
+      path.join(cwd, ".env"),
+      "API_URL=https://api.example\nSTRIPE_KEY=sk_test_xxx\n",
+      "utf8",
+    );
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runEnvAdd(context, undefined, {
+        roleName: "preview",
+        filePath: ".env",
+      }),
+    ).rejects.toMatchObject({
+      code: "ENV_FILE_APPLY_FAILED",
+      meta: {
+        file: ".env",
+        failedKey: "STRIPE_KEY",
+        writtenKeys: ["API_URL"],
+      },
+      nextSteps: [
+        "prisma-cli project env list --role preview",
+        "prisma-cli project env add --file <remaining.env> --role preview",
+      ],
+    });
+    expect(client.POST).toHaveBeenCalledTimes(2);
   });
 
   it("creates the branch before adding its first override", async () => {
@@ -459,6 +692,26 @@ describe("env add", () => {
       }),
     ).rejects.toMatchObject({
       summary: expect.stringContaining("either --role or --branch"),
+    });
+    expectNoApiCalls(client);
+  });
+
+  it("rejects mutually exclusive assignment and --file inputs", async () => {
+    const client = createMockClient();
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runEnvAdd(context, "STRIPE_KEY=sk", {
+        roleName: "preview",
+        filePath: ".env",
+      }),
+    ).rejects.toMatchObject({
+      code: "USAGE_ERROR",
+      summary: expect.stringContaining("either KEY=VALUE or --file"),
     });
     expectNoApiCalls(client);
   });
@@ -634,6 +887,121 @@ describe("env update", () => {
         body: { value: "postgresql://new" },
       }),
     );
+  });
+
+  it("updates variables from a dotenv file via PATCH", async () => {
+    const client = createMockClient();
+    client.envGET
+      .mockResolvedValueOnce({
+        data: {
+          data: [makeVariableRow({ id: "envvar_api", key: "API_URL", class: "preview" })],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [makeVariableRow({ id: "envvar_stripe", key: "STRIPE_KEY", class: "preview" })],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      });
+    client.PATCH
+      .mockResolvedValueOnce({
+        data: { data: makeVariableRow({ id: "envvar_api", key: "API_URL", class: "preview" }) },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: { data: makeVariableRow({ id: "envvar_stripe", key: "STRIPE_KEY", class: "preview" }) },
+        response: { status: 200 },
+      });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    await writeFile(
+      path.join(cwd, ".env"),
+      "API_URL=https://api.example\nSTRIPE_KEY=sk_new_xxx\n",
+      "utf8",
+    );
+    const { context } = await createTestCommandContext({ cwd });
+
+    const result = await controllers.runEnvUpdate(context, undefined, {
+      roleName: "preview",
+      filePath: ".env",
+    });
+
+    expect(client.PATCH).toHaveBeenNthCalledWith(
+      1,
+      "/v1/environment-variables/{envVarId}",
+      expect.objectContaining({
+        params: { path: { envVarId: "envvar_api" } },
+        body: { value: "https://api.example" },
+      }),
+    );
+    expect(client.PATCH).toHaveBeenNthCalledWith(
+      2,
+      "/v1/environment-variables/{envVarId}",
+      expect.objectContaining({
+        params: { path: { envVarId: "envvar_stripe" } },
+        body: { value: "sk_new_xxx" },
+      }),
+    );
+    expect(result.result).toMatchObject({
+      file: { path: ".env", count: 2 },
+      variables: [
+        { key: "API_URL", id: "envvar_api" },
+        { key: "STRIPE_KEY", id: "envvar_stripe" },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain("sk_new_xxx");
+  });
+
+  it("preflights update --file missing variables before writing", async () => {
+    const client = createMockClient();
+    client.envGET
+      .mockResolvedValueOnce({
+        data: {
+          data: [makeVariableRow({ id: "envvar_api", key: "API_URL", class: "preview" })],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: { data: [], pagination: { hasMore: false, nextCursor: null } },
+        response: { status: 200 },
+      });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    await writeFile(
+      path.join(cwd, ".env"),
+      "API_URL=https://api.example\nSTRIPE_KEY=sk_new_xxx\n",
+      "utf8",
+    );
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runEnvUpdate(context, undefined, {
+        roleName: "preview",
+        filePath: ".env",
+      }),
+    ).rejects.toMatchObject({
+      code: "ENV_VARIABLE_NOT_FOUND",
+      meta: {
+        keys: ["STRIPE_KEY"],
+      },
+      nextSteps: [
+        "# missing keys: \"STRIPE_KEY\"",
+        "prisma-cli project env add --file .env.new --role preview",
+        "# existing keys only",
+        "prisma-cli project env update --file .env.existing --role preview",
+      ],
+    });
+    expect(client.PATCH).not.toHaveBeenCalled();
   });
 
   it("rejects when --role is not provided (fail-fast on writes)", async () => {
