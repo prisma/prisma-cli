@@ -47,11 +47,12 @@ export async function runEnvAddFile(
       domain: "app",
       summary: `${existingKeys.length} environment variable(s) already exist in ${formatScopeLabel(resolved.scope)}`,
       why: `Existing keys: ${formatKeyList(existingKeys)}.`,
-      fix: "Use `prisma-cli project env update --file` to change existing values.",
+      fix: "Split the input file by key state: update existing keys and add new keys separately.",
       exitCode: 1,
-      nextSteps: [
-        `prisma-cli project env update --file ${filePath} ${formatScopeFlag(resolved.scope)}`,
-      ],
+      nextSteps: splitFileNextSteps(filePath, resolved.scope, {
+        existingKeys,
+        first: "update-existing",
+      }),
       meta: { keys: existingKeys },
     });
   }
@@ -132,11 +133,12 @@ export async function runEnvUpdateFile(
       domain: "app",
       summary: `${missingKeys.length} environment variable(s) not found in ${formatScopeLabel(resolved.scope)}`,
       why: `Missing keys: ${formatKeyList(missingKeys)}.`,
-      fix: "Use `prisma-cli project env add --file` to create new variables first.",
+      fix: "Split the input file by key state: add missing keys and update existing keys separately.",
       exitCode: 1,
-      nextSteps: [
-        `prisma-cli project env add --file ${filePath} ${formatScopeFlag(resolved.scope)}`,
-      ],
+      nextSteps: splitFileNextSteps(filePath, resolved.scope, {
+        missingKeys,
+        first: "add-missing",
+      }),
       meta: { keys: missingKeys },
     });
   }
@@ -291,6 +293,34 @@ function retryStepForApplyFailure(
   }
 
   return `prisma-cli project env add --file <remaining.env> ${formatScopeFlag(scope)}`;
+}
+
+function splitFileNextSteps(
+  filePath: string,
+  scope: EnvScope,
+  options:
+    | { first: "update-existing"; existingKeys: string[] }
+    | { first: "add-missing"; missingKeys: string[] },
+): string[] {
+  const scopeFlag = formatScopeFlag(scope);
+  const existingFile = `${filePath}.existing`;
+  const newFile = `${filePath}.new`;
+
+  if (options.first === "update-existing") {
+    return [
+      `# existing keys: ${formatKeyList(options.existingKeys)}`,
+      `prisma-cli project env update --file ${existingFile} ${scopeFlag}`,
+      "# new keys only",
+      `prisma-cli project env add --file ${newFile} ${scopeFlag}`,
+    ];
+  }
+
+  return [
+    `# missing keys: ${formatKeyList(options.missingKeys)}`,
+    `prisma-cli project env add --file ${newFile} ${scopeFlag}`,
+    "# existing keys only",
+    `prisma-cli project env update --file ${existingFile} ${scopeFlag}`,
+  ];
 }
 
 function formatKeyList(keys: string[]): string {

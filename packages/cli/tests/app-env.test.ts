@@ -340,6 +340,12 @@ describe("env add", () => {
       meta: {
         keys: ["STRIPE_KEY"],
       },
+      nextSteps: [
+        "# existing keys: \"STRIPE_KEY\"",
+        "prisma-cli project env update --file .env.existing --role preview",
+        "# new keys only",
+        "prisma-cli project env add --file .env.new --role preview",
+      ],
     });
     expect(client.POST).not.toHaveBeenCalled();
   });
@@ -988,6 +994,12 @@ describe("env update", () => {
       meta: {
         keys: ["STRIPE_KEY"],
       },
+      nextSteps: [
+        "# missing keys: \"STRIPE_KEY\"",
+        "prisma-cli project env add --file .env.new --role preview",
+        "# existing keys only",
+        "prisma-cli project env update --file .env.existing --role preview",
+      ],
     });
     expect(client.PATCH).not.toHaveBeenCalled();
   });

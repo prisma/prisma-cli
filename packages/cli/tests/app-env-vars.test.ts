@@ -136,15 +136,26 @@ describe("app env vars", () => {
       summary: 'Invalid environment variable "lowercase-key" in ".env"',
     }));
 
+    const longKey = `A${"B".repeat(256)}`;
+    expect(() =>
+      parseEnvFileContents(`${longKey}=secret\n`, ".env", "add"),
+    ).toThrowError(expect.objectContaining({
+      code: "USAGE_ERROR",
+      why: expect.stringContaining("exceeds the 256-character limit"),
+    }));
+
+    let emptyValueError: unknown;
     try {
       parseEnvFileContents("EMPTY=\n", ".env", "add");
     } catch (error) {
-      expect(error).toMatchObject({
-        code: "USAGE_ERROR",
-        summary: 'Environment variable "EMPTY" in ".env" has an empty value',
-      });
-      expect(JSON.stringify(error)).not.toContain("secret");
+      emptyValueError = error;
     }
+
+    expect(emptyValueError).toMatchObject({
+      code: "USAGE_ERROR",
+      summary: 'Environment variable "EMPTY" in ".env" has an empty value',
+    });
+    expect(JSON.stringify(emptyValueError)).not.toContain("secret");
   });
 
   it("parses repeated env assignments and allows empty values", async () => {

@@ -139,11 +139,14 @@ function validateEnvFileKey(
 ): void {
   try {
     validateKey(key, command);
-  } catch {
+  } catch (error) {
+    const reason = error instanceof Error && error.message.length > 0
+      ? error.message
+      : "Invalid environment variable key.";
     throw usageError(
       `Invalid environment variable "${key}" in "${filePath}"`,
-      `Line ${line} uses a key that does not match [A-Z_][A-Z0-9_]*.`,
-      "Rename the key to use uppercase letters, digits, and underscores.",
+      `Line ${line}: ${reason}`,
+      "Use a valid env-var key and retry the import.",
       [],
       "app",
     );
