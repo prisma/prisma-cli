@@ -8,6 +8,13 @@ import { envVarNames } from "./env-vars";
 import { PreviewBuildStrategy } from "./preview-build";
 import type { PreviewBuildType } from "./preview-build";
 import type { BranchKind } from "../../types/branch";
+import {
+  createBranchDatabase,
+  createEnvironmentVariable,
+  listEnvironmentVariables,
+  type PreviewBranchDatabaseRecord,
+  type PreviewEnvironmentVariableRecord,
+} from "./preview-branch-database";
 
 export interface PreviewAppRecord {
   id: string;
@@ -28,6 +35,8 @@ export interface PreviewBranchRecord {
   name: string;
   role: BranchKind;
 }
+
+export type { PreviewBranchDatabaseRecord, PreviewEnvironmentVariableRecord } from "./preview-branch-database";
 
 export interface PreviewDeploymentRecord {
   id: string;
@@ -113,6 +122,27 @@ export class PreviewDomainApiError extends Error {
 export interface PreviewAppProvider {
   createProject(options: { name: string; signal?: AbortSignal }): Promise<PreviewProjectRecord>;
   resolveBranch(projectId: string, options: { branchName: string; signal?: AbortSignal }): Promise<PreviewBranchRecord>;
+  createBranchDatabase(options: {
+    projectId: string;
+    branchId: string;
+    branchName: string;
+    signal?: AbortSignal;
+  }): Promise<PreviewBranchDatabaseRecord>;
+  listEnvironmentVariables(options: {
+    projectId: string;
+    className?: "production" | "preview";
+    key?: string;
+    branchId?: string;
+    signal?: AbortSignal;
+  }): Promise<PreviewEnvironmentVariableRecord[]>;
+  createEnvironmentVariable(options: {
+    projectId: string;
+    branchId?: string;
+    className: "production" | "preview";
+    key: string;
+    value: string;
+    signal?: AbortSignal;
+  }): Promise<PreviewEnvironmentVariableRecord>;
   listApps(projectId: string, options?: { branchName?: string; signal?: AbortSignal }): Promise<PreviewAppRecord[]>;
   removeApp(appId: string, options?: { signal?: AbortSignal }): Promise<PreviewRemovedAppRecord>;
   listDomains(appId: string, options?: { signal?: AbortSignal }): Promise<PreviewDomainRecord[]>;
@@ -207,6 +237,18 @@ export function createPreviewAppProvider(
         name: branch.gitName,
         role: branch.role,
       };
+    },
+
+    async createBranchDatabase(options) {
+      return createBranchDatabase(client, options);
+    },
+
+    async listEnvironmentVariables(options) {
+      return listEnvironmentVariables(client, options);
+    },
+
+    async createEnvironmentVariable(options) {
+      return createEnvironmentVariable(client, options);
     },
 
     async removeApp(appId, options) {

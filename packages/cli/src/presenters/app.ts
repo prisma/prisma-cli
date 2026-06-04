@@ -54,6 +54,7 @@ export function renderAppDeploy(
   const lines = [
     `Live in ${formatDuration(result.durationMs)}`,
     ...(result.deployment.url ? [context.ui.link(result.deployment.url)] : []),
+    ...renderBranchDatabaseDeploySummary(context, result),
     "",
     ...renderDeployOutputRows(context.ui, [
       { label: "Logs", value: "prisma-cli app logs" },
@@ -65,6 +66,34 @@ export function renderAppDeploy(
 export function serializeAppDeploy(result: AppDeployResult) {
   const { localPin: _localPin, ...serialized } = result;
   return serialized;
+}
+
+function renderBranchDatabaseDeploySummary(
+  context: CommandContext,
+  result: AppDeployResult,
+): string[] {
+  if (!result.branchDatabase || result.branchDatabase.status !== "created") {
+    return [];
+  }
+
+  return [
+    "",
+    ...renderDeployOutputRows(context.ui, [
+      { label: "Database", value: result.branchDatabase.database?.name ?? "created" },
+      {
+        label: "Env",
+        value: result.branchDatabase.envVars.join(", "),
+      },
+      ...(result.branchDatabase.schema
+        ? [{
+            label: "Schema",
+            value: result.branchDatabase.schema.command === "migrate-deploy"
+              ? "prisma migrate deploy"
+              : "prisma db push",
+          }]
+        : []),
+    ]),
+  ];
 }
 
 function formatDuration(durationMs: number): string {

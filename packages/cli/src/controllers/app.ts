@@ -79,6 +79,7 @@ import {
   type PreviewBuildType,
 } from "../lib/app/preview-build";
 import { PREVIEW_DEFAULT_REGION } from "../lib/app/preview-interaction";
+import { maybeSetupBranchDatabase } from "../lib/app/branch-database-deploy";
 import {
   createPreviewDeployProgress,
   createPreviewDeployProgressState,
@@ -224,6 +225,7 @@ export async function runAppDeploy(
     httpPort?: string;
     envAssignments?: string[];
     prod?: boolean;
+    db?: boolean;
   },
 ): Promise<CommandSuccess<AppDeployResult>> {
   ensurePreviewAppMode(context);
@@ -320,6 +322,10 @@ export async function runAppDeploy(
   assertSupportedEntrypoint(buildType, options?.entrypoint, "deploy");
   const entrypoint = await resolveDeployEntrypoint(context.runtime.cwd, framework, options?.entrypoint, context.runtime.signal);
   const portMapping = parseDeployPortMapping(String(runtime.port));
+  const branchDatabaseSetup = await maybeSetupBranchDatabase(context, provider, projectId, target.branch, {
+    db: options?.db,
+    inlineEnvVars: envVars,
+  });
 
   const progressState = createPreviewDeployProgressState();
   const deployStartedAt = Date.now();
@@ -353,8 +359,9 @@ export async function runAppDeploy(
     result: {
       workspace: target.workspace,
       project: target.project,
-      branch: target.branch,
+      branch: toResultBranch(target.branch),
       resolution: target.resolution,
+      branchDatabase: branchDatabaseSetup.result,
       app: {
         id: deployResult.app.id,
         name: deployResult.app.name,
@@ -363,7 +370,7 @@ export async function runAppDeploy(
       durationMs: deployDurationMs,
       localPin: localPinResult,
     },
-    warnings: [],
+    warnings: branchDatabaseSetup.warnings,
     nextSteps: ["prisma-cli app list-deploys", `prisma-cli app show-deploy ${deployResult.deployment.id}`],
   };
 }
@@ -1264,7 +1271,7 @@ async function resolveAppDomainTarget(
     resultTarget: {
       workspace: target.workspace,
       project: target.project,
-      branch: target.branch,
+      branch: toResultBranch(target.branch),
       app: {
         id: selectedApp.id,
         name: selectedApp.name,
@@ -2199,6 +2206,7 @@ interface ResolvedAppProjectContext {
   workspace: AuthWorkspace;
   project: ProjectSummary;
   branch: {
+    id: string;
     name: string;
     kind: BranchKind;
   };
@@ -2470,6 +2478,7 @@ async function withRemoteDeployBranch(
   return {
     ...target,
     branch: {
+      id: remoteBranch.id,
       name: remoteBranch.name,
       kind: remoteBranch.role,
     },
@@ -2478,6 +2487,13 @@ async function withRemoteDeployBranch(
 
 function toBranchKind(name: string): BranchKind {
   return name === "production" || name === "main" ? "production" : "preview";
+}
+
+function toResultBranch(branch: ResolvedAppProjectContext["branch"]): AppDeployResult["branch"] {
+  return {
+    name: branch.name,
+    kind: branch.kind,
+  };
 }
 
 function assertExclusiveDeployProjectInputs(options: {

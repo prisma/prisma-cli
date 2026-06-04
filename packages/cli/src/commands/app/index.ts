@@ -182,6 +182,8 @@ function createDeployCommand(runtime: CliRuntime): Command {
       new Option("--env <name=value>", "Environment variable")
         .argParser(collectRepeatableValues),
     )
+    .addOption(new Option("--db", "Create and wire an isolated database for the preview Branch"))
+    .addOption(new Option("--no-db", "Skip branch database setup"))
     .addOption(new Option("--prod", "Confirm intent to deploy to production"));
   addGlobalFlags(command);
 
@@ -195,6 +197,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
     const projectRef = (options as { project?: string }).project;
     const createProjectName = (options as { createProject?: string }).createProject;
     const prod = (options as { prod?: boolean }).prod;
+    const db = (options as { db?: boolean }).db;
 
     await runCommand<AppDeployResult>(
       runtime,
@@ -209,6 +212,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
         httpPort,
         envAssignments,
         prod: prod === true,
+        db,
       }),
       {
         renderHuman: (context, descriptor, result) => renderAppDeploy(context, descriptor, result),

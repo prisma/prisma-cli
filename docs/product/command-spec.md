@@ -590,7 +590,7 @@ prisma-cli app run --build-type nextjs
 prisma-cli app run --build-type bun --entry server.ts --port 3000
 ```
 
-## `prisma-cli app deploy --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start|bun> --entry <path> --http-port <port> --env <name=value> --prod`
+## `prisma-cli app deploy --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start|bun> --entry <path> --http-port <port> --env <name=value> --db --no-db --prod`
 
 Purpose:
 
@@ -629,6 +629,16 @@ Behavior:
 - deploy progress uses short stage copy (`Building locally...`, `Built <size>`, `Uploading...`, `Uploaded`, `Deploying...`, `Deployed`) and never prints `Status: running` or `Deployment is running at ...`
 - success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma-cli app logs`
 - accepts repeated `--env NAME=VALUE` flags
+- supports `--db` for preview Branches to create a new empty Prisma Postgres database, apply the local Prisma schema when one exists, and write branch-scoped `DATABASE_URL` and `DIRECT_URL` overrides through the existing `project env` storage
+- supports `--no-db` to suppress automatic database prompting for the deploy
+- `--yes` alone never creates a database; CI must pass `--db --yes` to create and wire one
+- branch database setup only runs for preview Branches; production database env vars are managed with `project env`
+- branch database setup never overwrites an existing branch-scoped `DATABASE_URL`; when the branch already has one, `--db` leaves it unchanged and continues
+- branch database setup does not clone or infer schema from another database; it only creates an empty database and optionally applies schema from local code
+- when `prisma/migrations` exists next to `schema.prisma`, schema setup runs `prisma migrate deploy`; otherwise a found `schema.prisma` runs `prisma db push`
+- when no `schema.prisma` is found, `--db` still creates the database and env overrides but skips schema setup
+- if schema setup fails, deploy stops before the app build/deploy starts
+- inline `--env DATABASE_URL=...` or `--env DIRECT_URL=...` suppresses automatic database prompting; combining those inline env vars with `--db` is rejected
 - maps user-facing framework names to deploy build strategies
 - uses `src/index.ts` as the Hono deploy entrypoint when the app has no `package.json#main` or `package.json#module` and that file exists
 - supports vanilla Bun apps with `--framework bun` using `package.json#main` or `package.json#module`, or with `--entry <path>`
@@ -643,6 +653,9 @@ prisma-cli app deploy
 prisma-cli app deploy --project proj_123
 prisma-cli app deploy --create-project my-app --yes
 prisma-cli app deploy --app my-app --env DATABASE_URL=postgresql://example
+prisma-cli app deploy --db
+prisma-cli app deploy --db --yes
+prisma-cli app deploy --no-db
 prisma-cli app deploy --framework nextjs --http-port 3000
 prisma-cli app deploy --branch feat-login --framework hono --http-port 3000
 prisma-cli app deploy --prod --yes
