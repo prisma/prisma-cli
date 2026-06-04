@@ -629,7 +629,7 @@ Behavior:
 - deploy progress uses short stage copy (`Building locally...`, `Built <size>`, `Uploading...`, `Uploaded`, `Deploying...`, `Deployed`) and never prints `Status: running` or `Deployment is running at ...`
 - success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma-cli app logs`
 - accepts repeated `--env NAME=VALUE` flags
-- supports `--db` for preview Branches to create a new empty Prisma Postgres database, apply the local Prisma schema when one exists, and write branch-scoped `DATABASE_URL` and `DIRECT_URL` overrides through the existing `project env` storage
+- supports `--db` for preview Branches to create a new empty Prisma Postgres database, apply a supported local Prisma schema source when one exists, and write branch-scoped `DATABASE_URL` and `DIRECT_URL` overrides through the existing `project env` storage
 - supports `--no-db` to suppress automatic database prompting for the deploy
 - `--db` and `--no-db` are mutually exclusive; passing both is rejected
 - `--yes` alone never creates a database; CI must pass `--db --yes` to create and wire one
@@ -638,8 +638,10 @@ Behavior:
 - when only `DIRECT_URL` exists on the branch, explicit `--db` treats it as partial setup and repairs the pair by writing fresh branch database env values
 - if schema setup or branch env-var wiring fails after database creation, the CLI deletes the newly created database before returning the error
 - branch database setup does not clone or infer schema from another database; it only creates an empty database and optionally applies schema from local code
-- when `prisma/migrations` exists next to `schema.prisma`, schema setup runs `prisma migrate deploy`; otherwise a found `schema.prisma` runs `prisma db push`
-- when no `schema.prisma` is found, `--db` still creates the database and env overrides but skips schema setup
+- Prisma Next config (`prisma-next.config.*`) is preferred over `schema.prisma`; setup runs `prisma-next contract emit` and then `prisma-next db init`
+- for Prisma ORM `schema.prisma`, setup runs `prisma migrate deploy` when `prisma/migrations` exists next to the schema, otherwise it runs `prisma db push`
+- when no supported Prisma schema source is found, `--db` still creates the database and env overrides but skips schema setup
+- known non-Postgres Prisma sources do not trigger automatic database prompting; explicit `--db` is rejected because the created database is Prisma Postgres
 - if schema setup fails, deploy stops before the app build/deploy starts
 - inline `--env DATABASE_URL=...` or `--env DIRECT_URL=...` suppresses automatic database prompting; combining those inline env vars with `--db` is rejected
 - maps user-facing framework names to deploy build strategies

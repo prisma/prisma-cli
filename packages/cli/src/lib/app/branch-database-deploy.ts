@@ -16,8 +16,10 @@ import {
   hasBranchDatabaseSignal,
   inspectBranchDatabaseSignal,
   runBranchDatabaseSchemaSetup,
+  type BranchDatabaseSchema,
   type BranchDatabaseSchemaSetupResult,
   type BranchDatabaseSignal,
+  type UnsupportedBranchDatabaseSchema,
 } from "./branch-database";
 
 export interface BranchDatabaseDeployBranch {
@@ -113,6 +115,14 @@ export async function maybeSetupBranchDatabase(
     };
   }
 
+  if (localSignal.unsupportedSchema) {
+    if (options.db === true) {
+      throw unsupportedBranchDatabaseSchemaError(localSignal.unsupportedSchema, branch.name, context);
+    }
+
+    return emptyBranchDatabaseSetupOutcome();
+  }
+
   const hasSignal = hasBranchDatabaseSignal(localSignal) || Boolean(envState.previewDatabaseUrl);
   if (options.db !== true) {
     if (!hasSignal) {
@@ -175,11 +185,11 @@ async function setupBranchDatabase(
         databaseUrl: database.databaseUrl,
         directUrl: database.directUrl,
       }).catch((error) => {
-        throw schemaSetupFailedError(error, signal.schema!, branch.name);
+        throw schemaSetupFailedError(error, signal.schema!, branch.name, context.runtime.cwd);
       });
       emitBranchDatabaseProgress(context, "success", "Applied database schema");
     } else {
-      skippedSchemaWarning = "No schema.prisma file was found. Branch database env vars were created, but schema setup was skipped.";
+      skippedSchemaWarning = "No supported Prisma schema source was found. Branch database env vars were created, but schema setup was skipped.";
     }
 
     const envVars = await upsertBranchDatabaseEnvVars(context, provider, projectId, branch, database, envState);
@@ -200,6 +210,7 @@ async function setupBranchDatabase(
         schema: schemaSetup
           ? {
               command: schemaSetup.command,
+              source: schemaSetup.source,
               path: schemaSetup.schemaPath,
             }
           : null,
@@ -341,7 +352,7 @@ function maybeRenderBranchDatabaseSignal(
 
   const rows = [
     signal.schema
-      ? `  Schema  ${path.relative(context.runtime.cwd, signal.schema.path) || "schema.prisma"}`
+      ? `  Schema  ${path.relative(context.runtime.cwd, signal.schema.path) || defaultSchemaSourcePath(signal.schema)}`
       : null,
     signal.databaseUrlReferences.length > 0
       ? `  Code    ${signal.databaseUrlReferences.slice(0, 3).join(", ")}`
@@ -388,9 +399,14 @@ function emptyBranchDatabaseSetupOutcome(): BranchDatabaseSetupOutcome {
 }
 
 function formatSchemaSetupCommand(command: BranchDatabaseSchemaSetupResult["command"]): string {
-  return command === "migrate-deploy"
-    ? "prisma migrate deploy"
-    : "prisma db push";
+  switch (command) {
+    case "migrate-deploy":
+      return "prisma migrate deploy";
+    case "db-push":
+      return "prisma db push";
+    case "prisma-next-db-init":
+      return "prisma-next db init";
+  }
 }
 
 function branchDatabaseSetupFailedError(summary: string, error: unknown, branchName: string): CliError {
@@ -467,8 +483,9 @@ function branchDatabaseCleanupFailedError(
 
 function schemaSetupFailedError(
   error: unknown,
-  schema: NonNullable<BranchDatabaseSignal["schema"]>,
+  schema: BranchDatabaseSchema,
   branchName: string,
+  cwd: string,
 ): CliError {
   return new CliError({
     code: "SCHEMA_SETUP_FAILED",
@@ -480,16 +497,71 @@ function schemaSetupFailedError(
     meta: {
       branch: branchName,
       schemaPath: schema.path,
+      source: schema.kind,
       command: schema.command,
     },
     exitCode: 1,
     nextSteps: [
-      schema.command === "migrate-deploy"
-        ? "npx --no-install prisma migrate deploy"
-        : "npx --no-install prisma db push --skip-generate",
+      ...formatSchemaSetupNextSteps(schema, cwd),
       `prisma-cli app deploy --branch ${formatCommandArgument(branchName)} --db`,
     ],
   });
+}
+
+function unsupportedBranchDatabaseSchemaError(
+  schema: UnsupportedBranchDatabaseSchema,
+  branchName: string,
+  context: CommandContext,
+): CliError {
+  const sourcePath = path.relative(context.runtime.cwd, schema.path) || defaultUnsupportedSchemaSourcePath(schema);
+  return usageError(
+    "Branch database setup is not available for this Prisma schema",
+    `${sourcePath} targets ${formatUnsupportedSchemaTarget(schema.target)}, but --db creates Prisma Postgres databases.`,
+    "Use project env commands to provide a database URL for this branch, or switch the Prisma schema source to PostgreSQL before using --db.",
+    [
+      `prisma-cli project env add DATABASE_URL=<value> --branch ${formatCommandArgument(branchName)}`,
+      `prisma-cli app deploy --branch ${formatCommandArgument(branchName)}`,
+    ],
+    "app",
+  );
+}
+
+function formatSchemaSetupNextSteps(schema: BranchDatabaseSchema, cwd: string): string[] {
+  const sourcePath = path.relative(cwd, schema.path) || defaultSchemaSourcePath(schema);
+  switch (schema.command) {
+    case "migrate-deploy":
+      return [`npx --no-install prisma migrate deploy --schema ${formatCommandArgument(sourcePath)}`];
+    case "db-push":
+      return [`npx --no-install prisma db push --schema ${formatCommandArgument(sourcePath)}`];
+    case "prisma-next-db-init":
+      return [
+        `npx --no-install prisma-next contract emit --config ${formatCommandArgument(sourcePath)}`,
+        `npx --no-install prisma-next db init --config ${formatCommandArgument(sourcePath)} --db <DATABASE_URL>`,
+      ];
+  }
+}
+
+function defaultSchemaSourcePath(schema: BranchDatabaseSchema): string {
+  return schema.kind === "prisma-next" ? "prisma-next.config.ts" : "schema.prisma";
+}
+
+function defaultUnsupportedSchemaSourcePath(schema: UnsupportedBranchDatabaseSchema): string {
+  return schema.kind === "prisma-next" ? "prisma-next.config.ts" : "schema.prisma";
+}
+
+function formatUnsupportedSchemaTarget(target: UnsupportedBranchDatabaseSchema["target"]): string {
+  switch (target) {
+    case "cockroachdb":
+      return "CockroachDB";
+    case "mongodb":
+      return "MongoDB";
+    case "mysql":
+      return "MySQL";
+    case "sqlite":
+      return "SQLite";
+    case "sqlserver":
+      return "SQL Server";
+  }
 }
 
 function formatDebugDetails(error: unknown): string | null {

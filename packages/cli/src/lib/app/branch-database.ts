@@ -5,19 +5,39 @@ import path from "node:path";
 
 import type { CommandContext } from "../../shell/runtime";
 
-export type BranchDatabaseSchemaCommand = "migrate-deploy" | "db-push";
+export type BranchDatabaseSchemaCommand = "migrate-deploy" | "db-push" | "prisma-next-db-init";
+export type BranchDatabaseSchemaSourceKind = "prisma-orm" | "prisma-next";
+
+export type UnsupportedBranchDatabaseSchemaTarget =
+  | "mongodb"
+  | "mysql"
+  | "sqlite"
+  | "sqlserver"
+  | "cockroachdb";
+
+export interface BranchDatabaseSchema {
+  kind: BranchDatabaseSchemaSourceKind;
+  path: string;
+  command: BranchDatabaseSchemaCommand;
+  hasMigrations: boolean;
+  target: "postgresql" | "unknown";
+}
+
+export interface UnsupportedBranchDatabaseSchema {
+  kind: BranchDatabaseSchemaSourceKind;
+  path: string;
+  target: UnsupportedBranchDatabaseSchemaTarget;
+}
 
 export interface BranchDatabaseSignal {
-  schema: {
-    path: string;
-    hasMigrations: boolean;
-    command: BranchDatabaseSchemaCommand;
-  } | null;
+  schema: BranchDatabaseSchema | null;
+  unsupportedSchema: UnsupportedBranchDatabaseSchema | null;
   databaseUrlReferences: string[];
 }
 
 export interface BranchDatabaseSchemaSetupResult {
   command: BranchDatabaseSchemaCommand;
+  source: BranchDatabaseSchemaSourceKind;
   schemaPath: string;
 }
 
@@ -29,6 +49,7 @@ const SKIPPED_DIRECTORIES = new Set([
   ".prisma",
   ".turbo",
   ".vercel",
+  ".wrangler",
   "build",
   "coverage",
   "dist",
@@ -60,55 +81,75 @@ export async function inspectBranchDatabaseSignal(
   const state: ScanState = {
     filesVisited: 0,
     schemaCandidates: [],
+    prismaNextConfigCandidates: [],
     databaseUrlReferences: [],
   };
 
   await scanDirectory(cwd, cwd, 0, state, signal);
 
-  const schemaPath = selectSchemaPath(cwd, state.schemaCandidates);
-  const hasMigrations = schemaPath
-    ? await hasMigrationsDirectory(path.dirname(schemaPath), signal)
-    : false;
-  const schema = schemaPath
+  const prismaNextConfigs = await Promise.all(
+    state.prismaNextConfigCandidates.map((configPath) => classifyPrismaNextConfig(configPath, signal)),
+  );
+  const supportedPrismaNextConfig = selectPrismaNextConfig(cwd, prismaNextConfigs, "supported");
+  const unsupportedPrismaNextConfig = selectPrismaNextConfig(cwd, prismaNextConfigs, "unsupported");
+  const selectedPrismaOrmSchema = await selectPrismaOrmSchema(cwd, state.schemaCandidates, signal);
+
+  const schema = supportedPrismaNextConfig
     ? {
-        path: schemaPath,
-        hasMigrations,
-        command: hasMigrations
-          ? "migrate-deploy" as const
-          : "db-push" as const,
+        kind: "prisma-next" as const,
+        path: supportedPrismaNextConfig.path,
+        hasMigrations: false,
+        command: "prisma-next-db-init" as const,
+        target: supportedPrismaNextConfig.target,
       }
-    : null;
+    : selectedPrismaOrmSchema.schema;
+  const unsupportedSchema = schema
+    ? null
+    : unsupportedPrismaNextConfig
+      ? {
+          kind: "prisma-next" as const,
+          path: unsupportedPrismaNextConfig.path,
+          target: unsupportedPrismaNextConfig.target,
+        }
+      : selectedPrismaOrmSchema.unsupportedSchema;
 
   return {
     schema,
+    unsupportedSchema,
     databaseUrlReferences: state.databaseUrlReferences,
   };
 }
 
 export function hasBranchDatabaseSignal(signal: BranchDatabaseSignal): boolean {
+  if (signal.unsupportedSchema) {
+    return false;
+  }
   return Boolean(signal.schema || signal.databaseUrlReferences.length > 0);
 }
 
 export async function runBranchDatabaseSchemaSetup(options: {
   context: CommandContext;
-  schema: NonNullable<BranchDatabaseSignal["schema"]>;
+  schema: BranchDatabaseSchema;
   databaseUrl: string;
   directUrl: string | null;
 }): Promise<BranchDatabaseSchemaSetupResult> {
-  const schemaPath = path.relative(options.context.runtime.cwd, options.schema.path) || "schema.prisma";
-  const args = buildPrismaSchemaCommandArgs(options.schema.command, schemaPath);
+  const schemaPath = path.relative(options.context.runtime.cwd, options.schema.path) || defaultSchemaSourcePath(options.schema);
+  const commands = buildSchemaSetupCommands(options.schema, schemaPath, options.databaseUrl);
 
-  await runPrismaCommand({
-    context: options.context,
-    args,
-    env: {
-      DATABASE_URL: options.databaseUrl,
-      ...(options.directUrl ? { DIRECT_URL: options.directUrl } : {}),
-    },
-  });
+  for (const command of commands) {
+    await runPrismaCommand({
+      context: options.context,
+      ...command,
+      env: {
+        DATABASE_URL: options.databaseUrl,
+        ...(options.directUrl ? { DIRECT_URL: options.directUrl } : {}),
+      },
+    });
+  }
 
   return {
     command: options.schema.command,
+    source: options.schema.kind,
     schemaPath,
   };
 }
@@ -116,7 +157,18 @@ export async function runBranchDatabaseSchemaSetup(options: {
 interface ScanState {
   filesVisited: number;
   schemaCandidates: string[];
+  prismaNextConfigCandidates: string[];
   databaseUrlReferences: string[];
+}
+
+interface ClassifiedPrismaNextConfig {
+  path: string;
+  target: "postgresql" | "unknown" | UnsupportedBranchDatabaseSchemaTarget;
+}
+
+interface PrismaOrmSchemaSelection {
+  schema: BranchDatabaseSchema | null;
+  unsupportedSchema: UnsupportedBranchDatabaseSchema | null;
 }
 
 async function scanDirectory(
@@ -167,6 +219,10 @@ async function scanDirectory(
       state.schemaCandidates.push(entryPath);
     }
 
+    if (isPrismaNextConfigFile(entry.name)) {
+      state.prismaNextConfigCandidates.push(entryPath);
+    }
+
     if (
       state.databaseUrlReferences.length < MAX_DATABASE_URL_REFERENCE_FILES
       && shouldScanForDatabaseUrl(entry.name)
@@ -177,18 +233,73 @@ async function scanDirectory(
   }
 }
 
-function selectSchemaPath(cwd: string, candidates: string[]): string | null {
+async function selectPrismaOrmSchema(
+  cwd: string,
+  candidates: string[],
+  signal: AbortSignal,
+): Promise<PrismaOrmSchemaSelection> {
+  const sorted = sortByPreferredRelativePath(cwd, candidates, "schema.prisma");
+
+  for (const schemaPath of sorted) {
+    const target = await classifyPrismaOrmSchemaTarget(schemaPath, signal);
+    if (target === "postgresql" || target === "unknown") {
+      const hasMigrations = await hasMigrationsDirectory(path.dirname(schemaPath), signal);
+      return {
+        schema: {
+          kind: "prisma-orm",
+          path: schemaPath,
+          hasMigrations,
+          command: hasMigrations ? "migrate-deploy" : "db-push",
+          target,
+        },
+        unsupportedSchema: null,
+      };
+    }
+
+    return {
+      schema: null,
+      unsupportedSchema: {
+        kind: "prisma-orm",
+        path: schemaPath,
+        target,
+      },
+    };
+  }
+
+  return {
+    schema: null,
+    unsupportedSchema: null,
+  };
+}
+
+function selectPrismaNextConfig(
+  cwd: string,
+  candidates: ClassifiedPrismaNextConfig[],
+  mode: "supported" | "unsupported",
+): ClassifiedPrismaNextConfig | null {
+  const matches = candidates.filter((candidate) => {
+    const isSupported = candidate.target === "postgresql" || candidate.target === "unknown";
+    return mode === "supported" ? isSupported : !isSupported;
+  });
+
+  return sortByPreferredRelativePath(cwd, matches.map((candidate) => candidate.path), "prisma-next.config.ts")
+    .map((candidatePath) => matches.find((candidate) => candidate.path === candidatePath))
+    .find((candidate): candidate is ClassifiedPrismaNextConfig => Boolean(candidate)) ?? null;
+}
+
+function sortByPreferredRelativePath(cwd: string, candidates: string[], preferredRootFile: string): string[] {
   return candidates
     .map((candidate) => ({
       absolute: candidate,
-      relative: path.relative(cwd, candidate) || "schema.prisma",
+      relative: path.relative(cwd, candidate) || preferredRootFile,
     }))
     .sort((left, right) => {
-      if (left.relative === "schema.prisma") return -1;
-      if (right.relative === "schema.prisma") return 1;
+      if (left.relative === preferredRootFile) return -1;
+      if (right.relative === preferredRootFile) return 1;
       return left.relative.length - right.relative.length
         || left.relative.localeCompare(right.relative);
-    })[0]?.absolute ?? null;
+    })
+    .map((candidate) => candidate.absolute);
 }
 
 async function hasMigrationsDirectory(schemaDirectory: string, signal: AbortSignal): Promise<boolean> {
@@ -207,6 +318,68 @@ async function hasMigrationsDirectory(schemaDirectory: string, signal: AbortSign
   }
 }
 
+async function classifyPrismaNextConfig(
+  configPath: string,
+  signal: AbortSignal,
+): Promise<ClassifiedPrismaNextConfig> {
+  const content = await readTextFileIfSmall(configPath, signal);
+  if (!content) {
+    return {
+      path: configPath,
+      target: "unknown",
+    };
+  }
+
+  if (content.includes("@prisma-next/postgres/config")) {
+    return {
+      path: configPath,
+      target: "postgresql",
+    };
+  }
+  if (content.includes("@prisma-next/mongo/config")) {
+    return {
+      path: configPath,
+      target: "mongodb",
+    };
+  }
+  if (content.includes("@prisma-next/sqlite/config")) {
+    return {
+      path: configPath,
+      target: "sqlite",
+    };
+  }
+
+  return {
+    path: configPath,
+    target: "unknown",
+  };
+}
+
+async function classifyPrismaOrmSchemaTarget(
+  schemaPath: string,
+  signal: AbortSignal,
+): Promise<"postgresql" | "unknown" | UnsupportedBranchDatabaseSchemaTarget> {
+  const content = await readTextFileIfSmall(schemaPath, signal);
+  const provider = content?.match(/\bprovider\s*=\s*"([^"]+)"/)?.[1] ?? null;
+
+  switch (provider) {
+    case "postgresql":
+      return "postgresql";
+    case "mongodb":
+      return "mongodb";
+    case "mysql":
+      return "mysql";
+    case "sqlite":
+      return "sqlite";
+    case "sqlserver":
+      return "sqlserver";
+    case "cockroachdb":
+      return "cockroachdb";
+    default:
+      return "unknown";
+  }
+}
+
 function shouldScanForDatabaseUrl(fileName: string): boolean {
   if (fileName === ".env" || fileName.startsWith(".env.")) {
     return true;
@@ -214,29 +387,68 @@ function shouldScanForDatabaseUrl(fileName: string): boolean {
   return DATABASE_URL_SCAN_EXTENSIONS.has(path.extname(fileName));
 }
 
+function isPrismaNextConfigFile(fileName: string): boolean {
+  if (!fileName.startsWith("prisma-next.config.")) {
+    return false;
+  }
+
+  return [".cjs", ".cts", ".js", ".mjs", ".mts", ".ts"].some((extension) => fileName.endsWith(extension));
+}
+
 async function fileContainsDatabaseUrl(filePath: string, signal: AbortSignal): Promise<boolean> {
+  const content = await readTextFileIfSmall(filePath, signal);
+  return content?.includes("DATABASE_URL") ?? false;
+}
+
+async function readTextFileIfSmall(filePath: string, signal: AbortSignal): Promise<string | null> {
   signal.throwIfAborted();
 
   const info = await stat(filePath);
   if (info.size > MAX_TEXT_FILE_BYTES) {
-    return false;
+    return null;
   }
 
-  const content = await readFile(filePath, { encoding: "utf8", signal });
-  return content.includes("DATABASE_URL");
+  return readFile(filePath, { encoding: "utf8", signal });
 }
 
-function buildPrismaSchemaCommandArgs(command: BranchDatabaseSchemaCommand, schemaPath: string): string[] {
-  if (command === "migrate-deploy") {
-    return ["--no-install", "prisma", "migrate", "deploy", "--schema", schemaPath];
+function buildSchemaSetupCommands(schema: BranchDatabaseSchema, schemaPath: string, databaseUrl: string): Array<{
+  args: string[];
+  displayCommand: string;
+}> {
+  if (schema.command === "migrate-deploy") {
+    return [{
+      args: ["--no-install", "prisma", "migrate", "deploy", "--schema", schemaPath],
+      displayCommand: "npx --no-install prisma migrate deploy",
+    }];
   }
 
-  return ["--no-install", "prisma", "db", "push", "--skip-generate", "--schema", schemaPath];
+  if (schema.command === "db-push") {
+    return [{
+      args: ["--no-install", "prisma", "db", "push", "--schema", schemaPath],
+      displayCommand: "npx --no-install prisma db push",
+    }];
+  }
+
+  return [
+    {
+      args: ["--no-install", "prisma-next", "contract", "emit", "--config", schemaPath],
+      displayCommand: "npx --no-install prisma-next contract emit",
+    },
+    {
+      args: ["--no-install", "prisma-next", "db", "init", "--config", schemaPath, "--db", databaseUrl],
+      displayCommand: "npx --no-install prisma-next db init",
+    },
+  ];
+}
+
+function defaultSchemaSourcePath(schema: BranchDatabaseSchema): string {
+  return schema.kind === "prisma-next" ? "prisma-next.config.ts" : "schema.prisma";
 }
 
 async function runPrismaCommand(options: {
   context: CommandContext;
   args: string[];
+  displayCommand: string;
   env: Record<string, string>;
 }): Promise<void> {
   const shouldPipeOutput = !options.context.flags.json && !options.context.flags.quiet;
@@ -261,10 +473,10 @@ async function runPrismaCommand(options: {
   });
 
   if (exit.signal) {
-    throw new Error(`npx prisma was terminated by ${exit.signal}.`);
+    throw new Error(`${options.displayCommand} was terminated by ${exit.signal}.`);
   }
 
   if (exit.code !== 0) {
-    throw new Error(`npx prisma exited with code ${exit.code ?? 1}.`);
+    throw new Error(`${options.displayCommand} exited with code ${exit.code ?? 1}.`);
   }
 }

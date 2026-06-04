@@ -87,13 +87,22 @@ function renderBranchDatabaseDeploySummary(
       ...(result.branchDatabase.schema
         ? [{
             label: "Schema",
-            value: result.branchDatabase.schema.command === "migrate-deploy"
-              ? "prisma migrate deploy"
-              : "prisma db push",
+            value: formatBranchDatabaseSchemaCommand(result.branchDatabase.schema.command),
           }]
         : []),
     ]),
   ];
+}
+
+function formatBranchDatabaseSchemaCommand(command: "migrate-deploy" | "db-push" | "prisma-next-db-init"): string {
+  switch (command) {
+    case "migrate-deploy":
+      return "prisma migrate deploy";
+    case "db-push":
+      return "prisma db push";
+    case "prisma-next-db-init":
+      return "prisma-next db init";
+  }
 }
 
 function formatDuration(durationMs: number): string {
