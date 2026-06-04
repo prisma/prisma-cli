@@ -10,6 +10,7 @@ import type { PreviewBuildType } from "./preview-build";
 import type { BranchKind } from "../../types/branch";
 import {
   createBranchDatabase,
+  deleteBranchDatabase,
   deleteEnvironmentVariable,
   createEnvironmentVariable,
   listEnvironmentVariables,
@@ -130,6 +131,7 @@ export interface PreviewAppProvider {
     branchName: string;
     signal?: AbortSignal;
   }): Promise<PreviewBranchDatabaseRecord>;
+  deleteBranchDatabase(options: { databaseId: string; signal?: AbortSignal }): Promise<void>;
   listEnvironmentVariables(options: {
     projectId: string;
     className?: "production" | "preview";
@@ -245,6 +247,10 @@ export function createPreviewAppProvider(
 
     async createBranchDatabase(options) {
       return createBranchDatabase(client, options);
+    },
+
+    async deleteBranchDatabase(options) {
+      return deleteBranchDatabase(client, options);
     },
 
     async listEnvironmentVariables(options) {

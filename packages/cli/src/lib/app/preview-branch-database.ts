@@ -146,6 +146,25 @@ export async function createEnvironmentVariable(
   return normalizeEnvironmentVariable(result.data.data as RawEnvironmentVariableRecord);
 }
 
+export async function deleteBranchDatabase(
+  client: ManagementApiClient,
+  options: {
+    databaseId: string;
+    signal?: AbortSignal;
+  },
+): Promise<void> {
+  const result = await client.DELETE("/v1/databases/{databaseId}", {
+    params: {
+      path: { databaseId: options.databaseId },
+    },
+    signal: options.signal,
+  });
+
+  if (result.error) {
+    throw apiCallError("Failed to delete branch database", result.response, result.error);
+  }
+}
+
 export async function updateEnvironmentVariable(
   client: ManagementApiClient,
   options: {

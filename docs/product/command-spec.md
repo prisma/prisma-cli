@@ -634,8 +634,9 @@ Behavior:
 - `--db` and `--no-db` are mutually exclusive; passing both is rejected
 - `--yes` alone never creates a database; CI must pass `--db --yes` to create and wire one
 - branch database setup only runs for preview Branches; production database env vars are managed with `project env`
-- branch database setup never overwrites fully wired branch database env vars; when the branch already has both `DATABASE_URL` and `DIRECT_URL`, `--db` leaves them unchanged and continues
-- when only one branch database env var exists, explicit `--db` treats it as partial setup and repairs the pair by writing fresh branch database env values
+- branch database setup never overwrites an existing branch-scoped `DATABASE_URL`; when the branch already has `DATABASE_URL`, `--db` leaves branch database env vars unchanged and continues
+- when only `DIRECT_URL` exists on the branch, explicit `--db` treats it as partial setup and repairs the pair by writing fresh branch database env values
+- if schema setup or branch env-var wiring fails after database creation, the CLI deletes the newly created database before returning the error
 - branch database setup does not clone or infer schema from another database; it only creates an empty database and optionally applies schema from local code
 - when `prisma/migrations` exists next to `schema.prisma`, schema setup runs `prisma migrate deploy`; otherwise a found `schema.prisma` runs `prisma db push`
 - when no `schema.prisma` is found, `--db` still creates the database and env overrides but skips schema setup

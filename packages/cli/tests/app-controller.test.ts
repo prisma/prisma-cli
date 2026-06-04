@@ -45,6 +45,7 @@ afterEach(() => {
 function withBranchDatabaseProviderDefaults<T extends Record<string, unknown>>(provider: T) {
   return {
     createBranchDatabase: vi.fn(),
+    deleteBranchDatabase: vi.fn(),
     listEnvironmentVariables: vi.fn().mockResolvedValue([]),
     createEnvironmentVariable: vi.fn(),
     updateEnvironmentVariable: vi.fn(),

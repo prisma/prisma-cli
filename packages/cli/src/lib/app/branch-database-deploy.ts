@@ -92,7 +92,7 @@ export async function maybeSetupBranchDatabase(
     .map((variable) => variable.key)
     .sort();
 
-  if (hasCompleteBranchDatabaseEnv(envState)) {
+  if (envState.branchDatabaseUrl) {
     const warning = options.db === true
       ? `Branch "${branch.name}" already has DATABASE_URL. Leaving branch database env vars unchanged.`
       : null;
@@ -111,10 +111,6 @@ export async function maybeSetupBranchDatabase(
         : undefined,
       warnings: warning ? [warning] : [],
     };
-  }
-
-  if (options.db !== true && envState.branchDatabaseUrl) {
-    return emptyBranchDatabaseSetupOutcome();
   }
 
   const hasSignal = hasBranchDatabaseSignal(localSignal) || Boolean(envState.previewDatabaseUrl);
@@ -167,48 +163,52 @@ async function setupBranchDatabase(
   });
   emitBranchDatabaseProgress(context, "success", "Created branch database");
 
-  let schemaSetup: BranchDatabaseSchemaSetupResult | null = null;
-  const warnings: string[] = [];
-  let skippedSchemaWarning: string | null = null;
-  if (signal.schema) {
-    emitBranchDatabaseProgress(context, "pending", `Applying database schema with ${formatSchemaSetupCommand(signal.schema.command)}`);
-    schemaSetup = await runBranchDatabaseSchemaSetup({
-      context,
-      schema: signal.schema,
-      databaseUrl: database.databaseUrl,
-      directUrl: database.directUrl,
-    }).catch((error) => {
-      throw schemaSetupFailedError(error, signal.schema!, branch.name);
-    });
-    emitBranchDatabaseProgress(context, "success", "Applied database schema");
-  } else {
-    skippedSchemaWarning = "No schema.prisma file was found. Branch database env vars were created, but schema setup was skipped.";
-  }
+  try {
+    let schemaSetup: BranchDatabaseSchemaSetupResult | null = null;
+    const warnings: string[] = [];
+    let skippedSchemaWarning: string | null = null;
+    if (signal.schema) {
+      emitBranchDatabaseProgress(context, "pending", `Applying database schema with ${formatSchemaSetupCommand(signal.schema.command)}`);
+      schemaSetup = await runBranchDatabaseSchemaSetup({
+        context,
+        schema: signal.schema,
+        databaseUrl: database.databaseUrl,
+        directUrl: database.directUrl,
+      }).catch((error) => {
+        throw schemaSetupFailedError(error, signal.schema!, branch.name);
+      });
+      emitBranchDatabaseProgress(context, "success", "Applied database schema");
+    } else {
+      skippedSchemaWarning = "No schema.prisma file was found. Branch database env vars were created, but schema setup was skipped.";
+    }
 
-  const envVars = await upsertBranchDatabaseEnvVars(context, provider, projectId, branch, database, envState);
-  emitBranchDatabaseProgress(context, "success", `Added branch env override${envVars.length === 1 ? "" : "s"} ${envVars.join(", ")}`);
-  if (skippedSchemaWarning) {
-    emitBranchDatabaseWarning(context, skippedSchemaWarning);
-    warnings.push(skippedSchemaWarning);
-  }
+    const envVars = await upsertBranchDatabaseEnvVars(context, provider, projectId, branch, database, envState);
+    emitBranchDatabaseProgress(context, "success", `Added branch env override${envVars.length === 1 ? "" : "s"} ${envVars.join(", ")}`);
+    if (skippedSchemaWarning) {
+      emitBranchDatabaseWarning(context, skippedSchemaWarning);
+      warnings.push(skippedSchemaWarning);
+    }
 
-  return {
-    result: {
-      status: "created",
-      database: {
-        id: database.id,
-        name: database.name,
+    return {
+      result: {
+        status: "created",
+        database: {
+          id: database.id,
+          name: database.name,
+        },
+        envVars,
+        schema: schemaSetup
+          ? {
+              command: schemaSetup.command,
+              path: schemaSetup.schemaPath,
+            }
+          : null,
       },
-      envVars,
-      schema: schemaSetup
-        ? {
-            command: schemaSetup.command,
-            path: schemaSetup.schemaPath,
-          }
-        : null,
-    },
-    warnings,
-  };
+      warnings,
+    };
+  } catch (error) {
+    throw await cleanupCreatedBranchDatabaseAfterFailure(context, provider, database, branch.name, error);
+  }
 }
 
 async function upsertBranchDatabaseEnvVars(
@@ -329,10 +329,6 @@ function hasInlineDatabaseEnvVars(envVars: Record<string, string> | undefined): 
   return Boolean(envVars && ("DATABASE_URL" in envVars || "DIRECT_URL" in envVars));
 }
 
-function hasCompleteBranchDatabaseEnv(envState: BranchDatabaseEnvState): boolean {
-  return Boolean(envState.branchDatabaseUrl && envState.branchDirectUrl);
-}
-
 function maybeRenderBranchDatabaseSignal(
   context: CommandContext,
   branchName: string,
@@ -416,6 +412,59 @@ function branchDatabaseSetupFailedError(summary: string, error: unknown, branchN
   });
 }
 
+async function cleanupCreatedBranchDatabaseAfterFailure(
+  context: CommandContext,
+  provider: PreviewAppProvider,
+  database: PreviewBranchDatabaseRecord,
+  branchName: string,
+  error: unknown,
+): Promise<CliError> {
+  const setupError = error instanceof CliError
+    ? error
+    : branchDatabaseSetupFailedError("Branch database setup failed", error, branchName);
+
+  emitBranchDatabaseProgress(context, "pending", "Removing branch database after setup failed");
+  try {
+    await provider.deleteBranchDatabase({
+      databaseId: database.id,
+      signal: context.runtime.signal,
+    });
+    emitBranchDatabaseProgress(context, "success", "Removed branch database after setup failed");
+  } catch (cleanupError) {
+    return branchDatabaseCleanupFailedError(setupError, cleanupError, database, branchName);
+  }
+
+  return setupError;
+}
+
+function branchDatabaseCleanupFailedError(
+  setupError: CliError,
+  cleanupError: unknown,
+  database: PreviewBranchDatabaseRecord,
+  branchName: string,
+): CliError {
+  const cleanupWhy = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+  const setupWhy = setupError.why ?? "Branch database setup failed.";
+
+  return new CliError({
+    code: setupError.code,
+    domain: setupError.domain,
+    summary: setupError.summary,
+    why: `${setupWhy} Prisma could not delete the created database "${database.name}" (${database.id}): ${cleanupWhy}`,
+    fix: "Delete the created branch database from Console or contact Prisma support, then rerun deploy with --db.",
+    debug: formatCombinedDebugDetails(setupError, cleanupError),
+    meta: {
+      ...setupError.meta,
+      branch: branchName,
+      databaseId: database.id,
+      databaseName: database.name,
+      cleanupFailed: true,
+    },
+    exitCode: setupError.exitCode,
+    nextSteps: [],
+  });
+}
+
 function schemaSetupFailedError(
   error: unknown,
   schema: NonNullable<BranchDatabaseSignal["schema"]>,
@@ -449,4 +498,14 @@ function formatDebugDetails(error: unknown): string | null {
   }
 
   return typeof error === "string" ? error : null;
+}
+
+function formatCombinedDebugDetails(setupError: CliError, cleanupError: unknown): string | null {
+  const setupDebug = setupError.debug ?? setupError.stack ?? setupError.message;
+  const cleanupDebug = formatDebugDetails(cleanupError);
+
+  return [
+    setupDebug ? `Setup error:\n${setupDebug}` : null,
+    cleanupDebug ? `Cleanup error:\n${cleanupDebug}` : null,
+  ].filter((line): line is string => Boolean(line)).join("\n\n") || null;
 }
