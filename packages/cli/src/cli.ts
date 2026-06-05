@@ -13,7 +13,7 @@ import { getCliName, getCliVersion } from "./lib/version";
 import { attachCommandDescriptor } from "./shell/command-meta";
 import { CliError } from "./shell/errors";
 import { addCompactGlobalFlags } from "./shell/global-flags";
-import { writeHumanError, writeJsonError, writeJsonSuccess } from "./shell/output";
+import { formatUnexpectedError, writeHumanError, writeJsonError, writeJsonSuccess } from "./shell/output";
 import { disposePromptState } from "./shell/prompt";
 import { configureRuntimeCommand, createCommandContext, type CliRuntime } from "./shell/runtime";
 import { createShellUi } from "./shell/ui";
@@ -49,8 +49,7 @@ export async function runCli(options: RunCliOptions = {}): Promise<number> {
       return error.code === "commander.helpDisplayed" ? 0 : 2;
     }
 
-    const message = error instanceof Error ? error.stack ?? error.message : String(error);
-    runtime.stderr.write(`${message}\n`);
+    runtime.stderr.write(formatUnexpectedError(error, runtime.argv.includes("--trace")));
     return 1;
   } finally {
     disposePromptState(runtime.stdin);

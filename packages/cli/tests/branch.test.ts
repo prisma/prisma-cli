@@ -4,7 +4,9 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import stripAnsi from "strip-ansi";
 
-import { createTempCwd, executeCli } from "./helpers";
+import { getCommandDescriptor } from "../src/shell/command-meta";
+import { renderBranchList } from "../src/presenters/branch";
+import { createTempCwd, createTestCommandContext, executeCli } from "./helpers";
 
 const fixturePath = path.resolve("fixtures/mock-api.json");
 
@@ -61,6 +63,41 @@ describe("branch commands", () => {
     expect(stripAnsi(result.stderr)).toBe(
       "branch list → Listing branches for the resolved project.\n\n│  project:  Acme Dashboard\n│\n│  Name         Role         Env map\n│  production   production   production\n│  pr-123       preview      preview\n│  preview      preview      preview\n│  staging      preview      preview\n",
     );
+  });
+
+  it("renders resolved context for an empty verbose branch list", async () => {
+    const { context } = await createTestCommandContext({
+      argv: ["branch", "list", "--verbose"],
+      flags: { verbose: true },
+    });
+
+    const output = stripAnsi(renderBranchList(
+      context,
+      getCommandDescriptor("branch.list"),
+      {
+        projectId: "proj_empty",
+        projectName: "Empty Project",
+        branches: [],
+        verboseContext: {
+          workspace: {
+            id: "ws_123",
+            name: "Acme Inc",
+          },
+          project: {
+            id: "proj_empty",
+            name: "Empty Project",
+          },
+          resolution: {
+            projectSource: "explicit",
+          },
+        },
+      },
+    ).join("\n"));
+
+    expect(output).toContain("No branches found.");
+    expect(output).toContain("Resolved context:");
+    expect(output).toContain("workspace:       Acme Inc");
+    expect(output).toContain("project source:  --project");
   });
 
   it("returns the direct branch list JSON shape", async () => {

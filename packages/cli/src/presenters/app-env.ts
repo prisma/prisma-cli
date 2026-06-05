@@ -4,10 +4,13 @@ import type {
   EnvAddResult,
   EnvListResult,
   EnvRmResult,
+  EnvResolvedContext,
   EnvScopeDescriptor,
   EnvUpdateResult,
 } from "../types/app-env";
 import { renderList, renderShow, serializeList } from "../output/patterns";
+import { renderVerboseBlock, type VerboseRow } from "../shell/ui";
+import { renderResolvedProjectContextBlock, stripVerboseContext } from "./verbose-context";
 
 function scopeLabel(scope: EnvScopeDescriptor): string {
   if (scope.kind === "role") {
@@ -33,13 +36,104 @@ function listTargetLabel(result: EnvListResult): string {
   return scopeLabel(result.scope);
 }
 
+type EnvPresenterResult = EnvAddResult | EnvUpdateResult | EnvListResult | EnvRmResult;
+
+function renderEnvVerboseBlocks(
+  context: CommandContext,
+  result: EnvPresenterResult,
+): string[] {
+  return [
+    ...renderEnvResolvedContextBlock(context, result.verboseContext),
+    ...renderEnvTargetBlock(context, result),
+  ];
+}
+
+function renderEnvResolvedContextBlock(
+  context: CommandContext,
+  verboseContext: EnvResolvedContext | undefined,
+): string[] {
+  return renderResolvedProjectContextBlock(context.ui, verboseContext);
+}
+
+function renderEnvTargetBlock(
+  context: CommandContext,
+  result: EnvPresenterResult,
+): string[] {
+  return renderVerboseBlock(context.ui, envTargetRows(result), { title: "Env target" });
+}
+
+function envTargetRows(result: EnvPresenterResult): VerboseRow[] {
+  return [
+    { key: "project id", value: result.projectId, tone: "dim" },
+    { key: "scope", value: scopeLabel(result.scope) },
+    ...envListTargetRows(result),
+    ...envFileRows(result),
+    {
+      key: "keys",
+      value: formatKeyNames(envResultKeys(result)),
+      tone: envResultKeys(result).length > 0 ? "default" : "dim",
+    },
+  ];
+}
+
+function envListTargetRows(result: EnvPresenterResult): VerboseRow[] {
+  if (!("target" in result)) {
+    return [];
+  }
+
+  return [
+    { key: "target source", value: result.target.source },
+    { key: "env map", value: result.target.envMap },
+    ...(result.target.branchName
+      ? [{ key: "branch", value: result.target.branchName }]
+      : []),
+    ...(result.target.branchId
+      ? [{ key: "branch id", value: result.target.branchId, tone: "dim" as const }]
+      : []),
+    ...(result.target.branchExists === false
+      ? [{ key: "branch state", value: "not created yet", tone: "warning" as const }]
+      : []),
+  ];
+}
+
+function envFileRows(result: EnvPresenterResult): VerboseRow[] {
+  if (!("file" in result) || !result.file) {
+    return [];
+  }
+
+  return [
+    { key: "file", value: result.file.path },
+    { key: "file count", value: String(result.file.count) },
+  ];
+}
+
+function envResultKeys(result: EnvPresenterResult): string[] {
+  if ("variables" in result && result.variables) {
+    return result.variables.map((variable) => variable.key).sort((left, right) => left.localeCompare(right));
+  }
+
+  if ("variable" in result && result.variable) {
+    return [result.variable.key];
+  }
+
+  if ("key" in result) {
+    return [result.key];
+  }
+
+  return [];
+}
+
+function formatKeyNames(keys: string[]): string {
+  return keys.length > 0 ? keys.join(", ") : "none";
+}
+
 export function renderEnvAdd(
   context: CommandContext,
   descriptor: CommandDescriptor,
   result: EnvAddResult,
 ): string[] {
   if (result.variables !== undefined) {
-    return renderList(
+    const lines = renderList(
       {
         title: "Setting new environment variables from file.",
         descriptor,
@@ -57,9 +151,11 @@ export function renderEnvAdd(
       },
       context.ui,
     );
+    lines.push(...renderEnvVerboseBlocks(context, result));
+    return lines;
   }
 
-  return renderShow(
+  const lines = renderShow(
     {
       title: "Setting a new environment variable.",
       descriptor,
@@ -77,10 +173,12 @@ export function renderEnvAdd(
     },
     context.ui,
   );
+  lines.push(...renderEnvVerboseBlocks(context, result));
+  return lines;
 }
 
 export function serializeEnvAdd(result: EnvAddResult) {
-  return result;
+  return stripVerboseContext(result);
 }
 
 export function renderEnvUpdate(
@@ -89,7 +187,7 @@ export function renderEnvUpdate(
   result: EnvUpdateResult,
 ): string[] {
   if (result.variables !== undefined) {
-    return renderList(
+    const lines = renderList(
       {
         title: "Replacing environment variable values from file.",
         descriptor,
@@ -107,9 +205,11 @@ export function renderEnvUpdate(
       },
       context.ui,
     );
+    lines.push(...renderEnvVerboseBlocks(context, result));
+    return lines;
   }
 
-  return renderShow(
+  const lines = renderShow(
     {
       title: "Replacing the environment variable's value.",
       descriptor,
@@ -127,10 +227,12 @@ export function renderEnvUpdate(
     },
     context.ui,
   );
+  lines.push(...renderEnvVerboseBlocks(context, result));
+  return lines;
 }
 
 export function serializeEnvUpdate(result: EnvUpdateResult) {
-  return result;
+  return stripVerboseContext(result);
 }
 
 export function renderEnvList(
@@ -138,7 +240,7 @@ export function renderEnvList(
   descriptor: CommandDescriptor,
   result: EnvListResult,
 ): string[] {
-  return renderList(
+  const lines = renderList(
     {
       title: "Listing environment variables for the selected scope.",
       descriptor,
@@ -156,25 +258,29 @@ export function renderEnvList(
     },
     context.ui,
   );
+  lines.push(...renderEnvVerboseBlocks(context, result));
+  return lines;
 }
 
 export function serializeEnvList(result: EnvListResult) {
+  const serializable = stripVerboseContext(result);
+
   return {
-    projectId: result.projectId,
-    scope: result.scope,
-    target: result.target,
+    projectId: serializable.projectId,
+    scope: serializable.scope,
+    target: serializable.target,
     ...serializeList({
       context: {
-        target: listTargetLabel(result),
+        target: listTargetLabel(serializable),
       },
-      items: result.variables.map((variable) => ({
+      items: serializable.variables.map((variable) => ({
         noun: "variable",
         label: `${variable.key} (${variable.source})`,
         id: variable.id,
         status: variable.isManagedBySystem ? "default" : null,
       })),
     }),
-    variables: result.variables,
+    variables: serializable.variables,
   };
 }
 
@@ -183,7 +289,7 @@ export function renderEnvRm(
   descriptor: CommandDescriptor,
   result: EnvRmResult,
 ): string[] {
-  return renderShow(
+  const lines = renderShow(
     {
       title: "Removing the environment variable from the scope.",
       descriptor,
@@ -195,8 +301,10 @@ export function renderEnvRm(
     },
     context.ui,
   );
+  lines.push(...renderEnvVerboseBlocks(context, result));
+  return lines;
 }
 
 export function serializeEnvRm(result: EnvRmResult) {
-  return result;
+  return stripVerboseContext(result);
 }

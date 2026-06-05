@@ -3,6 +3,7 @@ import { formatDescriptorLabel } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
 import { formatColumns } from "../shell/ui";
 import type { BranchListResult } from "../types/branch";
+import { renderResolvedProjectContextBlock } from "./verbose-context";
 
 export function renderBranchList(
   context: CommandContext,
@@ -17,6 +18,7 @@ export function renderBranchList(
 
   if (result.branches.length === 0) {
     lines.push(`${rail}  ${ui.dim("No branches found.")}`);
+    lines.push(...renderBranchResolvedContextBlock(context, result));
     return lines;
   }
 
@@ -30,13 +32,22 @@ export function renderBranchList(
     lines.push(`${rail}  ${formatColumns([branch.name, branch.role, branch.envMap], widths)}`);
   }
 
+  lines.push(...renderBranchResolvedContextBlock(context, result));
   return lines;
 }
 
 export function serializeBranchList(result: BranchListResult) {
+  const { verboseContext: _verboseContext, ...serializable } = result;
   return {
-    projectId: result.projectId,
-    projectName: result.projectName,
-    branches: result.branches,
+    projectId: serializable.projectId,
+    projectName: serializable.projectName,
+    branches: serializable.branches,
   };
+}
+
+function renderBranchResolvedContextBlock(
+  context: CommandContext,
+  result: BranchListResult,
+): string[] {
+  return renderResolvedProjectContextBlock(context.ui, result.verboseContext);
 }

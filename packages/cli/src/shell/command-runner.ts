@@ -1,6 +1,8 @@
 import { AuthError as SDKAuthError } from "@prisma/management-api-sdk";
 import type { CommandDescriptor } from "./command-meta";
 import { getCommandDescriptor } from "./command-meta";
+import { collectCommandDiagnostics } from "../lib/diagnostics";
+import { renderCommandDiagnostics } from "./diagnostics-output";
 import { authRequiredError, CliError, commandCanceledError } from "./errors";
 import { resolveGlobalFlags } from "./global-flags";
 import type { CommandSuccess } from "./output";
@@ -48,6 +50,7 @@ export async function runCommand<T>(
   const flags = resolveGlobalFlags(runtime.argv, options);
   const context = await createCommandContext(runtime, flags);
   const descriptor = getCommandDescriptor(commandName);
+  const startedAt = Date.now();
 
   try {
     const success = await handler(context);
@@ -64,7 +67,16 @@ export async function runCommand<T>(
       return;
     }
 
-    writeHumanLines(context.output, presenter.renderHuman(context, descriptor, success.result));
+    const rendered = presenter.renderHuman(context, descriptor, success.result);
+    const diagnostics = await renderBestEffortCommandDiagnostics(context, {
+      enabled: flags.verbose && rendered.length > 0,
+      durationMs: Date.now() - startedAt,
+    });
+
+    writeHumanLines(context.output, [
+      ...rendered,
+      ...diagnostics,
+    ]);
   } catch (error) {
     const cliError = toCliError(error, runtime);
     if (cliError) {
@@ -79,6 +91,24 @@ export async function runCommand<T>(
     }
 
     throw error;
+  }
+}
+
+async function renderBestEffortCommandDiagnostics(
+  context: Awaited<ReturnType<typeof createCommandContext>>,
+  options: { enabled: boolean; durationMs: number },
+): Promise<string[]> {
+  if (!options.enabled) {
+    return [];
+  }
+
+  try {
+    return renderCommandDiagnostics(
+      context,
+      await collectCommandDiagnostics(context, { durationMs: options.durationMs }),
+    );
+  } catch {
+    return [];
   }
 }
 

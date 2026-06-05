@@ -27,6 +27,7 @@ import type {
   AppOpenResult,
   AppPromoteResult,
   AppRemoveResult,
+  AppResolvedContext,
   AppRollbackResult,
   AppShowResult,
   AppRunResult,
@@ -38,7 +39,7 @@ import type { ProjectResolution, ProjectSummary } from "../types/project";
 import { requireComputeAuth } from "../lib/auth/guard";
 import { readAuthState } from "../lib/auth/auth-ops";
 import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
-import { parseEnvAssignments } from "../lib/app/env-vars";
+import { envVarNames, parseEnvAssignments } from "../lib/app/env-vars";
 import { renderDeployOutputRows, renderDeploySettingsPreview } from "../lib/app/deploy-output";
 import {
   DEFAULT_LOCAL_DEV_PORT,
@@ -367,6 +368,18 @@ export async function runAppDeploy(
         name: deployResult.app.name,
       },
       deployment: deployResult.deployment,
+      deploySettings: {
+        framework: {
+          key: framework.key,
+          buildType,
+          name: framework.displayName,
+          source: framework.annotation,
+        },
+        entrypoint: entrypoint ?? null,
+        httpPort: runtime.port,
+        region: selectedApp.region ?? null,
+        envVars: envVarNames(envVars),
+      },
       durationMs: deployDurationMs,
       localPin: localPinResult,
     },
@@ -393,6 +406,7 @@ export async function runAppListDeploys(
       command: "app.list-deploys",
       result: {
         projectId,
+        verboseContext: toAppVerboseContext(target),
         app: null,
         deployments: [],
       },
@@ -423,6 +437,7 @@ export async function runAppListDeploys(
     command: "app.list-deploys",
     result: {
       projectId,
+      verboseContext: toAppVerboseContext(target),
       app: {
         id: deploymentsResult.app.id,
         name: deploymentsResult.app.name,
@@ -454,6 +469,7 @@ export async function runAppShow(
       command: "app.show",
       result: {
         projectId,
+        verboseContext: toAppVerboseContext(target),
         app: null,
         liveDeployment: null,
         liveUrl: null,
@@ -489,6 +505,7 @@ export async function runAppShow(
     command: "app.show",
     result: {
       projectId,
+      verboseContext: toAppVerboseContext(target),
       app: {
         id: deploymentsResult.app.id,
         name: deploymentsResult.app.name,
@@ -625,6 +642,7 @@ export async function runAppOpen(
     command: "app.open",
     result: {
       projectId,
+      verboseContext: toAppVerboseContext(target),
       app: {
         id: deploymentsResult.app.id,
         name: deploymentsResult.app.name,
@@ -1094,6 +1112,7 @@ export async function runAppPromote(
     command: "app.promote",
     result: {
       projectId,
+      verboseContext: toAppVerboseContext(target),
       app: {
         id: deploymentsResult.app.id,
         name: deploymentsResult.app.name,
@@ -1164,6 +1183,7 @@ export async function runAppRollback(
     command: "app.rollback",
     result: {
       projectId,
+      verboseContext: toAppVerboseContext(target),
       app: {
         id: deploymentsResult.app.id,
         name: deploymentsResult.app.name,
@@ -1205,6 +1225,7 @@ export async function runAppRemove(
     command: "app.remove",
     result: {
       projectId,
+      verboseContext: toAppVerboseContext(target),
       app: {
         id: removedApp.id,
         name: removedApp.name,
@@ -2493,8 +2514,18 @@ function toBranchKind(name: string): BranchKind {
 
 function toResultBranch(branch: ResolvedAppProjectContext["branch"]): AppDeployResult["branch"] {
   return {
+    id: branch.id,
     name: branch.name,
     kind: branch.kind,
+  };
+}
+
+function toAppVerboseContext(target: ResolvedAppProjectContext): AppResolvedContext {
+  return {
+    workspace: target.workspace,
+    project: target.project,
+    branch: target.branch,
+    resolution: target.resolution,
   };
 }
 

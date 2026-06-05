@@ -483,6 +483,51 @@ describe("project commands", () => {
     });
   });
 
+  it("adds safe local context to project show in verbose human mode", async () => {
+    const home = await createTempCwd();
+    const cwd = path.join(home, "code", "apple");
+    await mkdir(cwd, { recursive: true });
+    const stateDir = path.join(cwd, ".state");
+    const edithFixturePath = await createEdithOrangeFixture(cwd);
+    const env = {
+      ...process.env,
+      HOME: home,
+    };
+    await writeLocalPin(cwd, {
+      workspaceId: "ws_123",
+      projectId: "proj_orange",
+    });
+    await login(cwd, stateDir, edithFixturePath, env);
+
+    const result = await executeCli({
+      argv: ["project", "show", "--verbose"],
+      cwd,
+      env,
+      stateDir,
+      fixturePath: edithFixturePath,
+      isTTY: true,
+    });
+    const stderr = stripAnsi(result.stderr);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(stderr).toContain("Resolved context:");
+    expect(stderr).toContain("workspace:");
+    expect(stderr).toContain("Edith");
+    expect(stderr).toContain("workspace id:");
+    expect(stderr).toContain("ws_123");
+    expect(stderr).toContain("project id:");
+    expect(stderr).toContain("proj_orange");
+    expect(stderr).toContain("project source:");
+    expect(stderr).toContain(".prisma/local.json");
+    expect(stderr).toContain("Local context:");
+    expect(stderr).toContain("duration:");
+    expect(stderr).toContain("cwd:");
+    expect(stderr).toContain("~/code/apple");
+    expect(stderr).toContain("state file:");
+    expect(stderr).toContain("~");
+  });
+
   it("returns PROJECT_NOT_FOUND for an inaccessible explicit project", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");

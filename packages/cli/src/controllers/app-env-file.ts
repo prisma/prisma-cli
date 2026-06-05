@@ -7,6 +7,7 @@ import type { CommandSuccess } from "../shell/output";
 import type { CommandContext } from "../shell/runtime";
 import type {
   EnvAddResult,
+  EnvResolvedContext,
   EnvUpdateResult,
   EnvVariableMetadata,
 } from "../types/app-env";
@@ -29,6 +30,7 @@ export async function runEnvAddFile(
   resolved: ResolvedEnvFileScope,
   filePath: string,
   assignments: EnvFileAssignment[],
+  verboseContext: EnvResolvedContext,
 ): Promise<CommandSuccess<EnvAddResult>> {
   const existing = await findVariablesByNaturalKey(
     client,
@@ -96,6 +98,7 @@ export async function runEnvAddFile(
     command: "project.env.add",
     result: {
       projectId,
+      verboseContext,
       scope: resolved.descriptor,
       variables,
       file: {
@@ -115,6 +118,7 @@ export async function runEnvUpdateFile(
   resolved: ResolvedEnvFileScope,
   filePath: string,
   assignments: EnvFileAssignment[],
+  verboseContext: EnvResolvedContext,
 ): Promise<CommandSuccess<EnvUpdateResult>> {
   const existing = await findVariablesByNaturalKey(
     client,
@@ -172,6 +176,7 @@ export async function runEnvUpdateFile(
     command: "project.env.update",
     result: {
       projectId,
+      verboseContext,
       scope: resolved.descriptor,
       variables,
       file: {

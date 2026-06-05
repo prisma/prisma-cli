@@ -40,6 +40,26 @@ export function cliErrorToJson(error: CliError) {
   };
 }
 
+export function formatUnexpectedError(error: unknown, trace: boolean): string {
+  const debug = error instanceof Error
+    ? error.stack ?? error.message
+    : String(error);
+
+  if (trace) {
+    return `${debug}\n`;
+  }
+
+  const message = error instanceof Error && error.message
+    ? error.message
+    : String(error);
+
+  return [
+    `Unexpected CLI error: ${message}`,
+    "More: Re-run with --trace for deeper diagnostics",
+    "",
+  ].join("\n");
+}
+
 export function writeJsonError(output: CliOutput, command: string, error: CliError): void {
   output.stdout.write(
     `${JSON.stringify(
