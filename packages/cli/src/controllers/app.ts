@@ -325,7 +325,7 @@ export async function runAppDeploy(
   const portMapping = parseDeployPortMapping(String(runtime.port));
   const branchDatabaseSetup = await maybeSetupBranchDatabase(context, provider, projectId, toBranchDatabaseDeployBranch(target.branch), {
     db: options?.db,
-    inlineEnvVars: envVars,
+    providedEnvVars: envVars,
   });
 
   const progressState = createPreviewDeployProgressState();

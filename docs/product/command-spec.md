@@ -645,7 +645,7 @@ Behavior:
 - when no supported Prisma schema source is found, `--db` still creates the database and env overrides but skips schema setup
 - known non-Postgres Prisma sources do not trigger automatic database prompting; explicit `--db` is rejected because the created database is Prisma Postgres
 - if schema setup fails, deploy stops before the app build/deploy starts
-- inline `--env DATABASE_URL=...` or `--env DIRECT_URL=...` suppresses automatic database prompting; combining those inline env vars with `--db` is rejected
+- `--env DATABASE_URL=...`, `--env DIRECT_URL=...`, or the same keys loaded from an env file suppress automatic database prompting; combining those database env vars with `--db` is rejected
 - maps user-facing framework names to deploy build strategies
 - uses `src/index.ts` as the Hono deploy entrypoint when the app has no `package.json#main` or `package.json#module` and that file exists
 - supports vanilla Bun apps with `--framework bun` using `package.json#main` or `package.json#module`, or with `--entry <path>`

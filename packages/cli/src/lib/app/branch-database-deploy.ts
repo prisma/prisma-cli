@@ -46,19 +46,19 @@ export async function maybeSetupBranchDatabase(
   branch: BranchDatabaseDeployBranch,
   options: {
     db: boolean | undefined;
-    inlineEnvVars: Record<string, string> | undefined;
+    providedEnvVars: Record<string, string> | undefined;
   },
 ): Promise<BranchDatabaseSetupOutcome> {
   if (options.db === false) {
     return emptyBranchDatabaseSetupOutcome();
   }
 
-  if (hasInlineDatabaseEnvVars(options.inlineEnvVars)) {
+  if (hasProvidedDatabaseEnvVars(options.providedEnvVars)) {
     if (options.db === true) {
       throw usageError(
-        "Branch database setup cannot be combined with inline database env vars",
-        "The deploy command received --db and an inline DATABASE_URL or DIRECT_URL value.",
-        "Remove the inline --env database value to let --db create a branch override, or remove --db to deploy with the provided value.",
+        "Branch database setup cannot be combined with provided database env vars",
+        "The deploy command received --db and a DATABASE_URL or DIRECT_URL value from --env.",
+        "Remove the --env database value to let --db create a branch override, or remove --db to deploy with the provided value.",
         [
           "prisma-cli app deploy --db",
           "prisma-cli app deploy --env DATABASE_URL=postgresql://example",
@@ -336,7 +336,7 @@ function findEnvVar(
   return rows.find((row) => row.branchId === options.branchId) ?? null;
 }
 
-function hasInlineDatabaseEnvVars(envVars: Record<string, string> | undefined): boolean {
+function hasProvidedDatabaseEnvVars(envVars: Record<string, string> | undefined): boolean {
   return Boolean(envVars && ("DATABASE_URL" in envVars || "DIRECT_URL" in envVars));
 }
 
