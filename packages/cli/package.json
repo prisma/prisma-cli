@@ -41,7 +41,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.5.0",
-    "@prisma/compute-sdk": "^0.21.0",
+    "@prisma/compute-sdk": "^0.22.0",
     "@prisma/credentials-store": "^7.8.0",
     "@prisma/management-api-sdk": "^1.37.0",
     "c12": "4.0.0-beta.5",
