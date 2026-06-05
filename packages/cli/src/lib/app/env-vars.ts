@@ -1,4 +1,5 @@
 import { usageError } from "../../shell/errors";
+import { validateKey } from "./env-config";
 import { readEnvFileAssignments } from "./env-file";
 
 type EnvAssignmentOptions = {
@@ -47,6 +48,7 @@ export function parseEnvAssignments(
         "app",
       );
     }
+    validateEnvAssignmentName(name, options.commandName);
 
     if (seen.has(name)) {
       throw usageError(
@@ -97,6 +99,23 @@ export async function parseEnvInputs(
   }
 
   return parseEnvAssignments(expandedAssignments, options);
+}
+
+function validateEnvAssignmentName(name: string, commandName: EnvAssignmentOptions["commandName"]): void {
+  try {
+    validateKey(name, "add");
+  } catch (error) {
+    const reason = error instanceof Error && error.message.length > 0
+      ? error.message
+      : "Invalid environment variable name.";
+    throw usageError(
+      `Invalid environment variable "${name}"`,
+      reason,
+      "Use a valid env-var name and retry the deploy.",
+      [`prisma-cli app ${commandName} --env DATABASE_URL=postgresql://example`],
+      "app",
+    );
+  }
 }
 
 export function envVarNames(

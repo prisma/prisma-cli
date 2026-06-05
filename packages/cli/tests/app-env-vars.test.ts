@@ -211,6 +211,13 @@ describe("app env vars", () => {
         summary: "Environment variable name is required",
       }),
     );
+    expect(() => parseEnvAssignments(["lowercase-key=secret"], { commandName: "deploy" })).toThrowError(
+      expect.objectContaining({
+        code: "USAGE_ERROR",
+        summary: 'Invalid environment variable "lowercase-key"',
+        why: expect.stringContaining("must match the POSIX env-var shape"),
+      }),
+    );
     expect(() => parseEnvAssignments(["EMPTY="], { commandName: "deploy" })).toThrowError(
       expect.objectContaining({
         code: "USAGE_ERROR",
