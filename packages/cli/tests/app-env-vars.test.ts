@@ -158,20 +158,20 @@ describe("app env vars", () => {
     expect(JSON.stringify(emptyValueError)).not.toContain("secret");
   });
 
-  it("parses repeated env assignments and allows empty values", async () => {
+  it("parses repeated env assignments", async () => {
     const { parseEnvAssignments } = await import("../src/lib/app/env-vars");
 
     expect(
       parseEnvAssignments(
         [
           "DATABASE_URL=postgresql://example",
-          "EMPTY=",
+          "TOKEN=value=with=equals",
         ],
         { commandName: "deploy" },
       ),
     ).toEqual({
       DATABASE_URL: "postgresql://example",
-      EMPTY: "",
+      TOKEN: "value=with=equals",
     });
   });
 
@@ -188,11 +188,11 @@ describe("app env vars", () => {
     );
 
     await expect(
-      parseEnvInputs(cwd, [".env", "EMPTY="], { commandName: "deploy" }),
+      parseEnvInputs(cwd, [".env", "INLINE_FLAG=enabled"], { commandName: "deploy" }),
     ).resolves.toEqual({
       DATABASE_URL: "postgresql://example",
       FEATURE_FLAG: "enabled",
-      EMPTY: "",
+      INLINE_FLAG: "enabled",
     });
   });
 
@@ -209,6 +209,12 @@ describe("app env vars", () => {
       expect.objectContaining({
         code: "USAGE_ERROR",
         summary: "Environment variable name is required",
+      }),
+    );
+    expect(() => parseEnvAssignments(["EMPTY="], { commandName: "deploy" })).toThrowError(
+      expect.objectContaining({
+        code: "USAGE_ERROR",
+        summary: 'Environment variable "EMPTY" has an empty value',
       }),
     );
 
@@ -484,7 +490,7 @@ describe("app env vars", () => {
       {
         projectRef: "proj_123",
         framework: "hono",
-        envAssignments: ["DATABASE_URL=postgresql://example", ".env", "EMPTY="],
+        envAssignments: ["DATABASE_URL=postgresql://example", ".env", "INLINE_FLAG=enabled"],
       },
     );
 
@@ -495,7 +501,7 @@ describe("app env vars", () => {
         envVars: {
           DATABASE_URL: "postgresql://example",
           FEATURE_FLAG: "enabled",
-          EMPTY: "",
+          INLINE_FLAG: "enabled",
         },
       }),
     );

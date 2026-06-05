@@ -58,8 +58,19 @@ export function parseEnvAssignments(
       );
     }
 
+    const value = assignment.slice(separatorIndex + 1);
+    if (value.length === 0) {
+      throw usageError(
+        `Environment variable "${name}" has an empty value`,
+        `A provided --env flag defines ${name} with no value.`,
+        "Pass a non-empty value, or omit the key from the deploy command.",
+        [`prisma-cli app ${options.commandName} --env ${name}=value`],
+        "app",
+      );
+    }
+
     seen.add(name);
-    parsed[name] = assignment.slice(separatorIndex + 1);
+    parsed[name] = value;
   }
 
   return parsed;
