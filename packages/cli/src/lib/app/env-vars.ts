@@ -1,11 +1,14 @@
 import { usageError } from "../../shell/errors";
+import { readEnvFileAssignments } from "./env-file";
+
+type EnvAssignmentOptions = {
+  commandName: "deploy";
+  requireAtLeastOne?: boolean;
+};
 
 export function parseEnvAssignments(
   assignments: string[] | undefined,
-  options: {
-    commandName: "deploy";
-    requireAtLeastOne?: boolean;
-  },
+  options: EnvAssignmentOptions,
 ): Record<string, string> {
   const values = assignments ?? [];
 
@@ -60,6 +63,29 @@ export function parseEnvAssignments(
   }
 
   return parsed;
+}
+
+export async function parseEnvInputs(
+  cwd: string,
+  inputs: string[] | undefined,
+  options: EnvAssignmentOptions,
+): Promise<Record<string, string>> {
+  const values = inputs ?? [];
+  const expandedAssignments: string[] = [];
+
+  for (const value of values) {
+    if (value.includes("=")) {
+      expandedAssignments.push(value);
+      continue;
+    }
+
+    const fileAssignments = await readEnvFileAssignments(cwd, value, options.commandName);
+    expandedAssignments.push(
+      ...fileAssignments.map((assignment) => `${assignment.key}=${assignment.value}`),
+    );
+  }
+
+  return parseEnvAssignments(expandedAssignments, options);
 }
 
 export function envVarNames(

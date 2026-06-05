@@ -39,7 +39,7 @@ import type { ProjectResolution, ProjectSummary } from "../types/project";
 import { requireComputeAuth } from "../lib/auth/guard";
 import { readAuthState } from "../lib/auth/auth-ops";
 import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
-import { envVarNames, parseEnvAssignments } from "../lib/app/env-vars";
+import { envVarNames, parseEnvInputs } from "../lib/app/env-vars";
 import { renderDeployOutputRows, renderDeploySettingsPreview } from "../lib/app/deploy-output";
 import {
   DEFAULT_LOCAL_DEV_PORT,
@@ -280,7 +280,7 @@ export async function runAppDeploy(
   let runtime = resolveDeployRuntime(options?.httpPort, framework);
   assertSupportedEntrypoint(framework.buildType, options?.entrypoint, "deploy");
   const envVars = toOptionalEnvVars(
-    parseEnvAssignments(options?.envAssignments, {
+    await parseEnvInputs(context.runtime.cwd, options?.envAssignments, {
       commandName: "deploy",
     }),
   );

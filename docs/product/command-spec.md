@@ -592,7 +592,7 @@ prisma-cli app run --build-type nextjs
 prisma-cli app run --build-type bun --entry server.ts --port 3000
 ```
 
-## `prisma-cli app deploy --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start|bun> --entry <path> --http-port <port> --env <name=value> --db --no-db --prod`
+## `prisma-cli app deploy --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start|bun> --entry <path> --http-port <port> --env <name=value|file> --db --no-db --prod`
 
 Purpose:
 
@@ -630,7 +630,7 @@ Behavior:
 - after setup, deploy prints `Deploying to <Project> / <Branch> / <App>`; later deploys print a compact target header such as `Deploying ./j1 to j1 / main / j1`
 - deploy progress uses short stage copy (`Building locally...`, `Built <size>`, `Uploading...`, `Uploaded`, `Deploying...`, `Deployed`) and never prints `Status: running` or `Deployment is running at ...`
 - success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma-cli app logs`
-- accepts repeated `--env NAME=VALUE` flags
+- accepts repeated `--env NAME=VALUE` flags and dotenv file paths such as `--env .env`
 - supports `--db` for preview Branches to create a new empty Prisma Postgres database, apply a supported local Prisma schema source when one exists, and write branch-scoped `DATABASE_URL` and `DIRECT_URL` overrides through the existing `project env` storage
 - supports `--no-db` to suppress automatic database prompting for the deploy
 - `--db` and `--no-db` are mutually exclusive; passing both is rejected

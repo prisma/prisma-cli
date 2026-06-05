@@ -175,6 +175,27 @@ describe("app env vars", () => {
     });
   });
 
+  it("parses deploy env inputs from assignments and dotenv files", async () => {
+    const { createTempCwd } = await import("./helpers");
+    const { parseEnvInputs } = await import("../src/lib/app/env-vars");
+    const cwd = await createTempCwd();
+    await writeFile(
+      path.join(cwd, ".env"),
+      [
+        "DATABASE_URL=postgresql://example",
+        "FEATURE_FLAG=enabled",
+      ].join("\n"),
+    );
+
+    await expect(
+      parseEnvInputs(cwd, [".env", "EMPTY="], { commandName: "deploy" }),
+    ).resolves.toEqual({
+      DATABASE_URL: "postgresql://example",
+      FEATURE_FLAG: "enabled",
+      EMPTY: "",
+    });
+  });
+
   it("rejects invalid env assignments without leaking values", async () => {
     const { parseEnvAssignments } = await import("../src/lib/app/env-vars");
 
@@ -446,6 +467,7 @@ describe("app env vars", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeFile(path.join(cwd, ".env"), "FEATURE_FLAG=enabled\n");
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -462,7 +484,7 @@ describe("app env vars", () => {
       {
         projectRef: "proj_123",
         framework: "hono",
-        envAssignments: ["DATABASE_URL=postgresql://example", "FEATURE_FLAG=enabled", "EMPTY="],
+        envAssignments: ["DATABASE_URL=postgresql://example", ".env", "EMPTY="],
       },
     );
 

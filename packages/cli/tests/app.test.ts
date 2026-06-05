@@ -150,6 +150,7 @@ describe("app commands", () => {
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy");
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --project proj_123");
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --create-project my-app --yes");
+    expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --env .env");
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --db");
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --db --yes");
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --app my-app --framework nextjs --http-port 3000");
@@ -159,7 +160,7 @@ describe("app commands", () => {
     expect(deployHelp.stderr).toContain("--framework <name>");
     expect(deployHelp.stderr).not.toContain("--build-type <type>");
     expect(deployHelp.stderr).toContain("--http-port <port>");
-    expect(deployHelp.stderr).toContain("--env <name=value>");
+    expect(deployHelp.stderr).toContain("--env <name=value|file>");
     expect(deployHelp.stderr).toContain("--db");
     expect(deployHelp.stderr).toContain("--no-db");
 
