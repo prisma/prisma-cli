@@ -23,6 +23,16 @@ export async function readEnvFileAssignments(
   command: "add" | "update",
 ): Promise<EnvFileAssignment[]> {
   const resolvedPath = path.resolve(cwd, filePath);
+  const cwdRoot = path.resolve(cwd) + path.sep;
+  if (!resolvedPath.startsWith(cwdRoot)) {
+    throw usageError(
+      `Env file path escapes the current directory`,
+      `"${filePath}" resolves to "${resolvedPath}" which is outside of "${cwd}".`,
+      "Pass a dotenv file path that is contained within the current working directory.",
+      [`prisma-cli project env ${command} --file .env --role preview`],
+      "app",
+    );
+  }
   let contents: string;
   try {
     contents = await readFile(resolvedPath, "utf8");
