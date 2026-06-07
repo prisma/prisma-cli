@@ -461,6 +461,31 @@ prisma-cli project link proj_123
 prisma-cli project link "Acme Dashboard" --json
 ```
 
+## `prisma-cli project delete <name>`
+
+Purpose:
+
+- delete a Prisma Project permanently
+
+Behavior:
+
+- requires auth
+- resolves project context without creating projects
+- requires confirmation unless `-y` or `--yes` is passed
+- deletes the Project from the platform
+- removes the local `.prisma/local.json` pin when it matches the deleted Project
+- does not delete Branch state, App deployments, or databases synchronously; server-side retention rules own that behavior
+- fails with `PROJECT_NOT_FOUND` when the named Project does not exist
+- fails with `PROJECT_DELETE_FAILED` when the platform rejects deletion
+
+Examples:
+
+```bash
+prisma-cli project delete my-app
+prisma-cli project delete proj_123 --yes
+prisma-cli project delete "Acme Dashboard" --json
+```
+
 ## `prisma-cli git connect [git-url]`
 
 Purpose:
@@ -549,6 +574,76 @@ Examples:
 ```bash
 prisma-cli branch list
 prisma-cli branch list --json
+```
+
+## `prisma-cli branch create <name>`
+
+Purpose:
+
+- create a new Platform branch in the resolved project
+
+Behavior:
+
+- requires auth
+- resolves project context without creating projects
+- creates a branch with the given name
+- the new branch has `role=preview` by default
+- fails with `BRANCH_ALREADY_EXISTS` when a branch with that name already exists
+- fails with `BRANCH_CREATE_FAILED` when the platform rejects creation
+
+Examples:
+
+```bash
+prisma-cli branch create feat-login
+prisma-cli branch create feat-login --json
+```
+
+## `prisma-cli branch delete <name>`
+
+Purpose:
+
+- delete a Platform branch from the resolved project
+
+Behavior:
+
+- requires auth
+- resolves project context without creating projects
+- resolves the branch by name
+- requires confirmation unless `-y` or `--yes` is passed
+- refuses to delete the `production` branch
+- fails with `BRANCH_NOT_FOUND` when the named branch does not exist
+- fails with `BRANCH_DELETE_FAILED` when the platform rejects deletion
+
+Examples:
+
+```bash
+prisma-cli branch delete feat-login
+prisma-cli branch delete feat-login --yes
+prisma-cli branch delete feat-login --json
+```
+
+## `prisma-cli branch rename <old-name> <new-name>`
+
+Purpose:
+
+- rename a Platform branch in the resolved project
+
+Behavior:
+
+- requires auth
+- resolves project context without creating projects
+- resolves the branch by old-name
+- renames the branch to new-name
+- refuses to rename the `production` branch
+- fails with `BRANCH_NOT_FOUND` when the old-name branch does not exist
+- fails with `BRANCH_ALREADY_EXISTS` when a branch with new-name already exists
+- fails with `BRANCH_RENAME_FAILED` when the platform rejects the rename
+
+Examples:
+
+```bash
+prisma-cli branch rename feat-login feat-auth
+prisma-cli branch rename feat-login feat-auth --json
 ```
 
 ## `prisma-cli app build --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|tanstack-start>`
