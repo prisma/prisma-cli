@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export const LOCAL_RESOLUTION_PIN_RELATIVE_PATH = ".prisma/local.json";
@@ -82,6 +82,24 @@ export async function ensureLocalResolutionPinGitignore(cwd: string, signal?: Ab
 
   const next = existing.endsWith("\n") ? `${existing}.prisma/\n` : `${existing}\n.prisma/\n`;
   await writeFile(gitignorePath, next, { encoding: "utf8", signal });
+}
+
+export async function removeLocalResolutionPin(
+  cwd: string,
+  pin: LocalResolutionPin,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const existing = await readLocalResolutionPin(cwd, signal);
+  if (
+    existing.kind === "present" &&
+    existing.pin.workspaceId === pin.workspaceId &&
+    existing.pin.projectId === pin.projectId
+  ) {
+    signal?.throwIfAborted();
+    await rm(path.join(cwd, LOCAL_RESOLUTION_PIN_RELATIVE_PATH), { force: true });
+    return true;
+  }
+  return false;
 }
 
 function isLocalResolutionPin(value: unknown): value is LocalResolutionPin {

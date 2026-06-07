@@ -124,7 +124,11 @@ export class PreviewDomainApiError extends Error {
 
 export interface PreviewAppProvider {
   createProject(options: { name: string; signal?: AbortSignal }): Promise<PreviewProjectRecord>;
+  deleteProject(options: { projectId: string; signal?: AbortSignal }): Promise<void>;
   resolveBranch(projectId: string, options: { branchName: string; signal?: AbortSignal }): Promise<PreviewBranchRecord>;
+  createBranch(options: { projectId: string; name: string; signal?: AbortSignal }): Promise<PreviewBranchRecord>;
+  deleteBranch(options: { projectId: string; branchId: string; signal?: AbortSignal }): Promise<void>;
+  renameBranch(options: { projectId: string; branchId: string; newName: string; signal?: AbortSignal }): Promise<PreviewBranchRecord>;
   createBranchDatabase(options: {
     projectId: string;
     branchId: string;
@@ -223,6 +227,20 @@ export function createPreviewAppProvider(
       };
     },
 
+    async deleteProject(options) {
+      const result = await (client as unknown as { DELETE: Function }).DELETE("/v1/projects/{projectId}", {
+        params: { path: { projectId: options.projectId } },
+        signal: options.signal,
+      }) as { error?: { error?: { message?: string } }; response?: { status?: number } };
+      if (result.error) {
+        const status = result.response?.status ?? 0;
+        if (status === 404) {
+          throw new Error("Project Not Found");
+        }
+        throw new Error(result.error.error?.message ?? `Management API returned HTTP ${status}.`);
+      }
+    },
+
     async listApps(projectId, options) {
       return listComputeServices(client, {
         projectId,
@@ -238,6 +256,75 @@ export function createPreviewAppProvider(
         signal: options.signal,
       });
 
+      return {
+        id: branch.id,
+        name: branch.gitName,
+        role: branch.role,
+      };
+    },
+
+    async createBranch(options) {
+      const result = await (client as unknown as { POST: Function }).POST("/v1/projects/{projectId}/branches", {
+        params: { path: { projectId: options.projectId } },
+        body: { gitName: options.name },
+        signal: options.signal,
+      }) as { error?: { error?: { message?: string } }; data?: { data?: { id: string; gitName: string; role: BranchKind } }; response?: { status?: number } };
+      if (result.error || !result.data) {
+        const status = result.response?.status ?? 0;
+        if (status === 409) {
+          throw new Error(`Branch "${options.name}" already exists.`);
+        }
+        throw new Error(result.error?.error?.message ?? `Management API returned HTTP ${status}.`);
+      }
+      const branch = result.data.data!;
+      return {
+        id: branch.id,
+        name: branch.gitName,
+        role: branch.role,
+      };
+    },
+
+    async deleteBranch(options) {
+      const result = await (client as unknown as { DELETE: Function }).DELETE("/v1/projects/{projectId}/branches/{branchId}", {
+        params: {
+          path: {
+            projectId: options.projectId,
+            branchId: options.branchId,
+          },
+        },
+        signal: options.signal,
+      }) as { error?: { error?: { message?: string } }; response?: { status?: number } };
+      if (result.error) {
+        const status = result.response?.status ?? 0;
+        if (status === 404) {
+          throw new Error("Branch Not Found");
+        }
+        throw new Error(result.error.error?.message ?? `Management API returned HTTP ${status}.`);
+      }
+    },
+
+    async renameBranch(options) {
+      const result = await (client as unknown as { PATCH: Function }).PATCH("/v1/projects/{projectId}/branches/{branchId}", {
+        params: {
+          path: {
+            projectId: options.projectId,
+            branchId: options.branchId,
+          },
+        },
+        body: { gitName: options.newName },
+        signal: options.signal,
+      }) as { error?: { error?: { message?: string } }; data?: { data?: { id: string; gitName: string; role: BranchKind } }; response?: { status?: number } };
+      if (result.error || !result.data) {
+        const status = result.response?.status ?? 0;
+        if (status === 404) {
+          throw new Error("Branch Not Found");
+        }
+        if (status === 409) {
+          throw new Error(`Branch "${options.newName}" already exists.`);
+        }
+        throw new Error(result.error?.error?.message ?? `Management API returned HTTP ${status}.`);
+      }
+      const branch = result.data.data!;
       return {
         id: branch.id,
         name: branch.gitName,

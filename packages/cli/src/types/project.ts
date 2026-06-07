@@ -68,6 +68,11 @@ export interface ProjectSetupResult {
   action: "created" | "linked";
 }
 
+export interface ProjectDeleteResult {
+  workspace: AuthWorkspace;
+  project: ProjectSummary;
+}
+
 export interface GitRepositoryConnection {
   id: string | null;
   provider: "github";

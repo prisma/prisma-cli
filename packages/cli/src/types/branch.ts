@@ -21,3 +21,31 @@ export interface BranchListResult {
   };
   branches: BranchSummary[];
 }
+
+export interface BranchCreateResult {
+  projectId: string;
+  projectName: string;
+  verboseContext?: {
+    workspace: AuthWorkspace;
+    project: ProjectSummary;
+    resolution: ProjectResolution;
+  };
+  branch: BranchSummary;
+}
+
+export interface BranchDeleteResult {
+  projectId: string;
+  projectName: string;
+  branchName: string;
+}
+
+export interface BranchRenameResult {
+  projectId: string;
+  projectName: string;
+  verboseContext?: {
+    workspace: AuthWorkspace;
+    project: ProjectSummary;
+    resolution: ProjectResolution;
+  };
+  branch: BranchSummary;
+}

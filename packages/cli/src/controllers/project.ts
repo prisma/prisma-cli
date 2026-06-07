@@ -17,7 +17,7 @@ import {
   type ResolvedProjectTarget,
 } from "../lib/project/resolution";
 import { promptForProjectSetupChoice } from "../lib/project/interactive-setup";
-import { readLocalResolutionPin } from "../lib/project/local-pin";
+import { readLocalResolutionPin, removeLocalResolutionPin } from "../lib/project/local-pin";
 import {
   bindProjectToDirectory,
   formatCommandArgument,
@@ -35,6 +35,7 @@ import { renderSummaryLine } from "../shell/ui";
 import type { AuthWorkspace } from "../types/auth";
 import type {
   GitRepositoryConnection,
+  ProjectDeleteResult,
   ProjectListResult,
   ProjectRepositoryConnectionResult,
   ProjectSetupResult,
@@ -211,6 +212,65 @@ export async function runProjectCreate(
     result,
     warnings: [],
     nextSteps: ["prisma-cli app deploy"],
+  };
+}
+
+export async function runProjectDelete(
+  context: CommandContext,
+  projectRef: string,
+): Promise<CommandSuccess<ProjectDeleteResult>> {
+  const authState = await requireAuthenticatedAuthState(context);
+  const workspace = authState.workspace;
+  if (!workspace) {
+    throw workspaceRequiredError();
+  }
+
+  if (!isRealMode(context)) {
+    throw featureUnavailableError(
+      "Project delete is not available in fixture mode",
+      "Deleting Projects requires live platform integration.",
+      "Rerun without fixture mode enabled to delete a Project.",
+      ["prisma-cli auth login"],
+      "project",
+    );
+  }
+
+  const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
+  if (!client) {
+    throw authRequiredError();
+  }
+
+  const provider = createPreviewAppProvider(client);
+  const projects = await listRealWorkspaceProjects(client, workspace, context.runtime.signal);
+  const project = resolveProjectForSetup(projectRef.trim(), projects, workspace);
+
+  await provider.deleteProject({ projectId: project.id, signal: context.runtime.signal }).catch((error) => {
+    throw new CliError({
+      code: "PROJECT_DELETE_FAILED",
+      domain: "project",
+      summary: `Could not delete Project "${project.name}"`,
+      why: error instanceof Error ? error.message : String(error),
+      fix: "Retry the command, or check that the token has permission to delete Projects.",
+      exitCode: 1,
+      nextSteps: ["prisma-cli project list"],
+    });
+  });
+
+  const localPin = await readLocalResolutionPin(context.runtime.cwd, context.runtime.signal);
+  let localPinCleared = false;
+  if (localPin.kind === "present" && localPin.pin.projectId === project.id) {
+    await removeLocalResolutionPin(context.runtime.cwd, localPin.pin, context.runtime.signal);
+    localPinCleared = true;
+  }
+
+  return {
+    command: "project.delete",
+    result: {
+      workspace,
+      project: toProjectSummary(project),
+    },
+    warnings: [],
+    nextSteps: localPinCleared ? [] : ["prisma-cli project link"],
   };
 }
 

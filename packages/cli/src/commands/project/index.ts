@@ -1,10 +1,12 @@
 import { Command } from "commander";
 
-import { runProjectCreate, runProjectLink, runProjectList, runProjectShow } from "../../controllers/project";
+import { runProjectCreate, runProjectDelete, runProjectLink, runProjectList, runProjectShow } from "../../controllers/project";
 import {
+  renderProjectDelete,
   renderProjectSetup,
   renderProjectList,
   renderProjectShow,
+  serializeProjectDelete,
   serializeProjectSetup,
   serializeProjectList,
   serializeProjectShow,
@@ -13,7 +15,7 @@ import { attachCommandDescriptor } from "../../shell/command-meta";
 import { addCompactGlobalFlags, addGlobalFlags } from "../../shell/global-flags";
 import { runCommand } from "../../shell/command-runner";
 import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
-import type { ProjectListResult, ProjectSetupResult, ProjectShowResult } from "../../types/project";
+import type { ProjectDeleteResult, ProjectListResult, ProjectSetupResult, ProjectShowResult } from "../../types/project";
 import { createEnvCommand } from "../env";
 
 export function createProjectCommand(runtime: CliRuntime): Command {
@@ -25,6 +27,7 @@ export function createProjectCommand(runtime: CliRuntime): Command {
   project.addCommand(createProjectShowCommand(runtime));
   project.addCommand(createProjectCreateCommand(runtime));
   project.addCommand(createProjectLinkCommand(runtime));
+  project.addCommand(createProjectDeleteCommand(runtime));
   project.addCommand(createEnvCommand(runtime));
 
   return project;
@@ -67,6 +70,28 @@ function createProjectLinkCommand(runtime: CliRuntime): Command {
       {
         renderHuman: (context, descriptor, result) => renderProjectSetup(context, descriptor, result),
         renderJson: (result) => serializeProjectSetup(result),
+      },
+    );
+  });
+
+  return command;
+}
+
+function createProjectDeleteCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("delete"), runtime), "project.delete");
+
+  command.argument("<name>", "Project name or id");
+  addGlobalFlags(command);
+
+  command.action(async (name, options) => {
+    await runCommand<ProjectDeleteResult>(
+      runtime,
+      "project.delete",
+      options as Record<string, unknown>,
+      (context) => runProjectDelete(context, String(name)),
+      {
+        renderHuman: (context, descriptor, result) => renderProjectDelete(context, descriptor, result),
+        renderJson: (result) => serializeProjectDelete(result),
       },
     );
   });

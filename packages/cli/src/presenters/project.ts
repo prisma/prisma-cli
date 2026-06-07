@@ -8,6 +8,7 @@ import { formatDescriptorLabel } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
 import type {
   GitRepositoryConnection,
+  ProjectDeleteResult,
   ProjectListResult,
   ProjectRepositoryConnectionResult,
   ProjectSetupResult,
@@ -133,6 +134,20 @@ export function renderProjectSetup(
 }
 
 export function serializeProjectSetup(result: ProjectSetupResult) {
+  return result;
+}
+
+export function renderProjectDelete(
+  context: CommandContext,
+  _descriptor: CommandDescriptor,
+  result: ProjectDeleteResult,
+): string[] {
+  return [
+    renderSummaryLine(context.ui, "success", `Deleted Project "${result.project.name}"`),
+  ];
+}
+
+export function serializeProjectDelete(result: ProjectDeleteResult) {
   return result;
 }
 

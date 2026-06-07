@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -240,6 +240,167 @@ describe("project controller", () => {
     expect(stderr.buffer).toContain("Which Project should this directory use?");
     expect(stderr.buffer).toContain("Project name");
     expect(stderr.buffer).toContain("suggested-name");
+  });
+
+  it("deletes an existing project by name with --yes flag, clearing the local pin", async () => {
+    const get = vi.fn().mockResolvedValue({
+      data: {
+        data: [
+          { id: "proj_123", name: "Acme Dashboard", workspace: { id: "ws_123", name: "Acme Inc" } },
+        ],
+      },
+    });
+    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token", GET: get });
+    const deleteProject = vi.fn().mockResolvedValue(undefined);
+
+    vi.doMock("../src/lib/auth/auth-ops", () => ({
+      readAuthState: vi.fn().mockResolvedValue({
+        authenticated: true,
+        provider: null,
+        user: { email: "test@example.com" },
+        workspace: { id: "ws_123", name: "Acme Inc" },
+      }),
+      performLogin: vi.fn(),
+      performLogout: vi.fn(),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({ deleteProject })),
+    }));
+
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, ".prisma"), { recursive: true });
+    await writeFile(path.join(cwd, ".prisma", "local.json"), JSON.stringify({ workspaceId: "ws_123", projectId: "proj_123" }), "utf8");
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      flags: { yes: true },
+      isTTY: false,
+      env: { ...process.env, PRISMA_CLI_MOCK_FIXTURE_PATH: undefined },
+    });
+
+    await context.stateStore.setAuthSession({
+      provider: "github",
+      userId: "usr_456",
+      workspaceId: "ws_123",
+    });
+
+    const { runProjectDelete } = await import("../src/controllers/project");
+    const result = await runProjectDelete(context, "Acme Dashboard");
+
+    expect(deleteProject).toHaveBeenCalledWith({
+      projectId: "proj_123",
+      signal: context.runtime.signal,
+    });
+    expect(result.result).toMatchObject({
+      project: { id: "proj_123", name: "Acme Dashboard" },
+    });
+    await expect(readFile(path.join(cwd, ".prisma", "local.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("returns PROJECT_NOT_FOUND when deleting a non-existent project", async () => {
+    const get = vi.fn().mockResolvedValue({
+      data: {
+        data: [
+          { id: "proj_123", name: "Acme Dashboard", workspace: { id: "ws_123", name: "Acme Inc" } },
+        ],
+      },
+    });
+    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token", GET: get });
+    const deleteProject = vi.fn();
+
+    vi.doMock("../src/lib/auth/auth-ops", () => ({
+      readAuthState: vi.fn().mockResolvedValue({
+        authenticated: true,
+        provider: null,
+        user: { email: "test@example.com" },
+        workspace: { id: "ws_123", name: "Acme Inc" },
+      }),
+      performLogin: vi.fn(),
+      performLogout: vi.fn(),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({ deleteProject })),
+    }));
+
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: { ...process.env, PRISMA_CLI_MOCK_FIXTURE_PATH: undefined },
+    });
+
+    await context.stateStore.setAuthSession({
+      provider: "github",
+      userId: "usr_456",
+      workspaceId: "ws_123",
+    });
+
+    const { runProjectDelete } = await import("../src/controllers/project");
+    await expect(runProjectDelete(context, "NonExistent")).rejects.toMatchObject({
+      code: "PROJECT_NOT_FOUND",
+      domain: "project",
+      summary: "Project not found",
+    });
+  });
+
+  it("returns PROJECT_DELETE_FAILED when the management API errors", async () => {
+    const get = vi.fn().mockResolvedValue({
+      data: {
+        data: [
+          { id: "proj_123", name: "Acme Dashboard", workspace: { id: "ws_123", name: "Acme Inc" } },
+        ],
+      },
+    });
+    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token", GET: get });
+    const deleteProject = vi.fn().mockRejectedValue(new Error("Internal Server Error (HTTP 503)"));
+
+    vi.doMock("../src/lib/auth/auth-ops", () => ({
+      readAuthState: vi.fn().mockResolvedValue({
+        authenticated: true,
+        provider: null,
+        user: { email: "test@example.com" },
+        workspace: { id: "ws_123", name: "Acme Inc" },
+      }),
+      performLogin: vi.fn(),
+      performLogout: vi.fn(),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({ deleteProject })),
+    }));
+
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: { ...process.env, PRISMA_CLI_MOCK_FIXTURE_PATH: undefined },
+    });
+
+    await context.stateStore.setAuthSession({
+      provider: "github",
+      userId: "usr_456",
+      workspaceId: "ws_123",
+    });
+
+    const { runProjectDelete } = await import("../src/controllers/project");
+    await expect(runProjectDelete(context, "Acme Dashboard")).rejects.toMatchObject({
+      code: "PROJECT_DELETE_FAILED",
+      domain: "project",
+      summary: expect.stringContaining('Could not delete Project "Acme Dashboard"'),
+    });
   });
 
   it("returns PROJECT_CREATE_FAILED when project creation fails", async () => {

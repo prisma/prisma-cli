@@ -96,6 +96,12 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: ["prisma-cli project create my-app", "prisma-cli project create my-app --json"],
   },
   {
+    id: "project.delete",
+    path: ["prisma", "project", "delete"],
+    description: "Delete a project from the workspace",
+    examples: ["prisma-cli project delete my-app", "prisma-cli project delete \"Acme Dashboard\" --yes"],
+  },
+  {
     id: "project.link",
     path: ["prisma", "project", "link"],
     description: "Link this directory to a Project",
@@ -122,6 +128,24 @@ const DESCRIPTORS: CommandDescriptor[] = [
     path: ["prisma", "branch", "list"],
     description: "List Platform branches for the resolved project",
     examples: ["prisma-cli branch list", "prisma-cli branch list --json"],
+  },
+  {
+    id: "branch.create",
+    path: ["prisma", "branch", "create"],
+    description: "Create a new branch on the resolved project",
+    examples: ["prisma-cli branch create feat-login"],
+  },
+  {
+    id: "branch.delete",
+    path: ["prisma", "branch", "delete"],
+    description: "Delete a branch from the resolved project",
+    examples: ["prisma-cli branch delete feat-login"],
+  },
+  {
+    id: "branch.rename",
+    path: ["prisma", "branch", "rename"],
+    description: "Rename a branch on the resolved project",
+    examples: ["prisma-cli branch rename feat-login feat-auth"],
   },
   {
     id: "app.build",
