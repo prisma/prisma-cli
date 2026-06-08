@@ -63,6 +63,18 @@ function createDeployResult(): AppDeployResult {
       url: "https://api.prisma.build",
     },
     deploySettings: {
+      config: {
+        path: "prisma.app.json",
+        status: "used",
+      },
+      buildCommand: {
+        value: "bun run build",
+        source: null,
+      },
+      outputDirectory: {
+        value: ".",
+        source: null,
+      },
       framework: {
         key: "hono",
         buildType: "bun",
@@ -207,7 +219,23 @@ describe("app deploy presenter", () => {
   it("keeps verbose-only deploy details out of JSON serialization", () => {
     const json = JSON.parse(JSON.stringify(serializeAppDeploy(createDeployResult())));
 
-    expect(json).not.toHaveProperty("deploySettings");
+    expect(json.deploySettings).toEqual({
+      config: {
+        path: "prisma.app.json",
+        status: "used",
+      },
+      buildCommand: {
+        value: "bun run build",
+        source: null,
+      },
+      outputDirectory: {
+        value: ".",
+        source: null,
+      },
+    });
+    expect(json.deploySettings).not.toHaveProperty("framework");
+    expect(json.deploySettings).not.toHaveProperty("entrypoint");
+    expect(json.deploySettings).not.toHaveProperty("httpPort");
     expect(json).not.toHaveProperty("localPin");
     expect(json.branch).toEqual({
       name: "main",

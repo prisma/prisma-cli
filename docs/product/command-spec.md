@@ -58,7 +58,7 @@ Out of scope for the current beta:
   non-TTY stderr, and when `NO_UPDATE_NOTIFIER` is set. When shown, update
   notifications are stderr-only human output and do not change the original
   command result.
-- Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for Project -> Branch -> App resolution. `.prisma/local.json` is a gitignored local pin/cache, not a declarative repo config file.
+- Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for Project -> Branch -> App resolution. `.prisma/local.json` is a gitignored local pin/cache, not a declarative repo config file. `prisma.app.json` is only for app build settings.
 - Remote commands do not silently change local context.
 
 ## Authentication
@@ -627,6 +627,11 @@ Behavior:
 - writes `.prisma/local.json` after Project binding succeeds and before build/deploy starts, so retries after a failed deploy do not repeat setup
 - before asking `Customize build settings? (y/N)`, previews the detected framework and runtime so the user can see the defaults they are accepting or changing
 - asks `Customize build settings? (y/N)` only while binding the directory for the first time, and only asks for Framework and HTTP port when the user opts in
+- for Next.js, TanStack Start, and Bun/Hono deploys, reads or creates `prisma.app.json` before build and uses it for app build settings:
+  - `Build Command` prefers `<package-manager> run build` when `package.json` has `scripts.build`
+  - otherwise `Build Command` falls back to the framework default, such as `next build`
+  - `Output Directory` is a literal framework output path, such as `.next/standalone`, `.output`, or `.`
+- does not overwrite an existing `prisma.app.json`; edit the file or delete it and rerun deploy to regenerate defaults
 - after setup, deploy prints `Deploying to <Project> / <Branch> / <App>`; later deploys print a compact target header such as `Deploying ./j1 to j1 / main / j1`
 - deploy progress uses short stage copy (`Building locally...`, `Built <size>`, `Uploading...`, `Uploaded`, `Deploying...`, `Deployed`) and never prints `Status: running` or `Deployment is running at ...`
 - success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma-cli app logs`
@@ -647,11 +652,12 @@ Behavior:
 - if schema setup fails, deploy stops before the app build/deploy starts
 - `--env DATABASE_URL=...`, `--env DIRECT_URL=...`, or the same keys loaded from an env file suppress automatic database prompting; combining those database env vars with `--db` is rejected
 - maps user-facing framework names to deploy build strategies
+- does not accept `--build-command` or `--output-directory`; custom build settings are edited in `prisma.app.json`, which is initially generated from `package.json` `scripts.build` and framework defaults for config-backed deploy types
 - uses `src/index.ts` as the Hono deploy entrypoint when the app has no `package.json#main` or `package.json#module` and that file exists
 - supports vanilla Bun apps with `--framework bun` using `package.json#main` or `package.json#module`, or with `--entry <path>`
 - treats `--entry <path>` without `--framework` as a Bun app deploy
 - does not print secret values
-- returns app, deployment id, URL, and next steps in `--json` output
+- returns app, deployment id, URL, deploy settings including `prisma.app.json` status/build/output metadata, and next steps in `--json` output
 
 Examples:
 

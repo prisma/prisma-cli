@@ -169,6 +169,7 @@ These codes are the minimum stable set for the MVP:
 - `LOCAL_PROJECT_WORKSPACE_MISMATCH`
 - `LOCAL_STATE_STALE`
 - `BRANCH_NOT_DEPLOYABLE`
+- `APP_CONFIG_INVALID`
 - `FRAMEWORK_NOT_DETECTED`
 - `DEPLOYMENT_NOT_FOUND`
 - `NO_DEPLOYMENTS`
@@ -214,6 +215,7 @@ Recommended meanings:
 - `LOCAL_PROJECT_WORKSPACE_MISMATCH`: local Project pin points at a different workspace than the active authenticated workspace; callers should sign in to the linked workspace or relink the directory
 - `LOCAL_STATE_STALE`: local Project pin no longer matches platform data and continuing would be ambiguous
 - `BRANCH_NOT_DEPLOYABLE`: command tried to deploy to a non-deployable branch context
+- `APP_CONFIG_INVALID`: `prisma.app.json` is missing required build settings, has invalid JSON, or points outside the app root
 - `FRAMEWORK_NOT_DETECTED`: app deploy could not detect a supported Beta framework and no explicit framework/build type was provided
 - `DEPLOYMENT_NOT_FOUND`: requested deployment id does not exist
 - `NO_DEPLOYMENTS`: command resolved a branch or app but found no deployments
