@@ -636,15 +636,18 @@ Behavior:
 - deploy progress uses short stage copy (`Building locally...`, `Built <size>`, `Uploading...`, `Uploaded`, `Deploying...`, `Deployed`) and never prints `Status: running` or `Deployment is running at ...`
 - success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma-cli app logs`
 - accepts repeated `--env NAME=VALUE` flags and dotenv file paths such as `--env .env`
-- supports `--db` for preview Branches to create a new empty Prisma Postgres database, apply a supported local Prisma schema source when one exists, and write branch-scoped `DATABASE_URL` and `DIRECT_URL` overrides through the existing `project env` storage
+- supports `--db` to create a new empty Prisma Postgres database, apply a supported local Prisma schema source when one exists, and write `DATABASE_URL` and `DIRECT_URL` through the existing `project env` storage
 - supports `--no-db` to suppress automatic database prompting for the deploy
 - `--db` and `--no-db` are mutually exclusive; passing both is rejected
 - `--yes` alone never creates a database; CI must pass `--db --yes` to create and wire one
-- branch database setup only runs for preview Branches; production database env vars are managed with `project env`
-- branch database setup never overwrites an existing branch-scoped `DATABASE_URL`; when the branch already has `DATABASE_URL`, `--db` leaves branch database env vars unchanged and continues
-- when only `DIRECT_URL` exists on the branch, explicit `--db` treats it as partial setup and repairs the pair by writing fresh branch database env values
-- if schema setup or branch env-var wiring fails after database creation, the CLI deletes the newly created database before returning the error
-- branch database setup does not clone or infer schema from another database; it only creates an empty database and optionally applies schema from local code
+- preview Branch setup writes branch-scoped env-var overrides
+- production setup writes production env vars only during the first production deploy, before the selected App has a live deployment
+- later production deploys do not prompt for database setup; explicit `--db` is rejected once the selected production App has a live deployment
+- database setup never overwrites an existing branch-scoped `DATABASE_URL`; when the branch already has `DATABASE_URL`, `--db` leaves branch database env vars unchanged and continues
+- production setup treats existing production `DATABASE_URL` or `DIRECT_URL` as BYO DB intent; it does not prompt, and explicit `--db` leaves production env vars unchanged and continues with a warning
+- when only `DIRECT_URL` exists on a preview branch, explicit `--db` treats it as partial setup and repairs the pair by writing fresh branch database env values
+- if schema setup or env-var wiring fails after database creation, the CLI deletes the newly created database before returning the error
+- database setup does not clone or infer schema from another database; it only creates an empty database and optionally applies schema from local code
 - Prisma Next config (`prisma-next.config.*`) is preferred over `schema.prisma`; setup runs `prisma-next contract emit` and then `prisma-next db init`
 - for Prisma ORM `schema.prisma`, setup runs `prisma migrate deploy` when `prisma/migrations` exists next to the schema, otherwise it runs `prisma db push`
 - when no supported Prisma schema source is found, `--db` still creates the database and env overrides but skips schema setup

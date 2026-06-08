@@ -156,19 +156,20 @@ resource.
 
 The beta package does not expose a standalone database command group yet. The
 current database surface is limited to `app deploy --db`, which can create an
-empty Prisma Postgres database for a preview Branch, apply a supported local
-Prisma schema source when available, and write normal branch-scoped environment
-variable overrides.
+empty Prisma Postgres database, apply a supported local Prisma schema source
+when available, and write normal environment variables for the deploy target.
 
 Rules:
 
 - database wiring uses the existing environment-variable model
-- `DATABASE_URL` is written as a preview Branch override, not a separate app binding
-- branch database setup never overwrites an existing branch-scoped `DATABASE_URL`
+- preview Branch setup writes branch-scoped `DATABASE_URL` and `DIRECT_URL` overrides, not separate app bindings
+- first production deploy setup writes production `DATABASE_URL` and `DIRECT_URL` env vars before the App has a live deployment
+- database setup never overwrites an existing branch-scoped `DATABASE_URL`
+- production setup treats existing production `DATABASE_URL` or `DIRECT_URL` as BYO DB intent and leaves env vars unchanged
 - schema setup is sourced only from local code; the CLI does not clone or infer schema from another database
 - Prisma Next config (`prisma-next.config.*`) is preferred over `schema.prisma`
 - known non-Postgres Prisma sources are treated as unsupported for automatic Prisma Postgres setup
-- production database configuration is managed through explicit environment-variable commands
+- later production database configuration is managed through explicit environment-variable commands
 
 ## Relationships
 

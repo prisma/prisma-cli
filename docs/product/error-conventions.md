@@ -241,8 +241,8 @@ Recommended meanings:
 - `REPO_ALREADY_CONNECTED`: a project already has a different GitHub repository connected
 - `REPO_CONNECTION_FAILED`: the Management API repository connection operation failed
 - `BUILD_FAILED`: build failed before a healthy deployment existed
-- `BRANCH_DATABASE_SETUP_FAILED`: preview Branch database creation or branch env-var wiring failed before deployment started
-- `SCHEMA_SETUP_FAILED`: local Prisma schema source setup against a newly created Branch database failed before deployment started
+- `BRANCH_DATABASE_SETUP_FAILED`: database creation or env-var wiring failed before deployment started
+- `SCHEMA_SETUP_FAILED`: local Prisma schema source setup against a newly created database failed before deployment started
 - `RUN_FAILED`: local framework run command could not be started or exited unsuccessfully
 - `DEPLOY_FAILED`: deployment or post-build health failed
 - `VERSION_UNAVAILABLE`: CLI could not read its own bundled package metadata to report a version (defensive; not expected in normal installs)
