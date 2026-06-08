@@ -300,6 +300,147 @@ describe("app deploy branch database setup", () => {
     });
   });
 
+  it("deploy --db creates a database, applies schema, and writes production env vars on first production deploy", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const branchId = "branch_main";
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+    ]);
+    const listDeployments = vi.fn().mockResolvedValue({
+      app: { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+      deployments: [],
+    });
+    const createBranchDatabase = vi.fn().mockResolvedValue({
+      id: "db_1",
+      name: "main",
+      branchId,
+      databaseUrl: "postgres://pooled",
+      directUrl: "postgres://direct",
+    });
+    const createEnvironmentVariable = vi.fn().mockImplementation(async (options: { key: string; branchId?: string; className: string }) => ({
+      id: `env_${options.key.toLowerCase()}`,
+      key: options.key,
+      branchId: options.branchId ?? null,
+      className: options.className,
+      isManagedBySystem: false,
+    }));
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+        liveUrl: "https://hello-world.prisma.app",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
+    const runBranchDatabaseSchemaSetup = vi.fn().mockResolvedValue({
+      command: "db-push",
+      source: "prisma-orm",
+      schemaPath: "prisma/schema.prisma",
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/branch-database", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/app/branch-database")>();
+      return {
+        ...actual,
+        runBranchDatabaseSchemaSetup,
+      };
+    });
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: vi.fn().mockResolvedValue({
+          id: branchId,
+          name: "main",
+          role: "production",
+        }),
+        listApps,
+        createBranchDatabase,
+        listEnvironmentVariables: vi.fn().mockResolvedValue([]),
+        createEnvironmentVariable,
+        updateEnvironmentVariable: vi.fn(),
+        deployApp,
+        listDeployments,
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, "prisma"), { recursive: true });
+    await writeFile(path.join(cwd, "prisma/schema.prisma"), "datasource db { provider = \"postgresql\" url = env(\"DATABASE_URL\") }\n");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      flags: {
+        yes: true,
+      },
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      branchName: "main",
+      framework: "hono",
+      db: true,
+    });
+
+    expect(listDeployments).toHaveBeenCalledWith("app_1");
+    expect(createBranchDatabase).toHaveBeenCalledWith({
+      projectId: "proj_123",
+      branchId,
+      branchName: "main",
+      signal: context.runtime.signal,
+    });
+    expect(runBranchDatabaseSchemaSetup).toHaveBeenCalledWith(
+      expect.objectContaining({
+        databaseUrl: "postgres://pooled",
+        directUrl: "postgres://direct",
+      }),
+    );
+    expect(createEnvironmentVariable.mock.calls[0]?.[0]).toEqual({
+      projectId: "proj_123",
+      className: "production",
+      key: "DATABASE_URL",
+      value: "postgres://pooled",
+      signal: context.runtime.signal,
+    });
+    expect(createEnvironmentVariable.mock.calls[1]?.[0]).toEqual({
+      projectId: "proj_123",
+      className: "production",
+      key: "DIRECT_URL",
+      value: "postgres://direct",
+      signal: context.runtime.signal,
+    });
+    expect(createBranchDatabase.mock.invocationCallOrder[0]).toBeLessThan(deployApp.mock.invocationCallOrder[0]);
+    expect(runBranchDatabaseSchemaSetup.mock.invocationCallOrder[0]).toBeLessThan(deployApp.mock.invocationCallOrder[0]);
+    expect(result.result.branchDatabase).toEqual({
+      status: "created",
+      database: {
+        id: "db_1",
+        name: "main",
+      },
+      envVars: ["DATABASE_URL", "DIRECT_URL"],
+      schema: {
+        command: "db-push",
+        source: "prisma-orm",
+        path: "prisma/schema.prisma",
+      },
+    });
+  });
+
   it("deploy --db creates a branch database and applies a Prisma Next config before deploying", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const branchId = "branch_feature_next";
@@ -526,6 +667,112 @@ describe("app deploy branch database setup", () => {
       status: "skipped",
       reason: "branch-env-exists",
       envVars: ["DATABASE_URL"],
+      schema: null,
+    });
+  });
+
+  it("deploy --db treats existing production database env vars as BYO DB and leaves them unchanged", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const branchId = "branch_main";
+    const listApps = vi.fn().mockResolvedValue([
+      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+    ]);
+    const createBranchDatabase = vi.fn();
+    const createEnvironmentVariable = vi.fn();
+    const updateEnvironmentVariable = vi.fn();
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
+    const listEnvironmentVariables = vi.fn().mockImplementation(async (options: { key?: string; className?: string }) => {
+      if (options.className !== "production") {
+        return [];
+      }
+      if (options.key === "DATABASE_URL") {
+        return [{
+          id: "env_database_url",
+          key: "DATABASE_URL",
+          branchId: null,
+          className: "production",
+          isManagedBySystem: false,
+        }];
+      }
+      if (options.key === "DIRECT_URL") {
+        return [{
+          id: "env_direct_url",
+          key: "DIRECT_URL",
+          branchId: null,
+          className: "production",
+          isManagedBySystem: false,
+        }];
+      }
+      return [];
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: vi.fn().mockResolvedValue({
+          id: branchId,
+          name: "main",
+          role: "production",
+        }),
+        listApps,
+        createBranchDatabase,
+        listEnvironmentVariables,
+        createEnvironmentVariable,
+        updateEnvironmentVariable,
+        deployApp,
+        listDeployments: vi.fn().mockResolvedValue({
+          app: { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+          deployments: [],
+        }),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      flags: {
+        yes: true,
+      },
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      branchName: "main",
+      framework: "hono",
+      db: true,
+    });
+
+    expect(createBranchDatabase).not.toHaveBeenCalled();
+    expect(createEnvironmentVariable).not.toHaveBeenCalled();
+    expect(updateEnvironmentVariable).not.toHaveBeenCalled();
+    expect(deployApp).toHaveBeenCalled();
+    expect(result.result.branchDatabase).toEqual({
+      status: "skipped",
+      reason: "production-env-exists",
+      envVars: ["DATABASE_URL", "DIRECT_URL"],
       schema: null,
     });
   });
@@ -887,6 +1134,147 @@ describe("app deploy branch database setup", () => {
     expect(createBranchDatabase).toHaveBeenCalled();
   });
 
+  it("--yes alone does not create a database during first production deploy", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const branchId = "branch_main";
+    const createBranchDatabase = vi.fn();
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: vi.fn().mockResolvedValue({
+          id: branchId,
+          name: "main",
+          role: "production",
+        }),
+        listApps: vi.fn().mockResolvedValue([
+          { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+        ]),
+        createBranchDatabase,
+        listEnvironmentVariables: vi.fn().mockResolvedValue([]),
+        createEnvironmentVariable: vi.fn(),
+        updateEnvironmentVariable: vi.fn(),
+        deployApp,
+        listDeployments: vi.fn().mockResolvedValue({
+          app: { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+          deployments: [],
+        }),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, "prisma"), { recursive: true });
+    await writeFile(path.join(cwd, "prisma/schema.prisma"), "datasource db { provider = \"postgresql\" url = env(\"DATABASE_URL\") }\n");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      flags: {
+        yes: true,
+      },
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      branchName: "main",
+      framework: "hono",
+    });
+
+    expect(createBranchDatabase).not.toHaveBeenCalled();
+    expect(deployApp).toHaveBeenCalled();
+    expect(result.result.branchDatabase).toBeUndefined();
+  });
+
+  it("rejects --db for production apps that already have a live deployment", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const branchId = "branch_main";
+    const createBranchDatabase = vi.fn();
+    const deployApp = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => ({
+        resolveBranch: vi.fn().mockResolvedValue({
+          id: branchId,
+          name: "main",
+          role: "production",
+        }),
+        listApps: vi.fn().mockResolvedValue([
+          { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live", liveUrl: "https://hello-world.prisma.app" },
+        ]),
+        createBranchDatabase,
+        listEnvironmentVariables: vi.fn().mockResolvedValue([]),
+        createEnvironmentVariable: vi.fn(),
+        updateEnvironmentVariable: vi.fn(),
+        deployApp,
+        listDeployments: vi.fn().mockResolvedValue({
+          app: { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live", liveUrl: "https://hello-world.prisma.app" },
+          deployments: [{
+            id: "dep_live",
+            status: "running",
+            createdAt: "2026-06-01T00:00:00.000Z",
+            url: "https://hello-world.prisma.app",
+            live: true,
+          }],
+        }),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      flags: {
+        yes: true,
+      },
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      branchName: "main",
+      framework: "hono",
+      prod: true,
+      db: true,
+    })).rejects.toMatchObject({
+      code: "USAGE_ERROR",
+      domain: "app",
+      summary: "Database setup is only available during the first production deploy",
+    });
+    expect(createBranchDatabase).not.toHaveBeenCalled();
+    expect(deployApp).not.toHaveBeenCalled();
+  });
+
   it("rejects --db when deploy also passes database env vars", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const createBranchDatabase = vi.fn();
@@ -936,7 +1324,7 @@ describe("app deploy branch database setup", () => {
     })).rejects.toMatchObject({
       code: "USAGE_ERROR",
       domain: "app",
-      summary: "Branch database setup cannot be combined with provided database env vars",
+      summary: "Database setup cannot be combined with provided database env vars",
     });
     expect(createBranchDatabase).not.toHaveBeenCalled();
     expect(deployApp).not.toHaveBeenCalled();
@@ -1228,7 +1616,7 @@ describe("app deploy branch database setup", () => {
     })).rejects.toMatchObject({
       code: "USAGE_ERROR",
       domain: "app",
-      summary: "Branch database setup is not available for this Prisma schema",
+      summary: "Database setup is not available for this Prisma schema",
     });
     expect(createBranchDatabase).not.toHaveBeenCalled();
     expect(deployApp).not.toHaveBeenCalled();

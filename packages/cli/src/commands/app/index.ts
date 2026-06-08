@@ -183,8 +183,8 @@ function createDeployCommand(runtime: CliRuntime): Command {
       new Option("--env <name=value|file>", "Environment variable assignment or dotenv file")
         .argParser(collectRepeatableValues),
     )
-    .addOption(new Option("--db", "Create and wire an isolated database for the preview Branch"))
-    .addOption(new Option("--no-db", "Skip branch database setup"))
+    .addOption(new Option("--db", "Create and wire a Prisma Postgres database for this deploy target"))
+    .addOption(new Option("--no-db", "Skip database setup"))
     .addOption(new Option("--prod", "Confirm intent to deploy to production"));
   addGlobalFlags(command);
 
@@ -209,7 +209,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
         if (hasDbConflict) {
           throw usageError(
             "app deploy accepts either --db or --no-db",
-            "--db requests branch database setup, while --no-db disables it.",
+            "--db requests database setup, while --no-db disables it.",
             "Pass exactly one database setup flag.",
             [
               "prisma-cli app deploy --db",

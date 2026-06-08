@@ -310,7 +310,7 @@ export async function runAppDeploy(
   framework = customized.framework;
   runtime = customized.runtime;
 
-  await enforceProductionDeployGate(context, provider, {
+  const productionDeployGate = await enforceProductionDeployGate(context, provider, {
     appId: selectedApp.appId,
     appName: selectedApp.displayName,
     branchKind: target.branch.kind,
@@ -326,6 +326,7 @@ export async function runAppDeploy(
   const branchDatabaseSetup = await maybeSetupBranchDatabase(context, provider, projectId, toBranchDatabaseDeployBranch(target.branch), {
     db: options?.db,
     providedEnvVars: envVars,
+    firstProductionDeploy: productionDeployGate.firstProductionDeploy,
   });
 
   const progressState = createPreviewDeployProgressState();
