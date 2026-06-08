@@ -657,7 +657,7 @@ Behavior:
 - supports vanilla Bun apps with `--framework bun` using `package.json#main` or `package.json#module`, or with `--entry <path>`
 - treats `--entry <path>` without `--framework` as a Bun app deploy
 - does not print secret values
-- returns app, deployment id, URL, and next steps in `--json` output
+- returns app, deployment id, URL, deploy settings including `prisma.app.json` status/build/output metadata, and next steps in `--json` output
 
 Examples:
 

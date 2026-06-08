@@ -379,6 +379,18 @@ export async function runAppDeploy(
       },
       deployment: deployResult.deployment,
       deploySettings: {
+        config: {
+          path: buildSettingsResolution.relativeConfigPath,
+          status: buildSettingsResolution.status,
+        },
+        buildCommand: {
+          value: buildSettingsResolution.settings.buildCommand,
+          source: buildSettingsResolution.settings.buildCommandSource,
+        },
+        outputDirectory: {
+          value: buildSettingsResolution.settings.outputDirectory,
+          source: buildSettingsResolution.settings.outputDirectorySource,
+        },
         framework: {
           key: framework.key,
           buildType,

@@ -509,6 +509,30 @@ describe("app env vars", () => {
           status: "running",
           url: "https://hello-world.prisma.app",
         },
+        deploySettings: {
+          config: {
+            path: "prisma.app.json",
+            status: "used",
+          },
+          buildCommand: {
+            value: "bun run build",
+            source: null,
+          },
+          outputDirectory: {
+            value: ".next/standalone",
+            source: null,
+          },
+          framework: {
+            key: "nextjs",
+            buildType: "nextjs",
+            name: "Next.js",
+            source: "explicit",
+          },
+          entrypoint: null,
+          httpPort: 3000,
+          region: null,
+          envVars: ["DATABASE_URL"],
+        },
       },
       warnings: [],
       nextSteps: ["prisma-cli app list-deploys"],
@@ -574,6 +598,20 @@ describe("app env vars", () => {
         },
         deployment: {
           id: "dep_123",
+        },
+        deploySettings: {
+          config: {
+            path: "prisma.app.json",
+            status: "used",
+          },
+          buildCommand: {
+            value: "bun run build",
+            source: null,
+          },
+          outputDirectory: {
+            value: ".next/standalone",
+            source: null,
+          },
         },
       },
     });

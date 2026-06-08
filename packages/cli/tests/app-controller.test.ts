@@ -1171,6 +1171,20 @@ describe("app controller", () => {
         id: "app_new",
         name: "my-app",
       },
+      deploySettings: {
+        config: {
+          path: "prisma.app.json",
+          status: "created",
+        },
+        buildCommand: {
+          value: "next build",
+          source: "Next.js default",
+        },
+        outputDirectory: {
+          value: ".next/standalone",
+          source: "Next.js output",
+        },
+      },
       localPin: {
         path: ".prisma/local.json",
         written: true,
@@ -1260,7 +1274,7 @@ describe("app controller", () => {
       },
     });
 
-    await runAppDeploy(context, "hello-world", {
+    const result = await runAppDeploy(context, "hello-world", {
       projectRef: "proj_123",
       framework: "nextjs",
     });
@@ -1276,6 +1290,20 @@ describe("app controller", () => {
         },
       }),
     );
+    expect(result.result.deploySettings).toMatchObject({
+      config: {
+        path: "prisma.app.json",
+        status: "used",
+      },
+      buildCommand: {
+        value: "bun run build",
+        source: null,
+      },
+      outputDirectory: {
+        value: ".next/standalone",
+        source: null,
+      },
+    });
     expect(stderr.buffer).toContain("Using prisma.app.json");
     expect(stderr.buffer).toContain("Build Command");
     expect(stderr.buffer).toContain("bun run build");
