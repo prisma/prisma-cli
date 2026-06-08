@@ -75,6 +75,23 @@ Important themes:
 - non-TTY and non-interactive behavior must stay automation-friendly
 - structured error codes are the branching surface for agents and CI
 
+## Error Handling
+
+- Use `better-result` for owned application code that can fail.
+- Model expected failures as `TaggedError` types from `better-result`.
+- Put tagged error message construction in the constructor. Instantiate tagged errors directly; delete factory functions that only wrap constructors. Use static constructors only when they encode distinct domain variants.
+- Represent unexpected failures as `UnhandledException` from `better-result`.
+- Return only errors produced by the function plus errors propagated from callees. Do not create app-wide error unions.
+- Wrap throwing or rejecting boundaries with `Result.try` or `Result.tryPromise`. This includes SDK calls, I/O, parsing, and async framework calls.
+- Wrap expected throwing failures at the lowest throwing expression and map them to the local tagged error type.
+- Do not wrap a boundary only to match `UnhandledException` and rethrow it. Let unexpected failures throw directly when no expected error is modeled or propagated.
+- Use `Result.gen` to compose multiple results. Do not manually chain `isErr` propagation when `yield*` can express the flow.
+- Propagate typed results through lower layers. Do not convert results to plain values, `null`, booleans, or thrown exceptions below the boundary.
+- Convert results only at CLI-facing boundaries: command runners, controllers that produce command output, auth providers, API/client adapters, storage adapters, and startup assembly.
+- Match errors exhaustively with `matchError`. Do not use catch-all handlers or partial matches.
+- Throw tagged errors directly when their message and context are already correct. Do not wrap them in generic `Error` instances.
+- Do not refactor generated code, third-party SDK internals, or framework internals for result handling.
+
 ## When Making Changes
 
 - Prefer tightening existing docs over adding new surface area.
