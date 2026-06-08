@@ -84,6 +84,8 @@ Important themes:
 - Return only errors produced by the function plus errors propagated from callees. Do not create app-wide error unions.
 - Wrap throwing or rejecting boundaries with `Result.try` or `Result.tryPromise`. This includes SDK calls, I/O, parsing, and async framework calls.
 - Wrap expected throwing failures at the lowest throwing expression and map them to the local tagged error type.
+- Once a function returns `Result`, do not throw inside its body for modeled boundaries. Return expected errors, abort errors, and propagated `UnhandledException` values in the error union; throw only at temporary or final CLI-facing boundaries.
+- When mapping abortable boundary failures, prefer `signal.aborted` over matching error names or messages to detect cancellation.
 - Do not wrap a boundary only to match `UnhandledException` and rethrow it. Let unexpected failures throw directly when no expected error is modeled or propagated.
 - Use `Result.gen` to compose multiple results. Do not manually chain `isErr` propagation when `yield*` can express the flow.
 - Propagate typed results through lower layers. Do not convert results to plain values, `null`, booleans, or thrown exceptions below the boundary.

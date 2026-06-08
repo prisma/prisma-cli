@@ -1,4 +1,5 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
+import { matchError } from "better-result";
 import open from "open";
 
 import {
@@ -17,7 +18,7 @@ import {
   type ResolvedProjectTarget,
 } from "../lib/project/resolution";
 import { promptForProjectSetupChoice } from "../lib/project/interactive-setup";
-import { readLocalResolutionPin } from "../lib/project/local-pin";
+import { readLocalResolutionPin, type LocalResolutionPinReadError } from "../lib/project/local-pin";
 import {
   bindProjectToDirectory,
   formatCommandArgument,
@@ -65,16 +66,32 @@ async function readProjectListLocalBinding(
   projects: Array<Pick<ProjectCandidate, "id">>,
   signal: AbortSignal,
 ): Promise<ProjectListResult["localBinding"]> {
-  const pin = await readLocalResolutionPin(cwd, signal);
+  const pinResult = await readLocalResolutionPin(cwd, signal);
+  if (pinResult.isErr()) {
+    return localPinReadErrorToInvalidLocalBinding(pinResult.error);
+  }
+
+  const pin = pinResult.value;
   if (pin.kind === "present") {
     return pin.pin.workspaceId === workspace.id && projects.some((project) => project.id === pin.pin.projectId)
       ? { status: "linked" }
       : { status: "invalid" };
   }
-  if (pin.kind === "invalid") {
-    return { status: "invalid" };
-  }
   return { status: "not-linked" };
+}
+
+function localPinReadErrorToInvalidLocalBinding(error: LocalResolutionPinReadError): ProjectListResult["localBinding"] {
+  // Migration bridge: remove in Phase 20 when local-pin read errors are composed before controller output shaping.
+  return matchError(error, {
+    LocalResolutionPinInvalidJsonError: () => ({ status: "invalid" }),
+    LocalResolutionPinInvalidShapeError: () => ({ status: "invalid" }),
+    LocalResolutionPinReadAbortedError: (error) => {
+      throw error;
+    },
+    UnhandledException: (error) => {
+      throw error;
+    },
+  });
 }
 
 export async function runProjectList(context: CommandContext): Promise<CommandSuccess<ProjectListResult>> {

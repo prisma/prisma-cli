@@ -16,7 +16,7 @@ None.
 
 ### Phase 1: Foundation And Local Pin Read
 
-**Status:** ☐ Not started
+**Status:** ◐ Implemented; targeted tests pass, repo typecheck blocked by unrelated existing errors
 
 **Goal:** Add the dependency and prove typed expected failures on the smallest read-only project context slice.
 

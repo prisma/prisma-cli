@@ -4,6 +4,7 @@ import path from "node:path";
 import open from "open";
 import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
+import { Result, matchError } from "better-result";
 
 import { FileTokenStorage } from "../adapters/token-storage";
 import { authRequiredError, CliError, featureUnavailableError, usageError, workspaceRequiredError } from "../shell/errors";
@@ -69,6 +70,7 @@ import {
 import {
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
   readLocalResolutionPin,
+  type LocalResolutionPinReadError,
   type LocalResolutionPinReadResult,
 } from "../lib/project/local-pin";
 import { readLocalGitBranch } from "../lib/git/local-branch";
@@ -243,12 +245,13 @@ export async function runAppDeploy(
   });
 
   const skipLocalPin = Boolean(envProjectId || options?.projectRef || options?.createProjectName);
-  const localPin = skipLocalPin
-    ? ({ kind: "missing" } satisfies LocalResolutionPinReadResult)
+  const localPinReadResult = skipLocalPin
+    ? Result.ok({ kind: "missing" } satisfies LocalResolutionPinReadResult)
     : await readLocalResolutionPin(context.runtime.cwd, context.runtime.signal);
-  if (!skipLocalPin && localPin.kind === "invalid") {
-    throw localResolutionPinStaleError();
+  if (localPinReadResult.isErr()) {
+    throw localPinReadErrorToDeployError(localPinReadResult.error);
   }
+  const localPin = localPinReadResult.value;
 
   const branch = await resolveDeployBranch(context, options?.branchName);
   if (options?.httpPort) {
@@ -3361,6 +3364,20 @@ function localResolutionPinStaleError(): CliError {
     },
     exitCode: 1,
     nextSteps: ["prisma-cli project list", "prisma-cli project link <id-or-name>", "prisma-cli app deploy --project <id-or-name>"],
+  });
+}
+
+function localPinReadErrorToDeployError(error: LocalResolutionPinReadError): CliError {
+  // Migration bridge: remove in Phase 20 when app controllers compose Result errors instead of throwing CliError.
+  return matchError(error, {
+    LocalResolutionPinInvalidJsonError: () => localResolutionPinStaleError(),
+    LocalResolutionPinInvalidShapeError: () => localResolutionPinStaleError(),
+    LocalResolutionPinReadAbortedError: (error) => {
+      throw error;
+    },
+    UnhandledException: (error) => {
+      throw error;
+    },
   });
 }
 

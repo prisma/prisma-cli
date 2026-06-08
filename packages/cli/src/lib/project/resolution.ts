@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { matchError } from "better-result";
+
 import { formatCommandArgument } from "../../shell/command-arguments";
 import { CliError } from "../../shell/errors";
 import type { NextAction } from "../../shell/next-actions";
@@ -16,6 +18,7 @@ import type {
 } from "../../types/project";
 import {
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
+  type LocalResolutionPinReadError,
   type LocalResolutionPinReadResult,
   readLocalResolutionPin,
 } from "./local-pin";
@@ -359,9 +362,6 @@ async function resolveBoundProjectTarget(
   if (!localPin) {
     return null;
   }
-  if (localPin.kind === "invalid") {
-    throw localStateStaleError();
-  }
   if (localPin.kind === "present") {
     if (localPin.pin.workspaceId !== options.workspace.id) {
       throw localProjectWorkspaceMismatchError({
@@ -403,7 +403,12 @@ async function readImplicitLocalPin(
     return null;
   }
 
-  const localPin = await readLocalResolutionPin(options.context.runtime.cwd, options.context.runtime.signal);
+  const localPinResult = await readLocalResolutionPin(options.context.runtime.cwd, options.context.runtime.signal);
+  if (localPinResult.isErr()) {
+    throw localPinReadErrorToProjectError(localPinResult.error);
+  }
+
+  const localPin = localPinResult.value;
   if (localPin.kind === "present" && localPin.pin.workspaceId !== options.workspace.id) {
     throw localProjectWorkspaceMismatchError({
       pinnedWorkspaceId: localPin.pin.workspaceId,
@@ -413,6 +418,20 @@ async function readImplicitLocalPin(
   }
 
   return localPin;
+}
+
+function localPinReadErrorToProjectError(error: LocalResolutionPinReadError): CliError {
+  // Migration bridge: remove in Phase 20 when command boundaries convert Result errors directly.
+  return matchError(error, {
+    LocalResolutionPinInvalidJsonError: () => localStateStaleError(),
+    LocalResolutionPinInvalidShapeError: () => localStateStaleError(),
+    LocalResolutionPinReadAbortedError: (error) => {
+      throw error;
+    },
+    UnhandledException: (error) => {
+      throw error;
+    },
+  });
 }
 
 function resolvedTarget(
