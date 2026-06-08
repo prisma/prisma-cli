@@ -158,20 +158,41 @@ describe("app env vars", () => {
     expect(JSON.stringify(emptyValueError)).not.toContain("secret");
   });
 
-  it("parses repeated env assignments and allows empty values", async () => {
+  it("parses repeated env assignments", async () => {
     const { parseEnvAssignments } = await import("../src/lib/app/env-vars");
 
     expect(
       parseEnvAssignments(
         [
           "DATABASE_URL=postgresql://example",
-          "EMPTY=",
+          "TOKEN=value=with=equals",
         ],
         { commandName: "deploy" },
       ),
     ).toEqual({
       DATABASE_URL: "postgresql://example",
-      EMPTY: "",
+      TOKEN: "value=with=equals",
+    });
+  });
+
+  it("parses deploy env inputs from assignments and dotenv files", async () => {
+    const { createTempCwd } = await import("./helpers");
+    const { parseEnvInputs } = await import("../src/lib/app/env-vars");
+    const cwd = await createTempCwd();
+    await writeFile(
+      path.join(cwd, ".env"),
+      [
+        "DATABASE_URL=postgresql://example",
+        "FEATURE_FLAG=enabled",
+      ].join("\n"),
+    );
+
+    await expect(
+      parseEnvInputs(cwd, [".env", "INLINE_FLAG=enabled"], { commandName: "deploy" }),
+    ).resolves.toEqual({
+      DATABASE_URL: "postgresql://example",
+      FEATURE_FLAG: "enabled",
+      INLINE_FLAG: "enabled",
     });
   });
 
@@ -188,6 +209,19 @@ describe("app env vars", () => {
       expect.objectContaining({
         code: "USAGE_ERROR",
         summary: "Environment variable name is required",
+      }),
+    );
+    expect(() => parseEnvAssignments(["lowercase-key=secret"], { commandName: "deploy" })).toThrowError(
+      expect.objectContaining({
+        code: "USAGE_ERROR",
+        summary: 'Invalid environment variable "lowercase-key"',
+        why: expect.stringContaining("must match the POSIX env-var shape"),
+      }),
+    );
+    expect(() => parseEnvAssignments(["EMPTY="], { commandName: "deploy" })).toThrowError(
+      expect.objectContaining({
+        code: "USAGE_ERROR",
+        summary: 'Environment variable "EMPTY" has an empty value',
       }),
     );
 
@@ -446,6 +480,7 @@ describe("app env vars", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeFile(path.join(cwd, ".env"), "FEATURE_FLAG=enabled\n");
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -462,7 +497,7 @@ describe("app env vars", () => {
       {
         projectRef: "proj_123",
         framework: "hono",
-        envAssignments: ["DATABASE_URL=postgresql://example", "FEATURE_FLAG=enabled", "EMPTY="],
+        envAssignments: ["DATABASE_URL=postgresql://example", ".env", "INLINE_FLAG=enabled"],
       },
     );
 
@@ -473,7 +508,7 @@ describe("app env vars", () => {
         envVars: {
           DATABASE_URL: "postgresql://example",
           FEATURE_FLAG: "enabled",
-          EMPTY: "",
+          INLINE_FLAG: "enabled",
         },
       }),
     );

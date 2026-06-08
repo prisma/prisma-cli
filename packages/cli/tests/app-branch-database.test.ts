@@ -887,7 +887,7 @@ describe("app deploy branch database setup", () => {
     expect(createBranchDatabase).toHaveBeenCalled();
   });
 
-  it("rejects --db when deploy also passes inline database env vars", async () => {
+  it("rejects --db when deploy also passes database env vars", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const createBranchDatabase = vi.fn();
     const deployApp = vi.fn();
@@ -914,6 +914,7 @@ describe("app deploy branch database setup", () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writeFile(path.join(cwd, ".env"), "DATABASE_URL=postgresql://example\n");
     const { context } = await createTestCommandContext({
       cwd,
       stateDir: path.join(cwd, ".state"),
@@ -930,12 +931,12 @@ describe("app deploy branch database setup", () => {
       projectRef: "proj_123",
       branchName: "feature/db",
       framework: "hono",
-      envAssignments: ["DATABASE_URL=postgresql://example"],
+      envAssignments: [".env"],
       db: true,
     })).rejects.toMatchObject({
       code: "USAGE_ERROR",
       domain: "app",
-      summary: "Branch database setup cannot be combined with inline database env vars",
+      summary: "Branch database setup cannot be combined with provided database env vars",
     });
     expect(createBranchDatabase).not.toHaveBeenCalled();
     expect(deployApp).not.toHaveBeenCalled();

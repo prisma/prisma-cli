@@ -10,6 +10,8 @@ export interface EnvFileAssignment {
   value: string;
 }
 
+type EnvFileCommand = "add" | "update" | "deploy";
+
 interface ParsedEnvFileKey {
   key: string;
   line: number;
@@ -20,7 +22,7 @@ const ASSIGNMENT_KEY_PATTERN = /^\s*(?:export\s+)?([^#=\s]+)\s*=/;
 export async function readEnvFileAssignments(
   cwd: string,
   filePath: string,
-  command: "add" | "update",
+  command: EnvFileCommand,
 ): Promise<EnvFileAssignment[]> {
   const resolvedPath = path.resolve(cwd, filePath);
   let contents: string;
@@ -31,7 +33,11 @@ export async function readEnvFileAssignments(
       `Failed to read env file "${filePath}"`,
       error instanceof Error ? error.message : "The file could not be read.",
       "Pass a readable dotenv file path.",
-      [`prisma-cli project env ${command} --file .env --role preview`],
+      [
+        command === "deploy"
+          ? "prisma-cli app deploy --env .env"
+          : `prisma-cli project env ${command} --file .env --role preview`,
+      ],
       "app",
     );
   }
@@ -42,7 +48,7 @@ export async function readEnvFileAssignments(
 export function parseEnvFileContents(
   contents: string,
   filePath: string,
-  command: "add" | "update",
+  command: EnvFileCommand,
 ): EnvFileAssignment[] {
   const parsedKeys = extractParsedKeys(contents);
   if (parsedKeys.length === 0) {
@@ -135,10 +141,10 @@ function validateEnvFileKey(
   key: string,
   line: number,
   filePath: string,
-  command: "add" | "update",
+  command: EnvFileCommand,
 ): void {
   try {
-    validateKey(key, command);
+    validateKey(key, command === "deploy" ? "add" : command);
   } catch (error) {
     const reason = error instanceof Error && error.message.length > 0
       ? error.message

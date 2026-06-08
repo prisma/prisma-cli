@@ -146,6 +146,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
       "prisma-cli app deploy --project proj_123",
       "prisma-cli app deploy --create-project my-app --yes",
       "prisma-cli app deploy --app my-app --env DATABASE_URL=postgresql://example",
+      "prisma-cli app deploy --env .env",
       "prisma-cli app deploy --db",
       "prisma-cli app deploy --db --yes",
       "prisma-cli app deploy --app my-app --framework nextjs --http-port 3000",

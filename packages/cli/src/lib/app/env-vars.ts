@@ -1,11 +1,15 @@
 import { usageError } from "../../shell/errors";
+import { validateKey } from "./env-config";
+import { readEnvFileAssignments } from "./env-file";
+
+type EnvAssignmentOptions = {
+  commandName: "deploy";
+  requireAtLeastOne?: boolean;
+};
 
 export function parseEnvAssignments(
   assignments: string[] | undefined,
-  options: {
-    commandName: "deploy";
-    requireAtLeastOne?: boolean;
-  },
+  options: EnvAssignmentOptions,
 ): Record<string, string> {
   const values = assignments ?? [];
 
@@ -44,6 +48,7 @@ export function parseEnvAssignments(
         "app",
       );
     }
+    validateEnvAssignmentName(name, options.commandName);
 
     if (seen.has(name)) {
       throw usageError(
@@ -55,11 +60,62 @@ export function parseEnvAssignments(
       );
     }
 
+    const value = assignment.slice(separatorIndex + 1);
+    if (value.length === 0) {
+      throw usageError(
+        `Environment variable "${name}" has an empty value`,
+        `A provided --env flag defines ${name} with no value.`,
+        "Pass a non-empty value, or omit the key from the deploy command.",
+        [`prisma-cli app ${options.commandName} --env ${name}=value`],
+        "app",
+      );
+    }
+
     seen.add(name);
-    parsed[name] = assignment.slice(separatorIndex + 1);
+    parsed[name] = value;
   }
 
   return parsed;
+}
+
+export async function parseEnvInputs(
+  cwd: string,
+  inputs: string[] | undefined,
+  options: EnvAssignmentOptions,
+): Promise<Record<string, string>> {
+  const values = inputs ?? [];
+  const expandedAssignments: string[] = [];
+
+  for (const value of values) {
+    if (value.includes("=")) {
+      expandedAssignments.push(value);
+      continue;
+    }
+
+    const fileAssignments = await readEnvFileAssignments(cwd, value, options.commandName);
+    expandedAssignments.push(
+      ...fileAssignments.map((assignment) => `${assignment.key}=${assignment.value}`),
+    );
+  }
+
+  return parseEnvAssignments(expandedAssignments, options);
+}
+
+function validateEnvAssignmentName(name: string, commandName: EnvAssignmentOptions["commandName"]): void {
+  try {
+    validateKey(name, "add");
+  } catch (error) {
+    const reason = error instanceof Error && error.message.length > 0
+      ? error.message
+      : "Invalid environment variable name.";
+    throw usageError(
+      `Invalid environment variable "${name}"`,
+      reason,
+      "Use a valid env-var name and retry the deploy.",
+      [`prisma-cli app ${commandName} --env DATABASE_URL=postgresql://example`],
+      "app",
+    );
+  }
 }
 
 export function envVarNames(

@@ -180,7 +180,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
     .addOption(new Option("--entry <path>", "Entrypoint path for Bun deploys"))
     .addOption(new Option("--http-port <port>", "HTTP port override for the deployed app"))
     .addOption(
-      new Option("--env <name=value>", "Environment variable")
+      new Option("--env <name=value|file>", "Environment variable assignment or dotenv file")
         .argParser(collectRepeatableValues),
     )
     .addOption(new Option("--db", "Create and wire an isolated database for the preview Branch"))
