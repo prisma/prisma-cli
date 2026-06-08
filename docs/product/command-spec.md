@@ -640,7 +640,7 @@ Behavior:
 - later production deploys do not prompt for database setup; explicit `--db` is rejected once the selected production App has a live deployment
 - database setup never overwrites an existing branch-scoped `DATABASE_URL`; when the branch already has `DATABASE_URL`, `--db` leaves branch database env vars unchanged and continues
 - production setup treats existing production `DATABASE_URL` or `DIRECT_URL` as BYO DB intent; it does not prompt, and explicit `--db` leaves production env vars unchanged and continues with a warning
-- when only `DIRECT_URL` exists on the branch, explicit `--db` treats it as partial setup and repairs the pair by writing fresh branch database env values
+- when only `DIRECT_URL` exists on a preview branch, explicit `--db` treats it as partial setup and repairs the pair by writing fresh branch database env values
 - if schema setup or env-var wiring fails after database creation, the CLI deletes the newly created database before returning the error
 - database setup does not clone or infer schema from another database; it only creates an empty database and optionally applies schema from local code
 - Prisma Next config (`prisma-next.config.*`) is preferred over `schema.prisma`; setup runs `prisma-next contract emit` and then `prisma-next db init`
