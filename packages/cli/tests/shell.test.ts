@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import stripAnsi from "strip-ansi";
 
 import { formatCommandArgument } from "../src/shell/command-arguments";
+import { formatUnexpectedError } from "../src/shell/output";
 import { createTempCwd, executeCli } from "./helpers";
 
 const fixturePath = path.resolve("fixtures/mock-api.json");
@@ -14,6 +15,16 @@ describe("shell behavior", () => {
     expect(formatCommandArgument("my app")).toBe("'my app'");
     expect(formatCommandArgument("owner's app")).toBe("'owner'\\''s app'");
     expect(formatCommandArgument("$(rm -rf /)")).toBe("'$(rm -rf /)'");
+  });
+
+  it("keeps unexpected error stacks behind --trace", () => {
+    const error = new Error("boom");
+    error.stack = "Error: boom\n    at explode";
+
+    expect(formatUnexpectedError(error, false)).toContain("Unexpected CLI error: boom");
+    expect(formatUnexpectedError(error, false)).toContain("More: Re-run with --trace");
+    expect(formatUnexpectedError(error, false)).not.toContain("at explode");
+    expect(formatUnexpectedError(error, true)).toContain("at explode");
   });
 
   it("renders root help with workflow groups", async () => {
@@ -95,7 +106,7 @@ describe("shell behavior", () => {
     expect(projectResult.stderr).toContain("Global options:");
 
     expect(branchResult.exitCode).toBe(0);
-    expect(branchResult.stderr).toContain("branch → View your active Platform branches");
+    expect(branchResult.stderr).toContain("branch → View your Platform branches");
     expect(branchResult.stderr).toContain("Global options:");
   });
 

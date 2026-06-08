@@ -2,6 +2,7 @@ import type { CommandDescriptor } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
 import type {
   AppBuildResult,
+  AppDeploySettings,
   AppDeployResult,
   AppDomainAddResult,
   AppDomainRemoveResult,
@@ -20,6 +21,8 @@ import type {
 import { renderList, renderShow, serializeList } from "../output/patterns";
 import { renderDeployOutputRows } from "../lib/app/deploy-output";
 import { formatDomainFailureFix } from "../lib/app/domain-guidance";
+import { renderVerboseBlock, type VerboseRow } from "../shell/ui";
+import { renderResolvedProjectContextBlock, stripVerboseContext } from "./verbose-context";
 
 export function renderAppBuild(
   context: CommandContext,
@@ -54,17 +57,62 @@ export function renderAppDeploy(
   const lines = [
     `Live in ${formatDuration(result.durationMs)}`,
     ...(result.deployment.url ? [context.ui.link(result.deployment.url)] : []),
+    ...renderBranchDatabaseDeploySummary(context, result),
     "",
     ...renderDeployOutputRows(context.ui, [
       { label: "Logs", value: "prisma-cli app logs" },
     ]),
+    ...renderDeployResolvedContextBlock(context, result),
+    ...renderDeploySettingsBlock(context, result),
   ];
   return lines;
 }
 
 export function serializeAppDeploy(result: AppDeployResult) {
-  const { localPin: _localPin, ...serialized } = result;
-  return serialized;
+  const { deploySettings: _deploySettings, localPin: _localPin, ...serialized } = result;
+  const { id: _branchId, ...branch } = serialized.branch;
+
+  return {
+    ...serialized,
+    branch,
+  };
+}
+
+function renderBranchDatabaseDeploySummary(
+  context: CommandContext,
+  result: AppDeployResult,
+): string[] {
+  if (!result.branchDatabase || result.branchDatabase.status !== "created") {
+    return [];
+  }
+
+  return [
+    "",
+    ...renderDeployOutputRows(context.ui, [
+      { label: "Database", value: result.branchDatabase.database?.name ?? "created" },
+      {
+        label: "Env",
+        value: result.branchDatabase.envVars.join(", "),
+      },
+      ...(result.branchDatabase.schema
+        ? [{
+            label: "Schema",
+            value: formatBranchDatabaseSchemaCommand(result.branchDatabase.schema.command),
+          }]
+        : []),
+    ]),
+  ];
+}
+
+function formatBranchDatabaseSchemaCommand(command: "migrate-deploy" | "db-push" | "prisma-next-db-init"): string {
+  switch (command) {
+    case "migrate-deploy":
+      return "prisma migrate deploy";
+    case "db-push":
+      return "prisma db push";
+    case "prisma-next-db-init":
+      return "prisma-next db init";
+  }
 }
 
 function formatDuration(durationMs: number): string {
@@ -75,12 +123,99 @@ function formatDuration(durationMs: number): string {
   return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
+function renderDeployResolvedContextBlock(
+  context: CommandContext,
+  result: AppDeployResult,
+): string[] {
+  return renderResolvedProjectContextBlock(context.ui, {
+    workspace: result.workspace,
+    project: result.project,
+    resolution: result.resolution,
+    branch: {
+      id: result.branch.id,
+      name: result.branch.name,
+      kind: result.branch.kind,
+    },
+  }, {
+    extraRows: [
+      { key: "app", value: result.app.name },
+      { key: "app id", value: result.app.id, tone: "dim" },
+      { key: "deployment id", value: result.deployment.id, tone: "dim" },
+      { key: "deployment status", value: result.deployment.status },
+      ...(result.localPin ? [{ key: "local pin", value: result.localPin.path }] : []),
+      { key: "deploy duration", value: formatDuration(result.durationMs) },
+    ],
+  });
+}
+
+function renderDeploySettingsBlock(
+  context: CommandContext,
+  result: AppDeployResult,
+): string[] {
+  return renderVerboseBlock(context.ui, [
+    ...deploySettingsRows(result.deploySettings),
+    ...branchDatabaseRows(result.branchDatabase),
+  ], { title: "Deploy settings" });
+}
+
+function deploySettingsRows(settings: AppDeploySettings): VerboseRow[] {
+  return [
+    { key: "framework", value: `${settings.framework.name} (${settings.framework.buildType})` },
+    { key: "framework source", value: settings.framework.source, tone: "dim" },
+    {
+      key: "entrypoint",
+      value: settings.entrypoint ?? "derived from build output",
+      tone: settings.entrypoint ? "default" : "dim",
+    },
+    { key: "http port", value: String(settings.httpPort) },
+    {
+      key: "region",
+      value: settings.region ?? "existing app region",
+      tone: settings.region ? "default" : "dim",
+    },
+    {
+      key: "env vars",
+      value: formatEnvVarNames(settings.envVars),
+      tone: settings.envVars.length > 0 ? "default" : "dim",
+    },
+  ];
+}
+
+function branchDatabaseRows(branchDatabase: AppDeployResult["branchDatabase"]): VerboseRow[] {
+  if (!branchDatabase) {
+    return [{ key: "branch db", value: "not configured", tone: "dim" }];
+  }
+
+  return [
+    {
+      key: "branch db",
+      value: branchDatabase.status === "created"
+        ? `created${branchDatabase.database ? ` (${branchDatabase.database.name})` : ""}`
+        : `skipped${branchDatabase.reason ? ` (${branchDatabase.reason})` : ""}`,
+      tone: branchDatabase.status === "created" ? "success" : "dim",
+    },
+    ...(branchDatabase.envVars.length > 0
+      ? [{ key: "branch db env", value: branchDatabase.envVars.join(", ") }]
+      : []),
+    ...(branchDatabase.schema
+      ? [{
+          key: "branch db schema",
+          value: `${formatBranchDatabaseSchemaCommand(branchDatabase.schema.command)} (${branchDatabase.schema.source}, ${branchDatabase.schema.path})`,
+        }]
+      : []),
+  ];
+}
+
+function formatEnvVarNames(envVars: string[]): string {
+  return envVars.length > 0 ? envVars.join(", ") : "none";
+}
+
 export function renderAppListDeploys(
   context: CommandContext,
   descriptor: CommandDescriptor,
   result: AppListDeploysResult,
 ): string[] {
-  return renderList(
+  const lines = renderList(
     {
       title: "Listing deployments for the selected app.",
       descriptor,
@@ -98,12 +233,16 @@ export function renderAppListDeploys(
     },
     context.ui,
   );
+  lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+  return lines;
 }
 
 export function serializeAppListDeploys(result: AppListDeploysResult) {
-  if (!result.app) {
+  const { verboseContext: _verboseContext, ...serializable } = result;
+
+  if (!serializable.app) {
     return {
-      projectId: result.projectId,
+      projectId: serializable.projectId,
       app: null,
       items: [],
       count: 0,
@@ -111,13 +250,13 @@ export function serializeAppListDeploys(result: AppListDeploysResult) {
   }
 
   return {
-    projectId: result.projectId,
-    app: result.app,
+    projectId: serializable.projectId,
+    app: serializable.app,
     ...serializeList({
       context: {
-        app: result.app.name,
+        app: serializable.app.name,
       },
-      items: result.deployments.map((deployment) => ({
+      items: serializable.deployments.map((deployment) => ({
         noun: "deployment",
         label: deployment.id,
         id: deployment.id,
@@ -132,7 +271,7 @@ export function renderAppShow(
   descriptor: CommandDescriptor,
   result: AppShowResult,
 ): string[] {
-  return renderShow(
+  const lines = renderShow(
     {
       title: "Showing the selected app state.",
       descriptor,
@@ -158,10 +297,12 @@ export function renderAppShow(
     },
     context.ui,
   );
+  lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+  return lines;
 }
 
 export function serializeAppShow(result: AppShowResult) {
-  return result;
+  return stripVerboseContext(result);
 }
 
 export function renderAppShowDeploy(
@@ -201,7 +342,7 @@ export function renderAppOpen(
   descriptor: CommandDescriptor,
   result: AppOpenResult,
 ): string[] {
-  return renderShow(
+  const lines = renderShow(
     {
       title: result.opened
         ? "Opening the live URL for the selected app."
@@ -216,10 +357,12 @@ export function renderAppOpen(
     },
     context.ui,
   );
+  lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+  return lines;
 }
 
 export function serializeAppOpen(result: AppOpenResult) {
-  return result;
+  return stripVerboseContext(result);
 }
 
 export function renderAppDomainAdd(
@@ -328,7 +471,7 @@ export function renderAppPromote(
   descriptor: CommandDescriptor,
   result: AppPromoteResult,
 ): string[] {
-  return renderShow(
+  const lines = renderShow(
     {
       title: "Switching the live deployment for the selected app.",
       descriptor,
@@ -344,10 +487,12 @@ export function renderAppPromote(
     },
     context.ui,
   );
+  lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+  return lines;
 }
 
 export function serializeAppPromote(result: AppPromoteResult) {
-  return result;
+  return stripVerboseContext(result);
 }
 
 export function renderAppRollback(
@@ -355,7 +500,7 @@ export function renderAppRollback(
   descriptor: CommandDescriptor,
   result: AppRollbackResult,
 ): string[] {
-  return renderShow(
+  const lines = renderShow(
     {
       title: "Restoring the selected app to an earlier deployment.",
       descriptor,
@@ -374,10 +519,12 @@ export function renderAppRollback(
     },
     context.ui,
   );
+  lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+  return lines;
 }
 
 export function serializeAppRollback(result: AppRollbackResult) {
-  return result;
+  return stripVerboseContext(result);
 }
 
 export function renderAppRun(
@@ -397,7 +544,7 @@ export function renderAppRemove(
   descriptor: CommandDescriptor,
   result: AppRemoveResult,
 ): string[] {
-  return renderShow(
+  const lines = renderShow(
     {
       title: "Removing the selected app.",
       descriptor,
@@ -409,10 +556,12 @@ export function renderAppRemove(
     },
     context.ui,
   );
+  lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+  return lines;
 }
 
 export function serializeAppRemove(result: AppRemoveResult) {
-  return result;
+  return stripVerboseContext(result);
 }
 
 function toneForStatus(status: string): "success" | "warning" | "error" | "default" {

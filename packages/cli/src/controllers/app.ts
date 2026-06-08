@@ -27,6 +27,7 @@ import type {
   AppOpenResult,
   AppPromoteResult,
   AppRemoveResult,
+  AppResolvedContext,
   AppRollbackResult,
   AppShowResult,
   AppRunResult,
@@ -38,7 +39,7 @@ import type { ProjectResolution, ProjectSummary } from "../types/project";
 import { requireComputeAuth } from "../lib/auth/guard";
 import { readAuthState } from "../lib/auth/auth-ops";
 import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
-import { parseEnvAssignments } from "../lib/app/env-vars";
+import { envVarNames, parseEnvAssignments } from "../lib/app/env-vars";
 import { renderDeployOutputRows, renderDeploySettingsPreview } from "../lib/app/deploy-output";
 import {
   DEFAULT_LOCAL_DEV_PORT,
@@ -70,6 +71,7 @@ import {
   readLocalResolutionPin,
   type LocalResolutionPinReadResult,
 } from "../lib/project/local-pin";
+import { readLocalGitBranch } from "../lib/git/local-branch";
 import {
   executePreviewBuild,
   PREVIEW_BUILD_TYPES,
@@ -81,6 +83,7 @@ import {
   type PreviewBuildType,
 } from "../lib/app/preview-build";
 import { PREVIEW_DEFAULT_REGION } from "../lib/app/preview-interaction";
+import { maybeSetupBranchDatabase, type BranchDatabaseDeployBranch } from "../lib/app/branch-database-deploy";
 import {
   createPreviewDeployProgress,
   createPreviewDeployProgressState,
@@ -226,6 +229,7 @@ export async function runAppDeploy(
     httpPort?: string;
     envAssignments?: string[];
     prod?: boolean;
+    db?: boolean;
   },
 ): Promise<CommandSuccess<AppDeployResult>> {
   ensurePreviewAppMode(context);
@@ -328,6 +332,10 @@ export async function runAppDeploy(
   });
   maybeRenderDeployBuildSettings(context, buildSettingsResolution);
   const portMapping = parseDeployPortMapping(String(runtime.port));
+  const branchDatabaseSetup = await maybeSetupBranchDatabase(context, provider, projectId, toBranchDatabaseDeployBranch(target.branch), {
+    db: options?.db,
+    inlineEnvVars: envVars,
+  });
 
   const progressState = createPreviewDeployProgressState();
   const deployStartedAt = Date.now();
@@ -362,17 +370,30 @@ export async function runAppDeploy(
     result: {
       workspace: target.workspace,
       project: target.project,
-      branch: target.branch,
+      branch: toResultBranch(target.branch),
       resolution: target.resolution,
+      branchDatabase: branchDatabaseSetup.result,
       app: {
         id: deployResult.app.id,
         name: deployResult.app.name,
       },
       deployment: deployResult.deployment,
+      deploySettings: {
+        framework: {
+          key: framework.key,
+          buildType,
+          name: framework.displayName,
+          source: framework.annotation,
+        },
+        entrypoint: entrypoint ?? null,
+        httpPort: runtime.port,
+        region: selectedApp.region ?? null,
+        envVars: envVarNames(envVars),
+      },
       durationMs: deployDurationMs,
       localPin: localPinResult,
     },
-    warnings: [],
+    warnings: branchDatabaseSetup.warnings,
     nextSteps: ["prisma-cli app list-deploys", `prisma-cli app show-deploy ${deployResult.deployment.id}`],
   };
 }
@@ -395,6 +416,7 @@ export async function runAppListDeploys(
       command: "app.list-deploys",
       result: {
         projectId,
+        verboseContext: toAppVerboseContext(target),
         app: null,
         deployments: [],
       },
@@ -425,6 +447,7 @@ export async function runAppListDeploys(
     command: "app.list-deploys",
     result: {
       projectId,
+      verboseContext: toAppVerboseContext(target),
       app: {
         id: deploymentsResult.app.id,
         name: deploymentsResult.app.name,
@@ -456,6 +479,7 @@ export async function runAppShow(
       command: "app.show",
       result: {
         projectId,
+        verboseContext: toAppVerboseContext(target),
         app: null,
         liveDeployment: null,
         liveUrl: null,
@@ -491,6 +515,7 @@ export async function runAppShow(
     command: "app.show",
     result: {
       projectId,
+      verboseContext: toAppVerboseContext(target),
       app: {
         id: deploymentsResult.app.id,
         name: deploymentsResult.app.name,
@@ -627,6 +652,7 @@ export async function runAppOpen(
     command: "app.open",
     result: {
       projectId,
+      verboseContext: toAppVerboseContext(target),
       app: {
         id: deploymentsResult.app.id,
         name: deploymentsResult.app.name,
@@ -1096,6 +1122,7 @@ export async function runAppPromote(
     command: "app.promote",
     result: {
       projectId,
+      verboseContext: toAppVerboseContext(target),
       app: {
         id: deploymentsResult.app.id,
         name: deploymentsResult.app.name,
@@ -1166,6 +1193,7 @@ export async function runAppRollback(
     command: "app.rollback",
     result: {
       projectId,
+      verboseContext: toAppVerboseContext(target),
       app: {
         id: deploymentsResult.app.id,
         name: deploymentsResult.app.name,
@@ -1207,6 +1235,7 @@ export async function runAppRemove(
     command: "app.remove",
     result: {
       projectId,
+      verboseContext: toAppVerboseContext(target),
       app: {
         id: removedApp.id,
         name: removedApp.name,
@@ -1273,7 +1302,7 @@ async function resolveAppDomainTarget(
     resultTarget: {
       workspace: target.workspace,
       project: target.project,
-      branch: target.branch,
+      branch: toResultBranch(target.branch),
       app: {
         id: selectedApp.id,
         name: selectedApp.name,
@@ -2208,6 +2237,7 @@ interface ResolvedAppProjectContext {
   workspace: AuthWorkspace;
   project: ProjectSummary;
   branch: {
+    id: string | null;
     name: string;
     kind: BranchKind;
   };
@@ -2292,6 +2322,7 @@ async function resolveProjectContext(
   return {
     ...resolved,
     branch: {
+      id: null,
       name: branch.name,
       kind: toBranchKind(branch.name),
     },
@@ -2480,6 +2511,7 @@ async function withRemoteDeployBranch(
   return {
     ...target,
     branch: {
+      id: remoteBranch.id,
       name: remoteBranch.name,
       kind: remoteBranch.role,
     },
@@ -2488,6 +2520,35 @@ async function withRemoteDeployBranch(
 
 function toBranchKind(name: string): BranchKind {
   return name === "production" || name === "main" ? "production" : "preview";
+}
+
+function toResultBranch(branch: ResolvedAppProjectContext["branch"]): AppDeployResult["branch"] {
+  return {
+    id: branch.id,
+    name: branch.name,
+    kind: branch.kind,
+  };
+}
+
+function toAppVerboseContext(target: ResolvedAppProjectContext): AppResolvedContext {
+  return {
+    workspace: target.workspace,
+    project: target.project,
+    branch: target.branch,
+    resolution: target.resolution,
+  };
+}
+
+function toBranchDatabaseDeployBranch(branch: ResolvedAppProjectContext["branch"]): BranchDatabaseDeployBranch {
+  if (!branch.id) {
+    throw new Error(`Deploy branch "${branch.name}" was not resolved remotely.`);
+  }
+
+  return {
+    id: branch.id,
+    name: branch.name,
+    kind: branch.kind,
+  };
 }
 
 function assertExclusiveDeployProjectInputs(options: {
@@ -2543,53 +2604,6 @@ async function resolveDeployBranch(context: CommandContext, explicitBranchName: 
     name: "main",
     annotation: "default",
   };
-}
-
-async function readLocalGitBranch(cwd: string, signal: AbortSignal): Promise<string | null> {
-  const gitPath = path.join(cwd, ".git");
-  const headPath = await resolveGitHeadPath(gitPath, signal);
-  if (!headPath) {
-    return null;
-  }
-
-  try {
-    const head = (await readFile(headPath, { encoding: "utf8", signal })).trim();
-    const refPrefix = "ref: refs/heads/";
-    if (head.startsWith(refPrefix)) {
-      return head.slice(refPrefix.length);
-    }
-  } catch (error) {
-    if (signal.aborted) throw error;
-    return null;
-  }
-
-  return null;
-}
-
-async function resolveGitHeadPath(gitPath: string, signal: AbortSignal): Promise<string | null> {
-  signal.throwIfAborted();
-  try {
-    const raw = await readFile(gitPath, { encoding: "utf8", signal });
-    const prefix = "gitdir:";
-    if (raw.startsWith(prefix)) {
-      return path.join(path.resolve(path.dirname(gitPath), raw.slice(prefix.length).trim()), "HEAD");
-    }
-  } catch (error) {
-    if (signal.aborted) throw error;
-    // Fall through to try the normal .git directory shape below.
-    // Common cases: EISDIR (normal git repo), EACCES, ENOENT.
-  }
-
-  signal.throwIfAborted();
-  try {
-    // access does not accept AbortSignal; check before and after the filesystem boundary.
-    await access(path.join(gitPath, "HEAD"));
-    signal.throwIfAborted();
-    return path.join(gitPath, "HEAD");
-  } catch (error) {
-    if (signal.aborted) throw error;
-    return null;
-  }
 }
 
 interface ResolvedDeployFramework {

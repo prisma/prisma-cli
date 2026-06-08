@@ -367,12 +367,14 @@ Behavior:
 
 - requires auth
 - lists projects visible to the active workspace
+- human output shows each Project's name and id
 - does not resolve the current directory
 - does not mutate local state
 - when the current directory is not linked, human output adds setup hints after the list
 - in JSON, unlinked directories include a `user-choice` `nextActions` entry for Project setup
 - listed Projects are not marked selected unless durable local binding actually selects one
 - listed Projects are candidates only; the user must choose one before `project link <id-or-name>` runs
+- `branches` is intentionally deferred until `/v1/projects` exposes a branch count in this same response; the CLI must not make per-project branch-list requests to render `project list`
 
 Examples:
 
@@ -399,7 +401,7 @@ Behavior:
 - when unbound, human output says `project: Not linked` and shows link/create next steps
 - when unbound, JSON exits successfully with `project: null`, `localBinding.status: "not-linked"`, `resolution.projectSource: "unbound"`, a suggested Project name, matching Project candidates, recovery commands, and `user-choice` `nextActions`
 - package names and directory names only power unbound suggestions
-- fails with `PROJECT_NOT_FOUND`, `PROJECT_AMBIGUOUS`, or `LOCAL_STATE_STALE` when explicit or durable binding validation cannot continue safely
+- fails with `PROJECT_NOT_FOUND`, `PROJECT_AMBIGUOUS`, `LOCAL_PROJECT_WORKSPACE_MISMATCH`, or `LOCAL_STATE_STALE` when explicit or durable binding validation cannot continue safely
 
 Examples:
 
@@ -533,40 +535,20 @@ prisma-cli git disconnect --json
 
 Purpose:
 
-- list active Platform branches for the resolved project
+- list Platform branches for the resolved project
 
 Behavior:
 
 - shows known remote branches for the resolved project
-- marks active context
+- shows each branch's name, role, and role-derived env map (`production` for `role=production`, `preview` for `role=preview`)
 - does not create remote state
-- does not expose branch `role` or `durability` fields yet
+- does not include branch-specific env overrides, durability, protection, or deployment metadata
 
 Examples:
 
 ```bash
 prisma-cli branch list
 prisma-cli branch list --json
-```
-
-## `prisma-cli branch show`
-
-Purpose:
-
-- show the Platform branch matching your current Git branch
-
-Behavior:
-
-- reads local branch context
-- shows resolved project context when known
-- does not mutate local or remote state
-- does not expose branch `role` or `durability` fields yet
-
-Examples:
-
-```bash
-prisma-cli branch show
-prisma-cli branch show --json
 ```
 
 ## `prisma-cli app build --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|tanstack-start>`
@@ -610,7 +592,7 @@ prisma-cli app run --build-type nextjs
 prisma-cli app run --build-type bun --entry server.ts --port 3000
 ```
 
-## `prisma-cli app deploy --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start|bun> --entry <path> --http-port <port> --env <name=value> --prod`
+## `prisma-cli app deploy --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start|bun> --entry <path> --http-port <port> --env <name=value> --db --no-db --prod`
 
 Purpose:
 
@@ -654,6 +636,21 @@ Behavior:
 - deploy progress uses short stage copy (`Building locally...`, `Built <size>`, `Uploading...`, `Uploaded`, `Deploying...`, `Deployed`) and never prints `Status: running` or `Deployment is running at ...`
 - success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma-cli app logs`
 - accepts repeated `--env NAME=VALUE` flags
+- supports `--db` for preview Branches to create a new empty Prisma Postgres database, apply a supported local Prisma schema source when one exists, and write branch-scoped `DATABASE_URL` and `DIRECT_URL` overrides through the existing `project env` storage
+- supports `--no-db` to suppress automatic database prompting for the deploy
+- `--db` and `--no-db` are mutually exclusive; passing both is rejected
+- `--yes` alone never creates a database; CI must pass `--db --yes` to create and wire one
+- branch database setup only runs for preview Branches; production database env vars are managed with `project env`
+- branch database setup never overwrites an existing branch-scoped `DATABASE_URL`; when the branch already has `DATABASE_URL`, `--db` leaves branch database env vars unchanged and continues
+- when only `DIRECT_URL` exists on the branch, explicit `--db` treats it as partial setup and repairs the pair by writing fresh branch database env values
+- if schema setup or branch env-var wiring fails after database creation, the CLI deletes the newly created database before returning the error
+- branch database setup does not clone or infer schema from another database; it only creates an empty database and optionally applies schema from local code
+- Prisma Next config (`prisma-next.config.*`) is preferred over `schema.prisma`; setup runs `prisma-next contract emit` and then `prisma-next db init`
+- for Prisma ORM `schema.prisma`, setup runs `prisma migrate deploy` when `prisma/migrations` exists next to the schema, otherwise it runs `prisma db push`
+- when no supported Prisma schema source is found, `--db` still creates the database and env overrides but skips schema setup
+- known non-Postgres Prisma sources do not trigger automatic database prompting; explicit `--db` is rejected because the created database is Prisma Postgres
+- if schema setup fails, deploy stops before the app build/deploy starts
+- inline `--env DATABASE_URL=...` or `--env DIRECT_URL=...` suppresses automatic database prompting; combining those inline env vars with `--db` is rejected
 - maps user-facing framework names to deploy build strategies
 - does not accept `--build-command` or `--output-directory`; custom build settings are edited in `prisma.app.json`, which is initially generated from `package.json` `scripts.build` and framework defaults for config-backed deploy types
 - uses `src/index.ts` as the Hono deploy entrypoint when the app has no `package.json#main` or `package.json#module` and that file exists
@@ -669,6 +666,9 @@ prisma-cli app deploy
 prisma-cli app deploy --project proj_123
 prisma-cli app deploy --create-project my-app --yes
 prisma-cli app deploy --app my-app --env DATABASE_URL=postgresql://example
+prisma-cli app deploy --db
+prisma-cli app deploy --db --yes
+prisma-cli app deploy --no-db
 prisma-cli app deploy --framework nextjs --http-port 3000
 prisma-cli app deploy --branch feat-login --framework hono --http-port 3000
 prisma-cli app deploy --prod --yes
@@ -693,9 +693,11 @@ Every write targets exactly one scope:
 - `--role` and `--branch` are mutually exclusive.
 - For write verbs (`add`, `update`, `remove`), one scope flag is required
   so the CLI never silently writes to production.
-- For read verbs (`list`), omitting `--role` defaults to `--role production`.
+- For read verbs (`list`), omitting `--role` or `--branch` resolves from
+  the active local Git branch when one exists; outside a Git branch it
+  shows a production/preview project-level overview.
 
-### `prisma-cli project env add KEY=VALUE (--role <production|preview> | --branch <git-name>)`
+### `prisma-cli project env add (KEY=VALUE | --file <path>) (--role <production|preview> | --branch <git-name>)`
 
 Purpose:
 
@@ -708,6 +710,12 @@ Behavior:
 - KEY=VALUE is parsed from a single positional; KEY must match
   `[A-Z_][A-Z0-9_]*`
 - KEY without `=VALUE` reads the value from the current process environment
+- `--file <path>` reads KEY=VALUE assignments from a dotenv file relative to
+  the current directory; `--file` is mutually exclusive with the positional
+  assignment
+- file imports validate the whole file before writing; duplicate keys, invalid
+  keys, empty values, or existing target variables fail before any variables are
+  created
 - if a variable with the same key already exists in the scope, the
   command fails with a clear error directing to `env update`
 - branch-only variables are allowed; the CLI warns when the key does
@@ -719,11 +727,13 @@ Examples:
 ```bash
 prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production
 prisma-cli project env add STRIPE_KEY=sk_test_xxx --role preview
+prisma-cli project env add --file .env --role preview
 prisma-cli project env add DATABASE_URL=postgresql://branch --branch feature/foo
+prisma-cli project env add --file .env.local --branch feature/foo
 API_URL=https://api.example prisma-cli project env add API_URL --project proj_123 --role preview
 ```
 
-### `prisma-cli project env update KEY=VALUE (--role <production|preview> | --branch <git-name>)`
+### `prisma-cli project env update (KEY=VALUE | --file <path>) (--role <production|preview> | --branch <git-name>)`
 
 Purpose:
 
@@ -736,6 +746,12 @@ Behavior:
 - KEY=VALUE is parsed from a single positional; KEY must match
   `[A-Z_][A-Z0-9_]*`
 - KEY without `=VALUE` reads the value from the current process environment
+- `--file <path>` reads KEY=VALUE assignments from a dotenv file relative to
+  the current directory; `--file` is mutually exclusive with the positional
+  assignment
+- file imports validate the whole file before writing; duplicate keys, invalid
+  keys, empty values, or missing target variables fail before any variables are
+  updated
 - if no variable with the key exists in the scope, the command fails
   with a clear error directing to `env add`
 - the response carries metadata only — the value is never echoed back
@@ -745,6 +761,7 @@ Examples:
 ```bash
 prisma-cli project env update STRIPE_KEY=sk_new_xxx --role production
 prisma-cli project env update STRIPE_KEY=sk_new_xxx --role preview
+prisma-cli project env update --file .env --role production
 prisma-cli project env update DATABASE_URL=postgresql://branch --branch feature/foo
 ```
 
@@ -757,11 +774,20 @@ Purpose:
 Behavior:
 
 - requires auth and a resolved project; accepts `--project <id-or-name>` as an explicit fallback
-- defaults to `--role production` when `--role` is not supplied
-- `--branch` lists the resolved preview branch view: preview defaults
+- explicit `--role production|preview` lists that project-level map
+- explicit `--branch` lists the resolved preview branch view: preview defaults
   plus branch overrides, with source metadata
+- with no scope and an active local Git branch, resolves the matching
+  Platform Branch and lists the env map for its role; preview Branches
+  include preview defaults plus Branch overrides
+- with no scope and an active local Git branch that has no Platform
+  Branch yet, lists preview template metadata and marks the target as
+  not created yet
+- with no scope and no local Git branch, lists an overview of the
+  production and preview project-level maps, excluding Branch overrides
 - never prints values (never-reveal)
-- emits `key`, `id`, `last updated`, and a `scope` annotation per row
+- emits `key`, `id`, `last updated`, and source/scope annotations per
+  row, plus resolved target metadata for human and JSON output
 
 Examples:
 

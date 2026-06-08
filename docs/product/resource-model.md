@@ -60,9 +60,8 @@ Rules:
 - preview branches are disposable by default
 - non-production branches can become durable later
 - `local` is local CLI context only, not a branch
-- active branch context is local CLI state, not `prisma.config.ts`
-- selecting a branch changes local CLI context only; it does not create remote
-  state by itself
+- branch context comes from explicit targeting, Git, or safe command defaults,
+  not `prisma.config.ts`
 
 Examples of preview branches:
 
@@ -72,8 +71,8 @@ Examples of preview branches:
 - `pr-123`
 
 Branch role and durability are product concepts in the current docs. The preview
-command JSON for `branch list` and `branch show` does not expose dedicated
-`role` or `durability` fields yet.
+command JSON for `branch list` exposes `role`; `durability` remains target-model
+until the Management API returns it everywhere.
 
 ### Branch Role And Durability
 
@@ -152,14 +151,24 @@ top-level target-context group is `branch`, not `env`.
 
 ### Schema and Database
 
-`schema` and `database` are out of scope for the current beta package, but
-they remain part of the long-term hierarchy.
+`schema` stays a local code artifact. `database` stays a branch-bound remote
+resource.
 
-- `schema` stays a local code artifact
-- `database` stays a branch-bound resource
+The beta package does not expose a standalone database command group yet. The
+current database surface is limited to `app deploy --db`, which can create an
+empty Prisma Postgres database for a preview Branch, apply a supported local
+Prisma schema source when available, and write normal branch-scoped environment
+variable overrides.
 
-The beta package must not redefine project or branch in a way that makes
-future schema, database, and migration workflows awkward.
+Rules:
+
+- database wiring uses the existing environment-variable model
+- `DATABASE_URL` is written as a preview Branch override, not a separate app binding
+- branch database setup never overwrites an existing branch-scoped `DATABASE_URL`
+- schema setup is sourced only from local code; the CLI does not clone or infer schema from another database
+- Prisma Next config (`prisma-next.config.*`) is preferred over `schema.prisma`
+- known non-Postgres Prisma sources are treated as unsupported for automatic Prisma Postgres setup
+- production database configuration is managed through explicit environment-variable commands
 
 ## Relationships
 
@@ -233,13 +242,13 @@ feature-branch code into a service owned by another branch.
 Commands that use branch context resolve it in this order:
 
 1. explicit branch argument when the command accepts one
-2. active branch context in local CLI state
-3. `preview`
+2. local Git branch when available
+3. `main`
 
 Consequences:
 
 - `local` never becomes a branch or deploy target
-- first remote app work defaults to `preview`
+- first remote app work falls back to `main` when no Git branch is available
 - production requires explicit user intent
 
 ### Inspect Resolution

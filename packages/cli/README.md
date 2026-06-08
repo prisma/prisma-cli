@@ -57,6 +57,8 @@ Useful next commands:
 npx prisma-cli app logs
 npx prisma-cli app open
 npx prisma-cli project env add DATABASE_URL=postgresql://example --role preview
+npx prisma-cli project env add --file .env --role preview
+npx prisma-cli project env list
 npx prisma-cli project env list --role preview
 ```
 
@@ -73,7 +75,7 @@ The beta package exposes `prisma-cli` so it can coexist with the existing
 | `auth` | Log in, log out, and inspect the active Prisma account. |
 | `project` | List projects, show the resolved project, and manage project environment variables. |
 | `git` | Connect or disconnect a project from a GitHub repository. |
-| `branch` | Inspect the Prisma branch that maps to the current work context. |
+| `branch` | List Prisma branches for the resolved project. |
 | `app` | Build, run, deploy, inspect, open, stream logs, promote, roll back, and remove apps. |
 
 Common examples:
@@ -82,7 +84,7 @@ Common examples:
 npx prisma-cli version
 npx prisma-cli auth whoami
 npx prisma-cli project show
-npx prisma-cli branch show
+npx prisma-cli branch list
 npx prisma-cli app deploy --branch feat-login --framework nextjs
 npx prisma-cli app promote <deployment-id>
 ```

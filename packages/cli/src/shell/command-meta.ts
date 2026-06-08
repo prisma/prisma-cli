@@ -68,8 +68,8 @@ const DESCRIPTORS: CommandDescriptor[] = [
   {
     id: "branch",
     path: ["prisma", "branch"],
-    description: "View your active Platform branches",
-    examples: ["prisma-cli branch list", "prisma-cli branch show"],
+    description: "View your Platform branches",
+    examples: ["prisma-cli branch list"],
   },
   {
     id: "git",
@@ -120,20 +120,8 @@ const DESCRIPTORS: CommandDescriptor[] = [
   {
     id: "branch.list",
     path: ["prisma", "branch", "list"],
-    description: "List active Platform branches for the resolved project",
+    description: "List Platform branches for the resolved project",
     examples: ["prisma-cli branch list", "prisma-cli branch list --json"],
-  },
-  {
-    id: "branch.show",
-    path: ["prisma", "branch", "show"],
-    description: "Show the Platform branch matching your current Git branch",
-    examples: ["prisma-cli branch show", "prisma-cli branch show --json"],
-  },
-  {
-    id: "branch.use",
-    path: ["prisma", "branch", "use"],
-    description: "Change the local default branch context.",
-    examples: ["prisma-cli branch use", "prisma-cli branch use production"],
   },
   {
     id: "app.build",
@@ -158,6 +146,8 @@ const DESCRIPTORS: CommandDescriptor[] = [
       "prisma-cli app deploy --project proj_123",
       "prisma-cli app deploy --create-project my-app --yes",
       "prisma-cli app deploy --app my-app --env DATABASE_URL=postgresql://example",
+      "prisma-cli app deploy --db",
+      "prisma-cli app deploy --db --yes",
       "prisma-cli app deploy --app my-app --framework nextjs --http-port 3000",
       "prisma-cli app deploy --branch feat-login --framework hono",
       "prisma-cli app deploy --prod --yes",
@@ -258,8 +248,9 @@ const DESCRIPTORS: CommandDescriptor[] = [
     path: ["prisma", "project", "env"],
     description: "Manage environment variables for the active project",
     examples: [
-      "prisma-cli project env list --role production",
+      "prisma-cli project env list",
       "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production",
+      "prisma-cli project env add --file .env --role preview",
       "prisma-cli project env add DATABASE_URL=postgresql://branch --branch feature/foo",
       "prisma-cli project env remove STRIPE_KEY --role preview",
     ],
@@ -271,7 +262,9 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: [
       "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production",
       "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role preview",
+      "prisma-cli project env add --file .env --role preview",
       "prisma-cli project env add DATABASE_URL=postgresql://branch --branch feature/foo",
+      "prisma-cli project env add --file .env.local --branch feature/foo",
       "API_URL=https://api.example prisma-cli project env add API_URL --project proj_123 --role preview",
     ],
   },
@@ -282,6 +275,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: [
       "prisma-cli project env update STRIPE_KEY=sk_new_xxx --role production",
       "prisma-cli project env update STRIPE_KEY=sk_new_xxx --role preview",
+      "prisma-cli project env update --file .env --role production",
       "prisma-cli project env update DATABASE_URL=postgresql://branch --branch feature/foo",
     ],
   },
@@ -290,6 +284,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
     path: ["prisma", "project", "env", "list"],
     description: "List environment variable metadata for a scope (no values).",
     examples: [
+      "prisma-cli project env list",
       "prisma-cli project env list --role production",
       "prisma-cli project env list --role preview",
       "prisma-cli project env list --branch feature/foo",

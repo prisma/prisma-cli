@@ -71,30 +71,35 @@
       "id": "br_123",
       "projectId": "proj_123",
       "name": "preview",
+      "role": "preview",
       "currentDeploymentId": "dep_123"
     },
     {
       "id": "br_234",
       "projectId": "proj_123",
       "name": "pr-123",
+      "role": "preview",
       "currentDeploymentId": "dep_234"
     },
     {
       "id": "br_345",
       "projectId": "proj_123",
       "name": "staging",
+      "role": "preview",
       "currentDeploymentId": null
     },
     {
       "id": "br_456",
       "projectId": "proj_123",
       "name": "production",
+      "role": "production",
       "currentDeploymentId": "dep_456"
     },
     {
       "id": "br_789",
       "projectId": "proj_456",
       "name": "preview",
+      "role": "preview",
       "currentDeploymentId": "dep_789"
     }
   ],

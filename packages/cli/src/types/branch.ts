@@ -1,36 +1,23 @@
-export type BranchKind = "preview" | "production";
+import type { AuthWorkspace } from "./auth";
+import type { ProjectResolution, ProjectSummary } from "./project";
 
-export interface LiveDeploymentSummary {
-  id: string;
-  status: string;
-  url: string | null;
-}
+export type BranchRole = "preview" | "production";
+export type BranchKind = BranchRole;
 
 export interface BranchSummary {
   id: string;
   name: string;
-  kind: BranchKind;
-  active: boolean;
-  remoteState: boolean;
-}
-
-export interface BranchDetail {
-  name: string;
-  kind: BranchKind;
-  active: true;
-  remoteState: boolean;
-  liveDeployment: LiveDeploymentSummary | null;
+  role: BranchRole;
+  envMap: BranchRole;
 }
 
 export interface BranchListResult {
-  projectId: string | null;
-  projectName: string | null;
-  activeBranch: string;
+  projectId: string;
+  projectName: string;
+  verboseContext?: {
+    workspace: AuthWorkspace;
+    project: ProjectSummary;
+    resolution: ProjectResolution;
+  };
   branches: BranchSummary[];
-}
-
-export interface BranchShowResult {
-  projectId: string | null;
-  projectName: string | null;
-  branch: BranchDetail;
 }

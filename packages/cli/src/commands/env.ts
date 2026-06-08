@@ -44,7 +44,8 @@ function createEnvAddCommand(runtime: CliRuntime): Command {
   );
 
   command
-    .argument("<assignment>", "Variable assignment as KEY=VALUE or KEY from the current environment")
+    .argument("[assignment]", "Variable assignment as KEY=VALUE or KEY from the current environment")
+    .addOption(new Option("--file <path>", "Read KEY=VALUE assignments from a dotenv file"))
     .addOption(
       new Option(
         "--role <role>",
@@ -55,16 +56,17 @@ function createEnvAddCommand(runtime: CliRuntime): Command {
     .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
-  command.action(async (assignment: string, options) => {
+  command.action(async (assignment: string | undefined, options) => {
     const roleName = (options as { role?: string }).role;
     const branchName = (options as { branch?: string }).branch;
     const projectRef = (options as { project?: string }).project;
+    const filePath = (options as { file?: string }).file;
 
     await runCommand<EnvAddResult>(
       runtime,
       "project.env.add",
       options as Record<string, unknown>,
-      (context) => runEnvAdd(context, assignment, { roleName, branchName, projectRef }),
+      (context) => runEnvAdd(context, assignment, { roleName, branchName, projectRef, filePath }),
       {
         renderHuman: (context, descriptor, result) => renderEnvAdd(context, descriptor, result),
         renderJson: (result) => serializeEnvAdd(result),
@@ -82,7 +84,8 @@ function createEnvUpdateCommand(runtime: CliRuntime): Command {
   );
 
   command
-    .argument("<assignment>", "Variable assignment as KEY=VALUE or KEY from the current environment")
+    .argument("[assignment]", "Variable assignment as KEY=VALUE or KEY from the current environment")
+    .addOption(new Option("--file <path>", "Read KEY=VALUE assignments from a dotenv file"))
     .addOption(
       new Option(
         "--role <role>",
@@ -93,16 +96,17 @@ function createEnvUpdateCommand(runtime: CliRuntime): Command {
     .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
-  command.action(async (assignment: string, options) => {
+  command.action(async (assignment: string | undefined, options) => {
     const roleName = (options as { role?: string }).role;
     const branchName = (options as { branch?: string }).branch;
     const projectRef = (options as { project?: string }).project;
+    const filePath = (options as { file?: string }).file;
 
     await runCommand<EnvUpdateResult>(
       runtime,
       "project.env.update",
       options as Record<string, unknown>,
-      (context) => runEnvUpdate(context, assignment, { roleName, branchName, projectRef }),
+      (context) => runEnvUpdate(context, assignment, { roleName, branchName, projectRef, filePath }),
       {
         renderHuman: (context, descriptor, result) => renderEnvUpdate(context, descriptor, result),
         renderJson: (result) => serializeEnvUpdate(result),

@@ -166,6 +166,7 @@ These codes are the minimum stable set for the MVP:
 - `PROJECT_NOT_FOUND`
 - `PROJECT_AMBIGUOUS`
 - `APP_AMBIGUOUS`
+- `LOCAL_PROJECT_WORKSPACE_MISMATCH`
 - `LOCAL_STATE_STALE`
 - `BRANCH_NOT_DEPLOYABLE`
 - `APP_CONFIG_INVALID`
@@ -194,6 +195,8 @@ These codes are the minimum stable set for the MVP:
 - `REPO_ALREADY_CONNECTED`
 - `REPO_CONNECTION_FAILED`
 - `BUILD_FAILED`
+- `BRANCH_DATABASE_SETUP_FAILED`
+- `SCHEMA_SETUP_FAILED`
 - `RUN_FAILED`
 - `DEPLOY_FAILED`
 - `VERSION_UNAVAILABLE`
@@ -209,6 +212,7 @@ Recommended meanings:
 - `PROJECT_NOT_FOUND`: requested project does not exist or is not accessible
 - `PROJECT_AMBIGUOUS`: multiple safe project candidates matched
 - `APP_AMBIGUOUS`: multiple apps matched the inferred or explicit app target
+- `LOCAL_PROJECT_WORKSPACE_MISMATCH`: local Project pin points at a different workspace than the active authenticated workspace; callers should sign in to the linked workspace or relink the directory
 - `LOCAL_STATE_STALE`: local Project pin no longer matches platform data and continuing would be ambiguous
 - `BRANCH_NOT_DEPLOYABLE`: command tried to deploy to a non-deployable branch context
 - `APP_CONFIG_INVALID`: `prisma.app.json` is missing required build settings, has invalid JSON, or points outside the app root
@@ -237,6 +241,8 @@ Recommended meanings:
 - `REPO_ALREADY_CONNECTED`: a project already has a different GitHub repository connected
 - `REPO_CONNECTION_FAILED`: the Management API repository connection operation failed
 - `BUILD_FAILED`: build failed before a healthy deployment existed
+- `BRANCH_DATABASE_SETUP_FAILED`: preview Branch database creation or branch env-var wiring failed before deployment started
+- `SCHEMA_SETUP_FAILED`: local Prisma schema source setup against a newly created Branch database failed before deployment started
 - `RUN_FAILED`: local framework run command could not be started or exited unsuccessfully
 - `DEPLOY_FAILED`: deployment or post-build health failed
 - `VERSION_UNAVAILABLE`: CLI could not read its own bundled package metadata to report a version (defensive; not expected in normal installs)

@@ -14,7 +14,11 @@ import type {
   ProjectSummary,
   ProjectShowResult,
 } from "../../types/project";
-import { LOCAL_RESOLUTION_PIN_RELATIVE_PATH, readLocalResolutionPin } from "./local-pin";
+import {
+  LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
+  type LocalResolutionPinReadResult,
+  readLocalResolutionPin,
+} from "./local-pin";
 
 export interface ProjectCandidate extends ProjectSummary {
   slug?: string | null;
@@ -41,8 +45,9 @@ export interface ResolveProjectOptions {
 }
 
 export async function resolveProjectTarget(options: ResolveProjectOptions): Promise<ResolvedProjectTarget> {
+  const localPin = await readImplicitLocalPin(options, { allowEnvProjectId: true });
   const projects = await options.listProjects();
-  const target = await resolveBoundProjectTarget(options, projects, { allowEnvProjectId: true });
+  const target = await resolveBoundProjectTarget(options, projects, { allowEnvProjectId: true, localPin });
 
   if (target) {
     return target;
@@ -57,8 +62,9 @@ export async function resolveProjectTarget(options: ResolveProjectOptions): Prom
 }
 
 export async function inspectProjectBinding(options: ResolveProjectOptions): Promise<ProjectShowResult> {
+  const localPin = await readImplicitLocalPin(options, { allowEnvProjectId: false });
   const projects = await options.listProjects();
-  const target = await resolveBoundProjectTarget(options, projects, { allowEnvProjectId: false });
+  const target = await resolveBoundProjectTarget(options, projects, { allowEnvProjectId: false, localPin });
 
   if (target) {
     return target;
@@ -131,6 +137,29 @@ export function localStateStaleError(): CliError {
     },
     exitCode: 1,
     nextSteps: ["prisma-cli project list", "prisma-cli project link <id-or-name>"],
+  });
+}
+
+export function localProjectWorkspaceMismatchError(options: {
+  pinnedWorkspaceId: string;
+  pinnedProjectId: string;
+  activeWorkspace: AuthWorkspace;
+}): CliError {
+  return new CliError({
+    code: "LOCAL_PROJECT_WORKSPACE_MISMATCH",
+    domain: "project",
+    summary: "Project link uses another workspace",
+    why: `${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} links this directory to project ${options.pinnedProjectId} in workspace ${options.pinnedWorkspaceId}, but your current CLI session is workspace "${options.activeWorkspace.name}" (${options.activeWorkspace.id}).`,
+    fix: "Sign in to the linked workspace, or relink this directory to a project in the current workspace.",
+    meta: {
+      pinPath: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
+      pinnedWorkspaceId: options.pinnedWorkspaceId,
+      pinnedProjectId: options.pinnedProjectId,
+      activeWorkspaceId: options.activeWorkspace.id,
+      activeWorkspaceName: options.activeWorkspace.name,
+    },
+    exitCode: 1,
+    nextSteps: ["prisma-cli auth login", "prisma-cli project list", "prisma-cli project link <id-or-name>"],
   });
 }
 
@@ -305,6 +334,7 @@ async function resolveBoundProjectTarget(
   projects: ProjectCandidate[],
   settings: {
     allowEnvProjectId: boolean;
+    localPin: LocalResolutionPinReadResult | null;
   },
 ): Promise<BoundProjectShowResult | null> {
   if (options.explicitProject) {
@@ -325,13 +355,20 @@ async function resolveBoundProjectTarget(
     });
   }
 
-  const localPin = await readLocalResolutionPin(options.context.runtime.cwd, options.context.runtime.signal);
+  const localPin = settings.localPin;
+  if (!localPin) {
+    return null;
+  }
   if (localPin.kind === "invalid") {
     throw localStateStaleError();
   }
   if (localPin.kind === "present") {
     if (localPin.pin.workspaceId !== options.workspace.id) {
-      throw localStateStaleError();
+      throw localProjectWorkspaceMismatchError({
+        pinnedWorkspaceId: localPin.pin.workspaceId,
+        pinnedProjectId: localPin.pin.projectId,
+        activeWorkspace: options.workspace,
+      });
     }
 
     const project = projects.find((candidate) => candidate.id === localPin.pin.projectId);
@@ -354,6 +391,28 @@ async function resolveBoundProjectTarget(
   }
 
   return null;
+}
+
+async function readImplicitLocalPin(
+  options: ResolveProjectOptions,
+  settings: {
+    allowEnvProjectId: boolean;
+  },
+): Promise<LocalResolutionPinReadResult | null> {
+  if (options.explicitProject || (settings.allowEnvProjectId && options.envProjectId)) {
+    return null;
+  }
+
+  const localPin = await readLocalResolutionPin(options.context.runtime.cwd, options.context.runtime.signal);
+  if (localPin.kind === "present" && localPin.pin.workspaceId !== options.workspace.id) {
+    throw localProjectWorkspaceMismatchError({
+      pinnedWorkspaceId: localPin.pin.workspaceId,
+      pinnedProjectId: localPin.pin.projectId,
+      activeWorkspace: options.workspace,
+    });
+  }
+
+  return localPin;
 }
 
 function resolvedTarget(

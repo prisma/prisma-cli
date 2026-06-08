@@ -15,20 +15,60 @@ export interface AppDeploymentSummary {
   live: boolean | null;
 }
 
-export interface AppDeployResult {
+export interface AppResolvedContext {
   workspace: AuthWorkspace;
   project: ProjectSummary;
   branch: {
+    id: string | null;
     name: string;
     kind: BranchKind;
   };
   resolution: ProjectResolution;
+}
+
+export interface AppDeploySettings {
+  framework: {
+    key: string;
+    buildType: AppBuildResult["buildType"];
+    name: string;
+    source: string;
+  };
+  entrypoint: string | null;
+  httpPort: number;
+  region: string | null;
+  envVars: string[];
+}
+
+export interface AppDeployResult {
+  workspace: AuthWorkspace;
+  project: ProjectSummary;
+  branch: {
+    id: string | null;
+    name: string;
+    kind: BranchKind;
+  };
+  resolution: ProjectResolution;
+  branchDatabase?: {
+    status: "created" | "skipped";
+    reason?: string;
+    database?: {
+      id: string;
+      name: string;
+    };
+    envVars: string[];
+    schema: {
+      command: "migrate-deploy" | "db-push" | "prisma-next-db-init";
+      source: "prisma-orm" | "prisma-next";
+      path: string;
+    } | null;
+  };
   app: AppSummary;
   deployment: {
     id: string;
     status: string;
     url: string | null;
   };
+  deploySettings: AppDeploySettings;
   durationMs: number;
   localPin?: {
     path: string;
@@ -38,12 +78,14 @@ export interface AppDeployResult {
 
 export interface AppListDeploysResult {
   projectId: string;
+  verboseContext?: AppResolvedContext;
   app: AppSummary | null;
   deployments: AppDeploymentSummary[];
 }
 
 export interface AppShowResult {
   projectId: string;
+  verboseContext?: AppResolvedContext;
   app: AppSummary | null;
   liveDeployment: AppDeploymentSummary | null;
   liveUrl: string | null;
@@ -63,6 +105,7 @@ export interface AppShowDeployResult {
 
 export interface AppOpenResult {
   projectId: string;
+  verboseContext?: AppResolvedContext;
   app: AppSummary;
   url: string;
   opened: boolean;
@@ -77,12 +120,14 @@ export interface AppRunResult {
 
 export interface AppPromoteResult {
   projectId: string;
+  verboseContext?: AppResolvedContext;
   app: AppSummary;
   deployment: AppDeploymentSummary;
 }
 
 export interface AppRollbackResult {
   projectId: string;
+  verboseContext?: AppResolvedContext;
   app: AppSummary;
   deployment: AppDeploymentSummary;
   previousLiveDeploymentId: string | null;
@@ -90,6 +135,7 @@ export interface AppRollbackResult {
 
 export interface AppRemoveResult {
   projectId: string;
+  verboseContext?: AppResolvedContext;
   app: AppSummary;
   removed: true;
 }

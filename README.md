@@ -23,6 +23,7 @@ Example workflow:
 ```bash
 pnpm prisma-cli auth login
 pnpm prisma-cli app deploy --env DATABASE_URL=postgresql://example
+pnpm prisma-cli project env add --file .env --role preview
 pnpm prisma-cli project env list --role preview
 ```
 
