@@ -1,1 +1,0 @@
-Unrelated bug or code smell: Full package typecheck is blocked by existing errors outside the phase two local-pin write scope, including `branch.ts`, `branch-database.ts`, test helper typings, project real-mode mock call signatures, and missing declarations for script imports. I fixed the phase-two type issue and left the unrelated failures untouched.
