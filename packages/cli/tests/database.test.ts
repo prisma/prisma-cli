@@ -193,9 +193,71 @@ describe("database commands", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toBe("");
+    expect(stripAnsi(result.stderr)).toBe(
+      "Creating database...\n"
+      + "✔ Created database \"scratch\" in Acme Dashboard / preview.\n"
+      + "  The connection URL below is shown once, so save it now.\n"
+      + "\n",
+    );
     expect(result.stdout).toBe("postgresql://db_1003.example.prisma.io/postgres\n");
     expect(result.stdout).not.toContain("DATABASE_URL=");
+    expect(`${result.stdout}${result.stderr}`.split("postgresql://db_1003")).toHaveLength(2);
+  });
+
+  it("omits the branch breadcrumb when creating an unscoped database", async () => {
+    const { cwd, stateDir } = await setupLinkedProject();
+
+    const result = await executeCli({
+      argv: ["database", "create", "scratch"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stripAnsi(result.stderr)).toContain("✔ Created database \"scratch\" in Acme Dashboard.\n");
+    expect(stripAnsi(result.stderr)).not.toContain("Acme Dashboard /");
+    expect(result.stdout).toBe("postgresql://db_1003.example.prisma.io/postgres\n");
+  });
+
+  it("prints database create metadata only in verbose human output", async () => {
+    const { cwd, stateDir } = await setupLinkedProject();
+
+    const result = await executeCli({
+      argv: ["database", "create", "scratch", "--branch", "preview", "--region", "eu-central-1", "--verbose"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const stderr = stripAnsi(result.stderr);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("postgresql://db_1003.example.prisma.io/postgres\n");
+    expect(stderr).toContain("✔ Created database \"scratch\" in Acme Dashboard / preview.\n");
+    expect(stderr).toContain("  workspace    Acme Inc\n");
+    expect(stderr).toContain("  project      Acme Dashboard\n");
+    expect(stderr).toContain("  branch       preview\n");
+    expect(stderr).toContain("  database     scratch  (db_1003)\n");
+    expect(stderr).toContain("  region       eu-central-1\n");
+    expect(stderr).toContain("  status       ready\n");
+    expect(stderr).toContain("  connection   primary  (conn_1002)\n");
+    expect(stderr).toContain("Local context:");
+    expect(stderr).not.toContain("postgresql://db_1003");
+  });
+
+  it("prints only the raw connection URL when creating a database quietly", async () => {
+    const { cwd, stateDir } = await setupLinkedProject();
+
+    const result = await executeCli({
+      argv: ["database", "create", "scratch", "--branch", "preview", "--quiet"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("postgresql://db_1003.example.prisma.io/postgres\n");
   });
 
   it("returns the one-time database connection URL once in JSON", async () => {
@@ -210,6 +272,7 @@ describe("database commands", () => {
     const payload = JSON.parse(result.stdout);
 
     expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
     expect(payload).toMatchObject({
       ok: true,
       command: "database.create",
@@ -234,9 +297,55 @@ describe("database commands", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toBe("");
+    expect(stripAnsi(result.stderr)).toBe(
+      "Creating connection...\n"
+      + "✔ Added a connection to \"acme-preview\" in Acme Dashboard / preview.\n"
+      + "  The connection URL below is shown once, so save it now.\n"
+      + "\n",
+    );
     expect(result.stdout).toBe("postgresql://db_123-3.example.prisma.io/postgres\n");
     expect(result.stdout).not.toContain("DATABASE_URL=");
+    expect(stripAnsi(result.stderr)).not.toContain("cli-");
+    expect(stripAnsi(result.stderr)).not.toContain("conn_");
+    expect(`${result.stdout}${result.stderr}`.split("postgresql://db_123-3")).toHaveLength(2);
+  });
+
+  it("prints database connection create metadata only in verbose human output", async () => {
+    const { cwd, stateDir } = await setupLinkedProject();
+
+    const result = await executeCli({
+      argv: ["database", "connection", "create", "db_123", "--name", "readonly", "--verbose"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const stderr = stripAnsi(result.stderr);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("postgresql://db_123-3.example.prisma.io/postgres\n");
+    expect(stderr).toContain("✔ Added a connection to \"acme-preview\" in Acme Dashboard / preview.\n");
+    expect(stderr).toContain("  workspace    Acme Inc\n");
+    expect(stderr).toContain("  project      Acme Dashboard\n");
+    expect(stderr).toContain("  branch       preview\n");
+    expect(stderr).toContain("  database     acme-preview  (db_123)\n");
+    expect(stderr).toContain("  connection   readonly  (conn_1002)\n");
+    expect(stderr).toContain("Local context:");
+    expect(stderr).not.toContain("postgresql://db_123-3");
+  });
+
+  it("prints only the raw connection URL when creating a database connection quietly", async () => {
+    const { cwd, stateDir } = await setupLinkedProject();
+
+    const result = await executeCli({
+      argv: ["database", "connection", "create", "db_123", "--quiet"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("postgresql://db_123-3.example.prisma.io/postgres\n");
   });
 
   it("returns the one-time database connection URL once in JSON", async () => {
@@ -251,6 +360,7 @@ describe("database commands", () => {
     const payload = JSON.parse(result.stdout);
 
     expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
     expect(payload).toMatchObject({
       ok: true,
       command: "database.connection.create",

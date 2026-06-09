@@ -5,14 +5,27 @@ import { runCommand } from "../src/shell/command-runner";
 import type { CliRuntime } from "../src/shell/runtime";
 import { createTempCwd } from "./helpers";
 
+interface CapturedWrite {
+  stream: "stdout" | "stderr";
+  chunk: string;
+}
+
 class CaptureStream extends Writable {
   buffer = "";
   declare isTTY?: boolean;
   declare columns?: number;
   declare rows?: number;
 
+  constructor(private readonly streamName?: "stdout" | "stderr", private readonly writes?: CapturedWrite[]) {
+    super();
+  }
+
   _write(chunk: Buffer | string, _encoding: BufferEncoding, callback: (error?: Error | null) => void) {
-    this.buffer += chunk.toString();
+    const text = chunk.toString();
+    this.buffer += text;
+    if (this.streamName && this.writes) {
+      this.writes.push({ stream: this.streamName, chunk: text });
+    }
     callback();
   }
 }
@@ -29,9 +42,11 @@ async function createRuntime(argv: string[]): Promise<{
   controller: AbortController;
   stdout: CaptureStream;
   stderr: CaptureStream;
+  writes: CapturedWrite[];
 }> {
-  const stdout = new CaptureStream();
-  const stderr = new CaptureStream();
+  const writes: CapturedWrite[] = [];
+  const stdout = new CaptureStream("stdout", writes);
+  const stderr = new CaptureStream("stderr", writes);
   stdout.isTTY = false;
   stderr.isTTY = false;
   stdout.columns = 80;
@@ -57,6 +72,7 @@ async function createRuntime(argv: string[]): Promise<{
     controller,
     stdout,
     stderr,
+    writes,
   };
 }
 
@@ -146,5 +162,100 @@ describe("command runner success output", () => {
       result: { ok: true },
     });
     expect(stdout.buffer).not.toContain("Local context");
+  });
+
+  it("writes human stderr before raw stdout when both are rendered", async () => {
+    const { runtime, stdout, stderr, writes } = await createRuntime(["project", "show"]);
+
+    await runCommand(
+      runtime,
+      "project.show",
+      {},
+      async () => ({
+        command: "project.show",
+        result: { ok: true },
+        warnings: [],
+        nextSteps: [],
+      }),
+      {
+        renderStdout: () => ["raw-value"],
+        renderHuman: () => ["Created resource"],
+      },
+    );
+
+    expect(process.exitCode).toBeUndefined();
+    expect(stderr.buffer).toBe("Created resource\n\n");
+    expect(stdout.buffer).toBe("raw-value\n");
+    expect(writes.map((write) => write.stream)).toEqual(["stderr", "stdout"]);
+  });
+
+  it("suppresses human output in quiet mode while preserving raw stdout", async () => {
+    const { runtime, stdout, stderr, writes } = await createRuntime(["project", "show", "--quiet"]);
+    let renderHumanCalled = false;
+
+    await runCommand(
+      runtime,
+      "project.show",
+      { quiet: true },
+      async () => ({
+        command: "project.show",
+        result: { ok: true },
+        warnings: [],
+        nextSteps: [],
+      }),
+      {
+        renderStdout: () => ["raw-value"],
+        renderHuman: () => {
+          renderHumanCalled = true;
+          return ["Created resource"];
+        },
+      },
+    );
+
+    expect(process.exitCode).toBeUndefined();
+    expect(renderHumanCalled).toBe(false);
+    expect(stderr.buffer).toBe("");
+    expect(stdout.buffer).toBe("raw-value\n");
+    expect(writes.map((write) => write.stream)).toEqual(["stdout"]);
+  });
+
+  it("bypasses raw stdout and human output in JSON mode", async () => {
+    const { runtime, stdout, stderr } = await createRuntime(["project", "show", "--json"]);
+    let renderStdoutCalled = false;
+    let renderHumanCalled = false;
+
+    await runCommand(
+      runtime,
+      "project.show",
+      { json: true },
+      async () => ({
+        command: "project.show",
+        result: { ok: true },
+        warnings: [],
+        nextSteps: [],
+      }),
+      {
+        renderStdout: () => {
+          renderStdoutCalled = true;
+          return ["raw-value"];
+        },
+        renderHuman: () => {
+          renderHumanCalled = true;
+          return ["Created resource"];
+        },
+      },
+    );
+
+    expect(process.exitCode).toBeUndefined();
+    expect(renderStdoutCalled).toBe(false);
+    expect(renderHumanCalled).toBe(false);
+    expect(stderr.buffer).toBe("");
+    expect(JSON.parse(stdout.buffer)).toMatchObject({
+      ok: true,
+      command: "project.show",
+      result: { ok: true },
+    });
+    expect(stdout.buffer).not.toContain("raw-value");
+    expect(stdout.buffer).not.toContain("Created resource");
   });
 });
