@@ -11,6 +11,11 @@ async function writeLocalPin(cwd: string, pin: unknown) {
   await writeFile(path.join(cwd, ".prisma/local.json"), `${JSON.stringify(pin, null, 2)}\n`, "utf8");
 }
 
+async function writeLocalPinContent(cwd: string, content: string) {
+  await mkdir(path.join(cwd, ".prisma"), { recursive: true });
+  await writeFile(path.join(cwd, ".prisma/local.json"), content, "utf8");
+}
+
 describe("project resolution", () => {
   it("returns LOCAL_PROJECT_WORKSPACE_MISMATCH before listing projects", async () => {
     const cwd = await createTempCwd();
@@ -105,5 +110,29 @@ describe("project resolution", () => {
     expect(result.resolution.projectSource).toBe("env");
     expect(result.project.id).toBe("proj_env");
     expect(listProjects).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns LOCAL_STATE_STALE for invalid local pin JSON before listing projects", async () => {
+    const cwd = await createTempCwd();
+    await writeLocalPinContent(cwd, "{ nope");
+    const { context } = await createTestCommandContext({ cwd });
+    const listProjects = vi.fn<() => Promise<ProjectCandidate[]>>();
+
+    await expect(resolveProjectTarget({
+      context,
+      workspace: {
+        id: "ws_123",
+        name: "Acme Inc",
+      },
+      listProjects,
+      commandName: "app deploy",
+    })).rejects.toMatchObject({
+      code: "LOCAL_STATE_STALE",
+      domain: "project",
+      meta: {
+        pinPath: ".prisma/local.json",
+      },
+    });
+    expect(listProjects).not.toHaveBeenCalled();
   });
 });
