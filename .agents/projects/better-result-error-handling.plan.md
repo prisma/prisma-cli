@@ -69,7 +69,7 @@ None.
 
 ### Phase 3: Project Resolution Domain Errors
 
-**Status:** ☐ Not started
+**Status:** ✓ Complete; full package typecheck blocked by unrelated existing errors
 
 **Goal:** Convert project target resolution failures from thrown `CliError` helpers to typed project-domain failures.
 
@@ -87,10 +87,10 @@ None.
 
 **Acceptance Criteria:**
 
-- Migrated project resolution APIs expose typed results rather than throwing expected `CliError` instances.
-- Existing project-related structured error codes and recovery guidance remain stable.
-- `pnpm --filter @prisma/cli exec tsc -p tsconfig.json` passes.
-- Project resolution and project show/list tests pass.
+- [x] Migrated project resolution APIs expose typed results rather than throwing expected `CliError` instances.
+- [x] Existing project-related structured error codes and recovery guidance remain stable.
+- [ ] `pnpm --filter @prisma/cli exec tsc -p tsconfig.json` passes. Blocked by unrelated existing errors in database/test typing surfaces.
+- [x] Project resolution and project show/list tests pass.
 
 ### Phase 4: Project Setup Validation And Creation Errors
 

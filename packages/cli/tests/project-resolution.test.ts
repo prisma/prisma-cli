@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { createTempCwd, createTestCommandContext } from "./helpers";
-import { resolveProjectTarget } from "../src/lib/project/resolution";
+import { projectResolutionErrorToCliError, resolveProjectTarget } from "../src/lib/project/resolution";
 import type { ProjectCandidate } from "../src/lib/project/resolution";
 
 async function writeLocalPin(cwd: string, pin: unknown) {
@@ -26,7 +26,7 @@ describe("project resolution", () => {
     const { context } = await createTestCommandContext({ cwd });
     const listProjects = vi.fn<() => Promise<ProjectCandidate[]>>();
 
-    await expect(resolveProjectTarget({
+    const result = await resolveProjectTarget({
       context,
       workspace: {
         id: "ws_123",
@@ -34,7 +34,14 @@ describe("project resolution", () => {
       },
       listProjects,
       commandName: "app deploy",
-    })).rejects.toMatchObject({
+    });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) {
+      throw new Error("Expected project resolution to fail");
+    }
+    expect(result.error._tag).toBe("LocalProjectWorkspaceMismatchError");
+    expect(projectResolutionErrorToCliError(result.error)).toMatchObject({
       code: "LOCAL_PROJECT_WORKSPACE_MISMATCH",
       domain: "project",
       meta: {
@@ -75,8 +82,12 @@ describe("project resolution", () => {
       commandName: "app deploy",
     });
 
-    expect(result.resolution.projectSource).toBe("explicit");
-    expect(result.project.id).toBe("proj_active");
+    expect(result.isOk()).toBe(true);
+    if (result.isErr()) {
+      throw new Error("Expected project resolution to succeed");
+    }
+    expect(result.value.resolution.projectSource).toBe("explicit");
+    expect(result.value.project.id).toBe("proj_active");
     expect(listProjects).toHaveBeenCalledTimes(1);
   });
 
@@ -107,8 +118,12 @@ describe("project resolution", () => {
       commandName: "app deploy",
     });
 
-    expect(result.resolution.projectSource).toBe("env");
-    expect(result.project.id).toBe("proj_env");
+    expect(result.isOk()).toBe(true);
+    if (result.isErr()) {
+      throw new Error("Expected project resolution to succeed");
+    }
+    expect(result.value.resolution.projectSource).toBe("env");
+    expect(result.value.project.id).toBe("proj_env");
     expect(listProjects).toHaveBeenCalledTimes(1);
   });
 
@@ -118,7 +133,7 @@ describe("project resolution", () => {
     const { context } = await createTestCommandContext({ cwd });
     const listProjects = vi.fn<() => Promise<ProjectCandidate[]>>();
 
-    await expect(resolveProjectTarget({
+    const result = await resolveProjectTarget({
       context,
       workspace: {
         id: "ws_123",
@@ -126,7 +141,14 @@ describe("project resolution", () => {
       },
       listProjects,
       commandName: "app deploy",
-    })).rejects.toMatchObject({
+    });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) {
+      throw new Error("Expected project resolution to fail");
+    }
+    expect(result.error._tag).toBe("LocalStateStaleError");
+    expect(projectResolutionErrorToCliError(result.error)).toMatchObject({
       code: "LOCAL_STATE_STALE",
       domain: "project",
       meta: {

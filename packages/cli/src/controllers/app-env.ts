@@ -13,7 +13,7 @@ import { readLocalGitBranch } from "../lib/git/local-branch";
 import { authRequiredError, CliError, usageError, workspaceRequiredError } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
 import type { CommandContext } from "../shell/runtime";
-import { resolveProjectTarget } from "../lib/project/resolution";
+import { projectResolutionErrorToCliError, resolveProjectTarget } from "../lib/project/resolution";
 import type {
   EnvAddResult,
   EnvListTarget,
@@ -416,13 +416,17 @@ async function requireClientAndProject(
     throw workspaceRequiredError();
   }
 
-  const target = await resolveProjectTarget({
+  const targetResult = await resolveProjectTarget({
     context,
     workspace: authState.workspace,
     explicitProject,
     listProjects: () => listRealWorkspaceProjects(client, authState.workspace!, context.runtime.signal),
     commandName,
   });
+  if (targetResult.isErr()) {
+    throw projectResolutionErrorToCliError(targetResult.error);
+  }
+  const target = targetResult.value;
 
   return {
     client,
