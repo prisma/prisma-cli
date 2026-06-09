@@ -1,4 +1,4 @@
-import { chmod, lstat, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -462,8 +462,7 @@ describe("preview build strategy", () => {
     await mkdir(path.dirname(nextBin), { recursive: true });
     await writeFile(path.join(appPath, "next.config.ts"), "export default { output: 'standalone' };\n", "utf8");
     await writeFile(path.join(standaloneDir, "server.js"), "console.log('next');\n", "utf8");
-    await writeFile(nextBin, "#!/bin/sh\nexit 0\n", "utf8");
-    await chmod(nextBin, 0o755);
+    await symlink("/usr/bin/true", nextBin);
 
     const { executePreviewBuild } = await import("../src/lib/app/preview-build");
     const result = await executePreviewBuild({

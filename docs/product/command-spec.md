@@ -14,6 +14,7 @@ The beta package includes these command groups:
 - `project` (includes `project env` subgroup)
 - `git`
 - `branch`
+- `database` (includes `database connection` subgroup)
 - `app`
 
 The beta package also includes one top-level utility command:
@@ -29,7 +30,6 @@ Out of scope for the current beta:
 
 - `init`
 - `schema`
-- `database`
 - `migrate`
 - product-specific namespaces such as `compute`
 
@@ -549,6 +549,177 @@ Examples:
 ```bash
 prisma-cli branch list
 prisma-cli branch list --json
+```
+
+## `prisma-cli database list --project <id-or-name> --branch <git-name>`
+
+Purpose:
+
+- list Prisma Postgres databases for the resolved project
+
+Behavior:
+
+- requires auth and resolved project context; accepts `--project <id-or-name>` as an explicit fallback
+- lists database metadata only: name, id, branch, region, status, and created timestamp when available
+- `--branch <git-name>` narrows the list to databases attached to that Branch
+- never prints or returns connection strings, passwords, or endpoint secrets
+- does not create, delete, or mutate remote state
+- uses the standard list JSON envelope with redacted database metadata
+
+Examples:
+
+```bash
+prisma-cli database list
+prisma-cli database list --branch feature/foo
+prisma-cli database list --json
+```
+
+## `prisma-cli database show <database> --project <id-or-name> --branch <git-name>`
+
+Purpose:
+
+- show metadata for one Prisma Postgres database
+
+Behavior:
+
+- requires auth and resolved project context; accepts `--project <id-or-name>` as an explicit fallback
+- resolves `<database>` by exact database id or exact database name inside the resolved project
+- `--branch <git-name>` narrows name resolution when the same database name exists on multiple Branches
+- returns database metadata and connection metadata only
+- never prints or returns connection strings, passwords, or endpoint secrets
+- fails with `DATABASE_NOT_FOUND` or `DATABASE_AMBIGUOUS` when the target cannot be selected safely
+
+Examples:
+
+```bash
+prisma-cli database show db_123
+prisma-cli database show acme-preview --branch preview
+prisma-cli database show db_123 --json
+```
+
+## `prisma-cli database create <name> --project <id-or-name> --branch <git-name> --region <region>`
+
+Purpose:
+
+- create a Prisma Postgres database and return its first one-time connection URL
+
+Behavior:
+
+- requires auth and resolved project context; accepts `--project <id-or-name>` as an explicit fallback
+- creates an empty Prisma Postgres database in the resolved project
+- `--branch <git-name>` targets the created database to a Branch when supplied
+- `--region <region>` passes the Prisma Postgres region id when supplied
+- the Management API returns the first connection as a one-time-view secret
+- in human mode, stdout contains exactly one line: the raw connection URL
+- human stderr does not repeat, label, or wrap the connection URL
+- in `--json`, `result.connectionString` contains the raw one-time URL exactly once
+- no `DATABASE_URL=` or `DIRECT_URL=` formatting is added; consumers decide how to store the URL
+
+Examples:
+
+```bash
+prisma-cli database create my-db
+prisma-cli database create my-db --branch feature/foo --region eu-central-1
+prisma-cli database create my-db --json
+```
+
+## `prisma-cli database remove <database> --confirm <database-id>`
+
+Purpose:
+
+- remove a Prisma Postgres database
+
+Behavior:
+
+- requires auth and resolved project context; accepts `--project <id-or-name>` as an explicit fallback
+- resolves `<database>` by exact database id or exact database name inside the resolved project
+- requires `--confirm <database-id>` where the value exactly matches the resolved database id
+- `--yes` does not satisfy this confirmation
+- removes the database and its connection metadata through the Management API
+- never prints or returns connection strings, passwords, or endpoint secrets
+
+Examples:
+
+```bash
+prisma-cli database remove db_123 --confirm db_123
+```
+
+## `prisma-cli database connection`
+
+Manage one-time-view connection strings for a database.
+
+`connection` is nested under `database` because connection strings are only
+valid in the context of a Prisma Postgres database. The subgroup mirrors the
+`project env <action>` shape: the parent command names the resource family,
+the nested noun names the subordinate resource, and the final token is the
+action. There is no `database connection show` command because connection
+strings are one-time-view secrets.
+
+### `prisma-cli database connection list <database>`
+
+Purpose:
+
+- list connection metadata for a database
+
+Behavior:
+
+- requires auth and resolved project context; accepts `--project <id-or-name>` as an explicit fallback
+- resolves `<database>` by exact database id or exact database name inside the resolved project
+- supports `--branch <git-name>` to narrow database name resolution
+- lists connection names, ids, and created timestamps when available
+- never prints or returns connection strings, passwords, or endpoint secrets
+
+Examples:
+
+```bash
+prisma-cli database connection list db_123
+prisma-cli database connection list acme-preview --branch preview
+prisma-cli database connection list db_123 --json
+```
+
+### `prisma-cli database connection create <database> --name <name>`
+
+Purpose:
+
+- create a new one-time-view connection URL for a database
+
+Behavior:
+
+- requires auth and resolved project context; accepts `--project <id-or-name>` as an explicit fallback
+- resolves `<database>` by exact database id or exact database name inside the resolved project
+- supports `--branch <git-name>` to narrow database name resolution
+- `--name <name>` sets the connection metadata name; when omitted, the CLI generates a `cli-YYYYMMDDhhmmssSSS-xxxx` name
+- in human mode, stdout contains exactly one line: the raw connection URL
+- human stderr does not repeat, label, or wrap the connection URL
+- in `--json`, `result.connectionString` contains the raw one-time URL exactly once
+- no `DATABASE_URL=` or `DIRECT_URL=` formatting is added; consumers decide how to store the URL
+
+Examples:
+
+```bash
+prisma-cli database connection create db_123
+prisma-cli database connection create db_123 --name readonly
+prisma-cli database connection create db_123 --json
+```
+
+### `prisma-cli database connection remove <connection> --confirm <connection-id>`
+
+Purpose:
+
+- remove a database connection
+
+Behavior:
+
+- requires auth
+- treats `<connection>` as the connection id to remove
+- requires `--confirm <connection-id>` where the value exactly matches the connection id
+- `--yes` does not satisfy this confirmation
+- never prints or returns connection strings, passwords, or endpoint secrets
+
+Examples:
+
+```bash
+prisma-cli database connection remove conn_123 --confirm conn_123
 ```
 
 ## `prisma-cli app build --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|tanstack-start>`

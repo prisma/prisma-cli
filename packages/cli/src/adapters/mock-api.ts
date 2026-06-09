@@ -49,6 +49,26 @@ interface DeploymentRecord {
   url: string | null;
 }
 
+interface DatabaseRecord {
+  id: string;
+  projectId: string;
+  branchId: string | null;
+  branchName: string | null;
+  name: string;
+  region: string | null;
+  status: string | null;
+  isDefault: boolean | null;
+  createdAt: string | null;
+}
+
+interface DatabaseConnectionRecord {
+  id: string;
+  databaseId: string;
+  name: string;
+  createdAt: string | null;
+  connectionString?: string;
+}
+
 interface MockApiData {
   providers: ProviderRecord[];
   users: UserRecord[];
@@ -57,6 +77,8 @@ interface MockApiData {
   projects: ProjectRecord[];
   branches: BranchRecord[];
   deployments: DeploymentRecord[];
+  databases?: DatabaseRecord[];
+  databaseConnections?: DatabaseConnectionRecord[];
 }
 
 export class MockApi {
@@ -131,9 +153,110 @@ export class MockApi {
   getDeployment(deploymentId: string): DeploymentRecord | undefined {
     return this.data.deployments.find((deployment) => deployment.id === deploymentId);
   }
+
+  listDatabasesForProject(projectId: string, branchName?: string): DatabaseRecord[] {
+    return (this.data.databases ?? []).filter((database) =>
+      database.projectId === projectId && (!branchName || database.branchName === branchName)
+    );
+  }
+
+  getDatabase(databaseId: string): DatabaseRecord | undefined {
+    return (this.data.databases ?? []).find((database) => database.id === databaseId);
+  }
+
+  createDatabase(input: {
+    projectId: string;
+    name: string;
+    branchName?: string;
+    region?: string;
+  }): { database: DatabaseRecord; connection: DatabaseConnectionRecord; connectionString: string } {
+    this.data.databases ??= [];
+    this.data.databaseConnections ??= [];
+
+    const database: DatabaseRecord = {
+      id: `db_${this.data.databases.length + 1_000}`,
+      projectId: input.projectId,
+      branchId: input.branchName ? this.getBranchForProject(input.projectId, input.branchName)?.id ?? null : null,
+      branchName: input.branchName ?? null,
+      name: input.name,
+      region: input.region ?? null,
+      status: "ready",
+      isDefault: false,
+      createdAt: "2026-06-09T00:00:00.000Z",
+    };
+    const connectionString = `postgresql://${database.id}.example.prisma.io/postgres`;
+    const connection: DatabaseConnectionRecord = {
+      id: `conn_${this.data.databaseConnections.length + 1_000}`,
+      databaseId: database.id,
+      name: database.name,
+      createdAt: "2026-06-09T00:00:00.000Z",
+      connectionString,
+    };
+
+    this.data.databases.push(database);
+    this.data.databaseConnections.push(connection);
+
+    return { database, connection, connectionString };
+  }
+
+  removeDatabase(databaseId: string): DatabaseRecord | undefined {
+    this.data.databases ??= [];
+    this.data.databaseConnections ??= [];
+    const database = this.getDatabase(databaseId);
+    if (!database) {
+      return undefined;
+    }
+
+    this.data.databases = this.data.databases.filter((candidate) => candidate.id !== databaseId);
+    this.data.databaseConnections = this.data.databaseConnections.filter((connection) => connection.databaseId !== databaseId);
+    return database;
+  }
+
+  listDatabaseConnections(databaseId: string): DatabaseConnectionRecord[] {
+    return (this.data.databaseConnections ?? []).filter((connection) => connection.databaseId === databaseId);
+  }
+
+  getDatabaseConnection(connectionId: string): DatabaseConnectionRecord | undefined {
+    return (this.data.databaseConnections ?? []).find((connection) => connection.id === connectionId);
+  }
+
+  createDatabaseConnection(input: {
+    databaseId: string;
+    name: string;
+  }): { connection: DatabaseConnectionRecord; connectionString: string } | undefined {
+    const database = this.getDatabase(input.databaseId);
+    if (!database) {
+      return undefined;
+    }
+
+    this.data.databaseConnections ??= [];
+    const connectionString = `postgresql://${input.databaseId}-${this.data.databaseConnections.length + 1}.example.prisma.io/postgres`;
+    const connection: DatabaseConnectionRecord = {
+      id: `conn_${this.data.databaseConnections.length + 1_000}`,
+      databaseId: input.databaseId,
+      name: input.name,
+      createdAt: "2026-06-09T00:00:00.000Z",
+      connectionString,
+    };
+    this.data.databaseConnections.push(connection);
+    return { connection, connectionString };
+  }
+
+  removeDatabaseConnection(connectionId: string): DatabaseConnectionRecord | undefined {
+    this.data.databaseConnections ??= [];
+    const connection = this.getDatabaseConnection(connectionId);
+    if (!connection) {
+      return undefined;
+    }
+
+    this.data.databaseConnections = this.data.databaseConnections.filter((candidate) => candidate.id !== connectionId);
+    return connection;
+  }
 }
 
 export type {
+  DatabaseConnectionRecord,
+  DatabaseRecord,
   DeploymentRecord,
   BranchRecord,
   ProjectRecord,

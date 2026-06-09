@@ -104,8 +104,29 @@ Current MVP commands map to patterns like this:
 | `git connect` | `mutate` |
 | `git disconnect` | `mutate` |
 | `branch list` | `list` |
+| `database list` | `list` |
+| `database show` | `show` |
+| `database create` | raw secret stdout + JSON envelope |
+| `database remove` | `mutate` |
+| `database connection list` | `list` |
+| `database connection create` | raw secret stdout + JSON envelope |
+| `database connection remove` | `mutate` |
 
 No current MVP command uses `verify` or `inspect`, but new commands must still choose one existing pattern rather than inventing a new one casually.
+
+### One-Time Secret Output
+
+Commands that create one-time-view secrets may write the raw secret value to
+stdout in human mode. This is still machine-readable output, not decorative
+human output.
+
+Rules:
+
+- write exactly one raw secret value per successful create command
+- do not repeat the secret on stderr
+- do not wrap the secret in labels such as `DATABASE_URL=`
+- list and show commands must never print or return secret values
+- in `--json`, include the secret exactly once in the result object
 
 ### Shared Patterns
 

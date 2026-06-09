@@ -149,7 +149,7 @@ describe("version", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain("version  Show CLI build and environment");
+    expect(result.stderr).toMatch(/version\s+Show CLI build and environment/);
     expect(result.stderr).toContain("--version");
     expect(result.stderr).toContain("Print the CLI version and exit.");
   });
