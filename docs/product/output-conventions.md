@@ -106,10 +106,10 @@ Current MVP commands map to patterns like this:
 | `branch list` | `list` |
 | `database list` | `list` |
 | `database show` | `show` |
-| `database create` | raw secret stdout + JSON envelope |
+| `database create` | compact mutate stderr + raw secret stdout + JSON envelope |
 | `database remove` | `mutate` |
 | `database connection list` | `list` |
-| `database connection create` | raw secret stdout + JSON envelope |
+| `database connection create` | compact mutate stderr + raw secret stdout + JSON envelope |
 | `database connection remove` | `mutate` |
 
 No current MVP command uses `verify` or `inspect`, but new commands must still choose one existing pattern rather than inventing a new one casually.
@@ -123,8 +123,11 @@ human output.
 Rules:
 
 - write exactly one raw secret value per successful create command
+- write human creation summaries to stderr before writing the raw secret to stdout
 - do not repeat the secret on stderr
 - do not wrap the secret in labels such as `DATABASE_URL=`
+- use `--verbose` for human metadata such as resource ids; keep generated names and opaque ids out of default human output unless they are the user-selected target
+- `--quiet` suppresses successful human stderr output and still writes the raw secret to stdout
 - list and show commands must never print or return secret values
 - in `--json`, include the secret exactly once in the result object
 

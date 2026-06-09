@@ -610,8 +610,11 @@ Behavior:
 - `--branch <git-name>` targets the created database to a Branch when supplied
 - `--region <region>` passes the Prisma Postgres region id when supplied
 - the Management API returns the first connection as a one-time-view secret
-- in human mode, stdout contains exactly one line: the raw connection URL
+- in default human mode, stderr shows a short creation summary with the resolved Project and Branch when a Branch is present
+- in default human mode, stdout contains exactly one line: the raw connection URL
 - human stderr does not repeat, label, or wrap the connection URL
+- `--verbose` adds human-only metadata rows such as Workspace, Project, Branch, Database, region, status, and first connection id on stderr before the URL is written to stdout
+- `--quiet` suppresses successful stderr output and leaves stdout as exactly the raw connection URL
 - in `--json`, `result.connectionString` contains the raw one-time URL exactly once
 - no `DATABASE_URL=` or `DIRECT_URL=` formatting is added; consumers decide how to store the URL
 
@@ -689,8 +692,12 @@ Behavior:
 - resolves `<database>` by exact database id or exact database name inside the resolved project
 - supports `--branch <git-name>` to narrow database name resolution
 - `--name <name>` sets the connection metadata name; when omitted, the CLI generates a `cli-YYYYMMDDhhmmssSSS-xxxx` name
-- in human mode, stdout contains exactly one line: the raw connection URL
+- in default human mode, stderr shows a short creation summary with the resolved Project and Branch when a Branch is present
+- in default human mode, stdout contains exactly one line: the raw connection URL
 - human stderr does not repeat, label, or wrap the connection URL
+- default human stderr does not show generated connection names; use `--verbose` or `--json` for connection metadata
+- `--verbose` adds human-only metadata rows such as Workspace, Project, Branch, Database, and connection id on stderr before the URL is written to stdout
+- `--quiet` suppresses successful stderr output and leaves stdout as exactly the raw connection URL
 - in `--json`, `result.connectionString` contains the raw one-time URL exactly once
 - no `DATABASE_URL=` or `DIRECT_URL=` formatting is added; consumers decide how to store the URL
 

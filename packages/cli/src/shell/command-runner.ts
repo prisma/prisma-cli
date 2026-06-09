@@ -69,11 +69,10 @@ export async function runCommand<T>(
     }
 
     const stdout = presenter.renderStdout?.(context, descriptor, success.result) ?? [];
-    if (stdout.length > 0) {
-      context.output.stdout.write(`${stdout.join("\n")}\n`);
-    }
-
     if (flags.quiet) {
+      if (stdout.length > 0) {
+        context.output.stdout.write(`${stdout.join("\n")}\n`);
+      }
       return;
     }
 
@@ -82,11 +81,19 @@ export async function runCommand<T>(
       enabled: flags.verbose && rendered.length > 0,
       durationMs: Date.now() - startedAt,
     });
-
-    writeHumanLines(context.output, [
+    const humanLines = [
       ...rendered,
       ...diagnostics,
-    ]);
+    ];
+    if (stdout.length > 0 && humanLines.length > 0) {
+      humanLines.push("");
+    }
+
+    writeHumanLines(context.output, humanLines);
+
+    if (stdout.length > 0) {
+      context.output.stdout.write(`${stdout.join("\n")}\n`);
+    }
   } catch (error) {
     const cliError = toCliError(error, runtime);
     if (cliError) {

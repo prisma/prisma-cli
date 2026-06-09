@@ -1,7 +1,7 @@
 import type { CommandDescriptor } from "../shell/command-meta";
 import { formatDescriptorLabel } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
-import { formatColumns } from "../shell/ui";
+import { formatColumns, renderSummaryLine } from "../shell/ui";
 import { renderMutate, renderShow, serializeList } from "../output/patterns";
 import type {
   DatabaseConnectionCreateResult,
@@ -115,8 +115,24 @@ export function renderDatabaseCreateStdout(_context: CommandContext, _descriptor
   return [result.connectionString];
 }
 
-export function renderDatabaseCreate(): string[] {
-  return [];
+export function renderDatabaseCreate(
+  context: CommandContext,
+  _descriptor: CommandDescriptor,
+  result: DatabaseCreateResult,
+): string[] {
+  const ui = context.ui;
+  const lines = [
+    "Creating database...",
+    renderSummaryLine(ui, "success", `Created database "${result.database.name}" in ${formatDatabaseTarget(result.projectName, result.database.branchName)}.`),
+    "  The connection URL below is shown once, so save it now.",
+  ];
+
+  if (ui.verbose) {
+    lines.push("");
+    lines.push(...renderDatabaseCreateVerboseRows(context, result));
+  }
+
+  return lines;
 }
 
 export function serializeDatabaseCreate(result: DatabaseCreateResult) {
@@ -219,8 +235,24 @@ export function renderDatabaseConnectionCreateStdout(
   return [result.connectionString];
 }
 
-export function renderDatabaseConnectionCreate(): string[] {
-  return [];
+export function renderDatabaseConnectionCreate(
+  context: CommandContext,
+  _descriptor: CommandDescriptor,
+  result: DatabaseConnectionCreateResult,
+): string[] {
+  const ui = context.ui;
+  const lines = [
+    "Creating connection...",
+    renderSummaryLine(ui, "success", `Added a connection to "${result.database.name}" in ${formatDatabaseTarget(result.projectName, result.database.branchName)}.`),
+    "  The connection URL below is shown once, so save it now.",
+  ];
+
+  if (ui.verbose) {
+    lines.push("");
+    lines.push(...renderDatabaseConnectionCreateVerboseRows(context, result));
+  }
+
+  return lines;
 }
 
 export function serializeDatabaseConnectionCreate(result: DatabaseConnectionCreateResult) {
@@ -253,4 +285,48 @@ export function serializeDatabaseConnectionRemove(result: DatabaseConnectionRemo
 
 function formatStatus(database: DatabaseSummary): string {
   return database.status ?? (database.isDefault ? "default" : "unknown");
+}
+
+function formatDatabaseTarget(projectName: string, branchName: string | null): string {
+  return branchName ? `${projectName} / ${branchName}` : projectName;
+}
+
+function renderDatabaseCreateVerboseRows(context: CommandContext, result: DatabaseCreateResult): string[] {
+  const rows = [
+    ...renderWorkspaceProjectRows(result),
+    ["branch", result.database.branchName ?? "unscoped"],
+    ["database", formatResourceWithId(context, result.database.name, result.database.id)],
+    ["region", result.database.region ?? "unknown"],
+    ["status", formatStatus(result.database)],
+    ["connection", formatResourceWithId(context, result.connection.name, result.connection.id)],
+  ];
+
+  return renderMetadataRows(rows);
+}
+
+function renderDatabaseConnectionCreateVerboseRows(context: CommandContext, result: DatabaseConnectionCreateResult): string[] {
+  const rows = [
+    ...renderWorkspaceProjectRows(result),
+    ["branch", result.database.branchName ?? "unscoped"],
+    ["database", formatResourceWithId(context, result.database.name, result.database.id)],
+    ["connection", formatResourceWithId(context, result.connection.name, result.connection.id)],
+  ];
+
+  return renderMetadataRows(rows);
+}
+
+function renderWorkspaceProjectRows(result: DatabaseCreateResult | DatabaseConnectionCreateResult): string[][] {
+  return [
+    ...(result.verboseContext ? [["workspace", result.verboseContext.workspace.name]] : []),
+    ["project", result.projectName],
+  ];
+}
+
+function formatResourceWithId(context: CommandContext, name: string, id: string): string {
+  return `${name}  ${context.ui.dim(`(${id})`)}`;
+}
+
+function renderMetadataRows(rows: string[][]): string[] {
+  const widths = [Math.max(...rows.map((row) => row[0].length)), 0];
+  return rows.map(([key, value]) => `  ${formatColumns([key, value], widths)}`);
 }

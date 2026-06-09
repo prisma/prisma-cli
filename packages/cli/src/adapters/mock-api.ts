@@ -188,7 +188,7 @@ export class MockApi {
     const connection: DatabaseConnectionRecord = {
       id: `conn_${this.data.databaseConnections.length + 1_000}`,
       databaseId: database.id,
-      name: database.name,
+      name: "primary",
       createdAt: "2026-06-09T00:00:00.000Z",
       connectionString,
     };

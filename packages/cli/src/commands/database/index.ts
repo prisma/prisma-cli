@@ -133,7 +133,7 @@ function createDatabaseCreateCommand(runtime: CliRuntime): Command {
       (context) => runDatabaseCreate(context, name, { projectRef, branchName, region }),
       {
         renderStdout: (context, descriptor, result) => renderDatabaseCreateStdout(context, descriptor, result),
-        renderHuman: () => renderDatabaseCreate(),
+        renderHuman: (context, descriptor, result) => renderDatabaseCreate(context, descriptor, result),
         renderJson: (result) => serializeDatabaseCreate(result),
       },
     );
@@ -230,7 +230,7 @@ function createDatabaseConnectionCreateCommand(runtime: CliRuntime): Command {
       (context) => runDatabaseConnectionCreate(context, databaseRef, { projectRef, branchName, name }),
       {
         renderStdout: (context, descriptor, result) => renderDatabaseConnectionCreateStdout(context, descriptor, result),
-        renderHuman: () => renderDatabaseConnectionCreate(),
+        renderHuman: (context, descriptor, result) => renderDatabaseConnectionCreate(context, descriptor, result),
         renderJson: (result) => serializeDatabaseConnectionCreate(result),
       },
     );
