@@ -63,6 +63,7 @@ import {
   bindProjectToDirectory,
   formatCommandArgument,
   projectCreateFailedError,
+  projectDirectoryBindingErrorToCliError,
   projectSetupNameRequiredError,
   resolveProjectForSetup,
   toProjectSummary,
@@ -275,8 +276,12 @@ export async function runAppDeploy(
       target.project,
       target.localPinAction,
     );
-    localPinResult = setupResult.localPin;
-    maybeRenderProjectLinked(context, setupResult.directory, setupResult.project.name, setupResult.localPin.path);
+    if (setupResult.isErr()) {
+      throw projectDirectoryBindingErrorToCliError(setupResult.error);
+    }
+    const projectSetup = setupResult.value;
+    localPinResult = projectSetup.localPin;
+    maybeRenderProjectLinked(context, projectSetup.directory, projectSetup.project.name, projectSetup.localPin.path);
   }
 
   let framework = await resolveDeployFramework(context, {

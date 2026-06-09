@@ -1210,6 +1210,53 @@ describe("app controller", () => {
     await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(".prisma/\n");
   });
 
+  it("returns LOCAL_STATE_WRITE_FAILED when deploy cannot store the local binding", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient("proj_my_app"));
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
+        resolveBranch: createResolveBranch(),
+        listApps: vi.fn(),
+        deployApp: vi.fn(),
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, ".gitignore"), { recursive: true });
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDeploy(context, undefined, {
+      projectRef: "proj_my_app",
+    })).rejects.toMatchObject({
+      code: "LOCAL_STATE_WRITE_FAILED",
+      domain: "project",
+      meta: {
+        gitignorePath: ".gitignore",
+        operation: "read",
+      },
+    });
+    await expect(readLocalPin(cwd)).resolves.toEqual({
+      workspaceId: "ws_123",
+      projectId: "proj_my_app",
+    });
+  });
+
   it("uses existing prisma.app.json deploy settings", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([

@@ -16,7 +16,7 @@ None.
 
 ### Phase 1: Foundation And Local Pin Read
 
-**Status:** ◐ Implemented; targeted tests pass, repo typecheck blocked by unrelated existing errors
+**Status:** ✓ Complete
 
 **Goal:** Add the dependency and prove typed expected failures on the smallest read-only project context slice.
 
@@ -43,7 +43,7 @@ None.
 
 ### Phase 2: Local Pin Write And Directory Binding
 
-**Status:** ☐ Not started
+**Status:** ✓ Complete; full package typecheck blocked by unrelated existing errors
 
 **Goal:** Complete the local-pin call stack by typing write and gitignore update failures used by project binding.
 
@@ -510,3 +510,5 @@ None.
 - `pnpm build:cli` passes if command runner, package metadata, or build-facing code changed in the phase.
 
 ## Revision Log
+
+- 2026-06-09: Phase 2 added `LOCAL_STATE_WRITE_FAILED` to the product error conventions because local Project binding write failures need a stable structured error code before controller-facing conversion.
