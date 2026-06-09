@@ -132,5 +132,56 @@
       "status": "ready",
       "url": "https://preview.billing-api.prisma.app"
     }
+  ],
+  "databases": [
+    {
+      "id": "db_123",
+      "projectId": "proj_123",
+      "branchId": "br_123",
+      "branchName": "preview",
+      "name": "acme-preview",
+      "region": "eu-central-1",
+      "status": "ready",
+      "isDefault": true,
+      "createdAt": "2026-06-01T00:00:00.000Z"
+    },
+    {
+      "id": "db_456",
+      "projectId": "proj_123",
+      "branchId": "br_456",
+      "branchName": "production",
+      "name": "acme-production",
+      "region": "us-east-1",
+      "status": "ready",
+      "isDefault": false,
+      "createdAt": "2026-06-02T00:00:00.000Z"
+    },
+    {
+      "id": "db_789",
+      "projectId": "proj_456",
+      "branchId": "br_789",
+      "branchName": "preview",
+      "name": "billing-preview",
+      "region": "eu-central-1",
+      "status": "ready",
+      "isDefault": false,
+      "createdAt": "2026-06-03T00:00:00.000Z"
+    }
+  ],
+  "databaseConnections": [
+    {
+      "id": "conn_123",
+      "databaseId": "db_123",
+      "name": "primary",
+      "createdAt": "2026-06-01T00:00:00.000Z",
+      "connectionString": "postgresql://secret-preview.example.prisma.io/postgres"
+    },
+    {
+      "id": "conn_456",
+      "databaseId": "db_456",
+      "name": "primary",
+      "createdAt": "2026-06-02T00:00:00.000Z",
+      "connectionString": "postgresql://secret-production.example.prisma.io/postgres"
+    }
   ]
 }

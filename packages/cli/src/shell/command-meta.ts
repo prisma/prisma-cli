@@ -72,6 +72,12 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: ["prisma-cli branch list"],
   },
   {
+    id: "database",
+    path: ["prisma", "database"],
+    description: "Manage Prisma Postgres databases for a project",
+    examples: ["prisma-cli database list", "prisma-cli database create my-db", "prisma-cli database connection create db_123"],
+  },
+  {
     id: "git",
     path: ["prisma", "git"],
     description: "Manage Git repository connections for a project",
@@ -122,6 +128,58 @@ const DESCRIPTORS: CommandDescriptor[] = [
     path: ["prisma", "branch", "list"],
     description: "List Platform branches for the resolved project",
     examples: ["prisma-cli branch list", "prisma-cli branch list --json"],
+  },
+  {
+    id: "database.list",
+    path: ["prisma", "database", "list"],
+    description: "List Prisma Postgres databases for the resolved project",
+    examples: ["prisma-cli database list", "prisma-cli database list --branch feature/foo", "prisma-cli database list --json"],
+  },
+  {
+    id: "database.show",
+    path: ["prisma", "database", "show"],
+    description: "Show database metadata without secret values",
+    examples: ["prisma-cli database show db_123", "prisma-cli database show acme-preview --branch preview --json"],
+  },
+  {
+    id: "database.create",
+    path: ["prisma", "database", "create"],
+    description: "Create a Prisma Postgres database and print its one-time connection URL",
+    examples: ["prisma-cli database create my-db", "prisma-cli database create my-db --branch feature/foo --region eu-central-1"],
+  },
+  {
+    id: "database.remove",
+    path: ["prisma", "database", "remove"],
+    description: "Remove a database after exact id confirmation",
+    examples: ["prisma-cli database remove db_123 --confirm db_123"],
+  },
+  {
+    id: "database.connection",
+    path: ["prisma", "database", "connection"],
+    description: "Manage one-time-view database connection strings",
+    examples: [
+      "prisma-cli database connection list db_123",
+      "prisma-cli database connection create db_123",
+      "prisma-cli database connection remove conn_123 --confirm conn_123",
+    ],
+  },
+  {
+    id: "database.connection.list",
+    path: ["prisma", "database", "connection", "list"],
+    description: "List database connection metadata without secret values",
+    examples: ["prisma-cli database connection list db_123", "prisma-cli database connection list acme-preview --branch preview --json"],
+  },
+  {
+    id: "database.connection.create",
+    path: ["prisma", "database", "connection", "create"],
+    description: "Create a database connection and print its one-time connection URL",
+    examples: ["prisma-cli database connection create db_123", "prisma-cli database connection create db_123 --name readonly"],
+  },
+  {
+    id: "database.connection.remove",
+    path: ["prisma", "database", "connection", "remove"],
+    description: "Remove a database connection after exact id confirmation",
+    examples: ["prisma-cli database connection remove conn_123 --confirm conn_123"],
   },
   {
     id: "app.build",

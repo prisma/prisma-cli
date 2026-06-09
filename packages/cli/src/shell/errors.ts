@@ -1,6 +1,6 @@
 import type { NextAction } from "./next-actions";
 
-export type ErrorDomain = "cli" | "auth" | "project" | "branch" | "app";
+export type ErrorDomain = "cli" | "auth" | "project" | "branch" | "app" | "database";
 export type ErrorSeverity = "error";
 
 export interface CliErrorOptions {

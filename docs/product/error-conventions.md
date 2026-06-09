@@ -143,7 +143,7 @@ Rules:
 - `ok` is always `false`
 - `command` is always present
 - `error.code` is stable and machine-readable
-- `error.domain` is a stable logical area such as `cli`, `auth`, `project`, `branch`, or `app`
+- `error.domain` is a stable logical area such as `cli`, `auth`, `project`, `branch`, `app`, or `database`
 - `error.severity` is stable and machine-readable
 - `error.summary` is the short human-readable headline
 - `error.why` explains the immediate cause when known
@@ -196,6 +196,12 @@ These codes are the minimum stable set for the MVP:
 - `BUILD_FAILED`
 - `BRANCH_DATABASE_SETUP_FAILED`
 - `SCHEMA_SETUP_FAILED`
+- `DATABASE_NOT_FOUND`
+- `DATABASE_AMBIGUOUS`
+- `DATABASE_CONNECTION_NOT_FOUND`
+- `DATABASE_CONNECTION_MISSING`
+- `DATABASE_CONNECTION_STRING_MISSING`
+- `DATABASE_API_ERROR`
 - `RUN_FAILED`
 - `DEPLOY_FAILED`
 - `VERSION_UNAVAILABLE`
@@ -241,6 +247,12 @@ Recommended meanings:
 - `BUILD_FAILED`: build failed before a healthy deployment existed
 - `BRANCH_DATABASE_SETUP_FAILED`: preview Branch database creation or branch env-var wiring failed before deployment started
 - `SCHEMA_SETUP_FAILED`: local Prisma schema source setup against a newly created Branch database failed before deployment started
+- `DATABASE_NOT_FOUND`: requested database id or name does not exist in the resolved project scope
+- `DATABASE_AMBIGUOUS`: requested database name matches multiple databases and needs an id or branch filter
+- `DATABASE_CONNECTION_NOT_FOUND`: requested database connection id does not exist or is not accessible
+- `DATABASE_CONNECTION_MISSING`: database creation succeeded but the API response did not include the first one-time connection payload
+- `DATABASE_CONNECTION_STRING_MISSING`: connection creation succeeded but the API response did not include the one-time connection string
+- `DATABASE_API_ERROR`: database Management API request failed without a more specific CLI error code
 - `RUN_FAILED`: local framework run command could not be started or exited unsuccessfully
 - `DEPLOY_FAILED`: deployment or post-build health failed
 - `VERSION_UNAVAILABLE`: CLI could not read its own bundled package metadata to report a version (defensive; not expected in normal installs)

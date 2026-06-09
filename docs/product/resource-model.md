@@ -152,16 +152,37 @@ top-level target-context group is `branch`, not `env`.
 `schema` stays a local code artifact. `database` stays a branch-bound remote
 resource.
 
-The beta package does not expose a standalone database command group yet. The
-current database surface is limited to `app deploy --db`, which can create an
-empty Prisma Postgres database for a preview Branch, apply a supported local
-Prisma schema source when available, and write normal branch-scoped environment
-variable overrides.
+The beta package exposes `database` as the canonical database management group.
+The first slice manages Prisma Postgres database metadata and one-time-view
+connection strings:
+
+- `database list`
+- `database show <database>`
+- `database create <name>`
+- `database remove <database>`
+- `database connection list <database>`
+- `database connection create <database>`
+- `database connection remove <connection>`
+
+The `database connection` subgroup is nested because connection strings exist
+only for databases. It follows the same parent-noun/subordinate-noun/action
+shape as `project env <action>`. There is no `database connection show` command:
+connection strings are secrets and the platform returns them only during create
+operations.
 
 Rules:
 
+- `database` is the canonical public group; Public Beta does not add public
+  `db` or `postgres` aliases
+- `database create` prints the first returned connection URL exactly once
+- `database connection create` prints the created connection URL exactly once
+- create commands print raw URLs only, never `DATABASE_URL=` or `DIRECT_URL=`
 - database wiring uses the existing environment-variable model
 - `DATABASE_URL` is written as a preview Branch override, not a separate app binding
+- `database list`, `database show`, and `database connection list` never print
+  or return secret values
+- database and database connection removal require exact id confirmation with
+  `--confirm <id>`; `--yes` is not sufficient
 - branch database setup never overwrites an existing branch-scoped `DATABASE_URL`
 - schema setup is sourced only from local code; the CLI does not clone or infer schema from another database
 - Prisma Next config (`prisma-next.config.*`) is preferred over `schema.prisma`

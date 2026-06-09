@@ -10,6 +10,11 @@ import { cliErrorToJson, writeHumanError, writeHumanLines, writeJsonError, write
 import { createCommandContext, type CliRuntime } from "./runtime";
 
 interface CommandPresenter<T> {
+  renderStdout?: (
+    context: Awaited<ReturnType<typeof createCommandContext>>,
+    descriptor: CommandDescriptor,
+    result: T,
+  ) => string[];
   renderHuman: (
     context: Awaited<ReturnType<typeof createCommandContext>>,
     descriptor: CommandDescriptor,
@@ -61,6 +66,11 @@ export async function runCommand<T>(
         result: presenter.renderJson ? presenter.renderJson(success.result) : success.result,
       });
       return;
+    }
+
+    const stdout = presenter.renderStdout?.(context, descriptor, success.result) ?? [];
+    if (stdout.length > 0) {
+      context.output.stdout.write(`${stdout.join("\n")}\n`);
     }
 
     if (flags.quiet) {

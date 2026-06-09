@@ -50,7 +50,8 @@ describe("shell behavior", () => {
     expect(result.stderr).not.toContain("--color");
     expect(result.stderr).toContain("$ prisma-cli auth login");
 
-    const commandIndex = result.stderr.indexOf("app      Manage apps and deployments for a project");
+    const commandMatch = result.stderr.match(/app\s+Manage apps and deployments for a project/);
+    const commandIndex = commandMatch?.index ?? -1;
     const descriptionIndex = result.stderr.indexOf("Deploy your app with isolated infrastructure for every branch");
     const globalOptionsIndex = result.stderr.indexOf("Global options:");
     const examplesIndex = result.stderr.indexOf("Examples:");
@@ -89,6 +90,12 @@ describe("shell behavior", () => {
       stateDir,
       fixturePath,
     });
+    const databaseResult = await executeCli({
+      argv: ["database"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
 
     expect(rootResult.exitCode).toBe(0);
     expect(rootResult.stderr).toContain("prisma → The Prisma Developer Platform, from your terminal");
@@ -108,6 +115,10 @@ describe("shell behavior", () => {
     expect(branchResult.exitCode).toBe(0);
     expect(branchResult.stderr).toContain("branch → View your Platform branches");
     expect(branchResult.stderr).toContain("Global options:");
+
+    expect(databaseResult.exitCode).toBe(0);
+    expect(databaseResult.stderr).toContain("database → Manage Prisma Postgres databases for a project");
+    expect(databaseResult.stderr).toContain("Global options:");
   });
 
   it("accepts global flags before the command path", async () => {
