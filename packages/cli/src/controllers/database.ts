@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 import { requireComputeAuth } from "../lib/auth/guard";
 import {
   createManagementDatabaseProvider,
@@ -409,7 +411,10 @@ async function resolveDatabase(
   }
 
   const selected = matches[0];
-  const shown = await provider.showDatabase(selected.id, { signal });
+  const shown = await provider.showDatabase(selected.id, {
+    projectId: target.project.id,
+    signal,
+  });
   return ensureProjectId(shown ?? selected, target.project.id);
 }
 
@@ -455,7 +460,9 @@ function requireExactConfirmation(options: {
 }
 
 function defaultConnectionName(): string {
-  return `cli-${new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 17)}`;
+  const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 17);
+  const suffix = randomBytes(2).toString("hex");
+  return `cli-${timestamp}-${suffix}`;
 }
 
 function databaseNotFoundError(databaseRef: string, projectName?: string, branchName?: string): CliError {

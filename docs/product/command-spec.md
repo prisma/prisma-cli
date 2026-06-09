@@ -688,7 +688,7 @@ Behavior:
 - requires auth and resolved project context; accepts `--project <id-or-name>` as an explicit fallback
 - resolves `<database>` by exact database id or exact database name inside the resolved project
 - supports `--branch <git-name>` to narrow database name resolution
-- `--name <name>` sets the connection metadata name; when omitted, the CLI generates a `cli-YYYYMMDDhhmmssSSS` name
+- `--name <name>` sets the connection metadata name; when omitted, the CLI generates a `cli-YYYYMMDDhhmmssSSS-xxxx` name
 - in human mode, stdout contains exactly one line: the raw connection URL
 - human stderr does not repeat, label, or wrap the connection URL
 - in `--json`, `result.connectionString` contains the raw one-time URL exactly once

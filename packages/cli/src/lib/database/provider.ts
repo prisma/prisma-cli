@@ -34,7 +34,10 @@ export interface DatabaseProvider {
     branchName?: string;
     signal?: AbortSignal;
   }): Promise<DatabaseSummary[]>;
-  showDatabase(databaseId: string, options?: { signal?: AbortSignal }): Promise<DatabaseSummary | null>;
+  showDatabase(databaseId: string, options?: {
+    projectId?: string;
+    signal?: AbortSignal;
+  }): Promise<DatabaseSummary | null>;
   createDatabase(options: DatabaseCreateInput): Promise<DatabaseCreateRecord>;
   removeDatabase(databaseId: string, options?: { signal?: AbortSignal }): Promise<void>;
   listConnections(databaseId: string, options?: { signal?: AbortSignal }): Promise<DatabaseConnectionSummary[]>;
@@ -141,7 +144,8 @@ export function createManagementDatabaseProvider(client: ManagementApiClient): D
         throw databaseApiError("Failed to show database", result.response, result.error);
       }
 
-      return normalizeDatabase(result.data.data as RawDatabaseRecord, "");
+      const database = result.data.data as RawDatabaseRecord;
+      return normalizeDatabase(database, requireDatabaseProjectId(database, options?.projectId));
     },
 
     async createDatabase(options) {
@@ -293,6 +297,23 @@ function normalizeRegion(database: RawDatabaseRecord): string | null {
     return database.region;
   }
   return database.region?.id ?? database.regionId ?? null;
+}
+
+function requireDatabaseProjectId(database: RawDatabaseRecord, fallbackProjectId: string | undefined): string {
+  const projectId = database.projectId ?? fallbackProjectId;
+  if (projectId) {
+    return projectId;
+  }
+
+  throw new CliError({
+    code: "DATABASE_API_ERROR",
+    domain: "database",
+    summary: "Database response did not include a project id",
+    why: "The Management API returned database metadata without project context.",
+    fix: "Re-run with --trace for the underlying API response details.",
+    exitCode: 1,
+    nextSteps: [],
+  });
 }
 
 function extractConnectionString(connection: RawDatabaseConnectionRecord): string | null {
