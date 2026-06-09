@@ -8,6 +8,7 @@ import {
   type EnvVarRole,
 } from "../lib/app/env-config";
 import { readEnvFileAssignments, type EnvFileAssignment } from "../lib/app/env-file";
+import { preparePulledEnvFile, writePulledEnvFile } from "../lib/app/env-pull-file";
 import { requireComputeAuth } from "../lib/auth/guard";
 import { readLocalGitBranch } from "../lib/git/local-branch";
 import { authRequiredError, CliError, usageError, workspaceRequiredError } from "../shell/errors";
@@ -18,6 +19,7 @@ import type {
   EnvAddResult,
   EnvListTarget,
   EnvListResult,
+  EnvPullResult,
   EnvRmResult,
   EnvResolvedContext,
   EnvScopeDescriptor,
@@ -26,6 +28,7 @@ import type {
 import {
   apiCallError,
   findVariableByNaturalKey,
+  pullPreviewEnvironmentVariables,
   type RawEnvironmentVariable,
   type ResolvedEnvApiScope,
   toMetadata,
@@ -52,6 +55,12 @@ type ResolvedListScope =
       target: EnvListTarget;
       addScope: EnvScope;
     };
+
+interface ResolvedPullScope {
+  descriptor: EnvScopeDescriptor;
+  target: EnvListTarget;
+  apiTarget: { class: "preview"; branchId: string | null };
+}
 
 interface EnvCommandFlags {
   roleName?: string;
@@ -332,6 +341,44 @@ export async function runEnvList(
   };
 }
 
+export async function runEnvPull(
+  context: CommandContext,
+  outputFile: string,
+  flags: EnvCommandFlags,
+): Promise<CommandSuccess<EnvPullResult>> {
+  const explicit = resolveEnvScope(flags, { requireExplicit: false, command: "pull" });
+  const { client, projectId, verboseContext } = await requireClientAndProject(context, flags.projectRef, "project env pull");
+  const resolved = await resolvePullScopeToApi(client, projectId, explicit ?? undefined, {
+    cwd: context.runtime.cwd,
+    signal: context.runtime.signal,
+  });
+  const fileTarget = await preparePulledEnvFile(context, outputFile);
+  const variables = await pullPreviewEnvironmentVariables(client, {
+    projectId,
+    branchId: resolved.apiTarget.branchId,
+    signal: context.runtime.signal,
+  });
+  const file = await writePulledEnvFile(fileTarget, variables);
+
+  return {
+    command: "project.env.pull",
+    result: {
+      projectId,
+      verboseContext,
+      scope: resolved.descriptor,
+      target: resolved.target,
+      file,
+      variables: variables.map((variable) => ({
+        key: variable.key,
+        source: variable.source,
+        isManagedBySystem: variable.isManagedBySystem === true,
+      })),
+    },
+    warnings: [],
+    nextSteps: [],
+  };
+}
+
 export async function runEnvRemove(
   context: CommandContext,
   key: string | undefined,
@@ -402,6 +449,95 @@ export async function runEnvRemove(
   };
 }
 
+async function resolvePullScopeToApi(
+  client: ManagementApiClient,
+  projectId: string,
+  explicit: EnvScope | undefined,
+  options: { cwd: string; signal: AbortSignal },
+): Promise<ResolvedPullScope> {
+  if (explicit?.kind === "role") {
+    if (explicit.role === "production") {
+      throw productionEnvPullUnsupportedError();
+    }
+    return {
+      descriptor: { kind: "role", role: "preview" },
+      target: {
+        source: "explicit",
+        envMap: "preview",
+      },
+      apiTarget: { class: "preview", branchId: null },
+    };
+  }
+
+  if (explicit?.kind === "branch") {
+    const branch = await resolveExistingBranch(client, projectId, explicit.branchName, options.signal);
+    if (branch.role === "production") {
+      throw productionEnvPullUnsupportedError();
+    }
+    return {
+      descriptor: {
+        kind: "branch",
+        branchName: branch.gitName,
+        branchId: branch.id,
+      },
+      target: {
+        source: "explicit",
+        branchName: branch.gitName,
+        branchId: branch.id,
+        branchRole: branch.role,
+        branchExists: true,
+        envMap: "preview",
+      },
+      apiTarget: { class: "preview", branchId: branch.id },
+    };
+  }
+
+  const gitBranch = await readLocalGitBranch(options.cwd, options.signal);
+  if (gitBranch && !isProductionBranchName(gitBranch)) {
+    const branch = (await listBranchesByName(client, projectId, gitBranch, options.signal))[0];
+    if (branch?.role === "preview") {
+      return {
+        descriptor: {
+          kind: "branch",
+          branchName: branch.gitName,
+          branchId: branch.id,
+        },
+        target: {
+          source: "local-git",
+          branchName: branch.gitName,
+          branchId: branch.id,
+          branchRole: branch.role,
+          branchExists: true,
+          envMap: "preview",
+        },
+        apiTarget: { class: "preview", branchId: branch.id },
+      };
+    }
+
+    return {
+      descriptor: { kind: "role", role: "preview" },
+      target: {
+        source: "local-git",
+        branchName: branch?.gitName ?? gitBranch,
+        branchId: branch?.id,
+        branchRole: branch?.role,
+        branchExists: branch ? true : false,
+        envMap: "preview",
+      },
+      apiTarget: { class: "preview", branchId: null },
+    };
+  }
+
+  return {
+    descriptor: { kind: "role", role: "preview" },
+    target: {
+      source: "overview",
+      envMap: "preview",
+    },
+    apiTarget: { class: "preview", branchId: null },
+  };
+}
+
 async function requireClientAndProject(
   context: CommandContext,
   explicitProject: string | undefined,
@@ -433,6 +569,25 @@ async function requireClientAndProject(
       resolution: target.resolution,
     },
   };
+}
+
+function isProductionBranchName(branchName: string): boolean {
+  return branchName === "main" || branchName === "production";
+}
+
+function productionEnvPullUnsupportedError(): CliError {
+  return new CliError({
+    code: "PRODUCTION_ENV_PULL_UNSUPPORTED",
+    domain: "app",
+    summary: "Production environment values cannot be pulled",
+    why: "Production values are write-only after creation. Only preview values are pullable for local development.",
+    fix: "Pull preview values or a preview Branch snapshot instead.",
+    exitCode: 1,
+    nextSteps: [
+      "prisma-cli project env pull --role preview",
+      "prisma-cli project env pull --branch feature/foo",
+    ],
+  });
 }
 
 async function resolveScopeToApi(

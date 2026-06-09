@@ -60,6 +60,7 @@ npx prisma-cli project env add DATABASE_URL=postgresql://example --role preview
 npx prisma-cli project env add --file .env --role preview
 npx prisma-cli project env list
 npx prisma-cli project env list --role preview
+npx prisma-cli project env pull
 ```
 
 The beta package exposes `prisma-cli` so it can coexist with the existing
@@ -96,7 +97,8 @@ npx prisma-cli app promote <deployment-id>
 - `--no-interactive` and `--yes` for automation.
 - `PRISMA_SERVICE_TOKEN` for headless authenticated commands.
 - Stable command groups, flags, and error codes for scripts and agents.
-- Environment variable values are not printed back to the terminal.
+- Environment variable values are not printed back to the terminal. Preview
+  values can be pulled into a local dotenv file for development.
 
 ### Agent skills
 

@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -163,6 +163,22 @@ function makeBranchRow(overrides: Partial<{
     role: "preview",
     isDefault: false,
     ...overrides,
+  };
+}
+
+function makePullResponse(variables: Array<{
+  key: string;
+  value: string;
+  source: string;
+  isManagedBySystem?: boolean;
+}>) {
+  return {
+    data: {
+      data: {
+        variables,
+      },
+    },
+    response: { status: 200 },
   };
 }
 
@@ -1397,6 +1413,282 @@ describe("env list", () => {
       { key: "API_URL", id: "envvar_api", source: "preview" },
       { key: "DATABASE_URL", id: "envvar_branch", source: "branch:feature/foo" },
     ]);
+  });
+});
+
+describe("env pull", () => {
+  it("pulls preview values into .env.local by default without returning values", async () => {
+    const client = createMockClient();
+    client.POST.mockResolvedValueOnce(makePullResponse([
+      {
+        key: "DATABASE_URL",
+        value: "postgresql://preview",
+        source: "preview",
+      },
+      {
+        key: "STRIPE_SECRET",
+        value: "sk test value",
+        source: "preview",
+      },
+    ]));
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    const { context } = await createTestCommandContext({ cwd });
+
+    const result = await controllers.runEnvPull(context, ".env.local", {});
+
+    expect(client.POST).toHaveBeenCalledWith(
+      "/v1/environment-variables/pull",
+      expect.objectContaining({
+        body: {
+          projectId: "proj_123",
+          class: "preview",
+        },
+      }),
+    );
+    await expect(readFile(path.join(cwd, ".env.local"), "utf8")).resolves.toBe(
+      'DATABASE_URL=postgresql://preview\nSTRIPE_SECRET="sk test value"\n',
+    );
+    expect(result.result).toMatchObject({
+      projectId: "proj_123",
+      scope: { kind: "role", role: "preview" },
+      target: {
+        source: "overview",
+        envMap: "preview",
+      },
+      file: { path: ".env.local", count: 2 },
+      variables: [
+        { key: "DATABASE_URL", source: "preview", isManagedBySystem: false },
+        { key: "STRIPE_SECRET", source: "preview", isManagedBySystem: false },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain("postgresql://preview");
+    expect(JSON.stringify(result)).not.toContain("sk test value");
+  });
+
+  it("pulls a resolved preview branch snapshot into an explicit output file", async () => {
+    const client = createMockClient();
+    client.envGET.mockResolvedValueOnce({
+      data: {
+        data: [makeBranchRow({ id: "br_feature", gitName: "feature/foo", role: "preview" })],
+        pagination: { hasMore: false, nextCursor: null },
+      },
+      response: { status: 200 },
+    });
+    client.POST.mockResolvedValueOnce(makePullResponse([
+      {
+        key: "API_URL",
+        value: "https://api.example",
+        source: "preview",
+      },
+      {
+        key: "DATABASE_URL",
+        value: "postgresql://branch",
+        source: "branch:feature/foo",
+        isManagedBySystem: true,
+      },
+    ]));
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    const { context } = await createTestCommandContext({ cwd });
+
+    const result = await controllers.runEnvPull(context, ".env", {
+      branchName: "feature/foo",
+    });
+
+    expect(client.POST).toHaveBeenCalledWith(
+      "/v1/environment-variables/pull",
+      expect.objectContaining({
+        body: {
+          projectId: "proj_123",
+          class: "preview",
+          branchId: "br_feature",
+        },
+      }),
+    );
+    await expect(readFile(path.join(cwd, ".env"), "utf8")).resolves.toBe(
+      "API_URL=https://api.example\nDATABASE_URL=postgresql://branch\n",
+    );
+    expect(result.result).toMatchObject({
+      scope: {
+        kind: "branch",
+        branchName: "feature/foo",
+        branchId: "br_feature",
+      },
+      target: {
+        source: "explicit",
+        branchName: "feature/foo",
+        branchId: "br_feature",
+        branchRole: "preview",
+        branchExists: true,
+        envMap: "preview",
+      },
+      file: { path: ".env", count: 2 },
+      variables: [
+        { key: "API_URL", source: "preview", isManagedBySystem: false },
+        { key: "DATABASE_URL", source: "branch:feature/foo", isManagedBySystem: true },
+      ],
+    });
+  });
+
+  it("rejects production env pull", async () => {
+    const client = createMockClient();
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runEnvPull(context, ".env.local", { roleName: "production" }),
+    ).rejects.toMatchObject({
+      code: "PRODUCTION_ENV_PULL_UNSUPPORTED",
+      summary: "Production environment values cannot be pulled",
+    });
+    expect(client.POST).not.toHaveBeenCalled();
+  });
+
+  it("requires confirmation before overwriting an existing file", async () => {
+    const client = createMockClient();
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    await writeFile(path.join(cwd, ".env.local"), "EXISTING=value\n", "utf8");
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runEnvPull(context, ".env.local", {}),
+    ).rejects.toMatchObject({
+      code: "CONFIRMATION_REQUIRED",
+      summary: expect.stringContaining("requires confirmation"),
+    });
+    expect(client.POST).not.toHaveBeenCalled();
+    await expect(readFile(path.join(cwd, ".env.local"), "utf8")).resolves.toBe(
+      "EXISTING=value\n",
+    );
+  });
+
+  it("allows overwriting an existing file with --yes", async () => {
+    const client = createMockClient();
+    client.POST.mockResolvedValueOnce(makePullResponse([
+      { key: "API_URL", value: "https://api.example", source: "preview" },
+    ]));
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    await writeFile(path.join(cwd, ".env.local"), "EXISTING=value\n", "utf8");
+    await chmod(path.join(cwd, ".env.local"), 0o644);
+    const { context } = await createTestCommandContext({
+      cwd,
+      flags: { yes: true },
+    });
+
+    await controllers.runEnvPull(context, ".env.local", {});
+
+    await expect(readFile(path.join(cwd, ".env.local"), "utf8")).resolves.toBe(
+      "API_URL=https://api.example\n",
+    );
+    expect((await stat(path.join(cwd, ".env.local"))).mode & 0o777).toBe(0o600);
+  });
+
+  it("refuses non-file output targets before pulling values", async () => {
+    const client = createMockClient();
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    await mkdir(path.join(cwd, ".env.local"));
+    const { context } = await createTestCommandContext({
+      cwd,
+      flags: { yes: true },
+    });
+
+    await expect(
+      controllers.runEnvPull(context, ".env.local", {}),
+    ).rejects.toMatchObject({
+      code: "ENV_PULL_TARGET_NOT_FILE",
+      summary: expect.stringContaining("is not a file"),
+    });
+    expect(client.POST).not.toHaveBeenCalled();
+  });
+
+  it("refuses missing parent directories before pulling values", async () => {
+    const client = createMockClient();
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    const { context } = await createTestCommandContext({
+      cwd,
+      flags: { yes: true },
+    });
+
+    await expect(
+      controllers.runEnvPull(context, "missing/.env.local", {}),
+    ).rejects.toMatchObject({
+      code: "ENV_PULL_PARENT_MISSING",
+      summary: expect.stringContaining("does not exist"),
+    });
+    expect(client.POST).not.toHaveBeenCalled();
+  });
+
+  it("refuses to write pulled values into a tracked git file", async () => {
+    const client = createMockClient();
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const stateDir = path.join(await createTempCwd(), ".state");
+    const { context } = await createTestCommandContext({
+      cwd: process.cwd(),
+      stateDir,
+      flags: { yes: true },
+    });
+
+    await expect(
+      controllers.runEnvPull(context, "package.json", {
+        roleName: "preview",
+        projectRef: "proj_123",
+      }),
+    ).rejects.toMatchObject({
+      code: "ENV_PULL_TARGET_TRACKED",
+      summary: expect.stringContaining("tracked file"),
+    });
+    expect(client.POST).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a clear unavailable error when the pull endpoint is missing", async () => {
+    const client = createMockClient();
+    client.POST.mockResolvedValueOnce({
+      error: {
+        error: {
+          code: "NOT_FOUND",
+          message: "Route not found.",
+        },
+      },
+      response: { status: 404 },
+    });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    const { context } = await createTestCommandContext({ cwd });
+
+    await expect(
+      controllers.runEnvPull(context, ".env.local", {}),
+    ).rejects.toMatchObject({
+      code: "FEATURE_UNAVAILABLE",
+      summary: "Preview environment variable pull is not available yet",
+    });
+    await expect(readFile(path.join(cwd, ".env.local"), "utf8")).rejects.toThrow();
   });
 });
 

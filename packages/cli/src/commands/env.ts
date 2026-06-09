@@ -1,13 +1,15 @@
 import { Command, Option } from "commander";
 
-import { runEnvAdd, runEnvList, runEnvRemove, runEnvUpdate } from "../controllers/app-env";
+import { runEnvAdd, runEnvList, runEnvPull, runEnvRemove, runEnvUpdate } from "../controllers/app-env";
 import {
   renderEnvAdd,
   renderEnvList,
+  renderEnvPull,
   renderEnvRm,
   renderEnvUpdate,
   serializeEnvAdd,
   serializeEnvList,
+  serializeEnvPull,
   serializeEnvRm,
   serializeEnvUpdate,
 } from "../presenters/app-env";
@@ -18,6 +20,7 @@ import { configureRuntimeCommand, type CliRuntime } from "../shell/runtime";
 import type {
   EnvAddResult,
   EnvListResult,
+  EnvPullResult,
   EnvRmResult,
   EnvUpdateResult,
 } from "../types/app-env";
@@ -32,6 +35,7 @@ export function createEnvCommand(runtime: CliRuntime): Command {
   env.addCommand(createEnvAddCommand(runtime));
   env.addCommand(createEnvUpdateCommand(runtime));
   env.addCommand(createEnvListCommand(runtime));
+  env.addCommand(createEnvPullCommand(runtime));
   env.addCommand(createEnvRemoveCommand(runtime));
 
   return env;
@@ -147,6 +151,44 @@ function createEnvListCommand(runtime: CliRuntime): Command {
       {
         renderHuman: (context, descriptor, result) => renderEnvList(context, descriptor, result),
         renderJson: (result) => serializeEnvList(result),
+      },
+    );
+  });
+
+  return command;
+}
+
+function createEnvPullCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("pull"), runtime),
+    "project.env.pull",
+  );
+
+  command
+    .argument("[output-file]", "Local dotenv file to write", ".env.local")
+    .addOption(
+      new Option(
+        "--role <role>",
+        "Project template scope",
+      ).choices(["production", "preview"]),
+    )
+    .addOption(new Option("--branch <git-name>", "Preview branch resolved scope"))
+    .addOption(new Option("--project <id-or-name>", "Project id or name"));
+  addGlobalFlags(command);
+
+  command.action(async (outputFile: string, options) => {
+    const roleName = (options as { role?: string }).role;
+    const branchName = (options as { branch?: string }).branch;
+    const projectRef = (options as { project?: string }).project;
+
+    await runCommand<EnvPullResult>(
+      runtime,
+      "project.env.pull",
+      options as Record<string, unknown>,
+      (context) => runEnvPull(context, outputFile, { roleName, branchName, projectRef }),
+      {
+        renderHuman: (context, descriptor, result) => renderEnvPull(context, descriptor, result),
+        renderJson: (result) => serializeEnvPull(result),
       },
     );
   });

@@ -13,7 +13,7 @@ export interface ScopeFlagInput {
 
 export interface ScopeOptions {
   requireExplicit: boolean;
-  command: "add" | "update" | "remove" | "list";
+  command: "add" | "update" | "remove" | "list" | "pull";
 }
 
 const VALID_ROLES: ReadonlySet<string> = new Set(["production", "preview"]);

@@ -862,8 +862,9 @@ prisma-cli app deploy --entry src/server.ts --http-port 3000
 Manage durable, platform-stored environment variables for the resolved
 project. The `env` namespace operates on the
 platform-managed `/v1/environment-variables` API; values are stored
-encrypted at rest and **never returned** by the platform — read-back
-is not supported in Beta.
+encrypted at rest. Production values are never returned. Preview values are
+returned only by the explicit local-development pull flow, which writes to a
+local dotenv file and never prints values to terminal or JSON output.
 
 ### Scope flags
 
@@ -976,6 +977,46 @@ Examples:
 prisma-cli project env list
 prisma-cli project env list --role preview
 prisma-cli project env list --branch feature/foo
+```
+
+### `prisma-cli project env pull [output-file] [--role preview | --branch <git-name>]`
+
+Purpose:
+
+- pull preview environment variable values into a local dotenv file for
+  development.
+
+Behavior:
+
+- requires auth and a resolved project; accepts `--project <id-or-name>` as an explicit fallback
+- defaults the output file to `.env.local`
+- optional `output-file` overrides the destination, e.g. `.env`
+- explicit `--role preview` pulls the Project preview map
+- explicit `--branch` pulls the effective preview Branch snapshot: preview
+  defaults plus Branch overrides
+- with no scope and an active local preview Git branch, pulls the matching
+  Platform Branch snapshot when the Branch exists; otherwise pulls the preview
+  map and marks the local branch target as not created yet
+- with no scope on `main`, `production`, or outside a Git branch, pulls the
+  Project preview map
+- `--role production` and production Branch targets fail with
+  `PRODUCTION_ENV_PULL_UNSUPPORTED`
+- refuses to write outside the current project directory
+- refuses to write to a Git-tracked file
+- existing files require interactive confirmation or `--yes`
+- values are written to the local file only; human output and JSON output carry
+  keys, sources, target metadata, and file metadata, never values
+- first CLI implementation depends on the Management API exposing
+  `POST /v1/environment-variables/pull`; missing support returns
+  `FEATURE_UNAVAILABLE`
+
+Examples:
+
+```bash
+prisma-cli project env pull
+prisma-cli project env pull .env
+prisma-cli project env pull --role preview
+prisma-cli project env pull --branch feature/foo
 ```
 
 ### `prisma-cli project env remove KEY (--role <production|preview> | --branch <git-name>)`

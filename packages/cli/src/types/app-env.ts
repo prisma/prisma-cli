@@ -30,6 +30,12 @@ export interface EnvVariableMetadata {
   updatedAt: string;
 }
 
+export interface EnvPulledVariableMetadata {
+  key: string;
+  source: string;
+  isManagedBySystem: boolean;
+}
+
 export interface EnvFileMetadata {
   path: string;
   count: number;
@@ -63,6 +69,15 @@ export interface EnvListResult {
   scope: EnvScopeDescriptor;
   target: EnvListTarget;
   variables: EnvVariableMetadata[];
+}
+
+export interface EnvPullResult {
+  projectId: string;
+  verboseContext?: EnvResolvedContext;
+  scope: EnvScopeDescriptor;
+  target: EnvListTarget;
+  file: EnvFileMetadata;
+  variables: EnvPulledVariableMetadata[];
 }
 
 export interface EnvRmResult {

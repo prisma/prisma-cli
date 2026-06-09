@@ -1,7 +1,7 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
 import type { EnvVarRole } from "../lib/app/env-config";
-import { authRequiredError, CliError } from "../shell/errors";
+import { authRequiredError, CliError, featureUnavailableError } from "../shell/errors";
 import type { EnvScopeDescriptor, EnvVariableMetadata } from "../types/app-env";
 
 export interface ResolvedEnvApiScope {
@@ -18,12 +18,73 @@ export interface RawEnvironmentVariable {
   updatedAt: string;
 }
 
+export interface RawPulledEnvironmentVariable {
+  key: string;
+  value: string;
+  source: string;
+  isManagedBySystem?: boolean;
+}
+
 interface ApiErrorBody {
   error?: {
     code?: string;
     message?: string;
     hint?: string;
   };
+}
+
+type PullEnvPost = (
+  path: "/v1/environment-variables/pull",
+  options: {
+    body: {
+      projectId: string;
+      class: "preview";
+      branchId?: string;
+    };
+    signal: AbortSignal;
+  },
+) => Promise<{
+  data?: {
+    data?: {
+      variables?: RawPulledEnvironmentVariable[];
+    };
+  };
+  error?: ApiErrorBody;
+  response?: Response;
+}>;
+
+export async function pullPreviewEnvironmentVariables(
+  client: ManagementApiClient,
+  options: {
+    projectId: string;
+    branchId: string | null;
+    signal: AbortSignal;
+  },
+): Promise<RawPulledEnvironmentVariable[]> {
+  const post = client.POST as unknown as PullEnvPost;
+  const { data, error, response } = await post("/v1/environment-variables/pull", {
+    body: {
+      projectId: options.projectId,
+      class: "preview",
+      ...(options.branchId !== null ? { branchId: options.branchId } : {}),
+    },
+    signal: options.signal,
+  });
+
+  if (error || !data?.data?.variables) {
+    if (response?.status === 404 || response?.status === 405 || response?.status === 501) {
+      throw featureUnavailableError(
+        "Preview environment variable pull is not available yet",
+        "The CLI command is ready, but the platform endpoint for returning preview values is not available in this environment.",
+        "Retry after the Management API exposes POST /v1/environment-variables/pull.",
+        ["prisma-cli project env list --role preview"],
+        "app",
+      );
+    }
+    throw apiCallError("Failed to pull preview environment variables", response, error);
+  }
+
+  return [...data.data.variables].sort((left, right) => left.key.localeCompare(right.key));
 }
 
 export async function findVariableByNaturalKey(

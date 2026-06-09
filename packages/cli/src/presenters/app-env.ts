@@ -3,6 +3,7 @@ import type { CommandContext } from "../shell/runtime";
 import type {
   EnvAddResult,
   EnvListResult,
+  EnvPullResult,
   EnvRmResult,
   EnvResolvedContext,
   EnvScopeDescriptor,
@@ -22,7 +23,7 @@ function scopeLabel(scope: EnvScopeDescriptor): string {
   return `branch:${scope.branchName ?? scope.branchId ?? "unknown"}`;
 }
 
-function listTargetLabel(result: EnvListResult): string {
+function listTargetLabel(result: EnvListResult | EnvPullResult): string {
   const target = result.target;
   if (target.source === "overview") {
     return "overview";
@@ -36,7 +37,7 @@ function listTargetLabel(result: EnvListResult): string {
   return scopeLabel(result.scope);
 }
 
-type EnvPresenterResult = EnvAddResult | EnvUpdateResult | EnvListResult | EnvRmResult;
+type EnvPresenterResult = EnvAddResult | EnvUpdateResult | EnvListResult | EnvPullResult | EnvRmResult;
 
 function renderEnvVerboseBlocks(
   context: CommandContext,
@@ -282,6 +283,38 @@ export function serializeEnvList(result: EnvListResult) {
     }),
     variables: serializable.variables,
   };
+}
+
+export function renderEnvPull(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: EnvPullResult,
+): string[] {
+  const lines = renderList(
+    {
+      title: "Pulling preview environment variables into a local file.",
+      descriptor,
+      parentContext: {
+        key: "file",
+        value: `${result.file.path} (${listTargetLabel(result)})`,
+      },
+      items: result.variables.map((variable) => ({
+        noun: "variable",
+        label: `${variable.key} (${variable.source})`,
+        id: variable.key,
+        status: variable.isManagedBySystem ? "default" : null,
+      })),
+      emptyMessage: "No preview environment variables pulled.",
+    },
+    context.ui,
+  );
+  lines.push("Values were written locally and not printed.");
+  lines.push(...renderEnvVerboseBlocks(context, result));
+  return lines;
+}
+
+export function serializeEnvPull(result: EnvPullResult) {
+  return stripVerboseContext(result);
 }
 
 export function renderEnvRm(

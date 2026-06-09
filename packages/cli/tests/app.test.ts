@@ -241,6 +241,35 @@ describe("app commands", () => {
     expect(listEnv.stderr).toContain("unknown command");
   });
 
+  it("shows the documented help text for project env pull", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    const envHelp = await executeCli({
+      argv: ["project", "env", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const pullHelp = await executeCli({
+      argv: ["project", "env", "pull", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(envHelp.exitCode).toBe(0);
+    expect(envHelp.stderr).toContain("pull");
+    expect(envHelp.stderr).toContain("pull [output-file]");
+    expect(envHelp.stderr).toContain("$ prisma-cli project env pull");
+
+    expect(pullHelp.exitCode).toBe(0);
+    expect(pullHelp.stderr).toContain("Pull preview environment variable values into a local file");
+    expect(pullHelp.stderr).toContain("--role <role>");
+    expect(pullHelp.stderr).toContain("--branch <git-name>");
+    expect(pullHelp.stderr).toContain("$ prisma-cli project env pull .env");
+  });
+
   it("rejects mutually exclusive deploy database flags", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");

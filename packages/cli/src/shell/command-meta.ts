@@ -310,6 +310,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
       "prisma-cli project env list",
       "prisma-cli project env add STRIPE_KEY=sk_test_xxx --role production",
       "prisma-cli project env add --file .env --role preview",
+      "prisma-cli project env pull",
       "prisma-cli project env add DATABASE_URL=postgresql://branch --branch feature/foo",
       "prisma-cli project env remove STRIPE_KEY --role preview",
     ],
@@ -347,6 +348,17 @@ const DESCRIPTORS: CommandDescriptor[] = [
       "prisma-cli project env list --role production",
       "prisma-cli project env list --role preview",
       "prisma-cli project env list --branch feature/foo",
+    ],
+  },
+  {
+    id: "project.env.pull",
+    path: ["prisma", "project", "env", "pull"],
+    description: "Pull preview environment variable values into a local file.",
+    examples: [
+      "prisma-cli project env pull",
+      "prisma-cli project env pull .env",
+      "prisma-cli project env pull --role preview",
+      "prisma-cli project env pull --branch feature/foo",
     ],
   },
   {

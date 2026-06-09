@@ -145,6 +145,8 @@ Rules:
   creates a new deployment
 - command output must not print secret values
 - listing variables should show names only
+- pulling preview variables writes values to a local dotenv file only; production
+  values remain write-only
 
 The `env` word is reserved for environment-variable ergonomics. The current
 top-level target-context group is `branch`, not `env`.
