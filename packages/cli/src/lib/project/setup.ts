@@ -75,6 +75,7 @@ export async function bindProjectToDirectory(
 }
 
 export function projectDirectoryBindingErrorToCliError(error: ProjectDirectoryBindingError): CliError {
+  // Temporary during the migration to better-result: remove when command boundaries convert Result errors directly.
   return matchError(error, {
     LocalResolutionPinSerializationError: (error) => localStateWriteFailedError(error, {
       why: `The CLI could not serialize the Project binding before writing ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH}.`,
