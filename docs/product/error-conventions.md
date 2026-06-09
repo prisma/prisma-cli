@@ -167,6 +167,7 @@ These codes are the minimum stable set for the MVP:
 - `PROJECT_AMBIGUOUS`
 - `APP_AMBIGUOUS`
 - `LOCAL_PROJECT_WORKSPACE_MISMATCH`
+- `LOCAL_STATE_WRITE_FAILED`
 - `LOCAL_STATE_STALE`
 - `BRANCH_NOT_DEPLOYABLE`
 - `APP_CONFIG_INVALID`
@@ -219,6 +220,7 @@ Recommended meanings:
 - `PROJECT_AMBIGUOUS`: multiple safe project candidates matched
 - `APP_AMBIGUOUS`: multiple apps matched the inferred or explicit app target
 - `LOCAL_PROJECT_WORKSPACE_MISMATCH`: local Project pin points at a different workspace than the active authenticated workspace; callers should sign in to the linked workspace or relink the directory
+- `LOCAL_STATE_WRITE_FAILED`: the CLI could not save local Project binding state such as `.prisma/local.json` or the matching `.gitignore` entry; callers should fix directory permissions or filesystem state before retrying
 - `LOCAL_STATE_STALE`: local Project pin no longer matches platform data and continuing would be ambiguous
 - `BRANCH_NOT_DEPLOYABLE`: command tried to deploy to a non-deployable branch context
 - `APP_CONFIG_INVALID`: `prisma.app.json` is missing required build settings, has invalid JSON, or points outside the app root

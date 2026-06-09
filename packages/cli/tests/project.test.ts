@@ -195,6 +195,32 @@ describe("project commands", () => {
     await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).resolves.toContain('"projectId": "proj_123"');
   });
 
+  it("returns LOCAL_STATE_WRITE_FAILED when project link cannot save the local pin", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await mkdir(path.join(cwd, ".prisma", "local.json"), { recursive: true });
+    await login(cwd, stateDir);
+
+    const result = await executeCli({
+      argv: ["project", "link", "proj_123", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe("");
+    expect(payload.error).toMatchObject({
+      code: "LOCAL_STATE_WRITE_FAILED",
+      domain: "project",
+      meta: {
+        pinPath: ".prisma/local.json",
+        operation: "rename-temp-file",
+      },
+    });
+  });
+
   it("disambiguates duplicate Project names in the bare project link picker", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");

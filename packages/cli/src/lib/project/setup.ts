@@ -1,10 +1,13 @@
 import type { AuthWorkspace } from "../../types/auth";
 import type { ProjectSetupResult, ProjectSummary } from "../../types/project";
+import { Result, matchError } from "better-result";
 import { CliError, usageError } from "../../shell/errors";
 import type { CommandContext } from "../../shell/runtime";
 import {
   ensureLocalResolutionPinGitignore,
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
+  type LocalResolutionPinGitignoreUpdateError,
+  type LocalResolutionPinWriteError,
   writeLocalResolutionPin,
 } from "./local-pin";
 import {
@@ -13,6 +16,10 @@ import {
   type ProjectCandidate,
 } from "./resolution";
 export { formatCommandArgument } from "../../shell/command-arguments";
+
+export type ProjectDirectoryBindingError =
+  | LocalResolutionPinWriteError
+  | LocalResolutionPinGitignoreUpdateError;
 
 export function isValidProjectSetupName(projectName: string): boolean {
   return projectName.trim().length > 0;
@@ -46,23 +53,71 @@ export async function bindProjectToDirectory(
   workspace: AuthWorkspace,
   project: ProjectSummary,
   action: ProjectSetupResult["action"],
-): Promise<ProjectSetupResult> {
-  await writeLocalResolutionPin(context.runtime.cwd, {
-    workspaceId: workspace.id,
-    projectId: project.id,
-  }, context.runtime.signal);
-  await ensureLocalResolutionPinGitignore(context.runtime.cwd, context.runtime.signal);
+): Promise<Result<ProjectSetupResult, ProjectDirectoryBindingError>> {
+  return Result.gen(async function* () {
+    yield* Result.await(writeLocalResolutionPin(context.runtime.cwd, {
+      workspaceId: workspace.id,
+      projectId: project.id,
+    }, context.runtime.signal));
+    yield* Result.await(ensureLocalResolutionPinGitignore(context.runtime.cwd, context.runtime.signal));
 
-  return {
-    workspace,
-    project,
-    directory: formatSetupDirectory(context.runtime.cwd),
-    localPin: {
-      path: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
-      written: true,
+    return Result.ok({
+      workspace,
+      project,
+      directory: formatSetupDirectory(context.runtime.cwd),
+      localPin: {
+        path: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
+        written: true,
+      },
+      action,
+    } satisfies ProjectSetupResult);
+  });
+}
+
+export function projectDirectoryBindingErrorToCliError(error: ProjectDirectoryBindingError): CliError {
+  // Temporary during the migration to better-result: remove when command boundaries convert Result errors directly.
+  return matchError(error, {
+    LocalResolutionPinSerializationError: (error) => {
+      throw error;
     },
-    action,
-  };
+    LocalResolutionPinWriteAbortedError: (error) => {
+      throw error;
+    },
+    LocalResolutionPinWriteFailedError: (error) => localStateWriteFailedError(error, {
+      why: `The CLI could not write ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH}.`,
+      meta: {
+        pinPath: error.pinPath,
+        operation: error.operation,
+      },
+    }),
+    LocalResolutionPinGitignoreUpdateAbortedError: (error) => {
+      throw error;
+    },
+    LocalResolutionPinGitignoreUpdateFailedError: (error) => localStateWriteFailedError(error, {
+      why: "The CLI could not update .gitignore to keep local Project binding state out of git.",
+      meta: {
+        gitignorePath: error.gitignorePath,
+        operation: error.operation,
+      },
+    }),
+  });
+}
+
+function localStateWriteFailedError(
+  error: ProjectDirectoryBindingError,
+  options: { why: string; meta: Record<string, unknown> },
+): CliError {
+  return new CliError({
+    code: "LOCAL_STATE_WRITE_FAILED",
+    domain: "project",
+    summary: "Could not save local Project binding",
+    why: options.why,
+    fix: "Check that this directory is writable and that .prisma/local.json and .gitignore are not blocked by directories or permissions, then retry.",
+    debug: formatDebugDetails(error.cause),
+    meta: options.meta,
+    exitCode: 1,
+    nextSteps: ["prisma-cli project link <id-or-name>", "prisma-cli app deploy --project <id-or-name>"],
+  });
 }
 
 export function toProjectSummary(project: Pick<ProjectCandidate, "id" | "name" | "url">): ProjectSummary {

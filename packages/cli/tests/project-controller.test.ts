@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -88,6 +88,63 @@ describe("project controller", () => {
     });
     await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).resolves.toContain('"projectId": "proj_123"');
     await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(".prisma/\n");
+  });
+
+  it("returns LOCAL_STATE_WRITE_FAILED when the local pin cannot be written", async () => {
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, ".prisma", "local.json"), { recursive: true });
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      fixturePath,
+      isTTY: false,
+    });
+
+    await context.stateStore.setAuthSession({
+      provider: "github",
+      userId: "usr_456",
+      workspaceId: "ws_123",
+    });
+
+    const { runProjectLink } = await import("../src/controllers/project");
+    await expect(runProjectLink(context, "proj_123")).rejects.toMatchObject({
+      code: "LOCAL_STATE_WRITE_FAILED",
+      domain: "project",
+      meta: {
+        pinPath: ".prisma/local.json",
+        operation: "rename-temp-file",
+      },
+    });
+  });
+
+  it("returns LOCAL_STATE_WRITE_FAILED when gitignore cannot be updated", async () => {
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, ".gitignore"), { recursive: true });
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      fixturePath,
+      isTTY: false,
+    });
+
+    await context.stateStore.setAuthSession({
+      provider: "github",
+      userId: "usr_456",
+      workspaceId: "ws_123",
+    });
+
+    const { runProjectLink } = await import("../src/controllers/project");
+    await expect(runProjectLink(context, "proj_123")).rejects.toMatchObject({
+      code: "LOCAL_STATE_WRITE_FAILED",
+      domain: "project",
+      meta: {
+        gitignorePath: ".gitignore",
+        operation: "read",
+      },
+    });
+    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).resolves.toContain('"projectId": "proj_123"');
   });
 
   it("creates a project and writes the local pin", async () => {

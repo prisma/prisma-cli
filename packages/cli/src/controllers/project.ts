@@ -24,6 +24,7 @@ import {
   formatCommandArgument,
   isValidProjectSetupName,
   projectCreateFailedError,
+  projectDirectoryBindingErrorToCliError,
   projectSetupNameRequiredError,
   resolveProjectForSetup,
   toProjectSummary,
@@ -40,6 +41,7 @@ import type {
   ProjectRepositoryConnectionResult,
   ProjectSetupResult,
   ProjectShowResult,
+  ProjectSummary,
 } from "../types/project";
 import { createCliUseCaseGateways } from "../use-cases/create-cli-gateways";
 import { createProjectUseCases } from "../use-cases/project";
@@ -218,10 +220,14 @@ export async function runProjectCreate(
       fallbackFix: "Retry the command, or choose an existing Project with prisma-cli project link <id-or-name>.",
     });
   });
-  const result = await bindProjectToDirectory(context, workspace, {
+  const bindResult = await bindProjectToDirectory(context, workspace, {
     id: created.id,
     name: created.name,
   }, "created");
+  if (bindResult.isErr()) {
+    throw projectDirectoryBindingErrorToCliError(bindResult.error);
+  }
+  const result = bindResult.value;
 
   return {
     command: "project.create",
@@ -257,7 +263,7 @@ export async function runProjectLink(
   let result: ProjectSetupResult;
   if (projectRef?.trim()) {
     const project = resolveProjectForSetup(projectRef.trim(), projects, workspace);
-    result = await bindProjectToDirectory(context, workspace, toProjectSummary(project), "linked");
+    result = await requireProjectDirectoryBinding(context, workspace, toProjectSummary(project), "linked");
   } else if (canPrompt(context) && !context.flags.yes) {
     result = await resolveInteractiveProjectLinkSetup(
       context,
@@ -305,7 +311,21 @@ async function resolveInteractiveProjectLinkSetup(
     },
   });
 
-  return bindProjectToDirectory(context, workspace, setup.project, setup.action);
+  return requireProjectDirectoryBinding(context, workspace, setup.project, setup.action);
+}
+
+async function requireProjectDirectoryBinding(
+  context: CommandContext,
+  workspace: AuthWorkspace,
+  project: ProjectSummary,
+  action: ProjectSetupResult["action"],
+): Promise<ProjectSetupResult> {
+  const bindResult = await bindProjectToDirectory(context, workspace, project, action);
+  if (bindResult.isErr()) {
+    throw projectDirectoryBindingErrorToCliError(bindResult.error);
+  }
+
+  return bindResult.value;
 }
 
 async function createProjectForLinkSetup(
