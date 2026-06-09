@@ -4,6 +4,7 @@ import path from "node:path";
 import open from "open";
 import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
+import { Result, matchError } from "better-result";
 
 import { FileTokenStorage } from "../adapters/token-storage";
 import { authRequiredError, CliError, featureUnavailableError, usageError, workspaceRequiredError } from "../shell/errors";
@@ -69,6 +70,7 @@ import {
 import {
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
   readLocalResolutionPin,
+  type LocalResolutionPinReadError,
   type LocalResolutionPinReadResult,
 } from "../lib/project/local-pin";
 import { readLocalGitBranch } from "../lib/git/local-branch";
@@ -76,6 +78,9 @@ import {
   executePreviewBuild,
   PREVIEW_BUILD_TYPES,
   RESOLVED_PREVIEW_BUILD_TYPES,
+  resolveOrCreatePreviewBuildSettings,
+  type PreviewBuildSettingsBuildType,
+  type PreviewBuildSettingsResolution,
   type ResolvedPreviewBuildType,
   type PreviewBuildType,
 } from "../lib/app/preview-build";
@@ -240,12 +245,13 @@ export async function runAppDeploy(
   });
 
   const skipLocalPin = Boolean(envProjectId || options?.projectRef || options?.createProjectName);
-  const localPin = skipLocalPin
-    ? ({ kind: "missing" } satisfies LocalResolutionPinReadResult)
+  const localPinReadResult = skipLocalPin
+    ? Result.ok({ kind: "missing" } satisfies LocalResolutionPinReadResult)
     : await readLocalResolutionPin(context.runtime.cwd, context.runtime.signal);
-  if (!skipLocalPin && localPin.kind === "invalid") {
-    throw localResolutionPinStaleError();
+  if (localPinReadResult.isErr()) {
+    throw localPinReadErrorToDeployError(localPinReadResult.error);
   }
+  const localPin = localPinReadResult.value;
 
   const branch = await resolveDeployBranch(context, options?.branchName);
   if (options?.httpPort) {
@@ -310,7 +316,7 @@ export async function runAppDeploy(
   framework = customized.framework;
   runtime = customized.runtime;
 
-  await enforceProductionDeployGate(context, provider, {
+  const productionDeployGate = await enforceProductionDeployGate(context, provider, {
     appId: selectedApp.appId,
     appName: selectedApp.displayName,
     branchKind: target.branch.kind,
@@ -322,10 +328,17 @@ export async function runAppDeploy(
   const buildType = framework.buildType;
   assertSupportedEntrypoint(buildType, options?.entrypoint, "deploy");
   const entrypoint = await resolveDeployEntrypoint(context.runtime.cwd, framework, options?.entrypoint, context.runtime.signal);
+  const buildSettingsResolution = await resolveOrCreatePreviewBuildSettings({
+    appPath: context.runtime.cwd,
+    buildType,
+    signal: context.runtime.signal,
+  });
+  maybeRenderDeployBuildSettings(context, buildSettingsResolution);
   const portMapping = parseDeployPortMapping(String(runtime.port));
   const branchDatabaseSetup = await maybeSetupBranchDatabase(context, provider, projectId, toBranchDatabaseDeployBranch(target.branch), {
     db: options?.db,
     providedEnvVars: envVars,
+    firstProductionDeploy: productionDeployGate.firstProductionDeploy,
   });
 
   const progressState = createPreviewDeployProgressState();
@@ -339,6 +352,7 @@ export async function runAppDeploy(
     region: selectedApp.region,
     entrypoint,
     buildType,
+    buildSettings: buildSettingsResolution.settings,
     portMapping,
     envVars,
     interaction: undefined,
@@ -369,6 +383,18 @@ export async function runAppDeploy(
       },
       deployment: deployResult.deployment,
       deploySettings: {
+        config: {
+          path: buildSettingsResolution.relativeConfigPath,
+          status: buildSettingsResolution.status,
+        },
+        buildCommand: {
+          value: buildSettingsResolution.settings.buildCommand,
+          source: buildSettingsResolution.settings.buildCommandSource,
+        },
+        outputDirectory: {
+          value: buildSettingsResolution.settings.outputDirectory,
+          source: buildSettingsResolution.settings.outputDirectorySource,
+        },
         framework: {
           key: framework.key,
           buildType,
@@ -2598,7 +2624,7 @@ async function resolveDeployBranch(context: CommandContext, explicitBranchName: 
 
 interface ResolvedDeployFramework {
   key: string;
-  buildType: ResolvedPreviewBuildType;
+  buildType: PreviewBuildSettingsBuildType;
   displayName: string;
   annotation: string;
 }
@@ -2743,7 +2769,6 @@ async function detectNextConfig(cwd: string, signal: AbortSignal): Promise<{ exi
   const candidates = [
     "next.config.js",
     "next.config.mjs",
-    "next.config.cjs",
     "next.config.ts",
     "next.config.mts",
   ];
@@ -2867,6 +2892,36 @@ async function maybeRenderDeploySetupBlock(
   const directory = formatDeployDirectory(context.runtime.cwd);
   const prefix = details.includeDirectory ? `Deploying ${directory} to` : "Deploying to";
   context.output.stderr.write(`${prefix} ${details.projectName} / ${details.branchName} / ${details.appName}\n\n`);
+}
+
+function maybeRenderDeployBuildSettings(
+  context: CommandContext,
+  resolution: PreviewBuildSettingsResolution,
+): void {
+  if (context.flags.json || context.flags.quiet) {
+    return;
+  }
+
+  const settings = resolution.settings;
+  const title = resolution.status === "created"
+    ? `Created ${resolution.relativeConfigPath}`
+    : `Using ${resolution.relativeConfigPath}`;
+
+  context.output.stderr.write(
+    `${title}\n`
+      + `${renderDeployOutputRows(context.ui, [
+        {
+          label: "Build Command",
+          value: settings.buildCommand ?? "none",
+          origin: settings.buildCommandSource ?? undefined,
+        },
+        {
+          label: "Output Directory",
+          value: settings.outputDirectory,
+          origin: settings.outputDirectorySource ?? undefined,
+        },
+      ]).join("\n")}\n\n`,
+  );
 }
 
 function maybeRenderProjectLinked(
@@ -3309,6 +3364,20 @@ function localResolutionPinStaleError(): CliError {
     },
     exitCode: 1,
     nextSteps: ["prisma-cli project list", "prisma-cli project link <id-or-name>", "prisma-cli app deploy --project <id-or-name>"],
+  });
+}
+
+function localPinReadErrorToDeployError(error: LocalResolutionPinReadError): CliError {
+  // Migration bridge: remove in Phase 20 when app controllers compose Result errors instead of throwing CliError.
+  return matchError(error, {
+    LocalResolutionPinInvalidJsonError: () => localResolutionPinStaleError(),
+    LocalResolutionPinInvalidShapeError: () => localResolutionPinStaleError(),
+    LocalResolutionPinReadAbortedError: (error) => {
+      throw error;
+    },
+    UnhandledException: (error) => {
+      throw error;
+    },
   });
 }
 

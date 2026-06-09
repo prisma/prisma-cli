@@ -27,6 +27,18 @@ export interface AppResolvedContext {
 }
 
 export interface AppDeploySettings {
+  config: {
+    path: string;
+    status: "created" | "used";
+  };
+  buildCommand: {
+    value: string | null;
+    source: string | null;
+  };
+  outputDirectory: {
+    value: string;
+    source: string | null;
+  };
   framework: {
     key: string;
     buildType: AppBuildResult["buildType"];

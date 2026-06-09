@@ -58,7 +58,7 @@ Out of scope for the current beta:
   non-TTY stderr, and when `NO_UPDATE_NOTIFIER` is set. When shown, update
   notifications are stderr-only human output and do not change the original
   command result.
-- Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for Project -> Branch -> App resolution. `.prisma/local.json` is a gitignored local pin/cache, not a declarative repo config file.
+- Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for Project -> Branch -> App resolution. `.prisma/local.json` is a gitignored local pin/cache, not a declarative repo config file. `prisma.app.json` is only for app build settings.
 - Remote commands do not silently change local context.
 
 ## Authentication
@@ -798,19 +798,27 @@ Behavior:
 - writes `.prisma/local.json` after Project binding succeeds and before build/deploy starts, so retries after a failed deploy do not repeat setup
 - before asking `Customize build settings? (y/N)`, previews the detected framework and runtime so the user can see the defaults they are accepting or changing
 - asks `Customize build settings? (y/N)` only while binding the directory for the first time, and only asks for Framework and HTTP port when the user opts in
+- for Next.js, TanStack Start, and Bun/Hono deploys, reads or creates `prisma.app.json` before build and uses it for app build settings:
+  - `Build Command` prefers `<package-manager> run build` when `package.json` has `scripts.build`
+  - otherwise `Build Command` falls back to the framework default, such as `next build`
+  - `Output Directory` is a literal framework output path, such as `.next/standalone`, `.output`, or `.`
+- does not overwrite an existing `prisma.app.json`; edit the file or delete it and rerun deploy to regenerate defaults
 - after setup, deploy prints `Deploying to <Project> / <Branch> / <App>`; later deploys print a compact target header such as `Deploying ./j1 to j1 / main / j1`
 - deploy progress uses short stage copy (`Building locally...`, `Built <size>`, `Uploading...`, `Uploaded`, `Deploying...`, `Deployed`) and never prints `Status: running` or `Deployment is running at ...`
 - success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma-cli app logs`
 - accepts repeated `--env NAME=VALUE` flags and dotenv file paths such as `--env .env`
-- supports `--db` for preview Branches to create a new empty Prisma Postgres database, apply a supported local Prisma schema source when one exists, and write branch-scoped `DATABASE_URL` and `DIRECT_URL` overrides through the existing `project env` storage
+- supports `--db` to create a new empty Prisma Postgres database, apply a supported local Prisma schema source when one exists, and write `DATABASE_URL` and `DIRECT_URL` through the existing `project env` storage
 - supports `--no-db` to suppress automatic database prompting for the deploy
 - `--db` and `--no-db` are mutually exclusive; passing both is rejected
 - `--yes` alone never creates a database; CI must pass `--db --yes` to create and wire one
-- branch database setup only runs for preview Branches; production database env vars are managed with `project env`
-- branch database setup never overwrites an existing branch-scoped `DATABASE_URL`; when the branch already has `DATABASE_URL`, `--db` leaves branch database env vars unchanged and continues
-- when only `DIRECT_URL` exists on the branch, explicit `--db` treats it as partial setup and repairs the pair by writing fresh branch database env values
-- if schema setup or branch env-var wiring fails after database creation, the CLI deletes the newly created database before returning the error
-- branch database setup does not clone or infer schema from another database; it only creates an empty database and optionally applies schema from local code
+- preview Branch setup writes branch-scoped env-var overrides
+- production setup writes production env vars only during the first production deploy, before the selected App has a live deployment
+- later production deploys do not prompt for database setup; explicit `--db` is rejected once the selected production App has a live deployment
+- database setup never overwrites an existing branch-scoped `DATABASE_URL`; when the branch already has `DATABASE_URL`, `--db` leaves branch database env vars unchanged and continues
+- production setup treats existing production `DATABASE_URL` or `DIRECT_URL` as BYO DB intent; it does not prompt, and explicit `--db` leaves production env vars unchanged and continues with a warning
+- when only `DIRECT_URL` exists on a preview branch, explicit `--db` treats it as partial setup and repairs the pair by writing fresh branch database env values
+- if schema setup or env-var wiring fails after database creation, the CLI deletes the newly created database before returning the error
+- database setup does not clone or infer schema from another database; it only creates an empty database and optionally applies schema from local code
 - Prisma Next config (`prisma-next.config.*`) is preferred over `schema.prisma`; setup runs `prisma-next contract emit` and then `prisma-next db init`
 - for Prisma ORM `schema.prisma`, setup runs `prisma migrate deploy` when `prisma/migrations` exists next to the schema, otherwise it runs `prisma db push`
 - when no supported Prisma schema source is found, `--db` still creates the database and env overrides but skips schema setup
@@ -818,11 +826,12 @@ Behavior:
 - if schema setup fails, deploy stops before the app build/deploy starts
 - `--env DATABASE_URL=...`, `--env DIRECT_URL=...`, or the same keys loaded from an env file suppress automatic database prompting; combining those database env vars with `--db` is rejected
 - maps user-facing framework names to deploy build strategies
+- does not accept `--build-command` or `--output-directory`; custom build settings are edited in `prisma.app.json`, which is initially generated from `package.json` `scripts.build` and framework defaults for config-backed deploy types
 - uses `src/index.ts` as the Hono deploy entrypoint when the app has no `package.json#main` or `package.json#module` and that file exists
 - supports vanilla Bun apps with `--framework bun` using `package.json#main` or `package.json#module`, or with `--entry <path>`
 - treats `--entry <path>` without `--framework` as a Bun app deploy
 - does not print secret values
-- returns app, deployment id, URL, and next steps in `--json` output
+- returns app, deployment id, URL, deploy settings including `prisma.app.json` status/build/output metadata, and next steps in `--json` output
 
 Examples:
 

@@ -6,7 +6,7 @@ import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
 import { envVarNames } from "./env-vars";
 import { PreviewBuildStrategy } from "./preview-build";
-import type { PreviewBuildType } from "./preview-build";
+import type { PreviewBuildSettings, PreviewBuildType } from "./preview-build";
 import type { BranchKind } from "../../types/branch";
 import {
   createBranchDatabase,
@@ -171,6 +171,7 @@ export interface PreviewAppProvider {
     region?: string;
     entrypoint?: string;
     buildType?: PreviewBuildType;
+    buildSettings?: PreviewBuildSettings;
     portMapping?: PortMapping;
     envVars?: Record<string, string>;
     interaction?: unknown;
@@ -414,6 +415,7 @@ export function createPreviewAppProvider(
           entrypoint: options.entrypoint,
           buildType: options.buildType,
           signal: options.signal,
+          buildSettings: options.buildSettings,
         }),
         projectId: options.projectId,
         serviceId: resolvedApp.appId,

@@ -35,6 +35,9 @@ importers:
       '@prisma/management-api-sdk':
         specifier: ^1.37.0
         version: 1.37.0
+      better-result:
+        specifier: ^2.9.2
+        version: 2.9.2
       c12:
         specifier: 4.0.0-beta.5
         version: 4.0.0-beta.5(dotenv@17.4.2)(jiti@2.7.0)(magicast@0.5.3)

@@ -13,14 +13,14 @@ export async function enforceProductionDeployGate(
     branchKind: BranchKind;
     prod: boolean;
   },
-): Promise<void> {
+): Promise<{ firstProductionDeploy: boolean }> {
   if (options.branchKind !== "production") {
-    return;
+    return { firstProductionDeploy: false };
   }
 
   if (!options.appId) {
     renderFirstProductionDeployLine(context, options.appName);
-    return;
+    return { firstProductionDeploy: true };
   }
 
   const deploymentsResult = await provider.listDeployments(options.appId).catch((error) => {
@@ -29,7 +29,7 @@ export async function enforceProductionDeployGate(
   const currentLiveDeployment = resolveCurrentProductionDeployment(deploymentsResult);
   if (!currentLiveDeployment) {
     renderFirstProductionDeployLine(context, options.appName);
-    return;
+    return { firstProductionDeploy: true };
   }
 
   if (!options.prod) {
@@ -38,7 +38,7 @@ export async function enforceProductionDeployGate(
 
   if (context.flags.yes) {
     renderProductionDeployYesLine(context);
-    return;
+    return { firstProductionDeploy: false };
   }
 
   if (!canPrompt(context)) {
@@ -56,6 +56,8 @@ export async function enforceProductionDeployGate(
   if (!confirmed) {
     throw productionDeployCancelledError();
   }
+
+  return { firstProductionDeploy: false };
 }
 
 function resolveCurrentProductionDeployment(result: Awaited<ReturnType<PreviewAppProvider["listDeployments"]>>): PreviewDeploymentRecord | null {

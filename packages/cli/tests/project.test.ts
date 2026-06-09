@@ -155,6 +155,24 @@ describe("project commands", () => {
     ]);
   });
 
+  it("marks project list local binding invalid when the local pin cannot be parsed", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writeLocalPin(cwd, "{ nope");
+    await login(cwd, stateDir);
+
+    const result = await executeCli({
+      argv: ["project", "list", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.result.localBinding).toEqual({ status: "invalid" });
+  });
+
   it("prompts for a Project when bare project link runs interactively", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");

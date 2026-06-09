@@ -38,6 +38,7 @@ Rules:
 - `project` is not the same thing as `app`
 - Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for project resolution
 - `.prisma/local.json` is a gitignored local pin/cache for Workspace and Project IDs; it is not a declarative repo config file
+- `prisma.app.json` is a committed app build-settings file only; it must not contain Workspace, Project, Branch, App, env, or secret resolution state
 - Project setup is explicit: users choose an existing Project or explicitly create a new one before remote work starts
 - `app deploy` may orchestrate Project setup, but it must not silently choose or create Project scope
 - everything under a project happens in a branch
@@ -103,6 +104,7 @@ Rules:
 - the runtime app service is scoped by branch in the platform model
 - the app may be selected or created as part of app deployment workflows
 - app selection is local CLI state when needed for the beta package
+- app build settings may live in `prisma.app.json` beside `package.json`; v1 fields are `buildCommand` and `outputDirectory`
 
 ### Deployment
 
@@ -178,16 +180,18 @@ Rules:
 - `database connection create` prints the created connection URL exactly once
 - create commands print raw URLs only, never `DATABASE_URL=` or `DIRECT_URL=`
 - database wiring uses the existing environment-variable model
-- `DATABASE_URL` is written as a preview Branch override, not a separate app binding
 - `database list`, `database show`, and `database connection list` never print
   or return secret values
 - database and database connection removal require exact id confirmation with
   `--confirm <id>`; `--yes` is not sufficient
-- branch database setup never overwrites an existing branch-scoped `DATABASE_URL`
+- preview Branch setup writes branch-scoped `DATABASE_URL` and `DIRECT_URL` overrides, not separate app bindings
+- first production deploy setup writes production `DATABASE_URL` and `DIRECT_URL` env vars before the App has a live deployment
+- database setup never overwrites an existing branch-scoped `DATABASE_URL`
+- production setup treats existing production `DATABASE_URL` or `DIRECT_URL` as BYO DB intent and leaves env vars unchanged
 - schema setup is sourced only from local code; the CLI does not clone or infer schema from another database
 - Prisma Next config (`prisma-next.config.*`) is preferred over `schema.prisma`
 - known non-Postgres Prisma sources are treated as unsupported for automatic Prisma Postgres setup
-- production database configuration is managed through explicit environment-variable commands
+- later production database configuration is managed through explicit environment-variable commands
 
 ## Relationships
 

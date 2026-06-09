@@ -1,16 +1,36 @@
-import { chmod, copyFile, cp, lstat, mkdir, readdir, readFile, readlink, rm, stat } from "node:fs/promises";
+import { chmod, copyFile, cp, lstat, mkdir, mkdtemp, readdir, readFile, readlink, rm, stat } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 import {
   AstroBuild,
   BunBuild,
-  NextjsBuild,
   NuxtBuild,
-  TanstackStartBuild,
   type BuildArtifact,
   type BuildStrategy,
 } from "@prisma/compute-sdk";
-import { resolveBunEntrypoint } from "./bun-project";
+import { readBunPackageJson, resolveBunEntrypoint } from "./bun-project";
+import {
+  PRISMA_APP_CONFIG_FILENAME,
+  hasAnyPackageDependency,
+  hasPackageDependency,
+  hasRootFile,
+  joinPosix,
+  nextOutputRootFromStandaloneDirectory,
+  resolvePreviewBuildSettings,
+  runResolvedBuildCommand,
+  type PreviewBuildSettings,
+} from "./preview-build-settings";
+
+export {
+  PRISMA_APP_CONFIG_FILENAME,
+  PRISMA_APP_CONFIG_SCHEMA_URL,
+  resolveOrCreatePreviewBuildSettings,
+  resolvePreviewBuildSettings,
+  type PreviewBuildSettingsBuildType,
+  type PreviewBuildSettings,
+  type PreviewBuildSettingsResolution,
+} from "./preview-build-settings";
 
 export const PREVIEW_BUILD_TYPES = [
   "auto",
@@ -33,12 +53,20 @@ export class PreviewBuildStrategy implements BuildStrategy {
   readonly #entrypoint?: string;
   readonly #buildType: PreviewBuildType;
   readonly #signal?: AbortSignal;
+  readonly #buildSettings?: PreviewBuildSettings;
 
-  constructor(options: { appPath: string; entrypoint?: string; buildType?: PreviewBuildType; signal?: AbortSignal }) {
+  constructor(options: {
+    appPath: string;
+    entrypoint?: string;
+    buildType?: PreviewBuildType;
+    signal?: AbortSignal;
+    buildSettings?: PreviewBuildSettings;
+  }) {
     this.#appPath = options.appPath;
     this.#entrypoint = options.entrypoint;
     this.#buildType = options.buildType ?? "auto";
     this.#signal = options.signal;
+    this.#buildSettings = options.buildSettings;
   }
 
   async canBuild(signal = this.#signal): Promise<boolean> {
@@ -47,6 +75,7 @@ export class PreviewBuildStrategy implements BuildStrategy {
       entrypoint: this.#entrypoint,
       buildType: this.#buildType,
       signal,
+      buildSettings: this.#buildSettings,
     });
 
     return strategy.canBuild(signal);
@@ -58,6 +87,7 @@ export class PreviewBuildStrategy implements BuildStrategy {
       entrypoint: this.#entrypoint,
       buildType: this.#buildType,
       signal,
+      buildSettings: this.#buildSettings,
     });
 
     return artifact;
@@ -69,6 +99,7 @@ export async function executePreviewBuild(options: {
   entrypoint?: string;
   buildType?: PreviewBuildType;
   signal?: AbortSignal;
+  buildSettings?: PreviewBuildSettings;
 }): Promise<{
   artifact: BuildArtifact;
   buildType: ResolvedPreviewBuildType;
@@ -78,14 +109,11 @@ export async function executePreviewBuild(options: {
     entrypoint: options.entrypoint,
     buildType: options.buildType ?? "auto",
     signal: options.signal,
+    buildSettings: options.buildSettings,
   });
   const artifact = await strategy.execute(options.signal);
 
   try {
-    if (buildType === "nextjs") {
-      await restageNextjsArtifact(artifact, options.appPath, options.signal);
-    }
-
     await normalizeArtifactSymlinks(artifact.directory, options.appPath, options.signal);
     return {
       artifact,
@@ -102,6 +130,7 @@ export async function resolvePreviewBuildStrategy(options: {
   entrypoint?: string;
   buildType: PreviewBuildType;
   signal?: AbortSignal;
+  buildSettings?: PreviewBuildSettings;
 }): Promise<{
   strategy: BuildStrategy;
   buildType: ResolvedPreviewBuildType;
@@ -112,6 +141,7 @@ export async function resolvePreviewBuildStrategy(options: {
       entrypoint: options.entrypoint,
       buildType: options.buildType,
       signal: options.signal,
+      buildSettings: options.buildSettings,
     });
 
     return {
@@ -129,6 +159,7 @@ export async function resolvePreviewBuildStrategy(options: {
       entrypoint: options.entrypoint,
       buildType,
       signal: options.signal,
+      buildSettings: options.buildSettings,
     });
 
     if (await strategy.canBuild(options.signal)) {
@@ -146,6 +177,7 @@ export async function resolvePreviewBuildStrategy(options: {
       entrypoint: options.entrypoint,
       buildType: "bun",
       signal: options.signal,
+      buildSettings: options.buildSettings,
     }),
   };
 }
@@ -155,25 +187,191 @@ async function createPreviewBuildStrategy(options: {
   entrypoint?: string;
   buildType: ResolvedPreviewBuildType;
   signal?: AbortSignal;
+  buildSettings?: PreviewBuildSettings;
 }): Promise<BuildStrategy> {
   switch (options.buildType) {
     case "nextjs":
-      return new NextjsBuild({ appPath: options.appPath });
+      return new PreviewNextjsBuild({ appPath: options.appPath, buildSettings: options.buildSettings });
     case "nuxt":
       return new NuxtBuild({ appPath: options.appPath });
     case "astro":
       return new AstroBuild({ appPath: options.appPath });
     case "tanstack-start":
-      return new TanstackStartBuild({ appPath: options.appPath });
+      return new PreviewTanstackStartBuild({ appPath: options.appPath, buildSettings: options.buildSettings });
     case "bun": {
       const entrypoint = await resolveBunEntrypoint(options.appPath, options.entrypoint, options.signal);
-      return new BunBuild({
+      return new PreviewBunBuild({
         appPath: options.appPath,
-        entrypoint,
+        strategy: new BunBuild({
+          appPath: options.appPath,
+          entrypoint,
+        }),
+        buildSettings: options.buildSettings,
       });
     }
   }
 }
+
+class PreviewNextjsBuild implements BuildStrategy {
+  readonly #appPath: string;
+  readonly #buildSettings?: PreviewBuildSettings;
+
+  constructor(options: { appPath: string; buildSettings?: PreviewBuildSettings }) {
+    this.#appPath = options.appPath;
+    this.#buildSettings = options.buildSettings;
+  }
+
+  async canBuild(signal?: AbortSignal): Promise<boolean> {
+    const packageJson = await readBunPackageJson(this.#appPath, signal);
+    return (await hasRootFile(this.#appPath, NEXT_CONFIG_FILENAMES, signal)) || hasPackageDependency(packageJson, "next");
+  }
+
+  async execute(signal?: AbortSignal): Promise<BuildArtifact> {
+    const settings = this.#buildSettings ?? await resolvePreviewBuildSettings({
+      appPath: this.#appPath,
+      buildType: "nextjs",
+      signal,
+    });
+    await runResolvedBuildCommand(this.#appPath, settings, "Next.js", signal);
+
+    const standaloneDir = path.join(this.#appPath, settings.outputDirectory);
+    if (!await directoryExists(standaloneDir, signal)) {
+      throw new Error(
+        `Next.js build did not produce standalone output at ${settings.outputDirectory}. `
+          + `Add output: "standalone" to your next.config file, or update ${PRISMA_APP_CONFIG_FILENAME}.`,
+      );
+    }
+
+    const outDir = await unsupportedFilesystemBoundary(signal, () => mkdtemp(path.join(os.tmpdir(), "compute-build-")));
+
+    try {
+      const artifactDir = path.join(outDir, "app");
+      await stageNextjsStandaloneArtifact({
+        standaloneDir,
+        artifactDir,
+        appPath: this.#appPath,
+        signal,
+      });
+      const entrypoint = await findNextStandaloneEntrypoint(artifactDir, signal);
+      await copyNextjsStaticAssets({
+        appPath: this.#appPath,
+        artifactDir,
+        outputRoot: nextOutputRootFromStandaloneDirectory(settings.outputDirectory),
+        entrypoint,
+        signal,
+      });
+
+      return {
+        directory: artifactDir,
+        entrypoint,
+        defaultPortMapping: { http: 3000 },
+        cleanup: () => rm(outDir, { recursive: true, force: true }),
+      };
+    } catch (error) {
+      await rm(outDir, { recursive: true, force: true });
+      throw error;
+    }
+  }
+}
+
+class PreviewTanstackStartBuild implements BuildStrategy {
+  readonly #appPath: string;
+  readonly #buildSettings?: PreviewBuildSettings;
+
+  constructor(options: { appPath: string; buildSettings?: PreviewBuildSettings }) {
+    this.#appPath = options.appPath;
+    this.#buildSettings = options.buildSettings;
+  }
+
+  async canBuild(signal?: AbortSignal): Promise<boolean> {
+    const packageJson = await readBunPackageJson(this.#appPath, signal);
+    return hasAnyPackageDependency(packageJson, TANSTACK_START_PACKAGES);
+  }
+
+  async execute(signal?: AbortSignal): Promise<BuildArtifact> {
+    const settings = this.#buildSettings ?? await resolvePreviewBuildSettings({
+      appPath: this.#appPath,
+      buildType: "tanstack-start",
+      signal,
+    });
+    await runResolvedBuildCommand(this.#appPath, settings, "TanStack Start", signal);
+
+    const outputDir = path.join(this.#appPath, settings.outputDirectory);
+    const entrypoint = "server/index.mjs";
+    const entryPath = path.join(outputDir, entrypoint);
+    const entryStat = await unsupportedFilesystemBoundary(signal, () => stat(entryPath).catch(() => null));
+    if (!entryStat?.isFile()) {
+      throw new Error(
+        `TanStack Start build did not produce a Nitro node server entrypoint at ${joinPosix(settings.outputDirectory, entrypoint)}. `
+          + `Ensure your vite.config includes the tanstackStart() and nitro() plugins with the default node preset, or update ${PRISMA_APP_CONFIG_FILENAME}.`,
+      );
+    }
+
+    const outDir = await unsupportedFilesystemBoundary(signal, () => mkdtemp(path.join(os.tmpdir(), "compute-build-")));
+
+    try {
+      const artifactDir = path.join(outDir, "app");
+      await unsupportedFilesystemBoundary(signal, () => cp(outputDir, artifactDir, {
+        recursive: true,
+        verbatimSymlinks: true,
+      }));
+
+      return {
+        directory: artifactDir,
+        entrypoint,
+        defaultPortMapping: { http: 3000 },
+        cleanup: () => rm(outDir, { recursive: true, force: true }),
+      };
+    } catch (error) {
+      await rm(outDir, { recursive: true, force: true });
+      throw error;
+    }
+  }
+}
+
+class PreviewBunBuild implements BuildStrategy {
+  readonly #appPath: string;
+  readonly #strategy: BuildStrategy;
+  readonly #buildSettings?: PreviewBuildSettings;
+
+  constructor(options: {
+    appPath: string;
+    strategy: BuildStrategy;
+    buildSettings?: PreviewBuildSettings;
+  }) {
+    this.#appPath = options.appPath;
+    this.#strategy = options.strategy;
+    this.#buildSettings = options.buildSettings;
+  }
+
+  async canBuild(signal?: AbortSignal): Promise<boolean> {
+    return this.#strategy.canBuild(signal);
+  }
+
+  async execute(signal?: AbortSignal): Promise<BuildArtifact> {
+    const settings = this.#buildSettings ?? await resolvePreviewBuildSettings({
+      appPath: this.#appPath,
+      buildType: "bun",
+      signal,
+    });
+    await runResolvedBuildCommand(this.#appPath, settings, "Bun", signal);
+
+    return this.#strategy.execute(signal);
+  }
+}
+
+const NEXT_CONFIG_FILENAMES = [
+  "next.config.js",
+  "next.config.mjs",
+  "next.config.ts",
+  "next.config.mts",
+] as const;
+
+const TANSTACK_START_PACKAGES = [
+  "@tanstack/react-start",
+  "@tanstack/solid-start",
+  "@tanstack/start",
+] as const;
 
 export async function stageNextjsStandaloneArtifact(options: {
   standaloneDir: string;
@@ -193,6 +391,73 @@ export async function stageNextjsStandaloneArtifact(options: {
     signal: options.signal,
   });
   await hoistPnpmDependencies(path.join(artifactRoot, "node_modules"), options.signal);
+}
+
+async function copyNextjsStaticAssets(options: {
+  appPath: string;
+  artifactDir: string;
+  outputRoot: string;
+  entrypoint: string;
+  signal?: AbortSignal;
+}): Promise<void> {
+  const serverSubpath = nextjsServerSubpath(options.entrypoint);
+  const serverDir = serverSubpath
+    ? path.join(options.artifactDir, serverSubpath)
+    : options.artifactDir;
+
+  const publicDir = path.join(options.appPath, "public");
+  if (await directoryExists(publicDir, options.signal)) {
+    await unsupportedFilesystemBoundary(options.signal, () => cp(publicDir, path.join(serverDir, "public"), {
+      recursive: true,
+      verbatimSymlinks: true,
+    }));
+  }
+
+  const staticDir = path.join(options.appPath, options.outputRoot, "static");
+  if (await directoryExists(staticDir, options.signal)) {
+    await unsupportedFilesystemBoundary(options.signal, () => cp(staticDir, path.join(serverDir, options.outputRoot, "static"), {
+      recursive: true,
+      verbatimSymlinks: true,
+    }));
+  }
+}
+
+async function findNextStandaloneEntrypoint(artifactDir: string, signal?: AbortSignal): Promise<string> {
+  const rootEntrypoint = path.join(artifactDir, "server.js");
+  const rootStat = await unsupportedFilesystemBoundary(signal, () => stat(rootEntrypoint).catch(() => null));
+  if (rootStat?.isFile()) {
+    return "server.js";
+  }
+
+  const candidates: string[] = [];
+  await walk(artifactDir);
+  candidates.sort((left, right) => left.split("/").length - right.split("/").length || left.localeCompare(right));
+
+  const selected = candidates[0];
+  if (!selected) {
+    throw new Error(`Next.js standalone output did not contain server.js in ${artifactDir}`);
+  }
+
+  return selected;
+
+  async function walk(directory: string): Promise<void> {
+    const entries = await unsupportedFilesystemBoundary(signal, () => readdir(directory, { withFileTypes: true }));
+    for (const entry of entries) {
+      if (entry.name === "node_modules") {
+        continue;
+      }
+
+      const fullPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+        continue;
+      }
+
+      if (entry.isFile() && entry.name === "server.js") {
+        candidates.push(path.relative(artifactDir, fullPath).split(path.sep).join("/"));
+      }
+    }
+  }
 }
 
 export async function restageNextjsArtifact(artifact: BuildArtifact, appPath: string, signal?: AbortSignal): Promise<void> {

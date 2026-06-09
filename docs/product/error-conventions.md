@@ -169,6 +169,7 @@ These codes are the minimum stable set for the MVP:
 - `LOCAL_PROJECT_WORKSPACE_MISMATCH`
 - `LOCAL_STATE_STALE`
 - `BRANCH_NOT_DEPLOYABLE`
+- `APP_CONFIG_INVALID`
 - `FRAMEWORK_NOT_DETECTED`
 - `DEPLOYMENT_NOT_FOUND`
 - `NO_DEPLOYMENTS`
@@ -220,6 +221,7 @@ Recommended meanings:
 - `LOCAL_PROJECT_WORKSPACE_MISMATCH`: local Project pin points at a different workspace than the active authenticated workspace; callers should sign in to the linked workspace or relink the directory
 - `LOCAL_STATE_STALE`: local Project pin no longer matches platform data and continuing would be ambiguous
 - `BRANCH_NOT_DEPLOYABLE`: command tried to deploy to a non-deployable branch context
+- `APP_CONFIG_INVALID`: `prisma.app.json` is missing required build settings, has invalid JSON, or points outside the app root
 - `FRAMEWORK_NOT_DETECTED`: app deploy could not detect a supported Beta framework and no explicit framework/build type was provided
 - `DEPLOYMENT_NOT_FOUND`: requested deployment id does not exist
 - `NO_DEPLOYMENTS`: command resolved a branch or app but found no deployments
@@ -245,8 +247,8 @@ Recommended meanings:
 - `REPO_ALREADY_CONNECTED`: a project already has a different GitHub repository connected
 - `REPO_CONNECTION_FAILED`: the Management API repository connection operation failed
 - `BUILD_FAILED`: build failed before a healthy deployment existed
-- `BRANCH_DATABASE_SETUP_FAILED`: preview Branch database creation or branch env-var wiring failed before deployment started
-- `SCHEMA_SETUP_FAILED`: local Prisma schema source setup against a newly created Branch database failed before deployment started
+- `BRANCH_DATABASE_SETUP_FAILED`: database creation or env-var wiring failed before deployment started
+- `SCHEMA_SETUP_FAILED`: local Prisma schema source setup against a newly created database failed before deployment started
 - `DATABASE_NOT_FOUND`: requested database id or name does not exist in the resolved project scope
 - `DATABASE_AMBIGUOUS`: requested database name matches multiple databases and needs an id or branch filter
 - `DATABASE_CONNECTION_NOT_FOUND`: requested database connection id does not exist or is not accessible

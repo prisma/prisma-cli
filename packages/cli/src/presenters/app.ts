@@ -69,12 +69,17 @@ export function renderAppDeploy(
 }
 
 export function serializeAppDeploy(result: AppDeployResult) {
-  const { deploySettings: _deploySettings, localPin: _localPin, ...serialized } = result;
+  const { deploySettings, localPin: _localPin, ...serialized } = result;
   const { id: _branchId, ...branch } = serialized.branch;
 
   return {
     ...serialized,
     branch,
+    deploySettings: {
+      config: deploySettings.config,
+      buildCommand: deploySettings.buildCommand,
+      outputDirectory: deploySettings.outputDirectory,
+    },
   };
 }
 
