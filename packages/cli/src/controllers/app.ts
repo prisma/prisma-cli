@@ -52,6 +52,7 @@ import {
   buildProjectSetupNextActions,
   inferTargetName,
   projectNotFoundError,
+  projectResolutionErrorToCliError,
   resolveDurablePlatformMapping,
   resolveProjectTarget,
   type InferredTargetName,
@@ -2330,7 +2331,7 @@ async function resolveProjectContext(
     throw workspaceRequiredError();
   }
 
-  const resolved = await resolveProjectTarget({
+  const resolvedResult = await resolveProjectTarget({
     context,
     workspace: authState.workspace,
     explicitProject,
@@ -2338,6 +2339,10 @@ async function resolveProjectContext(
     listProjects: () => listRealWorkspaceProjects(client, authState.workspace!, context.runtime.signal),
     commandName: options?.commandName,
   });
+  if (resolvedResult.isErr()) {
+    throw projectResolutionErrorToCliError(resolvedResult.error);
+  }
+  const resolved = resolvedResult.value;
   const branch = options?.branch ?? await resolveDeployBranch(context, undefined);
 
   return {

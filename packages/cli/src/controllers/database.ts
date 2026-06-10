@@ -7,7 +7,7 @@ import {
   normalizeDatabase,
   type DatabaseProvider,
 } from "../lib/database/provider";
-import { resolveProjectTarget, type ResolvedProjectTarget } from "../lib/project/resolution";
+import { projectResolutionErrorToCliError, resolveProjectTarget, type ResolvedProjectTarget } from "../lib/project/resolution";
 import { authRequiredError, CliError, usageError, workspaceRequiredError } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
 import type { CommandContext } from "../shell/runtime";
@@ -277,31 +277,37 @@ async function requireDatabaseContext(
       throw authRequiredError();
     }
 
-    const target = await resolveProjectTarget({
+    const targetResult = await resolveProjectTarget({
       context,
       workspace,
       explicitProject: flags.projectRef,
       listProjects: () => listRealWorkspaceProjects(client, workspace, context.runtime.signal),
       commandName,
     });
+    if (targetResult.isErr()) {
+      throw projectResolutionErrorToCliError(targetResult.error);
+    }
 
     return {
       provider: createManagementDatabaseProvider(client),
-      target,
+      target: targetResult.value,
     };
   }
 
-  const target = await resolveProjectTarget({
+  const targetResult = await resolveProjectTarget({
     context,
     workspace,
     explicitProject: flags.projectRef,
     listProjects: async () => listFixtureWorkspaceProjects(context, workspace),
     commandName,
   });
+  if (targetResult.isErr()) {
+    throw projectResolutionErrorToCliError(targetResult.error);
+  }
 
   return {
     provider: createFixtureDatabaseProvider(context),
-    target,
+    target: targetResult.value,
   };
 }
 

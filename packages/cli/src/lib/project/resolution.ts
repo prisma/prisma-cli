@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { matchError } from "better-result";
+import { Result, TaggedError, UnhandledException, matchError } from "better-result";
 
 import { formatCommandArgument } from "../../shell/command-arguments";
 import { CliError } from "../../shell/errors";
@@ -18,6 +18,7 @@ import type {
 } from "../../types/project";
 import {
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
+  LocalResolutionPinReadAbortedError,
   type LocalResolutionPinReadError,
   type LocalResolutionPinReadResult,
   readLocalResolutionPin,
@@ -30,6 +31,92 @@ export interface ProjectCandidate extends ProjectSummary {
 
 export type ResolvedProjectTarget = BoundProjectShowResult;
 type BoundProjectSource = Exclude<ProjectSource, "unbound">;
+
+export class ProjectNotFoundError extends TaggedError("ProjectNotFoundError")<{
+  message: string;
+  projectRef: string;
+  workspace: AuthWorkspace;
+}>() {
+  constructor(projectRef: string, workspace: AuthWorkspace) {
+    super({
+      message: `Project "${projectRef}" was not found in workspace "${workspace.name}".`,
+      projectRef,
+      workspace,
+    });
+  }
+}
+
+export class ProjectAmbiguousError extends TaggedError("ProjectAmbiguousError")<{
+  message: string;
+  projectRef: string | null;
+  matches: ProjectCandidate[];
+}>() {
+  constructor(projectRef: string | null, matches: ProjectCandidate[]) {
+    super({
+      message: projectRef
+        ? `Multiple projects matched "${projectRef}".`
+        : "Multiple projects matched the current directory context.",
+      projectRef,
+      matches,
+    });
+  }
+}
+
+export class LocalStateStaleError extends TaggedError("LocalStateStaleError")<{
+  message: string;
+  pinPath: string;
+}>() {
+  constructor() {
+    super({
+      message: `The target recorded in ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} is no longer available in the selected workspace.`,
+      pinPath: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
+    });
+  }
+}
+
+export class LocalProjectWorkspaceMismatchError extends TaggedError("LocalProjectWorkspaceMismatchError")<{
+  message: string;
+  pinnedWorkspaceId: string;
+  pinnedProjectId: string;
+  activeWorkspace: AuthWorkspace;
+}>() {
+  constructor(options: {
+    pinnedWorkspaceId: string;
+    pinnedProjectId: string;
+    activeWorkspace: AuthWorkspace;
+  }) {
+    super({
+      message: `${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} links this directory to project ${options.pinnedProjectId} in workspace ${options.pinnedWorkspaceId}, but the active workspace is "${options.activeWorkspace.name}" (${options.activeWorkspace.id}).`,
+      pinnedWorkspaceId: options.pinnedWorkspaceId,
+      pinnedProjectId: options.pinnedProjectId,
+      activeWorkspace: options.activeWorkspace,
+    });
+  }
+}
+
+export class ProjectSetupRequiredError extends TaggedError("ProjectSetupRequiredError")<{
+  message: string;
+  commandName?: string;
+  suggestion: ProjectSetupSuggestion;
+}>() {
+  constructor(options: { commandName?: string; suggestion: ProjectSetupSuggestion }) {
+    const commandLabel = options.commandName ? `prisma-cli ${options.commandName}` : "this command";
+    super({
+      message: `This directory is not linked to a Prisma Project, and ${commandLabel} will not choose one from package or directory names.`,
+      commandName: options.commandName,
+      suggestion: options.suggestion,
+    });
+  }
+}
+
+export type ProjectResolutionError =
+  | ProjectNotFoundError
+  | ProjectAmbiguousError
+  | ProjectSetupRequiredError
+  | LocalStateStaleError
+  | LocalProjectWorkspaceMismatchError
+  | LocalResolutionPinReadAbortedError
+  | UnhandledException;
 
 export type InferredTargetNameSource = "package-name" | "directory-name";
 
@@ -47,51 +134,59 @@ export interface ResolveProjectOptions {
   listProjects(): Promise<ProjectCandidate[]>;
 }
 
-export async function resolveProjectTarget(options: ResolveProjectOptions): Promise<ResolvedProjectTarget> {
-  const localPin = await readImplicitLocalPin(options, { allowEnvProjectId: true });
-  const projects = await options.listProjects();
-  const target = await resolveBoundProjectTarget(options, projects, { allowEnvProjectId: true, localPin });
+export async function resolveProjectTarget(options: ResolveProjectOptions): Promise<Result<ResolvedProjectTarget, ProjectResolutionError>> {
+  return Result.gen(async function* () {
+    const localPin = yield* Result.await(readImplicitLocalPin(options, { allowEnvProjectId: true }));
+    const projects = await options.listProjects();
+    const target = yield* Result.await(resolveBoundProjectTarget(options, projects, { allowEnvProjectId: true, localPin }));
 
-  if (target) {
-    return target;
-  }
+    if (target) {
+      return Result.ok(target);
+    }
 
-  throw await projectSetupRequiredError({
-    cwd: options.context.runtime.cwd,
-    projects,
-    commandName: options.commandName,
-    signal: options.context.runtime.signal,
+    return Result.err(await projectSetupRequiredError({
+      cwd: options.context.runtime.cwd,
+      projects,
+      commandName: options.commandName,
+      signal: options.context.runtime.signal,
+    }));
   });
 }
 
-export async function inspectProjectBinding(options: ResolveProjectOptions): Promise<ProjectShowResult> {
-  const localPin = await readImplicitLocalPin(options, { allowEnvProjectId: false });
-  const projects = await options.listProjects();
-  const target = await resolveBoundProjectTarget(options, projects, { allowEnvProjectId: false, localPin });
+export async function inspectProjectBinding(options: ResolveProjectOptions): Promise<Result<ProjectShowResult, ProjectResolutionError>> {
+  return Result.gen(async function* () {
+    const localPin = yield* Result.await(readImplicitLocalPin(options, { allowEnvProjectId: false }));
+    const projects = await options.listProjects();
+    const target = yield* Result.await(resolveBoundProjectTarget(options, projects, { allowEnvProjectId: false, localPin }));
 
-  if (target) {
-    return target;
-  }
+    if (target) {
+      return Result.ok(target);
+    }
 
-  return {
-    workspace: options.workspace,
-    project: null,
-    localBinding: {
-      status: "not-linked",
-    },
-    resolution: {
-      projectSource: "unbound",
-    },
-    ...await buildProjectSetupSuggestion({
-      cwd: options.context.runtime.cwd,
-      projects,
-      commandName: options.commandName ?? "project show",
-      signal: options.context.runtime.signal,
-    }),
-  };
+    return Result.ok({
+      workspace: options.workspace,
+      project: null,
+      localBinding: {
+        status: "not-linked",
+      },
+      resolution: {
+        projectSource: "unbound",
+      },
+      ...await buildProjectSetupSuggestion({
+        cwd: options.context.runtime.cwd,
+        projects,
+        commandName: options.commandName ?? "project show",
+        signal: options.context.runtime.signal,
+      }),
+    } satisfies ProjectShowResult);
+  });
 }
 
 export function projectNotFoundError(projectRef: string, workspace: AuthWorkspace): CliError {
+  return projectResolutionErrorToCliError(new ProjectNotFoundError(projectRef, workspace));
+}
+
+function projectNotFoundCliError(projectRef: string, workspace: AuthWorkspace): CliError {
   return new CliError({
     code: "PROJECT_NOT_FOUND",
     domain: "project",
@@ -104,6 +199,10 @@ export function projectNotFoundError(projectRef: string, workspace: AuthWorkspac
 }
 
 export function projectAmbiguousError(projectRef: string | null, matches: ProjectCandidate[]): CliError {
+  return projectResolutionErrorToCliError(new ProjectAmbiguousError(projectRef, matches));
+}
+
+function projectAmbiguousCliError(projectRef: string | null, matches: ProjectCandidate[]): CliError {
   const firstMatch = matches[0];
   const nextSteps = ["prisma-cli project list"];
   if (firstMatch) {
@@ -129,6 +228,10 @@ export function projectAmbiguousError(projectRef: string | null, matches: Projec
 }
 
 export function localStateStaleError(): CliError {
+  return projectResolutionErrorToCliError(new LocalStateStaleError());
+}
+
+function localStateStaleCliError(): CliError {
   return new CliError({
     code: "LOCAL_STATE_STALE",
     domain: "project",
@@ -148,6 +251,14 @@ export function localProjectWorkspaceMismatchError(options: {
   pinnedProjectId: string;
   activeWorkspace: AuthWorkspace;
 }): CliError {
+  return projectResolutionErrorToCliError(new LocalProjectWorkspaceMismatchError(options));
+}
+
+function localProjectWorkspaceMismatchCliError(options: {
+  pinnedWorkspaceId: string;
+  pinnedProjectId: string;
+  activeWorkspace: AuthWorkspace;
+}): CliError {
   return new CliError({
     code: "LOCAL_PROJECT_WORKSPACE_MISMATCH",
     domain: "project",
@@ -163,6 +274,32 @@ export function localProjectWorkspaceMismatchError(options: {
     },
     exitCode: 1,
     nextSteps: ["prisma-cli auth login", "prisma-cli project list", "prisma-cli project link <id-or-name>"],
+  });
+}
+
+/**
+ * Converts expected project-resolution variants to command-boundary CliErrors.
+ * `LocalResolutionPinReadAbortedError` and `UnhandledException` intentionally
+ * propagate as exceptions; callers such as `resolveProjectShowInRealMode`
+ * throw this helper's result, so passthrough variants should keep bubbling.
+ */
+export function projectResolutionErrorToCliError(error: ProjectResolutionError): CliError {
+  return matchError(error, {
+    ProjectNotFoundError: (error) => projectNotFoundCliError(error.projectRef, error.workspace),
+    ProjectAmbiguousError: (error) => projectAmbiguousCliError(error.projectRef, error.matches),
+    ProjectSetupRequiredError: (error) => projectSetupRequiredCliError(error),
+    LocalStateStaleError: () => localStateStaleCliError(),
+    LocalProjectWorkspaceMismatchError: (error) => localProjectWorkspaceMismatchCliError({
+      pinnedWorkspaceId: error.pinnedWorkspaceId,
+      pinnedProjectId: error.pinnedProjectId,
+      activeWorkspace: error.activeWorkspace,
+    }),
+    LocalResolutionPinReadAbortedError: (error) => {
+      throw error;
+    },
+    UnhandledException: (error) => {
+      throw error;
+    },
   });
 }
 
@@ -190,21 +327,24 @@ export async function projectSetupRequiredError(options: {
   projects: ProjectCandidate[];
   commandName?: string;
   signal?: AbortSignal;
-}): Promise<CliError> {
+}): Promise<ProjectSetupRequiredError> {
   const suggestion = await buildProjectSetupSuggestion(options);
-  const commandLabel = options.commandName ? `prisma-cli ${options.commandName}` : "this command";
+  return new ProjectSetupRequiredError({ commandName: options.commandName, suggestion });
+}
 
+function projectSetupRequiredCliError(error: ProjectSetupRequiredError): CliError {
+  const suggestion = error.suggestion;
   return new CliError({
     code: "PROJECT_SETUP_REQUIRED",
     domain: "project",
     summary: "Choose a Project before running this command",
-    why: `This directory is not linked to a Prisma Project, and ${commandLabel} will not choose one from package or directory names.`,
+    why: error.message,
     fix: "Link the directory to an existing Project, or pass --project <id-or-name> for this command.",
     meta: { ...suggestion },
     exitCode: 1,
     nextSteps: ["prisma-cli project list", ...suggestion.recoveryCommands],
     nextActions: buildProjectSetupNextActions({
-      commandName: options.commandName,
+      commandName: error.commandName,
       suggestedProjectName: suggestion.suggestedProjectName,
     }),
   });
@@ -313,15 +453,15 @@ function resolveExplicitProject(
   projectRef: string,
   projects: ProjectCandidate[],
   workspace: AuthWorkspace,
-): ProjectCandidate {
+): Result<ProjectCandidate, ProjectNotFoundError | ProjectAmbiguousError> {
   const matches = projects.filter((project) => project.id === projectRef || project.name === projectRef);
   if (matches.length === 1) {
-    return matches[0];
+    return Result.ok(matches[0]);
   }
   if (matches.length > 1) {
-    throw projectAmbiguousError(projectRef, matches);
+    return Result.err(new ProjectAmbiguousError(projectRef, matches));
   }
-  throw projectNotFoundError(projectRef, workspace);
+  return Result.err(new ProjectNotFoundError(projectRef, workspace));
 }
 
 function projectMatchesSuggestedName(project: ProjectCandidate, suggestedName: string): boolean {
@@ -339,58 +479,62 @@ async function resolveBoundProjectTarget(
     allowEnvProjectId: boolean;
     localPin: LocalResolutionPinReadResult | null;
   },
-): Promise<BoundProjectShowResult | null> {
+): Promise<Result<BoundProjectShowResult | null, ProjectResolutionError>> {
   if (options.explicitProject) {
-    return resolvedTarget(options.workspace, resolveExplicitProject(options.explicitProject, projects, options.workspace), "explicit", {
+    const projectResult = resolveExplicitProject(options.explicitProject, projects, options.workspace);
+    if (projectResult.isErr()) {
+      return Result.err(projectResult.error);
+    }
+    return Result.ok(resolvedTarget(options.workspace, projectResult.value, "explicit", {
       targetName: options.explicitProject,
       targetNameSource: "explicit",
-    });
+    }));
   }
 
   if (settings.allowEnvProjectId && options.envProjectId) {
     const project = projects.find((candidate) => candidate.id === options.envProjectId);
     if (!project) {
-      throw projectNotFoundError(options.envProjectId, options.workspace);
+      return Result.err(new ProjectNotFoundError(options.envProjectId, options.workspace));
     }
-    return resolvedTarget(options.workspace, project, "env", {
+    return Result.ok(resolvedTarget(options.workspace, project, "env", {
       targetName: options.envProjectId,
       targetNameSource: "env",
-    });
+    }));
   }
 
   const localPin = settings.localPin;
   if (!localPin) {
-    return null;
+    return Result.ok(null);
   }
   if (localPin.kind === "present") {
     if (localPin.pin.workspaceId !== options.workspace.id) {
-      throw localProjectWorkspaceMismatchError({
+      return Result.err(new LocalProjectWorkspaceMismatchError({
         pinnedWorkspaceId: localPin.pin.workspaceId,
         pinnedProjectId: localPin.pin.projectId,
         activeWorkspace: options.workspace,
-      });
+      }));
     }
 
     const project = projects.find((candidate) => candidate.id === localPin.pin.projectId);
     if (!project) {
-      throw localStateStaleError();
+      return Result.err(new LocalStateStaleError());
     }
 
-    return resolvedTarget(options.workspace, project, "local-pin", {
+    return Result.ok(resolvedTarget(options.workspace, project, "local-pin", {
       targetName: project.name,
       targetNameSource: "local-pin",
-    });
+    }));
   }
 
   const platformMapping = await resolveDurablePlatformMapping();
   if (platformMapping && platformMapping.workspace.id === options.workspace.id) {
-    return resolvedTarget(options.workspace, platformMapping, "platform-mapping", {
+    return Result.ok(resolvedTarget(options.workspace, platformMapping, "platform-mapping", {
       targetName: platformMapping.name,
       targetNameSource: "platform-mapping",
-    });
+    }));
   }
 
-  return null;
+  return Result.ok(null);
 }
 
 async function readImplicitLocalPin(
@@ -398,39 +542,34 @@ async function readImplicitLocalPin(
   settings: {
     allowEnvProjectId: boolean;
   },
-): Promise<LocalResolutionPinReadResult | null> {
+): Promise<Result<LocalResolutionPinReadResult | null, ProjectResolutionError>> {
   if (options.explicitProject || (settings.allowEnvProjectId && options.envProjectId)) {
-    return null;
+    return Result.ok(null);
   }
 
   const localPinResult = await readLocalResolutionPin(options.context.runtime.cwd, options.context.runtime.signal);
   if (localPinResult.isErr()) {
-    throw localPinReadErrorToProjectError(localPinResult.error);
+    return Result.err(localPinReadErrorToProjectError(localPinResult.error));
   }
 
   const localPin = localPinResult.value;
   if (localPin.kind === "present" && localPin.pin.workspaceId !== options.workspace.id) {
-    throw localProjectWorkspaceMismatchError({
+    return Result.err(new LocalProjectWorkspaceMismatchError({
       pinnedWorkspaceId: localPin.pin.workspaceId,
       pinnedProjectId: localPin.pin.projectId,
       activeWorkspace: options.workspace,
-    });
+    }));
   }
 
-  return localPin;
+  return Result.ok(localPin);
 }
 
-function localPinReadErrorToProjectError(error: LocalResolutionPinReadError): CliError {
-  // Migration bridge: remove in Phase 20 when command boundaries convert Result errors directly.
+function localPinReadErrorToProjectError(error: LocalResolutionPinReadError): ProjectResolutionError {
   return matchError(error, {
-    LocalResolutionPinInvalidJsonError: () => localStateStaleError(),
-    LocalResolutionPinInvalidShapeError: () => localStateStaleError(),
-    LocalResolutionPinReadAbortedError: (error) => {
-      throw error;
-    },
-    UnhandledException: (error) => {
-      throw error;
-    },
+    LocalResolutionPinInvalidJsonError: () => new LocalStateStaleError(),
+    LocalResolutionPinInvalidShapeError: () => new LocalStateStaleError(),
+    LocalResolutionPinReadAbortedError: (error) => error,
+    UnhandledException: (error) => error,
   });
 }
 

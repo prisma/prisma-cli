@@ -7,10 +7,9 @@ import type { BranchListResult, BranchRole, BranchSummary } from "../types/branc
 import { createCliUseCaseGateways } from "../use-cases/create-cli-gateways";
 import { createBranchUseCases } from "../use-cases/branch";
 import { requireComputeAuth } from "../lib/auth/guard";
-import { resolveProjectTarget } from "../lib/project/resolution";
+import { projectResolutionErrorToCliError, resolveProjectTarget } from "../lib/project/resolution";
 import { requireAuthenticatedAuthState } from "./auth";
 import { listRealWorkspaceProjects } from "./project";
-import { createSelectPromptPort } from "./select-prompt-port";
 
 function isRealMode(context: CommandContext): boolean {
   return !context.runtime.fixturePath && !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH;
@@ -55,13 +54,15 @@ async function listRealBranches(context: CommandContext): Promise<BranchListResu
     throw workspaceRequiredError();
   }
 
-  const target = await resolveProjectTarget({
+  const targetResult = await resolveProjectTarget({
     context,
     workspace,
     listProjects: () => listRealWorkspaceProjects(client, workspace, context.runtime.signal),
-    prompt: createSelectPromptPort(context),
-    remember: true,
   });
+  if (targetResult.isErr()) {
+    throw projectResolutionErrorToCliError(targetResult.error);
+  }
+  const target = targetResult.value;
 
   const branches = await listBranches(client, target.project.id, context.runtime.signal);
 

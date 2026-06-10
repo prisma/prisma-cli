@@ -12,6 +12,7 @@ import {
   buildProjectSetupNextActions,
   inferTargetName,
   inspectProjectBinding,
+  projectResolutionErrorToCliError,
   resolveProjectTarget,
   sortProjects,
   type ProjectCandidate,
@@ -563,13 +564,17 @@ async function resolveProjectShowInRealMode(
     throw authRequiredError();
   }
 
-  return inspectProjectBinding({
+  const result = await inspectProjectBinding({
     context,
     workspace,
     explicitProject,
     listProjects: () => listRealWorkspaceProjects(client, workspace, context.runtime.signal),
     commandName: "project show",
   });
+  if (result.isErr()) {
+    throw projectResolutionErrorToCliError(result.error);
+  }
+  return result.value;
 }
 
 async function resolveRequiredProjectInRealMode(
@@ -583,13 +588,17 @@ async function resolveRequiredProjectInRealMode(
     throw authRequiredError();
   }
 
-  return resolveProjectTarget({
+  const result = await resolveProjectTarget({
     context,
     workspace,
     explicitProject,
     listProjects: () => listRealWorkspaceProjects(client, workspace, context.runtime.signal),
     commandName,
   });
+  if (result.isErr()) {
+    throw projectResolutionErrorToCliError(result.error);
+  }
+  return result.value;
 }
 
 async function resolveProjectShowInFixtureMode(
@@ -597,13 +606,17 @@ async function resolveProjectShowInFixtureMode(
   workspace: AuthWorkspace,
   explicitProject: string | undefined,
 ): Promise<ProjectShowResult> {
-  return inspectProjectBinding({
+  const result = await inspectProjectBinding({
     context,
     workspace,
     explicitProject,
     listProjects: async () => listFixtureWorkspaceProjects(context, workspace),
     commandName: "project show",
   });
+  if (result.isErr()) {
+    throw projectResolutionErrorToCliError(result.error);
+  }
+  return result.value;
 }
 
 async function resolveRequiredProjectInFixtureMode(
@@ -612,13 +625,17 @@ async function resolveRequiredProjectInFixtureMode(
   explicitProject: string | undefined,
   commandName: string,
 ): Promise<ResolvedProjectTarget> {
-  return resolveProjectTarget({
+  const result = await resolveProjectTarget({
     context,
     workspace,
     explicitProject,
     listProjects: async () => listFixtureWorkspaceProjects(context, workspace),
     commandName,
   });
+  if (result.isErr()) {
+    throw projectResolutionErrorToCliError(result.error);
+  }
+  return result.value;
 }
 
 export async function listRealWorkspaceProjects(
