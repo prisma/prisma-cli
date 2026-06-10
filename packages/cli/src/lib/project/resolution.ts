@@ -277,6 +277,12 @@ function localProjectWorkspaceMismatchCliError(options: {
   });
 }
 
+/**
+ * Converts expected project-resolution variants to command-boundary CliErrors.
+ * `LocalResolutionPinReadAbortedError` and `UnhandledException` intentionally
+ * propagate as exceptions; callers such as `resolveProjectShowInRealMode`
+ * throw this helper's result, so passthrough variants should keep bubbling.
+ */
 export function projectResolutionErrorToCliError(error: ProjectResolutionError): CliError {
   return matchError(error, {
     ProjectNotFoundError: (error) => projectNotFoundCliError(error.projectRef, error.workspace),
