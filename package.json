@@ -4,6 +4,7 @@
   "packageManager": "pnpm@10.30.0",
   "scripts": {
     "build:cli": "pnpm --filter @prisma/cli build",
+    "build:compute": "pnpm --filter @prisma/compute build",
     "lint:skills": "node scripts/validate-skills.mjs",
     "prepare": "skills add ./skills --skill '*' --agent universal claude-code -y",
     "prepare:cli-publish": "node scripts/prepare-cli-publish.mjs",

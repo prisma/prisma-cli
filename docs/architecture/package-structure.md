@@ -1,8 +1,9 @@
 # Package Structure
 
-The repository currently contains one publishable package:
+The repository currently contains two publishable packages:
 
 - `packages/cli`: the public Prisma CLI beta package
+- `packages/compute`: runtime utilities for deployed Prisma compute applications
 
 The root workspace owns shared scripts, docs, release preparation, and examples.
 
