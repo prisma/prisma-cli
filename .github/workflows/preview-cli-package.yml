@@ -58,9 +58,17 @@ jobs:
         id: cli_tests
         run: pnpm --filter @prisma/cli test
 
+      - name: Run compute tests
+        id: compute_tests
+        run: pnpm --filter @prisma/compute test
+
       - name: Build CLI package
         id: cli_build
         run: pnpm --filter @prisma/cli build
+
+      - name: Build compute package
+        id: compute_build
+        run: pnpm --filter @prisma/compute build
 
       - name: Prepare staged preview package
         id: prepare_preview
@@ -79,7 +87,9 @@ jobs:
             echo
             echo "- Version: \`${{ steps.cli_version.outputs.version }}\`"
             echo "- CLI tests: \`${{ steps.cli_tests.outcome || 'skipped' }}\`"
+            echo "- Compute tests: \`${{ steps.compute_tests.outcome || 'skipped' }}\`"
             echo "- Build: \`${{ steps.cli_build.outcome || 'skipped' }}\`"
+            echo "- Compute build: \`${{ steps.compute_build.outcome || 'skipped' }}\`"
             echo "- Package staging: \`${{ steps.prepare_preview.outcome || 'skipped' }}\`"
             echo "- pkg.pr.new publish: \`${{ steps.publish_preview.outcome || 'skipped' }}\`"
             PUBLISH_OUTCOME="${{ steps.publish_preview.outcome || 'skipped' }}"
