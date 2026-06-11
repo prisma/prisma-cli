@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readlink, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -70,6 +70,8 @@ describe("preview build strategy", () => {
       JSON.stringify({ name: "next", version: "15.0.0" }),
       "utf8",
     );
+    await mkdir(path.join(appPath, "node_modules/.bin"), { recursive: true });
+    await symlink("../next/package.json", path.join(appPath, "node_modules/.bin/next-link"));
 
     const strategy = new PreviewBuildStrategy({
       appPath,
@@ -93,6 +95,10 @@ describe("preview build strategy", () => {
 
       await expect(readFile(path.join(artifact.directory, ".next/BUILD_ID"), "utf8")).resolves.toBe("fallback-test");
       await expect(readFile(path.join(artifact.directory, "node_modules/next/package.json"), "utf8")).resolves.toContain("15.0.0");
+
+      const linkPath = path.join(artifact.directory, "node_modules/.bin/next-link");
+      expect((await lstat(linkPath)).isSymbolicLink()).toBe(true);
+      await expect(readlink(linkPath)).resolves.toBe("../next/package.json");
     } finally {
       await artifact.cleanup?.();
     }

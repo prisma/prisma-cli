@@ -295,6 +295,10 @@ async function stageNextjsFullTreeFallbackArtifact(appPath: string, signal?: Abo
     // must carry the full runtime dependency tree for `next start`.
     await cp(appPath, artifactDir, {
       recursive: true,
+      // Keep relative symlinks relative (node_modules/.bin/*): the default
+      // rewrites them to absolute paths into the source tree, which the
+      // archiver rejects as escaping the artifact root.
+      verbatimSymlinks: true,
       filter: (source) => path.basename(source) !== ".git",
     });
     await writeFile(path.join(artifactDir, FULL_TREE_NEXT_START_ENTRYPOINT), FULL_TREE_NEXT_START_SOURCE);
