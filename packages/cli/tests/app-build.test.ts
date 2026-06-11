@@ -52,6 +52,52 @@ describe("preview build strategy", () => {
     }, null, 2)}\n`);
   });
 
+  it("packages the full tree with a next start launcher when the build produces no standalone output", async () => {
+    const { PreviewBuildStrategy } = await import("../src/lib/app/preview-build");
+    const cwd = await createTempCwd();
+    const appPath = path.join(cwd, "app");
+
+    await mkdir(path.join(appPath, ".next"), { recursive: true });
+    await mkdir(path.join(appPath, "node_modules/next"), { recursive: true });
+    await writeFile(
+      path.join(appPath, "package.json"),
+      JSON.stringify({ dependencies: { next: "15.0.0" } }),
+      "utf8",
+    );
+    await writeFile(path.join(appPath, ".next/BUILD_ID"), "fallback-test", "utf8");
+    await writeFile(
+      path.join(appPath, "node_modules/next/package.json"),
+      JSON.stringify({ name: "next", version: "15.0.0" }),
+      "utf8",
+    );
+
+    const strategy = new PreviewBuildStrategy({
+      appPath,
+      buildType: "nextjs",
+      buildSettings: {
+        buildCommand: null,
+        buildCommandSource: null,
+        outputDirectory: ".next/standalone",
+        outputDirectorySource: null,
+      },
+    });
+
+    const artifact = await strategy.execute();
+    try {
+      expect(artifact.entrypoint).toBe("prisma-next-start.cjs");
+      expect(artifact.defaultPortMapping).toEqual({ http: 3000 });
+
+      const launcher = await readFile(path.join(artifact.directory, "prisma-next-start.cjs"), "utf8");
+      expect(launcher).toContain('require("next/dist/bin/next")');
+      expect(launcher).toContain('process.argv.push("start"');
+
+      await expect(readFile(path.join(artifact.directory, ".next/BUILD_ID"), "utf8")).resolves.toBe("fallback-test");
+      await expect(readFile(path.join(artifact.directory, "node_modules/next/package.json"), "utf8")).resolves.toContain("15.0.0");
+    } finally {
+      await artifact.cleanup?.();
+    }
+  });
+
   it("creates TanStack and Hono build config defaults", async () => {
     const { resolveOrCreatePreviewBuildSettings } = await import("../src/lib/app/preview-build");
     const cwd = await createTempCwd();

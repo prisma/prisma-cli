@@ -123,6 +123,8 @@ describe("app deploy branch database setup", () => {
     );
 
     spawn.mockClear();
+    await mkdir(path.join(cwd, "node_modules/.bin"), { recursive: true });
+    await writeFile(path.join(cwd, "node_modules/.bin/prisma"), "");
     await runBranchDatabaseSchemaSetup({
       context,
       schema: {
@@ -148,6 +150,113 @@ describe("app deploy branch database setup", () => {
       }),
     );
     expect(spawn.mock.calls[0]?.[1]).not.toContain("--skip-generate");
+  });
+
+  it("falls back to a versioned npx prisma matched to @prisma/client when the prisma CLI is not installed", async () => {
+    const spawn = vi.fn().mockImplementation(() => {
+      const child = new EventEmitter();
+      queueMicrotask(() => child.emit("close", 0, null));
+      return child;
+    });
+    vi.doMock("node:child_process", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("node:child_process")>();
+      return {
+        ...actual,
+        spawn,
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runBranchDatabaseSchemaSetup } = await import("../src/lib/app/branch-database");
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, "prisma"), { recursive: true });
+    await writeFile(path.join(cwd, "prisma/schema.prisma"), "datasource db { provider = \"postgresql\" url = env(\"DATABASE_URL\") }\n");
+    await mkdir(path.join(cwd, "node_modules/@prisma/client"), { recursive: true });
+    await writeFile(
+      path.join(cwd, "node_modules/@prisma/client/package.json"),
+      JSON.stringify({ name: "@prisma/client", version: "5.22.0" }),
+    );
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      flags: {
+        quiet: true,
+      },
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await runBranchDatabaseSchemaSetup({
+      context,
+      schema: {
+        kind: "prisma-orm",
+        path: path.join(cwd, "prisma/schema.prisma"),
+        command: "db-push",
+        hasMigrations: false,
+        target: "postgresql",
+      },
+      databaseUrl: "postgres://pooled",
+      directUrl: null,
+    });
+
+    expect(spawn).toHaveBeenCalledWith(
+      "npx",
+      ["--yes", "prisma@5.22.0", "db", "push", "--schema", "prisma/schema.prisma"],
+      expect.objectContaining({ cwd }),
+    );
+  });
+
+  it("falls back to the pinned prisma version when neither the CLI nor @prisma/client is installed", async () => {
+    const spawn = vi.fn().mockImplementation(() => {
+      const child = new EventEmitter();
+      queueMicrotask(() => child.emit("close", 0, null));
+      return child;
+    });
+    vi.doMock("node:child_process", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("node:child_process")>();
+      return {
+        ...actual,
+        spawn,
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runBranchDatabaseSchemaSetup } = await import("../src/lib/app/branch-database");
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, "prisma"), { recursive: true });
+    await writeFile(path.join(cwd, "prisma/schema.prisma"), "datasource db { provider = \"postgresql\" url = env(\"DATABASE_URL\") }\n");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      flags: {
+        quiet: true,
+      },
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await runBranchDatabaseSchemaSetup({
+      context,
+      schema: {
+        kind: "prisma-orm",
+        path: path.join(cwd, "prisma/schema.prisma"),
+        command: "migrate-deploy",
+        hasMigrations: true,
+        target: "postgresql",
+      },
+      databaseUrl: "postgres://pooled",
+      directUrl: null,
+    });
+
+    expect(spawn).toHaveBeenCalledWith(
+      "npx",
+      ["--yes", "prisma@6.19.3", "migrate", "deploy", "--schema", "prisma/schema.prisma"],
+      expect.objectContaining({ cwd }),
+    );
   });
 
   it("deploy --db creates a branch database, applies schema, and writes branch env overrides before deploying", async () => {
