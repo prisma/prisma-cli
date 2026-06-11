@@ -139,9 +139,13 @@ export function waitUntil(
 ): void {
   const guard = new ScaleToZeroGuard(options);
 
-  void Promise.resolve(promise)
-    .finally(() => {
+  // Do not attach a catch here; callers rely on the underlying promise keeping
+  // its normal unhandled-rejection behavior.
+  void Promise.resolve(promise).finally(() => {
+    try {
       guard.release();
-    })
-    .catch(() => {});
+    } catch {
+      // Guard cleanup must not replace the application promise's result.
+    }
+  });
 }
