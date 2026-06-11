@@ -139,7 +139,9 @@ export function waitUntil(
 ): void {
   const guard = new ScaleToZeroGuard(options);
 
-  void Promise.resolve(promise).finally(() => {
-    guard.release();
-  });
+  void Promise.resolve(promise)
+    .finally(() => {
+      guard.release();
+    })
+    .catch(() => {});
 }

@@ -83,6 +83,17 @@ describe("scale-to-zero guard", () => {
     expect(await readSignals(file)).toBe("+-");
   });
 
+  it("waitUntil releases after the promise rejects", async () => {
+    const { file } = await createControlFile();
+    const promise = Promise.reject(new Error("background failed"));
+
+    expect(waitUntil(promise)).toBeUndefined();
+    await expect(promise).rejects.toThrow("background failed");
+    await Promise.resolve();
+
+    expect(await readSignals(file)).toBe("+-");
+  });
+
   it("waitUntil signal abort releases before a still-pending promise settles", async () => {
     const { file } = await createControlFile();
     const controller = new AbortController();
