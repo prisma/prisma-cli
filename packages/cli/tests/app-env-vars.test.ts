@@ -244,20 +244,30 @@ describe("app env vars", () => {
       }),
     );
 
-    try {
+    expect(() =>
       parseEnvAssignments(
         ["DATABASE_URL=postgresql://first", "DATABASE_URL=postgresql://second"],
         { commandName: "deploy" },
-      );
-    } catch (error) {
-      expect(error).toMatchObject({
+      ),
+    ).toThrowError(
+      expect.objectContaining({
         code: "USAGE_ERROR",
         summary:
           'Environment variable "DATABASE_URL" was provided more than once',
-      });
-      expect(JSON.stringify(error)).not.toContain("postgresql://first");
-      expect(JSON.stringify(error)).not.toContain("postgresql://second");
-    }
+      }),
+    );
+    expect(() =>
+      parseEnvAssignments(
+        ["DATABASE_URL=postgresql://first", "DATABASE_URL=postgresql://second"],
+        { commandName: "deploy" },
+      ),
+    ).toThrowError(expect.not.stringContaining("postgresql://first"));
+    expect(() =>
+      parseEnvAssignments(
+        ["DATABASE_URL=postgresql://first", "DATABASE_URL=postgresql://second"],
+        { commandName: "deploy" },
+      ),
+    ).toThrowError(expect.not.stringContaining("postgresql://second"));
   });
 
   it("returns sorted environment variable names only", async () => {

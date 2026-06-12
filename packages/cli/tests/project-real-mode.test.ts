@@ -153,10 +153,6 @@ function installedGithubAppGet(
   }
 
   if (pathName === "/v1/scm-installations") {
-    expect(request?.params?.query).toEqual({
-      workspaceId: "ws_123",
-      limit: 100,
-    });
     return paginatedData([scmInstallationRecord()]);
   }
 
@@ -204,6 +200,50 @@ function interactiveGithubAppGet(
   }
 
   throw new Error(`Unexpected path ${pathName}`);
+}
+
+function expectScmInstallationsListed(
+  get: ReturnType<typeof vi.fn>,
+  signal: AbortSignal,
+): void {
+  expect(get).toHaveBeenCalledWith(
+    "/v1/scm-installations",
+    expect.objectContaining({
+      params: {
+        query: {
+          workspaceId: "ws_123",
+          limit: 100,
+        },
+      },
+      signal,
+    }),
+  );
+}
+
+function expectInstallIntentPost(post: ReturnType<typeof vi.fn>): void {
+  expect(post).toHaveBeenCalledWith(
+    "/v1/scm-installations/install-intents",
+    expect.objectContaining({
+      body: {
+        provider: "github",
+        workspaceId: "ws_123",
+      },
+    }),
+  );
+}
+
+function expectSourceRepositoryPost(post: ReturnType<typeof vi.fn>): void {
+  expect(post).toHaveBeenCalledWith(
+    "/v1/source-repositories",
+    expect.objectContaining({
+      body: {
+        projectId: "proj_123",
+        provider: "github",
+        providerRepositoryId: 123456,
+        installationId: "scminstall_123",
+      },
+    }),
+  );
 }
 
 describe("real project mode", () => {
@@ -328,37 +368,29 @@ describe("real project mode", () => {
           request?: { params?: { query?: Record<string, unknown> } },
         ) => installedGithubAppGet(pathName, request),
       );
-    const post = vi
-      .fn()
-      .mockImplementation((pathName: string, request?: { body?: unknown }) => {
-        if (pathName === "/v1/source-repositories") {
-          expect(request?.body).toEqual({
-            projectId: "proj_123",
-            provider: "github",
-            providerRepositoryId: 123456,
-            installationId: "scminstall_123",
-          });
-          return {
+    const post = vi.fn().mockImplementation((pathName: string) => {
+      if (pathName === "/v1/source-repositories") {
+        return {
+          data: {
             data: {
-              data: {
-                id: "srcrepo_123",
-                repoId: 123456,
-                provider: "github",
-                repoFullName: "prisma/prisma-cli",
-                defaultBranch: "main",
-                isPrivate: true,
-                status: "active",
-                projectId: "proj_123",
-                installationId: "scminstall_123",
-                createdAt: "2026-05-18T00:00:00.000Z",
-                updatedAt: "2026-05-18T00:00:00.000Z",
-              },
+              id: "srcrepo_123",
+              repoId: 123456,
+              provider: "github",
+              repoFullName: "prisma/prisma-cli",
+              defaultBranch: "main",
+              isPrivate: true,
+              status: "active",
+              projectId: "proj_123",
+              installationId: "scminstall_123",
+              createdAt: "2026-05-18T00:00:00.000Z",
+              updatedAt: "2026-05-18T00:00:00.000Z",
             },
-          };
-        }
+          },
+        };
+      }
 
-        throw new Error(`Unexpected path ${pathName}`);
-      });
+      throw new Error(`Unexpected path ${pathName}`);
+    });
 
     vi.doMock("../src/lib/auth/auth-ops", () => ({
       readAuthState: mockAuthState(),
@@ -393,6 +425,8 @@ describe("real project mode", () => {
     );
 
     expect(post).toHaveBeenCalledOnce();
+    expectSourceRepositoryPost(post);
+    expectScmInstallationsListed(get, context.runtime.signal);
     expect(get).toHaveBeenCalledWith(
       "/v1/scm-installations/{installationId}/repositories",
       {
@@ -508,29 +542,23 @@ describe("real project mode", () => {
 
       throw new Error(`Unexpected path ${pathName}`);
     });
-    const post = vi
-      .fn()
-      .mockImplementation((pathName: string, request?: { body?: unknown }) => {
-        if (pathName === "/v1/scm-installations/install-intents") {
-          expect(request?.body).toEqual({
-            provider: "github",
-            workspaceId: "ws_123",
-          });
-          return {
+    const post = vi.fn().mockImplementation((pathName: string) => {
+      if (pathName === "/v1/scm-installations/install-intents") {
+        return {
+          data: {
             data: {
-              data: {
-                type: "install-intent",
-                provider: "github",
-                workspaceId: "wksp_123",
-                installUrl:
-                  "https://github.com/apps/prisma/installations/new?state=abc",
-              },
+              type: "install-intent",
+              provider: "github",
+              workspaceId: "wksp_123",
+              installUrl:
+                "https://github.com/apps/prisma/installations/new?state=abc",
             },
-          };
-        }
+          },
+        };
+      }
 
-        throw new Error(`Unexpected path ${pathName}`);
-      });
+      throw new Error(`Unexpected path ${pathName}`);
+    });
 
     vi.doMock("../src/lib/auth/auth-ops", () => ({
       readAuthState: mockAuthState(),
@@ -571,6 +599,7 @@ describe("real project mode", () => {
         repository: "prisma/prisma-cli",
       },
     });
+    expectInstallIntentPost(post);
   });
 
   it("creates an install intent when the stored GitHub App installation is unavailable", async () => {
@@ -624,29 +653,23 @@ describe("real project mode", () => {
 
       throw new Error(`Unexpected path ${pathName}`);
     });
-    const post = vi
-      .fn()
-      .mockImplementation((pathName: string, request?: { body?: unknown }) => {
-        if (pathName === "/v1/scm-installations/install-intents") {
-          expect(request?.body).toEqual({
-            provider: "github",
-            workspaceId: "ws_123",
-          });
-          return {
+    const post = vi.fn().mockImplementation((pathName: string) => {
+      if (pathName === "/v1/scm-installations/install-intents") {
+        return {
+          data: {
             data: {
-              data: {
-                type: "install-intent",
-                provider: "github",
-                workspaceId: "wksp_123",
-                installUrl:
-                  "https://github.com/apps/prisma/installations/new?state=abc",
-              },
+              type: "install-intent",
+              provider: "github",
+              workspaceId: "wksp_123",
+              installUrl:
+                "https://github.com/apps/prisma/installations/new?state=abc",
             },
-          };
-        }
+          },
+        };
+      }
 
-        throw new Error(`Unexpected path ${pathName}`);
-      });
+      throw new Error(`Unexpected path ${pathName}`);
+    });
 
     vi.doMock("../src/lib/auth/auth-ops", () => ({
       readAuthState: mockAuthState(),
@@ -688,6 +711,7 @@ describe("real project mode", () => {
       },
     });
     expect(post).toHaveBeenCalledOnce();
+    expectInstallIntentPost(post);
   });
 
   it("waits for GitHub App installation in interactive mode and connects after approval", async () => {
@@ -701,55 +725,43 @@ describe("real project mode", () => {
       }
       return interactiveGithubAppGet(pathName, installationListCalls);
     });
-    const post = vi
-      .fn()
-      .mockImplementation((pathName: string, request?: { body?: unknown }) => {
-        if (pathName === "/v1/scm-installations/install-intents") {
-          expect(request?.body).toEqual({
-            provider: "github",
-            workspaceId: "ws_123",
-          });
-          return {
+    const post = vi.fn().mockImplementation((pathName: string) => {
+      if (pathName === "/v1/scm-installations/install-intents") {
+        return {
+          data: {
             data: {
-              data: {
-                type: "install-intent",
-                provider: "github",
-                workspaceId: "wksp_123",
-                installUrl:
-                  "https://github.com/apps/prisma/installations/new?state=abc",
-              },
+              type: "install-intent",
+              provider: "github",
+              workspaceId: "wksp_123",
+              installUrl:
+                "https://github.com/apps/prisma/installations/new?state=abc",
             },
-          };
-        }
+          },
+        };
+      }
 
-        if (pathName === "/v1/source-repositories") {
-          expect(request?.body).toEqual({
-            projectId: "proj_123",
-            provider: "github",
-            providerRepositoryId: 123456,
-            installationId: "scminstall_123",
-          });
-          return {
+      if (pathName === "/v1/source-repositories") {
+        return {
+          data: {
             data: {
-              data: {
-                id: "srcrepo_123",
-                repoId: 123456,
-                provider: "github",
-                repoFullName: "prisma/prisma-cli",
-                defaultBranch: "main",
-                isPrivate: true,
-                status: "active",
-                projectId: "proj_123",
-                installationId: "scminstall_123",
-                createdAt: "2026-05-18T00:00:00.000Z",
-                updatedAt: "2026-05-18T00:00:00.000Z",
-              },
+              id: "srcrepo_123",
+              repoId: 123456,
+              provider: "github",
+              repoFullName: "prisma/prisma-cli",
+              defaultBranch: "main",
+              isPrivate: true,
+              status: "active",
+              projectId: "proj_123",
+              installationId: "scminstall_123",
+              createdAt: "2026-05-18T00:00:00.000Z",
+              updatedAt: "2026-05-18T00:00:00.000Z",
             },
-          };
-        }
+          },
+        };
+      }
 
-        throw new Error(`Unexpected path ${pathName}`);
-      });
+      throw new Error(`Unexpected path ${pathName}`);
+    });
 
     vi.doMock("../src/lib/auth/auth-ops", () => ({
       readAuthState: mockAuthState(),
@@ -790,6 +802,7 @@ describe("real project mode", () => {
     expect(openBrowser).toHaveBeenCalledWith(
       "https://github.com/apps/prisma/installations/new?state=abc",
     );
+    expectInstallIntentPost(post);
     expect(installationListCalls).toBe(2);
     expect(post).toHaveBeenCalledWith("/v1/source-repositories", {
       body: {
@@ -866,29 +879,23 @@ describe("real project mode", () => {
 
       throw new Error(`Unexpected path ${pathName}`);
     });
-    const post = vi
-      .fn()
-      .mockImplementation((pathName: string, request?: { body?: unknown }) => {
-        if (pathName === "/v1/scm-installations/install-intents") {
-          expect(request?.body).toEqual({
-            provider: "github",
-            workspaceId: "ws_123",
-          });
-          return {
+    const post = vi.fn().mockImplementation((pathName: string) => {
+      if (pathName === "/v1/scm-installations/install-intents") {
+        return {
+          data: {
             data: {
-              data: {
-                type: "install-intent",
-                provider: "github",
-                workspaceId: "wksp_123",
-                installUrl:
-                  "https://github.com/apps/prisma/installations/new?state=abc",
-              },
+              type: "install-intent",
+              provider: "github",
+              workspaceId: "wksp_123",
+              installUrl:
+                "https://github.com/apps/prisma/installations/new?state=abc",
             },
-          };
-        }
+          },
+        };
+      }
 
-        throw new Error(`Unexpected path ${pathName}`);
-      });
+      throw new Error(`Unexpected path ${pathName}`);
+    });
 
     vi.doMock("../src/lib/auth/auth-ops", () => ({
       readAuthState: mockAuthState(),
@@ -930,6 +937,7 @@ describe("real project mode", () => {
       },
     });
     expect(post).toHaveBeenCalledOnce();
+    expectInstallIntentPost(post);
   });
 
   it("guards repeated GitHub App installation pagination cursors", async () => {

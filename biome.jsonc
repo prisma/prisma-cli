@@ -21,11 +21,13 @@
         "noExcessiveCognitiveComplexity": "on",
         "noForEach": "on",
         "noImplicitCoercions": "on"
+      },
+      "nursery": {
+        "noConditionalExpect": "on"
       }
       //   "complexity": {
       //   },
       //   "nursery": {
-      //     "noConditionalExpect": "on",
       //     "noFloatingPromises": "on",
       //     "noForIn": "on",
       //     "noLoopFunc": "on",
