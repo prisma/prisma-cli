@@ -5,11 +5,13 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import {
+// Runtime file-URL import keeps the shebang-bearing script outside the
+// transform pipeline, which breaks on Windows.
+const {
   resolveDevVersion,
   resolveNextBetaVersion,
   resolvePrVersion,
-} from "../../../scripts/resolve-cli-version.mjs";
+} = await import(new URL("../../../scripts/resolve-cli-version.mjs", import.meta.url).href);
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");

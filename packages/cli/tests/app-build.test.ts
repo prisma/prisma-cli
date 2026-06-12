@@ -97,7 +97,7 @@ describe("preview build strategy", () => {
 
       const linkPath = path.join(artifact.directory, "node_modules/.bin/next-link");
       expect((await lstat(linkPath)).isSymbolicLink()).toBe(true);
-      await expect(readlink(linkPath)).resolves.toBe("../next/package.json");
+      expect((await readlink(linkPath)).split(path.sep).join("/")).toBe("../next/package.json");
 
       await expect(access(path.join(artifact.directory, ".env"))).rejects.toThrow();
       await expect(access(path.join(artifact.directory, ".env.local"))).rejects.toThrow();
@@ -578,17 +578,19 @@ describe("preview build strategy", () => {
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
     const standaloneDir = path.join(appPath, ".next", "standalone");
-    const nextBin = path.join(appPath, "node_modules", ".bin", "next");
 
     await mkdir(path.join(standaloneDir, ".next", "static"), { recursive: true });
     await mkdir(path.join(appPath, ".next", "static"), { recursive: true });
     await writeFile(path.join(appPath, ".next", "static", "client.js"), "console.log('static');\n", "utf8");
     await mkdir(path.join(appPath, "public"), { recursive: true });
     await writeFile(path.join(appPath, "public", "hello.txt"), "hello\n", "utf8");
-    await mkdir(path.dirname(nextBin), { recursive: true });
+    await writeFile(
+      path.join(appPath, "package.json"),
+      JSON.stringify({ scripts: { build: "node -e 0" }, dependencies: { next: "15.0.0" } }),
+      "utf8",
+    );
     await writeFile(path.join(appPath, "next.config.ts"), "export default { output: 'standalone' };\n", "utf8");
     await writeFile(path.join(standaloneDir, "server.js"), "console.log('next');\n", "utf8");
-    await symlink("/usr/bin/true", nextBin);
 
     const { executePreviewBuild } = await import("../src/lib/app/preview-build");
     const result = await executePreviewBuild({

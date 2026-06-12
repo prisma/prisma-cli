@@ -4,7 +4,11 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { stageCliPublishPackage } from "../../../scripts/prepare-cli-publish.mjs";
+// Runtime file-URL import keeps the shebang-bearing script outside the
+// transform pipeline, which breaks on Windows.
+const { stageCliPublishPackage } = await import(
+  new URL("../../../scripts/prepare-cli-publish.mjs", import.meta.url).href
+);
 
 function createTempCwd(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), "prisma-cli-"));
