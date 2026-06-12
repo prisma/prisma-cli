@@ -35,7 +35,8 @@
         "useTopLevelRegex": "on"
       },
       "style": {
-        "useCollapsedElseIf": "on"
+        "useCollapsedElseIf": "on",
+        "useCollapsedIf": "on"
       }
       //   "complexity": {
       //   },
@@ -44,7 +45,6 @@
       //   "performance": {
       //   },
       //   "style": {
-      //     "useCollapsedIf": "on",
       //     "noNestedTernary": "on",
       //     "noParameterAssign": "on"
       //   },
