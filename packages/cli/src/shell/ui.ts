@@ -7,6 +7,8 @@ import wrapAnsi from "wrap-ansi";
 import type { GlobalFlags } from "./global-flags";
 import type { CliRuntime } from "./runtime";
 
+const URL_CREDENTIALS_PATTERN = /:\/\/[^:@/\s]+:[^@/\s]+@/g;
+
 export interface ShellUi {
   isTTY: boolean;
   colorEnabled: boolean;
@@ -214,9 +216,51 @@ export function padDisplay(text: string, width: number): string {
 }
 
 export function maskValue(value: string): string {
-  return value
-    .replace(/([A-Za-z0-9._%+-]{1,})(?=@)/g, "****")
-    .replace(/:\/\/[^:@/\s]+:[^@/\s]+@/g, "://****:****@");
+  return maskEmailLocalParts(value).replace(
+    URL_CREDENTIALS_PATTERN,
+    "://****:****@",
+  );
+}
+
+function maskEmailLocalParts(value: string): string {
+  let masked = "";
+  let segmentStart = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] !== "@") {
+      continue;
+    }
+
+    let localStart = index;
+    while (
+      localStart > segmentStart &&
+      isEmailLocalPartChar(value[localStart - 1])
+    ) {
+      localStart -= 1;
+    }
+
+    if (localStart === index) {
+      continue;
+    }
+
+    masked += `${value.slice(segmentStart, localStart)}****@`;
+    segmentStart = index + 1;
+  }
+
+  return masked + value.slice(segmentStart);
+}
+
+function isEmailLocalPartChar(char: string): boolean {
+  return (
+    (char >= "A" && char <= "Z") ||
+    (char >= "a" && char <= "z") ||
+    (char >= "0" && char <= "9") ||
+    char === "." ||
+    char === "_" ||
+    char === "%" ||
+    char === "+" ||
+    char === "-"
+  );
 }
 
 function resolveColorEnabled(
