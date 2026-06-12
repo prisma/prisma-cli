@@ -24,12 +24,12 @@
       },
       "nursery": {
         "noConditionalExpect": "on",
-        "noFloatingPromises": "on"
+        "noFloatingPromises": "on",
+        "noForIn": "on"
       }
       //   "complexity": {
       //   },
       //   "nursery": {
-      //     "noForIn": "on",
       //     "noLoopFunc": "on",
       //     "useDisposables": "on"
       //   },
