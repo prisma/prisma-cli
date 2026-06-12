@@ -2,9 +2,9 @@
   "name": "prisma-cli",
   "private": true,
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.13.0"
   },
-  "packageManager": "pnpm@10.30.0",
+  "packageManager": "pnpm@11.6.0",
   "scripts": {
     "build:cli": "pnpm --filter @prisma/cli build",
     "build:compute": "pnpm --filter @prisma/compute build",
