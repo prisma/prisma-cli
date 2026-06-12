@@ -113,7 +113,7 @@ Preview app commands that need an app resolve it in this order:
 4. locally selected app for non-deploy commands when it still exists in the resolved branch
 5. inferred app name from `package.json#name`
 6. current directory name
-7. create the inferred app in the resolved branch when no existing app matches
+7. `app deploy` only: create the inferred app in the resolved branch when no existing app matches
 8. interactive picker only when multiple matching apps make the target ambiguous
 9. `APP_AMBIGUOUS` in non-interactive or `--json` mode when unresolved
 
@@ -123,7 +123,8 @@ upward config discovery as `app deploy`: the project binding is read from the
 config file's directory, and the config target is an additional app-name
 source. Unlike deploy, management commands never require a target: with
 multiple targets, no argument, and nothing inferred from the invocation
-directory, they fall back to the selection order above.
+directory, they fall back to the selection order above — except step 7;
+management commands never create apps or mutate remote state to resolve one.
 
 `.prisma/local.json` pins the directory to a Workspace and Project only. It does
 not pin an App ID. App services are branch-scoped; a service ID from `main`

@@ -151,6 +151,82 @@ describe("app local dev commands", () => {
     });
   });
 
+  it("build applies a committed build block by detecting the framework instead of ignoring it", async () => {
+    const executePreviewBuild = vi.fn().mockResolvedValue({
+      artifact: {
+        directory: "/tmp/compute-build/app",
+        entrypoint: "server.js",
+      },
+      buildType: "nextjs",
+    });
+
+    vi.doMock("../src/lib/app/preview-build", async () => {
+      const actual = await vi.importActual<typeof import("../src/lib/app/preview-build")>(
+        "../src/lib/app/preview-build",
+      );
+      return {
+        ...actual,
+        executePreviewBuild,
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppBuild } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, "apps", "web"), { recursive: true });
+    await writeFile(path.join(cwd, "apps", "web", "package.json"), JSON.stringify({
+      name: "web",
+      dependencies: { next: "15.0.0" },
+    }), "utf8");
+    // No framework declared: the build block still applies via detection.
+    await writeFile(path.join(cwd, "prisma.compute.ts"), [
+      "export default {",
+      '  apps: {',
+      '    web: { root: "apps/web", build: { command: "echo custom-build", outputDirectory: "out" } },',
+      "  },",
+      "};",
+      "",
+    ].join("\n"), "utf8");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+    });
+
+    await runAppBuild(context, { configTarget: "web" });
+
+    expect(executePreviewBuild).toHaveBeenCalledWith(expect.objectContaining({
+      appPath: path.join(cwd, "apps", "web"),
+      buildType: "nextjs",
+      buildSettings: expect.objectContaining({
+        buildCommand: "echo custom-build",
+        outputDirectory: "out",
+      }),
+    }));
+  });
+
+  it("build fails clearly when a build block exists but no framework is detectable", async () => {
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppBuild } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, "apps", "mystery"), { recursive: true });
+    await writeFile(path.join(cwd, "prisma.compute.ts"), [
+      "export default {",
+      '  apps: {',
+      '    mystery: { root: "apps/mystery", build: { command: "make build", outputDirectory: "out" } },',
+      "  },",
+      "};",
+      "",
+    ].join("\n"), "utf8");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+    });
+
+    await expect(runAppBuild(context, { configTarget: "mystery" })).rejects.toMatchObject({
+      code: "FRAMEWORK_NOT_DETECTED",
+    });
+  });
+
   it("build accepts explicit SDK framework strategies", async () => {
     const executePreviewBuild = vi.fn().mockResolvedValue({
       artifact: {

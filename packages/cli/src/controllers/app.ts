@@ -161,7 +161,17 @@ export async function runAppBuild(
     target: compute.target,
   });
   const appDir = await resolveComputeAppDir(context, compute);
-  const buildType = normalizeBuildType(merged.buildType);
+  let buildType = normalizeBuildType(merged.buildType);
+  if (compute.target?.build && buildType === "auto") {
+    // A committed build block must never be silently ignored, so resolve the
+    // framework the same way deploy does instead of deferring to the
+    // strategy's auto detection.
+    const detected = await detectDeployFramework(appDir, context.runtime.signal);
+    if (!detected) {
+      throw frameworkNotDetectedError(appDir);
+    }
+    buildType = detected.buildType;
+  }
   assertSupportedEntrypoint(buildType, merged.entrypoint, "build");
 
   if (compute.target?.build && buildType !== "auto") {
