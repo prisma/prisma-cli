@@ -25,12 +25,12 @@
       "nursery": {
         "noConditionalExpect": "on",
         "noFloatingPromises": "on",
-        "noForIn": "on"
+        "noForIn": "on",
+        "noLoopFunc": "on"
       }
       //   "complexity": {
       //   },
       //   "nursery": {
-      //     "noLoopFunc": "on",
       //     "useDisposables": "on"
       //   },
       //   "performance": {
