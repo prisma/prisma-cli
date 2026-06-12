@@ -217,7 +217,7 @@ function formatLocalRepoPath(cwd: string, env: NodeJS.ProcessEnv): string {
   const home = env.HOME ? path.resolve(env.HOME) : null;
 
   if (home && (resolved === home || resolved.startsWith(`${home}${path.sep}`))) {
-    const relative = path.relative(home, resolved);
+    const relative = path.relative(home, resolved).split(path.sep).join("/");
     return relative ? `~/${relative}` : "~";
   }
 

@@ -76,11 +76,12 @@ function removeUndefinedFields(value) {
 }
 
 async function main() {
-  const { outputDir, publishVersion } = parseCliArgs(process.argv.slice(2));
+  const { outputDir, publishVersion, sourceDir } = parseCliArgs(process.argv.slice(2));
   const stagedPath = await stageCliPublishPackage(
     {
       ...(outputDir ? { outputDir: path.resolve(outputDir) } : {}),
       ...(publishVersion ? { publishVersion } : {}),
+      ...(sourceDir ? { sourceDir: path.resolve(sourceDir) } : {}),
     },
   );
   process.stdout.write(`${stagedPath}\n`);
@@ -89,9 +90,20 @@ async function main() {
 function parseCliArgs(args) {
   let outputDir;
   let publishVersion = process.env.CLI_PUBLISH_VERSION;
+  let sourceDir;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+
+    if (arg === "--source-dir") {
+      const nextArg = args[index + 1];
+      if (!nextArg || nextArg.startsWith("--")) {
+        throw new Error("--source-dir requires a value.");
+      }
+      sourceDir = nextArg;
+      index += 1;
+      continue;
+    }
 
     if (arg === "--version") {
       const nextArg = args[index + 1];
@@ -123,7 +135,7 @@ function parseCliArgs(args) {
     throw new Error("Publish version cannot be empty.");
   }
 
-  return { outputDir, publishVersion };
+  return { outputDir, publishVersion, sourceDir };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

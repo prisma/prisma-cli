@@ -483,7 +483,7 @@ describe("project commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(stderr).toBe(
-      `project show → This directory is linked to the following platform project.\n\n│  local repo  ~${path.sep}code${path.sep}apple\n│  platform    Edith / orange\n│\n│  → https://prisma.build/edith/orange\n`,
+      "project show → This directory is linked to the following platform project.\n\n│  local repo  ~/code/apple\n│  platform    Edith / orange\n│\n│  → https://prisma.build/edith/orange\n",
     );
   });
 
@@ -567,7 +567,7 @@ describe("project commands", () => {
     expect(stderr).toContain("Local context:");
     expect(stderr).toContain("duration:");
     expect(stderr).toContain("cwd:");
-    expect(stderr).toContain(`~${path.sep}code${path.sep}apple`);
+    expect(stderr).toContain("~/code/apple");
     expect(stderr).toContain("state file:");
     expect(stderr).toContain("~");
   });
