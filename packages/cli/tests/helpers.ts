@@ -62,13 +62,14 @@ export async function executeCli(options: {
   stderr.columns = 80;
   stdout.rows = 24;
   stderr.rows = 24;
+  const cwd = options.cwd ?? process.cwd();
 
   const stdin = new CaptureInput();
   stdin.isTTY = options.isTTY ?? false;
   const env = createTestEnv(options.env, options.preserveCI);
   const runtime: CliRuntime = {
     argv: options.argv,
-    cwd: options.cwd,
+    cwd,
     env,
     signal: new AbortController().signal,
     fixturePath: options.fixturePath,

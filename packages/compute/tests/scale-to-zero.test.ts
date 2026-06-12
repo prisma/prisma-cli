@@ -97,7 +97,9 @@ describe("scale-to-zero guard", () => {
     controller.abort();
     expect(await readSignals(file)).toBe("+-");
 
-    expect(resolvePromise).toBeDefined();
+    if (!resolvePromise) {
+      throw new Error("Expected promise resolver to be captured");
+    }
     resolvePromise("done");
     await expect(promise).resolves.toBe("done");
     await Promise.resolve();

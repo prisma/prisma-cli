@@ -194,6 +194,14 @@ interface ClassifiedPrismaNextConfig {
   target: "postgresql" | "unknown" | UnsupportedBranchDatabaseSchemaTarget;
 }
 
+interface SupportedPrismaNextConfig extends ClassifiedPrismaNextConfig {
+  target: "postgresql" | "unknown";
+}
+
+interface UnsupportedPrismaNextConfig extends ClassifiedPrismaNextConfig {
+  target: UnsupportedBranchDatabaseSchemaTarget;
+}
+
 interface PrismaOrmSchemaSelection {
   schema: BranchDatabaseSchema | null;
   unsupportedSchema: UnsupportedBranchDatabaseSchema | null;
@@ -344,13 +352,23 @@ async function selectPrismaOrmSchema(
 function selectPrismaNextConfig(
   cwd: string,
   candidates: ClassifiedPrismaNextConfig[],
+  mode: "supported",
+): SupportedPrismaNextConfig | null;
+function selectPrismaNextConfig(
+  cwd: string,
+  candidates: ClassifiedPrismaNextConfig[],
+  mode: "unsupported",
+): UnsupportedPrismaNextConfig | null;
+function selectPrismaNextConfig(
+  cwd: string,
+  candidates: ClassifiedPrismaNextConfig[],
   mode: "supported" | "unsupported",
 ): ClassifiedPrismaNextConfig | null {
-  const matches = candidates.filter((candidate) => {
-    const isSupported =
-      candidate.target === "postgresql" || candidate.target === "unknown";
-    return mode === "supported" ? isSupported : !isSupported;
-  });
+  const matches = candidates.filter(
+    mode === "supported"
+      ? isSupportedPrismaNextConfig
+      : isUnsupportedPrismaNextConfig,
+  );
 
   return (
     sortByPreferredRelativePath(
@@ -365,6 +383,18 @@ function selectPrismaNextConfig(
         Boolean(candidate),
       ) ?? null
   );
+}
+
+function isSupportedPrismaNextConfig(
+  candidate: ClassifiedPrismaNextConfig,
+): candidate is SupportedPrismaNextConfig {
+  return candidate.target === "postgresql" || candidate.target === "unknown";
+}
+
+function isUnsupportedPrismaNextConfig(
+  candidate: ClassifiedPrismaNextConfig,
+): candidate is UnsupportedPrismaNextConfig {
+  return !isSupportedPrismaNextConfig(candidate);
 }
 
 function sortByPreferredRelativePath(

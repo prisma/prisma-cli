@@ -4019,7 +4019,10 @@ function appDeployFailedError(
   });
 }
 
-function appBuildFailedError(why: string, debug: string | undefined): CliError {
+function appBuildFailedError(
+  why: string,
+  debug: string | null | undefined,
+): CliError {
   const standaloneOutputFailure = isNextStandaloneOutputFailure(why);
   const fix = standaloneOutputFailure
     ? 'Add output: "standalone" to next.config.*, then rerun deploy.'

@@ -1,6 +1,14 @@
 import path from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
+
+type ApiGetMock = Mock<
+  (
+    pathName: string,
+    request?: { params?: { query?: Record<string, unknown> } },
+  ) => unknown
+>;
+type ApiMutationMock = Mock<(pathName: string, request?: unknown) => unknown>;
 
 afterEach(() => {
   vi.doUnmock("../src/lib/auth/auth-ops");
@@ -26,9 +34,9 @@ function mockAuthState() {
 
 function mockClient(
   extra: Partial<{
-    GET: ReturnType<typeof vi.fn>;
-    POST: ReturnType<typeof vi.fn>;
-    DELETE: ReturnType<typeof vi.fn>;
+    GET: ApiGetMock;
+    POST: ApiMutationMock;
+    DELETE: ApiMutationMock;
   }> = {},
 ) {
   return {
