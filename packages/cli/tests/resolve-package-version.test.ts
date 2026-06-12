@@ -20,18 +20,24 @@ const scriptPath = path.join(repoRoot, "scripts/resolve-package-version.mjs");
 
 describe("resolve package version", () => {
   it("computes the first beta when npm latest is missing or still legacy 2.x", () => {
-    expect(resolveNextBetaVersion({ baseVersion: "3.0.0", latest: "" })).toBe("3.0.0-beta.0");
-    expect(resolveNextBetaVersion({ baseVersion: "3.0.0", latest: "2.20.1" })).toBe("3.0.0-beta.0");
+    expect(resolveNextBetaVersion({ baseVersion: "3.0.0", latest: "" })).toBe(
+      "3.0.0-beta.0",
+    );
+    expect(
+      resolveNextBetaVersion({ baseVersion: "3.0.0", latest: "2.20.1" }),
+    ).toBe("3.0.0-beta.0");
   });
 
   it("increments the beta number from the current npm latest", () => {
-    expect(resolveNextBetaVersion({ baseVersion: "3.0.0", latest: "3.0.0-beta.0" })).toBe("3.0.0-beta.1");
+    expect(
+      resolveNextBetaVersion({ baseVersion: "3.0.0", latest: "3.0.0-beta.0" }),
+    ).toBe("3.0.0-beta.1");
   });
 
   it("fails when npm latest is outside the supported beta line", () => {
-    expect(() => resolveNextBetaVersion({ baseVersion: "3.0.0", latest: "3.0.0" })).toThrow(
-      "Cannot compute the next beta from npm latest (3.0.0).",
-    );
+    expect(() =>
+      resolveNextBetaVersion({ baseVersion: "3.0.0", latest: "3.0.0" }),
+    ).toThrow("Cannot compute the next beta from npm latest (3.0.0).");
   });
 
   it("computes a unique dev build version", () => {

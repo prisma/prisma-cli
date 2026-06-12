@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 
-import path from "node:path";
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+const PACKAGE_VERSION_PATTERN = /^(\d+\.\d+\.\d+)(?:-.+)?$/;
+const VERSION_CORE_PATTERN = /^(\d+)\.(\d+)\.(\d+)(?:-.+)?$/;
 
 export function resolveDevVersion(options) {
   const baseVersion = requireValue(options.baseVersion, "baseVersion");
@@ -29,7 +32,9 @@ export function resolveNextBetaVersion(options) {
     return `${baseVersion}-beta.0`;
   }
 
-  const betaMatch = normalizedLatest.match(new RegExp(`^${escapeRegExp(baseVersion)}-beta\\.(\\d+)$`));
+  const betaMatch = normalizedLatest.match(
+    new RegExp(`^${escapeRegExp(baseVersion)}-beta\\.(\\d+)$`),
+  );
   if (betaMatch) {
     const nextNumber = Number(betaMatch[1]) + 1;
     return `${baseVersion}-beta.${nextNumber}`;
@@ -43,11 +48,16 @@ export function resolveNextBetaVersion(options) {
 export function resolvePackageReleaseBaseVersion(packageDir) {
   const manifestPath = path.join(getRepoRoot(), packageDir, "package.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  const version = requireValue(manifest.version, `${packageDir} package.json version`);
-  const match = version.match(/^(\d+\.\d+\.\d+)(?:-.+)?$/);
+  const version = requireValue(
+    manifest.version,
+    `${packageDir} package.json version`,
+  );
+  const match = version.match(PACKAGE_VERSION_PATTERN);
 
   if (!match) {
-    throw new Error(`Cannot derive release base from ${packageDir} package version (${version}).`);
+    throw new Error(
+      `Cannot derive release base from ${packageDir} package version (${version}).`,
+    );
   }
 
   return match[1];
@@ -79,7 +89,7 @@ function isOlderReleaseLine(latest, baseVersion) {
 }
 
 function parseVersionCore(version) {
-  const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-.+)?$/);
+  const match = version.match(VERSION_CORE_PATTERN);
 
   if (!match) {
     return undefined;
@@ -139,34 +149,45 @@ function main() {
   const baseVersion = resolvePackageReleaseBaseVersion(packageDir);
 
   if (command === "dev") {
-    process.stdout.write(`version=${resolveDevVersion({
-      baseVersion,
-      runNumber: options["run-number"],
-      runAttempt: options["run-attempt"],
-    })}\n`);
+    process.stdout.write(
+      `version=${resolveDevVersion({
+        baseVersion,
+        runNumber: options["run-number"],
+        runAttempt: options["run-attempt"],
+      })}\n`,
+    );
     return;
   }
 
   if (command === "pr") {
-    process.stdout.write(`version=${resolvePrVersion({
-      baseVersion,
-      prNumber: options["pr-number"],
-      sha: options.sha,
-    })}\n`);
+    process.stdout.write(
+      `version=${resolvePrVersion({
+        baseVersion,
+        prNumber: options["pr-number"],
+        sha: options.sha,
+      })}\n`,
+    );
     return;
   }
 
   if (command === "next-beta") {
     const latest = options.latest ?? "";
     process.stdout.write(`latest=${latest}\n`);
-    process.stdout.write(`version=${resolveNextBetaVersion({ baseVersion, latest })}\n`);
+    process.stdout.write(
+      `version=${resolveNextBetaVersion({ baseVersion, latest })}\n`,
+    );
     return;
   }
 
-  throw new Error("Usage: resolve-package-version.mjs <dev|pr|next-beta> [--package-dir <path>] [options]");
+  throw new Error(
+    "Usage: resolve-package-version.mjs <dev|pr|next-beta> [--package-dir <path>] [options]",
+  );
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+) {
   try {
     main();
   } catch (error) {

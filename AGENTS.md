@@ -15,3 +15,12 @@ Use this file for repo-wide instructions. Use package-local `AGENTS.md` files fo
 
 - Use `pnpm` for commands run inside this repo.
 - Use `npm` or multiple package-manager examples in user-facing content.
+
+## Pre-Commit Verification
+
+- `pnpm --recursive exec tsc --noEmit`
+- `pnpm lint`
+- Package-specific tests for changed packages
+  - `pnpm --filter @prisma/cli test`
+  - `pnpm --filter @prisma/compute test`
+- If verification fails because work is intentionally incomplete, include the failing command and reason in the commit message.

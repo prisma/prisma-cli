@@ -15,4 +15,6 @@ export declare function resolveNextBetaVersion(options: {
   latest?: string | null;
 }): string;
 
-export declare function resolvePackageReleaseBaseVersion(packageDir: string): string;
+export declare function resolvePackageReleaseBaseVersion(
+  packageDir: string,
+): string;
