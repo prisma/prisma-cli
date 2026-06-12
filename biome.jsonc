@@ -33,6 +33,9 @@
         "noAwaitInLoops": "on",
         "noBarrelFile": "on",
         "useTopLevelRegex": "on"
+      },
+      "style": {
+        "useCollapsedElseIf": "on"
       }
       //   "complexity": {
       //   },
@@ -41,7 +44,6 @@
       //   "performance": {
       //   },
       //   "style": {
-      //     "useCollapsedElseIf": "on",
       //     "useCollapsedIf": "on",
       //     "noNestedTernary": "on",
       //     "noParameterAssign": "on"
