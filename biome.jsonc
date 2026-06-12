@@ -18,10 +18,10 @@
     "rules": {
       "recommended": true,
       "complexity": {
-        "noExcessiveCognitiveComplexity": "on"
+        "noExcessiveCognitiveComplexity": "on",
+        "noForEach": "on"
       }
       //   "complexity": {
-      //     "noForEach": "on",
       //     "noImplicitCoercions": "on"
       //   },
       //   "nursery": {
