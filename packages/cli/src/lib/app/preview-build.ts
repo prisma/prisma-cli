@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: Build strategy probing and filesystem traversal are intentionally sequential.
 import {
   chmod,
   copyFile,

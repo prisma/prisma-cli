@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: API pagination and deployment lookup scans are intentionally sequential.
 import path from "node:path";
 import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";
 import {

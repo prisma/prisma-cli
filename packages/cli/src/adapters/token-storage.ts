@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: Lock acquisition retries must run sequentially.
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";

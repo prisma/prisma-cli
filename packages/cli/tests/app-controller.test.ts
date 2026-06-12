@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: Test fixture file writes are ordered for deterministic setup.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 

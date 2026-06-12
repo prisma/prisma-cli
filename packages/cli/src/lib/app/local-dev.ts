@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: Local app detection and command fallbacks must short-circuit sequentially.
 import { type SpawnOptions, spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import path from "node:path";

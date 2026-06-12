@@ -28,13 +28,15 @@
         "noForIn": "on",
         "noLoopFunc": "on",
         "useDisposables": "on"
+      },
+      "performance": {
+        "noAwaitInLoops": "on"
       }
       //   "complexity": {
       //   },
       //   "nursery": {
       //   },
       //   "performance": {
-      //     "noAwaitInLoops": "on",
       //     "noBarrelFile": "on",
       //     "useTopLevelRegex": "on"
       //   },

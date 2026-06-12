@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: SCM pagination, polling, and ordered fallback checks are intentionally sequential.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { matchError } from "better-result";
 import open from "open";

@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: Environment variable pagination must run sequentially.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
 export interface PreviewEnvironmentVariableRecord {

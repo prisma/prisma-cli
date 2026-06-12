@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: Polling and ordered filesystem probes are intentionally sequential.
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";

@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: Table-driven test cases create isolated temp directories sequentially.
 import {
   access,
   lstat,

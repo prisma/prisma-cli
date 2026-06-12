@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: Interactive paste prompting must retry sequentially.
 import events from "node:events";
 import http from "node:http";
 import type { AddressInfo } from "node:net";

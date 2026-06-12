@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: Schema setup and filesystem scans are intentionally sequential.
 import { spawn } from "node:child_process";
 import type { Dirent } from "node:fs";
 import { access, readdir, readFile, stat } from "node:fs/promises";

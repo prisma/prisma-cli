@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: Config discovery probes ordered candidates sequentially.
 import { exec } from "node:child_process";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";

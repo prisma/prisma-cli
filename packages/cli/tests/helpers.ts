@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: Simulated typing intentionally delays each character sequentially.
 import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
