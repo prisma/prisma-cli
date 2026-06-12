@@ -448,7 +448,9 @@ async function runAppDeployAll(
     command: "app.deploy",
     result: { deployments },
     warnings,
-    nextSteps: ["prisma-cli app list-deploys"],
+    // Bare list-deploys follows the remembered selection (the last target
+    // deployed), so the multi-app suggestion must name a target.
+    nextSteps: ["prisma-cli app list-deploys <app>"],
   };
 }
 
