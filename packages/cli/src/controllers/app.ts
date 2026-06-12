@@ -1540,8 +1540,6 @@ export async function runAppLogs(
     const lines = renderCommandHeader(context.ui, {
       commandLabel: "app logs",
       description: "Streaming logs for the selected deployment.",
-      docsPath:
-        "docs/product/command-spec.md#prisma-cli-app-logs---app-name---deployment-id",
       rows: [
         { key: "project", value: projectId },
         { key: "app", value: target.app.name },
