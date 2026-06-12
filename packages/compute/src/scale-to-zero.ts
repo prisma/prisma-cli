@@ -5,11 +5,12 @@ import { writeScaleToZeroSignal } from "./scale-to-zero-control";
  */
 export interface ScaleToZeroGuardOptions {
   /**
-   * Signal that releases the guard when aborted.
+   * Signal that releases the keep-awake guard when aborted.
    *
-   * Use `AbortSignal.timeout(ms)` for a time bound, or pass a request or
-   * operation signal to tie the guard to caller-owned cancellation. Passing a
-   * signal is strongly recommended as a safety bound for dangling guards.
+   * The signal does not cancel the underlying promise, function, or operation.
+   * It only releases the guard so the application can sleep again. Use
+   * `AbortSignal.timeout(ms)` with a timeout longer than the expected work as a
+   * safety bound against dangling guards and unexpected cost.
    */
   signal?: AbortSignal;
 }
@@ -24,6 +25,7 @@ export interface ScaleToZeroGuardOptions {
  *
  * Pass `signal` whenever possible, usually from `AbortSignal.timeout(ms)`, to
  * bound how long the guard can keep the instance awake if release is not reached.
+ * The signal only releases the guard; it does not cancel the guarded work.
  *
  * Outside the Prisma Compute runtime, where the sleep control endpoint is
  * unavailable, the guard is a no-op.
@@ -55,8 +57,9 @@ export class ScaleToZeroGuard implements Disposable {
    * Creates a guard and immediately signals the compute runtime to stay awake.
    *
    * If `signal` is already aborted, no signal is written. If `signal` aborts
-   * while the guard is active, the guard releases itself. Passing a signal is
-   * recommended as a safety bound if release is not reached.
+   * while the guard is active, the guard releases itself without cancelling the
+   * guarded work. Passing a signal is recommended as a safety bound if release
+   * is not reached.
    */
   constructor(options: ScaleToZeroGuardOptions = {}) {
     if (options.signal?.aborted) {
@@ -124,7 +127,9 @@ export class ScaleToZeroGuard implements Disposable {
  * only the guard is released; the passed promise continues independently.
  *
  * Pass `signal`, usually from `AbortSignal.timeout(ms)`, to bound guard lifetime
- * even when the promise does not settle.
+ * even when the promise does not settle. Use a timeout longer than the expected
+ * promise duration: the signal is a safety net for releasing the keep-awake
+ * guard, not a way to cancel or interrupt the promise.
  *
  * @example
  * ```ts
