@@ -280,8 +280,7 @@ const FULL_TREE_NEXT_START_ENTRYPOINT = "prisma-next-start.cjs";
 // the CLI bin (not `next/dist/server/lib/start-server`) keeps Next in charge
 // of config loading, which is the part that drifts across Next majors.
 const FULL_TREE_NEXT_START_SOURCE = [
-  // The runtime starts the entrypoint with cwd at the unpack root; pin it to
-  // the bundle so `next start` resolves `.next` here, as standalone server.js does.
+  // The runtime starts us at the unpack root, but `next start` resolves `.next` from cwd.
   "process.chdir(__dirname);",
   'process.env.NODE_ENV = "production";',
   'process.argv.push("start", "-p", process.env.PORT ?? "3000");',
@@ -326,10 +325,7 @@ async function stageNextjsFullTreeFallbackArtifact(appPath: string, signal?: Abo
   }
 }
 
-/**
- * Paths kept out of the full-tree artifact: VCS internals and dotenv files,
- * which carry local secrets and are superseded by the branch's deploy env.
- */
+/** Excludes VCS internals and dotenv files (local secrets, superseded by the deploy env). */
 function isExcludedFromFullTreeArtifact(basename: string): boolean {
   return (
     basename === ".git" ||
