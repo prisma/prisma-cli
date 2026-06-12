@@ -14,6 +14,7 @@ Use this file for repo-wide instructions. Use package-local `AGENTS.md` files fo
 ## Package Manager
 
 - Use `pnpm` for commands run inside this repo.
+- Exception: use `npm publish` for npm release workflow publish steps so npm trusted publishing can use its OIDC authentication flow.
 - Use `npm` or multiple package-manager examples in user-facing content.
 
 ## Pre-Commit Verification

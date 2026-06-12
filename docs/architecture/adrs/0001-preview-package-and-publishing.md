@@ -37,7 +37,7 @@ The publish workflow is prepared for npm trusted publishing with provenance.
 Official releases publish with:
 
 ```bash
-pnpm publish --access public --tag latest --provenance
+npm publish --access public --tag latest --provenance
 ```
 
 Local development should build and inspect the package, but should not publish it.
