@@ -145,8 +145,9 @@ export function waitUntil(
   // biome-ignore lint/nursery/useDisposables: waitUntil transfers guard cleanup to the promise finally handler.
   const guard = new KeepAwakeGuard(options);
 
-  // Do not attach a catch here; callers rely on the underlying promise keeping
-  // its normal unhandled-rejection behavior.
+  // Intentionally do not catch the promise returned from `finally`. `waitUntil`
+  // observes the user-provided promise for cleanup only; callers still own the
+  // original promise's result, error handling, and unhandled-rejection behavior.
   void Promise.resolve(promise).finally(() => {
     try {
       guard.release();
