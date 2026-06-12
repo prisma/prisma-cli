@@ -53,6 +53,79 @@ export async function maybeSetupBranchDatabase(
     return emptyBranchDatabaseSetupOutcome();
   }
 
+  const preflight = branchDatabasePreflight(branch, options);
+  if (preflight) {
+    return preflight;
+  }
+
+  const envState = await inspectBranchDatabaseEnv(
+    provider,
+    projectId,
+    branch,
+    context.runtime.signal,
+  );
+  const targetEnvVars = getTargetDatabaseEnvVarKeys(envState);
+
+  const existingEnvOutcome = existingBranchDatabaseEnvOutcome(
+    context,
+    branch,
+    targetEnvVars,
+    envState,
+    options.db,
+  );
+  if (existingEnvOutcome) {
+    return existingEnvOutcome;
+  }
+
+  const localSignal = await inspectBranchDatabaseSignal(
+    context.runtime.cwd,
+    context.runtime.signal,
+  );
+  if (localSignal.unsupportedSchema) {
+    if (options.db === true) {
+      throw unsupportedBranchDatabaseSchemaError(
+        localSignal.unsupportedSchema,
+        branch,
+        context,
+      );
+    }
+
+    return emptyBranchDatabaseSetupOutcome();
+  }
+
+  const promptOutcome = await branchDatabasePromptOutcome(
+    context,
+    branch,
+    localSignal,
+    envState,
+    options.db,
+  );
+  if (promptOutcome) {
+    return promptOutcome;
+  }
+
+  if (options.db === true && !canPrompt(context) && !context.flags.yes) {
+    throw nonInteractiveDatabaseSetupRequiresYesError(branch);
+  }
+
+  return setupBranchDatabase(
+    context,
+    provider,
+    projectId,
+    branch,
+    localSignal,
+    envState,
+  );
+}
+
+function branchDatabasePreflight(
+  branch: BranchDatabaseDeployBranch,
+  options: {
+    db: boolean | undefined;
+    providedEnvVars: Record<string, string> | undefined;
+    firstProductionDeploy: boolean;
+  },
+): BranchDatabaseSetupOutcome | null {
   if (hasProvidedDatabaseEnvVars(options.providedEnvVars)) {
     if (options.db === true) {
       throw usageError(
@@ -78,93 +151,78 @@ export async function maybeSetupBranchDatabase(
     return emptyBranchDatabaseSetupOutcome();
   }
 
-  const envState = await inspectBranchDatabaseEnv(
-    provider,
-    projectId,
-    branch,
-    context.runtime.signal,
-  );
-  const targetEnvVars = getTargetDatabaseEnvVarKeys(envState);
+  return null;
+}
 
-  if (hasExistingDatabaseEnvForTarget(branch, envState)) {
-    const warning =
-      options.db === true
-        ? existingDatabaseEnvWarning(branch, targetEnvVars)
-        : null;
-    if (warning) {
-      emitBranchDatabaseWarning(context, warning);
-    }
-
-    return {
-      result:
-        options.db === true
-          ? {
-              status: "skipped",
-              reason: existingDatabaseEnvReason(branch),
-              envVars: targetEnvVars,
-              schema: null,
-            }
-          : undefined,
-      warnings: warning ? [warning] : [],
-    };
+function existingBranchDatabaseEnvOutcome(
+  context: CommandContext,
+  branch: BranchDatabaseDeployBranch,
+  targetEnvVars: string[],
+  envState: BranchDatabaseEnvState,
+  requested: boolean | undefined,
+): BranchDatabaseSetupOutcome | null {
+  if (!hasExistingDatabaseEnvForTarget(branch, envState)) {
+    return null;
   }
 
-  const localSignal = await inspectBranchDatabaseSignal(
-    context.runtime.cwd,
-    context.runtime.signal,
-  );
-  if (localSignal.unsupportedSchema) {
-    if (options.db === true) {
-      throw unsupportedBranchDatabaseSchemaError(
-        localSignal.unsupportedSchema,
-        branch,
-        context,
-      );
-    }
+  const warning =
+    requested === true
+      ? existingDatabaseEnvWarning(branch, targetEnvVars)
+      : null;
+  if (warning) {
+    emitBranchDatabaseWarning(context, warning);
+  }
 
-    return emptyBranchDatabaseSetupOutcome();
+  return {
+    result:
+      requested === true
+        ? {
+            status: "skipped",
+            reason: existingDatabaseEnvReason(branch),
+            envVars: targetEnvVars,
+            schema: null,
+          }
+        : undefined,
+    warnings: warning ? [warning] : [],
+  };
+}
+
+async function branchDatabasePromptOutcome(
+  context: CommandContext,
+  branch: BranchDatabaseDeployBranch,
+  localSignal: BranchDatabaseSignal,
+  envState: BranchDatabaseEnvState,
+  requested: boolean | undefined,
+): Promise<BranchDatabaseSetupOutcome | null> {
+  if (requested === true) {
+    return null;
   }
 
   const hasSignal =
     hasBranchDatabaseSignal(localSignal) ||
     Boolean(envState.inheritedPreviewDatabaseUrl);
-  if (options.db !== true) {
-    if (!hasSignal) {
-      return emptyBranchDatabaseSetupOutcome();
-    }
-
-    if (!canPrompt(context) || context.flags.yes) {
-      const warning = databasePromptSuppressedWarning(branch);
-      emitBranchDatabaseWarning(context, warning);
-      return {
-        result: undefined,
-        warnings: [warning],
-      };
-    }
-
-    maybeRenderBranchDatabaseSignal(context, branch, localSignal, envState);
-    const shouldCreate = await confirmPrompt({
-      input: context.runtime.stdin,
-      output: context.output.stderr,
-      message: databasePromptMessage(branch),
-      initialValue: false,
-    });
-
-    if (!shouldCreate) {
-      return emptyBranchDatabaseSetupOutcome();
-    }
-  } else if (!canPrompt(context) && !context.flags.yes) {
-    throw nonInteractiveDatabaseSetupRequiresYesError(branch);
+  if (!hasSignal) {
+    return emptyBranchDatabaseSetupOutcome();
   }
 
-  return setupBranchDatabase(
-    context,
-    provider,
-    projectId,
-    branch,
-    localSignal,
-    envState,
-  );
+  if (!canPrompt(context) || context.flags.yes) {
+    const warning = databasePromptSuppressedWarning(branch);
+    emitBranchDatabaseWarning(context, warning);
+    return {
+      result: undefined,
+      warnings: [warning],
+    };
+  }
+
+  maybeRenderBranchDatabaseSignal(context, branch, localSignal, envState);
+  const shouldCreate = await confirmPrompt({
+    input: context.runtime.stdin,
+    output: context.output.stderr,
+    message: databasePromptMessage(branch),
+    initialValue: false,
+  });
+
+  return shouldCreate ? null : emptyBranchDatabaseSetupOutcome();
 }
 
 async function setupBranchDatabase(
@@ -196,21 +254,22 @@ async function setupBranchDatabase(
     let schemaSetup: BranchDatabaseSchemaSetupResult | null = null;
     const warnings: string[] = [];
     let skippedSchemaWarning: string | null = null;
-    if (signal.schema) {
+    const schema = signal.schema;
+    if (schema) {
       emitBranchDatabaseProgress(
         context,
         "pending",
-        `Applying database schema with ${formatSchemaSetupCommand(signal.schema.command)}`,
+        `Applying database schema with ${formatSchemaSetupCommand(schema.command)}`,
       );
       schemaSetup = await runBranchDatabaseSchemaSetup({
         context,
-        schema: signal.schema,
+        schema,
         databaseUrl: database.databaseUrl,
         directUrl: database.directUrl,
       }).catch((error) => {
         throw schemaSetupFailedError(
           error,
-          signal.schema!,
+          schema,
           branch,
           context.runtime.cwd,
         );

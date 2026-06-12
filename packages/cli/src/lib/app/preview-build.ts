@@ -746,39 +746,54 @@ export async function normalizeArtifactSymlinks(
         continue;
       }
 
-      const target = await unsupportedFilesystemBoundary(signal, () =>
-        readlink(fullPath),
-      );
-      const resolvedTarget = path.resolve(path.dirname(fullPath), target);
-
-      if (isPathWithin(normalizedArtifactDir, resolvedTarget)) {
-        continue;
-      }
-
-      if (!isPathWithin(normalizedAppPath, resolvedTarget)) {
-        throw new Error(
-          `Build artifact symlink escapes the app directory: ${resolvedTarget}`,
-        );
-      }
-
-      const targetStat = await unsupportedFilesystemBoundary(signal, () =>
-        stat(resolvedTarget),
-      );
-      await unsupportedFilesystemBoundary(signal, () =>
-        rm(fullPath, { force: true, recursive: true }),
-      );
-      await unsupportedFilesystemBoundary(signal, () =>
-        cp(resolvedTarget, fullPath, {
-          recursive: targetStat.isDirectory(),
-          dereference: true,
-        }),
-      );
-
-      if (targetStat.isDirectory()) {
+      const materialized = await materializeArtifactSymlink({
+        fullPath,
+        normalizedArtifactDir,
+        normalizedAppPath,
+        signal,
+      });
+      if (materialized === "directory") {
         await walkDirectory(fullPath);
       }
     }
   }
+}
+
+async function materializeArtifactSymlink(options: {
+  fullPath: string;
+  normalizedArtifactDir: string;
+  normalizedAppPath: string;
+  signal?: AbortSignal;
+}): Promise<"directory" | "file" | "internal"> {
+  const target = await unsupportedFilesystemBoundary(options.signal, () =>
+    readlink(options.fullPath),
+  );
+  const resolvedTarget = path.resolve(path.dirname(options.fullPath), target);
+
+  if (isPathWithin(options.normalizedArtifactDir, resolvedTarget)) {
+    return "internal";
+  }
+
+  if (!isPathWithin(options.normalizedAppPath, resolvedTarget)) {
+    throw new Error(
+      `Build artifact symlink escapes the app directory: ${resolvedTarget}`,
+    );
+  }
+
+  const targetStat = await unsupportedFilesystemBoundary(options.signal, () =>
+    stat(resolvedTarget),
+  );
+  await unsupportedFilesystemBoundary(options.signal, () =>
+    rm(options.fullPath, { force: true, recursive: true }),
+  );
+  await unsupportedFilesystemBoundary(options.signal, () =>
+    cp(resolvedTarget, options.fullPath, {
+      recursive: targetStat.isDirectory(),
+      dereference: true,
+    }),
+  );
+
+  return targetStat.isDirectory() ? "directory" : "file";
 }
 
 function isPathWithin(rootPath: string, candidatePath: string): boolean {

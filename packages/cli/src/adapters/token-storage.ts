@@ -81,7 +81,7 @@ export class FileTokenStorage implements TokenStorage {
       const all = await this.credentialsStore.getCredentials();
       this.signal?.throwIfAborted();
       return findLatestValidTokens(all as StoredCredential[]);
-    } catch (error) {
+    } catch (_error) {
       if (this.signal?.aborted) throw this.signal.reason;
       return null;
     }

@@ -70,57 +70,84 @@ export async function runCommand<T>(
 
   try {
     const success = await handler(context);
-
-    if (flags.json) {
-      writeJsonSuccess(context.output, {
-        ...success,
-        result: presenter.renderJson
-          ? presenter.renderJson(success.result)
-          : success.result,
-      });
-      return;
-    }
-
-    const stdout =
-      presenter.renderStdout?.(context, descriptor, success.result) ?? [];
-    if (flags.quiet) {
-      if (stdout.length > 0) {
-        context.output.stdout.write(`${stdout.join("\n")}\n`);
-      }
-      return;
-    }
-
-    const rendered = presenter.renderHuman(context, descriptor, success.result);
-    const diagnostics = await renderBestEffortCommandDiagnostics(context, {
-      enabled: flags.verbose && rendered.length > 0,
-      durationMs: Date.now() - startedAt,
-    });
-    const humanLines = [...rendered, ...diagnostics];
-    if (stdout.length > 0 && humanLines.length > 0) {
-      humanLines.push("");
-    }
-
-    writeHumanLines(context.output, humanLines);
-
-    if (stdout.length > 0) {
-      context.output.stdout.write(`${stdout.join("\n")}\n`);
-    }
+    await writeCommandSuccess(
+      context,
+      descriptor,
+      success,
+      presenter,
+      Date.now() - startedAt,
+    );
   } catch (error) {
     const cliError = toCliError(error, runtime);
     if (cliError) {
-      if (flags.json) {
-        writeJsonError(context.output, commandName, cliError);
-      } else {
-        writeHumanError(context.output, context.ui, cliError, {
-          trace: flags.trace,
-        });
-      }
-
+      writeCommandError(context, commandName, cliError);
       process.exitCode = cliError.exitCode;
       return;
     }
 
     throw error;
+  }
+}
+
+async function writeCommandSuccess<T>(
+  context: Awaited<ReturnType<typeof createCommandContext>>,
+  descriptor: CommandDescriptor,
+  success: CommandSuccess<T>,
+  presenter: CommandPresenter<T>,
+  durationMs: number,
+): Promise<void> {
+  if (context.flags.json) {
+    writeJsonSuccess(context.output, {
+      ...success,
+      result: presenter.renderJson
+        ? presenter.renderJson(success.result)
+        : success.result,
+    });
+    return;
+  }
+
+  const stdout =
+    presenter.renderStdout?.(context, descriptor, success.result) ?? [];
+  if (context.flags.quiet) {
+    writeStdoutLines(context, stdout);
+    return;
+  }
+
+  const rendered = presenter.renderHuman(context, descriptor, success.result);
+  const diagnostics = await renderBestEffortCommandDiagnostics(context, {
+    enabled: context.flags.verbose && rendered.length > 0,
+    durationMs,
+  });
+  const humanLines = [...rendered, ...diagnostics];
+  if (stdout.length > 0 && humanLines.length > 0) {
+    humanLines.push("");
+  }
+
+  writeHumanLines(context.output, humanLines);
+  writeStdoutLines(context, stdout);
+}
+
+function writeCommandError(
+  context: Awaited<ReturnType<typeof createCommandContext>>,
+  commandName: string,
+  cliError: CliError,
+): void {
+  if (context.flags.json) {
+    writeJsonError(context.output, commandName, cliError);
+    return;
+  }
+
+  writeHumanError(context.output, context.ui, cliError, {
+    trace: context.flags.trace,
+  });
+}
+
+function writeStdoutLines(
+  context: Awaited<ReturnType<typeof createCommandContext>>,
+  lines: string[],
+): void {
+  if (lines.length > 0) {
+    context.output.stdout.write(`${lines.join("\n")}\n`);
   }
 }
 

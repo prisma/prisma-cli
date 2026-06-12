@@ -33,7 +33,6 @@ import {
   type PreviewBuildSettingsResolution,
   type PreviewBuildType,
   RESOLVED_PREVIEW_BUILD_TYPES,
-  type ResolvedPreviewBuildType,
   resolveOrCreatePreviewBuildSettings,
 } from "../lib/app/preview-build";
 import { PREVIEW_DEFAULT_REGION } from "../lib/app/preview-interaction";
@@ -1884,87 +1883,122 @@ function domainCommandError(
   hostname: string,
 ): CliError {
   if (error instanceof PreviewDomainApiError) {
-    if (
-      command === "add" &&
-      (error.status === 400 || error.status === 422) &&
-      isDomainDnsError(error)
-    ) {
-      return domainDnsNotConfiguredError(hostname, error);
-    }
-
-    if (command === "add" && error.status === 400) {
-      return new CliError({
-        code: "DOMAIN_HOSTNAME_INVALID",
-        domain: "app",
-        summary: `Invalid custom domain "${hostname}"`,
-        why: error.message,
-        fix: "Pass a valid hostname like shop.acme.com and make sure DNS can be verified.",
-        debug: formatDebugDetails(error),
-        exitCode: 2,
-        nextSteps: ["prisma-cli app domain add shop.acme.com"],
-      });
-    }
-
-    if (
-      command === "add" &&
-      (error.status === 429 || isDomainQuotaError(error))
-    ) {
-      return new CliError({
-        code: "DOMAIN_QUOTA_EXCEEDED",
-        domain: "app",
-        summary: "Custom domain quota exceeded",
-        why: error.message,
-        fix: "Remove an existing custom domain before adding another one.",
-        debug: formatDebugDetails(error),
-        exitCode: 1,
-        nextSteps: ["prisma-cli app domain remove <hostname>"],
-      });
-    }
-
-    if (command === "add" && error.status === 409) {
-      return domainAlreadyRegisteredError(hostname, error);
-    }
-
-    if (command === "add" && error.status === 422) {
-      return new CliError({
-        code: "NO_DEPLOYMENTS",
-        domain: "app",
-        summary: "Custom domain requires a live production deployment",
-        why: "The selected production app does not have a promoted version that can receive a custom domain.",
-        fix: "Deploy the app to the production branch, then rerun the domain command.",
-        debug: formatDebugDetails(error),
-        exitCode: 1,
-        nextSteps: [
-          "prisma-cli app deploy --branch production",
-          `prisma-cli app domain add ${hostname}`,
-        ],
-      });
-    }
-
-    if (
-      (command === "show" ||
-        command === "remove" ||
-        command === "retry" ||
-        command === "wait") &&
-      error.status === 404
-    ) {
-      return domainNotFoundError(hostname);
-    }
-
-    if (command === "retry" && error.status === 409) {
-      return new CliError({
-        code: "DOMAIN_RETRY_NOT_ELIGIBLE",
-        domain: "app",
-        summary: `Custom domain "${hostname}" is not eligible for retry`,
-        why: error.message,
-        fix: "Wait for the current verification or TLS step to finish, then rerun retry if the domain fails.",
-        debug: formatDebugDetails(error),
-        exitCode: 1,
-        nextSteps: [`prisma-cli app domain show ${hostname}`],
-      });
-    }
+    return domainApiCommandError(command, error, hostname);
   }
 
+  return new CliError({
+    code: "DEPLOY_FAILED",
+    domain: "app",
+    summary: `Custom domain ${command} failed`,
+    why: error instanceof Error ? error.message : String(error),
+    fix: "Retry the command, or rerun with --trace for more detailed diagnostics.",
+    debug: formatDebugDetails(error),
+    exitCode: 1,
+    nextSteps: [`prisma-cli app domain show ${hostname}`],
+  });
+}
+
+function domainApiCommandError(
+  command: AppDomainCommand,
+  error: PreviewDomainApiError,
+  hostname: string,
+): CliError {
+  if (command === "add") {
+    return domainAddCommandError(error, hostname);
+  }
+
+  if (error.status === 404) {
+    return domainNotFoundError(hostname);
+  }
+
+  if (command === "retry" && error.status === 409) {
+    return domainRetryNotEligibleError(error, hostname);
+  }
+
+  return domainGenericCommandError(command, error, hostname);
+}
+
+function domainAddCommandError(
+  error: PreviewDomainApiError,
+  hostname: string,
+): CliError {
+  if (
+    (error.status === 400 || error.status === 422) &&
+    isDomainDnsError(error)
+  ) {
+    return domainDnsNotConfiguredError(hostname, error);
+  }
+
+  if (error.status === 400) {
+    return new CliError({
+      code: "DOMAIN_HOSTNAME_INVALID",
+      domain: "app",
+      summary: `Invalid custom domain "${hostname}"`,
+      why: error.message,
+      fix: "Pass a valid hostname like shop.acme.com and make sure DNS can be verified.",
+      debug: formatDebugDetails(error),
+      exitCode: 2,
+      nextSteps: ["prisma-cli app domain add shop.acme.com"],
+    });
+  }
+
+  if (error.status === 429 || isDomainQuotaError(error)) {
+    return new CliError({
+      code: "DOMAIN_QUOTA_EXCEEDED",
+      domain: "app",
+      summary: "Custom domain quota exceeded",
+      why: error.message,
+      fix: "Remove an existing custom domain before adding another one.",
+      debug: formatDebugDetails(error),
+      exitCode: 1,
+      nextSteps: ["prisma-cli app domain remove <hostname>"],
+    });
+  }
+
+  if (error.status === 409) {
+    return domainAlreadyRegisteredError(hostname, error);
+  }
+
+  if (error.status === 422) {
+    return new CliError({
+      code: "NO_DEPLOYMENTS",
+      domain: "app",
+      summary: "Custom domain requires a live production deployment",
+      why: "The selected production app does not have a promoted version that can receive a custom domain.",
+      fix: "Deploy the app to the production branch, then rerun the domain command.",
+      debug: formatDebugDetails(error),
+      exitCode: 1,
+      nextSteps: [
+        "prisma-cli app deploy --branch production",
+        `prisma-cli app domain add ${hostname}`,
+      ],
+    });
+  }
+
+  return domainGenericCommandError("add", error, hostname);
+}
+
+function domainRetryNotEligibleError(
+  error: PreviewDomainApiError,
+  hostname: string,
+): CliError {
+  return new CliError({
+    code: "DOMAIN_RETRY_NOT_ELIGIBLE",
+    domain: "app",
+    summary: `Custom domain "${hostname}" is not eligible for retry`,
+    why: error.message,
+    fix: "Wait for the current verification or TLS step to finish, then rerun retry if the domain fails.",
+    debug: formatDebugDetails(error),
+    exitCode: 1,
+    nextSteps: [`prisma-cli app domain show ${hostname}`],
+  });
+}
+
+function domainGenericCommandError(
+  command: AppDomainCommand,
+  error: unknown,
+  hostname: string,
+): CliError {
   return new CliError({
     code: "DEPLOY_FAILED",
     domain: "app",
@@ -2793,21 +2827,18 @@ async function resolveProjectContext(
   },
 ): Promise<ResolvedAppProjectContext> {
   const authState = await requireAuthenticatedAuthState(context);
-  if (!authState.workspace) {
+  const workspace = authState.workspace;
+  if (!workspace) {
     throw workspaceRequiredError();
   }
 
   const resolvedResult = await resolveProjectTarget({
     context,
-    workspace: authState.workspace,
+    workspace,
     explicitProject,
     envProjectId: options?.envProjectId,
     listProjects: () =>
-      listRealWorkspaceProjects(
-        client,
-        authState.workspace!,
-        context.runtime.signal,
-      ),
+      listRealWorkspaceProjects(client, workspace, context.runtime.signal),
     commandName: options?.commandName,
   });
   if (resolvedResult.isErr()) {
@@ -2853,27 +2884,90 @@ async function resolveDeployProjectContext(
     context.runtime.signal,
   );
 
+  const resolved = await resolveDeployProjectSetup(
+    context,
+    provider,
+    workspace,
+    projects,
+    explicitProject,
+    options,
+  );
+  return withRemoteDeployBranch(
+    provider,
+    resolved,
+    branch,
+    context.runtime.signal,
+  );
+}
+
+async function resolveDeployProjectSetup(
+  context: CommandContext,
+  provider: ReturnType<typeof createPreviewAppProvider>,
+  workspace: AuthWorkspace,
+  projects: ProjectCandidate[],
+  explicitProject: string | undefined,
+  options: {
+    createProjectName?: string;
+    envProjectId?: string;
+    localPin: LocalResolutionPinReadResult;
+  },
+): Promise<Omit<ResolvedAppProjectContext, "branch">> {
+  const selected = await resolveNonInteractiveDeployProjectSetup(
+    context,
+    provider,
+    workspace,
+    projects,
+    explicitProject,
+    options,
+  );
+  if (selected) {
+    return selected;
+  }
+
+  if (canPrompt(context) && !context.flags.yes) {
+    return resolveInteractiveDeployProjectSetup(
+      context,
+      provider,
+      workspace,
+      projects,
+    );
+  }
+
+  const suggestedName = await inferTargetName(
+    context.runtime.cwd,
+    context.runtime.signal,
+  );
+  throw projectSetupRequiredError(projects, suggestedName);
+}
+
+async function resolveNonInteractiveDeployProjectSetup(
+  context: CommandContext,
+  provider: ReturnType<typeof createPreviewAppProvider>,
+  workspace: AuthWorkspace,
+  projects: ProjectCandidate[],
+  explicitProject: string | undefined,
+  options: {
+    createProjectName?: string;
+    envProjectId?: string;
+    localPin: LocalResolutionPinReadResult;
+  },
+): Promise<Omit<ResolvedAppProjectContext, "branch"> | null> {
   if (explicitProject) {
     const project = resolveProjectForSetup(
       explicitProject,
       projects,
       workspace,
     );
-    return withRemoteDeployBranch(
-      provider,
-      {
-        workspace,
-        project: toProjectSummary(project),
-        resolution: {
-          projectSource: "explicit",
-          targetName: explicitProject,
-          targetNameSource: "explicit",
-        },
-        localPinAction: "linked",
+    return {
+      workspace,
+      project: toProjectSummary(project),
+      resolution: {
+        projectSource: "explicit",
+        targetName: explicitProject,
+        targetNameSource: "explicit",
       },
-      branch,
-      context.runtime.signal,
-    );
+      localPinAction: "linked",
+    };
   }
 
   if (options.createProjectName) {
@@ -2888,21 +2982,16 @@ async function resolveDeployProjectContext(
       workspace,
       context.runtime.signal,
     );
-    return withRemoteDeployBranch(
-      provider,
-      {
-        workspace,
-        project: toProjectSummary(created),
-        resolution: {
-          projectSource: "created",
-          targetName: projectName,
-          targetNameSource: "explicit",
-        },
-        localPinAction: "created",
+    return {
+      workspace,
+      project: toProjectSummary(created),
+      resolution: {
+        projectSource: "created",
+        targetName: projectName,
+        targetNameSource: "explicit",
       },
-      branch,
-      context.runtime.signal,
-    );
+      localPinAction: "created",
+    };
   }
 
   if (options.envProjectId) {
@@ -2912,20 +3001,15 @@ async function resolveDeployProjectContext(
     if (!project) {
       throw projectNotFoundError(options.envProjectId, workspace);
     }
-    return withRemoteDeployBranch(
-      provider,
-      {
-        workspace,
-        project: toProjectSummary(project),
-        resolution: {
-          projectSource: "env",
-          targetName: options.envProjectId,
-          targetNameSource: "env",
-        },
+    return {
+      workspace,
+      project: toProjectSummary(project),
+      resolution: {
+        projectSource: "env",
+        targetName: options.envProjectId,
+        targetNameSource: "env",
       },
-      branch,
-      context.runtime.signal,
-    );
+    };
   }
 
   const localPin = options.localPin;
@@ -2941,60 +3025,31 @@ async function resolveDeployProjectContext(
       throw localResolutionPinStaleError();
     }
 
-    return withRemoteDeployBranch(
-      provider,
-      {
-        workspace,
-        project: toProjectSummary(project),
-        resolution: {
-          projectSource: "local-pin",
-          targetName: project.name,
-          targetNameSource: "local-pin",
-        },
+    return {
+      workspace,
+      project: toProjectSummary(project),
+      resolution: {
+        projectSource: "local-pin",
+        targetName: project.name,
+        targetNameSource: "local-pin",
       },
-      branch,
-      context.runtime.signal,
-    );
+    };
   }
 
   const platformMapping = await resolveDurablePlatformMapping();
   if (platformMapping && platformMapping.workspace.id === workspace.id) {
-    return withRemoteDeployBranch(
-      provider,
-      {
-        workspace,
-        project: toProjectSummary(platformMapping),
-        resolution: {
-          projectSource: "platform-mapping",
-          targetName: platformMapping.name,
-          targetNameSource: "platform-mapping",
-        },
-      },
-      branch,
-      context.runtime.signal,
-    );
-  }
-
-  if (canPrompt(context) && !context.flags.yes) {
-    const resolved = await resolveInteractiveDeployProjectSetup(
-      context,
-      provider,
+    return {
       workspace,
-      projects,
-    );
-    return withRemoteDeployBranch(
-      provider,
-      resolved,
-      branch,
-      context.runtime.signal,
-    );
+      project: toProjectSummary(platformMapping),
+      resolution: {
+        projectSource: "platform-mapping",
+        targetName: platformMapping.name,
+        targetNameSource: "platform-mapping",
+      },
+    };
   }
 
-  const suggestedName = await inferTargetName(
-    context.runtime.cwd,
-    context.runtime.signal,
-  );
-  throw projectSetupRequiredError(projects, suggestedName);
+  return null;
 }
 
 async function resolveInteractiveDeployProjectSetup(
@@ -3894,52 +3949,7 @@ function appDeployFailedError(
   const debug = formatDebugDetails(error);
 
   if (progress.buildStarted && !progress.buildCompleted) {
-    const standaloneOutputFailure = isNextStandaloneOutputFailure(why);
-    const fix = standaloneOutputFailure
-      ? 'Add output: "standalone" to next.config.*, then rerun deploy.'
-      : "Inspect the build output above, fix the error, and redeploy.";
-    const nextSteps = standaloneOutputFailure
-      ? [
-          'Add output: "standalone" to next.config.*, then rerun prisma-cli app deploy',
-        ]
-      : [];
-    const nextActions = standaloneOutputFailure
-      ? [
-          {
-            kind: "edit-file" as const,
-            journey: "deploy-app" as const,
-            label: "Add Next.js standalone output",
-            reason:
-              "Prisma Compute needs Next.js standalone output to build a deployable server artifact.",
-          },
-          {
-            kind: "run-command" as const,
-            journey: "deploy-app" as const,
-            label: "Rerun deploy",
-            command: "prisma-cli app deploy",
-          },
-        ]
-      : [];
-
-    return new CliError({
-      code: "BUILD_FAILED",
-      domain: "app",
-      summary: "Build failed locally.",
-      why,
-      fix,
-      debug,
-      meta: { phase: "build" },
-      humanLines: [
-        "Build failed locally.",
-        "",
-        `✗ Built       ${why}`,
-        "",
-        `Fix: ${fix}`,
-      ],
-      exitCode: 1,
-      nextSteps,
-      nextActions,
-    });
+    return appBuildFailedError(why, debug);
   }
 
   if (!progress.buildStarted) {
@@ -4003,6 +4013,55 @@ function appDeployFailedError(
     humanLines,
     exitCode: 1,
     nextSteps: [],
+  });
+}
+
+function appBuildFailedError(why: string, debug: string | undefined): CliError {
+  const standaloneOutputFailure = isNextStandaloneOutputFailure(why);
+  const fix = standaloneOutputFailure
+    ? 'Add output: "standalone" to next.config.*, then rerun deploy.'
+    : "Inspect the build output above, fix the error, and redeploy.";
+  const nextSteps = standaloneOutputFailure
+    ? [
+        'Add output: "standalone" to next.config.*, then rerun prisma-cli app deploy',
+      ]
+    : [];
+  const nextActions = standaloneOutputFailure
+    ? [
+        {
+          kind: "edit-file" as const,
+          journey: "deploy-app" as const,
+          label: "Add Next.js standalone output",
+          reason:
+            "Prisma Compute needs Next.js standalone output to build a deployable server artifact.",
+        },
+        {
+          kind: "run-command" as const,
+          journey: "deploy-app" as const,
+          label: "Rerun deploy",
+          command: "prisma-cli app deploy",
+        },
+      ]
+    : [];
+
+  return new CliError({
+    code: "BUILD_FAILED",
+    domain: "app",
+    summary: "Build failed locally.",
+    why,
+    fix,
+    debug,
+    meta: { phase: "build" },
+    humanLines: [
+      "Build failed locally.",
+      "",
+      `✗ Built       ${why}`,
+      "",
+      `Fix: ${fix}`,
+    ],
+    exitCode: 1,
+    nextSteps,
+    nextActions,
   });
 }
 

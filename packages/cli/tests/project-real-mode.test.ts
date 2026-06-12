@@ -128,6 +128,84 @@ function scmRepositoryRecord(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function paginatedData(data: unknown[], nextCursor: string | null = null) {
+  return {
+    data: {
+      data,
+      pagination: {
+        nextCursor,
+        hasMore: nextCursor !== null,
+      },
+    },
+  };
+}
+
+function installedGithubAppGet(
+  pathName: string,
+  request?: { params?: { query?: Record<string, unknown> } },
+) {
+  if (pathName === "/v1/projects") {
+    return mockClient().GET(pathName);
+  }
+
+  if (pathName === "/v1/source-repositories") {
+    return sourceRepositoryList();
+  }
+
+  if (pathName === "/v1/scm-installations") {
+    expect(request?.params?.query).toEqual({
+      workspaceId: "ws_123",
+      limit: 100,
+    });
+    return paginatedData([scmInstallationRecord()]);
+  }
+
+  if (pathName === "/v1/scm-installations/{installationId}/repositories") {
+    return request?.params?.query?.cursor === "2"
+      ? paginatedData([
+          scmRepositoryRecord({
+            id: 123456,
+            fullName: "prisma/prisma-cli",
+            isPrivate: true,
+          }),
+        ])
+      : paginatedData([scmRepositoryRecord()], "2");
+  }
+
+  throw new Error(`Unexpected path ${pathName}`);
+}
+
+function interactiveGithubAppGet(
+  pathName: string,
+  installationListCalls: number,
+) {
+  if (pathName === "/v1/projects") {
+    return mockClient().GET(pathName);
+  }
+
+  if (pathName === "/v1/source-repositories") {
+    return sourceRepositoryList();
+  }
+
+  if (pathName === "/v1/scm-installations") {
+    return paginatedData(
+      installationListCalls === 1 ? [] : [scmInstallationRecord()],
+    );
+  }
+
+  if (pathName === "/v1/scm-installations/{installationId}/repositories") {
+    return paginatedData([
+      scmRepositoryRecord({
+        id: 123456,
+        fullName: "prisma/prisma-cli",
+        isPrivate: true,
+      }),
+    ]);
+  }
+
+  throw new Error(`Unexpected path ${pathName}`);
+}
+
 describe("real project mode", () => {
   it("uses the real API path for project list and sorts by name then id", async () => {
     const readAuthState = mockAuthState();
@@ -248,89 +326,7 @@ describe("real project mode", () => {
         (
           pathName: string,
           request?: { params?: { query?: Record<string, unknown> } },
-        ) => {
-          if (pathName === "/v1/projects") {
-            return mockClient().GET(pathName);
-          }
-
-          if (pathName === "/v1/source-repositories") {
-            return sourceRepositoryList();
-          }
-
-          if (pathName === "/v1/scm-installations") {
-            expect(request?.params?.query).toEqual({
-              workspaceId: "ws_123",
-              limit: 100,
-            });
-            return {
-              data: {
-                data: [
-                  {
-                    id: "scminstall_123",
-                    type: "scm-installation",
-                    url: "https://api.prisma.test/v1/scm-installations/scminstall_123",
-                    provider: "github",
-                    installationId: 98765,
-                    accountId: 111,
-                    accountLogin: "prisma",
-                    accountType: "organization",
-                    suspended: false,
-                    createdAt: "2026-05-18T00:00:00.000Z",
-                    updatedAt: "2026-05-18T00:00:00.000Z",
-                  },
-                ],
-                pagination: {
-                  nextCursor: null,
-                  hasMore: false,
-                },
-              },
-            };
-          }
-
-          if (
-            pathName === "/v1/scm-installations/{installationId}/repositories"
-          ) {
-            if (request?.params?.query?.cursor === "2") {
-              return {
-                data: {
-                  data: [
-                    {
-                      id: 123456,
-                      type: "scm-repository",
-                      fullName: "prisma/prisma-cli",
-                      defaultBranch: "main",
-                      isPrivate: true,
-                    },
-                  ],
-                  pagination: {
-                    nextCursor: null,
-                    hasMore: false,
-                  },
-                },
-              };
-            }
-
-            return {
-              data: {
-                data: [
-                  {
-                    id: 999,
-                    type: "scm-repository",
-                    fullName: "prisma/other",
-                    defaultBranch: "main",
-                    isPrivate: false,
-                  },
-                ],
-                pagination: {
-                  nextCursor: "2",
-                  hasMore: true,
-                },
-              },
-            };
-          }
-
-          throw new Error(`Unexpected path ${pathName}`);
-        },
+        ) => installedGithubAppGet(pathName, request),
       );
     const post = vi
       .fn()
@@ -700,65 +696,10 @@ describe("real project mode", () => {
 
     let installationListCalls = 0;
     const get = vi.fn().mockImplementation((pathName: string) => {
-      if (pathName === "/v1/projects") {
-        return mockClient().GET(pathName);
-      }
-
-      if (pathName === "/v1/source-repositories") {
-        return sourceRepositoryList();
-      }
-
       if (pathName === "/v1/scm-installations") {
         installationListCalls += 1;
-        return {
-          data: {
-            data:
-              installationListCalls === 1
-                ? []
-                : [
-                    {
-                      id: "scminstall_123",
-                      type: "scm-installation",
-                      url: "https://api.prisma.test/v1/scm-installations/scminstall_123",
-                      provider: "github",
-                      installationId: 98765,
-                      accountId: 111,
-                      accountLogin: "prisma",
-                      accountType: "organization",
-                      suspended: false,
-                      createdAt: "2026-05-18T00:00:00.000Z",
-                      updatedAt: "2026-05-18T00:00:00.000Z",
-                    },
-                  ],
-            pagination: {
-              nextCursor: null,
-              hasMore: false,
-            },
-          },
-        };
       }
-
-      if (pathName === "/v1/scm-installations/{installationId}/repositories") {
-        return {
-          data: {
-            data: [
-              {
-                id: 123456,
-                type: "scm-repository",
-                fullName: "prisma/prisma-cli",
-                defaultBranch: "main",
-                isPrivate: true,
-              },
-            ],
-            pagination: {
-              nextCursor: null,
-              hasMore: false,
-            },
-          },
-        };
-      }
-
-      throw new Error(`Unexpected path ${pathName}`);
+      return interactiveGithubAppGet(pathName, installationListCalls);
     });
     const post = vi
       .fn()

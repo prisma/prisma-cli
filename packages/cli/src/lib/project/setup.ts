@@ -45,8 +45,9 @@ export function resolveProjectForSetup(
   const matches = projects.filter(
     (project) => project.id === projectRef || project.name === projectRef,
   );
-  if (matches.length === 1) {
-    return matches[0]!;
+  const match = matches[0];
+  if (matches.length === 1 && match) {
+    return match;
   }
   if (matches.length > 1) {
     throw projectAmbiguousError(projectRef, matches);

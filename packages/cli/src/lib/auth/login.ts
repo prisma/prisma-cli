@@ -173,41 +173,59 @@ async function consumePastedCallback(options: {
     // wrong paste shows a hint and re-asks instead of ending the whole login;
     // the browser callback stays open the whole time and can still win.
     for (;;) {
-      let answer: string;
-      try {
-        answer = await rl.question("Paste the callback URL here: ", {
-          signal: options.signal,
-        });
-      } catch (error) {
-        // The browser callback won the race and aborted us. Stop prompting.
-        if ((error as { name?: string } | null)?.name === "AbortError") return;
-        throw error;
-      }
+      const url = await readPastedCallbackUrl(rl, options);
+      if (url === null) return;
+      if (url === undefined) continue;
 
-      const trimmed = answer.trim().replace(/^["']|["']$/g, "");
-      let url: URL;
-      try {
-        if (!trimmed) throw new Error("empty input");
-        url = new URL(trimmed);
-      } catch {
-        options.output.write(
-          "That didn't look like a URL. Paste the full localhost callback URL and try again.\n",
-        );
-        continue;
-      }
-
-      try {
-        await options.complete(url);
+      if (await tryCompletePastedCallback(url, options)) {
         return;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        options.output.write(
-          `Sign-in didn't complete (${message}). Paste the callback URL to try again.\n`,
-        );
       }
     }
   } finally {
     rl.close();
+  }
+}
+
+async function readPastedCallbackUrl(
+  rl: readline.Interface,
+  options: { signal: AbortSignal; output: Writable },
+): Promise<URL | null | undefined> {
+  let answer: string;
+  try {
+    answer = await rl.question("Paste the callback URL here: ", {
+      signal: options.signal,
+    });
+  } catch (error) {
+    // The browser callback won the race and aborted us. Stop prompting.
+    if ((error as { name?: string } | null)?.name === "AbortError") return null;
+    throw error;
+  }
+
+  const trimmed = answer.trim().replace(/^["']|["']$/g, "");
+  try {
+    if (!trimmed) throw new Error("empty input");
+    return new URL(trimmed);
+  } catch {
+    options.output.write(
+      "That didn't look like a URL. Paste the full localhost callback URL and try again.\n",
+    );
+    return undefined;
+  }
+}
+
+async function tryCompletePastedCallback(
+  url: URL,
+  options: { complete: (url: URL) => Promise<void>; output: Writable },
+): Promise<boolean> {
+  try {
+    await options.complete(url);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    options.output.write(
+      `Sign-in didn't complete (${message}). Paste the callback URL to try again.\n`,
+    );
+    return false;
   }
 }
 

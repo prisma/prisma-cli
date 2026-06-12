@@ -936,6 +936,25 @@ interface SourceRepositoryApiClient {
       signal?: AbortSignal;
     },
   ): Promise<SourceRepositoryApiResult<{ data: SourceRepositoryResponse }>>;
+  POST(
+    path: "/v1/scm-installations/install-intents",
+    options: {
+      body: {
+        provider: "github";
+        workspaceId: string;
+      };
+      signal?: AbortSignal;
+    },
+  ): Promise<
+    SourceRepositoryApiResult<{
+      data: {
+        type: "install-intent";
+        provider: "github";
+        workspaceId: string;
+        installUrl: string;
+      };
+    }>
+  >;
   GET(
     path: "/v1/source-repositories",
     options: {
@@ -998,25 +1017,6 @@ interface SourceRepositoryApiClient {
       pagination: {
         nextCursor: string | null;
         hasMore: boolean;
-      };
-    }>
-  >;
-  POST(
-    path: "/v1/scm-installations/install-intents",
-    options: {
-      body: {
-        provider: "github";
-        workspaceId: string;
-      };
-      signal?: AbortSignal;
-    },
-  ): Promise<
-    SourceRepositoryApiResult<{
-      data: {
-        type: "install-intent";
-        provider: "github";
-        workspaceId: string;
-        installUrl: string;
       };
     }>
   >;

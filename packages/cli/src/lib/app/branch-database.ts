@@ -209,15 +209,9 @@ async function scanDirectory(
     return;
   }
 
-  let entries: Dirent[];
-  try {
-    entries = await readdir(directory, { withFileTypes: true });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return;
-    }
-    throw error;
-  }
+  const entries = await readDirectoryEntries(directory);
+  if (!entries) return;
+
   entries.sort((left, right) => left.name.localeCompare(right.name));
 
   for (const entry of entries) {
@@ -226,38 +220,80 @@ async function scanDirectory(
       return;
     }
 
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      if (!SKIPPED_DIRECTORIES.has(entry.name)) {
-        await scanDirectory(cwd, entryPath, depth + 1, state, signal);
-      }
-      continue;
-    }
-
-    if (!entry.isFile()) {
-      continue;
-    }
-
-    state.filesVisited += 1;
-
-    if (entry.name === "schema.prisma") {
-      state.schemaCandidates.push(entryPath);
-    }
-
-    if (isPrismaNextConfigFile(entry.name)) {
-      state.prismaNextConfigCandidates.push(entryPath);
-    }
-
-    if (
-      state.databaseUrlReferences.length < MAX_DATABASE_URL_REFERENCE_FILES &&
-      shouldScanForDatabaseUrl(entry.name) &&
-      (await fileContainsDatabaseUrl(entryPath, signal))
-    ) {
-      state.databaseUrlReferences.push(
-        path.relative(cwd, entryPath) || entry.name,
-      );
-    }
+    await scanDirectoryEntry(cwd, directory, entry, depth, state, signal);
   }
+}
+
+async function readDirectoryEntries(
+  directory: string,
+): Promise<Dirent[] | null> {
+  try {
+    return await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function scanDirectoryEntry(
+  cwd: string,
+  directory: string,
+  entry: Dirent,
+  depth: number,
+  state: ScanState,
+  signal: AbortSignal,
+): Promise<void> {
+  const entryPath = path.join(directory, entry.name);
+  if (entry.isDirectory()) {
+    if (!SKIPPED_DIRECTORIES.has(entry.name)) {
+      await scanDirectory(cwd, entryPath, depth + 1, state, signal);
+    }
+    return;
+  }
+
+  if (!entry.isFile()) {
+    return;
+  }
+
+  state.filesVisited += 1;
+  collectBranchDatabaseCandidate(entryPath, entry.name, state);
+
+  if (
+    await shouldRecordDatabaseUrlReference(entryPath, entry.name, state, signal)
+  ) {
+    state.databaseUrlReferences.push(
+      path.relative(cwd, entryPath) || entry.name,
+    );
+  }
+}
+
+function collectBranchDatabaseCandidate(
+  entryPath: string,
+  entryName: string,
+  state: ScanState,
+): void {
+  if (entryName === "schema.prisma") {
+    state.schemaCandidates.push(entryPath);
+  }
+
+  if (isPrismaNextConfigFile(entryName)) {
+    state.prismaNextConfigCandidates.push(entryPath);
+  }
+}
+
+async function shouldRecordDatabaseUrlReference(
+  entryPath: string,
+  entryName: string,
+  state: ScanState,
+  signal: AbortSignal,
+): Promise<boolean> {
+  return (
+    state.databaseUrlReferences.length < MAX_DATABASE_URL_REFERENCE_FILES &&
+    shouldScanForDatabaseUrl(entryName) &&
+    (await fileContainsDatabaseUrl(entryPath, signal))
+  );
 }
 
 async function selectPrismaOrmSchema(

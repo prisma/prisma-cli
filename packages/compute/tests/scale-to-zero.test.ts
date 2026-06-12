@@ -86,7 +86,7 @@ describe("scale-to-zero guard", () => {
   it("waitUntil signal abort releases before a still-pending promise settles", async () => {
     const { file } = await createControlFile();
     const controller = new AbortController();
-    let resolvePromise: (value: string) => void;
+    let resolvePromise: ((value: string) => void) | undefined;
     const promise = new Promise<string>((resolve) => {
       resolvePromise = resolve;
     });
@@ -97,7 +97,8 @@ describe("scale-to-zero guard", () => {
     controller.abort();
     expect(await readSignals(file)).toBe("+-");
 
-    resolvePromise!("done");
+    expect(resolvePromise).toBeDefined();
+    resolvePromise("done");
     await expect(promise).resolves.toBe("done");
     await Promise.resolve();
     expect(await readSignals(file)).toBe("+-");

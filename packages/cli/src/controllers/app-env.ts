@@ -528,20 +528,17 @@ async function requireClientAndProject(
   if (!client) {
     throw authRequiredError(["prisma-cli auth login"]);
   }
-  if (!authState.workspace) {
+  const workspace = authState.workspace;
+  if (!workspace) {
     throw workspaceRequiredError();
   }
 
   const targetResult = await resolveProjectTarget({
     context,
-    workspace: authState.workspace,
+    workspace,
     explicitProject,
     listProjects: () =>
-      listRealWorkspaceProjects(
-        client,
-        authState.workspace!,
-        context.runtime.signal,
-      ),
+      listRealWorkspaceProjects(client, workspace, context.runtime.signal),
     commandName,
   });
   if (targetResult.isErr()) {
@@ -553,7 +550,7 @@ async function requireClientAndProject(
     client,
     projectId: target.project.id,
     verboseContext: {
-      workspace: authState.workspace,
+      workspace,
       project: target.project,
       resolution: target.resolution,
     },

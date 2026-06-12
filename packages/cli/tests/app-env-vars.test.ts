@@ -87,7 +87,7 @@ describe("app env vars", () => {
           "API_URL=https://api.example",
           'QUOTED="hello world"',
           "export FEATURE_FLAG=enabled",
-          "LITERAL=${API_URL}/v1",
+          "LITERAL=$" + "{API_URL}/v1",
         ].join("\n"),
         ".env",
         "add",
@@ -96,7 +96,7 @@ describe("app env vars", () => {
       { key: "API_URL", value: "https://api.example" },
       { key: "QUOTED", value: "hello world" },
       { key: "FEATURE_FLAG", value: "enabled" },
-      { key: "LITERAL", value: "${API_URL}/v1" },
+      { key: "LITERAL", value: "$" + "{API_URL}/v1" },
     ]);
   });
 

@@ -1116,43 +1116,58 @@ async function findAppForDeployment(
     }
 
     for (const service of servicesResult.value) {
-      const detailResult = await sdk.showService({
-        serviceId: service.id,
+      const app = await findServiceAppForDeployment(
+        sdk,
+        service.id,
+        deploymentId,
         signal,
-      });
-      if (detailResult.isErr()) {
-        throw new Error(detailResult.error.message);
-      }
-
-      const app: PreviewAppRecord = {
-        id: detailResult.value.id,
-        name: detailResult.value.name,
-        region: detailResult.value.region ?? null,
-        liveDeploymentId: detailResult.value.latestVersionId ?? null,
-        liveUrl: toAbsoluteUrl(
-          detailResult.value.serviceEndpointDomain ?? null,
-        ),
-      };
-
-      if (app.liveDeploymentId === deploymentId) {
-        return app;
-      }
-
-      const versionsResult = await sdk.listVersions({
-        serviceId: service.id,
-        signal,
-      });
-      if (versionsResult.isErr()) {
-        throw new Error(versionsResult.error.message);
-      }
-
-      if (versionsResult.value.some((version) => version.id === deploymentId)) {
+      );
+      if (app) {
         return app;
       }
     }
   }
 
   return null;
+}
+
+async function findServiceAppForDeployment(
+  sdk: ComputeClient,
+  serviceId: string,
+  deploymentId: string,
+  signal?: AbortSignal,
+): Promise<PreviewAppRecord | null> {
+  const detailResult = await sdk.showService({
+    serviceId,
+    signal,
+  });
+  if (detailResult.isErr()) {
+    throw new Error(detailResult.error.message);
+  }
+
+  const app: PreviewAppRecord = {
+    id: detailResult.value.id,
+    name: detailResult.value.name,
+    region: detailResult.value.region ?? null,
+    liveDeploymentId: detailResult.value.latestVersionId ?? null,
+    liveUrl: toAbsoluteUrl(detailResult.value.serviceEndpointDomain ?? null),
+  };
+
+  if (app.liveDeploymentId === deploymentId) {
+    return app;
+  }
+
+  const versionsResult = await sdk.listVersions({
+    serviceId,
+    signal,
+  });
+  if (versionsResult.isErr()) {
+    throw new Error(versionsResult.error.message);
+  }
+
+  return versionsResult.value.some((version) => version.id === deploymentId)
+    ? app
+    : null;
 }
 
 function toAbsoluteUrl(url: string | null): string | null {
