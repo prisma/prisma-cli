@@ -134,7 +134,8 @@ export async function runBranchDatabaseSchemaSetup(options: {
   directUrl: string | null;
 }): Promise<BranchDatabaseSchemaSetupResult> {
   const schemaPath = path.relative(options.context.runtime.cwd, options.schema.path) || defaultSchemaSourcePath(options.schema);
-  const commands = buildSchemaSetupCommands(options.schema, schemaPath, options.databaseUrl);
+  const prisma = await resolvePrismaInvocation(options.context.runtime.cwd);
+  const commands = buildSchemaSetupCommands(options.schema, schemaPath, options.databaseUrl, prisma);
 
   for (const command of commands) {
     await runPrismaCommand({
@@ -411,21 +412,92 @@ async function readTextFileIfSmall(filePath: string, signal: AbortSignal): Promi
   return readFile(filePath, { encoding: "utf8", signal });
 }
 
-function buildSchemaSetupCommands(schema: BranchDatabaseSchema, schemaPath: string, databaseUrl: string): Array<{
+// Last resort for repos that ship a schema with no Prisma packages
+// installed at all. Pinned to the 6.x line: Prisma 7 rejects the classic
+// `url = env(...)` datasource form (P1012), which is exactly the schema
+// shape such repos have. Bump deliberately, never to `latest`.
+const FALLBACK_PRISMA_CLI_VERSION = "6.19.3";
+
+interface PrismaInvocation {
+  argsPrefix: string[];
+  displayPrefix: string;
+}
+
+/**
+ * Picks how `prisma` CLI commands are invoked for schema setup. Projects
+ * with the CLI installed run their own binary (version-exact). Projects
+ * without it fall back to a versioned `npx prisma@<x>` pinned to the
+ * installed `@prisma/client` — never bare `npx prisma`, which resolves to
+ * latest and can be a major version ahead of the project's schema.
+ */
+async function resolvePrismaInvocation(cwd: string): Promise<PrismaInvocation> {
+  if (await localPrismaBinExists(cwd)) {
+    return {
+      argsPrefix: ["--no-install", "prisma"],
+      displayPrefix: "npx --no-install prisma",
+    };
+  }
+
+  const clientVersion = await readInstalledPrismaClientVersion(cwd);
+  const pinned = clientVersion ?? FALLBACK_PRISMA_CLI_VERSION;
+  return {
+    argsPrefix: ["--yes", `prisma@${pinned}`],
+    displayPrefix: `npx prisma@${pinned}`,
+  };
+}
+
+/** npm/pnpm name the local CLI shim `prisma` on POSIX and `prisma.cmd`/`prisma.ps1` on Windows. */
+async function localPrismaBinExists(cwd: string): Promise<boolean> {
+  const binDir = path.join(cwd, "node_modules", ".bin");
+  const checks = await Promise.all(
+    ["prisma", "prisma.cmd", "prisma.ps1"].map((name) =>
+      fileExists(path.join(binDir, name)),
+    ),
+  );
+  return checks.some(Boolean);
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readInstalledPrismaClientVersion(cwd: string): Promise<string | null> {
+  try {
+    const raw = await readFile(
+      path.join(cwd, "node_modules", "@prisma", "client", "package.json"),
+      { encoding: "utf8" },
+    );
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) {
+      return null;
+    }
+    const version = (parsed as { version?: unknown }).version;
+    return typeof version === "string" && version.length > 0 ? version : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildSchemaSetupCommands(schema: BranchDatabaseSchema, schemaPath: string, databaseUrl: string, prisma: PrismaInvocation): Array<{
   args: string[];
   displayCommand: string;
 }> {
   if (schema.command === "migrate-deploy") {
     return [{
-      args: ["--no-install", "prisma", "migrate", "deploy", "--schema", schemaPath],
-      displayCommand: "npx --no-install prisma migrate deploy",
+      args: [...prisma.argsPrefix, "migrate", "deploy", "--schema", schemaPath],
+      displayCommand: `${prisma.displayPrefix} migrate deploy`,
     }];
   }
 
   if (schema.command === "db-push") {
     return [{
-      args: ["--no-install", "prisma", "db", "push", "--schema", schemaPath],
-      displayCommand: "npx --no-install prisma db push",
+      args: [...prisma.argsPrefix, "db", "push", "--schema", schemaPath],
+      displayCommand: `${prisma.displayPrefix} db push`,
     }];
   }
 

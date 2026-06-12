@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { access, lstat, mkdir, readFile, readlink, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -50,6 +50,66 @@ describe("preview build strategy", () => {
       buildCommand: "bun run build",
       outputDirectory: ".next/standalone",
     }, null, 2)}\n`);
+  });
+
+  it("packages the full tree with a next start launcher when the build produces no standalone output", async () => {
+    const { PreviewBuildStrategy } = await import("../src/lib/app/preview-build");
+    const cwd = await createTempCwd();
+    const appPath = path.join(cwd, "app");
+
+    await mkdir(path.join(appPath, ".next"), { recursive: true });
+    await mkdir(path.join(appPath, "node_modules/next"), { recursive: true });
+    await writeFile(
+      path.join(appPath, "package.json"),
+      JSON.stringify({ dependencies: { next: "15.0.0" } }),
+      "utf8",
+    );
+    await writeFile(path.join(appPath, ".next/BUILD_ID"), "fallback-test", "utf8");
+    await writeFile(path.join(appPath, ".env"), "SECRET=should-not-ship", "utf8");
+    await writeFile(path.join(appPath, ".env.local"), "SECRET=should-not-ship", "utf8");
+    await writeFile(
+      path.join(appPath, "node_modules/next/package.json"),
+      JSON.stringify({ name: "next", version: "15.0.0" }),
+      "utf8",
+    );
+    await mkdir(path.join(appPath, "node_modules/.bin"), { recursive: true });
+    await symlink("../next/package.json", path.join(appPath, "node_modules/.bin/next-link"));
+
+    const strategy = new PreviewBuildStrategy({
+      appPath,
+      buildType: "nextjs",
+      buildSettings: {
+        buildCommand: null,
+        buildCommandSource: null,
+        outputDirectory: ".next/standalone",
+        outputDirectorySource: null,
+      },
+    });
+
+    const artifact = await strategy.execute();
+    try {
+      expect(artifact.entrypoint).toBe("prisma-next-start.cjs");
+      expect(artifact.defaultPortMapping).toEqual({ http: 3000 });
+
+      const launcher = await readFile(path.join(artifact.directory, "prisma-next-start.cjs"), "utf8");
+      expect(launcher).toContain('require("next/dist/bin/next")');
+      expect(launcher).toContain('process.argv.push("start"');
+      expect(launcher).toContain("process.chdir(__dirname)");
+
+      await expect(readFile(path.join(artifact.directory, ".next/BUILD_ID"), "utf8")).resolves.toBe("fallback-test");
+      await expect(readFile(path.join(artifact.directory, "node_modules/next/package.json"), "utf8")).resolves.toContain("15.0.0");
+
+      const linkPath = path.join(artifact.directory, "node_modules/.bin/next-link");
+      expect((await lstat(linkPath)).isSymbolicLink()).toBe(true);
+      await expect(readlink(linkPath)).resolves.toBe("../next/package.json");
+
+      await expect(access(path.join(artifact.directory, ".env"))).rejects.toThrow();
+      await expect(access(path.join(artifact.directory, ".env.local"))).rejects.toThrow();
+    } finally {
+      const stagedDir = artifact.directory;
+      await artifact.cleanup?.();
+      await expect(access(stagedDir)).rejects.toThrow();
+    }
   });
 
   it("creates TanStack and Hono build config defaults", async () => {

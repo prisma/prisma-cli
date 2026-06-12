@@ -1,4 +1,4 @@
-import { chmod, copyFile, cp, lstat, mkdir, mkdtemp, readdir, readFile, readlink, rm, stat } from "node:fs/promises";
+import { chmod, copyFile, cp, lstat, mkdir, mkdtemp, readdir, readFile, readlink, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -236,10 +236,10 @@ class PreviewNextjsBuild implements BuildStrategy {
 
     const standaloneDir = path.join(this.#appPath, settings.outputDirectory);
     if (!await directoryExists(standaloneDir, signal)) {
-      throw new Error(
-        `Next.js build did not produce standalone output at ${settings.outputDirectory}. `
-          + `Add output: "standalone" to your next.config file, or update ${PRISMA_APP_CONFIG_FILENAME}.`,
-      );
+      // No `output: "standalone"` in next.config: the build itself
+      // succeeded, so package the full tree and serve with `next start`
+      // instead of failing. Bigger artifact, same running app.
+      return stageNextjsFullTreeFallbackArtifact(this.#appPath, signal);
     }
 
     const outDir = await unsupportedFilesystemBoundary(signal, () => mkdtemp(path.join(os.tmpdir(), "compute-build-")));
@@ -272,6 +272,66 @@ class PreviewNextjsBuild implements BuildStrategy {
       throw error;
     }
   }
+}
+
+const FULL_TREE_NEXT_START_ENTRYPOINT = "prisma-next-start.cjs";
+
+// Bootstrap for apps built without `output: "standalone"`. Entering through
+// the CLI bin (not `next/dist/server/lib/start-server`) keeps Next in charge
+// of config loading, which is the part that drifts across Next majors.
+const FULL_TREE_NEXT_START_SOURCE = [
+  // The runtime starts us at the unpack root, but `next start` resolves `.next` from cwd.
+  "process.chdir(__dirname);",
+  'process.env.NODE_ENV = "production";',
+  'process.argv.push("start", "-p", process.env.PORT ?? "3000");',
+  'require("next/dist/bin/next");',
+  "",
+].join("\n");
+
+async function stageNextjsFullTreeFallbackArtifact(appPath: string, signal?: AbortSignal): Promise<BuildArtifact> {
+  const outDir = await unsupportedFilesystemBoundary(signal, () => mkdtemp(path.join(os.tmpdir(), "compute-build-")));
+
+  try {
+    const artifactDir = path.join(outDir, "app");
+    // node_modules ships on purpose: without standalone output the artifact
+    // must carry the full runtime dependency tree for `next start`.
+    await unsupportedFilesystemBoundary(signal, () =>
+      cp(appPath, artifactDir, {
+        recursive: true,
+        // Keep relative symlinks relative (node_modules/.bin/*): the default
+        // rewrites them to absolute paths into the source tree, which the
+        // archiver rejects as escaping the artifact root.
+        verbatimSymlinks: true,
+        filter: (source) =>
+          !isExcludedFromFullTreeArtifact(path.basename(source)),
+      }),
+    );
+    await unsupportedFilesystemBoundary(signal, () =>
+      writeFile(
+        path.join(artifactDir, FULL_TREE_NEXT_START_ENTRYPOINT),
+        FULL_TREE_NEXT_START_SOURCE,
+      ),
+    );
+
+    return {
+      directory: artifactDir,
+      entrypoint: FULL_TREE_NEXT_START_ENTRYPOINT,
+      defaultPortMapping: { http: 3000 },
+      cleanup: () => rm(outDir, { recursive: true, force: true }),
+    };
+  } catch (error) {
+    await rm(outDir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+/** Excludes VCS internals and dotenv files (local secrets, superseded by the deploy env). */
+function isExcludedFromFullTreeArtifact(basename: string): boolean {
+  return (
+    basename === ".git" ||
+    basename === ".env" ||
+    basename.startsWith(".env.")
+  );
 }
 
 class PreviewTanstackStartBuild implements BuildStrategy {
