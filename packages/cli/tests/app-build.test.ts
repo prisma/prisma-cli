@@ -92,6 +92,7 @@ describe("preview build strategy", () => {
       const launcher = await readFile(path.join(artifact.directory, "prisma-next-start.cjs"), "utf8");
       expect(launcher).toContain('require("next/dist/bin/next")');
       expect(launcher).toContain('process.argv.push("start"');
+      expect(launcher).toContain("process.chdir(__dirname)");
 
       await expect(readFile(path.join(artifact.directory, ".next/BUILD_ID"), "utf8")).resolves.toBe("fallback-test");
       await expect(readFile(path.join(artifact.directory, "node_modules/next/package.json"), "utf8")).resolves.toContain("15.0.0");

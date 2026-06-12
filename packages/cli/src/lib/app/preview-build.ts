@@ -280,6 +280,9 @@ const FULL_TREE_NEXT_START_ENTRYPOINT = "prisma-next-start.cjs";
 // the CLI bin (not `next/dist/server/lib/start-server`) keeps Next in charge
 // of config loading, which is the part that drifts across Next majors.
 const FULL_TREE_NEXT_START_SOURCE = [
+  // The runtime starts the entrypoint with cwd at the unpack root; pin it to
+  // the bundle so `next start` resolves `.next` here, as standalone server.js does.
+  "process.chdir(__dirname);",
   'process.env.NODE_ENV = "production";',
   'process.argv.push("start", "-p", process.env.PORT ?? "3000");',
   'require("next/dist/bin/next");',
