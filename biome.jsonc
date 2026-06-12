@@ -45,16 +45,6 @@
         "useGuardForIn": "on",
         "useStaticResponseMethods": "on"
       }
-      //   "complexity": {
-      //   },
-      //   "nursery": {
-      //   },
-      //   "performance": {
-      //   },
-      //   "style": {
-      //   },
-      //   "suspicious": {
-      //   }
     }
   },
   "javascript": {
