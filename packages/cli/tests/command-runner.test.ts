@@ -16,11 +16,18 @@ class CaptureStream extends Writable {
   declare columns?: number;
   declare rows?: number;
 
-  constructor(private readonly streamName?: "stdout" | "stderr", private readonly writes?: CapturedWrite[]) {
+  constructor(
+    private readonly streamName?: "stdout" | "stderr",
+    private readonly writes?: CapturedWrite[],
+  ) {
     super();
   }
 
-  _write(chunk: Buffer | string, _encoding: BufferEncoding, callback: (error?: Error | null) => void) {
+  _write(
+    chunk: Buffer | string,
+    _encoding: BufferEncoding,
+    callback: (error?: Error | null) => void,
+  ) {
     const text = chunk.toString();
     this.buffer += text;
     if (this.streamName && this.writes) {
@@ -82,7 +89,11 @@ afterEach(() => {
 
 describe("command runner success output", () => {
   it("adds local diagnostics to successful verbose human output", async () => {
-    const { runtime, stderr } = await createRuntime(["project", "show", "--verbose"]);
+    const { runtime, stderr } = await createRuntime([
+      "project",
+      "show",
+      "--verbose",
+    ]);
 
     await runCommand(
       runtime,
@@ -110,7 +121,11 @@ describe("command runner success output", () => {
   });
 
   it("keeps successful verbose output when post-success diagnostics abort", async () => {
-    const { runtime, controller, stderr } = await createRuntime(["project", "show", "--verbose"]);
+    const { runtime, controller, stderr } = await createRuntime([
+      "project",
+      "show",
+      "--verbose",
+    ]);
 
     await runCommand(
       runtime,
@@ -137,7 +152,12 @@ describe("command runner success output", () => {
   });
 
   it("does not add local diagnostics to successful JSON output", async () => {
-    const { runtime, stdout, stderr } = await createRuntime(["project", "show", "--verbose", "--json"]);
+    const { runtime, stdout, stderr } = await createRuntime([
+      "project",
+      "show",
+      "--verbose",
+      "--json",
+    ]);
 
     await runCommand(
       runtime,
@@ -165,7 +185,10 @@ describe("command runner success output", () => {
   });
 
   it("writes human stderr before raw stdout when both are rendered", async () => {
-    const { runtime, stdout, stderr, writes } = await createRuntime(["project", "show"]);
+    const { runtime, stdout, stderr, writes } = await createRuntime([
+      "project",
+      "show",
+    ]);
 
     await runCommand(
       runtime,
@@ -190,7 +213,11 @@ describe("command runner success output", () => {
   });
 
   it("suppresses human output in quiet mode while preserving raw stdout", async () => {
-    const { runtime, stdout, stderr, writes } = await createRuntime(["project", "show", "--quiet"]);
+    const { runtime, stdout, stderr, writes } = await createRuntime([
+      "project",
+      "show",
+      "--quiet",
+    ]);
     let renderHumanCalled = false;
 
     await runCommand(
@@ -220,7 +247,11 @@ describe("command runner success output", () => {
   });
 
   it("bypasses raw stdout and human output in JSON mode", async () => {
-    const { runtime, stdout, stderr } = await createRuntime(["project", "show", "--json"]);
+    const { runtime, stdout, stderr } = await createRuntime([
+      "project",
+      "show",
+      "--json",
+    ]);
     let renderStdoutCalled = false;
     let renderHumanCalled = false;
 

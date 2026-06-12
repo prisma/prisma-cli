@@ -3,12 +3,21 @@ import { randomBytes } from "node:crypto";
 import { requireComputeAuth } from "../lib/auth/guard";
 import {
   createManagementDatabaseProvider,
+  type DatabaseProvider,
   normalizeConnection,
   normalizeDatabase,
-  type DatabaseProvider,
 } from "../lib/database/provider";
-import { projectResolutionErrorToCliError, resolveProjectTarget, type ResolvedProjectTarget } from "../lib/project/resolution";
-import { authRequiredError, CliError, usageError, workspaceRequiredError } from "../shell/errors";
+import {
+  projectResolutionErrorToCliError,
+  type ResolvedProjectTarget,
+  resolveProjectTarget,
+} from "../lib/project/resolution";
+import {
+  authRequiredError,
+  CliError,
+  usageError,
+  workspaceRequiredError,
+} from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
 import type { CommandContext } from "../shell/runtime";
 import type {
@@ -22,7 +31,10 @@ import type {
   DatabaseSummary,
 } from "../types/database";
 import { requireAuthenticatedAuthState } from "./auth";
-import { listFixtureWorkspaceProjects, listRealWorkspaceProjects } from "./project";
+import {
+  listFixtureWorkspaceProjects,
+  listRealWorkspaceProjects,
+} from "./project";
 
 interface DatabaseCommandFlags {
   projectRef?: string;
@@ -51,19 +63,28 @@ interface ResolvedDatabaseContext {
 }
 
 function isRealMode(context: CommandContext): boolean {
-  return !context.runtime.fixturePath && !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH;
+  return (
+    !context.runtime.fixturePath &&
+    !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH
+  );
 }
 
 export async function runDatabaseList(
   context: CommandContext,
   flags: DatabaseCommandFlags,
 ): Promise<CommandSuccess<DatabaseListResult>> {
-  const { provider, target } = await requireDatabaseContext(context, flags, "database list");
-  const databases = sortDatabases(await provider.listDatabases({
-    projectId: target.project.id,
-    branchName: flags.branchName,
-    signal: context.runtime.signal,
-  }));
+  const { provider, target } = await requireDatabaseContext(
+    context,
+    flags,
+    "database list",
+  );
+  const databases = sortDatabases(
+    await provider.listDatabases({
+      projectId: target.project.id,
+      branchName: flags.branchName,
+      signal: context.runtime.signal,
+    }),
+  );
 
   return {
     command: "database.list",
@@ -84,9 +105,21 @@ export async function runDatabaseShow(
   databaseRef: string,
   flags: DatabaseCommandFlags,
 ): Promise<CommandSuccess<DatabaseShowResult>> {
-  const { provider, target } = await requireDatabaseContext(context, flags, "database show");
-  const database = await resolveDatabase(provider, target, databaseRef, flags.branchName, context.runtime.signal);
-  const connections = await provider.listConnections(database.id, { signal: context.runtime.signal });
+  const { provider, target } = await requireDatabaseContext(
+    context,
+    flags,
+    "database show",
+  );
+  const database = await resolveDatabase(
+    provider,
+    target,
+    databaseRef,
+    flags.branchName,
+    context.runtime.signal,
+  );
+  const connections = await provider.listConnections(database.id, {
+    signal: context.runtime.signal,
+  });
 
   return {
     command: "database.show",
@@ -118,7 +151,11 @@ export async function runDatabaseCreate(
     );
   }
 
-  const { provider, target } = await requireDatabaseContext(context, flags, "database create");
+  const { provider, target } = await requireDatabaseContext(
+    context,
+    flags,
+    "database create",
+  );
   const created = await provider.createDatabase({
     projectId: target.project.id,
     name: databaseName,
@@ -147,8 +184,18 @@ export async function runDatabaseRemove(
   databaseRef: string,
   flags: DatabaseRemoveFlags,
 ): Promise<CommandSuccess<DatabaseRemoveResult>> {
-  const { provider, target } = await requireDatabaseContext(context, flags, "database remove");
-  const database = await resolveDatabase(provider, target, databaseRef, flags.branchName, context.runtime.signal);
+  const { provider, target } = await requireDatabaseContext(
+    context,
+    flags,
+    "database remove",
+  );
+  const database = await resolveDatabase(
+    provider,
+    target,
+    databaseRef,
+    flags.branchName,
+    context.runtime.signal,
+  );
   requireExactConfirmation({
     resourceName: "database",
     commandName: "database remove",
@@ -156,7 +203,9 @@ export async function runDatabaseRemove(
     confirm: flags.confirm,
   });
 
-  await provider.removeDatabase(database.id, { signal: context.runtime.signal });
+  await provider.removeDatabase(database.id, {
+    signal: context.runtime.signal,
+  });
 
   return {
     command: "database.remove",
@@ -176,9 +225,21 @@ export async function runDatabaseConnectionList(
   databaseRef: string,
   flags: DatabaseCommandFlags,
 ): Promise<CommandSuccess<DatabaseConnectionListResult>> {
-  const { provider, target } = await requireDatabaseContext(context, flags, "database connection list");
-  const database = await resolveDatabase(provider, target, databaseRef, flags.branchName, context.runtime.signal);
-  const connections = await provider.listConnections(database.id, { signal: context.runtime.signal });
+  const { provider, target } = await requireDatabaseContext(
+    context,
+    flags,
+    "database connection list",
+  );
+  const database = await resolveDatabase(
+    provider,
+    target,
+    databaseRef,
+    flags.branchName,
+    context.runtime.signal,
+  );
+  const connections = await provider.listConnections(database.id, {
+    signal: context.runtime.signal,
+  });
 
   return {
     command: "database.connection.list",
@@ -199,8 +260,18 @@ export async function runDatabaseConnectionCreate(
   databaseRef: string,
   flags: DatabaseConnectionCreateFlags,
 ): Promise<CommandSuccess<DatabaseConnectionCreateResult>> {
-  const { provider, target } = await requireDatabaseContext(context, flags, "database connection create");
-  const database = await resolveDatabase(provider, target, databaseRef, flags.branchName, context.runtime.signal);
+  const { provider, target } = await requireDatabaseContext(
+    context,
+    flags,
+    "database connection create",
+  );
+  const database = await resolveDatabase(
+    provider,
+    target,
+    databaseRef,
+    flags.branchName,
+    context.runtime.signal,
+  );
   const created = await provider.createConnection({
     databaseId: database.id,
     name: flags.name?.trim() || defaultConnectionName(),
@@ -233,7 +304,9 @@ export async function runDatabaseConnectionRemove(
       "Connection id required",
       "Database connection removal needs a connection id.",
       "Pass the connection id to remove.",
-      ["prisma-cli database connection remove <connection-id> --confirm <connection-id>"],
+      [
+        "prisma-cli database connection remove <connection-id> --confirm <connection-id>",
+      ],
       "database",
     );
   }
@@ -246,7 +319,9 @@ export async function runDatabaseConnectionRemove(
   });
 
   const provider = await requireDatabaseProviderOnly(context);
-  await provider.removeConnection(connectionId, { signal: context.runtime.signal });
+  await provider.removeConnection(connectionId, {
+    signal: context.runtime.signal,
+  });
 
   return {
     command: "database.connection.remove",
@@ -272,7 +347,10 @@ async function requireDatabaseContext(
   }
 
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
+    const client = await requireComputeAuth(
+      context.runtime.env,
+      context.runtime.signal,
+    );
     if (!client) {
       throw authRequiredError();
     }
@@ -281,7 +359,8 @@ async function requireDatabaseContext(
       context,
       workspace,
       explicitProject: flags.projectRef,
-      listProjects: () => listRealWorkspaceProjects(client, workspace, context.runtime.signal),
+      listProjects: () =>
+        listRealWorkspaceProjects(client, workspace, context.runtime.signal),
       commandName,
     });
     if (targetResult.isErr()) {
@@ -311,11 +390,16 @@ async function requireDatabaseContext(
   };
 }
 
-async function requireDatabaseProviderOnly(context: CommandContext): Promise<DatabaseProvider> {
+async function requireDatabaseProviderOnly(
+  context: CommandContext,
+): Promise<DatabaseProvider> {
   await requireAuthenticatedAuthState(context);
 
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
+    const client = await requireComputeAuth(
+      context.runtime.env,
+      context.runtime.signal,
+    );
     if (!client) {
       throw authRequiredError();
     }
@@ -325,7 +409,9 @@ async function requireDatabaseProviderOnly(context: CommandContext): Promise<Dat
   return createFixtureDatabaseProvider(context);
 }
 
-function createFixtureDatabaseProvider(context: CommandContext): DatabaseProvider {
+function createFixtureDatabaseProvider(
+  context: CommandContext,
+): DatabaseProvider {
   return {
     async listDatabases(options) {
       return context.api
@@ -341,8 +427,14 @@ function createFixtureDatabaseProvider(context: CommandContext): DatabaseProvide
     async createDatabase(options) {
       const created = context.api.createDatabase(options);
       return {
-        database: normalizeDatabase(created.database, created.database.projectId),
-        connection: normalizeConnection(created.connection, created.connection.databaseId),
+        database: normalizeDatabase(
+          created.database,
+          created.database.projectId,
+        ),
+        connection: normalizeConnection(
+          created.connection,
+          created.connection.databaseId,
+        ),
         connectionString: created.connectionString,
       };
     },
@@ -360,7 +452,9 @@ function createFixtureDatabaseProvider(context: CommandContext): DatabaseProvide
       }
       return context.api
         .listDatabaseConnections(databaseId)
-        .map((connection) => normalizeConnection(connection, connection.databaseId));
+        .map((connection) =>
+          normalizeConnection(connection, connection.databaseId),
+        );
     },
 
     async createConnection(options) {
@@ -369,7 +463,10 @@ function createFixtureDatabaseProvider(context: CommandContext): DatabaseProvide
         throw databaseNotFoundError(options.databaseId);
       }
       return {
-        connection: normalizeConnection(created.connection, created.connection.databaseId),
+        connection: normalizeConnection(
+          created.connection,
+          created.connection.databaseId,
+        ),
         connectionString: created.connectionString,
       };
     },
@@ -406,7 +503,9 @@ async function resolveDatabase(
     branchName,
     signal,
   });
-  const matches = databases.filter((database) => database.id === ref || database.name === ref);
+  const matches = databases.filter(
+    (database) => database.id === ref || database.name === ref,
+  );
 
   if (matches.length === 0) {
     throw databaseNotFoundError(ref, target.project.name, branchName);
@@ -424,13 +523,18 @@ async function resolveDatabase(
   return ensureProjectId(shown ?? selected, target.project.id);
 }
 
-function ensureProjectId(database: DatabaseSummary, projectId: string): DatabaseSummary {
+function ensureProjectId(
+  database: DatabaseSummary,
+  projectId: string,
+): DatabaseSummary {
   return database.projectId ? database : { ...database, projectId };
 }
 
 function sortDatabases(databases: DatabaseSummary[]): DatabaseSummary[] {
   return databases.slice().sort((left, right) => {
-    const branchOrder = (left.branchName ?? "").localeCompare(right.branchName ?? "");
+    const branchOrder = (left.branchName ?? "").localeCompare(
+      right.branchName ?? "",
+    );
     if (branchOrder !== 0) {
       return branchOrder;
     }
@@ -457,7 +561,9 @@ function requireExactConfirmation(options: {
     why: `Removing this ${options.resourceName} is destructive and requires the exact id.`,
     fix: `Rerun with --confirm ${options.id}.`,
     exitCode: 2,
-    nextSteps: [`prisma-cli ${options.commandName} ${options.id} --confirm ${options.id}`],
+    nextSteps: [
+      `prisma-cli ${options.commandName} ${options.id} --confirm ${options.id}`,
+    ],
     meta: {
       expectedConfirm: options.id,
       receivedConfirm: options.confirm ?? null,
@@ -466,12 +572,19 @@ function requireExactConfirmation(options: {
 }
 
 function defaultConnectionName(): string {
-  const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 17);
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/[-:.TZ]/g, "")
+    .slice(0, 17);
   const suffix = randomBytes(2).toString("hex");
   return `cli-${timestamp}-${suffix}`;
 }
 
-function databaseNotFoundError(databaseRef: string, projectName?: string, branchName?: string): CliError {
+function databaseNotFoundError(
+  databaseRef: string,
+  projectName?: string,
+  branchName?: string,
+): CliError {
   const scope = projectName
     ? ` in project "${projectName}"${branchName ? ` on branch "${branchName}"` : ""}`
     : "";
@@ -486,7 +599,11 @@ function databaseNotFoundError(databaseRef: string, projectName?: string, branch
   });
 }
 
-function databaseAmbiguousError(databaseRef: string, matches: DatabaseSummary[], branchName: string | undefined): CliError {
+function databaseAmbiguousError(
+  databaseRef: string,
+  matches: DatabaseSummary[],
+  branchName: string | undefined,
+): CliError {
   return new CliError({
     code: "DATABASE_AMBIGUOUS",
     domain: "database",

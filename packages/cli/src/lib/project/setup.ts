@@ -1,10 +1,9 @@
 import path from "node:path";
-
-import type { AuthWorkspace } from "../../types/auth";
-import type { ProjectSetupResult, ProjectSummary } from "../../types/project";
-import { Result, matchError } from "better-result";
+import { matchError, Result } from "better-result";
 import { CliError, usageError } from "../../shell/errors";
 import type { CommandContext } from "../../shell/runtime";
+import type { AuthWorkspace } from "../../types/auth";
+import type { ProjectSetupResult, ProjectSummary } from "../../types/project";
 import { shortenHomePath } from "../fs/home-path";
 import {
   ensureLocalResolutionPinGitignore,
@@ -14,10 +13,11 @@ import {
   writeLocalResolutionPin,
 } from "./local-pin";
 import {
+  type ProjectCandidate,
   projectAmbiguousError,
   projectNotFoundError,
-  type ProjectCandidate,
 } from "./resolution";
+
 export { formatCommandArgument } from "../../shell/command-arguments";
 
 export type ProjectDirectoryBindingError =
@@ -28,7 +28,10 @@ export function isValidProjectSetupName(projectName: string): boolean {
   return projectName.trim().length > 0;
 }
 
-export function validateProjectSetupNameText(value: string | undefined, fallback: string): string | undefined {
+export function validateProjectSetupNameText(
+  value: string | undefined,
+  fallback: string,
+): string | undefined {
   if ((value?.trim() || fallback).trim().length > 0) {
     return undefined;
   }
@@ -41,7 +44,9 @@ export function resolveProjectForSetup(
   projects: ProjectCandidate[],
   workspace: AuthWorkspace,
 ): ProjectCandidate {
-  const matches = projects.filter((project) => project.id === projectRef || project.name === projectRef);
+  const matches = projects.filter(
+    (project) => project.id === projectRef || project.name === projectRef,
+  );
   if (matches.length === 1) {
     return matches[0]!;
   }
@@ -59,11 +64,19 @@ export async function bindProjectToDirectory(
   directory: string = context.runtime.cwd,
 ): Promise<Result<ProjectSetupResult, ProjectDirectoryBindingError>> {
   return Result.gen(async function* () {
-    yield* Result.await(writeLocalResolutionPin(directory, {
-      workspaceId: workspace.id,
-      projectId: project.id,
-    }, context.runtime.signal));
-    yield* Result.await(ensureLocalResolutionPinGitignore(directory, context.runtime.signal));
+    yield* Result.await(
+      writeLocalResolutionPin(
+        directory,
+        {
+          workspaceId: workspace.id,
+          projectId: project.id,
+        },
+        context.runtime.signal,
+      ),
+    );
+    yield* Result.await(
+      ensureLocalResolutionPinGitignore(directory, context.runtime.signal),
+    );
 
     return Result.ok({
       workspace,
@@ -78,7 +91,9 @@ export async function bindProjectToDirectory(
   });
 }
 
-export function projectDirectoryBindingErrorToCliError(error: ProjectDirectoryBindingError): CliError {
+export function projectDirectoryBindingErrorToCliError(
+  error: ProjectDirectoryBindingError,
+): CliError {
   // Temporary during the migration to better-result: remove when command boundaries convert Result errors directly.
   return matchError(error, {
     LocalResolutionPinSerializationError: (error) => {
@@ -87,23 +102,25 @@ export function projectDirectoryBindingErrorToCliError(error: ProjectDirectoryBi
     LocalResolutionPinWriteAbortedError: (error) => {
       throw error;
     },
-    LocalResolutionPinWriteFailedError: (error) => localStateWriteFailedError(error, {
-      why: `The CLI could not write ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH}.`,
-      meta: {
-        pinPath: error.pinPath,
-        operation: error.operation,
-      },
-    }),
+    LocalResolutionPinWriteFailedError: (error) =>
+      localStateWriteFailedError(error, {
+        why: `The CLI could not write ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH}.`,
+        meta: {
+          pinPath: error.pinPath,
+          operation: error.operation,
+        },
+      }),
     LocalResolutionPinGitignoreUpdateAbortedError: (error) => {
       throw error;
     },
-    LocalResolutionPinGitignoreUpdateFailedError: (error) => localStateWriteFailedError(error, {
-      why: "The CLI could not update .gitignore to keep local Project binding state out of git.",
-      meta: {
-        gitignorePath: error.gitignorePath,
-        operation: error.operation,
-      },
-    }),
+    LocalResolutionPinGitignoreUpdateFailedError: (error) =>
+      localStateWriteFailedError(error, {
+        why: "The CLI could not update .gitignore to keep local Project binding state out of git.",
+        meta: {
+          gitignorePath: error.gitignorePath,
+          operation: error.operation,
+        },
+      }),
   });
 }
 
@@ -120,11 +137,16 @@ function localStateWriteFailedError(
     debug: formatDebugDetails(error.cause),
     meta: options.meta,
     exitCode: 1,
-    nextSteps: ["prisma-cli project link <id-or-name>", "prisma-cli app deploy --project <id-or-name>"],
+    nextSteps: [
+      "prisma-cli project link <id-or-name>",
+      "prisma-cli app deploy --project <id-or-name>",
+    ],
   });
 }
 
-export function toProjectSummary(project: Pick<ProjectCandidate, "id" | "name" | "url">): ProjectSummary {
+export function toProjectSummary(
+  project: Pick<ProjectCandidate, "id" | "name" | "url">,
+): ProjectSummary {
   return {
     id: project.id,
     name: project.name,
@@ -179,7 +201,10 @@ export function projectCreateFailedError(
   });
 }
 
-function formatSetupDirectory(directory: string, context: CommandContext): string {
+function formatSetupDirectory(
+  directory: string,
+  context: CommandContext,
+): string {
   // Binding can target an ancestor compute-config directory; a bare
   // basename would misread as a subdirectory of the invocation directory.
   if (path.resolve(directory) !== path.resolve(context.runtime.cwd)) {
@@ -195,7 +220,11 @@ function extractHttpStatus(error: unknown): number | null {
     return null;
   }
 
-  const candidate = error as { statusCode?: unknown; status?: unknown; message?: unknown };
+  const candidate = error as {
+    statusCode?: unknown;
+    status?: unknown;
+    message?: unknown;
+  };
   if (typeof candidate.statusCode === "number") {
     return candidate.statusCode;
   }

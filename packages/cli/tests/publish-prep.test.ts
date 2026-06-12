@@ -1,18 +1,24 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
-import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 import { describe, expect, it } from "vitest";
 
 // The script is exercised as a subprocess, exactly as CI invokes it. Tests
 // never import it: out-of-root shebang scripts break the Windows transform.
 const execFileAsync = promisify(execFile);
-const scriptPath = fileURLToPath(new URL("../../../scripts/prepare-cli-publish.mjs", import.meta.url));
+const scriptPath = fileURLToPath(
+  new URL("../../../scripts/prepare-cli-publish.mjs", import.meta.url),
+);
 
-async function stagePackage(options: { sourceDir: string; outputDir: string; publishVersion?: string }): Promise<string> {
+async function stagePackage(options: {
+  sourceDir: string;
+  outputDir: string;
+  publishVersion?: string;
+}): Promise<string> {
   const { stdout } = await execFileAsync(process.execPath, [
     scriptPath,
     options.outputDir,
@@ -42,7 +48,8 @@ describe("prepare cli publish", () => {
           name: "@prisma/cli",
           private: true,
           version: "3.0.0-development",
-          description: "Command-line interface for the Prisma Developer Platform.",
+          description:
+            "Command-line interface for the Prisma Developer Platform.",
           type: "module",
           exports: {
             "./package.json": "./package.json",
@@ -70,11 +77,21 @@ describe("prepare cli publish", () => {
       ),
       "utf8",
     );
-    await writeFile(path.join(sourceDir, "README.md"), "# Test package\n", "utf8");
-    await writeFile(path.join(sourceDir, "dist/cli.js"), "#!/usr/bin/env node\nconsole.log('ok')\n", "utf8");
+    await writeFile(
+      path.join(sourceDir, "README.md"),
+      "# Test package\n",
+      "utf8",
+    );
+    await writeFile(
+      path.join(sourceDir, "dist/cli.js"),
+      "#!/usr/bin/env node\nconsole.log('ok')\n",
+      "utf8",
+    );
 
     const stagedPath = await stagePackage({ sourceDir, outputDir });
-    const manifest = JSON.parse(await readFile(path.join(stagedPath, "package.json"), "utf8"));
+    const manifest = JSON.parse(
+      await readFile(path.join(stagedPath, "package.json"), "utf8"),
+    );
 
     expect(stagedPath).toBe(outputDir);
     expect(manifest).toEqual({
@@ -126,7 +143,8 @@ describe("prepare cli publish", () => {
         {
           name: "@prisma/cli",
           version: "3.0.0-development",
-          description: "Command-line interface for the Prisma Developer Platform.",
+          description:
+            "Command-line interface for the Prisma Developer Platform.",
           type: "module",
           dependencies: {},
         },
@@ -135,15 +153,25 @@ describe("prepare cli publish", () => {
       ),
       "utf8",
     );
-    await writeFile(path.join(sourceDir, "README.md"), "# Test package\n", "utf8");
-    await writeFile(path.join(sourceDir, "dist/cli.js"), "#!/usr/bin/env node\nconsole.log('ok')\n", "utf8");
+    await writeFile(
+      path.join(sourceDir, "README.md"),
+      "# Test package\n",
+      "utf8",
+    );
+    await writeFile(
+      path.join(sourceDir, "dist/cli.js"),
+      "#!/usr/bin/env node\nconsole.log('ok')\n",
+      "utf8",
+    );
 
     const stagedPath = await stagePackage({
       sourceDir,
       outputDir,
       publishVersion: "3.0.0-beta.0",
     });
-    const manifest = JSON.parse(await readFile(path.join(stagedPath, "package.json"), "utf8"));
+    const manifest = JSON.parse(
+      await readFile(path.join(stagedPath, "package.json"), "utf8"),
+    );
 
     expect(manifest.version).toBe("3.0.0-beta.0");
   });
@@ -164,7 +192,8 @@ describe("prepare cli publish", () => {
         {
           name: "@prisma/cli",
           version: "3.0.0-development",
-          description: "Command-line interface for the Prisma Developer Platform.",
+          description:
+            "Command-line interface for the Prisma Developer Platform.",
           type: "module",
           dependencies: {},
         },
@@ -173,17 +202,38 @@ describe("prepare cli publish", () => {
       ),
       "utf8",
     );
-    await writeFile(path.join(sourceDir, "README.md"), "# Test package\n", "utf8");
-    await writeFile(path.join(sourceDir, "dist/cli.js"), "#!/usr/bin/env node\nconsole.log('ok')\n", "utf8");
+    await writeFile(
+      path.join(sourceDir, "README.md"),
+      "# Test package\n",
+      "utf8",
+    );
+    await writeFile(
+      path.join(sourceDir, "dist/cli.js"),
+      "#!/usr/bin/env node\nconsole.log('ok')\n",
+      "utf8",
+    );
     await writeFile(path.join(sourceDir, "src/cli.ts"), "export {}\n", "utf8");
-    await writeFile(path.join(sourceDir, "tests/cli.test.ts"), "export {}\n", "utf8");
-    await writeFile(path.join(sourceDir, "fixtures/mock-api.json"), "{}\n", "utf8");
+    await writeFile(
+      path.join(sourceDir, "tests/cli.test.ts"),
+      "export {}\n",
+      "utf8",
+    );
+    await writeFile(
+      path.join(sourceDir, "fixtures/mock-api.json"),
+      "{}\n",
+      "utf8",
+    );
 
     const stagedPath = await stagePackage({ sourceDir, outputDir });
     const topLevelFiles = await readdir(stagedPath);
     const distFiles = await readdir(path.join(stagedPath, "dist"));
 
-    expect(topLevelFiles.sort()).toEqual(["LICENSE", "README.md", "dist", "package.json"]);
+    expect(topLevelFiles.sort()).toEqual([
+      "LICENSE",
+      "README.md",
+      "dist",
+      "package.json",
+    ]);
     expect(distFiles).toEqual(["cli.js"]);
   });
 });

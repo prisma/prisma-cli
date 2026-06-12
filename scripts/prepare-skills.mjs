@@ -9,7 +9,16 @@ if (process.env.CI) {
 
 const result = spawnSync(
   "skills",
-  ["add", "./skills", "--skill", "*", "--agent", "universal", "claude-code", "-y"],
+  [
+    "add",
+    "./skills",
+    "--skill",
+    "*",
+    "--agent",
+    "universal",
+    "claude-code",
+    "-y",
+  ],
   { stdio: "inherit", shell: process.platform === "win32" },
 );
 process.exit(result.status ?? 1);

@@ -19,21 +19,40 @@ export function renderCommandDiagnostics(
   const { env } = context.runtime;
   const git = diagnostics.git;
 
-  return renderVerboseBlock(context.ui, [
-    ...rows,
-    ...(diagnostics.durationMs === undefined
-      ? []
-      : [{ key: "duration", value: formatDuration(diagnostics.durationMs) }]),
-    { key: "cwd", value: formatLocalPath(diagnostics.cwd, env) },
-    { key: "state file", value: formatLocalPath(diagnostics.stateFilePath, env) },
-    ...(git
-      ? [
-          { key: "git ref", value: git.ref ?? "detached", tone: git.ref ? "default" as const : "dim" as const },
-          { key: "git sha", value: git.sha ?? "unknown", tone: git.sha ? "default" as const : "dim" as const },
-          { key: "git dirty", value: formatDirtyState(git.dirty), tone: git.dirty ? "warning" as const : "dim" as const },
-        ]
-      : [{ key: "git", value: "not detected", tone: "dim" as const }]),
-  ], { title: options.title ?? "Local context" });
+  return renderVerboseBlock(
+    context.ui,
+    [
+      ...rows,
+      ...(diagnostics.durationMs === undefined
+        ? []
+        : [{ key: "duration", value: formatDuration(diagnostics.durationMs) }]),
+      { key: "cwd", value: formatLocalPath(diagnostics.cwd, env) },
+      {
+        key: "state file",
+        value: formatLocalPath(diagnostics.stateFilePath, env),
+      },
+      ...(git
+        ? [
+            {
+              key: "git ref",
+              value: git.ref ?? "detached",
+              tone: git.ref ? ("default" as const) : ("dim" as const),
+            },
+            {
+              key: "git sha",
+              value: git.sha ?? "unknown",
+              tone: git.sha ? ("default" as const) : ("dim" as const),
+            },
+            {
+              key: "git dirty",
+              value: formatDirtyState(git.dirty),
+              tone: git.dirty ? ("warning" as const) : ("dim" as const),
+            },
+          ]
+        : [{ key: "git", value: "not detected", tone: "dim" as const }]),
+    ],
+    { title: options.title ?? "Local context" },
+  );
 }
 
 export function formatLocalPath(value: string, env: NodeJS.ProcessEnv): string {

@@ -1,25 +1,37 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: API pagination loops are intentionally sequential.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
 import {
+  type EnvScope,
+  type EnvVarRole,
   formatScopeLabel,
   parseKeyValuePositional,
   resolveEnvScope,
-  type EnvScope,
-  type EnvVarRole,
 } from "../lib/app/env-config";
-import { readEnvFileAssignments, type EnvFileAssignment } from "../lib/app/env-file";
+import {
+  type EnvFileAssignment,
+  readEnvFileAssignments,
+} from "../lib/app/env-file";
 import { requireComputeAuth } from "../lib/auth/guard";
 import { readLocalGitBranch } from "../lib/git/local-branch";
-import { authRequiredError, CliError, usageError, workspaceRequiredError } from "../shell/errors";
+import {
+  projectResolutionErrorToCliError,
+  resolveProjectTarget,
+} from "../lib/project/resolution";
+import {
+  authRequiredError,
+  CliError,
+  usageError,
+  workspaceRequiredError,
+} from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
 import type { CommandContext } from "../shell/runtime";
-import { projectResolutionErrorToCliError, resolveProjectTarget } from "../lib/project/resolution";
 import type {
   EnvAddResult,
-  EnvListTarget,
   EnvListResult,
-  EnvRmResult,
+  EnvListTarget,
   EnvResolvedContext,
+  EnvRmResult,
   EnvScopeDescriptor,
   EnvUpdateResult,
 } from "../types/app-env";
@@ -81,7 +93,10 @@ export async function runEnvAdd(
   flags: EnvCommandFlags,
 ): Promise<CommandSuccess<EnvAddResult>> {
   const source = resolveEnvWriteSource(rawAssignment, flags.filePath, "add");
-  const scope = resolveEnvScope(flags, { requireExplicit: true, command: "add" });
+  const scope = resolveEnvScope(flags, {
+    requireExplicit: true,
+    command: "add",
+  });
   if (!scope) {
     throw usageError(
       `prisma-cli project env add requires --role or --branch`,
@@ -93,17 +108,35 @@ export async function runEnvAdd(
   }
 
   const input = await resolveEnvWriteInput(context, source, "add");
-  const { client, projectId, verboseContext } = await requireClientAndProject(context, flags.projectRef, "project env add");
+  const { client, projectId, verboseContext } = await requireClientAndProject(
+    context,
+    flags.projectRef,
+    "project env add",
+  );
   const resolved = await resolveScopeToApi(client, projectId, scope, {
     createBranchIfMissing: true,
     signal: context.runtime.signal,
   });
 
   if (input.kind === "file") {
-    return runEnvAddFile(context, client, projectId, resolved, input.filePath, input.assignments, verboseContext);
+    return runEnvAddFile(
+      context,
+      client,
+      projectId,
+      resolved,
+      input.filePath,
+      input.assignments,
+      verboseContext,
+    );
   }
 
-  const existing = await findVariableByNaturalKey(client, projectId, input.key, resolved, context.runtime.signal);
+  const existing = await findVariableByNaturalKey(
+    client,
+    projectId,
+    input.key,
+    resolved,
+    context.runtime.signal,
+  );
 
   if (existing) {
     throw new CliError({
@@ -121,10 +154,16 @@ export async function runEnvAdd(
 
   const warnings =
     scope.kind === "branch" &&
-    !(await findVariableByNaturalKey(client, projectId, input.key, {
-      descriptor: { kind: "role", role: "preview" },
-      apiTarget: { class: "preview", branchId: null },
-    }, context.runtime.signal))
+    !(await findVariableByNaturalKey(
+      client,
+      projectId,
+      input.key,
+      {
+        descriptor: { kind: "role", role: "preview" },
+        apiTarget: { class: "preview", branchId: null },
+      },
+      context.runtime.signal,
+    ))
       ? [
           `Variable "${input.key}" does not exist in preview. It will only exist on ${formatScopeLabel(scope)}.`,
         ]
@@ -137,8 +176,8 @@ export async function runEnvAdd(
         projectId,
         class: resolved.apiTarget.class,
         ...(resolved.apiTarget.branchId !== null
-            ? { branchId: resolved.apiTarget.branchId }
-            : {}),
+          ? { branchId: resolved.apiTarget.branchId }
+          : {}),
         key: input.key,
         value: input.value,
       },
@@ -155,7 +194,10 @@ export async function runEnvAdd(
       projectId,
       verboseContext,
       scope: resolved.descriptor,
-      variable: toMetadata(data.data as RawEnvironmentVariable, resolved.descriptor),
+      variable: toMetadata(
+        data.data as RawEnvironmentVariable,
+        resolved.descriptor,
+      ),
     },
     warnings,
     nextSteps: [],
@@ -168,7 +210,10 @@ export async function runEnvUpdate(
   flags: EnvCommandFlags,
 ): Promise<CommandSuccess<EnvUpdateResult>> {
   const source = resolveEnvWriteSource(rawAssignment, flags.filePath, "update");
-  const scope = resolveEnvScope(flags, { requireExplicit: true, command: "update" });
+  const scope = resolveEnvScope(flags, {
+    requireExplicit: true,
+    command: "update",
+  });
   if (!scope) {
     throw usageError(
       `prisma-cli project env update requires --role or --branch`,
@@ -180,17 +225,35 @@ export async function runEnvUpdate(
   }
 
   const input = await resolveEnvWriteInput(context, source, "update");
-  const { client, projectId, verboseContext } = await requireClientAndProject(context, flags.projectRef, "project env update");
+  const { client, projectId, verboseContext } = await requireClientAndProject(
+    context,
+    flags.projectRef,
+    "project env update",
+  );
   const resolved = await resolveScopeToApi(client, projectId, scope, {
     createBranchIfMissing: false,
     signal: context.runtime.signal,
   });
 
   if (input.kind === "file") {
-    return runEnvUpdateFile(context, client, projectId, resolved, input.filePath, input.assignments, verboseContext);
+    return runEnvUpdateFile(
+      context,
+      client,
+      projectId,
+      resolved,
+      input.filePath,
+      input.assignments,
+      verboseContext,
+    );
   }
 
-  const existing = await findVariableByNaturalKey(client, projectId, input.key, resolved, context.runtime.signal);
+  const existing = await findVariableByNaturalKey(
+    client,
+    projectId,
+    input.key,
+    resolved,
+    context.runtime.signal,
+  );
 
   if (!existing) {
     throw new CliError({
@@ -215,7 +278,11 @@ export async function runEnvUpdate(
     },
   );
   if (error || !data) {
-    throw apiCallError(`Failed to update value for ${input.key}`, response, error);
+    throw apiCallError(
+      `Failed to update value for ${input.key}`,
+      response,
+      error,
+    );
   }
 
   return {
@@ -224,7 +291,10 @@ export async function runEnvUpdate(
       projectId,
       verboseContext,
       scope: resolved.descriptor,
-      variable: toMetadata(data.data as RawEnvironmentVariable, resolved.descriptor),
+      variable: toMetadata(
+        data.data as RawEnvironmentVariable,
+        resolved.descriptor,
+      ),
     },
     warnings: [],
     nextSteps: [],
@@ -287,13 +357,21 @@ async function resolveEnvWriteInput(
     return {
       kind: "file",
       filePath: source.filePath,
-      assignments: await readEnvFileAssignments(context.runtime.cwd, source.filePath, command),
+      assignments: await readEnvFileAssignments(
+        context.runtime.cwd,
+        source.filePath,
+        command,
+      ),
     };
   }
 
   return {
     kind: "single",
-    ...parseKeyValuePositional(source.rawAssignment, command, context.runtime.env),
+    ...parseKeyValuePositional(
+      source.rawAssignment,
+      command,
+      context.runtime.env,
+    ),
   };
 }
 
@@ -301,20 +379,38 @@ export async function runEnvList(
   context: CommandContext,
   flags: EnvCommandFlags,
 ): Promise<CommandSuccess<EnvListResult>> {
-  const explicit = resolveEnvScope(flags, { requireExplicit: false, command: "list" });
-
-  const { client, projectId, verboseContext } = await requireClientAndProject(context, flags.projectRef, "project env list");
-  const resolved = await resolveListScopeToApi(client, projectId, explicit ?? undefined, {
-    cwd: context.runtime.cwd,
-    signal: context.runtime.signal,
+  const explicit = resolveEnvScope(flags, {
+    requireExplicit: false,
+    command: "list",
   });
-  const variables = resolved.kind === "scoped"
-    ? await listVariables(client, projectId, {
-        scope: resolved.addScope,
-        descriptor: resolved.descriptor,
-        apiTarget: resolved.apiTarget,
-      }, context.runtime.signal)
-    : await listOverviewVariables(client, projectId, context.runtime.signal);
+
+  const { client, projectId, verboseContext } = await requireClientAndProject(
+    context,
+    flags.projectRef,
+    "project env list",
+  );
+  const resolved = await resolveListScopeToApi(
+    client,
+    projectId,
+    explicit ?? undefined,
+    {
+      cwd: context.runtime.cwd,
+      signal: context.runtime.signal,
+    },
+  );
+  const variables =
+    resolved.kind === "scoped"
+      ? await listVariables(
+          client,
+          projectId,
+          {
+            scope: resolved.addScope,
+            descriptor: resolved.descriptor,
+            apiTarget: resolved.apiTarget,
+          },
+          context.runtime.signal,
+        )
+      : await listOverviewVariables(client, projectId, context.runtime.signal);
 
   return {
     command: "project.env.list",
@@ -326,9 +422,12 @@ export async function runEnvList(
       variables: variables.map((row) => toMetadata(row, resolved.descriptor)),
     },
     warnings: [],
-    nextSteps: variables.length === 0
-      ? [`prisma-cli project env add KEY=value ${formatScopeFlag(resolved.addScope)}`]
-      : [],
+    nextSteps:
+      variables.length === 0
+        ? [
+            `prisma-cli project env add KEY=value ${formatScopeFlag(resolved.addScope)}`,
+          ]
+        : [],
   };
 }
 
@@ -347,7 +446,10 @@ export async function runEnvRemove(
     );
   }
 
-  const scope = resolveEnvScope(flags, { requireExplicit: true, command: "remove" });
+  const scope = resolveEnvScope(flags, {
+    requireExplicit: true,
+    command: "remove",
+  });
   if (!scope) {
     throw usageError(
       "prisma-cli project env remove requires --role or --branch",
@@ -358,12 +460,22 @@ export async function runEnvRemove(
     );
   }
 
-  const { client, projectId, verboseContext } = await requireClientAndProject(context, flags.projectRef, "project env remove");
+  const { client, projectId, verboseContext } = await requireClientAndProject(
+    context,
+    flags.projectRef,
+    "project env remove",
+  );
   const resolved = await resolveScopeToApi(client, projectId, scope, {
     createBranchIfMissing: false,
     signal: context.runtime.signal,
   });
-  const existing = await findVariableByNaturalKey(client, projectId, key, resolved, context.runtime.signal);
+  const existing = await findVariableByNaturalKey(
+    client,
+    projectId,
+    key,
+    resolved,
+    context.runtime.signal,
+  );
   if (!existing) {
     throw new CliError({
       code: "ENV_VARIABLE_NOT_FOUND",
@@ -372,9 +484,7 @@ export async function runEnvRemove(
       why: "No variable with this key exists in the targeted scope, so there is nothing to remove.",
       fix: "Run prisma-cli project env list with the same scope to see the available variables.",
       exitCode: 1,
-      nextSteps: [
-        `prisma-cli project env list ${formatScopeFlag(scope)}`,
-      ],
+      nextSteps: [`prisma-cli project env list ${formatScopeFlag(scope)}`],
     });
   }
 
@@ -406,21 +516,30 @@ async function requireClientAndProject(
   context: CommandContext,
   explicitProject: string | undefined,
   commandName: string,
-): Promise<{ client: ManagementApiClient; projectId: string; verboseContext: EnvResolvedContext }> {
+): Promise<{
+  client: ManagementApiClient;
+  projectId: string;
+  verboseContext: EnvResolvedContext;
+}> {
   const authState = await requireAuthenticatedAuthState(context);
-  const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
+  const client = await requireComputeAuth(
+    context.runtime.env,
+    context.runtime.signal,
+  );
   if (!client) {
     throw authRequiredError(["prisma-cli auth login"]);
   }
-  if (!authState.workspace) {
+  const workspace = authState.workspace;
+  if (!workspace) {
     throw workspaceRequiredError();
   }
 
   const targetResult = await resolveProjectTarget({
     context,
-    workspace: authState.workspace,
+    workspace,
     explicitProject,
-    listProjects: () => listRealWorkspaceProjects(client, authState.workspace!, context.runtime.signal),
+    listProjects: () =>
+      listRealWorkspaceProjects(client, workspace, context.runtime.signal),
     commandName,
   });
   if (targetResult.isErr()) {
@@ -432,7 +551,7 @@ async function requireClientAndProject(
     client,
     projectId: target.project.id,
     verboseContext: {
-      workspace: authState.workspace,
+      workspace,
       project: target.project,
       resolution: target.resolution,
     },
@@ -454,8 +573,18 @@ async function resolveScopeToApi(
   }
 
   const branch = options.createBranchIfMissing
-    ? await resolveOrCreateBranch(client, projectId, scope.branchName, options.signal)
-    : await resolveExistingBranch(client, projectId, scope.branchName, options.signal);
+    ? await resolveOrCreateBranch(
+        client,
+        projectId,
+        scope.branchName,
+        options.signal,
+      )
+    : await resolveExistingBranch(
+        client,
+        projectId,
+        scope.branchName,
+        options.signal,
+      );
 
   if (branch.role === "production") {
     throw new CliError({
@@ -502,7 +631,9 @@ async function resolveListScopeToApi(
 
   const gitBranch = await readLocalGitBranch(options.cwd, options.signal);
   if (gitBranch) {
-    const branch = (await listBranchesByName(client, projectId, gitBranch, options.signal))[0];
+    const branch = (
+      await listBranchesByName(client, projectId, gitBranch, options.signal)
+    )[0];
     if (!branch) {
       return {
         kind: "scoped",
@@ -615,7 +746,11 @@ async function listBranchesByName(
     },
   );
   if (error || !data) {
-    throw apiCallError(`Failed to resolve branch "${branchName}"`, response, error);
+    throw apiCallError(
+      `Failed to resolve branch "${branchName}"`,
+      response,
+      error,
+    );
   }
 
   return data.data as RawBranchRecord[];
@@ -627,7 +762,9 @@ async function resolveExistingBranch(
   branchName: string,
   signal: AbortSignal,
 ): Promise<RawBranchRecord> {
-  const branch = (await listBranchesByName(client, projectId, branchName, signal))[0];
+  const branch = (
+    await listBranchesByName(client, projectId, branchName, signal)
+  )[0];
   if (!branch) {
     throw new CliError({
       code: "ENV_BRANCH_NOT_FOUND",
@@ -636,7 +773,9 @@ async function resolveExistingBranch(
       why: "Branch update, list, and remove commands only target existing preview branches.",
       fix: "Create the branch by deploying it, or use `project env add --branch` to create its first override.",
       exitCode: 1,
-      nextSteps: [`prisma-cli project env add KEY=value --branch ${branchName}`],
+      nextSteps: [
+        `prisma-cli project env add KEY=value --branch ${branchName}`,
+      ],
     });
   }
   return branch;
@@ -648,7 +787,9 @@ async function resolveOrCreateBranch(
   branchName: string,
   signal: AbortSignal,
 ): Promise<RawBranchRecord> {
-  const existing = (await listBranchesByName(client, projectId, branchName, signal))[0];
+  const existing = (
+    await listBranchesByName(client, projectId, branchName, signal)
+  )[0];
   if (existing) {
     return existing;
   }
@@ -675,13 +816,19 @@ async function resolveOrCreateBranch(
   );
   if (error || !data) {
     if (response?.status === 409) {
-      const raced = (await listBranchesByName(client, projectId, branchName, signal))[0];
+      const raced = (
+        await listBranchesByName(client, projectId, branchName, signal)
+      )[0];
       if (raced) {
         return raced;
       }
     }
 
-    throw apiCallError(`Failed to create branch "${branchName}"`, response, error);
+    throw apiCallError(
+      `Failed to create branch "${branchName}"`,
+      response,
+      error,
+    );
   }
 
   return data.data as RawBranchRecord;
@@ -701,21 +848,24 @@ async function projectHasDefaultBranch(
       query.cursor = cursor;
     }
 
-    const result = await client.GET(
-      "/v1/projects/{projectId}/branches",
-      {
-        params: {
-          path: { projectId },
-          query,
-        },
-        signal,
+    const result = await client.GET("/v1/projects/{projectId}/branches", {
+      params: {
+        path: { projectId },
+        query,
       },
-    );
+      signal,
+    });
     if (result.error || !result.data) {
-      throw apiCallError("Failed to check project default branch", result.response, result.error);
+      throw apiCallError(
+        "Failed to check project default branch",
+        result.response,
+        result.error,
+      );
     }
 
-    if ((result.data.data as RawBranchRecord[]).some((branch) => branch.isDefault)) {
+    if (
+      (result.data.data as RawBranchRecord[]).some((branch) => branch.isDefault)
+    ) {
       return true;
     }
 
@@ -732,10 +882,15 @@ async function listVariables(
   resolved: ResolvedScope,
   signal: AbortSignal,
 ): Promise<RawEnvironmentVariable[]> {
-  const collected = await collectEnvironmentVariables(client, projectId, signal, {
-    className: resolved.apiTarget.class,
-    filter: (row) => rowMatchesScope(row, resolved),
-  });
+  const collected = await collectEnvironmentVariables(
+    client,
+    projectId,
+    signal,
+    {
+      className: resolved.apiTarget.class,
+      filter: (row) => rowMatchesScope(row, resolved),
+    },
+  );
 
   return materializeEffectiveRows(collected, resolved);
 }
@@ -745,10 +900,16 @@ async function listOverviewVariables(
   projectId: string,
   signal: AbortSignal,
 ): Promise<RawEnvironmentVariable[]> {
-  const collected = await collectEnvironmentVariables(client, projectId, signal, {
-    filter: (row) =>
-      row.branchId === null && (row.class === "production" || row.class === "preview"),
-  });
+  const collected = await collectEnvironmentVariables(
+    client,
+    projectId,
+    signal,
+    {
+      filter: (row) =>
+        row.branchId === null &&
+        (row.class === "production" || row.class === "preview"),
+    },
+  );
 
   return collected.sort((left, right) => {
     const roleOrder = roleSortOrder(left.class) - roleSortOrder(right.class);
@@ -790,7 +951,9 @@ async function collectEnvironmentVariables(
       );
     }
 
-    const page = (result.data.data as RawEnvironmentVariable[]).filter(options.filter);
+    const page = (result.data.data as RawEnvironmentVariable[]).filter(
+      options.filter,
+    );
     collected.push(...page);
 
     if (!result.data.pagination.hasMore || !result.data.pagination.nextCursor) {
@@ -841,5 +1004,7 @@ function materializeEffectiveRows(
     }
   }
 
-  return [...byKey.values()].sort((left, right) => left.key.localeCompare(right.key));
+  return [...byKey.values()].sort((left, right) =>
+    left.key.localeCompare(right.key),
+  );
 }

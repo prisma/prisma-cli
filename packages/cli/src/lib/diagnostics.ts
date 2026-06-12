@@ -1,5 +1,5 @@
 import { resolveLocalStateFilePath } from "../adapters/local-state";
-import { resolveStateDir, type CommandContext } from "../shell/runtime";
+import { type CommandContext, resolveStateDir } from "../shell/runtime";
 import type { CommandDiagnostics } from "../types/diagnostics";
 import { readLocalGitState } from "./git/local-status";
 

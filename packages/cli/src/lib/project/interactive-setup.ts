@@ -1,8 +1,15 @@
-import type { ProjectSetupSuggestion, ProjectSummary } from "../../types/project";
 import { usageError } from "../../shell/errors";
 import { selectPrompt, textPrompt } from "../../shell/prompt";
 import type { CommandContext } from "../../shell/runtime";
-import { inferTargetName, sortProjects, type ProjectCandidate } from "./resolution";
+import type {
+  ProjectSetupSuggestion,
+  ProjectSummary,
+} from "../../types/project";
+import {
+  inferTargetName,
+  type ProjectCandidate,
+  sortProjects,
+} from "./resolution";
 import { toProjectSummary, validateProjectSetupNameText } from "./setup";
 
 type InteractiveProjectSetupChoice =
@@ -14,7 +21,9 @@ export interface InteractiveProjectSetupResult {
   project: ProjectSummary;
   action: "linked" | "created";
   targetName: string;
-  targetNameSource: "prompt" | ProjectSetupSuggestion["suggestedProjectNameSource"];
+  targetNameSource:
+    | "prompt"
+    | ProjectSetupSuggestion["suggestedProjectNameSource"];
 }
 
 export async function promptForProjectSetupChoice(options: {
@@ -38,7 +47,9 @@ export async function promptForProjectSetupChoice(options: {
     message: "Which Project should this directory use?",
     choices: [
       ...sortedProjects.map((project) => ({
-        label: duplicateNames.has(project.name) ? `${project.name} (${project.id})` : project.name,
+        label: duplicateNames.has(project.name)
+          ? `${project.name} (${project.id})`
+          : project.name,
         value: { kind: "project" as const, project },
       })),
       { label: "Create a new Project", value: { kind: "create" as const } },
@@ -65,13 +76,17 @@ export async function promptForProjectSetupChoice(options: {
     };
   }
 
-  const suggestedName = await inferTargetName(options.context.runtime.cwd, options.context.runtime.signal);
+  const suggestedName = await inferTargetName(
+    options.context.runtime.cwd,
+    options.context.runtime.signal,
+  );
   const rawName = await textPrompt({
     input: options.context.runtime.stdin,
     output: options.context.runtime.stderr,
     message: "Project name",
     placeholder: suggestedName.name,
-    validate: (value) => validateProjectSetupNameText(value, suggestedName.name),
+    validate: (value) =>
+      validateProjectSetupNameText(value, suggestedName.name),
   });
   const projectName = rawName.trim() || suggestedName.name;
   const created = await options.createProject(projectName);

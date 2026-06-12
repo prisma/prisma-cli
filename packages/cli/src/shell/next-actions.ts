@@ -1,6 +1,14 @@
-export type NextActionKind = "run-command" | "user-choice" | "edit-file" | "done";
+export type NextActionKind =
+  | "run-command"
+  | "user-choice"
+  | "edit-file"
+  | "done";
 
-export type NextActionJourney = "project-setup" | "deploy-app" | "inspect" | "recover";
+export type NextActionJourney =
+  | "project-setup"
+  | "deploy-app"
+  | "inspect"
+  | "recover";
 
 export interface NextAction {
   kind: NextActionKind;

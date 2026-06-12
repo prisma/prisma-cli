@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// biome-ignore-all lint/performance/useTopLevelRegex: Release script regexes are kept inline for readability.
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -82,18 +83,22 @@ function main() {
   const options = parseOptions(args);
 
   if (command === "dev") {
-    process.stdout.write(`version=${resolveDevVersion({
-      runNumber: options["run-number"],
-      runAttempt: options["run-attempt"],
-    })}\n`);
+    process.stdout.write(
+      `version=${resolveDevVersion({
+        runNumber: options["run-number"],
+        runAttempt: options["run-attempt"],
+      })}\n`,
+    );
     return;
   }
 
   if (command === "pr") {
-    process.stdout.write(`version=${resolvePrVersion({
-      prNumber: options["pr-number"],
-      sha: options.sha,
-    })}\n`);
+    process.stdout.write(
+      `version=${resolvePrVersion({
+        prNumber: options["pr-number"],
+        sha: options.sha,
+      })}\n`,
+    );
     return;
   }
 
@@ -104,10 +109,15 @@ function main() {
     return;
   }
 
-  throw new Error("Usage: resolve-cli-version.mjs <dev|pr|next-beta> [options]");
+  throw new Error(
+    "Usage: resolve-cli-version.mjs <dev|pr|next-beta> [options]",
+  );
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+) {
   try {
     main();
   } catch (error) {

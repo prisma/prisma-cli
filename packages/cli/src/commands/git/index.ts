@@ -1,15 +1,24 @@
 import { Command } from "commander";
 
 import { runGitConnect, runGitDisconnect } from "../../controllers/project";
-import { renderGitConnect, renderGitDisconnect } from "../../presenters/project";
-import { runCommand } from "../../shell/command-runner";
+import {
+  renderGitConnect,
+  renderGitDisconnect,
+} from "../../presenters/project";
 import { attachCommandDescriptor } from "../../shell/command-meta";
-import { addCompactGlobalFlags, addGlobalFlags } from "../../shell/global-flags";
-import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
+import { runCommand } from "../../shell/command-runner";
+import {
+  addCompactGlobalFlags,
+  addGlobalFlags,
+} from "../../shell/global-flags";
+import { type CliRuntime, configureRuntimeCommand } from "../../shell/runtime";
 import type { ProjectRepositoryConnectionResult } from "../../types/project";
 
 export function createGitCommand(runtime: CliRuntime): Command {
-  const git = attachCommandDescriptor(configureRuntimeCommand(new Command("git"), runtime), "git");
+  const git = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("git"), runtime),
+    "git",
+  );
 
   addCompactGlobalFlags(git);
 
@@ -20,7 +29,10 @@ export function createGitCommand(runtime: CliRuntime): Command {
 }
 
 function createGitConnectCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("connect"), runtime), "git.connect");
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("connect"), runtime),
+    "git.connect",
+  );
 
   command.argument("[git-url]", "GitHub repository URL");
   command.option("--project <id-or-name>", "Project id or name");
@@ -31,11 +43,14 @@ function createGitConnectCommand(runtime: CliRuntime): Command {
       runtime,
       "git.connect",
       options as Record<string, unknown>,
-      (context) => runGitConnect(context, gitUrl, {
-        project: typeof options.project === "string" ? options.project : undefined,
-      }),
+      (context) =>
+        runGitConnect(context, gitUrl, {
+          project:
+            typeof options.project === "string" ? options.project : undefined,
+        }),
       {
-        renderHuman: (context, descriptor, result) => renderGitConnect(context, descriptor, result),
+        renderHuman: (context, descriptor, result) =>
+          renderGitConnect(context, descriptor, result),
       },
     );
   });
@@ -44,7 +59,10 @@ function createGitConnectCommand(runtime: CliRuntime): Command {
 }
 
 function createGitDisconnectCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("disconnect"), runtime), "git.disconnect");
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("disconnect"), runtime),
+    "git.disconnect",
+  );
 
   command.option("--project <id-or-name>", "Project id or name");
   addGlobalFlags(command);
@@ -54,11 +72,14 @@ function createGitDisconnectCommand(runtime: CliRuntime): Command {
       runtime,
       "git.disconnect",
       options as Record<string, unknown>,
-      (context) => runGitDisconnect(context, {
-        project: typeof options.project === "string" ? options.project : undefined,
-      }),
+      (context) =>
+        runGitDisconnect(context, {
+          project:
+            typeof options.project === "string" ? options.project : undefined,
+        }),
       {
-        renderHuman: (context, descriptor, result) => renderGitDisconnect(context, descriptor, result),
+        renderHuman: (context, descriptor, result) =>
+          renderGitDisconnect(context, descriptor, result),
       },
     );
   });

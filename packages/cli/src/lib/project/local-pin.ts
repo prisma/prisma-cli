@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/useTopLevelRegex: Existing local state text parsing regexes are kept inline for readability.
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -106,7 +107,10 @@ export class LocalResolutionPinWriteFailedError extends TaggedError(
   operation: "create-directory" | "write-temp-file" | "rename-temp-file";
   pinPath: string;
 }>() {
-  constructor(operation: "create-directory" | "write-temp-file" | "rename-temp-file", cause: unknown) {
+  constructor(
+    operation: "create-directory" | "write-temp-file" | "rename-temp-file",
+    cause: unknown,
+  ) {
     super({
       message: `Could not write ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH}.`,
       cause,
@@ -168,7 +172,9 @@ export async function readLocalResolutionPin(
 
     const file = yield* Result.await(readLocalResolutionPinFile(cwd, signal));
     if (file.kind === "missing") {
-      return Result.ok({ kind: "missing" } satisfies LocalResolutionPinReadResult);
+      return Result.ok({
+        kind: "missing",
+      } satisfies LocalResolutionPinReadResult);
     }
 
     const parsed = yield* parseLocalResolutionPin(file.raw);
@@ -183,7 +189,9 @@ export async function readLocalResolutionPin(
   });
 }
 
-function ensureLocalResolutionPinReadNotAborted(signal: AbortSignal | undefined): Result<void, LocalResolutionPinReadAbortedError> {
+function ensureLocalResolutionPinReadNotAborted(
+  signal: AbortSignal | undefined,
+): Result<void, LocalResolutionPinReadAbortedError> {
   return Result.try({
     try: () => signal?.throwIfAborted(),
     catch: (cause) => new LocalResolutionPinReadAbortedError(cause),
@@ -197,19 +205,28 @@ type LocalResolutionPinFileReadResult =
 async function readLocalResolutionPinFile(
   cwd: string,
   signal: AbortSignal | undefined,
-): Promise<Result<LocalResolutionPinFileReadResult, LocalResolutionPinReadAbortedError | UnhandledException>> {
+): Promise<
+  Result<
+    LocalResolutionPinFileReadResult,
+    LocalResolutionPinReadAbortedError | UnhandledException
+  >
+> {
   const readResult = await Result.tryPromise({
     try: () =>
       readFile(path.join(cwd, LOCAL_RESOLUTION_PIN_RELATIVE_PATH), {
         encoding: "utf8",
         signal,
       }),
-    catch: (cause) => signal?.aborted
-      ? new LocalResolutionPinReadAbortedError(cause)
-      : new UnhandledException({ cause }),
+    catch: (cause) =>
+      signal?.aborted
+        ? new LocalResolutionPinReadAbortedError(cause)
+        : new UnhandledException({ cause }),
   });
   if (readResult.isErr()) {
-    if (readResult.error instanceof UnhandledException && (readResult.error.cause as NodeJS.ErrnoException).code === "ENOENT") {
+    if (
+      readResult.error instanceof UnhandledException &&
+      (readResult.error.cause as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
       return Result.ok({ kind: "missing" });
     }
     return Result.err(readResult.error);
@@ -218,12 +235,15 @@ async function readLocalResolutionPinFile(
   return Result.ok({ kind: "present", raw: readResult.value });
 }
 
-function parseLocalResolutionPin(raw: string): Result<unknown, LocalResolutionPinInvalidJsonError | UnhandledException> {
+function parseLocalResolutionPin(
+  raw: string,
+): Result<unknown, LocalResolutionPinInvalidJsonError | UnhandledException> {
   return Result.try({
     try: () => JSON.parse(raw) as unknown,
-    catch: (cause) => cause instanceof SyntaxError
-      ? new LocalResolutionPinInvalidJsonError(cause)
-      : new UnhandledException({ cause }),
+    catch: (cause) =>
+      cause instanceof SyntaxError
+        ? new LocalResolutionPinInvalidJsonError(cause)
+        : new UnhandledException({ cause }),
   });
 }
 
@@ -236,29 +256,35 @@ export async function writeLocalResolutionPin(
     const prismaDir = path.join(cwd, ".prisma");
     yield* ensureLocalResolutionPinWriteNotAborted(signal);
     // mkdir does not accept AbortSignal; check before the filesystem boundary.
-    yield* Result.await(writeLocalResolutionPinBoundary(
-      () => mkdir(prismaDir, { recursive: true }),
-      "create-directory",
-      signal,
-    ));
+    yield* Result.await(
+      writeLocalResolutionPinBoundary(
+        () => mkdir(prismaDir, { recursive: true }),
+        "create-directory",
+        signal,
+      ),
+    );
     const pinPath = path.join(cwd, LOCAL_RESOLUTION_PIN_RELATIVE_PATH);
     const tmpPath = path.join(
       prismaDir,
       `local.${process.pid}.${Date.now()}.tmp`,
     );
     const serialized = yield* serializeLocalResolutionPin(pin);
-    yield* Result.await(writeLocalResolutionPinBoundary(
-      () => writeFile(tmpPath, serialized, { encoding: "utf8", signal }),
-      "write-temp-file",
-      signal,
-    ));
+    yield* Result.await(
+      writeLocalResolutionPinBoundary(
+        () => writeFile(tmpPath, serialized, { encoding: "utf8", signal }),
+        "write-temp-file",
+        signal,
+      ),
+    );
     yield* ensureLocalResolutionPinWriteNotAborted(signal);
     // rename does not accept AbortSignal; check before the filesystem boundary.
-    yield* Result.await(writeLocalResolutionPinBoundary(
-      () => rename(tmpPath, pinPath),
-      "rename-temp-file",
-      signal,
-    ));
+    yield* Result.await(
+      writeLocalResolutionPinBoundary(
+        () => rename(tmpPath, pinPath),
+        "rename-temp-file",
+        signal,
+      ),
+    );
 
     return Result.ok(undefined);
   });
@@ -278,12 +304,17 @@ export async function ensureLocalResolutionPinGitignore(
 
   const existingResult = await Result.tryPromise({
     try: () => readFile(gitignorePath, { encoding: "utf8", signal }),
-    catch: (cause) => signal?.aborted
-      ? new LocalResolutionPinGitignoreUpdateAbortedError(cause)
-      : new LocalResolutionPinGitignoreUpdateFailedError("read", cause),
+    catch: (cause) =>
+      signal?.aborted
+        ? new LocalResolutionPinGitignoreUpdateAbortedError(cause)
+        : new LocalResolutionPinGitignoreUpdateFailedError("read", cause),
   });
   if (existingResult.isErr()) {
-    if (existingResult.error instanceof LocalResolutionPinGitignoreUpdateFailedError && (existingResult.error.cause as NodeJS.ErrnoException).code === "ENOENT") {
+    if (
+      existingResult.error instanceof
+        LocalResolutionPinGitignoreUpdateFailedError &&
+      (existingResult.error.cause as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
       existing = null;
     } else {
       return Result.err(existingResult.error);
@@ -293,7 +324,11 @@ export async function ensureLocalResolutionPinGitignore(
   }
 
   if (existing === null) {
-    return writeLocalResolutionPinGitignore(gitignorePath, ".prisma/\n", signal);
+    return writeLocalResolutionPinGitignore(
+      gitignorePath,
+      ".prisma/\n",
+      signal,
+    );
   }
 
   const hasPrismaIgnore = existing
@@ -310,14 +345,21 @@ export async function ensureLocalResolutionPinGitignore(
   return writeLocalResolutionPinGitignore(gitignorePath, next, signal);
 }
 
-function ensureLocalResolutionPinWriteNotAborted(signal: AbortSignal | undefined): Result<void, LocalResolutionPinWriteAbortedError> {
+function ensureLocalResolutionPinWriteNotAborted(
+  signal: AbortSignal | undefined,
+): Result<void, LocalResolutionPinWriteAbortedError> {
   return Result.try({
     try: () => signal?.throwIfAborted(),
     catch: (cause) => new LocalResolutionPinWriteAbortedError(cause),
   });
 }
 
-function serializeLocalResolutionPin(pin: LocalResolutionPin): Result<string, LocalResolutionPinSerializationError | LocalResolutionPinWriteAbortedError> {
+function serializeLocalResolutionPin(
+  pin: LocalResolutionPin,
+): Result<
+  string,
+  LocalResolutionPinSerializationError | LocalResolutionPinWriteAbortedError
+> {
   return Result.try({
     try: () => `${JSON.stringify(pin, null, 2)}\n`,
     catch: (cause) => new LocalResolutionPinSerializationError(cause),
@@ -328,18 +370,26 @@ function writeLocalResolutionPinBoundary(
   run: () => Promise<unknown>,
   operation: "create-directory" | "write-temp-file" | "rename-temp-file",
   signal: AbortSignal | undefined,
-): Promise<Result<void, LocalResolutionPinWriteAbortedError | LocalResolutionPinWriteFailedError>> {
+): Promise<
+  Result<
+    void,
+    LocalResolutionPinWriteAbortedError | LocalResolutionPinWriteFailedError
+  >
+> {
   return Result.tryPromise({
     try: async () => {
       await run();
     },
-    catch: (cause) => signal?.aborted
-      ? new LocalResolutionPinWriteAbortedError(cause)
-      : new LocalResolutionPinWriteFailedError(operation, cause),
+    catch: (cause) =>
+      signal?.aborted
+        ? new LocalResolutionPinWriteAbortedError(cause)
+        : new LocalResolutionPinWriteFailedError(operation, cause),
   });
 }
 
-function ensureLocalResolutionPinGitignoreUpdateNotAborted(signal: AbortSignal | undefined): Result<void, LocalResolutionPinGitignoreUpdateAbortedError> {
+function ensureLocalResolutionPinGitignoreUpdateNotAborted(
+  signal: AbortSignal | undefined,
+): Result<void, LocalResolutionPinGitignoreUpdateAbortedError> {
   return Result.try({
     try: () => signal?.throwIfAborted(),
     catch: (cause) => new LocalResolutionPinGitignoreUpdateAbortedError(cause),
@@ -350,12 +400,19 @@ function writeLocalResolutionPinGitignore(
   gitignorePath: string,
   contents: string,
   signal: AbortSignal | undefined,
-): Promise<Result<void, LocalResolutionPinGitignoreUpdateAbortedError | LocalResolutionPinGitignoreUpdateFailedError>> {
+): Promise<
+  Result<
+    void,
+    | LocalResolutionPinGitignoreUpdateAbortedError
+    | LocalResolutionPinGitignoreUpdateFailedError
+  >
+> {
   return Result.tryPromise({
     try: () => writeFile(gitignorePath, contents, { encoding: "utf8", signal }),
-    catch: (cause) => signal?.aborted
-      ? new LocalResolutionPinGitignoreUpdateAbortedError(cause)
-      : new LocalResolutionPinGitignoreUpdateFailedError("write", cause),
+    catch: (cause) =>
+      signal?.aborted
+        ? new LocalResolutionPinGitignoreUpdateAbortedError(cause)
+        : new LocalResolutionPinGitignoreUpdateFailedError("write", cause),
   });
 }
 

@@ -90,7 +90,9 @@ export function parseKeyValuePositional(
       `prisma-cli project env ${command} requires KEY=VALUE`,
       "No KEY=VALUE positional argument was supplied.",
       "Pass the variable as KEY=VALUE, e.g. STRIPE_KEY=sk_test_xxx.",
-      [`prisma-cli project env ${command} STRIPE_KEY=sk_test_xxx --role production`],
+      [
+        `prisma-cli project env ${command} STRIPE_KEY=sk_test_xxx --role production`,
+      ],
       "app",
     );
   }
@@ -120,7 +122,9 @@ export function parseKeyValuePositional(
       `KEY=VALUE argument is missing the = separator`,
       `"${raw}" does not contain an = character.`,
       "Pass the variable as KEY=VALUE, e.g. STRIPE_KEY=sk_test_xxx.",
-      [`prisma-cli project env ${command} STRIPE_KEY=sk_test_xxx --role production`],
+      [
+        `prisma-cli project env ${command} STRIPE_KEY=sk_test_xxx --role production`,
+      ],
       "app",
     );
   }
@@ -154,7 +158,9 @@ export function validateKey(
       `Variable key cannot be empty`,
       "An empty key was passed.",
       "Pass an env-var key, e.g. STRIPE_KEY.",
-      [`prisma-cli project env ${command} STRIPE_KEY${command === "remove" ? "" : "=value"} --role production`],
+      [
+        `prisma-cli project env ${command} STRIPE_KEY${command === "remove" ? "" : "=value"} --role production`,
+      ],
       "app",
     );
   }
@@ -174,7 +180,9 @@ export function validateKey(
       `Variable key "${key}" must match the POSIX env-var shape`,
       "Keys must start with an uppercase letter or underscore and contain only uppercase letters, digits, and underscores.",
       "Rename the key to match [A-Z_][A-Z0-9_]*.",
-      [`prisma-cli project env ${command} STRIPE_KEY${command === "remove" ? "" : "=value"} --role production`],
+      [
+        `prisma-cli project env ${command} STRIPE_KEY${command === "remove" ? "" : "=value"} --role production`,
+      ],
       "app",
     );
   }

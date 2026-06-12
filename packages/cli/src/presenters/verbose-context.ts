@@ -24,27 +24,42 @@ export function renderResolvedProjectContextBlock(
     return [];
   }
 
-  return renderVerboseBlock(ui, [
-    ...projectResolutionRows(context),
-    ...(options.extraRows ?? []),
-  ], { title: options.title ?? "Resolved context" });
+  return renderVerboseBlock(
+    ui,
+    [...projectResolutionRows(context), ...(options.extraRows ?? [])],
+    { title: options.title ?? "Resolved context" },
+  );
 }
 
-export function projectResolutionRows(context: ResolvedProjectContext): VerboseRow[] {
+export function projectResolutionRows(
+  context: ResolvedProjectContext,
+): VerboseRow[] {
   return [
     { key: "workspace", value: context.workspace.name },
     { key: "workspace id", value: context.workspace.id, tone: "dim" },
     { key: "project", value: context.project.name },
     { key: "project id", value: context.project.id, tone: "dim" },
-    { key: "project source", value: formatProjectSource(context.resolution.projectSource) },
+    {
+      key: "project source",
+      value: formatProjectSource(context.resolution.projectSource),
+    },
     ...(context.resolution.targetName
       ? [{ key: "target name", value: formatTargetName(context.resolution) }]
       : []),
     ...(context.branch
       ? [
-          { key: "branch", value: `${context.branch.name} (${context.branch.kind})` },
+          {
+            key: "branch",
+            value: `${context.branch.name} (${context.branch.kind})`,
+          },
           ...(context.branch.id
-            ? [{ key: "branch id", value: context.branch.id, tone: "dim" as const }]
+            ? [
+                {
+                  key: "branch id",
+                  value: context.branch.id,
+                  tone: "dim" as const,
+                },
+              ]
             : []),
         ]
       : []),
@@ -58,7 +73,9 @@ export function stripVerboseContext<T extends { verboseContext?: unknown }>(
   return serialized;
 }
 
-function formatProjectSource(source: ProjectResolution["projectSource"]): string {
+function formatProjectSource(
+  source: ProjectResolution["projectSource"],
+): string {
   switch (source) {
     case "explicit":
       return "--project";

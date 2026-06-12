@@ -1,16 +1,20 @@
 import { exec } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import {
+  type ConfigBackedBuildType,
+  sourceRootLineage,
+} from "@prisma/compute-sdk/config";
+import { type ASTNode, parseModule } from "magicast";
 
-import { parseModule, type ASTNode } from "magicast";
-
-import { sourceRootLineage, type ConfigBackedBuildType } from "@prisma/compute-sdk/config";
-
-import { readBunPackageJson, type BunPackageJsonLike } from "./bun-project";
+import { type BunPackageJsonLike, readBunPackageJson } from "./bun-project";
 import type { ResolvedPreviewBuildType } from "./preview-build";
 
 type PackageManager = "bun" | "pnpm" | "yarn" | "npm";
-export type PreviewBuildSettingsBuildType = Extract<ResolvedPreviewBuildType, ConfigBackedBuildType>;
+export type PreviewBuildSettingsBuildType = Extract<
+  ResolvedPreviewBuildType,
+  ConfigBackedBuildType
+>;
 
 /** Legacy build-settings file: no longer read or written, only detected for migration. */
 export const PRISMA_APP_CONFIG_FILENAME = "prisma.app.json";
@@ -45,7 +49,12 @@ export type LegacyBuildSettingsDetection =
   | { kind: "absent" }
   | { kind: "matching"; configPath: string }
   | { kind: "invalid"; configPath: string }
-  | { kind: "custom"; configPath: string; buildCommand: string | null; outputDirectory: string };
+  | {
+      kind: "custom";
+      configPath: string;
+      buildCommand: string | null;
+      outputDirectory: string;
+    };
 
 /**
  * Detects a leftover `prisma.app.json`. The file is no longer used: one that
@@ -62,7 +71,10 @@ export async function detectLegacyBuildSettings(options: {
   let content: string;
   try {
     options.signal?.throwIfAborted();
-    content = await readFile(configPath, { encoding: "utf8", signal: options.signal });
+    content = await readFile(configPath, {
+      encoding: "utf8",
+      signal: options.signal,
+    });
   } catch (error) {
     if (options.signal?.aborted) throw error;
     return { kind: "absent" };
@@ -71,12 +83,16 @@ export async function detectLegacyBuildSettings(options: {
   let legacy: { buildCommand: string | null; outputDirectory: string };
   try {
     const parsed = JSON.parse(content) as Record<string, unknown>;
-    const buildCommand = parsed.buildCommand === null || typeof parsed.buildCommand === "string"
-      ? (typeof parsed.buildCommand === "string" ? parsed.buildCommand.trim() || null : null)
-      : undefined;
-    const outputDirectory = typeof parsed.outputDirectory === "string"
-      ? normalizeRelativePath(parsed.outputDirectory)
-      : undefined;
+    const buildCommand =
+      parsed.buildCommand === null || typeof parsed.buildCommand === "string"
+        ? typeof parsed.buildCommand === "string"
+          ? parsed.buildCommand.trim() || null
+          : null
+        : undefined;
+    const outputDirectory =
+      typeof parsed.outputDirectory === "string"
+        ? normalizeRelativePath(parsed.outputDirectory)
+        : undefined;
     if (buildCommand === undefined || !outputDirectory) {
       return { kind: "invalid", configPath };
     }
@@ -85,8 +101,9 @@ export async function detectLegacyBuildSettings(options: {
     return { kind: "invalid", configPath };
   }
 
-  const matches = legacy.buildCommand === options.effective.buildCommand
-    && legacy.outputDirectory === options.effective.outputDirectory;
+  const matches =
+    legacy.buildCommand === options.effective.buildCommand &&
+    legacy.outputDirectory === options.effective.outputDirectory;
   return matches
     ? { kind: "matching", configPath }
     : { kind: "custom", configPath, ...legacy };
@@ -106,7 +123,6 @@ export async function resolveInferredPreviewBuildSettings(options: {
   };
 }
 
-
 /**
  * Resolves build settings when the compute config owns them: configured
  * fields win, omitted fields fall back to framework defaults.
@@ -124,22 +140,35 @@ export async function resolveConfiguredPreviewBuildSettings(options: {
 }): Promise<PreviewBuildSettingsResolution> {
   const configFilename = path.basename(options.configPath);
   const source = `set by ${configFilename}`;
-  const needsFallback = options.configured.command === undefined || options.configured.outputDirectory === undefined;
-  const fallback = needsFallback ? await resolvePreviewBuildSettings(options) : null;
+  const needsFallback =
+    options.configured.command === undefined ||
+    options.configured.outputDirectory === undefined;
+  const fallback = needsFallback
+    ? await resolvePreviewBuildSettings(options)
+    : null;
 
   return {
     status: "config",
     configPath: options.configPath,
     relativeConfigPath: configFilename,
     settings: {
-      buildCommand: options.configured.command !== undefined ? options.configured.command : fallback!.buildCommand,
-      buildCommandSource: options.configured.command !== undefined ? source : fallback!.buildCommandSource,
-      outputDirectory: options.configured.outputDirectory ?? fallback!.outputDirectory,
-      outputDirectorySource: options.configured.outputDirectory !== undefined ? source : fallback!.outputDirectorySource,
+      buildCommand:
+        options.configured.command !== undefined
+          ? options.configured.command
+          : fallback!.buildCommand,
+      buildCommandSource:
+        options.configured.command !== undefined
+          ? source
+          : fallback!.buildCommandSource,
+      outputDirectory:
+        options.configured.outputDirectory ?? fallback!.outputDirectory,
+      outputDirectorySource:
+        options.configured.outputDirectory !== undefined
+          ? source
+          : fallback!.outputDirectorySource,
     },
   };
 }
-
 
 export async function resolvePreviewBuildSettings(options: {
   appPath: string;
@@ -164,27 +193,45 @@ export async function resolvePreviewBuildSettings(options: {
         outputDirectorySource: "Astro output",
       };
     case "nextjs": {
-      const packageJson = await readBunPackageJson(options.appPath, options.signal);
-      const buildCommand = await resolveFrameworkBuildCommand(options.appPath, packageJson, {
-        command: "next build",
-        source: "Next.js default",
-        signal: options.signal,
-      });
-      const outputRoot = await resolveNextOutputRoot(options.appPath, options.signal);
+      const packageJson = await readBunPackageJson(
+        options.appPath,
+        options.signal,
+      );
+      const buildCommand = await resolveFrameworkBuildCommand(
+        options.appPath,
+        packageJson,
+        {
+          command: "next build",
+          source: "Next.js default",
+          signal: options.signal,
+        },
+      );
+      const outputRoot = await resolveNextOutputRoot(
+        options.appPath,
+        options.signal,
+      );
       return {
         buildCommand: buildCommand.command,
         buildCommandSource: buildCommand.source,
         outputDirectory: joinPosix(outputRoot, "standalone"),
-        outputDirectorySource: outputRoot === ".next" ? "Next.js output" : "next.config distDir",
+        outputDirectorySource:
+          outputRoot === ".next" ? "Next.js output" : "next.config distDir",
       };
     }
     case "tanstack-start": {
-      const packageJson = await readBunPackageJson(options.appPath, options.signal);
-      const buildCommand = await resolveFrameworkBuildCommand(options.appPath, packageJson, {
-        command: "vite build",
-        source: "TanStack Start default",
-        signal: options.signal,
-      });
+      const packageJson = await readBunPackageJson(
+        options.appPath,
+        options.signal,
+      );
+      const buildCommand = await resolveFrameworkBuildCommand(
+        options.appPath,
+        packageJson,
+        {
+          command: "vite build",
+          source: "TanStack Start default",
+          signal: options.signal,
+        },
+      );
       return {
         buildCommand: buildCommand.command,
         buildCommandSource: buildCommand.source,
@@ -193,12 +240,19 @@ export async function resolvePreviewBuildSettings(options: {
       };
     }
     case "bun": {
-      const packageJson = await readBunPackageJson(options.appPath, options.signal);
-      const buildCommand = await resolveFrameworkBuildCommand(options.appPath, packageJson, {
-        command: null,
-        source: null,
-        signal: options.signal,
-      });
+      const packageJson = await readBunPackageJson(
+        options.appPath,
+        options.signal,
+      );
+      const buildCommand = await resolveFrameworkBuildCommand(
+        options.appPath,
+        packageJson,
+        {
+          command: null,
+          source: null,
+          signal: options.signal,
+        },
+      );
       return {
         buildCommand: buildCommand.command,
         buildCommandSource: buildCommand.source,
@@ -209,11 +263,11 @@ export async function resolvePreviewBuildSettings(options: {
   }
 }
 
-
-
-
-
-export async function hasRootFile(appPath: string, filenames: readonly string[], signal?: AbortSignal): Promise<boolean> {
+export async function hasRootFile(
+  appPath: string,
+  filenames: readonly string[],
+  signal?: AbortSignal,
+): Promise<boolean> {
   let entries: string[];
   try {
     signal?.throwIfAborted();
@@ -227,16 +281,25 @@ export async function hasRootFile(appPath: string, filenames: readonly string[],
   return entries.some((entry) => filenames.includes(entry));
 }
 
-export function hasPackageDependency(packageJson: BunPackageJsonLike | null, dependencyName: string): boolean {
+export function hasPackageDependency(
+  packageJson: BunPackageJsonLike | null,
+  dependencyName: string,
+): boolean {
   return hasAnyPackageDependency(packageJson, [dependencyName]);
 }
 
-export function hasAnyPackageDependency(packageJson: BunPackageJsonLike | null, dependencyNames: readonly string[]): boolean {
+export function hasAnyPackageDependency(
+  packageJson: BunPackageJsonLike | null,
+  dependencyNames: readonly string[],
+): boolean {
   if (!packageJson) {
     return false;
   }
 
-  const dependencyGroups = [packageJson.dependencies, packageJson.devDependencies];
+  const dependencyGroups = [
+    packageJson.dependencies,
+    packageJson.devDependencies,
+  ];
   return dependencyGroups.some((group) => {
     if (!group || typeof group !== "object") {
       return false;
@@ -257,7 +320,11 @@ async function resolveFrameworkBuildCommand(
 ): Promise<ResolvedBuildCommand> {
   const buildScript = readBuildScript(packageJson);
   if (buildScript) {
-    const packageManager = await resolvePackageManager(appPath, packageJson, fallback.signal);
+    const packageManager = await resolvePackageManager(
+      appPath,
+      packageJson,
+      fallback.signal,
+    );
     if (!packageManager) {
       return {
         command: buildScript,
@@ -277,7 +344,9 @@ async function resolveFrameworkBuildCommand(
   };
 }
 
-function readBuildScript(packageJson: BunPackageJsonLike | null): string | null {
+function readBuildScript(
+  packageJson: BunPackageJsonLike | null,
+): string | null {
   if (!packageJson?.scripts || typeof packageJson.scripts !== "object") {
     return null;
   }
@@ -300,16 +369,22 @@ async function resolvePackageManager(
   // workspace root, so check every level from the app up to the source root.
   // The nearest level wins.
   for (const directory of await sourceRootLineage(appPath, signal)) {
-    const levelPackageJson = directory === path.resolve(appPath)
-      ? packageJson
-      : await readBunPackageJson(directory, signal);
+    const levelPackageJson =
+      directory === path.resolve(appPath)
+        ? packageJson
+        : await readBunPackageJson(directory, signal);
 
-    const fromPackageManager = packageManagerFromPackageJson(levelPackageJson?.packageManager);
+    const fromPackageManager = packageManagerFromPackageJson(
+      levelPackageJson?.packageManager,
+    );
     if (fromPackageManager) {
       return fromPackageManager;
     }
 
-    if (await pathExists(path.join(directory, "bun.lock"), signal) || await pathExists(path.join(directory, "bun.lockb"), signal)) {
+    if (
+      (await pathExists(path.join(directory, "bun.lock"), signal)) ||
+      (await pathExists(path.join(directory, "bun.lockb"), signal))
+    ) {
       return "bun";
     }
 
@@ -333,7 +408,9 @@ function packageManagerFromPackageJson(value: unknown): PackageManager | null {
   }
 
   const name = value.split("@")[0];
-  return name === "bun" || name === "pnpm" || name === "yarn" || name === "npm" ? name : null;
+  return name === "bun" || name === "pnpm" || name === "yarn" || name === "npm"
+    ? name
+    : null;
 }
 
 export async function runResolvedBuildCommand(
@@ -348,9 +425,16 @@ export async function runResolvedBuildCommand(
 
   // Workspace repos may hoist binaries like `next` to the workspace root, so
   // expose every node_modules/.bin between the app and its source root.
-  const binDirs = (await sourceRootLineage(appPath, signal))
-    .map((directory) => path.join(directory, "node_modules", ".bin"));
-  await execBuildCommand(settings.buildCommand, appPath, binDirs, failurePrefix, signal);
+  const binDirs = (await sourceRootLineage(appPath, signal)).map((directory) =>
+    path.join(directory, "node_modules", ".bin"),
+  );
+  await execBuildCommand(
+    settings.buildCommand,
+    appPath,
+    binDirs,
+    failurePrefix,
+    signal,
+  );
 }
 
 function execBuildCommand(
@@ -361,26 +445,33 @@ function execBuildCommand(
   signal?: AbortSignal,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = exec(command, {
-      cwd,
-      env: {
-        ...process.env,
-        PATH: [
-          ...binDirs,
-          process.env.PATH,
-        ].filter(Boolean).join(path.delimiter),
+    const child = exec(
+      command,
+      {
+        cwd,
+        env: {
+          ...process.env,
+          PATH: [...binDirs, process.env.PATH]
+            .filter(Boolean)
+            .join(path.delimiter),
+        },
+        maxBuffer: 10 * 1024 * 1024,
+        signal,
       },
-      maxBuffer: 10 * 1024 * 1024,
-      signal,
-    }, (error, stdout, stderr) => {
-      if (error) {
-        const output = [stderr.trim(), stdout.trim()].filter(Boolean).join("\n");
-        reject(new Error(`${failurePrefix} failed:\n${output || error.message}`));
-        return;
-      }
+      (error, stdout, stderr) => {
+        if (error) {
+          const output = [stderr.trim(), stdout.trim()]
+            .filter(Boolean)
+            .join("\n");
+          reject(
+            new Error(`${failurePrefix} failed:\n${output || error.message}`),
+          );
+          return;
+        }
 
-      resolve();
-    });
+        resolve();
+      },
+    );
 
     if (signal?.aborted) {
       child.kill();
@@ -388,12 +479,18 @@ function execBuildCommand(
   });
 }
 
-async function resolveNextOutputRoot(appPath: string, signal?: AbortSignal): Promise<string> {
+async function resolveNextOutputRoot(
+  appPath: string,
+  signal?: AbortSignal,
+): Promise<string> {
   const config = await readNextConfig(appPath, signal);
   return config.distDir ?? ".next";
 }
 
-async function readNextConfig(appPath: string, signal?: AbortSignal): Promise<StaticNextConfig> {
+async function readNextConfig(
+  appPath: string,
+  signal?: AbortSignal,
+): Promise<StaticNextConfig> {
   for (const fileName of NEXT_CONFIG_FILENAMES) {
     const filePath = path.join(appPath, fileName);
     let content: string;
@@ -424,8 +521,12 @@ function readStaticNextConfig(content: string): StaticNextConfig {
   try {
     const module = parseModule(content);
     const program = asAstNode(module.$ast);
-    const bindings = program ? collectStaticBindings(program) : new Map<string, AstNode>();
-    const configObject = program ? findExportedConfigObject(program, bindings) : null;
+    const bindings = program
+      ? collectStaticBindings(program)
+      : new Map<string, AstNode>();
+    const configObject = program
+      ? findExportedConfigObject(program, bindings)
+      : null;
     if (!configObject) {
       return {};
     }
@@ -436,7 +537,8 @@ function readStaticNextConfig(content: string): StaticNextConfig {
 
     return {
       distDir,
-      output: output === "standalone" || output === "export" ? output : undefined,
+      output:
+        output === "standalone" || output === "export" ? output : undefined,
     };
   } catch {
     return {};
@@ -447,7 +549,9 @@ export function joinPosix(...parts: string[]): string {
   return parts.join("/").replace(/\/+/g, "/");
 }
 
-export function nextOutputRootFromStandaloneDirectory(outputDirectory: string): string {
+export function nextOutputRootFromStandaloneDirectory(
+  outputDirectory: string,
+): string {
   const normalized = outputDirectory.replace(/\/+$/g, "");
   if (normalized === "standalone") {
     return ".";
@@ -470,7 +574,7 @@ function asAstNode(value: unknown): AstNode | null {
   }
 
   const type = (value as { type?: unknown }).type;
-  return typeof type === "string" ? value as AstNode : null;
+  return typeof type === "string" ? (value as AstNode) : null;
 }
 
 function astNodes(value: unknown): AstNode[] {
@@ -500,7 +604,10 @@ function collectStaticBindings(program: AstNode): Map<string, AstNode> {
   return bindings;
 }
 
-function findExportedConfigObject(program: AstNode, bindings: Map<string, AstNode>): AstNode | null {
+function findExportedConfigObject(
+  program: AstNode,
+  bindings: Map<string, AstNode>,
+): AstNode | null {
   for (const statement of astNodes(program.body)) {
     if (statement.type === "ExportDefaultDeclaration") {
       return resolveConfigObject(statement.declaration, bindings);
@@ -511,7 +618,10 @@ function findExportedConfigObject(program: AstNode, bindings: Map<string, AstNod
     }
 
     const expression = asAstNode(statement.expression);
-    if (expression?.type !== "AssignmentExpression" || expression.operator !== "=") {
+    if (
+      expression?.type !== "AssignmentExpression" ||
+      expression.operator !== "="
+    ) {
       continue;
     }
 
@@ -523,7 +633,11 @@ function findExportedConfigObject(program: AstNode, bindings: Map<string, AstNod
   return null;
 }
 
-function resolveConfigObject(value: unknown, bindings: Map<string, AstNode>, depth = 0): AstNode | null {
+function resolveConfigObject(
+  value: unknown,
+  bindings: Map<string, AstNode>,
+  depth = 0,
+): AstNode | null {
   if (depth > 4) {
     return null;
   }
@@ -542,7 +656,11 @@ function resolveConfigObject(value: unknown, bindings: Map<string, AstNode>, dep
   }
 
   if (node.type === "CallExpression") {
-    return resolveConfigObject(astNodes(node.arguments)[0], bindings, depth + 1);
+    return resolveConfigObject(
+      astNodes(node.arguments)[0],
+      bindings,
+      depth + 1,
+    );
   }
 
   return null;
@@ -569,13 +687,18 @@ function isModuleExports(value: unknown): boolean {
 
   const object = asAstNode(node.object);
   const property = asAstNode(node.property);
-  return object?.type === "Identifier" &&
+  return (
+    object?.type === "Identifier" &&
     object.name === "module" &&
     property?.type === "Identifier" &&
-    property.name === "exports";
+    property.name === "exports"
+  );
 }
 
-function readStaticStringProperty(objectExpression: AstNode, propertyName: string): string | undefined {
+function readStaticStringProperty(
+  objectExpression: AstNode,
+  propertyName: string,
+): string | undefined {
   for (const property of astNodes(objectExpression.properties)) {
     if (property.type !== "ObjectProperty" || property.computed === true) {
       continue;
@@ -632,7 +755,10 @@ export function normalizeRelativePath(value: string): string | undefined {
   return normalized === "." ? "." : normalized;
 }
 
-async function pathExists(targetPath: string, signal?: AbortSignal): Promise<boolean> {
+async function pathExists(
+  targetPath: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
   try {
     signal?.throwIfAborted();
     await stat(targetPath);

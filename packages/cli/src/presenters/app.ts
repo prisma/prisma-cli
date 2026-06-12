@@ -1,10 +1,14 @@
+import { renderDeployOutputRows } from "../lib/app/deploy-output";
+import { formatDomainFailureFix } from "../lib/app/domain-guidance";
+import { renderList, renderShow, serializeList } from "../output/patterns";
 import type { CommandDescriptor } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
+import { renderVerboseBlock, type VerboseRow } from "../shell/ui";
 import type {
   AppBuildResult,
   AppDeployAllResult,
-  AppDeploySettings,
   AppDeployResult,
+  AppDeploySettings,
   AppDomainAddResult,
   AppDomainRemoveResult,
   AppDomainRetryResult,
@@ -15,15 +19,14 @@ import type {
   AppPromoteResult,
   AppRemoveResult,
   AppRollbackResult,
-  AppShowResult,
   AppRunResult,
   AppShowDeployResult,
+  AppShowResult,
 } from "../types/app";
-import { renderList, renderShow, serializeList } from "../output/patterns";
-import { renderDeployOutputRows } from "../lib/app/deploy-output";
-import { formatDomainFailureFix } from "../lib/app/domain-guidance";
-import { renderVerboseBlock, type VerboseRow } from "../shell/ui";
-import { renderResolvedProjectContextBlock, stripVerboseContext } from "./verbose-context";
+import {
+  renderResolvedProjectContextBlock,
+  stripVerboseContext,
+} from "./verbose-context";
 
 export function renderAppBuild(
   context: CommandContext,
@@ -36,7 +39,11 @@ export function renderAppBuild(
       descriptor,
       fields: [
         { key: "build type", value: result.buildType },
-        { key: "entrypoint", value: result.entrypoint ?? "none", tone: result.entrypoint ? "default" : "dim" },
+        {
+          key: "entrypoint",
+          value: result.entrypoint ?? "none",
+          tone: result.entrypoint ? "default" : "dim",
+        },
         { key: "directory", value: result.directory },
       ],
     },
@@ -69,7 +76,9 @@ export function renderAppDeploy(
   return lines;
 }
 
-export function isAppDeployAllResult(result: AppDeployResult | AppDeployAllResult): result is AppDeployAllResult {
+export function isAppDeployAllResult(
+  result: AppDeployResult | AppDeployAllResult,
+): result is AppDeployAllResult {
   return "deployments" in result;
 }
 
@@ -81,14 +90,24 @@ export function renderAppDeployAll(
   const lines: string[] = [];
   for (const deployment of result.deployments) {
     lines.push(deployment.target);
-    lines.push(...renderAppDeploy(context, descriptor, deployment.result).map((line) => (line ? `  ${line}` : line)));
+    lines.push(
+      ...renderAppDeploy(context, descriptor, deployment.result).map((line) =>
+        line ? `  ${line}` : line,
+      ),
+    );
     lines.push("");
   }
 
-  lines.push(...renderDeployOutputRows(context.ui, result.deployments.map((deployment) => ({
-    label: deployment.target,
-    value: deployment.result.deployment.url ?? deployment.result.deployment.id,
-  }))));
+  lines.push(
+    ...renderDeployOutputRows(
+      context.ui,
+      result.deployments.map((deployment) => ({
+        label: deployment.target,
+        value:
+          deployment.result.deployment.url ?? deployment.result.deployment.id,
+      })),
+    ),
+  );
   return lines;
 }
 
@@ -128,7 +147,10 @@ function renderBranchDatabaseDeploySummary(
   return [
     "",
     ...renderDeployOutputRows(context.ui, [
-      { label: "Database", value: result.branchDatabase.database?.name ?? "created" },
+      {
+        label: "Database",
+        value: result.branchDatabase.database?.name ?? "created",
+      },
       {
         label: "Env",
         value: result.branchDatabase.envVars.join(", "),
@@ -136,7 +158,6 @@ function renderBranchDatabaseDeploySummary(
     ]),
   ];
 }
-
 
 function formatDuration(durationMs: number): string {
   if (durationMs < 1000) {
@@ -150,40 +171,53 @@ function renderDeployResolvedContextBlock(
   context: CommandContext,
   result: AppDeployResult,
 ): string[] {
-  return renderResolvedProjectContextBlock(context.ui, {
-    workspace: result.workspace,
-    project: result.project,
-    resolution: result.resolution,
-    branch: {
-      id: result.branch.id,
-      name: result.branch.name,
-      kind: result.branch.kind,
+  return renderResolvedProjectContextBlock(
+    context.ui,
+    {
+      workspace: result.workspace,
+      project: result.project,
+      resolution: result.resolution,
+      branch: {
+        id: result.branch.id,
+        name: result.branch.name,
+        kind: result.branch.kind,
+      },
     },
-  }, {
-    extraRows: [
-      { key: "app", value: result.app.name },
-      { key: "app id", value: result.app.id, tone: "dim" },
-      { key: "deployment id", value: result.deployment.id, tone: "dim" },
-      { key: "deployment status", value: result.deployment.status },
-      ...(result.localPin ? [{ key: "local pin", value: result.localPin.path }] : []),
-      { key: "deploy duration", value: formatDuration(result.durationMs) },
-    ],
-  });
+    {
+      extraRows: [
+        { key: "app", value: result.app.name },
+        { key: "app id", value: result.app.id, tone: "dim" },
+        { key: "deployment id", value: result.deployment.id, tone: "dim" },
+        { key: "deployment status", value: result.deployment.status },
+        ...(result.localPin
+          ? [{ key: "local pin", value: result.localPin.path }]
+          : []),
+        { key: "deploy duration", value: formatDuration(result.durationMs) },
+      ],
+    },
+  );
 }
 
 function renderDeploySettingsBlock(
   context: CommandContext,
   result: AppDeployResult,
 ): string[] {
-  return renderVerboseBlock(context.ui, [
-    ...deploySettingsRows(result.deploySettings),
-    ...branchDatabaseRows(result.branchDatabase),
-  ], { title: "Deploy settings" });
+  return renderVerboseBlock(
+    context.ui,
+    [
+      ...deploySettingsRows(result.deploySettings),
+      ...branchDatabaseRows(result.branchDatabase),
+    ],
+    { title: "Deploy settings" },
+  );
 }
 
 function deploySettingsRows(settings: AppDeploySettings): VerboseRow[] {
   return [
-    { key: "framework", value: `${settings.framework.name} (${settings.framework.buildType})` },
+    {
+      key: "framework",
+      value: `${settings.framework.name} (${settings.framework.buildType})`,
+    },
     { key: "framework source", value: settings.framework.source, tone: "dim" },
     {
       key: "entrypoint",
@@ -204,7 +238,9 @@ function deploySettingsRows(settings: AppDeploySettings): VerboseRow[] {
   ];
 }
 
-function branchDatabaseRows(branchDatabase: AppDeployResult["branchDatabase"]): VerboseRow[] {
+function branchDatabaseRows(
+  branchDatabase: AppDeployResult["branchDatabase"],
+): VerboseRow[] {
   if (!branchDatabase) {
     return [{ key: "branch db", value: "not configured", tone: "dim" }];
   }
@@ -212,9 +248,10 @@ function branchDatabaseRows(branchDatabase: AppDeployResult["branchDatabase"]): 
   return [
     {
       key: "branch db",
-      value: branchDatabase.status === "created"
-        ? `created${branchDatabase.database ? ` (${branchDatabase.database.name})` : ""}`
-        : `skipped${branchDatabase.reason ? ` (${branchDatabase.reason})` : ""}`,
+      value:
+        branchDatabase.status === "created"
+          ? `created${branchDatabase.database ? ` (${branchDatabase.database.name})` : ""}`
+          : `skipped${branchDatabase.reason ? ` (${branchDatabase.reason})` : ""}`,
       tone: branchDatabase.status === "created" ? "success" : "dim",
     },
     ...(branchDatabase.envVars.length > 0
@@ -250,7 +287,9 @@ export function renderAppListDeploys(
     },
     context.ui,
   );
-  lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+  lines.push(
+    ...renderResolvedProjectContextBlock(context.ui, result.verboseContext),
+  );
   return lines;
 }
 
@@ -294,11 +333,17 @@ export function renderAppShow(
       descriptor,
       fields: [
         { key: "project", value: result.projectId },
-        { key: "app", value: result.app?.name ?? "not selected", tone: result.app ? "default" : "dim" },
+        {
+          key: "app",
+          value: result.app?.name ?? "not selected",
+          tone: result.app ? "default" : "dim",
+        },
         {
           key: "live deployment",
           value: result.liveDeployment?.id ?? "none",
-          tone: result.liveDeployment ? toneForStatus(result.liveDeployment.status) : "dim",
+          tone: result.liveDeployment
+            ? toneForStatus(result.liveDeployment.status)
+            : "dim",
         },
         {
           key: "live url",
@@ -314,7 +359,9 @@ export function renderAppShow(
     },
     context.ui,
   );
-  lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+  lines.push(
+    ...renderResolvedProjectContextBlock(context.ui, result.verboseContext),
+  );
   return lines;
 }
 
@@ -334,15 +381,31 @@ export function renderAppShowDeploy(
       fields: [
         ...(result.app ? [{ key: "app", value: result.app.name }] : []),
         { key: "deployment", value: result.deployment.id },
-        { key: "status", value: result.deployment.status, tone: toneForStatus(result.deployment.status) },
-        ...(result.deployment.url ? [{ key: "url", value: result.deployment.url, tone: "link" as const }] : []),
+        {
+          key: "status",
+          value: result.deployment.status,
+          tone: toneForStatus(result.deployment.status),
+        },
+        ...(result.deployment.url
+          ? [
+              {
+                key: "url",
+                value: result.deployment.url,
+                tone: "link" as const,
+              },
+            ]
+          : []),
         ...(result.deployment.live === null
           ? []
-          : [{
-              key: "live",
-              value: result.deployment.live ? "yes" : "no",
-              tone: result.deployment.live ? "success" as const : "dim" as const,
-            }]),
+          : [
+              {
+                key: "live",
+                value: result.deployment.live ? "yes" : "no",
+                tone: result.deployment.live
+                  ? ("success" as const)
+                  : ("dim" as const),
+              },
+            ]),
         { key: "created", value: result.deployment.createdAt, tone: "dim" },
       ],
     },
@@ -369,12 +432,18 @@ export function renderAppOpen(
         { key: "project", value: result.projectId },
         { key: "app", value: result.app.name },
         { key: "url", value: result.url, tone: "link" },
-        { key: "opened", value: result.opened ? "yes" : "no", tone: result.opened ? "success" : "dim" },
+        {
+          key: "opened",
+          value: result.opened ? "yes" : "no",
+          tone: result.opened ? "success" : "dim",
+        },
       ],
     },
     context.ui,
   );
-  lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+  lines.push(
+    ...renderResolvedProjectContextBlock(context.ui, result.verboseContext),
+  );
   return lines;
 }
 
@@ -396,7 +465,11 @@ export function renderAppDomainAdd(
       fields: [
         ...domainTargetFields(result),
         { key: "hostname", value: result.domain.hostname },
-        { key: "status", value: result.domain.status, tone: toneForDomainStatus(result.domain.status) },
+        {
+          key: "status",
+          value: result.domain.status,
+          tone: toneForDomainStatus(result.domain.status),
+        },
         ...domainDnsFields(result.domain),
       ],
     },
@@ -420,10 +493,22 @@ export function renderAppDomainShow(
       fields: [
         ...domainTargetFields(result),
         { key: "hostname", value: result.domain.hostname },
-        { key: "status", value: result.domain.status, tone: toneForDomainStatus(result.domain.status) },
+        {
+          key: "status",
+          value: result.domain.status,
+          tone: toneForDomainStatus(result.domain.status),
+        },
         ...domainFailureFields(result.domain),
-        { key: "cert expires", value: formatOptionalUtcDate(result.domain.certExpiresAt), tone: result.domain.certExpiresAt ? "default" : "dim" },
-        { key: "created", value: formatUtcDate(result.domain.createdAt), tone: "dim" },
+        {
+          key: "cert expires",
+          value: formatOptionalUtcDate(result.domain.certExpiresAt),
+          tone: result.domain.certExpiresAt ? "default" : "dim",
+        },
+        {
+          key: "created",
+          value: formatUtcDate(result.domain.createdAt),
+          tone: "dim",
+        },
         ...domainDnsFields(result.domain),
       ],
     },
@@ -447,7 +532,11 @@ export function renderAppDomainRemove(
       fields: [
         ...domainTargetFields(result),
         { key: "hostname", value: result.hostname },
-        { key: "removed", value: result.removed ? "yes" : "no", tone: result.removed ? "success" : "dim" },
+        {
+          key: "removed",
+          value: result.removed ? "yes" : "no",
+          tone: result.removed ? "success" : "dim",
+        },
       ],
     },
     context.ui,
@@ -470,7 +559,11 @@ export function renderAppDomainRetry(
       fields: [
         ...domainTargetFields(result),
         { key: "hostname", value: result.domain.hostname },
-        { key: "status", value: result.domain.status, tone: toneForDomainStatus(result.domain.status) },
+        {
+          key: "status",
+          value: result.domain.status,
+          tone: toneForDomainStatus(result.domain.status),
+        },
         ...domainFailureFields(result.domain),
         ...domainDnsFields(result.domain),
       ],
@@ -496,15 +589,33 @@ export function renderAppPromote(
         { key: "project", value: result.projectId },
         { key: "app", value: result.app.name },
         { key: "deployment", value: result.deployment.id },
-        { key: "status", value: result.deployment.status, tone: toneForStatus(result.deployment.status) },
-        ...(result.deployment.url ? [{ key: "url", value: result.deployment.url, tone: "link" as const }] : []),
-        { key: "live", value: result.deployment.live ? "yes" : "no", tone: result.deployment.live ? "success" : "dim" },
+        {
+          key: "status",
+          value: result.deployment.status,
+          tone: toneForStatus(result.deployment.status),
+        },
+        ...(result.deployment.url
+          ? [
+              {
+                key: "url",
+                value: result.deployment.url,
+                tone: "link" as const,
+              },
+            ]
+          : []),
+        {
+          key: "live",
+          value: result.deployment.live ? "yes" : "no",
+          tone: result.deployment.live ? "success" : "dim",
+        },
         { key: "created", value: result.deployment.createdAt, tone: "dim" },
       ],
     },
     context.ui,
   );
-  lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+  lines.push(
+    ...renderResolvedProjectContextBlock(context.ui, result.verboseContext),
+  );
   return lines;
 }
 
@@ -525,18 +636,42 @@ export function renderAppRollback(
         { key: "project", value: result.projectId },
         { key: "app", value: result.app.name },
         { key: "deployment", value: result.deployment.id },
-        { key: "status", value: result.deployment.status, tone: toneForStatus(result.deployment.status) },
-        ...(result.deployment.url ? [{ key: "url", value: result.deployment.url, tone: "link" as const }] : []),
-        { key: "live", value: result.deployment.live ? "yes" : "no", tone: result.deployment.live ? "success" : "dim" },
+        {
+          key: "status",
+          value: result.deployment.status,
+          tone: toneForStatus(result.deployment.status),
+        },
+        ...(result.deployment.url
+          ? [
+              {
+                key: "url",
+                value: result.deployment.url,
+                tone: "link" as const,
+              },
+            ]
+          : []),
+        {
+          key: "live",
+          value: result.deployment.live ? "yes" : "no",
+          tone: result.deployment.live ? "success" : "dim",
+        },
         { key: "created", value: result.deployment.createdAt, tone: "dim" },
         ...(result.previousLiveDeploymentId
-          ? [{ key: "replaced", value: result.previousLiveDeploymentId, tone: "dim" as const }]
+          ? [
+              {
+                key: "replaced",
+                value: result.previousLiveDeploymentId,
+                tone: "dim" as const,
+              },
+            ]
           : []),
       ],
     },
     context.ui,
   );
-  lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+  lines.push(
+    ...renderResolvedProjectContextBlock(context.ui, result.verboseContext),
+  );
   return lines;
 }
 
@@ -568,12 +703,18 @@ export function renderAppRemove(
       fields: [
         { key: "project", value: result.projectId },
         { key: "app", value: result.app.name },
-        { key: "removed", value: result.removed ? "yes" : "no", tone: result.removed ? "success" : "dim" },
+        {
+          key: "removed",
+          value: result.removed ? "yes" : "no",
+          tone: result.removed ? "success" : "dim",
+        },
       ],
     },
     context.ui,
   );
-  lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+  lines.push(
+    ...renderResolvedProjectContextBlock(context.ui, result.verboseContext),
+  );
   return lines;
 }
 
@@ -581,12 +722,18 @@ export function serializeAppRemove(result: AppRemoveResult) {
   return stripVerboseContext(result);
 }
 
-function toneForStatus(status: string): "success" | "warning" | "error" | "default" {
+function toneForStatus(
+  status: string,
+): "success" | "warning" | "error" | "default" {
   if (status === "running" || status === "ready" || status === "healthy") {
     return "success";
   }
 
-  if (status === "provisioning" || status === "building" || status === "starting") {
+  if (
+    status === "provisioning" ||
+    status === "building" ||
+    status === "starting"
+  ) {
     return "warning";
   }
 
@@ -597,7 +744,9 @@ function toneForStatus(status: string): "success" | "warning" | "error" | "defau
   return "default";
 }
 
-function toneForDomainStatus(status: AppDomainStatus): "success" | "warning" | "error" | "default" {
+function toneForDomainStatus(
+  status: AppDomainStatus,
+): "success" | "warning" | "error" | "default" {
   if (status === "active") {
     return "success";
   }
@@ -606,14 +755,21 @@ function toneForDomainStatus(status: AppDomainStatus): "success" | "warning" | "
     return "error";
   }
 
-  if (status === "pending_dns" || status === "verifying" || status === "provisioning_tls" || status === "verified_routing_blocked") {
+  if (
+    status === "pending_dns" ||
+    status === "verifying" ||
+    status === "provisioning_tls" ||
+    status === "verified_routing_blocked"
+  ) {
     return "warning";
   }
 
   return "default";
 }
 
-function domainTargetFields(result: Pick<AppDomainAddResult, "workspace" | "project" | "branch" | "app">) {
+function domainTargetFields(
+  result: Pick<AppDomainAddResult, "workspace" | "project" | "branch" | "app">,
+) {
   return [
     { key: "workspace", value: result.workspace.name },
     { key: "project", value: result.project.name },
@@ -622,23 +778,31 @@ function domainTargetFields(result: Pick<AppDomainAddResult, "workspace" | "proj
   ];
 }
 
-function domainDnsFields(domain: Pick<AppDomainAddResult["domain"], "hostname" | "dnsRecords">) {
+function domainDnsFields(
+  domain: Pick<AppDomainAddResult["domain"], "hostname" | "dnsRecords">,
+) {
   const records = domain.dnsRecords;
   if (records.length === 0) {
-    return [{
-      key: "dns record",
-      value: "not provided by platform",
-      tone: "dim" as const,
-    }];
+    return [
+      {
+        key: "dns record",
+        value: "not provided by platform",
+        tone: "dim" as const,
+      },
+    ];
   }
 
-  return [{
-    key: "dns record",
-    value: records.map((record) => {
-      const ttl = record.ttl ? ` ttl ${record.ttl}` : "";
-      return `${record.type} ${record.name} -> ${record.value}${ttl}`;
-    }).join(", "),
-  }];
+  return [
+    {
+      key: "dns record",
+      value: records
+        .map((record) => {
+          const ttl = record.ttl ? ` ttl ${record.ttl}` : "";
+          return `${record.type} ${record.name} -> ${record.value}${ttl}`;
+        })
+        .join(", "),
+    },
+  ];
 }
 
 function formatDomainFailure(domain: AppDomainShowResult["domain"]): string {
@@ -646,7 +810,9 @@ function formatDomainFailure(domain: AppDomainShowResult["domain"]): string {
     return domain.failureCategory ?? "none";
   }
 
-  return domain.failureCategory ? `${domain.failureCategory} - ${domain.failureReason}` : domain.failureReason;
+  return domain.failureCategory
+    ? `${domain.failureCategory} - ${domain.failureReason}`
+    : domain.failureReason;
 }
 
 function domainFailureFields(domain: AppDomainShowResult["domain"]) {
@@ -686,7 +852,9 @@ function formatUtcDate(value: string): string {
   return `${year}-${month}-${day} ${hours}:${minutes} UTC`;
 }
 
-function formatRecentDeployments(deployments: AppShowResult["recentDeployments"]): string {
+function formatRecentDeployments(
+  deployments: AppShowResult["recentDeployments"],
+): string {
   if (deployments.length === 0) {
     return "none";
   }

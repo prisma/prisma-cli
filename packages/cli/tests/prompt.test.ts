@@ -1,5 +1,5 @@
-import { setImmediate as nextTick } from "node:timers/promises";
 import { PassThrough } from "node:stream";
+import { setImmediate as nextTick } from "node:timers/promises";
 
 import { describe, expect, it } from "vitest";
 

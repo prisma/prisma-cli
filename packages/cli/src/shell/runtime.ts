@@ -1,13 +1,11 @@
 import path from "node:path";
-
-import { Command } from "commander";
-
+import { findComputeConfigDir } from "@prisma/compute-sdk/config";
+import type { Command } from "commander";
 import { LocalStateStore } from "../adapters/local-state";
 import { MockApi } from "../adapters/mock-api";
-import { findComputeConfigDir } from "@prisma/compute-sdk/config";
+import type { GlobalFlags } from "./global-flags";
 import { renderHelp } from "./help";
 import type { CliOutput } from "./output";
-import type { GlobalFlags } from "./global-flags";
 import { createShellUi, type ShellUi } from "./ui";
 
 export const DEFAULT_STATE_DIR_NAME = path.join(".prisma", "cli");
@@ -33,7 +31,10 @@ export interface CommandContext {
   ui: ShellUi;
 }
 
-export function configureRuntimeCommand(command: Command, runtime: CliRuntime): Command {
+export function configureRuntimeCommand(
+  command: Command,
+  runtime: CliRuntime,
+): Command {
   return command
     .helpCommand(false)
     .configureHelp({
@@ -57,7 +58,8 @@ export async function createCommandContext(
   runtime: CliRuntime,
   flags: GlobalFlags,
 ): Promise<CommandContext> {
-  const fixturePath = runtime.fixturePath ?? runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH;
+  const fixturePath =
+    runtime.fixturePath ?? runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH;
   const stateDir = await resolveStateDir(runtime);
 
   // Load the mock API only when fixture mode is explicitly enabled.

@@ -16,7 +16,11 @@ export function renderVersionSuccess(
         { key: result.cli.name, value: result.cli.version },
         { key: "node", value: result.node.version },
         { key: "os", value: `${result.os.platform} ${result.os.arch}` },
-        { key: "invocation", value: result.invocation, tone: result.invocation === "unknown" ? "dim" : "default" },
+        {
+          key: "invocation",
+          value: result.invocation,
+          tone: result.invocation === "unknown" ? "dim" : "default",
+        },
       ],
     },
     context.ui,

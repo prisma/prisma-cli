@@ -2,14 +2,14 @@ import path from "node:path";
 
 import {
   COMPUTE_CONFIG_FILENAME,
-  frameworkByKey,
-  loadComputeConfig as loadComputeConfigFromSdk,
   type ComputeConfigError,
   type ComputeConfigTargetError,
   type ComputeDeployTarget,
   type ComputeFramework,
   type FrameworkBuildType,
+  frameworkByKey,
   type LoadedComputeConfig,
+  loadComputeConfig as loadComputeConfigFromSdk,
 } from "@prisma/compute-sdk/config";
 import { matchError, type Result } from "better-result";
 
@@ -24,19 +24,19 @@ export {
   COMPUTE_CONFIG_FILENAME,
   COMPUTE_CONFIG_FILENAMES,
   ComputeConfigAmbiguousError,
+  type ComputeConfigError,
   ComputeConfigInvalidError,
   ComputeConfigLoadError,
+  type ComputeConfigTargetError,
   ComputeConfigTargetRequiredError,
   ComputeConfigTargetUnknownError,
-  computeTargetAppDir,
-  inferComputeTargetFromCwd,
-  normalizeComputeConfig,
-  selectComputeDeployTarget,
-  type ComputeConfigError,
-  type ComputeConfigTargetError,
   type ComputeDeployTarget,
   type ComputeDeployTargetBuild,
+  computeTargetAppDir,
+  inferComputeTargetFromCwd,
   type LoadedComputeConfig,
+  normalizeComputeConfig,
+  selectComputeDeployTarget,
 } from "@prisma/compute-sdk/config";
 
 /**
@@ -52,7 +52,9 @@ export async function loadComputeConfig(
 }
 
 /** Local build/run strategy implied by a configured framework. */
-export function computeFrameworkToBuildType(framework: ComputeFramework): FrameworkBuildType {
+export function computeFrameworkToBuildType(
+  framework: ComputeFramework,
+): FrameworkBuildType {
   return frameworkByKey(framework).buildType;
 }
 
@@ -106,8 +108,10 @@ export function mergeComputeDeployInputs(options: {
       ? { value: String(target.httpPort), annotation: configAnnotation }
       : undefined;
 
-  const cliEnvInputs = cli.envInputs && cli.envInputs.length > 0 ? cli.envInputs : undefined;
-  const configEnvInputs = target && target.envInputs.length > 0 ? target.envInputs : undefined;
+  const cliEnvInputs =
+    cli.envInputs && cli.envInputs.length > 0 ? cli.envInputs : undefined;
+  const configEnvInputs =
+    target && target.envInputs.length > 0 ? target.envInputs : undefined;
   const envInputs = cliEnvInputs ?? configEnvInputs;
 
   const configAppName = target?.name
@@ -152,8 +156,11 @@ export function mergeComputeLocalInputs(options: {
   target: ComputeDeployTarget | null;
 }): MergedComputeLocalInputs {
   const { cli, target } = options;
-  const cliBuildType = cli.buildType && cli.buildType !== "auto" ? cli.buildType : undefined;
-  const configBuildType = target?.framework ? computeFrameworkToBuildType(target.framework) : undefined;
+  const cliBuildType =
+    cli.buildType && cli.buildType !== "auto" ? cli.buildType : undefined;
+  const configBuildType = target?.framework
+    ? computeFrameworkToBuildType(target.framework)
+    : undefined;
 
   return {
     entrypoint: cli.entrypoint ?? target?.entry ?? undefined,
@@ -173,65 +180,77 @@ export function computeConfigErrorToCliError(
 ): CliError {
   const command = `prisma-cli app ${commandName}`;
   return matchError(error, {
-    ComputeConfigAmbiguousError: (ambiguous) => new CliError({
-      code: "COMPUTE_CONFIG_INVALID",
-      domain: "app",
-      summary: "Multiple compute config files found",
-      why: ambiguous.message,
-      fix: `Keep exactly one compute config file, preferably ${COMPUTE_CONFIG_FILENAME}.`,
-      meta: { configPaths: ambiguous.configPaths },
-      exitCode: 2,
-      nextSteps: [command],
-    }),
-    ComputeConfigLoadError: (load) => new CliError({
-      code: "COMPUTE_CONFIG_INVALID",
-      domain: "app",
-      summary: `Could not load ${path.basename(load.configPath)}`,
-      why: load.message,
-      fix: `Fix the error in ${path.basename(load.configPath)} and rerun the command.`,
-      where: load.configPath,
-      meta: { configPath: load.configPath },
-      exitCode: 2,
-      nextSteps: [command],
-    }),
-    ComputeConfigInvalidError: (invalid) => new CliError({
-      code: "COMPUTE_CONFIG_INVALID",
-      domain: "app",
-      summary: `Invalid ${path.basename(invalid.configPath)}`,
-      why: invalid.issues.join(" "),
-      fix: `Edit ${path.basename(invalid.configPath)} so it default-exports defineComputeConfig({ app }) or defineComputeConfig({ apps }).`,
-      where: invalid.configPath,
-      meta: { configPath: invalid.configPath, issues: invalid.issues },
-      exitCode: 2,
-      nextSteps: [command],
-    }),
-    ComputeConfigTargetRequiredError: (required) => new CliError({
-      code: "COMPUTE_CONFIG_TARGET_REQUIRED",
-      domain: "app",
-      summary: "App target required",
-      why: required.message,
-      fix: `Pass the app target, for example ${command} <target>.`,
-      meta: { configPath: required.configPath, availableTargets: required.availableTargets },
-      exitCode: 2,
-      nextSteps: required.availableTargets.map((target) => `${command} ${target}`),
-    }),
-    ComputeConfigTargetUnknownError: (unknown) => new CliError({
-      code: "COMPUTE_CONFIG_TARGET_UNKNOWN",
-      domain: "app",
-      summary: `Unknown app target "${unknown.requestedTarget}"`,
-      why: unknown.message,
-      fix: unknown.availableTargets.length > 0
-        ? `Pass one of the configured targets: ${unknown.availableTargets.join(", ")}.`
-        : "Remove the target argument; this config defines a single app.",
-      meta: {
-        configPath: unknown.configPath,
-        requestedTarget: unknown.requestedTarget,
-        availableTargets: unknown.availableTargets,
-      },
-      exitCode: 2,
-      nextSteps: unknown.availableTargets.length > 0
-        ? unknown.availableTargets.map((target) => `${command} ${target}`)
-        : [command],
-    }),
+    ComputeConfigAmbiguousError: (ambiguous) =>
+      new CliError({
+        code: "COMPUTE_CONFIG_INVALID",
+        domain: "app",
+        summary: "Multiple compute config files found",
+        why: ambiguous.message,
+        fix: `Keep exactly one compute config file, preferably ${COMPUTE_CONFIG_FILENAME}.`,
+        meta: { configPaths: ambiguous.configPaths },
+        exitCode: 2,
+        nextSteps: [command],
+      }),
+    ComputeConfigLoadError: (load) =>
+      new CliError({
+        code: "COMPUTE_CONFIG_INVALID",
+        domain: "app",
+        summary: `Could not load ${path.basename(load.configPath)}`,
+        why: load.message,
+        fix: `Fix the error in ${path.basename(load.configPath)} and rerun the command.`,
+        where: load.configPath,
+        meta: { configPath: load.configPath },
+        exitCode: 2,
+        nextSteps: [command],
+      }),
+    ComputeConfigInvalidError: (invalid) =>
+      new CliError({
+        code: "COMPUTE_CONFIG_INVALID",
+        domain: "app",
+        summary: `Invalid ${path.basename(invalid.configPath)}`,
+        why: invalid.issues.join(" "),
+        fix: `Edit ${path.basename(invalid.configPath)} so it default-exports defineComputeConfig({ app }) or defineComputeConfig({ apps }).`,
+        where: invalid.configPath,
+        meta: { configPath: invalid.configPath, issues: invalid.issues },
+        exitCode: 2,
+        nextSteps: [command],
+      }),
+    ComputeConfigTargetRequiredError: (required) =>
+      new CliError({
+        code: "COMPUTE_CONFIG_TARGET_REQUIRED",
+        domain: "app",
+        summary: "App target required",
+        why: required.message,
+        fix: `Pass the app target, for example ${command} <target>.`,
+        meta: {
+          configPath: required.configPath,
+          availableTargets: required.availableTargets,
+        },
+        exitCode: 2,
+        nextSteps: required.availableTargets.map(
+          (target) => `${command} ${target}`,
+        ),
+      }),
+    ComputeConfigTargetUnknownError: (unknown) =>
+      new CliError({
+        code: "COMPUTE_CONFIG_TARGET_UNKNOWN",
+        domain: "app",
+        summary: `Unknown app target "${unknown.requestedTarget}"`,
+        why: unknown.message,
+        fix:
+          unknown.availableTargets.length > 0
+            ? `Pass one of the configured targets: ${unknown.availableTargets.join(", ")}.`
+            : "Remove the target argument; this config defines a single app.",
+        meta: {
+          configPath: unknown.configPath,
+          requestedTarget: unknown.requestedTarget,
+          availableTargets: unknown.availableTargets,
+        },
+        exitCode: 2,
+        nextSteps:
+          unknown.availableTargets.length > 0
+            ? unknown.availableTargets.map((target) => `${command} ${target}`)
+            : [command],
+      }),
   });
 }

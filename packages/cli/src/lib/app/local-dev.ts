@@ -1,11 +1,22 @@
-import { spawn, type SpawnOptions } from "node:child_process";
+// biome-ignore-all lint/performance/noAwaitInLoops: Local app detection and command fallbacks must short-circuit sequentially.
+// biome-ignore-all lint/performance/useTopLevelRegex: Existing package script regexes are kept inline for readability.
+import { type SpawnOptions, spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import path from "node:path";
+import {
+  readBunPackageEntrypoint,
+  readBunPackageJson,
+  resolveBunEntrypoint,
+} from "./bun-project";
+import type {
+  PreviewBuildType,
+  ResolvedPreviewBuildType,
+} from "./preview-build";
 
-import type { PreviewBuildType, ResolvedPreviewBuildType } from "./preview-build";
-import { readBunPackageEntrypoint, readBunPackageJson, resolveBunEntrypoint } from "./bun-project";
-
-export type LocalBuildType = Extract<ResolvedPreviewBuildType, "bun" | "nextjs">;
+export type LocalBuildType = Extract<
+  ResolvedPreviewBuildType,
+  "bun" | "nextjs"
+>;
 
 const NEXT_CONFIG_FILENAMES = [
   "next.config.js",
@@ -47,7 +58,10 @@ export async function resolveLocalBuildType(
   return detectLocalBuildType(appPath, signal);
 }
 
-export async function detectLocalBuildType(appPath: string, signal?: AbortSignal): Promise<LocalBuildType | null> {
+export async function detectLocalBuildType(
+  appPath: string,
+  signal?: AbortSignal,
+): Promise<LocalBuildType | null> {
   if (await isNextProject(appPath, signal)) {
     return "nextjs";
   }
@@ -117,7 +131,11 @@ export async function runLocalApp(options: {
     };
   }
 
-  const entrypoint = await resolveBunEntrypoint(options.appPath, options.entrypoint, options.signal);
+  const entrypoint = await resolveBunEntrypoint(
+    options.appPath,
+    options.entrypoint,
+    options.signal,
+  );
   const command = await runWithFallback(
     [
       {
@@ -148,7 +166,10 @@ export async function runLocalApp(options: {
   };
 }
 
-async function isNextProject(appPath: string, signal?: AbortSignal): Promise<boolean> {
+async function isNextProject(
+  appPath: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
   for (const fileName of NEXT_CONFIG_FILENAMES) {
     signal?.throwIfAborted();
     try {
@@ -166,7 +187,10 @@ async function isNextProject(appPath: string, signal?: AbortSignal): Promise<boo
   return hasDependency(packageJson, "next");
 }
 
-async function isBunProject(appPath: string, signal?: AbortSignal): Promise<boolean> {
+async function isBunProject(
+  appPath: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
   signal?.throwIfAborted();
   try {
     // access does not accept AbortSignal; check before and after the filesystem boundary.
@@ -194,12 +218,18 @@ async function isBunProject(appPath: string, signal?: AbortSignal): Promise<bool
     return false;
   }
 
-  const hasEntrypoint = typeof readBunPackageEntrypoint(packageJson) === "string";
-  const hasBunDependency = hasDependency(packageJson, "@types/bun") || hasDependency(packageJson, "bun");
-  const scriptValues = typeof packageJson.scripts === "object" && packageJson.scripts !== null
-    ? Object.values(packageJson.scripts)
-    : [];
-  const usesBunScripts = scriptValues.some((value) => typeof value === "string" && /\bbun\b/.test(value));
+  const hasEntrypoint =
+    typeof readBunPackageEntrypoint(packageJson) === "string";
+  const hasBunDependency =
+    hasDependency(packageJson, "@types/bun") ||
+    hasDependency(packageJson, "bun");
+  const scriptValues =
+    typeof packageJson.scripts === "object" && packageJson.scripts !== null
+      ? Object.values(packageJson.scripts)
+      : [];
+  const usesBunScripts = scriptValues.some(
+    (value) => typeof value === "string" && /\bbun\b/.test(value),
+  );
 
   return hasEntrypoint && (hasBunDependency || usesBunScripts);
 }
@@ -212,10 +242,14 @@ function hasDependency(
     return false;
   }
 
-  const dependencyGroups = [packageJson.dependencies, packageJson.devDependencies];
+  const dependencyGroups = [
+    packageJson.dependencies,
+    packageJson.devDependencies,
+  ];
 
   return dependencyGroups.some(
-    (group) => typeof group === "object" && group !== null && dependencyName in group,
+    (group) =>
+      typeof group === "object" && group !== null && dependencyName in group,
   );
 }
 async function runWithFallback(

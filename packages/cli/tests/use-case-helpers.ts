@@ -1,8 +1,8 @@
 import path from "node:path";
 
 import { MockApi } from "../src/adapters/mock-api";
-import type { CliUseCaseGateways } from "../src/use-cases/create-cli-gateways";
 import type { AuthSessionRecord } from "../src/use-cases/contracts";
+import type { CliUseCaseGateways } from "../src/use-cases/create-cli-gateways";
 
 const fixturePath = path.resolve("fixtures/mock-api.json");
 
@@ -18,14 +18,15 @@ export async function createUseCaseGateways(options?: {
 }> {
   const api = await MockApi.load(fixturePath);
   let authSession = options?.authSession ?? null;
-  let projectId = options?.projectId ?? null;
+  const projectId = options?.projectId ?? null;
 
   return {
     gateways: {
       identityGateway: {
         listProviders: () => api.listProviders(),
         getProvider: (providerId) => api.getProvider(providerId),
-        listUsersForProvider: (providerId) => api.listUsersForProvider(providerId).map(toAuthUser),
+        listUsersForProvider: (providerId) =>
+          api.listUsersForProvider(providerId).map(toAuthUser),
         getUser: (userId) => {
           const user = api.getUser(userId);
           return user ? toAuthUser(user) : undefined;
@@ -34,7 +35,8 @@ export async function createUseCaseGateways(options?: {
           const user = api.getUserForProvider(providerId, userId);
           return user ? toAuthUser(user) : undefined;
         },
-        listUserWorkspaces: (userId) => api.listUserWorkspaces(userId).map(toAuthWorkspace),
+        listUserWorkspaces: (userId) =>
+          api.listUserWorkspaces(userId).map(toAuthWorkspace),
         getWorkspace: (workspaceId) => {
           const workspace = api.getWorkspace(workspaceId);
           return workspace ? toAuthWorkspace(workspace) : undefined;
@@ -45,12 +47,15 @@ export async function createUseCaseGateways(options?: {
         },
       },
       projectGateway: {
-        listProjectsForWorkspace: (workspaceId) => api.listProjectsForWorkspace(workspaceId),
+        listProjectsForWorkspace: (workspaceId) =>
+          api.listProjectsForWorkspace(workspaceId),
         getProject: (projectId) => api.getProject(projectId),
-        getProjectForWorkspace: (workspaceId, projectId) => api.getProjectForWorkspace(workspaceId, projectId),
+        getProjectForWorkspace: (workspaceId, projectId) =>
+          api.getProjectForWorkspace(workspaceId, projectId),
       },
       branchGateway: {
-        listBranchesForProject: (projectId) => api.listBranchesForProject(projectId),
+        listBranchesForProject: (projectId) =>
+          api.listBranchesForProject(projectId),
         getBranchForProject: (projectId, name) => {
           return api.getBranchForProject(projectId, name);
         },

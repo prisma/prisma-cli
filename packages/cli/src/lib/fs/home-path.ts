@@ -9,7 +9,10 @@ export function shortenHomePath(value: string, env: NodeJS.ProcessEnv): string {
   const resolved = path.resolve(value);
   const home = resolveHomeDirectory(env);
 
-  if (home && (resolved === home || resolved.startsWith(`${home}${path.sep}`))) {
+  if (
+    home &&
+    (resolved === home || resolved.startsWith(`${home}${path.sep}`))
+  ) {
     const relative = path.relative(home, resolved).split(path.sep).join("/");
     return relative ? `~/${relative}` : "~";
   }

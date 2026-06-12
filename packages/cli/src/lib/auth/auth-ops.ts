@@ -21,7 +21,9 @@ function decodeJwtPayload(token: string): Record<string, unknown> {
 
 function emailFromClaims(claims: Record<string, unknown>): string | null {
   const email = claims.email;
-  return typeof email === "string" && email.trim().length > 0 ? email.trim() : null;
+  return typeof email === "string" && email.trim().length > 0
+    ? email.trim()
+    : null;
 }
 
 function workspaceIdFromClaims(claims: Record<string, unknown>): string | null {
@@ -32,11 +34,17 @@ function workspaceIdFromClaims(claims: Record<string, unknown>): string | null {
   return id.length > 0 ? id : null;
 }
 
-export async function performLogin(env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<void> {
+export async function performLogin(
+  env: NodeJS.ProcessEnv,
+  signal?: AbortSignal,
+): Promise<void> {
   await login({ tokenStorage: new FileTokenStorage(env, signal), env, signal });
 }
 
-export async function readAuthState(env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<AuthStateResult> {
+export async function readAuthState(
+  env: NodeJS.ProcessEnv,
+  signal?: AbortSignal,
+): Promise<AuthStateResult> {
   // PRISMA_SERVICE_TOKEN is the headless / CI auth surface. When it is set, derive
   // auth state from the token itself and intentionally skip FileTokenStorage,
   // so behavior is independent of any OAuth session that happens to be stored
@@ -227,6 +235,9 @@ async function readCurrentPrincipalAuthState(
   }
 }
 
-export async function performLogout(env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<void> {
+export async function performLogout(
+  env: NodeJS.ProcessEnv,
+  signal?: AbortSignal,
+): Promise<void> {
   await new FileTokenStorage(env, signal).clearTokens();
 }

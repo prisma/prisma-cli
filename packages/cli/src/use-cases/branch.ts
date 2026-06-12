@@ -1,7 +1,7 @@
-import type { BranchSummary, BranchListResult } from "../types/branch";
+import type { BranchListResult, BranchSummary } from "../types/branch";
 import type {
-  BranchUseCases,
   BranchGateway,
+  BranchUseCases,
   ProjectGateway,
   ProjectStateGateway,
   RemoteBranchRecord,
@@ -13,10 +13,13 @@ interface BranchUseCaseDependencies {
   projectStateGateway: ProjectStateGateway;
 }
 
-export function createBranchUseCases(dependencies: BranchUseCaseDependencies): BranchUseCases {
+export function createBranchUseCases(
+  dependencies: BranchUseCaseDependencies,
+): BranchUseCases {
   return {
     list: async (): Promise<BranchListResult> => {
-      const projectId = await dependencies.projectStateGateway.readRememberedProjectId();
+      const projectId =
+        await dependencies.projectStateGateway.readRememberedProjectId();
       if (!projectId) {
         return {
           projectId: "",
@@ -25,8 +28,14 @@ export function createBranchUseCases(dependencies: BranchUseCaseDependencies): B
         };
       }
 
-      const remoteBranches = await listRemoteBranches(dependencies.branchGateway, projectId);
-      const projectName = resolveProjectName(dependencies.projectGateway, projectId);
+      const remoteBranches = await listRemoteBranches(
+        dependencies.branchGateway,
+        projectId,
+      );
+      const projectName = resolveProjectName(
+        dependencies.projectGateway,
+        projectId,
+      );
 
       return {
         projectId,
@@ -37,7 +46,10 @@ export function createBranchUseCases(dependencies: BranchUseCaseDependencies): B
   };
 }
 
-function resolveProjectName(projectGateway: ProjectGateway, projectId: string | null): string | null {
+function resolveProjectName(
+  projectGateway: ProjectGateway,
+  projectId: string | null,
+): string | null {
   if (!projectId) {
     return null;
   }
@@ -56,28 +68,30 @@ async function listRemoteBranches(
   return branchGateway.listBranchesForProject(projectId);
 }
 
-function buildBranchSummaries(remoteBranches: RemoteBranchRecord[]): BranchSummary[] {
-  return sortBranches(remoteBranches.map((branch) => ({
-    id: branch.id,
-    name: branch.name,
-    role: branch.role,
-    envMap: branch.role,
-  })));
+function buildBranchSummaries(
+  remoteBranches: RemoteBranchRecord[],
+): BranchSummary[] {
+  return sortBranches(
+    remoteBranches.map((branch) => ({
+      id: branch.id,
+      name: branch.name,
+      role: branch.role,
+      envMap: branch.role,
+    })),
+  );
 }
 
 function sortBranches(branches: BranchSummary[]): BranchSummary[] {
-  return branches
-    .slice()
-    .sort((left, right) => {
-      const leftRank = branchOrder(left);
-      const rightRank = branchOrder(right);
+  return branches.slice().sort((left, right) => {
+    const leftRank = branchOrder(left);
+    const rightRank = branchOrder(right);
 
-      if (leftRank !== rightRank) {
-        return leftRank - rightRank;
-      }
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
 
-      return left.name.localeCompare(right.name);
-    });
+    return left.name.localeCompare(right.name);
+  });
 }
 
 function branchOrder(branch: BranchSummary): number {
