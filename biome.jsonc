@@ -41,7 +41,8 @@
         "noParameterAssign": "on"
       },
       "suspicious": {
-        "noVar": "on"
+        "noVar": "on",
+        "useGuardForIn": "on"
       }
       //   "complexity": {
       //   },
@@ -52,7 +53,6 @@
       //   "style": {
       //   },
       //   "suspicious": {
-      //     "useGuardForIn": "on",
       //     "useStaticResponseMethods": "on"
       //   }
     }
