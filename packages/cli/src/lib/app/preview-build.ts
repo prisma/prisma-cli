@@ -36,6 +36,7 @@ import {
   runResolvedBuildCommand,
 } from "./preview-build-settings";
 
+// biome-ignore lint/performance/noBarrelFile: Preview build settings are re-exported from this public app build module.
 export {
   PRISMA_APP_CONFIG_FILENAME,
   PRISMA_APP_CONFIG_SCHEMA_URL,

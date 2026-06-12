@@ -16,6 +16,7 @@ import {
   projectNotFoundError,
 } from "./resolution";
 
+// biome-ignore lint/performance/noBarrelFile: Project setup exposes command formatting for related project flows.
 export { formatCommandArgument } from "../../shell/command-arguments";
 
 export type ProjectDirectoryBindingError =

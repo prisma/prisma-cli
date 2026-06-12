@@ -30,14 +30,14 @@
         "useDisposables": "on"
       },
       "performance": {
-        "noAwaitInLoops": "on"
+        "noAwaitInLoops": "on",
+        "noBarrelFile": "on"
       }
       //   "complexity": {
       //   },
       //   "nursery": {
       //   },
       //   "performance": {
-      //     "noBarrelFile": "on",
       //     "useTopLevelRegex": "on"
       //   },
       //   "style": {
