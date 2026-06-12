@@ -59,16 +59,22 @@ export function renderAppDeploy(
   context: CommandContext,
   descriptor: CommandDescriptor,
   result: AppDeployResult,
+  options?: { logsTarget?: string },
 ): string[] {
   void descriptor;
 
+  // After a deploy-all, bare `app logs` follows the remembered selection, so
+  // each app's hint must name its target to actually show that app's logs.
+  const logsCommand = options?.logsTarget
+    ? `prisma-cli app logs ${options.logsTarget}`
+    : "prisma-cli app logs";
   const lines = [
     `Live in ${formatDuration(result.durationMs)}`,
     ...(result.deployment.url ? [context.ui.link(result.deployment.url)] : []),
     ...renderBranchDatabaseDeploySummary(context, result),
     "",
     ...renderDeployOutputRows(context.ui, [
-      { label: "Logs", value: "prisma-cli app logs" },
+      { label: "Logs", value: logsCommand },
     ]),
     ...renderDeployResolvedContextBlock(context, result),
     ...renderDeploySettingsBlock(context, result),
@@ -91,9 +97,9 @@ export function renderAppDeployAll(
   for (const deployment of result.deployments) {
     lines.push(deployment.target);
     lines.push(
-      ...renderAppDeploy(context, descriptor, deployment.result).map((line) =>
-        line ? `  ${line}` : line,
-      ),
+      ...renderAppDeploy(context, descriptor, deployment.result, {
+        logsTarget: deployment.target,
+      }).map((line) => (line ? `  ${line}` : line)),
     );
     lines.push("");
   }
