@@ -37,7 +37,7 @@ Rules:
 
 - `project` is not the same thing as `app`
 - Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for project resolution
-- `.prisma/local.json` is a gitignored local pin/cache for Workspace and Project IDs; it is not a declarative repo config file. When a `prisma.compute.ts` is discovered, the pin and the local CLI state cache live in the config file's directory
+- `.prisma/local.json` is a gitignored local pin/cache for Workspace and Project IDs; it is not a declarative repo config file. When a `prisma.compute.ts` is discovered (nearest config from the invocation directory up to the repository or workspace root), the pin and the CLI state cache (`.prisma/cli/state.json`) are read and written in the config file's directory; without a config they stay in the invocation directory
 - `prisma.compute.ts` is a committed deploy-defaults file; it must not contain Workspace, Project, Branch, env-secret, or credential resolution state
 - Project setup is explicit: users choose an existing Project or explicitly create a new one before remote work starts
 - `app deploy` may orchestrate Project setup, but it must not silently choose or create Project scope
