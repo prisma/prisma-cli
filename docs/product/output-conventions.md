@@ -338,7 +338,7 @@ Examples:
 - `app deploy` should state the resolved target that matters in the current slice
 - first local `app deploy` binding should make the Project choice explicit before work begins
 - subsequent `app deploy` calls should use a compact target header such as `Deploying ./j1 to j1 / main / j1`
-- config-backed `app deploy` builds should show whether they created or used `prisma.app.json` before build starts: `Build Command` with its source when inferred, and `Output Directory` as a literal path such as `.next/standalone` rather than an opaque framework default label
+- config-backed `app deploy` builds should show the resolved build settings before build starts: `Build Command` and `Output Directory` with their sources (`prisma.compute.ts` or inference), `Output Directory` as a literal path such as `.next/standalone` rather than an opaque framework default label
 - `app logs` should state the deployment it resolved
 - `app list-deploys` should state which app or branch is being listed
 

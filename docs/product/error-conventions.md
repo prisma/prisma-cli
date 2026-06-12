@@ -223,7 +223,8 @@ Recommended meanings:
 - `LOCAL_STATE_WRITE_FAILED`: the CLI could not save local Project binding state such as `.prisma/local.json` or the matching `.gitignore` entry; callers should fix directory permissions or filesystem state before retrying
 - `LOCAL_STATE_STALE`: local Project pin no longer matches platform data and continuing would be ambiguous
 - `BRANCH_NOT_DEPLOYABLE`: command tried to deploy to a non-deployable branch context
-- `APP_CONFIG_INVALID`: `prisma.app.json` is missing required build settings, has invalid JSON, or points outside the app root
+- `COMPUTE_CONFIG_INVALID`: `prisma.compute.ts` failed to load or validate
+- `BUILD_SETTINGS_MIGRATION_REQUIRED`: a legacy `prisma.app.json` contains custom build settings that must move into the `build` block of `prisma.compute.ts`
 - `FRAMEWORK_NOT_DETECTED`: app deploy could not detect a supported Beta framework and no explicit framework/build type was provided
 - `DEPLOYMENT_NOT_FOUND`: requested deployment id does not exist
 - `NO_DEPLOYMENTS`: command resolved a branch or app but found no deployments

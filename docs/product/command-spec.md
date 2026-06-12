@@ -58,7 +58,7 @@ Out of scope for the current beta:
   non-TTY stderr, and when `NO_UPDATE_NOTIFIER` is set. When shown, update
   notifications are stderr-only human output and do not change the original
   command result.
-- Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for Project -> Branch -> App resolution. `.prisma/local.json` is a gitignored local pin/cache, not a declarative repo config file. `prisma.app.json` is only for app build settings.
+- Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for Project -> Branch resolution. `.prisma/local.json` is a gitignored local pin/cache, not a declarative repo config file. `prisma.app.json` is legacy and no longer read or written. `prisma.compute.ts` supplies typed `app deploy` defaults (app name, app root, framework, entrypoint, HTTP port, env inputs) and never selects Project or Branch scope.
 - Remote commands do not silently change local context.
 
 ## Authentication
@@ -109,12 +109,21 @@ Preview app commands that need an app resolve it in this order:
 
 1. `--app <name>`
 2. `PRISMA_APP_ID` when set for headless deploy/domain commands
-3. locally selected app for non-deploy commands when it still exists in the resolved branch
-4. inferred app name from `package.json#name`
-5. current directory name
-6. create the inferred app in the resolved branch when no existing app matches
-7. interactive picker only when multiple matching apps make the target ambiguous
-8. `APP_AMBIGUOUS` in non-interactive or `--json` mode when unresolved
+3. compute config target from the `[app]` argument, or inferred from the invocation directory being inside a target's `root`; the target's `name` (or `apps` key) selects the app
+4. locally selected app for non-deploy commands when it still exists in the resolved branch
+5. inferred app name from `package.json#name`
+6. current directory name
+7. create the inferred app in the resolved branch when no existing app matches
+8. interactive picker only when multiple matching apps make the target ambiguous
+9. `APP_AMBIGUOUS` in non-interactive or `--json` mode when unresolved
+
+App management commands (`show`, `open`, `logs`, `list-deploys`, `promote`,
+`rollback`, `remove`, `domain`) accept the same `[app]` target argument and
+upward config discovery as `app deploy`: the project binding is read from the
+config file's directory, and the config target is an additional app-name
+source. Unlike deploy, management commands never require a target: with
+multiple targets, no argument, and nothing inferred from the invocation
+directory, they fall back to the selection order above.
 
 `.prisma/local.json` pins the directory to a Workspace and Project only. It does
 not pin an App ID. App services are branch-scoped; a service ID from `main`
@@ -729,7 +738,7 @@ Examples:
 prisma-cli database connection remove conn_123 --confirm conn_123
 ```
 
-## `prisma-cli app build --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|tanstack-start>`
+## `prisma-cli app build [app] --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|tanstack-start>`
 
 Purpose:
 
@@ -737,7 +746,8 @@ Purpose:
 
 Behavior:
 
-- detects supported project shapes when `--build-type auto` is used
+- resolves the optional `[app]` target, app root, framework, and entrypoint from `prisma.compute.ts` exactly like `app deploy`; explicit `--entry` and a non-`auto` `--build-type` override the config
+- detects supported project shapes when `--build-type auto` is used and no config framework applies
 - supports Bun, Next.js, Nuxt, Astro, and TanStack Start app builds in the beta package
 - fails with `USAGE_ERROR` when framework detection is ambiguous
 
@@ -749,9 +759,10 @@ prisma-cli app build --build-type nuxt
 prisma-cli app build --build-type astro
 prisma-cli app build --build-type tanstack-start
 prisma-cli app build --build-type bun --entry server.ts
+prisma-cli app build api
 ```
 
-## `prisma-cli app run --entry <path> --build-type <auto|bun|nextjs> --port <port>`
+## `prisma-cli app run [app] --entry <path> --build-type <auto|bun|nextjs> --port <port>`
 
 Purpose:
 
@@ -759,7 +770,9 @@ Purpose:
 
 Behavior:
 
-- detects supported project shapes when `--build-type auto` is used
+- resolves the optional `[app]` target, app root, framework, entrypoint, and port from `prisma.compute.ts` exactly like `app deploy`; explicit `--entry`, `--port`, and a non-`auto` `--build-type` override the config
+- fails with `USAGE_ERROR` when the configured framework has no local dev server in the current preview
+- detects supported project shapes when `--build-type auto` is used and no config framework applies
 - starts the local framework command
 - reports `RUN_FAILED` when the local process cannot start or exits unsuccessfully
 
@@ -768,13 +781,78 @@ Examples:
 ```bash
 prisma-cli app run --build-type nextjs
 prisma-cli app run --build-type bun --entry server.ts --port 3000
+prisma-cli app run api
 ```
 
-## `prisma-cli app deploy --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start|bun> --entry <path> --http-port <port> --env <name=value|file> --db --no-db --prod`
+## `prisma-cli app deploy [app] --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start|bun> --entry <path> --http-port <port> --env <name=value|file> --db --no-db --prod`
 
 Purpose:
 
 - creates a new deployment for the app
+
+Compute config file (`prisma.compute.ts`):
+
+- deploy reads an optional typed config file, using the nearest one from the invocation directory up to the repository or workspace root (the closest ancestor with `.git`, `pnpm-workspace.yaml`, `bun.lock`, or a `workspaces` field); without such a boundary only the invocation directory is checked, so discovery never escapes the repository
+- per directory, exactly one of `prisma.compute.ts`, `prisma.compute.mts`, `prisma.compute.js`, `prisma.compute.mjs`, or `prisma.compute.cjs` may exist
+- config-relative paths (`root`, `env.file`) resolve from the config file's directory, so the config means the same thing from any working directory; `--env` flag paths still resolve from the invocation directory
+- when a config is discovered, its directory is the project directory: `.prisma/local.json` is read and written there, the local CLI state cache (`.prisma/cli/state.json`) lives there, and `--db` scans for Prisma schema sources there (for prompting and suggestions only); locating the config for these purposes never evaluates it
+- the config default-exports `defineComputeConfig({ ... })` from `@prisma/cli/config`; the helper is an identity function, so plain object exports also work for JavaScript configs
+- the config defines exactly one of:
+  - `app` — a single-app repository
+  - `apps` — a multi-app or monorepo repository, keyed by deploy target name
+- each app accepts `name`, `root`, `framework`, `entry`, `httpPort`, `env`, and `build`:
+  - `env` is a dotenv file path, or `{ file, vars }` with file path(s) and inline assignments
+  - `build` is `{ command, outputDirectory }`; both fields are optional and `command: null` skips the build step
+- when `build` is present, the compute config owns build settings for that app: fields it sets override framework defaults, fields it omits are inferred; without a `build` block, settings are inferred entirely, with their sources shown
+- the compute config does not declare databases in the current beta; database setup stays on the `--db`/`--no-db` flags (a future project-level `database` field is the reserved growth path, since databases are branch resources shared by every app on the branch)
+
+Unification note (forward-looking, normative for design decisions): Prisma ORM
+ships `prisma.config.ts` (`defineConfig` from `prisma/config`). The compute
+config is designed to become a `compute` key inside that unified file: its
+shape must remain self-contained, must not add top-level keys that collide
+with ORM config keys, and `database.schema` will become unnecessary once the
+unified file's own `schema` field is in scope. Project, branch, and
+production targeting stay out of committed config in the unified file for the
+same reasons they are excluded today.
+- config values are deploy defaults; explicit flags always win: `--framework`, `--entry`, `--http-port` override per value, and any `--env` flag replaces the config env inputs entirely
+- the config `name` (or the `apps` key when `name` is absent) selects the app like `--app`, but ranks below both `--app` and `PRISMA_APP_ID`
+- `root` is a relative path inside the repository; framework detection, entrypoint resolution, build settings, and the build/upload run in that directory while Project binding and the local pin stay in the invocation directory
+- `prisma.compute.ts` never selects Project or Branch scope; project resolution is unchanged
+- the `[app]` argument selects an `apps` target by key:
+  - without an `[app]` argument, a command run from inside a target's `root` selects that target, so `cd apps/api && prisma-cli app deploy` deploys `api`; the deepest matching root wins and an ambiguous tie selects nothing
+  - with multiple `apps` entries, no `[app]` argument, and no target inferred from the invocation directory, deploy deploys every target sequentially in declaration order — the config declares the system, and a bare `prisma-cli app deploy` ships it
+  - deploying all targets rejects per-app inputs (`--app`, `--framework`, `--entry`, `--http-port`, `--env`, `PRISMA_APP_ID`) with a usage error; project- and branch-level flags (`--project`, `--create-project`, `--branch`, `--db`, `--no-db`, `--prod`, `--yes`) apply to the whole run, with `--create-project` creating and binding the Project once before the first target
+  - a deploy-all run stops at the first failure and reports the targets already live; `--json` output aggregates one full deploy result per target
+  - `app build` and `app run` still require a target in multi-app configs and fail with `COMPUTE_CONFIG_TARGET_REQUIRED` (a dev server cannot run N apps at once; build keeps the same shape)
+  - an `[app]` argument that matches no target fails with `COMPUTE_CONFIG_TARGET_UNKNOWN`
+  - a single-entry `apps` map deploys its only target without an argument
+  - with a single `app` config, `[app]` is accepted only when it equals the configured `name`
+  - `[app]` without any compute config file is a usage error
+- a config that fails to load or validate fails with `COMPUTE_CONFIG_INVALID` before any remote work
+- settings sourced from the config are annotated `set by prisma.compute.ts` in human output and deploy settings metadata
+
+```ts
+import { defineComputeConfig } from "@prisma/cli/config";
+
+// Single-app repository: prisma-cli app deploy
+export default defineComputeConfig({
+  app: {
+    name: "api",
+    framework: "hono",
+    httpPort: 8080,
+    env: ".env",
+  },
+});
+
+// Multi-app repository: prisma-cli app deploy web
+export default defineComputeConfig({
+  database: { schema: "packages/db/prisma/schema.prisma" },
+  apps: {
+    web: { root: "apps/web", framework: "nextjs" },
+    worker: { root: "apps/worker", framework: "bun", entry: "src/index.ts" },
+  },
+});
+```
 
 Behavior:
 
@@ -805,16 +883,18 @@ Behavior:
 - writes `.prisma/local.json` after Project binding succeeds and before build/deploy starts, so retries after a failed deploy do not repeat setup
 - before asking `Customize build settings? (y/N)`, previews the detected framework and runtime so the user can see the defaults they are accepting or changing
 - asks `Customize build settings? (y/N)` only while binding the directory for the first time, and only asks for Framework and HTTP port when the user opts in
-- for Next.js, TanStack Start, and Bun/Hono deploys, reads or creates `prisma.app.json` before build and uses it for app build settings:
+- resolves build settings from the compute config `build` block over framework inference; nothing is read from or written to disk for them:
   - `Build Command` prefers `<package-manager> run build` when `package.json` has `scripts.build`
+  - the package manager is detected from the app directory first, then from each ancestor up to the repository or workspace root, so workspace apps build with the workspace package manager
+  - build commands run with every `node_modules/.bin` between the app and the repository or workspace root on `PATH`, so hoisted workspace binaries resolve
   - otherwise `Build Command` falls back to the framework default, such as `next build`
   - `Output Directory` is a literal framework output path, such as `.next/standalone`, `.output`, or `.`
-- does not overwrite an existing `prisma.app.json`; edit the file or delete it and rerun deploy to regenerate defaults
+- `prisma.app.json` is legacy and never read or written; a leftover file that matches the resolved settings produces a deletion warning, an unparsable one is ignored with a warning, and one with custom values fails with `BUILD_SETTINGS_MIGRATION_REQUIRED` including the exact `build` block to move into `prisma.compute.ts`
 - after setup, deploy prints `Deploying to <Project> / <Branch> / <App>`; later deploys print a compact target header such as `Deploying ./j1 to j1 / main / j1`
 - deploy progress uses short stage copy (`Building locally...`, `Built <size>`, `Uploading...`, `Uploaded`, `Deploying...`, `Deployed`) and never prints `Status: running` or `Deployment is running at ...`
 - success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma-cli app logs`
 - accepts repeated `--env NAME=VALUE` flags and dotenv file paths such as `--env .env`
-- supports `--db` to create a new empty Prisma Postgres database, apply a supported local Prisma schema source when one exists, and write `DATABASE_URL` and `DIRECT_URL` through the existing `project env` storage
+- supports `--db` to create a new empty Prisma Postgres database and write `DATABASE_URL` and `DIRECT_URL` through the existing `project env` storage; the CLI never runs schema or migration commands — applying the schema stays with the user's own tooling
 - supports `--no-db` to suppress automatic database prompting for the deploy
 - `--db` and `--no-db` are mutually exclusive; passing both is rejected
 - `--yes` alone never creates a database; CI must pass `--db --yes` to create and wire one
@@ -824,21 +904,17 @@ Behavior:
 - database setup never overwrites an existing branch-scoped `DATABASE_URL`; when the branch already has `DATABASE_URL`, `--db` leaves branch database env vars unchanged and continues
 - production setup treats existing production `DATABASE_URL` or `DIRECT_URL` as BYO DB intent; it does not prompt, and explicit `--db` leaves production env vars unchanged and continues with a warning
 - when only `DIRECT_URL` exists on a preview branch, explicit `--db` treats it as partial setup and repairs the pair by writing fresh branch database env values
-- if schema setup or env-var wiring fails after database creation, the CLI deletes the newly created database before returning the error
-- database setup does not clone or infer schema from another database; it only creates an empty database and optionally applies schema from local code
-- Prisma Next config (`prisma-next.config.*`) is preferred over `schema.prisma`; setup runs `prisma-next contract emit` and then `prisma-next db init`
-- for Prisma ORM `schema.prisma`, setup runs `prisma migrate deploy` when `prisma/migrations` exists next to the schema, otherwise it runs `prisma db push`
-- when no supported Prisma schema source is found, `--db` still creates the database and env overrides but skips schema setup
+- if env-var wiring fails after database creation, the CLI deletes the newly created database before returning the error
+- after creating a database, the CLI emits a warning that the database is empty and suggests a schema command based on the detected local schema source (`prisma migrate deploy` when `prisma/migrations` exists, `prisma db push` for a bare `schema.prisma`, `prisma-next db init` for a Prisma Next config); the suggestion is never executed
 - known non-Postgres Prisma sources do not trigger automatic database prompting; explicit `--db` is rejected because the created database is Prisma Postgres
-- if schema setup fails, deploy stops before the app build/deploy starts
 - `--env DATABASE_URL=...`, `--env DIRECT_URL=...`, or the same keys loaded from an env file suppress automatic database prompting; combining those database env vars with `--db` is rejected
 - maps user-facing framework names to deploy build strategies
-- does not accept `--build-command` or `--output-directory`; custom build settings are edited in `prisma.app.json`, which is initially generated from `package.json` `scripts.build` and framework defaults for config-backed deploy types
+- does not accept `--build-command` or `--output-directory`; custom build settings live in the `build` block of `prisma.compute.ts`
 - uses `src/index.ts` as the Hono deploy entrypoint when the app has no `package.json#main` or `package.json#module` and that file exists
 - supports vanilla Bun apps with `--framework bun` using `package.json#main` or `package.json#module`, or with `--entry <path>`
 - treats `--entry <path>` without `--framework` as a Bun app deploy
 - does not print secret values
-- returns app, deployment id, URL, deploy settings including `prisma.app.json` status/build/output metadata, and next steps in `--json` output
+- returns app, deployment id, URL, deploy settings including build settings origin metadata, and next steps in `--json` output
 
 Examples:
 
@@ -855,6 +931,8 @@ prisma-cli app deploy --branch feat-login --framework hono --http-port 3000
 prisma-cli app deploy --prod --yes
 prisma-cli app deploy --framework bun --entry src/server.ts --http-port 3000
 prisma-cli app deploy --entry src/server.ts --http-port 3000
+prisma-cli app deploy web
+prisma-cli app deploy worker --branch feat-queue
 ```
 
 ## `prisma-cli project env`
@@ -999,7 +1077,7 @@ prisma-cli project env remove STRIPE_KEY --role preview
 prisma-cli project env remove DATABASE_URL --branch feature/foo
 ```
 
-## `prisma-cli app show --app <name>`
+## `prisma-cli app show [app] --app <name>`
 
 Purpose:
 
@@ -1018,7 +1096,7 @@ prisma-cli app show
 prisma-cli app show --app hello-world
 ```
 
-## `prisma-cli app open --app <name>`
+## `prisma-cli app open [app] --app <name>`
 
 Purpose:
 
@@ -1068,7 +1146,7 @@ prisma-cli app domain wait shop.acme.com --timeout 15m
 prisma-cli app domain retry shop.acme.com
 ```
 
-## `prisma-cli app domain add <hostname>`
+## `prisma-cli app domain add <hostname> [app]`
 
 Purpose:
 
@@ -1094,7 +1172,7 @@ prisma-cli app domain add shop.acme.com
 prisma-cli app domain add shop.acme.com --app shop --branch production
 ```
 
-## `prisma-cli app domain show <hostname>`
+## `prisma-cli app domain show <hostname> [app]`
 
 Purpose:
 
@@ -1114,7 +1192,7 @@ Examples:
 prisma-cli app domain show checkout.acme.com
 ```
 
-## `prisma-cli app domain remove <hostname>`
+## `prisma-cli app domain remove <hostname> [app]`
 
 Purpose:
 
@@ -1134,7 +1212,7 @@ prisma-cli app domain remove old.acme.com
 prisma-cli app domain remove old.acme.com --yes
 ```
 
-## `prisma-cli app domain retry <hostname>`
+## `prisma-cli app domain retry <hostname> [app]`
 
 Purpose:
 
@@ -1156,7 +1234,7 @@ Examples:
 prisma-cli app domain retry checkout.acme.com
 ```
 
-## `prisma-cli app domain wait <hostname>`
+## `prisma-cli app domain wait <hostname> [app]`
 
 Purpose:
 
@@ -1180,7 +1258,7 @@ prisma-cli app domain wait shop.acme.com
 prisma-cli app domain wait shop.acme.com --timeout 0 --json
 ```
 
-## `prisma-cli app logs --app <name> --deployment <id>`
+## `prisma-cli app logs [app] --app <name> --deployment <id>`
 
 Purpose:
 
@@ -1203,7 +1281,7 @@ prisma-cli app logs
 prisma-cli app logs --deployment dep_123
 ```
 
-## `prisma-cli app list-deploys --app <name>`
+## `prisma-cli app list-deploys [app] --app <name>`
 
 Purpose:
 
@@ -1240,7 +1318,7 @@ Examples:
 prisma-cli app show-deploy dep_123
 ```
 
-## `prisma-cli app promote <deployment> --app <name>`
+## `prisma-cli app promote <deployment> [app] --app <name>`
 
 Purpose:
 
@@ -1260,7 +1338,7 @@ prisma-cli app promote dep_123
 prisma-cli app promote dep_123 --app hello-world
 ```
 
-## `prisma-cli app rollback --app <name> --to <deployment>`
+## `prisma-cli app rollback [app] --app <name> --to <deployment>`
 
 Purpose:
 
@@ -1280,7 +1358,7 @@ prisma-cli app rollback
 prisma-cli app rollback --app hello-world --to dep_123
 ```
 
-## `prisma-cli app remove --app <name> -y --yes`
+## `prisma-cli app remove [app] --app <name> -y --yes`
 
 Purpose:
 

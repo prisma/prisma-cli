@@ -4,6 +4,7 @@ import { Command } from "commander";
 
 import { LocalStateStore } from "../adapters/local-state";
 import { MockApi } from "../adapters/mock-api";
+import { findComputeConfigDir } from "../lib/app/compute-config-discovery";
 import { renderHelp } from "./help";
 import type { CliOutput } from "./output";
 import type { GlobalFlags } from "./global-flags";
@@ -57,7 +58,7 @@ export async function createCommandContext(
   flags: GlobalFlags,
 ): Promise<CommandContext> {
   const fixturePath = runtime.fixturePath ?? runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH;
-  const stateDir = resolveStateDir(runtime);
+  const stateDir = await resolveStateDir(runtime);
 
   // Load the mock API only when fixture mode is explicitly enabled.
   let loadedApi: MockApi | undefined;
@@ -86,8 +87,17 @@ export async function createCommandContext(
   };
 }
 
-export function resolveStateDir(runtime: CliRuntime): string {
-  return runtime.stateDir ?? runtime.env.PRISMA_CLI_STATE_DIR ?? path.join(runtime.cwd, DEFAULT_STATE_DIR_NAME);
+export async function resolveStateDir(runtime: CliRuntime): Promise<string> {
+  const explicitStateDir = runtime.stateDir ?? runtime.env.PRISMA_CLI_STATE_DIR;
+  if (explicitStateDir) {
+    return explicitStateDir;
+  }
+
+  // The compute config marks the project root, so the local state cache lives
+  // next to it instead of fragmenting across invocation directories. This is
+  // location-only discovery; the config itself is not loaded here.
+  const projectDir = await findComputeConfigDir(runtime.cwd, runtime.signal);
+  return path.join(projectDir ?? runtime.cwd, DEFAULT_STATE_DIR_NAME);
 }
 
 export function canPrompt(context: CommandContext): boolean {

@@ -131,6 +131,8 @@ export interface ResolveProjectOptions {
   explicitProject?: string;
   envProjectId?: string;
   commandName?: string;
+  /** Directory holding `.prisma/local.json`. Defaults to the invocation directory. */
+  projectDir?: string;
   listProjects(): Promise<ProjectCandidate[]>;
 }
 
@@ -547,7 +549,7 @@ async function readImplicitLocalPin(
     return Result.ok(null);
   }
 
-  const localPinResult = await readLocalResolutionPin(options.context.runtime.cwd, options.context.runtime.signal);
+  const localPinResult = await readLocalResolutionPin(options.projectDir ?? options.context.runtime.cwd, options.context.runtime.signal);
   if (localPinResult.isErr()) {
     return Result.err(localPinReadErrorToProjectError(localPinResult.error));
   }

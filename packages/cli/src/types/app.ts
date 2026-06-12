@@ -28,8 +28,9 @@ export interface AppResolvedContext {
 
 export interface AppDeploySettings {
   config: {
-    path: string;
-    status: "created" | "used";
+    /** The compute config path when it owns the build settings. */
+    path: string | null;
+    status: "config" | "inferred";
   };
   buildCommand: {
     value: string | null;
@@ -68,11 +69,6 @@ export interface AppDeployResult {
       name: string;
     };
     envVars: string[];
-    schema: {
-      command: "migrate-deploy" | "db-push" | "prisma-next-db-init";
-      source: "prisma-orm" | "prisma-next";
-      path: string;
-    } | null;
   };
   app: AppSummary;
   deployment: {
@@ -86,6 +82,14 @@ export interface AppDeployResult {
     path: string;
     written: boolean;
   };
+}
+
+export interface AppDeployAllResult {
+  /** Aggregate of one full deploy per config target, in declaration order. */
+  deployments: Array<{
+    target: string;
+    result: AppDeployResult;
+  }>;
 }
 
 export interface AppListDeploysResult {

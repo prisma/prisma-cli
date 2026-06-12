@@ -27,6 +27,13 @@ describe("prepare cli publish", () => {
           version: "3.0.0-development",
           description: "Command-line interface for the Prisma Developer Platform.",
           type: "module",
+          exports: {
+            "./config": {
+              types: "./dist/config.d.ts",
+              default: "./dist/config.js",
+            },
+            "./package.json": "./package.json",
+          },
           engines: {
             node: ">=20",
           },
@@ -64,6 +71,13 @@ describe("prepare cli publish", () => {
       type: "module",
       bin: {
         "prisma-cli": "./dist/cli.js",
+      },
+      exports: {
+        "./config": {
+          types: "./dist/config.d.ts",
+          default: "./dist/config.js",
+        },
+        "./package.json": "./package.json",
       },
       files: ["dist", "README.md", "LICENSE"],
       publishConfig: {

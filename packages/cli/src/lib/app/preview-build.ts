@@ -21,12 +21,15 @@ import {
   runResolvedBuildCommand,
   type PreviewBuildSettings,
 } from "./preview-build-settings";
+import { resolveSourceRoot } from "../fs/source-root";
 
 export {
   PRISMA_APP_CONFIG_FILENAME,
-  PRISMA_APP_CONFIG_SCHEMA_URL,
-  resolveOrCreatePreviewBuildSettings,
+  detectLegacyBuildSettings,
+  resolveConfiguredPreviewBuildSettings,
+  resolveInferredPreviewBuildSettings,
   resolvePreviewBuildSettings,
+  type LegacyBuildSettingsDetection,
   type PreviewBuildSettingsBuildType,
   type PreviewBuildSettings,
   type PreviewBuildSettingsResolution,
@@ -363,7 +366,7 @@ class PreviewTanstackStartBuild implements BuildStrategy {
     if (!entryStat?.isFile()) {
       throw new Error(
         `TanStack Start build did not produce a Nitro node server entrypoint at ${joinPosix(settings.outputDirectory, entrypoint)}. `
-          + `Ensure your vite.config includes the tanstackStart() and nitro() plugins with the default node preset, or update ${PRISMA_APP_CONFIG_FILENAME}.`,
+          + `Ensure your vite.config includes the tanstackStart() and nitro() plugins with the default node preset, or set build.outputDirectory in prisma.compute.ts.`,
       );
     }
 
@@ -450,7 +453,7 @@ export async function stageNextjsStandaloneArtifact(options: {
     sourceRoot,
     signal: options.signal,
   });
-  await hoistPnpmDependencies(path.join(artifactRoot, "node_modules"), options.signal);
+  await hoistIsolatedStoreDependencies(path.join(artifactRoot, "node_modules"), options.signal);
 }
 
 async function copyNextjsStaticAssets(options: {
@@ -564,15 +567,25 @@ function nextjsServerSubpath(entrypoint: string): string {
   return dir === "." ? "" : dir;
 }
 
-async function hoistPnpmDependencies(nodeModulesDir: string, signal?: AbortSignal): Promise<void> {
-  const pnpmNodeModulesDir = path.join(nodeModulesDir, ".pnpm", "node_modules");
-  if (!await directoryExists(pnpmNodeModulesDir, signal)) {
+/**
+ * pnpm and bun (isolated linker) both keep packages in a virtual store with a
+ * shared symlink farm (`.pnpm/node_modules`, `.bun/node_modules`). Hoist the
+ * farm entries to the artifact's node_modules root so Node-style resolution
+ * works after symlinks are materialized.
+ */
+async function hoistIsolatedStoreDependencies(nodeModulesDir: string, signal?: AbortSignal): Promise<void> {
+  await hoistStoreDependencies(nodeModulesDir, path.join(nodeModulesDir, ".pnpm", "node_modules"), signal);
+  await hoistStoreDependencies(nodeModulesDir, path.join(nodeModulesDir, ".bun", "node_modules"), signal);
+}
+
+async function hoistStoreDependencies(nodeModulesDir: string, storeNodeModulesDir: string, signal?: AbortSignal): Promise<void> {
+  if (!await directoryExists(storeNodeModulesDir, signal)) {
     return;
   }
 
-  const entries = await unsupportedFilesystemBoundary(signal, () => readdir(pnpmNodeModulesDir, { withFileTypes: true }));
+  const entries = await unsupportedFilesystemBoundary(signal, () => readdir(storeNodeModulesDir, { withFileTypes: true }));
   for (const entry of entries) {
-    const sourcePath = path.join(pnpmNodeModulesDir, entry.name);
+    const sourcePath = path.join(storeNodeModulesDir, entry.name);
 
     if (entry.name.startsWith("@") && entry.isDirectory()) {
       const scopedEntries = await unsupportedFilesystemBoundary(signal, () => readdir(sourcePath, { withFileTypes: true }));
@@ -587,7 +600,7 @@ async function hoistPnpmDependencies(nodeModulesDir: string, signal?: AbortSigna
           path.join(sourcePath, scopedEntry.name),
           scopedDestination,
           {
-            standaloneRoot: pnpmNodeModulesDir,
+            standaloneRoot: storeNodeModulesDir,
             appRoot: nodeModulesDir,
             sourceRoot: nodeModulesDir,
             signal,
@@ -603,7 +616,7 @@ async function hoistPnpmDependencies(nodeModulesDir: string, signal?: AbortSigna
     }
 
     await copyPathMaterializingSymlinks(sourcePath, destinationPath, {
-      standaloneRoot: pnpmNodeModulesDir,
+      standaloneRoot: storeNodeModulesDir,
       appRoot: nodeModulesDir,
       sourceRoot: nodeModulesDir,
       signal,
@@ -790,41 +803,6 @@ async function directoryExists(targetPath: string, signal?: AbortSignal): Promis
   try {
     const targetStat = await unsupportedFilesystemBoundary(signal, () => stat(targetPath));
     return targetStat.isDirectory();
-  } catch (error) {
-    if (signal?.aborted) throw error;
-    return false;
-  }
-}
-
-async function resolveSourceRoot(appRoot: string, signal?: AbortSignal): Promise<string> {
-  let current = path.resolve(appRoot);
-
-  while (true) {
-    if (
-      await pathExists(path.join(current, ".git"), signal) ||
-      await pathExists(path.join(current, "pnpm-workspace.yaml"), signal) ||
-      await pathExists(path.join(current, "bun.lock"), signal) ||
-      await pathExists(path.join(current, "bun.lockb"), signal) ||
-      await packageJsonDeclaresWorkspaces(current, signal)
-    ) {
-      return current;
-    }
-
-    const parent = path.dirname(current);
-    if (parent === current) {
-      return path.resolve(appRoot);
-    }
-
-    current = parent;
-  }
-}
-
-async function packageJsonDeclaresWorkspaces(directory: string, signal?: AbortSignal): Promise<boolean> {
-  signal?.throwIfAborted();
-  try {
-    const content = await readFile(path.join(directory, "package.json"), { encoding: "utf8", signal });
-    const parsed = JSON.parse(content) as { workspaces?: unknown };
-    return Boolean(parsed.workspaces);
   } catch (error) {
     if (signal?.aborted) throw error;
     return false;

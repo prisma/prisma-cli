@@ -30,6 +30,7 @@ export async function stageCliPublishPackage(options = {}) {
     bin: {
       "prisma-cli": "./dist/cli.js",
     },
+    exports: sourceManifest.exports,
     files: ["dist", "README.md", "LICENSE"],
     publishConfig: {
       access: "public",

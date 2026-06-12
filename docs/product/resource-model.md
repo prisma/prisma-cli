@@ -38,7 +38,7 @@ Rules:
 - `project` is not the same thing as `app`
 - Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for project resolution
 - `.prisma/local.json` is a gitignored local pin/cache for Workspace and Project IDs; it is not a declarative repo config file
-- `prisma.app.json` is a committed app build-settings file only; it must not contain Workspace, Project, Branch, App, env, or secret resolution state
+- `prisma.compute.ts` is a committed deploy-defaults file; it must not contain Workspace, Project, Branch, env-secret, or credential resolution state
 - Project setup is explicit: users choose an existing Project or explicitly create a new one before remote work starts
 - `app deploy` may orchestrate Project setup, but it must not silently choose or create Project scope
 - everything under a project happens in a branch
@@ -104,7 +104,7 @@ Rules:
 - the runtime app service is scoped by branch in the platform model
 - the app may be selected or created as part of app deployment workflows
 - app selection is local CLI state when needed for the beta package
-- app build settings may live in `prisma.app.json` beside `package.json`; v1 fields are `buildCommand` and `outputDirectory`
+- app build settings live in the `build` block of `prisma.compute.ts` (`command`, `outputDirectory`); `prisma.app.json` is legacy and no longer read
 
 ### Deployment
 

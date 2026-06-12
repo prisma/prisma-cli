@@ -1,9 +1,7 @@
-import { spawn } from "node:child_process";
 import type { Dirent } from "node:fs";
 import { access, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
-import type { CommandContext } from "../../shell/runtime";
 
 export type BranchDatabaseSchemaCommand = "migrate-deploy" | "db-push" | "prisma-next-db-init";
 export type BranchDatabaseSchemaSourceKind = "prisma-orm" | "prisma-next";
@@ -33,12 +31,6 @@ export interface BranchDatabaseSignal {
   schema: BranchDatabaseSchema | null;
   unsupportedSchema: UnsupportedBranchDatabaseSchema | null;
   databaseUrlReferences: string[];
-}
-
-export interface BranchDatabaseSchemaSetupResult {
-  command: BranchDatabaseSchemaCommand;
-  source: BranchDatabaseSchemaSourceKind;
-  schemaPath: string;
 }
 
 const SKIPPED_DIRECTORIES = new Set([
@@ -127,33 +119,6 @@ export function hasBranchDatabaseSignal(signal: BranchDatabaseSignal): boolean {
   return Boolean(signal.schema || signal.databaseUrlReferences.length > 0);
 }
 
-export async function runBranchDatabaseSchemaSetup(options: {
-  context: CommandContext;
-  schema: BranchDatabaseSchema;
-  databaseUrl: string;
-  directUrl: string | null;
-}): Promise<BranchDatabaseSchemaSetupResult> {
-  const schemaPath = path.relative(options.context.runtime.cwd, options.schema.path) || defaultSchemaSourcePath(options.schema);
-  const prisma = await resolvePrismaInvocation(options.context.runtime.cwd);
-  const commands = buildSchemaSetupCommands(options.schema, schemaPath, options.databaseUrl, prisma);
-
-  for (const command of commands) {
-    await runPrismaCommand({
-      context: options.context,
-      ...command,
-      env: {
-        DATABASE_URL: options.databaseUrl,
-        ...(options.directUrl ? { DIRECT_URL: options.directUrl } : {}),
-      },
-    });
-  }
-
-  return {
-    command: options.schema.command,
-    source: options.schema.kind,
-    schemaPath,
-  };
-}
 
 interface ScanState {
   filesVisited: number;
@@ -171,6 +136,7 @@ interface PrismaOrmSchemaSelection {
   schema: BranchDatabaseSchema | null;
   unsupportedSchema: UnsupportedBranchDatabaseSchema | null;
 }
+
 
 async function scanDirectory(
   cwd: string,
@@ -412,143 +378,8 @@ async function readTextFileIfSmall(filePath: string, signal: AbortSignal): Promi
   return readFile(filePath, { encoding: "utf8", signal });
 }
 
-// Last resort for repos that ship a schema with no Prisma packages
-// installed at all. Pinned to the 6.x line: Prisma 7 rejects the classic
-// `url = env(...)` datasource form (P1012), which is exactly the schema
-// shape such repos have. Bump deliberately, never to `latest`.
-const FALLBACK_PRISMA_CLI_VERSION = "6.19.3";
-
-interface PrismaInvocation {
-  argsPrefix: string[];
-  displayPrefix: string;
-}
-
-/**
- * Picks how `prisma` CLI commands are invoked for schema setup. Projects
- * with the CLI installed run their own binary (version-exact). Projects
- * without it fall back to a versioned `npx prisma@<x>` pinned to the
- * installed `@prisma/client` — never bare `npx prisma`, which resolves to
- * latest and can be a major version ahead of the project's schema.
- */
-async function resolvePrismaInvocation(cwd: string): Promise<PrismaInvocation> {
-  if (await localPrismaBinExists(cwd)) {
-    return {
-      argsPrefix: ["--no-install", "prisma"],
-      displayPrefix: "npx --no-install prisma",
-    };
-  }
-
-  const clientVersion = await readInstalledPrismaClientVersion(cwd);
-  const pinned = clientVersion ?? FALLBACK_PRISMA_CLI_VERSION;
-  return {
-    argsPrefix: ["--yes", `prisma@${pinned}`],
-    displayPrefix: `npx prisma@${pinned}`,
-  };
-}
-
-/** npm/pnpm name the local CLI shim `prisma` on POSIX and `prisma.cmd`/`prisma.ps1` on Windows. */
-async function localPrismaBinExists(cwd: string): Promise<boolean> {
-  const binDir = path.join(cwd, "node_modules", ".bin");
-  const checks = await Promise.all(
-    ["prisma", "prisma.cmd", "prisma.ps1"].map((name) =>
-      fileExists(path.join(binDir, name)),
-    ),
-  );
-  return checks.some(Boolean);
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function readInstalledPrismaClientVersion(cwd: string): Promise<string | null> {
-  try {
-    const raw = await readFile(
-      path.join(cwd, "node_modules", "@prisma", "client", "package.json"),
-      { encoding: "utf8" },
-    );
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) {
-      return null;
-    }
-    const version = (parsed as { version?: unknown }).version;
-    return typeof version === "string" && version.length > 0 ? version : null;
-  } catch {
-    return null;
-  }
-}
-
-function buildSchemaSetupCommands(schema: BranchDatabaseSchema, schemaPath: string, databaseUrl: string, prisma: PrismaInvocation): Array<{
-  args: string[];
-  displayCommand: string;
-}> {
-  if (schema.command === "migrate-deploy") {
-    return [{
-      args: [...prisma.argsPrefix, "migrate", "deploy", "--schema", schemaPath],
-      displayCommand: `${prisma.displayPrefix} migrate deploy`,
-    }];
-  }
-
-  if (schema.command === "db-push") {
-    return [{
-      args: [...prisma.argsPrefix, "db", "push", "--schema", schemaPath],
-      displayCommand: `${prisma.displayPrefix} db push`,
-    }];
-  }
-
-  return [
-    {
-      args: ["--no-install", "prisma-next", "contract", "emit", "--config", schemaPath],
-      displayCommand: "npx --no-install prisma-next contract emit",
-    },
-    {
-      args: ["--no-install", "prisma-next", "db", "init", "--config", schemaPath, "--db", databaseUrl],
-      displayCommand: "npx --no-install prisma-next db init",
-    },
-  ];
-}
 
 function defaultSchemaSourcePath(schema: BranchDatabaseSchema): string {
   return schema.kind === "prisma-next" ? "prisma-next.config.ts" : "schema.prisma";
 }
 
-async function runPrismaCommand(options: {
-  context: CommandContext;
-  args: string[];
-  displayCommand: string;
-  env: Record<string, string>;
-}): Promise<void> {
-  const shouldPipeOutput = !options.context.flags.json && !options.context.flags.quiet;
-  const child = spawn("npx", options.args, {
-    cwd: options.context.runtime.cwd,
-    env: {
-      ...options.context.runtime.env,
-      ...options.env,
-    },
-    signal: options.context.runtime.signal,
-    stdio: shouldPipeOutput ? ["ignore", "pipe", "pipe"] : ["ignore", "ignore", "ignore"],
-  });
-
-  if (shouldPipeOutput) {
-    child.stdout?.pipe(options.context.output.stderr, { end: false });
-    child.stderr?.pipe(options.context.output.stderr, { end: false });
-  }
-
-  const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
-    child.once("error", reject);
-    child.once("close", (code, signal) => resolve({ code, signal }));
-  });
-
-  if (exit.signal) {
-    throw new Error(`${options.displayCommand} was terminated by ${exit.signal}.`);
-  }
-
-  if (exit.code !== 0) {
-    throw new Error(`${options.displayCommand} exited with code ${exit.code ?? 1}.`);
-  }
-}

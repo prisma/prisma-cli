@@ -546,8 +546,8 @@ describe("app env vars", () => {
         },
         deploySettings: {
           config: {
-            path: "prisma.app.json",
-            status: "used",
+            path: null,
+            status: "inferred",
           },
           buildCommand: {
             value: "bun run build",
@@ -636,8 +636,8 @@ describe("app env vars", () => {
         },
         deploySettings: {
           config: {
-            path: "prisma.app.json",
-            status: "used",
+            path: null,
+            status: "inferred",
           },
           buildCommand: {
             value: "bun run build",

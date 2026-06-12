@@ -2,6 +2,7 @@ import type { CommandDescriptor } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
 import type {
   AppBuildResult,
+  AppDeployAllResult,
   AppDeploySettings,
   AppDeployResult,
   AppDomainAddResult,
@@ -68,6 +69,39 @@ export function renderAppDeploy(
   return lines;
 }
 
+export function isAppDeployAllResult(result: AppDeployResult | AppDeployAllResult): result is AppDeployAllResult {
+  return "deployments" in result;
+}
+
+export function renderAppDeployAll(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: AppDeployAllResult,
+): string[] {
+  const lines: string[] = [];
+  for (const deployment of result.deployments) {
+    lines.push(deployment.target);
+    lines.push(...renderAppDeploy(context, descriptor, deployment.result).map((line) => (line ? `  ${line}` : line)));
+    lines.push("");
+  }
+
+  lines.push(...renderDeployOutputRows(context.ui, result.deployments.map((deployment) => ({
+    label: deployment.target,
+    value: deployment.result.deployment.url ?? deployment.result.deployment.id,
+  }))));
+  return lines;
+}
+
+export function serializeAppDeployAll(result: AppDeployAllResult) {
+  return {
+    count: result.deployments.length,
+    deployments: result.deployments.map((deployment) => ({
+      target: deployment.target,
+      ...serializeAppDeploy(deployment.result),
+    })),
+  };
+}
+
 export function serializeAppDeploy(result: AppDeployResult) {
   const { deploySettings, localPin: _localPin, ...serialized } = result;
   const { id: _branchId, ...branch } = serialized.branch;
@@ -99,26 +133,10 @@ function renderBranchDatabaseDeploySummary(
         label: "Env",
         value: result.branchDatabase.envVars.join(", "),
       },
-      ...(result.branchDatabase.schema
-        ? [{
-            label: "Schema",
-            value: formatBranchDatabaseSchemaCommand(result.branchDatabase.schema.command),
-          }]
-        : []),
     ]),
   ];
 }
 
-function formatBranchDatabaseSchemaCommand(command: "migrate-deploy" | "db-push" | "prisma-next-db-init"): string {
-  switch (command) {
-    case "migrate-deploy":
-      return "prisma migrate deploy";
-    case "db-push":
-      return "prisma db push";
-    case "prisma-next-db-init":
-      return "prisma-next db init";
-  }
-}
 
 function formatDuration(durationMs: number): string {
   if (durationMs < 1000) {
@@ -201,12 +219,6 @@ function branchDatabaseRows(branchDatabase: AppDeployResult["branchDatabase"]): 
     },
     ...(branchDatabase.envVars.length > 0
       ? [{ key: "branch db env", value: branchDatabase.envVars.join(", ") }]
-      : []),
-    ...(branchDatabase.schema
-      ? [{
-          key: "branch db schema",
-          value: `${formatBranchDatabaseSchemaCommand(branchDatabase.schema.command)} (${branchDatabase.schema.source}, ${branchDatabase.schema.path})`,
-        }]
       : []),
   ];
 }

@@ -165,7 +165,7 @@ async function seedRememberedProjectStateForTest(runtime: CliRuntime): Promise<v
     return;
   }
 
-  await new LocalStateStore(resolveStateDir(runtime)).setRememberedProject({
+  await new LocalStateStore(await resolveStateDir(runtime)).setRememberedProject({
     id: projectId,
     name: runtime.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME ?? "Acme Dashboard",
     workspaceId: runtime.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID ?? "ws_123",
@@ -196,3 +196,4 @@ async function streamInput(input: CaptureInput, text: string | undefined): Promi
 
   input.end();
 }
+

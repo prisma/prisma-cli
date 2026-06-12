@@ -53,18 +53,19 @@ export async function bindProjectToDirectory(
   workspace: AuthWorkspace,
   project: ProjectSummary,
   action: ProjectSetupResult["action"],
+  directory: string = context.runtime.cwd,
 ): Promise<Result<ProjectSetupResult, ProjectDirectoryBindingError>> {
   return Result.gen(async function* () {
-    yield* Result.await(writeLocalResolutionPin(context.runtime.cwd, {
+    yield* Result.await(writeLocalResolutionPin(directory, {
       workspaceId: workspace.id,
       projectId: project.id,
     }, context.runtime.signal));
-    yield* Result.await(ensureLocalResolutionPinGitignore(context.runtime.cwd, context.runtime.signal));
+    yield* Result.await(ensureLocalResolutionPinGitignore(directory, context.runtime.signal));
 
     return Result.ok({
       workspace,
       project,
-      directory: formatSetupDirectory(context.runtime.cwd),
+      directory: formatSetupDirectory(directory),
       localPin: {
         path: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
         written: true,

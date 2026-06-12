@@ -1,3 +1,4 @@
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -38,7 +39,7 @@ describe("app local dev commands", () => {
       stateDir,
     });
 
-    const result = await runAppBuild(context, "server.ts", "bun");
+    const result = await runAppBuild(context, { entrypoint: "server.ts", buildType: "bun" });
 
     expect(executePreviewBuild).toHaveBeenCalledWith({
       appPath: cwd,
@@ -50,6 +51,103 @@ describe("app local dev commands", () => {
       directory: "/tmp/compute-build/app",
       entrypoint: "server.js",
       buildType: "bun",
+    });
+  });
+
+  it("build resolves the app target from prisma.compute.ts", async () => {
+    const executePreviewBuild = vi.fn().mockResolvedValue({
+      artifact: {
+        directory: "/tmp/compute-build/app",
+        entrypoint: "index.js",
+      },
+      buildType: "bun",
+    });
+
+    vi.doMock("../src/lib/app/preview-build", async () => {
+      const actual = await vi.importActual<typeof import("../src/lib/app/preview-build")>(
+        "../src/lib/app/preview-build",
+      );
+      return {
+        ...actual,
+        executePreviewBuild,
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppBuild } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await mkdir(path.join(cwd, "apps", "api"), { recursive: true });
+    await writeFile(path.join(cwd, "prisma.compute.ts"), [
+      "export default {",
+      '  apps: {',
+      '    api: { root: "apps/api", framework: "hono", entry: "src/index.ts" },',
+      '    web: { root: "apps/web", framework: "nextjs" },',
+      "  },",
+      "};",
+      "",
+    ].join("\n"), "utf8");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+    });
+
+    await runAppBuild(context, { configTarget: "api" });
+
+    expect(executePreviewBuild).toHaveBeenCalledWith({
+      appPath: path.join(cwd, "apps", "api"),
+      entrypoint: "src/index.ts",
+      buildType: "bun",
+      signal: context.runtime.signal,
+    });
+  });
+
+  it("build run from inside a target root discovers the config and infers the target", async () => {
+    const executePreviewBuild = vi.fn().mockResolvedValue({
+      artifact: {
+        directory: "/tmp/compute-build/app",
+        entrypoint: "index.js",
+      },
+      buildType: "bun",
+    });
+
+    vi.doMock("../src/lib/app/preview-build", async () => {
+      const actual = await vi.importActual<typeof import("../src/lib/app/preview-build")>(
+        "../src/lib/app/preview-build",
+      );
+      return {
+        ...actual,
+        executePreviewBuild,
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppBuild } = await import("../src/controllers/app");
+    const repoDir = await createTempCwd();
+    const appCwd = path.join(repoDir, "apps", "api", "src");
+    await mkdir(path.join(repoDir, ".git"), { recursive: true });
+    await mkdir(appCwd, { recursive: true });
+    await writeFile(path.join(repoDir, "prisma.compute.ts"), [
+      "export default {",
+      '  apps: {',
+      '    api: { root: "apps/api", framework: "hono", entry: "src/index.ts" },',
+      '    web: { root: "apps/web", framework: "nextjs" },',
+      "  },",
+      "};",
+      "",
+    ].join("\n"), "utf8");
+    const { context } = await createTestCommandContext({
+      cwd: appCwd,
+      stateDir: path.join(repoDir, ".state"),
+    });
+
+    await runAppBuild(context, {});
+
+    expect(executePreviewBuild).toHaveBeenCalledWith({
+      appPath: path.join(repoDir, "apps", "api"),
+      entrypoint: "src/index.ts",
+      buildType: "bun",
+      signal: context.runtime.signal,
     });
   });
 
@@ -81,7 +179,7 @@ describe("app local dev commands", () => {
       stateDir,
     });
 
-    const result = await runAppBuild(context, undefined, "astro");
+    const result = await runAppBuild(context, { buildType: "astro" });
 
     expect(executePreviewBuild).toHaveBeenCalledWith({
       appPath: cwd,
@@ -120,7 +218,7 @@ describe("app local dev commands", () => {
       stateDir,
     });
 
-    await expect(runAppBuild(context, undefined, "auto")).rejects.toMatchObject({
+    await expect(runAppBuild(context, { buildType: "auto" })).rejects.toMatchObject({
       code: "USAGE_ERROR",
       domain: "app",
       summary: "App build requires an explicit framework when detection is ambiguous",
@@ -140,7 +238,7 @@ describe("app local dev commands", () => {
       },
     });
 
-    await expect(runAppRun(context, undefined, "auto", undefined)).rejects.toMatchObject({
+    await expect(runAppRun(context, { buildType: "auto" })).rejects.toMatchObject({
       code: "USAGE_ERROR",
       domain: "app",
       summary: "App run does not support --json",
@@ -169,7 +267,7 @@ describe("app local dev commands", () => {
       stateDir,
     });
 
-    await expect(runAppRun(context, undefined, "auto", undefined)).rejects.toMatchObject({
+    await expect(runAppRun(context, { buildType: "auto" })).rejects.toMatchObject({
       code: "USAGE_ERROR",
       domain: "app",
       summary: "App run requires an explicit framework when detection is ambiguous",
@@ -186,7 +284,7 @@ describe("app local dev commands", () => {
       stateDir,
     });
 
-    await expect(runAppRun(context, "server.ts", "nextjs", undefined)).rejects.toMatchObject({
+    await expect(runAppRun(context, { entrypoint: "server.ts", buildType: "nextjs" })).rejects.toMatchObject({
       code: "USAGE_ERROR",
       domain: "app",
       summary: "App run does not accept --entry with --build-type nextjs",
@@ -222,7 +320,7 @@ describe("app local dev commands", () => {
       stateDir,
     });
 
-    const result = await runAppRun(context, "server.ts", "bun", "4000");
+    const result = await runAppRun(context, { entrypoint: "server.ts", buildType: "bun", port: "4000" });
 
     expect(runLocalApp).toHaveBeenCalledWith({
       appPath: cwd,
