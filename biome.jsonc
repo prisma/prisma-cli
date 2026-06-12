@@ -26,12 +26,12 @@
         "noConditionalExpect": "on",
         "noFloatingPromises": "on",
         "noForIn": "on",
-        "noLoopFunc": "on"
+        "noLoopFunc": "on",
+        "useDisposables": "on"
       }
       //   "complexity": {
       //   },
       //   "nursery": {
-      //     "useDisposables": "on"
       //   },
       //   "performance": {
       //     "noAwaitInLoops": "on",

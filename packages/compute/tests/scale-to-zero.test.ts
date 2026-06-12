@@ -38,7 +38,7 @@ describe("scale-to-zero guard", () => {
 
   it("releases only once when release is called multiple times", async () => {
     const { file } = await createControlFile();
-    const guard = new ScaleToZeroGuard();
+    using guard = new ScaleToZeroGuard();
 
     guard.release();
     guard.release();
@@ -51,7 +51,7 @@ describe("scale-to-zero guard", () => {
     const { file } = await createControlFile();
     const controller = new AbortController();
 
-    const guard = new ScaleToZeroGuard({ signal: controller.signal });
+    using guard = new ScaleToZeroGuard({ signal: controller.signal });
     expect(await readSignals(file)).toBe("+");
 
     controller.abort();
@@ -66,7 +66,7 @@ describe("scale-to-zero guard", () => {
     const controller = new AbortController();
     controller.abort();
 
-    const guard = new ScaleToZeroGuard({ signal: controller.signal });
+    using guard = new ScaleToZeroGuard({ signal: controller.signal });
     guard.release();
 
     expect(await readSignals(file)).toBe("");
@@ -117,7 +117,7 @@ describe("scale-to-zero guard", () => {
   it("removes the abort listener after manual release", async () => {
     const { file } = await createControlFile();
     const controller = new AbortController();
-    const guard = new ScaleToZeroGuard({ signal: controller.signal });
+    using guard = new ScaleToZeroGuard({ signal: controller.signal });
 
     guard.release();
     controller.abort();
