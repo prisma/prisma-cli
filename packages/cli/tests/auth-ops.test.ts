@@ -15,7 +15,9 @@ function encodeJwt(claims: Record<string, unknown>): string {
 }
 
 function mockFileTokenStorage(getTokens: ReturnType<typeof vi.fn>) {
-  return vi.fn().mockImplementation(() => ({ getTokens }));
+  return vi.fn().mockImplementation(function FileTokenStorageMock() {
+    return { getTokens };
+  });
 }
 
 describe("readAuthState", () => {

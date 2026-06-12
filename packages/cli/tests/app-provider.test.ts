@@ -10,7 +10,11 @@ afterEach(() => {
 });
 
 function mockPreviewBuildStrategy() {
-  return vi.fn().mockImplementation((options: object) => ({ options }));
+  return vi.fn().mockImplementation(function PreviewBuildStrategyMock(
+    options: object,
+  ) {
+    return { options };
+  });
 }
 
 describe("preview app provider", () => {
