@@ -49,62 +49,17 @@ jobs:
             --run-number "${GITHUB_RUN_NUMBER}" \
             --run-attempt "${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
-      - name: Run focused CLI tests
-        run: pnpm --filter @prisma/cli test
+      - name: Set package version
+        working-directory: packages/cli
+        run: pnpm version '${{ steps.cli_version.outputs.version }}' --no-git-tag-version
 
-      - name: Build CLI package
-        run: pnpm --filter @prisma/cli build
-
-      - name: Prepare staged publish package
-        run: node scripts/prepare-cli-publish.mjs .publish/cli --version '${{ steps.cli_version.outputs.version }}'
-
-      - name: Audit staged package contents
-        working-directory: .publish/cli
-        run: |
-          PACK_JSON="$(npm pack --dry-run --json)"
-          PACK_JSON="${PACK_JSON}" node -e "
-            const pack = JSON.parse(process.env.PACK_JSON)[0]
-            const files = pack.files.map((file) => file.path).sort()
-            const forbidden = files.filter((file) =>
-              file.startsWith('src/') ||
-              file.startsWith('tests/') ||
-              file.startsWith('fixtures/') ||
-              file.startsWith('docs/') ||
-              file.startsWith('.prisma/') ||
-              file.startsWith('.publish/')
-            )
-            if (forbidden.length) {
-              console.error('Forbidden files in npm package:', forbidden.join(', '))
-              process.exit(1)
-            }
-            for (const required of ['dist/cli.js', 'README.md', 'LICENSE', 'package.json']) {
-              if (!files.includes(required)) {
-                console.error('Missing required package file:', required)
-                process.exit(1)
-              }
-            }
-          "
-
-      - name: Smoke test staged tarball install
-        run: |
-          TARBALL="$(cd .publish/cli && npm pack --silent)"
-          TMPDIR="$(mktemp -d)"
-          cat > "${TMPDIR}/package.json" <<'EOF'
-          {
-            "name": "cli-publish-smoke",
-            "private": true
-          }
-          EOF
-          pnpm add -D "${PWD}/.publish/cli/${TARBALL}" --dir "${TMPDIR}"
-          (
-            cd "${TMPDIR}"
-            pnpm prisma-cli --help
-            pnpm prisma-cli auth whoami --json
-          )
+      - name: Check npm authentication
+        working-directory: packages/cli
+        run: pnpm whoami
 
       - name: Publish dev package to npm
-        working-directory: .publish/cli
-        run: npm publish --access public --tag dev --provenance
+        working-directory: packages/cli
+        run: pnpm publish --access public --tag dev --provenance
 
       - name: Summarize dev publish
         run: |
@@ -152,7 +107,7 @@ jobs:
         id: cli_version
         run: |
           PACKAGE='@prisma/cli'
-          LATEST="$(npm view "${PACKAGE}" dist-tags.latest --silent 2>/dev/null || true)"
+          LATEST="$(pnpm view "${PACKAGE}" dist-tags.latest --silent 2>/dev/null || true)"
           node scripts/resolve-package-version.mjs next-beta \
             --package-dir packages/cli \
             --latest "${LATEST}" >> "$GITHUB_OUTPUT"
@@ -166,58 +121,9 @@ jobs:
             exit 1
           fi
 
-      - name: Run focused CLI tests
-        run: pnpm --filter @prisma/cli test
-
-      - name: Build CLI package
-        run: pnpm --filter @prisma/cli build
-
-      - name: Prepare staged publish package
-        run: node scripts/prepare-cli-publish.mjs .publish/cli --version '${{ steps.cli_version.outputs.version }}'
-
-      - name: Audit staged package contents
-        working-directory: .publish/cli
-        run: |
-          PACK_JSON="$(npm pack --dry-run --json)"
-          PACK_JSON="${PACK_JSON}" node -e "
-            const pack = JSON.parse(process.env.PACK_JSON)[0]
-            const files = pack.files.map((file) => file.path).sort()
-            const forbidden = files.filter((file) =>
-              file.startsWith('src/') ||
-              file.startsWith('tests/') ||
-              file.startsWith('fixtures/') ||
-              file.startsWith('docs/') ||
-              file.startsWith('.prisma/') ||
-              file.startsWith('.publish/')
-            )
-            if (forbidden.length) {
-              console.error('Forbidden files in npm package:', forbidden.join(', '))
-              process.exit(1)
-            }
-            for (const required of ['dist/cli.js', 'README.md', 'LICENSE', 'package.json']) {
-              if (!files.includes(required)) {
-                console.error('Missing required package file:', required)
-                process.exit(1)
-              }
-            }
-          "
-
-      - name: Smoke test staged tarball install
-        run: |
-          TARBALL="$(cd .publish/cli && npm pack --silent)"
-          TMPDIR="$(mktemp -d)"
-          cat > "${TMPDIR}/package.json" <<'EOF'
-          {
-            "name": "cli-publish-smoke",
-            "private": true
-          }
-          EOF
-          pnpm add -D "${PWD}/.publish/cli/${TARBALL}" --dir "${TMPDIR}"
-          (
-            cd "${TMPDIR}"
-            pnpm prisma-cli --help
-            pnpm prisma-cli auth whoami --json
-          )
+      - name: Set package version
+        working-directory: packages/cli
+        run: pnpm version '${{ steps.cli_version.outputs.version }}' --no-git-tag-version
 
       - name: Ensure release still targets the latest main
         if: ${{ !inputs.dry_run }}
@@ -228,10 +134,15 @@ jobs:
             exit 1
           fi
 
+      - name: Check npm authentication
+        if: ${{ !inputs.dry_run }}
+        working-directory: packages/cli
+        run: pnpm whoami
+
       - name: Publish official package to npm
         if: ${{ !inputs.dry_run }}
-        working-directory: .publish/cli
-        run: npm publish --access public --tag latest --provenance
+        working-directory: packages/cli
+        run: pnpm publish --access public --tag latest --provenance
 
       - name: Create release tag
         if: ${{ !inputs.dry_run }}

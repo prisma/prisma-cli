@@ -39,8 +39,8 @@ Tests live in `packages/cli/tests`.
 - Use in-process CLI tests for command behavior, output, prompts, and errors.
 - Use controller and use-case tests when a behavior can be exercised without
   going through Commander.
-- Use publish-prep tests for package metadata and tarball contents.
-- Add subprocess or staged package smoke tests when changing packaging,
-  entrypoints, or binary behavior.
+- Use package metadata and tarball-content checks for publishing changes.
+- Add subprocess or package smoke tests when changing packaging, entrypoints, or
+  binary behavior.
 
 See [testing patterns](../reference/testing-patterns.md) for more detail.

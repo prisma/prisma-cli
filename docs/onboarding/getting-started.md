@@ -48,13 +48,11 @@ Build the package:
 pnpm build:cli
 ```
 
-Stage the publish package locally without publishing:
+Inspect the publish package locally without publishing:
 
 ```bash
-pnpm prepare:cli-publish
+pnpm --filter @prisma/cli pack --dry-run
 ```
-
-If staging fails because the built CLI is missing, run `pnpm build:cli` first.
 
 ## Examples
 

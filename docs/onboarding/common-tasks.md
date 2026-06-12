@@ -41,10 +41,8 @@ Use this playbook when making common changes to the CLI.
 
 1. Update `packages/cli/package.json` and `packages/cli/README.md` if package
    metadata or package-facing docs change.
-2. Update `scripts/prepare-cli-publish.mjs` when staged package contents change.
-3. Update `packages/cli/tests/publish-prep.test.ts`.
-4. Run `pnpm build:cli` and `pnpm prepare:cli-publish`.
-5. Do not publish from a local checkout unless the release owner explicitly asks
+2. Run `pnpm --filter @prisma/cli pack --dry-run`.
+3. Do not publish from a local checkout unless the release owner explicitly asks
    for that.
 
 ## Record An Architecture Decision

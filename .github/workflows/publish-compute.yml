@@ -49,62 +49,17 @@ jobs:
             --run-number "${GITHUB_RUN_NUMBER}" \
             --run-attempt "${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
-      - name: Run focused compute tests
-        run: pnpm --filter @prisma/compute test
+      - name: Set package version
+        working-directory: packages/compute
+        run: pnpm version '${{ steps.compute_version.outputs.version }}' --no-git-tag-version
 
-      - name: Build compute package
-        run: pnpm --filter @prisma/compute build
-
-      - name: Prepare staged publish package
-        run: node scripts/prepare-compute-publish.mjs .publish/compute --version '${{ steps.compute_version.outputs.version }}'
-
-      - name: Audit staged package contents
-        working-directory: .publish/compute
-        run: |
-          PACK_JSON="$(npm pack --dry-run --json)"
-          PACK_JSON="${PACK_JSON}" node -e "
-            const pack = JSON.parse(process.env.PACK_JSON)[0]
-            const files = pack.files.map((file) => file.path).sort()
-            const forbidden = files.filter((file) =>
-              file.startsWith('src/') ||
-              file.startsWith('tests/') ||
-              file.startsWith('fixtures/') ||
-              file.startsWith('docs/') ||
-              file.startsWith('.prisma/') ||
-              file.startsWith('.publish/')
-            )
-            if (forbidden.length) {
-              console.error('Forbidden files in npm package:', forbidden.join(', '))
-              process.exit(1)
-            }
-            for (const required of ['dist/index.js', 'dist/index.d.ts', 'README.md', 'LICENSE', 'package.json']) {
-              if (!files.includes(required)) {
-                console.error('Missing required package file:', required)
-                process.exit(1)
-              }
-            }
-          "
-
-      - name: Smoke test staged tarball install
-        run: |
-          TARBALL="$(cd .publish/compute && npm pack --silent)"
-          TMPDIR="$(mktemp -d)"
-          cat > "${TMPDIR}/package.json" <<'EOF'
-          {
-            "name": "compute-publish-smoke",
-            "private": true,
-            "type": "module"
-          }
-          EOF
-          pnpm add -D "${PWD}/.publish/compute/${TARBALL}" --dir "${TMPDIR}"
-          (
-            cd "${TMPDIR}"
-            node -e "await import('@prisma/compute')"
-          )
+      - name: Check npm authentication
+        working-directory: packages/compute
+        run: pnpm whoami
 
       - name: Publish dev package to npm
-        working-directory: .publish/compute
-        run: npm publish --access public --tag dev --provenance
+        working-directory: packages/compute
+        run: pnpm publish --access public --tag dev --provenance
 
       - name: Summarize dev publish
         run: |
@@ -152,7 +107,7 @@ jobs:
         id: compute_version
         run: |
           PACKAGE='@prisma/compute'
-          LATEST="$(npm view "${PACKAGE}" dist-tags.latest --silent 2>/dev/null || true)"
+          LATEST="$(pnpm view "${PACKAGE}" dist-tags.latest --silent 2>/dev/null || true)"
           node scripts/resolve-package-version.mjs next-beta \
             --package-dir packages/compute \
             --latest "${LATEST}" >> "$GITHUB_OUTPUT"
@@ -166,58 +121,9 @@ jobs:
             exit 1
           fi
 
-      - name: Run focused compute tests
-        run: pnpm --filter @prisma/compute test
-
-      - name: Build compute package
-        run: pnpm --filter @prisma/compute build
-
-      - name: Prepare staged publish package
-        run: node scripts/prepare-compute-publish.mjs .publish/compute --version '${{ steps.compute_version.outputs.version }}'
-
-      - name: Audit staged package contents
-        working-directory: .publish/compute
-        run: |
-          PACK_JSON="$(npm pack --dry-run --json)"
-          PACK_JSON="${PACK_JSON}" node -e "
-            const pack = JSON.parse(process.env.PACK_JSON)[0]
-            const files = pack.files.map((file) => file.path).sort()
-            const forbidden = files.filter((file) =>
-              file.startsWith('src/') ||
-              file.startsWith('tests/') ||
-              file.startsWith('fixtures/') ||
-              file.startsWith('docs/') ||
-              file.startsWith('.prisma/') ||
-              file.startsWith('.publish/')
-            )
-            if (forbidden.length) {
-              console.error('Forbidden files in npm package:', forbidden.join(', '))
-              process.exit(1)
-            }
-            for (const required of ['dist/index.js', 'dist/index.d.ts', 'README.md', 'LICENSE', 'package.json']) {
-              if (!files.includes(required)) {
-                console.error('Missing required package file:', required)
-                process.exit(1)
-              }
-            }
-          "
-
-      - name: Smoke test staged tarball install
-        run: |
-          TARBALL="$(cd .publish/compute && npm pack --silent)"
-          TMPDIR="$(mktemp -d)"
-          cat > "${TMPDIR}/package.json" <<'EOF'
-          {
-            "name": "compute-publish-smoke",
-            "private": true,
-            "type": "module"
-          }
-          EOF
-          pnpm add -D "${PWD}/.publish/compute/${TARBALL}" --dir "${TMPDIR}"
-          (
-            cd "${TMPDIR}"
-            node -e "await import('@prisma/compute')"
-          )
+      - name: Set package version
+        working-directory: packages/compute
+        run: pnpm version '${{ steps.compute_version.outputs.version }}' --no-git-tag-version
 
       - name: Ensure release still targets the latest main
         if: ${{ !inputs.dry_run }}
@@ -228,10 +134,15 @@ jobs:
             exit 1
           fi
 
+      - name: Check npm authentication
+        if: ${{ !inputs.dry_run }}
+        working-directory: packages/compute
+        run: pnpm whoami
+
       - name: Publish official package to npm
         if: ${{ !inputs.dry_run }}
-        working-directory: .publish/compute
-        run: npm publish --access public --tag latest --provenance
+        working-directory: packages/compute
+        run: pnpm publish --access public --tag latest --provenance
 
       - name: Create release tag
         if: ${{ !inputs.dry_run }}

@@ -39,8 +39,7 @@ the behavior under test.
 
 ## Subprocess And Package Smoke Tests
 
-Use subprocess or staged package smoke tests when changing packaging or runtime
-entrypoints.
+Use subprocess or package smoke tests when changing packaging or runtime entrypoints.
 
 Good fit:
 
@@ -50,8 +49,8 @@ Good fit:
 - npm tarball contents
 - publish preparation
 
-The staged package should not include source, tests, fixtures, docs, `.prisma`,
-or `.publish` directories.
+The npm tarball should not include source, tests, fixtures, docs, `.prisma`, or
+`.publish` directories.
 
 ## Stream Assertions
 

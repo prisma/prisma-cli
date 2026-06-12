@@ -9,30 +9,31 @@ import {
   resolveDevVersion,
   resolveNextBetaVersion,
   resolvePrVersion,
-} from "../../../scripts/resolve-cli-version.mjs";
+} from "../../../scripts/resolve-package-version.mjs";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const scriptPath = path.join(repoRoot, "scripts/resolve-cli-version.mjs");
+const scriptPath = path.join(repoRoot, "scripts/resolve-package-version.mjs");
 
-describe("resolve cli version", () => {
+describe("resolve package version", () => {
   it("computes the first beta when npm latest is missing or still legacy 2.x", () => {
-    expect(resolveNextBetaVersion("")).toBe("3.0.0-beta.0");
-    expect(resolveNextBetaVersion("2.20.1")).toBe("3.0.0-beta.0");
+    expect(resolveNextBetaVersion({ baseVersion: "3.0.0", latest: "" })).toBe("3.0.0-beta.0");
+    expect(resolveNextBetaVersion({ baseVersion: "3.0.0", latest: "2.20.1" })).toBe("3.0.0-beta.0");
   });
 
   it("increments the beta number from the current npm latest", () => {
-    expect(resolveNextBetaVersion("3.0.0-beta.0")).toBe("3.0.0-beta.1");
+    expect(resolveNextBetaVersion({ baseVersion: "3.0.0", latest: "3.0.0-beta.0" })).toBe("3.0.0-beta.1");
   });
 
   it("fails when npm latest is outside the supported beta line", () => {
-    expect(() => resolveNextBetaVersion("3.0.0")).toThrow(
+    expect(() => resolveNextBetaVersion({ baseVersion: "3.0.0", latest: "3.0.0" })).toThrow(
       "Cannot compute the next beta from npm latest (3.0.0).",
     );
   });
 
   it("computes a unique dev build version", () => {
     expect(resolveDevVersion({
+      baseVersion: "3.0.0",
       runNumber: "123",
       runAttempt: "2",
     })).toBe("3.0.0-dev.123.2");
@@ -40,6 +41,7 @@ describe("resolve cli version", () => {
 
   it("computes an exact PR preview version", () => {
     expect(resolvePrVersion({
+      baseVersion: "3.0.0",
       prNumber: "43",
       sha: "f1110dd704a9382c429b",
     })).toBe("3.0.0-pr.43.shaf1110dd704a9");
@@ -49,6 +51,8 @@ describe("resolve cli version", () => {
     const { stdout } = await execFileAsync(process.execPath, [
       scriptPath,
       "next-beta",
+      "--package-dir",
+      "packages/cli",
       "--latest",
       "3.0.0-beta.0",
     ]);

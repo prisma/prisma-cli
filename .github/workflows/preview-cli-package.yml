@@ -60,14 +60,15 @@ jobs:
         id: compute_build
         run: pnpm --filter @prisma/compute build
 
-      - name: Prepare staged preview package
-        id: prepare_preview
-        run: node scripts/prepare-cli-publish.mjs .publish/cli --version '${{ steps.cli_version.outputs.version }}'
+      - name: Set preview package version
+        id: set_preview_version
+        working-directory: packages/cli
+        run: pnpm version '${{ steps.cli_version.outputs.version }}' --no-git-tag-version
 
       - name: Publish installable PR preview
         id: publish_preview
         continue-on-error: ${{ vars.CLI_PR_PREVIEW_REQUIRED != 'true' }}
-        run: pnpm exec pkg-pr-new publish --bin --comment=update .publish/cli
+        run: pnpm exec pkg-pr-new publish --bin --comment=update packages/cli
 
       - name: Summarize PR preview publish
         if: ${{ always() }}
@@ -80,7 +81,7 @@ jobs:
             echo "- Compute tests: \`${{ steps.compute_tests.outcome || 'skipped' }}\`"
             echo "- Build: \`${{ steps.cli_build.outcome || 'skipped' }}\`"
             echo "- Compute build: \`${{ steps.compute_build.outcome || 'skipped' }}\`"
-            echo "- Package staging: \`${{ steps.prepare_preview.outcome || 'skipped' }}\`"
+            echo "- Version injection: \`${{ steps.set_preview_version.outcome || 'skipped' }}\`"
             echo "- pkg.pr.new publish: \`${{ steps.publish_preview.outcome || 'skipped' }}\`"
             PUBLISH_OUTCOME="${{ steps.publish_preview.outcome || 'skipped' }}"
             if [ "${PUBLISH_OUTCOME}" != "success" ]; then

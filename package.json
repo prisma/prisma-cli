@@ -10,8 +10,6 @@
     "build:compute": "pnpm --filter @prisma/compute build",
     "lint:skills": "node scripts/validate-skills.mjs",
     "prepare": "skills add ./skills --skill '*' --agent universal claude-code -y",
-    "prepare:cli-publish": "node scripts/prepare-cli-publish.mjs",
-    "prepare:compute-publish": "node scripts/prepare-compute-publish.mjs",
     "smoke:cli-nextjs": "node scripts/smoke-cli-nextjs-artifact.mjs",
     "test:skills": "node --test scripts/validate-skills.test.mjs",
     "test": "pnpm --filter @prisma/cli test",
