@@ -23,12 +23,12 @@
         "noImplicitCoercions": "on"
       },
       "nursery": {
-        "noConditionalExpect": "on"
+        "noConditionalExpect": "on",
+        "noFloatingPromises": "on"
       }
       //   "complexity": {
       //   },
       //   "nursery": {
-      //     "noFloatingPromises": "on",
       //     "noForIn": "on",
       //     "noLoopFunc": "on",
       //     "useDisposables": "on"
