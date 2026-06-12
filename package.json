@@ -1,6 +1,9 @@
 {
   "name": "prisma-cli",
   "private": true,
+  "engines": {
+    "node": "22.12.0"
+  },
   "packageManager": "pnpm@10.30.0",
   "scripts": {
     "build:cli": "pnpm --filter @prisma/cli build",
@@ -8,6 +11,7 @@
     "lint:skills": "node scripts/validate-skills.mjs",
     "prepare": "skills add ./skills --skill '*' --agent universal claude-code -y",
     "prepare:cli-publish": "node scripts/prepare-cli-publish.mjs",
+    "prepare:compute-publish": "node scripts/prepare-compute-publish.mjs",
     "smoke:cli-nextjs": "node scripts/smoke-cli-nextjs-artifact.mjs",
     "test:skills": "node --test scripts/validate-skills.test.mjs",
     "test": "pnpm --filter @prisma/cli test",
