@@ -52,13 +52,9 @@ jobs:
         working-directory: packages/compute
         run: pnpm version '${{ steps.compute_version.outputs.version }}' --no-git-tag-version
 
-      - name: Check npm authentication
-        working-directory: packages/compute
-        run: pnpm whoami
-
       - name: Publish dev package to npm
         working-directory: packages/compute
-        run: pnpm publish --access public --tag dev --provenance
+        run: pnpm publish --access public --tag dev --provenance --no-git-checks
 
       - name: Summarize dev publish
         run: |
@@ -122,6 +118,10 @@ jobs:
         working-directory: packages/compute
         run: pnpm version '${{ steps.compute_version.outputs.version }}' --no-git-tag-version
 
+      - name: Validate package artifact
+        working-directory: packages/compute
+        run: pnpm pack --dry-run
+
       - name: Ensure release still targets the latest main
         if: ${{ !inputs.dry_run }}
         run: |
@@ -131,15 +131,10 @@ jobs:
             exit 1
           fi
 
-      - name: Check npm authentication
-        if: ${{ !inputs.dry_run }}
-        working-directory: packages/compute
-        run: pnpm whoami
-
       - name: Publish official package to npm
         if: ${{ !inputs.dry_run }}
         working-directory: packages/compute
-        run: pnpm publish --access public --tag latest --provenance
+        run: pnpm publish --access public --tag latest --provenance --no-git-checks
 
       - name: Create release tag
         if: ${{ !inputs.dry_run }}
