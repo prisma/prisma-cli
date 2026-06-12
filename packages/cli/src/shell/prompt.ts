@@ -1,5 +1,5 @@
-import { confirm, isCancel, select, text } from "@clack/prompts";
 import type { Readable, Writable } from "node:stream";
+import { confirm, isCancel, select, text } from "@clack/prompts";
 
 import { usageError } from "./errors";
 

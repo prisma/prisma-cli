@@ -1,23 +1,29 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: API pagination and deployment lookup scans are intentionally sequential.
+// biome-ignore-all lint/performance/useTopLevelRegex: Existing hostname normalization regexes are kept inline for readability.
+// biome-ignore-all lint/style/noNestedTernary: Existing app resolution expression is intentionally compact.
 import path from "node:path";
-
-import { ApiError, CancelledError, ComputeClient, streamLogs } from "@prisma/compute-sdk";
 import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";
+import {
+  ApiError,
+  CancelledError,
+  ComputeClient,
+  streamLogs,
+} from "@prisma/compute-sdk";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-
-import { envVarNames } from "./env-vars";
-import { PreviewBuildStrategy } from "./preview-build";
-import type { PreviewBuildSettings, PreviewBuildType } from "./preview-build";
 import type { BranchKind } from "../../types/branch";
+import { envVarNames } from "./env-vars";
 import {
   createBranchDatabase,
+  createEnvironmentVariable,
   deleteBranchDatabase,
   deleteEnvironmentVariable,
-  createEnvironmentVariable,
   listEnvironmentVariables,
-  updateEnvironmentVariable,
   type PreviewBranchDatabaseRecord,
   type PreviewEnvironmentVariableRecord,
+  updateEnvironmentVariable,
 } from "./preview-branch-database";
+import type { PreviewBuildSettings, PreviewBuildType } from "./preview-build";
+import { PreviewBuildStrategy } from "./preview-build";
 
 export interface PreviewAppRecord {
   id: string;
@@ -39,7 +45,10 @@ export interface PreviewBranchRecord {
   role: BranchKind;
 }
 
-export type { PreviewBranchDatabaseRecord, PreviewEnvironmentVariableRecord } from "./preview-branch-database";
+export type {
+  PreviewBranchDatabaseRecord,
+  PreviewEnvironmentVariableRecord,
+} from "./preview-branch-database";
 
 export interface PreviewDeploymentRecord {
   id: string;
@@ -113,8 +122,16 @@ export class PreviewDomainApiError extends Error {
   readonly code: string | null;
   readonly hint: string | null;
 
-  constructor(options: { summary: string; status: number; message: string; code?: string | null; hint?: string | null }) {
-    super(`${options.summary}: ${options.message}${options.hint ? ` ${options.hint}` : ""}`);
+  constructor(options: {
+    summary: string;
+    status: number;
+    message: string;
+    code?: string | null;
+    hint?: string | null;
+  }) {
+    super(
+      `${options.summary}: ${options.message}${options.hint ? ` ${options.hint}` : ""}`,
+    );
     this.name = "PreviewDomainApiError";
     this.status = options.status;
     this.code = options.code ?? null;
@@ -123,15 +140,24 @@ export class PreviewDomainApiError extends Error {
 }
 
 export interface PreviewAppProvider {
-  createProject(options: { name: string; signal?: AbortSignal }): Promise<PreviewProjectRecord>;
-  resolveBranch(projectId: string, options: { branchName: string; signal?: AbortSignal }): Promise<PreviewBranchRecord>;
+  createProject(options: {
+    name: string;
+    signal?: AbortSignal;
+  }): Promise<PreviewProjectRecord>;
+  resolveBranch(
+    projectId: string,
+    options: { branchName: string; signal?: AbortSignal },
+  ): Promise<PreviewBranchRecord>;
   createBranchDatabase(options: {
     projectId: string;
     branchId: string;
     branchName: string;
     signal?: AbortSignal;
   }): Promise<PreviewBranchDatabaseRecord>;
-  deleteBranchDatabase(options: { databaseId: string; signal?: AbortSignal }): Promise<void>;
+  deleteBranchDatabase(options: {
+    databaseId: string;
+    signal?: AbortSignal;
+  }): Promise<void>;
   listEnvironmentVariables(options: {
     projectId: string;
     className?: "production" | "preview";
@@ -147,15 +173,44 @@ export interface PreviewAppProvider {
     value: string;
     signal?: AbortSignal;
   }): Promise<PreviewEnvironmentVariableRecord>;
-  updateEnvironmentVariable(options: { envVarId: string; value: string; signal?: AbortSignal }): Promise<PreviewEnvironmentVariableRecord>;
-  deleteEnvironmentVariable(options: { envVarId: string; signal?: AbortSignal }): Promise<void>;
-  listApps(projectId: string, options?: { branchName?: string; signal?: AbortSignal }): Promise<PreviewAppRecord[]>;
-  removeApp(appId: string, options?: { signal?: AbortSignal }): Promise<PreviewRemovedAppRecord>;
-  listDomains(appId: string, options?: { signal?: AbortSignal }): Promise<PreviewDomainRecord[]>;
-  addDomain(options: { appId: string; hostname: string; signal?: AbortSignal }): Promise<{ domain: PreviewDomainRecord; existing: boolean }>;
-  showDomain(domainId: string, options?: { signal?: AbortSignal }): Promise<PreviewDomainRecord>;
-  removeDomain(domainId: string, options?: { signal?: AbortSignal }): Promise<void>;
-  retryDomain(domainId: string, options?: { signal?: AbortSignal }): Promise<PreviewDomainRecord>;
+  updateEnvironmentVariable(options: {
+    envVarId: string;
+    value: string;
+    signal?: AbortSignal;
+  }): Promise<PreviewEnvironmentVariableRecord>;
+  deleteEnvironmentVariable(options: {
+    envVarId: string;
+    signal?: AbortSignal;
+  }): Promise<void>;
+  listApps(
+    projectId: string,
+    options?: { branchName?: string; signal?: AbortSignal },
+  ): Promise<PreviewAppRecord[]>;
+  removeApp(
+    appId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<PreviewRemovedAppRecord>;
+  listDomains(
+    appId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<PreviewDomainRecord[]>;
+  addDomain(options: {
+    appId: string;
+    hostname: string;
+    signal?: AbortSignal;
+  }): Promise<{ domain: PreviewDomainRecord; existing: boolean }>;
+  showDomain(
+    domainId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<PreviewDomainRecord>;
+  removeDomain(
+    domainId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<void>;
+  retryDomain(
+    domainId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<PreviewDomainRecord>;
   promoteDeployment(options: {
     appId: string;
     deploymentId: string;
@@ -190,11 +245,17 @@ export interface PreviewAppProvider {
     deploymentId: string;
     signal?: AbortSignal;
   }): Promise<PreviewEnvRecord>;
-  listDeployments(appId: string, options?: { signal?: AbortSignal }): Promise<{
+  listDeployments(
+    appId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<{
     app: PreviewAppRecord;
     deployments: PreviewDeploymentRecord[];
   }>;
-  showDeployment(deploymentId: string, options?: { signal?: AbortSignal }): Promise<PreviewShownDeploymentRecord | null>;
+  showDeployment(
+    deploymentId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<PreviewShownDeploymentRecord | null>;
   streamDeploymentLogs(options: {
     deploymentId: string;
     signal?: AbortSignal;
@@ -213,7 +274,10 @@ export function createPreviewAppProvider(
 
   return {
     async createProject(options) {
-      const projectResult = await sdk.createProject({ name: options.name, signal: options.signal });
+      const projectResult = await sdk.createProject({
+        name: options.name,
+        signal: options.signal,
+      });
       if (projectResult.isErr()) {
         throw new Error(projectResult.error.message);
       }
@@ -271,7 +335,10 @@ export function createPreviewAppProvider(
     },
 
     async removeApp(appId, options) {
-      const appResult = await sdk.showService({ serviceId: appId, signal: options?.signal });
+      const appResult = await sdk.showService({
+        serviceId: appId,
+        signal: options?.signal,
+      });
       if (appResult.isErr()) {
         throw new Error(appResult.error.message);
       }
@@ -299,20 +366,28 @@ export function createPreviewAppProvider(
     },
 
     async addDomain(options) {
-      const result = await client.POST("/v1/compute-services/{computeServiceId}/domains", {
-        params: {
-          path: { computeServiceId: options.appId },
+      const result = await client.POST(
+        "/v1/compute-services/{computeServiceId}/domains",
+        {
+          params: {
+            path: { computeServiceId: options.appId },
+          },
+          body: {
+            hostname: options.hostname,
+          },
+          signal: options.signal,
         },
-        body: {
-          hostname: options.hostname,
-        },
-        signal: options.signal,
-      });
+      );
 
       if (result.error || !result.data) {
         if (result.response.status === 409) {
-          const existing = (await listComputeServiceDomains(client, options.appId, options.signal))
-            .find((domain) => sameHostname(domain.hostname, options.hostname));
+          const existing = (
+            await listComputeServiceDomains(
+              client,
+              options.appId,
+              options.signal,
+            )
+          ).find((domain) => sameHostname(domain.hostname, options.hostname));
           if (existing) {
             return {
               domain: existing,
@@ -321,7 +396,11 @@ export function createPreviewAppProvider(
           }
         }
 
-        throw domainApiCallError("Failed to add custom domain", result.response, result.error);
+        throw domainApiCallError(
+          "Failed to add custom domain",
+          result.response,
+          result.error,
+        );
       }
 
       return {
@@ -339,7 +418,11 @@ export function createPreviewAppProvider(
       });
 
       if (result.error || !result.data) {
-        throw domainApiCallError("Failed to show custom domain", result.response, result.error);
+        throw domainApiCallError(
+          "Failed to show custom domain",
+          result.response,
+          result.error,
+        );
       }
 
       return normalizeDomainRecord(result.data.data);
@@ -354,7 +437,11 @@ export function createPreviewAppProvider(
       });
 
       if (result.error) {
-        throw domainApiCallError("Failed to remove custom domain", result.response, result.error);
+        throw domainApiCallError(
+          "Failed to remove custom domain",
+          result.response,
+          result.error,
+        );
       }
     },
 
@@ -367,7 +454,11 @@ export function createPreviewAppProvider(
       });
 
       if (result.error || !result.data) {
-        throw domainApiCallError("Failed to retry custom domain", result.response, result.error);
+        throw domainApiCallError(
+          "Failed to retry custom domain",
+          result.response,
+          result.error,
+        );
       }
 
       return normalizeDomainRecord(result.data.data);
@@ -448,7 +539,11 @@ export function createPreviewAppProvider(
         deployment: {
           id: deployed.versionId,
           status: "running",
-          url: toAbsoluteUrl(deployed.serviceEndpointDomain ?? deployed.versionEndpointDomain ?? null),
+          url: toAbsoluteUrl(
+            deployed.serviceEndpointDomain ??
+              deployed.versionEndpointDomain ??
+              null,
+          ),
         },
       };
     },
@@ -482,7 +577,10 @@ export function createPreviewAppProvider(
 
       const [serviceResult, versionResult] = await Promise.all([
         sdk.showService({ serviceId: options.appId, signal: options.signal }),
-        sdk.showVersion({ versionId: updateResult.value.versionId, signal: options.signal }),
+        sdk.showVersion({
+          versionId: updateResult.value.versionId,
+          signal: options.signal,
+        }),
       ]);
 
       if (serviceResult.isErr()) {
@@ -500,13 +598,19 @@ export function createPreviewAppProvider(
           name: serviceResult.value.name,
           region: serviceResult.value.region ?? null,
           liveDeploymentId: serviceResult.value.latestVersionId ?? null,
-          liveUrl: toAbsoluteUrl(serviceResult.value.serviceEndpointDomain ?? null),
+          liveUrl: toAbsoluteUrl(
+            serviceResult.value.serviceEndpointDomain ?? null,
+          ),
         },
         deployment: {
           id: versionResult.value.id,
           status: versionResult.value.status,
           createdAt: versionResult.value.createdAt,
-          url: toAbsoluteUrl(serviceResult.value.serviceEndpointDomain ?? versionResult.value.previewDomain ?? null),
+          url: toAbsoluteUrl(
+            serviceResult.value.serviceEndpointDomain ??
+              versionResult.value.previewDomain ??
+              null,
+          ),
           live: true,
         },
         variables: envVarNames(versionResult.value.envVars),
@@ -516,7 +620,10 @@ export function createPreviewAppProvider(
     async listAppEnvNames(options) {
       const [serviceResult, versionResult] = await Promise.all([
         sdk.showService({ serviceId: options.appId, signal: options.signal }),
-        sdk.showVersion({ versionId: options.deploymentId, signal: options.signal }),
+        sdk.showVersion({
+          versionId: options.deploymentId,
+          signal: options.signal,
+        }),
       ]);
 
       if (serviceResult.isErr()) {
@@ -534,7 +641,9 @@ export function createPreviewAppProvider(
           name: serviceResult.value.name,
           region: serviceResult.value.region ?? null,
           liveDeploymentId: serviceResult.value.latestVersionId ?? null,
-          liveUrl: toAbsoluteUrl(serviceResult.value.serviceEndpointDomain ?? null),
+          liveUrl: toAbsoluteUrl(
+            serviceResult.value.serviceEndpointDomain ?? null,
+          ),
         },
         deployment: {
           id: versionResult.value.id,
@@ -586,16 +695,26 @@ export function createPreviewAppProvider(
     },
 
     async showDeployment(deploymentId, options) {
-      const deploymentResult = await sdk.showVersion({ versionId: deploymentId, signal: options?.signal });
+      const deploymentResult = await sdk.showVersion({
+        versionId: deploymentId,
+        signal: options?.signal,
+      });
       if (deploymentResult.isErr()) {
-        if (ApiError.is(deploymentResult.error) && deploymentResult.error.statusCode === 404) {
+        if (
+          ApiError.is(deploymentResult.error) &&
+          deploymentResult.error.statusCode === 404
+        ) {
           return null;
         }
 
         throw new Error(deploymentResult.error.message);
       }
 
-      const app = await findAppForDeployment(sdk, deploymentId, options?.signal);
+      const app = await findAppForDeployment(
+        sdk,
+        deploymentId,
+        options?.signal,
+      );
 
       return {
         app,
@@ -611,7 +730,9 @@ export function createPreviewAppProvider(
 
     async streamDeploymentLogs(streamOptions) {
       if (!options?.baseUrl || !options.getToken) {
-        throw new Error("Log streaming requires an authenticated API base URL and token.");
+        throw new Error(
+          "Log streaming requires an authenticated API base URL and token.",
+        );
       }
 
       const result = await streamLogs(
@@ -703,7 +824,11 @@ async function listBranches(
     signal: options.signal,
   });
   if (result.error || !result.data) {
-    throw apiCallError("Failed to list branches", result.response, result.error);
+    throw apiCallError(
+      "Failed to list branches",
+      result.response,
+      result.error,
+    );
   }
 
   return result.data.data.map((branch) => ({
@@ -744,7 +869,11 @@ async function resolveOrCreateBranch(
       }
     }
 
-    throw apiCallError(`Failed to create branch "${options.gitName}"`, result.response, result.error);
+    throw apiCallError(
+      `Failed to create branch "${options.gitName}"`,
+      result.response,
+      result.error,
+    );
   }
 
   const branch = result.data.data;
@@ -783,7 +912,7 @@ async function listComputeServices(
       throw apiCallError("Failed to list apps", result.response, result.error);
     }
 
-    services.push(...result.data.data as RawComputeServiceRecord[]);
+    services.push(...(result.data.data as RawComputeServiceRecord[]));
 
     if (!result.data.pagination.hasMore || !result.data.pagination.nextCursor) {
       break;
@@ -806,15 +935,22 @@ async function listComputeServiceDomains(
   computeServiceId: string,
   signal?: AbortSignal,
 ): Promise<PreviewDomainRecord[]> {
-  const result = await client.GET("/v1/compute-services/{computeServiceId}/domains", {
-    params: {
-      path: { computeServiceId },
+  const result = await client.GET(
+    "/v1/compute-services/{computeServiceId}/domains",
+    {
+      params: {
+        path: { computeServiceId },
+      },
+      signal,
     },
-    signal,
-  });
+  );
 
   if (result.error || !result.data) {
-    throw domainApiCallError("Failed to list custom domains", result.response, result.error);
+    throw domainApiCallError(
+      "Failed to list custom domains",
+      result.response,
+      result.error,
+    );
   }
 
   return result.data.data.map((domain) => normalizeDomainRecord(domain));
@@ -838,14 +974,20 @@ function normalizeDomainRecord(domain: RawDomainRecord): PreviewDomainRecord {
   };
 }
 
-function normalizeDomainDnsRecords(records: RawDomainDnsRecord[] | null | undefined): PreviewDomainDnsRecord[] {
+function normalizeDomainDnsRecords(
+  records: RawDomainDnsRecord[] | null | undefined,
+): PreviewDomainDnsRecord[] {
   if (!Array.isArray(records)) {
     return [];
   }
 
   return records
     .map((record) => {
-      if (typeof record.type !== "string" || typeof record.name !== "string" || typeof record.value !== "string") {
+      if (
+        typeof record.type !== "string" ||
+        typeof record.name !== "string" ||
+        typeof record.value !== "string"
+      ) {
         return null;
       }
 
@@ -860,7 +1002,10 @@ function normalizeDomainDnsRecords(records: RawDomainDnsRecord[] | null | undefi
 }
 
 function sameHostname(left: string, right: string): boolean {
-  return normalizeHostnameForComparison(left) === normalizeHostnameForComparison(right);
+  return (
+    normalizeHostnameForComparison(left) ===
+    normalizeHostnameForComparison(right)
+  );
 }
 
 function normalizeHostnameForComparison(hostname: string): string {
@@ -908,7 +1053,11 @@ async function createBranchApp(
       }
     }
 
-    throw apiCallError(`Failed to create app "${options.appName}"`, result.response, result.error);
+    throw apiCallError(
+      `Failed to create app "${options.appName}"`,
+      result.response,
+      result.error,
+    );
   }
 
   const service = result.data.data as RawComputeServiceRecord;
@@ -928,7 +1077,8 @@ function apiCallError(
     return new Error("Resource Not Found");
   }
 
-  const message = error.error?.message ?? `Management API returned HTTP ${response.status}.`;
+  const message =
+    error.error?.message ?? `Management API returned HTTP ${response.status}.`;
   const hint = error.error?.hint ? ` ${error.error.hint}` : "";
   return new Error(`${summary}: ${message}${hint}`);
 }
@@ -942,7 +1092,9 @@ function domainApiCallError(
     summary,
     status: response.status,
     code: error.error?.code ?? null,
-    message: error.error?.message ?? `Management API returned HTTP ${response.status}.`,
+    message:
+      error.error?.message ??
+      `Management API returned HTTP ${response.status}.`,
     hint: error.error?.hint ?? null,
   });
 }
@@ -958,35 +1110,22 @@ async function findAppForDeployment(
   }
 
   for (const project of projectsResult.value) {
-    const servicesResult = await sdk.listServices({ projectId: project.id, signal });
+    const servicesResult = await sdk.listServices({
+      projectId: project.id,
+      signal,
+    });
     if (servicesResult.isErr()) {
       throw new Error(servicesResult.error.message);
     }
 
     for (const service of servicesResult.value) {
-      const detailResult = await sdk.showService({ serviceId: service.id, signal });
-      if (detailResult.isErr()) {
-        throw new Error(detailResult.error.message);
-      }
-
-      const app: PreviewAppRecord = {
-        id: detailResult.value.id,
-        name: detailResult.value.name,
-        region: detailResult.value.region ?? null,
-        liveDeploymentId: detailResult.value.latestVersionId ?? null,
-        liveUrl: toAbsoluteUrl(detailResult.value.serviceEndpointDomain ?? null),
-      };
-
-      if (app.liveDeploymentId === deploymentId) {
-        return app;
-      }
-
-      const versionsResult = await sdk.listVersions({ serviceId: service.id, signal });
-      if (versionsResult.isErr()) {
-        throw new Error(versionsResult.error.message);
-      }
-
-      if (versionsResult.value.some((version) => version.id === deploymentId)) {
+      const app = await findServiceAppForDeployment(
+        sdk,
+        service.id,
+        deploymentId,
+        signal,
+      );
+      if (app) {
         return app;
       }
     }
@@ -995,10 +1134,51 @@ async function findAppForDeployment(
   return null;
 }
 
+async function findServiceAppForDeployment(
+  sdk: ComputeClient,
+  serviceId: string,
+  deploymentId: string,
+  signal?: AbortSignal,
+): Promise<PreviewAppRecord | null> {
+  const detailResult = await sdk.showService({
+    serviceId,
+    signal,
+  });
+  if (detailResult.isErr()) {
+    throw new Error(detailResult.error.message);
+  }
+
+  const app: PreviewAppRecord = {
+    id: detailResult.value.id,
+    name: detailResult.value.name,
+    region: detailResult.value.region ?? null,
+    liveDeploymentId: detailResult.value.latestVersionId ?? null,
+    liveUrl: toAbsoluteUrl(detailResult.value.serviceEndpointDomain ?? null),
+  };
+
+  if (app.liveDeploymentId === deploymentId) {
+    return app;
+  }
+
+  const versionsResult = await sdk.listVersions({
+    serviceId,
+    signal,
+  });
+  if (versionsResult.isErr()) {
+    throw new Error(versionsResult.error.message);
+  }
+
+  return versionsResult.value.some((version) => version.id === deploymentId)
+    ? app
+    : null;
+}
+
 function toAbsoluteUrl(url: string | null): string | null {
   if (!url) {
     return null;
   }
 
-  return url.startsWith("https://") || url.startsWith("http://") ? url : `https://${url}`;
+  return url.startsWith("https://") || url.startsWith("http://")
+    ? url
+    : `https://${url}`;
 }

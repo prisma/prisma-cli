@@ -54,7 +54,11 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "project",
     path: ["prisma", "project"],
     description: "Manage and inspect your Prisma projects",
-    examples: ["prisma-cli project list", "prisma-cli project link proj_123", "prisma-cli project create my-app"],
+    examples: [
+      "prisma-cli project list",
+      "prisma-cli project link proj_123",
+      "prisma-cli project create my-app",
+    ],
   },
   {
     id: "app",
@@ -75,7 +79,11 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "database",
     path: ["prisma", "database"],
     description: "Manage Prisma Postgres databases for a project",
-    examples: ["prisma-cli database list", "prisma-cli database create my-db", "prisma-cli database connection create db_123"],
+    examples: [
+      "prisma-cli database list",
+      "prisma-cli database create my-db",
+      "prisma-cli database connection create db_123",
+    ],
   },
   {
     id: "git",
@@ -93,19 +101,29 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "project.show",
     path: ["prisma", "project", "show"],
     description: "Show this directory's Project binding",
-    examples: ["prisma-cli project show", "prisma-cli project show --project proj_123 --json"],
+    examples: [
+      "prisma-cli project show",
+      "prisma-cli project show --project proj_123 --json",
+    ],
   },
   {
     id: "project.create",
     path: ["prisma", "project", "create"],
     description: "Create a Project and link this directory",
-    examples: ["prisma-cli project create my-app", "prisma-cli project create my-app --json"],
+    examples: [
+      "prisma-cli project create my-app",
+      "prisma-cli project create my-app --json",
+    ],
   },
   {
     id: "project.link",
     path: ["prisma", "project", "link"],
     description: "Link this directory to a Project",
-    examples: ["prisma-cli project link", "prisma-cli project link proj_123", "prisma-cli project link \"Acme Dashboard\" --json"],
+    examples: [
+      "prisma-cli project link",
+      "prisma-cli project link proj_123",
+      'prisma-cli project link "Acme Dashboard" --json',
+    ],
   },
   {
     id: "git.connect",
@@ -121,7 +139,10 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "git.disconnect",
     path: ["prisma", "git", "disconnect"],
     description: "Disconnect the GitHub repository from the resolved project",
-    examples: ["prisma-cli git disconnect", "prisma-cli git disconnect --project proj_123"],
+    examples: [
+      "prisma-cli git disconnect",
+      "prisma-cli git disconnect --project proj_123",
+    ],
   },
   {
     id: "branch.list",
@@ -133,19 +154,30 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "database.list",
     path: ["prisma", "database", "list"],
     description: "List Prisma Postgres databases for the resolved project",
-    examples: ["prisma-cli database list", "prisma-cli database list --branch feature/foo", "prisma-cli database list --json"],
+    examples: [
+      "prisma-cli database list",
+      "prisma-cli database list --branch feature/foo",
+      "prisma-cli database list --json",
+    ],
   },
   {
     id: "database.show",
     path: ["prisma", "database", "show"],
     description: "Show database metadata without secret values",
-    examples: ["prisma-cli database show db_123", "prisma-cli database show acme-preview --branch preview --json"],
+    examples: [
+      "prisma-cli database show db_123",
+      "prisma-cli database show acme-preview --branch preview --json",
+    ],
   },
   {
     id: "database.create",
     path: ["prisma", "database", "create"],
-    description: "Create a Prisma Postgres database and print its one-time connection URL",
-    examples: ["prisma-cli database create my-db", "prisma-cli database create my-db --branch feature/foo --region eu-central-1"],
+    description:
+      "Create a Prisma Postgres database and print its one-time connection URL",
+    examples: [
+      "prisma-cli database create my-db",
+      "prisma-cli database create my-db --branch feature/foo --region eu-central-1",
+    ],
   },
   {
     id: "database.remove",
@@ -167,31 +199,47 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "database.connection.list",
     path: ["prisma", "database", "connection", "list"],
     description: "List database connection metadata without secret values",
-    examples: ["prisma-cli database connection list db_123", "prisma-cli database connection list acme-preview --branch preview --json"],
+    examples: [
+      "prisma-cli database connection list db_123",
+      "prisma-cli database connection list acme-preview --branch preview --json",
+    ],
   },
   {
     id: "database.connection.create",
     path: ["prisma", "database", "connection", "create"],
-    description: "Create a database connection and print its one-time connection URL",
-    examples: ["prisma-cli database connection create db_123", "prisma-cli database connection create db_123 --name readonly"],
+    description:
+      "Create a database connection and print its one-time connection URL",
+    examples: [
+      "prisma-cli database connection create db_123",
+      "prisma-cli database connection create db_123 --name readonly",
+    ],
   },
   {
     id: "database.connection.remove",
     path: ["prisma", "database", "connection", "remove"],
     description: "Remove a database connection after exact id confirmation",
-    examples: ["prisma-cli database connection remove conn_123 --confirm conn_123"],
+    examples: [
+      "prisma-cli database connection remove conn_123 --confirm conn_123",
+    ],
   },
   {
     id: "app.build",
     path: ["prisma", "app", "build"],
     description: "Build the app locally into a deployable artifact",
-    examples: ["prisma-cli app build --build-type nextjs", "prisma-cli app build --build-type nuxt", "prisma-cli app build --build-type bun --entry server.ts"],
+    examples: [
+      "prisma-cli app build --build-type nextjs",
+      "prisma-cli app build --build-type nuxt",
+      "prisma-cli app build --build-type bun --entry server.ts",
+    ],
   },
   {
     id: "app.run",
     path: ["prisma", "app", "run"],
     description: "Run your app locally",
-    examples: ["prisma-cli app run --build-type nextjs", "prisma-cli app run --build-type bun --entry server.ts --port 3000"],
+    examples: [
+      "prisma-cli app run --build-type nextjs",
+      "prisma-cli app run --build-type bun --entry server.ts --port 3000",
+    ],
   },
   {
     id: "app.deploy",
@@ -264,19 +312,28 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "app.domain.wait",
     path: ["prisma", "app", "domain", "wait"],
     description: "Wait until a custom domain is active or failed",
-    examples: ["prisma-cli app domain wait shop.acme.com", "prisma-cli app domain wait shop.acme.com --timeout 0 --json"],
+    examples: [
+      "prisma-cli app domain wait shop.acme.com",
+      "prisma-cli app domain wait shop.acme.com --timeout 0 --json",
+    ],
   },
   {
     id: "app.logs",
     path: ["prisma", "app", "logs"],
     description: "Stream logs for the app's current deployment",
-    examples: ["prisma-cli app logs", "prisma-cli app logs --deployment dep_123"],
+    examples: [
+      "prisma-cli app logs",
+      "prisma-cli app logs --deployment dep_123",
+    ],
   },
   {
     id: "app.list-deploys",
     path: ["prisma", "app", "list-deploys"],
     description: "List deployments for the app",
-    examples: ["prisma-cli app list-deploys", "prisma-cli app list-deploys --app hello-world"],
+    examples: [
+      "prisma-cli app list-deploys",
+      "prisma-cli app list-deploys --app hello-world",
+    ],
   },
   {
     id: "app.show-deploy",
@@ -287,20 +344,30 @@ const DESCRIPTORS: CommandDescriptor[] = [
   {
     id: "app.promote",
     path: ["prisma", "app", "promote"],
-    description: "Promote a deployment to production by rebuilding with production env vars",
-    examples: ["prisma-cli app promote dep_123", "prisma-cli app promote dep_123 --app hello-world"],
+    description:
+      "Promote a deployment to production by rebuilding with production env vars",
+    examples: [
+      "prisma-cli app promote dep_123",
+      "prisma-cli app promote dep_123 --app hello-world",
+    ],
   },
   {
     id: "app.rollback",
     path: ["prisma", "app", "rollback"],
     description: "Roll back production to a previous deployment",
-    examples: ["prisma-cli app rollback", "prisma-cli app rollback --app hello-world --to dep_123"],
+    examples: [
+      "prisma-cli app rollback",
+      "prisma-cli app rollback --app hello-world --to dep_123",
+    ],
   },
   {
     id: "app.remove",
     path: ["prisma", "app", "remove"],
     description: "Remove the app from the current branch",
-    examples: ["prisma-cli app remove --app hello-world", "prisma-cli app remove --app hello-world --yes"],
+    examples: [
+      "prisma-cli app remove --app hello-world",
+      "prisma-cli app remove --app hello-world --yes",
+    ],
   },
   {
     id: "project.env",
@@ -361,13 +428,18 @@ const DESCRIPTORS: CommandDescriptor[] = [
   },
 ];
 
-const DESCRIPTORS_BY_ID = new Map(DESCRIPTORS.map((descriptor) => [descriptor.id, descriptor]));
+const DESCRIPTORS_BY_ID = new Map(
+  DESCRIPTORS.map((descriptor) => [descriptor.id, descriptor]),
+);
 
 type DescriptorCommand = Command & {
   [COMMAND_DESCRIPTOR_ID]?: string;
 };
 
-export function attachCommandDescriptor<T extends Command>(command: T, descriptorId: string): T {
+export function attachCommandDescriptor<T extends Command>(
+  command: T,
+  descriptorId: string,
+): T {
   const descriptor = getCommandDescriptor(descriptorId);
   (command as DescriptorCommand)[COMMAND_DESCRIPTOR_ID] = descriptor.id;
   command.description(descriptor.description);
@@ -392,10 +464,14 @@ export function getDescriptorForCommand(command: Command): CommandDescriptor {
   }
 
   const path = getCommandPath(command);
-  const descriptor = DESCRIPTORS.find((candidate) => candidate.path.join(" ") === path.join(" "));
+  const descriptor = DESCRIPTORS.find(
+    (candidate) => candidate.path.join(" ") === path.join(" "),
+  );
 
   if (!descriptor) {
-    throw new Error(`No command descriptor registered for "${path.join(" ")}".`);
+    throw new Error(
+      `No command descriptor registered for "${path.join(" ")}".`,
+    );
   }
 
   return descriptor;
@@ -417,5 +493,7 @@ export function getCommandPath(command: Command): string[] {
 }
 
 export function formatDescriptorLabel(descriptor: CommandDescriptor): string {
-  return descriptor.path.length === 1 ? descriptor.path[0] : descriptor.path.slice(1).join(" ");
+  return descriptor.path.length === 1
+    ? descriptor.path[0]
+    : descriptor.path.slice(1).join(" ");
 }

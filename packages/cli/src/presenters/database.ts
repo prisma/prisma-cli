@@ -1,8 +1,8 @@
+import { renderMutate, renderShow, serializeList } from "../output/patterns";
 import type { CommandDescriptor } from "../shell/command-meta";
 import { formatDescriptorLabel } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
 import { formatColumns, renderSummaryLine } from "../shell/ui";
-import { renderMutate, renderShow, serializeList } from "../output/patterns";
 import type {
   DatabaseConnectionCreateResult,
   DatabaseConnectionListResult,
@@ -13,7 +13,10 @@ import type {
   DatabaseShowResult,
   DatabaseSummary,
 } from "../types/database";
-import { renderResolvedProjectContextBlock, stripVerboseContext } from "./verbose-context";
+import {
+  renderResolvedProjectContextBlock,
+  stripVerboseContext,
+} from "./verbose-context";
 
 export function renderDatabaseList(
   context: CommandContext,
@@ -34,7 +37,9 @@ export function renderDatabaseList(
 
   if (result.databases.length === 0) {
     lines.push(`${rail}  ${ui.dim("No databases found.")}`);
-    lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+    lines.push(
+      ...renderResolvedProjectContextBlock(context.ui, result.verboseContext),
+    );
     return lines;
   }
 
@@ -53,12 +58,16 @@ export function renderDatabaseList(
     Math.max("Id".length, ...rows.map((row) => row[4].length)),
   ];
 
-  lines.push(`${rail}  ${ui.accent(formatColumns(["Name", "Branch", "Region", "Status", "Id"], widths))}`);
+  lines.push(
+    `${rail}  ${ui.accent(formatColumns(["Name", "Branch", "Region", "Status", "Id"], widths))}`,
+  );
   for (const row of rows) {
     lines.push(`${rail}  ${formatColumns(row, widths)}`);
   }
 
-  lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+  lines.push(
+    ...renderResolvedProjectContextBlock(context.ui, result.verboseContext),
+  );
   return lines;
 }
 
@@ -95,15 +104,25 @@ export function renderDatabaseShow(
         { key: "project", value: result.projectName },
         { key: "database", value: result.database.name },
         { key: "id", value: result.database.id, tone: "dim" },
-        { key: "branch", value: result.database.branchName ?? "unscoped", tone: result.database.branchName ? "default" : "dim" },
-        { key: "region", value: result.database.region ?? "unknown", tone: result.database.region ? "default" : "dim" },
+        {
+          key: "branch",
+          value: result.database.branchName ?? "unscoped",
+          tone: result.database.branchName ? "default" : "dim",
+        },
+        {
+          key: "region",
+          value: result.database.region ?? "unknown",
+          tone: result.database.region ? "default" : "dim",
+        },
         { key: "status", value: formatStatus(result.database) },
         { key: "connections", value: String(result.connections.length) },
       ],
     },
     context.ui,
   );
-  lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+  lines.push(
+    ...renderResolvedProjectContextBlock(context.ui, result.verboseContext),
+  );
   return lines;
 }
 
@@ -111,7 +130,11 @@ export function serializeDatabaseShow(result: DatabaseShowResult) {
   return stripVerboseContext(result);
 }
 
-export function renderDatabaseCreateStdout(_context: CommandContext, _descriptor: CommandDescriptor, result: DatabaseCreateResult): string[] {
+export function renderDatabaseCreateStdout(
+  _context: CommandContext,
+  _descriptor: CommandDescriptor,
+  result: DatabaseCreateResult,
+): string[] {
   return [result.connectionString];
 }
 
@@ -123,7 +146,11 @@ export function renderDatabaseCreate(
   const ui = context.ui;
   const lines = [
     "Creating database...",
-    renderSummaryLine(ui, "success", `Created database "${result.database.name}" in ${formatDatabaseTarget(result.projectName, result.database.branchName)}.`),
+    renderSummaryLine(
+      ui,
+      "success",
+      `Created database "${result.database.name}" in ${formatDatabaseTarget(result.projectName, result.database.branchName)}.`,
+    ),
     "  The connection URL below is shown once, so save it now.",
   ];
 
@@ -159,7 +186,9 @@ export function renderDatabaseRemove(
     },
     context.ui,
   );
-  lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+  lines.push(
+    ...renderResolvedProjectContextBlock(context.ui, result.verboseContext),
+  );
   return lines;
 }
 
@@ -183,7 +212,9 @@ export function renderDatabaseConnectionList(
 
   if (result.connections.length === 0) {
     lines.push(`${rail}  ${ui.dim("No database connections found.")}`);
-    lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+    lines.push(
+      ...renderResolvedProjectContextBlock(context.ui, result.verboseContext),
+    );
     return lines;
   }
 
@@ -198,16 +229,22 @@ export function renderDatabaseConnectionList(
     Math.max("Created".length, ...rows.map((row) => row[2].length)),
   ];
 
-  lines.push(`${rail}  ${ui.accent(formatColumns(["Name", "Id", "Created"], widths))}`);
+  lines.push(
+    `${rail}  ${ui.accent(formatColumns(["Name", "Id", "Created"], widths))}`,
+  );
   for (const row of rows) {
     lines.push(`${rail}  ${formatColumns(row, widths)}`);
   }
 
-  lines.push(...renderResolvedProjectContextBlock(context.ui, result.verboseContext));
+  lines.push(
+    ...renderResolvedProjectContextBlock(context.ui, result.verboseContext),
+  );
   return lines;
 }
 
-export function serializeDatabaseConnectionList(result: DatabaseConnectionListResult) {
+export function serializeDatabaseConnectionList(
+  result: DatabaseConnectionListResult,
+) {
   return {
     ...serializeList({
       context: {
@@ -243,7 +280,11 @@ export function renderDatabaseConnectionCreate(
   const ui = context.ui;
   const lines = [
     "Creating connection...",
-    renderSummaryLine(ui, "success", `Added a connection to "${result.database.name}" in ${formatDatabaseTarget(result.projectName, result.database.branchName)}.`),
+    renderSummaryLine(
+      ui,
+      "success",
+      `Added a connection to "${result.database.name}" in ${formatDatabaseTarget(result.projectName, result.database.branchName)}.`,
+    ),
     "  The connection URL below is shown once, so save it now.",
   ];
 
@@ -255,7 +296,9 @@ export function renderDatabaseConnectionCreate(
   return lines;
 }
 
-export function serializeDatabaseConnectionCreate(result: DatabaseConnectionCreateResult) {
+export function serializeDatabaseConnectionCreate(
+  result: DatabaseConnectionCreateResult,
+) {
   return stripVerboseContext(result);
 }
 
@@ -273,56 +316,97 @@ export function renderDatabaseConnectionRemove(
       ],
       operationDescription: "Removing database connection",
       operationCount: 1,
-      details: ["The connection metadata was removed. Existing one-time secrets were not shown."],
+      details: [
+        "The connection metadata was removed. Existing one-time secrets were not shown.",
+      ],
     },
     context.ui,
   );
 }
 
-export function serializeDatabaseConnectionRemove(result: DatabaseConnectionRemoveResult) {
-  return result;
+export function serializeDatabaseConnectionRemove(
+  result: DatabaseConnectionRemoveResult,
+) {
+  return { connection: result.connection };
 }
 
 function formatStatus(database: DatabaseSummary): string {
   return database.status ?? (database.isDefault ? "default" : "unknown");
 }
 
-function formatDatabaseTarget(projectName: string, branchName: string | null): string {
+function formatDatabaseTarget(
+  projectName: string,
+  branchName: string | null,
+): string {
   return branchName ? `${projectName} / ${branchName}` : projectName;
 }
 
-function renderDatabaseCreateVerboseRows(context: CommandContext, result: DatabaseCreateResult): string[] {
+function renderDatabaseCreateVerboseRows(
+  context: CommandContext,
+  result: DatabaseCreateResult,
+): string[] {
   const rows = [
     ...renderWorkspaceProjectRows(result),
     ["branch", result.database.branchName ?? "unscoped"],
-    ["database", formatResourceWithId(context, result.database.name, result.database.id)],
+    [
+      "database",
+      formatResourceWithId(context, result.database.name, result.database.id),
+    ],
     ["region", result.database.region ?? "unknown"],
     ["status", formatStatus(result.database)],
-    ["connection", formatResourceWithId(context, result.connection.name, result.connection.id)],
+    [
+      "connection",
+      formatResourceWithId(
+        context,
+        result.connection.name,
+        result.connection.id,
+      ),
+    ],
   ];
 
   return renderMetadataRows(rows);
 }
 
-function renderDatabaseConnectionCreateVerboseRows(context: CommandContext, result: DatabaseConnectionCreateResult): string[] {
+function renderDatabaseConnectionCreateVerboseRows(
+  context: CommandContext,
+  result: DatabaseConnectionCreateResult,
+): string[] {
   const rows = [
     ...renderWorkspaceProjectRows(result),
     ["branch", result.database.branchName ?? "unscoped"],
-    ["database", formatResourceWithId(context, result.database.name, result.database.id)],
-    ["connection", formatResourceWithId(context, result.connection.name, result.connection.id)],
+    [
+      "database",
+      formatResourceWithId(context, result.database.name, result.database.id),
+    ],
+    [
+      "connection",
+      formatResourceWithId(
+        context,
+        result.connection.name,
+        result.connection.id,
+      ),
+    ],
   ];
 
   return renderMetadataRows(rows);
 }
 
-function renderWorkspaceProjectRows(result: DatabaseCreateResult | DatabaseConnectionCreateResult): string[][] {
+function renderWorkspaceProjectRows(
+  result: DatabaseCreateResult | DatabaseConnectionCreateResult,
+): string[][] {
   return [
-    ...(result.verboseContext ? [["workspace", result.verboseContext.workspace.name]] : []),
+    ...(result.verboseContext
+      ? [["workspace", result.verboseContext.workspace.name]]
+      : []),
     ["project", result.projectName],
   ];
 }
 
-function formatResourceWithId(context: CommandContext, name: string, id: string): string {
+function formatResourceWithId(
+  context: CommandContext,
+  name: string,
+  id: string,
+): string {
   return `${name}  ${context.ui.dim(`(${id})`)}`;
 }
 

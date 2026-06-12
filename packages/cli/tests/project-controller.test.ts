@@ -48,12 +48,14 @@ describe("project controller", () => {
         "prisma-cli project show --project <id-or-name>",
       ],
     });
-    expect(result.nextActions).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        kind: "user-choice",
-        journey: "project-setup",
-      }),
-    ]));
+    expect(result.nextActions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "user-choice",
+          journey: "project-setup",
+        }),
+      ]),
+    );
   });
 
   it("links an existing project and writes the local pin", async () => {
@@ -86,8 +88,12 @@ describe("project controller", () => {
       },
       action: "linked",
     });
-    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).resolves.toContain('"projectId": "proj_123"');
-    await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(".prisma/\n");
+    await expect(
+      readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
+    ).resolves.toContain('"projectId": "proj_123"');
+    await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(
+      ".prisma/\n",
+    );
   });
 
   it("returns LOCAL_STATE_WRITE_FAILED when the local pin cannot be written", async () => {
@@ -144,7 +150,9 @@ describe("project controller", () => {
         operation: "read",
       },
     });
-    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).resolves.toContain('"projectId": "proj_123"');
+    await expect(
+      readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
+    ).resolves.toContain('"projectId": "proj_123"');
   });
 
   it("creates a project and writes the local pin", async () => {
@@ -208,8 +216,12 @@ describe("project controller", () => {
       },
       action: "created",
     });
-    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).resolves.toContain('"projectId": "proj_new"');
-    await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(".prisma/\n");
+    await expect(
+      readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
+    ).resolves.toContain('"projectId": "proj_new"');
+    await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(
+      ".prisma/\n",
+    );
   });
 
   it("bare project link can create a new project from the interactive setup picker", async () => {
@@ -261,7 +273,11 @@ describe("project controller", () => {
     }));
 
     const cwd = await createTempCwd();
-    await writeFile(path.join(cwd, "package.json"), `${JSON.stringify({ name: "suggested-name" }, null, 2)}\n`, "utf8");
+    await writeFile(
+      path.join(cwd, "package.json"),
+      `${JSON.stringify({ name: "suggested-name" }, null, 2)}\n`,
+      "utf8",
+    );
     const stateDir = path.join(cwd, ".state");
     const { context, stderr } = await createTestCommandContext({
       cwd,
@@ -293,7 +309,9 @@ describe("project controller", () => {
       },
       action: "created",
     });
-    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).resolves.toContain('"projectId": "proj_new"');
+    await expect(
+      readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
+    ).resolves.toContain('"projectId": "proj_new"');
     expect(stderr.buffer).toContain("Which Project should this directory use?");
     expect(stderr.buffer).toContain("Project name");
     expect(stderr.buffer).toContain("suggested-name");
@@ -301,7 +319,9 @@ describe("project controller", () => {
 
   it("returns PROJECT_CREATE_FAILED when project creation fails", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
-    const createProject = vi.fn().mockRejectedValue(new Error("Internal Server Error (HTTP 503)"));
+    const createProject = vi
+      .fn()
+      .mockRejectedValue(new Error("Internal Server Error (HTTP 503)"));
 
     vi.doMock("../src/lib/auth/auth-ops", () => ({
       readAuthState: vi.fn().mockResolvedValue({
@@ -340,12 +360,16 @@ describe("project controller", () => {
     });
 
     const { runProjectCreate } = await import("../src/controllers/project");
-    await expect(runProjectCreate(context, "New Dashboard")).rejects.toMatchObject({
+    await expect(
+      runProjectCreate(context, "New Dashboard"),
+    ).rejects.toMatchObject({
       code: "PROJECT_CREATE_FAILED",
       domain: "project",
       summary: 'Could not create Project "New Dashboard"',
       why: expect.stringContaining("Internal Server Error"),
-      nextSteps: expect.arrayContaining(["prisma-cli project link <id-or-name>"]),
+      nextSteps: expect.arrayContaining([
+        "prisma-cli project link <id-or-name>",
+      ]),
     });
   });
 });

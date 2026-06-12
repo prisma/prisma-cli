@@ -3,7 +3,11 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, normalize } from "node:path";
 import { describe, it } from "node:test";
-import { MAX_DESCRIPTION_LENGTH, runCheck, validateSkillMd } from "./validate-skills.mjs";
+import {
+  MAX_DESCRIPTION_LENGTH,
+  runCheck,
+  validateSkillMd,
+} from "./validate-skills.mjs";
 
 const validSkill = `---
 name: example-skill
@@ -49,7 +53,9 @@ description: ${longDescription}
   });
 
   it("fails when frontmatter is missing", () => {
-    deepStrictEqual(validateSkillMd("# No frontmatter\n"), ["missing frontmatter block"]);
+    deepStrictEqual(validateSkillMd("# No frontmatter\n"), [
+      "missing frontmatter block",
+    ]);
   });
 });
 
@@ -58,7 +64,10 @@ describe("runCheck", () => {
     const root = mkdtempSync(join(tmpdir(), "validate-skills-"));
     const skillDir = join(root, "skills", "good-skill");
     mkdirSync(skillDir, { recursive: true });
-    writeFileSync(join(skillDir, "SKILL.md"), validSkill.replace("example-skill", "good-skill"));
+    writeFileSync(
+      join(skillDir, "SKILL.md"),
+      validSkill.replace("example-skill", "good-skill"),
+    );
 
     deepStrictEqual(runCheck({ root }), []);
   });
@@ -80,8 +89,14 @@ description: broken yaml: this colon breaks parsing
 
     const offences = runCheck({ root });
     strictEqual(offences.length, 1);
-    strictEqual(normalize(offences[0].file), normalize(join("skills", "bad-skill", "SKILL.md")));
-    strictEqual(offences[0].errors[0].startsWith("frontmatter parse error:"), true);
+    strictEqual(
+      normalize(offences[0].file),
+      normalize(join("skills", "bad-skill", "SKILL.md")),
+    );
+    strictEqual(
+      offences[0].errors[0].startsWith("frontmatter parse error:"),
+      true,
+    );
   });
 
   it("reports unreadable explicit files without aborting", () => {
@@ -91,7 +106,10 @@ description: broken yaml: this colon breaks parsing
     const offences = runCheck({ root, files: [missingSkill] });
 
     strictEqual(offences.length, 1);
-    strictEqual(normalize(offences[0].file), normalize(join("missing", "SKILL.md")));
+    strictEqual(
+      normalize(offences[0].file),
+      normalize(join("missing", "SKILL.md")),
+    );
     strictEqual(offences[0].errors[0].startsWith("Unable to read file:"), true);
   });
 });

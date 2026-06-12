@@ -5,7 +5,8 @@ export default function Home() {
         <p className="eyebrow">Prisma CLI</p>
         <h1>Next.js smoke app</h1>
         <p className="lede">
-          This app exists to manually test the local source Prisma CLI from inside this repository.
+          This app exists to manually test the local source Prisma CLI from
+          inside this repository.
         </p>
         <ol className="steps">
           <li>

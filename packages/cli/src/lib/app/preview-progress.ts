@@ -1,8 +1,11 @@
-import type { DeployProgress, PromoteProgress, UpdateEnvProgress } from "@prisma/compute-sdk";
 import type { Writable } from "node:stream";
-
-import { renderDeployOutputRows } from "./deploy-output";
+import type {
+  DeployProgress,
+  PromoteProgress,
+  UpdateEnvProgress,
+} from "@prisma/compute-sdk";
 import type { ShellUi } from "../../shell/ui";
+import { renderDeployOutputRows } from "./deploy-output";
 
 export interface PreviewDeployProgressState {
   buildStarted: boolean;

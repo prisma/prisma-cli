@@ -37,7 +37,9 @@ describe("real auth mode", () => {
       performLogout,
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAuthLogin } = await import("../src/controllers/auth");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -52,8 +54,14 @@ describe("real auth mode", () => {
 
     const result = await runAuthLogin(context, {});
 
-    expect(performLogin).toHaveBeenCalledWith(context.runtime.env, context.runtime.signal);
-    expect(readAuthState).toHaveBeenCalledWith(context.runtime.env, context.runtime.signal);
+    expect(performLogin).toHaveBeenCalledWith(
+      context.runtime.env,
+      context.runtime.signal,
+    );
+    expect(readAuthState).toHaveBeenCalledWith(
+      context.runtime.env,
+      context.runtime.signal,
+    );
     expect(result.result).toMatchObject({
       authenticated: true,
       provider: null,
@@ -74,7 +82,9 @@ describe("real auth mode", () => {
       performLogout,
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAuthLogin } = await import("../src/controllers/auth");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -102,7 +112,9 @@ describe("real auth mode", () => {
 
   it("does not eagerly load fixtures in real mode", async () => {
     const loadSpy = vi.spyOn(MockApi, "load");
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
@@ -182,7 +194,9 @@ describe("real auth mode", () => {
   });
 
   it("omits empty provider and workspace rows in auth output", async () => {
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
@@ -214,7 +228,9 @@ describe("real auth mode", () => {
   });
 
   it("omits the user row when a real auth state has no email", async () => {
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
@@ -247,7 +263,9 @@ describe("real auth mode", () => {
   });
 
   it("shows service-token identity when no human user is present", async () => {
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({

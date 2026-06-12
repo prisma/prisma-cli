@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: Environment variable pagination must run sequentially.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
 export interface PreviewEnvironmentVariableRecord {
@@ -69,7 +70,11 @@ export async function createBranchDatabase(
   });
 
   if (result.error || !result.data) {
-    throw apiCallError(`Failed to create database for branch "${options.branchName}"`, result.response, result.error);
+    throw apiCallError(
+      `Failed to create database for branch "${options.branchName}"`,
+      result.response,
+      result.error,
+    );
   }
 
   return normalizeBranchDatabaseRecord(result.data.data as RawDatabaseRecord);
@@ -103,10 +108,14 @@ export async function listEnvironmentVariables(
       signal: options.signal,
     });
     if (result.error || !result.data) {
-      throw apiCallError("Failed to list environment variables", result.response, result.error);
+      throw apiCallError(
+        "Failed to list environment variables",
+        result.response,
+        result.error,
+      );
     }
 
-    variables.push(...result.data.data as RawEnvironmentVariableRecord[]);
+    variables.push(...(result.data.data as RawEnvironmentVariableRecord[]));
 
     if (!result.data.pagination.hasMore || !result.data.pagination.nextCursor) {
       break;
@@ -140,10 +149,16 @@ export async function createEnvironmentVariable(
   });
 
   if (result.error || !result.data) {
-    throw apiCallError(`Failed to add ${options.key}`, result.response, result.error);
+    throw apiCallError(
+      `Failed to add ${options.key}`,
+      result.response,
+      result.error,
+    );
   }
 
-  return normalizeEnvironmentVariable(result.data.data as RawEnvironmentVariableRecord);
+  return normalizeEnvironmentVariable(
+    result.data.data as RawEnvironmentVariableRecord,
+  );
 }
 
 export async function deleteBranchDatabase(
@@ -161,7 +176,11 @@ export async function deleteBranchDatabase(
   });
 
   if (result.error) {
-    throw apiCallError("Failed to delete branch database", result.response, result.error);
+    throw apiCallError(
+      "Failed to delete branch database",
+      result.response,
+      result.error,
+    );
   }
 }
 
@@ -184,10 +203,16 @@ export async function updateEnvironmentVariable(
   });
 
   if (result.error || !result.data) {
-    throw apiCallError("Failed to update environment variable", result.response, result.error);
+    throw apiCallError(
+      "Failed to update environment variable",
+      result.response,
+      result.error,
+    );
   }
 
-  return normalizeEnvironmentVariable(result.data.data as RawEnvironmentVariableRecord);
+  return normalizeEnvironmentVariable(
+    result.data.data as RawEnvironmentVariableRecord,
+  );
 }
 
 export async function deleteEnvironmentVariable(
@@ -205,11 +230,17 @@ export async function deleteEnvironmentVariable(
   });
 
   if (result.error) {
-    throw apiCallError("Failed to delete environment variable", result.response, result.error);
+    throw apiCallError(
+      "Failed to delete environment variable",
+      result.response,
+      result.error,
+    );
   }
 }
 
-function normalizeEnvironmentVariable(variable: RawEnvironmentVariableRecord): PreviewEnvironmentVariableRecord {
+function normalizeEnvironmentVariable(
+  variable: RawEnvironmentVariableRecord,
+): PreviewEnvironmentVariableRecord {
   return {
     id: variable.id,
     key: variable.key,
@@ -219,13 +250,17 @@ function normalizeEnvironmentVariable(variable: RawEnvironmentVariableRecord): P
   };
 }
 
-function normalizeBranchDatabaseRecord(database: RawDatabaseRecord): PreviewBranchDatabaseRecord {
+function normalizeBranchDatabaseRecord(
+  database: RawDatabaseRecord,
+): PreviewBranchDatabaseRecord {
   const connection = database.connections?.[0];
   const databaseUrl = connection?.endpoints?.pooled?.connectionString;
   const directUrl = connection?.endpoints?.direct?.connectionString ?? null;
 
   if (!databaseUrl) {
-    throw new Error("Created database did not return a pooled connection string.");
+    throw new Error(
+      "Created database did not return a pooled connection string.",
+    );
   }
 
   return {
@@ -246,7 +281,8 @@ function apiCallError(
     return new Error("Resource Not Found");
   }
 
-  const message = error.error?.message ?? `Management API returned HTTP ${response.status}.`;
+  const message =
+    error.error?.message ?? `Management API returned HTTP ${response.status}.`;
   const hint = error.error?.hint ? ` ${error.error.hint}` : "";
   return new Error(`${summary}: ${message}${hint}`);
 }

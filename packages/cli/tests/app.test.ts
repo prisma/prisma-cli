@@ -130,31 +130,51 @@ describe("app commands", () => {
     expect(rootHelp.stderr).toContain("app");
 
     expect(appHelp.exitCode).toBe(0);
-    expect(appHelp.stderr).toContain("Manage apps and deployments for a project");
+    expect(appHelp.stderr).toContain(
+      "Manage apps and deployments for a project",
+    );
     expect(appHelp.stderr).toContain("$ prisma-cli app deploy");
-    expect(appHelp.stderr).toContain("$ prisma-cli app deploy --app my-app --framework nextjs --http-port 3000");
+    expect(appHelp.stderr).toContain(
+      "$ prisma-cli app deploy --app my-app --framework nextjs --http-port 3000",
+    );
     expect(appHelp.stderr).not.toContain("update-env");
     expect(appHelp.stderr).not.toContain("list-env");
 
     expect(buildHelp.exitCode).toBe(0);
-    expect(buildHelp.stderr).toContain("Build the app locally into a deployable artifact");
-    expect(buildHelp.stderr).toContain("$ prisma-cli app build --build-type nextjs");
+    expect(buildHelp.stderr).toContain(
+      "Build the app locally into a deployable artifact",
+    );
+    expect(buildHelp.stderr).toContain(
+      "$ prisma-cli app build --build-type nextjs",
+    );
 
     expect(runHelp.exitCode).toBe(0);
     expect(runHelp.stderr).toContain("Run your app locally");
-    expect(runHelp.stderr).toContain("$ prisma-cli app run --build-type nextjs");
+    expect(runHelp.stderr).toContain(
+      "$ prisma-cli app run --build-type nextjs",
+    );
 
     expect(deployHelp.exitCode).toBe(0);
     expect(deployHelp.stderr).toContain("Creates a new deployment for the app");
-    expect(deployHelp.stderr).toContain("Agent skills for guided Next.js deploys");
+    expect(deployHelp.stderr).toContain(
+      "Agent skills for guided Next.js deploys",
+    );
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy");
-    expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --project proj_123");
-    expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --create-project my-app --yes");
+    expect(deployHelp.stderr).toContain(
+      "$ prisma-cli app deploy --project proj_123",
+    );
+    expect(deployHelp.stderr).toContain(
+      "$ prisma-cli app deploy --create-project my-app --yes",
+    );
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --env .env");
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --db");
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --db --yes");
-    expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --app my-app --framework nextjs --http-port 3000");
-    expect(deployHelp.stderr).toContain("$ pnpm dlx skills@latest add prisma/prisma-cli/skills#cli-v<cli-version> --all");
+    expect(deployHelp.stderr).toContain(
+      "$ prisma-cli app deploy --app my-app --framework nextjs --http-port 3000",
+    );
+    expect(deployHelp.stderr).toContain(
+      "$ pnpm dlx skills@latest add prisma/prisma-cli/skills#cli-v<cli-version> --all",
+    );
     expect(deployHelp.stderr).toContain("--entry <path>");
     expect(deployHelp.stderr).toContain("--create-project <name>");
     expect(deployHelp.stderr).toContain("--framework <name>");
@@ -165,7 +185,9 @@ describe("app commands", () => {
     expect(deployHelp.stderr).toContain("--no-db");
 
     expect(showHelp.exitCode).toBe(0);
-    expect(showHelp.stderr).toContain("Show the app and its current deployment");
+    expect(showHelp.stderr).toContain(
+      "Show the app and its current deployment",
+    );
     expect(showHelp.stderr).toContain("$ prisma-cli app show");
 
     expect(openHelp.exitCode).toBe(0);
@@ -174,28 +196,44 @@ describe("app commands", () => {
 
     expect(domainHelp.exitCode).toBe(0);
     expect(domainHelp.stderr).toContain("Manage custom domains for an app");
-    expect(domainHelp.stderr).toContain("$ prisma-cli app domain add shop.acme.com");
+    expect(domainHelp.stderr).toContain(
+      "$ prisma-cli app domain add shop.acme.com",
+    );
 
     expect(domainAddHelp.exitCode).toBe(0);
-    expect(domainAddHelp.stderr).toContain("Register a custom domain on the app's production branch");
+    expect(domainAddHelp.stderr).toContain(
+      "Register a custom domain on the app's production branch",
+    );
     expect(domainAddHelp.stderr).toContain("--branch <name>");
 
     expect(domainShowHelp.exitCode).toBe(0);
-    expect(domainShowHelp.stderr).toContain("Show custom domain status and certificate details");
+    expect(domainShowHelp.stderr).toContain(
+      "Show custom domain status and certificate details",
+    );
 
     expect(domainRemoveHelp.exitCode).toBe(0);
-    expect(domainRemoveHelp.stderr).toContain("Detach a custom domain from the app");
+    expect(domainRemoveHelp.stderr).toContain(
+      "Detach a custom domain from the app",
+    );
 
     expect(domainRetryHelp.exitCode).toBe(0);
-    expect(domainRetryHelp.stderr).toContain("Retry custom domain DNS verification and TLS provisioning");
+    expect(domainRetryHelp.stderr).toContain(
+      "Retry custom domain DNS verification and TLS provisioning",
+    );
 
     expect(domainWaitHelp.exitCode).toBe(0);
-    expect(domainWaitHelp.stderr).toContain("Wait until a custom domain is active or failed");
+    expect(domainWaitHelp.stderr).toContain(
+      "Wait until a custom domain is active or failed",
+    );
     expect(domainWaitHelp.stderr).toContain("--timeout <duration>");
 
     expect(logsHelp.exitCode).toBe(0);
-    expect(logsHelp.stderr).toContain("Stream logs for the app's current deployment");
-    expect(logsHelp.stderr).toContain("$ prisma-cli app logs --deployment dep_123");
+    expect(logsHelp.stderr).toContain(
+      "Stream logs for the app's current deployment",
+    );
+    expect(logsHelp.stderr).toContain(
+      "$ prisma-cli app logs --deployment dep_123",
+    );
 
     expect(listDeploysHelp.exitCode).toBe(0);
     expect(listDeploysHelp.stderr).toContain("List deployments for the app");
@@ -203,19 +241,29 @@ describe("app commands", () => {
 
     expect(showDeployHelp.exitCode).toBe(0);
     expect(showDeployHelp.stderr).toContain("Show a deployment in detail");
-    expect(showDeployHelp.stderr).toContain("$ prisma-cli app show-deploy dep_123");
+    expect(showDeployHelp.stderr).toContain(
+      "$ prisma-cli app show-deploy dep_123",
+    );
 
     expect(promoteHelp.exitCode).toBe(0);
-    expect(promoteHelp.stderr).toContain("Promote a deployment to production by rebuilding with production env vars");
+    expect(promoteHelp.stderr).toContain(
+      "Promote a deployment to production by rebuilding with production env vars",
+    );
     expect(promoteHelp.stderr).toContain("$ prisma-cli app promote dep_123");
 
     expect(rollbackHelp.exitCode).toBe(0);
-    expect(rollbackHelp.stderr).toContain("Roll back production to a previous deployment");
+    expect(rollbackHelp.stderr).toContain(
+      "Roll back production to a previous deployment",
+    );
     expect(rollbackHelp.stderr).toContain("$ prisma-cli app rollback");
 
     expect(removeHelp.exitCode).toBe(0);
-    expect(removeHelp.stderr).toContain("Remove the app from the current branch");
-    expect(removeHelp.stderr).toContain("$ prisma-cli app remove --app hello-world");
+    expect(removeHelp.stderr).toContain(
+      "Remove the app from the current branch",
+    );
+    expect(removeHelp.stderr).toContain(
+      "$ prisma-cli app remove --app hello-world",
+    );
   });
 
   it("does not register legacy app env commands", async () => {
@@ -253,6 +301,8 @@ describe("app commands", () => {
     });
 
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("app deploy accepts either --db or --no-db");
+    expect(result.stderr).toContain(
+      "app deploy accepts either --db or --no-db",
+    );
   });
 });

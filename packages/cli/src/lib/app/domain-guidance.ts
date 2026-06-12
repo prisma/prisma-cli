@@ -13,7 +13,9 @@ interface DomainFailureGuidanceInput {
   dnsRecords: DomainDnsRecord[];
 }
 
-export function formatDomainFailureFix(domain: DomainFailureGuidanceInput): string | null {
+export function formatDomainFailureFix(
+  domain: DomainFailureGuidanceInput,
+): string | null {
   if (domain.status !== "failed") {
     return null;
   }

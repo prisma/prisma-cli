@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: Interactive paste prompting must retry sequentially.
 import events from "node:events";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -7,13 +8,12 @@ import type { Readable, Writable } from "node:stream";
 import {
   createManagementApiSdk,
   type ManagementApiSdk,
-  type TokenStorage,
   AuthError as SDKAuthError,
+  type TokenStorage,
 } from "@prisma/management-api-sdk";
 import open from "open";
-
-import { CLIENT_ID, getApiBaseUrl } from "./client";
 import { FileTokenStorage } from "../../adapters/token-storage";
+import { CLIENT_ID, getApiBaseUrl } from "./client";
 
 export class AuthError extends Error {
   constructor(message: string) {
@@ -134,12 +134,15 @@ export async function login(options: LoginOptions = {}): Promise<void> {
     // Only race the paste flow when stdin is a TTY we can actually prompt on.
     // Without one (CI, pipes, tests) the browser callback is the only path.
     const callbackResult = interactive
-      ? Promise.race([httpResult, consumePastedCallback({
-        input,
-        output,
-        signal: pasteAbort.signal,
-        complete: completeOnce,
-      })])
+      ? Promise.race([
+          httpResult,
+          consumePastedCallback({
+            input,
+            output,
+            signal: pasteAbort.signal,
+            complete: completeOnce,
+          }),
+        ])
       : httpResult;
 
     await Promise.all([state.openLoginPage(interactive), callbackResult]);
@@ -171,42 +174,59 @@ async function consumePastedCallback(options: {
     // wrong paste shows a hint and re-asks instead of ending the whole login;
     // the browser callback stays open the whole time and can still win.
     for (;;) {
-      let answer: string;
-      try {
-        answer = await rl.question("Paste the callback URL here: ", {
-          signal: options.signal,
-        });
-      } catch (error) {
-        // The browser callback won the race and aborted us. Stop prompting.
-        if ((error as { name?: string } | null)?.name === "AbortError") return;
-        throw error;
-      }
+      const url = await readPastedCallbackUrl(rl, options);
+      if (url === null) return;
+      if (url === undefined) continue;
 
-      const trimmed = answer.trim().replace(/^["']|["']$/g, "");
-      let url: URL;
-      try {
-        if (!trimmed) throw new Error("empty input");
-        url = new URL(trimmed);
-      } catch {
-        options.output.write(
-          "That didn't look like a URL. Paste the full localhost callback URL and try again.\n",
-        );
-        continue;
-      }
-
-      try {
-        await options.complete(url);
+      if (await tryCompletePastedCallback(url, options)) {
         return;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        options.output.write(
-          `Sign-in didn't complete (${message}). Paste the callback URL to try again.\n`,
-        );
-        continue;
       }
     }
   } finally {
     rl.close();
+  }
+}
+
+async function readPastedCallbackUrl(
+  rl: readline.Interface,
+  options: { signal: AbortSignal; output: Writable },
+): Promise<URL | null | undefined> {
+  let answer: string;
+  try {
+    answer = await rl.question("Paste the callback URL here: ", {
+      signal: options.signal,
+    });
+  } catch (error) {
+    // The browser callback won the race and aborted us. Stop prompting.
+    if ((error as { name?: string } | null)?.name === "AbortError") return null;
+    throw error;
+  }
+
+  const trimmed = answer.trim().replace(/^["']|["']$/g, "");
+  try {
+    if (!trimmed) throw new Error("empty input");
+    return new URL(trimmed);
+  } catch {
+    options.output.write(
+      "That didn't look like a URL. Paste the full localhost callback URL and try again.\n",
+    );
+    return undefined;
+  }
+}
+
+async function tryCompletePastedCallback(
+  url: URL,
+  options: { complete: (url: URL) => Promise<void>; output: Writable },
+): Promise<boolean> {
+  try {
+    await options.complete(url);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    options.output.write(
+      `Sign-in didn't complete (${message}). Paste the callback URL to try again.\n`,
+    );
+    return false;
   }
 }
 

@@ -1,13 +1,18 @@
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import type {
+  PreviewAppProvider,
+  PreviewAppRecord,
+  PreviewDeploymentRecord,
+} from "../src/lib/app/preview-provider";
 import { confirmPrompt } from "../src/shell/prompt";
-import type { PreviewAppProvider, PreviewAppRecord, PreviewDeploymentRecord } from "../src/lib/app/preview-provider";
 import { createTempCwd, createTestCommandContext } from "./helpers";
 
 vi.mock("../src/shell/prompt", async () => {
-  const actual = await vi.importActual<typeof import("../src/shell/prompt")>("../src/shell/prompt");
+  const actual = await vi.importActual<typeof import("../src/shell/prompt")>(
+    "../src/shell/prompt",
+  );
   return {
     ...actual,
     confirmPrompt: vi.fn(),
@@ -25,7 +30,9 @@ describe("production deploy gate", () => {
     const { context, stderr } = await createGateContext();
     const provider = createGateProvider();
 
-    const { enforceProductionDeployGate } = await import("../src/lib/app/production-deploy-gate");
+    const { enforceProductionDeployGate } = await import(
+      "../src/lib/app/production-deploy-gate"
+    );
     await enforceProductionDeployGate(context, provider, {
       appId: "app_1",
       appName: "hello-world",
@@ -42,7 +49,9 @@ describe("production deploy gate", () => {
     const app = createApp({ liveDeploymentId: null });
     const provider = createGateProvider(app, []);
 
-    const { enforceProductionDeployGate } = await import("../src/lib/app/production-deploy-gate");
+    const { enforceProductionDeployGate } = await import(
+      "../src/lib/app/production-deploy-gate"
+    );
     await enforceProductionDeployGate(context, provider, {
       appId: app.id,
       appName: app.name,
@@ -51,20 +60,26 @@ describe("production deploy gate", () => {
     });
 
     expect(provider.listDeployments).toHaveBeenCalledWith("app_1");
-    expect(stderr.buffer).toContain('First deploy of "hello-world" -- promoting to production.');
+    expect(stderr.buffer).toContain(
+      'First deploy of "hello-world" -- promoting to production.',
+    );
   });
 
   it("blocks a subsequent production deploy without --prod", async () => {
     const { context } = await createGateContext();
     const provider = createGateProvider(createApp(), [createDeployment()]);
 
-    const { enforceProductionDeployGate } = await import("../src/lib/app/production-deploy-gate");
-    await expect(enforceProductionDeployGate(context, provider, {
-      appId: "app_1",
-      appName: "hello-world",
-      branchKind: "production",
-      prod: false,
-    })).rejects.toMatchObject({
+    const { enforceProductionDeployGate } = await import(
+      "../src/lib/app/production-deploy-gate"
+    );
+    await expect(
+      enforceProductionDeployGate(context, provider, {
+        appId: "app_1",
+        appName: "hello-world",
+        branchKind: "production",
+        prod: false,
+      }),
+    ).rejects.toMatchObject({
       code: "PROD_DEPLOY_REQUIRES_FLAG",
       exitCode: 2,
       humanLines: [
@@ -87,7 +102,9 @@ describe("production deploy gate", () => {
     const { context, stderr } = await createGateContext({ isTTY: true });
     const provider = createGateProvider(createApp(), [createDeployment()]);
 
-    const { enforceProductionDeployGate } = await import("../src/lib/app/production-deploy-gate");
+    const { enforceProductionDeployGate } = await import(
+      "../src/lib/app/production-deploy-gate"
+    );
     await enforceProductionDeployGate(context, provider, {
       appId: "app_1",
       appName: "hello-world",
@@ -95,19 +112,27 @@ describe("production deploy gate", () => {
       prod: true,
     });
 
-    expect(stderr.buffer).toContain("This will deploy to production and replace the live deployment.");
+    expect(stderr.buffer).toContain(
+      "This will deploy to production and replace the live deployment.",
+    );
     expect(stderr.buffer).toContain("Current live:  dep_live deployed");
-    expect(mockedConfirmPrompt).toHaveBeenCalledWith(expect.objectContaining({
-      message: "Deploy to production?",
-      initialValue: false,
-    }));
+    expect(mockedConfirmPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Deploy to production?",
+        initialValue: false,
+      }),
+    );
   });
 
   it("allows --prod --yes without prompting", async () => {
-    const { context, stderr } = await createGateContext({ flags: { yes: true } });
+    const { context, stderr } = await createGateContext({
+      flags: { yes: true },
+    });
     const provider = createGateProvider(createApp(), [createDeployment()]);
 
-    const { enforceProductionDeployGate } = await import("../src/lib/app/production-deploy-gate");
+    const { enforceProductionDeployGate } = await import(
+      "../src/lib/app/production-deploy-gate"
+    );
     await enforceProductionDeployGate(context, provider, {
       appId: "app_1",
       appName: "hello-world",
@@ -123,13 +148,17 @@ describe("production deploy gate", () => {
     const { context } = await createGateContext({ flags: { yes: true } });
     const provider = createGateProvider(createApp(), [createDeployment()]);
 
-    const { enforceProductionDeployGate } = await import("../src/lib/app/production-deploy-gate");
-    await expect(enforceProductionDeployGate(context, provider, {
-      appId: "app_1",
-      appName: "hello-world",
-      branchKind: "production",
-      prod: false,
-    })).rejects.toMatchObject({
+    const { enforceProductionDeployGate } = await import(
+      "../src/lib/app/production-deploy-gate"
+    );
+    await expect(
+      enforceProductionDeployGate(context, provider, {
+        appId: "app_1",
+        appName: "hello-world",
+        branchKind: "production",
+        prod: false,
+      }),
+    ).rejects.toMatchObject({
       code: "PROD_DEPLOY_REQUIRES_FLAG",
       exitCode: 2,
     });
@@ -137,8 +166,10 @@ describe("production deploy gate", () => {
   });
 });
 
-async function createGateContext(options: Parameters<typeof createTestCommandContext>[0] = {}) {
-  const cwd = options.cwd ?? await createTempCwd();
+async function createGateContext(
+  options: Parameters<typeof createTestCommandContext>[0] = {},
+) {
+  const cwd = options.cwd ?? (await createTempCwd());
   return createTestCommandContext({
     ...options,
     cwd,
@@ -158,7 +189,9 @@ function createGateProvider(
   };
 }
 
-function createApp(overrides: Partial<PreviewAppRecord> = {}): PreviewAppRecord {
+function createApp(
+  overrides: Partial<PreviewAppRecord> = {},
+): PreviewAppRecord {
   return {
     id: "app_1",
     name: "hello-world",
@@ -170,7 +203,9 @@ function createApp(overrides: Partial<PreviewAppRecord> = {}): PreviewAppRecord 
   };
 }
 
-function createDeployment(overrides: Partial<PreviewDeploymentRecord> = {}): PreviewDeploymentRecord {
+function createDeployment(
+  overrides: Partial<PreviewDeploymentRecord> = {},
+): PreviewDeploymentRecord {
   return {
     id: "dep_live",
     status: "running",

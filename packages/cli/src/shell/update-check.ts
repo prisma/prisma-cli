@@ -1,14 +1,16 @@
+// biome-ignore-all lint/performance/useTopLevelRegex: Existing update-check parsing regexes are kept inline for readability.
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 
 import { getCliName, getCliVersion } from "../lib/version";
 import type { CliRuntime } from "./runtime";
 
 const UPDATE_CHECK_FILE_NAME = "update-check.json";
-const FALLBACK_INSTALL_DOCS_URL = "https://www.prisma.io/docs/orm/tools/prisma-cli";
+const FALLBACK_INSTALL_DOCS_URL =
+  "https://www.prisma.io/docs/orm/tools/prisma-cli";
 const NOTIFICATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const REGISTRY_URL = "https://registry.npmjs.org/@prisma%2fcli";
 const REGISTRY_TIMEOUT_MS = 3_000;
@@ -35,7 +37,9 @@ export class UpdateCheckStore {
 
   async read(): Promise<UpdateCheckState | null> {
     try {
-      return JSON.parse(await readFile(this.filePath, "utf8")) as UpdateCheckState;
+      return JSON.parse(
+        await readFile(this.filePath, "utf8"),
+      ) as UpdateCheckState;
     } catch (error) {
       if (isUnreadableCacheError(error)) {
         return null;
@@ -47,14 +51,19 @@ export class UpdateCheckStore {
 
   async write(state: UpdateCheckState): Promise<void> {
     const dir = path.dirname(this.filePath);
-    const tempPath = path.join(dir, `${UPDATE_CHECK_FILE_NAME}.${process.pid}.${randomUUID()}.tmp`);
+    const tempPath = path.join(
+      dir,
+      `${UPDATE_CHECK_FILE_NAME}.${process.pid}.${randomUUID()}.tmp`,
+    );
     await mkdir(dir, { recursive: true });
     await writeFile(tempPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
     await rename(tempPath, this.filePath);
   }
 }
 
-export async function maybeWriteCachedUpdateNotification(runtime: CliRuntime): Promise<void> {
+export async function maybeWriteCachedUpdateNotification(
+  runtime: CliRuntime,
+): Promise<void> {
   if (!canRunUpdateCheck(runtime)) {
     return;
   }
@@ -65,8 +74,17 @@ export async function maybeWriteCachedUpdateNotification(runtime: CliRuntime): P
     const state = await store.read();
     const latestVersion = state?.latestVersion;
 
-    if (latestVersion && isInstalledVersionStale(getCliVersion(), latestVersion) && shouldNotify(state)) {
-      runtime.stderr.write(renderUpdateNotification(latestVersion, selectUpdateInstruction(runtime.env)));
+    if (
+      latestVersion &&
+      isInstalledVersionStale(getCliVersion(), latestVersion) &&
+      shouldNotify(state)
+    ) {
+      runtime.stderr.write(
+        renderUpdateNotification(
+          latestVersion,
+          selectUpdateInstruction(runtime.env),
+        ),
+      );
       await store.write({
         ...state,
         packageName: "@prisma/cli",
@@ -89,7 +107,10 @@ export async function runUpdateDiscovery(options: {
   now?: Date;
 }): Promise<void> {
   try {
-    const latestVersion = await fetchLatestVersion(options.registryUrl ?? REGISTRY_URL, options.fetchImpl ?? fetch);
+    const latestVersion = await fetchLatestVersion(
+      options.registryUrl ?? REGISTRY_URL,
+      options.fetchImpl ?? fetch,
+    );
     if (!latestVersion) {
       return;
     }
@@ -110,10 +131,17 @@ export async function runUpdateDiscovery(options: {
 
 function isUnreadableCacheError(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException).code;
-  return code === "ENOENT" || code === "EACCES" || code === "EPERM" || error instanceof SyntaxError;
+  return (
+    code === "ENOENT" ||
+    code === "EACCES" ||
+    code === "EPERM" ||
+    error instanceof SyntaxError
+  );
 }
 
-export async function runUpdateDiscoveryWorker(env: NodeJS.ProcessEnv = process.env): Promise<void> {
+export async function runUpdateDiscoveryWorker(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
   const cacheDir = env.PRISMA_CLI_UPDATE_CHECK_DIR;
   const installedVersion = env.PRISMA_CLI_UPDATE_CHECK_INSTALLED_VERSION;
 
@@ -133,7 +161,10 @@ function canRunUpdateCheck(runtime: CliRuntime): boolean {
     return false;
   }
 
-  if (isTestRuntime(runtime.env) && runtime.env.PRISMA_CLI_TEST_ENABLE_UPDATE_CHECK !== "1") {
+  if (
+    isTestRuntime(runtime.env) &&
+    runtime.env.PRISMA_CLI_TEST_ENABLE_UPDATE_CHECK !== "1"
+  ) {
     return false;
   }
 
@@ -145,7 +176,11 @@ function canRunUpdateCheck(runtime: CliRuntime): boolean {
     return false;
   }
 
-  if (runtime.argv.includes("--json") || runtime.argv.includes("--quiet") || runtime.argv.includes("-q")) {
+  if (
+    runtime.argv.includes("--json") ||
+    runtime.argv.includes("--quiet") ||
+    runtime.argv.includes("-q")
+  ) {
     return false;
   }
 
@@ -228,14 +263,20 @@ export function selectUpdateInstruction(
     }
   }
 
-  if (env.npm_config_global === "true" || isLikelyGlobalNpmEntrypoint(entrypoint)) {
+  if (
+    env.npm_config_global === "true" ||
+    isLikelyGlobalNpmEntrypoint(entrypoint)
+  ) {
     return commandInstruction("npm install --global @prisma/cli@latest");
   }
 
   return docsInstruction();
 }
 
-function renderUpdateNotification(latestVersion: string, instruction: UpdateInstruction): string {
+function renderUpdateNotification(
+  latestVersion: string,
+  instruction: UpdateInstruction,
+): string {
   return [
     `Update available: ${getCliName()} ${getCliVersion()} -> ${latestVersion}`,
     renderUpdateInstruction(instruction),
@@ -252,11 +293,19 @@ function renderUpdateInstruction(instruction: UpdateInstruction): string {
 }
 
 function isEphemeralInvocation(entrypoint: string, lifecycle: string): boolean {
-  return lifecycle === "npx" || lifecycle === "pnpx" || entrypoint.includes("/_npx/") || entrypoint.includes("/.bun/");
+  return (
+    lifecycle === "npx" ||
+    lifecycle === "pnpx" ||
+    entrypoint.includes("/_npx/") ||
+    entrypoint.includes("/.bun/")
+  );
 }
 
 function isLikelyGlobalNpmEntrypoint(entrypoint: string): boolean {
-  return /\/npm\/prisma-cli(\.cmd|\.exe)?$/.test(entrypoint) || /\/npm-global\/bin\/prisma-cli$/.test(entrypoint);
+  return (
+    /\/npm\/prisma-cli(\.cmd|\.exe)?$/.test(entrypoint) ||
+    /\/npm-global\/bin\/prisma-cli$/.test(entrypoint)
+  );
 }
 
 function commandInstruction(value: string): UpdateInstruction {
@@ -278,11 +327,13 @@ function resolveUpdateCheckCacheDir(runtime: CliRuntime): string {
   }
 
   if (process.platform === "win32") {
-    const localAppData = runtime.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local");
+    const localAppData =
+      runtime.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local");
     return path.join(localAppData, "prisma-cli", "cache");
   }
 
-  const xdgCacheHome = runtime.env.XDG_CACHE_HOME ?? path.join(os.homedir(), ".cache");
+  const xdgCacheHome =
+    runtime.env.XDG_CACHE_HOME ?? path.join(os.homedir(), ".cache");
   return path.join(xdgCacheHome, "prisma-cli");
 }
 
@@ -292,10 +343,16 @@ function isTestRuntime(env: NodeJS.ProcessEnv): boolean {
 
 function isAtLeastIntervalAgo(value: string): boolean {
   const timestamp = Date.parse(value);
-  return Number.isNaN(timestamp) || Date.now() - timestamp >= NOTIFICATION_INTERVAL_MS;
+  return (
+    Number.isNaN(timestamp) ||
+    Date.now() - timestamp >= NOTIFICATION_INTERVAL_MS
+  );
 }
 
-function isInstalledVersionStale(installedVersion: string, latestVersion: string): boolean {
+function isInstalledVersionStale(
+  installedVersion: string,
+  latestVersion: string,
+): boolean {
   const installed = parseVersion(installedVersion);
   const latest = parseVersion(latestVersion);
 
@@ -374,7 +431,10 @@ function comparePrereleasePart(left: string, right: string): number {
   return left.localeCompare(right);
 }
 
-async function fetchLatestVersion(registryUrl: string, fetchImpl: typeof fetch): Promise<string | null> {
+async function fetchLatestVersion(
+  registryUrl: string,
+  fetchImpl: typeof fetch,
+): Promise<string | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REGISTRY_TIMEOUT_MS);
 
@@ -390,7 +450,9 @@ async function fetchLatestVersion(registryUrl: string, fetchImpl: typeof fetch):
       return null;
     }
 
-    const metadata = await response.json() as { "dist-tags"?: { latest?: unknown } };
+    const metadata = (await response.json()) as {
+      "dist-tags"?: { latest?: unknown };
+    };
     const latest = metadata["dist-tags"]?.latest;
     return typeof latest === "string" ? latest : null;
   } finally {

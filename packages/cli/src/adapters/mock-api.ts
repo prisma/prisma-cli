@@ -88,7 +88,10 @@ export class MockApi {
     this.data = data;
   }
 
-  static async load(fixturePath: string, signal?: AbortSignal): Promise<MockApi> {
+  static async load(
+    fixturePath: string,
+    signal?: AbortSignal,
+  ): Promise<MockApi> {
     signal?.throwIfAborted();
     const raw = await readFile(fixturePath, { encoding: "utf8", signal });
     return new MockApi(JSON.parse(raw) as MockApiData);
@@ -103,15 +106,22 @@ export class MockApi {
   }
 
   listUsersForProvider(providerId: AuthProviderId): UserRecord[] {
-    return this.data.users.filter((user) => user.providerIds.includes(providerId));
+    return this.data.users.filter((user) =>
+      user.providerIds.includes(providerId),
+    );
   }
 
   getUser(userId: string): UserRecord | undefined {
     return this.data.users.find((user) => user.id === userId);
   }
 
-  getUserForProvider(providerId: AuthProviderId, userId: string): UserRecord | undefined {
-    return this.listUsersForProvider(providerId).find((user) => user.id === userId);
+  getUserForProvider(
+    providerId: AuthProviderId,
+    userId: string,
+  ): UserRecord | undefined {
+    return this.listUsersForProvider(providerId).find(
+      (user) => user.id === userId,
+    );
   }
 
   listUserWorkspaces(userId: string): WorkspaceRecord[] {
@@ -119,49 +129,81 @@ export class MockApi {
       .filter((membership) => membership.userId === userId)
       .map((membership) => membership.workspaceId);
 
-    return this.data.workspaces.filter((workspace) => workspaceIds.includes(workspace.id));
+    return this.data.workspaces.filter((workspace) =>
+      workspaceIds.includes(workspace.id),
+    );
   }
 
   getWorkspace(workspaceId: string): WorkspaceRecord | undefined {
-    return this.data.workspaces.find((workspace) => workspace.id === workspaceId);
+    return this.data.workspaces.find(
+      (workspace) => workspace.id === workspaceId,
+    );
   }
 
-  getUserWorkspace(userId: string, workspaceId: string): WorkspaceRecord | undefined {
-    return this.listUserWorkspaces(userId).find((workspace) => workspace.id === workspaceId);
+  getUserWorkspace(
+    userId: string,
+    workspaceId: string,
+  ): WorkspaceRecord | undefined {
+    return this.listUserWorkspaces(userId).find(
+      (workspace) => workspace.id === workspaceId,
+    );
   }
 
   listProjectsForWorkspace(workspaceId: string): ProjectRecord[] {
-    return this.data.projects.filter((project) => project.workspaceId === workspaceId);
+    return this.data.projects.filter(
+      (project) => project.workspaceId === workspaceId,
+    );
   }
 
   getProject(projectId: string): ProjectRecord | undefined {
     return this.data.projects.find((project) => project.id === projectId);
   }
 
-  getProjectForWorkspace(workspaceId: string, projectId: string): ProjectRecord | undefined {
-    return this.listProjectsForWorkspace(workspaceId).find((project) => project.id === projectId);
+  getProjectForWorkspace(
+    workspaceId: string,
+    projectId: string,
+  ): ProjectRecord | undefined {
+    return this.listProjectsForWorkspace(workspaceId).find(
+      (project) => project.id === projectId,
+    );
   }
 
   listBranchesForProject(projectId: string): BranchRecord[] {
-    return this.data.branches.filter((branch) => branch.projectId === projectId);
+    return this.data.branches.filter(
+      (branch) => branch.projectId === projectId,
+    );
   }
 
-  getBranchForProject(projectId: string, name: string): BranchRecord | undefined {
-    return this.listBranchesForProject(projectId).find((branch) => branch.name === name);
+  getBranchForProject(
+    projectId: string,
+    name: string,
+  ): BranchRecord | undefined {
+    return this.listBranchesForProject(projectId).find(
+      (branch) => branch.name === name,
+    );
   }
 
   getDeployment(deploymentId: string): DeploymentRecord | undefined {
-    return this.data.deployments.find((deployment) => deployment.id === deploymentId);
+    return this.data.deployments.find(
+      (deployment) => deployment.id === deploymentId,
+    );
   }
 
-  listDatabasesForProject(projectId: string, branchName?: string): DatabaseRecord[] {
-    return (this.data.databases ?? []).filter((database) =>
-      database.projectId === projectId && (!branchName || database.branchName === branchName)
+  listDatabasesForProject(
+    projectId: string,
+    branchName?: string,
+  ): DatabaseRecord[] {
+    return (this.data.databases ?? []).filter(
+      (database) =>
+        database.projectId === projectId &&
+        (!branchName || database.branchName === branchName),
     );
   }
 
   getDatabase(databaseId: string): DatabaseRecord | undefined {
-    return (this.data.databases ?? []).find((database) => database.id === databaseId);
+    return (this.data.databases ?? []).find(
+      (database) => database.id === databaseId,
+    );
   }
 
   createDatabase(input: {
@@ -169,14 +211,21 @@ export class MockApi {
     name: string;
     branchName?: string;
     region?: string;
-  }): { database: DatabaseRecord; connection: DatabaseConnectionRecord; connectionString: string } {
+  }): {
+    database: DatabaseRecord;
+    connection: DatabaseConnectionRecord;
+    connectionString: string;
+  } {
     this.data.databases ??= [];
     this.data.databaseConnections ??= [];
 
     const database: DatabaseRecord = {
       id: `db_${this.data.databases.length + 1_000}`,
       projectId: input.projectId,
-      branchId: input.branchName ? this.getBranchForProject(input.projectId, input.branchName)?.id ?? null : null,
+      branchId: input.branchName
+        ? (this.getBranchForProject(input.projectId, input.branchName)?.id ??
+          null)
+        : null,
       branchName: input.branchName ?? null,
       name: input.name,
       region: input.region ?? null,
@@ -207,23 +256,35 @@ export class MockApi {
       return undefined;
     }
 
-    this.data.databases = this.data.databases.filter((candidate) => candidate.id !== databaseId);
-    this.data.databaseConnections = this.data.databaseConnections.filter((connection) => connection.databaseId !== databaseId);
+    this.data.databases = this.data.databases.filter(
+      (candidate) => candidate.id !== databaseId,
+    );
+    this.data.databaseConnections = this.data.databaseConnections.filter(
+      (connection) => connection.databaseId !== databaseId,
+    );
     return database;
   }
 
   listDatabaseConnections(databaseId: string): DatabaseConnectionRecord[] {
-    return (this.data.databaseConnections ?? []).filter((connection) => connection.databaseId === databaseId);
+    return (this.data.databaseConnections ?? []).filter(
+      (connection) => connection.databaseId === databaseId,
+    );
   }
 
-  getDatabaseConnection(connectionId: string): DatabaseConnectionRecord | undefined {
-    return (this.data.databaseConnections ?? []).find((connection) => connection.id === connectionId);
+  getDatabaseConnection(
+    connectionId: string,
+  ): DatabaseConnectionRecord | undefined {
+    return (this.data.databaseConnections ?? []).find(
+      (connection) => connection.id === connectionId,
+    );
   }
 
   createDatabaseConnection(input: {
     databaseId: string;
     name: string;
-  }): { connection: DatabaseConnectionRecord; connectionString: string } | undefined {
+  }):
+    | { connection: DatabaseConnectionRecord; connectionString: string }
+    | undefined {
     const database = this.getDatabase(input.databaseId);
     if (!database) {
       return undefined;
@@ -242,23 +303,27 @@ export class MockApi {
     return { connection, connectionString };
   }
 
-  removeDatabaseConnection(connectionId: string): DatabaseConnectionRecord | undefined {
+  removeDatabaseConnection(
+    connectionId: string,
+  ): DatabaseConnectionRecord | undefined {
     this.data.databaseConnections ??= [];
     const connection = this.getDatabaseConnection(connectionId);
     if (!connection) {
       return undefined;
     }
 
-    this.data.databaseConnections = this.data.databaseConnections.filter((candidate) => candidate.id !== connectionId);
+    this.data.databaseConnections = this.data.databaseConnections.filter(
+      (candidate) => candidate.id !== connectionId,
+    );
     return connection;
   }
 }
 
 export type {
+  BranchRecord,
   DatabaseConnectionRecord,
   DatabaseRecord,
   DeploymentRecord,
-  BranchRecord,
   ProjectRecord,
   ProviderRecord,
   UserRecord,

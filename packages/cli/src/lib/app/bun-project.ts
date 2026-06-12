@@ -10,7 +10,10 @@ export interface BunPackageJsonLike {
   devDependencies?: unknown;
 }
 
-export async function readBunPackageJson(appPath: string, signal?: AbortSignal): Promise<BunPackageJsonLike | null> {
+export async function readBunPackageJson(
+  appPath: string,
+  signal?: AbortSignal,
+): Promise<BunPackageJsonLike | null> {
   const packageJsonPath = path.join(appPath, "package.json");
 
   let content: string;
@@ -36,7 +39,9 @@ export async function readBunPackageJson(appPath: string, signal?: AbortSignal):
   }
 }
 
-export function readBunPackageEntrypoint(packageJson: BunPackageJsonLike | null): string | undefined {
+export function readBunPackageEntrypoint(
+  packageJson: BunPackageJsonLike | null,
+): string | undefined {
   if (typeof packageJson?.main === "string") {
     return packageJson.main;
   }
@@ -57,7 +62,9 @@ export async function resolveBunEntrypoint(
   const candidate = explicitEntrypoint ?? readBunPackageEntrypoint(packageJson);
 
   if (!candidate) {
-    throw new Error("Entrypoint is required. Pass --entry or define package.json main or module.");
+    throw new Error(
+      "Entrypoint is required. Pass --entry or define package.json main or module.",
+    );
   }
 
   if (path.isAbsolute(candidate)) {

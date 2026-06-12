@@ -10,7 +10,9 @@ afterEach(() => {
 });
 
 function mockPreviewBuildStrategy() {
-  return vi.fn().mockImplementation(function (options: object) {
+  return vi.fn().mockImplementation(function PreviewBuildStrategyMock(
+    options: object,
+  ) {
     return { options };
   });
 }
@@ -20,12 +22,14 @@ describe("preview app provider", () => {
     const client = {
       GET: vi.fn().mockResolvedValue({
         data: {
-          data: [{
-            id: "br_production",
-            gitName: "production",
-            isDefault: true,
-            role: "preview",
-          }],
+          data: [
+            {
+              id: "br_production",
+              gitName: "production",
+              isDefault: true,
+              role: "preview",
+            },
+          ],
           pagination: { hasMore: false, nextCursor: null },
         },
         response: { status: 200 },
@@ -38,12 +42,16 @@ describe("preview app provider", () => {
       ComputeClient: class {},
     }));
 
-    const { createPreviewAppProvider } = await import("../src/lib/app/preview-provider");
+    const { createPreviewAppProvider } = await import(
+      "../src/lib/app/preview-provider"
+    );
 
     const provider = createPreviewAppProvider(client as never);
-    await expect(provider.resolveBranch("proj_123", {
-      branchName: "production",
-    })).resolves.toEqual({
+    await expect(
+      provider.resolveBranch("proj_123", {
+        branchName: "production",
+      }),
+    ).resolves.toEqual({
       id: "br_production",
       name: "production",
       role: "preview",
@@ -77,7 +85,9 @@ describe("preview app provider", () => {
       },
     }));
 
-    const { createPreviewAppProvider } = await import("../src/lib/app/preview-provider");
+    const { createPreviewAppProvider } = await import(
+      "../src/lib/app/preview-provider"
+    );
 
     const provider = createPreviewAppProvider({} as never);
     const cwd = path.resolve("/tmp/next-smoke");
@@ -174,7 +184,9 @@ describe("preview app provider", () => {
       },
     }));
 
-    const { createPreviewAppProvider } = await import("../src/lib/app/preview-provider");
+    const { createPreviewAppProvider } = await import(
+      "../src/lib/app/preview-provider"
+    );
 
     const provider = createPreviewAppProvider(client as never);
     const cwd = path.resolve("/tmp/next-smoke");
@@ -245,12 +257,14 @@ describe("preview app provider", () => {
         if (pathName === "/v1/projects/{projectId}/branches") {
           return {
             data: {
-              data: [{
-                id: "br_billing",
-                gitName: "feat/billing",
-                isDefault: false,
-                role: "preview",
-              }],
+              data: [
+                {
+                  id: "br_billing",
+                  gitName: "feat/billing",
+                  isDefault: false,
+                  role: "preview",
+                },
+              ],
               pagination: { hasMore: false, nextCursor: null },
             },
             response: { status: 200 },
@@ -260,15 +274,17 @@ describe("preview app provider", () => {
         if (pathName === "/v1/compute-services") {
           return {
             data: {
-              data: [{
-                id: "svc_branch",
-                name: "hello-world",
-                region: { id: "eu-central-1", name: "Europe (Frankfurt)" },
-                projectId: "proj_123",
-                branchId: "br_billing",
-                latestVersionId: null,
-                serviceEndpointDomain: "hello-world.fra.prisma.build",
-              }],
+              data: [
+                {
+                  id: "svc_branch",
+                  name: "hello-world",
+                  region: { id: "eu-central-1", name: "Europe (Frankfurt)" },
+                  projectId: "proj_123",
+                  branchId: "br_billing",
+                  latestVersionId: null,
+                  serviceEndpointDomain: "hello-world.fra.prisma.build",
+                },
+              ],
               pagination: { hasMore: false, nextCursor: null },
             },
             response: { status: 200 },
@@ -304,7 +320,9 @@ describe("preview app provider", () => {
       },
     }));
 
-    const { createPreviewAppProvider } = await import("../src/lib/app/preview-provider");
+    const { createPreviewAppProvider } = await import(
+      "../src/lib/app/preview-provider"
+    );
 
     const provider = createPreviewAppProvider(client as never);
     const cwd = path.resolve("/tmp/next-smoke");
@@ -356,20 +374,22 @@ describe("preview app provider", () => {
         if (pathName === "/v1/compute-services/{computeServiceId}/domains") {
           return {
             data: {
-              data: [{
-                id: "dom_123",
-                type: "custom-domain",
-                url: "https://api.prisma.io/v1/domains/dom_123",
-                hostname: "shop.acme.com",
-                computeServiceId: "app_1",
-                status: "active",
-                foundryStatus: "active",
-                failureReason: null,
-                failureCategory: null,
-                certExpiresAt: null,
-                createdAt: "2026-05-22T09:14:00.000Z",
-                updatedAt: "2026-05-22T09:14:00.000Z",
-              }],
+              data: [
+                {
+                  id: "dom_123",
+                  type: "custom-domain",
+                  url: "https://api.prisma.io/v1/domains/dom_123",
+                  hostname: "shop.acme.com",
+                  computeServiceId: "app_1",
+                  status: "active",
+                  foundryStatus: "active",
+                  failureReason: null,
+                  failureCategory: null,
+                  certExpiresAt: null,
+                  createdAt: "2026-05-22T09:14:00.000Z",
+                  updatedAt: "2026-05-22T09:14:00.000Z",
+                },
+              ],
               pagination: { hasMore: false, nextCursor: null },
             },
             response: { status: 200 },
@@ -400,7 +420,9 @@ describe("preview app provider", () => {
       ComputeClient: class {},
     }));
 
-    const { createPreviewAppProvider } = await import("../src/lib/app/preview-provider");
+    const { createPreviewAppProvider } = await import(
+      "../src/lib/app/preview-provider"
+    );
 
     const provider = createPreviewAppProvider(client as never);
     const result = await provider.addDomain({
@@ -443,20 +465,22 @@ describe("preview app provider", () => {
         if (pathName === "/v1/compute-services/{computeServiceId}/domains") {
           return {
             data: {
-              data: [{
-                id: "dom_123",
-                type: "custom-domain",
-                url: "https://api.prisma.io/v1/domains/dom_123",
-                hostname: "other.acme.com",
-                computeServiceId: "app_1",
-                status: "active",
-                foundryStatus: "active",
-                failureReason: null,
-                failureCategory: null,
-                certExpiresAt: null,
-                createdAt: "2026-05-22T09:14:00.000Z",
-                updatedAt: "2026-05-22T09:14:00.000Z",
-              }],
+              data: [
+                {
+                  id: "dom_123",
+                  type: "custom-domain",
+                  url: "https://api.prisma.io/v1/domains/dom_123",
+                  hostname: "other.acme.com",
+                  computeServiceId: "app_1",
+                  status: "active",
+                  foundryStatus: "active",
+                  failureReason: null,
+                  failureCategory: null,
+                  certExpiresAt: null,
+                  createdAt: "2026-05-22T09:14:00.000Z",
+                  updatedAt: "2026-05-22T09:14:00.000Z",
+                },
+              ],
               pagination: { hasMore: false, nextCursor: null },
             },
             response: { status: 200 },
@@ -487,14 +511,18 @@ describe("preview app provider", () => {
       ComputeClient: class {},
     }));
 
-    const { createPreviewAppProvider } = await import("../src/lib/app/preview-provider");
+    const { createPreviewAppProvider } = await import(
+      "../src/lib/app/preview-provider"
+    );
 
     const provider = createPreviewAppProvider(client as never);
 
-    await expect(provider.addDomain({
-      appId: "app_1",
-      hostname: "shop.acme.com",
-    })).rejects.toMatchObject({
+    await expect(
+      provider.addDomain({
+        appId: "app_1",
+        hostname: "shop.acme.com",
+      }),
+    ).rejects.toMatchObject({
       status: 409,
       code: "CONFLICT",
     });

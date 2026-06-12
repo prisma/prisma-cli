@@ -1,6 +1,6 @@
 import path from "node:path";
-import { describe, expect, it } from "vitest";
 import stripAnsi from "strip-ansi";
+import { describe, expect, it } from "vitest";
 
 import { createTempCwd, executeCli } from "./helpers";
 
@@ -160,7 +160,9 @@ describe("auth commands", () => {
     const stderr = stripAnsi(result.stderr);
 
     expect(result.exitCode).toBe(0);
-    expect(stderr).toContain("auth whoami → Showing the current authenticated identity.");
+    expect(stderr).toContain(
+      "auth whoami → Showing the current authenticated identity.",
+    );
     expect(stderr).not.toContain("Read more");
     expect(stderr).toContain("status:  signed out");
   });

@@ -14,50 +14,61 @@ afterEach(() => {
 
 function createMockClient() {
   return {
-    GET: vi.fn().mockImplementation((pathName: string, request?: { params?: { query?: { cursor?: string } } }) => {
-      if (pathName === "/v1/projects") {
-        return {
-          data: {
-            data: [
-              {
-                id: "proj_123",
-                name: "Acme Dashboard",
-                slug: "acme-dashboard",
-                workspace: { id: "ws_123", name: "Acme Inc" },
+    GET: vi
+      .fn()
+      .mockImplementation(
+        (
+          pathName: string,
+          request?: { params?: { query?: { cursor?: string } } },
+        ) => {
+          if (pathName === "/v1/projects") {
+            return {
+              data: {
+                data: [
+                  {
+                    id: "proj_123",
+                    name: "Acme Dashboard",
+                    slug: "acme-dashboard",
+                    workspace: { id: "ws_123", name: "Acme Inc" },
+                  },
+                ],
               },
-            ],
-          },
-          response: { status: 200 },
-        };
-      }
+              response: { status: 200 },
+            };
+          }
 
-      if (pathName === "/v1/projects/{projectId}/branches") {
-        const cursor = request?.params?.query?.cursor;
-        if (cursor === "cursor_2") {
-          return {
-            data: {
-              data: [
-                { id: "br_main", gitName: "main", role: "production" },
-              ],
-              pagination: { hasMore: false, nextCursor: null },
-            },
-            response: { status: 200 },
-          };
-        }
+          if (pathName === "/v1/projects/{projectId}/branches") {
+            const cursor = request?.params?.query?.cursor;
+            if (cursor === "cursor_2") {
+              return {
+                data: {
+                  data: [
+                    { id: "br_main", gitName: "main", role: "production" },
+                  ],
+                  pagination: { hasMore: false, nextCursor: null },
+                },
+                response: { status: 200 },
+              };
+            }
 
-        return {
-          data: {
-            data: [
-              { id: "br_feature", gitName: "feature/auth", role: "preview" },
-            ],
-            pagination: { hasMore: true, nextCursor: "cursor_2" },
-          },
-          response: { status: 200 },
-        };
-      }
+            return {
+              data: {
+                data: [
+                  {
+                    id: "br_feature",
+                    gitName: "feature/auth",
+                    role: "preview",
+                  },
+                ],
+                pagination: { hasMore: true, nextCursor: "cursor_2" },
+              },
+              response: { status: 200 },
+            };
+          }
 
-      throw new Error(`Unexpected path ${pathName}`);
-    }),
+          throw new Error(`Unexpected path ${pathName}`);
+        },
+      ),
   };
 }
 
@@ -129,7 +140,10 @@ describe("branch controller", () => {
     expect(client.GET).toHaveBeenCalledWith(
       "/v1/projects/{projectId}/branches",
       expect.objectContaining({
-        params: { path: { projectId: "proj_123" }, query: { cursor: "cursor_2" } },
+        params: {
+          path: { projectId: "proj_123" },
+          query: { cursor: "cursor_2" },
+        },
       }),
     );
     expect(result).toEqual({
@@ -139,8 +153,18 @@ describe("branch controller", () => {
         projectName: "Acme Dashboard",
         verboseContext: expectedBranchVerboseContext(),
         branches: [
-          { id: "br_main", name: "main", role: "production", envMap: "production" },
-          { id: "br_feature", name: "feature/auth", role: "preview", envMap: "preview" },
+          {
+            id: "br_main",
+            name: "main",
+            role: "production",
+            envMap: "production",
+          },
+          {
+            id: "br_feature",
+            name: "feature/auth",
+            role: "preview",
+            envMap: "preview",
+          },
         ],
       },
       warnings: [],

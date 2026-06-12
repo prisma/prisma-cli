@@ -1,9 +1,13 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: Test fixture file writes are ordered for deterministic setup.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createProjectClient, createResolveBranch } from "./helpers/mock-factories";
+import {
+  createProjectClient,
+  createResolveBranch,
+} from "./helpers/mock-factories";
 
 beforeEach(() => {
   process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_ID = "proj_123";
@@ -42,7 +46,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function withBranchDatabaseProviderDefaults<T extends Record<string, unknown>>(provider: T) {
+function withBranchDatabaseProviderDefaults<T extends Record<string, unknown>>(
+  provider: T,
+) {
   return {
     createBranchDatabase: vi.fn(),
     deleteBranchDatabase: vi.fn(),
@@ -77,15 +83,29 @@ function expectedAppVerboseContext() {
   };
 }
 
-function createDomain(overrides: Partial<{
-  id: string;
-  hostname: string;
-  computeServiceId: string;
-  status: "pending_dns" | "verifying" | "verified_routing_blocked" | "provisioning_tls" | "active" | "failed" | "removing";
-  failureReason: string | null;
-  failureCategory: "dns" | "acme" | "storage" | "unknown" | null;
-  dnsRecords: Array<{ type: string; name: string; value: string; ttl: number | null }>;
-}> = {}) {
+function createDomain(
+  overrides: Partial<{
+    id: string;
+    hostname: string;
+    computeServiceId: string;
+    status:
+      | "pending_dns"
+      | "verifying"
+      | "verified_routing_blocked"
+      | "provisioning_tls"
+      | "active"
+      | "failed"
+      | "removing";
+    failureReason: string | null;
+    failureCategory: "dns" | "acme" | "storage" | "unknown" | null;
+    dnsRecords: Array<{
+      type: string;
+      name: string;
+      value: string;
+      ttl: number | null;
+    }>;
+  }> = {},
+) {
   const hostname = overrides.hostname ?? "shop.acme.com";
   return {
     id: overrides.id ?? "dom_123",
@@ -120,16 +140,24 @@ async function writePackageJson(
     devDependencies?: Record<string, string | undefined>;
   },
 ): Promise<void> {
-  await writeFile(path.join(cwd, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`);
+  await writeFile(
+    path.join(cwd, "package.json"),
+    `${JSON.stringify(packageJson, null, 2)}\n`,
+  );
 }
 
 async function writeGitBranch(cwd: string, branchName: string): Promise<void> {
   await mkdir(path.join(cwd, ".git"), { recursive: true });
-  await writeFile(path.join(cwd, ".git", "HEAD"), `ref: refs/heads/${branchName}\n`);
+  await writeFile(
+    path.join(cwd, ".git", "HEAD"),
+    `ref: refs/heads/${branchName}\n`,
+  );
 }
 
 async function readLocalPin(cwd: string): Promise<unknown> {
-  return JSON.parse(await readFile(path.join(cwd, ".prisma/local.json"), "utf8"));
+  return JSON.parse(
+    await readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
+  );
 }
 
 async function readPrismaAppConfig(cwd: string): Promise<unknown> {
@@ -151,8 +179,18 @@ describe("app controller", () => {
   it("deploy selects the correct existing app when --app is provided", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_2", name: "billing", region: "eu-west-3", liveDeploymentId: null },
-      { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_live" },
+      {
+        id: "app_2",
+        name: "billing",
+        region: "eu-west-3",
+        liveDeploymentId: null,
+      },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_live",
+      },
     ]);
     const deployApp = vi.fn().mockResolvedValue({
       projectId: "proj_123",
@@ -173,16 +211,20 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -232,7 +274,9 @@ describe("app controller", () => {
         url: "https://hello-world.prisma.app",
       },
     });
-    await expect(context.stateStore.readSelectedApp("proj_123")).resolves.toEqual({
+    await expect(
+      context.stateStore.readSelectedApp("proj_123"),
+    ).resolves.toEqual({
       id: "app_1",
       name: "hello-world",
     });
@@ -240,7 +284,13 @@ describe("app controller", () => {
 
   it("does not treat branch name as production authority", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
-    const app = { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_live", liveUrl: null };
+    const app = {
+      id: "app_1",
+      name: "hello-world",
+      region: "eu-west-3",
+      liveDeploymentId: "dep_live",
+      liveUrl: null,
+    };
     const listApps = vi.fn().mockResolvedValue([app]);
     const listDeployments = vi.fn();
     const deployApp = vi.fn().mockResolvedValue({
@@ -262,19 +312,26 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        deployApp,
-        listDeployments,
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments,
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
-    const { context } = await createTestCommandContext({ cwd, stateDir: path.join(cwd, ".state") });
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+    });
 
     const result = await runAppDeploy(context, "hello-world", {
       projectRef: "proj_123",
@@ -294,7 +351,13 @@ describe("app controller", () => {
   it("forwards deploy build options and HTTP port overrides to the provider", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: null,
+        liveUrl: null,
+      },
     ]);
     const deployApp = vi.fn().mockResolvedValue({
       projectId: "proj_123",
@@ -316,21 +379,25 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        removeApp: vi.fn(),
-        promoteDeployment: vi.fn(),
-        deployApp,
-        updateAppEnv: vi.fn(),
-        listAppEnvNames: vi.fn(),
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          removeApp: vi.fn(),
+          promoteDeployment: vi.fn(),
+          deployApp,
+          updateAppEnv: vi.fn(),
+          listAppEnvNames: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -368,7 +435,13 @@ describe("app controller", () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const activeDomain = createDomain({ status: "active" });
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "shop", region: "eu-central-1", liveDeploymentId: "dep_live", liveUrl: "https://shop.prisma.app" },
+      {
+        id: "app_1",
+        name: "shop",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+        liveUrl: "https://shop.prisma.app",
+      },
     ]);
     const addDomain = vi.fn().mockResolvedValue({
       domain: activeDomain,
@@ -380,20 +453,27 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      const actual =
+        await importOriginal<
+          typeof import("../src/lib/app/preview-provider")
+        >();
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-          resolveBranch: createResolveBranch(),
-          listApps,
-          listDomains: vi.fn(),
-          addDomain,
-          retryDomain,
-        })),
+        createPreviewAppProvider: vi.fn(() =>
+          withBranchDatabaseProviderDefaults({
+            resolveBranch: createResolveBranch(),
+            listApps,
+            listDomains: vi.fn(),
+            addDomain,
+            retryDomain,
+          }),
+        ),
       };
     });
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDomainAdd } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -437,12 +517,14 @@ describe("app controller", () => {
       domain: {
         hostname: "shop.acme.com",
         status: "active",
-        dnsRecords: [{
-          type: "CNAME",
-          name: "shop.acme.com",
-          value: "switchboard.fra.prisma.build",
-          ttl: 300,
-        }],
+        dnsRecords: [
+          {
+            type: "CNAME",
+            name: "shop.acme.com",
+            value: "switchboard.fra.prisma.build",
+            ttl: 300,
+          },
+        ],
       },
       existing: true,
     });
@@ -452,7 +534,13 @@ describe("app controller", () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const domain = createDomain({ status: "active" });
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "shop", region: "eu-central-1", liveDeploymentId: "dep_live", liveUrl: "https://shop.prisma.app" },
+      {
+        id: "app_1",
+        name: "shop",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+        liveUrl: "https://shop.prisma.app",
+      },
     ]);
     const addDomain = vi.fn().mockResolvedValue({
       domain,
@@ -463,18 +551,25 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      const actual =
+        await importOriginal<
+          typeof import("../src/lib/app/preview-provider")
+        >();
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-          resolveBranch: createResolveBranch(),
-          listApps,
-          addDomain,
-        })),
+        createPreviewAppProvider: vi.fn(() =>
+          withBranchDatabaseProviderDefaults({
+            resolveBranch: createResolveBranch(),
+            listApps,
+            addDomain,
+          }),
+        ),
       };
     });
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDomainAdd } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, {
@@ -515,19 +610,26 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      const actual =
+        await importOriginal<
+          typeof import("../src/lib/app/preview-provider")
+        >();
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-          resolveBranch: createResolveBranch(),
-          createProject,
-          listApps,
-          addDomain,
-        })),
+        createPreviewAppProvider: vi.fn(() =>
+          withBranchDatabaseProviderDefaults({
+            resolveBranch: createResolveBranch(),
+            createProject,
+            listApps,
+            addDomain,
+          }),
+        ),
       };
     });
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDomainAdd } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writePackageJson(cwd, { name: "acme-dashboard" });
@@ -542,9 +644,11 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDomainAdd(context, "shop.acme.com", {
-      appName: "shop",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDomainAdd(context, "shop.acme.com", {
+        appName: "shop",
+      }),
+    ).rejects.toMatchObject({
       code: "PROJECT_SETUP_REQUIRED",
       domain: "project",
       meta: {
@@ -587,18 +691,25 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      const actual =
+        await importOriginal<
+          typeof import("../src/lib/app/preview-provider")
+        >();
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-          resolveBranch: createResolveBranch(),
-          listApps,
-          addDomain,
-        })),
+        createPreviewAppProvider: vi.fn(() =>
+          withBranchDatabaseProviderDefaults({
+            resolveBranch: createResolveBranch(),
+            listApps,
+            addDomain,
+          }),
+        ),
       };
     });
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDomainAdd } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -635,24 +746,33 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
-      const addDomain = vi.fn().mockRejectedValue(new actual.PreviewDomainApiError({
-        summary: "Failed to add custom domain",
-        status: 409,
-        message: "Domain quota exceeded.",
-        hint: "This compute service has reached the maximum of 3 custom domains.",
-      }));
+      const actual =
+        await importOriginal<
+          typeof import("../src/lib/app/preview-provider")
+        >();
+      const addDomain = vi.fn().mockRejectedValue(
+        new actual.PreviewDomainApiError({
+          summary: "Failed to add custom domain",
+          status: 409,
+          message: "Domain quota exceeded.",
+          hint: "This compute service has reached the maximum of 3 custom domains.",
+        }),
+      );
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-          resolveBranch: createResolveBranch(),
-          listApps,
-          addDomain,
-        })),
+        createPreviewAppProvider: vi.fn(() =>
+          withBranchDatabaseProviderDefaults({
+            resolveBranch: createResolveBranch(),
+            listApps,
+            addDomain,
+          }),
+        ),
       };
     });
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDomainAdd } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -665,10 +785,12 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDomainAdd(context, "shop.acme.com", {
-      projectRef: "proj_123",
-      appName: "shop",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDomainAdd(context, "shop.acme.com", {
+        projectRef: "proj_123",
+        appName: "shop",
+      }),
+    ).rejects.toMatchObject({
       code: "DOMAIN_QUOTA_EXCEEDED",
       domain: "app",
     });
@@ -690,24 +812,33 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
-      const addDomain = vi.fn().mockRejectedValue(new actual.PreviewDomainApiError({
-        summary: "Failed to add custom domain",
-        status: 409,
-        message: "Hostname already registered.",
-        hint: "This hostname is already registered to another compute service.",
-      }));
+      const actual =
+        await importOriginal<
+          typeof import("../src/lib/app/preview-provider")
+        >();
+      const addDomain = vi.fn().mockRejectedValue(
+        new actual.PreviewDomainApiError({
+          summary: "Failed to add custom domain",
+          status: 409,
+          message: "Hostname already registered.",
+          hint: "This hostname is already registered to another compute service.",
+        }),
+      );
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-          resolveBranch: createResolveBranch(),
-          listApps,
-          addDomain,
-        })),
+        createPreviewAppProvider: vi.fn(() =>
+          withBranchDatabaseProviderDefaults({
+            resolveBranch: createResolveBranch(),
+            listApps,
+            addDomain,
+          }),
+        ),
       };
     });
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDomainAdd } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -720,13 +851,15 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDomainAdd(context, "shop.acme.com", {
-      projectRef: "proj_123",
-      appName: "shop",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDomainAdd(context, "shop.acme.com", {
+        projectRef: "proj_123",
+        appName: "shop",
+      }),
+    ).rejects.toMatchObject({
       code: "DOMAIN_ALREADY_REGISTERED",
       domain: "app",
-      summary: "Custom domain \"shop.acme.com\" is already registered",
+      summary: 'Custom domain "shop.acme.com" is already registered',
       fix: "Select the app that owns this hostname and remove it there, or contact support if you cannot access it.",
       nextSteps: [
         "Select the owning app and remove shop.acme.com there.",
@@ -751,24 +884,33 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
-      const addDomain = vi.fn().mockRejectedValue(new actual.PreviewDomainApiError({
-        summary: "Failed to add custom domain",
-        status: 400,
-        message: "No CNAME or A/AAAA records found for hostname.",
-        hint: "DNS verification failed: ensure the hostname CNAMEs to switchboard.fra.prisma.build.",
-      }));
+      const actual =
+        await importOriginal<
+          typeof import("../src/lib/app/preview-provider")
+        >();
+      const addDomain = vi.fn().mockRejectedValue(
+        new actual.PreviewDomainApiError({
+          summary: "Failed to add custom domain",
+          status: 400,
+          message: "No CNAME or A/AAAA records found for hostname.",
+          hint: "DNS verification failed: ensure the hostname CNAMEs to switchboard.fra.prisma.build.",
+        }),
+      );
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-          resolveBranch: createResolveBranch(),
-          listApps,
-          addDomain,
-        })),
+        createPreviewAppProvider: vi.fn(() =>
+          withBranchDatabaseProviderDefaults({
+            resolveBranch: createResolveBranch(),
+            listApps,
+            addDomain,
+          }),
+        ),
       };
     });
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDomainAdd } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -781,10 +923,12 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDomainAdd(context, "compute-test.amanv.dev", {
-      projectRef: "proj_123",
-      appName: "shop",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDomainAdd(context, "compute-test.amanv.dev", {
+        projectRef: "proj_123",
+        appName: "shop",
+      }),
+    ).rejects.toMatchObject({
       code: "DOMAIN_DNS_NOT_CONFIGURED",
       domain: "app",
       fix: "Add CNAME compute-test.amanv.dev -> switchboard.fra.prisma.build at your DNS provider, then rerun the domain command.",
@@ -811,24 +955,33 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
-      const addDomain = vi.fn().mockRejectedValue(new actual.PreviewDomainApiError({
-        summary: "Failed to add custom domain",
-        status: 400,
-        message: "DNS is not configured for hostname compute-test.amanv.dev.",
-        hint: "DNS verification failed.",
-      }));
+      const actual =
+        await importOriginal<
+          typeof import("../src/lib/app/preview-provider")
+        >();
+      const addDomain = vi.fn().mockRejectedValue(
+        new actual.PreviewDomainApiError({
+          summary: "Failed to add custom domain",
+          status: 400,
+          message: "DNS is not configured for hostname compute-test.amanv.dev.",
+          hint: "DNS verification failed.",
+        }),
+      );
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-          resolveBranch: createResolveBranch(),
-          listApps,
-          addDomain,
-        })),
+        createPreviewAppProvider: vi.fn(() =>
+          withBranchDatabaseProviderDefaults({
+            resolveBranch: createResolveBranch(),
+            listApps,
+            addDomain,
+          }),
+        ),
       };
     });
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDomainAdd } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -841,10 +994,12 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDomainAdd(context, "compute-test.amanv.dev", {
-      projectRef: "proj_123",
-      appName: "shop",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDomainAdd(context, "compute-test.amanv.dev", {
+        projectRef: "proj_123",
+        appName: "shop",
+      }),
+    ).rejects.toMatchObject({
       code: "DOMAIN_DNS_NOT_CONFIGURED",
       domain: "app",
       fix: "The platform did not return the required DNS target. Re-run with --trace for the underlying API response details.",
@@ -869,18 +1024,25 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      const actual =
+        await importOriginal<
+          typeof import("../src/lib/app/preview-provider")
+        >();
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-          resolveBranch: createResolveBranch(),
-          listApps,
-          listDomains,
-        })),
+        createPreviewAppProvider: vi.fn(() =>
+          withBranchDatabaseProviderDefaults({
+            resolveBranch: createResolveBranch(),
+            listApps,
+            listDomains,
+          }),
+        ),
       };
     });
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDomainRemove } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -894,17 +1056,21 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDomainRemove(context, "shop.acme.com", {
-      projectRef: "proj_123",
-      appName: "shop",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDomainRemove(context, "shop.acme.com", {
+        projectRef: "proj_123",
+        appName: "shop",
+      }),
+    ).rejects.toMatchObject({
       code: "DEPLOY_FAILED",
       summary: "Custom domain remove failed",
     });
   });
 
   it("domain add rejects preview branches", async () => {
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDomainAdd } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -917,11 +1083,13 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDomainAdd(context, "shop.acme.com", {
-      projectRef: "proj_123",
-      appName: "shop",
-      branchName: "feat/login",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDomainAdd(context, "shop.acme.com", {
+        projectRef: "proj_123",
+        appName: "shop",
+        branchName: "feat/login",
+      }),
+    ).rejects.toMatchObject({
       code: "BRANCH_NOT_DEPLOYABLE",
       domain: "branch",
       exitCode: 2,
@@ -931,34 +1099,49 @@ describe("app controller", () => {
   it("domain retry maps API 409 to DOMAIN_RETRY_NOT_ELIGIBLE", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "shop", region: "eu-central-1", liveDeploymentId: "dep_live", liveUrl: "https://shop.prisma.app" },
+      {
+        id: "app_1",
+        name: "shop",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+        liveUrl: "https://shop.prisma.app",
+      },
     ]);
-    const listDomains = vi.fn().mockResolvedValue([
-      createDomain({ status: "provisioning_tls" }),
-    ]);
+    const listDomains = vi
+      .fn()
+      .mockResolvedValue([createDomain({ status: "provisioning_tls" })]);
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
-      const retryDomain = vi.fn().mockRejectedValue(new actual.PreviewDomainApiError({
-        summary: "Failed to retry custom domain",
-        status: 409,
-        message: "Domain is not eligible for retry.",
-      }));
+      const actual =
+        await importOriginal<
+          typeof import("../src/lib/app/preview-provider")
+        >();
+      const retryDomain = vi.fn().mockRejectedValue(
+        new actual.PreviewDomainApiError({
+          summary: "Failed to retry custom domain",
+          status: 409,
+          message: "Domain is not eligible for retry.",
+        }),
+      );
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-          resolveBranch: createResolveBranch(),
-          listApps,
-          listDomains,
-          retryDomain,
-        })),
+        createPreviewAppProvider: vi.fn(() =>
+          withBranchDatabaseProviderDefaults({
+            resolveBranch: createResolveBranch(),
+            listApps,
+            listDomains,
+            retryDomain,
+          }),
+        ),
       };
     });
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDomainRetry } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -971,10 +1154,12 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDomainRetry(context, "shop.acme.com", {
-      projectRef: "proj_123",
-      appName: "shop",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDomainRetry(context, "shop.acme.com", {
+        projectRef: "proj_123",
+        appName: "shop",
+      }),
+    ).rejects.toMatchObject({
       code: "DOMAIN_RETRY_NOT_ELIGIBLE",
       domain: "app",
     });
@@ -983,30 +1168,43 @@ describe("app controller", () => {
   it("domain wait supports poll-once timeout mode", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "shop", region: "eu-central-1", liveDeploymentId: "dep_live", liveUrl: "https://shop.prisma.app" },
+      {
+        id: "app_1",
+        name: "shop",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+        liveUrl: "https://shop.prisma.app",
+      },
     ]);
-    const listDomains = vi.fn().mockResolvedValue([
-      createDomain({ status: "verifying" }),
-    ]);
+    const listDomains = vi
+      .fn()
+      .mockResolvedValue([createDomain({ status: "verifying" })]);
     const showDomain = vi.fn();
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("../src/lib/app/preview-provider")>();
+      const actual =
+        await importOriginal<
+          typeof import("../src/lib/app/preview-provider")
+        >();
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-          resolveBranch: createResolveBranch(),
-          listApps,
-          listDomains,
-          showDomain,
-        })),
+        createPreviewAppProvider: vi.fn(() =>
+          withBranchDatabaseProviderDefaults({
+            resolveBranch: createResolveBranch(),
+            listApps,
+            listDomains,
+            showDomain,
+          }),
+        ),
       };
     });
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDomainWait } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -1022,18 +1220,20 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDomainWait(context, "shop.acme.com", {
-      projectRef: "proj_123",
-      appName: "shop",
-      timeout: "0",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDomainWait(context, "shop.acme.com", {
+        projectRef: "proj_123",
+        appName: "shop",
+        timeout: "0",
+      }),
+    ).rejects.toMatchObject({
       code: "DOMAIN_VERIFICATION_TIMEOUT",
       domain: "app",
       exitCode: 1,
     });
     expect(showDomain).not.toHaveBeenCalled();
-    expect(stdout.buffer).toContain("\"command\":\"app.domain.wait\"");
-    expect(stdout.buffer).toContain("\"status\":\"verifying\"");
+    expect(stdout.buffer).toContain('"command":"app.domain.wait"');
+    expect(stdout.buffer).toContain('"status":"verifying"');
   });
 
   it("uses an explicit project, branch, app, framework, and runtime for a first deploy", async () => {
@@ -1079,36 +1279,42 @@ describe("app controller", () => {
     };
     const requireComputeAuth = vi.fn().mockResolvedValue(client);
     const listApps = vi.fn().mockResolvedValue([]);
-    const deployApp = vi.fn().mockImplementation(async (options: { appName?: string }) => ({
-      projectId: "proj_my_app",
-      app: {
-        id: "app_new",
-        name: options.appName ?? "my-app",
-        region: "eu-central-1",
-        liveDeploymentId: "dep_123",
-      },
-      deployment: {
-        id: "dep_123",
-        status: "running",
-        url: "https://my-app.prisma.app",
-      },
-    }));
+    const deployApp = vi
+      .fn()
+      .mockImplementation(async (options: { appName?: string }) => ({
+        projectId: "proj_my_app",
+        app: {
+          id: "app_new",
+          name: options.appName ?? "my-app",
+          region: "eu-central-1",
+          liveDeploymentId: "dep_123",
+        },
+        deployment: {
+          id: "dep_123",
+          status: "running",
+          url: "https://my-app.prisma.app",
+        },
+      }));
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writePackageJson(cwd, {
@@ -1190,7 +1396,9 @@ describe("app controller", () => {
         written: true,
       },
     });
-    expect(stderr.buffer).toContain(`Linked "./${path.basename(cwd)}" to Project "my-app"`);
+    expect(stderr.buffer).toContain(
+      `Linked "./${path.basename(cwd)}" to Project "my-app"`,
+    );
     expect(stderr.buffer).toContain("Saved .prisma/local.json");
     expect(stderr.buffer).toContain("Deploying to my-app / feat-j1 / my-app");
     expect(stderr.buffer).toContain("Created prisma.app.json");
@@ -1207,26 +1415,34 @@ describe("app controller", () => {
       workspaceId: "ws_123",
       projectId: "proj_my_app",
     });
-    await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(".prisma/\n");
+    await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(
+      ".prisma/\n",
+    );
   });
 
   it("returns LOCAL_STATE_WRITE_FAILED when deploy cannot store the local binding", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient("proj_my_app"));
+    const requireComputeAuth = vi
+      .fn()
+      .mockResolvedValue(createProjectClient("proj_my_app"));
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps: vi.fn(),
-        deployApp: vi.fn(),
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps: vi.fn(),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await mkdir(path.join(cwd, ".gitignore"), { recursive: true });
@@ -1241,9 +1457,11 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, undefined, {
-      projectRef: "proj_my_app",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDeploy(context, undefined, {
+        projectRef: "proj_my_app",
+      }),
+    ).rejects.toMatchObject({
       code: "LOCAL_STATE_WRITE_FAILED",
       domain: "project",
       meta: {
@@ -1260,7 +1478,13 @@ describe("app controller", () => {
   it("uses existing prisma.app.json deploy settings", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: null,
+        liveUrl: null,
+      },
     ]);
     const deployApp = vi.fn().mockResolvedValue({
       projectId: "proj_123",
@@ -1292,7 +1516,9 @@ describe("app controller", () => {
       })),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writePackageJson(cwd, {
@@ -1303,11 +1529,15 @@ describe("app controller", () => {
     });
     await writeFile(
       path.join(cwd, "prisma.app.json"),
-      `${JSON.stringify({
-        $schema: "https://pris.ly/schemas/prisma-app-config.v1.json",
-        buildCommand: "bun run build",
-        outputDirectory: ".next/standalone",
-      }, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          $schema: "https://pris.ly/schemas/prisma-app-config.v1.json",
+          buildCommand: "bun run build",
+          outputDirectory: ".next/standalone",
+        },
+        null,
+        2,
+      )}\n`,
       "utf8",
     );
     const stateDir = path.join(cwd, ".state");
@@ -1361,26 +1591,34 @@ describe("app controller", () => {
   it("writes the local binding before build failures and renders build-failure copy", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
-    const deployApp = vi.fn().mockImplementation(async (options: { progress?: { onBuildStart?: () => void } }) => {
-      options.progress?.onBuildStart?.();
-      throw new Error("next build exited with code 1");
-    });
+    const deployApp = vi
+      .fn()
+      .mockImplementation(
+        async (options: { progress?: { onBuildStart?: () => void } }) => {
+          options.progress?.onBuildStart?.();
+          throw new Error("next build exited with code 1");
+        },
+      );
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -1394,10 +1632,12 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, "hello-world", {
-      projectRef: "proj_123",
-      framework: "hono",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDeploy(context, "hello-world", {
+        projectRef: "proj_123",
+        framework: "hono",
+      }),
+    ).rejects.toMatchObject({
       code: "BUILD_FAILED",
       humanLines: [
         "Build failed locally.",
@@ -1411,7 +1651,9 @@ describe("app controller", () => {
       workspaceId: "ws_123",
       projectId: "proj_123",
     });
-    expect(stderr.buffer).toContain(`Linked "./${path.basename(cwd)}" to Project "Acme Dashboard"`);
+    expect(stderr.buffer).toContain(
+      `Linked "./${path.basename(cwd)}" to Project "Acme Dashboard"`,
+    );
     expect(stderr.buffer).toContain("Saved .prisma/local.json");
     expect(stderr.buffer).toContain("Building locally...");
   });
@@ -1419,26 +1661,36 @@ describe("app controller", () => {
   it("surfaces a concrete Next.js standalone-output recovery action", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
-    const deployApp = vi.fn().mockImplementation(async (options: { progress?: { onBuildStart?: () => void } }) => {
-      options.progress?.onBuildStart?.();
-      throw new Error('Next.js build did not produce standalone output. Add output: "standalone" to your next.config file.');
-    });
+    const deployApp = vi
+      .fn()
+      .mockImplementation(
+        async (options: { progress?: { onBuildStart?: () => void } }) => {
+          options.progress?.onBuildStart?.();
+          throw new Error(
+            'Next.js build did not produce standalone output. Add output: "standalone" to your next.config file.',
+          );
+        },
+      );
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -1452,20 +1704,24 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, "hello-world", {
-      projectRef: "proj_123",
-      framework: "nextjs",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDeploy(context, "hello-world", {
+        projectRef: "proj_123",
+        framework: "nextjs",
+      }),
+    ).rejects.toMatchObject({
       code: "BUILD_FAILED",
-      fix: "Add output: \"standalone\" to next.config.*, then rerun deploy.",
+      fix: 'Add output: "standalone" to next.config.*, then rerun deploy.',
       humanLines: [
         "Build failed locally.",
         "",
-        "✗ Built       Next.js build did not produce standalone output. Add output: \"standalone\" to your next.config file.",
+        '✗ Built       Next.js build did not produce standalone output. Add output: "standalone" to your next.config file.',
         "",
-        "Fix: Add output: \"standalone\" to next.config.*, then rerun deploy.",
+        'Fix: Add output: "standalone" to next.config.*, then rerun deploy.',
       ],
-      nextSteps: ["Add output: \"standalone\" to next.config.*, then rerun prisma-cli app deploy"],
+      nextSteps: [
+        'Add output: "standalone" to next.config.*, then rerun prisma-cli app deploy',
+      ],
       nextActions: [
         expect.objectContaining({
           kind: "edit-file",
@@ -1484,47 +1740,59 @@ describe("app controller", () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     let appName = "";
     const listApps = vi.fn().mockImplementation(async () => [
-      { id: "app_1", name: appName, region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+      {
+        id: "app_1",
+        name: appName,
+        region: "eu-central-1",
+        liveDeploymentId: null,
+        liveUrl: null,
+      },
     ]);
-    const deployApp = vi.fn().mockImplementation(async (options: {
-      progress?: {
-        onBuildStart?: () => void;
-        onBuildComplete?: () => void;
-        onArchiveCreating?: () => void;
-        onArchiveReady?: (byteLength: number) => void;
-        onUploadStart?: () => void;
-        onVersionCreated?: (versionId: string) => void;
-        onUploadComplete?: () => void;
-        onStartRequested?: () => void;
-        onRunning?: (url?: string) => void;
-      };
-    }) => {
-      options.progress?.onBuildStart?.();
-      options.progress?.onBuildComplete?.();
-      options.progress?.onArchiveCreating?.();
-      options.progress?.onArchiveReady?.(11_114_905);
-      options.progress?.onUploadStart?.();
-      options.progress?.onVersionCreated?.("dep_failed");
-      options.progress?.onUploadComplete?.();
-      options.progress?.onStartRequested?.();
-      options.progress?.onRunning?.("https://cv-example.fra.prisma.build");
-      throw new Error("Internal Server Error");
-    });
+    const deployApp = vi.fn().mockImplementation(
+      async (options: {
+        progress?: {
+          onBuildStart?: () => void;
+          onBuildComplete?: () => void;
+          onArchiveCreating?: () => void;
+          onArchiveReady?: (byteLength: number) => void;
+          onUploadStart?: () => void;
+          onVersionCreated?: (versionId: string) => void;
+          onUploadComplete?: () => void;
+          onStartRequested?: () => void;
+          onRunning?: (url?: string) => void;
+        };
+      }) => {
+        options.progress?.onBuildStart?.();
+        options.progress?.onBuildComplete?.();
+        options.progress?.onArchiveCreating?.();
+        options.progress?.onArchiveReady?.(11_114_905);
+        options.progress?.onUploadStart?.();
+        options.progress?.onVersionCreated?.("dep_failed");
+        options.progress?.onUploadComplete?.();
+        options.progress?.onStartRequested?.();
+        options.progress?.onRunning?.("https://cv-example.fra.prisma.build");
+        throw new Error("Internal Server Error");
+      },
+    );
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     appName = path.basename(cwd);
@@ -1543,9 +1811,11 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, undefined, {
-      framework: "hono",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDeploy(context, undefined, {
+        framework: "hono",
+      }),
+    ).rejects.toMatchObject({
       code: "DEPLOY_FAILED",
       humanLines: expect.arrayContaining([
         "The deployment started, but the app is not ready yet.",
@@ -1557,7 +1827,9 @@ describe("app controller", () => {
         "https://cv-example.fra.prisma.build",
       ]),
     });
-    expect(stderr.buffer).toContain(`Deploying ./${path.basename(cwd)} to Acme Dashboard / main / ${path.basename(cwd)}`);
+    expect(stderr.buffer).toContain(
+      `Deploying ./${path.basename(cwd)} to Acme Dashboard / main / ${path.basename(cwd)}`,
+    );
     expect(stderr.buffer).toContain("  Built      10.6 MB");
     expect(stderr.buffer).toContain("  Uploaded");
     expect(stderr.buffer).toContain("Deploying...");
@@ -1571,39 +1843,51 @@ describe("app controller", () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     let appName = "";
     const listApps = vi.fn().mockImplementation(async () => [
-      { id: "app_1", name: appName, region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+      {
+        id: "app_1",
+        name: appName,
+        region: "eu-central-1",
+        liveDeploymentId: null,
+        liveUrl: null,
+      },
     ]);
-    const deployApp = vi.fn().mockImplementation(async (options: {
-      progress?: {
-        onBuildStart?: () => void;
-        onBuildComplete?: () => void;
-        onArchiveCreating?: () => void;
-        onArchiveReady?: (byteLength: number) => void;
-        onUploadStart?: () => void;
-      };
-    }) => {
-      options.progress?.onBuildStart?.();
-      options.progress?.onBuildComplete?.();
-      options.progress?.onArchiveCreating?.();
-      options.progress?.onArchiveReady?.(11_114_905);
-      options.progress?.onUploadStart?.();
-      throw new Error("Upload failed");
-    });
+    const deployApp = vi.fn().mockImplementation(
+      async (options: {
+        progress?: {
+          onBuildStart?: () => void;
+          onBuildComplete?: () => void;
+          onArchiveCreating?: () => void;
+          onArchiveReady?: (byteLength: number) => void;
+          onUploadStart?: () => void;
+        };
+      }) => {
+        options.progress?.onBuildStart?.();
+        options.progress?.onBuildComplete?.();
+        options.progress?.onArchiveCreating?.();
+        options.progress?.onArchiveReady?.(11_114_905);
+        options.progress?.onUploadStart?.();
+        throw new Error("Upload failed");
+      },
+    );
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     appName = path.basename(cwd);
@@ -1622,9 +1906,11 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, undefined, {
-      framework: "hono",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDeploy(context, undefined, {
+        framework: "hono",
+      }),
+    ).rejects.toMatchObject({
       code: "DEPLOY_FAILED",
       summary: "Deploy failed after the build completed.",
       humanLines: expect.arrayContaining([
@@ -1644,13 +1930,15 @@ describe("app controller", () => {
     },
     {
       name: "Next.js from next.config.mts",
-      files: { "next.config.mts": "export default { output: \"standalone\" }\n" },
+      files: { "next.config.mts": 'export default { output: "standalone" }\n' },
       expectedBuildType: "nextjs",
     },
     {
       name: "Hono from package.json",
       packageJson: { dependencies: { hono: "4.0.0" } },
-      files: { "src/index.ts": "export default { fetch: () => new Response('ok') }\n" },
+      files: {
+        "src/index.ts": "export default { fetch: () => new Response('ok') }\n",
+      },
       expectedEntrypoint: "src/index.ts",
       expectedBuildType: "bun",
     },
@@ -1682,112 +1970,132 @@ describe("app controller", () => {
       packageJson: { dependencies: { "@tanstack/solid-start": "1.0.0" } },
       expectedBuildType: "tanstack-start",
     },
-  ])(
-    "detects deploy framework: $name",
-    async ({ packageJson, files, framework, entrypoint, expectedEntrypoint, expectedBuildType }) => {
-      const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
-      const listApps = vi.fn().mockResolvedValue([
-        { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
-      ]);
-      const deployApp = vi.fn().mockResolvedValue({
-        projectId: "proj_123",
-        app: {
-          id: "app_1",
-          name: "hello-world",
-          region: "eu-central-1",
-          liveDeploymentId: "dep_123",
-          liveUrl: "https://hello-world.prisma.app",
-        },
-        deployment: {
-          id: "dep_123",
-          status: "running",
-          url: "https://hello-world.prisma.app",
-        },
-      });
-
-      vi.doMock("../src/lib/auth/guard", () => ({
-        requireComputeAuth,
-      }));
-      vi.doMock("../src/lib/app/preview-provider", () => ({
-        createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-          resolveBranch: createResolveBranch(),
-          listApps,
-          deployApp,
-          listDeployments: vi.fn(),
-          showDeployment: vi.fn(),
-        })),
-      }));
-
-      const { createTempCwd, createTestCommandContext } = await import("./helpers");
-      const { runAppDeploy } = await import("../src/controllers/app");
-      const cwd = await createTempCwd();
-      if (packageJson) {
-        await writePackageJson(cwd, packageJson);
-      }
-      for (const [fileName, content] of Object.entries(files ?? {})) {
-        const filePath = path.join(cwd, fileName);
-        await mkdir(path.dirname(filePath), { recursive: true });
-        await writeFile(filePath, content);
-      }
-      const stateDir = path.join(cwd, ".state");
-      const { context } = await createTestCommandContext({
-        cwd,
-        stateDir,
-        env: {
-          ...process.env,
-          PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
-        },
-      });
-
-      await runAppDeploy(context, "hello-world", {
-        projectRef: "proj_123",
-        framework,
-        entrypoint,
-      });
-
-      expect(deployApp).toHaveBeenCalledWith(
-        expect.objectContaining({
-          entrypoint: expectedEntrypoint ?? entrypoint,
-          buildType: expectedBuildType,
-          portMapping: { http: 3000 },
-        }),
-      );
-    },
-  );
-
-  it("lets PRISMA_PROJECT_ID skip the local pin and resolve the project", async () => {
+  ])("detects deploy framework: $name", async ({
+    packageJson,
+    files,
+    framework,
+    entrypoint,
+    expectedEntrypoint,
+    expectedBuildType,
+  }) => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
-    const listApps = vi.fn().mockResolvedValue([]);
-    const deployApp = vi.fn().mockImplementation(async (options: { appName?: string }) => ({
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: null,
+        liveUrl: null,
+      },
+    ]);
+    const deployApp = vi.fn().mockResolvedValue({
       projectId: "proj_123",
       app: {
-        id: "app_env",
-        name: options.appName ?? "env-app",
+        id: "app_1",
+        name: "hello-world",
         region: "eu-central-1",
         liveDeploymentId: "dep_123",
-        liveUrl: "https://env-app.prisma.app",
+        liveUrl: "https://hello-world.prisma.app",
       },
       deployment: {
         id: "dep_123",
         status: "running",
-        url: "https://env-app.prisma.app",
+        url: "https://hello-world.prisma.app",
       },
-    }));
+    });
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    if (packageJson) {
+      await writePackageJson(cwd, packageJson);
+    }
+    for (const [fileName, content] of Object.entries(files ?? {})) {
+      const filePath = path.join(cwd, fileName);
+      await mkdir(path.dirname(filePath), { recursive: true });
+      await writeFile(filePath, content);
+    }
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      framework,
+      entrypoint,
+    });
+
+    expect(deployApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entrypoint: expectedEntrypoint ?? entrypoint,
+        buildType: expectedBuildType,
+        portMapping: { http: 3000 },
+      }),
+    );
+  });
+
+  it("lets PRISMA_PROJECT_ID skip the local pin and resolve the project", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([]);
+    const deployApp = vi
+      .fn()
+      .mockImplementation(async (options: { appName?: string }) => ({
+        projectId: "proj_123",
+        app: {
+          id: "app_env",
+          name: options.appName ?? "env-app",
+          region: "eu-central-1",
+          liveDeploymentId: "dep_123",
+          liveUrl: "https://env-app.prisma.app",
+        },
+        deployment: {
+          id: "dep_123",
+          status: "running",
+          url: "https://env-app.prisma.app",
+        },
+      }));
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, {
@@ -1823,7 +2131,9 @@ describe("app controller", () => {
       workspaceId: "ws_123",
       projectId: "proj_stale",
     });
-    expect(stderr.buffer).toContain(`Deploying ./${path.basename(cwd)} to Acme Dashboard / main / ${path.basename(cwd)}`);
+    expect(stderr.buffer).toContain(
+      `Deploying ./${path.basename(cwd)} to Acme Dashboard / main / ${path.basename(cwd)}`,
+    );
     expect(stderr.buffer).not.toContain("from PRISMA_PROJECT_ID");
   });
 
@@ -1837,17 +2147,21 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject,
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject,
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -1866,15 +2180,15 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, "hello-world", {
-      framework: "hono",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDeploy(context, "hello-world", {
+        framework: "hono",
+      }),
+    ).rejects.toMatchObject({
       code: "PROJECT_SETUP_REQUIRED",
       domain: "project",
       meta: {
-        candidates: [
-          { id: "proj_123", name: "Acme Dashboard" },
-        ],
+        candidates: [{ id: "proj_123", name: "Acme Dashboard" }],
         suggestedProjectName: path.basename(cwd),
         suggestedProjectNameSource: "directory-name",
         recoveryCommands: expect.arrayContaining([
@@ -1904,12 +2218,18 @@ describe("app controller", () => {
     expect(createProject).not.toHaveBeenCalled();
     expect(listApps).not.toHaveBeenCalled();
     expect(deployApp).not.toHaveBeenCalled();
-    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      readFile(path.join(cwd, ".gitignore"), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("rejects mutually exclusive Project sources before resolving deploy context", async () => {
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -1923,11 +2243,13 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, "hello-world", {
-      projectRef: "proj_123",
-      createProjectName: "new-project",
-      framework: "hono",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDeploy(context, "hello-world", {
+        projectRef: "proj_123",
+        createProjectName: "new-project",
+        framework: "hono",
+      }),
+    ).rejects.toMatchObject({
       code: "USAGE_ERROR",
       domain: "project",
       summary: "Project selection is ambiguous",
@@ -1945,10 +2267,12 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(envContext, "hello-world", {
-      projectRef: "proj_456",
-      framework: "hono",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDeploy(envContext, "hello-world", {
+        projectRef: "proj_456",
+        framework: "hono",
+      }),
+    ).rejects.toMatchObject({
       code: "USAGE_ERROR",
       domain: "project",
       summary: "Project selection is ambiguous",
@@ -1979,17 +2303,21 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject,
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject,
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -2020,7 +2348,9 @@ describe("app controller", () => {
       projectId: "proj_123",
     });
     expect(stderr.buffer).toContain("Which Project should this directory use?");
-    expect(stderr.buffer).toContain(`Linked "./${path.basename(cwd)}" to Project "Acme Dashboard"`);
+    expect(stderr.buffer).toContain(
+      `Linked "./${path.basename(cwd)}" to Project "Acme Dashboard"`,
+    );
   });
 
   it("interactive first deploy previews detected framework and runtime before the customization prompt", async () => {
@@ -2046,17 +2376,21 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        createProject,
-        resolveBranch: createResolveBranch(),
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          createProject,
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writePackageJson(cwd, {
@@ -2087,7 +2421,9 @@ describe("app controller", () => {
       }),
     );
 
-    const targetIndex = stderr.buffer.indexOf("Deploying to Acme Dashboard / main / hello-world");
+    const targetIndex = stderr.buffer.indexOf(
+      "Deploying to Acme Dashboard / main / hello-world",
+    );
     const detectedIndex = stderr.buffer.indexOf("Detected Next.js");
     const promptIndex = stderr.buffer.indexOf("Customize build settings?");
 
@@ -2128,17 +2464,21 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject,
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject,
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writePackageJson(cwd, {
@@ -2195,16 +2535,20 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps: vi.fn(),
-        deployApp: vi.fn(),
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps: vi.fn(),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -2217,9 +2561,11 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, "hello-world", {
-      projectRef: "proj_123",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDeploy(context, "hello-world", {
+        projectRef: "proj_123",
+      }),
+    ).rejects.toMatchObject({
       code: "FRAMEWORK_NOT_DETECTED",
       domain: "app",
       exitCode: 2,
@@ -2235,16 +2581,20 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, {
@@ -2262,9 +2612,11 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, undefined, {
-      framework: "hono",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDeploy(context, undefined, {
+        framework: "hono",
+      }),
+    ).rejects.toMatchObject({
       code: "LOCAL_STATE_STALE",
       domain: "project",
       meta: {
@@ -2285,16 +2637,20 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, {
@@ -2313,9 +2669,11 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, undefined, {
-      framework: "hono",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDeploy(context, undefined, {
+        framework: "hono",
+      }),
+    ).rejects.toMatchObject({
       code: "LOCAL_STATE_STALE",
       meta: {
         pinPath: ".prisma/local.json",
@@ -2326,7 +2684,9 @@ describe("app controller", () => {
   });
 
   it("returns LOCAL_STATE_STALE when the local pin cannot be parsed", async () => {
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, "{ nope");
@@ -2341,9 +2701,11 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, undefined, {
-      framework: "hono",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDeploy(context, undefined, {
+        framework: "hono",
+      }),
+    ).rejects.toMatchObject({
       code: "LOCAL_STATE_STALE",
       meta: {
         pinPath: ".prisma/local.json",
@@ -2354,8 +2716,20 @@ describe("app controller", () => {
   it("returns APP_AMBIGUOUS for duplicate app names in non-interactive mode", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
-      { id: "app_2", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: null,
+        liveUrl: null,
+      },
+      {
+        id: "app_2",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: null,
+        liveUrl: null,
+      },
     ]);
     const deployApp = vi.fn();
 
@@ -2363,16 +2737,20 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -2386,10 +2764,12 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, "hello-world", {
-      projectRef: "proj_123",
-      framework: "hono",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDeploy(context, "hello-world", {
+        projectRef: "proj_123",
+        framework: "hono",
+      }),
+    ).rejects.toMatchObject({
       code: "APP_AMBIGUOUS",
       domain: "app",
       exitCode: 2,
@@ -2404,7 +2784,9 @@ describe("app controller", () => {
   });
 
   it("rejects --entry together with --framework nextjs for deploy", async () => {
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -2417,10 +2799,12 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, "hello-world", {
-      framework: "nextjs",
-      entrypoint: "server.js",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDeploy(context, "hello-world", {
+        framework: "nextjs",
+        entrypoint: "server.js",
+      }),
+    ).rejects.toMatchObject({
       code: "USAGE_ERROR",
       domain: "app",
       summary: "App deploy does not accept --entry with Next.js",
@@ -2428,7 +2812,9 @@ describe("app controller", () => {
   });
 
   it("rejects invalid --http-port values for deploy", async () => {
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -2441,9 +2827,11 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, "hello-world", {
-      httpPort: "70000",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDeploy(context, "hello-world", {
+        httpPort: "70000",
+      }),
+    ).rejects.toMatchObject({
       code: "USAGE_ERROR",
       domain: "app",
       summary: 'Invalid HTTP port "70000"',
@@ -2453,35 +2841,41 @@ describe("app controller", () => {
   it("interactive first deploy can create a new app when none is selected", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
-    const deployApp = vi.fn().mockImplementation(async (options: { appName?: string }) => ({
-      projectId: "proj_123",
-      app: {
-        id: "app_new",
-        name: options.appName ?? "hello-world",
-        region: "eu-west-3",
-        liveDeploymentId: "dep_123",
-      },
-      deployment: {
-        id: "dep_123",
-        status: "running",
-        url: "https://hello-world.prisma.app",
-      },
-    }));
+    const deployApp = vi
+      .fn()
+      .mockImplementation(async (options: { appName?: string }) => ({
+        projectId: "proj_123",
+        app: {
+          id: "app_new",
+          name: options.appName ?? "hello-world",
+          region: "eu-west-3",
+          liveDeploymentId: "dep_123",
+        },
+        deployment: {
+          id: "dep_123",
+          status: "running",
+          url: "https://hello-world.prisma.app",
+        },
+      }));
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -2517,35 +2911,41 @@ describe("app controller", () => {
   it("auto-creates the inferred app without prompting in non-interactive mode", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
-    const deployApp = vi.fn().mockImplementation(async (options: { appName?: string }) => ({
-      projectId: "proj_123",
-      app: {
-        id: "app_new",
-        name: options.appName ?? "created-app",
-        region: "eu-central-1",
-        liveDeploymentId: "dep_123",
-      },
-      deployment: {
-        id: "dep_123",
-        status: "running",
-        url: "https://created-app.prisma.app",
-      },
-    }));
+    const deployApp = vi
+      .fn()
+      .mockImplementation(async (options: { appName?: string }) => ({
+        projectId: "proj_123",
+        app: {
+          id: "app_new",
+          name: options.appName ?? "created-app",
+          region: "eu-central-1",
+          liveDeploymentId: "dep_123",
+        },
+        deployment: {
+          id: "dep_123",
+          status: "running",
+          url: "https://created-app.prisma.app",
+        },
+      }));
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -2594,16 +2994,20 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -2659,17 +3063,20 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject,
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject,
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext, readPrismaConfig } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext, readPrismaConfig } =
+      await import("./helpers");
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -2699,8 +3106,12 @@ describe("app controller", () => {
         appName: "hello-world",
       }),
     );
-    await expect(readPrismaConfig(cwd)).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(context.stateStore.readSelectedApp("proj_new")).resolves.toEqual({
+    await expect(readPrismaConfig(cwd)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(
+      context.stateStore.readSelectedApp("proj_new"),
+    ).resolves.toEqual({
       id: "app_new",
       name: "hello-world",
     });
@@ -2723,7 +3134,9 @@ describe("app controller", () => {
       workspaceId: "ws_123",
       projectId: "proj_new",
     });
-    await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(".prisma/\n");
+    await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(
+      ".prisma/\n",
+    );
   });
 
   it("reuses the created project on second deploy instead of creating another one", async () => {
@@ -2737,7 +3150,12 @@ describe("app controller", () => {
       .fn()
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
-        { id: "app_new", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_123" },
+        {
+          id: "app_new",
+          name: "hello-world",
+          region: "eu-central-1",
+          liveDeploymentId: "dep_123",
+        },
       ]);
     const deployApp = vi
       .fn()
@@ -2774,17 +3192,21 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject,
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject,
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -2812,43 +3234,48 @@ describe("app controller", () => {
       projectId: "proj_new",
     });
     stderr.buffer = "";
-    client.GET.mockImplementation((pathName: string, request?: { params?: { query?: { gitName?: string } } }) => {
-      if (pathName === "/v1/projects") {
-        return {
-          data: {
-            data: [
-              {
-                id: "proj_new",
-                name: path.basename(cwd),
-                slug: path.basename(cwd),
-                workspace: {
-                  id: "ws_123",
-                  name: "Acme Inc",
+    client.GET.mockImplementation(
+      (
+        pathName: string,
+        request?: { params?: { query?: { gitName?: string } } },
+      ) => {
+        if (pathName === "/v1/projects") {
+          return {
+            data: {
+              data: [
+                {
+                  id: "proj_new",
+                  name: path.basename(cwd),
+                  slug: path.basename(cwd),
+                  workspace: {
+                    id: "ws_123",
+                    name: "Acme Inc",
+                  },
                 },
-              },
-            ],
-          },
-        };
-      }
+              ],
+            },
+          };
+        }
 
-      if (pathName === "/v1/projects/{projectId}/branches") {
-        const branchName = request?.params?.query?.gitName ?? "main";
-        return {
-          data: {
-            data: [
-              {
-                id: `branch_${branchName.replace(/[^a-z0-9]+/gi, "_")}`,
-                gitName: branchName,
-                isDefault: branchName === "main",
-                role: "preview",
-              },
-            ],
-          },
-        };
-      }
+        if (pathName === "/v1/projects/{projectId}/branches") {
+          const branchName = request?.params?.query?.gitName ?? "main";
+          return {
+            data: {
+              data: [
+                {
+                  id: `branch_${branchName.replace(/[^a-z0-9]+/gi, "_")}`,
+                  gitName: branchName,
+                  isDefault: branchName === "main",
+                  role: "preview",
+                },
+              ],
+            },
+          };
+        }
 
-      throw new Error(`Unexpected path ${pathName}`);
-    });
+        throw new Error(`Unexpected path ${pathName}`);
+      },
+    );
     const secondResult = await runAppDeploy(context, "hello-world", {
       framework: "hono",
     });
@@ -2857,7 +3284,9 @@ describe("app controller", () => {
     expect(secondResult.result.localPin).toBeUndefined();
     expect(stderr.buffer).toContain(`Deploying ./${path.basename(cwd)}`);
     expect(stderr.buffer).not.toContain("Set up");
-    await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(".prisma/\n");
+    await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(
+      ".prisma/\n",
+    );
     expect(deployApp).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
@@ -2892,17 +3321,20 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject,
-        listApps: vi.fn().mockResolvedValue([]),
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject,
+          listApps: vi.fn().mockResolvedValue([]),
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext, readPrismaConfig } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext, readPrismaConfig } =
+      await import("./helpers");
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -2917,10 +3349,12 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, "hello-world", {
-      createProjectName: "next-smoke",
-      framework: "hono",
-    })).resolves.toMatchObject({
+    await expect(
+      runAppDeploy(context, "hello-world", {
+        createProjectName: "next-smoke",
+        framework: "hono",
+      }),
+    ).resolves.toMatchObject({
       result: {
         project: {
           id: "proj_new",
@@ -2936,28 +3370,36 @@ describe("app controller", () => {
       name: "next-smoke",
       signal: context.runtime.signal,
     });
-    await expect(readPrismaConfig(cwd)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readPrismaConfig(cwd)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 
   it("returns PROJECT_CREATE_FAILED when explicit deploy-time project creation is rejected with 401", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
-    const createProject = vi.fn().mockRejectedValue(new Error("Authentication failed (HTTP 401)"));
+    const createProject = vi
+      .fn()
+      .mockRejectedValue(new Error("Authentication failed (HTTP 401)"));
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject,
-        listApps: vi.fn().mockResolvedValue([]),
-        deployApp: vi.fn(),
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject,
+          listApps: vi.fn().mockResolvedValue([]),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -2972,38 +3414,48 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, "hello-world", {
-      createProjectName: "next-smoke",
-      framework: "hono",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDeploy(context, "hello-world", {
+        createProjectName: "next-smoke",
+        framework: "hono",
+      }),
+    ).rejects.toMatchObject({
       code: "PROJECT_CREATE_FAILED",
       domain: "project",
       summary: 'Could not create Project "next-smoke"',
       why: expect.stringContaining("HTTP 401"),
       fix: expect.stringContaining("--project"),
-      nextSteps: expect.arrayContaining(["prisma-cli app deploy --project <id-or-name>"]),
+      nextSteps: expect.arrayContaining([
+        "prisma-cli app deploy --project <id-or-name>",
+      ]),
     });
   });
 
   it("returns PROJECT_CREATE_FAILED when explicit deploy-time project creation fails", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
-    const createProject = vi.fn().mockRejectedValue(new Error("Internal Server Error (HTTP 503)"));
+    const createProject = vi
+      .fn()
+      .mockRejectedValue(new Error("Internal Server Error (HTTP 503)"));
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject,
-        listApps: vi.fn().mockResolvedValue([]),
-        deployApp: vi.fn(),
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject,
+          listApps: vi.fn().mockResolvedValue([]),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -3018,23 +3470,32 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppDeploy(context, "hello-world", {
-      createProjectName: "next-smoke",
-      framework: "hono",
-    })).rejects.toMatchObject({
+    await expect(
+      runAppDeploy(context, "hello-world", {
+        createProjectName: "next-smoke",
+        framework: "hono",
+      }),
+    ).rejects.toMatchObject({
       code: "PROJECT_CREATE_FAILED",
       domain: "project",
       summary: 'Could not create Project "next-smoke"',
       why: expect.stringContaining("Internal Server Error"),
       fix: expect.stringContaining("--project"),
-      nextSteps: expect.arrayContaining(["prisma-cli app deploy --project <id-or-name>"]),
+      nextSteps: expect.arrayContaining([
+        "prisma-cli app deploy --project <id-or-name>",
+      ]),
     });
   });
 
   it("does not use saved app selection as the deploy target source", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_live" },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_live",
+      },
     ]);
     const deployApp = vi.fn().mockResolvedValue({
       projectId: "proj_123",
@@ -3055,16 +3516,20 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -3098,7 +3563,12 @@ describe("app controller", () => {
   it("list-deploys sorts deployments newest first for the selected app", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_2" },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_2",
+      },
     ]);
     const listDeployments = vi.fn().mockResolvedValue({
       app: {
@@ -3129,16 +3599,20 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        deployApp: vi.fn(),
-        listDeployments,
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp: vi.fn(),
+          listDeployments,
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppListDeploys } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -3154,7 +3628,9 @@ describe("app controller", () => {
 
     const result = await runAppListDeploys(context, "hello-world");
 
-    expect(result.result.deployments.map((deployment) => deployment.id)).toEqual(["dep_2", "dep_1"]);
+    expect(
+      result.result.deployments.map((deployment) => deployment.id),
+    ).toEqual(["dep_2", "dep_1"]);
   });
 
   it("returns PROJECT_NOT_FOUND when the resolved project is not accessible in real mode", async () => {
@@ -3165,15 +3641,19 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppListDeploys } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -3197,7 +3677,12 @@ describe("app controller", () => {
   it("list-deploys uses the local known live deployment when the provider cannot confirm it", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: null },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: null,
+      },
     ]);
     const listDeployments = vi.fn().mockResolvedValue({
       app: {
@@ -3228,16 +3713,20 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        deployApp: vi.fn(),
-        listDeployments,
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp: vi.fn(),
+          listDeployments,
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppListDeploys } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -3255,7 +3744,11 @@ describe("app controller", () => {
       id: "app_1",
       name: "hello-world",
     });
-    await context.stateStore.setKnownLiveDeployment("proj_123", "app_1", "dep_1");
+    await context.stateStore.setKnownLiveDeployment(
+      "proj_123",
+      "app_1",
+      "dep_1",
+    );
 
     const result = await runAppListDeploys(context, "hello-world");
 
@@ -3273,18 +3766,22 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        deployApp: vi.fn(),
-        listDeployments: vi.fn(),
-        promoteDeployment: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          promoteDeployment: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppShow } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writePackageJson(cwd, { name: "acme-dashboard" });
@@ -3330,18 +3827,22 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        deployApp: vi.fn(),
-        listDeployments: vi.fn(),
-        promoteDeployment: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          promoteDeployment: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppShow } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -3408,18 +3909,22 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        deployApp: vi.fn(),
-        listDeployments,
-        promoteDeployment: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          deployApp: vi.fn(),
+          listDeployments,
+          promoteDeployment: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppShow } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -3510,18 +4015,22 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        deployApp: vi.fn(),
-        listDeployments,
-        promoteDeployment: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          deployApp: vi.fn(),
+          listDeployments,
+          promoteDeployment: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppShow } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -3535,13 +4044,25 @@ describe("app controller", () => {
       },
     });
 
-    await context.stateStore.setKnownLiveDeployment("proj_123", "app_1", "dep_2");
+    await context.stateStore.setKnownLiveDeployment(
+      "proj_123",
+      "app_1",
+      "dep_2",
+    );
 
     const result = await runAppShow(context, "hello-world");
 
     expect(result.result.liveDeployment?.id).toBe("dep_2");
-    expect(result.result.recentDeployments.find((deployment) => deployment.id === "dep_2")?.live).toBe(true);
-    expect(result.result.recentDeployments.find((deployment) => deployment.id === "dep_3")?.live).toBe(false);
+    expect(
+      result.result.recentDeployments.find(
+        (deployment) => deployment.id === "dep_2",
+      )?.live,
+    ).toBe(true);
+    expect(
+      result.result.recentDeployments.find(
+        (deployment) => deployment.id === "dep_3",
+      )?.live,
+    ).toBe(false);
   });
 
   it("show-deploy returns deployment detail without branch inference", async () => {
@@ -3566,16 +4087,20 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps: vi.fn(),
-        deployApp: vi.fn(),
-        listDeployments: vi.fn(),
-        showDeployment,
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps: vi.fn(),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment,
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppShowDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -3627,16 +4152,20 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps: vi.fn(),
-        deployApp: vi.fn(),
-        listDeployments: vi.fn(),
-        showDeployment,
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps: vi.fn(),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment,
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppShowDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -3649,7 +4178,11 @@ describe("app controller", () => {
       },
     });
 
-    await context.stateStore.setKnownLiveDeployment("proj_123", "app_1", "dep_123");
+    await context.stateStore.setKnownLiveDeployment(
+      "proj_123",
+      "app_1",
+      "dep_123",
+    );
 
     const result = await runAppShowDeploy(context, "dep_123");
 
@@ -3678,16 +4211,20 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps: vi.fn(),
-        deployApp: vi.fn(),
-        listDeployments: vi.fn(),
-        showDeployment,
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps: vi.fn(),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment,
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppShowDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -3705,7 +4242,11 @@ describe("app controller", () => {
       name: "Other Project",
       workspaceId: "ws_other",
     });
-    await context.stateStore.setKnownLiveDeployment("proj_other", "app_1", "dep_123");
+    await context.stateStore.setKnownLiveDeployment(
+      "proj_other",
+      "app_1",
+      "dep_123",
+    );
 
     const result = await runAppShowDeploy(context, "dep_123");
 
@@ -3714,22 +4255,28 @@ describe("app controller", () => {
 
   it("show-deploy surfaces provider failures instead of reporting not found", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
-    const showDeployment = vi.fn().mockRejectedValue(new Error("Missing or invalid authorization token"));
+    const showDeployment = vi
+      .fn()
+      .mockRejectedValue(new Error("Missing or invalid authorization token"));
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps: vi.fn(),
-        deployApp: vi.fn(),
-        listDeployments: vi.fn(),
-        showDeployment,
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps: vi.fn(),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment,
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppShowDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -3787,18 +4334,22 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        deployApp: vi.fn(),
-        listDeployments,
-        promoteDeployment: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          deployApp: vi.fn(),
+          listDeployments,
+          promoteDeployment: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppOpen } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -3857,18 +4408,22 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        deployApp: vi.fn(),
-        listDeployments,
-        promoteDeployment: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          deployApp: vi.fn(),
+          listDeployments,
+          promoteDeployment: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppOpen } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -3926,18 +4481,22 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        deployApp: vi.fn(),
-        listDeployments,
-        promoteDeployment: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          deployApp: vi.fn(),
+          listDeployments,
+          promoteDeployment: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppOpen } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -3991,18 +4550,22 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        deployApp: vi.fn(),
-        listDeployments,
-        promoteDeployment: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          deployApp: vi.fn(),
+          listDeployments,
+          promoteDeployment: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppOpen } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -4026,7 +4589,12 @@ describe("app controller", () => {
   it("promote switches the selected app to the requested deployment", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_2" },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_2",
+      },
     ]);
     const listDeployments = vi.fn().mockResolvedValue({
       app: {
@@ -4058,18 +4626,22 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        promoteDeployment,
-        deployApp: vi.fn(),
-        listDeployments,
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          promoteDeployment,
+          deployApp: vi.fn(),
+          listDeployments,
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppPromote } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -4111,7 +4683,12 @@ describe("app controller", () => {
   it("promote returns a warning when the requested deployment is already live", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_2" },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_2",
+      },
     ]);
     const listDeployments = vi.fn().mockResolvedValue({
       app: {
@@ -4136,18 +4713,22 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        promoteDeployment,
-        deployApp: vi.fn(),
-        listDeployments,
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          promoteDeployment,
+          deployApp: vi.fn(),
+          listDeployments,
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppPromote } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -4164,13 +4745,20 @@ describe("app controller", () => {
     const result = await runAppPromote(context, "dep_2", "hello-world");
 
     expect(promoteDeployment).not.toHaveBeenCalled();
-    expect(result.warnings).toEqual(["The selected deployment is already live for this app."]);
+    expect(result.warnings).toEqual([
+      "The selected deployment is already live for this app.",
+    ]);
   });
 
   it("rollback chooses the previous deployment when no explicit target is provided", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_2" },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_2",
+      },
     ]);
     const listDeployments = vi.fn().mockResolvedValue({
       app: {
@@ -4202,18 +4790,22 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        promoteDeployment,
-        deployApp: vi.fn(),
-        listDeployments,
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          promoteDeployment,
+          deployApp: vi.fn(),
+          listDeployments,
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppRollback } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -4256,7 +4848,12 @@ describe("app controller", () => {
   it("rollback uses the local known live deployment when the provider cannot confirm it", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: null },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: null,
+      },
     ]);
     const listDeployments = vi.fn().mockResolvedValue({
       app: {
@@ -4288,18 +4885,22 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        promoteDeployment,
-        deployApp: vi.fn(),
-        listDeployments,
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          promoteDeployment,
+          deployApp: vi.fn(),
+          listDeployments,
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppRollback } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -4313,7 +4914,11 @@ describe("app controller", () => {
       },
     });
 
-    await context.stateStore.setKnownLiveDeployment("proj_123", "app_1", "dep_1");
+    await context.stateStore.setKnownLiveDeployment(
+      "proj_123",
+      "app_1",
+      "dep_1",
+    );
 
     const result = await runAppRollback(context, "hello-world", undefined);
 
@@ -4324,13 +4929,20 @@ describe("app controller", () => {
       }),
     );
     expect(result.result.previousLiveDeploymentId).toBe("dep_1");
-    await expect(context.stateStore.readKnownLiveDeployment("proj_123", "app_1")).resolves.toBe("dep_2");
+    await expect(
+      context.stateStore.readKnownLiveDeployment("proj_123", "app_1"),
+    ).resolves.toBe("dep_2");
   });
 
   it("rollback uses an explicit deployment target when provided", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_3" },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_3",
+      },
     ]);
     const listDeployments = vi.fn().mockResolvedValue({
       app: {
@@ -4369,18 +4981,22 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        promoteDeployment,
-        deployApp: vi.fn(),
-        listDeployments,
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          promoteDeployment,
+          deployApp: vi.fn(),
+          listDeployments,
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppRollback } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -4408,7 +5024,12 @@ describe("app controller", () => {
   it("rollback returns NO_PREVIOUS_DEPLOYMENT when only one deployment exists", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-west-3", liveDeploymentId: "dep_2" },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_2",
+      },
     ]);
     const listDeployments = vi.fn().mockResolvedValue({
       app: {
@@ -4432,18 +5053,22 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        promoteDeployment: vi.fn(),
-        deployApp: vi.fn(),
-        listDeployments,
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          promoteDeployment: vi.fn(),
+          deployApp: vi.fn(),
+          listDeployments,
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppRollback } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -4457,44 +5082,54 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppRollback(context, "hello-world", undefined)).rejects.toMatchObject({
+    await expect(
+      runAppRollback(context, "hello-world", undefined),
+    ).rejects.toMatchObject({
       code: "NO_PREVIOUS_DEPLOYMENT",
       domain: "app",
     });
   });
 
   it("does not reuse the wrong saved app when the resolved project changes", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient("proj_456"));
+    const requireComputeAuth = vi
+      .fn()
+      .mockResolvedValue(createProjectClient("proj_456"));
     const listApps = vi.fn().mockResolvedValue([]);
-    const deployApp = vi.fn().mockImplementation(async (options: { appName?: string }) => ({
-      projectId: "proj_456",
-      app: {
-        id: "app_new",
-        name: options.appName ?? "created-app",
-        region: "eu-central-1",
-        liveDeploymentId: "dep_123",
-      },
-      deployment: {
-        id: "dep_123",
-        status: "running",
-        url: "https://created-app.prisma.app",
-      },
-    }));
+    const deployApp = vi
+      .fn()
+      .mockImplementation(async (options: { appName?: string }) => ({
+        projectId: "proj_456",
+        app: {
+          id: "app_new",
+          name: options.appName ?? "created-app",
+          region: "eu-central-1",
+          liveDeploymentId: "dep_123",
+        },
+        deployment: {
+          id: "dep_123",
+          status: "running",
+          url: "https://created-app.prisma.app",
+        },
+      }));
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -4531,34 +5166,68 @@ describe("app controller", () => {
   it("logs streams the live deployment for the selected app", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+      },
     ]);
     const listDeployments = vi.fn().mockResolvedValue({
-      app: { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+      },
       deployments: [
-        { id: "dep_old", status: "stopped", createdAt: "2026-05-01T00:00:00Z", url: null, live: null },
-        { id: "dep_live", status: "running", createdAt: "2026-05-02T00:00:00Z", url: "https://example.prisma.app", live: null },
+        {
+          id: "dep_old",
+          status: "stopped",
+          createdAt: "2026-05-01T00:00:00Z",
+          url: null,
+          live: null,
+        },
+        {
+          id: "dep_live",
+          status: "running",
+          createdAt: "2026-05-02T00:00:00Z",
+          url: "https://example.prisma.app",
+          live: null,
+        },
       ],
     });
-    const streamDeploymentLogs = vi.fn().mockImplementation(async (options: { onRecord(record: unknown): void }) => {
-      options.onRecord({ type: "log", text: "hello from live\n", byteStart: 0, byteEnd: 16 });
-    });
-
+    const streamDeploymentLogs = vi
+      .fn()
+      .mockImplementation(
+        async (options: { onRecord(record: unknown): void }) => {
+          options.onRecord({
+            type: "log",
+            text: "hello from live\n",
+            byteStart: 0,
+            byteEnd: 16,
+          });
+        },
+      );
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        listDeployments,
-        showDeployment: vi.fn(),
-        streamDeploymentLogs,
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          listDeployments,
+          showDeployment: vi.fn(),
+          streamDeploymentLogs,
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppLogs } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -4576,43 +5245,80 @@ describe("app controller", () => {
 
     await runAppLogs(context, "hello-world", undefined);
 
-    expect(streamDeploymentLogs).toHaveBeenCalledWith(expect.objectContaining({
-      deploymentId: "dep_live",
-      signal: context.runtime.signal,
-    }));
+    expect(streamDeploymentLogs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deploymentId: "dep_live",
+        signal: context.runtime.signal,
+      }),
+    );
     expect(stdout.buffer).toBe("hello from live\n");
   });
 
   it("logs streams an explicit deployment for the selected app", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+      },
     ]);
     const listDeployments = vi.fn().mockResolvedValue({
-      app: { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+      },
       deployments: [
-        { id: "dep_old", status: "stopped", createdAt: "2026-05-01T00:00:00Z", url: null, live: null },
-        { id: "dep_live", status: "running", createdAt: "2026-05-02T00:00:00Z", url: "https://example.prisma.app", live: null },
+        {
+          id: "dep_old",
+          status: "stopped",
+          createdAt: "2026-05-01T00:00:00Z",
+          url: null,
+          live: null,
+        },
+        {
+          id: "dep_live",
+          status: "running",
+          createdAt: "2026-05-02T00:00:00Z",
+          url: "https://example.prisma.app",
+          live: null,
+        },
       ],
     });
-    const streamDeploymentLogs = vi.fn().mockImplementation(async (options: { onRecord(record: unknown): void }) => {
-      options.onRecord({ type: "log", text: "old log\n", byteStart: 0, byteEnd: 8 });
-    });
+    const streamDeploymentLogs = vi
+      .fn()
+      .mockImplementation(
+        async (options: { onRecord(record: unknown): void }) => {
+          options.onRecord({
+            type: "log",
+            text: "old log\n",
+            byteStart: 0,
+            byteEnd: 8,
+          });
+        },
+      );
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        listDeployments,
-        showDeployment: vi.fn(),
-        streamDeploymentLogs,
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          listDeployments,
+          showDeployment: vi.fn(),
+          streamDeploymentLogs,
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppLogs } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -4628,21 +5334,39 @@ describe("app controller", () => {
 
     await runAppLogs(context, "hello-world", "dep_old");
 
-    expect(streamDeploymentLogs).toHaveBeenCalledWith(expect.objectContaining({
-      deploymentId: "dep_old",
-    }));
+    expect(streamDeploymentLogs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deploymentId: "dep_old",
+      }),
+    );
     expect(stdout.buffer).toBe("old log\n");
   });
 
   it("logs rejects an explicit deployment that does not belong to the selected app", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+      },
     ]);
     const listDeployments = vi.fn().mockResolvedValue({
-      app: { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+      },
       deployments: [
-        { id: "dep_live", status: "running", createdAt: "2026-05-02T00:00:00Z", url: "https://example.prisma.app", live: null },
+        {
+          id: "dep_live",
+          status: "running",
+          createdAt: "2026-05-02T00:00:00Z",
+          url: "https://example.prisma.app",
+          live: null,
+        },
       ],
     });
     const streamDeploymentLogs = vi.fn();
@@ -4651,16 +5375,20 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        listDeployments,
-        showDeployment: vi.fn(),
-        streamDeploymentLogs,
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          listDeployments,
+          showDeployment: vi.fn(),
+          streamDeploymentLogs,
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppLogs } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -4674,7 +5402,9 @@ describe("app controller", () => {
       },
     });
 
-    await expect(runAppLogs(context, "hello-world", "dep_other")).rejects.toMatchObject({
+    await expect(
+      runAppLogs(context, "hello-world", "dep_other"),
+    ).rejects.toMatchObject({
       code: "DEPLOYMENT_NOT_FOUND",
       domain: "app",
     });
@@ -4684,30 +5414,64 @@ describe("app controller", () => {
   it("logs emits newline-delimited JSON events in --json mode", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+      },
     ]);
     const listDeployments = vi.fn().mockResolvedValue({
-      app: { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_live" },
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+      },
       deployments: [
-        { id: "dep_live", status: "running", createdAt: "2026-05-02T00:00:00Z", url: "https://example.prisma.app", live: null },
+        {
+          id: "dep_live",
+          status: "running",
+          createdAt: "2026-05-02T00:00:00Z",
+          url: "https://example.prisma.app",
+          live: null,
+        },
       ],
     });
-    const streamDeploymentLogs = vi.fn().mockImplementation(async (options: { onRecord(record: unknown): void }) => {
-      options.onRecord({ type: "log", text: "json log\n", byteStart: 0, byteEnd: 9 });
-      options.onRecord({ type: "terminal", kind: "end", code: "done", message: "done", retryable: false, cursor: null });
-    });
+    const streamDeploymentLogs = vi
+      .fn()
+      .mockImplementation(
+        async (options: { onRecord(record: unknown): void }) => {
+          options.onRecord({
+            type: "log",
+            text: "json log\n",
+            byteStart: 0,
+            byteEnd: 9,
+          });
+          options.onRecord({
+            type: "terminal",
+            kind: "end",
+            code: "done",
+            message: "done",
+            retryable: false,
+            cursor: null,
+          });
+        },
+      );
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        listApps,
-        listDeployments,
-        showDeployment: vi.fn(),
-        streamDeploymentLogs,
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          listDeployments,
+          showDeployment: vi.fn(),
+          streamDeploymentLogs,
+        }),
+      ),
     }));
 
     const { createTempCwd, executeCli } = await import("./helpers");
@@ -4726,7 +5490,10 @@ describe("app controller", () => {
       },
     });
 
-    const events = result.stdout.trim().split("\n").map((line) => JSON.parse(line));
+    const events = result.stdout
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
@@ -4751,7 +5518,12 @@ describe("app controller", () => {
   it("remove deletes the selected app when --yes is passed", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_2" },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_2",
+      },
     ]);
     const removeApp = vi.fn().mockResolvedValue({
       id: "app_1",
@@ -4762,19 +5534,23 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        removeApp,
-        promoteDeployment: vi.fn(),
-        deployApp: vi.fn(),
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          removeApp,
+          promoteDeployment: vi.fn(),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppRemove } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -4795,11 +5571,17 @@ describe("app controller", () => {
       id: "app_1",
       name: "hello-world",
     });
-    await context.stateStore.setKnownLiveDeployment("proj_123", "app_1", "dep_2");
+    await context.stateStore.setKnownLiveDeployment(
+      "proj_123",
+      "app_1",
+      "dep_2",
+    );
 
     const result = await runAppRemove(context, "hello-world");
 
-    expect(removeApp).toHaveBeenCalledWith("app_1", { signal: context.runtime.signal });
+    expect(removeApp).toHaveBeenCalledWith("app_1", {
+      signal: context.runtime.signal,
+    });
     expect(result.result).toEqual({
       projectId: "proj_123",
       verboseContext: expectedAppVerboseContext(),
@@ -4809,14 +5591,23 @@ describe("app controller", () => {
       },
       removed: true,
     });
-    await expect(context.stateStore.readSelectedApp("proj_123")).resolves.toBeNull();
-    await expect(context.stateStore.readKnownLiveDeployment("proj_123", "app_1")).resolves.toBeNull();
+    await expect(
+      context.stateStore.readSelectedApp("proj_123"),
+    ).resolves.toBeNull();
+    await expect(
+      context.stateStore.readKnownLiveDeployment("proj_123", "app_1"),
+    ).resolves.toBeNull();
   });
 
   it("remove prompts for confirmation in interactive mode", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_2" },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_2",
+      },
     ]);
     const removeApp = vi.fn().mockResolvedValue({
       id: "app_1",
@@ -4828,26 +5619,32 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/shell/prompt", async () => {
-      const actual = await vi.importActual<typeof import("../src/shell/prompt")>("../src/shell/prompt");
+      const actual = await vi.importActual<
+        typeof import("../src/shell/prompt")
+      >("../src/shell/prompt");
       return {
         ...actual,
         textPrompt,
       };
     });
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        removeApp,
-        promoteDeployment: vi.fn(),
-        deployApp: vi.fn(),
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          removeApp,
+          promoteDeployment: vi.fn(),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppRemove } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -4870,13 +5667,20 @@ describe("app controller", () => {
         placeholder: "hello-world",
       }),
     );
-    expect(removeApp).toHaveBeenCalledWith("app_1", { signal: context.runtime.signal });
+    expect(removeApp).toHaveBeenCalledWith("app_1", {
+      signal: context.runtime.signal,
+    });
   });
 
   it("remove returns CONFIRMATION_REQUIRED in non-interactive mode without --yes", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_2" },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_2",
+      },
     ]);
     const removeApp = vi.fn();
 
@@ -4884,19 +5688,23 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        removeApp,
-        promoteDeployment: vi.fn(),
-        deployApp: vi.fn(),
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          removeApp,
+          promoteDeployment: vi.fn(),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppRemove } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -4922,27 +5730,38 @@ describe("app controller", () => {
   it("remove returns REMOVE_FAILED when remote deletion fails", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_2" },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_2",
+      },
     ]);
-    const removeApp = vi.fn().mockRejectedValue(new Error("Resource Not Found"));
+    const removeApp = vi
+      .fn()
+      .mockRejectedValue(new Error("Resource Not Found"));
 
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        removeApp,
-        promoteDeployment: vi.fn(),
-        deployApp: vi.fn(),
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          removeApp,
+          promoteDeployment: vi.fn(),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppRemove } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -4969,7 +5788,12 @@ describe("app controller", () => {
   it("remove returns a warning when local cleanup fails after remote deletion", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: "dep_2" },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_2",
+      },
     ]);
     const removeApp = vi.fn().mockResolvedValue({
       id: "app_1",
@@ -4980,19 +5804,23 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
-        resolveBranch: createResolveBranch(),
-        createProject: vi.fn(),
-        listApps,
-        removeApp,
-        promoteDeployment: vi.fn(),
-        deployApp: vi.fn(),
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          removeApp,
+          promoteDeployment: vi.fn(),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppRemove } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
@@ -5009,8 +5837,12 @@ describe("app controller", () => {
       },
     });
 
-    vi.spyOn(context.stateStore, "clearSelectedApp").mockRejectedValue(new Error("disk full"));
-    vi.spyOn(context.stateStore, "clearKnownLiveDeployment").mockResolvedValue(await context.stateStore.read());
+    vi.spyOn(context.stateStore, "clearSelectedApp").mockRejectedValue(
+      new Error("disk full"),
+    );
+    vi.spyOn(context.stateStore, "clearKnownLiveDeployment").mockResolvedValue(
+      await context.stateStore.read(),
+    );
 
     const result = await runAppRemove(context, "hello-world");
 

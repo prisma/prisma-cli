@@ -137,6 +137,7 @@ export function waitUntil(
   promise: PromiseLike<unknown>,
   options?: ScaleToZeroGuardOptions,
 ): void {
+  // biome-ignore lint/nursery/useDisposables: waitUntil transfers guard cleanup to the promise finally handler.
   const guard = new ScaleToZeroGuard(options);
 
   // Do not attach a catch here; callers rely on the underlying promise keeping

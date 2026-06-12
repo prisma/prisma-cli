@@ -5,9 +5,8 @@ import { runCli } from "./cli";
 import { runUpdateDiscoveryWorker } from "./shell/update-check";
 
 if (process.env.PRISMA_CLI_RUN_UPDATE_CHECK_WORKER === "1") {
-  runUpdateDiscoveryWorker().then(() => {
-    process.exitCode = 0;
-  });
+  await runUpdateDiscoveryWorker();
+  process.exitCode = 0;
 } else {
   const controller = new AbortController();
 
@@ -20,10 +19,10 @@ if (process.env.PRISMA_CLI_RUN_UPDATE_CHECK_WORKER === "1") {
   process.once("SIGINT", abortCli);
   process.once("SIGTERM", abortCli);
 
-  runCli({ signal: controller.signal }).then((exitCode) => {
-    process.exitCode = exitCode;
-  }).finally(() => {
+  try {
+    process.exitCode = await runCli({ signal: controller.signal });
+  } finally {
     process.off("SIGINT", abortCli);
     process.off("SIGTERM", abortCli);
-  });
+  }
 }

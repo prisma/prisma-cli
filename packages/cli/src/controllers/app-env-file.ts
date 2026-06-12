@@ -1,6 +1,8 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: Environment variable mutations and lookups are intentionally sequential.
+// biome-ignore-all lint/style/noNestedTernary: Existing error formatting expression is intentionally compact.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
-import { formatScopeLabel, type EnvScope } from "../lib/app/env-config";
+import { type EnvScope, formatScopeLabel } from "../lib/app/env-config";
 import type { EnvFileAssignment } from "../lib/app/env-file";
 import { CliError } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
@@ -88,9 +90,18 @@ export async function runEnvAddFile(
       if (error || !data) {
         throw apiCallError(`Failed to add ${assignment.key}`, response, error);
       }
-      variables.push(toMetadata(data.data as RawEnvironmentVariable, resolved.descriptor));
+      variables.push(
+        toMetadata(data.data as RawEnvironmentVariable, resolved.descriptor),
+      );
     } catch (error) {
-      throw envFileApplyFailedError("add", filePath, resolved.scope, assignment.key, variables, error);
+      throw envFileApplyFailedError(
+        "add",
+        filePath,
+        resolved.scope,
+        assignment.key,
+        variables,
+        error,
+      );
     }
   }
 
@@ -164,11 +175,24 @@ export async function runEnvUpdateFile(
         },
       );
       if (error || !data) {
-        throw apiCallError(`Failed to update value for ${assignment.key}`, response, error);
+        throw apiCallError(
+          `Failed to update value for ${assignment.key}`,
+          response,
+          error,
+        );
       }
-      variables.push(toMetadata(data.data as RawEnvironmentVariable, resolved.descriptor));
+      variables.push(
+        toMetadata(data.data as RawEnvironmentVariable, resolved.descriptor),
+      );
     } catch (error) {
-      throw envFileApplyFailedError("update", filePath, resolved.scope, assignment.key, variables, error);
+      throw envFileApplyFailedError(
+        "update",
+        filePath,
+        resolved.scope,
+        assignment.key,
+        variables,
+        error,
+      );
     }
   }
 
@@ -199,7 +223,13 @@ async function findVariablesByNaturalKey(
   const found = new Map<string, RawEnvironmentVariable>();
 
   for (const key of keys) {
-    const row = await findVariableByNaturalKey(client, projectId, key, resolved, signal);
+    const row = await findVariableByNaturalKey(
+      client,
+      projectId,
+      key,
+      resolved,
+      signal,
+    );
     if (row) {
       found.set(key, row);
     }
@@ -227,7 +257,15 @@ async function missingPreviewDefaultWarnings(
   const missing: string[] = [];
 
   for (const key of keys) {
-    if (!(await findVariableByNaturalKey(client, projectId, key, previewScope, signal))) {
+    if (
+      !(await findVariableByNaturalKey(
+        client,
+        projectId,
+        key,
+        previewScope,
+        signal,
+      ))
+    ) {
       missing.push(key);
     }
   }
@@ -256,19 +294,21 @@ function envFileApplyFailedError(
   error: unknown,
 ): CliError {
   const writtenKeys = writtenVariables.map((variable) => variable.key);
-  const cause = error instanceof CliError
-    ? error.summary
-    : error instanceof Error
-      ? error.message
-      : "Unknown error.";
+  const cause =
+    error instanceof CliError
+      ? error.summary
+      : error instanceof Error
+        ? error.message
+        : "Unknown error.";
 
   return new CliError({
     code: "ENV_FILE_APPLY_FAILED",
     domain: "app",
     summary: `Failed to ${command} "${failedKey}" from "${filePath}"`,
-    why: writtenKeys.length === 0
-      ? `No variables were written before ${failedKey} failed. Cause: ${cause}`
-      : `Written keys before failure: ${formatKeyList(writtenKeys)}. Cause: ${cause}`,
+    why:
+      writtenKeys.length === 0
+        ? `No variables were written before ${failedKey} failed. Cause: ${cause}`
+        : `Written keys before failure: ${formatKeyList(writtenKeys)}. Cause: ${cause}`,
     fix: "Inspect the target scope, then retry the remaining keys once the API issue is resolved.",
     exitCode: 1,
     nextSteps: [

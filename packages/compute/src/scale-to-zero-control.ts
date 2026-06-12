@@ -47,7 +47,9 @@ function getControlFileState(): ControlFileState {
   return controlFileState;
 }
 
-export function configureScaleToZeroControlFileForTests(path: string | undefined): void {
+export function configureScaleToZeroControlFileForTests(
+  path: string | undefined,
+): void {
   if (controlFileState.kind === "open") {
     fs.closeSync(controlFileState.fd);
   }

@@ -1,13 +1,20 @@
 import { usageError } from "../shell/errors";
 import type { AuthProviderId, AuthStateResult } from "../types/auth";
-import type { AuthUseCases, IdentityGateway, LoginSelection, SessionGateway } from "./contracts";
+import type {
+  AuthUseCases,
+  IdentityGateway,
+  LoginSelection,
+  SessionGateway,
+} from "./contracts";
 
 interface AuthUseCaseDependencies {
   identityGateway: IdentityGateway;
   sessionGateway: SessionGateway;
 }
 
-export function createAuthUseCases(dependencies: AuthUseCaseDependencies): AuthUseCases {
+export function createAuthUseCases(
+  dependencies: AuthUseCaseDependencies,
+): AuthUseCases {
   return {
     whoami: () => resolveCurrentAuthState(dependencies),
     login: async (selection: LoginSelection) => {
@@ -40,7 +47,8 @@ export function createAuthUseCases(dependencies: AuthUseCaseDependencies): AuthU
       return provider;
     },
     listUsersForProvider: async (providerId: AuthProviderId) => {
-      const users = dependencies.identityGateway.listUsersForProvider(providerId);
+      const users =
+        dependencies.identityGateway.listUsersForProvider(providerId);
 
       if (users.length === 0) {
         throw usageError(
@@ -54,8 +62,14 @@ export function createAuthUseCases(dependencies: AuthUseCaseDependencies): AuthU
 
       return users;
     },
-    resolveUserForProvider: async (providerId: AuthProviderId, userId: string) => {
-      const user = dependencies.identityGateway.getUserForProvider(providerId, userId);
+    resolveUserForProvider: async (
+      providerId: AuthProviderId,
+      userId: string,
+    ) => {
+      const user = dependencies.identityGateway.getUserForProvider(
+        providerId,
+        userId,
+      );
 
       if (!user) {
         throw usageError(
@@ -69,9 +83,13 @@ export function createAuthUseCases(dependencies: AuthUseCaseDependencies): AuthU
 
       return user;
     },
-    listWorkspacesForUser: async (userId: string) => dependencies.identityGateway.listUserWorkspaces(userId),
+    listWorkspacesForUser: async (userId: string) =>
+      dependencies.identityGateway.listUserWorkspaces(userId),
     resolveWorkspaceForUser: async (userId: string, workspaceId: string) => {
-      const workspace = dependencies.identityGateway.getUserWorkspace(userId, workspaceId);
+      const workspace = dependencies.identityGateway.getUserWorkspace(
+        userId,
+        workspaceId,
+      );
 
       if (!workspace) {
         throw usageError(
@@ -88,7 +106,9 @@ export function createAuthUseCases(dependencies: AuthUseCaseDependencies): AuthU
   };
 }
 
-async function resolveCurrentAuthState(dependencies: AuthUseCaseDependencies): Promise<AuthStateResult> {
+async function resolveCurrentAuthState(
+  dependencies: AuthUseCaseDependencies,
+): Promise<AuthStateResult> {
   const session = await dependencies.sessionGateway.readAuthSession();
 
   if (!session) {
@@ -103,7 +123,9 @@ async function resolveCurrentAuthState(dependencies: AuthUseCaseDependencies): P
 
   const provider = dependencies.identityGateway.getProvider(session.provider);
   const user = dependencies.identityGateway.getUser(session.userId);
-  const workspace = dependencies.identityGateway.getWorkspace(session.workspaceId);
+  const workspace = dependencies.identityGateway.getWorkspace(
+    session.workspaceId,
+  );
 
   if (!provider || !user || !workspace) {
     return {
