@@ -39,6 +39,9 @@
         "useCollapsedIf": "on",
         "noNestedTernary": "on",
         "noParameterAssign": "on"
+      },
+      "suspicious": {
+        "noVar": "on"
       }
       //   "complexity": {
       //   },
@@ -49,7 +52,6 @@
       //   "style": {
       //   },
       //   "suspicious": {
-      //     "noVar": "on",
       //     "useGuardForIn": "on",
       //     "useStaticResponseMethods": "on"
       //   }
