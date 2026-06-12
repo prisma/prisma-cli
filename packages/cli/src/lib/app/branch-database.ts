@@ -431,7 +431,7 @@ interface PrismaInvocation {
  * latest and can be a major version ahead of the project's schema.
  */
 async function resolvePrismaInvocation(cwd: string): Promise<PrismaInvocation> {
-  if (await fileExists(path.join(cwd, "node_modules", ".bin", "prisma"))) {
+  if (await localPrismaBinExists(cwd)) {
     return {
       argsPrefix: ["--no-install", "prisma"],
       displayPrefix: "npx --no-install prisma",
@@ -444,6 +444,17 @@ async function resolvePrismaInvocation(cwd: string): Promise<PrismaInvocation> {
     argsPrefix: ["--yes", `prisma@${pinned}`],
     displayPrefix: `npx prisma@${pinned}`,
   };
+}
+
+/** npm/pnpm name the local CLI shim `prisma` on POSIX and `prisma.cmd`/`prisma.ps1` on Windows. */
+async function localPrismaBinExists(cwd: string): Promise<boolean> {
+  const binDir = path.join(cwd, "node_modules", ".bin");
+  const checks = await Promise.all(
+    ["prisma", "prisma.cmd", "prisma.ps1"].map((name) =>
+      fileExists(path.join(binDir, name)),
+    ),
+  );
+  return checks.some(Boolean);
 }
 
 async function fileExists(filePath: string): Promise<boolean> {

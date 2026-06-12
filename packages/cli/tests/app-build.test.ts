@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, readlink, symlink, writeFile } from "node:fs/promises";
+import { access, lstat, mkdir, readFile, readlink, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -65,6 +65,8 @@ describe("preview build strategy", () => {
       "utf8",
     );
     await writeFile(path.join(appPath, ".next/BUILD_ID"), "fallback-test", "utf8");
+    await writeFile(path.join(appPath, ".env"), "SECRET=should-not-ship", "utf8");
+    await writeFile(path.join(appPath, ".env.local"), "SECRET=should-not-ship", "utf8");
     await writeFile(
       path.join(appPath, "node_modules/next/package.json"),
       JSON.stringify({ name: "next", version: "15.0.0" }),
@@ -100,8 +102,13 @@ describe("preview build strategy", () => {
       const linkPath = path.join(artifact.directory, "node_modules/.bin/next-link");
       expect((await lstat(linkPath)).isSymbolicLink()).toBe(true);
       await expect(readlink(linkPath)).resolves.toBe("../next/package.json");
+
+      await expect(access(path.join(artifact.directory, ".env"))).rejects.toThrow();
+      await expect(access(path.join(artifact.directory, ".env.local"))).rejects.toThrow();
     } finally {
+      const stagedDir = artifact.directory;
       await artifact.cleanup?.();
+      await expect(access(stagedDir)).rejects.toThrow();
     }
   });
 

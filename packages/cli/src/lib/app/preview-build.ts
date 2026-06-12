@@ -296,15 +296,23 @@ async function stageNextjsFullTreeFallbackArtifact(appPath: string, signal?: Abo
     const artifactDir = path.join(outDir, "app");
     // node_modules ships on purpose: without standalone output the artifact
     // must carry the full runtime dependency tree for `next start`.
-    await cp(appPath, artifactDir, {
-      recursive: true,
-      // Keep relative symlinks relative (node_modules/.bin/*): the default
-      // rewrites them to absolute paths into the source tree, which the
-      // archiver rejects as escaping the artifact root.
-      verbatimSymlinks: true,
-      filter: (source) => path.basename(source) !== ".git",
-    });
-    await writeFile(path.join(artifactDir, FULL_TREE_NEXT_START_ENTRYPOINT), FULL_TREE_NEXT_START_SOURCE);
+    await unsupportedFilesystemBoundary(signal, () =>
+      cp(appPath, artifactDir, {
+        recursive: true,
+        // Keep relative symlinks relative (node_modules/.bin/*): the default
+        // rewrites them to absolute paths into the source tree, which the
+        // archiver rejects as escaping the artifact root.
+        verbatimSymlinks: true,
+        filter: (source) =>
+          !isExcludedFromFullTreeArtifact(path.basename(source)),
+      }),
+    );
+    await unsupportedFilesystemBoundary(signal, () =>
+      writeFile(
+        path.join(artifactDir, FULL_TREE_NEXT_START_ENTRYPOINT),
+        FULL_TREE_NEXT_START_SOURCE,
+      ),
+    );
 
     return {
       directory: artifactDir,
@@ -316,6 +324,18 @@ async function stageNextjsFullTreeFallbackArtifact(appPath: string, signal?: Abo
     await rm(outDir, { recursive: true, force: true });
     throw error;
   }
+}
+
+/**
+ * Paths kept out of the full-tree artifact: VCS internals and dotenv files,
+ * which carry local secrets and are superseded by the branch's deploy env.
+ */
+function isExcludedFromFullTreeArtifact(basename: string): boolean {
+  return (
+    basename === ".git" ||
+    basename === ".env" ||
+    basename.startsWith(".env.")
+  );
 }
 
 class PreviewTanstackStartBuild implements BuildStrategy {
