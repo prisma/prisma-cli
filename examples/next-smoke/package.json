@@ -2,7 +2,7 @@
   "name": "next-smoke",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@10.30.0",
+  "packageManager": "pnpm@11.6.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -13,11 +13,6 @@
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6"
-  },
-  "pnpm": {
-    "overrides": {
-      "postcss": "8.5.10"
-    }
   },
   "devDependencies": {
     "@types/node": "^20.19.41",

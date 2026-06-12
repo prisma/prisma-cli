@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "main": "server.ts",
-  "packageManager": "pnpm@10.30.0",
+  "packageManager": "pnpm@11.6.0",
   "scripts": {
     "dev": "bun --watch server.ts",
     "start": "bun run server.ts",
