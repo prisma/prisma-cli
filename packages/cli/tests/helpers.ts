@@ -5,7 +5,12 @@ import { PassThrough, Writable } from "node:stream";
 
 import { runCli } from "../src/cli";
 import { LocalStateStore } from "../src/adapters/local-state";
-import { createCommandContext, resolveStateDir, type CliRuntime, type CommandContext } from "../src/shell/runtime";
+import {
+  createCommandContext,
+  resolveStateDir,
+  type CliRuntime,
+  type CommandContext,
+} from "../src/shell/runtime";
 import type { GlobalFlags } from "../src/shell/global-flags";
 
 class CaptureStream extends Writable {
@@ -14,7 +19,11 @@ class CaptureStream extends Writable {
   declare columns?: number;
   declare rows?: number;
 
-  _write(chunk: Buffer | string, _encoding: BufferEncoding, callback: (error?: Error | null) => void) {
+  _write(
+    chunk: Buffer | string,
+    _encoding: BufferEncoding,
+    callback: (error?: Error | null) => void,
+  ) {
     this.buffer += chunk.toString();
     callback();
   }
@@ -135,7 +144,10 @@ export async function createTestCommandContext(options: {
   };
 
   return {
-    context: await seedRememberedProjectForTest(await createCommandContext(runtime, flags), runtime.env),
+    context: await seedRememberedProjectForTest(
+      await createCommandContext(runtime, flags),
+      runtime.env,
+    ),
     runtime,
     stdout,
     stderr,
@@ -159,7 +171,9 @@ async function seedRememberedProjectForTest(
   return context;
 }
 
-async function seedRememberedProjectStateForTest(runtime: CliRuntime): Promise<void> {
+async function seedRememberedProjectStateForTest(
+  runtime: CliRuntime,
+): Promise<void> {
   const projectId = runtime.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_ID;
   if (!projectId) {
     return;
@@ -172,7 +186,10 @@ async function seedRememberedProjectStateForTest(runtime: CliRuntime): Promise<v
   });
 }
 
-function createTestEnv(env: NodeJS.ProcessEnv | undefined, preserveCI = false): NodeJS.ProcessEnv {
+function createTestEnv(
+  env: NodeJS.ProcessEnv | undefined,
+  preserveCI = false,
+): NodeJS.ProcessEnv {
   const next = { ...process.env, ...env };
 
   if (!preserveCI) {
@@ -183,7 +200,10 @@ function createTestEnv(env: NodeJS.ProcessEnv | undefined, preserveCI = false): 
   return next;
 }
 
-async function streamInput(input: CaptureInput, text: string | undefined): Promise<void> {
+async function streamInput(
+  input: CaptureInput,
+  text: string | undefined,
+): Promise<void> {
   if (!text) {
     input.end();
     return;

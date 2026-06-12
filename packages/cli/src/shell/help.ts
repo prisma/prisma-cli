@@ -1,7 +1,10 @@
 import type { Argument, Command, Option } from "commander";
 
 import { getDescriptorForCommand, formatDescriptorLabel } from "./command-meta";
-import { COMPACT_GLOBAL_OPTION_FLAGS, resolveGlobalFlags } from "./global-flags";
+import {
+  COMPACT_GLOBAL_OPTION_FLAGS,
+  resolveGlobalFlags,
+} from "./global-flags";
 import type { CliRuntime } from "./runtime";
 import { createShellUi, padDisplay, wrapText } from "./ui";
 
@@ -11,11 +14,18 @@ export function renderHelp(command: Command, runtime: CliRuntime): string {
   const descriptor = getDescriptorForCommand(command);
   const ui = createShellUi(runtime, resolveGlobalFlags(runtime.argv, {}));
   const rail = ui.isTTY ? ui.dim("│") : "│";
-  const lines = [`${formatDescriptorLabel(descriptor)} ${ui.dim("→")} ${ui.dim(descriptor.description)}`, ""];
+  const lines = [
+    `${formatDescriptorLabel(descriptor)} ${ui.dim("→")} ${ui.dim(descriptor.description)}`,
+    "",
+  ];
   const visibleCommands = command.commands.filter(
-    (candidate) => candidate.name() !== "help" && !(candidate as Command & { hidden?: boolean }).hidden,
+    (candidate) =>
+      candidate.name() !== "help" &&
+      !(candidate as Command & { hidden?: boolean }).hidden,
   );
-  const visibleOptions = command.options.filter((candidate) => !candidate.hidden);
+  const visibleOptions = command.options.filter(
+    (candidate) => !candidate.hidden,
+  );
 
   if (visibleCommands.length > 0) {
     lines.push(...renderCommandRows(rail, ui, visibleCommands));
@@ -23,7 +33,10 @@ export function renderHelp(command: Command, runtime: CliRuntime): string {
 
   if (descriptor.longDescription) {
     lines.push(`${rail}`);
-    const wrapped = wrapText(descriptor.longDescription, Math.max(ui.width - CARD_PREFIX.length, 40));
+    const wrapped = wrapText(
+      descriptor.longDescription,
+      Math.max(ui.width - CARD_PREFIX.length, 40),
+    );
     for (const line of wrapped) {
       lines.push(`${rail}  ${line}`);
     }
@@ -34,7 +47,12 @@ export function renderHelp(command: Command, runtime: CliRuntime): string {
       lines.push(`${rail}`);
     }
 
-    if (visibleCommands.length > 0 && visibleOptions.every((option) => COMPACT_GLOBAL_OPTION_FLAGS.includes(option.flags))) {
+    if (
+      visibleCommands.length > 0 &&
+      visibleOptions.every((option) =>
+        COMPACT_GLOBAL_OPTION_FLAGS.includes(option.flags),
+      )
+    ) {
       lines.push(`${rail}  Global options:`);
     }
 
@@ -51,7 +69,9 @@ export function renderHelp(command: Command, runtime: CliRuntime): string {
 
   if (descriptor.docsPath) {
     lines.push(`${rail}`);
-    lines.push(`${rail}  ${ui.accent(padDisplay("Read more", 16))}  ${ui.link(descriptor.docsPath)}`);
+    lines.push(
+      `${rail}  ${ui.accent(padDisplay("Read more", 16))}  ${ui.link(descriptor.docsPath)}`,
+    );
   }
 
   lines.push("");
@@ -59,7 +79,11 @@ export function renderHelp(command: Command, runtime: CliRuntime): string {
   return `${lines.join("\n")}`;
 }
 
-function renderCommandRows(rail: string, ui: ReturnType<typeof createShellUi>, commands: Command[]): string[] {
+function renderCommandRows(
+  rail: string,
+  ui: ReturnType<typeof createShellUi>,
+  commands: Command[],
+): string[] {
   const rows = commands.map((command) => {
     const descriptor = getDescriptorForCommand(command);
     return {
@@ -71,7 +95,11 @@ function renderCommandRows(rail: string, ui: ReturnType<typeof createShellUi>, c
   return renderAlignedRows(rail, ui, rows);
 }
 
-function renderOptionRows(rail: string, ui: ReturnType<typeof createShellUi>, options: Option[]): string[] {
+function renderOptionRows(
+  rail: string,
+  ui: ReturnType<typeof createShellUi>,
+  options: Option[],
+): string[] {
   const rows = options.map((option) => ({
     term: option.flags,
     description: option.description || "",
@@ -85,23 +113,41 @@ function renderOptionRows(rail: string, ui: ReturnType<typeof createShellUi>, op
 function renderAlignedRows(
   rail: string,
   ui: ReturnType<typeof createShellUi>,
-  rows: Array<{ term: string; description: string; defaultValue?: string | null }>,
+  rows: Array<{
+    term: string;
+    description: string;
+    defaultValue?: string | null;
+  }>,
 ): string[] {
-  const termWidth = rows.reduce((width, row) => Math.max(width, row.term.length), 0);
-  const descriptionWidth = Math.max(ui.width - CARD_PREFIX.length - termWidth - 4, 30);
+  const termWidth = rows.reduce(
+    (width, row) => Math.max(width, row.term.length),
+    0,
+  );
+  const descriptionWidth = Math.max(
+    ui.width - CARD_PREFIX.length - termWidth - 4,
+    30,
+  );
   const lines: string[] = [];
 
   for (const row of rows) {
-    const wrapped = wrapText(row.description, descriptionWidth, " ".repeat(termWidth + 2));
+    const wrapped = wrapText(
+      row.description,
+      descriptionWidth,
+      " ".repeat(termWidth + 2),
+    );
     const [firstLine, ...rest] = wrapped;
-    lines.push(`${rail}  ${ui.accent(padDisplay(row.term, termWidth))}  ${firstLine}`);
+    lines.push(
+      `${rail}  ${ui.accent(padDisplay(row.term, termWidth))}  ${firstLine}`,
+    );
 
     for (const line of rest) {
       lines.push(`${rail}  ${" ".repeat(termWidth)}  ${line.trimStart()}`);
     }
 
     if (row.defaultValue) {
-      lines.push(`${rail}  ${" ".repeat(termWidth)}  ${ui.dim(`default: ${row.defaultValue}`)}`);
+      lines.push(
+        `${rail}  ${" ".repeat(termWidth)}  ${ui.dim(`default: ${row.defaultValue}`)}`,
+      );
     }
   }
 
@@ -109,7 +155,9 @@ function renderAlignedRows(
 }
 
 function renderCommandTerm(command: Command): string {
-  const argumentsList = command.registeredArguments.map(renderArgumentLabel).join(" ");
+  const argumentsList = command.registeredArguments
+    .map(renderArgumentLabel)
+    .join(" ");
   return `${command.name()}${argumentsList ? ` ${argumentsList}` : ""}`;
 }
 

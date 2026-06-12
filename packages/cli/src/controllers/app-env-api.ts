@@ -33,16 +33,19 @@ export async function findVariableByNaturalKey(
   resolved: ResolvedEnvApiScope,
   signal: AbortSignal,
 ): Promise<RawEnvironmentVariable | null> {
-  const { data, error, response } = await client.GET("/v1/environment-variables", {
-    params: {
-      query: {
-        projectId,
-        class: resolved.apiTarget.class,
-        key,
+  const { data, error, response } = await client.GET(
+    "/v1/environment-variables",
+    {
+      params: {
+        query: {
+          projectId,
+          class: resolved.apiTarget.class,
+          key,
+        },
       },
+      signal,
     },
-    signal,
-  });
+  );
   if (error || !data) {
     throw apiCallError(`Failed to look up ${key}`, response, error);
   }
@@ -76,8 +79,10 @@ export function rowMatchesExactScope(
   row: RawEnvironmentVariable,
   resolved: ResolvedEnvApiScope,
 ): boolean {
-  return row.class === resolved.apiTarget.class &&
-    row.branchId === resolved.apiTarget.branchId;
+  return (
+    row.class === resolved.apiTarget.class &&
+    row.branchId === resolved.apiTarget.branchId
+  );
 }
 
 export function apiCallError(
@@ -98,8 +103,11 @@ export function apiCallError(
     code: apiCode ?? "ENV_API_ERROR",
     domain: "app",
     summary,
-    why: apiMessage ?? `The Management API returned status ${status || "unknown"}.`,
-    fix: apiHint ?? "Re-run with --trace for the underlying API response details.",
+    why:
+      apiMessage ??
+      `The Management API returned status ${status || "unknown"}.`,
+    fix:
+      apiHint ?? "Re-run with --trace for the underlying API response details.",
     exitCode: 1,
     nextSteps: [],
   });

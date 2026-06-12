@@ -94,14 +94,16 @@ describe("auth login callback", () => {
 
     const { login } = await import("../src/lib/auth/login");
 
-    await expect(login({
-      hostname: "127.0.0.1",
-      tokenStorage,
-      signal: controller.signal,
-      openUrl: () => {
-        controller.abort(reason);
-      },
-    })).rejects.toBe(reason);
+    await expect(
+      login({
+        hostname: "127.0.0.1",
+        tokenStorage,
+        signal: controller.signal,
+        openUrl: () => {
+          controller.abort(reason);
+        },
+      }),
+    ).rejects.toBe(reason);
   });
 
   it("rejects when the command signal aborts during workspace lookup", async () => {
@@ -120,37 +122,41 @@ describe("auth login callback", () => {
 
     vi.doMock("@prisma/management-api-sdk", () => ({
       AuthError: class SDKAuthError extends Error {},
-      createManagementApiSdk: vi.fn().mockImplementation((sdkOptions: { redirectUri: string }) => {
-        redirectUri = sdkOptions.redirectUri;
+      createManagementApiSdk: vi
+        .fn()
+        .mockImplementation((sdkOptions: { redirectUri: string }) => {
+          redirectUri = sdkOptions.redirectUri;
 
-        return {
-          getLoginUrl: vi.fn().mockReturnValue({
-            url: "https://auth.example.test/login",
-            state: "state_123",
-            verifier: "verifier_123",
-          }),
-          handleCallback: vi.fn().mockResolvedValue(undefined),
-          client: {
-            GET: vi.fn().mockImplementation(() => {
-              controller.abort(reason);
-              throw reason;
+          return {
+            getLoginUrl: vi.fn().mockReturnValue({
+              url: "https://auth.example.test/login",
+              state: "state_123",
+              verifier: "verifier_123",
             }),
-          },
-        };
-      }),
+            handleCallback: vi.fn().mockResolvedValue(undefined),
+            client: {
+              GET: vi.fn().mockImplementation(() => {
+                controller.abort(reason);
+                throw reason;
+              }),
+            },
+          };
+        }),
     }));
 
     const { login } = await import("../src/lib/auth/login");
 
-    await expect(login({
-      hostname: "127.0.0.1",
-      tokenStorage,
-      signal: controller.signal,
-      openUrl: async () => {
-        expect(redirectUri).toBeDefined();
-        await fetch(`${redirectUri}?code=code_123&state=state_123`);
-      },
-    })).rejects.toBe(reason);
+    await expect(
+      login({
+        hostname: "127.0.0.1",
+        tokenStorage,
+        signal: controller.signal,
+        openUrl: async () => {
+          expect(redirectUri).toBeDefined();
+          await fetch(`${redirectUri}?code=code_123&state=state_123`);
+        },
+      }),
+    ).rejects.toBe(reason);
   });
 });
 

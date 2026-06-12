@@ -18,11 +18,19 @@ export interface CliOutput {
   stderr: Writable;
 }
 
-export function writeJsonSuccess<T>(output: CliOutput, success: CommandSuccess<T>): void {
-  output.stdout.write(`${JSON.stringify({ ok: true, nextActions: [], ...success }, null, 2)}\n`);
+export function writeJsonSuccess<T>(
+  output: CliOutput,
+  success: CommandSuccess<T>,
+): void {
+  output.stdout.write(
+    `${JSON.stringify({ ok: true, nextActions: [], ...success }, null, 2)}\n`,
+  );
 }
 
-export function writeJsonEvent(output: CliOutput, event: Record<string, unknown>): void {
+export function writeJsonEvent(
+  output: CliOutput,
+  event: Record<string, unknown>,
+): void {
   output.stdout.write(`${JSON.stringify(event)}\n`);
 }
 
@@ -41,17 +49,15 @@ export function cliErrorToJson(error: CliError) {
 }
 
 export function formatUnexpectedError(error: unknown, trace: boolean): string {
-  const debug = error instanceof Error
-    ? error.stack ?? error.message
-    : String(error);
+  const debug =
+    error instanceof Error ? (error.stack ?? error.message) : String(error);
 
   if (trace) {
     return `${debug}\n`;
   }
 
-  const message = error instanceof Error && error.message
-    ? error.message
-    : String(error);
+  const message =
+    error instanceof Error && error.message ? error.message : String(error);
 
   return [
     `Unexpected CLI error: ${message}`,
@@ -60,7 +66,11 @@ export function formatUnexpectedError(error: unknown, trace: boolean): string {
   ].join("\n");
 }
 
-export function writeJsonError(output: CliOutput, command: string, error: CliError): void {
+export function writeJsonError(
+  output: CliOutput,
+  command: string,
+  error: CliError,
+): void {
   output.stdout.write(
     `${JSON.stringify(
       {
@@ -103,7 +113,9 @@ export function writeHumanError(
     return;
   }
 
-  const lines = [renderSummaryLine(ui, "error", `${error.summary} [${error.code}]`)];
+  const lines = [
+    renderSummaryLine(ui, "error", `${error.summary} [${error.code}]`),
+  ];
 
   if (error.where) {
     lines.push(...["", `Where: ${error.where}`]);

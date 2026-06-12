@@ -104,7 +104,9 @@ describe("scale-to-zero guard", () => {
   });
 
   it("is a no-op when the control file is unavailable", async () => {
-    configureScaleToZeroControlFileForTests(path.join(os.tmpdir(), "missing-scale-to-zero-file"));
+    configureScaleToZeroControlFileForTests(
+      path.join(os.tmpdir(), "missing-scale-to-zero-file"),
+    );
     const promise = Promise.resolve("done");
 
     expect(waitUntil(promise)).toBeUndefined();

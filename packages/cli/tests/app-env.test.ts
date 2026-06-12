@@ -96,7 +96,11 @@ async function writeLocalPin(cwd: string, projectId = "proj_123") {
 
 async function writeGitHead(cwd: string, branchName: string) {
   await mkdir(path.join(cwd, ".git"), { recursive: true });
-  await writeFile(path.join(cwd, ".git", "HEAD"), `ref: refs/heads/${branchName}\n`, "utf8");
+  await writeFile(
+    path.join(cwd, ".git", "HEAD"),
+    `ref: refs/heads/${branchName}\n`,
+    "utf8",
+  );
 }
 
 async function loadControllers(client: MockClient, projectId: string) {
@@ -127,14 +131,16 @@ async function loadControllers(client: MockClient, projectId: string) {
   return { controllers, createTempCwd, createTestCommandContext };
 }
 
-function makeVariableRow(overrides: Partial<{
-  id: string;
-  key: string;
-  branchId: string | null;
-  class: "production" | "preview";
-  isManagedBySystem: boolean;
-  updatedAt: string;
-}> = {}) {
+function makeVariableRow(
+  overrides: Partial<{
+    id: string;
+    key: string;
+    branchId: string | null;
+    class: "production" | "preview";
+    isManagedBySystem: boolean;
+    updatedAt: string;
+  }> = {},
+) {
   return {
     id: "envvar_v1",
     type: "environment-variable",
@@ -151,12 +157,14 @@ function makeVariableRow(overrides: Partial<{
   };
 }
 
-function makeBranchRow(overrides: Partial<{
-  id: string;
-  gitName: string;
-  role: "production" | "preview";
-  isDefault: boolean;
-}> = {}) {
+function makeBranchRow(
+  overrides: Partial<{
+    id: string;
+    gitName: string;
+    role: "production" | "preview";
+    isDefault: boolean;
+  }> = {},
+) {
   return {
     id: "br_feature",
     gitName: "feature/foo",
@@ -260,15 +268,25 @@ describe("env add", () => {
         data: { data: [], pagination: { hasMore: false, nextCursor: null } },
         response: { status: 200 },
       });
-    client.POST
-      .mockResolvedValueOnce({
-        data: { data: makeVariableRow({ id: "envvar_api", key: "API_URL", class: "preview" }) },
-        response: { status: 201 },
-      })
-      .mockResolvedValueOnce({
-        data: { data: makeVariableRow({ id: "envvar_stripe", key: "STRIPE_KEY", class: "preview" }) },
-        response: { status: 201 },
-      });
+    client.POST.mockResolvedValueOnce({
+      data: {
+        data: makeVariableRow({
+          id: "envvar_api",
+          key: "API_URL",
+          class: "preview",
+        }),
+      },
+      response: { status: 201 },
+    }).mockResolvedValueOnce({
+      data: {
+        data: makeVariableRow({
+          id: "envvar_stripe",
+          key: "STRIPE_KEY",
+          class: "preview",
+        }),
+      },
+      response: { status: 201 },
+    });
 
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
@@ -281,11 +299,10 @@ describe("env add", () => {
     );
     const { context } = await createTestCommandContext({ cwd });
 
-    const result = await controllers.runEnvAdd(
-      context,
-      undefined,
-      { roleName: "preview", filePath: ".env" },
-    );
+    const result = await controllers.runEnvAdd(context, undefined, {
+      roleName: "preview",
+      filePath: ".env",
+    });
 
     expect(client.POST).toHaveBeenNthCalledWith(
       1,
@@ -359,7 +376,7 @@ describe("env add", () => {
         keys: ["STRIPE_KEY"],
       },
       nextSteps: [
-        "# existing keys: \"STRIPE_KEY\"",
+        '# existing keys: "STRIPE_KEY"',
         "prisma-cli project env update --file .env.existing --role preview",
         "# new keys only",
         "prisma-cli project env add --file .env.new --role preview",
@@ -399,7 +416,10 @@ describe("env add", () => {
     const client = createMockClient();
     client.envGET
       .mockResolvedValueOnce({
-        data: { data: [makeBranchRow()], pagination: { hasMore: false, nextCursor: null } },
+        data: {
+          data: [makeBranchRow()],
+          pagination: { hasMore: false, nextCursor: null },
+        },
         response: { status: 200 },
       })
       .mockResolvedValueOnce({
@@ -458,7 +478,10 @@ describe("env add", () => {
     const client = createMockClient();
     client.envGET
       .mockResolvedValueOnce({
-        data: { data: [makeBranchRow()], pagination: { hasMore: false, nextCursor: null } },
+        data: {
+          data: [makeBranchRow()],
+          pagination: { hasMore: false, nextCursor: null },
+        },
         response: { status: 200 },
       })
       .mockResolvedValueOnce({
@@ -484,7 +507,11 @@ describe("env add", () => {
       await loadControllers(client, "proj_123");
     const cwd = await createTempCwd();
     await writeLocalPin(cwd);
-    await writeFile(path.join(cwd, ".env.local"), "DATABASE_URL=postgresql://branch\n", "utf8");
+    await writeFile(
+      path.join(cwd, ".env.local"),
+      "DATABASE_URL=postgresql://branch\n",
+      "utf8",
+    );
     const { context } = await createTestCommandContext({ cwd });
 
     const result = await controllers.runEnvAdd(context, undefined, {
@@ -523,19 +550,23 @@ describe("env add", () => {
         data: { data: [], pagination: { hasMore: false, nextCursor: null } },
         response: { status: 200 },
       });
-    client.POST
-      .mockResolvedValueOnce({
-        data: { data: makeVariableRow({ id: "envvar_api", key: "API_URL", class: "preview" }) },
-        response: { status: 201 },
-      })
-      .mockResolvedValueOnce({
+    client.POST.mockResolvedValueOnce({
+      data: {
+        data: makeVariableRow({
+          id: "envvar_api",
+          key: "API_URL",
+          class: "preview",
+        }),
+      },
+      response: { status: 201 },
+    }).mockResolvedValueOnce({
+      error: {
         error: {
-          error: {
-            message: "Environment variable service is unavailable.",
-          },
+          message: "Environment variable service is unavailable.",
         },
-        response: { status: 503 },
-      });
+      },
+      response: { status: 503 },
+    });
 
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
@@ -577,7 +608,9 @@ describe("env add", () => {
       })
       .mockResolvedValueOnce({
         data: {
-          data: [makeBranchRow({ id: "br_main", gitName: "main", isDefault: true })],
+          data: [
+            makeBranchRow({ id: "br_main", gitName: "main", isDefault: true }),
+          ],
           pagination: { hasMore: false, nextCursor: null },
         },
         response: { status: 200 },
@@ -590,21 +623,19 @@ describe("env add", () => {
         data: { data: [], pagination: { hasMore: false, nextCursor: null } },
         response: { status: 200 },
       });
-    client.POST
-      .mockResolvedValueOnce({
-        data: { data: makeBranchRow({ id: "br_new", gitName: "feature/new" }) },
-        response: { status: 201 },
-      })
-      .mockResolvedValueOnce({
-        data: {
-          data: makeVariableRow({
-            key: "DATABASE_URL",
-            branchId: "br_new",
-            class: "preview",
-          }),
-        },
-        response: { status: 201 },
-      });
+    client.POST.mockResolvedValueOnce({
+      data: { data: makeBranchRow({ id: "br_new", gitName: "feature/new" }) },
+      response: { status: 201 },
+    }).mockResolvedValueOnce({
+      data: {
+        data: makeVariableRow({
+          key: "DATABASE_URL",
+          branchId: "br_new",
+          class: "preview",
+        }),
+      },
+      response: { status: 201 },
+    });
 
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
@@ -635,7 +666,9 @@ describe("env add", () => {
       })
       .mockResolvedValueOnce({
         data: {
-          data: [makeBranchRow({ id: "br_main", gitName: "main", isDefault: true })],
+          data: [
+            makeBranchRow({ id: "br_main", gitName: "main", isDefault: true }),
+          ],
           pagination: { hasMore: false, nextCursor: null },
         },
         response: { status: 200 },
@@ -798,7 +831,9 @@ describe("env update", () => {
       response: { status: 200 },
     });
     client.PATCH.mockResolvedValueOnce({
-      data: { data: makeVariableRow({ updatedAt: "2026-05-08T11:00:00.000Z" }) },
+      data: {
+        data: makeVariableRow({ updatedAt: "2026-05-08T11:00:00.000Z" }),
+      },
       response: { status: 200 },
     });
 
@@ -857,7 +892,10 @@ describe("env update", () => {
     const client = createMockClient();
     client.envGET
       .mockResolvedValueOnce({
-        data: { data: [makeBranchRow()], pagination: { hasMore: false, nextCursor: null } },
+        data: {
+          data: [makeBranchRow()],
+          pagination: { hasMore: false, nextCursor: null },
+        },
         response: { status: 200 },
       })
       .mockResolvedValueOnce({
@@ -892,11 +930,9 @@ describe("env update", () => {
     await writeLocalPin(cwd);
     const { context } = await createTestCommandContext({ cwd });
 
-    await controllers.runEnvUpdate(
-      context,
-      "DATABASE_URL=postgresql://new",
-      { branchName: "feature/foo" },
-    );
+    await controllers.runEnvUpdate(context, "DATABASE_URL=postgresql://new", {
+      branchName: "feature/foo",
+    });
 
     expect(client.PATCH).toHaveBeenCalledWith(
       "/v1/environment-variables/{envVarId}",
@@ -912,27 +948,49 @@ describe("env update", () => {
     client.envGET
       .mockResolvedValueOnce({
         data: {
-          data: [makeVariableRow({ id: "envvar_api", key: "API_URL", class: "preview" })],
+          data: [
+            makeVariableRow({
+              id: "envvar_api",
+              key: "API_URL",
+              class: "preview",
+            }),
+          ],
           pagination: { hasMore: false, nextCursor: null },
         },
         response: { status: 200 },
       })
       .mockResolvedValueOnce({
         data: {
-          data: [makeVariableRow({ id: "envvar_stripe", key: "STRIPE_KEY", class: "preview" })],
+          data: [
+            makeVariableRow({
+              id: "envvar_stripe",
+              key: "STRIPE_KEY",
+              class: "preview",
+            }),
+          ],
           pagination: { hasMore: false, nextCursor: null },
         },
         response: { status: 200 },
       });
-    client.PATCH
-      .mockResolvedValueOnce({
-        data: { data: makeVariableRow({ id: "envvar_api", key: "API_URL", class: "preview" }) },
-        response: { status: 200 },
-      })
-      .mockResolvedValueOnce({
-        data: { data: makeVariableRow({ id: "envvar_stripe", key: "STRIPE_KEY", class: "preview" }) },
-        response: { status: 200 },
-      });
+    client.PATCH.mockResolvedValueOnce({
+      data: {
+        data: makeVariableRow({
+          id: "envvar_api",
+          key: "API_URL",
+          class: "preview",
+        }),
+      },
+      response: { status: 200 },
+    }).mockResolvedValueOnce({
+      data: {
+        data: makeVariableRow({
+          id: "envvar_stripe",
+          key: "STRIPE_KEY",
+          class: "preview",
+        }),
+      },
+      response: { status: 200 },
+    });
 
     const { controllers, createTempCwd, createTestCommandContext } =
       await loadControllers(client, "proj_123");
@@ -981,7 +1039,13 @@ describe("env update", () => {
     client.envGET
       .mockResolvedValueOnce({
         data: {
-          data: [makeVariableRow({ id: "envvar_api", key: "API_URL", class: "preview" })],
+          data: [
+            makeVariableRow({
+              id: "envvar_api",
+              key: "API_URL",
+              class: "preview",
+            }),
+          ],
           pagination: { hasMore: false, nextCursor: null },
         },
         response: { status: 200 },
@@ -1013,7 +1077,7 @@ describe("env update", () => {
         keys: ["STRIPE_KEY"],
       },
       nextSteps: [
-        "# missing keys: \"STRIPE_KEY\"",
+        '# missing keys: "STRIPE_KEY"',
         "prisma-cli project env add --file .env.new --role preview",
         "# existing keys only",
         "prisma-cli project env update --file .env.existing --role preview",
@@ -1092,7 +1156,13 @@ describe("env list", () => {
     client.envGET
       .mockResolvedValueOnce({
         data: {
-          data: [makeBranchRow({ id: "br_feature", gitName: "feature/foo", role: "preview" })],
+          data: [
+            makeBranchRow({
+              id: "br_feature",
+              gitName: "feature/foo",
+              role: "preview",
+            }),
+          ],
           pagination: { hasMore: false, nextCursor: null },
         },
         response: { status: 200 },
@@ -1160,12 +1230,18 @@ describe("env list", () => {
       branchExists: true,
       envMap: "preview",
     });
-    expect(result.result.variables.map((variable) => ({
-      key: variable.key,
-      id: variable.id,
-      source: variable.source,
-    }))).toEqual([
-      { key: "DATABASE_URL", id: "envvar_branch", source: "branch:feature/foo" },
+    expect(
+      result.result.variables.map((variable) => ({
+        key: variable.key,
+        id: variable.id,
+        source: variable.source,
+      })),
+    ).toEqual([
+      {
+        key: "DATABASE_URL",
+        id: "envvar_branch",
+        source: "branch:feature/foo",
+      },
     ]);
   });
 
@@ -1174,19 +1250,27 @@ describe("env list", () => {
     client.envGET
       .mockResolvedValueOnce({
         data: {
-          data: [makeBranchRow({
-            id: "br_main",
-            gitName: "main",
-            role: "production",
-            isDefault: true,
-          })],
+          data: [
+            makeBranchRow({
+              id: "br_main",
+              gitName: "main",
+              role: "production",
+              isDefault: true,
+            }),
+          ],
           pagination: { hasMore: false, nextCursor: null },
         },
         response: { status: 200 },
       })
       .mockResolvedValueOnce({
         data: {
-          data: [makeVariableRow({ id: "envvar_prod", key: "STRIPE_KEY", class: "production" })],
+          data: [
+            makeVariableRow({
+              id: "envvar_prod",
+              key: "STRIPE_KEY",
+              class: "production",
+            }),
+          ],
           pagination: { hasMore: false, nextCursor: null },
         },
         response: { status: 200 },
@@ -1221,12 +1305,12 @@ describe("env list", () => {
       branchExists: true,
       envMap: "production",
     });
-    expect(result.result.variables.map((variable) => ({
-      key: variable.key,
-      source: variable.source,
-    }))).toEqual([
-      { key: "STRIPE_KEY", source: "production" },
-    ]);
+    expect(
+      result.result.variables.map((variable) => ({
+        key: variable.key,
+        source: variable.source,
+      })),
+    ).toEqual([{ key: "STRIPE_KEY", source: "production" }]);
   });
 
   it("shows preview template metadata when the active Git branch has no Platform branch yet", async () => {
@@ -1273,12 +1357,12 @@ describe("env list", () => {
       branchExists: false,
       envMap: "preview",
     });
-    expect(result.result.variables.map((variable) => ({
-      key: variable.key,
-      source: variable.source,
-    }))).toEqual([
-      { key: "API_URL", source: "preview" },
-    ]);
+    expect(
+      result.result.variables.map((variable) => ({
+        key: variable.key,
+        source: variable.source,
+      })),
+    ).toEqual([{ key: "API_URL", source: "preview" }]);
   });
 
   it("shows a production and preview overview when no local Git branch exists", async () => {
@@ -1286,8 +1370,16 @@ describe("env list", () => {
     client.envGET.mockResolvedValueOnce({
       data: {
         data: [
-          makeVariableRow({ id: "envvar_preview", key: "API_URL", class: "preview" }),
-          makeVariableRow({ id: "envvar_prod", key: "STRIPE_KEY", class: "production" }),
+          makeVariableRow({
+            id: "envvar_preview",
+            key: "API_URL",
+            class: "preview",
+          }),
+          makeVariableRow({
+            id: "envvar_prod",
+            key: "STRIPE_KEY",
+            class: "production",
+          }),
           makeVariableRow({
             id: "envvar_branch",
             key: "DATABASE_URL",
@@ -1323,10 +1415,12 @@ describe("env list", () => {
       source: "overview",
       envMap: "overview",
     });
-    expect(result.result.variables.map((variable) => ({
-      key: variable.key,
-      source: variable.source,
-    }))).toEqual([
+    expect(
+      result.result.variables.map((variable) => ({
+        key: variable.key,
+        source: variable.source,
+      })),
+    ).toEqual([
       { key: "STRIPE_KEY", source: "production" },
       { key: "API_URL", source: "preview" },
     ]);
@@ -1336,7 +1430,10 @@ describe("env list", () => {
     const client = createMockClient();
     client.envGET
       .mockResolvedValueOnce({
-        data: { data: [makeBranchRow()], pagination: { hasMore: false, nextCursor: null } },
+        data: {
+          data: [makeBranchRow()],
+          pagination: { hasMore: false, nextCursor: null },
+        },
         response: { status: 200 },
       })
       .mockResolvedValueOnce({
@@ -1389,13 +1486,19 @@ describe("env list", () => {
       branchExists: true,
       envMap: "preview",
     });
-    expect(result.result.variables.map((variable) => ({
-      key: variable.key,
-      id: variable.id,
-      source: variable.source,
-    }))).toEqual([
+    expect(
+      result.result.variables.map((variable) => ({
+        key: variable.key,
+        id: variable.id,
+        source: variable.source,
+      })),
+    ).toEqual([
       { key: "API_URL", id: "envvar_api", source: "preview" },
-      { key: "DATABASE_URL", id: "envvar_branch", source: "branch:feature/foo" },
+      {
+        key: "DATABASE_URL",
+        id: "envvar_branch",
+        source: "branch:feature/foo",
+      },
     ]);
   });
 });
@@ -1466,7 +1569,10 @@ describe("env remove", () => {
     const client = createMockClient();
     client.envGET
       .mockResolvedValueOnce({
-        data: { data: [makeBranchRow()], pagination: { hasMore: false, nextCursor: null } },
+        data: {
+          data: [makeBranchRow()],
+          pagination: { hasMore: false, nextCursor: null },
+        },
         response: { status: 200 },
       })
       .mockResolvedValueOnce({

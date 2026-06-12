@@ -1,18 +1,32 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
-import { authRequiredError, CliError, workspaceRequiredError } from "../shell/errors";
+import {
+  authRequiredError,
+  CliError,
+  workspaceRequiredError,
+} from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
 import type { CommandContext } from "../shell/runtime";
-import type { BranchListResult, BranchRole, BranchSummary } from "../types/branch";
+import type {
+  BranchListResult,
+  BranchRole,
+  BranchSummary,
+} from "../types/branch";
 import { createCliUseCaseGateways } from "../use-cases/create-cli-gateways";
 import { createBranchUseCases } from "../use-cases/branch";
 import { requireComputeAuth } from "../lib/auth/guard";
-import { projectResolutionErrorToCliError, resolveProjectTarget } from "../lib/project/resolution";
+import {
+  projectResolutionErrorToCliError,
+  resolveProjectTarget,
+} from "../lib/project/resolution";
 import { requireAuthenticatedAuthState } from "./auth";
 import { listRealWorkspaceProjects } from "./project";
 
 function isRealMode(context: CommandContext): boolean {
-  return !context.runtime.fixturePath && !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH;
+  return (
+    !context.runtime.fixturePath &&
+    !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH
+  );
 }
 
 interface RawBranchRecord {
@@ -21,7 +35,9 @@ interface RawBranchRecord {
   role: BranchRole;
 }
 
-export async function runBranchList(context: CommandContext): Promise<CommandSuccess<BranchListResult>> {
+export async function runBranchList(
+  context: CommandContext,
+): Promise<CommandSuccess<BranchListResult>> {
   if (isRealMode(context)) {
     return {
       command: "branch.list",
@@ -42,9 +58,14 @@ export async function runBranchList(context: CommandContext): Promise<CommandSuc
   };
 }
 
-async function listRealBranches(context: CommandContext): Promise<BranchListResult> {
+async function listRealBranches(
+  context: CommandContext,
+): Promise<BranchListResult> {
   const authState = await requireAuthenticatedAuthState(context);
-  const client = await requireComputeAuth(context.runtime.env, context.runtime.signal);
+  const client = await requireComputeAuth(
+    context.runtime.env,
+    context.runtime.signal,
+  );
   if (!client) {
     throw authRequiredError(["prisma-cli auth login"]);
   }
@@ -57,14 +78,19 @@ async function listRealBranches(context: CommandContext): Promise<BranchListResu
   const targetResult = await resolveProjectTarget({
     context,
     workspace,
-    listProjects: () => listRealWorkspaceProjects(client, workspace, context.runtime.signal),
+    listProjects: () =>
+      listRealWorkspaceProjects(client, workspace, context.runtime.signal),
   });
   if (targetResult.isErr()) {
     throw projectResolutionErrorToCliError(targetResult.error);
   }
   const target = targetResult.value;
 
-  const branches = await listBranches(client, target.project.id, context.runtime.signal);
+  const branches = await listBranches(
+    client,
+    target.project.id,
+    context.runtime.signal,
+  );
 
   return {
     projectId: target.project.id,
@@ -110,15 +136,18 @@ async function listBranches(
       query.cursor = cursor;
     }
 
-    const { data, error, response } = await client.GET("/v1/projects/{projectId}/branches", {
-      params: { path: { projectId }, query },
-      signal,
-    });
+    const { data, error, response } = await client.GET(
+      "/v1/projects/{projectId}/branches",
+      {
+        params: { path: { projectId }, query },
+        signal,
+      },
+    );
     if (error || !data) {
       throw branchApiError("Failed to list branches", response, error);
     }
 
-    collected.push(...data.data as RawBranchRecord[]);
+    collected.push(...(data.data as RawBranchRecord[]));
 
     if (!data.pagination.hasMore || !data.pagination.nextCursor) {
       break;
@@ -156,8 +185,12 @@ function branchApiError(
     code: error?.error?.code ?? "BRANCH_API_ERROR",
     domain: "branch",
     summary,
-    why: error?.error?.message ?? `The Management API returned status ${status || "unknown"}.`,
-    fix: error?.error?.hint ?? "Re-run with --trace for the underlying API response details.",
+    why:
+      error?.error?.message ??
+      `The Management API returned status ${status || "unknown"}.`,
+    fix:
+      error?.error?.hint ??
+      "Re-run with --trace for the underlying API response details.",
     exitCode: 1,
     nextSteps: [],
   });

@@ -21,28 +21,27 @@ body {
 
 body {
   background:
-    radial-gradient(circle at top left, rgba(42, 125, 99, 0.18), transparent 28rem),
-    radial-gradient(circle at bottom right, rgba(197, 123, 74, 0.16), transparent 30rem),
+    radial-gradient(
+      circle at top left,
+      rgba(42, 125, 99, 0.18),
+      transparent 28rem
+    ),
+    radial-gradient(
+      circle at bottom right,
+      rgba(197, 123, 74, 0.16),
+      transparent 30rem
+    ),
     var(--bg);
   color: var(--text);
   font-family:
-    "Iowan Old Style",
-    "Palatino Linotype",
-    "Book Antiqua",
-    Palatino,
-    Georgia,
+    "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia,
     serif;
 }
 
 code {
   font-family:
-    "SFMono-Regular",
-    ui-monospace,
-    "Cascadia Mono",
-    "Segoe UI Mono",
-    Menlo,
-    Consolas,
-    monospace;
+    "SFMono-Regular", ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo,
+    Consolas, monospace;
   background: rgba(42, 44, 39, 0.06);
   border-radius: 0.5rem;
   padding: 0.12rem 0.4rem;

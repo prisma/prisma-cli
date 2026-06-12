@@ -9,7 +9,10 @@ import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
 import type { VersionResult } from "../../types/version";
 
 export function createVersionCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("version"), runtime), "version");
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("version"), runtime),
+    "version",
+  );
 
   addGlobalFlags(command);
 
@@ -20,7 +23,8 @@ export function createVersionCommand(runtime: CliRuntime): Command {
       options as Record<string, unknown>,
       (context) => runVersion(context),
       {
-        renderHuman: (context, descriptor, result) => renderVersionSuccess(context, descriptor, result),
+        renderHuman: (context, descriptor, result) =>
+          renderVersionSuccess(context, descriptor, result),
       },
     );
   });

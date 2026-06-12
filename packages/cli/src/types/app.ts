@@ -161,7 +161,12 @@ export type AppDomainStatus =
   | "failed"
   | "removing";
 
-export type AppDomainFailureCategory = "dns" | "acme" | "storage" | "unknown" | null;
+export type AppDomainFailureCategory =
+  | "dns"
+  | "acme"
+  | "storage"
+  | "unknown"
+  | null;
 
 export interface AppDomainDnsRecord {
   type: string;

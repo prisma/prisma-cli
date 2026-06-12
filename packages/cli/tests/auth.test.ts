@@ -160,7 +160,9 @@ describe("auth commands", () => {
     const stderr = stripAnsi(result.stderr);
 
     expect(result.exitCode).toBe(0);
-    expect(stderr).toContain("auth whoami → Showing the current authenticated identity.");
+    expect(stderr).toContain(
+      "auth whoami → Showing the current authenticated identity.",
+    );
     expect(stderr).not.toContain("Read more");
     expect(stderr).toContain("status:  signed out");
   });

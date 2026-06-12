@@ -1,6 +1,12 @@
 import type { NextAction } from "./next-actions";
 
-export type ErrorDomain = "cli" | "auth" | "project" | "branch" | "app" | "database";
+export type ErrorDomain =
+  | "cli"
+  | "auth"
+  | "project"
+  | "branch"
+  | "app"
+  | "database";
 export type ErrorSeverity = "error";
 
 export interface CliErrorOptions {
@@ -51,9 +57,10 @@ export class CliError extends Error {
     this.exitCode = options.exitCode ?? 1;
     this.nextSteps = options.nextSteps ?? [];
     this.nextActions = options.nextActions ?? [];
-    this.humanLines = options.humanLines && options.humanLines.length > 0
-      ? [...options.humanLines]
-      : null;
+    this.humanLines =
+      options.humanLines && options.humanLines.length > 0
+        ? [...options.humanLines]
+        : null;
   }
 }
 

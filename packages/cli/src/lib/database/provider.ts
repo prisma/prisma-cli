@@ -1,7 +1,10 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
 import { CliError } from "../../shell/errors";
-import type { DatabaseConnectionSummary, DatabaseSummary } from "../../types/database";
+import type {
+  DatabaseConnectionSummary,
+  DatabaseSummary,
+} from "../../types/database";
 
 export interface DatabaseCreateInput {
   projectId: string;
@@ -34,15 +37,29 @@ export interface DatabaseProvider {
     branchName?: string;
     signal?: AbortSignal;
   }): Promise<DatabaseSummary[]>;
-  showDatabase(databaseId: string, options?: {
-    projectId?: string;
-    signal?: AbortSignal;
-  }): Promise<DatabaseSummary | null>;
+  showDatabase(
+    databaseId: string,
+    options?: {
+      projectId?: string;
+      signal?: AbortSignal;
+    },
+  ): Promise<DatabaseSummary | null>;
   createDatabase(options: DatabaseCreateInput): Promise<DatabaseCreateRecord>;
-  removeDatabase(databaseId: string, options?: { signal?: AbortSignal }): Promise<void>;
-  listConnections(databaseId: string, options?: { signal?: AbortSignal }): Promise<DatabaseConnectionSummary[]>;
-  createConnection(options: DatabaseConnectionCreateInput): Promise<DatabaseConnectionCreateRecord>;
-  removeConnection(connectionId: string, options?: { signal?: AbortSignal }): Promise<void>;
+  removeDatabase(
+    databaseId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<void>;
+  listConnections(
+    databaseId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<DatabaseConnectionSummary[]>;
+  createConnection(
+    options: DatabaseConnectionCreateInput,
+  ): Promise<DatabaseConnectionCreateRecord>;
+  removeConnection(
+    connectionId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<void>;
 }
 
 interface RawApiErrorBody {
@@ -97,7 +114,9 @@ interface RawDatabaseRecord {
   connections?: RawDatabaseConnectionRecord[] | null;
 }
 
-export function createManagementDatabaseProvider(client: ManagementApiClient): DatabaseProvider {
+export function createManagementDatabaseProvider(
+  client: ManagementApiClient,
+): DatabaseProvider {
   return {
     async listDatabases(options) {
       const databases: RawDatabaseRecord[] = [];
@@ -116,18 +135,27 @@ export function createManagementDatabaseProvider(client: ManagementApiClient): D
           signal: options.signal,
         });
         if (result.error || !result.data) {
-          throw databaseApiError("Failed to list databases", result.response, result.error);
+          throw databaseApiError(
+            "Failed to list databases",
+            result.response,
+            result.error,
+          );
         }
 
-        databases.push(...result.data.data as RawDatabaseRecord[]);
+        databases.push(...(result.data.data as RawDatabaseRecord[]));
 
-        if (!result.data.pagination.hasMore || !result.data.pagination.nextCursor) {
+        if (
+          !result.data.pagination.hasMore ||
+          !result.data.pagination.nextCursor
+        ) {
           break;
         }
         cursor = result.data.pagination.nextCursor;
       }
 
-      return databases.map((database) => normalizeDatabase(database, options.projectId));
+      return databases.map((database) =>
+        normalizeDatabase(database, options.projectId),
+      );
     },
 
     async showDatabase(databaseId, options) {
@@ -141,11 +169,18 @@ export function createManagementDatabaseProvider(client: ManagementApiClient): D
         return null;
       }
       if (result.error || !result.data) {
-        throw databaseApiError("Failed to show database", result.response, result.error);
+        throw databaseApiError(
+          "Failed to show database",
+          result.response,
+          result.error,
+        );
       }
 
       const database = result.data.data as RawDatabaseRecord;
-      return normalizeDatabase(database, requireDatabaseProjectId(database, options?.projectId));
+      return normalizeDatabase(
+        database,
+        requireDatabaseProjectId(database, options?.projectId),
+      );
     },
 
     async createDatabase(options) {
@@ -160,10 +195,17 @@ export function createManagementDatabaseProvider(client: ManagementApiClient): D
         signal: options.signal,
       });
       if (result.error || !result.data) {
-        throw databaseApiError("Failed to create database", result.response, result.error);
+        throw databaseApiError(
+          "Failed to create database",
+          result.response,
+          result.error,
+        );
       }
 
-      return normalizeCreatedDatabase(result.data.data as RawDatabaseRecord, options.projectId);
+      return normalizeCreatedDatabase(
+        result.data.data as RawDatabaseRecord,
+        options.projectId,
+      );
     },
 
     async removeDatabase(databaseId, options) {
@@ -174,39 +216,62 @@ export function createManagementDatabaseProvider(client: ManagementApiClient): D
         signal: options?.signal,
       });
       if (result.error) {
-        throw databaseApiError("Failed to remove database", result.response, result.error);
+        throw databaseApiError(
+          "Failed to remove database",
+          result.response,
+          result.error,
+        );
       }
     },
 
     async listConnections(databaseId, options) {
-      const result = await client.GET("/v1/databases/{databaseId}/connections", {
-        params: {
-          path: { databaseId },
+      const result = await client.GET(
+        "/v1/databases/{databaseId}/connections",
+        {
+          params: {
+            path: { databaseId },
+          },
+          signal: options?.signal,
         },
-        signal: options?.signal,
-      });
+      );
       if (result.error || !result.data) {
-        throw databaseApiError("Failed to list database connections", result.response, result.error);
+        throw databaseApiError(
+          "Failed to list database connections",
+          result.response,
+          result.error,
+        );
       }
 
-      return (result.data.data as RawDatabaseConnectionRecord[]).map((connection) => normalizeConnection(connection, databaseId));
+      return (result.data.data as RawDatabaseConnectionRecord[]).map(
+        (connection) => normalizeConnection(connection, databaseId),
+      );
     },
 
     async createConnection(options) {
-      const result = await client.POST("/v1/databases/{databaseId}/connections", {
-        params: {
-          path: { databaseId: options.databaseId },
+      const result = await client.POST(
+        "/v1/databases/{databaseId}/connections",
+        {
+          params: {
+            path: { databaseId: options.databaseId },
+          },
+          body: {
+            name: options.name,
+          } as never,
+          signal: options.signal,
         },
-        body: {
-          name: options.name,
-        } as never,
-        signal: options.signal,
-      });
+      );
       if (result.error || !result.data) {
-        throw databaseApiError("Failed to create database connection", result.response, result.error);
+        throw databaseApiError(
+          "Failed to create database connection",
+          result.response,
+          result.error,
+        );
       }
 
-      return normalizeCreatedConnection(result.data.data as RawDatabaseConnectionRecord, options.databaseId);
+      return normalizeCreatedConnection(
+        result.data.data as RawDatabaseConnectionRecord,
+        options.databaseId,
+      );
     },
 
     async removeConnection(connectionId, options) {
@@ -217,19 +282,31 @@ export function createManagementDatabaseProvider(client: ManagementApiClient): D
         signal: options?.signal,
       });
       if (result.error) {
-        throw databaseApiError("Failed to remove database connection", result.response, result.error);
+        throw databaseApiError(
+          "Failed to remove database connection",
+          result.response,
+          result.error,
+        );
       }
     },
   };
 }
 
-export function normalizeDatabase(database: RawDatabaseRecord, fallbackProjectId: string): DatabaseSummary {
+export function normalizeDatabase(
+  database: RawDatabaseRecord,
+  fallbackProjectId: string,
+): DatabaseSummary {
   return {
     id: database.id,
     name: database.name,
     projectId: database.projectId ?? fallbackProjectId,
     branchId: database.branchId ?? database.branch?.id ?? null,
-    branchName: database.branchGitName ?? database.branchName ?? database.branch?.gitName ?? database.branch?.name ?? null,
+    branchName:
+      database.branchGitName ??
+      database.branchName ??
+      database.branch?.gitName ??
+      database.branch?.name ??
+      null,
     region: normalizeRegion(database),
     status: database.status ?? null,
     isDefault: database.isDefault ?? null,
@@ -249,7 +326,10 @@ export function normalizeConnection(
   };
 }
 
-export function normalizeCreatedDatabase(database: RawDatabaseRecord, fallbackProjectId: string): DatabaseCreateRecord {
+export function normalizeCreatedDatabase(
+  database: RawDatabaseRecord,
+  fallbackProjectId: string,
+): DatabaseCreateRecord {
   const rawConnection = database.connections?.[0];
   if (!rawConnection) {
     throw new CliError({
@@ -282,7 +362,9 @@ export function normalizeCreatedConnection(
       why: "Database connection strings are one-time-view secrets, but the Management API did not include one in this create response.",
       fix: "Create another database connection and store the returned URL immediately.",
       exitCode: 1,
-      nextSteps: [`prisma-cli database connection create ${fallbackDatabaseId}`],
+      nextSteps: [
+        `prisma-cli database connection create ${fallbackDatabaseId}`,
+      ],
     });
   }
 
@@ -299,7 +381,10 @@ function normalizeRegion(database: RawDatabaseRecord): string | null {
   return database.region?.id ?? database.regionId ?? null;
 }
 
-function requireDatabaseProjectId(database: RawDatabaseRecord, fallbackProjectId: string | undefined): string {
+function requireDatabaseProjectId(
+  database: RawDatabaseRecord,
+  fallbackProjectId: string | undefined,
+): string {
   const projectId = database.projectId ?? fallbackProjectId;
   if (projectId) {
     return projectId;
@@ -316,12 +401,16 @@ function requireDatabaseProjectId(database: RawDatabaseRecord, fallbackProjectId
   });
 }
 
-function extractConnectionString(connection: RawDatabaseConnectionRecord): string | null {
-  return connection.endpoints?.pooled?.connectionString
-    ?? connection.connectionString
-    ?? connection.endpoints?.direct?.connectionString
-    ?? connection.endpoints?.accelerate?.connectionString
-    ?? null;
+function extractConnectionString(
+  connection: RawDatabaseConnectionRecord,
+): string | null {
+  return (
+    connection.endpoints?.pooled?.connectionString ??
+    connection.connectionString ??
+    connection.endpoints?.direct?.connectionString ??
+    connection.endpoints?.accelerate?.connectionString ??
+    null
+  );
 }
 
 function databaseApiError(
@@ -334,8 +423,12 @@ function databaseApiError(
     code: error?.error?.code ?? "DATABASE_API_ERROR",
     domain: "database",
     summary,
-    why: error?.error?.message ?? `The Management API returned status ${status || "unknown"}.`,
-    fix: error?.error?.hint ?? "Re-run with --trace for the underlying API response details.",
+    why:
+      error?.error?.message ??
+      `The Management API returned status ${status || "unknown"}.`,
+    fix:
+      error?.error?.hint ??
+      "Re-run with --trace for the underlying API response details.",
     exitCode: 1,
     nextSteps: [],
   });

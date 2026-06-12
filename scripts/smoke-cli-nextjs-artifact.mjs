@@ -6,7 +6,10 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 const cliPath = path.join(repoRoot, "packages/cli/dist/cli.js");
 const fixturePath = path.join(repoRoot, "examples/next-smoke");
 
@@ -24,7 +27,9 @@ try {
     "node_modules/next/dist/shared/lib/constants.js",
   );
   const requireFromNext = createRequire(constantsPath);
-  const resolved = requireFromNext.resolve("@swc/helpers/_/_interop_require_default");
+  const resolved = requireFromNext.resolve(
+    "@swc/helpers/_/_interop_require_default",
+  );
 
   process.stdout.write(`Next.js artifact smoke passed: ${resolved}\n`);
 } finally {
@@ -38,7 +43,9 @@ async function runFixtureInstall() {
   });
 
   if (exit !== 0) {
-    throw new Error(`Next.js smoke fixture install failed with exit code ${exit}`);
+    throw new Error(
+      `Next.js smoke fixture install failed with exit code ${exit}`,
+    );
   }
 }
 

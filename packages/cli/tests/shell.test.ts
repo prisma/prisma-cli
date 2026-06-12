@@ -21,8 +21,12 @@ describe("shell behavior", () => {
     const error = new Error("boom");
     error.stack = "Error: boom\n    at explode";
 
-    expect(formatUnexpectedError(error, false)).toContain("Unexpected CLI error: boom");
-    expect(formatUnexpectedError(error, false)).toContain("More: Re-run with --trace");
+    expect(formatUnexpectedError(error, false)).toContain(
+      "Unexpected CLI error: boom",
+    );
+    expect(formatUnexpectedError(error, false)).toContain(
+      "More: Re-run with --trace",
+    );
     expect(formatUnexpectedError(error, false)).not.toContain("at explode");
     expect(formatUnexpectedError(error, true)).toContain("at explode");
   });
@@ -39,7 +43,9 @@ describe("shell behavior", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain("prisma → The Prisma Developer Platform, from your terminal");
+    expect(result.stderr).toContain(
+      "prisma → The Prisma Developer Platform, from your terminal",
+    );
     expect(result.stderr).toContain("auth");
     expect(result.stderr).toContain("project");
     expect(result.stderr).toContain("Global options:");
@@ -50,9 +56,13 @@ describe("shell behavior", () => {
     expect(result.stderr).not.toContain("--color");
     expect(result.stderr).toContain("$ prisma-cli auth login");
 
-    const commandMatch = result.stderr.match(/app\s+Manage apps and deployments for a project/);
+    const commandMatch = result.stderr.match(
+      /app\s+Manage apps and deployments for a project/,
+    );
     const commandIndex = commandMatch?.index ?? -1;
-    const descriptionIndex = result.stderr.indexOf("Deploy your app with isolated infrastructure for every branch");
+    const descriptionIndex = result.stderr.indexOf(
+      "Deploy your app with isolated infrastructure for every branch",
+    );
     const globalOptionsIndex = result.stderr.indexOf("Global options:");
     const examplesIndex = result.stderr.indexOf("Examples:");
 
@@ -98,10 +108,14 @@ describe("shell behavior", () => {
     });
 
     expect(rootResult.exitCode).toBe(0);
-    expect(rootResult.stderr).toContain("prisma → The Prisma Developer Platform, from your terminal");
+    expect(rootResult.stderr).toContain(
+      "prisma → The Prisma Developer Platform, from your terminal",
+    );
 
     expect(authResult.exitCode).toBe(0);
-    expect(authResult.stderr).toContain("auth → Manage local authentication for the CLI");
+    expect(authResult.stderr).toContain(
+      "auth → Manage local authentication for the CLI",
+    );
     expect(authResult.stderr).toContain("Global options:");
     expect(authResult.stderr).toContain("--json");
     expect(authResult.stderr).toContain("--no-interactive");
@@ -109,15 +123,21 @@ describe("shell behavior", () => {
     expect(authResult.stderr).not.toContain("--color");
 
     expect(projectResult.exitCode).toBe(0);
-    expect(projectResult.stderr).toContain("project → Manage and inspect your Prisma projects");
+    expect(projectResult.stderr).toContain(
+      "project → Manage and inspect your Prisma projects",
+    );
     expect(projectResult.stderr).toContain("Global options:");
 
     expect(branchResult.exitCode).toBe(0);
-    expect(branchResult.stderr).toContain("branch → View your Platform branches");
+    expect(branchResult.stderr).toContain(
+      "branch → View your Platform branches",
+    );
     expect(branchResult.stderr).toContain("Global options:");
 
     expect(databaseResult.exitCode).toBe(0);
-    expect(databaseResult.stderr).toContain("database → Manage Prisma Postgres databases for a project");
+    expect(databaseResult.stderr).toContain(
+      "database → Manage Prisma Postgres databases for a project",
+    );
     expect(databaseResult.stderr).toContain("Global options:");
   });
 

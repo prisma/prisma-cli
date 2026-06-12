@@ -30,15 +30,19 @@ describe("app env presenters", () => {
       ],
     };
 
-    const human = stripAnsi(renderEnvList(
-      context,
-      getCommandDescriptor("project.env.list"),
-      result,
-    ).join("\n"));
+    const human = stripAnsi(
+      renderEnvList(
+        context,
+        getCommandDescriptor("project.env.list"),
+        result,
+      ).join("\n"),
+    );
     const json = serializeEnvList(result);
 
     expect(human).toContain("target:");
-    expect(human).toContain("branch:feature/not-created -> preview (not created yet)");
+    expect(human).toContain(
+      "branch:feature/not-created -> preview (not created yet)",
+    );
     expect(json).toMatchObject({
       projectId: "proj_123",
       scope: { kind: "role", role: "preview" },

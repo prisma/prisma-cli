@@ -25,7 +25,8 @@ export async function createUseCaseGateways(options?: {
       identityGateway: {
         listProviders: () => api.listProviders(),
         getProvider: (providerId) => api.getProvider(providerId),
-        listUsersForProvider: (providerId) => api.listUsersForProvider(providerId).map(toAuthUser),
+        listUsersForProvider: (providerId) =>
+          api.listUsersForProvider(providerId).map(toAuthUser),
         getUser: (userId) => {
           const user = api.getUser(userId);
           return user ? toAuthUser(user) : undefined;
@@ -34,7 +35,8 @@ export async function createUseCaseGateways(options?: {
           const user = api.getUserForProvider(providerId, userId);
           return user ? toAuthUser(user) : undefined;
         },
-        listUserWorkspaces: (userId) => api.listUserWorkspaces(userId).map(toAuthWorkspace),
+        listUserWorkspaces: (userId) =>
+          api.listUserWorkspaces(userId).map(toAuthWorkspace),
         getWorkspace: (workspaceId) => {
           const workspace = api.getWorkspace(workspaceId);
           return workspace ? toAuthWorkspace(workspace) : undefined;
@@ -45,12 +47,15 @@ export async function createUseCaseGateways(options?: {
         },
       },
       projectGateway: {
-        listProjectsForWorkspace: (workspaceId) => api.listProjectsForWorkspace(workspaceId),
+        listProjectsForWorkspace: (workspaceId) =>
+          api.listProjectsForWorkspace(workspaceId),
         getProject: (projectId) => api.getProject(projectId),
-        getProjectForWorkspace: (workspaceId, projectId) => api.getProjectForWorkspace(workspaceId, projectId),
+        getProjectForWorkspace: (workspaceId, projectId) =>
+          api.getProjectForWorkspace(workspaceId, projectId),
       },
       branchGateway: {
-        listBranchesForProject: (projectId) => api.listBranchesForProject(projectId),
+        listBranchesForProject: (projectId) =>
+          api.listBranchesForProject(projectId),
         getBranchForProject: (projectId, name) => {
           return api.getBranchForProject(projectId, name);
         },

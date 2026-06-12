@@ -25,7 +25,8 @@ describe("prepare cli publish", () => {
           name: "@prisma/cli",
           private: true,
           version: "3.0.0-development",
-          description: "Command-line interface for the Prisma Developer Platform.",
+          description:
+            "Command-line interface for the Prisma Developer Platform.",
           type: "module",
           engines: {
             node: ">=20",
@@ -50,11 +51,21 @@ describe("prepare cli publish", () => {
       ),
       "utf8",
     );
-    await writeFile(path.join(sourceDir, "README.md"), "# Test package\n", "utf8");
-    await writeFile(path.join(sourceDir, "dist/cli.js"), "#!/usr/bin/env node\nconsole.log('ok')\n", "utf8");
+    await writeFile(
+      path.join(sourceDir, "README.md"),
+      "# Test package\n",
+      "utf8",
+    );
+    await writeFile(
+      path.join(sourceDir, "dist/cli.js"),
+      "#!/usr/bin/env node\nconsole.log('ok')\n",
+      "utf8",
+    );
 
     const stagedPath = await stageCliPublishPackage({ sourceDir, outputDir });
-    const manifest = JSON.parse(await readFile(path.join(stagedPath, "package.json"), "utf8"));
+    const manifest = JSON.parse(
+      await readFile(path.join(stagedPath, "package.json"), "utf8"),
+    );
 
     expect(stagedPath).toBe(outputDir);
     expect(manifest).toEqual({
@@ -103,7 +114,8 @@ describe("prepare cli publish", () => {
         {
           name: "@prisma/cli",
           version: "3.0.0-development",
-          description: "Command-line interface for the Prisma Developer Platform.",
+          description:
+            "Command-line interface for the Prisma Developer Platform.",
           type: "module",
           dependencies: {},
         },
@@ -112,15 +124,25 @@ describe("prepare cli publish", () => {
       ),
       "utf8",
     );
-    await writeFile(path.join(sourceDir, "README.md"), "# Test package\n", "utf8");
-    await writeFile(path.join(sourceDir, "dist/cli.js"), "#!/usr/bin/env node\nconsole.log('ok')\n", "utf8");
+    await writeFile(
+      path.join(sourceDir, "README.md"),
+      "# Test package\n",
+      "utf8",
+    );
+    await writeFile(
+      path.join(sourceDir, "dist/cli.js"),
+      "#!/usr/bin/env node\nconsole.log('ok')\n",
+      "utf8",
+    );
 
     const stagedPath = await stageCliPublishPackage({
       sourceDir,
       outputDir,
       publishVersion: "3.0.0-beta.0",
     });
-    const manifest = JSON.parse(await readFile(path.join(stagedPath, "package.json"), "utf8"));
+    const manifest = JSON.parse(
+      await readFile(path.join(stagedPath, "package.json"), "utf8"),
+    );
 
     expect(manifest.version).toBe("3.0.0-beta.0");
   });
@@ -141,7 +163,8 @@ describe("prepare cli publish", () => {
         {
           name: "@prisma/cli",
           version: "3.0.0-development",
-          description: "Command-line interface for the Prisma Developer Platform.",
+          description:
+            "Command-line interface for the Prisma Developer Platform.",
           type: "module",
           dependencies: {},
         },
@@ -150,17 +173,38 @@ describe("prepare cli publish", () => {
       ),
       "utf8",
     );
-    await writeFile(path.join(sourceDir, "README.md"), "# Test package\n", "utf8");
-    await writeFile(path.join(sourceDir, "dist/cli.js"), "#!/usr/bin/env node\nconsole.log('ok')\n", "utf8");
+    await writeFile(
+      path.join(sourceDir, "README.md"),
+      "# Test package\n",
+      "utf8",
+    );
+    await writeFile(
+      path.join(sourceDir, "dist/cli.js"),
+      "#!/usr/bin/env node\nconsole.log('ok')\n",
+      "utf8",
+    );
     await writeFile(path.join(sourceDir, "src/cli.ts"), "export {}\n", "utf8");
-    await writeFile(path.join(sourceDir, "tests/cli.test.ts"), "export {}\n", "utf8");
-    await writeFile(path.join(sourceDir, "fixtures/mock-api.json"), "{}\n", "utf8");
+    await writeFile(
+      path.join(sourceDir, "tests/cli.test.ts"),
+      "export {}\n",
+      "utf8",
+    );
+    await writeFile(
+      path.join(sourceDir, "fixtures/mock-api.json"),
+      "{}\n",
+      "utf8",
+    );
 
     const stagedPath = await stageCliPublishPackage({ sourceDir, outputDir });
     const topLevelFiles = await readdir(stagedPath);
     const distFiles = await readdir(path.join(stagedPath, "dist"));
 
-    expect(topLevelFiles.sort()).toEqual(["LICENSE", "README.md", "dist", "package.json"]);
+    expect(topLevelFiles.sort()).toEqual([
+      "LICENSE",
+      "README.md",
+      "dist",
+      "package.json",
+    ]);
     expect(distFiles).toEqual(["cli.js"]);
   });
 });

@@ -2,10 +2,17 @@ import { execFile } from "node:child_process";
 
 import type { LocalGitState } from "../../types/diagnostics";
 
-export async function readLocalGitState(cwd: string, signal: AbortSignal): Promise<LocalGitState | null> {
+export async function readLocalGitState(
+  cwd: string,
+  signal: AbortSignal,
+): Promise<LocalGitState | null> {
   signal.throwIfAborted();
 
-  const insideWorkTree = await runGit(cwd, ["rev-parse", "--is-inside-work-tree"], signal);
+  const insideWorkTree = await runGit(
+    cwd,
+    ["rev-parse", "--is-inside-work-tree"],
+    signal,
+  );
   if (insideWorkTree?.trim() !== "true") {
     return null;
   }
@@ -23,7 +30,11 @@ export async function readLocalGitState(cwd: string, signal: AbortSignal): Promi
   };
 }
 
-function runGit(cwd: string, args: string[], signal: AbortSignal): Promise<string | null> {
+function runGit(
+  cwd: string,
+  args: string[],
+  signal: AbortSignal,
+): Promise<string | null> {
   return new Promise((resolve, reject) => {
     signal.throwIfAborted();
 

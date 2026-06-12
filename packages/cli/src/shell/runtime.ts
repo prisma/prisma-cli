@@ -32,7 +32,10 @@ export interface CommandContext {
   ui: ShellUi;
 }
 
-export function configureRuntimeCommand(command: Command, runtime: CliRuntime): Command {
+export function configureRuntimeCommand(
+  command: Command,
+  runtime: CliRuntime,
+): Command {
   return command
     .helpCommand(false)
     .configureHelp({
@@ -56,7 +59,8 @@ export async function createCommandContext(
   runtime: CliRuntime,
   flags: GlobalFlags,
 ): Promise<CommandContext> {
-  const fixturePath = runtime.fixturePath ?? runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH;
+  const fixturePath =
+    runtime.fixturePath ?? runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH;
   const stateDir = resolveStateDir(runtime);
 
   // Load the mock API only when fixture mode is explicitly enabled.
@@ -87,7 +91,11 @@ export async function createCommandContext(
 }
 
 export function resolveStateDir(runtime: CliRuntime): string {
-  return runtime.stateDir ?? runtime.env.PRISMA_CLI_STATE_DIR ?? path.join(runtime.cwd, DEFAULT_STATE_DIR_NAME);
+  return (
+    runtime.stateDir ??
+    runtime.env.PRISMA_CLI_STATE_DIR ??
+    path.join(runtime.cwd, DEFAULT_STATE_DIR_NAME)
+  );
 }
 
 export function canPrompt(context: CommandContext): boolean {

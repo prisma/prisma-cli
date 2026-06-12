@@ -4,12 +4,19 @@ import type { Result } from "better-result";
 import { describe, expect, it, vi } from "vitest";
 
 import { createTempCwd, createTestCommandContext } from "./helpers";
-import { projectResolutionErrorToCliError, resolveProjectTarget } from "../src/lib/project/resolution";
+import {
+  projectResolutionErrorToCliError,
+  resolveProjectTarget,
+} from "../src/lib/project/resolution";
 import type { ProjectCandidate } from "../src/lib/project/resolution";
 
 async function writeLocalPin(cwd: string, pin: unknown) {
   await mkdir(path.join(cwd, ".prisma"), { recursive: true });
-  await writeFile(path.join(cwd, ".prisma/local.json"), `${JSON.stringify(pin, null, 2)}\n`, "utf8");
+  await writeFile(
+    path.join(cwd, ".prisma/local.json"),
+    `${JSON.stringify(pin, null, 2)}\n`,
+    "utf8",
+  );
 }
 
 async function writeLocalPinContent(cwd: string, content: string) {
@@ -25,7 +32,10 @@ function expectOk<T, E>(result: Result<T, E>): T {
   return result.value;
 }
 
-function expectErr<T, E extends { _tag: string }>(result: Result<T, E>, expectedTag: E["_tag"]): E {
+function expectErr<T, E extends { _tag: string }>(
+  result: Result<T, E>,
+  expectedTag: E["_tag"],
+): E {
   expect(result.isErr()).toBe(true);
   if (!result.isErr()) {
     throw new Error("Expected Result to be Err");
@@ -76,14 +86,18 @@ describe("project resolution", () => {
       projectId: "proj_123",
     });
     const { context } = await createTestCommandContext({ cwd });
-    const listProjects = vi.fn(async (): Promise<ProjectCandidate[]> => [{
-      id: "proj_active",
-      name: "Active Project",
-      workspace: {
-        id: "ws_123",
-        name: "Acme Inc",
-      },
-    }]);
+    const listProjects = vi.fn(
+      async (): Promise<ProjectCandidate[]> => [
+        {
+          id: "proj_active",
+          name: "Active Project",
+          workspace: {
+            id: "ws_123",
+            name: "Acme Inc",
+          },
+        },
+      ],
+    );
 
     const result = await resolveProjectTarget({
       context,
@@ -109,14 +123,18 @@ describe("project resolution", () => {
       projectId: "proj_123",
     });
     const { context } = await createTestCommandContext({ cwd });
-    const listProjects = vi.fn(async (): Promise<ProjectCandidate[]> => [{
-      id: "proj_env",
-      name: "Env Project",
-      workspace: {
-        id: "ws_123",
-        name: "Acme Inc",
-      },
-    }]);
+    const listProjects = vi.fn(
+      async (): Promise<ProjectCandidate[]> => [
+        {
+          id: "proj_env",
+          name: "Env Project",
+          workspace: {
+            id: "ws_123",
+            name: "Acme Inc",
+          },
+        },
+      ],
+    );
 
     const result = await resolveProjectTarget({
       context,

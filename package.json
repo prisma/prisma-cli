@@ -5,6 +5,8 @@
   "scripts": {
     "build:cli": "pnpm --filter @prisma/cli build",
     "build:compute": "pnpm --filter @prisma/compute build",
+    "format": "biome format . --write",
+    "lint": "biome check . --write",
     "lint:skills": "node scripts/validate-skills.mjs",
     "prepare": "skills add ./skills --skill '*' --agent universal claude-code -y",
     "prepare:cli-publish": "node scripts/prepare-cli-publish.mjs",
@@ -15,6 +17,7 @@
     "prisma": "tsx packages/cli/src/bin.ts"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.4.16",
     "gray-matter": "^4.0.3",
     "pkg-pr-new": "^0.0.75",
     "skills": "^1.5.9",

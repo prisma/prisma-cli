@@ -11,13 +11,20 @@ export interface GitHubRepositoryReference {
   url: string;
 }
 
-export async function readGitOriginRemote(cwd: string, signal?: AbortSignal): Promise<string | null> {
+export async function readGitOriginRemote(
+  cwd: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync("git", ["config", "--get", "remote.origin.url"], {
-      cwd,
-      timeout: 5_000,
-      signal,
-    });
+    const { stdout } = await execFileAsync(
+      "git",
+      ["config", "--get", "remote.origin.url"],
+      {
+        cwd,
+        timeout: 5_000,
+        signal,
+      },
+    );
     const remote = stdout.trim();
     return remote.length > 0 ? remote : null;
   } catch (error) {
@@ -30,9 +37,13 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
-export function parseGitHubRepositoryUrl(value: string): GitHubRepositoryReference | null {
+export function parseGitHubRepositoryUrl(
+  value: string,
+): GitHubRepositoryReference | null {
   const input = value.trim();
-  const shorthand = input.match(/^git@github\.com:([^/\s]+)\/([^/\s]+?)(?:\.git)?$/);
+  const shorthand = input.match(
+    /^git@github\.com:([^/\s]+)\/([^/\s]+?)(?:\.git)?$/,
+  );
 
   if (shorthand) {
     return toGitHubRepositoryReference(shorthand[1], shorthand[2]);
@@ -49,7 +60,11 @@ export function parseGitHubRepositoryUrl(value: string): GitHubRepositoryReferen
     return null;
   }
 
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:" && parsed.protocol !== "ssh:") {
+  if (
+    parsed.protocol !== "https:" &&
+    parsed.protocol !== "http:" &&
+    parsed.protocol !== "ssh:"
+  ) {
     return null;
   }
 
@@ -64,7 +79,10 @@ export function parseGitHubRepositoryUrl(value: string): GitHubRepositoryReferen
   return toGitHubRepositoryReference(owner, name);
 }
 
-function toGitHubRepositoryReference(owner: string | undefined, name: string | undefined): GitHubRepositoryReference | null {
+function toGitHubRepositoryReference(
+  owner: string | undefined,
+  name: string | undefined,
+): GitHubRepositoryReference | null {
   if (!owner || !name || owner.includes("/") || name.includes("/")) {
     return null;
   }

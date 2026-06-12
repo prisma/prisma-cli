@@ -24,27 +24,48 @@ function mockAuthState() {
   });
 }
 
-function mockClient(extra: Partial<{
-  GET: ReturnType<typeof vi.fn>;
-  POST: ReturnType<typeof vi.fn>;
-  DELETE: ReturnType<typeof vi.fn>;
-}> = {}) {
+function mockClient(
+  extra: Partial<{
+    GET: ReturnType<typeof vi.fn>;
+    POST: ReturnType<typeof vi.fn>;
+    DELETE: ReturnType<typeof vi.fn>;
+  }> = {},
+) {
   return {
-    GET: extra.GET ?? vi.fn().mockImplementation((pathName: string) => {
-      if (pathName === "/v1/projects") {
-        return {
-          data: {
-            data: [
-              { id: "proj_456", name: "Billing API", slug: "billing-api", url: "https://prisma.build/acme/billing-api", workspace: { id: "ws_123", name: "Acme Inc" } },
-              { id: "proj_999", name: "Alpha", slug: "alpha", workspace: { id: "ws_other", name: "Other" } },
-              { id: "proj_123", name: "Acme Dashboard", slug: "acme-dashboard", url: "https://prisma.build/acme/acme-dashboard", workspace: { id: "ws_123", name: "Acme Inc" } },
-            ],
-          },
-        };
-      }
+    GET:
+      extra.GET ??
+      vi.fn().mockImplementation((pathName: string) => {
+        if (pathName === "/v1/projects") {
+          return {
+            data: {
+              data: [
+                {
+                  id: "proj_456",
+                  name: "Billing API",
+                  slug: "billing-api",
+                  url: "https://prisma.build/acme/billing-api",
+                  workspace: { id: "ws_123", name: "Acme Inc" },
+                },
+                {
+                  id: "proj_999",
+                  name: "Alpha",
+                  slug: "alpha",
+                  workspace: { id: "ws_other", name: "Other" },
+                },
+                {
+                  id: "proj_123",
+                  name: "Acme Dashboard",
+                  slug: "acme-dashboard",
+                  url: "https://prisma.build/acme/acme-dashboard",
+                  workspace: { id: "ws_123", name: "Acme Inc" },
+                },
+              ],
+            },
+          };
+        }
 
-      throw new Error(`Unexpected path ${pathName}`);
-    }),
+        throw new Error(`Unexpected path ${pathName}`);
+      }),
     POST: extra.POST ?? vi.fn(),
     DELETE: extra.DELETE ?? vi.fn(),
   };
@@ -121,7 +142,9 @@ describe("real project mode", () => {
       requireComputeAuth,
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runProjectList } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -136,27 +159,43 @@ describe("real project mode", () => {
 
     const result = await runProjectList(context);
 
-    expect(readAuthState).toHaveBeenCalledWith(context.runtime.env, context.runtime.signal);
-    expect(requireComputeAuth).toHaveBeenCalledWith(context.runtime.env, context.runtime.signal);
+    expect(readAuthState).toHaveBeenCalledWith(
+      context.runtime.env,
+      context.runtime.signal,
+    );
+    expect(requireComputeAuth).toHaveBeenCalledWith(
+      context.runtime.env,
+      context.runtime.signal,
+    );
     expect(result.result).toEqual({
       workspace: {
         id: "ws_123",
         name: "Acme Inc",
       },
       projects: [
-        { id: "proj_123", name: "Acme Dashboard", url: "https://prisma.build/acme/acme-dashboard" },
-        { id: "proj_456", name: "Billing API", url: "https://prisma.build/acme/billing-api" },
+        {
+          id: "proj_123",
+          name: "Acme Dashboard",
+          url: "https://prisma.build/acme/acme-dashboard",
+        },
+        {
+          id: "proj_456",
+          name: "Billing API",
+          url: "https://prisma.build/acme/billing-api",
+        },
       ],
       localBinding: {
         status: "not-linked",
       },
     });
-    expect(result.nextActions).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        kind: "user-choice",
-        journey: "project-setup",
-      }),
-    ]));
+    expect(result.nextActions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "user-choice",
+          journey: "project-setup",
+        }),
+      ]),
+    );
   });
 
   it("resolves an explicit project in real mode", async () => {
@@ -169,7 +208,9 @@ describe("real project mode", () => {
       requireComputeAuth: vi.fn().mockResolvedValue(mockClient()),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runProjectShow } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -201,116 +242,127 @@ describe("real project mode", () => {
   });
 
   it("connects a GitHub repository through an installed GitHub App", async () => {
-    const get = vi.fn().mockImplementation((pathName: string, request?: { params?: { query?: Record<string, unknown> } }) => {
-      if (pathName === "/v1/projects") {
-        return mockClient().GET(pathName);
-      }
+    const get = vi
+      .fn()
+      .mockImplementation(
+        (
+          pathName: string,
+          request?: { params?: { query?: Record<string, unknown> } },
+        ) => {
+          if (pathName === "/v1/projects") {
+            return mockClient().GET(pathName);
+          }
 
-      if (pathName === "/v1/source-repositories") {
-        return sourceRepositoryList();
-      }
+          if (pathName === "/v1/source-repositories") {
+            return sourceRepositoryList();
+          }
 
-      if (pathName === "/v1/scm-installations") {
-        expect(request?.params?.query).toEqual({
-          workspaceId: "ws_123",
-          limit: 100,
-        });
-        return {
-          data: {
-            data: [
-              {
-                id: "scminstall_123",
-                type: "scm-installation",
-                url: "https://api.prisma.test/v1/scm-installations/scminstall_123",
-                provider: "github",
-                installationId: 98765,
-                accountId: 111,
-                accountLogin: "prisma",
-                accountType: "organization",
-                suspended: false,
-                createdAt: "2026-05-18T00:00:00.000Z",
-                updatedAt: "2026-05-18T00:00:00.000Z",
+          if (pathName === "/v1/scm-installations") {
+            expect(request?.params?.query).toEqual({
+              workspaceId: "ws_123",
+              limit: 100,
+            });
+            return {
+              data: {
+                data: [
+                  {
+                    id: "scminstall_123",
+                    type: "scm-installation",
+                    url: "https://api.prisma.test/v1/scm-installations/scminstall_123",
+                    provider: "github",
+                    installationId: 98765,
+                    accountId: 111,
+                    accountLogin: "prisma",
+                    accountType: "organization",
+                    suspended: false,
+                    createdAt: "2026-05-18T00:00:00.000Z",
+                    updatedAt: "2026-05-18T00:00:00.000Z",
+                  },
+                ],
+                pagination: {
+                  nextCursor: null,
+                  hasMore: false,
+                },
               },
-            ],
-            pagination: {
-              nextCursor: null,
-              hasMore: false,
-            },
-          },
-        };
-      }
+            };
+          }
 
-      if (pathName === "/v1/scm-installations/{installationId}/repositories") {
-        if (request?.params?.query?.cursor === "2") {
+          if (
+            pathName === "/v1/scm-installations/{installationId}/repositories"
+          ) {
+            if (request?.params?.query?.cursor === "2") {
+              return {
+                data: {
+                  data: [
+                    {
+                      id: 123456,
+                      type: "scm-repository",
+                      fullName: "prisma/prisma-cli",
+                      defaultBranch: "main",
+                      isPrivate: true,
+                    },
+                  ],
+                  pagination: {
+                    nextCursor: null,
+                    hasMore: false,
+                  },
+                },
+              };
+            }
+
+            return {
+              data: {
+                data: [
+                  {
+                    id: 999,
+                    type: "scm-repository",
+                    fullName: "prisma/other",
+                    defaultBranch: "main",
+                    isPrivate: false,
+                  },
+                ],
+                pagination: {
+                  nextCursor: "2",
+                  hasMore: true,
+                },
+              },
+            };
+          }
+
+          throw new Error(`Unexpected path ${pathName}`);
+        },
+      );
+    const post = vi
+      .fn()
+      .mockImplementation((pathName: string, request?: { body?: unknown }) => {
+        if (pathName === "/v1/source-repositories") {
+          expect(request?.body).toEqual({
+            projectId: "proj_123",
+            provider: "github",
+            providerRepositoryId: 123456,
+            installationId: "scminstall_123",
+          });
           return {
             data: {
-              data: [
-                {
-                  id: 123456,
-                  type: "scm-repository",
-                  fullName: "prisma/prisma-cli",
-                  defaultBranch: "main",
-                  isPrivate: true,
-                },
-              ],
-              pagination: {
-                nextCursor: null,
-                hasMore: false,
+              data: {
+                id: "srcrepo_123",
+                repoId: 123456,
+                provider: "github",
+                repoFullName: "prisma/prisma-cli",
+                defaultBranch: "main",
+                isPrivate: true,
+                status: "active",
+                projectId: "proj_123",
+                installationId: "scminstall_123",
+                createdAt: "2026-05-18T00:00:00.000Z",
+                updatedAt: "2026-05-18T00:00:00.000Z",
               },
             },
           };
         }
 
-        return {
-          data: {
-            data: [
-              {
-                id: 999,
-                type: "scm-repository",
-                fullName: "prisma/other",
-                defaultBranch: "main",
-                isPrivate: false,
-              },
-            ],
-            pagination: {
-              nextCursor: "2",
-              hasMore: true,
-            },
-          },
-        };
-      }
-
-      throw new Error(`Unexpected path ${pathName}`);
-    });
-    const post = vi.fn().mockImplementation((pathName: string, request?: { body?: unknown }) => {
-      if (pathName === "/v1/source-repositories") {
-        expect(request?.body).toEqual({
-          projectId: "proj_123",
-          provider: "github",
-          providerRepositoryId: 123456,
-          installationId: "scminstall_123",
-        });
-        return {
-          data: {
-            data: {
-              id: "srcrepo_123",
-              repoId: 123456,
-              provider: "github",
-              repoFullName: "prisma/prisma-cli",
-              defaultBranch: "main",
-              isPrivate: true,
-              status: "active",
-              projectId: "proj_123",
-              installationId: "scminstall_123",
-              createdAt: "2026-05-18T00:00:00.000Z",
-              updatedAt: "2026-05-18T00:00:00.000Z",
-            },
-          },
-        };
-      }
-
-      throw new Error(`Unexpected path ${pathName}`);
-    });
+        throw new Error(`Unexpected path ${pathName}`);
+      });
 
     vi.doMock("../src/lib/auth/auth-ops", () => ({
       readAuthState: mockAuthState(),
@@ -318,10 +370,14 @@ describe("real project mode", () => {
       performLogout: vi.fn(),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi.fn().mockResolvedValue(mockClient({ GET: get, POST: post })),
+      requireComputeAuth: vi
+        .fn()
+        .mockResolvedValue(mockClient({ GET: get, POST: post })),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runGitConnect } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -334,21 +390,28 @@ describe("real project mode", () => {
       },
     });
 
-    const result = await runGitConnect(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" });
+    const result = await runGitConnect(
+      context,
+      "https://github.com/prisma/prisma-cli",
+      { project: "proj_123" },
+    );
 
     expect(post).toHaveBeenCalledOnce();
-    expect(get).toHaveBeenCalledWith("/v1/scm-installations/{installationId}/repositories", {
-      params: {
-        path: {
-          installationId: "scminstall_123",
+    expect(get).toHaveBeenCalledWith(
+      "/v1/scm-installations/{installationId}/repositories",
+      {
+        params: {
+          path: {
+            installationId: "scminstall_123",
+          },
+          query: {
+            limit: 100,
+            cursor: "2",
+          },
         },
-        query: {
-          limit: 100,
-          cursor: "2",
-        },
+        signal: context.runtime.signal,
       },
-      signal: context.runtime.signal,
-    });
+    );
     expect(result.result.repositoryConnection).toMatchObject({
       id: "srcrepo_123",
       repoId: 123456,
@@ -389,10 +452,14 @@ describe("real project mode", () => {
       performLogout: vi.fn(),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi.fn().mockResolvedValue(mockClient({ GET: get, POST: post })),
+      requireComputeAuth: vi
+        .fn()
+        .mockResolvedValue(mockClient({ GET: get, POST: post })),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runGitConnect } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -405,7 +472,11 @@ describe("real project mode", () => {
       },
     });
 
-    const result = await runGitConnect(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" });
+    const result = await runGitConnect(
+      context,
+      "https://github.com/prisma/prisma-cli",
+      { project: "proj_123" },
+    );
 
     expect(post).not.toHaveBeenCalled();
     expect(result.result.repositoryConnection).toMatchObject({
@@ -441,26 +512,29 @@ describe("real project mode", () => {
 
       throw new Error(`Unexpected path ${pathName}`);
     });
-    const post = vi.fn().mockImplementation((pathName: string, request?: { body?: unknown }) => {
-      if (pathName === "/v1/scm-installations/install-intents") {
-        expect(request?.body).toEqual({
-          provider: "github",
-          workspaceId: "ws_123",
-        });
-        return {
-          data: {
+    const post = vi
+      .fn()
+      .mockImplementation((pathName: string, request?: { body?: unknown }) => {
+        if (pathName === "/v1/scm-installations/install-intents") {
+          expect(request?.body).toEqual({
+            provider: "github",
+            workspaceId: "ws_123",
+          });
+          return {
             data: {
-              type: "install-intent",
-              provider: "github",
-              workspaceId: "wksp_123",
-              installUrl: "https://github.com/apps/prisma/installations/new?state=abc",
+              data: {
+                type: "install-intent",
+                provider: "github",
+                workspaceId: "wksp_123",
+                installUrl:
+                  "https://github.com/apps/prisma/installations/new?state=abc",
+              },
             },
-          },
-        };
-      }
+          };
+        }
 
-      throw new Error(`Unexpected path ${pathName}`);
-    });
+        throw new Error(`Unexpected path ${pathName}`);
+      });
 
     vi.doMock("../src/lib/auth/auth-ops", () => ({
       readAuthState: mockAuthState(),
@@ -468,10 +542,14 @@ describe("real project mode", () => {
       performLogout: vi.fn(),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi.fn().mockResolvedValue(mockClient({ GET: get, POST: post })),
+      requireComputeAuth: vi
+        .fn()
+        .mockResolvedValue(mockClient({ GET: get, POST: post })),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runGitConnect } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -484,16 +562,19 @@ describe("real project mode", () => {
       },
     });
 
-    await expect(runGitConnect(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" }))
-      .rejects
-      .toMatchObject({
-        code: "REPO_INSTALLATION_REQUIRED",
-        meta: {
-          installUrl: "https://github.com/apps/prisma/installations/new?state=abc",
-          opened: false,
-          repository: "prisma/prisma-cli",
-        },
-      });
+    await expect(
+      runGitConnect(context, "https://github.com/prisma/prisma-cli", {
+        project: "proj_123",
+      }),
+    ).rejects.toMatchObject({
+      code: "REPO_INSTALLATION_REQUIRED",
+      meta: {
+        installUrl:
+          "https://github.com/apps/prisma/installations/new?state=abc",
+        opened: false,
+        repository: "prisma/prisma-cli",
+      },
+    });
   });
 
   it("creates an install intent when the stored GitHub App installation is unavailable", async () => {
@@ -547,26 +628,29 @@ describe("real project mode", () => {
 
       throw new Error(`Unexpected path ${pathName}`);
     });
-    const post = vi.fn().mockImplementation((pathName: string, request?: { body?: unknown }) => {
-      if (pathName === "/v1/scm-installations/install-intents") {
-        expect(request?.body).toEqual({
-          provider: "github",
-          workspaceId: "ws_123",
-        });
-        return {
-          data: {
+    const post = vi
+      .fn()
+      .mockImplementation((pathName: string, request?: { body?: unknown }) => {
+        if (pathName === "/v1/scm-installations/install-intents") {
+          expect(request?.body).toEqual({
+            provider: "github",
+            workspaceId: "ws_123",
+          });
+          return {
             data: {
-              type: "install-intent",
-              provider: "github",
-              workspaceId: "wksp_123",
-              installUrl: "https://github.com/apps/prisma/installations/new?state=abc",
+              data: {
+                type: "install-intent",
+                provider: "github",
+                workspaceId: "wksp_123",
+                installUrl:
+                  "https://github.com/apps/prisma/installations/new?state=abc",
+              },
             },
-          },
-        };
-      }
+          };
+        }
 
-      throw new Error(`Unexpected path ${pathName}`);
-    });
+        throw new Error(`Unexpected path ${pathName}`);
+      });
 
     vi.doMock("../src/lib/auth/auth-ops", () => ({
       readAuthState: mockAuthState(),
@@ -574,10 +658,14 @@ describe("real project mode", () => {
       performLogout: vi.fn(),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi.fn().mockResolvedValue(mockClient({ GET: get, POST: post })),
+      requireComputeAuth: vi
+        .fn()
+        .mockResolvedValue(mockClient({ GET: get, POST: post })),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runGitConnect } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -590,16 +678,19 @@ describe("real project mode", () => {
       },
     });
 
-    await expect(runGitConnect(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" }))
-      .rejects
-      .toMatchObject({
-        code: "REPO_INSTALLATION_REQUIRED",
-        meta: {
-          installUrl: "https://github.com/apps/prisma/installations/new?state=abc",
-          opened: false,
-          repository: "prisma/prisma-cli",
-        },
-      });
+    await expect(
+      runGitConnect(context, "https://github.com/prisma/prisma-cli", {
+        project: "proj_123",
+      }),
+    ).rejects.toMatchObject({
+      code: "REPO_INSTALLATION_REQUIRED",
+      meta: {
+        installUrl:
+          "https://github.com/apps/prisma/installations/new?state=abc",
+        opened: false,
+        repository: "prisma/prisma-cli",
+      },
+    });
     expect(post).toHaveBeenCalledOnce();
   });
 
@@ -621,23 +712,24 @@ describe("real project mode", () => {
         installationListCalls += 1;
         return {
           data: {
-            data: installationListCalls === 1
-              ? []
-              : [
-                  {
-                    id: "scminstall_123",
-                    type: "scm-installation",
-                    url: "https://api.prisma.test/v1/scm-installations/scminstall_123",
-                    provider: "github",
-                    installationId: 98765,
-                    accountId: 111,
-                    accountLogin: "prisma",
-                    accountType: "organization",
-                    suspended: false,
-                    createdAt: "2026-05-18T00:00:00.000Z",
-                    updatedAt: "2026-05-18T00:00:00.000Z",
-                  },
-                ],
+            data:
+              installationListCalls === 1
+                ? []
+                : [
+                    {
+                      id: "scminstall_123",
+                      type: "scm-installation",
+                      url: "https://api.prisma.test/v1/scm-installations/scminstall_123",
+                      provider: "github",
+                      installationId: 98765,
+                      accountId: 111,
+                      accountLogin: "prisma",
+                      accountType: "organization",
+                      suspended: false,
+                      createdAt: "2026-05-18T00:00:00.000Z",
+                      updatedAt: "2026-05-18T00:00:00.000Z",
+                    },
+                  ],
             pagination: {
               nextCursor: null,
               hasMore: false,
@@ -668,52 +760,55 @@ describe("real project mode", () => {
 
       throw new Error(`Unexpected path ${pathName}`);
     });
-    const post = vi.fn().mockImplementation((pathName: string, request?: { body?: unknown }) => {
-      if (pathName === "/v1/scm-installations/install-intents") {
-        expect(request?.body).toEqual({
-          provider: "github",
-          workspaceId: "ws_123",
-        });
-        return {
-          data: {
+    const post = vi
+      .fn()
+      .mockImplementation((pathName: string, request?: { body?: unknown }) => {
+        if (pathName === "/v1/scm-installations/install-intents") {
+          expect(request?.body).toEqual({
+            provider: "github",
+            workspaceId: "ws_123",
+          });
+          return {
             data: {
-              type: "install-intent",
-              provider: "github",
-              workspaceId: "wksp_123",
-              installUrl: "https://github.com/apps/prisma/installations/new?state=abc",
+              data: {
+                type: "install-intent",
+                provider: "github",
+                workspaceId: "wksp_123",
+                installUrl:
+                  "https://github.com/apps/prisma/installations/new?state=abc",
+              },
             },
-          },
-        };
-      }
+          };
+        }
 
-      if (pathName === "/v1/source-repositories") {
-        expect(request?.body).toEqual({
-          projectId: "proj_123",
-          provider: "github",
-          providerRepositoryId: 123456,
-          installationId: "scminstall_123",
-        });
-        return {
-          data: {
+        if (pathName === "/v1/source-repositories") {
+          expect(request?.body).toEqual({
+            projectId: "proj_123",
+            provider: "github",
+            providerRepositoryId: 123456,
+            installationId: "scminstall_123",
+          });
+          return {
             data: {
-              id: "srcrepo_123",
-              repoId: 123456,
-              provider: "github",
-              repoFullName: "prisma/prisma-cli",
-              defaultBranch: "main",
-              isPrivate: true,
-              status: "active",
-              projectId: "proj_123",
-              installationId: "scminstall_123",
-              createdAt: "2026-05-18T00:00:00.000Z",
-              updatedAt: "2026-05-18T00:00:00.000Z",
+              data: {
+                id: "srcrepo_123",
+                repoId: 123456,
+                provider: "github",
+                repoFullName: "prisma/prisma-cli",
+                defaultBranch: "main",
+                isPrivate: true,
+                status: "active",
+                projectId: "proj_123",
+                installationId: "scminstall_123",
+                createdAt: "2026-05-18T00:00:00.000Z",
+                updatedAt: "2026-05-18T00:00:00.000Z",
+              },
             },
-          },
-        };
-      }
+          };
+        }
 
-      throw new Error(`Unexpected path ${pathName}`);
-    });
+        throw new Error(`Unexpected path ${pathName}`);
+      });
 
     vi.doMock("../src/lib/auth/auth-ops", () => ({
       readAuthState: mockAuthState(),
@@ -721,10 +816,14 @@ describe("real project mode", () => {
       performLogout: vi.fn(),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi.fn().mockResolvedValue(mockClient({ GET: get, POST: post })),
+      requireComputeAuth: vi
+        .fn()
+        .mockResolvedValue(mockClient({ GET: get, POST: post })),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runGitConnect } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -741,9 +840,15 @@ describe("real project mode", () => {
       },
     });
 
-    const result = await runGitConnect(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" });
+    const result = await runGitConnect(
+      context,
+      "https://github.com/prisma/prisma-cli",
+      { project: "proj_123" },
+    );
 
-    expect(openBrowser).toHaveBeenCalledWith("https://github.com/apps/prisma/installations/new?state=abc");
+    expect(openBrowser).toHaveBeenCalledWith(
+      "https://github.com/apps/prisma/installations/new?state=abc",
+    );
     expect(installationListCalls).toBe(2);
     expect(post).toHaveBeenCalledWith("/v1/source-repositories", {
       body: {
@@ -754,8 +859,12 @@ describe("real project mode", () => {
       },
       signal: context.runtime.signal,
     });
-    expect(stderr.buffer).toContain("Waiting for GitHub App installation or repository access approval");
-    expect(result.result.repositoryConnection?.repository.fullName).toBe("prisma/prisma-cli");
+    expect(stderr.buffer).toContain(
+      "Waiting for GitHub App installation or repository access approval",
+    );
+    expect(result.result.repositoryConnection?.repository.fullName).toBe(
+      "prisma/prisma-cli",
+    );
   });
 
   it("returns REPO_NOT_ACCESSIBLE when the GitHub App cannot see the repository", async () => {
@@ -816,26 +925,29 @@ describe("real project mode", () => {
 
       throw new Error(`Unexpected path ${pathName}`);
     });
-    const post = vi.fn().mockImplementation((pathName: string, request?: { body?: unknown }) => {
-      if (pathName === "/v1/scm-installations/install-intents") {
-        expect(request?.body).toEqual({
-          provider: "github",
-          workspaceId: "ws_123",
-        });
-        return {
-          data: {
+    const post = vi
+      .fn()
+      .mockImplementation((pathName: string, request?: { body?: unknown }) => {
+        if (pathName === "/v1/scm-installations/install-intents") {
+          expect(request?.body).toEqual({
+            provider: "github",
+            workspaceId: "ws_123",
+          });
+          return {
             data: {
-              type: "install-intent",
-              provider: "github",
-              workspaceId: "wksp_123",
-              installUrl: "https://github.com/apps/prisma/installations/new?state=abc",
+              data: {
+                type: "install-intent",
+                provider: "github",
+                workspaceId: "wksp_123",
+                installUrl:
+                  "https://github.com/apps/prisma/installations/new?state=abc",
+              },
             },
-          },
-        };
-      }
+          };
+        }
 
-      throw new Error(`Unexpected path ${pathName}`);
-    });
+        throw new Error(`Unexpected path ${pathName}`);
+      });
 
     vi.doMock("../src/lib/auth/auth-ops", () => ({
       readAuthState: mockAuthState(),
@@ -843,10 +955,14 @@ describe("real project mode", () => {
       performLogout: vi.fn(),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi.fn().mockResolvedValue(mockClient({ GET: get, POST: post })),
+      requireComputeAuth: vi
+        .fn()
+        .mockResolvedValue(mockClient({ GET: get, POST: post })),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runGitConnect } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -859,16 +975,19 @@ describe("real project mode", () => {
       },
     });
 
-    await expect(runGitConnect(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" }))
-      .rejects
-      .toMatchObject({
-        code: "REPO_NOT_ACCESSIBLE",
-        meta: {
-          installUrl: "https://github.com/apps/prisma/installations/new?state=abc",
-          opened: false,
-          repository: "prisma/prisma-cli",
-        },
-      });
+    await expect(
+      runGitConnect(context, "https://github.com/prisma/prisma-cli", {
+        project: "proj_123",
+      }),
+    ).rejects.toMatchObject({
+      code: "REPO_NOT_ACCESSIBLE",
+      meta: {
+        installUrl:
+          "https://github.com/apps/prisma/installations/new?state=abc",
+        opened: false,
+        repository: "prisma/prisma-cli",
+      },
+    });
     expect(post).toHaveBeenCalledOnce();
   });
 
@@ -904,10 +1023,14 @@ describe("real project mode", () => {
       performLogout: vi.fn(),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi.fn().mockResolvedValue(mockClient({ GET: get, POST: post })),
+      requireComputeAuth: vi
+        .fn()
+        .mockResolvedValue(mockClient({ GET: get, POST: post })),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runGitConnect } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -920,12 +1043,14 @@ describe("real project mode", () => {
       },
     });
 
-    await expect(runGitConnect(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" }))
-      .rejects
-      .toMatchObject({
-        code: "REPO_CONNECTION_FAILED",
-        why: "Pagination cursor did not advance.",
-      });
+    await expect(
+      runGitConnect(context, "https://github.com/prisma/prisma-cli", {
+        project: "proj_123",
+      }),
+    ).rejects.toMatchObject({
+      code: "REPO_CONNECTION_FAILED",
+      why: "Pagination cursor did not advance.",
+    });
     expect(post).not.toHaveBeenCalled();
   });
 
@@ -973,10 +1098,14 @@ describe("real project mode", () => {
       performLogout: vi.fn(),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi.fn().mockResolvedValue(mockClient({ GET: get, POST: post })),
+      requireComputeAuth: vi
+        .fn()
+        .mockResolvedValue(mockClient({ GET: get, POST: post })),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runGitConnect } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -989,12 +1118,14 @@ describe("real project mode", () => {
       },
     });
 
-    await expect(runGitConnect(context, "https://github.com/prisma/prisma-cli", { project: "proj_123" }))
-      .rejects
-      .toMatchObject({
-        code: "REPO_CONNECTION_FAILED",
-        why: "Pagination cursor did not advance.",
-      });
+    await expect(
+      runGitConnect(context, "https://github.com/prisma/prisma-cli", {
+        project: "proj_123",
+      }),
+    ).rejects.toMatchObject({
+      code: "REPO_CONNECTION_FAILED",
+      why: "Pagination cursor did not advance.",
+    });
     expect(post).not.toHaveBeenCalled();
   });
 
@@ -1040,10 +1171,14 @@ describe("real project mode", () => {
       performLogout: vi.fn(),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi.fn().mockResolvedValue(mockClient({ GET: get, DELETE: del })),
+      requireComputeAuth: vi
+        .fn()
+        .mockResolvedValue(mockClient({ GET: get, DELETE: del })),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runGitDisconnect } = await import("../src/controllers/project");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -1066,6 +1201,8 @@ describe("real project mode", () => {
       },
       signal: context.runtime.signal,
     });
-    expect(result.result.repositoryConnection?.repository.fullName).toBe("prisma/prisma-cli");
+    expect(result.result.repositoryConnection?.repository.fullName).toBe(
+      "prisma/prisma-cli",
+    );
   });
 });

@@ -5,8 +5,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export async function stageCliPublishPackage(options = {}) {
-  const sourceDir = options.sourceDir ?? path.join(getRepoRoot(), "packages/cli");
-  const outputDir = options.outputDir ?? path.join(getRepoRoot(), ".publish/cli");
+  const sourceDir =
+    options.sourceDir ?? path.join(getRepoRoot(), "packages/cli");
+  const outputDir =
+    options.outputDir ?? path.join(getRepoRoot(), ".publish/cli");
   const publishVersion = options.publishVersion;
 
   await ensureBuildArtifacts(sourceDir);
@@ -14,9 +16,17 @@ export async function stageCliPublishPackage(options = {}) {
   await rm(outputDir, { recursive: true, force: true });
   await mkdir(outputDir, { recursive: true });
 
-  await cp(path.join(sourceDir, "dist"), path.join(outputDir, "dist"), { recursive: true });
-  await cp(path.join(sourceDir, "README.md"), path.join(outputDir, "README.md"));
-  await cp(path.join(getRepoRoot(), "LICENSE"), path.join(outputDir, "LICENSE"));
+  await cp(path.join(sourceDir, "dist"), path.join(outputDir, "dist"), {
+    recursive: true,
+  });
+  await cp(
+    path.join(sourceDir, "README.md"),
+    path.join(outputDir, "README.md"),
+  );
+  await cp(
+    path.join(getRepoRoot(), "LICENSE"),
+    path.join(outputDir, "LICENSE"),
+  );
 
   const sourceManifest = JSON.parse(
     await readFile(path.join(sourceDir, "package.json"), "utf8"),
@@ -76,12 +86,10 @@ function removeUndefinedFields(value) {
 
 async function main() {
   const { outputDir, publishVersion } = parseCliArgs(process.argv.slice(2));
-  const stagedPath = await stageCliPublishPackage(
-    {
-      ...(outputDir ? { outputDir: path.resolve(outputDir) } : {}),
-      ...(publishVersion ? { publishVersion } : {}),
-    },
-  );
+  const stagedPath = await stageCliPublishPackage({
+    ...(outputDir ? { outputDir: path.resolve(outputDir) } : {}),
+    ...(publishVersion ? { publishVersion } : {}),
+  });
   process.stdout.write(`${stagedPath}\n`);
 }
 
@@ -125,9 +133,13 @@ function parseCliArgs(args) {
   return { outputDir, publishVersion };
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+) {
   main().catch((error) => {
-    const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    const message =
+      error instanceof Error ? (error.stack ?? error.message) : String(error);
     process.stderr.write(`${message}\n`);
     process.exitCode = 1;
   });

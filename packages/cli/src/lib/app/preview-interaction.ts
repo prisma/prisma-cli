@@ -1,4 +1,8 @@
-import type { DeployInteraction, RegionInfo, ServiceInfo } from "@prisma/compute-sdk";
+import type {
+  DeployInteraction,
+  RegionInfo,
+  ServiceInfo,
+} from "@prisma/compute-sdk";
 
 import { selectPrompt, textPrompt } from "../../shell/prompt";
 import type { CommandContext } from "../../shell/runtime";
@@ -6,12 +10,18 @@ import type { CommandContext } from "../../shell/runtime";
 const CREATE_NEW_APP = "__create_new_app__";
 export const PREVIEW_DEFAULT_REGION = "eu-central-1";
 
-export function createPreviewDeployInteraction(context: CommandContext): DeployInteraction {
+export function createPreviewDeployInteraction(
+  context: CommandContext,
+): DeployInteraction {
   return {
     async selectService(services: ServiceInfo[]): Promise<string | null> {
       const sorted = services
         .slice()
-        .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id));
+        .sort(
+          (left, right) =>
+            left.name.localeCompare(right.name) ||
+            left.id.localeCompare(right.id),
+        );
 
       const selection = await selectPrompt<string | null>({
         input: context.runtime.stdin,
@@ -36,7 +46,8 @@ export function createPreviewDeployInteraction(context: CommandContext): DeployI
         input: context.runtime.stdin,
         output: context.runtime.stderr,
         message: "App name",
-        validate: (value) => (!value?.trim() ? "App name is required" : undefined),
+        validate: (value) =>
+          !value?.trim() ? "App name is required" : undefined,
       }).then((value) => value.trim());
     },
     async selectRegion(_regions: RegionInfo[]): Promise<string> {

@@ -20,16 +20,18 @@ describe("app local dev commands", () => {
     });
 
     vi.doMock("../src/lib/app/preview-build", async () => {
-      const actual = await vi.importActual<typeof import("../src/lib/app/preview-build")>(
-        "../src/lib/app/preview-build",
-      );
+      const actual = await vi.importActual<
+        typeof import("../src/lib/app/preview-build")
+      >("../src/lib/app/preview-build");
       return {
         ...actual,
         executePreviewBuild,
       };
     });
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppBuild } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -63,16 +65,18 @@ describe("app local dev commands", () => {
     });
 
     vi.doMock("../src/lib/app/preview-build", async () => {
-      const actual = await vi.importActual<typeof import("../src/lib/app/preview-build")>(
-        "../src/lib/app/preview-build",
-      );
+      const actual = await vi.importActual<
+        typeof import("../src/lib/app/preview-build")
+      >("../src/lib/app/preview-build");
       return {
         ...actual,
         executePreviewBuild,
       };
     });
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppBuild } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -97,21 +101,27 @@ describe("app local dev commands", () => {
   });
 
   it("build returns USAGE_ERROR when framework detection is ambiguous", async () => {
-    const executePreviewBuild = vi.fn().mockRejectedValue(
-      new Error("Entrypoint is required. Pass --entry or define package.json main or module."),
-    );
+    const executePreviewBuild = vi
+      .fn()
+      .mockRejectedValue(
+        new Error(
+          "Entrypoint is required. Pass --entry or define package.json main or module.",
+        ),
+      );
 
     vi.doMock("../src/lib/app/preview-build", async () => {
-      const actual = await vi.importActual<typeof import("../src/lib/app/preview-build")>(
-        "../src/lib/app/preview-build",
-      );
+      const actual = await vi.importActual<
+        typeof import("../src/lib/app/preview-build")
+      >("../src/lib/app/preview-build");
       return {
         ...actual,
         executePreviewBuild,
       };
     });
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppBuild } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -120,15 +130,20 @@ describe("app local dev commands", () => {
       stateDir,
     });
 
-    await expect(runAppBuild(context, undefined, "auto")).rejects.toMatchObject({
-      code: "USAGE_ERROR",
-      domain: "app",
-      summary: "App build requires an explicit framework when detection is ambiguous",
-    });
+    await expect(runAppBuild(context, undefined, "auto")).rejects.toMatchObject(
+      {
+        code: "USAGE_ERROR",
+        domain: "app",
+        summary:
+          "App build requires an explicit framework when detection is ambiguous",
+      },
+    );
   });
 
   it("run returns USAGE_ERROR for --json", async () => {
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppRun } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -140,7 +155,9 @@ describe("app local dev commands", () => {
       },
     });
 
-    await expect(runAppRun(context, undefined, "auto", undefined)).rejects.toMatchObject({
+    await expect(
+      runAppRun(context, undefined, "auto", undefined),
+    ).rejects.toMatchObject({
       code: "USAGE_ERROR",
       domain: "app",
       summary: "App run does not support --json",
@@ -151,16 +168,18 @@ describe("app local dev commands", () => {
     const resolveLocalBuildType = vi.fn().mockResolvedValue(null);
 
     vi.doMock("../src/lib/app/local-dev", async () => {
-      const actual = await vi.importActual<typeof import("../src/lib/app/local-dev")>(
-        "../src/lib/app/local-dev",
-      );
+      const actual = await vi.importActual<
+        typeof import("../src/lib/app/local-dev")
+      >("../src/lib/app/local-dev");
       return {
         ...actual,
         resolveLocalBuildType,
       };
     });
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppRun } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -169,15 +188,20 @@ describe("app local dev commands", () => {
       stateDir,
     });
 
-    await expect(runAppRun(context, undefined, "auto", undefined)).rejects.toMatchObject({
+    await expect(
+      runAppRun(context, undefined, "auto", undefined),
+    ).rejects.toMatchObject({
       code: "USAGE_ERROR",
       domain: "app",
-      summary: "App run requires an explicit framework when detection is ambiguous",
+      summary:
+        "App run requires an explicit framework when detection is ambiguous",
     });
   });
 
   it("run rejects --entry together with --build-type nextjs", async () => {
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppRun } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -186,7 +210,9 @@ describe("app local dev commands", () => {
       stateDir,
     });
 
-    await expect(runAppRun(context, "server.ts", "nextjs", undefined)).rejects.toMatchObject({
+    await expect(
+      runAppRun(context, "server.ts", "nextjs", undefined),
+    ).rejects.toMatchObject({
       code: "USAGE_ERROR",
       domain: "app",
       summary: "App run does not accept --entry with --build-type nextjs",
@@ -204,16 +230,18 @@ describe("app local dev commands", () => {
     });
 
     vi.doMock("../src/lib/app/local-dev", async () => {
-      const actual = await vi.importActual<typeof import("../src/lib/app/local-dev")>(
-        "../src/lib/app/local-dev",
-      );
+      const actual = await vi.importActual<
+        typeof import("../src/lib/app/local-dev")
+      >("../src/lib/app/local-dev");
       return {
         ...actual,
         runLocalApp,
       };
     });
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppRun } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");

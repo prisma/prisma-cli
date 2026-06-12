@@ -6,7 +6,14 @@ import { renderCommandDiagnostics } from "./diagnostics-output";
 import { authRequiredError, CliError, commandCanceledError } from "./errors";
 import { resolveGlobalFlags } from "./global-flags";
 import type { CommandSuccess } from "./output";
-import { cliErrorToJson, writeHumanError, writeHumanLines, writeJsonError, writeJsonEvent, writeJsonSuccess } from "./output";
+import {
+  cliErrorToJson,
+  writeHumanError,
+  writeHumanLines,
+  writeJsonError,
+  writeJsonEvent,
+  writeJsonSuccess,
+} from "./output";
 import { createCommandContext, type CliRuntime } from "./runtime";
 
 interface CommandPresenter<T> {
@@ -31,7 +38,9 @@ function toCliError(error: unknown, runtime: CliRuntime): CliError | null {
   if (error instanceof CliError) return error;
 
   if (error instanceof SDKAuthError) {
-    return authRequiredError(["prisma-cli auth login"], { debug: error.message });
+    return authRequiredError(["prisma-cli auth login"], {
+      debug: error.message,
+    });
   }
 
   return null;
@@ -49,7 +58,9 @@ export async function runCommand<T>(
   runtime: CliRuntime,
   commandName: string,
   options: Record<string, unknown>,
-  handler: (context: Awaited<ReturnType<typeof createCommandContext>>) => Promise<CommandSuccess<T>>,
+  handler: (
+    context: Awaited<ReturnType<typeof createCommandContext>>,
+  ) => Promise<CommandSuccess<T>>,
   presenter: CommandPresenter<T>,
 ): Promise<void> {
   const flags = resolveGlobalFlags(runtime.argv, options);
@@ -63,12 +74,15 @@ export async function runCommand<T>(
     if (flags.json) {
       writeJsonSuccess(context.output, {
         ...success,
-        result: presenter.renderJson ? presenter.renderJson(success.result) : success.result,
+        result: presenter.renderJson
+          ? presenter.renderJson(success.result)
+          : success.result,
       });
       return;
     }
 
-    const stdout = presenter.renderStdout?.(context, descriptor, success.result) ?? [];
+    const stdout =
+      presenter.renderStdout?.(context, descriptor, success.result) ?? [];
     if (flags.quiet) {
       if (stdout.length > 0) {
         context.output.stdout.write(`${stdout.join("\n")}\n`);
@@ -81,10 +95,7 @@ export async function runCommand<T>(
       enabled: flags.verbose && rendered.length > 0,
       durationMs: Date.now() - startedAt,
     });
-    const humanLines = [
-      ...rendered,
-      ...diagnostics,
-    ];
+    const humanLines = [...rendered, ...diagnostics];
     if (stdout.length > 0 && humanLines.length > 0) {
       humanLines.push("");
     }
@@ -100,7 +111,9 @@ export async function runCommand<T>(
       if (flags.json) {
         writeJsonError(context.output, commandName, cliError);
       } else {
-        writeHumanError(context.output, context.ui, cliError, { trace: flags.trace });
+        writeHumanError(context.output, context.ui, cliError, {
+          trace: flags.trace,
+        });
       }
 
       process.exitCode = cliError.exitCode;
@@ -122,7 +135,9 @@ async function renderBestEffortCommandDiagnostics(
   try {
     return renderCommandDiagnostics(
       context,
-      await collectCommandDiagnostics(context, { durationMs: options.durationMs }),
+      await collectCommandDiagnostics(context, {
+        durationMs: options.durationMs,
+      }),
     );
   } catch {
     return [];
@@ -133,7 +148,9 @@ export async function runStreamingCommand(
   runtime: CliRuntime,
   commandName: string,
   options: Record<string, unknown>,
-  handler: (context: Awaited<ReturnType<typeof createCommandContext>>) => Promise<void>,
+  handler: (
+    context: Awaited<ReturnType<typeof createCommandContext>>,
+  ) => Promise<void>,
 ): Promise<void> {
   const flags = resolveGlobalFlags(runtime.argv, options);
   const context = await createCommandContext(runtime, flags);
@@ -166,7 +183,9 @@ export async function runStreamingCommand(
           nextActions: cliError.nextActions,
         });
       } else {
-        writeHumanError(context.output, context.ui, cliError, { trace: flags.trace });
+        writeHumanError(context.output, context.ui, cliError, {
+          trace: flags.trace,
+        });
       }
 
       process.exitCode = cliError.exitCode;

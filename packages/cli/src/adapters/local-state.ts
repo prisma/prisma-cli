@@ -60,28 +60,36 @@ export function resolveLocalStateFilePath(stateDir: string): string {
 export class LocalStateStore {
   private readonly stateFilePath: string;
 
-  constructor(stateDir: string, private readonly signal?: AbortSignal) {
+  constructor(
+    stateDir: string,
+    private readonly signal?: AbortSignal,
+  ) {
     this.stateFilePath = resolveLocalStateFilePath(stateDir);
   }
 
   async read(): Promise<LocalState> {
     this.signal?.throwIfAborted();
     try {
-      const raw = await readFile(this.stateFilePath, { encoding: "utf8", signal: this.signal });
+      const raw = await readFile(this.stateFilePath, {
+        encoding: "utf8",
+        signal: this.signal,
+      });
       const parsed = JSON.parse(raw) as Partial<LocalState>;
       return {
         auth: parsed.auth ?? structuredClone(DEFAULT_STATE.auth),
         project: {
           rememberedByWorkspace: parsed.project?.rememberedByWorkspace ?? {},
           lastResolved: parsed.project?.lastResolved ?? null,
-          repositoryConnectionsByProject: parsed.project?.repositoryConnectionsByProject ?? {},
+          repositoryConnectionsByProject:
+            parsed.project?.repositoryConnectionsByProject ?? {},
         },
         branch: {
           active: parsed.branch?.active ?? DEFAULT_STATE.branch.active,
         },
         app: {
           selectedByProject: parsed.app?.selectedByProject ?? {},
-          knownLiveDeploymentByProject: parsed.app?.knownLiveDeploymentByProject ?? {},
+          knownLiveDeploymentByProject:
+            parsed.app?.knownLiveDeploymentByProject ?? {},
         },
       };
     } catch (error) {
@@ -98,11 +106,15 @@ export class LocalStateStore {
     // mkdir does not accept AbortSignal; check before the filesystem boundary.
     await mkdir(path.dirname(this.stateFilePath), { recursive: true });
     this.signal?.throwIfAborted();
-    await writeFile(this.stateFilePath, `${JSON.stringify(state, null, 2)}\n`, { encoding: "utf8" });
+    await writeFile(this.stateFilePath, `${JSON.stringify(state, null, 2)}\n`, {
+      encoding: "utf8",
+    });
     this.signal?.throwIfAborted();
   }
 
-  async setAuthSession(session: NonNullable<LocalState["auth"]>): Promise<LocalState> {
+  async setAuthSession(
+    session: NonNullable<LocalState["auth"]>,
+  ): Promise<LocalState> {
     const state = await this.read();
     state.auth = session;
     await this.write(state);
@@ -123,7 +135,9 @@ export class LocalStateStore {
     return state;
   }
 
-  async readRememberedProject(workspaceId: string): Promise<RememberedProjectState | null> {
+  async readRememberedProject(
+    workspaceId: string,
+  ): Promise<RememberedProjectState | null> {
     const state = await this.read();
     return state.project.rememberedByWorkspace[workspaceId] ?? null;
   }
@@ -133,7 +147,9 @@ export class LocalStateStore {
     return state.project.lastResolved;
   }
 
-  async setRememberedProject(project: RememberedProjectState): Promise<LocalState> {
+  async setRememberedProject(
+    project: RememberedProjectState,
+  ): Promise<LocalState> {
     const state = await this.read();
     state.project.rememberedByWorkspace[project.workspaceId] = project;
     state.project.lastResolved = project;
@@ -141,7 +157,9 @@ export class LocalStateStore {
     return state;
   }
 
-  async readRepositoryConnection(projectId: string): Promise<GitRepositoryConnection | null> {
+  async readRepositoryConnection(
+    projectId: string,
+  ): Promise<GitRepositoryConnection | null> {
     const state = await this.read();
     return state.project.repositoryConnectionsByProject[projectId] ?? null;
   }
@@ -168,14 +186,20 @@ export class LocalStateStore {
     return state.app.selectedByProject[projectId] ?? null;
   }
 
-  async setSelectedApp(projectId: string, app: SelectedAppState): Promise<LocalState> {
+  async setSelectedApp(
+    projectId: string,
+    app: SelectedAppState,
+  ): Promise<LocalState> {
     const state = await this.read();
     state.app.selectedByProject[projectId] = app;
     await this.write(state);
     return state;
   }
 
-  async clearSelectedApp(projectId: string, appId: string): Promise<LocalState> {
+  async clearSelectedApp(
+    projectId: string,
+    appId: string,
+  ): Promise<LocalState> {
     const state = await this.read();
     const selectedApp = state.app.selectedByProject[projectId];
 
@@ -188,12 +212,19 @@ export class LocalStateStore {
     return state;
   }
 
-  async readKnownLiveDeployment(projectId: string, appId: string): Promise<string | null> {
+  async readKnownLiveDeployment(
+    projectId: string,
+    appId: string,
+  ): Promise<string | null> {
     const state = await this.read();
     return state.app.knownLiveDeploymentByProject[projectId]?.[appId] ?? null;
   }
 
-  async setKnownLiveDeployment(projectId: string, appId: string, deploymentId: string): Promise<LocalState> {
+  async setKnownLiveDeployment(
+    projectId: string,
+    appId: string,
+    deploymentId: string,
+  ): Promise<LocalState> {
     const state = await this.read();
     state.app.knownLiveDeploymentByProject[projectId] ??= {};
     state.app.knownLiveDeploymentByProject[projectId][appId] = deploymentId;
@@ -201,9 +232,13 @@ export class LocalStateStore {
     return state;
   }
 
-  async clearKnownLiveDeployment(projectId: string, appId: string): Promise<LocalState> {
+  async clearKnownLiveDeployment(
+    projectId: string,
+    appId: string,
+  ): Promise<LocalState> {
     const state = await this.read();
-    const projectDeployments = state.app.knownLiveDeploymentByProject[projectId];
+    const projectDeployments =
+      state.app.knownLiveDeploymentByProject[projectId];
 
     if (!projectDeployments || !(appId in projectDeployments)) {
       return state;

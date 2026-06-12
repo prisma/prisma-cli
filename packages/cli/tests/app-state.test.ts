@@ -18,7 +18,12 @@ describe("app local state", () => {
     });
 
     expect(
-      JSON.parse(await readFile(path.join(cwd, DEFAULT_STATE_DIR_NAME, "state.json"), "utf8")),
+      JSON.parse(
+        await readFile(
+          path.join(cwd, DEFAULT_STATE_DIR_NAME, "state.json"),
+          "utf8",
+        ),
+      ),
     ).toMatchObject({
       app: {
         selectedByProject: {
@@ -59,7 +64,10 @@ describe("app local state", () => {
     const controller = new AbortController();
     const reason = new Error("cancelled");
     controller.abort(reason);
-    const store = new LocalStateStore(path.join(cwd, DEFAULT_STATE_DIR_NAME), controller.signal);
+    const store = new LocalStateStore(
+      path.join(cwd, DEFAULT_STATE_DIR_NAME),
+      controller.signal,
+    );
 
     await expect(store.read()).rejects.toBe(reason);
   });
@@ -72,7 +80,12 @@ describe("app local state", () => {
     await store.setKnownLiveDeployment("proj_123", "app_456", "dep_456");
 
     expect(
-      JSON.parse(await readFile(path.join(cwd, DEFAULT_STATE_DIR_NAME, "state.json"), "utf8")),
+      JSON.parse(
+        await readFile(
+          path.join(cwd, DEFAULT_STATE_DIR_NAME, "state.json"),
+          "utf8",
+        ),
+      ),
     ).toMatchObject({
       app: {
         knownLiveDeploymentByProject: {
@@ -83,8 +96,12 @@ describe("app local state", () => {
         },
       },
     });
-    await expect(store.readKnownLiveDeployment("proj_123", "app_123")).resolves.toBe("dep_123");
-    await expect(store.readKnownLiveDeployment("proj_123", "app_456")).resolves.toBe("dep_456");
+    await expect(
+      store.readKnownLiveDeployment("proj_123", "app_123"),
+    ).resolves.toBe("dep_123");
+    await expect(
+      store.readKnownLiveDeployment("proj_123", "app_456"),
+    ).resolves.toBe("dep_456");
   });
 
   it("clears the selected app only when the deleted app matches", async () => {
@@ -118,7 +135,11 @@ describe("app local state", () => {
 
     await store.clearKnownLiveDeployment("proj_123", "app_123");
 
-    await expect(store.readKnownLiveDeployment("proj_123", "app_123")).resolves.toBeNull();
-    await expect(store.readKnownLiveDeployment("proj_123", "app_456")).resolves.toBe("dep_456");
+    await expect(
+      store.readKnownLiveDeployment("proj_123", "app_123"),
+    ).resolves.toBeNull();
+    await expect(
+      store.readKnownLiveDeployment("proj_123", "app_456"),
+    ).resolves.toBe("dep_456");
   });
 });

@@ -2,7 +2,10 @@ import { CliError } from "../../shell/errors";
 import { confirmPrompt } from "../../shell/prompt";
 import { canPrompt, type CommandContext } from "../../shell/runtime";
 import type { BranchKind } from "../../types/branch";
-import type { PreviewAppProvider, PreviewDeploymentRecord } from "./preview-provider";
+import type {
+  PreviewAppProvider,
+  PreviewDeploymentRecord,
+} from "./preview-provider";
 
 export async function enforceProductionDeployGate(
   context: CommandContext,
@@ -23,10 +26,13 @@ export async function enforceProductionDeployGate(
     return { firstProductionDeploy: true };
   }
 
-  const deploymentsResult = await provider.listDeployments(options.appId).catch((error) => {
-    throw productionDeployInspectionFailedError(error);
-  });
-  const currentLiveDeployment = resolveCurrentProductionDeployment(deploymentsResult);
+  const deploymentsResult = await provider
+    .listDeployments(options.appId)
+    .catch((error) => {
+      throw productionDeployInspectionFailedError(error);
+    });
+  const currentLiveDeployment =
+    resolveCurrentProductionDeployment(deploymentsResult);
   if (!currentLiveDeployment) {
     renderFirstProductionDeployLine(context, options.appName);
     return { firstProductionDeploy: true };
@@ -60,27 +66,40 @@ export async function enforceProductionDeployGate(
   return { firstProductionDeploy: false };
 }
 
-function resolveCurrentProductionDeployment(result: Awaited<ReturnType<PreviewAppProvider["listDeployments"]>>): PreviewDeploymentRecord | null {
+function resolveCurrentProductionDeployment(
+  result: Awaited<ReturnType<PreviewAppProvider["listDeployments"]>>,
+): PreviewDeploymentRecord | null {
   if (result.deployments.length === 0) {
     return null;
   }
 
   if (result.app.liveDeploymentId) {
-    const live = result.deployments.find((deployment) => deployment.id === result.app.liveDeploymentId);
+    const live = result.deployments.find(
+      (deployment) => deployment.id === result.app.liveDeploymentId,
+    );
     if (live) {
       return live;
     }
   }
 
-  return result.deployments.find((deployment) => deployment.live === true) ?? result.deployments[0] ?? null;
+  return (
+    result.deployments.find((deployment) => deployment.live === true) ??
+    result.deployments[0] ??
+    null
+  );
 }
 
-function renderFirstProductionDeployLine(context: CommandContext, appName: string): void {
+function renderFirstProductionDeployLine(
+  context: CommandContext,
+  appName: string,
+): void {
   if (context.flags.json || context.flags.quiet) {
     return;
   }
 
-  context.output.stderr.write(`First deploy of "${appName}" -- promoting to production.\n\n`);
+  context.output.stderr.write(
+    `First deploy of "${appName}" -- promoting to production.\n\n`,
+  );
 }
 
 function renderProductionDeployYesLine(context: CommandContext): void {

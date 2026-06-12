@@ -29,7 +29,10 @@ import {
 } from "../../presenters/database";
 import { attachCommandDescriptor } from "../../shell/command-meta";
 import { runCommand } from "../../shell/command-runner";
-import { addCompactGlobalFlags, addGlobalFlags } from "../../shell/global-flags";
+import {
+  addCompactGlobalFlags,
+  addGlobalFlags,
+} from "../../shell/global-flags";
 import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
 import type {
   DatabaseConnectionCreateResult,
@@ -42,7 +45,10 @@ import type {
 } from "../../types/database";
 
 export function createDatabaseCommand(runtime: CliRuntime): Command {
-  const database = attachCommandDescriptor(configureRuntimeCommand(new Command("database"), runtime), "database");
+  const database = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("database"), runtime),
+    "database",
+  );
 
   addCompactGlobalFlags(database);
 
@@ -62,7 +68,10 @@ function addProjectAndBranchOptions(command: Command): Command {
 }
 
 function createDatabaseListCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("list"), runtime), "database.list");
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("list"), runtime),
+    "database.list",
+  );
 
   addProjectAndBranchOptions(command);
   addGlobalFlags(command);
@@ -77,7 +86,8 @@ function createDatabaseListCommand(runtime: CliRuntime): Command {
       options as Record<string, unknown>,
       (context) => runDatabaseList(context, { projectRef, branchName }),
       {
-        renderHuman: (context, descriptor, result) => renderDatabaseList(context, descriptor, result),
+        renderHuman: (context, descriptor, result) =>
+          renderDatabaseList(context, descriptor, result),
         renderJson: (result) => serializeDatabaseList(result),
       },
     );
@@ -87,7 +97,10 @@ function createDatabaseListCommand(runtime: CliRuntime): Command {
 }
 
 function createDatabaseShowCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("show"), runtime), "database.show");
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("show"), runtime),
+    "database.show",
+  );
 
   command.argument("<database>", "Database id or name");
   addProjectAndBranchOptions(command);
@@ -101,9 +114,11 @@ function createDatabaseShowCommand(runtime: CliRuntime): Command {
       runtime,
       "database.show",
       options as Record<string, unknown>,
-      (context) => runDatabaseShow(context, databaseRef, { projectRef, branchName }),
+      (context) =>
+        runDatabaseShow(context, databaseRef, { projectRef, branchName }),
       {
-        renderHuman: (context, descriptor, result) => renderDatabaseShow(context, descriptor, result),
+        renderHuman: (context, descriptor, result) =>
+          renderDatabaseShow(context, descriptor, result),
         renderJson: (result) => serializeDatabaseShow(result),
       },
     );
@@ -113,7 +128,10 @@ function createDatabaseShowCommand(runtime: CliRuntime): Command {
 }
 
 function createDatabaseCreateCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("create"), runtime), "database.create");
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("create"), runtime),
+    "database.create",
+  );
 
   command
     .argument("<name>", "Database name")
@@ -130,10 +148,13 @@ function createDatabaseCreateCommand(runtime: CliRuntime): Command {
       runtime,
       "database.create",
       options as Record<string, unknown>,
-      (context) => runDatabaseCreate(context, name, { projectRef, branchName, region }),
+      (context) =>
+        runDatabaseCreate(context, name, { projectRef, branchName, region }),
       {
-        renderStdout: (context, descriptor, result) => renderDatabaseCreateStdout(context, descriptor, result),
-        renderHuman: (context, descriptor, result) => renderDatabaseCreate(context, descriptor, result),
+        renderStdout: (context, descriptor, result) =>
+          renderDatabaseCreateStdout(context, descriptor, result),
+        renderHuman: (context, descriptor, result) =>
+          renderDatabaseCreate(context, descriptor, result),
         renderJson: (result) => serializeDatabaseCreate(result),
       },
     );
@@ -143,11 +164,19 @@ function createDatabaseCreateCommand(runtime: CliRuntime): Command {
 }
 
 function createDatabaseRemoveCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("remove"), runtime), "database.remove");
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("remove"), runtime),
+    "database.remove",
+  );
 
   command
     .argument("<database>", "Database id or name")
-    .addOption(new Option("--confirm <database-id>", "Exact database id required to remove"));
+    .addOption(
+      new Option(
+        "--confirm <database-id>",
+        "Exact database id required to remove",
+      ),
+    );
   addProjectAndBranchOptions(command);
   addGlobalFlags(command);
 
@@ -160,9 +189,15 @@ function createDatabaseRemoveCommand(runtime: CliRuntime): Command {
       runtime,
       "database.remove",
       options as Record<string, unknown>,
-      (context) => runDatabaseRemove(context, databaseRef, { projectRef, branchName, confirm }),
+      (context) =>
+        runDatabaseRemove(context, databaseRef, {
+          projectRef,
+          branchName,
+          confirm,
+        }),
       {
-        renderHuman: (context, descriptor, result) => renderDatabaseRemove(context, descriptor, result),
+        renderHuman: (context, descriptor, result) =>
+          renderDatabaseRemove(context, descriptor, result),
         renderJson: (result) => serializeDatabaseRemove(result),
       },
     );
@@ -172,7 +207,10 @@ function createDatabaseRemoveCommand(runtime: CliRuntime): Command {
 }
 
 function createDatabaseConnectionCommand(runtime: CliRuntime): Command {
-  const connection = attachCommandDescriptor(configureRuntimeCommand(new Command("connection"), runtime), "database.connection");
+  const connection = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("connection"), runtime),
+    "database.connection",
+  );
 
   addCompactGlobalFlags(connection);
 
@@ -184,7 +222,10 @@ function createDatabaseConnectionCommand(runtime: CliRuntime): Command {
 }
 
 function createDatabaseConnectionListCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("list"), runtime), "database.connection.list");
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("list"), runtime),
+    "database.connection.list",
+  );
 
   command.argument("<database>", "Database id or name");
   addProjectAndBranchOptions(command);
@@ -198,9 +239,14 @@ function createDatabaseConnectionListCommand(runtime: CliRuntime): Command {
       runtime,
       "database.connection.list",
       options as Record<string, unknown>,
-      (context) => runDatabaseConnectionList(context, databaseRef, { projectRef, branchName }),
+      (context) =>
+        runDatabaseConnectionList(context, databaseRef, {
+          projectRef,
+          branchName,
+        }),
       {
-        renderHuman: (context, descriptor, result) => renderDatabaseConnectionList(context, descriptor, result),
+        renderHuman: (context, descriptor, result) =>
+          renderDatabaseConnectionList(context, descriptor, result),
         renderJson: (result) => serializeDatabaseConnectionList(result),
       },
     );
@@ -210,7 +256,10 @@ function createDatabaseConnectionListCommand(runtime: CliRuntime): Command {
 }
 
 function createDatabaseConnectionCreateCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("create"), runtime), "database.connection.create");
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("create"), runtime),
+    "database.connection.create",
+  );
 
   command
     .argument("<database>", "Database id or name")
@@ -227,10 +276,17 @@ function createDatabaseConnectionCreateCommand(runtime: CliRuntime): Command {
       runtime,
       "database.connection.create",
       options as Record<string, unknown>,
-      (context) => runDatabaseConnectionCreate(context, databaseRef, { projectRef, branchName, name }),
+      (context) =>
+        runDatabaseConnectionCreate(context, databaseRef, {
+          projectRef,
+          branchName,
+          name,
+        }),
       {
-        renderStdout: (context, descriptor, result) => renderDatabaseConnectionCreateStdout(context, descriptor, result),
-        renderHuman: (context, descriptor, result) => renderDatabaseConnectionCreate(context, descriptor, result),
+        renderStdout: (context, descriptor, result) =>
+          renderDatabaseConnectionCreateStdout(context, descriptor, result),
+        renderHuman: (context, descriptor, result) =>
+          renderDatabaseConnectionCreate(context, descriptor, result),
         renderJson: (result) => serializeDatabaseConnectionCreate(result),
       },
     );
@@ -240,11 +296,19 @@ function createDatabaseConnectionCreateCommand(runtime: CliRuntime): Command {
 }
 
 function createDatabaseConnectionRemoveCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("remove"), runtime), "database.connection.remove");
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("remove"), runtime),
+    "database.connection.remove",
+  );
 
   command
     .argument("<connection>", "Connection id")
-    .addOption(new Option("--confirm <connection-id>", "Exact connection id required to remove"));
+    .addOption(
+      new Option(
+        "--confirm <connection-id>",
+        "Exact connection id required to remove",
+      ),
+    );
   addGlobalFlags(command);
 
   command.action(async (connectionRef: string, options) => {
@@ -254,9 +318,11 @@ function createDatabaseConnectionRemoveCommand(runtime: CliRuntime): Command {
       runtime,
       "database.connection.remove",
       options as Record<string, unknown>,
-      (context) => runDatabaseConnectionRemove(context, connectionRef, { confirm }),
+      (context) =>
+        runDatabaseConnectionRemove(context, connectionRef, { confirm }),
       {
-        renderHuman: (context, descriptor, result) => renderDatabaseConnectionRemove(context, descriptor, result),
+        renderHuman: (context, descriptor, result) =>
+          renderDatabaseConnectionRemove(context, descriptor, result),
         renderJson: (result) => serializeDatabaseConnectionRemove(result),
       },
     );

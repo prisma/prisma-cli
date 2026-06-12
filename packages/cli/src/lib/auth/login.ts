@@ -134,12 +134,15 @@ export async function login(options: LoginOptions = {}): Promise<void> {
     // Only race the paste flow when stdin is a TTY we can actually prompt on.
     // Without one (CI, pipes, tests) the browser callback is the only path.
     const callbackResult = interactive
-      ? Promise.race([httpResult, consumePastedCallback({
-        input,
-        output,
-        signal: pasteAbort.signal,
-        complete: completeOnce,
-      })])
+      ? Promise.race([
+          httpResult,
+          consumePastedCallback({
+            input,
+            output,
+            signal: pasteAbort.signal,
+            complete: completeOnce,
+          }),
+        ])
       : httpResult;
 
     await Promise.all([state.openLoginPage(interactive), callbackResult]);

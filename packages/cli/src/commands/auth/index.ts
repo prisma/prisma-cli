@@ -1,15 +1,26 @@
 import { Command, Option } from "commander";
 
-import { runAuthLogin, runAuthLogout, runAuthWhoAmI, type AuthLoginCommandOptions } from "../../controllers/auth";
+import {
+  runAuthLogin,
+  runAuthLogout,
+  runAuthWhoAmI,
+  type AuthLoginCommandOptions,
+} from "../../controllers/auth";
 import { renderAuthSuccess } from "../../presenters/auth";
 import { attachCommandDescriptor } from "../../shell/command-meta";
-import { addCompactGlobalFlags, addGlobalFlags } from "../../shell/global-flags";
+import {
+  addCompactGlobalFlags,
+  addGlobalFlags,
+} from "../../shell/global-flags";
 import { runCommand } from "../../shell/command-runner";
 import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
 import type { AuthStateResult } from "../../types/auth";
 
 export function createAuthCommand(runtime: CliRuntime): Command {
-  const auth = attachCommandDescriptor(configureRuntimeCommand(new Command("auth"), runtime), "auth");
+  const auth = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("auth"), runtime),
+    "auth",
+  );
 
   addCompactGlobalFlags(auth);
 
@@ -21,7 +32,10 @@ export function createAuthCommand(runtime: CliRuntime): Command {
 }
 
 function createAuthLoginCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("login"), runtime), "auth.login");
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("login"), runtime),
+    "auth.login",
+  );
 
   command
     .addOption(new Option("--provider <provider>").hideHelp())
@@ -47,7 +61,10 @@ function createAuthLoginCommand(runtime: CliRuntime): Command {
 }
 
 function createAuthLogoutCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("logout"), runtime), "auth.logout");
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("logout"), runtime),
+    "auth.logout",
+  );
 
   addGlobalFlags(command);
 
@@ -68,7 +85,10 @@ function createAuthLogoutCommand(runtime: CliRuntime): Command {
 }
 
 function createAuthWhoAmICommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("whoami"), runtime), "auth.whoami");
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("whoami"), runtime),
+    "auth.whoami",
+  );
 
   addGlobalFlags(command);
 

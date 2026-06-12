@@ -45,11 +45,17 @@ export interface VerboseRow {
 
 const DEFAULT_WIDTH = 80;
 
-export function createShellUi(runtime: CliRuntime, flags: GlobalFlags): ShellUi {
+export function createShellUi(
+  runtime: CliRuntime,
+  flags: GlobalFlags,
+): ShellUi {
   const isTTY = Boolean(runtime.stderr.isTTY);
   const colorEnabled = resolveColorEnabled(runtime, flags, isTTY);
   const colors = createColors({ useColor: colorEnabled });
-  const width = runtime.stderr.columns && runtime.stderr.columns > 0 ? runtime.stderr.columns : DEFAULT_WIDTH;
+  const width =
+    runtime.stderr.columns && runtime.stderr.columns > 0
+      ? runtime.stderr.columns
+      : DEFAULT_WIDTH;
 
   return {
     isTTY,
@@ -83,12 +89,23 @@ export function renderCommandHeader(
   }
 
   const rows = options.rows ?? [];
-  const lines = [`${ui.strong(options.commandLabel)} ${ui.dim("→")} ${ui.dim(options.description)}`, ""];
+  const lines = [
+    `${ui.strong(options.commandLabel)} ${ui.dim("→")} ${ui.dim(options.description)}`,
+    "",
+  ];
   const rail = ui.dim("│");
-  const keyWidth = rows.length > 0 ? Math.max(...rows.map((row) => stringWidth(`${row.key}:`)), stringWidth("Read more")) : stringWidth("Read more");
+  const keyWidth =
+    rows.length > 0
+      ? Math.max(
+          ...rows.map((row) => stringWidth(`${row.key}:`)),
+          stringWidth("Read more"),
+        )
+      : stringWidth("Read more");
 
   for (const row of rows) {
-    lines.push(`${rail}  ${ui.accent(padDisplay(`${row.key}:`, keyWidth))}  ${formatHeaderValue(ui, row)}`);
+    lines.push(
+      `${rail}  ${ui.accent(padDisplay(`${row.key}:`, keyWidth))}  ${formatHeaderValue(ui, row)}`,
+    );
   }
 
   if (rows.length > 0 || options.docsPath) {
@@ -96,7 +113,9 @@ export function renderCommandHeader(
   }
 
   if (options.docsPath) {
-    lines.push(`${rail}  ${ui.accent(padDisplay("Read more", keyWidth))}  ${ui.link(options.docsPath)}`);
+    lines.push(
+      `${rail}  ${ui.accent(padDisplay("Read more", keyWidth))}  ${ui.link(options.docsPath)}`,
+    );
   }
 
   lines.push("");
@@ -128,7 +147,9 @@ export function renderFieldRows(ui: ShellUi, rows: FieldRow[]): string[] {
   const keyWidth = Math.max(...rows.map((row) => stringWidth(`${row.key}:`)));
 
   return rows.map((row) => {
-    const key = ui.isTTY ? ui.accent(padDisplay(`${row.key}:`, keyWidth)) : padDisplay(`${row.key}:`, keyWidth);
+    const key = ui.isTTY
+      ? ui.accent(padDisplay(`${row.key}:`, keyWidth))
+      : padDisplay(`${row.key}:`, keyWidth);
     const value = row.tone === "dim" ? ui.dim(row.value) : row.value;
     return `${key}  ${value}`;
   });
@@ -146,7 +167,11 @@ export function renderNextSteps(steps: string[]): string[] {
   ];
 }
 
-export function renderVerboseBlock(ui: ShellUi, rows: VerboseRow[], options: { title?: string } = {}): string[] {
+export function renderVerboseBlock(
+  ui: ShellUi,
+  rows: VerboseRow[],
+  options: { title?: string } = {},
+): string[] {
   if (!ui.verbose || rows.length === 0) {
     return [];
   }
@@ -158,12 +183,18 @@ export function renderVerboseBlock(ui: ShellUi, rows: VerboseRow[], options: { t
   return [
     "",
     `${ui.dim(title)}:`,
-    ...rows.map((row) => `${rail}  ${ui.accent(padDisplay(`${row.key}:`, keyWidth))}  ${formatVerboseValue(ui, row)}`),
+    ...rows.map(
+      (row) =>
+        `${rail}  ${ui.accent(padDisplay(`${row.key}:`, keyWidth))}  ${formatVerboseValue(ui, row)}`,
+    ),
   ];
 }
 
 export function formatColumns(columns: string[], widths: number[]): string {
-  return columns.map((value, index) => padDisplay(value, widths[index])).join("   ").trimEnd();
+  return columns
+    .map((value, index) => padDisplay(value, widths[index]))
+    .join("   ")
+    .trimEnd();
 }
 
 export function plain(text: string): string {
@@ -182,10 +213,16 @@ export function padDisplay(text: string, width: number): string {
 }
 
 export function maskValue(value: string): string {
-  return value.replace(/([A-Za-z0-9._%+-]{1,})(?=@)/g, "****").replace(/:\/\/[^:@/\s]+:[^@/\s]+@/g, "://****:****@");
+  return value
+    .replace(/([A-Za-z0-9._%+-]{1,})(?=@)/g, "****")
+    .replace(/:\/\/[^:@/\s]+:[^@/\s]+@/g, "://****:****@");
 }
 
-function resolveColorEnabled(runtime: CliRuntime, flags: GlobalFlags, isTTY: boolean): boolean {
+function resolveColorEnabled(
+  runtime: CliRuntime,
+  flags: GlobalFlags,
+  isTTY: boolean,
+): boolean {
   if (flags.color === true) {
     return true;
   }

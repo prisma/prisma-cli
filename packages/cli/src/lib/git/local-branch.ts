@@ -1,7 +1,10 @@
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 
-export async function readLocalGitBranch(cwd: string, signal: AbortSignal): Promise<string | null> {
+export async function readLocalGitBranch(
+  cwd: string,
+  signal: AbortSignal,
+): Promise<string | null> {
   const gitPath = path.join(cwd, ".git");
   const headPath = await resolveGitHeadPath(gitPath, signal);
   if (!headPath) {
@@ -9,7 +12,9 @@ export async function readLocalGitBranch(cwd: string, signal: AbortSignal): Prom
   }
 
   try {
-    const head = (await readFile(headPath, { encoding: "utf8", signal })).trim();
+    const head = (
+      await readFile(headPath, { encoding: "utf8", signal })
+    ).trim();
     const refPrefix = "ref: refs/heads/";
     if (head.startsWith(refPrefix)) {
       return head.slice(refPrefix.length);
@@ -22,13 +27,19 @@ export async function readLocalGitBranch(cwd: string, signal: AbortSignal): Prom
   return null;
 }
 
-async function resolveGitHeadPath(gitPath: string, signal: AbortSignal): Promise<string | null> {
+async function resolveGitHeadPath(
+  gitPath: string,
+  signal: AbortSignal,
+): Promise<string | null> {
   signal.throwIfAborted();
   try {
     const raw = await readFile(gitPath, { encoding: "utf8", signal });
     const prefix = "gitdir:";
     if (raw.startsWith(prefix)) {
-      return path.join(path.resolve(path.dirname(gitPath), raw.slice(prefix.length).trim()), "HEAD");
+      return path.join(
+        path.resolve(path.dirname(gitPath), raw.slice(prefix.length).trim()),
+        "HEAD",
+      );
     }
   } catch (error) {
     if (signal.aborted) throw error;

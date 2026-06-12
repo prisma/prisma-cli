@@ -10,7 +10,10 @@ import type {
 } from "../types/app-env";
 import { renderList, renderShow, serializeList } from "../output/patterns";
 import { renderVerboseBlock, type VerboseRow } from "../shell/ui";
-import { renderResolvedProjectContextBlock, stripVerboseContext } from "./verbose-context";
+import {
+  renderResolvedProjectContextBlock,
+  stripVerboseContext,
+} from "./verbose-context";
 
 function scopeLabel(scope: EnvScopeDescriptor): string {
   if (scope.kind === "role") {
@@ -36,7 +39,11 @@ function listTargetLabel(result: EnvListResult): string {
   return scopeLabel(result.scope);
 }
 
-type EnvPresenterResult = EnvAddResult | EnvUpdateResult | EnvListResult | EnvRmResult;
+type EnvPresenterResult =
+  | EnvAddResult
+  | EnvUpdateResult
+  | EnvListResult
+  | EnvRmResult;
 
 function renderEnvVerboseBlocks(
   context: CommandContext,
@@ -59,7 +66,9 @@ function renderEnvTargetBlock(
   context: CommandContext,
   result: EnvPresenterResult,
 ): string[] {
-  return renderVerboseBlock(context.ui, envTargetRows(result), { title: "Env target" });
+  return renderVerboseBlock(context.ui, envTargetRows(result), {
+    title: "Env target",
+  });
 }
 
 function envTargetRows(result: EnvPresenterResult): VerboseRow[] {
@@ -88,10 +97,22 @@ function envListTargetRows(result: EnvPresenterResult): VerboseRow[] {
       ? [{ key: "branch", value: result.target.branchName }]
       : []),
     ...(result.target.branchId
-      ? [{ key: "branch id", value: result.target.branchId, tone: "dim" as const }]
+      ? [
+          {
+            key: "branch id",
+            value: result.target.branchId,
+            tone: "dim" as const,
+          },
+        ]
       : []),
     ...(result.target.branchExists === false
-      ? [{ key: "branch state", value: "not created yet", tone: "warning" as const }]
+      ? [
+          {
+            key: "branch state",
+            value: "not created yet",
+            tone: "warning" as const,
+          },
+        ]
       : []),
   ];
 }
@@ -109,7 +130,9 @@ function envFileRows(result: EnvPresenterResult): VerboseRow[] {
 
 function envResultKeys(result: EnvPresenterResult): string[] {
   if ("variables" in result && result.variables) {
-    return result.variables.map((variable) => variable.key).sort((left, right) => left.localeCompare(right));
+    return result.variables
+      .map((variable) => variable.key)
+      .sort((left, right) => left.localeCompare(right));
   }
 
   if ("variable" in result && result.variable) {

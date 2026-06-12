@@ -127,7 +127,7 @@ function extractParsedKeys(contents: string): ParsedEnvFileKey[] {
     const valueStart = line.slice(match[0].length).trimStart();
     const openingQuote = valueStart[0];
     if (
-      (openingQuote === "\"" || openingQuote === "'" || openingQuote === "`") &&
+      (openingQuote === '"' || openingQuote === "'" || openingQuote === "`") &&
       !hasClosingQuote(valueStart, openingQuote, 1)
     ) {
       multilineQuote = openingQuote;
@@ -146,9 +146,10 @@ function validateEnvFileKey(
   try {
     validateKey(key, command === "deploy" ? "add" : command);
   } catch (error) {
-    const reason = error instanceof Error && error.message.length > 0
-      ? error.message
-      : "Invalid environment variable key.";
+    const reason =
+      error instanceof Error && error.message.length > 0
+        ? error.message
+        : "Invalid environment variable key.";
     throw usageError(
       `Invalid environment variable "${key}" in "${filePath}"`,
       `Line ${line}: ${reason}`,
@@ -159,7 +160,11 @@ function validateEnvFileKey(
   }
 }
 
-function hasClosingQuote(value: string, quote: string, startIndex: number): boolean {
+function hasClosingQuote(
+  value: string,
+  quote: string,
+  startIndex: number,
+): boolean {
   for (let index = startIndex; index < value.length; index += 1) {
     if (value[index] === quote && !isEscaped(value, index)) {
       return true;
@@ -170,7 +175,11 @@ function hasClosingQuote(value: string, quote: string, startIndex: number): bool
 
 function isEscaped(value: string, index: number): boolean {
   let backslashes = 0;
-  for (let cursor = index - 1; cursor >= 0 && value[cursor] === "\\"; cursor -= 1) {
+  for (
+    let cursor = index - 1;
+    cursor >= 0 && value[cursor] === "\\";
+    cursor -= 1
+  ) {
     backslashes += 1;
   }
   return backslashes % 2 === 1;

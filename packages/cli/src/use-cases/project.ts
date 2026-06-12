@@ -7,18 +7,27 @@ interface ProjectUseCaseDependencies {
   projectGateway: ProjectGateway;
 }
 
-export function createProjectUseCases(dependencies: ProjectUseCaseDependencies): ProjectUseCases {
+export function createProjectUseCases(
+  dependencies: ProjectUseCaseDependencies,
+): ProjectUseCases {
   return {
     list: async (authState: AuthStateResult): Promise<ProjectListResult> => {
       const workspace = requireWorkspace(authState);
 
       return {
         workspace,
-        projects: listSortedWorkspaceProjects(dependencies.projectGateway, workspace.id).map(toProjectSummary),
+        projects: listSortedWorkspaceProjects(
+          dependencies.projectGateway,
+          workspace.id,
+        ).map(toProjectSummary),
       };
     },
-    listProjectsForWorkspace: async (workspaceId: string): Promise<ProjectSummary[]> =>
-      listSortedWorkspaceProjects(dependencies.projectGateway, workspaceId).map(toProjectSummary),
+    listProjectsForWorkspace: async (
+      workspaceId: string,
+    ): Promise<ProjectSummary[]> =>
+      listSortedWorkspaceProjects(dependencies.projectGateway, workspaceId).map(
+        toProjectSummary,
+      ),
   };
 }
 
@@ -30,14 +39,24 @@ function requireWorkspace(authState: AuthStateResult) {
   return authState.workspace;
 }
 
-function listSortedWorkspaceProjects(projectGateway: ProjectGateway, workspaceId: string) {
+function listSortedWorkspaceProjects(
+  projectGateway: ProjectGateway,
+  workspaceId: string,
+) {
   return projectGateway
     .listProjectsForWorkspace(workspaceId)
     .slice()
-    .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id));
+    .sort(
+      (left, right) =>
+        left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
+    );
 }
 
-function toProjectSummary(project: { id: string; name: string; url?: string }): ProjectSummary {
+function toProjectSummary(project: {
+  id: string;
+  name: string;
+  url?: string;
+}): ProjectSummary {
   return {
     id: project.id,
     name: project.name,

@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { getCommandDescriptor } from "../src/shell/command-meta";
-import { renderAppDeploy, renderAppDomainAdd, renderAppDomainRetry, renderAppDomainShow, serializeAppDeploy } from "../src/presenters/app";
+import {
+  renderAppDeploy,
+  renderAppDomainAdd,
+  renderAppDomainRetry,
+  renderAppDomainShow,
+  serializeAppDeploy,
+} from "../src/presenters/app";
 import type {
   AppDeployResult,
   AppDomainAddResult,
@@ -11,7 +17,9 @@ import type {
 } from "../src/types/app";
 import { createTestCommandContext } from "./helpers";
 
-function createDomain(overrides: Partial<AppDomainSummary> = {}): AppDomainSummary {
+function createDomain(
+  overrides: Partial<AppDomainSummary> = {},
+): AppDomainSummary {
   return {
     id: "dom_123",
     type: "custom-domain",
@@ -176,8 +184,12 @@ describe("app domain presenters", () => {
     ).join("\n");
 
     expect(lines).toContain("dns record");
-    expect(lines).toContain("CNAME shop.acme.com -> switchboard.fra.prisma.build ttl 300");
-    expect(lines).toContain("Add CNAME shop.acme.com -> switchboard.fra.prisma.build, then run prisma-cli app domain retry shop.acme.com.");
+    expect(lines).toContain(
+      "CNAME shop.acme.com -> switchboard.fra.prisma.build ttl 300",
+    );
+    expect(lines).toContain(
+      "Add CNAME shop.acme.com -> switchboard.fra.prisma.build, then run prisma-cli app domain retry shop.acme.com.",
+    );
   });
 });
 
@@ -217,7 +229,9 @@ describe("app deploy presenter", () => {
   });
 
   it("keeps verbose-only deploy details out of JSON serialization", () => {
-    const json = JSON.parse(JSON.stringify(serializeAppDeploy(createDeployResult())));
+    const json = JSON.parse(
+      JSON.stringify(serializeAppDeploy(createDeployResult())),
+    );
 
     expect(json.deploySettings).toEqual({
       config: {

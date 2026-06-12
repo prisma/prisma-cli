@@ -6,7 +6,11 @@ import { createAuthUseCases } from "../use-cases/auth";
 import { createCliUseCaseGateways } from "../use-cases/create-cli-gateways";
 import type { LoginSelection, SelectPromptPort } from "../use-cases/contracts";
 import { createSelectPromptPort } from "./select-prompt-port";
-import { performLogin, readAuthState, performLogout } from "../lib/auth/auth-ops";
+import {
+  performLogin,
+  readAuthState,
+  performLogout,
+} from "../lib/auth/auth-ops";
 
 export interface AuthLoginCommandOptions {
   provider?: string;
@@ -15,7 +19,10 @@ export interface AuthLoginCommandOptions {
 }
 
 function isRealMode(context: CommandContext): boolean {
-  return !context.runtime.fixturePath && !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH;
+  return (
+    !context.runtime.fixturePath &&
+    !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH
+  );
 }
 
 export async function runAuthLogin(
@@ -32,10 +39,15 @@ export async function runAuthLogin(
     result = await loginWithSelectionFlow(context, useCases, options);
   }
 
-  return createAuthSuccess("auth.login", result, ["prisma-cli auth whoami", "prisma-cli project list"]);
+  return createAuthSuccess("auth.login", result, [
+    "prisma-cli auth whoami",
+    "prisma-cli project list",
+  ]);
 }
 
-export async function runAuthLogout(context: CommandContext): Promise<CommandSuccess<AuthStateResult>> {
+export async function runAuthLogout(
+  context: CommandContext,
+): Promise<CommandSuccess<AuthStateResult>> {
   let result: AuthStateResult;
 
   if (isRealMode(context)) {
@@ -49,7 +61,9 @@ export async function runAuthLogout(context: CommandContext): Promise<CommandSuc
   return createAuthSuccess("auth.logout", result, ["prisma-cli auth login"]);
 }
 
-export async function runAuthWhoAmI(context: CommandContext): Promise<CommandSuccess<AuthStateResult>> {
+export async function runAuthWhoAmI(
+  context: CommandContext,
+): Promise<CommandSuccess<AuthStateResult>> {
   let result: AuthStateResult;
 
   if (isRealMode(context)) {
@@ -59,12 +73,21 @@ export async function runAuthWhoAmI(context: CommandContext): Promise<CommandSuc
     result = await useCases.whoami();
   }
 
-  return createAuthSuccess("auth.whoami", result, result.authenticated ? [] : ["prisma-cli auth login"]);
+  return createAuthSuccess(
+    "auth.whoami",
+    result,
+    result.authenticated ? [] : ["prisma-cli auth login"],
+  );
 }
 
-export async function requireAuthenticatedAuthState(context: CommandContext): Promise<AuthStateResult> {
+export async function requireAuthenticatedAuthState(
+  context: CommandContext,
+): Promise<AuthStateResult> {
   if (isRealMode(context)) {
-    const current = await readAuthState(context.runtime.env, context.runtime.signal);
+    const current = await readAuthState(
+      context.runtime.env,
+      context.runtime.signal,
+    );
     if (current.authenticated) {
       return current;
     }

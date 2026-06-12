@@ -14,9 +14,18 @@ import { getCliName, getCliVersion } from "./lib/version";
 import { attachCommandDescriptor } from "./shell/command-meta";
 import { CliError } from "./shell/errors";
 import { addCompactGlobalFlags } from "./shell/global-flags";
-import { formatUnexpectedError, writeHumanError, writeJsonError, writeJsonSuccess } from "./shell/output";
+import {
+  formatUnexpectedError,
+  writeHumanError,
+  writeJsonError,
+  writeJsonSuccess,
+} from "./shell/output";
 import { disposePromptState } from "./shell/prompt";
-import { configureRuntimeCommand, createCommandContext, type CliRuntime } from "./shell/runtime";
+import {
+  configureRuntimeCommand,
+  createCommandContext,
+  type CliRuntime,
+} from "./shell/runtime";
 import { createShellUi } from "./shell/ui";
 import { maybeWriteCachedUpdateNotification } from "./shell/update-check";
 
@@ -50,7 +59,9 @@ export async function runCli(options: RunCliOptions = {}): Promise<number> {
       return error.code === "commander.helpDisplayed" ? 0 : 2;
     }
 
-    runtime.stderr.write(formatUnexpectedError(error, runtime.argv.includes("--trace")));
+    runtime.stderr.write(
+      formatUnexpectedError(error, runtime.argv.includes("--trace")),
+    );
     return 1;
   } finally {
     disposePromptState(runtime.stdin);
@@ -58,15 +69,16 @@ export async function runCli(options: RunCliOptions = {}): Promise<number> {
 }
 
 export function createProgram(runtime: CliRuntime): Command {
-  const program = attachCommandDescriptor(configureRuntimeCommand(new Command(), runtime), "root");
+  const program = attachCommandDescriptor(
+    configureRuntimeCommand(new Command(), runtime),
+    "root",
+  );
 
   addCompactGlobalFlags(program);
 
   program.addOption(new Option("--version", "Print the CLI version and exit."));
 
-  program
-    .name("prisma")
-    .showSuggestionAfterError();
+  program.name("prisma").showSuggestionAfterError();
 
   program.addCommand(createVersionCommand(runtime));
   program.addCommand(createAuthCommand(runtime));
@@ -85,7 +97,10 @@ async function handleVersionFlag(runtime: CliRuntime): Promise<number> {
 
   try {
     if (wantsJson) {
-      const context = await createCommandContext(runtime, buildVersionFlagFlags(runtime));
+      const context = await createCommandContext(
+        runtime,
+        buildVersionFlagFlags(runtime),
+      );
       const success = await runVersion(context);
       writeJsonSuccess(output, {
         command: success.command,
@@ -127,7 +142,10 @@ function buildVersionFlagFlags(runtime: CliRuntime) {
   };
 }
 
-function resolveBareHelpCommand(program: Command, argv: string[]): Command | null {
+function resolveBareHelpCommand(
+  program: Command,
+  argv: string[],
+): Command | null {
   if (argv.length === 0) {
     return program;
   }
@@ -136,7 +154,8 @@ function resolveBareHelpCommand(program: Command, argv: string[]): Command | nul
     return null;
   }
 
-  const candidate = program.commands.find((command) => command.name() === argv[0]) ?? null;
+  const candidate =
+    program.commands.find((command) => command.name() === argv[0]) ?? null;
 
   if (!candidate) {
     return null;

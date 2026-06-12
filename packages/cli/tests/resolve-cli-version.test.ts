@@ -12,7 +12,10 @@ import {
 } from "../../../scripts/resolve-cli-version.mjs";
 
 const execFileAsync = promisify(execFile);
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
 const scriptPath = path.join(repoRoot, "scripts/resolve-cli-version.mjs");
 
 describe("resolve cli version", () => {
@@ -32,17 +35,21 @@ describe("resolve cli version", () => {
   });
 
   it("computes a unique dev build version", () => {
-    expect(resolveDevVersion({
-      runNumber: "123",
-      runAttempt: "2",
-    })).toBe("3.0.0-dev.123.2");
+    expect(
+      resolveDevVersion({
+        runNumber: "123",
+        runAttempt: "2",
+      }),
+    ).toBe("3.0.0-dev.123.2");
   });
 
   it("computes an exact PR preview version", () => {
-    expect(resolvePrVersion({
-      prNumber: "43",
-      sha: "f1110dd704a9382c429b",
-    })).toBe("3.0.0-pr.43.shaf1110dd704a9");
+    expect(
+      resolvePrVersion({
+        prNumber: "43",
+        sha: "f1110dd704a9382c429b",
+      }),
+    ).toBe("3.0.0-pr.43.shaf1110dd704a9");
   });
 
   it("prints GitHub output lines for the next beta command", async () => {

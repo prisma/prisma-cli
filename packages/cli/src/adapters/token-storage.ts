@@ -11,7 +11,9 @@ interface StoredCredential {
   refreshToken?: unknown;
 }
 
-function findLatestValidTokens(allCredentials: StoredCredential[]): Tokens | null {
+function findLatestValidTokens(
+  allCredentials: StoredCredential[],
+): Tokens | null {
   for (let i = allCredentials.length - 1; i >= 0; i -= 1) {
     const credential = allCredentials[i];
     if (!credential) continue;
@@ -63,7 +65,10 @@ export class FileTokenStorage implements TokenStorage {
   private readonly credentialsStore: CredentialsStore;
   private readonly lockFilePath: string;
 
-  constructor(env: NodeJS.ProcessEnv = process.env, private readonly signal?: AbortSignal) {
+  constructor(
+    env: NodeJS.ProcessEnv = process.env,
+    private readonly signal?: AbortSignal,
+  ) {
     const authFilePath = getAuthFilePath(env);
     this.credentialsStore = new CredentialsStore(authFilePath);
     this.lockFilePath = `${authFilePath}.lock`;
@@ -161,10 +166,12 @@ export class FileTokenStorage implements TokenStorage {
 
   private async getStaleRefreshLockId(): Promise<string | null> {
     this.signal?.throwIfAborted();
-    const lockId = await fs.readFile(this.lockFilePath, { encoding: "utf8", signal: this.signal }).catch((error) => {
-      if (this.signal?.aborted) throw error;
-      return null;
-    });
+    const lockId = await fs
+      .readFile(this.lockFilePath, { encoding: "utf8", signal: this.signal })
+      .catch((error) => {
+        if (this.signal?.aborted) throw error;
+        return null;
+      });
     if (lockId === null) return null;
 
     this.signal?.throwIfAborted();
@@ -176,7 +183,9 @@ export class FileTokenStorage implements TokenStorage {
   }
 
   private async releaseRefreshLock(lockId: string): Promise<void> {
-    const currentLockId = await fs.readFile(this.lockFilePath, { encoding: "utf8" }).catch(() => null);
+    const currentLockId = await fs
+      .readFile(this.lockFilePath, { encoding: "utf8" })
+      .catch(() => null);
     if (currentLockId !== lockId) return;
     // unlink does not accept AbortSignal; refresh-lock cleanup must run even after cancellation.
     await fs.unlink(this.lockFilePath).catch(() => {});

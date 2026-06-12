@@ -89,7 +89,9 @@ function authUserLabel(result: AuthStateResult): string | null {
   return result.user?.email ?? credentialUserLabel(result);
 }
 
-function authUserRows(result: AuthStateResult): Parameters<typeof renderShow>[0]["fields"] {
+function authUserRows(
+  result: AuthStateResult,
+): Parameters<typeof renderShow>[0]["fields"] {
   const userLabel = authUserLabel(result);
   return userLabel ? [{ key: "user", value: userLabel }] : [];
 }
