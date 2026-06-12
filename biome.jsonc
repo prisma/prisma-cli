@@ -42,7 +42,8 @@
       },
       "suspicious": {
         "noVar": "on",
-        "useGuardForIn": "on"
+        "useGuardForIn": "on",
+        "useStaticResponseMethods": "on"
       }
       //   "complexity": {
       //   },
@@ -53,7 +54,6 @@
       //   "style": {
       //   },
       //   "suspicious": {
-      //     "useStaticResponseMethods": "on"
       //   }
     }
   },

@@ -284,7 +284,7 @@ describe("automatic update check", () => {
       installedVersion: getCliVersion(),
       now: new Date("2026-01-02T00:00:00.000Z"),
       fetchImpl: async () =>
-        new Response(JSON.stringify({ "dist-tags": { latest: "9.8.7" } })),
+        Response.json({ "dist-tags": { latest: "9.8.7" } }),
     });
 
     expect(await readUpdateCheckState(updateCheckDir)).toMatchObject({
@@ -310,7 +310,7 @@ describe("automatic update check", () => {
       installedVersion: getCliVersion(),
       now: new Date("2026-01-02T00:00:00.000Z"),
       fetchImpl: async () =>
-        new Response(JSON.stringify({ "dist-tags": { latest: "9.8.7" } })),
+        Response.json({ "dist-tags": { latest: "9.8.7" } }),
     });
 
     expect(await readUpdateCheckState(updateCheckDir)).toMatchObject({
