@@ -37,7 +37,8 @@
       "style": {
         "useCollapsedElseIf": "on",
         "useCollapsedIf": "on",
-        "noNestedTernary": "on"
+        "noNestedTernary": "on",
+        "noParameterAssign": "on"
       }
       //   "complexity": {
       //   },
@@ -46,7 +47,6 @@
       //   "performance": {
       //   },
       //   "style": {
-      //     "noParameterAssign": "on"
       //   },
       //   "suspicious": {
       //     "noVar": "on",
