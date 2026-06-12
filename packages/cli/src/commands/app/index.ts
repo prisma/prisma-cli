@@ -57,7 +57,7 @@ import { addCompactGlobalFlags, addGlobalFlags } from "../../shell/global-flags"
 import { runCommand, runStreamingCommand } from "../../shell/command-runner";
 import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
 import { PREVIEW_BUILD_TYPES } from "../../lib/app/preview-build";
-import { FRAMEWORK_KEYS, LOCAL_DEV_BUILD_TYPES } from "../../lib/app/frameworks";
+import { FRAMEWORK_KEYS, LOCAL_DEV_BUILD_TYPES } from "@prisma/compute-sdk/config";
 import type {
   AppBuildResult,
   AppDeployAllResult,

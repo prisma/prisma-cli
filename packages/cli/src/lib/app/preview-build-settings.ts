@@ -4,9 +4,9 @@ import path from "node:path";
 
 import { parseModule, type ASTNode } from "magicast";
 
-import { sourceRootLineage } from "../fs/source-root";
+import { sourceRootLineage, type ConfigBackedBuildType } from "@prisma/compute-sdk/config";
+
 import { readBunPackageJson, type BunPackageJsonLike } from "./bun-project";
-import type { ConfigBackedBuildType } from "./frameworks";
 import type { ResolvedPreviewBuildType } from "./preview-build";
 
 type PackageManager = "bun" | "pnpm" | "yarn" | "npm";

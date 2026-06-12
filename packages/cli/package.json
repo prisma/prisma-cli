@@ -7,10 +7,6 @@
     "prisma-cli": "./dist/cli.js"
   },
   "exports": {
-    "./config": {
-      "types": "./dist/config.d.ts",
-      "default": "./dist/config.js"
-    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -48,14 +44,13 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.5.0",
-    "@prisma/compute-sdk": "^0.22.0",
+    "@prisma/compute-sdk": "^0.23.0",
     "@prisma/credentials-store": "^7.8.0",
     "@prisma/management-api-sdk": "^1.37.0",
     "better-result": "^2.9.2",
     "colorette": "^2.0.20",
     "commander": "^14.0.3",
     "dotenv": "^17.4.2",
-    "jiti": "^2.7.0",
     "magicast": "^0.5.3",
     "open": "^11.0.0",
     "string-width": "^8.2.1",

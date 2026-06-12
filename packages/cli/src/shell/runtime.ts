@@ -4,7 +4,7 @@ import { Command } from "commander";
 
 import { LocalStateStore } from "../adapters/local-state";
 import { MockApi } from "../adapters/mock-api";
-import { findComputeConfigDir } from "../lib/app/compute-config-discovery";
+import { findComputeConfigDir } from "@prisma/compute-sdk/config";
 import { renderHelp } from "./help";
 import type { CliOutput } from "./output";
 import type { GlobalFlags } from "./global-flags";

@@ -21,7 +21,7 @@ import {
   runResolvedBuildCommand,
   type PreviewBuildSettings,
 } from "./preview-build-settings";
-import { resolveSourceRoot } from "../fs/source-root";
+import { resolveSourceRoot } from "@prisma/compute-sdk/config";
 
 export {
   PRISMA_APP_CONFIG_FILENAME,

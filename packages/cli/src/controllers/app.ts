@@ -121,7 +121,6 @@ import {
   type LoadedComputeConfig,
   type MergedDeployInput,
 } from "../lib/app/compute-config";
-import type { ComputeFramework } from "../config";
 import {
   ENTRYPOINT_BUILD_TYPES,
   FRAMEWORKS,
@@ -129,10 +128,11 @@ import {
   frameworkFromAlias,
   isConfigBackedBuildType,
   LOCAL_DEV_BUILD_TYPES,
+  type ComputeFramework,
   type ConfigBackedBuildType,
   type FrameworkBuildType,
   type FrameworkDescriptor,
-} from "../lib/app/frameworks";
+} from "@prisma/compute-sdk/config";
 import { formatDomainFailureFix } from "../lib/app/domain-guidance";
 import { requireAuthenticatedAuthState } from "./auth";
 import { listRealWorkspaceProjects } from "./project";

@@ -796,7 +796,7 @@ Compute config file (`prisma.compute.ts`):
 - per directory, exactly one of `prisma.compute.ts`, `prisma.compute.mts`, `prisma.compute.js`, `prisma.compute.mjs`, or `prisma.compute.cjs` may exist
 - config-relative paths (`root`, `env.file`) resolve from the config file's directory, so the config means the same thing from any working directory; `--env` flag paths still resolve from the invocation directory
 - when a config is discovered, its directory is the project directory: `.prisma/local.json` is read and written there, the local CLI state cache (`.prisma/cli/state.json`) lives there, and `--db` scans for Prisma schema sources there (for prompting and suggestions only); locating the config for these purposes never evaluates it
-- the config default-exports `defineComputeConfig({ ... })` from `@prisma/cli/config`; the helper is an identity function, so plain object exports also work for JavaScript configs
+- the config default-exports `defineComputeConfig({ ... })` from `@prisma/compute-sdk/config` (the shared compute config contract; the CLI loader resolves the import without a local install); the helper is an identity function, so plain object exports also work for JavaScript configs
 - the config defines exactly one of:
   - `app` — a single-app repository
   - `apps` — a multi-app or monorepo repository, keyed by deploy target name
@@ -833,7 +833,7 @@ same reasons they are excluded today.
 - settings sourced from the config are annotated `set by prisma.compute.ts` in human output and deploy settings metadata
 
 ```ts
-import { defineComputeConfig } from "@prisma/cli/config";
+import { defineComputeConfig } from "@prisma/compute-sdk/config";
 
 // Single-app repository: prisma-cli app deploy
 export default defineComputeConfig({

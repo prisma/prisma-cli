@@ -22,7 +22,7 @@ import {
   type ComputeDeployTarget,
   type LoadedComputeConfig,
 } from "../src/lib/app/compute-config";
-import { defineComputeConfig } from "../src/config";
+import { defineComputeConfig } from "@prisma/compute-sdk/config";
 import { CliError } from "../src/shell/errors";
 
 const CONFIG_PATH = "/repo/prisma.compute.ts";
@@ -411,10 +411,10 @@ describe("loadComputeConfig", () => {
     expect((await loadComputeConfig(dir)).unwrap()).toBeNull();
   });
 
-  it("loads a TypeScript config that imports @prisma/cli/config", async () => {
+  it("loads a TypeScript config that imports @prisma/compute-sdk/config", async () => {
     const dir = await createTempDir();
     await writeFile(path.join(dir, "prisma.compute.ts"), [
-      'import { defineComputeConfig } from "@prisma/cli/config";',
+      'import { defineComputeConfig } from "@prisma/compute-sdk/config";',
       "",
       "export default defineComputeConfig({",
       '  app: { name: "api", framework: "hono", httpPort: 8080 satisfies number },',
@@ -535,7 +535,7 @@ describe("compute config discovery and state location", () => {
   });
 
   it("locates the nearest config directory without loading the config", async () => {
-    const { findComputeConfigDir } = await import("../src/lib/app/compute-config-discovery");
+    const { findComputeConfigDir } = await import("@prisma/compute-sdk/config");
     const dir = await createTempDir();
     await mkdir(path.join(dir, ".git"), { recursive: true });
     await mkdir(path.join(dir, "apps", "api"), { recursive: true });
@@ -547,7 +547,7 @@ describe("compute config discovery and state location", () => {
   });
 
   it("returns null without a config or outside the repository boundary", async () => {
-    const { findComputeConfigDir } = await import("../src/lib/app/compute-config-discovery");
+    const { findComputeConfigDir } = await import("@prisma/compute-sdk/config");
     const dir = await createTempDir();
     const repo = path.join(dir, "repo");
     await mkdir(path.join(repo, ".git"), { recursive: true });
