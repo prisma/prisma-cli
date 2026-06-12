@@ -6,7 +6,10 @@ import { describe, expect, it } from "vitest";
 import { FileTokenStorage } from "../src/adapters/token-storage";
 import { createTempCwd } from "./helpers";
 
-async function writeAuthFile(authFilePath: string, tokens: unknown[]): Promise<void> {
+async function writeAuthFile(
+  authFilePath: string,
+  tokens: unknown[],
+): Promise<void> {
   await fs.mkdir(path.dirname(authFilePath), { recursive: true });
   await fs.writeFile(authFilePath, JSON.stringify({ tokens }, null, 2));
 }
@@ -98,9 +101,12 @@ describe("FileTokenStorage", () => {
       PRISMA_COMPUTE_AUTH_FILE: authFilePath,
     } as NodeJS.ProcessEnv);
     const controller = new AbortController();
-    const secondStorage = new FileTokenStorage({
-      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
-    } as NodeJS.ProcessEnv, controller.signal);
+    const secondStorage = new FileTokenStorage(
+      {
+        PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+      } as NodeJS.ProcessEnv,
+      controller.signal,
+    );
     const reason = new Error("cancelled");
     let releaseFirst!: () => void;
     const firstReleased = new Promise<void>((resolve) => {

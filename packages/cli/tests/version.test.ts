@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/useTopLevelRegex: Test expectations keep regexes inline with assertions.
 import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
@@ -63,10 +64,14 @@ describe("version", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("version → Showing CLI build and environment.");
+    expect(result.stderr).toContain(
+      "version → Showing CLI build and environment.",
+    );
     expect(result.stderr).toContain(`prisma-cli:  ${pkg.version}`);
     expect(result.stderr).toContain(`node:        ${process.version}`);
-    expect(result.stderr).toContain(`os:          ${process.platform} ${process.arch}`);
+    expect(result.stderr).toContain(
+      `os:          ${process.platform} ${process.arch}`,
+    );
     expect(result.stderr).toContain("invocation:");
   });
 
@@ -104,7 +109,9 @@ describe("version", () => {
       nextSteps: [],
       nextActions: [],
     });
-    expect(["bunx", "npx", "global", "dev", "unknown"]).toContain(payload.result.invocation);
+    expect(["bunx", "npx", "global", "dev", "unknown"]).toContain(
+      payload.result.invocation,
+    );
   });
 
   it("requires no auth, no project context, and no network for the subcommand", async () => {
@@ -175,7 +182,8 @@ describe("version", () => {
     expect(
       detectInvocation(
         {
-          npm_config_user_agent: "npm/10.9.0 node/v24.14.1 darwin arm64 workspaces/false",
+          npm_config_user_agent:
+            "npm/10.9.0 node/v24.14.1 darwin arm64 workspaces/false",
         },
         ["node", "/repo/node_modules/.bin/prisma-cli"],
       ),
@@ -186,12 +194,21 @@ describe("version", () => {
     expect(
       detectInvocation(
         {
-          npm_execpath: "C:\\Users\\alice\\AppData\\Local\\npm-cache\\_npx\\1234\\node_modules\\npm\\bin\\npm-cli.js",
+          npm_execpath:
+            "C:\\Users\\alice\\AppData\\Local\\npm-cache\\_npx\\1234\\node_modules\\npm\\bin\\npm-cli.js",
         },
-        ["node", "C:\\Users\\alice\\AppData\\Local\\npm-cache\\_npx\\1234\\node_modules\\.bin\\prisma-cli.cmd"],
+        [
+          "node",
+          "C:\\Users\\alice\\AppData\\Local\\npm-cache\\_npx\\1234\\node_modules\\.bin\\prisma-cli.cmd",
+        ],
       ),
     ).toBe("npx");
 
-    expect(detectInvocation({}, ["node", "C:\\Users\\alice\\AppData\\Roaming\\npm\\prisma-cli.cmd"])).toBe("global");
+    expect(
+      detectInvocation({}, [
+        "node",
+        "C:\\Users\\alice\\AppData\\Roaming\\npm\\prisma-cli.cmd",
+      ]),
+    ).toBe("global");
   });
 });

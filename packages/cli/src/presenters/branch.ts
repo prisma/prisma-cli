@@ -11,7 +11,10 @@ export function renderBranchList(
   result: BranchListResult,
 ): string[] {
   const ui = context.ui;
-  const lines = [`${ui.strong(formatDescriptorLabel(descriptor))} ${ui.dim("→")} ${ui.dim("Listing branches for the resolved project.")}`, ""];
+  const lines = [
+    `${ui.strong(formatDescriptorLabel(descriptor))} ${ui.dim("→")} ${ui.dim("Listing branches for the resolved project.")}`,
+    "",
+  ];
   const rail = ui.dim("│");
   lines.push(`${rail}  ${ui.accent("project:")}  ${result.projectName}`);
   lines.push(rail);
@@ -23,13 +26,26 @@ export function renderBranchList(
   }
 
   const widths = [
-    Math.max("Name".length, ...result.branches.map((branch) => branch.name.length)),
-    Math.max("Role".length, ...result.branches.map((branch) => branch.role.length)),
-    Math.max("Env map".length, ...result.branches.map((branch) => branch.envMap.length)),
+    Math.max(
+      "Name".length,
+      ...result.branches.map((branch) => branch.name.length),
+    ),
+    Math.max(
+      "Role".length,
+      ...result.branches.map((branch) => branch.role.length),
+    ),
+    Math.max(
+      "Env map".length,
+      ...result.branches.map((branch) => branch.envMap.length),
+    ),
   ];
-  lines.push(`${rail}  ${ui.accent(formatColumns(["Name", "Role", "Env map"], widths))}`);
+  lines.push(
+    `${rail}  ${ui.accent(formatColumns(["Name", "Role", "Env map"], widths))}`,
+  );
   for (const branch of result.branches) {
-    lines.push(`${rail}  ${formatColumns([branch.name, branch.role, branch.envMap], widths)}`);
+    lines.push(
+      `${rail}  ${formatColumns([branch.name, branch.role, branch.envMap], widths)}`,
+    );
   }
 
   lines.push(...renderBranchResolvedContextBlock(context, result));

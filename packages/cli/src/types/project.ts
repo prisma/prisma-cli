@@ -18,7 +18,14 @@ export type ProjectSource =
 export interface ProjectResolution {
   projectSource: ProjectSource;
   targetName?: string | null;
-  targetNameSource?: "explicit" | "env" | "local-pin" | "package-name" | "directory-name" | "platform-mapping" | "prompt";
+  targetNameSource?:
+    | "explicit"
+    | "env"
+    | "local-pin"
+    | "package-name"
+    | "directory-name"
+    | "platform-mapping"
+    | "prompt";
 }
 
 export interface ProjectLocalBindingState {
@@ -55,7 +62,9 @@ export interface UnboundProjectShowResult extends ProjectSetupSuggestion {
   };
 }
 
-export type ProjectShowResult = BoundProjectShowResult | UnboundProjectShowResult;
+export type ProjectShowResult =
+  | BoundProjectShowResult
+  | UnboundProjectShowResult;
 
 export interface ProjectSetupResult {
   workspace: AuthWorkspace;
@@ -94,6 +103,7 @@ export interface GitRepositoryConnection {
   updatedAt: string | null;
 }
 
-export interface ProjectRepositoryConnectionResult extends BoundProjectShowResult {
+export interface ProjectRepositoryConnectionResult
+  extends BoundProjectShowResult {
   repositoryConnection: GitRepositoryConnection;
 }

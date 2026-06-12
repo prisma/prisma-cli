@@ -3,13 +3,19 @@ import { Command } from "commander";
 import { runBranchList } from "../../controllers/branch";
 import { renderBranchList, serializeBranchList } from "../../presenters/branch";
 import { attachCommandDescriptor } from "../../shell/command-meta";
-import { addCompactGlobalFlags, addGlobalFlags } from "../../shell/global-flags";
 import { runCommand } from "../../shell/command-runner";
-import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
+import {
+  addCompactGlobalFlags,
+  addGlobalFlags,
+} from "../../shell/global-flags";
+import { type CliRuntime, configureRuntimeCommand } from "../../shell/runtime";
 import type { BranchListResult } from "../../types/branch";
 
 export function createBranchCommand(runtime: CliRuntime): Command {
-  const branch = attachCommandDescriptor(configureRuntimeCommand(new Command("branch"), runtime), "branch");
+  const branch = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("branch"), runtime),
+    "branch",
+  );
 
   addCompactGlobalFlags(branch);
 
@@ -19,7 +25,10 @@ export function createBranchCommand(runtime: CliRuntime): Command {
 }
 
 function createBranchListCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(configureRuntimeCommand(new Command("list"), runtime), "branch.list");
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("list"), runtime),
+    "branch.list",
+  );
 
   addGlobalFlags(command);
 
@@ -30,7 +39,8 @@ function createBranchListCommand(runtime: CliRuntime): Command {
       options as Record<string, unknown>,
       (context) => runBranchList(context),
       {
-        renderHuman: (context, descriptor, result) => renderBranchList(context, descriptor, result),
+        renderHuman: (context, descriptor, result) =>
+          renderBranchList(context, descriptor, result),
         renderJson: (result) => serializeBranchList(result),
       },
     );

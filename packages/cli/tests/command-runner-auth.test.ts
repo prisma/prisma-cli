@@ -1,5 +1,5 @@
-import { AuthError as SDKAuthError } from "@prisma/management-api-sdk";
 import { PassThrough, Writable } from "node:stream";
+import { AuthError as SDKAuthError } from "@prisma/management-api-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand, runStreamingCommand } from "../src/shell/command-runner";
@@ -13,7 +13,11 @@ class CaptureStream extends Writable {
   declare columns?: number;
   declare rows?: number;
 
-  _write(chunk: Buffer | string, _encoding: BufferEncoding, callback: (error?: Error | null) => void) {
+  _write(
+    chunk: Buffer | string,
+    _encoding: BufferEncoding,
+    callback: (error?: Error | null) => void,
+  ) {
     this.buffer += chunk.toString();
     callback();
   }
@@ -87,7 +91,11 @@ describe("command runner auth errors", () => {
   });
 
   it("renders abort failures as structured CLI cancellation errors", async () => {
-    const { runtime, stdout } = await createRuntime(["--json", "app", "deploy"]);
+    const { runtime, stdout } = await createRuntime([
+      "--json",
+      "app",
+      "deploy",
+    ]);
 
     await runCommand(
       runtime,
@@ -177,7 +185,11 @@ describe("command runner auth errors", () => {
   });
 
   it("shows SDK auth details only with trace enabled", async () => {
-    const { runtime, stderr } = await createRuntime(["auth", "whoami", "--trace"]);
+    const { runtime, stderr } = await createRuntime([
+      "auth",
+      "whoami",
+      "--trace",
+    ]);
 
     await runCommand(
       runtime,
@@ -196,7 +208,11 @@ describe("command runner auth errors", () => {
   });
 
   it("renders streaming SDK auth failures as JSON events", async () => {
-    const { runtime, stdout } = await createRuntime(["--json", "app", "deploy"]);
+    const { runtime, stdout } = await createRuntime([
+      "--json",
+      "app",
+      "deploy",
+    ]);
 
     await runStreamingCommand(runtime, "app.deploy", {}, async () => {
       throw new SDKAuthError("invalid_grant: Invalid grant", true);

@@ -1,4 +1,9 @@
-import type { AuthProviderId, AuthStateResult, AuthUser, AuthWorkspace } from "../types/auth";
+import type {
+  AuthProviderId,
+  AuthStateResult,
+  AuthUser,
+  AuthWorkspace,
+} from "../types/auth";
 import type { BranchListResult, BranchRole } from "../types/branch";
 import type { ProjectSummary } from "../types/project";
 
@@ -43,21 +48,33 @@ export interface IdentityGateway {
   getProvider(providerId: string): ProviderInfo | undefined;
   listUsersForProvider(providerId: AuthProviderId): IdentityUser[];
   getUser(userId: string): IdentityUser | undefined;
-  getUserForProvider(providerId: AuthProviderId, userId: string): IdentityUser | undefined;
+  getUserForProvider(
+    providerId: AuthProviderId,
+    userId: string,
+  ): IdentityUser | undefined;
   listUserWorkspaces(userId: string): AuthWorkspace[];
   getWorkspace(workspaceId: string): AuthWorkspace | undefined;
-  getUserWorkspace(userId: string, workspaceId: string): AuthWorkspace | undefined;
+  getUserWorkspace(
+    userId: string,
+    workspaceId: string,
+  ): AuthWorkspace | undefined;
 }
 
 export interface ProjectGateway {
   listProjectsForWorkspace(workspaceId: string): ProjectRecord[];
   getProject(projectId: string): ProjectRecord | undefined;
-  getProjectForWorkspace(workspaceId: string, projectId: string): ProjectRecord | undefined;
+  getProjectForWorkspace(
+    workspaceId: string,
+    projectId: string,
+  ): ProjectRecord | undefined;
 }
 
 export interface BranchGateway {
   listBranchesForProject(projectId: string): RemoteBranchRecord[];
-  getBranchForProject(projectId: string, name: string): RemoteBranchRecord | undefined;
+  getBranchForProject(
+    projectId: string,
+    name: string,
+  ): RemoteBranchRecord | undefined;
   getDeployment(deploymentId: string): DeploymentRecord | undefined;
 }
 
@@ -96,13 +113,21 @@ export interface AuthUseCases {
   listProviders(): Promise<ProviderInfo[]>;
   resolveProvider(providerId: string): Promise<ProviderInfo>;
   listUsersForProvider(providerId: AuthProviderId): Promise<IdentityUser[]>;
-  resolveUserForProvider(providerId: AuthProviderId, userId: string): Promise<IdentityUser>;
+  resolveUserForProvider(
+    providerId: AuthProviderId,
+    userId: string,
+  ): Promise<IdentityUser>;
   listWorkspacesForUser(userId: string): Promise<AuthWorkspace[]>;
-  resolveWorkspaceForUser(userId: string, workspaceId: string): Promise<AuthWorkspace>;
+  resolveWorkspaceForUser(
+    userId: string,
+    workspaceId: string,
+  ): Promise<AuthWorkspace>;
 }
 
 export interface ProjectUseCases {
-  list(authState: AuthStateResult): Promise<import("../types/project").ProjectListResult>;
+  list(
+    authState: AuthStateResult,
+  ): Promise<import("../types/project").ProjectListResult>;
   listProjectsForWorkspace(workspaceId: string): Promise<ProjectSummary[]>;
 }
 

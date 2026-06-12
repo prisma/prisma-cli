@@ -15,12 +15,15 @@ export interface CliUseCaseGateways {
   sessionGateway: SessionGateway;
 }
 
-export function createCliUseCaseGateways(context: CommandContext): CliUseCaseGateways {
+export function createCliUseCaseGateways(
+  context: CommandContext,
+): CliUseCaseGateways {
   return {
     identityGateway: {
       listProviders: () => context.api.listProviders(),
       getProvider: (providerId) => context.api.getProvider(providerId),
-      listUsersForProvider: (providerId) => context.api.listUsersForProvider(providerId).map(toAuthUser),
+      listUsersForProvider: (providerId) =>
+        context.api.listUsersForProvider(providerId).map(toAuthUser),
       getUser: (userId) => {
         const user = context.api.getUser(userId);
         return user ? toAuthUser(user) : undefined;
@@ -29,7 +32,8 @@ export function createCliUseCaseGateways(context: CommandContext): CliUseCaseGat
         const user = context.api.getUserForProvider(providerId, userId);
         return user ? toAuthUser(user) : undefined;
       },
-      listUserWorkspaces: (userId) => context.api.listUserWorkspaces(userId).map(toAuthWorkspace),
+      listUserWorkspaces: (userId) =>
+        context.api.listUserWorkspaces(userId).map(toAuthWorkspace),
       getWorkspace: (workspaceId) => {
         const workspace = context.api.getWorkspace(workspaceId);
         return workspace ? toAuthWorkspace(workspace) : undefined;
@@ -40,9 +44,11 @@ export function createCliUseCaseGateways(context: CommandContext): CliUseCaseGat
       },
     },
     projectGateway: {
-      listProjectsForWorkspace: (workspaceId) => context.api.listProjectsForWorkspace(workspaceId),
+      listProjectsForWorkspace: (workspaceId) =>
+        context.api.listProjectsForWorkspace(workspaceId),
       getProject: (projectId) => context.api.getProject(projectId),
-      getProjectForWorkspace: (workspaceId, projectId) => context.api.getProjectForWorkspace(workspaceId, projectId),
+      getProjectForWorkspace: (workspaceId, projectId) =>
+        context.api.getProjectForWorkspace(workspaceId, projectId),
     },
     branchGateway: {
       listBranchesForProject: (projectId) =>

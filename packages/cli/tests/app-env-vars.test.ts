@@ -1,5 +1,5 @@
-import path from "node:path";
 import { writeFile } from "node:fs/promises";
+import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -65,11 +65,15 @@ function createProjectClient() {
 }
 
 function createResolveBranch(role: "preview" | "production" = "preview") {
-  return vi.fn().mockImplementation((_projectId: string, options: { branchName: string }) => Promise.resolve({
-    id: `branch_${options.branchName.replace(/[^a-z0-9]+/gi, "_")}`,
-    name: options.branchName,
-    role,
-  }));
+  return vi
+    .fn()
+    .mockImplementation((_projectId: string, options: { branchName: string }) =>
+      Promise.resolve({
+        id: `branch_${options.branchName.replace(/[^a-z0-9]+/gi, "_")}`,
+        name: options.branchName,
+        role,
+      }),
+    );
 }
 
 describe("app env vars", () => {
@@ -81,9 +85,9 @@ describe("app env vars", () => {
         [
           "# local settings",
           "API_URL=https://api.example",
-          "QUOTED=\"hello world\"",
+          'QUOTED="hello world"',
           "export FEATURE_FLAG=enabled",
-          "LITERAL=${API_URL}/v1",
+          "LITERAL=$" + "{API_URL}/v1",
         ].join("\n"),
         ".env",
         "add",
@@ -92,7 +96,7 @@ describe("app env vars", () => {
       { key: "API_URL", value: "https://api.example" },
       { key: "QUOTED", value: "hello world" },
       { key: "FEATURE_FLAG", value: "enabled" },
-      { key: "LITERAL", value: "${API_URL}/v1" },
+      { key: "LITERAL", value: "$" + "{API_URL}/v1" },
     ]);
   });
 
@@ -102,9 +106,9 @@ describe("app env vars", () => {
     expect(
       parseEnvFileContents(
         [
-          "CERT=\"-----BEGIN CERT-----",
+          'CERT="-----BEGIN CERT-----',
           "API_URL=https://inside.example",
-          "-----END CERT-----\"",
+          '-----END CERT-----"',
           "API_URL=https://api.example",
         ].join("\n"),
         ".env",
@@ -113,7 +117,8 @@ describe("app env vars", () => {
     ).toEqual([
       {
         key: "CERT",
-        value: "-----BEGIN CERT-----\nAPI_URL=https://inside.example\n-----END CERT-----",
+        value:
+          "-----BEGIN CERT-----\nAPI_URL=https://inside.example\n-----END CERT-----",
       },
       { key: "API_URL", value: "https://api.example" },
     ]);
@@ -123,26 +128,36 @@ describe("app env vars", () => {
     const { parseEnvFileContents } = await import("../src/lib/app/env-file");
 
     expect(() =>
-      parseEnvFileContents("API_URL=https://first\nAPI_URL=https://second\n", ".env", "add"),
-    ).toThrowError(expect.objectContaining({
-      code: "USAGE_ERROR",
-      summary: 'Duplicate environment variable "API_URL" in ".env"',
-    }));
+      parseEnvFileContents(
+        "API_URL=https://first\nAPI_URL=https://second\n",
+        ".env",
+        "add",
+      ),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "USAGE_ERROR",
+        summary: 'Duplicate environment variable "API_URL" in ".env"',
+      }),
+    );
 
     expect(() =>
       parseEnvFileContents("lowercase-key=secret\n", ".env", "add"),
-    ).toThrowError(expect.objectContaining({
-      code: "USAGE_ERROR",
-      summary: 'Invalid environment variable "lowercase-key" in ".env"',
-    }));
+    ).toThrowError(
+      expect.objectContaining({
+        code: "USAGE_ERROR",
+        summary: 'Invalid environment variable "lowercase-key" in ".env"',
+      }),
+    );
 
     const longKey = `A${"B".repeat(256)}`;
     expect(() =>
       parseEnvFileContents(`${longKey}=secret\n`, ".env", "add"),
-    ).toThrowError(expect.objectContaining({
-      code: "USAGE_ERROR",
-      why: expect.stringContaining("exceeds the 256-character limit"),
-    }));
+    ).toThrowError(
+      expect.objectContaining({
+        code: "USAGE_ERROR",
+        why: expect.stringContaining("exceeds the 256-character limit"),
+      }),
+    );
 
     let emptyValueError: unknown;
     try {
@@ -163,10 +178,7 @@ describe("app env vars", () => {
 
     expect(
       parseEnvAssignments(
-        [
-          "DATABASE_URL=postgresql://example",
-          "TOKEN=value=with=equals",
-        ],
+        ["DATABASE_URL=postgresql://example", "TOKEN=value=with=equals"],
         { commandName: "deploy" },
       ),
     ).toEqual({
@@ -181,14 +193,13 @@ describe("app env vars", () => {
     const cwd = await createTempCwd();
     await writeFile(
       path.join(cwd, ".env"),
-      [
-        "DATABASE_URL=postgresql://example",
-        "FEATURE_FLAG=enabled",
-      ].join("\n"),
+      ["DATABASE_URL=postgresql://example", "FEATURE_FLAG=enabled"].join("\n"),
     );
 
     await expect(
-      parseEnvInputs(cwd, [".env", "INLINE_FLAG=enabled"], { commandName: "deploy" }),
+      parseEnvInputs(cwd, [".env", "INLINE_FLAG=enabled"], {
+        commandName: "deploy",
+      }),
     ).resolves.toEqual({
       DATABASE_URL: "postgresql://example",
       FEATURE_FLAG: "enabled",
@@ -199,48 +210,64 @@ describe("app env vars", () => {
   it("rejects invalid env assignments without leaking values", async () => {
     const { parseEnvAssignments } = await import("../src/lib/app/env-vars");
 
-    expect(() => parseEnvAssignments(["DATABASE_URL"], { commandName: "deploy" })).toThrowError(
+    expect(() =>
+      parseEnvAssignments(["DATABASE_URL"], { commandName: "deploy" }),
+    ).toThrowError(
       expect.objectContaining({
         code: "USAGE_ERROR",
         summary: "Environment variable assignment must use NAME=VALUE",
       }),
     );
-    expect(() => parseEnvAssignments(["=secret"], { commandName: "deploy" })).toThrowError(
+    expect(() =>
+      parseEnvAssignments(["=secret"], { commandName: "deploy" }),
+    ).toThrowError(
       expect.objectContaining({
         code: "USAGE_ERROR",
         summary: "Environment variable name is required",
       }),
     );
-    expect(() => parseEnvAssignments(["lowercase-key=secret"], { commandName: "deploy" })).toThrowError(
+    expect(() =>
+      parseEnvAssignments(["lowercase-key=secret"], { commandName: "deploy" }),
+    ).toThrowError(
       expect.objectContaining({
         code: "USAGE_ERROR",
         summary: 'Invalid environment variable "lowercase-key"',
         why: expect.stringContaining("must match the POSIX env-var shape"),
       }),
     );
-    expect(() => parseEnvAssignments(["EMPTY="], { commandName: "deploy" })).toThrowError(
+    expect(() =>
+      parseEnvAssignments(["EMPTY="], { commandName: "deploy" }),
+    ).toThrowError(
       expect.objectContaining({
         code: "USAGE_ERROR",
         summary: 'Environment variable "EMPTY" has an empty value',
       }),
     );
 
-    try {
+    expect(() =>
       parseEnvAssignments(
-        [
-          "DATABASE_URL=postgresql://first",
-          "DATABASE_URL=postgresql://second",
-        ],
+        ["DATABASE_URL=postgresql://first", "DATABASE_URL=postgresql://second"],
         { commandName: "deploy" },
-      );
-    } catch (error) {
-      expect(error).toMatchObject({
+      ),
+    ).toThrowError(
+      expect.objectContaining({
         code: "USAGE_ERROR",
-        summary: 'Environment variable "DATABASE_URL" was provided more than once',
-      });
-      expect(JSON.stringify(error)).not.toContain("postgresql://first");
-      expect(JSON.stringify(error)).not.toContain("postgresql://second");
-    }
+        summary:
+          'Environment variable "DATABASE_URL" was provided more than once',
+      }),
+    );
+    expect(() =>
+      parseEnvAssignments(
+        ["DATABASE_URL=postgresql://first", "DATABASE_URL=postgresql://second"],
+        { commandName: "deploy" },
+      ),
+    ).toThrowError(expect.not.stringContaining("postgresql://first"));
+    expect(() =>
+      parseEnvAssignments(
+        ["DATABASE_URL=postgresql://first", "DATABASE_URL=postgresql://second"],
+        { commandName: "deploy" },
+      ),
+    ).toThrowError(expect.not.stringContaining("postgresql://second"));
   });
 
   it("returns sorted environment variable names only", async () => {
@@ -263,10 +290,15 @@ describe("app env vars", () => {
       requireComputeAuth,
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runEnvList } = await import("../src/controllers/app-env");
     const cwd = await createTempCwd();
-    await writeFile(path.join(cwd, "package.json"), `${JSON.stringify({ name: "acme-dashboard" }, null, 2)}\n`);
+    await writeFile(
+      path.join(cwd, "package.json"),
+      `${JSON.stringify({ name: "acme-dashboard" }, null, 2)}\n`,
+    );
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,
@@ -330,7 +362,9 @@ describe("app env vars", () => {
       requireComputeAuth,
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runEnvList } = await import("../src/controllers/app-env");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -378,7 +412,9 @@ describe("app env vars", () => {
     });
 
     vi.doMock("../src/controllers/app-env", async () => {
-      const actual = await vi.importActual<typeof import("../src/controllers/app-env")>("../src/controllers/app-env");
+      const actual = await vi.importActual<
+        typeof import("../src/controllers/app-env")
+      >("../src/controllers/app-env");
       return {
         ...actual,
         runEnvAdd,
@@ -426,22 +462,24 @@ describe("app env vars", () => {
         ],
       },
     });
-    expect(runEnvAdd).toHaveBeenCalledWith(
-      expect.anything(),
-      undefined,
-      {
-        roleName: "preview",
-        branchName: undefined,
-        projectRef: "proj_123",
-        filePath: ".env",
-      },
-    );
+    expect(runEnvAdd).toHaveBeenCalledWith(expect.anything(), undefined, {
+      roleName: "preview",
+      branchName: undefined,
+      projectRef: "proj_123",
+      filePath: ".env",
+    });
   });
 
   it("passes env vars to provider deploy without surfacing values", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
-      { id: "app_1", name: "hello-world", region: "eu-central-1", liveDeploymentId: null, liveUrl: null },
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: null,
+        liveUrl: null,
+      },
     ]);
     const deployApp = vi.fn().mockResolvedValue({
       projectId: "proj_123",
@@ -477,7 +515,9 @@ describe("app env vars", () => {
       })),
     }));
 
-    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
     await writeFile(path.join(cwd, ".env"), "FEATURE_FLAG=enabled\n");
@@ -491,15 +531,15 @@ describe("app env vars", () => {
       },
     });
 
-    const result = await runAppDeploy(
-      context,
-      "hello-world",
-      {
-        projectRef: "proj_123",
-        framework: "hono",
-        envAssignments: ["DATABASE_URL=postgresql://example", ".env", "INLINE_FLAG=enabled"],
-      },
-    );
+    const result = await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      framework: "hono",
+      envAssignments: [
+        "DATABASE_URL=postgresql://example",
+        ".env",
+        "INLINE_FLAG=enabled",
+      ],
+    });
 
     expect(deployApp).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -574,7 +614,9 @@ describe("app env vars", () => {
     });
 
     vi.doMock("../src/controllers/app", async () => {
-      const actual = await vi.importActual<typeof import("../src/controllers/app")>("../src/controllers/app");
+      const actual = await vi.importActual<
+        typeof import("../src/controllers/app")
+      >("../src/controllers/app");
       return {
         ...actual,
         runAppDeploy,

@@ -15,13 +15,22 @@ const DEPLOY_OUTPUT_MIN_LABEL_WIDTH = "Framework".length;
 const DEPLOY_OUTPUT_MIN_VALUE_WIDTH = "HTTP 3000".length;
 const DEPLOY_SETTINGS_MIN_KEY_WIDTH = "framework:".length;
 
-export function renderDeployOutputRows(ui: ShellUi, rows: DeployOutputRow[]): string[] {
+export function renderDeployOutputRows(
+  ui: ShellUi,
+  rows: DeployOutputRow[],
+): string[] {
   if (rows.length === 0) {
     return [];
   }
 
-  const labelWidth = Math.max(DEPLOY_OUTPUT_MIN_LABEL_WIDTH, ...rows.map((row) => row.label.length));
-  const valueWidth = Math.max(DEPLOY_OUTPUT_MIN_VALUE_WIDTH, ...rows.map((row) => row.value?.length ?? 0));
+  const labelWidth = Math.max(
+    DEPLOY_OUTPUT_MIN_LABEL_WIDTH,
+    ...rows.map((row) => row.label.length),
+  );
+  const valueWidth = Math.max(
+    DEPLOY_OUTPUT_MIN_VALUE_WIDTH,
+    ...rows.map((row) => row.value?.length ?? 0),
+  );
 
   return rows.map((row) => {
     if (!row.value) {
@@ -35,12 +44,18 @@ export function renderDeployOutputRows(ui: ShellUi, rows: DeployOutputRow[]): st
   });
 }
 
-export function renderDeploySettingsPreview(ui: ShellUi, rows: DeploySettingsPreviewRow[]): string[] {
+export function renderDeploySettingsPreview(
+  ui: ShellUi,
+  rows: DeploySettingsPreviewRow[],
+): string[] {
   if (rows.length === 0) {
     return [];
   }
 
-  const keyWidth = Math.max(DEPLOY_SETTINGS_MIN_KEY_WIDTH, ...rows.map((row) => `${row.key}:`.length));
+  const keyWidth = Math.max(
+    DEPLOY_SETTINGS_MIN_KEY_WIDTH,
+    ...rows.map((row) => `${row.key}:`.length),
+  );
   const rail = ui.dim("│");
 
   return rows.map((row) => {

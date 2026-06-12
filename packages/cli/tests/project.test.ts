@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
 import stripAnsi from "strip-ansi";
+import { describe, expect, it } from "vitest";
 
 import { createTempCwd, executeCli } from "./helpers";
 
@@ -23,7 +23,11 @@ async function login(
 }
 
 async function writePackageJson(cwd: string, name: string) {
-  await writeFile(path.join(cwd, "package.json"), `${JSON.stringify({ name }, null, 2)}\n`, "utf8");
+  await writeFile(
+    path.join(cwd, "package.json"),
+    `${JSON.stringify({ name }, null, 2)}\n`,
+    "utf8",
+  );
 }
 
 async function writeLocalPin(cwd: string, pin: unknown | string) {
@@ -37,7 +41,13 @@ async function writeLocalPin(cwd: string, pin: unknown | string) {
 
 async function createAmbiguousFixture(cwd: string): Promise<string> {
   const raw = JSON.parse(await readFile(fixturePath, "utf8")) as {
-    projects: Array<{ id: string; name: string; slug: string; url?: string; workspaceId: string }>;
+    projects: Array<{
+      id: string;
+      name: string;
+      slug: string;
+      url?: string;
+      workspaceId: string;
+    }>;
   };
   raw.projects.push({
     id: "proj_321",
@@ -53,7 +63,13 @@ async function createAmbiguousFixture(cwd: string): Promise<string> {
 
 async function createAppleFixture(cwd: string): Promise<string> {
   const raw = JSON.parse(await readFile(fixturePath, "utf8")) as {
-    projects: Array<{ id: string; name: string; slug: string; url?: string; workspaceId: string }>;
+    projects: Array<{
+      id: string;
+      name: string;
+      slug: string;
+      url?: string;
+      workspaceId: string;
+    }>;
   };
   raw.projects = [
     {
@@ -72,7 +88,13 @@ async function createAppleFixture(cwd: string): Promise<string> {
 async function createEdithOrangeFixture(cwd: string): Promise<string> {
   const raw = JSON.parse(await readFile(fixturePath, "utf8")) as {
     workspaces: Array<{ id: string; name: string; slug: string }>;
-    projects: Array<{ id: string; name: string; slug: string; url?: string; workspaceId: string }>;
+    projects: Array<{
+      id: string;
+      name: string;
+      slug: string;
+      url?: string;
+      workspaceId: string;
+    }>;
   };
   raw.workspaces = [
     {
@@ -135,14 +157,19 @@ describe("project commands", () => {
         status: "not-linked",
       },
       items: expect.arrayContaining([
-        expect.objectContaining({ name: "Acme Dashboard", id: "proj_123", status: null }),
+        expect.objectContaining({
+          name: "Acme Dashboard",
+          id: "proj_123",
+          status: null,
+        }),
       ]),
     });
     expect(payload.nextActions).toEqual([
       expect.objectContaining({
         kind: "user-choice",
         journey: "project-setup",
-        label: "Ask the user whether to link an existing Project or create a new one",
+        label:
+          "Ask the user whether to link an existing Project or create a new one",
       }),
       expect.objectContaining({
         kind: "run-command",
@@ -191,8 +218,12 @@ describe("project commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(stderr).toContain("Which Project should this directory use?");
-    expect(stderr).toContain(`Linked "./${path.basename(cwd)}" to Project "Acme Dashboard"`);
-    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).resolves.toContain('"projectId": "proj_123"');
+    expect(stderr).toContain(
+      `Linked "./${path.basename(cwd)}" to Project "Acme Dashboard"`,
+    );
+    await expect(
+      readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
+    ).resolves.toContain('"projectId": "proj_123"');
   });
 
   it("returns LOCAL_STATE_WRITE_FAILED when project link cannot save the local pin", async () => {
@@ -240,7 +271,9 @@ describe("project commands", () => {
     expect(result.exitCode).toBe(0);
     expect(stderr).toContain("Acme Dashboard (proj_123)");
     expect(stderr).toContain("Acme Dashboard (proj_321)");
-    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).resolves.toContain('"projectId": "proj_123"');
+    await expect(
+      readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
+    ).resolves.toContain('"projectId": "proj_123"');
   });
 
   it("lets the user cancel bare project link without writing local state", async () => {
@@ -260,7 +293,9 @@ describe("project commands", () => {
 
     expect(result.exitCode).toBe(2);
     expect(stderr).toContain("Project setup canceled");
-    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("returns PROJECT_LINK_TARGET_REQUIRED for bare project link in JSON mode", async () => {
@@ -298,7 +333,8 @@ describe("project commands", () => {
       expect.objectContaining({
         kind: "user-choice",
         journey: "project-setup",
-        label: "Ask the user whether to link an existing Project or create a new one",
+        label:
+          "Ask the user whether to link an existing Project or create a new one",
       }),
       expect.objectContaining({
         kind: "run-command",
@@ -309,7 +345,9 @@ describe("project commands", () => {
         command: "prisma-cli project create pear",
       }),
     ]);
-    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("does not let --yes choose a Project for bare project link", async () => {
@@ -330,7 +368,9 @@ describe("project commands", () => {
     expect(result.exitCode).toBe(2);
     expect(stderr).toContain("PROJECT_LINK_TARGET_REQUIRED");
     expect(stderr).not.toContain("Which Project should this directory use?");
-    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("shows unbound suggestions from package.json in JSON mode", async () => {
@@ -415,12 +455,18 @@ describe("project commands", () => {
       stateDir,
       fixturePath,
     });
-    const state = JSON.parse(await readFile(path.join(stateDir, "state.json"), "utf8"));
+    const state = JSON.parse(
+      await readFile(path.join(stateDir, "state.json"), "utf8"),
+    );
 
     expect(result.exitCode).toBe(0);
-    expect(JSON.parse(result.stdout).result.resolution.projectSource).toBe("explicit");
+    expect(JSON.parse(result.stdout).result.resolution.projectSource).toBe(
+      "explicit",
+    );
     expect(state.project?.lastResolved ?? null).toBe(null);
-    await expect(readFile(path.join(cwd, ".prisma/local.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("shows the pinned project from local state", async () => {
@@ -615,12 +661,14 @@ describe("project commands", () => {
       suggestedProjectNameSource: "directory-name",
       candidates: [],
     });
-    expect(payload.nextActions).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        kind: "user-choice",
-        journey: "project-setup",
-      }),
-    ]));
+    expect(payload.nextActions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "user-choice",
+          journey: "project-setup",
+        }),
+      ]),
+    );
   });
 
   it("uses the directory name as the suggestion when package metadata is unusable", async () => {
@@ -662,9 +710,13 @@ describe("project commands", () => {
     const stderr = stripAnsi(result.stderr);
 
     expect(result.exitCode).toBe(0);
-    expect(stderr).toContain("This directory is not linked to a Prisma Project.");
+    expect(stderr).toContain(
+      "This directory is not linked to a Prisma Project.",
+    );
     expect(stderr).toContain("project:    Not linked");
-    expect(stderr).toContain("Link an existing Project you choose: prisma-cli project link <id-or-name>");
+    expect(stderr).toContain(
+      "Link an existing Project you choose: prisma-cli project link <id-or-name>",
+    );
     expect(stderr).not.toContain("match:");
     expect(stderr).not.toContain("Select a project");
   });
@@ -688,7 +740,9 @@ describe("project commands", () => {
     expect(stderr).toContain("project:    Not linked");
     expect(stderr).not.toContain("apple");
     expect(stderr).not.toContain("match:");
-    expect(stderr).toContain("Create a new Project: prisma-cli project create pear");
+    expect(stderr).toContain(
+      "Create a new Project: prisma-cli project create pear",
+    );
 
     const jsonResult = await executeCli({
       argv: ["project", "show", "--json"],
@@ -764,13 +818,22 @@ describe("project commands", () => {
     await login(cwd, stateDir);
 
     const result = await executeCli({
-      argv: ["git", "connect", "git@github.com:prisma/prisma-cli.git", "--project", "proj_123", "--json"],
+      argv: [
+        "git",
+        "connect",
+        "git@github.com:prisma/prisma-cli.git",
+        "--project",
+        "proj_123",
+        "--json",
+      ],
       cwd,
       stateDir,
       fixturePath,
     });
     const payload = JSON.parse(result.stdout);
-    const state = JSON.parse(await readFile(path.join(stateDir, "state.json"), "utf8"));
+    const state = JSON.parse(
+      await readFile(path.join(stateDir, "state.json"), "utf8"),
+    );
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
@@ -795,7 +858,9 @@ describe("project commands", () => {
       nextSteps: [],
       nextActions: [],
     });
-    expect(state.project.repositoryConnectionsByProject.proj_123.repository.fullName).toBe("prisma/prisma-cli");
+    expect(
+      state.project.repositoryConnectionsByProject.proj_123.repository.fullName,
+    ).toBe("prisma/prisma-cli");
   });
 
   it("keeps fixture repository connection idempotent for the same repo", async () => {
@@ -804,22 +869,40 @@ describe("project commands", () => {
     await login(cwd, stateDir);
 
     await executeCli({
-      argv: ["git", "connect", "https://github.com/prisma/prisma-cli", "--project", "proj_123"],
+      argv: [
+        "git",
+        "connect",
+        "https://github.com/prisma/prisma-cli",
+        "--project",
+        "proj_123",
+      ],
       cwd,
       stateDir,
       fixturePath,
     });
-    const initialState = JSON.parse(await readFile(path.join(stateDir, "state.json"), "utf8"));
-    const initialConnection = initialState.project.repositoryConnectionsByProject.proj_123;
+    const initialState = JSON.parse(
+      await readFile(path.join(stateDir, "state.json"), "utf8"),
+    );
+    const initialConnection =
+      initialState.project.repositoryConnectionsByProject.proj_123;
 
     const result = await executeCli({
-      argv: ["git", "connect", "git@github.com:Prisma/Prisma-CLI.git", "--project", "proj_123", "--json"],
+      argv: [
+        "git",
+        "connect",
+        "git@github.com:Prisma/Prisma-CLI.git",
+        "--project",
+        "proj_123",
+        "--json",
+      ],
       cwd,
       stateDir,
       fixturePath,
     });
     const payload = JSON.parse(result.stdout);
-    const nextState = JSON.parse(await readFile(path.join(stateDir, "state.json"), "utf8"));
+    const nextState = JSON.parse(
+      await readFile(path.join(stateDir, "state.json"), "utf8"),
+    );
 
     expect(result.exitCode).toBe(0);
     expect(payload).toMatchObject({
@@ -827,7 +910,9 @@ describe("project commands", () => {
       command: "git.connect",
     });
     expect(payload.result.repositoryConnection).toEqual(initialConnection);
-    expect(nextState.project.repositoryConnectionsByProject.proj_123).toEqual(initialConnection);
+    expect(nextState.project.repositoryConnectionsByProject.proj_123).toEqual(
+      initialConnection,
+    );
   });
 
   it("blocks fixture repository replacement without disconnecting first", async () => {
@@ -836,21 +921,39 @@ describe("project commands", () => {
     await login(cwd, stateDir);
 
     await executeCli({
-      argv: ["git", "connect", "https://github.com/prisma/prisma-cli", "--project", "proj_123"],
+      argv: [
+        "git",
+        "connect",
+        "https://github.com/prisma/prisma-cli",
+        "--project",
+        "proj_123",
+      ],
       cwd,
       stateDir,
       fixturePath,
     });
-    const initialState = JSON.parse(await readFile(path.join(stateDir, "state.json"), "utf8"));
-    const initialConnection = initialState.project.repositoryConnectionsByProject.proj_123;
+    const initialState = JSON.parse(
+      await readFile(path.join(stateDir, "state.json"), "utf8"),
+    );
+    const initialConnection =
+      initialState.project.repositoryConnectionsByProject.proj_123;
 
     const result = await executeCli({
-      argv: ["git", "connect", "https://github.com/prisma/other", "--project", "proj_123", "--json"],
+      argv: [
+        "git",
+        "connect",
+        "https://github.com/prisma/other",
+        "--project",
+        "proj_123",
+        "--json",
+      ],
       cwd,
       stateDir,
       fixturePath,
     });
-    const state = JSON.parse(await readFile(path.join(stateDir, "state.json"), "utf8"));
+    const state = JSON.parse(
+      await readFile(path.join(stateDir, "state.json"), "utf8"),
+    );
 
     expect(result.exitCode).toBe(1);
     expect(JSON.parse(result.stdout)).toMatchObject({
@@ -860,7 +963,9 @@ describe("project commands", () => {
         code: "REPO_ALREADY_CONNECTED",
       },
     });
-    expect(state.project.repositoryConnectionsByProject.proj_123).toEqual(initialConnection);
+    expect(state.project.repositoryConnectionsByProject.proj_123).toEqual(
+      initialConnection,
+    );
   });
 
   it("disconnects a GitHub repository from an explicit project in fixture mode", async () => {
@@ -868,7 +973,13 @@ describe("project commands", () => {
     const stateDir = path.join(cwd, ".state");
     await login(cwd, stateDir);
     await executeCli({
-      argv: ["git", "connect", "https://github.com/prisma/prisma-cli", "--project", "proj_123"],
+      argv: [
+        "git",
+        "connect",
+        "https://github.com/prisma/prisma-cli",
+        "--project",
+        "proj_123",
+      ],
       cwd,
       stateDir,
       fixturePath,
@@ -880,7 +991,9 @@ describe("project commands", () => {
       stateDir,
       fixturePath,
     });
-    const state = JSON.parse(await readFile(path.join(stateDir, "state.json"), "utf8"));
+    const state = JSON.parse(
+      await readFile(path.join(stateDir, "state.json"), "utf8"),
+    );
 
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({
@@ -896,7 +1009,9 @@ describe("project commands", () => {
       warnings: [],
       nextSteps: [],
     });
-    expect(state.project.repositoryConnectionsByProject.proj_123).toBeUndefined();
+    expect(
+      state.project.repositoryConnectionsByProject.proj_123,
+    ).toBeUndefined();
   });
 
   it("returns REPO_PROVIDER_UNSUPPORTED for non-GitHub repository URLs", async () => {
@@ -905,14 +1020,23 @@ describe("project commands", () => {
     await login(cwd, stateDir);
 
     const result = await executeCli({
-      argv: ["git", "connect", "https://gitlab.com/prisma/prisma-cli", "--project", "proj_123", "--json"],
+      argv: [
+        "git",
+        "connect",
+        "https://gitlab.com/prisma/prisma-cli",
+        "--project",
+        "proj_123",
+        "--json",
+      ],
       cwd,
       stateDir,
       fixturePath,
     });
 
     expect(result.exitCode).toBe(2);
-    expect(JSON.parse(result.stdout).error.code).toBe("REPO_PROVIDER_UNSUPPORTED");
+    expect(JSON.parse(result.stdout).error.code).toBe(
+      "REPO_PROVIDER_UNSUPPORTED",
+    );
   });
 
   it("returns PROJECT_SETUP_REQUIRED for repository connection without a Project binding", async () => {
@@ -921,7 +1045,12 @@ describe("project commands", () => {
     await login(cwd, stateDir);
 
     const result = await executeCli({
-      argv: ["git", "connect", "https://github.com/prisma/prisma-cli", "--json"],
+      argv: [
+        "git",
+        "connect",
+        "https://github.com/prisma/prisma-cli",
+        "--json",
+      ],
       cwd,
       stateDir,
       fixturePath,
@@ -977,19 +1106,29 @@ describe("project commands", () => {
       stateDir,
       fixturePath,
     });
-    const stderr = stripAnsi(`${projectHelp.stderr}\n${showHelp.stderr}\n${createHelp.stderr}\n${linkHelp.stderr}\n${gitHelp.stderr}\n${connectRepoHelp.stderr}\n${disconnectRepoHelp.stderr}`);
+    const stderr = stripAnsi(
+      `${projectHelp.stderr}\n${showHelp.stderr}\n${createHelp.stderr}\n${linkHelp.stderr}\n${gitHelp.stderr}\n${connectRepoHelp.stderr}\n${disconnectRepoHelp.stderr}`,
+    );
 
     expect(projectHelp.exitCode).toBe(0);
     expect(createHelp.exitCode).toBe(0);
     expect(linkHelp.exitCode).toBe(0);
     expect(gitHelp.exitCode).toBe(0);
-    expect(stderr).toContain("project → Manage and inspect your Prisma projects");
-    expect(stderr).toContain("git → Manage Git repository connections for a project");
+    expect(stderr).toContain(
+      "project → Manage and inspect your Prisma projects",
+    );
+    expect(stderr).toContain(
+      "git → Manage Git repository connections for a project",
+    );
     expect(stderr).toContain("Show this directory's Project binding");
     expect(stderr).toContain("Create a Project and link this directory");
     expect(stderr).toContain("Link this directory to a Project");
-    expect(stderr).toContain("Connect the resolved project to a GitHub repository");
-    expect(stderr).toContain("Disconnect the GitHub repository from the resolved project");
+    expect(stderr).toContain(
+      "Connect the resolved project to a GitHub repository",
+    );
+    expect(stderr).toContain(
+      "Disconnect the GitHub repository from the resolved project",
+    );
   });
 
   it("registers project env remove and rm alias help", async () => {

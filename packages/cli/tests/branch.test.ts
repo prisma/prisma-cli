@@ -1,11 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-
-import { describe, expect, it } from "vitest";
 import stripAnsi from "strip-ansi";
-
-import { getCommandDescriptor } from "../src/shell/command-meta";
+import { describe, expect, it } from "vitest";
 import { renderBranchList } from "../src/presenters/branch";
+import { getCommandDescriptor } from "../src/shell/command-meta";
 import { createTempCwd, createTestCommandContext, executeCli } from "./helpers";
 
 const fixturePath = path.resolve("fixtures/mock-api.json");
@@ -71,10 +69,8 @@ describe("branch commands", () => {
       flags: { verbose: true },
     });
 
-    const output = stripAnsi(renderBranchList(
-      context,
-      getCommandDescriptor("branch.list"),
-      {
+    const output = stripAnsi(
+      renderBranchList(context, getCommandDescriptor("branch.list"), {
         projectId: "proj_empty",
         projectName: "Empty Project",
         branches: [],
@@ -91,8 +87,8 @@ describe("branch commands", () => {
             projectSource: "explicit",
           },
         },
-      },
-    ).join("\n"));
+      }).join("\n"),
+    );
 
     expect(output).toContain("No branches found.");
     expect(output).toContain("Resolved context:");
@@ -122,7 +118,12 @@ describe("branch commands", () => {
         projectId: "proj_123",
         projectName: "Acme Dashboard",
         branches: [
-          { id: "br_456", name: "production", role: "production", envMap: "production" },
+          {
+            id: "br_456",
+            name: "production",
+            role: "production",
+            envMap: "production",
+          },
           { id: "br_234", name: "pr-123", role: "preview", envMap: "preview" },
           { id: "br_123", name: "preview", role: "preview", envMap: "preview" },
           { id: "br_345", name: "staging", role: "preview", envMap: "preview" },
@@ -157,7 +158,9 @@ describe("branch commands", () => {
     expect(branchHelp.stderr).not.toContain("branch use");
 
     expect(listHelp.exitCode).toBe(0);
-    expect(listHelp.stderr).toContain("List Platform branches for the resolved project");
+    expect(listHelp.stderr).toContain(
+      "List Platform branches for the resolved project",
+    );
     expect(listHelp.stderr).toContain("$ prisma-cli branch list");
     expect(listHelp.stderr).toContain("$ prisma-cli branch list --json");
   });

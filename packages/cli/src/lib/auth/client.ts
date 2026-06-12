@@ -17,14 +17,22 @@ export function getAuthFilePath(env: NodeJS.ProcessEnv = process.env): string {
   }
 
   if (process.platform === "darwin") {
-    return path.join(os.homedir(), "Library", "Application Support", "prisma", "auth.json");
+    return path.join(
+      os.homedir(),
+      "Library",
+      "Application Support",
+      "prisma",
+      "auth.json",
+    );
   }
 
   if (process.platform === "win32") {
-    const appData = env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
+    const appData =
+      env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
     return path.join(appData, "prisma", "auth.json");
   }
 
-  const xdgConfigHome = env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config");
+  const xdgConfigHome =
+    env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config");
   return path.join(xdgConfigHome, "prisma", "auth.json");
 }

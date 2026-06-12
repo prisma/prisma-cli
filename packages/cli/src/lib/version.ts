@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/useTopLevelRegex: Existing executable detection regex is kept inline for readability.
 import { createRequire } from "node:module";
 import process from "node:process";
 
@@ -43,12 +44,17 @@ export function getCliName(): string {
   return "prisma-cli";
 }
 
-export function detectInvocation(env: NodeJS.ProcessEnv, argv: readonly string[]): VersionInvocation {
+export function detectInvocation(
+  env: NodeJS.ProcessEnv,
+  argv: readonly string[],
+): VersionInvocation {
   if (env.npm_config_user_agent?.startsWith("bun")) {
     return "bunx";
   }
 
-  const normalizedExecPath = env.npm_execpath?.replace(/\\/g, "/").toLowerCase();
+  const normalizedExecPath = env.npm_execpath
+    ?.replace(/\\/g, "/")
+    .toLowerCase();
   const normalizedUserAgent = env.npm_config_user_agent?.toLowerCase();
 
   if (
@@ -73,14 +79,20 @@ export function detectInvocation(env: NodeJS.ProcessEnv, argv: readonly string[]
     return "bunx";
   }
 
-  if (entry.includes("/node_modules/.bin/") || /\/prisma-cli(\.cmd|\.exe)?$/.test(entry)) {
+  if (
+    entry.includes("/node_modules/.bin/") ||
+    /\/prisma-cli(\.cmd|\.exe)?$/.test(entry)
+  ) {
     return "global";
   }
 
   return "unknown";
 }
 
-export function buildVersionResult(env: NodeJS.ProcessEnv, argv: readonly string[]): VersionResult {
+export function buildVersionResult(
+  env: NodeJS.ProcessEnv,
+  argv: readonly string[],
+): VersionResult {
   return {
     cli: {
       name: getCliName(),

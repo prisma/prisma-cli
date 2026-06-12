@@ -11,11 +11,15 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function mockBuildStrategy(createInstance: (options: object) => object = () => ({
-  canBuild: vi.fn(),
-  execute: vi.fn(),
-})) {
-  return vi.fn().mockImplementation(function (options: object) {
+function mockBuildStrategy(
+  createInstance: (options: object) => object = () => ({
+    canBuild: vi.fn(),
+    execute: vi.fn(),
+  }),
+) {
+  return vi.fn().mockImplementation(function BuildStrategyMock(
+    options: object,
+  ) {
     return createInstance(options);
   });
 }
@@ -26,19 +30,29 @@ describe("bun compatibility", () => {
 
     await writeFile(
       path.join(cwd, "package.json"),
-      JSON.stringify({
-        module: "index.ts",
-        devDependencies: {
-          "@types/bun": "latest",
+      JSON.stringify(
+        {
+          module: "index.ts",
+          devDependencies: {
+            "@types/bun": "latest",
+          },
         },
-      }, null, 2),
+        null,
+        2,
+      ),
       "utf8",
     );
-    await writeFile(path.join(cwd, "index.ts"), "console.log('hello');\n", "utf8");
+    await writeFile(
+      path.join(cwd, "index.ts"),
+      "console.log('hello');\n",
+      "utf8",
+    );
 
     const { resolveBunEntrypoint } = await import("../src/lib/app/bun-project");
 
-    await expect(resolveBunEntrypoint(cwd, undefined)).resolves.toBe("index.ts");
+    await expect(resolveBunEntrypoint(cwd, undefined)).resolves.toBe(
+      "index.ts",
+    );
   });
 
   it("rejects Bun package reads when the command signal is already aborted", async () => {
@@ -49,7 +63,9 @@ describe("bun compatibility", () => {
 
     const { readBunPackageJson } = await import("../src/lib/app/bun-project");
 
-    await expect(readBunPackageJson(cwd, controller.signal)).rejects.toBe(reason);
+    await expect(readBunPackageJson(cwd, controller.signal)).rejects.toBe(
+      reason,
+    );
   });
 
   it("detects a Bun project when package.json uses module instead of main", async () => {
@@ -57,18 +73,26 @@ describe("bun compatibility", () => {
 
     await writeFile(
       path.join(cwd, "package.json"),
-      JSON.stringify({
-        module: "index.ts",
-        devDependencies: {
-          "@types/bun": "latest",
+      JSON.stringify(
+        {
+          module: "index.ts",
+          devDependencies: {
+            "@types/bun": "latest",
+          },
+          scripts: {
+            dev: "bun --watch index.ts",
+          },
         },
-        scripts: {
-          dev: "bun --watch index.ts",
-        },
-      }, null, 2),
+        null,
+        2,
+      ),
       "utf8",
     );
-    await writeFile(path.join(cwd, "index.ts"), "console.log('hello');\n", "utf8");
+    await writeFile(
+      path.join(cwd, "index.ts"),
+      "console.log('hello');\n",
+      "utf8",
+    );
 
     const { detectLocalBuildType } = await import("../src/lib/app/local-dev");
 
@@ -80,15 +104,23 @@ describe("bun compatibility", () => {
 
     await writeFile(
       path.join(cwd, "package.json"),
-      JSON.stringify({
-        module: "index.ts",
-        devDependencies: {
-          "@types/bun": "latest",
+      JSON.stringify(
+        {
+          module: "index.ts",
+          devDependencies: {
+            "@types/bun": "latest",
+          },
         },
-      }, null, 2),
+        null,
+        2,
+      ),
       "utf8",
     );
-    await writeFile(path.join(cwd, "index.ts"), "console.log('hello');\n", "utf8");
+    await writeFile(
+      path.join(cwd, "index.ts"),
+      "console.log('hello');\n",
+      "utf8",
+    );
 
     const bunBuild = mockBuildStrategy((options: object) => ({
       options,
@@ -112,7 +144,9 @@ describe("bun compatibility", () => {
       TanstackStartBuild: otherFrameworkBuild,
     }));
 
-    const { resolvePreviewBuildStrategy } = await import("../src/lib/app/preview-build");
+    const { resolvePreviewBuildStrategy } = await import(
+      "../src/lib/app/preview-build"
+    );
 
     const result = await resolvePreviewBuildStrategy({
       appPath: cwd,
@@ -159,7 +193,9 @@ describe("bun compatibility", () => {
       TanstackStartBuild: tanstackStartBuild,
     }));
 
-    const { resolvePreviewBuildStrategy } = await import("../src/lib/app/preview-build");
+    const { resolvePreviewBuildStrategy } = await import(
+      "../src/lib/app/preview-build"
+    );
 
     const result = await resolvePreviewBuildStrategy({
       appPath: cwd,
@@ -190,19 +226,25 @@ describe("bun compatibility", () => {
       TanstackStartBuild: buildStrategy,
     }));
 
-    const { resolvePreviewBuildStrategy } = await import("../src/lib/app/preview-build");
+    const { resolvePreviewBuildStrategy } = await import(
+      "../src/lib/app/preview-build"
+    );
 
-    await expect(resolvePreviewBuildStrategy({
-      appPath: cwd,
-      buildType: "astro",
-      entrypoint: undefined,
-    })).resolves.toMatchObject({ buildType: "astro" });
+    await expect(
+      resolvePreviewBuildStrategy({
+        appPath: cwd,
+        buildType: "astro",
+        entrypoint: undefined,
+      }),
+    ).resolves.toMatchObject({ buildType: "astro" });
 
-    await expect(resolvePreviewBuildStrategy({
-      appPath: cwd,
-      buildType: "tanstack-start",
-      entrypoint: undefined,
-    })).resolves.toMatchObject({ buildType: "tanstack-start" });
+    await expect(
+      resolvePreviewBuildStrategy({
+        appPath: cwd,
+        buildType: "tanstack-start",
+        entrypoint: undefined,
+      }),
+    ).resolves.toMatchObject({ buildType: "tanstack-start" });
   });
 
   it("still lets an explicit Bun entrypoint override package.json module", async () => {
@@ -210,19 +252,33 @@ describe("bun compatibility", () => {
 
     await writeFile(
       path.join(cwd, "package.json"),
-      JSON.stringify({
-        module: "index.ts",
-        devDependencies: {
-          "@types/bun": "latest",
+      JSON.stringify(
+        {
+          module: "index.ts",
+          devDependencies: {
+            "@types/bun": "latest",
+          },
         },
-      }, null, 2),
+        null,
+        2,
+      ),
       "utf8",
     );
-    await writeFile(path.join(cwd, "index.ts"), "console.log('hello');\n", "utf8");
-    await writeFile(path.join(cwd, "server.ts"), "console.log('server');\n", "utf8");
+    await writeFile(
+      path.join(cwd, "index.ts"),
+      "console.log('hello');\n",
+      "utf8",
+    );
+    await writeFile(
+      path.join(cwd, "server.ts"),
+      "console.log('server');\n",
+      "utf8",
+    );
 
     const { resolveBunEntrypoint } = await import("../src/lib/app/bun-project");
 
-    await expect(resolveBunEntrypoint(cwd, "server.ts")).resolves.toBe("server.ts");
+    await expect(resolveBunEntrypoint(cwd, "server.ts")).resolves.toBe(
+      "server.ts",
+    );
   });
 });

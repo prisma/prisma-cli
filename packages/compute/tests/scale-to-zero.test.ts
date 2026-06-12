@@ -38,7 +38,7 @@ describe("scale-to-zero guard", () => {
 
   it("releases only once when release is called multiple times", async () => {
     const { file } = await createControlFile();
-    const guard = new ScaleToZeroGuard();
+    using guard = new ScaleToZeroGuard();
 
     guard.release();
     guard.release();
@@ -51,7 +51,7 @@ describe("scale-to-zero guard", () => {
     const { file } = await createControlFile();
     const controller = new AbortController();
 
-    const guard = new ScaleToZeroGuard({ signal: controller.signal });
+    using guard = new ScaleToZeroGuard({ signal: controller.signal });
     expect(await readSignals(file)).toBe("+");
 
     controller.abort();
@@ -66,7 +66,7 @@ describe("scale-to-zero guard", () => {
     const controller = new AbortController();
     controller.abort();
 
-    const guard = new ScaleToZeroGuard({ signal: controller.signal });
+    using guard = new ScaleToZeroGuard({ signal: controller.signal });
     guard.release();
 
     expect(await readSignals(file)).toBe("");
@@ -86,7 +86,7 @@ describe("scale-to-zero guard", () => {
   it("waitUntil signal abort releases before a still-pending promise settles", async () => {
     const { file } = await createControlFile();
     const controller = new AbortController();
-    let resolvePromise: (value: string) => void;
+    let resolvePromise: ((value: string) => void) | undefined;
     const promise = new Promise<string>((resolve) => {
       resolvePromise = resolve;
     });
@@ -97,14 +97,19 @@ describe("scale-to-zero guard", () => {
     controller.abort();
     expect(await readSignals(file)).toBe("+-");
 
-    resolvePromise!("done");
+    if (!resolvePromise) {
+      throw new Error("Expected promise resolver to be captured");
+    }
+    resolvePromise("done");
     await expect(promise).resolves.toBe("done");
     await Promise.resolve();
     expect(await readSignals(file)).toBe("+-");
   });
 
   it("is a no-op when the control file is unavailable", async () => {
-    configureScaleToZeroControlFileForTests(path.join(os.tmpdir(), "missing-scale-to-zero-file"));
+    configureScaleToZeroControlFileForTests(
+      path.join(os.tmpdir(), "missing-scale-to-zero-file"),
+    );
     const promise = Promise.resolve("done");
 
     expect(waitUntil(promise)).toBeUndefined();
@@ -114,7 +119,7 @@ describe("scale-to-zero guard", () => {
   it("removes the abort listener after manual release", async () => {
     const { file } = await createControlFile();
     const controller = new AbortController();
-    const guard = new ScaleToZeroGuard({ signal: controller.signal });
+    using guard = new ScaleToZeroGuard({ signal: controller.signal });
 
     guard.release();
     controller.abort();

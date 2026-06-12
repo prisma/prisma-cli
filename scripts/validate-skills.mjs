@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// biome-ignore-all lint/performance/useTopLevelRegex: Skill validation regexes are kept inline with checks.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -23,7 +24,8 @@ export function validateSkillMd(content) {
   try {
     ({ data } = matter(content));
   } catch (error) {
-    const message = error instanceof Error ? error.message.split("\n")[0] : String(error);
+    const message =
+      error instanceof Error ? error.message.split("\n")[0] : String(error);
     errors.push(`frontmatter parse error: ${message}`);
     return errors;
   }
@@ -33,7 +35,9 @@ export function validateSkillMd(content) {
   }
 
   if (typeof data.description !== "string" || !data.description.trim()) {
-    errors.push("missing or invalid 'description' (must be a non-empty string)");
+    errors.push(
+      "missing or invalid 'description' (must be a non-empty string)",
+    );
   } else if (data.description.length > MAX_DESCRIPTION_LENGTH) {
     errors.push(
       `description exceeds ${MAX_DESCRIPTION_LENGTH} characters (${data.description.length}); use a folded block scalar (description: >) or shorten the text`,
@@ -88,9 +92,15 @@ export function validateSkillFile(filePath, root) {
   };
 }
 
-export function runCheck({ root = repoRoot, skillsDir = SKILLS_DIR, files } = {}) {
+export function runCheck({
+  root = repoRoot,
+  skillsDir = SKILLS_DIR,
+  files,
+} = {}) {
   if (files?.length) {
-    return files.map((file) => validateSkillFile(file, root)).filter((offence) => offence !== null);
+    return files
+      .map((file) => validateSkillFile(file, root))
+      .filter((offence) => offence !== null);
   }
 
   const offences = [];

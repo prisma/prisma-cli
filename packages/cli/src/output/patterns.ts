@@ -62,13 +62,27 @@ export function renderList(input: ListPatternInput, ui: ShellUi): string[] {
   );
   const lines = renderCardTitle(input.descriptor, input.title, ui);
 
-  lines.push(renderCardRow(ui, keyWidth, input.parentContext.key, input.parentContext.value));
+  lines.push(
+    renderCardRow(
+      ui,
+      keyWidth,
+      input.parentContext.key,
+      input.parentContext.value,
+    ),
+  );
 
   if (input.items.length === 0) {
     lines.push(renderPlainCardLine(ui, ui.dim(input.emptyMessage)));
   } else {
     for (const item of input.items) {
-      lines.push(renderCardRow(ui, keyWidth, `⚬ ${item.noun}`, formatListItemValue(ui, item)));
+      lines.push(
+        renderCardRow(
+          ui,
+          keyWidth,
+          `⚬ ${item.noun}`,
+          formatListItemValue(ui, item),
+        ),
+      );
     }
   }
 
@@ -101,7 +115,14 @@ export function renderShow(input: ShowPatternInput, ui: ShellUi): string[] {
   const lines = renderCardTitle(input.descriptor, input.title, ui);
 
   for (const field of input.fields) {
-    lines.push(renderCardRow(ui, keyWidth, field.key, formatValue(ui, field.value, field.tone, field.sensitive)));
+    lines.push(
+      renderCardRow(
+        ui,
+        keyWidth,
+        field.key,
+        formatValue(ui, field.value, field.tone, field.sensitive),
+      ),
+    );
   }
 
   pushReadMore(lines, ui, keyWidth, input.descriptor);
@@ -111,17 +132,34 @@ export function renderShow(input: ShowPatternInput, ui: ShellUi): string[] {
 
 export function renderMutate(input: MutatePatternInput, ui: ShellUi): string[] {
   const rows = input.context;
-  const keyWidth = Math.max(0, ...rows.map((row) => stringWidth(`${row.key}:`)), ...readMoreWidth(input.descriptor));
+  const keyWidth = Math.max(
+    0,
+    ...rows.map((row) => stringWidth(`${row.key}:`)),
+    ...readMoreWidth(input.descriptor),
+  );
   const lines = renderCardTitle(input.descriptor, input.title, ui);
 
   for (const row of rows) {
-    lines.push(renderCardRow(ui, keyWidth, row.key, formatValue(ui, row.value, row.tone, row.sensitive)));
+    lines.push(
+      renderCardRow(
+        ui,
+        keyWidth,
+        row.key,
+        formatValue(ui, row.value, row.tone, row.sensitive),
+      ),
+    );
   }
 
   pushReadMore(lines, ui, keyWidth, input.descriptor);
   lines.push("");
   lines.push(`${ui.warning("◇")} ${input.operationDescription}...`);
-  lines.push(renderSummaryLine(ui, "success", `Applied ${input.operationCount} operation(s)`));
+  lines.push(
+    renderSummaryLine(
+      ui,
+      "success",
+      `Applied ${input.operationCount} operation(s)`,
+    ),
+  );
 
   for (const detail of input.details) {
     lines.push(`  ${detail}`);
@@ -143,11 +181,23 @@ export function renderInspect(_input: unknown, _ui: ShellUi): string[] {
   return [];
 }
 
-function renderCardTitle(descriptor: CommandDescriptor, title: string, ui: ShellUi): string[] {
-  return [`${ui.strong(formatDescriptorLabel(descriptor))} ${ui.dim("→")} ${ui.dim(title)}`, ""];
+function renderCardTitle(
+  descriptor: CommandDescriptor,
+  title: string,
+  ui: ShellUi,
+): string[] {
+  return [
+    `${ui.strong(formatDescriptorLabel(descriptor))} ${ui.dim("→")} ${ui.dim(title)}`,
+    "",
+  ];
 }
 
-function renderCardRow(ui: ShellUi, keyWidth: number, key: string, value: string): string {
+function renderCardRow(
+  ui: ShellUi,
+  keyWidth: number,
+  key: string,
+  value: string,
+): string {
   return `${renderCardRail(ui)}  ${ui.accent(padDisplay(`${key}:`, keyWidth))}  ${value}`;
 }
 
@@ -163,13 +213,20 @@ function readMoreWidth(descriptor: CommandDescriptor): number[] {
   return descriptor.docsPath ? [stringWidth("Read more")] : [];
 }
 
-function pushReadMore(lines: string[], ui: ShellUi, keyWidth: number, descriptor: CommandDescriptor): void {
+function pushReadMore(
+  lines: string[],
+  ui: ShellUi,
+  keyWidth: number,
+  descriptor: CommandDescriptor,
+): void {
   if (!descriptor.docsPath) {
     return;
   }
 
   lines.push(renderCardDivider(ui));
-  lines.push(`${renderCardRail(ui)}  ${ui.accent(padDisplay("Read more", keyWidth))}  ${ui.link(descriptor.docsPath)}`);
+  lines.push(
+    `${renderCardRail(ui)}  ${ui.accent(padDisplay("Read more", keyWidth))}  ${ui.link(descriptor.docsPath)}`,
+  );
 }
 
 function renderCardRail(ui: ShellUi): string {
@@ -193,7 +250,12 @@ function renderAnnotation(ui: ShellUi, status: AnnotationStatus): string {
   return "";
 }
 
-function formatValue(ui: ShellUi, value: string, tone: ValueTone = "default", sensitive = false): string {
+function formatValue(
+  ui: ShellUi,
+  value: string,
+  tone: ValueTone = "default",
+  sensitive = false,
+): string {
   const resolvedValue = sensitive ? maskValue(value) : value;
 
   if (tone === "success") {

@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
-
+import { renderDeployOutputRows } from "../src/lib/app/deploy-output";
 import { CliError } from "../src/shell/errors";
 import { writeHumanError } from "../src/shell/output";
-import { renderDeployOutputRows } from "../src/lib/app/deploy-output";
 import { plain } from "../src/shell/ui";
 import { createTempCwd, createTestCommandContext } from "./helpers";
 
@@ -22,14 +21,18 @@ describe("shell output", () => {
       { label: "Uploaded" },
     ]);
 
-    expect(plain(lines.join("\n"))).toBe([
-      "  Workspace  Edith",
-      "  Project    j1         · created from package.json",
-      "  Runtime    HTTP 3000  · Next.js default",
-      "  Uploaded",
-    ].join("\n"));
+    expect(plain(lines.join("\n"))).toBe(
+      [
+        "  Workspace  Edith",
+        "  Project    j1         · created from package.json",
+        "  Runtime    HTTP 3000  · Next.js default",
+        "  Uploaded",
+      ].join("\n"),
+    );
     expect(lines[1]).toContain("\u001B[1m");
-    expect(lines[1]).toContain("\u001B[2m· created from package.json\u001B[22m");
+    expect(lines[1]).toContain(
+      "\u001B[2m· created from package.json\u001B[22m",
+    );
   });
 
   it("falls back to standard error formatting when humanLines is empty", async () => {
@@ -47,12 +50,7 @@ describe("shell output", () => {
 
     expect(error.humanLines).toBeNull();
 
-    writeHumanError(
-      context.output,
-      context.ui,
-      error,
-      { trace: false },
-    );
+    writeHumanError(context.output, context.ui, error, { trace: false });
 
     expect(stderr.buffer).toContain("App deploy failed [DEPLOY_FAILED]");
     expect(stderr.buffer).toContain("Why: Upload failed");
@@ -73,12 +71,7 @@ describe("shell output", () => {
     });
     humanLines.push("Mutated after construction.");
 
-    writeHumanError(
-      context.output,
-      context.ui,
-      error,
-      { trace: false },
-    );
+    writeHumanError(context.output, context.ui, error, { trace: false });
 
     expect(stderr.buffer).toContain("Custom failure.");
     expect(stderr.buffer).not.toContain("Mutated after construction.");
@@ -100,7 +93,8 @@ describe("shell output", () => {
         summary: "App deploy failed",
         why: "ENOENT: missing file",
         fix: "Retry the command.",
-        debug: "Error: ENOENT: missing file\n    at stageNextjsStandaloneArtifact",
+        debug:
+          "Error: ENOENT: missing file\n    at stageNextjsStandaloneArtifact",
       }),
       { trace: true },
     );

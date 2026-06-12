@@ -1,6 +1,11 @@
 import { Command, Option } from "commander";
 
-import { runEnvAdd, runEnvList, runEnvRemove, runEnvUpdate } from "../controllers/app-env";
+import {
+  runEnvAdd,
+  runEnvList,
+  runEnvRemove,
+  runEnvUpdate,
+} from "../controllers/app-env";
 import {
   renderEnvAdd,
   renderEnvList,
@@ -14,7 +19,7 @@ import {
 import { attachCommandDescriptor } from "../shell/command-meta";
 import { runCommand } from "../shell/command-runner";
 import { addGlobalFlags } from "../shell/global-flags";
-import { configureRuntimeCommand, type CliRuntime } from "../shell/runtime";
+import { type CliRuntime, configureRuntimeCommand } from "../shell/runtime";
 import type {
   EnvAddResult,
   EnvListResult,
@@ -44,15 +49,25 @@ function createEnvAddCommand(runtime: CliRuntime): Command {
   );
 
   command
-    .argument("[assignment]", "Variable assignment as KEY=VALUE or KEY from the current environment")
-    .addOption(new Option("--file <path>", "Read KEY=VALUE assignments from a dotenv file"))
+    .argument(
+      "[assignment]",
+      "Variable assignment as KEY=VALUE or KEY from the current environment",
+    )
+    .addOption(
+      new Option(
+        "--file <path>",
+        "Read KEY=VALUE assignments from a dotenv file",
+      ),
+    )
     .addOption(
       new Option(
         "--role <role>",
         "Project template scope (production or preview)",
       ).choices(["production", "preview"]),
     )
-    .addOption(new Option("--branch <git-name>", "Preview branch override scope"))
+    .addOption(
+      new Option("--branch <git-name>", "Preview branch override scope"),
+    )
     .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
@@ -66,9 +81,16 @@ function createEnvAddCommand(runtime: CliRuntime): Command {
       runtime,
       "project.env.add",
       options as Record<string, unknown>,
-      (context) => runEnvAdd(context, assignment, { roleName, branchName, projectRef, filePath }),
+      (context) =>
+        runEnvAdd(context, assignment, {
+          roleName,
+          branchName,
+          projectRef,
+          filePath,
+        }),
       {
-        renderHuman: (context, descriptor, result) => renderEnvAdd(context, descriptor, result),
+        renderHuman: (context, descriptor, result) =>
+          renderEnvAdd(context, descriptor, result),
         renderJson: (result) => serializeEnvAdd(result),
       },
     );
@@ -84,15 +106,25 @@ function createEnvUpdateCommand(runtime: CliRuntime): Command {
   );
 
   command
-    .argument("[assignment]", "Variable assignment as KEY=VALUE or KEY from the current environment")
-    .addOption(new Option("--file <path>", "Read KEY=VALUE assignments from a dotenv file"))
+    .argument(
+      "[assignment]",
+      "Variable assignment as KEY=VALUE or KEY from the current environment",
+    )
+    .addOption(
+      new Option(
+        "--file <path>",
+        "Read KEY=VALUE assignments from a dotenv file",
+      ),
+    )
     .addOption(
       new Option(
         "--role <role>",
         "Project template scope (production or preview)",
       ).choices(["production", "preview"]),
     )
-    .addOption(new Option("--branch <git-name>", "Preview branch override scope"))
+    .addOption(
+      new Option("--branch <git-name>", "Preview branch override scope"),
+    )
     .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
@@ -106,9 +138,16 @@ function createEnvUpdateCommand(runtime: CliRuntime): Command {
       runtime,
       "project.env.update",
       options as Record<string, unknown>,
-      (context) => runEnvUpdate(context, assignment, { roleName, branchName, projectRef, filePath }),
+      (context) =>
+        runEnvUpdate(context, assignment, {
+          roleName,
+          branchName,
+          projectRef,
+          filePath,
+        }),
       {
-        renderHuman: (context, descriptor, result) => renderEnvUpdate(context, descriptor, result),
+        renderHuman: (context, descriptor, result) =>
+          renderEnvUpdate(context, descriptor, result),
         renderJson: (result) => serializeEnvUpdate(result),
       },
     );
@@ -125,12 +164,14 @@ function createEnvListCommand(runtime: CliRuntime): Command {
 
   command
     .addOption(
-      new Option(
-        "--role <role>",
-        "Project template scope",
-      ).choices(["production", "preview"]),
+      new Option("--role <role>", "Project template scope").choices([
+        "production",
+        "preview",
+      ]),
     )
-    .addOption(new Option("--branch <git-name>", "Preview branch resolved scope"))
+    .addOption(
+      new Option("--branch <git-name>", "Preview branch resolved scope"),
+    )
     .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
@@ -145,7 +186,8 @@ function createEnvListCommand(runtime: CliRuntime): Command {
       options as Record<string, unknown>,
       (context) => runEnvList(context, { roleName, branchName, projectRef }),
       {
-        renderHuman: (context, descriptor, result) => renderEnvList(context, descriptor, result),
+        renderHuman: (context, descriptor, result) =>
+          renderEnvList(context, descriptor, result),
         renderJson: (result) => serializeEnvList(result),
       },
     );
@@ -169,7 +211,9 @@ function createEnvRemoveCommand(runtime: CliRuntime): Command {
         "Project template scope (production or preview)",
       ).choices(["production", "preview"]),
     )
-    .addOption(new Option("--branch <git-name>", "Preview branch override scope"))
+    .addOption(
+      new Option("--branch <git-name>", "Preview branch override scope"),
+    )
     .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
@@ -182,9 +226,11 @@ function createEnvRemoveCommand(runtime: CliRuntime): Command {
       runtime,
       "project.env.remove",
       options as Record<string, unknown>,
-      (context) => runEnvRemove(context, key, { roleName, branchName, projectRef }),
+      (context) =>
+        runEnvRemove(context, key, { roleName, branchName, projectRef }),
       {
-        renderHuman: (context, descriptor, result) => renderEnvRm(context, descriptor, result),
+        renderHuman: (context, descriptor, result) =>
+          renderEnvRm(context, descriptor, result),
         renderJson: (result) => serializeEnvRm(result),
       },
     );

@@ -8,12 +8,14 @@ afterEach(() => {
 });
 
 function encodeJwt(claims: Record<string, unknown>): string {
-  const payload = Buffer.from(JSON.stringify(claims), "utf8").toString("base64url");
+  const payload = Buffer.from(JSON.stringify(claims), "utf8").toString(
+    "base64url",
+  );
   return `header.${payload}.signature`;
 }
 
 function mockFileTokenStorage(getTokens: ReturnType<typeof vi.fn>) {
-  return vi.fn().mockImplementation(function () {
+  return vi.fn().mockImplementation(function FileTokenStorageMock() {
     return { getTokens };
   });
 }
@@ -91,20 +93,30 @@ describe("readAuthState", () => {
       refreshToken: "refresh-token",
     });
     const requireComputeAuth = vi.fn().mockResolvedValue({
-      GET: vi.fn().mockImplementation((pathName: string, request?: { params?: { path?: { id?: string } } }) => {
-        if (pathName === "/v1/workspaces/{id}" && request?.params?.path?.id === "cmmxlp7ae1251zyfs8mdpnavm") {
-          return {
-            data: {
-              data: {
-                id: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
-                name: "Sandpit",
-              },
-            },
-          };
-        }
+      GET: vi
+        .fn()
+        .mockImplementation(
+          (
+            pathName: string,
+            request?: { params?: { path?: { id?: string } } },
+          ) => {
+            if (
+              pathName === "/v1/workspaces/{id}" &&
+              request?.params?.path?.id === "cmmxlp7ae1251zyfs8mdpnavm"
+            ) {
+              return {
+                data: {
+                  data: {
+                    id: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
+                    name: "Sandpit",
+                  },
+                },
+              };
+            }
 
-        throw new Error(`Unexpected path ${pathName}`);
-      }),
+            throw new Error(`Unexpected path ${pathName}`);
+          },
+        ),
     });
 
     vi.doMock("../src/adapters/token-storage", () => ({
@@ -157,14 +169,16 @@ describe("readAuthState", () => {
 
     const { readAuthState } = await import("../src/lib/auth/auth-ops");
 
-    await expect(readAuthState({} as NodeJS.ProcessEnv)).resolves.toMatchObject({
-      authenticated: true,
-      user: null,
-      workspace: {
-        id: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
-        name: "Sandpit",
+    await expect(readAuthState({} as NodeJS.ProcessEnv)).resolves.toMatchObject(
+      {
+        authenticated: true,
+        user: null,
+        workspace: {
+          id: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
+          name: "Sandpit",
+        },
       },
-    });
+    );
   });
 
   it("uses the canonical workspace id as the fallback name when the API omits a name", async () => {
@@ -192,50 +206,62 @@ describe("readAuthState", () => {
 
     const { readAuthState } = await import("../src/lib/auth/auth-ops");
 
-    await expect(readAuthState({} as NodeJS.ProcessEnv)).resolves.toMatchObject({
-      workspace: {
-        id: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
-        name: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
+    await expect(readAuthState({} as NodeJS.ProcessEnv)).resolves.toMatchObject(
+      {
+        workspace: {
+          id: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
+          name: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
+        },
       },
-    });
+    );
   });
 
   it("derives authenticated state from PRISMA_SERVICE_TOKEN without consulting FileTokenStorage", async () => {
     const getTokens = vi.fn();
     const requireComputeAuth = vi.fn().mockResolvedValue({
-      GET: vi.fn().mockImplementation((pathName: string, request?: { params?: { path?: { id?: string } } }) => {
-        if (pathName === "/v1/me") {
-          return {
-            data: {
-              data: {
-                user: null,
-                workspace: {
-                  id: "wksp_clitq5hfg0000qv0gtg9nv9fy",
-                  name: "Prisma Platform",
+      GET: vi
+        .fn()
+        .mockImplementation(
+          (
+            pathName: string,
+            request?: { params?: { path?: { id?: string } } },
+          ) => {
+            if (pathName === "/v1/me") {
+              return {
+                data: {
+                  data: {
+                    user: null,
+                    workspace: {
+                      id: "wksp_clitq5hfg0000qv0gtg9nv9fy",
+                      name: "Prisma Platform",
+                    },
+                    credential: {
+                      type: "service_token",
+                      id: "itgr_ci",
+                      name: "ci-deploys-prod",
+                    },
+                  },
                 },
-                credential: {
-                  type: "service_token",
-                  id: "itgr_ci",
-                  name: "ci-deploys-prod",
+              };
+            }
+
+            if (
+              pathName === "/v1/workspaces/{id}" &&
+              request?.params?.path?.id === "clitq5hfg0000qv0gtg9nv9fy"
+            ) {
+              return {
+                data: {
+                  data: {
+                    id: "wksp_clitq5hfg0000qv0gtg9nv9fy",
+                    name: "Prisma Platform",
+                  },
                 },
-              },
-            },
-          };
-        }
+              };
+            }
 
-        if (pathName === "/v1/workspaces/{id}" && request?.params?.path?.id === "clitq5hfg0000qv0gtg9nv9fy") {
-          return {
-            data: {
-              data: {
-                id: "wksp_clitq5hfg0000qv0gtg9nv9fy",
-                name: "Prisma Platform",
-              },
-            },
-          };
-        }
-
-        throw new Error(`Unexpected path ${pathName}`);
-      }),
+            throw new Error(`Unexpected path ${pathName}`);
+          },
+        ),
     });
 
     vi.doMock("../src/adapters/token-storage", () => ({
@@ -246,7 +272,10 @@ describe("readAuthState", () => {
     }));
 
     const { readAuthState } = await import("../src/lib/auth/auth-ops");
-    const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy", email: "service@example.com" });
+    const token = encodeJwt({
+      sub: "workspace:clitq5hfg0000qv0gtg9nv9fy",
+      email: "service@example.com",
+    });
 
     await expect(
       readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv),
@@ -275,13 +304,19 @@ describe("readAuthState", () => {
     // into.
     const getTokens = vi.fn().mockResolvedValue({
       workspaceId: "wksp_local_oauth_workspace",
-      accessToken: encodeJwt({ sub: "user:usr_local", email: "dev@example.com" }),
+      accessToken: encodeJwt({
+        sub: "user:usr_local",
+        email: "dev@example.com",
+      }),
       refreshToken: "refresh-token",
     });
     const requireComputeAuth = vi.fn().mockResolvedValue({
       GET: vi.fn().mockResolvedValue({
         data: {
-          data: { id: "wksp_clitq5hfg0000qv0gtg9nv9fy", name: "Prisma Platform" },
+          data: {
+            id: "wksp_clitq5hfg0000qv0gtg9nv9fy",
+            name: "Prisma Platform",
+          },
         },
       }),
     });
@@ -294,7 +329,9 @@ describe("readAuthState", () => {
     const { readAuthState } = await import("../src/lib/auth/auth-ops");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
 
-    const result = await readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv);
+    const result = await readAuthState({
+      PRISMA_SERVICE_TOKEN: token,
+    } as NodeJS.ProcessEnv);
 
     expect(result.authenticated).toBe(true);
     expect(result.workspace?.id).toBe("wksp_clitq5hfg0000qv0gtg9nv9fy");
@@ -418,7 +455,10 @@ describe("readAuthState", () => {
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
 
     await expect(
-      readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv, controller.signal),
+      readAuthState(
+        { PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv,
+        controller.signal,
+      ),
     ).rejects.toBe(reason);
   });
 
@@ -447,7 +487,10 @@ describe("readAuthState", () => {
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
 
     await expect(
-      readAuthState({ PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv, controller.signal),
+      readAuthState(
+        { PRISMA_SERVICE_TOKEN: token } as NodeJS.ProcessEnv,
+        controller.signal,
+      ),
     ).rejects.toBe(reason);
   });
 
