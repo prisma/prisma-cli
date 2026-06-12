@@ -19,16 +19,16 @@ import { waitUntil } from "@prisma/compute";
 waitUntil(doCriticalWork(), { signal: AbortSignal.timeout(30_000) });
 ```
 
-`ScaleToZeroGuard` is a disposable object that keeps the application awake until the guard is released. Use it for a scoped function or block of background work. `ScaleToZeroGuard` can be created multiple times during a single request and is safe to nest. Pass an `AbortSignal`, usually from `AbortSignal.timeout(ms)`, as a safety bound if release is not reached. The signal releases the guard only; it does not cancel the guarded work.
+`KeepAwakeGuard` is a disposable object that keeps the application awake until the guard is released. Use it for a scoped function or block of background work. `KeepAwakeGuard` can be created multiple times during a single request and is safe to nest. Pass an `AbortSignal`, usually from `AbortSignal.timeout(ms)`, as a safety bound if release is not reached. The signal releases the guard only; it does not cancel the guarded work.
 
 Read more about disposables and the `using` keyword in the [MDN resource management guide](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Resource_management).
 
 ```ts
-import { ScaleToZeroGuard } from "@prisma/compute";
+import { KeepAwakeGuard } from "@prisma/compute";
 
 async function runsInBackground() {
   // guard is acquired here
-  using guard = new ScaleToZeroGuard({ signal: AbortSignal.timeout(30_000) });
+  using guard = new KeepAwakeGuard({ signal: AbortSignal.timeout(30_000) });
   await doCriticalWork();
 } // guard is released here
 ```
@@ -36,10 +36,10 @@ async function runsInBackground() {
 If `using` is not available, call `.release()` manually. Always release the guard in a `finally` block so it is released even if the guarded code throws.
 
 ```ts
-import { ScaleToZeroGuard } from "@prisma/compute";
+import { KeepAwakeGuard } from "@prisma/compute";
 
 async function runsInBackground() {
-  const guard = new ScaleToZeroGuard({ signal: AbortSignal.timeout(30_000) });
+  const guard = new KeepAwakeGuard({ signal: AbortSignal.timeout(30_000) });
 
   try {
     await doCriticalWork();

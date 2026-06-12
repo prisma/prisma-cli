@@ -3,7 +3,7 @@ import { writeScaleToZeroSignal } from "./scale-to-zero-control";
 /**
  * Options for holding a Prisma Compute sleep guard.
  */
-export interface ScaleToZeroGuardOptions {
+export interface KeepAwakeGuardOptions {
   /**
    * Signal that releases the keep-awake guard when aborted.
    *
@@ -19,7 +19,7 @@ export interface ScaleToZeroGuardOptions {
  * Keeps a Prisma Compute application awake for scoped async work.
  *
  * Creating a guard signals the compute runtime to stay awake. Calling
- * {@link ScaleToZeroGuard.release}, leaving a `using` scope, or reaching
+ * {@link KeepAwakeGuard.release}, leaving a `using` scope, or reaching
  * the configured abort signal releases that signal. Release is idempotent, so
  * manual release and disposal can be combined safely.
  *
@@ -32,15 +32,15 @@ export interface ScaleToZeroGuardOptions {
  *
  * @example
  * ```ts
- * import { ScaleToZeroGuard } from "@prisma/compute";
+ * import { KeepAwakeGuard } from "@prisma/compute";
  *
- * using guard = new ScaleToZeroGuard({ signal: AbortSignal.timeout(30_000) });
+ * using guard = new KeepAwakeGuard({ signal: AbortSignal.timeout(30_000) });
  * await doCriticalWork();
  * ```
  *
  * @example
  * ```ts
- * const guard = new ScaleToZeroGuard();
+ * const guard = new KeepAwakeGuard();
  * try {
  *   await doCriticalWork();
  * } finally {
@@ -48,7 +48,7 @@ export interface ScaleToZeroGuardOptions {
  * }
  * ```
  */
-export class ScaleToZeroGuard implements Disposable {
+export class KeepAwakeGuard implements Disposable {
   #active: boolean;
   #abortSignal: AbortSignal | undefined;
   #abortListener: (() => void) | undefined;
@@ -61,7 +61,7 @@ export class ScaleToZeroGuard implements Disposable {
    * guarded work. Passing a signal is recommended as a safety bound if release
    * is not reached.
    */
-  constructor(options: ScaleToZeroGuardOptions = {}) {
+  constructor(options: KeepAwakeGuardOptions = {}) {
     if (options.signal?.aborted) {
       this.#active = false;
       return;
@@ -100,7 +100,7 @@ export class ScaleToZeroGuard implements Disposable {
    * Releases the guard when used with TypeScript's `using` syntax.
    *
    * Most callers should prefer `using` for scoped work and call
-   * {@link ScaleToZeroGuard.release} only when release needs to happen before
+   * {@link KeepAwakeGuard.release} only when release needs to happen before
    * the scope exits.
    */
   [Symbol.dispose](): void {
@@ -140,10 +140,10 @@ export class ScaleToZeroGuard implements Disposable {
  */
 export function waitUntil(
   promise: PromiseLike<unknown>,
-  options?: ScaleToZeroGuardOptions,
+  options?: KeepAwakeGuardOptions,
 ): void {
   // biome-ignore lint/nursery/useDisposables: waitUntil transfers guard cleanup to the promise finally handler.
-  const guard = new ScaleToZeroGuard(options);
+  const guard = new KeepAwakeGuard(options);
 
   // Do not attach a catch here; callers rely on the underlying promise keeping
   // its normal unhandled-rejection behavior.

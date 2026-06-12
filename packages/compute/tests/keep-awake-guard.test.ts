@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ScaleToZeroGuard, waitUntil } from "../src/index";
+import { KeepAwakeGuard, waitUntil } from "../src/index";
 import { configureScaleToZeroControlFileForTests } from "../src/scale-to-zero-control";
 
 async function createControlFile(): Promise<{ dir: string; file: string }> {
@@ -20,7 +20,7 @@ async function readSignals(file: string): Promise<string> {
   return await fs.readFile(file, "utf8");
 }
 
-describe("scale-to-zero guard", () => {
+describe("keep-awake guard", () => {
   afterEach(async () => {
     vi.useRealTimers();
     configureScaleToZeroControlFileForTests(undefined);
@@ -29,7 +29,7 @@ describe("scale-to-zero guard", () => {
   it("writes acquire and release signals for a disposable guard", async () => {
     const { file } = await createControlFile();
 
-    using guard = new ScaleToZeroGuard();
+    using guard = new KeepAwakeGuard();
 
     expect(await readSignals(file)).toBe("+");
     guard.release();
@@ -38,7 +38,7 @@ describe("scale-to-zero guard", () => {
 
   it("releases only once when release is called multiple times", async () => {
     const { file } = await createControlFile();
-    using guard = new ScaleToZeroGuard();
+    using guard = new KeepAwakeGuard();
 
     guard.release();
     guard.release();
@@ -51,7 +51,7 @@ describe("scale-to-zero guard", () => {
     const { file } = await createControlFile();
     const controller = new AbortController();
 
-    using guard = new ScaleToZeroGuard({ signal: controller.signal });
+    using guard = new KeepAwakeGuard({ signal: controller.signal });
     expect(await readSignals(file)).toBe("+");
 
     controller.abort();
@@ -66,7 +66,7 @@ describe("scale-to-zero guard", () => {
     const controller = new AbortController();
     controller.abort();
 
-    using guard = new ScaleToZeroGuard({ signal: controller.signal });
+    using guard = new KeepAwakeGuard({ signal: controller.signal });
     guard.release();
 
     expect(await readSignals(file)).toBe("");
@@ -119,7 +119,7 @@ describe("scale-to-zero guard", () => {
   it("removes the abort listener after manual release", async () => {
     const { file } = await createControlFile();
     const controller = new AbortController();
-    using guard = new ScaleToZeroGuard({ signal: controller.signal });
+    using guard = new KeepAwakeGuard({ signal: controller.signal });
 
     guard.release();
     controller.abort();
