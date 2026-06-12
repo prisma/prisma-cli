@@ -1,0 +1,6 @@
+src/
+tests/
+fixtures/
+docs/
+.prisma/
+.publish/

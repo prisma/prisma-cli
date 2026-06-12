@@ -9,12 +9,11 @@ flags, output streams, structured JSON, prompts, errors, and package contents.
 pnpm test
 ```
 
-Build the package when changing entrypoints, package metadata, or publishing
-preparation:
+Inspect package contents when changing entrypoints, package metadata, or
+publishing preparation:
 
 ```bash
-pnpm build:cli
-pnpm prepare:cli-publish
+pnpm --filter @prisma/cli pack --dry-run
 ```
 
 Run the Next.js artifact smoke before publishing a preview CLI build that
@@ -37,7 +36,7 @@ pnpm smoke:cli-nextjs
 - Prompt behavior in TTY mode.
 - Error codes, summaries, fixes, and next steps.
 - Secret redaction, especially environment variable values.
-- Package staging and tarball contents.
+- Package metadata and tarball contents.
 
 ## Test Styles
 
@@ -48,7 +47,7 @@ temporary state.
 Use controller or use-case tests when the behavior is easier to express without
 going through Commander.
 
-Use staged package smoke tests when changing:
+Use package smoke tests when changing:
 
 - binary entrypoints
 - build configuration

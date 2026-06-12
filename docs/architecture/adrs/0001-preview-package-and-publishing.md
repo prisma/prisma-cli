@@ -18,7 +18,8 @@ dist-tag. The package exposes a `prisma-cli` binary so it can coexist with the
 existing `prisma` executable.
 
 The committed `packages/cli/package.json` version is a development placeholder.
-Release versions are injected into the staged package by CI:
+Release versions are injected into the package manifest by CI before packing and
+publishing:
 
 - Manual official releases compute the next `3.0.0-beta.N`, publish to
   `latest`, and create `cli-v<version>`.
@@ -36,10 +37,10 @@ The publish workflow is prepared for npm trusted publishing with provenance.
 Official releases publish with:
 
 ```bash
-npm publish --access public --tag latest --provenance
+pnpm publish --access public --tag latest --provenance
 ```
 
-Local development should build and stage the package, but should not publish it.
+Local development should build and inspect the package, but should not publish it.
 
 ## Consequences
 
@@ -48,8 +49,8 @@ Local development should build and stage the package, but should not publish it.
   preview comments for exact unmerged commits.
 - Project scripts may map `prisma` to `prisma-cli` when testing the future
   command shape locally.
-- The npm package should contain only the staged package files: built `dist`,
-  package README, license, and package manifest.
+- The npm package should contain only the package files: built `dist`, package
+  README, license, and package manifest.
 - Official publishing remains manual and gated until a maintainer runs the
   workflow.
 - Release version bumps are not committed through pull requests; npm versions
