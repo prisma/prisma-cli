@@ -3,13 +3,14 @@ import { writeScaleToZeroSignal } from "./scale-to-zero-control";
 /**
  * Options for holding a Prisma Compute sleep guard.
  */
-export interface ScaleToZeroGuardOptions {
+export interface KeepAwakeGuardOptions {
   /**
-   * Signal that releases the guard when aborted.
+   * Signal that releases the keep-awake guard when aborted.
    *
-   * Use `AbortSignal.timeout(ms)` for a time bound, or pass a request or
-   * operation signal to tie the guard to caller-owned cancellation. Passing a
-   * signal is strongly recommended as a safety bound for dangling guards.
+   * The signal does not cancel the underlying promise, function, or operation.
+   * It only releases the guard so the application can sleep again. Use
+   * `AbortSignal.timeout(ms)` with a timeout longer than the expected work as a
+   * safety bound against dangling guards and unexpected cost.
    */
   signal?: AbortSignal;
 }
@@ -18,27 +19,28 @@ export interface ScaleToZeroGuardOptions {
  * Keeps a Prisma Compute application awake for scoped async work.
  *
  * Creating a guard signals the compute runtime to stay awake. Calling
- * {@link ScaleToZeroGuard.release}, leaving a `using` scope, or reaching
+ * {@link KeepAwakeGuard.release}, leaving a `using` scope, or reaching
  * the configured abort signal releases that signal. Release is idempotent, so
  * manual release and disposal can be combined safely.
  *
  * Pass `signal` whenever possible, usually from `AbortSignal.timeout(ms)`, to
  * bound how long the guard can keep the instance awake if release is not reached.
+ * The signal only releases the guard; it does not cancel the guarded work.
  *
  * Outside the Prisma Compute runtime, where the sleep control endpoint is
  * unavailable, the guard is a no-op.
  *
  * @example
  * ```ts
- * import { ScaleToZeroGuard } from "@prisma/compute";
+ * import { KeepAwakeGuard } from "@prisma/compute";
  *
- * using guard = new ScaleToZeroGuard({ signal: AbortSignal.timeout(30_000) });
+ * using guard = new KeepAwakeGuard({ signal: AbortSignal.timeout(30_000) });
  * await doCriticalWork();
  * ```
  *
  * @example
  * ```ts
- * const guard = new ScaleToZeroGuard();
+ * const guard = new KeepAwakeGuard();
  * try {
  *   await doCriticalWork();
  * } finally {
@@ -46,7 +48,7 @@ export interface ScaleToZeroGuardOptions {
  * }
  * ```
  */
-export class ScaleToZeroGuard implements Disposable {
+export class KeepAwakeGuard implements Disposable {
   #active: boolean;
   #abortSignal: AbortSignal | undefined;
   #abortListener: (() => void) | undefined;
@@ -55,10 +57,11 @@ export class ScaleToZeroGuard implements Disposable {
    * Creates a guard and immediately signals the compute runtime to stay awake.
    *
    * If `signal` is already aborted, no signal is written. If `signal` aborts
-   * while the guard is active, the guard releases itself. Passing a signal is
-   * recommended as a safety bound if release is not reached.
+   * while the guard is active, the guard releases itself without cancelling the
+   * guarded work. Passing a signal is recommended as a safety bound if release
+   * is not reached.
    */
-  constructor(options: ScaleToZeroGuardOptions = {}) {
+  constructor(options: KeepAwakeGuardOptions = {}) {
     if (options.signal?.aborted) {
       this.#active = false;
       return;
@@ -97,7 +100,7 @@ export class ScaleToZeroGuard implements Disposable {
    * Releases the guard when used with TypeScript's `using` syntax.
    *
    * Most callers should prefer `using` for scoped work and call
-   * {@link ScaleToZeroGuard.release} only when release needs to happen before
+   * {@link KeepAwakeGuard.release} only when release needs to happen before
    * the scope exits.
    */
   [Symbol.dispose](): void {
@@ -124,7 +127,9 @@ export class ScaleToZeroGuard implements Disposable {
  * only the guard is released; the passed promise continues independently.
  *
  * Pass `signal`, usually from `AbortSignal.timeout(ms)`, to bound guard lifetime
- * even when the promise does not settle.
+ * even when the promise does not settle. Use a timeout longer than the expected
+ * promise duration: the signal is a safety net for releasing the keep-awake
+ * guard, not a way to cancel or interrupt the promise.
  *
  * @example
  * ```ts
@@ -135,13 +140,14 @@ export class ScaleToZeroGuard implements Disposable {
  */
 export function waitUntil(
   promise: PromiseLike<unknown>,
-  options?: ScaleToZeroGuardOptions,
+  options?: KeepAwakeGuardOptions,
 ): void {
   // biome-ignore lint/nursery/useDisposables: waitUntil transfers guard cleanup to the promise finally handler.
-  const guard = new ScaleToZeroGuard(options);
+  const guard = new KeepAwakeGuard(options);
 
-  // Do not attach a catch here; callers rely on the underlying promise keeping
-  // its normal unhandled-rejection behavior.
+  // Intentionally do not catch the promise returned from `finally`. `waitUntil`
+  // observes the user-provided promise for cleanup only; callers still own the
+  // original promise's result, error handling, and unhandled-rejection behavior.
   void Promise.resolve(promise).finally(() => {
     try {
       guard.release();
