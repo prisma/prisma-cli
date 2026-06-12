@@ -1,3 +1,4 @@
+// biome-ignore-all lint/style/noNestedTernary: Existing status symbol selection is intentionally compact.
 import { createColors } from "colorette";
 import stringWidth from "string-width";
 import stripAnsi from "strip-ansi";

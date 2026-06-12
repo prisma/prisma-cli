@@ -1,5 +1,6 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: API pagination and deployment lookup scans are intentionally sequential.
 // biome-ignore-all lint/performance/useTopLevelRegex: Existing hostname normalization regexes are kept inline for readability.
+// biome-ignore-all lint/style/noNestedTernary: Existing app resolution expression is intentionally compact.
 import path from "node:path";
 import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";
 import {
