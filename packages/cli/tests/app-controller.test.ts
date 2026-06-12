@@ -217,6 +217,60 @@ describe("app controller", () => {
     });
   });
 
+  it("deploy-all stops at the first failing target and reports the rest", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([]);
+    const deployApp = vi.fn().mockRejectedValue(new Error("upload exploded"));
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() => withBranchDatabaseProviderDefaults({
+        resolveBranch: createResolveBranch(),
+        listApps,
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      })),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, ".git"), { recursive: true });
+    await mkdir(path.join(cwd, "apps", "api"), { recursive: true });
+    await mkdir(path.join(cwd, "apps", "web"), { recursive: true });
+    await writeFile(path.join(cwd, "prisma.compute.ts"), [
+      "export default {",
+      "  apps: {",
+      '    api: { root: "apps/api", framework: "hono", entry: "src/index.ts" },',
+      '    web: { root: "apps/web", framework: "bun", entry: "server.ts" },',
+      "  },",
+      "};",
+      "",
+    ].join("\n"), "utf8");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(runAppDeploy(context, undefined, { projectRef: "proj_123" })).rejects.toMatchObject({
+      meta: expect.objectContaining({
+        deployAll: {
+          failedTarget: "api",
+          completed: [],
+          notAttempted: ["web"],
+        },
+      }),
+    });
+    expect(deployApp).toHaveBeenCalledTimes(1);
+  });
+
   it("deploy-all rejects per-app flags", async () => {
     const { createTempCwd, createTestCommandContext } = await import("./helpers");
     const { runAppDeploy } = await import("../src/controllers/app");
@@ -1465,7 +1519,7 @@ describe("app controller", () => {
       framework: "nextjs",
     })).rejects.toMatchObject({
       code: "BUILD_SETTINGS_MIGRATION_REQUIRED",
-      fix: expect.stringContaining('command: "bun run custom-build"'),
+      fix: expect.stringContaining('command: "bun run custom-build",   outputDirectory: "dist",'),
     });
     expect(deployApp).not.toHaveBeenCalled();
   });

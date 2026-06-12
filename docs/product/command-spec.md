@@ -846,7 +846,6 @@ export default defineComputeConfig({
 
 // Multi-app repository: prisma-cli app deploy web
 export default defineComputeConfig({
-  database: { schema: "packages/db/prisma/schema.prisma" },
   apps: {
     web: { root: "apps/web", framework: "nextjs" },
     worker: { root: "apps/worker", framework: "bun", entry: "src/index.ts" },

@@ -12,7 +12,7 @@ export type ComputeFramework = (typeof COMPUTE_FRAMEWORKS)[number];
 export interface ComputeEnvConfig {
   /** Dotenv file path(s) resolved relative to the config file directory. */
   file?: string | string[];
-  /** Inline environment variable assignments. Values are deployed as-is. */
+  /** Inline environment variable assignments. Values must be non-empty and are deployed as-is. */
   vars?: Record<string, string>;
 }
 

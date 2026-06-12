@@ -1,8 +1,11 @@
+import path from "node:path";
+
 import type { AuthWorkspace } from "../../types/auth";
 import type { ProjectSetupResult, ProjectSummary } from "../../types/project";
 import { Result, matchError } from "better-result";
 import { CliError, usageError } from "../../shell/errors";
 import type { CommandContext } from "../../shell/runtime";
+import { shortenHomePath } from "../fs/home-path";
 import {
   ensureLocalResolutionPinGitignore,
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
@@ -65,7 +68,7 @@ export async function bindProjectToDirectory(
     return Result.ok({
       workspace,
       project,
-      directory: formatSetupDirectory(directory),
+      directory: formatSetupDirectory(directory, context),
       localPin: {
         path: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
         written: true,
@@ -176,8 +179,14 @@ export function projectCreateFailedError(
   });
 }
 
-function formatSetupDirectory(cwd: string): string {
-  const basename = cwd.split(/[\\/]/).filter(Boolean).pop();
+function formatSetupDirectory(directory: string, context: CommandContext): string {
+  // Binding can target an ancestor compute-config directory; a bare
+  // basename would misread as a subdirectory of the invocation directory.
+  if (path.resolve(directory) !== path.resolve(context.runtime.cwd)) {
+    return shortenHomePath(directory, context.runtime.env);
+  }
+
+  const basename = directory.split(/[\\/]/).filter(Boolean).pop();
   return basename ? `./${basename}` : ".";
 }
 

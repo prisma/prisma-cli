@@ -1,13 +1,15 @@
+import type { AppDeployAllResult, AppDeployResult } from "../../src/types/app";
+
 /**
  * Narrows a deploy result to the single-app shape; throws on deploy-all.
- * Kept free of src imports so test files can import it statically without
- * loading the CLI module graph before vi.doMock calls apply.
+ * Only type-only src imports here, so test files can import this statically
+ * without loading the CLI module graph before vi.doMock calls apply.
  */
-export function asSingleDeployResult<T extends { result: unknown }>(
+export function asSingleDeployResult<T extends { result: AppDeployResult | AppDeployAllResult }>(
   success: T,
-): T & { result: Exclude<T["result"], { deployments: unknown }> } {
-  if (success.result && typeof success.result === "object" && "deployments" in success.result) {
+): T & { result: AppDeployResult } {
+  if ("deployments" in success.result) {
     throw new Error("Expected a single-app deploy result, got a deploy-all result.");
   }
-  return success as T & { result: Exclude<T["result"], { deployments: unknown }> };
+  return success as T & { result: AppDeployResult };
 }
