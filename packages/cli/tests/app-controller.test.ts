@@ -456,7 +456,7 @@ describe("app controller", () => {
     const result = await runAppShow(context, undefined, undefined, undefined);
 
     expect(listDeployments).toHaveBeenCalledWith("app_api", expect.anything());
-    expect(asSingleDeployResult(result).result.app).toEqual({
+    expect(result.result.app).toEqual({
       id: "app_api",
       name: "api",
     });
@@ -883,7 +883,7 @@ describe("app controller", () => {
       hostname: "shop.acme.com",
       signal: context.runtime.signal,
     });
-    expect(asSingleDeployResult(result).result.project.id).toBe("proj_123");
+    expect(result.result.project.id).toBe("proj_123");
   });
 
   it("domain add requires Project setup instead of entering interactive setup", async () => {
@@ -4526,7 +4526,7 @@ describe("app controller", () => {
 
     const result = await runAppShowDeploy(context, "dep_123");
 
-    expect(asSingleDeployResult(result).result.deployment.live).toBe(true);
+    expect(result.result.deployment.live).toBe(true);
   });
 
   it("show-deploy ignores known live deployments from another workspace", async () => {
@@ -4590,7 +4590,7 @@ describe("app controller", () => {
 
     const result = await runAppShowDeploy(context, "dep_123");
 
-    expect(asSingleDeployResult(result).result.deployment.live).toBe(null);
+    expect(result.result.deployment.live).toBe(null);
   });
 
   it("show-deploy surfaces provider failures instead of reporting not found", async () => {
@@ -5358,7 +5358,7 @@ describe("app controller", () => {
         deploymentId: "dep_1",
       }),
     );
-    expect(asSingleDeployResult(result).result.deployment.id).toBe("dep_1");
+    expect(result.result.deployment.id).toBe("dep_1");
   });
 
   it("rollback returns NO_PREVIOUS_DEPLOYMENT when only one deployment exists", async () => {

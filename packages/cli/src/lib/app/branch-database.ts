@@ -261,6 +261,20 @@ async function selectPrismaOrmSchema(
 function selectPrismaNextConfig(
   cwd: string,
   candidates: ClassifiedPrismaNextConfig[],
+  mode: "supported",
+): (ClassifiedPrismaNextConfig & { target: "postgresql" | "unknown" }) | null;
+function selectPrismaNextConfig(
+  cwd: string,
+  candidates: ClassifiedPrismaNextConfig[],
+  mode: "unsupported",
+):
+  | (ClassifiedPrismaNextConfig & {
+      target: UnsupportedBranchDatabaseSchemaTarget;
+    })
+  | null;
+function selectPrismaNextConfig(
+  cwd: string,
+  candidates: ClassifiedPrismaNextConfig[],
   mode: "supported" | "unsupported",
 ): ClassifiedPrismaNextConfig | null {
   const matches = candidates.filter((candidate) => {
