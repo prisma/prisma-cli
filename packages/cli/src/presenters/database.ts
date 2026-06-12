@@ -327,7 +327,7 @@ export function renderDatabaseConnectionRemove(
 export function serializeDatabaseConnectionRemove(
   result: DatabaseConnectionRemoveResult,
 ) {
-  return result;
+  return { connection: result.connection };
 }
 
 function formatStatus(database: DatabaseSummary): string {

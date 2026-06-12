@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { formatCommandArgument } from "../src/shell/command-arguments";
 import { formatUnexpectedError } from "../src/shell/output";
+import { maskValue } from "../src/shell/ui";
 import { createTempCwd, executeCli } from "./helpers";
 
 const fixturePath = path.resolve("fixtures/mock-api.json");
@@ -30,6 +31,16 @@ describe("shell behavior", () => {
     );
     expect(formatUnexpectedError(error, false)).not.toContain("at explode");
     expect(formatUnexpectedError(error, true)).toContain("at explode");
+  });
+
+  it("masks sensitive email local parts with RFC-style characters", () => {
+    expect(maskValue("user.name+tag@example.com")).toBe("****@example.com");
+    expect(maskValue("customer!#$%&'*+-/=?^_`{|}~@example.com")).toBe(
+      "****@example.com",
+    );
+    expect(maskValue("postgres://user:secret@db.example.com/app")).toBe(
+      "postgres://****:****@db.example.com/app",
+    );
   });
 
   it("renders root help with workflow groups", async () => {

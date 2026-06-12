@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noAwaitInLoops: SCM pagination, polling, and ordered fallback checks are intentionally sequential.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { matchError } from "better-result";
 import open from "open";
@@ -1129,6 +1128,7 @@ async function findRepositoryInInstallations(
       continue;
     }
 
+    // biome-ignore lint/performance/noAwaitInLoops: Installation access is inspected in order so we can stop at the first matching repository.
     const matchedRepository = await findRepositoryInInstallationIfAvailable(
       api,
       installation.id,
@@ -1179,6 +1179,7 @@ async function waitForInstalledRepository(
 
   while (Date.now() <= deadline) {
     context.runtime.signal.throwIfAborted();
+    // biome-ignore lint/performance/noAwaitInLoops: Polling intentionally waits for each remote inspection before sleeping or retrying.
     const installations = await listScmInstallations(
       api,
       workspaceId,
@@ -1270,6 +1271,7 @@ async function listScmInstallations(
   const seenCursors = new Set<string>();
 
   do {
+    // biome-ignore lint/performance/noAwaitInLoops: Cursor pagination is sequential by API contract.
     const { data, error, response } = await api.GET("/v1/scm-installations", {
       params: {
         query: {
@@ -1312,6 +1314,7 @@ async function findRepositoryInInstallation(
   const seenCursors = new Set<string>();
 
   do {
+    // biome-ignore lint/performance/noAwaitInLoops: Cursor pagination is sequential by API contract.
     const { data, error, response } = await api.GET(
       "/v1/scm-installations/{installationId}/repositories",
       {

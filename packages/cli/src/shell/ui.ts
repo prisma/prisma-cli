@@ -255,11 +255,26 @@ function isEmailLocalPartChar(char: string): boolean {
     (char >= "A" && char <= "Z") ||
     (char >= "a" && char <= "z") ||
     (char >= "0" && char <= "9") ||
+    char === "!" ||
+    char === "#" ||
+    char === "$" ||
     char === "." ||
-    char === "_" ||
+    char === "&" ||
+    char === "'" ||
+    char === "*" ||
     char === "%" ||
     char === "+" ||
-    char === "-"
+    char === "-" ||
+    char === "/" ||
+    char === "=" ||
+    char === "?" ||
+    char === "^" ||
+    char === "_" ||
+    char === "`" ||
+    char === "{" ||
+    char === "|" ||
+    char === "}" ||
+    char === "~"
   );
 }
 

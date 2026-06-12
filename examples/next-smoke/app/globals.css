@@ -40,7 +40,7 @@ body {
 
 code {
   font-family:
-    "SFMono-Regular", ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo,
+    SFMono-Regular, ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo,
     Consolas, monospace;
   background: rgba(42, 44, 39, 0.06);
   border-radius: 0.5rem;
