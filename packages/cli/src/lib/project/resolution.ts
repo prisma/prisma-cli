@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/useTopLevelRegex: Existing project-name validation regexes are kept inline for readability.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 

@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/useTopLevelRegex: Test expectations keep regexes inline with assertions.
 import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";

@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/useTopLevelRegex: Existing update-check parsing regexes are kept inline for readability.
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";

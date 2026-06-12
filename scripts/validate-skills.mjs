@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// biome-ignore-all lint/performance/useTopLevelRegex: Skill validation regexes are kept inline with checks.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";

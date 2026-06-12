@@ -31,14 +31,14 @@
       },
       "performance": {
         "noAwaitInLoops": "on",
-        "noBarrelFile": "on"
+        "noBarrelFile": "on",
+        "useTopLevelRegex": "on"
       }
       //   "complexity": {
       //   },
       //   "nursery": {
       //   },
       //   "performance": {
-      //     "useTopLevelRegex": "on"
       //   },
       //   "style": {
       //     "useCollapsedElseIf": "on",

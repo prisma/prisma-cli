@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/useTopLevelRegex: Existing local state text parsing regexes are kept inline for readability.
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 

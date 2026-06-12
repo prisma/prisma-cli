@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/useTopLevelRegex: Existing executable detection regex is kept inline for readability.
 import { createRequire } from "node:module";
 import process from "node:process";
 

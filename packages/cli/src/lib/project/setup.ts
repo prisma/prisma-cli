@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/useTopLevelRegex: Existing setup formatting regexes are kept inline for readability.
 import { matchError, Result } from "better-result";
 import { CliError, usageError } from "../../shell/errors";
 import type { CommandContext } from "../../shell/runtime";

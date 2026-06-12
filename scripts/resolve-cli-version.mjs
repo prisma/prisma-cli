@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// biome-ignore-all lint/performance/useTopLevelRegex: Release script regexes are kept inline for readability.
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";

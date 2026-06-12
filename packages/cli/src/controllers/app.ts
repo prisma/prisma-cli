@@ -1,4 +1,5 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Polling and ordered filesystem probes are intentionally sequential.
+// biome-ignore-all lint/performance/useTopLevelRegex: Existing domain and parsing regexes are kept inline for readability.
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";

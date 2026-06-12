@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/useTopLevelRegex: Existing git URL parsing regexes are kept inline for readability.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 

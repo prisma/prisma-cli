@@ -1,4 +1,5 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Schema setup and filesystem scans are intentionally sequential.
+// biome-ignore-all lint/performance/useTopLevelRegex: Existing schema inspection regexes are kept inline for readability.
 import { spawn } from "node:child_process";
 import type { Dirent } from "node:fs";
 import { access, readdir, readFile, stat } from "node:fs/promises";

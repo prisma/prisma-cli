@@ -1,4 +1,5 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Local app detection and command fallbacks must short-circuit sequentially.
+// biome-ignore-all lint/performance/useTopLevelRegex: Existing package script regexes are kept inline for readability.
 import { type SpawnOptions, spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import path from "node:path";

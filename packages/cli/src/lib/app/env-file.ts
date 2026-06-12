@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/useTopLevelRegex: Existing dotenv parsing regexes are kept inline for readability.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parse as parseDotenv } from "dotenv";

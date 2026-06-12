@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/useTopLevelRegex: Test expectations keep regexes inline with assertions.
 import path from "node:path";
 import stripAnsi from "strip-ansi";
 import { describe, expect, it } from "vitest";

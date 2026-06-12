@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/useTopLevelRegex: Test expectations keep regexes inline with assertions.
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
