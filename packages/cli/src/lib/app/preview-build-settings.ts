@@ -596,6 +596,11 @@ export function normalizeRelativePath(value: string): string | undefined {
   if (raw.length === 0 || raw.split("/").includes("..")) {
     return undefined;
   }
+  // Windows drive-relative paths ("C:dir") escape the base directory but
+  // are not absolute under either path.win32 or path.posix.
+  if (/^[A-Za-z]:/.test(raw)) {
+    return undefined;
+  }
 
   const normalized = path.posix.normalize(raw);
   const segments = normalized.split("/");

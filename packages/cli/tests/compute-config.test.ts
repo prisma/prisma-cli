@@ -144,6 +144,14 @@ describe("normalizeComputeConfig", () => {
     expect(issues.join(" ")).toContain("`apps.web.env.vars.EMPTY` must be a non-empty string.");
   });
 
+  it("rejects roots that escape the config directory, including Windows drive-relative paths", () => {
+    for (const root of ["C:apps", "C:/apps", "/apps", "..\\apps"]) {
+      expect(normalizeIssues({ app: { root } }).join(" ")).toContain(
+        "`app.root` must be a relative path inside the repository.",
+      );
+    }
+  });
+
   it("normalizes build blocks", () => {
     const config = normalizeOrThrow(defineComputeConfig({
       apps: {
