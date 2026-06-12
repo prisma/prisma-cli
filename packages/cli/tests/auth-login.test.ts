@@ -1,8 +1,6 @@
 import { PassThrough } from "node:stream";
-
-import { afterEach, describe, expect, it, vi } from "vitest";
-
 import type { TokenStorage } from "@prisma/management-api-sdk";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 afterEach(() => {
   vi.doUnmock("@prisma/management-api-sdk");

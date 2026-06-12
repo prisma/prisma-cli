@@ -2,10 +2,10 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  matchError,
   Result,
   TaggedError,
-  UnhandledException,
-  matchError,
+  type UnhandledException,
 } from "better-result";
 
 import { formatCommandArgument } from "../../shell/command-arguments";
@@ -17,13 +17,13 @@ import type {
   BoundProjectShowResult,
   ProjectResolution,
   ProjectSetupSuggestion,
+  ProjectShowResult,
   ProjectSource,
   ProjectSummary,
-  ProjectShowResult,
 } from "../../types/project";
 import {
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
-  LocalResolutionPinReadAbortedError,
+  type LocalResolutionPinReadAbortedError,
   type LocalResolutionPinReadError,
   type LocalResolutionPinReadResult,
   readLocalResolutionPin,

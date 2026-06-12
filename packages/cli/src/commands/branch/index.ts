@@ -3,12 +3,12 @@ import { Command } from "commander";
 import { runBranchList } from "../../controllers/branch";
 import { renderBranchList, serializeBranchList } from "../../presenters/branch";
 import { attachCommandDescriptor } from "../../shell/command-meta";
+import { runCommand } from "../../shell/command-runner";
 import {
   addCompactGlobalFlags,
   addGlobalFlags,
 } from "../../shell/global-flags";
-import { runCommand } from "../../shell/command-runner";
-import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
+import { type CliRuntime, configureRuntimeCommand } from "../../shell/runtime";
 import type { BranchListResult } from "../../types/branch";
 
 export function createBranchCommand(runtime: CliRuntime): Command {

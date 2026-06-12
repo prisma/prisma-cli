@@ -1,12 +1,86 @@
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
-
-import open from "open";
 import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-import { Result, matchError } from "better-result";
+import { matchError, Result } from "better-result";
+import open from "open";
 
 import { FileTokenStorage } from "../adapters/token-storage";
+import {
+  type BranchDatabaseDeployBranch,
+  maybeSetupBranchDatabase,
+} from "../lib/app/branch-database-deploy";
+import {
+  type BunPackageJsonLike,
+  readBunPackageEntrypoint,
+  readBunPackageJson,
+} from "../lib/app/bun-project";
+import {
+  renderDeployOutputRows,
+  renderDeploySettingsPreview,
+} from "../lib/app/deploy-output";
+import { formatDomainFailureFix } from "../lib/app/domain-guidance";
+import { envVarNames, parseEnvInputs } from "../lib/app/env-vars";
+import {
+  DEFAULT_LOCAL_DEV_PORT,
+  resolveLocalBuildType,
+  runLocalApp,
+} from "../lib/app/local-dev";
+import {
+  executePreviewBuild,
+  PREVIEW_BUILD_TYPES,
+  type PreviewBuildSettingsBuildType,
+  type PreviewBuildSettingsResolution,
+  type PreviewBuildType,
+  RESOLVED_PREVIEW_BUILD_TYPES,
+  type ResolvedPreviewBuildType,
+  resolveOrCreatePreviewBuildSettings,
+} from "../lib/app/preview-build";
+import { PREVIEW_DEFAULT_REGION } from "../lib/app/preview-interaction";
+import {
+  createPreviewDeployProgress,
+  createPreviewDeployProgressState,
+  createPreviewPromoteProgress,
+  type PreviewDeployProgressState,
+} from "../lib/app/preview-progress";
+import {
+  createPreviewAppProvider,
+  type PreviewAppRecord,
+  PreviewDomainApiError,
+  type PreviewDomainRecord,
+} from "../lib/app/preview-provider";
+import { enforceProductionDeployGate } from "../lib/app/production-deploy-gate";
+import { readAuthState } from "../lib/auth/auth-ops";
+import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
+import { requireComputeAuth } from "../lib/auth/guard";
+import { readLocalGitBranch } from "../lib/git/local-branch";
+import { promptForProjectSetupChoice } from "../lib/project/interactive-setup";
+import {
+  LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
+  type LocalResolutionPinReadError,
+  type LocalResolutionPinReadResult,
+  readLocalResolutionPin,
+} from "../lib/project/local-pin";
+import {
+  buildProjectSetupNextActions,
+  type InferredTargetName,
+  inferTargetName,
+  type ProjectCandidate,
+  projectNotFoundError,
+  projectResolutionErrorToCliError,
+  resolveDurablePlatformMapping,
+  resolveProjectTarget,
+  sortProjects,
+} from "../lib/project/resolution";
+import {
+  bindProjectToDirectory,
+  formatCommandArgument,
+  projectCreateFailedError,
+  projectDirectoryBindingErrorToCliError,
+  projectSetupNameRequiredError,
+  resolveProjectForSetup,
+  toProjectSummary,
+} from "../lib/project/setup";
 import {
   authRequiredError,
   CliError,
@@ -14,14 +88,14 @@ import {
   usageError,
   workspaceRequiredError,
 } from "../shell/errors";
-import { writeJsonEvent, type CommandSuccess } from "../shell/output";
-import { canPrompt, type CommandContext } from "../shell/runtime";
+import { type CommandSuccess, writeJsonEvent } from "../shell/output";
 import { confirmPrompt, selectPrompt, textPrompt } from "../shell/prompt";
+import { type CommandContext, canPrompt } from "../shell/runtime";
 import { renderCommandHeader } from "../shell/ui";
 import type {
   AppBuildResult,
-  AppDeployResult,
   AppDeploymentSummary,
+  AppDeployResult,
   AppDomainAddResult,
   AppDomainDnsRecord,
   AppDomainRemoveResult,
@@ -36,88 +110,13 @@ import type {
   AppRemoveResult,
   AppResolvedContext,
   AppRollbackResult,
-  AppShowResult,
   AppRunResult,
   AppShowDeployResult,
+  AppShowResult,
 } from "../types/app";
 import type { AuthWorkspace } from "../types/auth";
 import type { BranchKind } from "../types/branch";
 import type { ProjectResolution, ProjectSummary } from "../types/project";
-import { requireComputeAuth } from "../lib/auth/guard";
-import { readAuthState } from "../lib/auth/auth-ops";
-import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
-import { envVarNames, parseEnvInputs } from "../lib/app/env-vars";
-import {
-  renderDeployOutputRows,
-  renderDeploySettingsPreview,
-} from "../lib/app/deploy-output";
-import {
-  DEFAULT_LOCAL_DEV_PORT,
-  resolveLocalBuildType,
-  runLocalApp,
-} from "../lib/app/local-dev";
-import {
-  readBunPackageEntrypoint,
-  readBunPackageJson,
-  type BunPackageJsonLike,
-} from "../lib/app/bun-project";
-import {
-  buildProjectSetupNextActions,
-  inferTargetName,
-  projectNotFoundError,
-  projectResolutionErrorToCliError,
-  resolveDurablePlatformMapping,
-  resolveProjectTarget,
-  type InferredTargetName,
-  type ProjectCandidate,
-  sortProjects,
-} from "../lib/project/resolution";
-import { promptForProjectSetupChoice } from "../lib/project/interactive-setup";
-import {
-  bindProjectToDirectory,
-  formatCommandArgument,
-  projectCreateFailedError,
-  projectDirectoryBindingErrorToCliError,
-  projectSetupNameRequiredError,
-  resolveProjectForSetup,
-  toProjectSummary,
-} from "../lib/project/setup";
-import {
-  LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
-  readLocalResolutionPin,
-  type LocalResolutionPinReadError,
-  type LocalResolutionPinReadResult,
-} from "../lib/project/local-pin";
-import { readLocalGitBranch } from "../lib/git/local-branch";
-import {
-  executePreviewBuild,
-  PREVIEW_BUILD_TYPES,
-  RESOLVED_PREVIEW_BUILD_TYPES,
-  resolveOrCreatePreviewBuildSettings,
-  type PreviewBuildSettingsBuildType,
-  type PreviewBuildSettingsResolution,
-  type ResolvedPreviewBuildType,
-  type PreviewBuildType,
-} from "../lib/app/preview-build";
-import { PREVIEW_DEFAULT_REGION } from "../lib/app/preview-interaction";
-import {
-  maybeSetupBranchDatabase,
-  type BranchDatabaseDeployBranch,
-} from "../lib/app/branch-database-deploy";
-import {
-  createPreviewDeployProgress,
-  createPreviewDeployProgressState,
-  createPreviewPromoteProgress,
-  type PreviewDeployProgressState,
-} from "../lib/app/preview-progress";
-import {
-  createPreviewAppProvider,
-  PreviewDomainApiError,
-  type PreviewAppRecord,
-  type PreviewDomainRecord,
-} from "../lib/app/preview-provider";
-import { enforceProductionDeployGate } from "../lib/app/production-deploy-gate";
-import { formatDomainFailureFix } from "../lib/app/domain-guidance";
 import { requireAuthenticatedAuthState } from "./auth";
 import { listRealWorkspaceProjects } from "./project";
 import { createSelectPromptPort } from "./select-prompt-port";

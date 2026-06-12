@@ -1,8 +1,8 @@
+import { renderMutate, renderShow, serializeList } from "../output/patterns";
 import type { CommandDescriptor } from "../shell/command-meta";
 import { formatDescriptorLabel } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
 import { formatColumns, renderSummaryLine } from "../shell/ui";
-import { renderMutate, renderShow, serializeList } from "../output/patterns";
 import type {
   DatabaseConnectionCreateResult,
   DatabaseConnectionListResult,

@@ -1,6 +1,6 @@
 import path from "node:path";
-import { describe, expect, it } from "vitest";
 import stripAnsi from "strip-ansi";
+import { describe, expect, it } from "vitest";
 
 import { formatCommandArgument } from "../src/shell/command-arguments";
 import { formatUnexpectedError } from "../src/shell/output";

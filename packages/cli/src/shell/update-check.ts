@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 
 import { getCliName, getCliVersion } from "../lib/version";
 import type { CliRuntime } from "./runtime";

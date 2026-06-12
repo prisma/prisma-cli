@@ -1,16 +1,16 @@
-import { authRequiredError, usageError } from "../shell/errors";
-import type { CommandSuccess } from "../shell/output";
-import { canPrompt, type CommandContext } from "../shell/runtime";
-import type { AuthStateResult } from "../types/auth";
-import { createAuthUseCases } from "../use-cases/auth";
-import { createCliUseCaseGateways } from "../use-cases/create-cli-gateways";
-import type { LoginSelection, SelectPromptPort } from "../use-cases/contracts";
-import { createSelectPromptPort } from "./select-prompt-port";
 import {
   performLogin,
-  readAuthState,
   performLogout,
+  readAuthState,
 } from "../lib/auth/auth-ops";
+import { authRequiredError, usageError } from "../shell/errors";
+import type { CommandSuccess } from "../shell/output";
+import { type CommandContext, canPrompt } from "../shell/runtime";
+import type { AuthStateResult } from "../types/auth";
+import { createAuthUseCases } from "../use-cases/auth";
+import type { LoginSelection, SelectPromptPort } from "../use-cases/contracts";
+import { createCliUseCaseGateways } from "../use-cases/create-cli-gateways";
+import { createSelectPromptPort } from "./select-prompt-port";
 
 export interface AuthLoginCommandOptions {
   provider?: string;

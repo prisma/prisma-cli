@@ -1,5 +1,5 @@
 export {
   ScaleToZeroGuard,
-  waitUntil,
   type ScaleToZeroGuardOptions,
+  waitUntil,
 } from "./scale-to-zero";

@@ -1,7 +1,7 @@
-import type { BranchSummary, BranchListResult } from "../types/branch";
+import type { BranchListResult, BranchSummary } from "../types/branch";
 import type {
-  BranchUseCases,
   BranchGateway,
+  BranchUseCases,
   ProjectGateway,
   ProjectStateGateway,
   RemoteBranchRecord,

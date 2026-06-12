@@ -33,7 +33,7 @@ import {
   addCompactGlobalFlags,
   addGlobalFlags,
 } from "../../shell/global-flags";
-import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
+import { type CliRuntime, configureRuntimeCommand } from "../../shell/runtime";
 import type {
   DatabaseConnectionCreateResult,
   DatabaseConnectionListResult,

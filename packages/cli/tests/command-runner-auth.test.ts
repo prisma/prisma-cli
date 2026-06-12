@@ -1,5 +1,5 @@
-import { AuthError as SDKAuthError } from "@prisma/management-api-sdk";
 import { PassThrough, Writable } from "node:stream";
+import { AuthError as SDKAuthError } from "@prisma/management-api-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand, runStreamingCommand } from "../src/shell/command-runner";

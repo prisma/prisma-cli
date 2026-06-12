@@ -1,11 +1,17 @@
 import path from "node:path";
 
 import stringWidth from "string-width";
-
+import { renderMutate, renderShow, serializeList } from "../output/patterns";
 import { formatCommandArgument } from "../shell/command-arguments";
 import type { CommandDescriptor } from "../shell/command-meta";
 import { formatDescriptorLabel } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
+import {
+  padDisplay,
+  renderNextSteps,
+  renderSummaryLine,
+  renderVerboseBlock,
+} from "../shell/ui";
 import type {
   GitRepositoryConnection,
   ProjectListResult,
@@ -13,13 +19,6 @@ import type {
   ProjectSetupResult,
   ProjectShowResult,
 } from "../types/project";
-import { renderMutate, renderShow, serializeList } from "../output/patterns";
-import {
-  padDisplay,
-  renderNextSteps,
-  renderSummaryLine,
-  renderVerboseBlock,
-} from "../shell/ui";
 import { renderResolvedProjectContextBlock } from "./verbose-context";
 
 export function renderProjectList(

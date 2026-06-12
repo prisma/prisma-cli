@@ -1,19 +1,19 @@
 import { Command, Option } from "commander";
 
 import {
+  type AuthLoginCommandOptions,
   runAuthLogin,
   runAuthLogout,
   runAuthWhoAmI,
-  type AuthLoginCommandOptions,
 } from "../../controllers/auth";
 import { renderAuthSuccess } from "../../presenters/auth";
 import { attachCommandDescriptor } from "../../shell/command-meta";
+import { runCommand } from "../../shell/command-runner";
 import {
   addCompactGlobalFlags,
   addGlobalFlags,
 } from "../../shell/global-flags";
-import { runCommand } from "../../shell/command-runner";
-import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
+import { type CliRuntime, configureRuntimeCommand } from "../../shell/runtime";
 import type { AuthStateResult } from "../../types/auth";
 
 export function createAuthCommand(runtime: CliRuntime): Command {

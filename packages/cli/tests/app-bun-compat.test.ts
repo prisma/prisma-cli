@@ -17,9 +17,9 @@ function mockBuildStrategy(
     execute: vi.fn(),
   }),
 ) {
-  return vi.fn().mockImplementation(function (options: object) {
-    return createInstance(options);
-  });
+  return vi
+    .fn()
+    .mockImplementation((options: object) => createInstance(options));
 }
 
 describe("bun compatibility", () => {

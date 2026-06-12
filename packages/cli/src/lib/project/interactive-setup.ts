@@ -1,14 +1,14 @@
+import { usageError } from "../../shell/errors";
+import { selectPrompt, textPrompt } from "../../shell/prompt";
+import type { CommandContext } from "../../shell/runtime";
 import type {
   ProjectSetupSuggestion,
   ProjectSummary,
 } from "../../types/project";
-import { usageError } from "../../shell/errors";
-import { selectPrompt, textPrompt } from "../../shell/prompt";
-import type { CommandContext } from "../../shell/runtime";
 import {
   inferTargetName,
-  sortProjects,
   type ProjectCandidate,
+  sortProjects,
 } from "./resolution";
 import { toProjectSummary, validateProjectSetupNameText } from "./setup";
 

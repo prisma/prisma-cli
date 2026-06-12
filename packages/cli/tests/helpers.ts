@@ -2,16 +2,15 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { PassThrough, Writable } from "node:stream";
-
-import { runCli } from "../src/cli";
 import { LocalStateStore } from "../src/adapters/local-state";
+import { runCli } from "../src/cli";
+import type { GlobalFlags } from "../src/shell/global-flags";
 import {
-  createCommandContext,
-  resolveStateDir,
   type CliRuntime,
   type CommandContext,
+  createCommandContext,
+  resolveStateDir,
 } from "../src/shell/runtime";
-import type { GlobalFlags } from "../src/shell/global-flags";
 
 class CaptureStream extends Writable {
   buffer = "";

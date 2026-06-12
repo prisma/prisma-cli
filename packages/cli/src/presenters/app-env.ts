@@ -1,15 +1,15 @@
+import { renderList, renderShow, serializeList } from "../output/patterns";
 import type { CommandDescriptor } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
+import { renderVerboseBlock, type VerboseRow } from "../shell/ui";
 import type {
   EnvAddResult,
   EnvListResult,
-  EnvRmResult,
   EnvResolvedContext,
+  EnvRmResult,
   EnvScopeDescriptor,
   EnvUpdateResult,
 } from "../types/app-env";
-import { renderList, renderShow, serializeList } from "../output/patterns";
-import { renderVerboseBlock, type VerboseRow } from "../shell/ui";
 import {
   renderResolvedProjectContextBlock,
   stripVerboseContext,

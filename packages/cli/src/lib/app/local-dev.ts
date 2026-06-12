@@ -1,16 +1,15 @@
-import { spawn, type SpawnOptions } from "node:child_process";
+import { type SpawnOptions, spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import path from "node:path";
-
-import type {
-  PreviewBuildType,
-  ResolvedPreviewBuildType,
-} from "./preview-build";
 import {
   readBunPackageEntrypoint,
   readBunPackageJson,
   resolveBunEntrypoint,
 } from "./bun-project";
+import type {
+  PreviewBuildType,
+  ResolvedPreviewBuildType,
+} from "./preview-build";
 
 export type LocalBuildType = Extract<
   ResolvedPreviewBuildType,

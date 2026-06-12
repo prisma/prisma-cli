@@ -1,8 +1,8 @@
 import path from "node:path";
 
 import { MockApi } from "../src/adapters/mock-api";
-import type { CliUseCaseGateways } from "../src/use-cases/create-cli-gateways";
 import type { AuthSessionRecord } from "../src/use-cases/contracts";
+import type { CliUseCaseGateways } from "../src/use-cases/create-cli-gateways";
 
 const fixturePath = path.resolve("fixtures/mock-api.json");
 
@@ -18,7 +18,7 @@ export async function createUseCaseGateways(options?: {
 }> {
   const api = await MockApi.load(fixturePath);
   let authSession = options?.authSession ?? null;
-  let projectId = options?.projectId ?? null;
+  const projectId = options?.projectId ?? null;
 
   return {
     gateways: {

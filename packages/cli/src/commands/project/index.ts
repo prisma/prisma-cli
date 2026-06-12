@@ -7,20 +7,20 @@ import {
   runProjectShow,
 } from "../../controllers/project";
 import {
-  renderProjectSetup,
   renderProjectList,
+  renderProjectSetup,
   renderProjectShow,
-  serializeProjectSetup,
   serializeProjectList,
+  serializeProjectSetup,
   serializeProjectShow,
 } from "../../presenters/project";
 import { attachCommandDescriptor } from "../../shell/command-meta";
+import { runCommand } from "../../shell/command-runner";
 import {
   addCompactGlobalFlags,
   addGlobalFlags,
 } from "../../shell/global-flags";
-import { runCommand } from "../../shell/command-runner";
-import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
+import { type CliRuntime, configureRuntimeCommand } from "../../shell/runtime";
 import type {
   ProjectListResult,
   ProjectSetupResult,

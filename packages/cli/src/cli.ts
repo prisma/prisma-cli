@@ -22,9 +22,9 @@ import {
 } from "./shell/output";
 import { disposePromptState } from "./shell/prompt";
 import {
+  type CliRuntime,
   configureRuntimeCommand,
   createCommandContext,
-  type CliRuntime,
 } from "./shell/runtime";
 import { createShellUi } from "./shell/ui";
 import { maybeWriteCachedUpdateNotification } from "./shell/update-check";

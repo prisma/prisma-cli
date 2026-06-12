@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import stripAnsi from "strip-ansi";
+import { describe, expect, it } from "vitest";
 
 import { renderEnvList, serializeEnvList } from "../src/presenters/app-env";
 import { getCommandDescriptor } from "../src/shell/command-meta";

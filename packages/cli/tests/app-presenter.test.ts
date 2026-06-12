@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-
-import { getCommandDescriptor } from "../src/shell/command-meta";
 import {
   renderAppDeploy,
   renderAppDomainAdd,
@@ -8,6 +6,7 @@ import {
   renderAppDomainShow,
   serializeAppDeploy,
 } from "../src/presenters/app";
+import { getCommandDescriptor } from "../src/shell/command-meta";
 import type {
   AppDeployResult,
   AppDomainAddResult,

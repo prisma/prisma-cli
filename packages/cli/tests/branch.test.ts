@@ -1,11 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-
-import { describe, expect, it } from "vitest";
 import stripAnsi from "strip-ansi";
-
-import { getCommandDescriptor } from "../src/shell/command-meta";
+import { describe, expect, it } from "vitest";
 import { renderBranchList } from "../src/presenters/branch";
+import { getCommandDescriptor } from "../src/shell/command-meta";
 import { createTempCwd, createTestCommandContext, executeCli } from "./helpers";
 
 const fixturePath = path.resolve("fixtures/mock-api.json");

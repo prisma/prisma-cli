@@ -5,13 +5,13 @@ import {
   renderGitConnect,
   renderGitDisconnect,
 } from "../../presenters/project";
-import { runCommand } from "../../shell/command-runner";
 import { attachCommandDescriptor } from "../../shell/command-meta";
+import { runCommand } from "../../shell/command-runner";
 import {
   addCompactGlobalFlags,
   addGlobalFlags,
 } from "../../shell/global-flags";
-import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
+import { type CliRuntime, configureRuntimeCommand } from "../../shell/runtime";
 import type { ProjectRepositoryConnectionResult } from "../../types/project";
 
 export function createGitCommand(runtime: CliRuntime): Command {

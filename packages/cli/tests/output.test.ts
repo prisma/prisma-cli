@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
-
+import { renderDeployOutputRows } from "../src/lib/app/deploy-output";
 import { CliError } from "../src/shell/errors";
 import { writeHumanError } from "../src/shell/output";
-import { renderDeployOutputRows } from "../src/lib/app/deploy-output";
 import { plain } from "../src/shell/ui";
 import { createTempCwd, createTestCommandContext } from "./helpers";
 

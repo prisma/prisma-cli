@@ -19,7 +19,7 @@ import {
 import { attachCommandDescriptor } from "../shell/command-meta";
 import { runCommand } from "../shell/command-runner";
 import { addGlobalFlags } from "../shell/global-flags";
-import { configureRuntimeCommand, type CliRuntime } from "../shell/runtime";
+import { type CliRuntime, configureRuntimeCommand } from "../shell/runtime";
 import type {
   EnvAddResult,
   EnvListResult,

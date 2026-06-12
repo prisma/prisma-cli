@@ -1,6 +1,6 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
-import { formatScopeLabel, type EnvScope } from "../lib/app/env-config";
+import { type EnvScope, formatScopeLabel } from "../lib/app/env-config";
 import type { EnvFileAssignment } from "../lib/app/env-file";
 import { CliError } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";

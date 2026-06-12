@@ -1,7 +1,7 @@
+import { createColors } from "colorette";
 import stringWidth from "string-width";
 import stripAnsi from "strip-ansi";
 import wrapAnsi from "wrap-ansi";
-import { createColors } from "colorette";
 
 import type { GlobalFlags } from "./global-flags";
 import type { CliRuntime } from "./runtime";

@@ -3,14 +3,14 @@ import { randomBytes } from "node:crypto";
 import { requireComputeAuth } from "../lib/auth/guard";
 import {
   createManagementDatabaseProvider,
+  type DatabaseProvider,
   normalizeConnection,
   normalizeDatabase,
-  type DatabaseProvider,
 } from "../lib/database/provider";
 import {
   projectResolutionErrorToCliError,
-  resolveProjectTarget,
   type ResolvedProjectTarget,
+  resolveProjectTarget,
 } from "../lib/project/resolution";
 import {
   authRequiredError,

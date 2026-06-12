@@ -1,6 +1,6 @@
 import type { Argument, Command, Option } from "commander";
 
-import { getDescriptorForCommand, formatDescriptorLabel } from "./command-meta";
+import { formatDescriptorLabel, getDescriptorForCommand } from "./command-meta";
 import {
   COMPACT_GLOBAL_OPTION_FLAGS,
   resolveGlobalFlags,

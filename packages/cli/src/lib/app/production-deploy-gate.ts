@@ -1,6 +1,6 @@
 import { CliError } from "../../shell/errors";
 import { confirmPrompt } from "../../shell/prompt";
-import { canPrompt, type CommandContext } from "../../shell/runtime";
+import { type CommandContext, canPrompt } from "../../shell/runtime";
 import type { BranchKind } from "../../types/branch";
 import type {
   PreviewAppProvider,

@@ -2,13 +2,12 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Result } from "better-result";
 import { describe, expect, it, vi } from "vitest";
-
-import { createTempCwd, createTestCommandContext } from "./helpers";
+import type { ProjectCandidate } from "../src/lib/project/resolution";
 import {
   projectResolutionErrorToCliError,
   resolveProjectTarget,
 } from "../src/lib/project/resolution";
-import type { ProjectCandidate } from "../src/lib/project/resolution";
+import { createTempCwd, createTestCommandContext } from "./helpers";
 
 async function writeLocalPin(cwd: string, pin: unknown) {
   await mkdir(path.join(cwd, ".prisma"), { recursive: true });

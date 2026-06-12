@@ -7,13 +7,12 @@ import type { Readable, Writable } from "node:stream";
 import {
   createManagementApiSdk,
   type ManagementApiSdk,
-  type TokenStorage,
   AuthError as SDKAuthError,
+  type TokenStorage,
 } from "@prisma/management-api-sdk";
 import open from "open";
-
-import { CLIENT_ID, getApiBaseUrl } from "./client";
 import { FileTokenStorage } from "../../adapters/token-storage";
+import { CLIENT_ID, getApiBaseUrl } from "./client";
 
 export class AuthError extends Error {
   constructor(message: string) {
@@ -205,7 +204,6 @@ async function consumePastedCallback(options: {
         options.output.write(
           `Sign-in didn't complete (${message}). Paste the callback URL to try again.\n`,
         );
-        continue;
       }
     }
   } finally {

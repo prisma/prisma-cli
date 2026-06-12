@@ -14,10 +14,11 @@ import {
   runAppPromote,
   runAppRemove,
   runAppRollback,
-  runAppShow,
   runAppRun,
+  runAppShow,
   runAppShowDeploy,
 } from "../../controllers/app";
+import { PREVIEW_BUILD_TYPES } from "../../lib/app/preview-build";
 import {
   renderAppBuild,
   renderAppDeploy,
@@ -30,8 +31,8 @@ import {
   renderAppPromote,
   renderAppRemove,
   renderAppRollback,
-  renderAppShow,
   renderAppRun,
+  renderAppShow,
   renderAppShowDeploy,
   serializeAppBuild,
   serializeAppDeploy,
@@ -44,19 +45,18 @@ import {
   serializeAppPromote,
   serializeAppRemove,
   serializeAppRollback,
-  serializeAppShow,
   serializeAppRun,
+  serializeAppShow,
   serializeAppShowDeploy,
 } from "../../presenters/app";
 import { attachCommandDescriptor } from "../../shell/command-meta";
+import { runCommand, runStreamingCommand } from "../../shell/command-runner";
 import { usageError } from "../../shell/errors";
 import {
   addCompactGlobalFlags,
   addGlobalFlags,
 } from "../../shell/global-flags";
-import { runCommand, runStreamingCommand } from "../../shell/command-runner";
-import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
-import { PREVIEW_BUILD_TYPES } from "../../lib/app/preview-build";
+import { type CliRuntime, configureRuntimeCommand } from "../../shell/runtime";
 import type {
   AppBuildResult,
   AppDeployResult,
@@ -69,9 +69,9 @@ import type {
   AppPromoteResult,
   AppRemoveResult,
   AppRollbackResult,
-  AppShowResult,
   AppRunResult,
   AppShowDeployResult,
+  AppShowResult,
 } from "../../types/app";
 
 export function createAppCommand(runtime: CliRuntime): Command {

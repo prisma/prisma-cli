@@ -2,10 +2,10 @@ import { exec } from "node:child_process";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { parseModule, type ASTNode } from "magicast";
+import { type ASTNode, parseModule } from "magicast";
 
 import { CliError } from "../../shell/errors";
-import { readBunPackageJson, type BunPackageJsonLike } from "./bun-project";
+import { type BunPackageJsonLike, readBunPackageJson } from "./bun-project";
 import type { ResolvedPreviewBuildType } from "./preview-build";
 
 type PackageManager = "bun" | "pnpm" | "yarn" | "npm";

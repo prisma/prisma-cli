@@ -1,7 +1,7 @@
+import { renderMutate, renderShow } from "../output/patterns";
 import type { CommandDescriptor } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
 import type { AuthProviderId, AuthStateResult } from "../types/auth";
-import { renderMutate, renderShow } from "../output/patterns";
 
 export function renderAuthSuccess(
   context: CommandContext,

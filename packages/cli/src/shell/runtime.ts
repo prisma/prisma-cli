@@ -1,12 +1,12 @@
 import path from "node:path";
 
-import { Command } from "commander";
+import type { Command } from "commander";
 
 import { LocalStateStore } from "../adapters/local-state";
 import { MockApi } from "../adapters/mock-api";
+import type { GlobalFlags } from "./global-flags";
 import { renderHelp } from "./help";
 import type { CliOutput } from "./output";
-import type { GlobalFlags } from "./global-flags";
 import { createShellUi, type ShellUi } from "./ui";
 
 export const DEFAULT_STATE_DIR_NAME = path.join(".prisma", "cli");

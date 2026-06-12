@@ -1,13 +1,12 @@
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-import { confirmPrompt } from "../src/shell/prompt";
 import type {
   PreviewAppProvider,
   PreviewAppRecord,
   PreviewDeploymentRecord,
 } from "../src/lib/app/preview-provider";
+import { confirmPrompt } from "../src/shell/prompt";
 import { createTempCwd, createTestCommandContext } from "./helpers";
 
 vi.mock("../src/shell/prompt", async () => {

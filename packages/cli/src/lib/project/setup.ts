@@ -1,8 +1,8 @@
-import type { AuthWorkspace } from "../../types/auth";
-import type { ProjectSetupResult, ProjectSummary } from "../../types/project";
-import { Result, matchError } from "better-result";
+import { matchError, Result } from "better-result";
 import { CliError, usageError } from "../../shell/errors";
 import type { CommandContext } from "../../shell/runtime";
+import type { AuthWorkspace } from "../../types/auth";
+import type { ProjectSetupResult, ProjectSummary } from "../../types/project";
 import {
   ensureLocalResolutionPinGitignore,
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
@@ -11,10 +11,11 @@ import {
   writeLocalResolutionPin,
 } from "./local-pin";
 import {
+  type ProjectCandidate,
   projectAmbiguousError,
   projectNotFoundError,
-  type ProjectCandidate,
 } from "./resolution";
+
 export { formatCommandArgument } from "../../shell/command-arguments";
 
 export type ProjectDirectoryBindingError =

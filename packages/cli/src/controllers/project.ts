@@ -3,26 +3,27 @@ import { matchError } from "better-result";
 import open from "open";
 
 import {
+  type GitHubRepositoryReference,
   parseGitHubRepositoryUrl,
   readGitOriginRemote,
-  type GitHubRepositoryReference,
 } from "../adapters/git";
+import { createPreviewAppProvider } from "../lib/app/preview-provider";
 import { requireComputeAuth } from "../lib/auth/guard";
+import { promptForProjectSetupChoice } from "../lib/project/interactive-setup";
+import {
+  type LocalResolutionPinReadError,
+  readLocalResolutionPin,
+} from "../lib/project/local-pin";
 import {
   buildProjectSetupNextActions,
   inferTargetName,
   inspectProjectBinding,
+  type ProjectCandidate,
   projectResolutionErrorToCliError,
+  type ResolvedProjectTarget,
   resolveProjectTarget,
   sortProjects,
-  type ProjectCandidate,
-  type ResolvedProjectTarget,
 } from "../lib/project/resolution";
-import { promptForProjectSetupChoice } from "../lib/project/interactive-setup";
-import {
-  readLocalResolutionPin,
-  type LocalResolutionPinReadError,
-} from "../lib/project/local-pin";
 import {
   bindProjectToDirectory,
   formatCommandArgument,
@@ -33,7 +34,6 @@ import {
   resolveProjectForSetup,
   toProjectSummary,
 } from "../lib/project/setup";
-import { createPreviewAppProvider } from "../lib/app/preview-provider";
 import {
   authRequiredError,
   CliError,
@@ -42,7 +42,7 @@ import {
   workspaceRequiredError,
 } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
-import { canPrompt, type CommandContext } from "../shell/runtime";
+import { type CommandContext, canPrompt } from "../shell/runtime";
 import { renderSummaryLine } from "../shell/ui";
 import type { AuthWorkspace } from "../types/auth";
 import type {

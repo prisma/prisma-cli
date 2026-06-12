@@ -1,5 +1,5 @@
-import path from "node:path";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { getCliVersion } from "../src/lib/version";

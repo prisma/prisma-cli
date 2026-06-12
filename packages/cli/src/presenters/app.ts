@@ -1,9 +1,13 @@
+import { renderDeployOutputRows } from "../lib/app/deploy-output";
+import { formatDomainFailureFix } from "../lib/app/domain-guidance";
+import { renderList, renderShow, serializeList } from "../output/patterns";
 import type { CommandDescriptor } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
+import { renderVerboseBlock, type VerboseRow } from "../shell/ui";
 import type {
   AppBuildResult,
-  AppDeploySettings,
   AppDeployResult,
+  AppDeploySettings,
   AppDomainAddResult,
   AppDomainRemoveResult,
   AppDomainRetryResult,
@@ -14,14 +18,10 @@ import type {
   AppPromoteResult,
   AppRemoveResult,
   AppRollbackResult,
-  AppShowResult,
   AppRunResult,
   AppShowDeployResult,
+  AppShowResult,
 } from "../types/app";
-import { renderList, renderShow, serializeList } from "../output/patterns";
-import { renderDeployOutputRows } from "../lib/app/deploy-output";
-import { formatDomainFailureFix } from "../lib/app/domain-guidance";
-import { renderVerboseBlock, type VerboseRow } from "../shell/ui";
 import {
   renderResolvedProjectContextBlock,
   stripVerboseContext,

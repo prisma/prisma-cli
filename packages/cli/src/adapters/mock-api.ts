@@ -320,10 +320,10 @@ export class MockApi {
 }
 
 export type {
+  BranchRecord,
   DatabaseConnectionRecord,
   DatabaseRecord,
   DeploymentRecord,
-  BranchRecord,
   ProjectRecord,
   ProviderRecord,
   UserRecord,

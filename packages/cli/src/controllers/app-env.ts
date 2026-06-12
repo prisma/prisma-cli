@@ -1,18 +1,22 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
 import {
+  type EnvScope,
+  type EnvVarRole,
   formatScopeLabel,
   parseKeyValuePositional,
   resolveEnvScope,
-  type EnvScope,
-  type EnvVarRole,
 } from "../lib/app/env-config";
 import {
-  readEnvFileAssignments,
   type EnvFileAssignment,
+  readEnvFileAssignments,
 } from "../lib/app/env-file";
 import { requireComputeAuth } from "../lib/auth/guard";
 import { readLocalGitBranch } from "../lib/git/local-branch";
+import {
+  projectResolutionErrorToCliError,
+  resolveProjectTarget,
+} from "../lib/project/resolution";
 import {
   authRequiredError,
   CliError,
@@ -21,16 +25,12 @@ import {
 } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
 import type { CommandContext } from "../shell/runtime";
-import {
-  projectResolutionErrorToCliError,
-  resolveProjectTarget,
-} from "../lib/project/resolution";
 import type {
   EnvAddResult,
-  EnvListTarget,
   EnvListResult,
-  EnvRmResult,
+  EnvListTarget,
   EnvResolvedContext,
+  EnvRmResult,
   EnvScopeDescriptor,
   EnvUpdateResult,
 } from "../types/app-env";

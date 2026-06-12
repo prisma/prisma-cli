@@ -1,26 +1,25 @@
 import path from "node:path";
-
-import type { AppDeployResult } from "../../types/app";
 import { CliError, usageError } from "../../shell/errors";
 import { confirmPrompt } from "../../shell/prompt";
 import type { CommandContext } from "../../shell/runtime";
 import { canPrompt } from "../../shell/runtime";
 import { renderSummaryLine } from "../../shell/ui";
+import type { AppDeployResult } from "../../types/app";
 import { formatCommandArgument } from "../project/setup";
+import {
+  type BranchDatabaseSchema,
+  type BranchDatabaseSchemaSetupResult,
+  type BranchDatabaseSignal,
+  hasBranchDatabaseSignal,
+  inspectBranchDatabaseSignal,
+  runBranchDatabaseSchemaSetup,
+  type UnsupportedBranchDatabaseSchema,
+} from "./branch-database";
 import type {
   PreviewAppProvider,
   PreviewBranchDatabaseRecord,
   PreviewEnvironmentVariableRecord,
 } from "./preview-provider";
-import {
-  hasBranchDatabaseSignal,
-  inspectBranchDatabaseSignal,
-  runBranchDatabaseSchemaSetup,
-  type BranchDatabaseSchema,
-  type BranchDatabaseSchemaSetupResult,
-  type BranchDatabaseSignal,
-  type UnsupportedBranchDatabaseSchema,
-} from "./branch-database";
 
 export interface BranchDatabaseDeployBranch {
   id: string;

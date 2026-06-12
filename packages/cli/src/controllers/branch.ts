@@ -1,5 +1,9 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-
+import { requireComputeAuth } from "../lib/auth/guard";
+import {
+  projectResolutionErrorToCliError,
+  resolveProjectTarget,
+} from "../lib/project/resolution";
 import {
   authRequiredError,
   CliError,
@@ -12,13 +16,8 @@ import type {
   BranchRole,
   BranchSummary,
 } from "../types/branch";
-import { createCliUseCaseGateways } from "../use-cases/create-cli-gateways";
 import { createBranchUseCases } from "../use-cases/branch";
-import { requireComputeAuth } from "../lib/auth/guard";
-import {
-  projectResolutionErrorToCliError,
-  resolveProjectTarget,
-} from "../lib/project/resolution";
+import { createCliUseCaseGateways } from "../use-cases/create-cli-gateways";
 import { requireAuthenticatedAuthState } from "./auth";
 import { listRealWorkspaceProjects } from "./project";
 

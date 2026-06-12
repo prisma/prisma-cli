@@ -1,8 +1,8 @@
-import { CredentialsStore } from "@prisma/credentials-store";
-import type { TokenStorage, Tokens } from "@prisma/management-api-sdk";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { CredentialsStore } from "@prisma/credentials-store";
+import type { TokenStorage, Tokens } from "@prisma/management-api-sdk";
 import { getAuthFilePath } from "../lib/auth/client";
 
 interface StoredCredential {

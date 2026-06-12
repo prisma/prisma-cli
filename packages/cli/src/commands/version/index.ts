@@ -5,7 +5,7 @@ import { renderVersionSuccess } from "../../presenters/version";
 import { attachCommandDescriptor } from "../../shell/command-meta";
 import { runCommand } from "../../shell/command-runner";
 import { addGlobalFlags } from "../../shell/global-flags";
-import { configureRuntimeCommand, type CliRuntime } from "../../shell/runtime";
+import { type CliRuntime, configureRuntimeCommand } from "../../shell/runtime";
 import type { VersionResult } from "../../types/version";
 
 export function createVersionCommand(runtime: CliRuntime): Command {

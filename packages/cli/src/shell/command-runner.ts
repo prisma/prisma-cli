@@ -1,7 +1,7 @@
 import { AuthError as SDKAuthError } from "@prisma/management-api-sdk";
+import { collectCommandDiagnostics } from "../lib/diagnostics";
 import type { CommandDescriptor } from "./command-meta";
 import { getCommandDescriptor } from "./command-meta";
-import { collectCommandDiagnostics } from "../lib/diagnostics";
 import { renderCommandDiagnostics } from "./diagnostics-output";
 import { authRequiredError, CliError, commandCanceledError } from "./errors";
 import { resolveGlobalFlags } from "./global-flags";
@@ -14,7 +14,7 @@ import {
   writeJsonEvent,
   writeJsonSuccess,
 } from "./output";
-import { createCommandContext, type CliRuntime } from "./runtime";
+import { type CliRuntime, createCommandContext } from "./runtime";
 
 interface CommandPresenter<T> {
   renderStdout?: (
