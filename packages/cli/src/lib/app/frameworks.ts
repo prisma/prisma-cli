@@ -7,7 +7,7 @@ import type { ComputeFramework } from "../../config";
  * entry here plus its build/run strategy implementation.
  */
 
-export type FrameworkBuildType = "nextjs" | "tanstack-start" | "bun";
+export type FrameworkBuildType = "nextjs" | "nuxt" | "astro" | "tanstack-start" | "bun";
 
 export interface FrameworkDescriptor {
   readonly key: ComputeFramework;
@@ -35,6 +35,22 @@ export const NEXT_CONFIG_FILENAMES = [
   "next.config.mts",
 ] as const;
 
+export const NUXT_CONFIG_FILENAMES = [
+  "nuxt.config.js",
+  "nuxt.config.mjs",
+  "nuxt.config.cjs",
+  "nuxt.config.ts",
+  "nuxt.config.mts",
+] as const;
+
+export const ASTRO_CONFIG_FILENAMES = [
+  "astro.config.js",
+  "astro.config.mjs",
+  "astro.config.cjs",
+  "astro.config.ts",
+  "astro.config.mts",
+] as const;
+
 // Detection checks frameworks in this order; keep more specific signals first.
 export const FRAMEWORKS: readonly FrameworkDescriptor[] = [
   {
@@ -47,6 +63,28 @@ export const FRAMEWORKS: readonly FrameworkDescriptor[] = [
     usesEntrypoint: false,
     defaultEntrypoint: null,
     hasLocalDevServer: true,
+  },
+  {
+    key: "nuxt",
+    displayName: "Nuxt",
+    buildType: "nuxt",
+    aliases: ["nuxt", "nuxtjs", "nuxt.js"],
+    detectPackages: ["nuxt"],
+    detectConfigFiles: NUXT_CONFIG_FILENAMES,
+    usesEntrypoint: false,
+    defaultEntrypoint: null,
+    hasLocalDevServer: false,
+  },
+  {
+    key: "astro",
+    displayName: "Astro",
+    buildType: "astro",
+    aliases: ["astro"],
+    detectPackages: ["astro"],
+    detectConfigFiles: ASTRO_CONFIG_FILENAMES,
+    usesEntrypoint: false,
+    defaultEntrypoint: null,
+    hasLocalDevServer: false,
   },
   {
     key: "hono",
@@ -85,10 +123,14 @@ export const FRAMEWORKS: readonly FrameworkDescriptor[] = [
 
 export const FRAMEWORK_KEYS = FRAMEWORKS.map((framework) => framework.key);
 
-/** Build types whose build settings are backed by committed config. */
-export const CONFIG_BACKED_BUILD_TYPES: readonly FrameworkBuildType[] = [
-  ...new Set(FRAMEWORKS.map((framework) => framework.buildType)),
-];
+/**
+ * Build types whose preview build consumes committed build settings. The
+ * others (nuxt, astro) run their framework CLI and stage fixed output, so a
+ * config `build` block has nothing to apply to.
+ */
+export const CONFIG_BACKED_BUILD_TYPES = ["nextjs", "tanstack-start", "bun"] as const satisfies readonly FrameworkBuildType[];
+
+export type ConfigBackedBuildType = (typeof CONFIG_BACKED_BUILD_TYPES)[number];
 
 /** Build types that consume a user-provided source entrypoint. */
 export const ENTRYPOINT_BUILD_TYPES: readonly FrameworkBuildType[] = [
@@ -113,6 +155,6 @@ export function frameworkFromAlias(value: string): FrameworkDescriptor | null {
   return FRAMEWORKS.find((framework) => framework.aliases.includes(normalized)) ?? null;
 }
 
-export function isFrameworkBuildType(value: string): value is FrameworkBuildType {
+export function isConfigBackedBuildType(value: string): value is ConfigBackedBuildType {
   return (CONFIG_BACKED_BUILD_TYPES as readonly string[]).includes(value);
 }

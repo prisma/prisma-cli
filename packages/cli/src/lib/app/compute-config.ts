@@ -6,7 +6,7 @@ import { Result, TaggedError, matchError } from "better-result";
 import { createJiti } from "jiti";
 
 import { COMPUTE_FRAMEWORKS, type ComputeFramework } from "../../config";
-import { frameworkByKey, type FrameworkBuildType } from "./frameworks";
+import { frameworkByKey, isConfigBackedBuildType, type FrameworkBuildType } from "./frameworks";
 import { CliError } from "../../shell/errors";
 import { sourceRootLineage } from "../fs/source-root";
 import { COMPUTE_CONFIG_FILENAME, findComputeConfigCandidates } from "./compute-config-discovery";
@@ -367,6 +367,9 @@ function normalizeAppEntry(
 
   const envInputs = normalizeEnvConfig(value.env, `${label}.env`, issues);
   const build = normalizeBuildConfig(value.build, `${label}.build`, issues);
+  if (build && framework && !isConfigBackedBuildType(frameworkByKey(framework).buildType)) {
+    issues.push(`\`${label}.build\` is not supported with the ${framework} framework; its build runs automatically during deploy.`);
+  }
 
   return {
     key,

@@ -784,7 +784,7 @@ prisma-cli app run --build-type bun --entry server.ts --port 3000
 prisma-cli app run api
 ```
 
-## `prisma-cli app deploy [app] --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|hono|tanstack-start|bun> --entry <path> --http-port <port> --env <name=value|file> --db --no-db --prod`
+## `prisma-cli app deploy [app] --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|nuxt|astro|hono|tanstack-start|bun> --entry <path> --http-port <port> --env <name=value|file> --db --no-db --prod`
 
 Purpose:
 
@@ -803,6 +803,7 @@ Compute config file (`prisma.compute.ts`):
 - each app accepts `name`, `root`, `framework`, `entry`, `httpPort`, `env`, and `build`:
   - `env` is a dotenv file path, or `{ file, vars }` with file path(s) and inline assignments
   - `build` is `{ command, outputDirectory }`; both fields are optional and `command: null` skips the build step
+  - `build` applies to frameworks whose preview build consumes committed settings (`nextjs`, `hono`, `tanstack-start`, `bun`); `nuxt` and `astro` builds run their framework CLI automatically, so a `build` block with those frameworks is a validation error (`BUILD_SETTINGS_UNSUPPORTED` when only detected at deploy time)
 - when `build` is present, the compute config owns build settings for that app: fields it sets override framework defaults, fields it omits are inferred; without a `build` block, settings are inferred entirely, with their sources shown
 - the compute config does not declare databases in the current beta; database setup stays on the `--db`/`--no-db` flags (a future project-level `database` field is the reserved growth path, since databases are branch resources shared by every app on the branch)
 

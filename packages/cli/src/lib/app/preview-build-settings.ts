@@ -6,10 +6,11 @@ import { parseModule, type ASTNode } from "magicast";
 
 import { sourceRootLineage } from "../fs/source-root";
 import { readBunPackageJson, type BunPackageJsonLike } from "./bun-project";
+import type { ConfigBackedBuildType } from "./frameworks";
 import type { ResolvedPreviewBuildType } from "./preview-build";
 
 type PackageManager = "bun" | "pnpm" | "yarn" | "npm";
-export type PreviewBuildSettingsBuildType = Extract<ResolvedPreviewBuildType, "nextjs" | "tanstack-start" | "bun">;
+export type PreviewBuildSettingsBuildType = Extract<ResolvedPreviewBuildType, ConfigBackedBuildType>;
 
 /** Legacy build-settings file: no longer read or written, only detected for migration. */
 export const PRISMA_APP_CONFIG_FILENAME = "prisma.app.json";
@@ -94,7 +95,7 @@ export async function detectLegacyBuildSettings(options: {
 /** Resolves build settings purely from framework inference; nothing is read or written. */
 export async function resolveInferredPreviewBuildSettings(options: {
   appPath: string;
-  buildType: PreviewBuildSettingsBuildType;
+  buildType: ResolvedPreviewBuildType;
   signal?: AbortSignal;
 }): Promise<PreviewBuildSettingsResolution> {
   return {
@@ -142,10 +143,26 @@ export async function resolveConfiguredPreviewBuildSettings(options: {
 
 export async function resolvePreviewBuildSettings(options: {
   appPath: string;
-  buildType: PreviewBuildSettingsBuildType;
+  buildType: ResolvedPreviewBuildType;
   signal?: AbortSignal;
 }): Promise<PreviewBuildSettings> {
   switch (options.buildType) {
+    // The nuxt and astro strategies invoke the framework CLI and stage fixed
+    // output themselves; these settings only describe that for display.
+    case "nuxt":
+      return {
+        buildCommand: "nuxt build",
+        buildCommandSource: "Nuxt default",
+        outputDirectory: ".output",
+        outputDirectorySource: "Nuxt output",
+      };
+    case "astro":
+      return {
+        buildCommand: "astro build",
+        buildCommandSource: "Astro default",
+        outputDirectory: "dist",
+        outputDirectorySource: "Astro output",
+      };
     case "nextjs": {
       const packageJson = await readBunPackageJson(options.appPath, options.signal);
       const buildCommand = await resolveFrameworkBuildCommand(options.appPath, packageJson, {

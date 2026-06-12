@@ -48,6 +48,27 @@ describe("preview build strategy", () => {
     await expect(readFile(path.join(appPath, "prisma.app.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("describes the strategy-owned builds for nuxt and astro", async () => {
+    const { resolveInferredPreviewBuildSettings } = await import("../src/lib/app/preview-build");
+    const cwd = await createTempCwd();
+
+    const nuxt = await resolveInferredPreviewBuildSettings({ appPath: cwd, buildType: "nuxt" });
+    expect(nuxt.settings).toEqual({
+      buildCommand: "nuxt build",
+      buildCommandSource: "Nuxt default",
+      outputDirectory: ".output",
+      outputDirectorySource: "Nuxt output",
+    });
+
+    const astro = await resolveInferredPreviewBuildSettings({ appPath: cwd, buildType: "astro" });
+    expect(astro.settings).toEqual({
+      buildCommand: "astro build",
+      buildCommandSource: "Astro default",
+      outputDirectory: "dist",
+      outputDirectorySource: "Astro output",
+    });
+  });
+
   it("packages the full tree with a next start launcher when the build produces no standalone output", async () => {
     const { PreviewBuildStrategy } = await import("../src/lib/app/preview-build");
     const cwd = await createTempCwd();

@@ -86,7 +86,6 @@ import {
   resolveConfiguredPreviewBuildSettings,
   resolveInferredPreviewBuildSettings,
   type PreviewBuildSettings,
-  type PreviewBuildSettingsBuildType,
   type PreviewBuildSettingsResolution,
   type ResolvedPreviewBuildType,
   type PreviewBuildType,
@@ -128,8 +127,10 @@ import {
   FRAMEWORKS,
   frameworkByKey,
   frameworkFromAlias,
-  isFrameworkBuildType,
+  isConfigBackedBuildType,
   LOCAL_DEV_BUILD_TYPES,
+  type ConfigBackedBuildType,
+  type FrameworkBuildType,
   type FrameworkDescriptor,
 } from "../lib/app/frameworks";
 import { formatDomainFailureFix } from "../lib/app/domain-guidance";
@@ -163,9 +164,12 @@ export async function runAppBuild(
   const buildType = normalizeBuildType(merged.buildType);
   assertSupportedEntrypoint(buildType, merged.entrypoint, "build");
 
+  if (compute.target?.build && buildType !== "auto") {
+    assertConfigBackedBuildSettings(buildType);
+  }
   // Config-owned build settings apply when the build type is determinate;
   // auto detection resolves inside the strategy and keeps its own fallback.
-  const buildSettings = compute.config && compute.target?.build && isFrameworkBuildType(buildType)
+  const buildSettings = compute.config && compute.target?.build && isConfigBackedBuildType(buildType)
     ? (await resolveConfiguredPreviewBuildSettings({
         appPath: appDir,
         buildType,
@@ -587,9 +591,12 @@ async function runSingleAppDeploy(
   const buildType = framework.buildType;
   assertSupportedEntrypoint(buildType, merged.entrypoint?.value, "deploy");
   const entrypoint = await resolveDeployEntrypoint(appDir, framework, merged.entrypoint?.value, context.runtime.signal);
+  if (computeConfig.target?.build) {
+    assertConfigBackedBuildSettings(buildType);
+  }
   // Build settings come from the compute config's build block over framework
   // defaults; nothing is read from or written to disk for them.
-  const buildSettingsResolution = computeConfig.config && computeConfig.target?.build
+  const buildSettingsResolution = computeConfig.config && computeConfig.target?.build && isConfigBackedBuildType(buildType)
     ? await resolveConfiguredPreviewBuildSettings({
         appPath: appDir,
         buildType,
@@ -2967,7 +2974,7 @@ async function resolveDeployBranch(context: CommandContext, explicitBranchName: 
 
 interface ResolvedDeployFramework {
   key: string;
-  buildType: PreviewBuildSettingsBuildType;
+  buildType: FrameworkBuildType;
   displayName: string;
   annotation: string;
 }
@@ -3323,8 +3330,29 @@ function frameworkFromUserFacingValue(value: string, annotation: string): Resolv
   };
 }
 
+/**
+ * The nuxt and astro strategies build with their framework CLI and stage
+ * fixed output, so a compute config `build` block has nothing to apply to.
+ * Erroring beats silently ignoring committed settings.
+ */
+function assertConfigBackedBuildSettings(buildType: FrameworkBuildType): asserts buildType is ConfigBackedBuildType {
+  if (isConfigBackedBuildType(buildType)) {
+    return;
+  }
+  const displayName = FRAMEWORKS.find((framework) => framework.buildType === buildType)?.displayName ?? buildType;
+
+  throw new CliError({
+    code: "BUILD_SETTINGS_UNSUPPORTED",
+    domain: "app",
+    summary: `build settings are not supported for ${displayName} apps`,
+    why: `${displayName} deploys run \`${buildType} build\` and package its output automatically.`,
+    fix: "Remove the `build` block from prisma.compute.ts for this app.",
+    exitCode: 2,
+  });
+}
+
 function frameworkNotDetectedError(cwd: string | undefined, requestedFramework?: string): CliError {
-  const supported = "Next.js, Hono, TanStack Start, Bun";
+  const supported = FRAMEWORKS.map((framework) => framework.displayName).join(", ");
   const directory = cwd ? ` in ${formatDeployDirectory(cwd)}` : "";
 
   return new CliError({
@@ -3334,7 +3362,7 @@ function frameworkNotDetectedError(cwd: string | undefined, requestedFramework?:
       ? `Unsupported framework "${requestedFramework}"`
       : `Cannot detect a supported framework${directory}`,
     why: `Supported Beta frameworks: ${supported}.`,
-    fix: "Add one of these frameworks as a dependency, pass --framework <nextjs|hono|tanstack-start|bun>, or pass --entry <path> for a Bun app.",
+    fix: `Add one of these frameworks as a dependency, pass --framework <${FRAMEWORKS.map((framework) => framework.key).join("|")}>, or pass --entry <path> for a Bun app.`,
     exitCode: 2,
     nextSteps: [
       "prisma-cli app deploy --framework nextjs",

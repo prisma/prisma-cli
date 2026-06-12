@@ -138,10 +138,19 @@ describe("normalizeComputeConfig", () => {
     });
 
     expect(issues.join(" ")).toContain("`apps.web.name` must be a non-empty string.");
-    expect(issues.join(" ")).toContain("`apps.web.framework` must be one of: nextjs, hono, tanstack-start, bun.");
+    expect(issues.join(" ")).toContain("`apps.web.framework` must be one of: nextjs, nuxt, astro, hono, tanstack-start, bun.");
     expect(issues.join(" ")).toContain("`apps.web.httpPort` must be an integer between 1 and 65535.");
     expect(issues.join(" ")).toContain("`apps.web.root` must be a relative path inside the repository.");
     expect(issues.join(" ")).toContain("`apps.web.env.vars.EMPTY` must be a non-empty string.");
+  });
+
+  it("rejects build blocks for frameworks whose strategy owns the build", () => {
+    expect(normalizeIssues({
+      app: { framework: "nuxt", build: { command: "nuxt build" } },
+    }).join(" ")).toContain("`app.build` is not supported with the nuxt framework");
+    expect(normalizeIssues({
+      app: { framework: "astro", build: { outputDirectory: "dist" } },
+    }).join(" ")).toContain("`app.build` is not supported with the astro framework");
   });
 
   it("rejects roots that escape the config directory, including Windows drive-relative paths", () => {

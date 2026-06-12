@@ -5,14 +5,18 @@
  * runtime dependencies so user config files can import it cheaply.
  */
 
-export const COMPUTE_FRAMEWORKS = ["nextjs", "hono", "tanstack-start", "bun"] as const;
+export const COMPUTE_FRAMEWORKS = ["nextjs", "nuxt", "astro", "hono", "tanstack-start", "bun"] as const;
 
 export type ComputeFramework = (typeof COMPUTE_FRAMEWORKS)[number];
 
 export interface ComputeEnvConfig {
   /** Dotenv file path(s) resolved relative to the config file directory. */
   file?: string | string[];
-  /** Inline environment variable assignments. Values must be non-empty and are deployed as-is. */
+  /**
+   * Inline environment variable assignments. Values must be non-empty and
+   * are deployed as-is. This file is committed — keep secrets in platform
+   * branch config; consumers may ignore inline vars on git-push deploys.
+   */
   vars?: Record<string, string>;
 }
 
