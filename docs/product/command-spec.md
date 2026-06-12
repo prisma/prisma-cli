@@ -818,7 +818,7 @@ production targeting stay out of committed config in the unified file for the
 same reasons they are excluded today.
 - config values are deploy defaults; explicit flags always win: `--framework`, `--entry`, `--http-port` override per value, and any `--env` flag replaces the config env inputs entirely
 - the config `name` (or the `apps` key when `name` is absent) selects the app like `--app`, but ranks below both `--app` and `PRISMA_APP_ID`
-- `root` is a relative path inside the repository; framework detection, entrypoint resolution, build settings, and the build/upload run in that directory while Project binding and the local pin stay in the invocation directory
+- `root` is a relative path inside the repository; framework detection, entrypoint resolution, build settings, and the build/upload run in that directory while Project binding and the local pin stay in the config file's directory
 - `prisma.compute.ts` never selects Project or Branch scope; project resolution is unchanged
 - the `[app]` argument selects an `apps` target by key:
   - without an `[app]` argument, a command run from inside a target's `root` selects that target, so `cd apps/api && prisma-cli app deploy` deploys `api`; the deepest matching root wins and an ambiguous tie selects nothing
