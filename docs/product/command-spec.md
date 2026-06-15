@@ -896,6 +896,7 @@ Behavior:
 - success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma-cli app logs`
 - accepts repeated `--env NAME=VALUE` flags and dotenv file paths such as `--env .env`
 - supports `--db` to create a new empty Prisma Postgres database and write `DATABASE_URL` and `DIRECT_URL` through the existing `project env` storage; the CLI never runs schema or migration commands — applying the schema stays with the user's own tooling
+- `--db` is the opinionated single-database path: it creates **one** branch database and exposes `DATABASE_URL`/`DIRECT_URL` as branch-scoped env vars, so every app on the branch shares it. In a multi-app deploy-all run the database is created once (on the first target) and reused by the rest; the run never creates a database per app. Per-app or per-service database topologies are explicit-configuration territory — set each app's database env vars yourself rather than relying on `--db` to infer app-to-database ownership
 - supports `--no-db` to suppress automatic database prompting for the deploy
 - `--db` and `--no-db` are mutually exclusive; passing both is rejected
 - `--yes` alone never creates a database; CI must pass `--db --yes` to create and wire one

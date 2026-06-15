@@ -205,7 +205,7 @@ async function setupBranchDatabase(
     emitBranchDatabaseProgress(
       context,
       "success",
-      `Added ${envScopeLabel(branch)} env var${envVars.length === 1 ? "" : "s"} ${envVars.join(", ")}`,
+      `Added ${envScopeLabel(branch)} env var${envVars.length === 1 ? "" : "s"} ${envVars.join(", ")} — shared by every app on ${envScopeLabel(branch) === "production" ? "production" : `branch "${branch.name}"`}`,
     );
 
     // The CLI provisions and wires credentials; it never runs schema or
