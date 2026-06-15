@@ -2,9 +2,9 @@
   "name": "prisma-cli",
   "private": true,
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.13.0"
   },
-  "packageManager": "pnpm@10.30.0",
+  "packageManager": "pnpm@11.6.0",
   "scripts": {
     "build:cli": "pnpm --filter @prisma/cli build",
     "build:compute": "pnpm --filter @prisma/compute build",
@@ -13,7 +13,6 @@
     "lint:fix": "biome check . --write",
     "lint:skills": "node scripts/validate-skills.mjs",
     "prepare": "node scripts/prepare-skills.mjs",
-    "prepare:cli-publish": "node scripts/prepare-cli-publish.mjs",
     "smoke:cli-nextjs": "node scripts/smoke-cli-nextjs-artifact.mjs",
     "test:skills": "node --test scripts/validate-skills.test.mjs",
     "test": "pnpm --filter @prisma/cli test",

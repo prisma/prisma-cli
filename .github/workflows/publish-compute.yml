@@ -1,4 +1,4 @@
-name: Publish CLI
+name: Publish Compute
 
 on:
   push:
@@ -13,7 +13,7 @@ on:
         default: false
 
 concurrency:
-  group: publish-cli-${{ github.event_name }}
+  group: publish-compute-${{ github.event_name }}
   cancel-in-progress: false
 
 jobs:
@@ -43,28 +43,28 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Resolve dev version
-        id: cli_version
+        id: compute_version
         run: |
           node scripts/resolve-package-version.mjs dev \
-            --package-dir packages/cli \
+            --package-dir packages/compute \
             --run-number "${GITHUB_RUN_NUMBER}" \
             --run-attempt "${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
       - name: Set package version
-        working-directory: packages/cli
-        run: pnpm version '${{ steps.cli_version.outputs.version }}' --no-git-tag-version
+        working-directory: packages/compute
+        run: pnpm version '${{ steps.compute_version.outputs.version }}' --no-git-tag-version
 
       - name: Publish dev package to npm
-        working-directory: packages/cli
+        working-directory: packages/compute
         run: npm publish --access public --tag dev --provenance
 
       - name: Summarize dev publish
         run: |
-          VERSION='${{ steps.cli_version.outputs.version }}'
+          VERSION='${{ steps.compute_version.outputs.version }}'
           {
-            echo "## Publish CLI Dev"
+            echo "## Publish Compute Dev"
             echo
-            echo "- npm package: \`@prisma/cli@${VERSION}\`"
+            echo "- npm package: \`@prisma/compute@${VERSION}\`"
             echo "- npm dist-tag: \`dev\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -101,30 +101,30 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Resolve next beta version
-        id: cli_version
+        id: compute_version
         run: |
-          PACKAGE='@prisma/cli'
+          PACKAGE='@prisma/compute'
           LATEST="$(pnpm view "${PACKAGE}" dist-tags.latest --silent 2>/dev/null || true)"
           echo "latest=${LATEST}" >> "$GITHUB_OUTPUT"
           node scripts/resolve-package-version.mjs next-beta \
-            --package-dir packages/cli \
+            --package-dir packages/compute \
             --latest "${LATEST}" >> "$GITHUB_OUTPUT"
 
       - name: Fail if release tag already exists
         run: |
-          VERSION='${{ steps.cli_version.outputs.version }}'
-          TAG="cli-v${VERSION}"
+          VERSION='${{ steps.compute_version.outputs.version }}'
+          TAG="compute-v${VERSION}"
           if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
             echo "Release tag ${TAG} already exists."
             exit 1
           fi
 
       - name: Set package version
-        working-directory: packages/cli
-        run: pnpm version '${{ steps.cli_version.outputs.version }}' --no-git-tag-version
+        working-directory: packages/compute
+        run: pnpm version '${{ steps.compute_version.outputs.version }}' --no-git-tag-version
 
       - name: Validate package artifact
-        working-directory: packages/cli
+        working-directory: packages/compute
         run: pnpm pack --dry-run
 
       - name: Ensure release still targets the latest main
@@ -138,7 +138,7 @@ jobs:
 
       - name: Publish official package to npm
         if: ${{ !inputs.dry_run }}
-        working-directory: packages/cli
+        working-directory: packages/compute
         run: npm publish --access public --tag latest --provenance
 
       - name: Create release tag
@@ -146,8 +146,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION='${{ steps.cli_version.outputs.version }}'
-          TAG="cli-v${VERSION}"
+          VERSION='${{ steps.compute_version.outputs.version }}'
+          TAG="compute-v${VERSION}"
           SHA="$(git rev-parse HEAD)"
           gh api \
             --method POST \
@@ -157,10 +157,10 @@ jobs:
 
       - name: Summarize release
         run: |
-          VERSION='${{ steps.cli_version.outputs.version }}'
-          LATEST='${{ steps.cli_version.outputs.latest }}'
+          VERSION='${{ steps.compute_version.outputs.version }}'
+          LATEST='${{ steps.compute_version.outputs.latest }}'
           {
-            echo "## Publish CLI Official"
+            echo "## Publish Compute Official"
             echo
             echo "- Previous npm latest: \`${LATEST:-none}\`"
             echo "- Version: \`${VERSION}\`"
@@ -169,8 +169,8 @@ jobs:
               echo "- Publish: skipped"
               echo "- Tag creation: skipped"
             else
-              echo "- npm package: \`@prisma/cli@${VERSION}\`"
+              echo "- npm package: \`@prisma/compute@${VERSION}\`"
               echo "- npm dist-tag: \`latest\`"
-              echo "- git tag: \`cli-v${VERSION}\`"
+              echo "- git tag: \`compute-v${VERSION}\`"
             fi
           } >> "$GITHUB_STEP_SUMMARY"

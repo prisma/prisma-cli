@@ -79,11 +79,10 @@ Build the package:
 pnpm build:cli
 ```
 
-Stage the npm package locally without publishing:
+Inspect the npm package locally without publishing:
 
 ```bash
-pnpm build:cli
-pnpm prepare:cli-publish
+pnpm --filter @prisma/cli pack --dry-run
 ```
 
 ## Command Model
@@ -132,8 +131,7 @@ Start here when changing command behavior:
 See `CONTRIBUTING.md` for local development and contribution guidance.
 See `ARCHITECTURE.md` for the short architecture entrypoint.
 
-The npm package README lives at `packages/cli/README.md` and is copied into the
-staged publish artifact.
+The npm package README lives at `packages/cli/README.md`.
 
 ## Community
 
@@ -161,7 +159,7 @@ publish from a local checkout unless the release owner explicitly asks you to do
 so.
 
 The committed `packages/cli/package.json` version is a development placeholder.
-Release versions are injected by CI when the staged npm package is prepared.
+Release versions are injected by CI before the package is packed and published.
 
 Release channels:
 

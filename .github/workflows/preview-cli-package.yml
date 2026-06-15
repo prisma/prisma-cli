@@ -20,29 +20,18 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
         with:
-          node-version: 24
+          cache: true
 
-      - name: Enable pnpm
-        run: |
-          corepack enable
-          PNPM_VERSION="$(node -p 'const pm = require("./package.json").packageManager; const match = pm && pm.match(/^pnpm@(.+)$/); if (!match) throw new Error("packageManager must be pnpm@<version>"); match[1]')"
-          corepack prepare "pnpm@${PNPM_VERSION}" --activate
-          echo "PNPM_STORE_PATH=$(pnpm store path)" >> "$GITHUB_ENV"
-
-      - name: Cache pnpm store
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          path: ${{ env.PNPM_STORE_PATH }}
-          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-store-${{ runner.os }}-
+          node-version-file: .node-version
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -50,7 +39,8 @@ jobs:
       - name: Resolve preview version
         id: cli_version
         run: |
-          node scripts/resolve-cli-version.mjs pr \
+          node scripts/resolve-package-version.mjs pr \
+            --package-dir packages/cli \
             --sha '${{ github.event.pull_request.head.sha }}' \
             --pr-number '${{ github.event.pull_request.number }}' >> "$GITHUB_OUTPUT"
 
@@ -70,14 +60,15 @@ jobs:
         id: compute_build
         run: pnpm --filter @prisma/compute build
 
-      - name: Prepare staged preview package
-        id: prepare_preview
-        run: node scripts/prepare-cli-publish.mjs .publish/cli --version '${{ steps.cli_version.outputs.version }}'
+      - name: Set preview package version
+        id: set_preview_version
+        working-directory: packages/cli
+        run: pnpm version '${{ steps.cli_version.outputs.version }}' --no-git-tag-version
 
       - name: Publish installable PR preview
         id: publish_preview
         continue-on-error: ${{ vars.CLI_PR_PREVIEW_REQUIRED != 'true' }}
-        run: pnpm exec pkg-pr-new publish --bin --comment=update .publish/cli
+        run: pnpm exec pkg-pr-new publish --bin --comment=update packages/cli
 
       - name: Summarize PR preview publish
         if: ${{ always() }}
@@ -90,7 +81,7 @@ jobs:
             echo "- Compute tests: \`${{ steps.compute_tests.outcome || 'skipped' }}\`"
             echo "- Build: \`${{ steps.cli_build.outcome || 'skipped' }}\`"
             echo "- Compute build: \`${{ steps.compute_build.outcome || 'skipped' }}\`"
-            echo "- Package staging: \`${{ steps.prepare_preview.outcome || 'skipped' }}\`"
+            echo "- Version injection: \`${{ steps.set_preview_version.outcome || 'skipped' }}\`"
             echo "- pkg.pr.new publish: \`${{ steps.publish_preview.outcome || 'skipped' }}\`"
             PUBLISH_OUTCOME="${{ steps.publish_preview.outcome || 'skipped' }}"
             if [ "${PUBLISH_OUTCOME}" != "success" ]; then
