@@ -37,8 +37,8 @@ Rules:
 
 - `project` is not the same thing as `app`
 - Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for project resolution
-- `.prisma/local.json` is a gitignored local pin/cache for Workspace and Project IDs; it is not a declarative repo config file
-- `prisma.app.json` is a committed app build-settings file only; it must not contain Workspace, Project, Branch, App, env, or secret resolution state
+- `.prisma/local.json` is a gitignored local pin/cache for Workspace and Project IDs; it is not a declarative repo config file. When a `prisma.compute.ts` is discovered (nearest config from the invocation directory up to the repository or workspace root), the pin and the CLI state cache (`.prisma/cli/state.json`) are read and written in the config file's directory; without a config they stay in the invocation directory
+- `prisma.compute.ts` is a committed deploy-defaults file; it must not contain Workspace, Project, Branch, env-secret, or credential resolution state
 - Project setup is explicit: users choose an existing Project or explicitly create a new one before remote work starts
 - `app deploy` may orchestrate Project setup, but it must not silently choose or create Project scope
 - everything under a project happens in a branch
@@ -104,7 +104,7 @@ Rules:
 - the runtime app service is scoped by branch in the platform model
 - the app may be selected or created as part of app deployment workflows
 - app selection is local CLI state when needed for the beta package
-- app build settings may live in `prisma.app.json` beside `package.json`; v1 fields are `buildCommand` and `outputDirectory`
+- app build settings live in the `build` block of `prisma.compute.ts` (`command`, `outputDirectory`); `prisma.app.json` is legacy and no longer read
 
 ### Deployment
 
@@ -188,9 +188,9 @@ Rules:
 - first production deploy setup writes production `DATABASE_URL` and `DIRECT_URL` env vars before the App has a live deployment
 - database setup never overwrites an existing branch-scoped `DATABASE_URL`
 - production setup treats existing production `DATABASE_URL` or `DIRECT_URL` as BYO DB intent and leaves env vars unchanged
-- schema setup is sourced only from local code; the CLI does not clone or infer schema from another database
-- Prisma Next config (`prisma-next.config.*`) is preferred over `schema.prisma`
-- known non-Postgres Prisma sources are treated as unsupported for automatic Prisma Postgres setup
+- the CLI provisions the database and wires its env vars; it never runs schema, migration, or generate commands. A detected local Prisma schema source feeds only the suggested follow-up command the user runs themselves; the CLI does not clone or infer schema from another database
+- when detecting that local schema source for the suggestion, a Prisma Next config (`prisma-next.config.*`) is preferred over `schema.prisma`
+- a known non-Postgres Prisma source is treated as unsupported: it does not trigger automatic database prompting, and explicit `--db` is rejected
 - later production database configuration is managed through explicit environment-variable commands
 
 ## Relationships

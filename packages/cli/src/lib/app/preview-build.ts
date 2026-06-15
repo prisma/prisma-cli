@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noAwaitInLoops: Build strategy probing and filesystem traversal are intentionally sequential.
 import {
   chmod,
   copyFile,
@@ -23,6 +22,7 @@ import {
   BunBuild,
   NuxtBuild,
 } from "@prisma/compute-sdk";
+import { resolveSourceRoot } from "@prisma/compute-sdk/config";
 import { readBunPackageJson, resolveBunEntrypoint } from "./bun-project";
 import {
   hasAnyPackageDependency,
@@ -36,14 +36,15 @@ import {
   runResolvedBuildCommand,
 } from "./preview-build-settings";
 
-// biome-ignore lint/performance/noBarrelFile: Preview build settings are re-exported from this public app build module.
 export {
+  detectLegacyBuildSettings,
+  type LegacyBuildSettingsDetection,
   PRISMA_APP_CONFIG_FILENAME,
-  PRISMA_APP_CONFIG_SCHEMA_URL,
   type PreviewBuildSettings,
   type PreviewBuildSettingsBuildType,
   type PreviewBuildSettingsResolution,
-  resolveOrCreatePreviewBuildSettings,
+  resolveConfiguredPreviewBuildSettings,
+  resolveInferredPreviewBuildSettings,
   resolvePreviewBuildSettings,
 } from "./preview-build-settings";
 
@@ -422,7 +423,7 @@ class PreviewTanstackStartBuild implements BuildStrategy {
     if (!entryStat?.isFile()) {
       throw new Error(
         `TanStack Start build did not produce a Nitro node server entrypoint at ${joinPosix(settings.outputDirectory, entrypoint)}. ` +
-          `Ensure your vite.config includes the tanstackStart() and nitro() plugins with the default node preset, or update ${PRISMA_APP_CONFIG_FILENAME}.`,
+          `Ensure your vite.config includes the tanstackStart() and nitro() plugins with the default node preset, or set build.outputDirectory in prisma.compute.ts.`,
       );
     }
 
@@ -515,7 +516,7 @@ export async function stageNextjsStandaloneArtifact(options: {
     sourceRoot,
     signal: options.signal,
   });
-  await hoistPnpmDependencies(
+  await hoistIsolatedStoreDependencies(
     path.join(artifactRoot, "node_modules"),
     options.signal,
   );
@@ -661,20 +662,42 @@ function nextjsServerSubpath(entrypoint: string): string {
   return dir === "." ? "" : dir;
 }
 
-async function hoistPnpmDependencies(
+/**
+ * pnpm and bun (isolated linker) both keep packages in a virtual store with a
+ * shared symlink farm (`.pnpm/node_modules`, `.bun/node_modules`). Hoist the
+ * farm entries to the artifact's node_modules root so Node-style resolution
+ * works after symlinks are materialized.
+ */
+async function hoistIsolatedStoreDependencies(
   nodeModulesDir: string,
   signal?: AbortSignal,
 ): Promise<void> {
-  const pnpmNodeModulesDir = path.join(nodeModulesDir, ".pnpm", "node_modules");
-  if (!(await directoryExists(pnpmNodeModulesDir, signal))) {
+  await hoistStoreDependencies(
+    nodeModulesDir,
+    path.join(nodeModulesDir, ".pnpm", "node_modules"),
+    signal,
+  );
+  await hoistStoreDependencies(
+    nodeModulesDir,
+    path.join(nodeModulesDir, ".bun", "node_modules"),
+    signal,
+  );
+}
+
+async function hoistStoreDependencies(
+  nodeModulesDir: string,
+  storeNodeModulesDir: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (!(await directoryExists(storeNodeModulesDir, signal))) {
     return;
   }
 
   const entries = await unsupportedFilesystemBoundary(signal, () =>
-    readdir(pnpmNodeModulesDir, { withFileTypes: true }),
+    readdir(storeNodeModulesDir, { withFileTypes: true }),
   );
   for (const entry of entries) {
-    const sourcePath = path.join(pnpmNodeModulesDir, entry.name);
+    const sourcePath = path.join(storeNodeModulesDir, entry.name);
 
     if (entry.name.startsWith("@") && entry.isDirectory()) {
       const scopedEntries = await unsupportedFilesystemBoundary(signal, () =>
@@ -697,7 +720,7 @@ async function hoistPnpmDependencies(
           path.join(sourcePath, scopedEntry.name),
           scopedDestination,
           {
-            standaloneRoot: pnpmNodeModulesDir,
+            standaloneRoot: storeNodeModulesDir,
             appRoot: nodeModulesDir,
             sourceRoot: nodeModulesDir,
             signal,
@@ -713,7 +736,7 @@ async function hoistPnpmDependencies(
     }
 
     await copyPathMaterializingSymlinks(sourcePath, destinationPath, {
-      standaloneRoot: pnpmNodeModulesDir,
+      standaloneRoot: storeNodeModulesDir,
       appRoot: nodeModulesDir,
       sourceRoot: nodeModulesDir,
       signal,
@@ -748,54 +771,39 @@ export async function normalizeArtifactSymlinks(
         continue;
       }
 
-      const materialized = await materializeArtifactSymlink({
-        fullPath,
-        normalizedArtifactDir,
-        normalizedAppPath,
-        signal,
-      });
-      if (materialized === "directory") {
+      const target = await unsupportedFilesystemBoundary(signal, () =>
+        readlink(fullPath),
+      );
+      const resolvedTarget = path.resolve(path.dirname(fullPath), target);
+
+      if (isPathWithin(normalizedArtifactDir, resolvedTarget)) {
+        continue;
+      }
+
+      if (!isPathWithin(normalizedAppPath, resolvedTarget)) {
+        throw new Error(
+          `Build artifact symlink escapes the app directory: ${resolvedTarget}`,
+        );
+      }
+
+      const targetStat = await unsupportedFilesystemBoundary(signal, () =>
+        stat(resolvedTarget),
+      );
+      await unsupportedFilesystemBoundary(signal, () =>
+        rm(fullPath, { force: true, recursive: true }),
+      );
+      await unsupportedFilesystemBoundary(signal, () =>
+        cp(resolvedTarget, fullPath, {
+          recursive: targetStat.isDirectory(),
+          dereference: true,
+        }),
+      );
+
+      if (targetStat.isDirectory()) {
         await walkDirectory(fullPath);
       }
     }
   }
-}
-
-async function materializeArtifactSymlink(options: {
-  fullPath: string;
-  normalizedArtifactDir: string;
-  normalizedAppPath: string;
-  signal?: AbortSignal;
-}): Promise<"directory" | "file" | "internal"> {
-  const target = await unsupportedFilesystemBoundary(options.signal, () =>
-    readlink(options.fullPath),
-  );
-  const resolvedTarget = path.resolve(path.dirname(options.fullPath), target);
-
-  if (isPathWithin(options.normalizedArtifactDir, resolvedTarget)) {
-    return "internal";
-  }
-
-  if (!isPathWithin(options.normalizedAppPath, resolvedTarget)) {
-    throw new Error(
-      `Build artifact symlink escapes the app directory: ${resolvedTarget}`,
-    );
-  }
-
-  const targetStat = await unsupportedFilesystemBoundary(options.signal, () =>
-    stat(resolvedTarget),
-  );
-  await unsupportedFilesystemBoundary(options.signal, () =>
-    rm(options.fullPath, { force: true, recursive: true }),
-  );
-  await unsupportedFilesystemBoundary(options.signal, () =>
-    cp(resolvedTarget, options.fullPath, {
-      recursive: targetStat.isDirectory(),
-      dereference: true,
-    }),
-  );
-
-  return targetStat.isDirectory() ? "directory" : "file";
 }
 
 function isPathWithin(rootPath: string, candidatePath: string): boolean {
@@ -958,50 +966,6 @@ async function directoryExists(
       stat(targetPath),
     );
     return targetStat.isDirectory();
-  } catch (error) {
-    if (signal?.aborted) throw error;
-    return false;
-  }
-}
-
-async function resolveSourceRoot(
-  appRoot: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  let current = path.resolve(appRoot);
-
-  while (true) {
-    if (
-      (await pathExists(path.join(current, ".git"), signal)) ||
-      (await pathExists(path.join(current, "pnpm-workspace.yaml"), signal)) ||
-      (await pathExists(path.join(current, "bun.lock"), signal)) ||
-      (await pathExists(path.join(current, "bun.lockb"), signal)) ||
-      (await packageJsonDeclaresWorkspaces(current, signal))
-    ) {
-      return current;
-    }
-
-    const parent = path.dirname(current);
-    if (parent === current) {
-      return path.resolve(appRoot);
-    }
-
-    current = parent;
-  }
-}
-
-async function packageJsonDeclaresWorkspaces(
-  directory: string,
-  signal?: AbortSignal,
-): Promise<boolean> {
-  signal?.throwIfAborted();
-  try {
-    const content = await readFile(path.join(directory, "package.json"), {
-      encoding: "utf8",
-      signal,
-    });
-    const parsed = JSON.parse(content) as { workspaces?: unknown };
-    return Boolean(parsed.workspaces);
   } catch (error) {
     if (signal?.aborted) throw error;
     return false;

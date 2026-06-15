@@ -10,5 +10,4 @@ export default defineConfig({
   unbundle: true,
   fixedExtension: false,
   outDir: "dist",
-  dts: false,
 });

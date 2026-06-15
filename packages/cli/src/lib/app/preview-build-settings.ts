@@ -1,23 +1,23 @@
-// biome-ignore-all lint/performance/noAwaitInLoops: Config discovery probes ordered candidates sequentially.
 import { exec } from "node:child_process";
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-
+import {
+  type ConfigBackedBuildType,
+  sourceRootLineage,
+} from "@prisma/compute-sdk/config";
 import { type ASTNode, parseModule } from "magicast";
 
-import { CliError } from "../../shell/errors";
 import { type BunPackageJsonLike, readBunPackageJson } from "./bun-project";
 import type { ResolvedPreviewBuildType } from "./preview-build";
 
 type PackageManager = "bun" | "pnpm" | "yarn" | "npm";
 export type PreviewBuildSettingsBuildType = Extract<
   ResolvedPreviewBuildType,
-  "nextjs" | "tanstack-start" | "bun"
+  ConfigBackedBuildType
 >;
 
+/** Legacy build-settings file: no longer read or written, only detected for migration. */
 export const PRISMA_APP_CONFIG_FILENAME = "prisma.app.json";
-export const PRISMA_APP_CONFIG_SCHEMA_URL =
-  "https://pris.ly/schemas/prisma-app-config.v1.json";
 
 interface ResolvedBuildCommand {
   command: string | null;
@@ -37,87 +37,161 @@ export interface PreviewBuildSettings {
 }
 
 export interface PreviewBuildSettingsResolution {
-  status: "created" | "used";
-  configPath: string;
-  relativeConfigPath: typeof PRISMA_APP_CONFIG_FILENAME;
+  /** "config" when the compute config owns the settings, "inferred" otherwise. */
+  status: "config" | "inferred";
+  /** The compute config path when status is "config". */
+  configPath: string | null;
+  relativeConfigPath: string | null;
   settings: PreviewBuildSettings;
 }
 
-export async function resolveOrCreatePreviewBuildSettings(options: {
-  appPath: string;
-  buildType: PreviewBuildSettingsBuildType;
-  signal?: AbortSignal;
-}): Promise<PreviewBuildSettingsResolution> {
-  const configPath = path.join(options.appPath, PRISMA_APP_CONFIG_FILENAME);
-  const existing = await readPreviewBuildSettingsConfig(
-    configPath,
-    options.signal,
-  );
-  if (existing) {
-    return {
-      status: "used",
-      configPath,
-      relativeConfigPath: PRISMA_APP_CONFIG_FILENAME,
-      settings: {
-        buildCommand: existing.buildCommand,
-        buildCommandSource: null,
-        outputDirectory: existing.outputDirectory,
-        outputDirectorySource: null,
-      },
+export type LegacyBuildSettingsDetection =
+  | { kind: "absent" }
+  | { kind: "matching"; configPath: string }
+  | { kind: "invalid"; configPath: string }
+  | {
+      kind: "custom";
+      configPath: string;
+      buildCommand: string | null;
+      outputDirectory: string;
     };
-  }
 
-  const settings = await resolvePreviewBuildSettings(options);
-  const config = {
-    $schema: PRISMA_APP_CONFIG_SCHEMA_URL,
-    buildCommand: settings.buildCommand,
-    outputDirectory: settings.outputDirectory,
-  };
-
+/**
+ * Detects a leftover `prisma.app.json`. The file is no longer used: one that
+ * matches the effective settings is reported for deletion, one with custom
+ * values must be migrated to the compute config so builds never silently
+ * change.
+ */
+export async function detectLegacyBuildSettings(options: {
+  appPath: string;
+  effective: PreviewBuildSettings;
+  signal?: AbortSignal;
+}): Promise<LegacyBuildSettingsDetection> {
+  const configPath = path.join(options.appPath, PRISMA_APP_CONFIG_FILENAME);
+  let content: string;
   try {
-    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, {
+    options.signal?.throwIfAborted();
+    content = await readFile(configPath, {
       encoding: "utf8",
-      flag: "wx",
       signal: options.signal,
     });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-      const raced = await readPreviewBuildSettingsConfig(
-        configPath,
-        options.signal,
-      );
-      if (raced) {
-        return {
-          status: "used",
-          configPath,
-          relativeConfigPath: PRISMA_APP_CONFIG_FILENAME,
-          settings: {
-            buildCommand: raced.buildCommand,
-            buildCommandSource: null,
-            outputDirectory: raced.outputDirectory,
-            outputDirectorySource: null,
-          },
-        };
-      }
-    }
-
-    throw error;
+    if (options.signal?.aborted) throw error;
+    return { kind: "absent" };
   }
 
+  let legacy: { buildCommand: string | null; outputDirectory: string };
+  try {
+    const parsed = JSON.parse(content) as Record<string, unknown>;
+    const buildCommand =
+      parsed.buildCommand === null || typeof parsed.buildCommand === "string"
+        ? typeof parsed.buildCommand === "string"
+          ? parsed.buildCommand.trim() || null
+          : null
+        : undefined;
+    const outputDirectory =
+      typeof parsed.outputDirectory === "string"
+        ? normalizeRelativePath(parsed.outputDirectory)
+        : undefined;
+    if (buildCommand === undefined || !outputDirectory) {
+      return { kind: "invalid", configPath };
+    }
+    legacy = { buildCommand, outputDirectory };
+  } catch {
+    return { kind: "invalid", configPath };
+  }
+
+  const matches =
+    legacy.buildCommand === options.effective.buildCommand &&
+    legacy.outputDirectory === options.effective.outputDirectory;
+  return matches
+    ? { kind: "matching", configPath }
+    : { kind: "custom", configPath, ...legacy };
+}
+
+/** Resolves build settings purely from framework inference; nothing is read or written. */
+export async function resolveInferredPreviewBuildSettings(options: {
+  appPath: string;
+  buildType: ResolvedPreviewBuildType;
+  signal?: AbortSignal;
+}): Promise<PreviewBuildSettingsResolution> {
   return {
-    status: "created",
-    configPath,
-    relativeConfigPath: PRISMA_APP_CONFIG_FILENAME,
-    settings,
+    status: "inferred",
+    configPath: null,
+    relativeConfigPath: null,
+    settings: await resolvePreviewBuildSettings(options),
+  };
+}
+
+/**
+ * Resolves build settings when the compute config owns them: configured
+ * fields win, omitted fields fall back to framework defaults.
+ */
+export async function resolveConfiguredPreviewBuildSettings(options: {
+  appPath: string;
+  buildType: PreviewBuildSettingsBuildType;
+  configured: {
+    command: string | null | undefined;
+    outputDirectory: string | undefined;
+  };
+  /** Absolute path of the compute config file owning these settings. */
+  configPath: string;
+  signal?: AbortSignal;
+}): Promise<PreviewBuildSettingsResolution> {
+  const configFilename = path.basename(options.configPath);
+  const source = `set by ${configFilename}`;
+  const needsFallback =
+    options.configured.command === undefined ||
+    options.configured.outputDirectory === undefined;
+  const fallback = needsFallback
+    ? await resolvePreviewBuildSettings(options)
+    : null;
+
+  return {
+    status: "config",
+    configPath: options.configPath,
+    relativeConfigPath: configFilename,
+    settings: {
+      buildCommand:
+        options.configured.command !== undefined
+          ? options.configured.command
+          : fallback!.buildCommand,
+      buildCommandSource:
+        options.configured.command !== undefined
+          ? source
+          : fallback!.buildCommandSource,
+      outputDirectory:
+        options.configured.outputDirectory ?? fallback!.outputDirectory,
+      outputDirectorySource:
+        options.configured.outputDirectory !== undefined
+          ? source
+          : fallback!.outputDirectorySource,
+    },
   };
 }
 
 export async function resolvePreviewBuildSettings(options: {
   appPath: string;
-  buildType: PreviewBuildSettingsBuildType;
+  buildType: ResolvedPreviewBuildType;
   signal?: AbortSignal;
 }): Promise<PreviewBuildSettings> {
   switch (options.buildType) {
+    // The nuxt and astro strategies invoke the framework CLI and stage fixed
+    // output themselves; these settings only describe that for display.
+    case "nuxt":
+      return {
+        buildCommand: "nuxt build",
+        buildCommandSource: "Nuxt default",
+        outputDirectory: ".output",
+        outputDirectorySource: "Nuxt output",
+      };
+    case "astro":
+      return {
+        buildCommand: "astro build",
+        buildCommandSource: "Astro default",
+        outputDirectory: "dist",
+        outputDirectorySource: "Astro output",
+      };
     case "nextjs": {
       const packageJson = await readBunPackageJson(
         options.appPath,
@@ -187,128 +261,6 @@ export async function resolvePreviewBuildSettings(options: {
       };
     }
   }
-}
-
-interface PreviewBuildSettingsConfig {
-  buildCommand: string | null;
-  outputDirectory: string;
-}
-
-async function readPreviewBuildSettingsConfig(
-  configPath: string,
-  signal?: AbortSignal,
-): Promise<PreviewBuildSettingsConfig | null> {
-  let content: string;
-  try {
-    content = await readFile(configPath, { encoding: "utf8", signal });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return null;
-    }
-
-    throw error;
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content) as unknown;
-  } catch (error) {
-    throw invalidPrismaAppConfigError(
-      configPath,
-      `The file is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw invalidPrismaAppConfigError(
-      configPath,
-      "The file must contain a JSON object.",
-    );
-  }
-
-  const raw = parsed as Record<string, unknown>;
-  if (
-    "$schema" in raw &&
-    raw.$schema !== undefined &&
-    typeof raw.$schema !== "string"
-  ) {
-    throw invalidPrismaAppConfigError(
-      configPath,
-      "The $schema field must be a string when present.",
-    );
-  }
-
-  if (raw.buildCommand !== null && typeof raw.buildCommand !== "string") {
-    throw invalidPrismaAppConfigError(
-      configPath,
-      "The buildCommand field must be a string or null.",
-    );
-  }
-
-  let buildCommand: string | null = null;
-  if (typeof raw.buildCommand === "string") {
-    buildCommand = raw.buildCommand.trim();
-    if (buildCommand.length === 0) {
-      throw invalidPrismaAppConfigError(
-        configPath,
-        "The buildCommand field must not be an empty string. Use null to skip the build step.",
-      );
-    }
-  }
-
-  const outputDirectory = normalizeConfigOutputDirectory(
-    configPath,
-    raw.outputDirectory,
-  );
-
-  return {
-    buildCommand,
-    outputDirectory,
-  };
-}
-
-function normalizeConfigOutputDirectory(
-  configPath: string,
-  value: unknown,
-): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw invalidPrismaAppConfigError(
-      configPath,
-      "The outputDirectory field must be a non-empty string.",
-    );
-  }
-
-  const normalized = normalizeRelativePath(value);
-  if (!normalized) {
-    throw invalidPrismaAppConfigError(
-      configPath,
-      "The outputDirectory field must be a relative path inside the app directory.",
-    );
-  }
-
-  return normalized;
-}
-
-function invalidPrismaAppConfigError(
-  configPath: string,
-  why: string,
-): CliError {
-  return new CliError({
-    code: "APP_CONFIG_INVALID",
-    domain: "app",
-    summary: `Invalid ${PRISMA_APP_CONFIG_FILENAME}`,
-    why,
-    fix:
-      `Edit ${PRISMA_APP_CONFIG_FILENAME} so buildCommand is a string or null ` +
-      "and outputDirectory is a relative path inside the app root. " +
-      "Delete the file and rerun prisma-cli app deploy to regenerate defaults.",
-    where: configPath,
-    meta: {
-      configPath,
-    },
-    exitCode: 2,
-    nextSteps: ["prisma-cli app deploy"],
-  });
 }
 
 export async function hasRootFile(
@@ -413,30 +365,40 @@ async function resolvePackageManager(
   packageJson: BunPackageJsonLike | null,
   signal?: AbortSignal,
 ): Promise<PackageManager | undefined> {
-  const fromPackageManager = packageManagerFromPackageJson(
-    packageJson?.packageManager,
-  );
-  if (fromPackageManager) {
-    return fromPackageManager;
-  }
+  // Workspace repos keep the lockfile and packageManager field at the
+  // workspace root, so check every level from the app up to the source root.
+  // The nearest level wins.
+  for (const directory of await sourceRootLineage(appPath, signal)) {
+    const levelPackageJson =
+      directory === path.resolve(appPath)
+        ? packageJson
+        : await readBunPackageJson(directory, signal);
 
-  if (
-    (await pathExists(path.join(appPath, "bun.lock"), signal)) ||
-    (await pathExists(path.join(appPath, "bun.lockb"), signal))
-  ) {
-    return "bun";
-  }
+    const fromPackageManager = packageManagerFromPackageJson(
+      levelPackageJson?.packageManager,
+    );
+    if (fromPackageManager) {
+      return fromPackageManager;
+    }
 
-  if (await pathExists(path.join(appPath, "pnpm-lock.yaml"), signal)) {
-    return "pnpm";
-  }
+    if (
+      (await pathExists(path.join(directory, "bun.lock"), signal)) ||
+      (await pathExists(path.join(directory, "bun.lockb"), signal))
+    ) {
+      return "bun";
+    }
 
-  if (await pathExists(path.join(appPath, "yarn.lock"), signal)) {
-    return "yarn";
-  }
+    if (await pathExists(path.join(directory, "pnpm-lock.yaml"), signal)) {
+      return "pnpm";
+    }
 
-  if (await pathExists(path.join(appPath, "package-lock.json"), signal)) {
-    return "npm";
+    if (await pathExists(path.join(directory, "yarn.lock"), signal)) {
+      return "yarn";
+    }
+
+    if (await pathExists(path.join(directory, "package-lock.json"), signal)) {
+      return "npm";
+    }
   }
 }
 
@@ -461,12 +423,24 @@ export async function runResolvedBuildCommand(
     return;
   }
 
-  await execBuildCommand(settings.buildCommand, appPath, failurePrefix, signal);
+  // Workspace repos may hoist binaries like `next` to the workspace root, so
+  // expose every node_modules/.bin between the app and its source root.
+  const binDirs = (await sourceRootLineage(appPath, signal)).map((directory) =>
+    path.join(directory, "node_modules", ".bin"),
+  );
+  await execBuildCommand(
+    settings.buildCommand,
+    appPath,
+    binDirs,
+    failurePrefix,
+    signal,
+  );
 }
 
 function execBuildCommand(
   command: string,
   cwd: string,
+  binDirs: string[],
   failurePrefix: string,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -477,7 +451,7 @@ function execBuildCommand(
         cwd,
         env: {
           ...process.env,
-          PATH: [path.join(cwd, "node_modules", ".bin"), process.env.PATH]
+          PATH: [...binDirs, process.env.PATH]
             .filter(Boolean)
             .join(path.delimiter),
         },
@@ -757,9 +731,14 @@ function propertyKeyName(value: unknown): string | undefined {
   return undefined;
 }
 
-function normalizeRelativePath(value: string): string | undefined {
+export function normalizeRelativePath(value: string): string | undefined {
   const raw = value.trim().replace(/\\/g, "/");
   if (raw.length === 0 || raw.split("/").includes("..")) {
+    return undefined;
+  }
+  // Windows drive-relative paths ("C:dir") escape the base directory but
+  // are not absolute under either path.win32 or path.posix.
+  if (/^[A-Za-z]:/.test(raw)) {
     return undefined;
   }
 

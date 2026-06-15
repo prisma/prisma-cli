@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/useTopLevelRegex: Existing project-name validation regexes are kept inline for readability.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -148,6 +147,8 @@ export interface ResolveProjectOptions {
   explicitProject?: string;
   envProjectId?: string;
   commandName?: string;
+  /** Directory holding `.prisma/local.json`. Defaults to the invocation directory. */
+  projectDir?: string;
   listProjects(): Promise<ProjectCandidate[]>;
 }
 
@@ -690,7 +691,7 @@ async function readImplicitLocalPin(
   }
 
   const localPinResult = await readLocalResolutionPin(
-    options.context.runtime.cwd,
+    options.projectDir ?? options.context.runtime.cwd,
     options.context.runtime.signal,
   );
   if (localPinResult.isErr()) {

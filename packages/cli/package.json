@@ -6,6 +6,9 @@
   "bin": {
     "prisma-cli": "./dist/cli.js"
   },
+  "exports": {
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist",
     "README.md",
@@ -41,11 +44,10 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.5.0",
-    "@prisma/compute-sdk": "^0.22.0",
+    "@prisma/compute-sdk": "^0.23.0",
     "@prisma/credentials-store": "^7.8.0",
     "@prisma/management-api-sdk": "^1.37.0",
     "better-result": "^2.9.2",
-    "c12": "4.0.0-beta.5",
     "colorette": "^2.0.20",
     "commander": "^14.0.3",
     "dotenv": "^17.4.2",

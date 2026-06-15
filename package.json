@@ -12,7 +12,7 @@
     "lint": "biome check .",
     "lint:fix": "biome check . --write",
     "lint:skills": "node scripts/validate-skills.mjs",
-    "prepare": "skills add ./skills --skill '*' --agent universal claude-code -y",
+    "prepare": "node scripts/prepare-skills.mjs",
     "smoke:cli-nextjs": "node scripts/smoke-cli-nextjs-artifact.mjs",
     "test:skills": "node --test scripts/validate-skills.test.mjs",
     "test": "pnpm --filter @prisma/cli test",

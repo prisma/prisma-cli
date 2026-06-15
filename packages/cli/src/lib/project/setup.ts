@@ -1,9 +1,10 @@
-// biome-ignore-all lint/performance/useTopLevelRegex: Existing setup formatting regexes are kept inline for readability.
+import path from "node:path";
 import { matchError, Result } from "better-result";
 import { CliError, usageError } from "../../shell/errors";
 import type { CommandContext } from "../../shell/runtime";
 import type { AuthWorkspace } from "../../types/auth";
 import type { ProjectSetupResult, ProjectSummary } from "../../types/project";
+import { shortenHomePath } from "../fs/home-path";
 import {
   ensureLocalResolutionPinGitignore,
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
@@ -17,7 +18,6 @@ import {
   projectNotFoundError,
 } from "./resolution";
 
-// biome-ignore lint/performance/noBarrelFile: Project setup exposes command formatting for related project flows.
 export { formatCommandArgument } from "../../shell/command-arguments";
 
 export type ProjectDirectoryBindingError =
@@ -47,9 +47,8 @@ export function resolveProjectForSetup(
   const matches = projects.filter(
     (project) => project.id === projectRef || project.name === projectRef,
   );
-  const match = matches[0];
-  if (matches.length === 1 && match) {
-    return match;
+  if (matches.length === 1) {
+    return matches[0]!;
   }
   if (matches.length > 1) {
     throw projectAmbiguousError(projectRef, matches);
@@ -62,11 +61,12 @@ export async function bindProjectToDirectory(
   workspace: AuthWorkspace,
   project: ProjectSummary,
   action: ProjectSetupResult["action"],
+  directory: string = context.runtime.cwd,
 ): Promise<Result<ProjectSetupResult, ProjectDirectoryBindingError>> {
   return Result.gen(async function* () {
     yield* Result.await(
       writeLocalResolutionPin(
-        context.runtime.cwd,
+        directory,
         {
           workspaceId: workspace.id,
           projectId: project.id,
@@ -75,16 +75,13 @@ export async function bindProjectToDirectory(
       ),
     );
     yield* Result.await(
-      ensureLocalResolutionPinGitignore(
-        context.runtime.cwd,
-        context.runtime.signal,
-      ),
+      ensureLocalResolutionPinGitignore(directory, context.runtime.signal),
     );
 
     return Result.ok({
       workspace,
       project,
-      directory: formatSetupDirectory(context.runtime.cwd),
+      directory: formatSetupDirectory(directory, context),
       localPin: {
         path: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
         written: true,
@@ -204,8 +201,17 @@ export function projectCreateFailedError(
   });
 }
 
-function formatSetupDirectory(cwd: string): string {
-  const basename = cwd.split(/[\\/]/).filter(Boolean).pop();
+function formatSetupDirectory(
+  directory: string,
+  context: CommandContext,
+): string {
+  // Binding can target an ancestor compute-config directory; a bare
+  // basename would misread as a subdirectory of the invocation directory.
+  if (path.resolve(directory) !== path.resolve(context.runtime.cwd)) {
+    return shortenHomePath(directory, context.runtime.env);
+  }
+
+  const basename = directory.split(/[\\/]/).filter(Boolean).pop();
   return basename ? `./${basename}` : ".";
 }
 

@@ -1,5 +1,7 @@
 import path from "node:path";
 
+import { shortenHomePath } from "../lib/fs/home-path";
+
 import type { CommandDiagnostics } from "../types/diagnostics";
 import type { CommandContext } from "./runtime";
 import { renderVerboseBlock, type VerboseRow } from "./ui";
@@ -54,18 +56,7 @@ export function renderCommandDiagnostics(
 }
 
 export function formatLocalPath(value: string, env: NodeJS.ProcessEnv): string {
-  const resolved = path.resolve(value);
-  const home = env.HOME ? path.resolve(env.HOME) : null;
-
-  if (
-    home &&
-    (resolved === home || resolved.startsWith(`${home}${path.sep}`))
-  ) {
-    const relative = path.relative(home, resolved);
-    return relative ? `~/${relative}` : "~";
-  }
-
-  return resolved;
+  return shortenHomePath(value, env);
 }
 
 function formatDirtyState(dirty: boolean | null): string {

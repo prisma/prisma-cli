@@ -5,12 +5,11 @@ import { promisify } from "node:util";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  resolveDevVersion,
-  resolveNextBetaVersion,
-  resolvePrVersion,
-} from "../../../scripts/resolve-package-version.mjs";
-
+// The script is exercised as a subprocess, exactly as CI invokes it
+// (`node scripts/resolve-package-version.mjs ...`). Importing it directly
+// breaks on Windows: vitest hands the out-of-root shebang `.mjs` to native
+// ESM, which rejects the `#!` line with a SyntaxError. Base version 3.0.0 is
+// resolved from `packages/cli`, matching the package's current major line.
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -18,58 +17,76 @@ const repoRoot = path.resolve(
 );
 const scriptPath = path.join(repoRoot, "scripts/resolve-package-version.mjs");
 
-describe("resolve package version", () => {
-  it("computes the first beta when npm latest is missing or still legacy 2.x", () => {
-    expect(resolveNextBetaVersion({ baseVersion: "3.0.0", latest: "" })).toBe(
-      "3.0.0-beta.0",
-    );
-    expect(
-      resolveNextBetaVersion({ baseVersion: "3.0.0", latest: "2.20.1" }),
-    ).toBe("3.0.0-beta.0");
-  });
-
-  it("increments the beta number from the current npm latest", () => {
-    expect(
-      resolveNextBetaVersion({ baseVersion: "3.0.0", latest: "3.0.0-beta.0" }),
-    ).toBe("3.0.0-beta.1");
-  });
-
-  it("fails when npm latest is outside the supported beta line", () => {
-    expect(() =>
-      resolveNextBetaVersion({ baseVersion: "3.0.0", latest: "3.0.0" }),
-    ).toThrow("Cannot compute the next beta from npm latest (3.0.0).");
-  });
-
-  it("computes a unique dev build version", () => {
-    expect(
-      resolveDevVersion({
-        baseVersion: "3.0.0",
-        runNumber: "123",
-        runAttempt: "2",
-      }),
-    ).toBe("3.0.0-dev.123.2");
-  });
-
-  it("computes an exact PR preview version", () => {
-    expect(
-      resolvePrVersion({
-        baseVersion: "3.0.0",
-        prNumber: "43",
-        sha: "f1110dd704a9382c429b",
-      }),
-    ).toBe("3.0.0-pr.43.shaf1110dd704a9");
-  });
-
-  it("prints GitHub output lines for the next beta command", async () => {
-    const { stdout } = await execFileAsync(process.execPath, [
+async function runScript(
+  args: string[],
+): Promise<{ stdout: string; stderr: string; failed: boolean }> {
+  try {
+    // The command must stay first; option flags follow in any order.
+    const { stdout, stderr } = await execFileAsync(process.execPath, [
       scriptPath,
-      "next-beta",
+      ...args,
       "--package-dir",
       "packages/cli",
-      "--latest",
-      "3.0.0-beta.0",
     ]);
+    return { stdout, stderr, failed: false };
+  } catch (error) {
+    const failure = error as { stdout?: string; stderr?: string };
+    return {
+      stdout: failure.stdout ?? "",
+      stderr: failure.stderr ?? "",
+      failed: true,
+    };
+  }
+}
 
-    expect(stdout).toBe("latest=3.0.0-beta.0\nversion=3.0.0-beta.1\n");
+describe("resolve package version", () => {
+  it("computes the first beta when npm latest is missing or still legacy 2.x", async () => {
+    await expect(
+      runScript(["next-beta", "--latest", ""]),
+    ).resolves.toMatchObject({
+      stdout: "latest=\nversion=3.0.0-beta.0\n",
+      failed: false,
+    });
+    await expect(
+      runScript(["next-beta", "--latest", "2.20.1"]),
+    ).resolves.toMatchObject({
+      stdout: "latest=2.20.1\nversion=3.0.0-beta.0\n",
+      failed: false,
+    });
+  });
+
+  it("increments the beta number from the current npm latest", async () => {
+    await expect(
+      runScript(["next-beta", "--latest", "3.0.0-beta.0"]),
+    ).resolves.toMatchObject({
+      stdout: "latest=3.0.0-beta.0\nversion=3.0.0-beta.1\n",
+      failed: false,
+    });
+  });
+
+  it("fails when npm latest is outside the supported beta line", async () => {
+    const result = await runScript(["next-beta", "--latest", "3.0.0"]);
+    expect(result.failed).toBe(true);
+    expect(result.stderr).toContain(
+      "Cannot compute the next beta from npm latest (3.0.0).",
+    );
+  });
+
+  it("computes a unique dev build version", async () => {
+    await expect(
+      runScript(["dev", "--run-number", "123", "--run-attempt", "2"]),
+    ).resolves.toMatchObject({
+      stdout: "version=3.0.0-dev.123.2\n",
+      failed: false,
+    });
+  });
+
+  it("computes an exact PR preview version", async () => {
+    await expect(
+      runScript(["pr", "--pr-number", "43", "--sha", "f1110dd704a9382c429b"]),
+    ).resolves.toMatchObject({
+      stdout: "version=3.0.0-pr.43.shaf1110dd704a9\n",
+      failed: false,
+    });
   });
 });

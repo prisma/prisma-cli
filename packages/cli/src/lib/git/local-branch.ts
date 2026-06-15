@@ -1,16 +1,38 @@
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 
+/**
+ * Resolves the checked-out branch the way git does: the nearest `.git`
+ * (directory or worktree file) from `cwd` upward owns the answer, so
+ * monorepo commands run from inside a package see the repository branch.
+ * Returns null for detached HEAD or when no repository contains `cwd`.
+ */
 export async function readLocalGitBranch(
   cwd: string,
   signal: AbortSignal,
 ): Promise<string | null> {
-  const gitPath = path.join(cwd, ".git");
-  const headPath = await resolveGitHeadPath(gitPath, signal);
-  if (!headPath) {
-    return null;
-  }
+  for (let directory = path.resolve(cwd); ; ) {
+    const headPath = await resolveGitHeadPath(
+      path.join(directory, ".git"),
+      signal,
+    );
+    if (headPath) {
+      // This repository owns cwd; never walk past it to an outer repository.
+      return readBranchFromHead(headPath, signal);
+    }
 
+    const parent = path.dirname(directory);
+    if (parent === directory) {
+      return null;
+    }
+    directory = parent;
+  }
+}
+
+async function readBranchFromHead(
+  headPath: string,
+  signal: AbortSignal,
+): Promise<string | null> {
   try {
     const head = (
       await readFile(headPath, { encoding: "utf8", signal })
@@ -21,7 +43,6 @@ export async function readLocalGitBranch(
     }
   } catch (error) {
     if (signal.aborted) throw error;
-    return null;
   }
 
   return null;

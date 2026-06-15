@@ -1,9 +1,9 @@
-// biome-ignore-all lint/performance/noAwaitInLoops: Test fixture file writes are ordered for deterministic setup.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { asSingleDeployResult } from "./helpers/deploy-result";
 import {
   createProjectClient,
   createResolveBranch,
@@ -176,6 +176,292 @@ async function writeLocalPin(
 }
 
 describe("app controller", () => {
+  it("deploy with a multi-app config and no target deploys every target in order", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([]);
+    const deployApp = vi
+      .fn()
+      .mockImplementation((options: { appName?: string }) =>
+        Promise.resolve({
+          projectId: "proj_123",
+          app: {
+            id: `app_${options.appName}`,
+            name: options.appName,
+            region: "eu-west-3",
+            liveDeploymentId: `dep_${options.appName}`,
+          },
+          deployment: {
+            id: `dep_${options.appName}`,
+            status: "running",
+            url: `https://${options.appName}.prisma.app`,
+          },
+        }),
+      );
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, ".git"), { recursive: true });
+    await mkdir(path.join(cwd, "apps", "api"), { recursive: true });
+    await mkdir(path.join(cwd, "apps", "web"), { recursive: true });
+    await writeFile(
+      path.join(cwd, "prisma.compute.ts"),
+      [
+        "export default {",
+        "  apps: {",
+        '    api: { root: "apps/api", framework: "hono", entry: "src/index.ts" },',
+        '    web: { root: "apps/web", framework: "bun", entry: "server.ts" },',
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppDeploy(context, undefined, {
+      projectRef: "proj_123",
+    });
+
+    expect(deployApp).toHaveBeenCalledTimes(2);
+    expect(deployApp.mock.calls[0]?.[0]).toMatchObject({ appName: "api" });
+    expect(deployApp.mock.calls[1]?.[0]).toMatchObject({ appName: "web" });
+    expect(result.result).toMatchObject({
+      deployments: [
+        {
+          target: "api",
+          result: { deployment: { url: "https://api.prisma.app" } },
+        },
+        {
+          target: "web",
+          result: { deployment: { url: "https://web.prisma.app" } },
+        },
+      ],
+    });
+  });
+
+  it("deploy-all stops at the first failing target and reports the rest", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([]);
+    const deployApp = vi.fn().mockRejectedValue(new Error("upload exploded"));
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, ".git"), { recursive: true });
+    await mkdir(path.join(cwd, "apps", "api"), { recursive: true });
+    await mkdir(path.join(cwd, "apps", "web"), { recursive: true });
+    await writeFile(
+      path.join(cwd, "prisma.compute.ts"),
+      [
+        "export default {",
+        "  apps: {",
+        '    api: { root: "apps/api", framework: "hono", entry: "src/index.ts" },',
+        '    web: { root: "apps/web", framework: "bun", entry: "server.ts" },',
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(
+      runAppDeploy(context, undefined, { projectRef: "proj_123" }),
+    ).rejects.toMatchObject({
+      meta: expect.objectContaining({
+        deployAll: {
+          failedTarget: "api",
+          completed: [],
+          notAttempted: ["web"],
+        },
+      }),
+    });
+    expect(deployApp).toHaveBeenCalledTimes(1);
+  });
+
+  it("deploy-all rejects per-app flags", async () => {
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, ".git"), { recursive: true });
+    await writeFile(
+      path.join(cwd, "prisma.compute.ts"),
+      [
+        "export default {",
+        "  apps: {",
+        '    api: { root: "apps/api" },',
+        '    web: { root: "apps/web" },',
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(
+      runAppDeploy(context, undefined, { framework: "hono" }),
+    ).rejects.toMatchObject({
+      code: "USAGE_ERROR",
+      summary: expect.stringContaining("--framework"),
+    });
+  });
+
+  it("show run from inside a target root uses the root project pin and the config app name", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_api",
+        name: "api",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_api",
+        liveUrl: null,
+      },
+      {
+        id: "app_web",
+        name: "web",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_web",
+        liveUrl: null,
+      },
+    ]);
+    const listDeployments = vi.fn().mockResolvedValue({
+      app: {
+        id: "app_api",
+        name: "api",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_api",
+        liveUrl: "https://api.prisma.app",
+      },
+      deployments: [
+        {
+          id: "dep_api",
+          status: "running",
+          url: "https://api.prisma.app",
+          createdAt: "2026-06-10T00:00:00.000Z",
+          live: true,
+        },
+      ],
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          listDeployments,
+          deployApp: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppShow } = await import("../src/controllers/app");
+    const repoDir = await createTempCwd();
+    const appCwd = path.join(repoDir, "apps", "api");
+    await mkdir(path.join(repoDir, ".git"), { recursive: true });
+    await mkdir(path.join(repoDir, ".prisma"), { recursive: true });
+    await mkdir(appCwd, { recursive: true });
+    await writeFile(
+      path.join(repoDir, "prisma.compute.ts"),
+      [
+        "export default {",
+        "  apps: {",
+        '    api: { root: "apps/api", framework: "hono" },',
+        '    web: { root: "apps/web", framework: "nextjs" },',
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await writeFile(
+      path.join(repoDir, ".prisma", "local.json"),
+      `${JSON.stringify({ workspaceId: "ws_123", projectId: "proj_123" })}\n`,
+      "utf8",
+    );
+    const { context } = await createTestCommandContext({
+      cwd: appCwd,
+      stateDir: path.join(repoDir, ".state"),
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppShow(context, undefined, undefined, undefined);
+
+    expect(listDeployments).toHaveBeenCalledWith("app_api", expect.anything());
+    expect(result.result.app).toEqual({
+      id: "app_api",
+      name: "api",
+    });
+  });
+
   it("deploy selects the correct existing app when --app is provided", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
@@ -339,7 +625,7 @@ describe("app controller", () => {
       framework: "hono",
     });
 
-    expect(result.result.branch).toEqual({
+    expect(asSingleDeployResult(result).result.branch).toEqual({
       id: "branch_production",
       name: "production",
       kind: "preview",
@@ -1379,8 +1665,8 @@ describe("app controller", () => {
       },
       deploySettings: {
         config: {
-          path: "prisma.app.json",
-          status: "created",
+          path: null,
+          status: "inferred",
         },
         buildCommand: {
           value: "next build",
@@ -1401,15 +1687,13 @@ describe("app controller", () => {
     );
     expect(stderr.buffer).toContain("Saved .prisma/local.json");
     expect(stderr.buffer).toContain("Deploying to my-app / feat-j1 / my-app");
-    expect(stderr.buffer).toContain("Created prisma.app.json");
+    expect(stderr.buffer).toContain("Build settings");
     expect(stderr.buffer).toContain("Build Command");
     expect(stderr.buffer).toContain("next build");
     expect(stderr.buffer).toContain("Output Directory");
     expect(stderr.buffer).toContain(".next/standalone");
-    await expect(readPrismaAppConfig(cwd)).resolves.toEqual({
-      $schema: "https://pris.ly/schemas/prisma-app-config.v1.json",
-      buildCommand: "next build",
-      outputDirectory: ".next/standalone",
+    await expect(readPrismaAppConfig(cwd)).rejects.toMatchObject({
+      code: "ENOENT",
     });
     await expect(readLocalPin(cwd)).resolves.toEqual({
       workspaceId: "ws_123",
@@ -1475,7 +1759,82 @@ describe("app controller", () => {
     });
   });
 
-  it("uses existing prisma.app.json deploy settings", async () => {
+  it("fails with migration guidance for a customized prisma.app.json", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: null,
+        liveUrl: null,
+      },
+    ]);
+    const deployApp = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/preview-provider", () => ({
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writePackageJson(cwd, {
+      name: "hello-world",
+      dependencies: {
+        next: "15.0.0",
+      },
+    });
+    await writeFile(
+      path.join(cwd, "prisma.app.json"),
+      `${JSON.stringify(
+        {
+          buildCommand: "bun run custom-build",
+          outputDirectory: "dist",
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(
+      runAppDeploy(context, "hello-world", {
+        projectRef: "proj_123",
+        framework: "nextjs",
+      }),
+    ).rejects.toMatchObject({
+      code: "BUILD_SETTINGS_MIGRATION_REQUIRED",
+      fix: expect.stringContaining(
+        'command: "bun run custom-build",   outputDirectory: "dist",',
+      ),
+    });
+    expect(deployApp).not.toHaveBeenCalled();
+  });
+
+  it("warns about and ignores a matching prisma.app.json", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
@@ -1506,14 +1865,16 @@ describe("app controller", () => {
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() => ({
-        resolveBranch: createResolveBranch(),
-        listEnvironmentVariables: vi.fn().mockResolvedValue([]),
-        listApps,
-        deployApp,
-        listDeployments: vi.fn(),
-        showDeployment: vi.fn(),
-      })),
+      createPreviewAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listEnvironmentVariables: vi.fn().mockResolvedValue([]),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
     }));
 
     const { createTempCwd, createTestCommandContext } = await import(
@@ -1531,8 +1892,7 @@ describe("app controller", () => {
       path.join(cwd, "prisma.app.json"),
       `${JSON.stringify(
         {
-          $schema: "https://pris.ly/schemas/prisma-app-config.v1.json",
-          buildCommand: "bun run build",
+          buildCommand: "next build",
           outputDirectory: ".next/standalone",
         },
         null,
@@ -1540,10 +1900,9 @@ describe("app controller", () => {
       )}\n`,
       "utf8",
     );
-    const stateDir = path.join(cwd, ".state");
-    const { context, stderr } = await createTestCommandContext({
+    const { context } = await createTestCommandContext({
       cwd,
-      stateDir,
+      stateDir: path.join(cwd, ".state"),
       isTTY: false,
       env: {
         ...process.env,
@@ -1556,36 +1915,13 @@ describe("app controller", () => {
       framework: "nextjs",
     });
 
-    expect(deployApp).toHaveBeenCalledWith(
-      expect.objectContaining({
-        buildType: "nextjs",
-        buildSettings: {
-          buildCommand: "bun run build",
-          buildCommandSource: null,
-          outputDirectory: ".next/standalone",
-          outputDirectorySource: null,
-        },
-      }),
+    expect(result.warnings.join(" ")).toContain(
+      "prisma.app.json is no longer used",
     );
-    expect(result.result.deploySettings).toMatchObject({
-      config: {
-        path: "prisma.app.json",
-        status: "used",
-      },
-      buildCommand: {
-        value: "bun run build",
-        source: null,
-      },
-      outputDirectory: {
-        value: ".next/standalone",
-        source: null,
-      },
+    expect(asSingleDeployResult(result).result.deploySettings.config).toEqual({
+      path: null,
+      status: "inferred",
     });
-    expect(stderr.buffer).toContain("Using prisma.app.json");
-    expect(stderr.buffer).toContain("Build Command");
-    expect(stderr.buffer).toContain("bun run build");
-    expect(stderr.buffer).toContain("Output Directory");
-    expect(stderr.buffer).toContain(".next/standalone");
   });
 
   it("writes the local binding before build failures and renders build-failure copy", async () => {
@@ -2124,9 +2460,11 @@ describe("app controller", () => {
         appName: path.basename(cwd),
       }),
     );
-    expect(result.result.project.id).toBe("proj_123");
-    expect(result.result.resolution.projectSource).toBe("env");
-    expect(result.result.localPin).toBeUndefined();
+    expect(asSingleDeployResult(result).result.project.id).toBe("proj_123");
+    expect(asSingleDeployResult(result).result.resolution.projectSource).toBe(
+      "env",
+    );
+    expect(asSingleDeployResult(result).result.localPin).toBeUndefined();
     await expect(readLocalPin(cwd)).resolves.toEqual({
       workspaceId: "ws_123",
       projectId: "proj_stale",
@@ -2338,8 +2676,10 @@ describe("app controller", () => {
     });
 
     expect(createProject).not.toHaveBeenCalled();
-    expect(result.result.resolution.projectSource).toBe("prompt");
-    expect(result.result.localPin).toEqual({
+    expect(asSingleDeployResult(result).result.resolution.projectSource).toBe(
+      "prompt",
+    );
+    expect(asSingleDeployResult(result).result.localPin).toEqual({
       path: ".prisma/local.json",
       written: true,
     });
@@ -2902,7 +3242,7 @@ describe("app controller", () => {
         interaction: undefined,
       }),
     );
-    expect(result.result.app).toEqual({
+    expect(asSingleDeployResult(result).result.app).toEqual({
       id: "app_new",
       name: path.basename(cwd),
     });
@@ -3225,7 +3565,7 @@ describe("app controller", () => {
       createProjectName: "next-smoke",
       framework: "hono",
     });
-    expect(firstResult.result.localPin).toEqual({
+    expect(asSingleDeployResult(firstResult).result.localPin).toEqual({
       path: ".prisma/local.json",
       written: true,
     });
@@ -3281,7 +3621,7 @@ describe("app controller", () => {
     });
 
     expect(createProject).toHaveBeenCalledTimes(1);
-    expect(secondResult.result.localPin).toBeUndefined();
+    expect(asSingleDeployResult(secondResult).result.localPin).toBeUndefined();
     expect(stderr.buffer).toContain(`Deploying ./${path.basename(cwd)}`);
     expect(stderr.buffer).not.toContain("Set up");
     await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(

@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noAwaitInLoops: Table-driven test cases create isolated temp directories sequentially.
 import {
   access,
   lstat,
@@ -21,11 +20,10 @@ afterEach(() => {
 });
 
 describe("preview build strategy", () => {
-  it("creates prisma.app.json with inferred Next.js settings", async () => {
-    const {
-      PRISMA_APP_CONFIG_SCHEMA_URL,
-      resolveOrCreatePreviewBuildSettings,
-    } = await import("../src/lib/app/preview-build");
+  it("resolves inferred Next.js settings without writing any file", async () => {
+    const { resolveInferredPreviewBuildSettings } = await import(
+      "../src/lib/app/preview-build"
+    );
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
 
@@ -48,13 +46,13 @@ describe("preview build strategy", () => {
       "utf8",
     );
 
-    const resolution = await resolveOrCreatePreviewBuildSettings({
+    const resolution = await resolveInferredPreviewBuildSettings({
       appPath,
       buildType: "nextjs",
     });
 
-    expect(resolution.status).toBe("created");
-    expect(resolution.relativeConfigPath).toBe("prisma.app.json");
+    expect(resolution.status).toBe("inferred");
+    expect(resolution.configPath).toBeNull();
     expect(resolution.settings).toEqual({
       buildCommand: "bun run build",
       buildCommandSource: "package.json scripts.build",
@@ -63,17 +61,36 @@ describe("preview build strategy", () => {
     });
     await expect(
       readFile(path.join(appPath, "prisma.app.json"), "utf8"),
-    ).resolves.toBe(
-      `${JSON.stringify(
-        {
-          $schema: PRISMA_APP_CONFIG_SCHEMA_URL,
-          buildCommand: "bun run build",
-          outputDirectory: ".next/standalone",
-        },
-        null,
-        2,
-      )}\n`,
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("describes the strategy-owned builds for nuxt and astro", async () => {
+    const { resolveInferredPreviewBuildSettings } = await import(
+      "../src/lib/app/preview-build"
     );
+    const cwd = await createTempCwd();
+
+    const nuxt = await resolveInferredPreviewBuildSettings({
+      appPath: cwd,
+      buildType: "nuxt",
+    });
+    expect(nuxt.settings).toEqual({
+      buildCommand: "nuxt build",
+      buildCommandSource: "Nuxt default",
+      outputDirectory: ".output",
+      outputDirectorySource: "Nuxt output",
+    });
+
+    const astro = await resolveInferredPreviewBuildSettings({
+      appPath: cwd,
+      buildType: "astro",
+    });
+    expect(astro.settings).toEqual({
+      buildCommand: "astro build",
+      buildCommandSource: "Astro default",
+      outputDirectory: "dist",
+      outputDirectorySource: "Astro output",
+    });
   });
 
   it("packages the full tree with a next start launcher when the build produces no standalone output", async () => {
@@ -155,7 +172,9 @@ describe("preview build strategy", () => {
         "node_modules/.bin/next-link",
       );
       expect((await lstat(linkPath)).isSymbolicLink()).toBe(true);
-      await expect(readlink(linkPath)).resolves.toBe("../next/package.json");
+      expect((await readlink(linkPath)).split(path.sep).join("/")).toBe(
+        "../next/package.json",
+      );
 
       await expect(
         access(path.join(artifact.directory, ".env")),
@@ -170,8 +189,8 @@ describe("preview build strategy", () => {
     }
   });
 
-  it("creates TanStack and Hono build config defaults", async () => {
-    const { resolveOrCreatePreviewBuildSettings } = await import(
+  it("infers TanStack and Hono build defaults", async () => {
+    const { resolveInferredPreviewBuildSettings } = await import(
       "../src/lib/app/preview-build"
     );
     const cwd = await createTempCwd();
@@ -208,24 +227,24 @@ describe("preview build strategy", () => {
     );
 
     await expect(
-      resolveOrCreatePreviewBuildSettings({
+      resolveInferredPreviewBuildSettings({
         appPath: tanstackPath,
         buildType: "tanstack-start",
       }),
     ).resolves.toMatchObject({
-      status: "created",
+      status: "inferred",
       settings: {
         buildCommand: "vite build",
         outputDirectory: ".output",
       },
     });
     await expect(
-      resolveOrCreatePreviewBuildSettings({
+      resolveInferredPreviewBuildSettings({
         appPath: honoPath,
         buildType: "bun",
       }),
     ).resolves.toMatchObject({
-      status: "created",
+      status: "inferred",
       settings: {
         buildCommand: null,
         outputDirectory: ".",
@@ -233,103 +252,54 @@ describe("preview build strategy", () => {
     });
   });
 
-  it("uses an existing prisma.app.json without overwriting it", async () => {
-    const { resolveOrCreatePreviewBuildSettings } = await import(
+  it("classifies leftover prisma.app.json files for migration", async () => {
+    const { detectLegacyBuildSettings } = await import(
       "../src/lib/app/preview-build"
     );
     const cwd = await createTempCwd();
-    const appPath = path.join(cwd, "app");
-    const configPath = path.join(appPath, "prisma.app.json");
-    const config = {
-      $schema: "custom-schema",
-      buildCommand: null,
-      outputDirectory: "custom-output",
+    const effective = {
+      buildCommand: "bun run build",
+      buildCommandSource: null,
+      outputDirectory: ".next/standalone",
+      outputDirectorySource: null,
     };
 
-    await mkdir(appPath, { recursive: true });
+    await expect(
+      detectLegacyBuildSettings({ appPath: cwd, effective }),
+    ).resolves.toEqual({ kind: "absent" });
+
     await writeFile(
-      path.join(appPath, "package.json"),
-      JSON.stringify(
-        {
-          scripts: {
-            build: "next build",
-          },
-          dependencies: {
-            next: "15.0.0",
-          },
-        },
-        null,
-        2,
-      ),
+      path.join(cwd, "prisma.app.json"),
+      JSON.stringify({
+        buildCommand: "bun run build",
+        outputDirectory: ".next/standalone",
+      }),
       "utf8",
     );
-    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-
     await expect(
-      resolveOrCreatePreviewBuildSettings({
-        appPath,
-        buildType: "nextjs",
+      detectLegacyBuildSettings({ appPath: cwd, effective }),
+    ).resolves.toMatchObject({ kind: "matching" });
+
+    await writeFile(
+      path.join(cwd, "prisma.app.json"),
+      JSON.stringify({
+        buildCommand: "custom-build",
+        outputDirectory: "dist",
       }),
+      "utf8",
+    );
+    await expect(
+      detectLegacyBuildSettings({ appPath: cwd, effective }),
     ).resolves.toMatchObject({
-      status: "used",
-      settings: {
-        buildCommand: null,
-        buildCommandSource: null,
-        outputDirectory: "custom-output",
-        outputDirectorySource: null,
-      },
+      kind: "custom",
+      buildCommand: "custom-build",
+      outputDirectory: "dist",
     });
-    await expect(readFile(configPath, "utf8")).resolves.toBe(
-      `${JSON.stringify(config, null, 2)}\n`,
-    );
-  });
 
-  it("rejects invalid prisma.app.json files", async () => {
-    const { resolveOrCreatePreviewBuildSettings } = await import(
-      "../src/lib/app/preview-build"
-    );
-    const cwd = await createTempCwd();
-    const invalidJsonPath = path.join(cwd, "invalid-json");
-    const escapingPath = path.join(cwd, "escaping-output");
-
-    await mkdir(invalidJsonPath, { recursive: true });
-    await writeFile(
-      path.join(invalidJsonPath, "prisma.app.json"),
-      "{ nope\n",
-      "utf8",
-    );
-    await mkdir(escapingPath, { recursive: true });
-    await writeFile(
-      path.join(escapingPath, "prisma.app.json"),
-      JSON.stringify(
-        {
-          buildCommand: "bun run build",
-          outputDirectory: "../dist",
-        },
-        null,
-        2,
-      ),
-      "utf8",
-    );
-
+    await writeFile(path.join(cwd, "prisma.app.json"), "{ nope\n", "utf8");
     await expect(
-      resolveOrCreatePreviewBuildSettings({
-        appPath: invalidJsonPath,
-        buildType: "nextjs",
-      }),
-    ).rejects.toMatchObject({
-      code: "APP_CONFIG_INVALID",
-      domain: "app",
-    });
-    await expect(
-      resolveOrCreatePreviewBuildSettings({
-        appPath: escapingPath,
-        buildType: "nextjs",
-      }),
-    ).rejects.toMatchObject({
-      code: "APP_CONFIG_INVALID",
-      domain: "app",
-    });
+      detectLegacyBuildSettings({ appPath: cwd, effective }),
+    ).resolves.toMatchObject({ kind: "invalid" });
   });
 
   it("resolves package.json build scripts and literal framework output directories", async () => {
@@ -514,6 +484,147 @@ describe("preview build strategy", () => {
     }
   });
 
+  it("detects the package manager from the workspace root for app build scripts", async () => {
+    const { resolvePreviewBuildSettings } = await import(
+      "../src/lib/app/preview-build"
+    );
+    const cases = [
+      {
+        rootFiles: ["pnpm-workspace.yaml", "pnpm-lock.yaml"],
+        command: "pnpm run build",
+      },
+      {
+        rootFiles: ["package-lock.json"],
+        rootPackageJson: { workspaces: ["apps/*"] },
+        command: "npm run build",
+      },
+      {
+        rootFiles: ["yarn.lock"],
+        rootPackageJson: { workspaces: ["apps/*"] },
+        command: "yarn run build",
+      },
+    ];
+
+    for (const testCase of cases) {
+      const cwd = await createTempCwd();
+      const appPath = path.join(cwd, "apps", "web");
+
+      await mkdir(appPath, { recursive: true });
+      if (testCase.rootPackageJson) {
+        await writeFile(
+          path.join(cwd, "package.json"),
+          JSON.stringify(testCase.rootPackageJson, null, 2),
+          "utf8",
+        );
+      }
+      for (const rootFile of testCase.rootFiles) {
+        await writeFile(path.join(cwd, rootFile), "", "utf8");
+      }
+      await writeFile(
+        path.join(appPath, "package.json"),
+        JSON.stringify(
+          {
+            scripts: {
+              build: "next build",
+            },
+            dependencies: {
+              next: "15.0.0",
+            },
+          },
+          null,
+          2,
+        ),
+        "utf8",
+      );
+
+      await expect(
+        resolvePreviewBuildSettings({
+          appPath,
+          buildType: "nextjs",
+        }),
+      ).resolves.toMatchObject({
+        buildCommand: testCase.command,
+        buildCommandSource: "package.json scripts.build",
+      });
+    }
+  });
+
+  it("prefers the app-level lockfile over the workspace root lockfile", async () => {
+    const { resolvePreviewBuildSettings } = await import(
+      "../src/lib/app/preview-build"
+    );
+    const cwd = await createTempCwd();
+    const appPath = path.join(cwd, "apps", "web");
+
+    await mkdir(appPath, { recursive: true });
+    await writeFile(path.join(cwd, "pnpm-workspace.yaml"), "", "utf8");
+    await writeFile(path.join(cwd, "pnpm-lock.yaml"), "", "utf8");
+    await writeFile(path.join(appPath, "bun.lock"), "", "utf8");
+    await writeFile(
+      path.join(appPath, "package.json"),
+      JSON.stringify(
+        {
+          scripts: {
+            build: "next build",
+          },
+          dependencies: {
+            next: "15.0.0",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    await expect(
+      resolvePreviewBuildSettings({
+        appPath,
+        buildType: "nextjs",
+      }),
+    ).resolves.toMatchObject({
+      buildCommand: "bun run build",
+    });
+  });
+
+  it("does not use lockfiles above the repository root", async () => {
+    const { resolvePreviewBuildSettings } = await import(
+      "../src/lib/app/preview-build"
+    );
+    const cwd = await createTempCwd();
+    const repoPath = path.join(cwd, "repo");
+    const appPath = path.join(repoPath, "app");
+
+    await mkdir(path.join(repoPath, ".git"), { recursive: true });
+    await mkdir(appPath, { recursive: true });
+    await writeFile(path.join(cwd, "pnpm-lock.yaml"), "", "utf8");
+    await writeFile(
+      path.join(appPath, "package.json"),
+      JSON.stringify(
+        {
+          scripts: {
+            build: "custom-build",
+          },
+          dependencies: {
+            next: "15.0.0",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    await expect(
+      resolvePreviewBuildSettings({
+        appPath,
+        buildType: "nextjs",
+      }),
+    ).resolves.toMatchObject({
+      buildCommand: "custom-build",
+    });
+  });
+
   it("uses the literal package.json build script when no package manager is detected", async () => {
     const { resolvePreviewBuildSettings } = await import(
       "../src/lib/app/preview-build"
@@ -684,7 +795,6 @@ describe("preview build strategy", () => {
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
     const standaloneDir = path.join(appPath, ".next", "standalone");
-    const nextBin = path.join(appPath, "node_modules", ".bin", "next");
 
     await mkdir(path.join(standaloneDir, ".next", "static"), {
       recursive: true,
@@ -701,7 +811,14 @@ describe("preview build strategy", () => {
       "hello\n",
       "utf8",
     );
-    await mkdir(path.dirname(nextBin), { recursive: true });
+    await writeFile(
+      path.join(appPath, "package.json"),
+      JSON.stringify({
+        scripts: { build: "node -e 0" },
+        dependencies: { next: "15.0.0" },
+      }),
+      "utf8",
+    );
     await writeFile(
       path.join(appPath, "next.config.ts"),
       "export default { output: 'standalone' };\n",
@@ -712,7 +829,6 @@ describe("preview build strategy", () => {
       "console.log('next');\n",
       "utf8",
     );
-    await symlink("/usr/bin/true", nextBin);
 
     const { executePreviewBuild } = await import(
       "../src/lib/app/preview-build"

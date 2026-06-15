@@ -7,7 +7,7 @@ export async function collectCommandDiagnostics(
   context: CommandContext,
   options: { durationMs?: number } = {},
 ): Promise<CommandDiagnostics> {
-  const stateDir = resolveStateDir(context.runtime);
+  const stateDir = await resolveStateDir(context.runtime);
 
   return {
     cwd: context.runtime.cwd,

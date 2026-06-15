@@ -1,5 +1,8 @@
+import {
+  FRAMEWORK_KEYS,
+  LOCAL_DEV_BUILD_TYPES,
+} from "@prisma/compute-sdk/config";
 import { Command, Option } from "commander";
-
 import {
   runAppBuild,
   runAppDeploy,
@@ -20,8 +23,10 @@ import {
 } from "../../controllers/app";
 import { PREVIEW_BUILD_TYPES } from "../../lib/app/preview-build";
 import {
+  isAppDeployAllResult,
   renderAppBuild,
   renderAppDeploy,
+  renderAppDeployAll,
   renderAppDomainAdd,
   renderAppDomainRemove,
   renderAppDomainRetry,
@@ -36,6 +41,7 @@ import {
   renderAppShowDeploy,
   serializeAppBuild,
   serializeAppDeploy,
+  serializeAppDeployAll,
   serializeAppDomainAdd,
   serializeAppDomainRemove,
   serializeAppDomainRetry,
@@ -59,6 +65,7 @@ import {
 import { type CliRuntime, configureRuntimeCommand } from "../../shell/runtime";
 import type {
   AppBuildResult,
+  AppDeployAllResult,
   AppDeployResult,
   AppDomainAddResult,
   AppDomainRemoveResult,
@@ -105,6 +112,10 @@ function createBuildCommand(runtime: CliRuntime): Command {
   );
 
   command
+    .argument(
+      "[app]",
+      "App target from prisma.compute.ts when the config defines multiple apps",
+    )
     .addOption(
       new Option("--entry <path>", "Entrypoint path for Bun or auto builds"),
     )
@@ -115,7 +126,7 @@ function createBuildCommand(runtime: CliRuntime): Command {
     );
   addGlobalFlags(command);
 
-  command.action(async (options) => {
+  command.action(async (configTarget: string | undefined, options) => {
     const entry = (options as { entry?: string }).entry;
     const buildType = (options as { buildType?: string }).buildType;
 
@@ -123,7 +134,8 @@ function createBuildCommand(runtime: CliRuntime): Command {
       runtime,
       "app.build",
       options as Record<string, unknown>,
-      (context) => runAppBuild(context, entry, buildType),
+      (context) =>
+        runAppBuild(context, { entrypoint: entry, buildType, configTarget }),
       {
         renderHuman: (context, descriptor, result) =>
           renderAppBuild(context, descriptor, result),
@@ -142,18 +154,22 @@ function createRunCommand(runtime: CliRuntime): Command {
   );
 
   command
+    .argument(
+      "[app]",
+      "App target from prisma.compute.ts when the config defines multiple apps",
+    )
     .addOption(
       new Option("--entry <path>", "Entrypoint path for Bun or auto runs"),
     )
     .addOption(
       new Option("--build-type <type>", "Local framework type")
-        .choices(["auto", "bun", "nextjs"])
+        .choices(["auto", ...LOCAL_DEV_BUILD_TYPES])
         .default("auto"),
     )
     .addOption(new Option("--port <port>", "Local port"));
   addGlobalFlags(command);
 
-  command.action(async (options) => {
+  command.action(async (configTarget: string | undefined, options) => {
     const entry = (options as { entry?: string }).entry;
     const buildType = (options as { buildType?: string }).buildType;
     const port = (options as { port?: string }).port;
@@ -162,7 +178,13 @@ function createRunCommand(runtime: CliRuntime): Command {
       runtime,
       "app.run",
       options as Record<string, unknown>,
-      (context) => runAppRun(context, entry, buildType, port),
+      (context) =>
+        runAppRun(context, {
+          entrypoint: entry,
+          buildType,
+          port,
+          configTarget,
+        }),
       {
         renderHuman: (context, descriptor, result) =>
           renderAppRun(context, descriptor, result),
@@ -181,6 +203,10 @@ function createDeployCommand(runtime: CliRuntime): Command {
   );
 
   command
+    .argument(
+      "[app]",
+      "App target from prisma.compute.ts when the config defines multiple apps",
+    )
     .addOption(new Option("--app <name>", "App name"))
     .addOption(new Option("--project <id-or-name>", "Project id or name"))
     .addOption(
@@ -192,10 +218,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
     .addOption(new Option("--branch <name>", "Branch name"))
     .addOption(
       new Option("--framework <name>", "Framework to deploy").choices([
-        "nextjs",
-        "hono",
-        "tanstack-start",
-        "bun",
+        ...FRAMEWORK_KEYS,
       ]),
     )
     .addOption(new Option("--entry <path>", "Entrypoint path for Bun deploys"))
@@ -221,7 +244,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
     .addOption(new Option("--prod", "Confirm intent to deploy to production"));
   addGlobalFlags(command);
 
-  command.action(async (options) => {
+  command.action(async (configTarget: string | undefined, options) => {
     const appName = (options as { app?: string }).app;
     const entry = (options as { entry?: string }).entry;
     const branchName = (options as { branch?: string }).branch;
@@ -236,7 +259,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
     const hasDbConflict =
       hasFlag(runtime.argv, "--db") && hasFlag(runtime.argv, "--no-db");
 
-    await runCommand<AppDeployResult>(
+    await runCommand<AppDeployResult | AppDeployAllResult>(
       runtime,
       "app.deploy",
       options as Record<string, unknown>,
@@ -261,12 +284,18 @@ function createDeployCommand(runtime: CliRuntime): Command {
           envAssignments,
           prod: prod === true,
           db,
+          configTarget,
         });
       },
       {
         renderHuman: (context, descriptor, result) =>
-          renderAppDeploy(context, descriptor, result),
-        renderJson: (result) => serializeAppDeploy(result),
+          isAppDeployAllResult(result)
+            ? renderAppDeployAll(context, descriptor, result)
+            : renderAppDeploy(context, descriptor, result),
+        renderJson: (result) =>
+          isAppDeployAllResult(result)
+            ? serializeAppDeployAll(result)
+            : serializeAppDeploy(result),
       },
     );
   });
@@ -285,11 +314,15 @@ function createShowCommand(runtime: CliRuntime): Command {
   );
 
   command
+    .argument(
+      "[app]",
+      "App target from prisma.compute.ts when the config defines multiple apps",
+    )
     .addOption(new Option("--app <name>", "App name"))
     .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
-  command.action(async (options) => {
+  command.action(async (configTarget: string | undefined, options) => {
     const appName = (options as { app?: string }).app;
     const projectRef = (options as { project?: string }).project;
 
@@ -297,7 +330,7 @@ function createShowCommand(runtime: CliRuntime): Command {
       runtime,
       "app.show",
       options as Record<string, unknown>,
-      (context) => runAppShow(context, appName, projectRef),
+      (context) => runAppShow(context, appName, projectRef, configTarget),
       {
         renderHuman: (context, descriptor, result) =>
           renderAppShow(context, descriptor, result),
@@ -316,11 +349,15 @@ function createOpenCommand(runtime: CliRuntime): Command {
   );
 
   command
+    .argument(
+      "[app]",
+      "App target from prisma.compute.ts when the config defines multiple apps",
+    )
     .addOption(new Option("--app <name>", "App name"))
     .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
-  command.action(async (options) => {
+  command.action(async (configTarget: string | undefined, options) => {
     const appName = (options as { app?: string }).app;
     const projectRef = (options as { project?: string }).project;
 
@@ -328,7 +365,7 @@ function createOpenCommand(runtime: CliRuntime): Command {
       runtime,
       "app.open",
       options as Record<string, unknown>,
-      (context) => runAppOpen(context, appName, projectRef),
+      (context) => runAppOpen(context, appName, projectRef, configTarget),
       {
         renderHuman: (context, descriptor, result) =>
           renderAppOpen(context, descriptor, result),
@@ -371,27 +408,38 @@ function createDomainAddCommand(runtime: CliRuntime): Command {
   );
 
   command.argument("<hostname>", "Custom domain hostname");
+  command.argument(
+    "[app]",
+    "App target from prisma.compute.ts when the config defines multiple apps",
+  );
   addDomainTargetOptions(command);
   addGlobalFlags(command);
 
-  command.action(async (hostname: string, options) => {
-    const appName = (options as { app?: string }).app;
-    const projectRef = (options as { project?: string }).project;
-    const branchName = (options as { branch?: string }).branch;
+  command.action(
+    async (hostname: string, configTarget: string | undefined, options) => {
+      const appName = (options as { app?: string }).app;
+      const projectRef = (options as { project?: string }).project;
+      const branchName = (options as { branch?: string }).branch;
 
-    await runCommand<AppDomainAddResult>(
-      runtime,
-      "app.domain.add",
-      options as Record<string, unknown>,
-      (context) =>
-        runAppDomainAdd(context, hostname, { appName, projectRef, branchName }),
-      {
-        renderHuman: (context, descriptor, result) =>
-          renderAppDomainAdd(context, descriptor, result),
-        renderJson: (result) => serializeAppDomainAdd(result),
-      },
-    );
-  });
+      await runCommand<AppDomainAddResult>(
+        runtime,
+        "app.domain.add",
+        options as Record<string, unknown>,
+        (context) =>
+          runAppDomainAdd(context, hostname, {
+            appName,
+            projectRef,
+            branchName,
+            configTarget,
+          }),
+        {
+          renderHuman: (context, descriptor, result) =>
+            renderAppDomainAdd(context, descriptor, result),
+          renderJson: (result) => serializeAppDomainAdd(result),
+        },
+      );
+    },
+  );
 
   return command;
 }
@@ -403,31 +451,38 @@ function createDomainShowCommand(runtime: CliRuntime): Command {
   );
 
   command.argument("<hostname>", "Custom domain hostname");
+  command.argument(
+    "[app]",
+    "App target from prisma.compute.ts when the config defines multiple apps",
+  );
   addDomainTargetOptions(command);
   addGlobalFlags(command);
 
-  command.action(async (hostname: string, options) => {
-    const appName = (options as { app?: string }).app;
-    const projectRef = (options as { project?: string }).project;
-    const branchName = (options as { branch?: string }).branch;
+  command.action(
+    async (hostname: string, configTarget: string | undefined, options) => {
+      const appName = (options as { app?: string }).app;
+      const projectRef = (options as { project?: string }).project;
+      const branchName = (options as { branch?: string }).branch;
 
-    await runCommand<AppDomainShowResult>(
-      runtime,
-      "app.domain.show",
-      options as Record<string, unknown>,
-      (context) =>
-        runAppDomainShow(context, hostname, {
-          appName,
-          projectRef,
-          branchName,
-        }),
-      {
-        renderHuman: (context, descriptor, result) =>
-          renderAppDomainShow(context, descriptor, result),
-        renderJson: (result) => serializeAppDomainShow(result),
-      },
-    );
-  });
+      await runCommand<AppDomainShowResult>(
+        runtime,
+        "app.domain.show",
+        options as Record<string, unknown>,
+        (context) =>
+          runAppDomainShow(context, hostname, {
+            appName,
+            projectRef,
+            branchName,
+            configTarget,
+          }),
+        {
+          renderHuman: (context, descriptor, result) =>
+            renderAppDomainShow(context, descriptor, result),
+          renderJson: (result) => serializeAppDomainShow(result),
+        },
+      );
+    },
+  );
 
   return command;
 }
@@ -439,31 +494,38 @@ function createDomainRemoveCommand(runtime: CliRuntime): Command {
   );
 
   command.argument("<hostname>", "Custom domain hostname");
+  command.argument(
+    "[app]",
+    "App target from prisma.compute.ts when the config defines multiple apps",
+  );
   addDomainTargetOptions(command);
   addGlobalFlags(command);
 
-  command.action(async (hostname: string, options) => {
-    const appName = (options as { app?: string }).app;
-    const projectRef = (options as { project?: string }).project;
-    const branchName = (options as { branch?: string }).branch;
+  command.action(
+    async (hostname: string, configTarget: string | undefined, options) => {
+      const appName = (options as { app?: string }).app;
+      const projectRef = (options as { project?: string }).project;
+      const branchName = (options as { branch?: string }).branch;
 
-    await runCommand<AppDomainRemoveResult>(
-      runtime,
-      "app.domain.remove",
-      options as Record<string, unknown>,
-      (context) =>
-        runAppDomainRemove(context, hostname, {
-          appName,
-          projectRef,
-          branchName,
-        }),
-      {
-        renderHuman: (context, descriptor, result) =>
-          renderAppDomainRemove(context, descriptor, result),
-        renderJson: (result) => serializeAppDomainRemove(result),
-      },
-    );
-  });
+      await runCommand<AppDomainRemoveResult>(
+        runtime,
+        "app.domain.remove",
+        options as Record<string, unknown>,
+        (context) =>
+          runAppDomainRemove(context, hostname, {
+            appName,
+            projectRef,
+            branchName,
+            configTarget,
+          }),
+        {
+          renderHuman: (context, descriptor, result) =>
+            renderAppDomainRemove(context, descriptor, result),
+          renderJson: (result) => serializeAppDomainRemove(result),
+        },
+      );
+    },
+  );
 
   return command;
 }
@@ -475,31 +537,38 @@ function createDomainRetryCommand(runtime: CliRuntime): Command {
   );
 
   command.argument("<hostname>", "Custom domain hostname");
+  command.argument(
+    "[app]",
+    "App target from prisma.compute.ts when the config defines multiple apps",
+  );
   addDomainTargetOptions(command);
   addGlobalFlags(command);
 
-  command.action(async (hostname: string, options) => {
-    const appName = (options as { app?: string }).app;
-    const projectRef = (options as { project?: string }).project;
-    const branchName = (options as { branch?: string }).branch;
+  command.action(
+    async (hostname: string, configTarget: string | undefined, options) => {
+      const appName = (options as { app?: string }).app;
+      const projectRef = (options as { project?: string }).project;
+      const branchName = (options as { branch?: string }).branch;
 
-    await runCommand<AppDomainRetryResult>(
-      runtime,
-      "app.domain.retry",
-      options as Record<string, unknown>,
-      (context) =>
-        runAppDomainRetry(context, hostname, {
-          appName,
-          projectRef,
-          branchName,
-        }),
-      {
-        renderHuman: (context, descriptor, result) =>
-          renderAppDomainRetry(context, descriptor, result),
-        renderJson: (result) => serializeAppDomainRetry(result),
-      },
-    );
-  });
+      await runCommand<AppDomainRetryResult>(
+        runtime,
+        "app.domain.retry",
+        options as Record<string, unknown>,
+        (context) =>
+          runAppDomainRetry(context, hostname, {
+            appName,
+            projectRef,
+            branchName,
+            configTarget,
+          }),
+        {
+          renderHuman: (context, descriptor, result) =>
+            renderAppDomainRetry(context, descriptor, result),
+          renderJson: (result) => serializeAppDomainRetry(result),
+        },
+      );
+    },
+  );
 
   return command;
 }
@@ -511,31 +580,38 @@ function createDomainWaitCommand(runtime: CliRuntime): Command {
   );
 
   command.argument("<hostname>", "Custom domain hostname");
+  command.argument(
+    "[app]",
+    "App target from prisma.compute.ts when the config defines multiple apps",
+  );
   addDomainTargetOptions(command);
   command.addOption(
     new Option("--timeout <duration>", "Maximum time to wait").default("15m"),
   );
   addGlobalFlags(command);
 
-  command.action(async (hostname: string, options) => {
-    const appName = (options as { app?: string }).app;
-    const projectRef = (options as { project?: string }).project;
-    const branchName = (options as { branch?: string }).branch;
-    const timeout = (options as { timeout?: string }).timeout;
+  command.action(
+    async (hostname: string, configTarget: string | undefined, options) => {
+      const appName = (options as { app?: string }).app;
+      const projectRef = (options as { project?: string }).project;
+      const branchName = (options as { branch?: string }).branch;
+      const timeout = (options as { timeout?: string }).timeout;
 
-    await runStreamingCommand(
-      runtime,
-      "app.domain.wait",
-      options as Record<string, unknown>,
-      (context) =>
-        runAppDomainWait(context, hostname, {
-          appName,
-          projectRef,
-          branchName,
-          timeout,
-        }),
-    );
-  });
+      await runStreamingCommand(
+        runtime,
+        "app.domain.wait",
+        options as Record<string, unknown>,
+        (context) =>
+          runAppDomainWait(context, hostname, {
+            appName,
+            projectRef,
+            branchName,
+            timeout,
+            configTarget,
+          }),
+      );
+    },
+  );
 
   return command;
 }
@@ -547,12 +623,16 @@ function createLogsCommand(runtime: CliRuntime): Command {
   );
 
   command
+    .argument(
+      "[app]",
+      "App target from prisma.compute.ts when the config defines multiple apps",
+    )
     .addOption(new Option("--app <name>", "App name"))
     .addOption(new Option("--project <id-or-name>", "Project id or name"))
     .addOption(new Option("--deployment <id>", "Deployment id"));
   addGlobalFlags(command);
 
-  command.action(async (options) => {
+  command.action(async (configTarget: string | undefined, options) => {
     const appName = (options as { app?: string }).app;
     const deploymentId = (options as { deployment?: string }).deployment;
     const projectRef = (options as { project?: string }).project;
@@ -561,7 +641,8 @@ function createLogsCommand(runtime: CliRuntime): Command {
       runtime,
       "app.logs",
       options as Record<string, unknown>,
-      (context) => runAppLogs(context, appName, deploymentId, projectRef),
+      (context) =>
+        runAppLogs(context, appName, deploymentId, projectRef, configTarget),
     );
   });
 
@@ -582,11 +663,15 @@ function createListDeploysCommand(runtime: CliRuntime): Command {
   );
 
   command
+    .argument(
+      "[app]",
+      "App target from prisma.compute.ts when the config defines multiple apps",
+    )
     .addOption(new Option("--app <name>", "App name"))
     .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
-  command.action(async (options) => {
+  command.action(async (configTarget: string | undefined, options) => {
     const appName = (options as { app?: string }).app;
     const projectRef = (options as { project?: string }).project;
 
@@ -594,7 +679,8 @@ function createListDeploysCommand(runtime: CliRuntime): Command {
       runtime,
       "app.list-deploys",
       options as Record<string, unknown>,
-      (context) => runAppListDeploys(context, appName, projectRef),
+      (context) =>
+        runAppListDeploys(context, appName, projectRef, configTarget),
       {
         renderHuman: (context, descriptor, result) =>
           renderAppListDeploys(context, descriptor, result),
@@ -639,27 +725,40 @@ function createPromoteCommand(runtime: CliRuntime): Command {
   );
 
   command.argument("<deployment>", "Deployment id");
+  command.argument(
+    "[app]",
+    "App target from prisma.compute.ts when the config defines multiple apps",
+  );
   command
     .addOption(new Option("--app <name>", "App name"))
     .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
-  command.action(async (deploymentId: string, options) => {
-    const appName = (options as { app?: string }).app;
-    const projectRef = (options as { project?: string }).project;
+  command.action(
+    async (deploymentId: string, configTarget: string | undefined, options) => {
+      const appName = (options as { app?: string }).app;
+      const projectRef = (options as { project?: string }).project;
 
-    await runCommand<AppPromoteResult>(
-      runtime,
-      "app.promote",
-      options as Record<string, unknown>,
-      (context) => runAppPromote(context, deploymentId, appName, projectRef),
-      {
-        renderHuman: (context, descriptor, result) =>
-          renderAppPromote(context, descriptor, result),
-        renderJson: (result) => serializeAppPromote(result),
-      },
-    );
-  });
+      await runCommand<AppPromoteResult>(
+        runtime,
+        "app.promote",
+        options as Record<string, unknown>,
+        (context) =>
+          runAppPromote(
+            context,
+            deploymentId,
+            appName,
+            projectRef,
+            configTarget,
+          ),
+        {
+          renderHuman: (context, descriptor, result) =>
+            renderAppPromote(context, descriptor, result),
+          renderJson: (result) => serializeAppPromote(result),
+        },
+      );
+    },
+  );
 
   return command;
 }
@@ -671,12 +770,16 @@ function createRollbackCommand(runtime: CliRuntime): Command {
   );
 
   command
+    .argument(
+      "[app]",
+      "App target from prisma.compute.ts when the config defines multiple apps",
+    )
     .addOption(new Option("--app <name>", "App name"))
     .addOption(new Option("--project <id-or-name>", "Project id or name"))
     .addOption(new Option("--to <deployment>", "Deployment id"));
   addGlobalFlags(command);
 
-  command.action(async (options) => {
+  command.action(async (configTarget: string | undefined, options) => {
     const appName = (options as { app?: string }).app;
     const deploymentId = (options as { to?: string }).to;
     const projectRef = (options as { project?: string }).project;
@@ -685,7 +788,14 @@ function createRollbackCommand(runtime: CliRuntime): Command {
       runtime,
       "app.rollback",
       options as Record<string, unknown>,
-      (context) => runAppRollback(context, appName, deploymentId, projectRef),
+      (context) =>
+        runAppRollback(
+          context,
+          appName,
+          deploymentId,
+          projectRef,
+          configTarget,
+        ),
       {
         renderHuman: (context, descriptor, result) =>
           renderAppRollback(context, descriptor, result),
@@ -704,11 +814,15 @@ function createRemoveCommand(runtime: CliRuntime): Command {
   );
 
   command
+    .argument(
+      "[app]",
+      "App target from prisma.compute.ts when the config defines multiple apps",
+    )
     .addOption(new Option("--app <name>", "App name"))
     .addOption(new Option("--project <id-or-name>", "Project id or name"));
   addGlobalFlags(command);
 
-  command.action(async (options) => {
+  command.action(async (configTarget: string | undefined, options) => {
     const appName = (options as { app?: string }).app;
     const projectRef = (options as { project?: string }).project;
 
@@ -716,7 +830,7 @@ function createRemoveCommand(runtime: CliRuntime): Command {
       runtime,
       "app.remove",
       options as Record<string, unknown>,
-      (context) => runAppRemove(context, appName, projectRef),
+      (context) => runAppRemove(context, appName, projectRef, configTarget),
       {
         renderHuman: (context, descriptor, result) =>
           renderAppRemove(context, descriptor, result),

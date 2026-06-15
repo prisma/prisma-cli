@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   renderAppDeploy,
+  renderAppDeployAll,
   renderAppDomainAdd,
   renderAppDomainRetry,
   renderAppDomainShow,
@@ -71,8 +72,8 @@ function createDeployResult(): AppDeployResult {
     },
     deploySettings: {
       config: {
-        path: "prisma.app.json",
-        status: "used",
+        path: null,
+        status: "inferred",
       },
       buildCommand: {
         value: "bun run build",
@@ -227,6 +228,24 @@ describe("app deploy presenter", () => {
     expect(lines).not.toContain("postgresql://");
   });
 
+  it("names each target in the deploy-all logs hints", async () => {
+    const { context } = await createTestCommandContext({});
+    const lines = renderAppDeployAll(
+      context,
+      getCommandDescriptor("app.deploy"),
+      {
+        deployments: [
+          { target: "api", result: createDeployResult() },
+          { target: "web", result: createDeployResult() },
+        ],
+      },
+    ).join("\n");
+
+    expect(lines).toContain("prisma-cli app logs api");
+    expect(lines).toContain("prisma-cli app logs web");
+    expect(lines).not.toMatch(/prisma-cli app logs$/m);
+  });
+
   it("keeps verbose-only deploy details out of JSON serialization", () => {
     const json = JSON.parse(
       JSON.stringify(serializeAppDeploy(createDeployResult())),
@@ -234,8 +253,8 @@ describe("app deploy presenter", () => {
 
     expect(json.deploySettings).toEqual({
       config: {
-        path: "prisma.app.json",
-        status: "used",
+        path: null,
+        status: "inferred",
       },
       buildCommand: {
         value: "bun run build",

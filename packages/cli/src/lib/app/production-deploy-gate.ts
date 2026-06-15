@@ -178,12 +178,12 @@ function productionDeployRequiresFlagError(): CliError {
       "",
       "Production deploys require explicit intent. Re-run with:",
       "",
-      "  prisma app deploy --prod",
+      "  prisma-cli app deploy --prod",
       "",
       "Or deploy a preview from a feature branch:",
       "",
       "  git checkout -b <branch-name>",
-      "  prisma app deploy",
+      "  prisma-cli app deploy",
     ],
   });
 }

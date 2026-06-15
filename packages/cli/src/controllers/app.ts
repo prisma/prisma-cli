@@ -1,13 +1,21 @@
-// biome-ignore-all lint/performance/noAwaitInLoops: Polling and ordered filesystem probes are intentionally sequential.
-// biome-ignore-all lint/performance/useTopLevelRegex: Existing domain and parsing regexes are kept inline for readability.
-// biome-ignore-all lint/style/noNestedTernary: Existing app presentation expressions are intentionally compact.
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";
+import {
+  type ComputeFramework,
+  type ConfigBackedBuildType,
+  ENTRYPOINT_BUILD_TYPES,
+  FRAMEWORKS,
+  type FrameworkBuildType,
+  type FrameworkDescriptor,
+  frameworkByKey,
+  frameworkFromAlias,
+  isConfigBackedBuildType,
+  LOCAL_DEV_BUILD_TYPES,
+} from "@prisma/compute-sdk/config";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { matchError, Result } from "better-result";
 import open from "open";
-
 import { FileTokenStorage } from "../adapters/token-storage";
 import {
   type BranchDatabaseDeployBranch,
@@ -19,24 +27,50 @@ import {
   readBunPackageJson,
 } from "../lib/app/bun-project";
 import {
+  COMPUTE_CONFIG_FILENAME,
+  type ComputeConfigCommandName,
+  ComputeConfigTargetRequiredError,
+  type ComputeDeployTarget,
+  computeConfigErrorToCliError,
+  computeFrameworkToBuildType,
+  computeTargetAppDir,
+  inferComputeTargetFromCwd,
+  type LoadedComputeConfig,
+  loadComputeConfig,
+  type MergedDeployInput,
+  mergeComputeDeployInputs,
+  mergeComputeLocalInputs,
+  selectComputeDeployTarget,
+} from "../lib/app/compute-config";
+import {
   renderDeployOutputRows,
   renderDeploySettingsPreview,
 } from "../lib/app/deploy-output";
+import {
+  describeDeployAllFailure,
+  type PlannedDeployTarget,
+  perAppInputsForDeployAll,
+  planAppDeploy,
+} from "../lib/app/deploy-plan";
 import { formatDomainFailureFix } from "../lib/app/domain-guidance";
 import { envVarNames, parseEnvInputs } from "../lib/app/env-vars";
 import {
   DEFAULT_LOCAL_DEV_PORT,
-  resolveLocalBuildType,
+  type LocalBuildType,
   runLocalApp,
 } from "../lib/app/local-dev";
 import {
+  detectLegacyBuildSettings,
   executePreviewBuild,
   PREVIEW_BUILD_TYPES,
-  type PreviewBuildSettingsBuildType,
+  PRISMA_APP_CONFIG_FILENAME,
+  type PreviewBuildSettings,
   type PreviewBuildSettingsResolution,
   type PreviewBuildType,
   RESOLVED_PREVIEW_BUILD_TYPES,
-  resolveOrCreatePreviewBuildSettings,
+  type ResolvedPreviewBuildType,
+  resolveConfiguredPreviewBuildSettings,
+  resolveInferredPreviewBuildSettings,
 } from "../lib/app/preview-build";
 import { PREVIEW_DEFAULT_REGION } from "../lib/app/preview-interaction";
 import {
@@ -96,6 +130,7 @@ import { type CommandContext, canPrompt } from "../shell/runtime";
 import { renderCommandHeader } from "../shell/ui";
 import type {
   AppBuildResult,
+  AppDeployAllResult,
   AppDeploymentSummary,
   AppDeployResult,
   AppDomainAddResult,
@@ -124,18 +159,6 @@ import { listRealWorkspaceProjects } from "./project";
 import { createSelectPromptPort } from "./select-prompt-port";
 
 type AppDomainCommand = "add" | "show" | "remove" | "retry" | "wait";
-type DeployFramework = "nextjs" | "hono" | "tanstack-start" | "bun";
-
-const DEPLOY_FRAMEWORKS = [
-  "nextjs",
-  "hono",
-  "tanstack-start",
-  "bun",
-] as const satisfies readonly DeployFramework[];
-const TANSTACK_START_PACKAGES = [
-  "@tanstack/react-start",
-  "@tanstack/solid-start",
-] as const;
 const FRAMEWORK_DEFAULT_HTTP_PORT = 3000;
 const PRISMA_PROJECT_ID_ENV_VAR = "PRISMA_PROJECT_ID";
 const PRISMA_APP_ID_ENV_VAR = "PRISMA_APP_ID";
@@ -149,17 +172,64 @@ function isRealMode(context: CommandContext): boolean {
 
 export async function runAppBuild(
   context: CommandContext,
-  entrypoint: string | undefined,
-  requestedBuildType: string | undefined,
+  options?: {
+    entrypoint?: string;
+    buildType?: string;
+    configTarget?: string;
+  },
 ): Promise<CommandSuccess<AppBuildResult>> {
-  const buildType = normalizeBuildType(requestedBuildType);
-  assertSupportedEntrypoint(buildType, entrypoint, "build");
+  const compute = await resolveComputeTargetOrThrow(
+    context,
+    options?.configTarget,
+    "build",
+  );
+  const merged = mergeComputeLocalInputs({
+    cli: { entrypoint: options?.entrypoint, buildType: options?.buildType },
+    target: compute.target,
+  });
+  const appDir = await resolveComputeAppDir(context, compute);
+  let buildType = normalizeBuildType(merged.buildType);
+  if (compute.target?.build && buildType === "auto") {
+    // A committed build block must never be silently ignored, so resolve the
+    // framework the same way deploy does instead of deferring to the
+    // strategy's auto detection.
+    const detected = await detectDeployFramework(
+      appDir,
+      context.runtime.signal,
+    );
+    if (!detected) {
+      throw frameworkNotDetectedError(appDir);
+    }
+    buildType = detected.buildType;
+  }
+  assertSupportedEntrypoint(buildType, merged.entrypoint, "build");
+
+  if (compute.target?.build && buildType !== "auto") {
+    assertConfigBackedBuildSettings(buildType);
+  }
+  // Config-owned build settings apply when the build type is determinate;
+  // auto detection resolves inside the strategy and keeps its own fallback.
+  const buildSettings =
+    compute.config &&
+    compute.target?.build &&
+    isConfigBackedBuildType(buildType)
+      ? (
+          await resolveConfiguredPreviewBuildSettings({
+            appPath: appDir,
+            buildType,
+            configured: compute.target.build,
+            configPath: compute.config.configPath,
+            signal: context.runtime.signal,
+          })
+        ).settings
+      : undefined;
 
   try {
     const { artifact, buildType: actualBuildType } = await executePreviewBuild({
-      appPath: context.runtime.cwd,
-      entrypoint,
+      appPath: appDir,
+      entrypoint: merged.entrypoint,
       buildType,
+      buildSettings,
       signal: context.runtime.signal,
     });
 
@@ -190,9 +260,12 @@ export async function runAppBuild(
 
 export async function runAppRun(
   context: CommandContext,
-  entrypoint: string | undefined,
-  requestedBuildType: string | undefined,
-  requestedPort: string | undefined,
+  options?: {
+    entrypoint?: string;
+    buildType?: string;
+    port?: string;
+    configTarget?: string;
+  },
 ): Promise<CommandSuccess<AppRunResult>> {
   if (context.flags.json) {
     throw usageError(
@@ -204,20 +277,60 @@ export async function runAppRun(
     );
   }
 
-  const buildType = normalizeBuildType(requestedBuildType);
-  assertSupportedEntrypoint(buildType, entrypoint, "run");
-  const port = parseLocalPort(requestedPort);
-  const resolvedBuildType = await requireLocalBuildType(
+  const compute = await resolveComputeTargetOrThrow(
     context,
-    buildType,
+    options?.configTarget,
     "run",
   );
+  const merged = mergeComputeLocalInputs({
+    cli: {
+      entrypoint: options?.entrypoint,
+      buildType: options?.buildType,
+      port: options?.port,
+    },
+    target: compute.target,
+  });
+  if (
+    merged.buildTypeFromConfig &&
+    compute.target?.framework &&
+    !frameworkByKey(compute.target.framework).hasLocalDevServer
+  ) {
+    throw usageError(
+      `App run does not support the ${compute.target?.framework} framework yet`,
+      `${compute.config?.relativeConfigPath ?? COMPUTE_CONFIG_FILENAME} sets a framework that has no local dev server in the current preview.`,
+      "Run the framework dev server directly, or pass --build-type nextjs or --build-type bun to override.",
+      [
+        "prisma-cli app run --build-type nextjs",
+        "prisma-cli app run --build-type bun --entry server.ts",
+      ],
+      "app",
+    );
+  }
+  const appDir = await resolveComputeAppDir(context, compute);
+  const buildType = normalizeBuildType(merged.buildType);
+  assertSupportedEntrypoint(buildType, merged.entrypoint, "run");
+  const port = parseLocalPort(merged.port);
+  const framework = await resolveLocalRunFramework(context, {
+    requestedBuildType: buildType,
+    configFramework: compute.target?.framework ?? null,
+    appDir,
+  });
+  // Hono apps get the same src/index.ts entrypoint default as deploy.
+  const entrypoint =
+    framework.buildType === "bun"
+      ? await resolveDeployEntrypoint(
+          appDir,
+          framework,
+          merged.entrypoint,
+          context.runtime.signal,
+        )
+      : merged.entrypoint;
 
   let runResult: Awaited<ReturnType<typeof runLocalApp>>;
   try {
     runResult = await runLocalApp({
-      appPath: context.runtime.cwd,
-      buildType: resolvedBuildType,
+      appPath: appDir,
+      buildType: framework.buildType as LocalBuildType,
       entrypoint,
       port,
       env: context.runtime.env,
@@ -250,23 +363,209 @@ export async function runAppRun(
   };
 }
 
+interface AppDeployOptions {
+  projectRef?: string;
+  createProjectName?: string;
+  branchName?: string;
+  entrypoint?: string;
+  framework?: string;
+  httpPort?: string;
+  envAssignments?: string[];
+  prod?: boolean;
+  db?: boolean;
+  configTarget?: string;
+}
+
 export async function runAppDeploy(
   context: CommandContext,
   appName: string | undefined,
-  options?: {
-    projectRef?: string;
-    createProjectName?: string;
-    branchName?: string;
-    entrypoint?: string;
-    framework?: string;
-    httpPort?: string;
-    envAssignments?: string[];
-    prod?: boolean;
-    db?: boolean;
-  },
-): Promise<CommandSuccess<AppDeployResult>> {
+  options?: AppDeployOptions,
+): Promise<CommandSuccess<AppDeployResult | AppDeployAllResult>> {
   ensurePreviewAppMode(context);
 
+  const loaded = await loadComputeConfig(
+    context.runtime.cwd,
+    context.runtime.signal,
+  );
+  if (loaded.isErr()) {
+    throw computeConfigErrorToCliError(loaded.error, "deploy");
+  }
+  const config = loaded.value;
+
+  const requestedTarget =
+    options?.configTarget ??
+    (config
+      ? inferComputeTargetFromCwd(config, context.runtime.cwd)
+      : undefined);
+  const plan = planAppDeploy({
+    config,
+    requestedTarget,
+    hasCreateProject: options?.createProjectName !== undefined,
+  });
+
+  if (plan.mode === "all") {
+    // config is non-null and multi-app whenever the planner schedules a run.
+    return runAppDeployAll(
+      context,
+      config as LoadedComputeConfig,
+      plan.targets,
+      appName,
+      options,
+    );
+  }
+
+  return runSingleAppDeploy(context, appName, options, config);
+}
+
+async function runAppDeployAll(
+  context: CommandContext,
+  config: LoadedComputeConfig,
+  plannedTargets: PlannedDeployTarget[],
+  appName: string | undefined,
+  options?: AppDeployOptions,
+): Promise<CommandSuccess<AppDeployAllResult>> {
+  assertNoPerAppInputsForDeployAll(context, config, appName, options);
+
+  const deployments: AppDeployAllResult["deployments"] = [];
+  const warnings: string[] = [];
+  for (const planned of plannedTargets) {
+    maybeRenderDeployAllTargetHeader(context, planned);
+    // --create-project binds once: after the first target writes the local
+    // pin, the rest resolve the Project (and its --db branch database) through
+    // it, so the branch database is created once for the whole run.
+    const targetOptions: AppDeployOptions = {
+      ...options,
+      configTarget: planned.targetKey,
+      createProjectName: planned.bindsCreateProject
+        ? options?.createProjectName
+        : undefined,
+    };
+    try {
+      const single = await runSingleAppDeploy(
+        context,
+        undefined,
+        targetOptions,
+        config,
+      );
+      deployments.push({ target: planned.targetKey, result: single.result });
+      warnings.push(...single.warnings);
+    } catch (error) {
+      throw deployAllFailedError(error, config, planned.index, deployments);
+    }
+  }
+
+  return {
+    command: "app.deploy",
+    result: { deployments },
+    warnings,
+    // Bare list-deploys follows the remembered selection (the last target
+    // deployed), so the multi-app suggestion must name a target.
+    nextSteps: ["prisma-cli app list-deploys <app>"],
+  };
+}
+
+function assertNoPerAppInputsForDeployAll(
+  context: CommandContext,
+  config: LoadedComputeConfig,
+  appName: string | undefined,
+  options?: AppDeployOptions,
+): void {
+  const used = perAppInputsForDeployAll({
+    appName,
+    framework: options?.framework,
+    entrypoint: options?.entrypoint,
+    httpPort: options?.httpPort,
+    envAssignments: options?.envAssignments,
+    appIdEnvVar: {
+      name: PRISMA_APP_ID_ENV_VAR,
+      value: readDeployEnvOverride(context, PRISMA_APP_ID_ENV_VAR),
+    },
+  });
+  if (used.length === 0) {
+    return;
+  }
+
+  const targets = config.targets.map((target) => target.key!).join(", ");
+  throw usageError(
+    `Deploying all apps does not accept ${used.join(", ")}`,
+    `Without a target, app deploy deploys every configured app (${targets}), so per-app inputs are ambiguous.`,
+    "Pass the app target to apply per-app inputs to one app, or remove them to deploy all apps.",
+    config.targets.map((target) => `prisma-cli app deploy ${target.key}`),
+    "app",
+  );
+}
+
+function maybeRenderDeployAllTargetHeader(
+  context: CommandContext,
+  planned: PlannedDeployTarget,
+): void {
+  if (context.flags.json || context.flags.quiet) {
+    return;
+  }
+
+  context.output.stderr.write(
+    `${planned.index > 0 ? "\n" : ""}── ${planned.targetKey} (${planned.index + 1}/${planned.total}) ──\n\n`,
+  );
+}
+
+function deployAllFailedError(
+  error: unknown,
+  config: LoadedComputeConfig,
+  failedIndex: number,
+  deployments: AppDeployAllResult["deployments"],
+): unknown {
+  if (!(error instanceof CliError)) {
+    return error;
+  }
+
+  const failure = describeDeployAllFailure({
+    targetKeys: config.targets.map((target) => target.key!),
+    failedIndex,
+    completed: deployments.map(({ target, result }) => ({
+      target,
+      deploymentId: result.deployment.id,
+      url: result.deployment.url,
+    })),
+  });
+  const contextSentence = failure.contextLines.join(" ");
+
+  return new CliError({
+    code: error.code,
+    domain: error.domain,
+    summary: error.summary,
+    // The deploy-all context renders through whichever path the original
+    // error uses: appended to humanLines when they replace the structured
+    // rendering, folded into `why` otherwise.
+    why: error.humanLines
+      ? error.why
+      : [error.why, contextSentence].filter(Boolean).join(" "),
+    fix: error.fix,
+    debug: error.debug,
+    where: error.where,
+    meta: {
+      ...error.meta,
+      deployAll: {
+        failedTarget: failure.failedTarget,
+        completed: failure.completed,
+        notAttempted: failure.notAttempted,
+      },
+    },
+    docsUrl: error.docsUrl,
+    exitCode: error.exitCode,
+    nextSteps: error.nextSteps,
+    nextActions: error.nextActions,
+    humanLines: error.humanLines
+      ? [...error.humanLines, "", ...failure.contextLines]
+      : undefined,
+  });
+}
+
+async function runSingleAppDeploy(
+  context: CommandContext,
+  appName: string | undefined,
+  options: AppDeployOptions | undefined,
+  preloadedConfig: LoadedComputeConfig | null,
+): Promise<CommandSuccess<AppDeployResult>> {
   const envProjectId = readDeployEnvOverride(
     context,
     PRISMA_PROJECT_ID_ENV_VAR,
@@ -278,24 +577,48 @@ export async function runAppDeploy(
     envProjectId,
   });
 
+  const computeConfig = await resolveComputeTargetOrThrow(
+    context,
+    options?.configTarget,
+    "deploy",
+    {
+      preloaded: preloadedConfig,
+    },
+  );
+  const merged = mergeComputeDeployInputs({
+    cli: {
+      framework: options?.framework,
+      entrypoint: options?.entrypoint,
+      httpPort: options?.httpPort,
+      envInputs: options?.envAssignments,
+    },
+    target: computeConfig.target,
+    configFilename:
+      computeConfig.config?.relativeConfigPath ?? COMPUTE_CONFIG_FILENAME,
+  });
+  const appDir = await resolveComputeAppDir(context, computeConfig);
+  // The compute config marks the project root: the Project binding and other
+  // repo-level concerns live next to the config, not wherever deploy ran.
+  const projectDir = computeConfig.config?.configDir ?? context.runtime.cwd;
+
   const skipLocalPin = Boolean(
     envProjectId || options?.projectRef || options?.createProjectName,
   );
   const localPinReadResult = skipLocalPin
     ? Result.ok({ kind: "missing" } satisfies LocalResolutionPinReadResult)
-    : await readLocalResolutionPin(context.runtime.cwd, context.runtime.signal);
+    : await readLocalResolutionPin(projectDir, context.runtime.signal);
   if (localPinReadResult.isErr()) {
     throw localPinReadErrorToDeployError(localPinReadResult.error);
   }
   const localPin = localPinReadResult.value;
 
   const branch = await resolveDeployBranch(context, options?.branchName);
-  if (options?.httpPort) {
-    parseDeployHttpPort(options.httpPort);
+  if (merged.httpPort) {
+    parseDeployHttpPort(merged.httpPort.value);
   }
   assertSupportedEntrypointForRequestedDeployShape({
-    requestedFramework: options?.framework,
-    entrypoint: options?.entrypoint,
+    requestedFramework: merged.framework?.value,
+    entrypoint: merged.entrypoint?.value,
   });
   const { provider, target, projectId } =
     await requireProviderAndDeployProjectContext(context, options?.projectRef, {
@@ -311,6 +634,7 @@ export async function runAppDeploy(
       target.workspace,
       target.project,
       target.localPinAction,
+      projectDir,
     );
     if (setupResult.isErr()) {
       throw projectDirectoryBindingErrorToCliError(setupResult.error);
@@ -326,15 +650,32 @@ export async function runAppDeploy(
   }
 
   let framework = await resolveDeployFramework(context, {
-    requestedFramework: options?.framework,
-    entrypoint: options?.entrypoint,
+    requestedFramework: merged.framework?.value,
+    requestedFrameworkAnnotation: merged.framework?.annotation,
+    entrypoint: merged.entrypoint?.value,
+    entrypointAnnotation: merged.entrypoint?.annotation,
+    appDir,
   });
-  let runtime = resolveDeployRuntime(options?.httpPort, framework);
-  assertSupportedEntrypoint(framework.buildType, options?.entrypoint, "deploy");
+  let runtime = resolveDeployRuntime(
+    merged.httpPort?.value,
+    merged.httpPort?.annotation,
+    framework,
+  );
+  assertSupportedEntrypoint(
+    framework.buildType,
+    merged.entrypoint?.value,
+    "deploy",
+  );
   const envVars = toOptionalEnvVars(
-    await parseEnvInputs(context.runtime.cwd, options?.envAssignments, {
-      commandName: "deploy",
-    }),
+    // Config env file paths resolve from the config directory; --env flag
+    // paths resolve from where the command ran.
+    await parseEnvInputs(
+      merged.envInputsFromConfig ? projectDir : context.runtime.cwd,
+      merged.envInputs,
+      {
+        commandName: "deploy",
+      },
+    ),
   );
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveDeployAppSelection(
@@ -344,14 +685,15 @@ export async function runAppDeploy(
     {
       explicitAppName: appName,
       explicitAppId: envAppId,
+      configAppName: merged.configAppName,
       firstDeploy: Boolean(target.localPinAction),
-      inferName: () =>
-        inferTargetName(context.runtime.cwd, context.runtime.signal),
+      inferName: () => inferTargetName(appDir, context.runtime.signal),
     },
   );
 
   await maybeRenderDeploySetupBlock(context, {
     includeDirectory: !target.localPinAction,
+    appDir,
     projectName: target.project.name,
     branchName: target.branch.name,
     appName: selectedApp.displayName,
@@ -361,9 +703,9 @@ export async function runAppDeploy(
     framework,
     runtime,
     firstDeploy: selectedApp.firstDeploy,
-    explicitFramework: Boolean(options?.framework),
-    explicitEntrypoint: Boolean(options?.entrypoint),
-    explicitHttpPort: Boolean(options?.httpPort),
+    explicitFramework: Boolean(merged.framework),
+    explicitEntrypoint: Boolean(merged.entrypoint),
+    explicitHttpPort: Boolean(merged.httpPort),
   });
   framework = customized.framework;
   runtime = customized.runtime;
@@ -382,18 +724,39 @@ export async function runAppDeploy(
   // Customization can switch from a Bun-compatible framework to one that
   // derives its entrypoint from build output, so validate --entry again after it.
   const buildType = framework.buildType;
-  assertSupportedEntrypoint(buildType, options?.entrypoint, "deploy");
+  assertSupportedEntrypoint(buildType, merged.entrypoint?.value, "deploy");
   const entrypoint = await resolveDeployEntrypoint(
-    context.runtime.cwd,
+    appDir,
     framework,
-    options?.entrypoint,
+    merged.entrypoint?.value,
     context.runtime.signal,
   );
-  const buildSettingsResolution = await resolveOrCreatePreviewBuildSettings({
-    appPath: context.runtime.cwd,
-    buildType,
-    signal: context.runtime.signal,
-  });
+  if (computeConfig.target?.build) {
+    assertConfigBackedBuildSettings(buildType);
+  }
+  // Build settings come from the compute config's build block over framework
+  // defaults; nothing is read from or written to disk for them.
+  const buildSettingsResolution =
+    computeConfig.config &&
+    computeConfig.target?.build &&
+    isConfigBackedBuildType(buildType)
+      ? await resolveConfiguredPreviewBuildSettings({
+          appPath: appDir,
+          buildType,
+          configured: computeConfig.target.build,
+          configPath: computeConfig.config.configPath,
+          signal: context.runtime.signal,
+        })
+      : await resolveInferredPreviewBuildSettings({
+          appPath: appDir,
+          buildType,
+          signal: context.runtime.signal,
+        });
+  const legacyWarnings = await handleLegacyBuildSettings(
+    context,
+    appDir,
+    buildSettingsResolution.settings,
+  );
   maybeRenderDeployBuildSettings(context, buildSettingsResolution);
   const portMapping = parseDeployPortMapping(String(runtime.port));
   const branchDatabaseSetup = await maybeSetupBranchDatabase(
@@ -405,6 +768,7 @@ export async function runAppDeploy(
       db: options?.db,
       providedEnvVars: envVars,
       firstProductionDeploy: productionDeployGate.firstProductionDeploy,
+      projectDir,
     },
   );
 
@@ -412,7 +776,7 @@ export async function runAppDeploy(
   const deployStartedAt = Date.now();
   const deployResult = await provider
     .deployApp({
-      cwd: context.runtime.cwd,
+      cwd: appDir,
       projectId,
       branchName: target.branch.name,
       appId: selectedApp.appId,
@@ -487,7 +851,7 @@ export async function runAppDeploy(
       durationMs: deployDurationMs,
       localPin: localPinResult,
     },
-    warnings: branchDatabaseSetup.warnings,
+    warnings: [...legacyWarnings, ...branchDatabaseSetup.warnings],
     nextSteps: [
       "prisma-cli app list-deploys",
       `prisma-cli app show-deploy ${deployResult.deployment.id}`,
@@ -499,19 +863,26 @@ export async function runAppListDeploys(
   context: CommandContext,
   appName: string | undefined,
   projectRef?: string,
+  configTarget?: string,
 ): Promise<CommandSuccess<AppListDeploysResult>> {
   ensurePreviewAppMode(context);
 
+  const compute = await resolveComputeManagementContext(
+    context,
+    configTarget,
+    "list-deploys",
+  );
   const { provider, target, projectId } =
     await requireProviderAndProjectContext(context, projectRef, {
       commandName: "app list-deploys",
+      projectDir: compute.projectDir,
     });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveExistingAppSelection(
     context,
     projectId,
     apps,
-    appName,
+    appName ?? compute.configAppName,
   );
 
   if (!selectedApp) {
@@ -580,19 +951,26 @@ export async function runAppShow(
   context: CommandContext,
   appName: string | undefined,
   projectRef?: string,
+  configTarget?: string,
 ): Promise<CommandSuccess<AppShowResult>> {
   ensurePreviewAppMode(context);
 
+  const compute = await resolveComputeManagementContext(
+    context,
+    configTarget,
+    "show",
+  );
   const { provider, target, projectId } =
     await requireProviderAndProjectContext(context, projectRef, {
       commandName: "app show",
+      projectDir: compute.projectDir,
     });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveExistingAppSelection(
     context,
     projectId,
     apps,
-    appName,
+    appName ?? compute.configAppName,
   );
 
   if (!selectedApp) {
@@ -736,12 +1114,20 @@ export async function runAppOpen(
   context: CommandContext,
   appName: string | undefined,
   projectRef?: string,
+  configTarget?: string,
 ): Promise<CommandSuccess<AppOpenResult>> {
   ensurePreviewAppMode(context);
 
+  const compute = await resolveComputeManagementContext(
+    context,
+    configTarget,
+    "open",
+  );
+  appName = appName ?? compute.configAppName;
   const { provider, target, projectId } =
     await requireProviderAndProjectContext(context, projectRef, {
       commandName: "app open",
+      projectDir: compute.projectDir,
     });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveExistingAppSelection(
@@ -844,6 +1230,7 @@ export async function runAppDomainAdd(
     appName?: string;
     projectRef?: string;
     branchName?: string;
+    configTarget?: string;
   },
 ): Promise<CommandSuccess<AppDomainAddResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
@@ -885,6 +1272,7 @@ export async function runAppDomainShow(
     appName?: string;
     projectRef?: string;
     branchName?: string;
+    configTarget?: string;
   },
 ): Promise<CommandSuccess<AppDomainShowResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
@@ -924,6 +1312,7 @@ export async function runAppDomainRemove(
     appName?: string;
     projectRef?: string;
     branchName?: string;
+    configTarget?: string;
   },
 ): Promise<CommandSuccess<AppDomainRemoveResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
@@ -967,6 +1356,7 @@ export async function runAppDomainRetry(
     appName?: string;
     projectRef?: string;
     branchName?: string;
+    configTarget?: string;
   },
 ): Promise<CommandSuccess<AppDomainRetryResult>> {
   const normalizedHostname = normalizeDomainHostname(hostname);
@@ -1007,6 +1397,7 @@ export async function runAppDomainWait(
     projectRef?: string;
     branchName?: string;
     timeout?: string;
+    configTarget?: string;
   },
 ): Promise<void> {
   const normalizedHostname = normalizeDomainHostname(hostname);
@@ -1107,15 +1498,23 @@ export async function runAppLogs(
   appName: string | undefined,
   deploymentId: string | undefined,
   projectRef?: string,
+  configTarget?: string,
 ): Promise<void> {
   ensurePreviewAppMode(context);
 
+  const compute = await resolveComputeManagementContext(
+    context,
+    configTarget,
+    "logs",
+  );
+  appName = appName ?? compute.configAppName;
   const {
     provider,
     target: resolvedTarget,
     projectId,
   } = await requireProviderAndProjectContext(context, projectRef, {
     commandName: "app logs",
+    projectDir: compute.projectDir,
   });
   const target = deploymentId
     ? await resolveExplicitLogDeployment(
@@ -1138,8 +1537,6 @@ export async function runAppLogs(
     const lines = renderCommandHeader(context.ui, {
       commandLabel: "app logs",
       description: "Streaming logs for the selected deployment.",
-      docsPath:
-        "docs/product/command-spec.md#prisma-cli-app-logs---app-name---deployment-id",
       rows: [
         { key: "project", value: projectId },
         { key: "app", value: target.app.name },
@@ -1357,12 +1754,20 @@ export async function runAppPromote(
   deploymentId: string,
   appName: string | undefined,
   projectRef?: string,
+  configTarget?: string,
 ): Promise<CommandSuccess<AppPromoteResult>> {
   ensurePreviewAppMode(context);
 
+  const compute = await resolveComputeManagementContext(
+    context,
+    configTarget,
+    "promote",
+  );
+  appName = appName ?? compute.configAppName;
   const { provider, target, projectId } =
     await requireProviderAndProjectContext(context, projectRef, {
       commandName: "app promote",
+      projectDir: compute.projectDir,
     });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await requireReleaseAppSelection(
@@ -1451,12 +1856,20 @@ export async function runAppRollback(
   appName: string | undefined,
   deploymentId: string | undefined,
   projectRef?: string,
+  configTarget?: string,
 ): Promise<CommandSuccess<AppRollbackResult>> {
   ensurePreviewAppMode(context);
 
+  const compute = await resolveComputeManagementContext(
+    context,
+    configTarget,
+    "rollback",
+  );
+  appName = appName ?? compute.configAppName;
   const { provider, target, projectId } =
     await requireProviderAndProjectContext(context, projectRef, {
       commandName: "app rollback",
+      projectDir: compute.projectDir,
     });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await requireReleaseAppSelection(
@@ -1555,12 +1968,20 @@ export async function runAppRemove(
   context: CommandContext,
   appName: string | undefined,
   projectRef?: string,
+  configTarget?: string,
 ): Promise<CommandSuccess<AppRemoveResult>> {
   ensurePreviewAppMode(context);
 
+  const compute = await resolveComputeManagementContext(
+    context,
+    configTarget,
+    "remove",
+  );
+  appName = appName ?? compute.configAppName;
   const { provider, target, projectId } =
     await requireProviderAndProjectContext(context, projectRef, {
       commandName: "app remove",
+      projectDir: compute.projectDir,
     });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await requireReleaseAppSelection(
@@ -1616,11 +2037,17 @@ async function resolveAppDomainTarget(
     appName?: string;
     projectRef?: string;
     branchName?: string;
+    configTarget?: string;
   },
   commandName = "app domain",
 ): Promise<ResolvedAppDomainTarget> {
   ensurePreviewAppMode(context);
 
+  const compute = await resolveComputeManagementContext(
+    context,
+    options?.configTarget,
+    commandName.replace(/^app /, ""),
+  );
   const branch = resolveDomainBranch(options?.branchName);
   if (toBranchKind(branch.name) !== "production") {
     throw new CliError({
@@ -1645,6 +2072,7 @@ async function resolveAppDomainTarget(
       branch,
       commandName,
       envProjectId,
+      projectDir: compute.projectDir,
     });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveDomainAppSelection(
@@ -1652,7 +2080,7 @@ async function resolveAppDomainTarget(
     projectId,
     apps,
     {
-      explicitAppName: options?.appName,
+      explicitAppName: options?.appName ?? compute.configAppName,
       explicitAppId: envAppId,
     },
   );
@@ -1886,122 +2314,87 @@ function domainCommandError(
   hostname: string,
 ): CliError {
   if (error instanceof PreviewDomainApiError) {
-    return domainApiCommandError(command, error, hostname);
+    if (
+      command === "add" &&
+      (error.status === 400 || error.status === 422) &&
+      isDomainDnsError(error)
+    ) {
+      return domainDnsNotConfiguredError(hostname, error);
+    }
+
+    if (command === "add" && error.status === 400) {
+      return new CliError({
+        code: "DOMAIN_HOSTNAME_INVALID",
+        domain: "app",
+        summary: `Invalid custom domain "${hostname}"`,
+        why: error.message,
+        fix: "Pass a valid hostname like shop.acme.com and make sure DNS can be verified.",
+        debug: formatDebugDetails(error),
+        exitCode: 2,
+        nextSteps: ["prisma-cli app domain add shop.acme.com"],
+      });
+    }
+
+    if (
+      command === "add" &&
+      (error.status === 429 || isDomainQuotaError(error))
+    ) {
+      return new CliError({
+        code: "DOMAIN_QUOTA_EXCEEDED",
+        domain: "app",
+        summary: "Custom domain quota exceeded",
+        why: error.message,
+        fix: "Remove an existing custom domain before adding another one.",
+        debug: formatDebugDetails(error),
+        exitCode: 1,
+        nextSteps: ["prisma-cli app domain remove <hostname>"],
+      });
+    }
+
+    if (command === "add" && error.status === 409) {
+      return domainAlreadyRegisteredError(hostname, error);
+    }
+
+    if (command === "add" && error.status === 422) {
+      return new CliError({
+        code: "NO_DEPLOYMENTS",
+        domain: "app",
+        summary: "Custom domain requires a live production deployment",
+        why: "The selected production app does not have a promoted version that can receive a custom domain.",
+        fix: "Deploy the app to the production branch, then rerun the domain command.",
+        debug: formatDebugDetails(error),
+        exitCode: 1,
+        nextSteps: [
+          "prisma-cli app deploy --branch production",
+          `prisma-cli app domain add ${hostname}`,
+        ],
+      });
+    }
+
+    if (
+      (command === "show" ||
+        command === "remove" ||
+        command === "retry" ||
+        command === "wait") &&
+      error.status === 404
+    ) {
+      return domainNotFoundError(hostname);
+    }
+
+    if (command === "retry" && error.status === 409) {
+      return new CliError({
+        code: "DOMAIN_RETRY_NOT_ELIGIBLE",
+        domain: "app",
+        summary: `Custom domain "${hostname}" is not eligible for retry`,
+        why: error.message,
+        fix: "Wait for the current verification or TLS step to finish, then rerun retry if the domain fails.",
+        debug: formatDebugDetails(error),
+        exitCode: 1,
+        nextSteps: [`prisma-cli app domain show ${hostname}`],
+      });
+    }
   }
 
-  return new CliError({
-    code: "DEPLOY_FAILED",
-    domain: "app",
-    summary: `Custom domain ${command} failed`,
-    why: error instanceof Error ? error.message : String(error),
-    fix: "Retry the command, or rerun with --trace for more detailed diagnostics.",
-    debug: formatDebugDetails(error),
-    exitCode: 1,
-    nextSteps: [`prisma-cli app domain show ${hostname}`],
-  });
-}
-
-function domainApiCommandError(
-  command: AppDomainCommand,
-  error: PreviewDomainApiError,
-  hostname: string,
-): CliError {
-  if (command === "add") {
-    return domainAddCommandError(error, hostname);
-  }
-
-  if (error.status === 404) {
-    return domainNotFoundError(hostname);
-  }
-
-  if (command === "retry" && error.status === 409) {
-    return domainRetryNotEligibleError(error, hostname);
-  }
-
-  return domainGenericCommandError(command, error, hostname);
-}
-
-function domainAddCommandError(
-  error: PreviewDomainApiError,
-  hostname: string,
-): CliError {
-  if (
-    (error.status === 400 || error.status === 422) &&
-    isDomainDnsError(error)
-  ) {
-    return domainDnsNotConfiguredError(hostname, error);
-  }
-
-  if (error.status === 400) {
-    return new CliError({
-      code: "DOMAIN_HOSTNAME_INVALID",
-      domain: "app",
-      summary: `Invalid custom domain "${hostname}"`,
-      why: error.message,
-      fix: "Pass a valid hostname like shop.acme.com and make sure DNS can be verified.",
-      debug: formatDebugDetails(error),
-      exitCode: 2,
-      nextSteps: ["prisma-cli app domain add shop.acme.com"],
-    });
-  }
-
-  if (error.status === 429 || isDomainQuotaError(error)) {
-    return new CliError({
-      code: "DOMAIN_QUOTA_EXCEEDED",
-      domain: "app",
-      summary: "Custom domain quota exceeded",
-      why: error.message,
-      fix: "Remove an existing custom domain before adding another one.",
-      debug: formatDebugDetails(error),
-      exitCode: 1,
-      nextSteps: ["prisma-cli app domain remove <hostname>"],
-    });
-  }
-
-  if (error.status === 409) {
-    return domainAlreadyRegisteredError(hostname, error);
-  }
-
-  if (error.status === 422) {
-    return new CliError({
-      code: "NO_DEPLOYMENTS",
-      domain: "app",
-      summary: "Custom domain requires a live production deployment",
-      why: "The selected production app does not have a promoted version that can receive a custom domain.",
-      fix: "Deploy the app to the production branch, then rerun the domain command.",
-      debug: formatDebugDetails(error),
-      exitCode: 1,
-      nextSteps: [
-        "prisma-cli app deploy --branch production",
-        `prisma-cli app domain add ${hostname}`,
-      ],
-    });
-  }
-
-  return domainGenericCommandError("add", error, hostname);
-}
-
-function domainRetryNotEligibleError(
-  error: PreviewDomainApiError,
-  hostname: string,
-): CliError {
-  return new CliError({
-    code: "DOMAIN_RETRY_NOT_ELIGIBLE",
-    domain: "app",
-    summary: `Custom domain "${hostname}" is not eligible for retry`,
-    why: error.message,
-    fix: "Wait for the current verification or TLS step to finish, then rerun retry if the domain fails.",
-    debug: formatDebugDetails(error),
-    exitCode: 1,
-    nextSteps: [`prisma-cli app domain show ${hostname}`],
-  });
-}
-
-function domainGenericCommandError(
-  command: AppDomainCommand,
-  error: unknown,
-  hostname: string,
-): CliError {
   return new CliError({
     code: "DEPLOY_FAILED",
     domain: "app",
@@ -2225,6 +2618,7 @@ async function resolveDeployAppSelection(
   options: {
     explicitAppName: string | undefined;
     explicitAppId: string | undefined;
+    configAppName: MergedDeployInput | undefined;
     firstDeploy: boolean;
     inferName: () => Promise<InferredTargetName>;
   },
@@ -2281,6 +2675,37 @@ async function resolveDeployAppSelection(
       appId: matched.id,
       displayName: matched.name,
       annotation: `from ${PRISMA_APP_ID_ENV_VAR}`,
+      firstDeploy: options.firstDeploy,
+    };
+  }
+
+  if (options.configAppName) {
+    const configName = options.configAppName;
+    const matches = findAppsByName(apps, configName.value);
+    if (matches.length > 1) {
+      return resolveAmbiguousDeployApp(
+        context,
+        matches,
+        configName.value,
+        options.firstDeploy,
+      );
+    }
+
+    const matched = matches[0];
+    if (matched) {
+      return {
+        appId: matched.id,
+        displayName: matched.name,
+        annotation: configName.annotation,
+        firstDeploy: options.firstDeploy,
+      };
+    }
+
+    return {
+      appName: configName.value,
+      region: PREVIEW_DEFAULT_REGION,
+      displayName: configName.value,
+      annotation: configName.annotation,
       firstDeploy: options.firstDeploy,
     };
   }
@@ -2764,6 +3189,7 @@ async function requireProviderAndProjectContext(
     branch?: ResolvedDeployBranch;
     commandName?: string;
     envProjectId?: string;
+    projectDir?: string;
   },
 ): Promise<{
   client: ManagementApiClient;
@@ -2827,21 +3253,26 @@ async function resolveProjectContext(
     branch?: ResolvedDeployBranch;
     commandName?: string;
     envProjectId?: string;
+    projectDir?: string;
   },
 ): Promise<ResolvedAppProjectContext> {
   const authState = await requireAuthenticatedAuthState(context);
-  const workspace = authState.workspace;
-  if (!workspace) {
+  if (!authState.workspace) {
     throw workspaceRequiredError();
   }
 
   const resolvedResult = await resolveProjectTarget({
     context,
-    workspace,
+    workspace: authState.workspace,
     explicitProject,
     envProjectId: options?.envProjectId,
+    projectDir: options?.projectDir,
     listProjects: () =>
-      listRealWorkspaceProjects(client, workspace, context.runtime.signal),
+      listRealWorkspaceProjects(
+        client,
+        authState.workspace!,
+        context.runtime.signal,
+      ),
     commandName: options?.commandName,
   });
   if (resolvedResult.isErr()) {
@@ -2887,90 +3318,27 @@ async function resolveDeployProjectContext(
     context.runtime.signal,
   );
 
-  const resolved = await resolveDeployProjectSetup(
-    context,
-    provider,
-    workspace,
-    projects,
-    explicitProject,
-    options,
-  );
-  return withRemoteDeployBranch(
-    provider,
-    resolved,
-    branch,
-    context.runtime.signal,
-  );
-}
-
-async function resolveDeployProjectSetup(
-  context: CommandContext,
-  provider: ReturnType<typeof createPreviewAppProvider>,
-  workspace: AuthWorkspace,
-  projects: ProjectCandidate[],
-  explicitProject: string | undefined,
-  options: {
-    createProjectName?: string;
-    envProjectId?: string;
-    localPin: LocalResolutionPinReadResult;
-  },
-): Promise<Omit<ResolvedAppProjectContext, "branch">> {
-  const selected = await resolveNonInteractiveDeployProjectSetup(
-    context,
-    provider,
-    workspace,
-    projects,
-    explicitProject,
-    options,
-  );
-  if (selected) {
-    return selected;
-  }
-
-  if (canPrompt(context) && !context.flags.yes) {
-    return resolveInteractiveDeployProjectSetup(
-      context,
-      provider,
-      workspace,
-      projects,
-    );
-  }
-
-  const suggestedName = await inferTargetName(
-    context.runtime.cwd,
-    context.runtime.signal,
-  );
-  throw projectSetupRequiredError(projects, suggestedName);
-}
-
-async function resolveNonInteractiveDeployProjectSetup(
-  context: CommandContext,
-  provider: ReturnType<typeof createPreviewAppProvider>,
-  workspace: AuthWorkspace,
-  projects: ProjectCandidate[],
-  explicitProject: string | undefined,
-  options: {
-    createProjectName?: string;
-    envProjectId?: string;
-    localPin: LocalResolutionPinReadResult;
-  },
-): Promise<Omit<ResolvedAppProjectContext, "branch"> | null> {
   if (explicitProject) {
     const project = resolveProjectForSetup(
       explicitProject,
       projects,
       workspace,
     );
-    return {
-      workspace,
-      project: toProjectSummary(project),
-      resolution: {
-        projectSource: "explicit",
-        targetName: explicitProject,
-        targetNameSource: "explicit",
+    return withRemoteDeployBranch(
+      provider,
+      {
+        workspace,
+        project: toProjectSummary(project),
+        resolution: {
+          projectSource: "explicit",
+          targetName: explicitProject,
+          targetNameSource: "explicit",
+        },
+        localPinAction: "linked",
       },
-      localPinAction: "linked",
-    };
+      branch,
+      context.runtime.signal,
+    );
   }
 
   if (options.createProjectName) {
@@ -2985,16 +3353,21 @@ async function resolveNonInteractiveDeployProjectSetup(
       workspace,
       context.runtime.signal,
     );
-    return {
-      workspace,
-      project: toProjectSummary(created),
-      resolution: {
-        projectSource: "created",
-        targetName: projectName,
-        targetNameSource: "explicit",
+    return withRemoteDeployBranch(
+      provider,
+      {
+        workspace,
+        project: toProjectSummary(created),
+        resolution: {
+          projectSource: "created",
+          targetName: projectName,
+          targetNameSource: "explicit",
+        },
+        localPinAction: "created",
       },
-      localPinAction: "created",
-    };
+      branch,
+      context.runtime.signal,
+    );
   }
 
   if (options.envProjectId) {
@@ -3004,15 +3377,20 @@ async function resolveNonInteractiveDeployProjectSetup(
     if (!project) {
       throw projectNotFoundError(options.envProjectId, workspace);
     }
-    return {
-      workspace,
-      project: toProjectSummary(project),
-      resolution: {
-        projectSource: "env",
-        targetName: options.envProjectId,
-        targetNameSource: "env",
+    return withRemoteDeployBranch(
+      provider,
+      {
+        workspace,
+        project: toProjectSummary(project),
+        resolution: {
+          projectSource: "env",
+          targetName: options.envProjectId,
+          targetNameSource: "env",
+        },
       },
-    };
+      branch,
+      context.runtime.signal,
+    );
   }
 
   const localPin = options.localPin;
@@ -3028,31 +3406,60 @@ async function resolveNonInteractiveDeployProjectSetup(
       throw localResolutionPinStaleError();
     }
 
-    return {
-      workspace,
-      project: toProjectSummary(project),
-      resolution: {
-        projectSource: "local-pin",
-        targetName: project.name,
-        targetNameSource: "local-pin",
+    return withRemoteDeployBranch(
+      provider,
+      {
+        workspace,
+        project: toProjectSummary(project),
+        resolution: {
+          projectSource: "local-pin",
+          targetName: project.name,
+          targetNameSource: "local-pin",
+        },
       },
-    };
+      branch,
+      context.runtime.signal,
+    );
   }
 
   const platformMapping = await resolveDurablePlatformMapping();
   if (platformMapping && platformMapping.workspace.id === workspace.id) {
-    return {
-      workspace,
-      project: toProjectSummary(platformMapping),
-      resolution: {
-        projectSource: "platform-mapping",
-        targetName: platformMapping.name,
-        targetNameSource: "platform-mapping",
+    return withRemoteDeployBranch(
+      provider,
+      {
+        workspace,
+        project: toProjectSummary(platformMapping),
+        resolution: {
+          projectSource: "platform-mapping",
+          targetName: platformMapping.name,
+          targetNameSource: "platform-mapping",
+        },
       },
-    };
+      branch,
+      context.runtime.signal,
+    );
   }
 
-  return null;
+  if (canPrompt(context) && !context.flags.yes) {
+    const resolved = await resolveInteractiveDeployProjectSetup(
+      context,
+      provider,
+      workspace,
+      projects,
+    );
+    return withRemoteDeployBranch(
+      provider,
+      resolved,
+      branch,
+      context.runtime.signal,
+    );
+  }
+
+  const suggestedName = await inferTargetName(
+    context.runtime.cwd,
+    context.runtime.signal,
+  );
+  throw projectSetupRequiredError(projects, suggestedName);
 }
 
 async function resolveInteractiveDeployProjectSetup(
@@ -3247,7 +3654,7 @@ async function resolveDeployBranch(
 
 interface ResolvedDeployFramework {
   key: string;
-  buildType: PreviewBuildSettingsBuildType;
+  buildType: FrameworkBuildType;
   displayName: string;
   annotation: string;
 }
@@ -3257,17 +3664,197 @@ interface ResolvedDeployRuntime {
   annotation: string;
 }
 
+async function resolveComputeTargetOrThrow(
+  context: CommandContext,
+  configTarget: string | undefined,
+  commandName: ComputeConfigCommandName,
+  options?: {
+    /**
+     * Management commands treat the config target as an extra app-name
+     * source, not a requirement: with multiple targets and nothing inferred
+     * they fall back to their existing app selection instead of failing.
+     */
+    targetOptional?: boolean;
+    /** Already-loaded config (or null for none); skips loading when provided. */
+    preloaded?: LoadedComputeConfig | null;
+  },
+): Promise<{
+  config: LoadedComputeConfig | null;
+  target: ComputeDeployTarget | null;
+}> {
+  let config: LoadedComputeConfig | null;
+  if (options?.preloaded !== undefined) {
+    config = options.preloaded;
+  } else {
+    const loaded = await loadComputeConfig(
+      context.runtime.cwd,
+      context.runtime.signal,
+    );
+    if (loaded.isErr()) {
+      throw computeConfigErrorToCliError(loaded.error, commandName);
+    }
+    config = loaded.value;
+  }
+  if (!config) {
+    if (configTarget) {
+      throw usageError(
+        `App target "${configTarget}" requires a compute config file`,
+        `No ${COMPUTE_CONFIG_FILENAME} exists in the current directory, so there are no named app targets.`,
+        `Create ${COMPUTE_CONFIG_FILENAME} with an apps entry named "${configTarget}", or rerun without the target argument.`,
+        [`prisma-cli app ${commandName}`],
+        "app",
+      );
+    }
+    return { config: null, target: null };
+  }
+
+  // With no explicit target, a command run from inside a target's root
+  // selects that target, so `cd apps/api && prisma-cli app deploy` works.
+  const requestedTarget =
+    configTarget ?? inferComputeTargetFromCwd(config, context.runtime.cwd);
+  const selected = selectComputeDeployTarget(config, requestedTarget);
+  if (selected.isErr()) {
+    if (
+      options?.targetOptional &&
+      selected.error instanceof ComputeConfigTargetRequiredError
+    ) {
+      return { config, target: null };
+    }
+    throw computeConfigErrorToCliError(selected.error, commandName);
+  }
+
+  return { config, target: selected.value };
+}
+
+/**
+ * Compute-config context for app management commands: the project directory
+ * (where `.prisma/local.json` lives) and the config-selected app name, which
+ * ranks below `--app` but above the remembered app selection.
+ */
+async function resolveComputeManagementContext(
+  context: CommandContext,
+  configTarget: string | undefined,
+  commandName: ComputeConfigCommandName,
+): Promise<{ projectDir: string; configAppName: string | undefined }> {
+  const compute = await resolveComputeTargetOrThrow(
+    context,
+    configTarget,
+    commandName,
+    { targetOptional: true },
+  );
+  return {
+    projectDir: compute.config?.configDir ?? context.runtime.cwd,
+    configAppName: compute.target?.name ?? compute.target?.key ?? undefined,
+  };
+}
+
+async function resolveComputeAppDir(
+  context: CommandContext,
+  compute: {
+    config: LoadedComputeConfig | null;
+    target: ComputeDeployTarget | null;
+  },
+): Promise<string> {
+  if (!compute.config || !compute.target) {
+    return context.runtime.cwd;
+  }
+
+  const appDir = computeTargetAppDir(compute.config, compute.target);
+  if (!compute.target.root) {
+    // The config directory itself; it exists because the config loaded from it.
+    return appDir;
+  }
+
+  context.runtime.signal.throwIfAborted();
+  try {
+    // access does not accept AbortSignal; check before and after the filesystem boundary.
+    await access(appDir);
+    context.runtime.signal.throwIfAborted();
+  } catch (error) {
+    if (context.runtime.signal.aborted) throw error;
+    throw new CliError({
+      code: "COMPUTE_CONFIG_INVALID",
+      domain: "app",
+      summary: `App root "${compute.target.root}" does not exist`,
+      why: `${compute.config.relativeConfigPath} points the selected app at "${compute.target.root}", but that directory does not exist.`,
+      fix: `Fix the root path in ${compute.config.relativeConfigPath} or create the directory.`,
+      where: appDir,
+      meta: { appRoot: compute.target.root, appDir },
+      exitCode: 2,
+      nextSteps: ["prisma-cli app deploy"],
+    });
+  }
+
+  return appDir;
+}
+
+/**
+ * `prisma.app.json` is no longer read or written. A leftover file that
+ * matches the effective settings only warns; one with custom values fails
+ * with migration guidance so builds never silently change.
+ */
+async function handleLegacyBuildSettings(
+  context: CommandContext,
+  appDir: string,
+  effective: PreviewBuildSettings,
+): Promise<string[]> {
+  const legacy = await detectLegacyBuildSettings({
+    appPath: appDir,
+    effective,
+    signal: context.runtime.signal,
+  });
+
+  switch (legacy.kind) {
+    case "absent":
+      return [];
+    case "matching":
+      return [
+        `${PRISMA_APP_CONFIG_FILENAME} is no longer used and matches the resolved build settings. Delete it.`,
+      ];
+    case "invalid":
+      return [
+        `${PRISMA_APP_CONFIG_FILENAME} is no longer used and could not be parsed. Delete it.`,
+      ];
+    case "custom": {
+      const buildBlock = [
+        "build: {",
+        `  command: ${legacy.buildCommand === null ? "null" : JSON.stringify(legacy.buildCommand)},`,
+        `  outputDirectory: ${JSON.stringify(legacy.outputDirectory)},`,
+        "}",
+      ].join(" ");
+      throw new CliError({
+        code: "BUILD_SETTINGS_MIGRATION_REQUIRED",
+        domain: "app",
+        summary: `${PRISMA_APP_CONFIG_FILENAME} is no longer supported`,
+        why: `${PRISMA_APP_CONFIG_FILENAME} contains custom build settings that differ from the resolved defaults, and the file is no longer read.`,
+        fix: `Move the settings into prisma.compute.ts as \`${buildBlock}\` on this app, then delete ${PRISMA_APP_CONFIG_FILENAME}.`,
+        where: legacy.configPath,
+        meta: {
+          configPath: legacy.configPath,
+          buildCommand: legacy.buildCommand,
+          outputDirectory: legacy.outputDirectory,
+        },
+        exitCode: 2,
+        nextSteps: ["prisma-cli app deploy"],
+      });
+    }
+  }
+}
+
 async function resolveDeployFramework(
   context: CommandContext,
   options: {
     requestedFramework: string | undefined;
+    requestedFrameworkAnnotation: string | undefined;
     entrypoint: string | undefined;
+    entrypointAnnotation: string | undefined;
+    appDir: string;
   },
 ): Promise<ResolvedDeployFramework> {
   if (options.requestedFramework) {
     return frameworkFromUserFacingValue(
       options.requestedFramework,
-      "set by --framework",
+      options.requestedFrameworkAnnotation ?? "set by --framework",
     );
   }
 
@@ -3276,29 +3863,30 @@ async function resolveDeployFramework(
       key: "bun",
       buildType: "bun",
       displayName: "Bun",
-      annotation: "set by --entry",
+      annotation: options.entrypointAnnotation ?? "set by --entry",
     };
   }
 
   const detected = await detectDeployFramework(
-    context.runtime.cwd,
+    options.appDir,
     context.runtime.signal,
   );
   if (detected) {
     return detected;
   }
 
-  throw frameworkNotDetectedError(context.runtime.cwd);
+  throw frameworkNotDetectedError(options.appDir);
 }
 
 function resolveDeployRuntime(
   requestedHttpPort: string | undefined,
+  requestedHttpPortAnnotation: string | undefined,
   framework: ResolvedDeployFramework,
 ): ResolvedDeployRuntime {
   if (requestedHttpPort) {
     return {
       port: parseDeployHttpPort(requestedHttpPort),
-      annotation: "set by --http-port",
+      annotation: requestedHttpPortAnnotation ?? "set by --http-port",
     };
   }
 
@@ -3339,11 +3927,13 @@ async function resolveDeployEntrypoint(
     return packageEntrypoint;
   }
 
-  if (framework.key !== "hono") {
+  const defaultEntrypoint = frameworkFromAlias(
+    framework.key,
+  )?.defaultEntrypoint;
+  if (!defaultEntrypoint) {
     return undefined;
   }
 
-  const defaultEntrypoint = "src/index.ts";
   signal.throwIfAborted();
   try {
     // access does not accept AbortSignal; check before and after the filesystem boundary.
@@ -3364,54 +3954,49 @@ async function detectDeployFramework(
   signal: AbortSignal,
 ): Promise<ResolvedDeployFramework | null> {
   const packageJson = await readBunPackageJson(cwd, signal);
-  const nextConfig = await detectNextConfig(cwd, signal);
 
-  if (nextConfig.exists || hasPackageDependency(packageJson, "next")) {
-    return {
-      key: "nextjs",
-      buildType: "nextjs",
-      displayName: "Next.js",
-      annotation: nextConfig.standalone
+  for (const framework of FRAMEWORKS) {
+    if (
+      framework.detectConfigFiles.length === 0 &&
+      framework.detectPackages.length === 0
+    ) {
+      continue;
+    }
+
+    const configFile = await detectFrameworkConfigFile(cwd, framework, signal);
+    if (
+      !configFile.exists &&
+      !hasAnyPackageDependency(packageJson, framework.detectPackages)
+    ) {
+      continue;
+    }
+
+    // Next.js standalone output gets a richer annotation; everything else is
+    // attributed to the signal that matched.
+    const annotation =
+      framework.key === "nextjs" && configFile.standalone
         ? "standalone output detected"
-        : nextConfig.exists
-          ? "detected from next.config"
-          : "detected from package.json",
-    };
-  }
+        : configFile.exists
+          ? `detected from ${path.basename(configFile.path!)}`
+          : "detected from package.json";
 
-  if (hasPackageDependency(packageJson, "hono")) {
     return {
-      key: "hono",
-      buildType: "bun",
-      displayName: "Hono",
-      annotation: "detected from package.json",
-    };
-  }
-
-  if (hasAnyPackageDependency(packageJson, TANSTACK_START_PACKAGES)) {
-    return {
-      key: "tanstack-start",
-      buildType: "tanstack-start",
-      displayName: "TanStack Start",
-      annotation: "detected from package.json",
+      key: framework.key,
+      buildType: framework.buildType,
+      displayName: framework.displayName,
+      annotation,
     };
   }
 
   return null;
 }
 
-async function detectNextConfig(
+async function detectFrameworkConfigFile(
   cwd: string,
+  framework: FrameworkDescriptor,
   signal: AbortSignal,
-): Promise<{ exists: boolean; standalone: boolean }> {
-  const candidates = [
-    "next.config.js",
-    "next.config.mjs",
-    "next.config.ts",
-    "next.config.mts",
-  ];
-
-  for (const candidate of candidates) {
+): Promise<{ exists: boolean; standalone: boolean; path: string | null }> {
+  for (const candidate of framework.detectConfigFiles) {
     const filePath = path.join(cwd, candidate);
     signal.throwIfAborted();
     try {
@@ -3419,6 +4004,7 @@ async function detectNextConfig(
       return {
         exists: true,
         standalone: /\boutput\s*:\s*["'`]standalone["'`]/.test(content),
+        path: filePath,
       };
     } catch (error) {
       if (signal.aborted) throw error;
@@ -3428,10 +4014,7 @@ async function detectNextConfig(
     }
   }
 
-  return {
-    exists: false,
-    standalone: false,
-  };
+  return { exists: false, standalone: false, path: null };
 }
 
 function hasPackageDependency(
@@ -3465,50 +4048,51 @@ function frameworkFromUserFacingValue(
   value: string,
   annotation: string,
 ): ResolvedDeployFramework {
-  switch (value.trim().toLowerCase()) {
-    case "next":
-    case "next.js":
-    case "nextjs":
-      return {
-        key: "nextjs",
-        buildType: "nextjs",
-        displayName: "Next.js",
-        annotation,
-      };
-    case "hono":
-      return {
-        key: "hono",
-        buildType: "bun",
-        displayName: "Hono",
-        annotation,
-      };
-    case "bun":
-      return {
-        key: "bun",
-        buildType: "bun",
-        displayName: "Bun",
-        annotation,
-      };
-    case "tanstack":
-    case "tanstack-start":
-    case "@tanstack/react-start":
-    case "@tanstack/solid-start":
-      return {
-        key: "tanstack-start",
-        buildType: "tanstack-start",
-        displayName: "TanStack Start",
-        annotation,
-      };
-    default:
-      throw frameworkNotDetectedError(undefined, value);
+  const framework = frameworkFromAlias(value);
+  if (!framework) {
+    throw frameworkNotDetectedError(undefined, value);
   }
+
+  return {
+    key: framework.key,
+    buildType: framework.buildType,
+    displayName: framework.displayName,
+    annotation,
+  };
+}
+
+/**
+ * The nuxt and astro strategies build with their framework CLI and stage
+ * fixed output, so a compute config `build` block has nothing to apply to.
+ * Erroring beats silently ignoring committed settings.
+ */
+function assertConfigBackedBuildSettings(
+  buildType: FrameworkBuildType,
+): asserts buildType is ConfigBackedBuildType {
+  if (isConfigBackedBuildType(buildType)) {
+    return;
+  }
+  const displayName =
+    FRAMEWORKS.find((framework) => framework.buildType === buildType)
+      ?.displayName ?? buildType;
+
+  throw new CliError({
+    code: "BUILD_SETTINGS_UNSUPPORTED",
+    domain: "app",
+    summary: `build settings are not supported for ${displayName} apps`,
+    why: `${displayName} deploys run \`${buildType} build\` and package its output automatically.`,
+    fix: "Remove the `build` block from prisma.compute.ts for this app.",
+    exitCode: 2,
+  });
 }
 
 function frameworkNotDetectedError(
   cwd: string | undefined,
   requestedFramework?: string,
 ): CliError {
-  const supported = "Next.js, Hono, TanStack Start, Bun";
+  const supported = FRAMEWORKS.map((framework) => framework.displayName).join(
+    ", ",
+  );
   const directory = cwd ? ` in ${formatDeployDirectory(cwd)}` : "";
 
   return new CliError({
@@ -3518,7 +4102,7 @@ function frameworkNotDetectedError(
       ? `Unsupported framework "${requestedFramework}"`
       : `Cannot detect a supported framework${directory}`,
     why: `Supported Beta frameworks: ${supported}.`,
-    fix: "Add one of these frameworks as a dependency, pass --framework <nextjs|hono|tanstack-start|bun>, or pass --entry <path> for a Bun app.",
+    fix: `Add one of these frameworks as a dependency, pass --framework <${FRAMEWORKS.map((framework) => framework.key).join("|")}>, or pass --entry <path> for a Bun app.`,
     exitCode: 2,
     nextSteps: [
       "prisma-cli app deploy --framework nextjs",
@@ -3534,6 +4118,7 @@ async function maybeRenderDeploySetupBlock(
   context: CommandContext,
   details: {
     includeDirectory: boolean;
+    appDir: string;
     projectName: string;
     branchName: string;
     appName: string;
@@ -3543,7 +4128,10 @@ async function maybeRenderDeploySetupBlock(
     return;
   }
 
-  const directory = formatDeployDirectory(context.runtime.cwd);
+  const directory = formatAppDirectoryLabel(
+    context.runtime.cwd,
+    details.appDir,
+  );
   const prefix = details.includeDirectory
     ? `Deploying ${directory} to`
     : "Deploying to";
@@ -3562,9 +4150,9 @@ function maybeRenderDeployBuildSettings(
 
   const settings = resolution.settings;
   const title =
-    resolution.status === "created"
-      ? `Created ${resolution.relativeConfigPath}`
-      : `Using ${resolution.relativeConfigPath}`;
+    resolution.status === "config"
+      ? `Using ${resolution.relativeConfigPath}`
+      : "Build settings";
 
   context.output.stderr.write(
     `${title}\n` +
@@ -3646,13 +4234,13 @@ async function maybeCustomizeDeploySettings(
     };
   }
 
-  const frameworkKey = await selectPrompt<DeployFramework>({
+  const frameworkKey = await selectPrompt<ComputeFramework>({
     input: context.runtime.stdin,
     output: context.runtime.stderr,
     message: `Framework (${options.framework.displayName})`,
-    choices: DEPLOY_FRAMEWORKS.map((framework) => ({
-      label: frameworkDisplayName(framework),
-      value: framework,
+    choices: FRAMEWORKS.map((framework) => ({
+      label: framework.displayName,
+      value: framework.key,
     })),
   });
   const framework = frameworkFromUserFacingValue(frameworkKey, "set by you");
@@ -3727,17 +4315,8 @@ function maybeRenderDeploySettingsPreview(
   );
 }
 
-function frameworkDisplayName(framework: DeployFramework): string {
-  switch (framework) {
-    case "nextjs":
-      return "Next.js";
-    case "hono":
-      return "Hono";
-    case "tanstack-start":
-      return "TanStack Start";
-    case "bun":
-      return "Bun";
-  }
+function frameworkDisplayName(framework: ComputeFramework): string {
+  return frameworkByKey(framework).displayName;
 }
 
 function validateDeployHttpPortText(
@@ -3758,6 +4337,15 @@ function validateDeployHttpPortText(
 function formatDeployDirectory(cwd: string): string {
   const basename = path.basename(cwd);
   return basename ? `./${basename}` : ".";
+}
+
+function formatAppDirectoryLabel(cwd: string, appDir: string): string {
+  if (appDir === cwd) {
+    return formatDeployDirectory(cwd);
+  }
+
+  const relative = path.relative(cwd, appDir).split(path.sep).join("/");
+  return relative.startsWith("..") ? relative : `./${relative}`;
 }
 
 async function readCurrentWorkspaceId(
@@ -3813,7 +4401,11 @@ function assertSupportedEntrypoint(
 ) {
   // Framework strategies derive their runtime entrypoints from build output.
   // Only Bun consumes a user-provided source entrypoint; auto may fall back to Bun.
-  if (buildType !== "auto" && buildType !== "bun" && entrypoint) {
+  if (
+    buildType !== "auto" &&
+    !(ENTRYPOINT_BUILD_TYPES as readonly string[]).includes(buildType) &&
+    entrypoint
+  ) {
     if (commandName === "deploy") {
       throw usageError(
         `App deploy does not accept --entry with ${formatBuildTypeName(buildType)}`,
@@ -3840,30 +4432,61 @@ function assertSupportedEntrypoint(
   }
 }
 
-async function requireLocalBuildType(
+/**
+ * Resolves the framework for `app run` with the same detection as deploy, so
+ * a repo that deploys without flags also runs without flags. Local dev server
+ * support is intentionally narrower than deploy build support: only Next.js
+ * and Bun/Hono have dev servers in the current preview.
+ */
+async function resolveLocalRunFramework(
   context: CommandContext,
-  buildType: PreviewBuildType,
-  commandName: "build" | "run",
-) {
-  // Local dev server support is intentionally narrower than deploy build support.
-  // Nuxt, Astro, and TanStack Start can deploy via SDK strategies, but app run
-  // only starts the local dev servers currently documented for the preview.
-  const resolvedBuildType = await resolveLocalBuildType(
-    context.runtime.cwd,
-    buildType,
+  options: {
+    requestedBuildType: PreviewBuildType;
+    configFramework: ComputeFramework | null;
+    appDir: string;
+  },
+): Promise<ResolvedDeployFramework> {
+  if (
+    (LOCAL_DEV_BUILD_TYPES as readonly string[]).includes(
+      options.requestedBuildType,
+    )
+  ) {
+    // Preserve the configured framework identity (e.g. hono) so entrypoint
+    // defaults match deploy; an explicit --build-type stays literal.
+    if (
+      options.configFramework &&
+      computeFrameworkToBuildType(options.configFramework) ===
+        options.requestedBuildType
+    ) {
+      return frameworkFromUserFacingValue(
+        options.configFramework,
+        `set by ${COMPUTE_CONFIG_FILENAME}`,
+      );
+    }
+    return frameworkFromUserFacingValue(
+      options.requestedBuildType,
+      "set by --build-type",
+    );
+  }
+
+  const detected = await detectDeployFramework(
+    options.appDir,
     context.runtime.signal,
   );
-  if (resolvedBuildType) {
-    return resolvedBuildType;
+  if (
+    detected &&
+    (LOCAL_DEV_BUILD_TYPES as readonly string[]).includes(detected.buildType)
+  ) {
+    return detected;
   }
 
   throw usageError(
-    `App ${commandName} requires an explicit framework when detection is ambiguous`,
+    "App run requires an explicit framework when detection is ambiguous",
     "This preview only starts local dev servers for clear Next.js or Bun project shapes.",
     "Pass --build-type nextjs for a Next.js app, or pass --build-type bun with --entry <path> for a Bun app.",
     [
-      `prisma-cli app ${commandName} --build-type nextjs`,
-      `prisma-cli app ${commandName} --build-type bun --entry server.ts`,
+      "prisma-cli app run --build-type nextjs",
+      "prisma-cli app run --build-type bun --entry server.ts",
     ],
     "app",
   );
@@ -3952,7 +4575,52 @@ function appDeployFailedError(
   const debug = formatDebugDetails(error);
 
   if (progress.buildStarted && !progress.buildCompleted) {
-    return appBuildFailedError(why, debug);
+    const standaloneOutputFailure = isNextStandaloneOutputFailure(why);
+    const fix = standaloneOutputFailure
+      ? 'Add output: "standalone" to next.config.*, then rerun deploy.'
+      : "Inspect the build output above, fix the error, and redeploy.";
+    const nextSteps = standaloneOutputFailure
+      ? [
+          'Add output: "standalone" to next.config.*, then rerun prisma-cli app deploy',
+        ]
+      : [];
+    const nextActions = standaloneOutputFailure
+      ? [
+          {
+            kind: "edit-file" as const,
+            journey: "deploy-app" as const,
+            label: "Add Next.js standalone output",
+            reason:
+              "Prisma Compute needs Next.js standalone output to build a deployable server artifact.",
+          },
+          {
+            kind: "run-command" as const,
+            journey: "deploy-app" as const,
+            label: "Rerun deploy",
+            command: "prisma-cli app deploy",
+          },
+        ]
+      : [];
+
+    return new CliError({
+      code: "BUILD_FAILED",
+      domain: "app",
+      summary: "Build failed locally.",
+      why,
+      fix,
+      debug,
+      meta: { phase: "build" },
+      humanLines: [
+        "Build failed locally.",
+        "",
+        `✗ Built       ${why}`,
+        "",
+        `Fix: ${fix}`,
+      ],
+      exitCode: 1,
+      nextSteps,
+      nextActions,
+    });
   }
 
   if (!progress.buildStarted) {
@@ -4016,58 +4684,6 @@ function appDeployFailedError(
     humanLines,
     exitCode: 1,
     nextSteps: [],
-  });
-}
-
-function appBuildFailedError(
-  why: string,
-  debug: string | null | undefined,
-): CliError {
-  const standaloneOutputFailure = isNextStandaloneOutputFailure(why);
-  const fix = standaloneOutputFailure
-    ? 'Add output: "standalone" to next.config.*, then rerun deploy.'
-    : "Inspect the build output above, fix the error, and redeploy.";
-  const nextSteps = standaloneOutputFailure
-    ? [
-        'Add output: "standalone" to next.config.*, then rerun prisma-cli app deploy',
-      ]
-    : [];
-  const nextActions = standaloneOutputFailure
-    ? [
-        {
-          kind: "edit-file" as const,
-          journey: "deploy-app" as const,
-          label: "Add Next.js standalone output",
-          reason:
-            "Prisma Compute needs Next.js standalone output to build a deployable server artifact.",
-        },
-        {
-          kind: "run-command" as const,
-          journey: "deploy-app" as const,
-          label: "Rerun deploy",
-          command: "prisma-cli app deploy",
-        },
-      ]
-    : [];
-
-  return new CliError({
-    code: "BUILD_FAILED",
-    domain: "app",
-    summary: "Build failed locally.",
-    why,
-    fix,
-    debug,
-    meta: { phase: "build" },
-    humanLines: [
-      "Build failed locally.",
-      "",
-      `✗ Built       ${why}`,
-      "",
-      `Fix: ${fix}`,
-    ],
-    exitCode: 1,
-    nextSteps,
-    nextActions,
   });
 }
 

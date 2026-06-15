@@ -6,6 +6,7 @@ import type { CommandContext } from "../shell/runtime";
 import { renderVerboseBlock, type VerboseRow } from "../shell/ui";
 import type {
   AppBuildResult,
+  AppDeployAllResult,
   AppDeployResult,
   AppDeploySettings,
   AppDomainAddResult,
@@ -58,21 +59,72 @@ export function renderAppDeploy(
   context: CommandContext,
   descriptor: CommandDescriptor,
   result: AppDeployResult,
+  options?: { logsTarget?: string },
 ): string[] {
   void descriptor;
 
+  // After a deploy-all, bare `app logs` follows the remembered selection, so
+  // each app's hint must name its target to actually show that app's logs.
+  const logsCommand = options?.logsTarget
+    ? `prisma-cli app logs ${options.logsTarget}`
+    : "prisma-cli app logs";
   const lines = [
     `Live in ${formatDuration(result.durationMs)}`,
     ...(result.deployment.url ? [context.ui.link(result.deployment.url)] : []),
     ...renderBranchDatabaseDeploySummary(context, result),
     "",
     ...renderDeployOutputRows(context.ui, [
-      { label: "Logs", value: "prisma-cli app logs" },
+      { label: "Logs", value: logsCommand },
     ]),
     ...renderDeployResolvedContextBlock(context, result),
     ...renderDeploySettingsBlock(context, result),
   ];
   return lines;
+}
+
+export function isAppDeployAllResult(
+  result: AppDeployResult | AppDeployAllResult,
+): result is AppDeployAllResult {
+  return "deployments" in result;
+}
+
+export function renderAppDeployAll(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: AppDeployAllResult,
+): string[] {
+  const lines: string[] = [];
+  for (const deployment of result.deployments) {
+    lines.push(deployment.target);
+    lines.push(
+      ...renderAppDeploy(context, descriptor, deployment.result, {
+        logsTarget: deployment.target,
+      }).map((line) => (line ? `  ${line}` : line)),
+    );
+    lines.push("");
+  }
+
+  lines.push(
+    ...renderDeployOutputRows(
+      context.ui,
+      result.deployments.map((deployment) => ({
+        label: deployment.target,
+        value:
+          deployment.result.deployment.url ?? deployment.result.deployment.id,
+      })),
+    ),
+  );
+  return lines;
+}
+
+export function serializeAppDeployAll(result: AppDeployAllResult) {
+  return {
+    count: result.deployments.length,
+    deployments: result.deployments.map((deployment) => ({
+      target: deployment.target,
+      ...serializeAppDeploy(deployment.result),
+    })),
+  };
 }
 
 export function serializeAppDeploy(result: AppDeployResult) {
@@ -94,7 +146,7 @@ function renderBranchDatabaseDeploySummary(
   context: CommandContext,
   result: AppDeployResult,
 ): string[] {
-  if (result.branchDatabase?.status !== "created") {
+  if (!result.branchDatabase || result.branchDatabase.status !== "created") {
     return [];
   }
 
@@ -109,31 +161,8 @@ function renderBranchDatabaseDeploySummary(
         label: "Env",
         value: result.branchDatabase.envVars.join(", "),
       },
-      ...(result.branchDatabase.schema
-        ? [
-            {
-              label: "Schema",
-              value: formatBranchDatabaseSchemaCommand(
-                result.branchDatabase.schema.command,
-              ),
-            },
-          ]
-        : []),
     ]),
   ];
-}
-
-function formatBranchDatabaseSchemaCommand(
-  command: "migrate-deploy" | "db-push" | "prisma-next-db-init",
-): string {
-  switch (command) {
-    case "migrate-deploy":
-      return "prisma migrate deploy";
-    case "db-push":
-      return "prisma db push";
-    case "prisma-next-db-init":
-      return "prisma-next db init";
-  }
 }
 
 function formatDuration(durationMs: number): string {
@@ -233,14 +262,6 @@ function branchDatabaseRows(
     },
     ...(branchDatabase.envVars.length > 0
       ? [{ key: "branch db env", value: branchDatabase.envVars.join(", ") }]
-      : []),
-    ...(branchDatabase.schema
-      ? [
-          {
-            key: "branch db schema",
-            value: `${formatBranchDatabaseSchemaCommand(branchDatabase.schema.command)} (${branchDatabase.schema.source}, ${branchDatabase.schema.path})`,
-          },
-        ]
       : []),
   ];
 }
