@@ -438,9 +438,3 @@ async function readTextFileIfSmall(
 
   return readFile(filePath, { encoding: "utf8", signal });
 }
-
-function defaultSchemaSourcePath(schema: BranchDatabaseSchema): string {
-  return schema.kind === "prisma-next"
-    ? "prisma-next.config.ts"
-    : "schema.prisma";
-}

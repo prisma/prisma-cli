@@ -49,7 +49,7 @@ afterEach(() => {
 });
 
 describe("app deploy branch database setup", () => {
-  it("deploy --db creates a branch database, applies schema, and writes branch env overrides before deploying", async () => {
+  it("deploy --db creates a branch database and writes branch env overrides before deploying", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const branchId = "branch_feature_db";
     const listApps = vi.fn().mockResolvedValue([
@@ -202,7 +202,7 @@ describe("app deploy branch database setup", () => {
     });
   });
 
-  it("deploy --db creates a database, applies schema, and writes production env vars on first production deploy", async () => {
+  it("deploy --db creates a database and writes production env vars on first production deploy", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const branchId = "branch_main";
     const listApps = vi.fn().mockResolvedValue([
