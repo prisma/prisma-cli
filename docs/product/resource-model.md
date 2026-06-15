@@ -188,9 +188,9 @@ Rules:
 - first production deploy setup writes production `DATABASE_URL` and `DIRECT_URL` env vars before the App has a live deployment
 - database setup never overwrites an existing branch-scoped `DATABASE_URL`
 - production setup treats existing production `DATABASE_URL` or `DIRECT_URL` as BYO DB intent and leaves env vars unchanged
-- schema setup is sourced only from local code; the CLI does not clone or infer schema from another database
-- Prisma Next config (`prisma-next.config.*`) is preferred over `schema.prisma`
-- known non-Postgres Prisma sources are treated as unsupported for automatic Prisma Postgres setup
+- the CLI provisions the database and wires its env vars; it never runs schema, migration, or generate commands. A detected local Prisma schema source feeds only the suggested follow-up command the user runs themselves; the CLI does not clone or infer schema from another database
+- when detecting that local schema source for the suggestion, a Prisma Next config (`prisma-next.config.*`) is preferred over `schema.prisma`
+- a known non-Postgres Prisma source is treated as unsupported: it does not trigger automatic database prompting, and explicit `--db` is rejected
 - later production database configuration is managed through explicit environment-variable commands
 
 ## Relationships
