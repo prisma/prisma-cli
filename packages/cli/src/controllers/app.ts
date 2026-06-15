@@ -46,6 +46,12 @@ import {
   renderDeployOutputRows,
   renderDeploySettingsPreview,
 } from "../lib/app/deploy-output";
+import {
+  describeDeployAllFailure,
+  type PlannedDeployTarget,
+  perAppInputsForDeployAll,
+  planAppDeploy,
+} from "../lib/app/deploy-plan";
 import { formatDomainFailureFix } from "../lib/app/domain-guidance";
 import { envVarNames, parseEnvInputs } from "../lib/app/env-vars";
 import {
@@ -386,20 +392,26 @@ export async function runAppDeploy(
   }
   const config = loaded.value;
 
-  // A multi-app config with no target named or inferred means the whole
-  // system: deploy every target, exactly as if each were deployed by hand.
   const requestedTarget =
     options?.configTarget ??
     (config
       ? inferComputeTargetFromCwd(config, context.runtime.cwd)
       : undefined);
-  if (
-    config &&
-    config.kind === "multi" &&
-    !requestedTarget &&
-    config.targets.length > 1
-  ) {
-    return runAppDeployAll(context, config, appName, options);
+  const plan = planAppDeploy({
+    config,
+    requestedTarget,
+    hasCreateProject: options?.createProjectName !== undefined,
+  });
+
+  if (plan.mode === "all") {
+    // config is non-null and multi-app whenever the planner schedules a run.
+    return runAppDeployAll(
+      context,
+      config as LoadedComputeConfig,
+      plan.targets,
+      appName,
+      options,
+    );
   }
 
   return runSingleAppDeploy(context, appName, options, config);
@@ -408,6 +420,7 @@ export async function runAppDeploy(
 async function runAppDeployAll(
   context: CommandContext,
   config: LoadedComputeConfig,
+  plannedTargets: PlannedDeployTarget[],
   appName: string | undefined,
   options?: AppDeployOptions,
 ): Promise<CommandSuccess<AppDeployAllResult>> {
@@ -415,20 +428,17 @@ async function runAppDeployAll(
 
   const deployments: AppDeployAllResult["deployments"] = [];
   const warnings: string[] = [];
-  for (const [index, target] of config.targets.entries()) {
-    const targetKey = target.key!;
-    maybeRenderDeployAllTargetHeader(
-      context,
-      targetKey,
-      index,
-      config.targets.length,
-    );
-    // --create-project applies once: after the first target binds the
-    // Project, the remaining targets resolve it through the local pin.
+  for (const planned of plannedTargets) {
+    maybeRenderDeployAllTargetHeader(context, planned);
+    // --create-project binds once: after the first target writes the local
+    // pin, the rest resolve the Project (and its --db branch database) through
+    // it, so the branch database is created once for the whole run.
     const targetOptions: AppDeployOptions = {
       ...options,
-      configTarget: targetKey,
-      createProjectName: index === 0 ? options?.createProjectName : undefined,
+      configTarget: planned.targetKey,
+      createProjectName: planned.bindsCreateProject
+        ? options?.createProjectName
+        : undefined,
     };
     try {
       const single = await runSingleAppDeploy(
@@ -437,10 +447,10 @@ async function runAppDeployAll(
         targetOptions,
         config,
       );
-      deployments.push({ target: targetKey, result: single.result });
+      deployments.push({ target: planned.targetKey, result: single.result });
       warnings.push(...single.warnings);
     } catch (error) {
-      throw deployAllFailedError(error, config, index, deployments);
+      throw deployAllFailedError(error, config, planned.index, deployments);
     }
   }
 
@@ -460,28 +470,22 @@ function assertNoPerAppInputsForDeployAll(
   appName: string | undefined,
   options?: AppDeployOptions,
 ): void {
-  const targets = config.targets.map((target) => target.key!).join(", ");
-  const perAppInputs: Array<[string, unknown]> = [
-    ["--app", appName],
-    ["--framework", options?.framework],
-    ["--entry", options?.entrypoint],
-    ["--http-port", options?.httpPort],
-    [
-      "--env",
-      options?.envAssignments?.length ? options.envAssignments : undefined,
-    ],
-    [
-      PRISMA_APP_ID_ENV_VAR,
-      readDeployEnvOverride(context, PRISMA_APP_ID_ENV_VAR),
-    ],
-  ];
-  const used = perAppInputs
-    .filter(([, value]) => value !== undefined)
-    .map(([flag]) => flag);
+  const used = perAppInputsForDeployAll({
+    appName,
+    framework: options?.framework,
+    entrypoint: options?.entrypoint,
+    httpPort: options?.httpPort,
+    envAssignments: options?.envAssignments,
+    appIdEnvVar: {
+      name: PRISMA_APP_ID_ENV_VAR,
+      value: readDeployEnvOverride(context, PRISMA_APP_ID_ENV_VAR),
+    },
+  });
   if (used.length === 0) {
     return;
   }
 
+  const targets = config.targets.map((target) => target.key!).join(", ");
   throw usageError(
     `Deploying all apps does not accept ${used.join(", ")}`,
     `Without a target, app deploy deploys every configured app (${targets}), so per-app inputs are ambiguous.`,
@@ -493,16 +497,14 @@ function assertNoPerAppInputsForDeployAll(
 
 function maybeRenderDeployAllTargetHeader(
   context: CommandContext,
-  targetKey: string,
-  index: number,
-  total: number,
+  planned: PlannedDeployTarget,
 ): void {
   if (context.flags.json || context.flags.quiet) {
     return;
   }
 
   context.output.stderr.write(
-    `${index > 0 ? "\n" : ""}── ${targetKey} (${index + 1}/${total}) ──\n\n`,
+    `${planned.index > 0 ? "\n" : ""}── ${planned.targetKey} (${planned.index + 1}/${planned.total}) ──\n\n`,
   );
 }
 
@@ -516,27 +518,16 @@ function deployAllFailedError(
     return error;
   }
 
-  const failedTarget = config.targets[failedIndex]!.key!;
-  const completed = deployments.map(({ target, result }) => ({
-    target,
-    deploymentId: result.deployment.id,
-    url: result.deployment.url,
-  }));
-  const notAttempted = config.targets
-    .slice(failedIndex + 1)
-    .map((target) => target.key!);
-  const contextLines = [
-    `Deploying all apps stopped at "${failedTarget}" (${failedIndex + 1}/${config.targets.length}).`,
-    ...(completed.length > 0
-      ? [
-          `Already live: ${completed.map((deployment) => deployment.target).join(", ")}.`,
-        ]
-      : []),
-    ...(notAttempted.length > 0
-      ? [`Not attempted: ${notAttempted.join(", ")}.`]
-      : []),
-  ];
-  const contextSentence = contextLines.join(" ");
+  const failure = describeDeployAllFailure({
+    targetKeys: config.targets.map((target) => target.key!),
+    failedIndex,
+    completed: deployments.map(({ target, result }) => ({
+      target,
+      deploymentId: result.deployment.id,
+      url: result.deployment.url,
+    })),
+  });
+  const contextSentence = failure.contextLines.join(" ");
 
   return new CliError({
     code: error.code,
@@ -553,14 +544,18 @@ function deployAllFailedError(
     where: error.where,
     meta: {
       ...error.meta,
-      deployAll: { failedTarget, completed, notAttempted },
+      deployAll: {
+        failedTarget: failure.failedTarget,
+        completed: failure.completed,
+        notAttempted: failure.notAttempted,
+      },
     },
     docsUrl: error.docsUrl,
     exitCode: error.exitCode,
     nextSteps: error.nextSteps,
     nextActions: error.nextActions,
     humanLines: error.humanLines
-      ? [...error.humanLines, "", ...contextLines]
+      ? [...error.humanLines, "", ...failure.contextLines]
       : undefined,
   });
 }
