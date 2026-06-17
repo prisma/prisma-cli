@@ -136,11 +136,13 @@ describe("bun compatibility", () => {
       execute: vi.fn(),
     }));
 
-    vi.doMock("@prisma/compute-sdk", () => ({
+    vi.doMock("@prisma/compute-sdk", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@prisma/compute-sdk")>()),
       AstroBuild: otherFrameworkBuild,
       BunBuild: bunBuild,
       NextjsBuild: nextjsBuild,
       NuxtBuild: otherFrameworkBuild,
+      NestjsBuild: otherFrameworkBuild,
       TanstackStartBuild: otherFrameworkBuild,
     }));
 
@@ -185,11 +187,13 @@ describe("bun compatibility", () => {
       execute: vi.fn(),
     }));
 
-    vi.doMock("@prisma/compute-sdk", () => ({
+    vi.doMock("@prisma/compute-sdk", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@prisma/compute-sdk")>()),
       AstroBuild: astroBuild,
       BunBuild: bunBuild,
       NextjsBuild: nextjsBuild,
       NuxtBuild: nuxtBuild,
+      NestjsBuild: nextjsBuild,
       TanstackStartBuild: tanstackStartBuild,
     }));
 
@@ -218,11 +222,13 @@ describe("bun compatibility", () => {
       execute: vi.fn(),
     }));
 
-    vi.doMock("@prisma/compute-sdk", () => ({
+    vi.doMock("@prisma/compute-sdk", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@prisma/compute-sdk")>()),
       AstroBuild: buildStrategy,
       BunBuild: buildStrategy,
       NextjsBuild: buildStrategy,
       NuxtBuild: buildStrategy,
+      NestjsBuild: buildStrategy,
       TanstackStartBuild: buildStrategy,
     }));
 

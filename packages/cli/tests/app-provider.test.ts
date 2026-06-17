@@ -37,7 +37,8 @@ describe("preview app provider", () => {
       POST: vi.fn(),
     };
 
-    vi.doMock("@prisma/compute-sdk", () => ({
+    vi.doMock("@prisma/compute-sdk", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@prisma/compute-sdk")>()),
       ApiError: { is: () => false },
       ComputeClient: class {},
     }));
@@ -415,7 +416,8 @@ describe("preview app provider", () => {
       }),
     };
 
-    vi.doMock("@prisma/compute-sdk", () => ({
+    vi.doMock("@prisma/compute-sdk", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@prisma/compute-sdk")>()),
       ApiError: { is: () => false },
       ComputeClient: class {},
     }));
@@ -506,7 +508,8 @@ describe("preview app provider", () => {
       }),
     };
 
-    vi.doMock("@prisma/compute-sdk", () => ({
+    vi.doMock("@prisma/compute-sdk", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@prisma/compute-sdk")>()),
       ApiError: { is: () => false },
       ComputeClient: class {},
     }));

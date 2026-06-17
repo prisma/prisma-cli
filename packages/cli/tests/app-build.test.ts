@@ -857,9 +857,7 @@ describe("preview build strategy", () => {
   });
 
   it("materializes symlinks that point back to the source app directory", async () => {
-    const { normalizeArtifactSymlinks } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { normalizeArtifactSymlinks } = await import("@prisma/compute-sdk");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
     const artifactDir = path.join(cwd, "artifact");
@@ -891,9 +889,8 @@ describe("preview build strategy", () => {
   });
 
   it("stages Next.js standalone artifacts by materializing symlinks and falling back to app node_modules", async () => {
-    const { stageNextjsStandaloneArtifact } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { stageStandaloneArtifact: stageNextjsStandaloneArtifact } =
+      await import("@prisma/compute-sdk");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
     const standaloneDir = path.join(appPath, ".next", "standalone");
@@ -964,9 +961,8 @@ describe("preview build strategy", () => {
   });
 
   it("stages Next.js standalone symlinks that resolve through the monorepo root", async () => {
-    const { stageNextjsStandaloneArtifact } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { stageStandaloneArtifact: stageNextjsStandaloneArtifact } =
+      await import("@prisma/compute-sdk");
     const cwd = await createTempCwd();
     const repoRoot = path.join(cwd, "repo");
     const appPath = path.join(repoRoot, "apps", "web");
@@ -1004,9 +1000,8 @@ describe("preview build strategy", () => {
   });
 
   it("keeps pnpm transitive dependencies resolvable after flattening Next.js standalone packages", async () => {
-    const { stageNextjsStandaloneArtifact } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { stageStandaloneArtifact: stageNextjsStandaloneArtifact } =
+      await import("@prisma/compute-sdk");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
     const standaloneDir = path.join(appPath, ".next", "standalone");
@@ -1122,9 +1117,8 @@ describe("preview build strategy", () => {
   });
 
   it("drops dangling pnpm hoist symlinks when staging Next.js standalone artifacts", async () => {
-    const { stageNextjsStandaloneArtifact } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { stageStandaloneArtifact: stageNextjsStandaloneArtifact } =
+      await import("@prisma/compute-sdk");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
     const standaloneDir = path.join(appPath, ".next", "standalone");
@@ -1191,9 +1185,8 @@ describe("preview build strategy", () => {
   });
 
   it("still rejects dangling Next.js standalone symlinks outside the pnpm hoist layer", async () => {
-    const { stageNextjsStandaloneArtifact } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { stageStandaloneArtifact: stageNextjsStandaloneArtifact } =
+      await import("@prisma/compute-sdk");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
     const standaloneDir = path.join(appPath, ".next", "standalone");
@@ -1221,9 +1214,8 @@ describe("preview build strategy", () => {
   });
 
   it("rejects Next.js standalone symlinks that escape the app directory", async () => {
-    const { stageNextjsStandaloneArtifact } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { stageStandaloneArtifact: stageNextjsStandaloneArtifact } =
+      await import("@prisma/compute-sdk");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
     const standaloneDir = path.join(appPath, ".next", "standalone");

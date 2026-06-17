@@ -4833,6 +4833,8 @@ function formatBuildTypeName(buildType: PreviewBuildType): string {
       return "Nuxt";
     case "astro":
       return "Astro";
+    case "nestjs":
+      return "NestJS";
     case "tanstack-start":
       return "TanStack Start";
     case "bun":
