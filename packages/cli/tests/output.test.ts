@@ -93,8 +93,7 @@ describe("shell output", () => {
         summary: "App deploy failed",
         why: "ENOENT: missing file",
         fix: "Retry the command.",
-        debug:
-          "Error: ENOENT: missing file\n    at stageStandaloneArtifact",
+        debug: "Error: ENOENT: missing file\n    at stageStandaloneArtifact",
       }),
       { trace: true },
     );
