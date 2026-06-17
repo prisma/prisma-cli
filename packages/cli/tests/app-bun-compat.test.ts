@@ -110,14 +110,14 @@ describe("bun compatibility", () => {
     ).resolves.toMatchObject({ buildType: "tanstack-start" });
   });
 
-  it("still lets an explicit Bun entrypoint override package.json module", async () => {
+  it("lets an explicit Bun entrypoint override package.json main", async () => {
     const cwd = await createTempCwd();
 
     await writeFile(
       path.join(cwd, "package.json"),
       JSON.stringify(
         {
-          module: "index.ts",
+          main: "index.ts",
           devDependencies: {
             "@types/bun": "latest",
           },
