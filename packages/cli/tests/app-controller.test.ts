@@ -2290,8 +2290,8 @@ describe("app controller", () => {
       expectedBuildType: "bun",
     },
     {
-      name: "Bun from --framework bun with package.json module",
-      packageJson: { module: "index.ts" },
+      name: "Bun from --framework bun with package.json main",
+      packageJson: { main: "index.ts" },
       framework: "bun",
       expectedEntrypoint: "index.ts",
       expectedBuildType: "bun",

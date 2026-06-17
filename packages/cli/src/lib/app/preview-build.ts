@@ -2,19 +2,13 @@ import { cp, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 import {
-  AstroBuild,
   type BuildArtifact,
   type BuildStrategy,
-  BunBuild,
-  NestjsBuild,
-  NextjsBuild,
-  NuxtBuild,
   normalizeArtifactSymlinks,
+  resolveBuildStrategy,
   stageStandaloneArtifact,
-  TanstackStartBuild,
 } from "@prisma/compute-sdk";
 
-import { resolveBunEntrypoint } from "./bun-project";
 import type { PreviewBuildSettings } from "./preview-build-settings";
 
 export {
@@ -139,99 +133,16 @@ export async function resolvePreviewBuildStrategy(options: {
   strategy: BuildStrategy;
   buildType: ResolvedPreviewBuildType;
 }> {
-  if (options.buildType !== "auto") {
-    const strategy = await createPreviewBuildStrategy({
-      appPath: options.appPath,
-      entrypoint: options.entrypoint,
-      buildType: options.buildType,
-      signal: options.signal,
-      buildSettings: options.buildSettings,
-    });
-
-    return {
-      buildType: options.buildType,
-      strategy,
-    };
-  }
-
-  for (const buildType of RESOLVED_PREVIEW_BUILD_TYPES) {
-    // Bun is the fallback because it can build any valid Bun entrypoint.
-    if (buildType === "bun") continue;
-
-    const strategy = await createPreviewBuildStrategy({
-      appPath: options.appPath,
-      entrypoint: options.entrypoint,
-      buildType,
-      signal: options.signal,
-      buildSettings: options.buildSettings,
-    });
-
-    if (await strategy.canBuild(options.signal)) {
-      return {
-        buildType,
-        strategy,
-      };
-    }
-  }
-
-  return {
-    buildType: "bun",
-    strategy: await createPreviewBuildStrategy({
-      appPath: options.appPath,
-      entrypoint: options.entrypoint,
-      buildType: "bun",
-      signal: options.signal,
-      buildSettings: options.buildSettings,
-    }),
-  };
-}
-
-/**
- * Constructs the SDK build strategy for a resolved framework. The strategies
- * run the framework build (and any `package.json` build script) and stage a
- * deployable artifact themselves; the CLI only resolves the Bun entrypoint,
- * which supports the `module` field on top of `main`.
- */
-async function createPreviewBuildStrategy(options: {
-  appPath: string;
-  entrypoint?: string;
-  buildType: ResolvedPreviewBuildType;
-  signal?: AbortSignal;
-  buildSettings?: PreviewBuildSettings;
-}): Promise<BuildStrategy> {
-  switch (options.buildType) {
-    case "nextjs":
-      return new NextjsBuild({
-        appPath: options.appPath,
-        buildSettings: options.buildSettings,
-      });
-    case "nuxt":
-      return new NuxtBuild({ appPath: options.appPath });
-    case "astro":
-      return new AstroBuild({ appPath: options.appPath });
-    case "nestjs":
-      return new NestjsBuild({
-        appPath: options.appPath,
-        buildSettings: options.buildSettings,
-      });
-    case "tanstack-start":
-      return new TanstackStartBuild({
-        appPath: options.appPath,
-        buildSettings: options.buildSettings,
-      });
-    case "bun": {
-      const entrypoint = await resolveBunEntrypoint(
-        options.appPath,
-        options.entrypoint,
-        options.signal,
-      );
-      return new BunBuild({
-        appPath: options.appPath,
-        entrypoint,
-        buildSettings: options.buildSettings,
-      });
-    }
-  }
+  // Detection, per-framework construction, and Bun entrypoint resolution
+  // (package.json `main`) all live in the SDK now; the CLI forwards. The CLI's
+  // build types map 1:1 to the SDK's, and `auto` is the SDK default.
+  return resolveBuildStrategy({
+    appPath: options.appPath,
+    buildType: options.buildType,
+    entrypoint: options.entrypoint,
+    buildSettings: options.buildSettings,
+    signal: options.signal,
+  });
 }
 
 /**

@@ -11,21 +11,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function mockBuildStrategy(
-  createInstance: (options: object) => object = () => ({
-    canBuild: vi.fn(),
-    execute: vi.fn(),
-  }),
-) {
-  return vi.fn().mockImplementation(function BuildStrategyMock(
-    options: object,
-  ) {
-    return createInstance(options);
-  });
-}
-
 describe("bun compatibility", () => {
-  it("resolves the Bun entrypoint from package.json module", async () => {
+  it("does not fall back to package.json module for the Bun entrypoint", async () => {
     const cwd = await createTempCwd();
 
     await writeFile(
@@ -50,8 +37,8 @@ describe("bun compatibility", () => {
 
     const { resolveBunEntrypoint } = await import("../src/lib/app/bun-project");
 
-    await expect(resolveBunEntrypoint(cwd, undefined)).resolves.toBe(
-      "index.ts",
+    await expect(resolveBunEntrypoint(cwd, undefined)).rejects.toThrow(
+      "Entrypoint is required. Pass --entry or define package.json main.",
     );
   });
 
@@ -68,14 +55,14 @@ describe("bun compatibility", () => {
     );
   });
 
-  it("detects a Bun project when package.json uses module instead of main", async () => {
+  it("detects a Bun project from package.json main and a bun dev script", async () => {
     const cwd = await createTempCwd();
 
     await writeFile(
       path.join(cwd, "package.json"),
       JSON.stringify(
         {
-          module: "index.ts",
+          main: "index.ts",
           devDependencies: {
             "@types/bun": "latest",
           },
@@ -99,138 +86,8 @@ describe("bun compatibility", () => {
     await expect(detectLocalBuildType(cwd)).resolves.toBe("bun");
   });
 
-  it("passes the module-based Bun entrypoint into the shared deploy/build strategy", async () => {
+  it("forwards explicit build types to the SDK strategy resolver", async () => {
     const cwd = await createTempCwd();
-
-    await writeFile(
-      path.join(cwd, "package.json"),
-      JSON.stringify(
-        {
-          module: "index.ts",
-          devDependencies: {
-            "@types/bun": "latest",
-          },
-        },
-        null,
-        2,
-      ),
-      "utf8",
-    );
-    await writeFile(
-      path.join(cwd, "index.ts"),
-      "console.log('hello');\n",
-      "utf8",
-    );
-
-    const bunBuild = mockBuildStrategy((options: object) => ({
-      options,
-      canBuild: vi.fn().mockResolvedValue(true),
-      execute: vi.fn(),
-    }));
-    const nextjsBuild = mockBuildStrategy(() => ({
-      canBuild: vi.fn().mockResolvedValue(false),
-      execute: vi.fn(),
-    }));
-    const otherFrameworkBuild = mockBuildStrategy(() => ({
-      canBuild: vi.fn().mockResolvedValue(false),
-      execute: vi.fn(),
-    }));
-
-    vi.doMock("@prisma/compute-sdk", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("@prisma/compute-sdk")>()),
-      AstroBuild: otherFrameworkBuild,
-      BunBuild: bunBuild,
-      NextjsBuild: nextjsBuild,
-      NuxtBuild: otherFrameworkBuild,
-      NestjsBuild: otherFrameworkBuild,
-      TanstackStartBuild: otherFrameworkBuild,
-    }));
-
-    const { resolvePreviewBuildStrategy } = await import(
-      "../src/lib/app/preview-build"
-    );
-
-    const result = await resolvePreviewBuildStrategy({
-      appPath: cwd,
-      buildType: "auto",
-      entrypoint: undefined,
-    });
-
-    expect(result.buildType).toBe("bun");
-    expect(bunBuild).toHaveBeenCalledWith({
-      appPath: cwd,
-      entrypoint: "index.ts",
-    });
-  });
-
-  it("auto-detects SDK framework strategies before falling back to Bun", async () => {
-    const cwd = await createTempCwd();
-
-    const bunBuild = mockBuildStrategy(() => ({
-      canBuild: vi.fn().mockResolvedValue(true),
-      execute: vi.fn(),
-    }));
-    const nextjsBuild = mockBuildStrategy(() => ({
-      canBuild: vi.fn().mockResolvedValue(false),
-      execute: vi.fn(),
-    }));
-    const nuxtBuild = mockBuildStrategy(() => ({
-      canBuild: vi.fn().mockResolvedValue(true),
-      execute: vi.fn(),
-    }));
-    const astroBuild = mockBuildStrategy(() => ({
-      canBuild: vi.fn().mockResolvedValue(true),
-      execute: vi.fn(),
-    }));
-    const tanstackStartBuild = mockBuildStrategy(() => ({
-      canBuild: vi.fn().mockResolvedValue(true),
-      execute: vi.fn(),
-    }));
-
-    vi.doMock("@prisma/compute-sdk", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("@prisma/compute-sdk")>()),
-      AstroBuild: astroBuild,
-      BunBuild: bunBuild,
-      NextjsBuild: nextjsBuild,
-      NuxtBuild: nuxtBuild,
-      NestjsBuild: nextjsBuild,
-      TanstackStartBuild: tanstackStartBuild,
-    }));
-
-    const { resolvePreviewBuildStrategy } = await import(
-      "../src/lib/app/preview-build"
-    );
-
-    const result = await resolvePreviewBuildStrategy({
-      appPath: cwd,
-      buildType: "auto",
-      entrypoint: undefined,
-    });
-
-    expect(result.buildType).toBe("nuxt");
-    expect(nuxtBuild).toHaveBeenCalledWith({ appPath: cwd });
-    expect(bunBuild).not.toHaveBeenCalled();
-    expect(astroBuild).not.toHaveBeenCalled();
-    expect(tanstackStartBuild).not.toHaveBeenCalled();
-  });
-
-  it("resolves explicit SDK framework build strategies", async () => {
-    const cwd = await createTempCwd();
-
-    const buildStrategy = mockBuildStrategy(() => ({
-      canBuild: vi.fn(),
-      execute: vi.fn(),
-    }));
-
-    vi.doMock("@prisma/compute-sdk", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("@prisma/compute-sdk")>()),
-      AstroBuild: buildStrategy,
-      BunBuild: buildStrategy,
-      NextjsBuild: buildStrategy,
-      NuxtBuild: buildStrategy,
-      NestjsBuild: buildStrategy,
-      TanstackStartBuild: buildStrategy,
-    }));
 
     const { resolvePreviewBuildStrategy } = await import(
       "../src/lib/app/preview-build"
