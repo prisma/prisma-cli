@@ -17,7 +17,7 @@ afterEach(() => {
 
   vi.doUnmock("../src/lib/auth/auth-ops");
   vi.doUnmock("../src/lib/auth/guard");
-  vi.doUnmock("../src/lib/app/preview-provider");
+  vi.doUnmock("../src/lib/app/app-provider");
   vi.resetModules();
   vi.restoreAllMocks();
 });

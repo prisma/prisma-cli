@@ -17,10 +17,30 @@ import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { matchError, Result } from "better-result";
 import open from "open";
 import { FileTokenStorage } from "../adapters/token-storage";
+import { DEFAULT_REGION } from "../lib/app/app-interaction";
+import {
+  type AppRecord,
+  createAppProvider,
+  DomainApiError,
+  type DomainRecord,
+} from "../lib/app/app-provider";
 import {
   type BranchDatabaseDeployBranch,
   maybeSetupBranchDatabase,
 } from "../lib/app/branch-database-deploy";
+import {
+  APP_BUILD_TYPES,
+  type AppBuildSettings,
+  type AppBuildSettingsResolution,
+  type AppBuildType,
+  detectLegacyBuildSettings,
+  executeAppBuild,
+  PRISMA_APP_CONFIG_FILENAME,
+  RESOLVED_APP_BUILD_TYPES,
+  type ResolvedAppBuildType,
+  resolveConfiguredAppBuildSettings,
+  resolveInferredAppBuildSettings,
+} from "../lib/app/build";
 import {
   type BunPackageJsonLike,
   readBunPackageEntrypoint,
@@ -52,6 +72,12 @@ import {
   perAppInputsForDeployAll,
   planAppDeploy,
 } from "../lib/app/deploy-plan";
+import {
+  createDeployProgress,
+  createDeployProgressState,
+  createPromoteProgress,
+  type DeployProgressState,
+} from "../lib/app/deploy-progress";
 import { formatDomainFailureFix } from "../lib/app/domain-guidance";
 import { envVarNames, parseEnvInputs } from "../lib/app/env-vars";
 import {
@@ -59,32 +85,6 @@ import {
   type LocalBuildType,
   runLocalApp,
 } from "../lib/app/local-dev";
-import {
-  detectLegacyBuildSettings,
-  executePreviewBuild,
-  PREVIEW_BUILD_TYPES,
-  PRISMA_APP_CONFIG_FILENAME,
-  type PreviewBuildSettings,
-  type PreviewBuildSettingsResolution,
-  type PreviewBuildType,
-  RESOLVED_PREVIEW_BUILD_TYPES,
-  type ResolvedPreviewBuildType,
-  resolveConfiguredPreviewBuildSettings,
-  resolveInferredPreviewBuildSettings,
-} from "../lib/app/preview-build";
-import { PREVIEW_DEFAULT_REGION } from "../lib/app/preview-interaction";
-import {
-  createPreviewDeployProgress,
-  createPreviewDeployProgressState,
-  createPreviewPromoteProgress,
-  type PreviewDeployProgressState,
-} from "../lib/app/preview-progress";
-import {
-  createPreviewAppProvider,
-  type PreviewAppRecord,
-  PreviewDomainApiError,
-  type PreviewDomainRecord,
-} from "../lib/app/preview-provider";
 import { enforceProductionDeployGate } from "../lib/app/production-deploy-gate";
 import { readAuthState } from "../lib/auth/auth-ops";
 import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
@@ -214,7 +214,7 @@ export async function runAppBuild(
     compute.target?.build &&
     isConfigBackedBuildType(buildType)
       ? (
-          await resolveConfiguredPreviewBuildSettings({
+          await resolveConfiguredAppBuildSettings({
             appPath: appDir,
             buildType,
             configured: compute.target.build,
@@ -225,7 +225,7 @@ export async function runAppBuild(
       : undefined;
 
   try {
-    const { artifact, buildType: actualBuildType } = await executePreviewBuild({
+    const { artifact, buildType: actualBuildType } = await executeAppBuild({
       appPath: appDir,
       entrypoint: merged.entrypoint,
       buildType,
@@ -247,7 +247,7 @@ export async function runAppBuild(
     if (buildType === "auto" && isAutoBuildDetectionError(error)) {
       throw usageError(
         "App build requires an explicit framework when detection is ambiguous",
-        `This preview auto-detects clear project shapes for ${RESOLVED_PREVIEW_BUILD_TYPES.map(formatBuildTypeName).join(", ")}.`,
+        `This preview auto-detects clear project shapes for ${RESOLVED_APP_BUILD_TYPES.map(formatBuildTypeName).join(", ")}.`,
         "Pass a supported --build-type value, or pass --entry <path> for a Bun app.",
         getBuildTypeExamples("build"),
         "app",
@@ -740,14 +740,14 @@ async function runSingleAppDeploy(
     computeConfig.config &&
     computeConfig.target?.build &&
     isConfigBackedBuildType(buildType)
-      ? await resolveConfiguredPreviewBuildSettings({
+      ? await resolveConfiguredAppBuildSettings({
           appPath: appDir,
           buildType,
           configured: computeConfig.target.build,
           configPath: computeConfig.config.configPath,
           signal: context.runtime.signal,
         })
-      : await resolveInferredPreviewBuildSettings({
+      : await resolveInferredAppBuildSettings({
           appPath: appDir,
           buildType,
           signal: context.runtime.signal,
@@ -772,7 +772,7 @@ async function runSingleAppDeploy(
     },
   );
 
-  const progressState = createPreviewDeployProgressState();
+  const progressState = createDeployProgressState();
   const deployStartedAt = Date.now();
   const deployResult = await provider
     .deployApp({
@@ -789,7 +789,7 @@ async function runSingleAppDeploy(
       envVars,
       interaction: undefined,
       signal: context.runtime.signal,
-      progress: createPreviewDeployProgress(
+      progress: createDeployProgress(
         context.output.stderr,
         context.ui,
         !context.flags.json && !context.flags.quiet,
@@ -1564,12 +1564,12 @@ export async function runAppLogs(
 
 async function resolveExplicitLogDeployment(
   context: CommandContext,
-  provider: ReturnType<typeof createPreviewAppProvider>,
+  provider: ReturnType<typeof createAppProvider>,
   projectId: string,
   branchName: string,
   appName: string | undefined,
   deploymentId: string,
-): Promise<{ app: PreviewAppRecord; deployment: AppDeploymentSummary }> {
+): Promise<{ app: AppRecord; deployment: AppDeploymentSummary }> {
   if (appName) {
     const apps = await listApps(context, provider, projectId, branchName);
     const selectedApp = await resolveExistingAppSelection(
@@ -1669,11 +1669,11 @@ async function resolveExplicitLogDeployment(
 
 async function resolveLiveLogDeployment(
   context: CommandContext,
-  provider: ReturnType<typeof createPreviewAppProvider>,
+  provider: ReturnType<typeof createAppProvider>,
   projectId: string,
   branchName: string,
   appName: string | undefined,
-): Promise<{ app: PreviewAppRecord; deployment: AppDeploymentSummary }> {
+): Promise<{ app: AppRecord; deployment: AppDeploymentSummary }> {
   const apps = await listApps(context, provider, projectId, branchName);
   const selectedApp = await resolveExistingAppSelection(
     context,
@@ -1808,7 +1808,7 @@ export async function runAppPromote(
         appId: selectedApp.id,
         deploymentId: targetDeployment.id,
         signal: context.runtime.signal,
-        progress: createPreviewPromoteProgress(
+        progress: createPromoteProgress(
           context.output.stderr,
           !context.flags.json && !context.flags.quiet,
         ),
@@ -1920,7 +1920,7 @@ export async function runAppRollback(
         appId: selectedApp.id,
         deploymentId: targetDeployment.id,
         signal: context.runtime.signal,
-        progress: createPreviewPromoteProgress(
+        progress: createPromoteProgress(
           context.output.stderr,
           !context.flags.json && !context.flags.quiet,
         ),
@@ -2026,8 +2026,8 @@ export async function runAppRemove(
 }
 
 interface ResolvedAppDomainTarget {
-  provider: ReturnType<typeof createPreviewAppProvider>;
-  app: PreviewAppRecord;
+  provider: ReturnType<typeof createAppProvider>;
+  app: AppRecord;
   resultTarget: AppDomainTarget;
 }
 
@@ -2117,12 +2117,12 @@ function resolveDomainBranch(
 async function resolveDomainAppSelection(
   context: CommandContext,
   projectId: string,
-  apps: PreviewAppRecord[],
+  apps: AppRecord[],
   options: {
     explicitAppName: string | undefined;
     explicitAppId: string | undefined;
   },
-): Promise<PreviewAppRecord> {
+): Promise<AppRecord> {
   if (options.explicitAppId) {
     const matched = apps.find((app) => app.id === options.explicitAppId);
     if (!matched) {
@@ -2157,12 +2157,12 @@ async function resolveDomainAppSelection(
 }
 
 async function resolveDomainByHostname(
-  provider: ReturnType<typeof createPreviewAppProvider>,
+  provider: ReturnType<typeof createAppProvider>,
   appId: string,
   hostname: string,
   command: AppDomainCommand,
   signal: AbortSignal,
-): Promise<PreviewDomainRecord> {
+): Promise<DomainRecord> {
   const domains = await provider
     .listDomains(appId, { signal })
     .catch((error) => {
@@ -2225,7 +2225,7 @@ function sameDomainHostname(left: string, right: string): boolean {
   );
 }
 
-function toAppDomainSummary(domain: PreviewDomainRecord): AppDomainSummary {
+function toAppDomainSummary(domain: DomainRecord): AppDomainSummary {
   return {
     id: domain.id,
     type: domain.type,
@@ -2244,7 +2244,7 @@ function toAppDomainSummary(domain: PreviewDomainRecord): AppDomainSummary {
 }
 
 function toAppDomainDnsRecords(
-  domain: Pick<PreviewDomainRecord, "dnsRecords">,
+  domain: Pick<DomainRecord, "dnsRecords">,
 ): AppDomainDnsRecord[] {
   return domain.dnsRecords.map((record) => ({
     type: record.type,
@@ -2254,7 +2254,7 @@ function toAppDomainDnsRecords(
   }));
 }
 
-function buildDomainShowNextSteps(domain: PreviewDomainRecord): string[] {
+function buildDomainShowNextSteps(domain: DomainRecord): string[] {
   if (domain.status === "active") {
     return [];
   }
@@ -2313,7 +2313,7 @@ function domainCommandError(
   error: unknown,
   hostname: string,
 ): CliError {
-  if (error instanceof PreviewDomainApiError) {
+  if (error instanceof DomainApiError) {
     if (
       command === "add" &&
       (error.status === 400 || error.status === 422) &&
@@ -2407,7 +2407,7 @@ function domainCommandError(
   });
 }
 
-function isDomainQuotaError(error: PreviewDomainApiError): boolean {
+function isDomainQuotaError(error: DomainApiError): boolean {
   if (error.status !== 409) {
     return false;
   }
@@ -2420,7 +2420,7 @@ function isDomainQuotaError(error: PreviewDomainApiError): boolean {
 
 function domainAlreadyRegisteredError(
   hostname: string,
-  error: PreviewDomainApiError,
+  error: DomainApiError,
 ): CliError {
   return new CliError({
     code: "DOMAIN_ALREADY_REGISTERED",
@@ -2437,7 +2437,7 @@ function domainAlreadyRegisteredError(
   });
 }
 
-function isDomainDnsError(error: PreviewDomainApiError): boolean {
+function isDomainDnsError(error: DomainApiError): boolean {
   const text = `${error.message} ${error.hint ?? ""}`.toLowerCase();
   return (
     text.includes("dns is not configured") ||
@@ -2451,7 +2451,7 @@ function isDomainDnsError(error: PreviewDomainApiError): boolean {
 
 function domainDnsNotConfiguredError(
   hostname: string,
-  error: PreviewDomainApiError,
+  error: DomainApiError,
 ): CliError {
   const target = extractDomainDnsTarget(error);
   const record = target ? `CNAME ${hostname} -> ${target}` : null;
@@ -2472,7 +2472,7 @@ function domainDnsNotConfiguredError(
   });
 }
 
-function extractDomainDnsTarget(error: PreviewDomainApiError): string | null {
+function extractDomainDnsTarget(error: DomainApiError): string | null {
   const text = `${error.hint ?? ""} ${error.message}`;
   const match = /\b((?:[a-z0-9-]+\.)+prisma\.build)\b/i.exec(text);
   return match?.[1]?.toLowerCase() ?? null;
@@ -2490,7 +2490,7 @@ function domainNotFoundError(hostname: string): CliError {
   });
 }
 
-function formatDomainFailureWhy(domain: PreviewDomainRecord): string {
+function formatDomainFailureWhy(domain: DomainRecord): string {
   if (domain.failureReason) {
     return domain.failureCategory
       ? `${domain.failureCategory}: ${domain.failureReason}`
@@ -2614,7 +2614,7 @@ async function sleep(milliseconds: number, signal: AbortSignal): Promise<void> {
 async function resolveDeployAppSelection(
   context: CommandContext,
   projectId: string,
-  apps: PreviewAppRecord[],
+  apps: AppRecord[],
   options: {
     explicitAppName: string | undefined;
     explicitAppId: string | undefined;
@@ -2652,7 +2652,7 @@ async function resolveDeployAppSelection(
 
     return {
       appName: options.explicitAppName,
-      region: PREVIEW_DEFAULT_REGION,
+      region: DEFAULT_REGION,
       displayName: options.explicitAppName,
       annotation: "set by --app",
       firstDeploy: options.firstDeploy,
@@ -2703,7 +2703,7 @@ async function resolveDeployAppSelection(
 
     return {
       appName: configName.value,
-      region: PREVIEW_DEFAULT_REGION,
+      region: DEFAULT_REGION,
       displayName: configName.value,
       annotation: configName.annotation,
       firstDeploy: options.firstDeploy,
@@ -2733,7 +2733,7 @@ async function resolveDeployAppSelection(
 
   return {
     appName: inferredName.name,
-    region: PREVIEW_DEFAULT_REGION,
+    region: DEFAULT_REGION,
     displayName: inferredName.name,
     annotation:
       inferredName.source === "package-name"
@@ -2745,7 +2745,7 @@ async function resolveDeployAppSelection(
 
 async function resolveAmbiguousDeployApp(
   context: CommandContext,
-  matches: PreviewAppRecord[],
+  matches: AppRecord[],
   targetName: string,
   firstDeploy: boolean,
 ): Promise<{
@@ -2760,7 +2760,7 @@ async function resolveAmbiguousDeployApp(
     const createNew = "__create_new_app__";
     const cancel = "__cancel__";
     const selected = await selectPrompt<
-      PreviewAppRecord | typeof createNew | typeof cancel
+      AppRecord | typeof createNew | typeof cancel
     >({
       input: context.runtime.stdin,
       output: context.runtime.stderr,
@@ -2794,7 +2794,7 @@ async function resolveAmbiguousDeployApp(
     if (selected === createNew) {
       return {
         appName: targetName,
-        region: PREVIEW_DEFAULT_REGION,
+        region: DEFAULT_REGION,
         displayName: targetName,
         annotation: "created from package.json",
         firstDeploy,
@@ -2826,9 +2826,9 @@ async function resolveAmbiguousDeployApp(
 async function resolveExistingAppSelection(
   context: CommandContext,
   projectId: string,
-  apps: PreviewAppRecord[],
+  apps: AppRecord[],
   explicitAppName: string | undefined,
-): Promise<PreviewAppRecord | null> {
+): Promise<AppRecord | null> {
   if (explicitAppName) {
     const matched = findAppByName(apps, explicitAppName);
     if (!matched) {
@@ -2893,10 +2893,10 @@ async function resolveExistingAppSelection(
 async function requireReleaseAppSelection(
   context: CommandContext,
   projectId: string,
-  apps: PreviewAppRecord[],
+  apps: AppRecord[],
   explicitAppName: string | undefined,
   commandName: "promote" | "rollback" | "remove",
-): Promise<PreviewAppRecord> {
+): Promise<AppRecord> {
   const selectedApp = await resolveExistingAppSelection(
     context,
     projectId,
@@ -2918,7 +2918,7 @@ async function requireReleaseAppSelection(
 
 async function confirmAppRemoval(
   context: CommandContext,
-  app: PreviewAppRecord,
+  app: AppRecord,
 ): Promise<void> {
   if (context.flags.yes) {
     return;
@@ -2994,7 +2994,7 @@ function requireDeploymentForApp(
 async function resolveCurrentLiveDeploymentId(
   context: CommandContext,
   projectId: string,
-  app: Pick<PreviewAppRecord, "id" | "liveDeploymentId">,
+  app: Pick<AppRecord, "id" | "liveDeploymentId">,
   deployments: AppDeploymentSummary[],
 ): Promise<string | null> {
   if (
@@ -3086,7 +3086,7 @@ function resolveRollbackTarget(
 
 async function listApps(
   context: CommandContext,
-  provider: ReturnType<typeof createPreviewAppProvider>,
+  provider: ReturnType<typeof createAppProvider>,
   projectId: string,
   branchName?: string,
 ) {
@@ -3124,7 +3124,7 @@ async function requirePreviewAppProviderWithClient(
   context: CommandContext,
 ): Promise<{
   client: ManagementApiClient;
-  provider: ReturnType<typeof createPreviewAppProvider>;
+  provider: ReturnType<typeof createAppProvider>;
 }> {
   const client = await requireComputeAuth(
     context.runtime.env,
@@ -3136,7 +3136,7 @@ async function requirePreviewAppProviderWithClient(
 
   return {
     client,
-    provider: createPreviewAppProvider(
+    provider: createAppProvider(
       client,
       createPreviewLogAuthOptions(context.runtime.env, context.runtime.signal),
     ),
@@ -3193,7 +3193,7 @@ async function requireProviderAndProjectContext(
   },
 ): Promise<{
   client: ManagementApiClient;
-  provider: ReturnType<typeof createPreviewAppProvider>;
+  provider: ReturnType<typeof createAppProvider>;
   target: ResolvedAppProjectContext;
   projectId: string;
 }> {
@@ -3224,7 +3224,7 @@ async function requireProviderAndDeployProjectContext(
   },
 ): Promise<{
   client: ManagementApiClient;
-  provider: ReturnType<typeof createPreviewAppProvider>;
+  provider: ReturnType<typeof createAppProvider>;
   target: ResolvedAppProjectContext;
   projectId: string;
 }> {
@@ -3295,7 +3295,7 @@ async function resolveProjectContext(
 async function resolveDeployProjectContext(
   context: CommandContext,
   client: ManagementApiClient,
-  provider: ReturnType<typeof createPreviewAppProvider>,
+  provider: ReturnType<typeof createAppProvider>,
   explicitProject: string | undefined,
   options: {
     branch?: ResolvedDeployBranch;
@@ -3464,7 +3464,7 @@ async function resolveDeployProjectContext(
 
 async function resolveInteractiveDeployProjectSetup(
   context: CommandContext,
-  provider: ReturnType<typeof createPreviewAppProvider>,
+  provider: ReturnType<typeof createAppProvider>,
   workspace: AuthWorkspace,
   projects: ProjectCandidate[],
 ): Promise<Omit<ResolvedAppProjectContext, "branch">> {
@@ -3501,7 +3501,7 @@ async function resolveInteractiveDeployProjectSetup(
 }
 
 async function createProjectForDeploySetup(
-  provider: ReturnType<typeof createPreviewAppProvider>,
+  provider: ReturnType<typeof createAppProvider>,
   projectName: string,
   workspace: AuthWorkspace,
   signal: AbortSignal,
@@ -3530,7 +3530,7 @@ async function createProjectForDeploySetup(
 }
 
 async function withRemoteDeployBranch(
-  provider: ReturnType<typeof createPreviewAppProvider>,
+  provider: ReturnType<typeof createAppProvider>,
   target: Omit<ResolvedAppProjectContext, "branch">,
   branch: ResolvedDeployBranch,
   signal: AbortSignal,
@@ -3796,7 +3796,7 @@ async function resolveComputeAppDir(
 async function handleLegacyBuildSettings(
   context: CommandContext,
   appDir: string,
-  effective: PreviewBuildSettings,
+  effective: AppBuildSettings,
 ): Promise<string[]> {
   const legacy = await detectLegacyBuildSettings({
     appPath: appDir,
@@ -4142,7 +4142,7 @@ async function maybeRenderDeploySetupBlock(
 
 function maybeRenderDeployBuildSettings(
   context: CommandContext,
-  resolution: PreviewBuildSettingsResolution,
+  resolution: AppBuildSettingsResolution,
 ): void {
   if (context.flags.json || context.flags.quiet) {
     return;
@@ -4365,7 +4365,7 @@ async function readCurrentWorkspaceId(
 
 function normalizeBuildType(
   requestedBuildType: string | undefined,
-): PreviewBuildType {
+): AppBuildType {
   if (!requestedBuildType) {
     return "auto";
   }
@@ -4376,26 +4376,26 @@ function normalizeBuildType(
 
   throw usageError(
     `Unsupported build type "${requestedBuildType}"`,
-    `Only ${PREVIEW_BUILD_TYPES.join(", ")} are supported in the current preview.`,
+    `Only ${APP_BUILD_TYPES.join(", ")} are supported in the current preview.`,
     "Pass a supported --build-type value.",
     getBuildTypeExamples("build"),
     "app",
   );
 }
 
-function isPreviewBuildType(value: string): value is PreviewBuildType {
-  return (PREVIEW_BUILD_TYPES as readonly string[]).includes(value);
+function isPreviewBuildType(value: string): value is AppBuildType {
+  return (APP_BUILD_TYPES as readonly string[]).includes(value);
 }
 
 function getBuildTypeExamples(commandName: "build"): string[] {
-  return RESOLVED_PREVIEW_BUILD_TYPES.map((buildType) => {
+  return RESOLVED_APP_BUILD_TYPES.map((buildType) => {
     const entrypoint = buildType === "bun" ? " --entry server.ts" : "";
     return `prisma-cli app ${commandName} --build-type ${buildType}${entrypoint}`;
   });
 }
 
 function assertSupportedEntrypoint(
-  buildType: PreviewBuildType,
+  buildType: AppBuildType,
   entrypoint: string | undefined,
   commandName: "build" | "run" | "deploy",
 ) {
@@ -4441,7 +4441,7 @@ function assertSupportedEntrypoint(
 async function resolveLocalRunFramework(
   context: CommandContext,
   options: {
-    requestedBuildType: PreviewBuildType;
+    requestedBuildType: AppBuildType;
     configFramework: ComputeFramework | null;
     appDir: string;
   },
@@ -4569,7 +4569,7 @@ function deployFailedError(
 
 function appDeployFailedError(
   error: unknown,
-  progress: PreviewDeployProgressState,
+  progress: DeployProgressState,
 ): CliError {
   const why = error instanceof Error ? error.message : String(error);
   const debug = formatDebugDetails(error);
@@ -4825,7 +4825,7 @@ function isAutoBuildDetectionError(error: unknown): boolean {
   );
 }
 
-function formatBuildTypeName(buildType: PreviewBuildType): string {
+function formatBuildTypeName(buildType: AppBuildType): string {
   switch (buildType) {
     case "nextjs":
       return "Next.js";
@@ -4878,21 +4878,15 @@ function isMissingProjectError(error: unknown): boolean {
   return error instanceof Error && error.message === "Resource Not Found";
 }
 
-function findAppByName(
-  apps: PreviewAppRecord[],
-  name: string,
-): PreviewAppRecord | undefined {
+function findAppByName(apps: AppRecord[], name: string): AppRecord | undefined {
   return apps.find((app) => app.name === name);
 }
 
-function findAppsByName(
-  apps: PreviewAppRecord[],
-  name: string,
-): PreviewAppRecord[] {
+function findAppsByName(apps: AppRecord[], name: string): AppRecord[] {
   return apps.filter((app) => app.name === name);
 }
 
-function sortApps(apps: PreviewAppRecord[]): PreviewAppRecord[] {
+function sortApps(apps: AppRecord[]): AppRecord[] {
   return apps
     .slice()
     .sort(

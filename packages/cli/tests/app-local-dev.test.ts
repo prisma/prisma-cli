@@ -5,14 +5,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 afterEach(() => {
   vi.doUnmock("../src/lib/app/local-dev");
-  vi.doUnmock("../src/lib/app/preview-build");
+  vi.doUnmock("../src/lib/app/build");
   vi.resetModules();
   vi.restoreAllMocks();
 });
 
 describe("app local dev commands", () => {
   it("build delegates to the shared preview build helper", async () => {
-    const executePreviewBuild = vi.fn().mockResolvedValue({
+    const executeAppBuild = vi.fn().mockResolvedValue({
       artifact: {
         directory: "/tmp/compute-build/app",
         entrypoint: "server.js",
@@ -20,13 +20,13 @@ describe("app local dev commands", () => {
       buildType: "bun",
     });
 
-    vi.doMock("../src/lib/app/preview-build", async () => {
+    vi.doMock("../src/lib/app/build", async () => {
       const actual = await vi.importActual<
-        typeof import("../src/lib/app/preview-build")
-      >("../src/lib/app/preview-build");
+        typeof import("../src/lib/app/build")
+      >("../src/lib/app/build");
       return {
         ...actual,
-        executePreviewBuild,
+        executeAppBuild,
       };
     });
 
@@ -46,7 +46,7 @@ describe("app local dev commands", () => {
       buildType: "bun",
     });
 
-    expect(executePreviewBuild).toHaveBeenCalledWith({
+    expect(executeAppBuild).toHaveBeenCalledWith({
       appPath: cwd,
       entrypoint: "server.ts",
       buildType: "bun",
@@ -60,7 +60,7 @@ describe("app local dev commands", () => {
   });
 
   it("build resolves the app target from prisma.compute.ts", async () => {
-    const executePreviewBuild = vi.fn().mockResolvedValue({
+    const executeAppBuild = vi.fn().mockResolvedValue({
       artifact: {
         directory: "/tmp/compute-build/app",
         entrypoint: "index.js",
@@ -68,13 +68,13 @@ describe("app local dev commands", () => {
       buildType: "bun",
     });
 
-    vi.doMock("../src/lib/app/preview-build", async () => {
+    vi.doMock("../src/lib/app/build", async () => {
       const actual = await vi.importActual<
-        typeof import("../src/lib/app/preview-build")
-      >("../src/lib/app/preview-build");
+        typeof import("../src/lib/app/build")
+      >("../src/lib/app/build");
       return {
         ...actual,
-        executePreviewBuild,
+        executeAppBuild,
       };
     });
 
@@ -105,7 +105,7 @@ describe("app local dev commands", () => {
 
     await runAppBuild(context, { configTarget: "api" });
 
-    expect(executePreviewBuild).toHaveBeenCalledWith({
+    expect(executeAppBuild).toHaveBeenCalledWith({
       appPath: path.join(cwd, "apps", "api"),
       entrypoint: "src/index.ts",
       buildType: "bun",
@@ -114,7 +114,7 @@ describe("app local dev commands", () => {
   });
 
   it("build run from inside a target root discovers the config and infers the target", async () => {
-    const executePreviewBuild = vi.fn().mockResolvedValue({
+    const executeAppBuild = vi.fn().mockResolvedValue({
       artifact: {
         directory: "/tmp/compute-build/app",
         entrypoint: "index.js",
@@ -122,13 +122,13 @@ describe("app local dev commands", () => {
       buildType: "bun",
     });
 
-    vi.doMock("../src/lib/app/preview-build", async () => {
+    vi.doMock("../src/lib/app/build", async () => {
       const actual = await vi.importActual<
-        typeof import("../src/lib/app/preview-build")
-      >("../src/lib/app/preview-build");
+        typeof import("../src/lib/app/build")
+      >("../src/lib/app/build");
       return {
         ...actual,
-        executePreviewBuild,
+        executeAppBuild,
       };
     });
 
@@ -160,7 +160,7 @@ describe("app local dev commands", () => {
 
     await runAppBuild(context, {});
 
-    expect(executePreviewBuild).toHaveBeenCalledWith({
+    expect(executeAppBuild).toHaveBeenCalledWith({
       appPath: path.join(repoDir, "apps", "api"),
       entrypoint: "src/index.ts",
       buildType: "bun",
@@ -169,7 +169,7 @@ describe("app local dev commands", () => {
   });
 
   it("build applies a committed build block by detecting the framework instead of ignoring it", async () => {
-    const executePreviewBuild = vi.fn().mockResolvedValue({
+    const executeAppBuild = vi.fn().mockResolvedValue({
       artifact: {
         directory: "/tmp/compute-build/app",
         entrypoint: "server.js",
@@ -177,13 +177,13 @@ describe("app local dev commands", () => {
       buildType: "nextjs",
     });
 
-    vi.doMock("../src/lib/app/preview-build", async () => {
+    vi.doMock("../src/lib/app/build", async () => {
       const actual = await vi.importActual<
-        typeof import("../src/lib/app/preview-build")
-      >("../src/lib/app/preview-build");
+        typeof import("../src/lib/app/build")
+      >("../src/lib/app/build");
       return {
         ...actual,
-        executePreviewBuild,
+        executeAppBuild,
       };
     });
 
@@ -221,7 +221,7 @@ describe("app local dev commands", () => {
 
     await runAppBuild(context, { configTarget: "web" });
 
-    expect(executePreviewBuild).toHaveBeenCalledWith(
+    expect(executeAppBuild).toHaveBeenCalledWith(
       expect.objectContaining({
         appPath: path.join(cwd, "apps", "web"),
         buildType: "nextjs",
@@ -265,7 +265,7 @@ describe("app local dev commands", () => {
   });
 
   it("build accepts explicit SDK framework strategies", async () => {
-    const executePreviewBuild = vi.fn().mockResolvedValue({
+    const executeAppBuild = vi.fn().mockResolvedValue({
       artifact: {
         directory: "/tmp/compute-build/app",
         entrypoint: "server/entry.mjs",
@@ -273,13 +273,13 @@ describe("app local dev commands", () => {
       buildType: "astro",
     });
 
-    vi.doMock("../src/lib/app/preview-build", async () => {
+    vi.doMock("../src/lib/app/build", async () => {
       const actual = await vi.importActual<
-        typeof import("../src/lib/app/preview-build")
-      >("../src/lib/app/preview-build");
+        typeof import("../src/lib/app/build")
+      >("../src/lib/app/build");
       return {
         ...actual,
-        executePreviewBuild,
+        executeAppBuild,
       };
     });
 
@@ -296,7 +296,7 @@ describe("app local dev commands", () => {
 
     const result = await runAppBuild(context, { buildType: "astro" });
 
-    expect(executePreviewBuild).toHaveBeenCalledWith({
+    expect(executeAppBuild).toHaveBeenCalledWith({
       appPath: cwd,
       entrypoint: undefined,
       buildType: "astro",
@@ -310,7 +310,7 @@ describe("app local dev commands", () => {
   });
 
   it("build returns USAGE_ERROR when framework detection is ambiguous", async () => {
-    const executePreviewBuild = vi
+    const executeAppBuild = vi
       .fn()
       .mockRejectedValue(
         new Error(
@@ -318,13 +318,13 @@ describe("app local dev commands", () => {
         ),
       );
 
-    vi.doMock("../src/lib/app/preview-build", async () => {
+    vi.doMock("../src/lib/app/build", async () => {
       const actual = await vi.importActual<
-        typeof import("../src/lib/app/preview-build")
-      >("../src/lib/app/preview-build");
+        typeof import("../src/lib/app/build")
+      >("../src/lib/app/build");
       return {
         ...actual,
-        executePreviewBuild,
+        executeAppBuild,
       };
     });
 

@@ -89,12 +89,10 @@ describe("bun compatibility", () => {
   it("forwards explicit build types to the SDK strategy resolver", async () => {
     const cwd = await createTempCwd();
 
-    const { resolvePreviewBuildStrategy } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { resolveAppBuildStrategy } = await import("../src/lib/app/build");
 
     await expect(
-      resolvePreviewBuildStrategy({
+      resolveAppBuildStrategy({
         appPath: cwd,
         buildType: "astro",
         entrypoint: undefined,
@@ -102,7 +100,7 @@ describe("bun compatibility", () => {
     ).resolves.toMatchObject({ buildType: "astro" });
 
     await expect(
-      resolvePreviewBuildStrategy({
+      resolveAppBuildStrategy({
         appPath: cwd,
         buildType: "tanstack-start",
         entrypoint: undefined,

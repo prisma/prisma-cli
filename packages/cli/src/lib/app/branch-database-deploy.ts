@@ -6,6 +6,11 @@ import { canPrompt } from "../../shell/runtime";
 import { renderSummaryLine } from "../../shell/ui";
 import type { AppDeployResult } from "../../types/app";
 import { formatCommandArgument } from "../project/setup";
+import type {
+  AppProvider,
+  BranchDatabaseRecord,
+  EnvironmentVariableRecord,
+} from "./app-provider";
 import {
   type BranchDatabaseSchema,
   type BranchDatabaseSignal,
@@ -13,11 +18,6 @@ import {
   inspectBranchDatabaseSignal,
   type UnsupportedBranchDatabaseSchema,
 } from "./branch-database";
-import type {
-  PreviewAppProvider,
-  PreviewBranchDatabaseRecord,
-  PreviewEnvironmentVariableRecord,
-} from "./preview-provider";
 
 export interface BranchDatabaseDeployBranch {
   id: string;
@@ -31,14 +31,14 @@ export interface BranchDatabaseSetupOutcome {
 }
 
 interface BranchDatabaseEnvState {
-  targetDatabaseUrl: PreviewEnvironmentVariableRecord | null;
-  targetDirectUrl: PreviewEnvironmentVariableRecord | null;
-  inheritedPreviewDatabaseUrl: PreviewEnvironmentVariableRecord | null;
+  targetDatabaseUrl: EnvironmentVariableRecord | null;
+  targetDirectUrl: EnvironmentVariableRecord | null;
+  inheritedPreviewDatabaseUrl: EnvironmentVariableRecord | null;
 }
 
 export async function maybeSetupBranchDatabase(
   context: CommandContext,
-  provider: PreviewAppProvider,
+  provider: AppProvider,
   projectId: string,
   branch: BranchDatabaseDeployBranch,
   options: {
@@ -169,7 +169,7 @@ export async function maybeSetupBranchDatabase(
 
 async function setupBranchDatabase(
   context: CommandContext,
-  provider: PreviewAppProvider,
+  provider: AppProvider,
   projectId: string,
   branch: BranchDatabaseDeployBranch,
   signal: BranchDatabaseSignal,
@@ -241,10 +241,10 @@ async function setupBranchDatabase(
 
 async function upsertBranchDatabaseEnvVars(
   context: CommandContext,
-  provider: PreviewAppProvider,
+  provider: AppProvider,
   projectId: string,
   branch: BranchDatabaseDeployBranch,
-  database: PreviewBranchDatabaseRecord,
+  database: BranchDatabaseRecord,
   envState: BranchDatabaseEnvState,
 ): Promise<string[]> {
   const scope = envScopeForBranch(branch);
@@ -289,14 +289,14 @@ async function upsertBranchDatabaseEnvVars(
 
 async function upsertBranchDatabaseEnvVar(
   context: CommandContext,
-  provider: PreviewAppProvider,
+  provider: AppProvider,
   options: {
     projectId: string;
     branchId?: string;
     className: "production" | "preview";
     key: "DATABASE_URL" | "DIRECT_URL";
     value: string;
-    existing: PreviewEnvironmentVariableRecord | null;
+    existing: EnvironmentVariableRecord | null;
     branch: BranchDatabaseDeployBranch;
   },
 ): Promise<void> {
@@ -336,7 +336,7 @@ async function upsertBranchDatabaseEnvVar(
 }
 
 async function inspectBranchDatabaseEnv(
-  provider: PreviewAppProvider,
+  provider: AppProvider,
   projectId: string,
   branch: BranchDatabaseDeployBranch,
   signal: AbortSignal,
@@ -371,9 +371,9 @@ async function inspectBranchDatabaseEnv(
 }
 
 function findEnvVar(
-  rows: PreviewEnvironmentVariableRecord[],
+  rows: EnvironmentVariableRecord[],
   options: { branchId: string | null },
-): PreviewEnvironmentVariableRecord | null {
+): EnvironmentVariableRecord | null {
   return rows.find((row) => row.branchId === options.branchId) ?? null;
 }
 
@@ -402,7 +402,7 @@ function getTargetDatabaseEnvVarKeys(
   envState: BranchDatabaseEnvState,
 ): string[] {
   return [envState.targetDatabaseUrl, envState.targetDirectUrl]
-    .filter((variable): variable is PreviewEnvironmentVariableRecord =>
+    .filter((variable): variable is EnvironmentVariableRecord =>
       Boolean(variable),
     )
     .map((variable) => variable.key)
@@ -593,8 +593,8 @@ function branchDatabaseSetupFailedError(
 
 async function cleanupCreatedBranchDatabaseAfterFailure(
   context: CommandContext,
-  provider: PreviewAppProvider,
-  database: PreviewBranchDatabaseRecord,
+  provider: AppProvider,
+  database: BranchDatabaseRecord,
   branch: BranchDatabaseDeployBranch,
   error: unknown,
 ): Promise<CliError> {
@@ -633,7 +633,7 @@ async function cleanupCreatedBranchDatabaseAfterFailure(
 function branchDatabaseCleanupFailedError(
   setupError: CliError,
   cleanupError: unknown,
-  database: PreviewBranchDatabaseRecord,
+  database: BranchDatabaseRecord,
   branch: BranchDatabaseDeployBranch,
 ): CliError {
   const cleanupWhy =

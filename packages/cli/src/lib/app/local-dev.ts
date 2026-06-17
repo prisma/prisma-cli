@@ -3,20 +3,14 @@
 import { type SpawnOptions, spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import path from "node:path";
+import type { AppBuildType, ResolvedAppBuildType } from "./build";
 import {
   readBunPackageEntrypoint,
   readBunPackageJson,
   resolveBunEntrypoint,
 } from "./bun-project";
-import type {
-  PreviewBuildType,
-  ResolvedPreviewBuildType,
-} from "./preview-build";
 
-export type LocalBuildType = Extract<
-  ResolvedPreviewBuildType,
-  "bun" | "nextjs"
->;
+export type LocalBuildType = Extract<ResolvedAppBuildType, "bun" | "nextjs">;
 
 const NEXT_CONFIG_FILENAMES = [
   "next.config.js",
@@ -44,7 +38,7 @@ interface CommandCandidate {
 
 export async function resolveLocalBuildType(
   appPath: string,
-  buildType: PreviewBuildType,
+  buildType: AppBuildType,
   signal?: AbortSignal,
 ): Promise<LocalBuildType | null> {
   if (buildType === "bun" || buildType === "nextjs") {

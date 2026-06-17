@@ -2,10 +2,10 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
-  PreviewAppProvider,
-  PreviewAppRecord,
-  PreviewDeploymentRecord,
-} from "../src/lib/app/preview-provider";
+  AppProvider,
+  AppRecord,
+  DeploymentRecord,
+} from "../src/lib/app/app-provider";
 import { confirmPrompt } from "../src/shell/prompt";
 import { createTempCwd, createTestCommandContext } from "./helpers";
 
@@ -179,8 +179,8 @@ async function createGateContext(
 
 function createGateProvider(
   app = createApp(),
-  deployments: PreviewDeploymentRecord[] = [createDeployment()],
-): Pick<PreviewAppProvider, "listDeployments"> {
+  deployments: DeploymentRecord[] = [createDeployment()],
+): Pick<AppProvider, "listDeployments"> {
   return {
     listDeployments: vi.fn().mockResolvedValue({
       app,
@@ -189,9 +189,7 @@ function createGateProvider(
   };
 }
 
-function createApp(
-  overrides: Partial<PreviewAppRecord> = {},
-): PreviewAppRecord {
+function createApp(overrides: Partial<AppRecord> = {}): AppRecord {
   return {
     id: "app_1",
     name: "hello-world",
@@ -204,8 +202,8 @@ function createApp(
 }
 
 function createDeployment(
-  overrides: Partial<PreviewDeploymentRecord> = {},
-): PreviewDeploymentRecord {
+  overrides: Partial<DeploymentRecord> = {},
+): DeploymentRecord {
   return {
     id: "dep_live",
     status: "running",

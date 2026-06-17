@@ -6,12 +6,11 @@ import {
   resolveConfiguredBuildSettings,
 } from "@prisma/compute-sdk";
 import type { ConfigBackedBuildType } from "@prisma/compute-sdk/config";
-
+import type { ResolvedAppBuildType } from "./build";
 import type { BunPackageJsonLike } from "./bun-project";
-import type { ResolvedPreviewBuildType } from "./preview-build";
 
-export type PreviewBuildSettingsBuildType = Extract<
-  ResolvedPreviewBuildType,
+export type AppBuildSettingsBuildType = Extract<
+  ResolvedAppBuildType,
   ConfigBackedBuildType
 >;
 
@@ -23,15 +22,15 @@ export const PRISMA_APP_CONFIG_FILENAME = "prisma.app.json";
  * CLI-facing alias so existing imports stay stable while the resolution logic
  * lives in `@prisma/compute-sdk`.
  */
-export type PreviewBuildSettings = BuildSettings;
+export type AppBuildSettings = BuildSettings;
 
-export interface PreviewBuildSettingsResolution {
+export interface AppBuildSettingsResolution {
   /** "config" when the compute config owns the settings, "inferred" otherwise. */
   status: "config" | "inferred";
   /** The compute config path when status is "config". */
   configPath: string | null;
   relativeConfigPath: string | null;
-  settings: PreviewBuildSettings;
+  settings: AppBuildSettings;
 }
 
 export type LegacyBuildSettingsDetection =
@@ -53,7 +52,7 @@ export type LegacyBuildSettingsDetection =
  */
 export async function detectLegacyBuildSettings(options: {
   appPath: string;
-  effective: PreviewBuildSettings;
+  effective: AppBuildSettings;
   signal?: AbortSignal;
 }): Promise<LegacyBuildSettingsDetection> {
   const configPath = path.join(options.appPath, PRISMA_APP_CONFIG_FILENAME);
@@ -99,11 +98,11 @@ export async function detectLegacyBuildSettings(options: {
 }
 
 /** Resolves build settings purely from framework inference; nothing is read or written. */
-export async function resolveInferredPreviewBuildSettings(options: {
+export async function resolveInferredAppBuildSettings(options: {
   appPath: string;
-  buildType: ResolvedPreviewBuildType;
+  buildType: ResolvedAppBuildType;
   signal?: AbortSignal;
-}): Promise<PreviewBuildSettingsResolution> {
+}): Promise<AppBuildSettingsResolution> {
   return {
     status: "inferred",
     configPath: null,
@@ -116,9 +115,9 @@ export async function resolveInferredPreviewBuildSettings(options: {
  * Resolves build settings when the compute config owns them: configured
  * fields win, omitted fields fall back to framework defaults.
  */
-export async function resolveConfiguredPreviewBuildSettings(options: {
+export async function resolveConfiguredAppBuildSettings(options: {
   appPath: string;
-  buildType: PreviewBuildSettingsBuildType;
+  buildType: AppBuildSettingsBuildType;
   configured: {
     command: string | null | undefined;
     outputDirectory: string | undefined;
@@ -126,7 +125,7 @@ export async function resolveConfiguredPreviewBuildSettings(options: {
   /** Absolute path of the compute config file owning these settings. */
   configPath: string;
   signal?: AbortSignal;
-}): Promise<PreviewBuildSettingsResolution> {
+}): Promise<AppBuildSettingsResolution> {
   const configFilename = path.basename(options.configPath);
   const settings = await resolveConfiguredBuildSettings({
     appPath: options.appPath,
@@ -145,7 +144,7 @@ export async function resolveConfiguredPreviewBuildSettings(options: {
 }
 
 /** Inferred build settings for a resolved framework. Delegates to the SDK. */
-export const resolvePreviewBuildSettings = resolveBuildSettings;
+export const resolveAppBuildSettings = resolveBuildSettings;
 
 export function hasPackageDependency(
   packageJson: BunPackageJsonLike | null,

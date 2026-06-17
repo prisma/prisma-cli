@@ -9,23 +9,23 @@ import {
   stageStandaloneArtifact,
 } from "@prisma/compute-sdk";
 
-import type { PreviewBuildSettings } from "./preview-build-settings";
+import type { AppBuildSettings } from "./build-settings";
 
 export {
+  type AppBuildSettings,
+  type AppBuildSettingsBuildType,
+  type AppBuildSettingsResolution,
   detectLegacyBuildSettings,
   hasAnyPackageDependency,
   hasPackageDependency,
   type LegacyBuildSettingsDetection,
   PRISMA_APP_CONFIG_FILENAME,
-  type PreviewBuildSettings,
-  type PreviewBuildSettingsBuildType,
-  type PreviewBuildSettingsResolution,
-  resolveConfiguredPreviewBuildSettings,
-  resolveInferredPreviewBuildSettings,
-  resolvePreviewBuildSettings,
-} from "./preview-build-settings";
+  resolveAppBuildSettings,
+  resolveConfiguredAppBuildSettings,
+  resolveInferredAppBuildSettings,
+} from "./build-settings";
 
-export const PREVIEW_BUILD_TYPES = [
+export const APP_BUILD_TYPES = [
   "auto",
   "bun",
   "nextjs",
@@ -35,26 +35,26 @@ export const PREVIEW_BUILD_TYPES = [
   "tanstack-start",
 ] as const;
 
-export type PreviewBuildType = (typeof PREVIEW_BUILD_TYPES)[number];
-export type ResolvedPreviewBuildType = Exclude<PreviewBuildType, "auto">;
+export type AppBuildType = (typeof APP_BUILD_TYPES)[number];
+export type ResolvedAppBuildType = Exclude<AppBuildType, "auto">;
 
-export const RESOLVED_PREVIEW_BUILD_TYPES = PREVIEW_BUILD_TYPES.filter(
-  (buildType): buildType is ResolvedPreviewBuildType => buildType !== "auto",
+export const RESOLVED_APP_BUILD_TYPES = APP_BUILD_TYPES.filter(
+  (buildType): buildType is ResolvedAppBuildType => buildType !== "auto",
 );
 
-export class PreviewBuildStrategy implements BuildStrategy {
+export class AppBuildStrategy implements BuildStrategy {
   readonly #appPath: string;
   readonly #entrypoint?: string;
-  readonly #buildType: PreviewBuildType;
+  readonly #buildType: AppBuildType;
   readonly #signal?: AbortSignal;
-  readonly #buildSettings?: PreviewBuildSettings;
+  readonly #buildSettings?: AppBuildSettings;
 
   constructor(options: {
     appPath: string;
     entrypoint?: string;
-    buildType?: PreviewBuildType;
+    buildType?: AppBuildType;
     signal?: AbortSignal;
-    buildSettings?: PreviewBuildSettings;
+    buildSettings?: AppBuildSettings;
   }) {
     this.#appPath = options.appPath;
     this.#entrypoint = options.entrypoint;
@@ -64,7 +64,7 @@ export class PreviewBuildStrategy implements BuildStrategy {
   }
 
   async canBuild(signal = this.#signal): Promise<boolean> {
-    const { strategy } = await resolvePreviewBuildStrategy({
+    const { strategy } = await resolveAppBuildStrategy({
       appPath: this.#appPath,
       entrypoint: this.#entrypoint,
       buildType: this.#buildType,
@@ -76,7 +76,7 @@ export class PreviewBuildStrategy implements BuildStrategy {
   }
 
   async execute(signal = this.#signal): Promise<BuildArtifact> {
-    const { artifact } = await executePreviewBuild({
+    const { artifact } = await executeAppBuild({
       appPath: this.#appPath,
       entrypoint: this.#entrypoint,
       buildType: this.#buildType,
@@ -88,17 +88,17 @@ export class PreviewBuildStrategy implements BuildStrategy {
   }
 }
 
-export async function executePreviewBuild(options: {
+export async function executeAppBuild(options: {
   appPath: string;
   entrypoint?: string;
-  buildType?: PreviewBuildType;
+  buildType?: AppBuildType;
   signal?: AbortSignal;
-  buildSettings?: PreviewBuildSettings;
+  buildSettings?: AppBuildSettings;
 }): Promise<{
   artifact: BuildArtifact;
-  buildType: ResolvedPreviewBuildType;
+  buildType: ResolvedAppBuildType;
 }> {
-  const { strategy, buildType } = await resolvePreviewBuildStrategy({
+  const { strategy, buildType } = await resolveAppBuildStrategy({
     appPath: options.appPath,
     entrypoint: options.entrypoint,
     buildType: options.buildType ?? "auto",
@@ -123,15 +123,15 @@ export async function executePreviewBuild(options: {
   }
 }
 
-export async function resolvePreviewBuildStrategy(options: {
+export async function resolveAppBuildStrategy(options: {
   appPath: string;
   entrypoint?: string;
-  buildType: PreviewBuildType;
+  buildType: AppBuildType;
   signal?: AbortSignal;
-  buildSettings?: PreviewBuildSettings;
+  buildSettings?: AppBuildSettings;
 }): Promise<{
   strategy: BuildStrategy;
-  buildType: ResolvedPreviewBuildType;
+  buildType: ResolvedAppBuildType;
 }> {
   // Detection, per-framework construction, and Bun entrypoint resolution
   // (package.json `main`) all live in the SDK now; the CLI forwards. The CLI's

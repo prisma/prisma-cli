@@ -4,13 +4,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 afterEach(() => {
   vi.doUnmock("@prisma/compute-sdk");
-  vi.doUnmock("../src/lib/app/preview-build");
+  vi.doUnmock("../src/lib/app/build");
   vi.resetModules();
   vi.restoreAllMocks();
 });
 
-function mockPreviewBuildStrategy() {
-  return vi.fn().mockImplementation(function PreviewBuildStrategyMock(
+function mockAppBuildStrategy() {
+  return vi.fn().mockImplementation(function AppBuildStrategyMock(
     options: object,
   ) {
     return { options };
@@ -43,11 +43,9 @@ describe("preview app provider", () => {
       ComputeClient: class {},
     }));
 
-    const { createPreviewAppProvider } = await import(
-      "../src/lib/app/preview-provider"
-    );
+    const { createAppProvider } = await import("../src/lib/app/app-provider");
 
-    const provider = createPreviewAppProvider(client as never);
+    const provider = createAppProvider(client as never);
     await expect(
       provider.resolveBranch("proj_123", {
         branchName: "production",
@@ -74,10 +72,10 @@ describe("preview app provider", () => {
         serviceEndpointDomain: "hello-world.fra.prisma.build",
       },
     });
-    const PreviewBuildStrategy = mockPreviewBuildStrategy();
+    const AppBuildStrategy = mockAppBuildStrategy();
 
-    vi.doMock("../src/lib/app/preview-build", () => ({
-      PreviewBuildStrategy,
+    vi.doMock("../src/lib/app/build", () => ({
+      AppBuildStrategy,
     }));
     vi.doMock("@prisma/compute-sdk", () => ({
       ApiError: { is: () => false },
@@ -86,11 +84,9 @@ describe("preview app provider", () => {
       },
     }));
 
-    const { createPreviewAppProvider } = await import(
-      "../src/lib/app/preview-provider"
-    );
+    const { createAppProvider } = await import("../src/lib/app/app-provider");
 
-    const provider = createPreviewAppProvider({} as never);
+    const provider = createAppProvider({} as never);
     const cwd = path.resolve("/tmp/next-smoke");
 
     await provider.deployApp({
@@ -102,7 +98,7 @@ describe("preview app provider", () => {
       portMapping: { http: 3000 },
     });
 
-    expect(PreviewBuildStrategy).toHaveBeenCalledWith({
+    expect(AppBuildStrategy).toHaveBeenCalledWith({
       appPath: cwd,
       entrypoint: undefined,
       buildType: "nextjs",
@@ -130,7 +126,7 @@ describe("preview app provider", () => {
         serviceEndpointDomain: "hello-world.fra.prisma.build",
       },
     });
-    const PreviewBuildStrategy = mockPreviewBuildStrategy();
+    const AppBuildStrategy = mockAppBuildStrategy();
     const client = {
       GET: vi.fn().mockResolvedValue({
         data: {
@@ -175,8 +171,8 @@ describe("preview app provider", () => {
       }),
     };
 
-    vi.doMock("../src/lib/app/preview-build", () => ({
-      PreviewBuildStrategy,
+    vi.doMock("../src/lib/app/build", () => ({
+      AppBuildStrategy,
     }));
     vi.doMock("@prisma/compute-sdk", () => ({
       ApiError: { is: () => false },
@@ -185,11 +181,9 @@ describe("preview app provider", () => {
       },
     }));
 
-    const { createPreviewAppProvider } = await import(
-      "../src/lib/app/preview-provider"
-    );
+    const { createAppProvider } = await import("../src/lib/app/app-provider");
 
-    const provider = createPreviewAppProvider(client as never);
+    const provider = createAppProvider(client as never);
     const cwd = path.resolve("/tmp/next-smoke");
 
     await provider.deployApp({
@@ -252,7 +246,7 @@ describe("preview app provider", () => {
         serviceEndpointDomain: "hello-world.fra.prisma.build",
       },
     });
-    const PreviewBuildStrategy = mockPreviewBuildStrategy();
+    const AppBuildStrategy = mockAppBuildStrategy();
     const client = {
       GET: vi.fn().mockImplementation((pathName: string) => {
         if (pathName === "/v1/projects/{projectId}/branches") {
@@ -311,8 +305,8 @@ describe("preview app provider", () => {
       }),
     };
 
-    vi.doMock("../src/lib/app/preview-build", () => ({
-      PreviewBuildStrategy,
+    vi.doMock("../src/lib/app/build", () => ({
+      AppBuildStrategy,
     }));
     vi.doMock("@prisma/compute-sdk", () => ({
       ApiError: { is: () => false },
@@ -321,11 +315,9 @@ describe("preview app provider", () => {
       },
     }));
 
-    const { createPreviewAppProvider } = await import(
-      "../src/lib/app/preview-provider"
-    );
+    const { createAppProvider } = await import("../src/lib/app/app-provider");
 
-    const provider = createPreviewAppProvider(client as never);
+    const provider = createAppProvider(client as never);
     const cwd = path.resolve("/tmp/next-smoke");
 
     await provider.deployApp({
@@ -422,11 +414,9 @@ describe("preview app provider", () => {
       ComputeClient: class {},
     }));
 
-    const { createPreviewAppProvider } = await import(
-      "../src/lib/app/preview-provider"
-    );
+    const { createAppProvider } = await import("../src/lib/app/app-provider");
 
-    const provider = createPreviewAppProvider(client as never);
+    const provider = createAppProvider(client as never);
     const result = await provider.addDomain({
       appId: "app_1",
       hostname: "Shop.Acme.com",
@@ -514,11 +504,9 @@ describe("preview app provider", () => {
       ComputeClient: class {},
     }));
 
-    const { createPreviewAppProvider } = await import(
-      "../src/lib/app/preview-provider"
-    );
+    const { createAppProvider } = await import("../src/lib/app/app-provider");
 
-    const provider = createPreviewAppProvider(client as never);
+    const provider = createAppProvider(client as never);
 
     await expect(
       provider.addDomain({
