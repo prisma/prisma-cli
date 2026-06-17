@@ -21,8 +21,8 @@ afterEach(() => {
 
 describe("preview build strategy", () => {
   it("resolves inferred Next.js settings without writing any file", async () => {
-    const { resolveInferredPreviewBuildSettings } = await import(
-      "../src/lib/app/preview-build"
+    const { resolveInferredAppBuildSettings } = await import(
+      "../src/lib/app/build"
     );
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
@@ -46,7 +46,7 @@ describe("preview build strategy", () => {
       "utf8",
     );
 
-    const resolution = await resolveInferredPreviewBuildSettings({
+    const resolution = await resolveInferredAppBuildSettings({
       appPath,
       buildType: "nextjs",
     });
@@ -65,12 +65,12 @@ describe("preview build strategy", () => {
   });
 
   it("describes the strategy-owned builds for nuxt and astro", async () => {
-    const { resolveInferredPreviewBuildSettings } = await import(
-      "../src/lib/app/preview-build"
+    const { resolveInferredAppBuildSettings } = await import(
+      "../src/lib/app/build"
     );
     const cwd = await createTempCwd();
 
-    const nuxt = await resolveInferredPreviewBuildSettings({
+    const nuxt = await resolveInferredAppBuildSettings({
       appPath: cwd,
       buildType: "nuxt",
     });
@@ -81,7 +81,7 @@ describe("preview build strategy", () => {
       outputDirectorySource: "Nuxt output",
     });
 
-    const astro = await resolveInferredPreviewBuildSettings({
+    const astro = await resolveInferredAppBuildSettings({
       appPath: cwd,
       buildType: "astro",
     });
@@ -94,9 +94,7 @@ describe("preview build strategy", () => {
   });
 
   it("packages the full tree with a next start launcher when the build produces no standalone output", async () => {
-    const { PreviewBuildStrategy } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { AppBuildStrategy } = await import("../src/lib/app/build");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
 
@@ -133,7 +131,7 @@ describe("preview build strategy", () => {
       path.join(appPath, "node_modules/.bin/next-link"),
     );
 
-    const strategy = new PreviewBuildStrategy({
+    const strategy = new AppBuildStrategy({
       appPath,
       buildType: "nextjs",
       buildSettings: {
@@ -190,8 +188,8 @@ describe("preview build strategy", () => {
   });
 
   it("infers TanStack and Hono build defaults", async () => {
-    const { resolveInferredPreviewBuildSettings } = await import(
-      "../src/lib/app/preview-build"
+    const { resolveInferredAppBuildSettings } = await import(
+      "../src/lib/app/build"
     );
     const cwd = await createTempCwd();
     const tanstackPath = path.join(cwd, "tanstack");
@@ -227,7 +225,7 @@ describe("preview build strategy", () => {
     );
 
     await expect(
-      resolveInferredPreviewBuildSettings({
+      resolveInferredAppBuildSettings({
         appPath: tanstackPath,
         buildType: "tanstack-start",
       }),
@@ -239,7 +237,7 @@ describe("preview build strategy", () => {
       },
     });
     await expect(
-      resolveInferredPreviewBuildSettings({
+      resolveInferredAppBuildSettings({
         appPath: honoPath,
         buildType: "bun",
       }),
@@ -253,9 +251,7 @@ describe("preview build strategy", () => {
   });
 
   it("classifies leftover prisma.app.json files for migration", async () => {
-    const { detectLegacyBuildSettings } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { detectLegacyBuildSettings } = await import("../src/lib/app/build");
     const cwd = await createTempCwd();
     const effective = {
       buildCommand: "bun run build",
@@ -303,9 +299,7 @@ describe("preview build strategy", () => {
   });
 
   it("resolves package.json build scripts and literal framework output directories", async () => {
-    const { resolvePreviewBuildSettings } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { resolveAppBuildSettings } = await import("../src/lib/app/build");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
 
@@ -334,7 +328,7 @@ describe("preview build strategy", () => {
     );
 
     await expect(
-      resolvePreviewBuildSettings({
+      resolveAppBuildSettings({
         appPath,
         buildType: "nextjs",
       }),
@@ -347,9 +341,7 @@ describe("preview build strategy", () => {
   });
 
   it("only reads Next.js distDir from the exported config object", async () => {
-    const { resolvePreviewBuildSettings } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { resolveAppBuildSettings } = await import("../src/lib/app/build");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
 
@@ -382,7 +374,7 @@ describe("preview build strategy", () => {
     );
 
     await expect(
-      resolvePreviewBuildSettings({
+      resolveAppBuildSettings({
         appPath,
         buildType: "nextjs",
       }),
@@ -393,9 +385,7 @@ describe("preview build strategy", () => {
   });
 
   it("ignores commented or unrelated Next.js distDir values", async () => {
-    const { resolvePreviewBuildSettings } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { resolveAppBuildSettings } = await import("../src/lib/app/build");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
 
@@ -428,7 +418,7 @@ describe("preview build strategy", () => {
     );
 
     await expect(
-      resolvePreviewBuildSettings({
+      resolveAppBuildSettings({
         appPath,
         buildType: "nextjs",
       }),
@@ -439,9 +429,7 @@ describe("preview build strategy", () => {
   });
 
   it("detects the package manager for package.json build scripts", async () => {
-    const { resolvePreviewBuildSettings } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { resolveAppBuildSettings } = await import("../src/lib/app/build");
     const cases = [
       { lockfile: "bun.lock", command: "bun run build" },
       { lockfile: "pnpm-lock.yaml", command: "pnpm run build" },
@@ -473,7 +461,7 @@ describe("preview build strategy", () => {
       await writeFile(path.join(appPath, testCase.lockfile), "", "utf8");
 
       await expect(
-        resolvePreviewBuildSettings({
+        resolveAppBuildSettings({
           appPath,
           buildType: "nextjs",
         }),
@@ -485,9 +473,7 @@ describe("preview build strategy", () => {
   });
 
   it("detects the package manager from the workspace root for app build scripts", async () => {
-    const { resolvePreviewBuildSettings } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { resolveAppBuildSettings } = await import("../src/lib/app/build");
     const cases = [
       {
         rootFiles: ["pnpm-workspace.yaml", "pnpm-lock.yaml"],
@@ -538,7 +524,7 @@ describe("preview build strategy", () => {
       );
 
       await expect(
-        resolvePreviewBuildSettings({
+        resolveAppBuildSettings({
           appPath,
           buildType: "nextjs",
         }),
@@ -550,9 +536,7 @@ describe("preview build strategy", () => {
   });
 
   it("prefers the app-level lockfile over the workspace root lockfile", async () => {
-    const { resolvePreviewBuildSettings } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { resolveAppBuildSettings } = await import("../src/lib/app/build");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "apps", "web");
 
@@ -578,7 +562,7 @@ describe("preview build strategy", () => {
     );
 
     await expect(
-      resolvePreviewBuildSettings({
+      resolveAppBuildSettings({
         appPath,
         buildType: "nextjs",
       }),
@@ -588,9 +572,7 @@ describe("preview build strategy", () => {
   });
 
   it("does not use lockfiles above the repository root", async () => {
-    const { resolvePreviewBuildSettings } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { resolveAppBuildSettings } = await import("../src/lib/app/build");
     const cwd = await createTempCwd();
     const repoPath = path.join(cwd, "repo");
     const appPath = path.join(repoPath, "app");
@@ -616,7 +598,7 @@ describe("preview build strategy", () => {
     );
 
     await expect(
-      resolvePreviewBuildSettings({
+      resolveAppBuildSettings({
         appPath,
         buildType: "nextjs",
       }),
@@ -626,9 +608,7 @@ describe("preview build strategy", () => {
   });
 
   it("uses the literal package.json build script when no package manager is detected", async () => {
-    const { resolvePreviewBuildSettings } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { resolveAppBuildSettings } = await import("../src/lib/app/build");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
 
@@ -651,7 +631,7 @@ describe("preview build strategy", () => {
     );
 
     await expect(
-      resolvePreviewBuildSettings({
+      resolveAppBuildSettings({
         appPath,
         buildType: "nextjs",
       }),
@@ -662,9 +642,7 @@ describe("preview build strategy", () => {
   });
 
   it("does not detect unsupported next.config.cjs files as Next.js", async () => {
-    const { resolvePreviewBuildStrategy } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { resolveAppBuildStrategy } = await import("../src/lib/app/build");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
 
@@ -686,7 +664,7 @@ describe("preview build strategy", () => {
     );
 
     await expect(
-      resolvePreviewBuildStrategy({
+      resolveAppBuildStrategy({
         appPath,
         entrypoint: "server.ts",
         buildType: "auto",
@@ -732,10 +710,8 @@ describe("preview build strategy", () => {
       "utf8",
     );
 
-    const { executePreviewBuild } = await import(
-      "../src/lib/app/preview-build"
-    );
-    const result = await executePreviewBuild({
+    const { executeAppBuild } = await import("../src/lib/app/build");
+    const result = await executeAppBuild({
       appPath,
       buildType: "nextjs",
     });
@@ -769,10 +745,8 @@ describe("preview build strategy", () => {
       "utf8",
     );
 
-    const { executePreviewBuild } = await import(
-      "../src/lib/app/preview-build"
-    );
-    const result = await executePreviewBuild({
+    const { executeAppBuild } = await import("../src/lib/app/build");
+    const result = await executeAppBuild({
       appPath,
       buildType: "nextjs",
       buildSettings: {
@@ -830,10 +804,8 @@ describe("preview build strategy", () => {
       "utf8",
     );
 
-    const { executePreviewBuild } = await import(
-      "../src/lib/app/preview-build"
-    );
-    const result = await executePreviewBuild({
+    const { executeAppBuild } = await import("../src/lib/app/build");
+    const result = await executeAppBuild({
       appPath,
       buildType: "nextjs",
     });
@@ -857,9 +829,7 @@ describe("preview build strategy", () => {
   });
 
   it("materializes symlinks that point back to the source app directory", async () => {
-    const { normalizeArtifactSymlinks } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { normalizeArtifactSymlinks } = await import("@prisma/compute-sdk");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
     const artifactDir = path.join(cwd, "artifact");
@@ -891,9 +861,8 @@ describe("preview build strategy", () => {
   });
 
   it("stages Next.js standalone artifacts by materializing symlinks and falling back to app node_modules", async () => {
-    const { stageNextjsStandaloneArtifact } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { stageStandaloneArtifact: stageNextjsStandaloneArtifact } =
+      await import("@prisma/compute-sdk");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
     const standaloneDir = path.join(appPath, ".next", "standalone");
@@ -964,9 +933,8 @@ describe("preview build strategy", () => {
   });
 
   it("stages Next.js standalone symlinks that resolve through the monorepo root", async () => {
-    const { stageNextjsStandaloneArtifact } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { stageStandaloneArtifact: stageNextjsStandaloneArtifact } =
+      await import("@prisma/compute-sdk");
     const cwd = await createTempCwd();
     const repoRoot = path.join(cwd, "repo");
     const appPath = path.join(repoRoot, "apps", "web");
@@ -1004,9 +972,8 @@ describe("preview build strategy", () => {
   });
 
   it("keeps pnpm transitive dependencies resolvable after flattening Next.js standalone packages", async () => {
-    const { stageNextjsStandaloneArtifact } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { stageStandaloneArtifact: stageNextjsStandaloneArtifact } =
+      await import("@prisma/compute-sdk");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
     const standaloneDir = path.join(appPath, ".next", "standalone");
@@ -1067,9 +1034,7 @@ describe("preview build strategy", () => {
   });
 
   it("places public and .next/static next to server.js when the entrypoint is nested (monorepo)", async () => {
-    const { restageNextjsArtifact } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { restageNextjsArtifact } = await import("../src/lib/app/build");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "repo", "apps", "web");
     const standaloneDir = path.join(appPath, ".next", "standalone");
@@ -1122,9 +1087,8 @@ describe("preview build strategy", () => {
   });
 
   it("drops dangling pnpm hoist symlinks when staging Next.js standalone artifacts", async () => {
-    const { stageNextjsStandaloneArtifact } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { stageStandaloneArtifact: stageNextjsStandaloneArtifact } =
+      await import("@prisma/compute-sdk");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
     const standaloneDir = path.join(appPath, ".next", "standalone");
@@ -1191,9 +1155,8 @@ describe("preview build strategy", () => {
   });
 
   it("still rejects dangling Next.js standalone symlinks outside the pnpm hoist layer", async () => {
-    const { stageNextjsStandaloneArtifact } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { stageStandaloneArtifact: stageNextjsStandaloneArtifact } =
+      await import("@prisma/compute-sdk");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
     const standaloneDir = path.join(appPath, ".next", "standalone");
@@ -1221,9 +1184,8 @@ describe("preview build strategy", () => {
   });
 
   it("rejects Next.js standalone symlinks that escape the app directory", async () => {
-    const { stageNextjsStandaloneArtifact } = await import(
-      "../src/lib/app/preview-build"
-    );
+    const { stageStandaloneArtifact: stageNextjsStandaloneArtifact } =
+      await import("@prisma/compute-sdk");
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
     const standaloneDir = path.join(appPath, ".next", "standalone");

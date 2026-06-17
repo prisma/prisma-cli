@@ -3,7 +3,6 @@ import path from "node:path";
 
 export interface BunPackageJsonLike {
   main?: unknown;
-  module?: unknown;
   packageManager?: unknown;
   scripts?: unknown;
   dependencies?: unknown;
@@ -42,15 +41,7 @@ export async function readBunPackageJson(
 export function readBunPackageEntrypoint(
   packageJson: BunPackageJsonLike | null,
 ): string | undefined {
-  if (typeof packageJson?.main === "string") {
-    return packageJson.main;
-  }
-
-  if (typeof packageJson?.module === "string") {
-    return packageJson.module;
-  }
-
-  return undefined;
+  return typeof packageJson?.main === "string" ? packageJson.main : undefined;
 }
 
 export async function resolveBunEntrypoint(
@@ -63,7 +54,7 @@ export async function resolveBunEntrypoint(
 
   if (!candidate) {
     throw new Error(
-      "Entrypoint is required. Pass --entry or define package.json main or module.",
+      "Entrypoint is required. Pass --entry or define package.json main.",
     );
   }
 

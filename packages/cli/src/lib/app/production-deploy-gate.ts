@@ -2,14 +2,11 @@ import { CliError } from "../../shell/errors";
 import { confirmPrompt } from "../../shell/prompt";
 import { type CommandContext, canPrompt } from "../../shell/runtime";
 import type { BranchKind } from "../../types/branch";
-import type {
-  PreviewAppProvider,
-  PreviewDeploymentRecord,
-} from "./preview-provider";
+import type { AppProvider, DeploymentRecord } from "./app-provider";
 
 export async function enforceProductionDeployGate(
   context: CommandContext,
-  provider: Pick<PreviewAppProvider, "listDeployments">,
+  provider: Pick<AppProvider, "listDeployments">,
   options: {
     appId: string | undefined;
     appName: string;
@@ -67,8 +64,8 @@ export async function enforceProductionDeployGate(
 }
 
 function resolveCurrentProductionDeployment(
-  result: Awaited<ReturnType<PreviewAppProvider["listDeployments"]>>,
-): PreviewDeploymentRecord | null {
+  result: Awaited<ReturnType<AppProvider["listDeployments"]>>,
+): DeploymentRecord | null {
   if (result.deployments.length === 0) {
     return null;
   }
@@ -112,7 +109,7 @@ function renderProductionDeployYesLine(context: CommandContext): void {
 
 function renderProductionDeployConfirmation(
   context: CommandContext,
-  currentLiveDeployment: PreviewDeploymentRecord,
+  currentLiveDeployment: DeploymentRecord,
 ): void {
   if (context.flags.json || context.flags.quiet) {
     return;
