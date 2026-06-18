@@ -55,6 +55,7 @@ export function createProjectClient(
                   options.branchExists === false
                     ? []
                     : [branchRecord(branchName)],
+                pagination: { hasMore: false, nextCursor: null },
               },
             };
           }

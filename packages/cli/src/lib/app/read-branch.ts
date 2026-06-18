@@ -17,15 +17,31 @@ export async function resolveReadBranch(
   client: ManagementApiClient,
   options: { projectId: string; branchName: string; signal?: AbortSignal },
 ): Promise<ReadBranch | null> {
-  const result = await client.GET("/v1/projects/{projectId}/branches", {
-    params: { path: { projectId: options.projectId }, query: {} },
-    signal: options.signal,
-  });
-  if (result.error || !result.data) {
-    throw new Error(`Failed to list branches for project ${options.projectId}`);
-  }
+  const branches: Array<{
+    id: string;
+    gitName: string;
+    isDefault: boolean;
+    role: BranchKind;
+  }> = [];
+  let cursor: string | undefined;
 
-  const branches = result.data.data;
+  do {
+    const result = await client.GET("/v1/projects/{projectId}/branches", {
+      params: { path: { projectId: options.projectId }, query: { cursor } },
+      signal: options.signal,
+    });
+    if (result.error || !result.data) {
+      throw new Error(
+        `Failed to list branches for project ${options.projectId}: ${JSON.stringify(result.error)}`,
+      );
+    }
+
+    branches.push(...result.data.data);
+    cursor = result.data.pagination.hasMore
+      ? (result.data.pagination.nextCursor ?? undefined)
+      : undefined;
+  } while (cursor);
+
   const chosen =
     branches.find((branch) => branch.gitName === options.branchName) ??
     branches.find((branch) => branch.isDefault) ??

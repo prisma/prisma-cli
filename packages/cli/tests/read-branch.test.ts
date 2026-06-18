@@ -12,7 +12,12 @@ type RawBranch = {
 
 function clientReturning(branches: RawBranch[]): ManagementApiClient {
   return {
-    GET: vi.fn().mockResolvedValue({ data: { data: branches } }),
+    GET: vi.fn().mockResolvedValue({
+      data: {
+        data: branches,
+        pagination: { hasMore: false, nextCursor: null },
+      },
+    }),
   } as unknown as ManagementApiClient;
 }
 
@@ -67,5 +72,18 @@ describe("resolveReadBranch", () => {
     });
 
     expect(result).toBeNull();
+  });
+
+  it("throws when the branches request fails", async () => {
+    const client = {
+      GET: vi.fn().mockResolvedValue({
+        error: { message: "Unauthorized" },
+        response: { status: 401 },
+      }),
+    } as unknown as ManagementApiClient;
+
+    await expect(
+      resolveReadBranch(client, { projectId: "proj_1", branchName: "main" }),
+    ).rejects.toThrow();
   });
 });
