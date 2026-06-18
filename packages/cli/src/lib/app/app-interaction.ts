@@ -8,9 +8,9 @@ import { selectPrompt, textPrompt } from "../../shell/prompt";
 import type { CommandContext } from "../../shell/runtime";
 
 const CREATE_NEW_APP = "__create_new_app__";
-export const PREVIEW_DEFAULT_REGION = "eu-central-1";
+export const DEFAULT_REGION = "eu-central-1";
 
-export function createPreviewDeployInteraction(
+export function createDeployInteraction(
   context: CommandContext,
 ): DeployInteraction {
   return {
@@ -51,7 +51,7 @@ export function createPreviewDeployInteraction(
       }).then((value) => value.trim());
     },
     async selectRegion(_regions: RegionInfo[]): Promise<string> {
-      return PREVIEW_DEFAULT_REGION;
+      return DEFAULT_REGION;
     },
   };
 }

@@ -93,15 +93,14 @@ describe("shell output", () => {
         summary: "App deploy failed",
         why: "ENOENT: missing file",
         fix: "Retry the command.",
-        debug:
-          "Error: ENOENT: missing file\n    at stageNextjsStandaloneArtifact",
+        debug: "Error: ENOENT: missing file\n    at stageStandaloneArtifact",
       }),
       { trace: true },
     );
 
     expect(stderr.buffer).toContain("Trace:");
     expect(stderr.buffer).toContain("Error: ENOENT: missing file");
-    expect(stderr.buffer).toContain("stageNextjsStandaloneArtifact");
+    expect(stderr.buffer).toContain("stageStandaloneArtifact");
     expect(stderr.buffer).not.toContain("More: Re-run with --trace");
   });
 });

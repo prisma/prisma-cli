@@ -1,7 +1,7 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Environment variable pagination must run sequentially.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
-export interface PreviewEnvironmentVariableRecord {
+export interface EnvironmentVariableRecord {
   id: string;
   key: string;
   branchId: string | null;
@@ -9,7 +9,7 @@ export interface PreviewEnvironmentVariableRecord {
   isManagedBySystem: boolean;
 }
 
-export interface PreviewBranchDatabaseRecord {
+export interface BranchDatabaseRecord {
   id: string;
   name: string;
   branchId: string | null;
@@ -58,7 +58,7 @@ export async function createBranchDatabase(
     branchName: string;
     signal?: AbortSignal;
   },
-): Promise<PreviewBranchDatabaseRecord> {
+): Promise<BranchDatabaseRecord> {
   const result = await client.POST("/v1/databases", {
     body: {
       projectId: options.projectId,
@@ -89,7 +89,7 @@ export async function listEnvironmentVariables(
     branchId?: string;
     signal?: AbortSignal;
   },
-): Promise<PreviewEnvironmentVariableRecord[]> {
+): Promise<EnvironmentVariableRecord[]> {
   const variables: RawEnvironmentVariableRecord[] = [];
   let cursor: string | undefined;
 
@@ -136,7 +136,7 @@ export async function createEnvironmentVariable(
     value: string;
     signal?: AbortSignal;
   },
-): Promise<PreviewEnvironmentVariableRecord> {
+): Promise<EnvironmentVariableRecord> {
   const result = await client.POST("/v1/environment-variables", {
     body: {
       projectId: options.projectId,
@@ -191,7 +191,7 @@ export async function updateEnvironmentVariable(
     value: string;
     signal?: AbortSignal;
   },
-): Promise<PreviewEnvironmentVariableRecord> {
+): Promise<EnvironmentVariableRecord> {
   const result = await client.PATCH("/v1/environment-variables/{envVarId}", {
     params: {
       path: { envVarId: options.envVarId },
@@ -240,7 +240,7 @@ export async function deleteEnvironmentVariable(
 
 function normalizeEnvironmentVariable(
   variable: RawEnvironmentVariableRecord,
-): PreviewEnvironmentVariableRecord {
+): EnvironmentVariableRecord {
   return {
     id: variable.id,
     key: variable.key,
@@ -252,7 +252,7 @@ function normalizeEnvironmentVariable(
 
 function normalizeBranchDatabaseRecord(
   database: RawDatabaseRecord,
-): PreviewBranchDatabaseRecord {
+): BranchDatabaseRecord {
   const connection = database.connections?.[0];
   const databaseUrl = connection?.endpoints?.pooled?.connectionString;
   const directUrl = connection?.endpoints?.direct?.connectionString ?? null;

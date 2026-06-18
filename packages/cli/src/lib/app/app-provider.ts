@@ -11,21 +11,21 @@ import {
 } from "@prisma/compute-sdk";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import type { BranchKind } from "../../types/branch";
-import { envVarNames } from "./env-vars";
 import {
+  type BranchDatabaseRecord,
   createBranchDatabase,
   createEnvironmentVariable,
   deleteBranchDatabase,
   deleteEnvironmentVariable,
+  type EnvironmentVariableRecord,
   listEnvironmentVariables,
-  type PreviewBranchDatabaseRecord,
-  type PreviewEnvironmentVariableRecord,
   updateEnvironmentVariable,
-} from "./preview-branch-database";
-import type { PreviewBuildSettings, PreviewBuildType } from "./preview-build";
-import { PreviewBuildStrategy } from "./preview-build";
+} from "./branch-database-api";
+import type { AppBuildSettings, AppBuildType } from "./build";
+import { AppBuildStrategy } from "./build";
+import { envVarNames } from "./env-vars";
 
-export interface PreviewAppRecord {
+export interface AppRecord {
   id: string;
   name: string;
   region: string | null;
@@ -34,23 +34,23 @@ export interface PreviewAppRecord {
   liveUrl: string | null;
 }
 
-export interface PreviewProjectRecord {
+export interface ProjectRecord {
   id: string;
   name: string;
 }
 
-export interface PreviewBranchRecord {
+export interface BranchRecord {
   id: string;
   name: string;
   role: BranchKind;
 }
 
 export type {
-  PreviewBranchDatabaseRecord,
-  PreviewEnvironmentVariableRecord,
-} from "./preview-branch-database";
+  BranchDatabaseRecord,
+  EnvironmentVariableRecord,
+} from "./branch-database-api";
 
-export interface PreviewDeploymentRecord {
+export interface DeploymentRecord {
   id: string;
   status: string;
   createdAt: string;
@@ -58,9 +58,9 @@ export interface PreviewDeploymentRecord {
   live: boolean | null;
 }
 
-export interface PreviewDeployRecord {
+export interface DeployRecord {
   projectId: string;
-  app: PreviewAppRecord;
+  app: AppRecord;
   deployment: {
     id: string;
     status: string;
@@ -68,24 +68,24 @@ export interface PreviewDeployRecord {
   };
 }
 
-export interface PreviewEnvRecord {
+export interface EnvRecord {
   projectId: string;
-  app: PreviewAppRecord;
-  deployment: PreviewDeploymentRecord;
+  app: AppRecord;
+  deployment: DeploymentRecord;
   variables: string[];
 }
 
-export interface PreviewShownDeploymentRecord {
-  app: PreviewAppRecord | null;
-  deployment: PreviewDeploymentRecord;
+export interface ShownDeploymentRecord {
+  app: AppRecord | null;
+  deployment: DeploymentRecord;
 }
 
-export interface PreviewRemovedAppRecord {
+export interface RemovedAppRecord {
   id: string;
   name: string;
 }
 
-export type PreviewDomainStatus =
+export type DomainStatus =
   | "pending_dns"
   | "verifying"
   | "verified_routing_blocked"
@@ -94,30 +94,30 @@ export type PreviewDomainStatus =
   | "failed"
   | "removing";
 
-export interface PreviewDomainDnsRecord {
+export interface DomainDnsRecord {
   type: string;
   name: string;
   value: string;
   ttl: number | null;
 }
 
-export interface PreviewDomainRecord {
+export interface DomainRecord {
   id: string;
   type: "custom-domain";
   url: string;
   hostname: string;
   computeServiceId: string;
-  status: PreviewDomainStatus;
+  status: DomainStatus;
   foundryStatus: string;
   failureReason: string | null;
   failureCategory: "dns" | "acme" | "storage" | "unknown" | null;
   certExpiresAt: string | null;
   createdAt: string;
   updatedAt: string;
-  dnsRecords: PreviewDomainDnsRecord[];
+  dnsRecords: DomainDnsRecord[];
 }
 
-export class PreviewDomainApiError extends Error {
+export class DomainApiError extends Error {
   readonly status: number;
   readonly code: string | null;
   readonly hint: string | null;
@@ -132,28 +132,28 @@ export class PreviewDomainApiError extends Error {
     super(
       `${options.summary}: ${options.message}${options.hint ? ` ${options.hint}` : ""}`,
     );
-    this.name = "PreviewDomainApiError";
+    this.name = "DomainApiError";
     this.status = options.status;
     this.code = options.code ?? null;
     this.hint = options.hint ?? null;
   }
 }
 
-export interface PreviewAppProvider {
+export interface AppProvider {
   createProject(options: {
     name: string;
     signal?: AbortSignal;
-  }): Promise<PreviewProjectRecord>;
+  }): Promise<ProjectRecord>;
   resolveBranch(
     projectId: string,
     options: { branchName: string; signal?: AbortSignal },
-  ): Promise<PreviewBranchRecord>;
+  ): Promise<BranchRecord>;
   createBranchDatabase(options: {
     projectId: string;
     branchId: string;
     branchName: string;
     signal?: AbortSignal;
-  }): Promise<PreviewBranchDatabaseRecord>;
+  }): Promise<BranchDatabaseRecord>;
   deleteBranchDatabase(options: {
     databaseId: string;
     signal?: AbortSignal;
@@ -164,7 +164,7 @@ export interface PreviewAppProvider {
     key?: string;
     branchId?: string;
     signal?: AbortSignal;
-  }): Promise<PreviewEnvironmentVariableRecord[]>;
+  }): Promise<EnvironmentVariableRecord[]>;
   createEnvironmentVariable(options: {
     projectId: string;
     branchId?: string;
@@ -172,12 +172,12 @@ export interface PreviewAppProvider {
     key: string;
     value: string;
     signal?: AbortSignal;
-  }): Promise<PreviewEnvironmentVariableRecord>;
+  }): Promise<EnvironmentVariableRecord>;
   updateEnvironmentVariable(options: {
     envVarId: string;
     value: string;
     signal?: AbortSignal;
-  }): Promise<PreviewEnvironmentVariableRecord>;
+  }): Promise<EnvironmentVariableRecord>;
   deleteEnvironmentVariable(options: {
     envVarId: string;
     signal?: AbortSignal;
@@ -185,24 +185,24 @@ export interface PreviewAppProvider {
   listApps(
     projectId: string,
     options?: { branchName?: string; signal?: AbortSignal },
-  ): Promise<PreviewAppRecord[]>;
+  ): Promise<AppRecord[]>;
   removeApp(
     appId: string,
     options?: { signal?: AbortSignal },
-  ): Promise<PreviewRemovedAppRecord>;
+  ): Promise<RemovedAppRecord>;
   listDomains(
     appId: string,
     options?: { signal?: AbortSignal },
-  ): Promise<PreviewDomainRecord[]>;
+  ): Promise<DomainRecord[]>;
   addDomain(options: {
     appId: string;
     hostname: string;
     signal?: AbortSignal;
-  }): Promise<{ domain: PreviewDomainRecord; existing: boolean }>;
+  }): Promise<{ domain: DomainRecord; existing: boolean }>;
   showDomain(
     domainId: string,
     options?: { signal?: AbortSignal },
-  ): Promise<PreviewDomainRecord>;
+  ): Promise<DomainRecord>;
   removeDomain(
     domainId: string,
     options?: { signal?: AbortSignal },
@@ -210,7 +210,7 @@ export interface PreviewAppProvider {
   retryDomain(
     domainId: string,
     options?: { signal?: AbortSignal },
-  ): Promise<PreviewDomainRecord>;
+  ): Promise<DomainRecord>;
   promoteDeployment(options: {
     appId: string;
     deploymentId: string;
@@ -225,37 +225,37 @@ export interface PreviewAppProvider {
     appName?: string;
     region?: string;
     entrypoint?: string;
-    buildType?: PreviewBuildType;
-    buildSettings?: PreviewBuildSettings;
+    buildType?: AppBuildType;
+    buildSettings?: AppBuildSettings;
     portMapping?: PortMapping;
     envVars?: Record<string, string>;
     interaction?: unknown;
     signal?: AbortSignal;
     progress?: unknown;
-  }): Promise<PreviewDeployRecord>;
+  }): Promise<DeployRecord>;
   updateAppEnv(options: {
     appId: string;
     envVars: Record<string, string>;
     signal?: AbortSignal;
     progress?: unknown;
     promoteProgress?: unknown;
-  }): Promise<PreviewEnvRecord>;
+  }): Promise<EnvRecord>;
   listAppEnvNames(options: {
     appId: string;
     deploymentId: string;
     signal?: AbortSignal;
-  }): Promise<PreviewEnvRecord>;
+  }): Promise<EnvRecord>;
   listDeployments(
     appId: string,
     options?: { signal?: AbortSignal },
   ): Promise<{
-    app: PreviewAppRecord;
-    deployments: PreviewDeploymentRecord[];
+    app: AppRecord;
+    deployments: DeploymentRecord[];
   }>;
   showDeployment(
     deploymentId: string,
     options?: { signal?: AbortSignal },
-  ): Promise<PreviewShownDeploymentRecord | null>;
+  ): Promise<ShownDeploymentRecord | null>;
   streamDeploymentLogs(options: {
     deploymentId: string;
     signal?: AbortSignal;
@@ -263,13 +263,13 @@ export interface PreviewAppProvider {
   }): Promise<void>;
 }
 
-export function createPreviewAppProvider(
+export function createAppProvider(
   client: ManagementApiClient,
   options?: {
     baseUrl?: string;
     getToken?: () => Promise<string>;
   },
-): PreviewAppProvider {
+): AppProvider {
   const sdk = new ComputeClient(client);
 
   return {
@@ -501,7 +501,7 @@ export function createPreviewAppProvider(
             };
 
       const deployResult = await sdk.deploy({
-        strategy: new PreviewBuildStrategy({
+        strategy: new AppBuildStrategy({
           appPath: path.resolve(options.cwd),
           entrypoint: options.entrypoint,
           buildType: options.buildType,
@@ -798,7 +798,7 @@ interface RawDomainRecord {
   url: string;
   hostname: string;
   computeServiceId: string;
-  status: PreviewDomainStatus;
+  status: DomainStatus;
   foundryStatus: string;
   failureReason: string | null;
   failureCategory: "dns" | "acme" | "storage" | "unknown" | null;
@@ -892,7 +892,7 @@ async function listComputeServices(
     branchGitName?: string;
     signal?: AbortSignal;
   },
-): Promise<PreviewAppRecord[]> {
+): Promise<AppRecord[]> {
   const services: RawComputeServiceRecord[] = [];
   let cursor: string | undefined;
 
@@ -934,7 +934,7 @@ async function listComputeServiceDomains(
   client: ManagementApiClient,
   computeServiceId: string,
   signal?: AbortSignal,
-): Promise<PreviewDomainRecord[]> {
+): Promise<DomainRecord[]> {
   const result = await client.GET(
     "/v1/compute-services/{computeServiceId}/domains",
     {
@@ -956,7 +956,7 @@ async function listComputeServiceDomains(
   return result.data.data.map((domain) => normalizeDomainRecord(domain));
 }
 
-function normalizeDomainRecord(domain: RawDomainRecord): PreviewDomainRecord {
+function normalizeDomainRecord(domain: RawDomainRecord): DomainRecord {
   return {
     id: domain.id,
     type: domain.type,
@@ -976,7 +976,7 @@ function normalizeDomainRecord(domain: RawDomainRecord): PreviewDomainRecord {
 
 function normalizeDomainDnsRecords(
   records: RawDomainDnsRecord[] | null | undefined,
-): PreviewDomainDnsRecord[] {
+): DomainDnsRecord[] {
   if (!Array.isArray(records)) {
     return [];
   }
@@ -998,7 +998,7 @@ function normalizeDomainDnsRecords(
         ttl: typeof record.ttl === "number" ? record.ttl : null,
       };
     })
-    .filter((record): record is PreviewDomainDnsRecord => Boolean(record));
+    .filter((record): record is DomainDnsRecord => Boolean(record));
 }
 
 function sameHostname(left: string, right: string): boolean {
@@ -1087,8 +1087,8 @@ function domainApiCallError(
   summary: string,
   response: Response,
   error: RawApiErrorBody,
-): PreviewDomainApiError {
-  return new PreviewDomainApiError({
+): DomainApiError {
+  return new DomainApiError({
     summary,
     status: response.status,
     code: error.error?.code ?? null,
@@ -1103,7 +1103,7 @@ async function findAppForDeployment(
   sdk: ComputeClient,
   deploymentId: string,
   signal?: AbortSignal,
-): Promise<PreviewAppRecord | null> {
+): Promise<AppRecord | null> {
   const projectsResult = await sdk.listProjects({ signal });
   if (projectsResult.isErr()) {
     throw new Error(projectsResult.error.message);
@@ -1139,7 +1139,7 @@ async function findServiceAppForDeployment(
   serviceId: string,
   deploymentId: string,
   signal?: AbortSignal,
-): Promise<PreviewAppRecord | null> {
+): Promise<AppRecord | null> {
   const detailResult = await sdk.showService({
     serviceId,
     signal,
@@ -1148,7 +1148,7 @@ async function findServiceAppForDeployment(
     throw new Error(detailResult.error.message);
   }
 
-  const app: PreviewAppRecord = {
+  const app: AppRecord = {
     id: detailResult.value.id,
     name: detailResult.value.name,
     region: detailResult.value.region ?? null,

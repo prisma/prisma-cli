@@ -7,7 +7,7 @@ import type {
 import type { ShellUi } from "../../shell/ui";
 import { renderDeployOutputRows } from "./deploy-output";
 
-export interface PreviewDeployProgressState {
+export interface DeployProgressState {
   buildStarted: boolean;
   buildCompleted: boolean;
   archiveReady: boolean;
@@ -19,7 +19,7 @@ export interface PreviewDeployProgressState {
   promotedUrl: string | null;
 }
 
-export function createPreviewDeployProgressState(): PreviewDeployProgressState {
+export function createDeployProgressState(): DeployProgressState {
   return {
     buildStarted: false,
     buildCompleted: false,
@@ -33,11 +33,11 @@ export function createPreviewDeployProgressState(): PreviewDeployProgressState {
   };
 }
 
-export function createPreviewDeployProgress(
+export function createDeployProgress(
   output: Writable,
   ui: ShellUi,
   enabled: boolean,
-  state: PreviewDeployProgressState = createPreviewDeployProgressState(),
+  state: DeployProgressState = createDeployProgressState(),
 ): DeployProgress | undefined {
   const write = (line: string) => {
     if (!enabled) {
@@ -94,7 +94,7 @@ function formatArtifactSize(byteLength: number): string {
   return `${(byteLength / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function createPreviewPromoteProgress(
+export function createPromoteProgress(
   output: Writable,
   enabled: boolean,
 ): PromoteProgress | undefined {
@@ -136,7 +136,7 @@ export function createPreviewPromoteProgress(
   };
 }
 
-export function createPreviewUpdateEnvProgress(
+export function createUpdateEnvProgress(
   output: Writable,
   enabled: boolean,
 ): UpdateEnvProgress | undefined {

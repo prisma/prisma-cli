@@ -38,7 +38,7 @@ afterEach(() => {
 
   vi.doUnmock("../src/lib/auth/auth-ops");
   vi.doUnmock("../src/lib/auth/guard");
-  vi.doUnmock("../src/lib/app/preview-provider");
+  vi.doUnmock("../src/lib/app/app-provider");
   vi.doUnmock("../src/lib/app/branch-database");
   vi.doUnmock("../src/shell/prompt");
   vi.doUnmock("open");
@@ -201,8 +201,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -272,8 +272,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -405,8 +405,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -496,8 +496,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -597,8 +597,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -664,8 +664,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -738,14 +738,12 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+    vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
-        await importOriginal<
-          typeof import("../src/lib/app/preview-provider")
-        >();
+        await importOriginal<typeof import("../src/lib/app/app-provider")>();
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() =>
+        createAppProvider: vi.fn(() =>
           withBranchDatabaseProviderDefaults({
             resolveBranch: createResolveBranch(),
             listApps,
@@ -836,14 +834,12 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+    vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
-        await importOriginal<
-          typeof import("../src/lib/app/preview-provider")
-        >();
+        await importOriginal<typeof import("../src/lib/app/app-provider")>();
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() =>
+        createAppProvider: vi.fn(() =>
           withBranchDatabaseProviderDefaults({
             resolveBranch: createResolveBranch(),
             listApps,
@@ -895,14 +891,12 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+    vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
-        await importOriginal<
-          typeof import("../src/lib/app/preview-provider")
-        >();
+        await importOriginal<typeof import("../src/lib/app/app-provider")>();
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() =>
+        createAppProvider: vi.fn(() =>
           withBranchDatabaseProviderDefaults({
             resolveBranch: createResolveBranch(),
             createProject,
@@ -976,14 +970,12 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+    vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
-        await importOriginal<
-          typeof import("../src/lib/app/preview-provider")
-        >();
+        await importOriginal<typeof import("../src/lib/app/app-provider")>();
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() =>
+        createAppProvider: vi.fn(() =>
           withBranchDatabaseProviderDefaults({
             resolveBranch: createResolveBranch(),
             listApps,
@@ -1031,13 +1023,11 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+    vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
-        await importOriginal<
-          typeof import("../src/lib/app/preview-provider")
-        >();
+        await importOriginal<typeof import("../src/lib/app/app-provider")>();
       const addDomain = vi.fn().mockRejectedValue(
-        new actual.PreviewDomainApiError({
+        new actual.DomainApiError({
           summary: "Failed to add custom domain",
           status: 409,
           message: "Domain quota exceeded.",
@@ -1046,7 +1036,7 @@ describe("app controller", () => {
       );
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() =>
+        createAppProvider: vi.fn(() =>
           withBranchDatabaseProviderDefaults({
             resolveBranch: createResolveBranch(),
             listApps,
@@ -1097,13 +1087,11 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+    vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
-        await importOriginal<
-          typeof import("../src/lib/app/preview-provider")
-        >();
+        await importOriginal<typeof import("../src/lib/app/app-provider")>();
       const addDomain = vi.fn().mockRejectedValue(
-        new actual.PreviewDomainApiError({
+        new actual.DomainApiError({
           summary: "Failed to add custom domain",
           status: 409,
           message: "Hostname already registered.",
@@ -1112,7 +1100,7 @@ describe("app controller", () => {
       );
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() =>
+        createAppProvider: vi.fn(() =>
           withBranchDatabaseProviderDefaults({
             resolveBranch: createResolveBranch(),
             listApps,
@@ -1169,13 +1157,11 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+    vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
-        await importOriginal<
-          typeof import("../src/lib/app/preview-provider")
-        >();
+        await importOriginal<typeof import("../src/lib/app/app-provider")>();
       const addDomain = vi.fn().mockRejectedValue(
-        new actual.PreviewDomainApiError({
+        new actual.DomainApiError({
           summary: "Failed to add custom domain",
           status: 400,
           message: "No CNAME or A/AAAA records found for hostname.",
@@ -1184,7 +1170,7 @@ describe("app controller", () => {
       );
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() =>
+        createAppProvider: vi.fn(() =>
           withBranchDatabaseProviderDefaults({
             resolveBranch: createResolveBranch(),
             listApps,
@@ -1240,13 +1226,11 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+    vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
-        await importOriginal<
-          typeof import("../src/lib/app/preview-provider")
-        >();
+        await importOriginal<typeof import("../src/lib/app/app-provider")>();
       const addDomain = vi.fn().mockRejectedValue(
-        new actual.PreviewDomainApiError({
+        new actual.DomainApiError({
           summary: "Failed to add custom domain",
           status: 400,
           message: "DNS is not configured for hostname compute-test.amanv.dev.",
@@ -1255,7 +1239,7 @@ describe("app controller", () => {
       );
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() =>
+        createAppProvider: vi.fn(() =>
           withBranchDatabaseProviderDefaults({
             resolveBranch: createResolveBranch(),
             listApps,
@@ -1309,14 +1293,12 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+    vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
-        await importOriginal<
-          typeof import("../src/lib/app/preview-provider")
-        >();
+        await importOriginal<typeof import("../src/lib/app/app-provider")>();
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() =>
+        createAppProvider: vi.fn(() =>
           withBranchDatabaseProviderDefaults({
             resolveBranch: createResolveBranch(),
             listApps,
@@ -1400,13 +1382,11 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+    vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
-        await importOriginal<
-          typeof import("../src/lib/app/preview-provider")
-        >();
+        await importOriginal<typeof import("../src/lib/app/app-provider")>();
       const retryDomain = vi.fn().mockRejectedValue(
-        new actual.PreviewDomainApiError({
+        new actual.DomainApiError({
           summary: "Failed to retry custom domain",
           status: 409,
           message: "Domain is not eligible for retry.",
@@ -1414,7 +1394,7 @@ describe("app controller", () => {
       );
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() =>
+        createAppProvider: vi.fn(() =>
           withBranchDatabaseProviderDefaults({
             resolveBranch: createResolveBranch(),
             listApps,
@@ -1470,14 +1450,12 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", async (importOriginal) => {
+    vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
-        await importOriginal<
-          typeof import("../src/lib/app/preview-provider")
-        >();
+        await importOriginal<typeof import("../src/lib/app/app-provider")>();
       return {
         ...actual,
-        createPreviewAppProvider: vi.fn(() =>
+        createAppProvider: vi.fn(() =>
           withBranchDatabaseProviderDefaults({
             resolveBranch: createResolveBranch(),
             listApps,
@@ -1585,8 +1563,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -1712,8 +1690,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps: vi.fn(),
@@ -1775,8 +1753,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -1864,8 +1842,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listEnvironmentVariables: vi.fn().mockResolvedValue([]),
@@ -1939,8 +1917,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -2011,8 +1989,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -2114,8 +2092,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -2209,8 +2187,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -2290,8 +2268,8 @@ describe("app controller", () => {
       expectedBuildType: "bun",
     },
     {
-      name: "Bun from --framework bun with package.json module",
-      packageJson: { module: "index.ts" },
+      name: "Bun from --framework bun with package.json main",
+      packageJson: { main: "index.ts" },
       framework: "bun",
       expectedEntrypoint: "index.ts",
       expectedBuildType: "bun",
@@ -2343,8 +2321,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -2417,8 +2395,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -2484,8 +2462,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject,
@@ -2640,8 +2618,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject,
@@ -2715,8 +2693,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           createProject,
           resolveBranch: createResolveBranch(),
@@ -2803,8 +2781,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject,
@@ -2874,8 +2852,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps: vi.fn(),
@@ -2920,8 +2898,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -2976,8 +2954,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -3076,8 +3054,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -3201,8 +3179,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -3271,8 +3249,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -3333,8 +3311,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -3402,8 +3380,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject,
@@ -3531,8 +3509,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject,
@@ -3660,8 +3638,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject,
@@ -3724,8 +3702,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject,
@@ -3780,8 +3758,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject,
@@ -3855,8 +3833,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -3938,8 +3916,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -3980,8 +3958,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -4052,8 +4030,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -4105,8 +4083,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -4166,8 +4144,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -4248,8 +4226,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -4354,8 +4332,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -4426,8 +4404,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps: vi.fn(),
@@ -4491,8 +4469,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps: vi.fn(),
@@ -4550,8 +4528,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps: vi.fn(),
@@ -4602,8 +4580,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps: vi.fn(),
@@ -4673,8 +4651,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -4747,8 +4725,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -4820,8 +4798,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -4889,8 +4867,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -4965,8 +4943,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -5052,8 +5030,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -5129,8 +5107,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -5224,8 +5202,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -5320,8 +5298,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -5392,8 +5370,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -5455,8 +5433,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -5553,8 +5531,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -5644,8 +5622,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -5714,8 +5692,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -5802,8 +5780,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           listApps,
@@ -5873,8 +5851,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -5967,8 +5945,8 @@ describe("app controller", () => {
         textPrompt,
       };
     });
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -6027,8 +6005,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -6084,8 +6062,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),
@@ -6143,8 +6121,8 @@ describe("app controller", () => {
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
-    vi.doMock("../src/lib/app/preview-provider", () => ({
-      createPreviewAppProvider: vi.fn(() =>
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
         withBranchDatabaseProviderDefaults({
           resolveBranch: createResolveBranch(),
           createProject: vi.fn(),

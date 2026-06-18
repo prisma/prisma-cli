@@ -7,7 +7,7 @@ import {
   parseGitHubRepositoryUrl,
   readGitOriginRemote,
 } from "../adapters/git";
-import { createPreviewAppProvider } from "../lib/app/preview-provider";
+import { createAppProvider } from "../lib/app/app-provider";
 import { requireComputeAuth } from "../lib/auth/guard";
 import { promptForProjectSetupChoice } from "../lib/project/interactive-setup";
 import {
@@ -262,7 +262,7 @@ export async function runProjectCreate(
     throw authRequiredError();
   }
 
-  const provider = createPreviewAppProvider(client);
+  const provider = createAppProvider(client);
   const name = projectName.trim();
   const created = await provider
     .createProject({ name, signal: context.runtime.signal })
@@ -310,7 +310,7 @@ export async function runProjectLink(
     throw workspaceRequiredError();
   }
 
-  let provider: ReturnType<typeof createPreviewAppProvider> | null = null;
+  let provider: ReturnType<typeof createAppProvider> | null = null;
   let projects: ProjectCandidate[];
   if (isRealMode(context)) {
     const client = await requireComputeAuth(
@@ -320,7 +320,7 @@ export async function runProjectLink(
     if (!client) {
       throw authRequiredError();
     }
-    provider = createPreviewAppProvider(client);
+    provider = createAppProvider(client);
     projects = await listRealWorkspaceProjects(
       client,
       workspace,
@@ -366,7 +366,7 @@ async function resolveInteractiveProjectLinkSetup(
   context: CommandContext,
   workspace: AuthWorkspace,
   projects: ProjectCandidate[],
-  provider: ReturnType<typeof createPreviewAppProvider> | null,
+  provider: ReturnType<typeof createAppProvider> | null,
 ): Promise<ProjectSetupResult> {
   const setup = await promptForProjectSetupChoice({
     context,
@@ -426,7 +426,7 @@ async function requireProjectDirectoryBinding(
 }
 
 async function createProjectForLinkSetup(
-  provider: ReturnType<typeof createPreviewAppProvider>,
+  provider: ReturnType<typeof createAppProvider>,
   projectName: string,
   workspace: AuthWorkspace,
   signal: AbortSignal,

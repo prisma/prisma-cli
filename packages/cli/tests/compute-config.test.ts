@@ -160,7 +160,7 @@ describe("normalizeComputeConfig", () => {
       "`apps.web.name` must be a non-empty string.",
     );
     expect(issues.join(" ")).toContain(
-      "`apps.web.framework` must be one of: nextjs, nuxt, astro, hono, tanstack-start, bun.",
+      "`apps.web.framework` must be one of: nextjs, nuxt, astro, hono, nestjs, tanstack-start, bun.",
     );
     expect(issues.join(" ")).toContain(
       "`apps.web.httpPort` must be an integer between 1 and 65535.",

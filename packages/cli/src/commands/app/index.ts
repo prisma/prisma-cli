@@ -21,7 +21,7 @@ import {
   runAppShow,
   runAppShowDeploy,
 } from "../../controllers/app";
-import { PREVIEW_BUILD_TYPES } from "../../lib/app/preview-build";
+import { APP_BUILD_TYPES } from "../../lib/app/build";
 import {
   isAppDeployAllResult,
   renderAppBuild,
@@ -121,7 +121,7 @@ function createBuildCommand(runtime: CliRuntime): Command {
     )
     .addOption(
       new Option("--build-type <type>", "Local build type")
-        .choices([...PREVIEW_BUILD_TYPES])
+        .choices([...APP_BUILD_TYPES])
         .default("auto"),
     );
   addGlobalFlags(command);
