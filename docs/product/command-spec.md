@@ -135,11 +135,23 @@ resolved production Branch and fail when none exists.
 
 ### Branch
 
-Commands that use branch context resolve it in this order:
+Deploy resolves the branch it writes to in this order:
 
 1. explicit branch argument or `--branch <name>` when the command accepts one
 2. active Git branch for local deploy workflows
 3. `main`
+
+App management commands (`show`, `open`, `logs`, `list-deploys`, `promote`,
+`rollback`, `remove`) never create branches, so they resolve the branch they
+read in this order:
+
+1. explicit `--branch <name>` when the command accepts one, honored as-is
+2. the active Git branch when a branch with that name exists in the project
+3. the project's default (production) branch
+
+Resolving the default branch from the project keeps a git-push app deployed on
+a non-`main` default branch (for example `master`) visible to management
+commands regardless of the local Git branch.
 
 `local` is local CLI context only. It is never a branch or deploy target.
 Production is a protected durable branch and must require explicit user intent.

@@ -71,9 +71,9 @@ function expectedAppVerboseContext() {
       name: "Acme Dashboard",
     },
     branch: {
-      id: null,
+      id: "branch_main",
       name: "main",
-      kind: "production",
+      kind: "preview",
     },
     resolution: {
       projectSource: "local-pin",

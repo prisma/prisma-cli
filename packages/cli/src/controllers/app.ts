@@ -85,6 +85,7 @@ import {
   PreviewDomainApiError,
   type PreviewDomainRecord,
 } from "../lib/app/preview-provider";
+import { resolveReadBranch } from "../lib/app/read-branch";
 import { enforceProductionDeployGate } from "../lib/app/production-deploy-gate";
 import { readAuthState } from "../lib/auth/auth-ops";
 import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
@@ -3279,15 +3280,27 @@ async function resolveProjectContext(
     throw projectResolutionErrorToCliError(resolvedResult.error);
   }
   const resolved = resolvedResult.value;
-  const branch =
+  const requested =
     options?.branch ?? (await resolveDeployBranch(context, undefined));
+
+  // An explicit --branch is honored as-is. An inferred branch (active Git
+  // branch or the default) is resolved against the project's branches and
+  // falls back to the default branch so a git-push app on a non-`main`
+  // default branch stays visible.
+  const remoteBranch = options?.branch
+    ? null
+    : await resolveReadBranch(client, {
+        projectId: resolved.project.id,
+        branchName: requested.name,
+        signal: context.runtime.signal,
+      });
 
   return {
     ...resolved,
-    branch: {
+    branch: remoteBranch ?? {
       id: null,
-      name: branch.name,
-      kind: toBranchKind(branch.name),
+      name: requested.name,
+      kind: toBranchKind(requested.name),
     },
   };
 }
