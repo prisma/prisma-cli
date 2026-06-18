@@ -129,5 +129,22 @@ describe("resolveReadBranch", () => {
 
     expect(result).toEqual({ id: "b_feat", name: "feat/x", kind: "preview" });
     expect(GET).toHaveBeenCalledTimes(2);
+    expect(GET).toHaveBeenNthCalledWith(
+      1,
+      "/v1/projects/{projectId}/branches",
+      expect.objectContaining({
+        params: { path: { projectId: "proj_1" }, query: { cursor: undefined } },
+      }),
+    );
+    expect(GET).toHaveBeenNthCalledWith(
+      2,
+      "/v1/projects/{projectId}/branches",
+      expect.objectContaining({
+        params: {
+          path: { projectId: "proj_1" },
+          query: { cursor: "cursor_1" },
+        },
+      }),
+    );
   });
 });
