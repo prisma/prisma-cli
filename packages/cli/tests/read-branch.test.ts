@@ -10,14 +10,18 @@ type RawBranch = {
   role: "production" | "preview";
 };
 
+function pageResponse(branches: RawBranch[], nextCursor: string | null) {
+  return {
+    data: {
+      data: branches,
+      pagination: { hasMore: nextCursor !== null, nextCursor },
+    },
+  };
+}
+
 function clientReturning(branches: RawBranch[]): ManagementApiClient {
   return {
-    GET: vi.fn().mockResolvedValue({
-      data: {
-        data: branches,
-        pagination: { hasMore: false, nextCursor: null },
-      },
-    }),
+    GET: vi.fn().mockResolvedValue(pageResponse(branches, null)),
   } as unknown as ManagementApiClient;
 }
 
@@ -85,5 +89,45 @@ describe("resolveReadBranch", () => {
     await expect(
       resolveReadBranch(client, { projectId: "proj_1", branchName: "main" }),
     ).rejects.toThrow();
+  });
+
+  it("follows pagination to a branch on a later page", async () => {
+    const GET = vi
+      .fn()
+      .mockResolvedValueOnce(
+        pageResponse(
+          [
+            {
+              id: "b_main",
+              gitName: "main",
+              isDefault: true,
+              role: "production",
+            },
+          ],
+          "cursor_1",
+        ),
+      )
+      .mockResolvedValueOnce(
+        pageResponse(
+          [
+            {
+              id: "b_feat",
+              gitName: "feat/x",
+              isDefault: false,
+              role: "preview",
+            },
+          ],
+          null,
+        ),
+      );
+    const client = { GET } as unknown as ManagementApiClient;
+
+    const result = await resolveReadBranch(client, {
+      projectId: "proj_1",
+      branchName: "feat/x",
+    });
+
+    expect(result).toEqual({ id: "b_feat", name: "feat/x", kind: "preview" });
+    expect(GET).toHaveBeenCalledTimes(2);
   });
 });
