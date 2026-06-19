@@ -205,7 +205,7 @@ describe("auth commands", () => {
     });
   });
 
-  it("interactively selects a mock workspace", async () => {
+  it("trims an explicit workspace ref before switching", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
 
@@ -226,7 +226,51 @@ describe("auth commands", () => {
     });
 
     const result = await executeCli({
-      argv: ["auth", "workspace", "select"],
+      argv: ["auth", "workspace", "use", " ws_456 ", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      command: "auth.workspace.use",
+      result: {
+        previousWorkspace: {
+          id: "ws_123",
+          name: "Acme Inc",
+        },
+        workspace: {
+          id: "ws_456",
+          name: "Prisma Labs",
+        },
+      },
+    });
+  });
+
+  it("interactively selects a mock workspace with no workspace argument", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    await executeCli({
+      argv: [
+        "auth",
+        "login",
+        "--provider",
+        "github",
+        "--user",
+        "usr_123",
+        "--workspace",
+        "ws_123",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    const result = await executeCli({
+      argv: ["auth", "workspace", "use"],
       cwd,
       stateDir,
       fixturePath,
@@ -252,7 +296,7 @@ describe("auth commands", () => {
     });
   });
 
-  it("returns a usage error for non-interactive workspace select with multiple workspaces", async () => {
+  it("returns a usage error for non-interactive workspace use without an argument when multiple workspaces exist", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
 
@@ -273,7 +317,7 @@ describe("auth commands", () => {
     });
 
     const result = await executeCli({
-      argv: ["auth", "workspace", "select", "--json"],
+      argv: ["auth", "workspace", "use", "--json"],
       cwd,
       stateDir,
       fixturePath,
@@ -283,13 +327,58 @@ describe("auth commands", () => {
     expect(result.stderr).toBe("");
     expect(JSON.parse(result.stdout)).toMatchObject({
       ok: false,
-      command: "auth.workspace.select",
+      command: "auth.workspace.use",
       error: {
         code: "USAGE_ERROR",
         domain: "auth",
         summary: "Interactive workspace selection unavailable",
       },
       nextSteps: ["prisma-cli auth workspace list"],
+    });
+  });
+
+  it("selects the only mock workspace without prompting when no workspace argument is provided", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    await executeCli({
+      argv: [
+        "auth",
+        "login",
+        "--provider",
+        "github",
+        "--user",
+        "usr_456",
+        "--workspace",
+        "ws_123",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    const result = await executeCli({
+      argv: ["auth", "workspace", "use", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      command: "auth.workspace.use",
+      result: {
+        previousWorkspace: {
+          id: "ws_123",
+          name: "Acme Inc",
+        },
+        workspace: {
+          id: "ws_123",
+          name: "Acme Inc",
+        },
+      },
     });
   });
 
@@ -351,6 +440,55 @@ describe("auth commands", () => {
     });
     await expect(storage.getTokens()).resolves.toMatchObject({
       workspaceId: "cmmxworkspace2",
+    });
+  });
+
+  it("selects the only real OAuth workspace without prompting when no workspace argument is provided", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const authFilePath = path.join(cwd, "auth.json");
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "cmmxworkspace1",
+        token: "access-token-1",
+        refreshToken: "refresh-token-1",
+      },
+    ]);
+    const storage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+    await storage.rememberWorkspace("cmmxworkspace1", {
+      id: "wksp_cmmxworkspace1",
+      name: "Acme Inc",
+    });
+
+    const result = await executeCli({
+      argv: ["auth", "workspace", "use", "--json"],
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+        PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+        PRISMA_SERVICE_TOKEN: undefined,
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      command: "auth.workspace.use",
+      result: {
+        previousWorkspace: null,
+        workspace: {
+          id: "wksp_cmmxworkspace1",
+          name: "Acme Inc",
+        },
+      },
+    });
+    await expect(storage.getTokens()).resolves.toMatchObject({
+      workspaceId: "cmmxworkspace1",
     });
   });
 
@@ -829,6 +967,24 @@ describe("auth commands", () => {
     expect(result.stderr).not.toContain("--provider");
     expect(result.stderr).not.toContain("--user");
     expect(result.stderr).not.toContain("--workspace");
+  });
+
+  it("shows workspace use as optional and does not advertise workspace select", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    const result = await executeCli({
+      argv: ["auth", "workspace", "--help"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("use [id-or-name]");
+    expect(result.stderr).toContain("$ prisma-cli auth workspace use");
+    expect(result.stderr).not.toContain("select");
   });
 
   it("renders the TTY header block for auth whoami", async () => {

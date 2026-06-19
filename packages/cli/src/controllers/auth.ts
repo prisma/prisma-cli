@@ -123,20 +123,15 @@ export async function runAuthWorkspaceUse(
   context: CommandContext,
   workspaceRef: string | undefined,
 ): Promise<CommandSuccess<AuthWorkspaceUseResult>> {
-  if (!workspaceRef?.trim()) {
-    throw usageError(
-      "Workspace required",
-      "auth workspace use needs a workspace id or cached workspace name.",
-      "Pass a workspace from prisma-cli auth workspace list.",
-      ["prisma-cli auth workspace list"],
-      "auth",
-    );
-  }
+  const trimmedWorkspaceRef = workspaceRef?.trim();
+  const selectedWorkspaceRef = trimmedWorkspaceRef
+    ? trimmedWorkspaceRef
+    : await selectWorkspaceSession(context);
 
   const result = isRealMode(context)
-    ? await useRealAuthWorkspace(context, workspaceRef)
+    ? await useRealAuthWorkspace(context, selectedWorkspaceRef)
     : await createAuthUseCases(createCliUseCaseGateways(context)).useWorkspace(
-        workspaceRef,
+        selectedWorkspaceRef,
       );
 
   return {
@@ -144,17 +139,6 @@ export async function runAuthWorkspaceUse(
     result,
     warnings: [],
     nextSteps: ["prisma-cli auth whoami", "prisma-cli project list"],
-  };
-}
-
-export async function runAuthWorkspaceSelect(
-  context: CommandContext,
-): Promise<CommandSuccess<AuthWorkspaceUseResult>> {
-  const workspaceRef = await selectWorkspaceSession(context);
-  const success = await runAuthWorkspaceUse(context, workspaceRef);
-  return {
-    ...success,
-    command: "auth.workspace.select",
   };
 }
 
@@ -396,7 +380,7 @@ async function selectWorkspaceSession(
   if (!canPrompt(context)) {
     throw usageError(
       "Interactive workspace selection unavailable",
-      "auth workspace select needs an interactive terminal when more than one workspace is available.",
+      "auth workspace use needs an interactive terminal when no workspace is provided and more than one workspace is available.",
       "Run prisma-cli auth workspace use <id-or-name> with a workspace from prisma-cli auth workspace list.",
       ["prisma-cli auth workspace list"],
       "auth",

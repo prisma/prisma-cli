@@ -456,16 +456,20 @@ prisma-cli auth workspace list
 prisma-cli auth workspace list --json
 ```
 
-## `prisma-cli auth workspace use <id-or-name>`
+## `prisma-cli auth workspace use [id-or-name]`
 
 Purpose:
 
-- switch the local CLI workspace
+- switch or interactively select the local CLI workspace
 
 Behavior:
 
-- requires a stored OAuth session for the target workspace
-- accepts the cached workspace id, credential workspace id, or cached workspace name case-insensitively
+- with `[id-or-name]`, requires a stored OAuth session for the target workspace
+- with `[id-or-name]`, accepts the cached workspace id, credential workspace id, or cached workspace name case-insensitively
+- without `[id-or-name]`, lists locally authenticated OAuth workspaces in an interactive picker when prompting is available
+- without `[id-or-name]`, shows the workspace name and workspace id for each interactive choice
+- without `[id-or-name]`, selects the only local OAuth workspace without prompting when exactly one is available
+- without `[id-or-name]`, fails in non-interactive mode when more than one local OAuth workspace is available
 - changes local CLI context only; it does not mutate a remote resource
 - fails with `WORKSPACE_SWITCH_UNAVAILABLE` when `PRISMA_SERVICE_TOKEN` is set
 - fails with `WORKSPACE_NOT_AUTHENTICATED` when no cached OAuth session matches
@@ -474,29 +478,9 @@ Behavior:
 Examples:
 
 ```bash
+prisma-cli auth workspace use
 prisma-cli auth workspace use wksp_123
 prisma-cli auth workspace use "Acme Inc"
-```
-
-## `prisma-cli auth workspace select`
-
-Purpose:
-
-- interactively switch the local CLI workspace
-
-Behavior:
-
-- lists locally authenticated OAuth workspaces in an interactive picker
-- shows the workspace name and workspace id for each choice
-- changes local CLI context only; it does not mutate a remote resource
-- fails with `WORKSPACE_SWITCH_UNAVAILABLE` when `PRISMA_SERVICE_TOKEN` is set
-- when exactly one local OAuth workspace is available, selects it without prompting
-- fails in non-interactive mode when more than one local OAuth workspace is available
-
-Examples:
-
-```bash
-prisma-cli auth workspace select
 ```
 
 ## `prisma-cli auth workspace logout <id-or-name>`
