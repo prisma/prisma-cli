@@ -233,6 +233,10 @@ export class FileTokenStorage implements TokenStorage {
   }
 
   async clearTokens(): Promise<void> {
+    await this.withRefreshLock(() => this.clearTokensUnlocked());
+  }
+
+  private async clearTokensUnlocked(): Promise<void> {
     this.signal?.throwIfAborted();
     // Logout clears every OAuth grant in the local auth file. SDK refresh
     // failures use clearTokensIfCurrent below, which stays workspace-scoped.

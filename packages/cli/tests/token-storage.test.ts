@@ -336,6 +336,63 @@ describe("FileTokenStorage", () => {
     ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("orders full logout after in-flight refresh work", async () => {
+    const cwd = await createTempCwd();
+    const authFilePath = path.join(cwd, "auth.json");
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "workspace-1",
+        token: "access-token-1",
+        refreshToken: "refresh-token-1",
+      },
+    ]);
+
+    const env = {
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv;
+    const refreshStorage = new FileTokenStorage(env);
+    const logoutStorage = new FileTokenStorage(env);
+    let releaseRefresh!: () => void;
+    let markRefreshStarted!: () => void;
+    const refreshStarted = new Promise<void>((resolve) => {
+      markRefreshStarted = resolve;
+    });
+    const refreshReleased = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+
+    const refresh = refreshStorage.withRefreshLock(async () => {
+      markRefreshStarted();
+      await refreshReleased;
+    });
+    await refreshStarted;
+
+    const logout = logoutStorage.clearTokens();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    await expect(
+      fs.readFile(authFilePath, "utf8").then(JSON.parse),
+    ).resolves.toEqual({
+      tokens: [
+        {
+          workspaceId: "workspace-1",
+          token: "access-token-1",
+          refreshToken: "refresh-token-1",
+        },
+      ],
+    });
+
+    releaseRefresh();
+    await Promise.all([refresh, logout]);
+
+    await expect(
+      fs.readFile(authFilePath, "utf8").then(JSON.parse),
+    ).resolves.toEqual({ tokens: [] });
+    await expect(
+      fs.stat(getAuthContextFilePath(authFilePath)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("logs out an inactive workspace without changing the active workspace", async () => {
     const cwd = await createTempCwd();
     const authFilePath = path.join(cwd, "auth.json");
