@@ -68,11 +68,11 @@ The CLI accepts two authentication sources, in this fixed precedence:
 1. `PRISMA_SERVICE_TOKEN` environment variable — long-lived service token, intended for CI and other headless contexts.
 2. Stored OAuth session — created by `prisma-cli auth login`, kept in the OS-appropriate credentials store, refreshed automatically.
 
-Stored OAuth sessions include a short-lived access token and a refresh token. Commands refresh the access token automatically when the API rejects it, coordinate refreshes across concurrent CLI processes, and tolerate short refresh-token rotation races. If the stored session cannot be refreshed, commands fail with a structured `AUTH_REQUIRED` error instead of surfacing SDK stack traces.
+Stored OAuth sessions include a short-lived access token and a refresh token. The local credentials store may contain OAuth grants for multiple workspaces. One local active workspace pointer selects which grant authenticated commands use. Commands refresh the selected access token automatically when the API rejects it, coordinate refreshes across concurrent CLI processes, and tolerate short refresh-token rotation races. If the selected session cannot be refreshed, commands fail with a structured `AUTH_REQUIRED` error instead of surfacing SDK stack traces or silently falling through to another workspace.
 
 When `PRISMA_SERVICE_TOKEN` is set and non-empty, the token is fully sufficient for authenticated commands. If `PRISMA_SERVICE_TOKEN` is set but empty or only whitespace, commands fail with an auth configuration error instead of falling back to stored OAuth. The CLI does not read any locally stored OAuth session when a non-empty service token is present, so behavior is identical on a fresh runner and a developer machine that happens to be signed in. The active workspace is derived from the token's `sub` claim; no additional flag or environment variable is required for the common case where the token is scoped to a single workspace.
 
-`auth login` and `auth logout` operate on the stored OAuth session. They do not affect the `PRISMA_SERVICE_TOKEN` environment variable.
+`auth login`, `auth logout`, and `auth workspace` operate on stored OAuth sessions. They do not affect the `PRISMA_SERVICE_TOKEN` environment variable. `auth login` stores the authorized workspace and makes it active. `auth logout` clears all local OAuth workspace sessions. `auth workspace logout` and `auth logout --workspace` clear one local OAuth workspace session, including while `PRISMA_SERVICE_TOKEN` is set, because they only clean local OAuth state. If that workspace was active, the CLI does not silently fall through to another cached workspace; the user must explicitly choose the next workspace with `auth workspace use`. `auth workspace use` changes only local CLI context and never mutates a remote resource. When `PRISMA_SERVICE_TOKEN` is set, workspace switching is unavailable because the token is the active auth source.
 
 ## Context Resolution
 
@@ -249,6 +249,58 @@ Rules:
 - `credential` identifies the active credential when known, or is `null`
 - signed-out state is an empty auth state, not an error
 
+`auth workspace list --json` returns local workspace sessions:
+
+```json
+{
+  "context": {
+    "authSource": "oauth",
+    "activeWorkspaceId": "wksp_123",
+    "activeWorkspaceName": "Acme Inc"
+  },
+  "items": [
+    {
+      "id": "wksp_123",
+      "name": "Acme Inc",
+      "status": "active",
+      "source": "oauth",
+      "switchable": true,
+      "credentialWorkspaceId": "cmmx...",
+      "lastSeenAt": "2026-06-19T00:00:00.000Z"
+    }
+  ],
+  "count": 1
+}
+```
+
+`auth workspace use --json` returns:
+
+```json
+{
+  "previousWorkspace": {
+    "id": "wksp_123",
+    "name": "Acme Inc"
+  },
+  "workspace": {
+    "id": "wksp_456",
+    "name": "Prisma Labs"
+  }
+}
+```
+
+`auth workspace logout --json` returns:
+
+```json
+{
+  "workspace": {
+    "id": "wksp_123",
+    "name": "Acme Inc"
+  },
+  "wasActive": true,
+  "activeWorkspace": null
+}
+```
+
 ## `prisma-cli version`
 
 Purpose:
@@ -346,18 +398,20 @@ prisma-cli auth login --json
 
 Purpose:
 
-- clear stored authentication credentials
+- clear all stored OAuth workspace credentials
 
 Behavior:
 
-- removes local session state
+- removes all local OAuth workspace sessions
+- with `--workspace <id-or-name>`, removes only the target local OAuth workspace session
 - succeeds even if no session exists
-- returns the signed-out auth state
+- returns the signed-out auth state unless `PRISMA_SERVICE_TOKEN` is still set
 
 Examples:
 
 ```bash
 prisma-cli auth logout
+prisma-cli auth logout --workspace wksp_123
 prisma-cli auth logout --json
 ```
 
@@ -377,6 +431,96 @@ Examples:
 ```bash
 prisma-cli auth whoami
 prisma-cli auth whoami --json
+```
+
+## `prisma-cli auth workspace list`
+
+Purpose:
+
+- list locally authenticated workspaces
+
+Behavior:
+
+- succeeds when signed out
+- lists local OAuth workspaces stored on this machine
+- human output includes a table with workspace name and workspace id
+- marks the active local workspace when one is selected
+- when `PRISMA_SERVICE_TOKEN` is set, shows the token workspace when resolvable and also shows stored local OAuth workspaces as non-switchable until the variable is unset
+- does not claim to list every workspace the user can access unless each workspace has been authorized locally
+- does not mutate local or remote state
+
+Examples:
+
+```bash
+prisma-cli auth workspace list
+prisma-cli auth workspace list --json
+```
+
+## `prisma-cli auth workspace use <id-or-name>`
+
+Purpose:
+
+- switch the local CLI workspace
+
+Behavior:
+
+- requires a stored OAuth session for the target workspace
+- accepts the cached workspace id, credential workspace id, or cached workspace name case-insensitively
+- changes local CLI context only; it does not mutate a remote resource
+- fails with `WORKSPACE_SWITCH_UNAVAILABLE` when `PRISMA_SERVICE_TOKEN` is set
+- fails with `WORKSPACE_NOT_AUTHENTICATED` when no cached OAuth session matches
+- fails with `WORKSPACE_AMBIGUOUS` when a workspace name matches multiple cached workspaces
+
+Examples:
+
+```bash
+prisma-cli auth workspace use wksp_123
+prisma-cli auth workspace use "Acme Inc"
+```
+
+## `prisma-cli auth workspace select`
+
+Purpose:
+
+- interactively switch the local CLI workspace
+
+Behavior:
+
+- lists locally authenticated OAuth workspaces in an interactive picker
+- shows the workspace name and workspace id for each choice
+- changes local CLI context only; it does not mutate a remote resource
+- fails with `WORKSPACE_SWITCH_UNAVAILABLE` when `PRISMA_SERVICE_TOKEN` is set
+- when exactly one local OAuth workspace is available, selects it without prompting
+- fails in non-interactive mode when more than one local OAuth workspace is available
+
+Examples:
+
+```bash
+prisma-cli auth workspace select
+```
+
+## `prisma-cli auth workspace logout <id-or-name>`
+
+Purpose:
+
+- remove one local OAuth workspace session
+
+Behavior:
+
+- requires a stored OAuth session for the target workspace
+- accepts the cached workspace id, credential workspace id, or cached workspace name case-insensitively
+- removes only the target workspace's local OAuth grant
+- works while `PRISMA_SERVICE_TOKEN` is set; the service token remains the active auth source
+- if the removed workspace was active, leaves no active local OAuth workspace selected
+- does not mutate a remote resource and does not revoke remote access
+- fails with `WORKSPACE_NOT_AUTHENTICATED` when no cached OAuth session matches
+- fails with `WORKSPACE_AMBIGUOUS` when a workspace name matches multiple cached workspaces
+
+Examples:
+
+```bash
+prisma-cli auth workspace logout wksp_123
+prisma-cli auth workspace logout "Acme Inc"
 ```
 
 ## `prisma-cli project list`

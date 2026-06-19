@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 afterEach(() => {
@@ -18,6 +21,18 @@ function mockFileTokenStorage(getTokens: ReturnType<typeof vi.fn>) {
   return vi.fn().mockImplementation(function FileTokenStorageMock() {
     return { getTokens };
   });
+}
+
+async function createTempDir(): Promise<string> {
+  return fs.mkdtemp(path.join(os.tmpdir(), "prisma-cli-auth-ops-"));
+}
+
+async function writeAuthFile(
+  authFilePath: string,
+  tokens: unknown[],
+): Promise<void> {
+  await fs.mkdir(path.dirname(authFilePath), { recursive: true });
+  await fs.writeFile(authFilePath, JSON.stringify({ tokens }, null, 2));
 }
 
 describe("readAuthState", () => {
@@ -83,6 +98,77 @@ describe("readAuthState", () => {
         name: null,
       },
     });
+  });
+
+  it("caches resolved workspace metadata in real token storage", async () => {
+    const tempDir = await createTempDir();
+    const authFilePath = path.join(tempDir, "auth.json");
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "cmmxlp7ae1251zyfs8mdpnavm",
+        token: encodeJwt({ sub: "user:usr_123" }),
+        refreshToken: "refresh-token",
+      },
+    ]);
+    const requireComputeAuth = vi.fn().mockResolvedValue({
+      GET: vi.fn().mockImplementation((pathName: string) => {
+        if (pathName === "/v1/me") {
+          return {
+            data: {
+              data: {
+                user: {
+                  id: "usr_123",
+                  email: "luan@example.com",
+                  name: "Luan",
+                },
+                workspace: {
+                  id: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
+                  name: "Sandpit",
+                },
+                credential: {
+                  type: "oauth",
+                  id: null,
+                  name: null,
+                },
+              },
+            },
+          };
+        }
+
+        throw new Error(`Unexpected path ${pathName}`);
+      }),
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+
+    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const { FileTokenStorage } = await import("../src/adapters/token-storage");
+
+    await expect(
+      readAuthState({
+        PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+      } as NodeJS.ProcessEnv),
+    ).resolves.toMatchObject({
+      authenticated: true,
+      workspace: {
+        id: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
+        name: "Sandpit",
+      },
+    });
+
+    await expect(
+      new FileTokenStorage({
+        PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+      } as NodeJS.ProcessEnv).listWorkspaces(),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        credentialWorkspaceId: "cmmxlp7ae1251zyfs8mdpnavm",
+        id: "wksp_cmmxlp7ae1251zyfs8mdpnavm",
+        name: "Sandpit",
+      }),
+    ]);
   });
 
   it("normalizes the workspace id to the canonical API id and returns the user email", async () => {

@@ -3,6 +3,9 @@ import type {
   AuthStateResult,
   AuthUser,
   AuthWorkspace,
+  AuthWorkspaceListResult,
+  AuthWorkspaceLogoutResult,
+  AuthWorkspaceUseResult,
 } from "../types/auth";
 import type { BranchListResult, BranchRole } from "../types/branch";
 import type { ProjectSummary } from "../types/project";
@@ -110,6 +113,9 @@ export interface AuthUseCases {
   whoami(): Promise<AuthStateResult>;
   login(selection: LoginSelection): Promise<AuthStateResult>;
   logout(): Promise<AuthStateResult>;
+  listWorkspaces(): Promise<AuthWorkspaceListResult>;
+  useWorkspace(workspaceRef: string): Promise<AuthWorkspaceUseResult>;
+  logoutWorkspace(workspaceRef: string): Promise<AuthWorkspaceLogoutResult>;
   listProviders(): Promise<ProviderInfo[]>;
   resolveProvider(providerId: string): Promise<ProviderInfo>;
   listUsersForProvider(providerId: AuthProviderId): Promise<IdentityUser[]>;

@@ -53,6 +53,26 @@ describe("auth use cases", () => {
     });
   });
 
+  it("switches workspace by name case-insensitively", async () => {
+    const { gateways, readState } = await createUseCaseGateways({
+      authSession: {
+        provider: "github",
+        userId: "usr_123",
+        workspaceId: "ws_123",
+      },
+    });
+    const useCases = createAuthUseCases(gateways);
+
+    await expect(useCases.useWorkspace("prisma labs")).resolves.toMatchObject({
+      workspace: {
+        id: "ws_456",
+        name: "Prisma Labs",
+      },
+    });
+
+    expect(readState().authSession?.workspaceId).toBe("ws_456");
+  });
+
   it("clears the session on logout", async () => {
     const { gateways, readState } = await createUseCaseGateways({
       authSession: {

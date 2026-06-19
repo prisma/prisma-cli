@@ -102,6 +102,7 @@ import {
   buildProjectSetupNextActions,
   type InferredTargetName,
   inferTargetName,
+  localProjectWorkspaceMismatchError,
   type ProjectCandidate,
   projectNotFoundError,
   projectResolutionErrorToCliError,
@@ -3409,7 +3410,11 @@ async function resolveDeployProjectContext(
   const localPin = options.localPin;
   if (localPin.kind === "present") {
     if (localPin.pin.workspaceId !== workspace.id) {
-      throw localResolutionPinStaleError();
+      throw localProjectWorkspaceMismatchError({
+        pinnedWorkspaceId: localPin.pin.workspaceId,
+        pinnedProjectId: localPin.pin.projectId,
+        activeWorkspace: workspace,
+      });
     }
 
     const project = projects.find(

@@ -253,7 +253,10 @@ class LoginState {
     },
   ) {
     this.tokenStorage =
-      options.tokenStorage ?? new FileTokenStorage(options.env, options.signal);
+      options.tokenStorage ??
+      new FileTokenStorage(options.env, options.signal, {
+        activateOnSetTokens: true,
+      });
     this.sdk = createManagementApiSdk({
       clientId: options.clientId ?? CLIENT_ID,
       redirectUri: `http://${options.hostname}:${options.port}/auth/callback`,

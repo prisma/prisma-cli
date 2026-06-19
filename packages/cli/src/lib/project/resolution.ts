@@ -326,7 +326,7 @@ function localProjectWorkspaceMismatchCliError(options: {
     domain: "project",
     summary: "Project link uses another workspace",
     why: `${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} links this directory to project ${options.pinnedProjectId} in workspace ${options.pinnedWorkspaceId}, but your current CLI session is workspace "${options.activeWorkspace.name}" (${options.activeWorkspace.id}).`,
-    fix: "Sign in to the linked workspace, or relink this directory to a project in the current workspace.",
+    fix: "Switch to the linked workspace, or relink this directory to a project in the current workspace.",
     meta: {
       pinPath: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
       pinnedWorkspaceId: options.pinnedWorkspaceId,
@@ -336,7 +336,7 @@ function localProjectWorkspaceMismatchCliError(options: {
     },
     exitCode: 1,
     nextSteps: [
-      "prisma-cli auth login",
+      `prisma-cli auth workspace use ${options.pinnedWorkspaceId}`,
       "prisma-cli project list",
       "prisma-cli project link <id-or-name>",
     ],

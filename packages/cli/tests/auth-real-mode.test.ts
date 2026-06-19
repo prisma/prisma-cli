@@ -193,6 +193,86 @@ describe("real auth mode", () => {
     });
   });
 
+  it("lists cached OAuth workspaces while a service token is active", async () => {
+    const readAuthState = vi.fn().mockResolvedValue({
+      authenticated: true,
+      provider: null,
+      user: null,
+      workspace: {
+        id: "wksp_service",
+        name: "Service Workspace",
+      },
+      credential: {
+        type: "service_token",
+        id: "itgr_ci",
+        name: "ci-deploys-prod",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/auth-ops", () => ({
+      performLogin: vi.fn(),
+      readAuthState,
+      performLogout: vi.fn(),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { FileTokenStorage } = await import("../src/adapters/token-storage");
+    const { runAuthWorkspaceList } = await import("../src/controllers/auth");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const authFilePath = path.join(cwd, "auth.json");
+    const env = {
+      ...process.env,
+      PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+      PRISMA_SERVICE_TOKEN: "service-token",
+    };
+    const storage = new FileTokenStorage(env);
+    await storage.setTokens({
+      workspaceId: "cmmxworkspace1",
+      accessToken: "access-token-1",
+      refreshToken: "refresh-token-1",
+    });
+    await storage.rememberWorkspace("cmmxworkspace1", {
+      id: "wksp_cmmxworkspace1",
+      name: "Acme Inc",
+    });
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env,
+    });
+
+    const result = await runAuthWorkspaceList(context);
+
+    expect(result.result).toMatchObject({
+      authSource: "service_token",
+      activeWorkspace: {
+        id: "wksp_service",
+        name: "Service Workspace",
+      },
+      workspaces: [
+        {
+          id: "wksp_service",
+          name: "Service Workspace",
+          active: true,
+          source: "service_token",
+          switchable: false,
+        },
+        {
+          id: "wksp_cmmxworkspace1",
+          name: "Acme Inc",
+          credentialWorkspaceId: "cmmxworkspace1",
+          active: false,
+          source: "oauth",
+          switchable: false,
+        },
+      ],
+    });
+  });
+
   it("omits empty provider and workspace rows in auth output", async () => {
     const { createTempCwd, createTestCommandContext } = await import(
       "./helpers"

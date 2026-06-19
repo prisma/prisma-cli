@@ -2,11 +2,24 @@ import { Command, Option } from "commander";
 
 import {
   type AuthLoginCommandOptions,
+  type AuthLogoutCommandOptions,
   runAuthLogin,
   runAuthLogout,
   runAuthWhoAmI,
+  runAuthWorkspaceList,
+  runAuthWorkspaceLogout,
+  runAuthWorkspaceSelect,
+  runAuthWorkspaceUse,
 } from "../../controllers/auth";
-import { renderAuthSuccess } from "../../presenters/auth";
+import {
+  renderAuthSuccess,
+  renderAuthWorkspaceList,
+  renderAuthWorkspaceLogout,
+  renderAuthWorkspaceUse,
+  serializeAuthWorkspaceList,
+  serializeAuthWorkspaceLogout,
+  serializeAuthWorkspaceUse,
+} from "../../presenters/auth";
 import { attachCommandDescriptor } from "../../shell/command-meta";
 import { runCommand } from "../../shell/command-runner";
 import {
@@ -14,7 +27,12 @@ import {
   addGlobalFlags,
 } from "../../shell/global-flags";
 import { type CliRuntime, configureRuntimeCommand } from "../../shell/runtime";
-import type { AuthStateResult } from "../../types/auth";
+import type {
+  AuthStateResult,
+  AuthWorkspaceListResult,
+  AuthWorkspaceLogoutResult,
+  AuthWorkspaceUseResult,
+} from "../../types/auth";
 
 export function createAuthCommand(runtime: CliRuntime): Command {
   const auth = attachCommandDescriptor(
@@ -27,6 +45,7 @@ export function createAuthCommand(runtime: CliRuntime): Command {
   auth.addCommand(createAuthLoginCommand(runtime));
   auth.addCommand(createAuthLogoutCommand(runtime));
   auth.addCommand(createAuthWhoAmICommand(runtime));
+  auth.addCommand(createAuthWorkspaceCommand(runtime));
 
   return auth;
 }
@@ -66,9 +85,32 @@ function createAuthLogoutCommand(runtime: CliRuntime): Command {
     "auth.logout",
   );
 
+  command.addOption(
+    new Option(
+      "--workspace <id-or-name>",
+      "Remove one stored OAuth workspace session",
+    ),
+  );
+
   addGlobalFlags(command);
 
   command.action(async (options) => {
+    const logoutOptions = options as AuthLogoutCommandOptions;
+    if (logoutOptions.workspace?.trim()) {
+      await runCommand<AuthWorkspaceLogoutResult>(
+        runtime,
+        "auth.workspace.logout",
+        options as Record<string, unknown>,
+        (context) => runAuthWorkspaceLogout(context, logoutOptions.workspace),
+        {
+          renderHuman: (context, descriptor, result) =>
+            renderAuthWorkspaceLogout(context, descriptor, result),
+          renderJson: (result) => serializeAuthWorkspaceLogout(result),
+        },
+      );
+      return;
+    }
+
     await runCommand<AuthStateResult>(
       runtime,
       "auth.logout",
@@ -101,6 +143,132 @@ function createAuthWhoAmICommand(runtime: CliRuntime): Command {
       {
         renderHuman: (context, descriptor, result) =>
           renderAuthSuccess(context, descriptor, "auth.whoami", result),
+      },
+    );
+  });
+
+  return command;
+}
+
+function createAuthWorkspaceCommand(runtime: CliRuntime): Command {
+  const workspace = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("workspace"), runtime),
+    "auth.workspace",
+  );
+
+  addCompactGlobalFlags(workspace);
+
+  workspace.addCommand(createAuthWorkspaceListCommand(runtime));
+  workspace.addCommand(createAuthWorkspaceUseCommand(runtime));
+  workspace.addCommand(createAuthWorkspaceSelectCommand(runtime));
+  workspace.addCommand(createAuthWorkspaceLogoutCommand(runtime));
+
+  return workspace;
+}
+
+function createAuthWorkspaceListCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("list"), runtime),
+    "auth.workspace.list",
+  );
+
+  addGlobalFlags(command);
+
+  command.action(async (options) => {
+    await runCommand<AuthWorkspaceListResult>(
+      runtime,
+      "auth.workspace.list",
+      options as Record<string, unknown>,
+      (context) => runAuthWorkspaceList(context),
+      {
+        renderHuman: (context, descriptor, result) =>
+          renderAuthWorkspaceList(context, descriptor, result),
+        renderJson: (result) => serializeAuthWorkspaceList(result),
+      },
+    );
+  });
+
+  return command;
+}
+
+function createAuthWorkspaceSelectCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("select"), runtime),
+    "auth.workspace.select",
+  );
+
+  addGlobalFlags(command);
+
+  command.action(async (options) => {
+    await runCommand<AuthWorkspaceUseResult>(
+      runtime,
+      "auth.workspace.select",
+      options as Record<string, unknown>,
+      (context) => runAuthWorkspaceSelect(context),
+      {
+        renderHuman: (context, descriptor, result) =>
+          renderAuthWorkspaceUse(context, descriptor, result),
+        renderJson: (result) => serializeAuthWorkspaceUse(result),
+      },
+    );
+  });
+
+  return command;
+}
+
+function createAuthWorkspaceLogoutCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("logout"), runtime),
+    "auth.workspace.logout",
+  );
+
+  command.argument("<id-or-name>", "Workspace id or exact name");
+  addGlobalFlags(command);
+
+  command.action(async (workspaceRef, options) => {
+    await runCommand<AuthWorkspaceLogoutResult>(
+      runtime,
+      "auth.workspace.logout",
+      options as Record<string, unknown>,
+      (context) =>
+        runAuthWorkspaceLogout(
+          context,
+          typeof workspaceRef === "string" ? workspaceRef : undefined,
+        ),
+      {
+        renderHuman: (context, descriptor, result) =>
+          renderAuthWorkspaceLogout(context, descriptor, result),
+        renderJson: (result) => serializeAuthWorkspaceLogout(result),
+      },
+    );
+  });
+
+  return command;
+}
+
+function createAuthWorkspaceUseCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("use"), runtime),
+    "auth.workspace.use",
+  );
+
+  command.argument("<id-or-name>", "Workspace id or exact name");
+  addGlobalFlags(command);
+
+  command.action(async (workspaceRef, options) => {
+    await runCommand<AuthWorkspaceUseResult>(
+      runtime,
+      "auth.workspace.use",
+      options as Record<string, unknown>,
+      (context) =>
+        runAuthWorkspaceUse(
+          context,
+          typeof workspaceRef === "string" ? workspaceRef : undefined,
+        ),
+      {
+        renderHuman: (context, descriptor, result) =>
+          renderAuthWorkspaceUse(context, descriptor, result),
+        renderJson: (result) => serializeAuthWorkspaceUse(result),
       },
     );
   });

@@ -38,7 +38,13 @@ export async function performLogin(
   env: NodeJS.ProcessEnv,
   signal?: AbortSignal,
 ): Promise<void> {
-  await login({ tokenStorage: new FileTokenStorage(env, signal), env, signal });
+  await login({
+    tokenStorage: new FileTokenStorage(env, signal, {
+      activateOnSetTokens: true,
+    }),
+    env,
+    signal,
+  });
 }
 
 export async function readAuthState(
@@ -78,17 +84,30 @@ export async function readAuthState(
   const client = await requireComputeAuth(env, signal);
   const currentPrincipal = await readCurrentPrincipalAuthState(client, signal);
   if (currentPrincipal) {
+    if (currentPrincipal.authenticated && currentPrincipal.workspace) {
+      await tokenStorage.rememberWorkspace?.(
+        tokens.workspaceId,
+        currentPrincipal.workspace,
+      );
+    }
     return currentPrincipal;
   }
 
   const claims = decodeJwtPayload(tokens.accessToken);
-  return buildAuthState({
+  const authState = await buildAuthState({
     workspaceIdFromCredential: tokens.workspaceId,
     claims,
     env,
     client,
     signal,
   });
+  if (authState.authenticated && authState.workspace) {
+    await tokenStorage.rememberWorkspace?.(
+      tokens.workspaceId,
+      authState.workspace,
+    );
+  }
+  return authState;
 }
 
 async function readServiceTokenAuthState(

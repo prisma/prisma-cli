@@ -566,7 +566,7 @@ describe("project commands", () => {
         },
       },
       nextSteps: [
-        "prisma-cli auth login",
+        "prisma-cli auth workspace use ws_other",
         "prisma-cli project list",
         "prisma-cli project link <id-or-name>",
       ],

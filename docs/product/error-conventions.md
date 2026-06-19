@@ -160,6 +160,10 @@ These codes are the minimum stable set for the MVP:
 
 - `USAGE_ERROR`
 - `AUTH_REQUIRED`
+- `AUTH_CONFIG_INVALID`
+- `WORKSPACE_SWITCH_UNAVAILABLE`
+- `WORKSPACE_NOT_AUTHENTICATED`
+- `WORKSPACE_AMBIGUOUS`
 - `PROJECT_SETUP_REQUIRED`
 - `PROJECT_LINK_TARGET_REQUIRED`
 - `PROJECT_CREATE_FAILED`
@@ -217,13 +221,17 @@ Recommended meanings:
 
 - `USAGE_ERROR`: invalid arguments or invalid command combination
 - `AUTH_REQUIRED`: command needs an authenticated session
+- `AUTH_CONFIG_INVALID`: environment auth configuration is present but unusable, such as an empty `PRISMA_SERVICE_TOKEN`
+- `WORKSPACE_SWITCH_UNAVAILABLE`: `PRISMA_SERVICE_TOKEN` is the active auth source, so local OAuth workspace switching cannot apply
+- `WORKSPACE_NOT_AUTHENTICATED`: requested workspace is not present in the local OAuth credentials store for a switch/logout operation; callers should run `auth login` for that workspace
+- `WORKSPACE_AMBIGUOUS`: requested workspace name matches more than one local OAuth workspace; callers should switch by workspace id
 - `PROJECT_SETUP_REQUIRED`: command needs explicit or durable Project context before it can continue
 - `PROJECT_LINK_TARGET_REQUIRED`: `project link` needs the user to choose an existing Project or create a new one
 - `PROJECT_CREATE_FAILED`: Project creation failed before deployment or linking could continue
 - `PROJECT_NOT_FOUND`: requested project does not exist or is not accessible
 - `PROJECT_AMBIGUOUS`: multiple safe project candidates matched
 - `APP_AMBIGUOUS`: multiple apps matched the inferred or explicit app target
-- `LOCAL_PROJECT_WORKSPACE_MISMATCH`: local Project pin points at a different workspace than the active authenticated workspace; callers should sign in to the linked workspace or relink the directory
+- `LOCAL_PROJECT_WORKSPACE_MISMATCH`: local Project pin points at a different workspace than the active authenticated workspace; callers should switch to the linked workspace or relink the directory
 - `LOCAL_STATE_WRITE_FAILED`: the CLI could not save local Project binding state such as `.prisma/local.json` or the matching `.gitignore` entry; callers should fix directory permissions or filesystem state before retrying
 - `LOCAL_STATE_STALE`: local Project pin no longer matches platform data and continuing would be ambiguous
 - `BRANCH_NOT_DEPLOYABLE`: command tried to deploy to a non-deployable branch context
