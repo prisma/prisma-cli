@@ -86,7 +86,10 @@ import {
   runLocalApp,
 } from "../lib/app/local-dev";
 import { enforceProductionDeployGate } from "../lib/app/production-deploy-gate";
-import { resolveReadBranch } from "../lib/app/read-branch";
+import {
+  resolveProductionBranch,
+  resolveReadBranch,
+} from "../lib/app/read-branch";
 import { readAuthState } from "../lib/auth/auth-ops";
 import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
 import { requireComputeAuth } from "../lib/auth/guard";
@@ -2050,17 +2053,6 @@ async function resolveAppDomainTarget(
     commandName.replace(/^app /, ""),
   );
   const branch = resolveDomainBranch(options?.branchName);
-  if (toBranchKind(branch.name) !== "production") {
-    throw new CliError({
-      code: "BRANCH_NOT_DEPLOYABLE",
-      domain: "branch",
-      summary: "Custom domains require the production branch",
-      why: `Custom domains on preview branch "${branch.name}" are not supported in Public Beta.`,
-      fix: "Use --branch production, or attach the domain after promoting/deploying to the production branch.",
-      exitCode: 2,
-      nextSteps: ["prisma-cli app domain add <hostname> --branch production"],
-    });
-  }
 
   const envProjectId = readDeployEnvOverride(
     context,
@@ -2071,10 +2063,27 @@ async function resolveAppDomainTarget(
   const { provider, target, projectId } =
     await requireProviderAndProjectContext(context, options?.projectRef, {
       branch,
+      // Domains attach to the production branch; resolve it by role (not by the
+      // literal name "production") so a project whose production branch is
+      // named e.g. `master` still works.
+      productionBranch: true,
       commandName,
       envProjectId,
       projectDir: compute.projectDir,
     });
+
+  // Gate on the resolved branch's role, not a guess from its name.
+  if (target.branch.kind !== "production") {
+    throw new CliError({
+      code: "BRANCH_NOT_DEPLOYABLE",
+      domain: "branch",
+      summary: "Custom domains require the production branch",
+      why: `Custom domains on preview branch "${target.branch.name}" are not supported in Public Beta.`,
+      fix: "Use --branch <production-branch>, or attach the domain after promoting/deploying to the production branch.",
+      exitCode: 2,
+      nextSteps: ["prisma-cli app domain add <hostname>"],
+    });
+  }
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await resolveDomainAppSelection(
     context,
@@ -2111,7 +2120,9 @@ function resolveDomainBranch(
 ): ResolvedDeployBranch {
   return {
     name: explicitBranchName?.trim() || "production",
-    annotation: explicitBranchName ? "set by --branch" : "production default",
+    annotation: explicitBranchName
+      ? BRANCH_FLAG_ANNOTATION
+      : "production default",
   };
 }
 
@@ -3188,6 +3199,7 @@ async function requireProviderAndProjectContext(
   explicitProject: string | undefined,
   options?: {
     branch?: ResolvedDeployBranch;
+    productionBranch?: boolean;
     commandName?: string;
     envProjectId?: string;
     projectDir?: string;
@@ -3252,6 +3264,7 @@ async function resolveProjectContext(
   explicitProject: string | undefined,
   options?: {
     branch?: ResolvedDeployBranch;
+    productionBranch?: boolean;
     commandName?: string;
     envProjectId?: string;
     projectDir?: string;
@@ -3283,6 +3296,28 @@ async function resolveProjectContext(
   const requested =
     options?.branch ?? (await resolveDeployBranch(context, undefined));
 
+  const fallback = {
+    id: null,
+    name: requested.name,
+    kind: toBranchKind(requested.name),
+  };
+
+  if (options?.productionBranch) {
+    // Production-only commands (custom domains) target the production branch.
+    // Resolve it by role so a project whose production branch is named e.g.
+    // `master` still resolves, instead of guessing from the literal name. An
+    // explicit --branch is matched by name so the caller can validate its role.
+    const production = await resolveProductionBranch(client, {
+      projectId: resolved.project.id,
+      branchName:
+        options.branch?.annotation === BRANCH_FLAG_ANNOTATION
+          ? requested.name
+          : undefined,
+      signal: context.runtime.signal,
+    });
+    return { ...resolved, branch: production ?? fallback };
+  }
+
   // An explicit --branch is honored as-is. An inferred branch (active Git
   // branch or the default) is resolved against the project's branches and
   // falls back to the default branch so a git-push app on a non-`main`
@@ -3295,14 +3330,7 @@ async function resolveProjectContext(
         signal: context.runtime.signal,
       });
 
-  return {
-    ...resolved,
-    branch: remoteBranch ?? {
-      id: null,
-      name: requested.name,
-      kind: toBranchKind(requested.name),
-    },
-  };
+  return { ...resolved, branch: remoteBranch ?? fallback };
 }
 
 async function resolveDeployProjectContext(
@@ -3632,6 +3660,9 @@ function assertExclusiveDeployProjectInputs(options: {
   );
 }
 
+/** Branch annotation marking a branch the user named via `--branch`. */
+const BRANCH_FLAG_ANNOTATION = "set by --branch";
+
 interface ResolvedDeployBranch {
   name: string;
   annotation: string;
@@ -3644,7 +3675,7 @@ async function resolveDeployBranch(
   if (explicitBranchName) {
     return {
       name: explicitBranchName,
-      annotation: "set by --branch",
+      annotation: BRANCH_FLAG_ANNOTATION,
     };
   }
 

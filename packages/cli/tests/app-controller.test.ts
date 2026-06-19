@@ -73,7 +73,7 @@ function expectedAppVerboseContext() {
     branch: {
       id: "branch_main",
       name: "main",
-      kind: "preview",
+      kind: "production",
     },
     resolution: {
       projectSource: "local-pin",
@@ -791,7 +791,7 @@ describe("app controller", () => {
         name: "Acme Dashboard",
       },
       branch: {
-        name: "production",
+        name: "main",
         kind: "production",
       },
       app: {
@@ -1336,6 +1336,15 @@ describe("app controller", () => {
   });
 
   it("domain add rejects preview branches", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(
+      createProjectClient("proj_123", {
+        extraBranches: [{ name: "feat/login", role: "preview" }],
+      }),
+    );
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+
     const { createTempCwd, createTestCommandContext } = await import(
       "./helpers"
     );
@@ -1351,6 +1360,8 @@ describe("app controller", () => {
       },
     });
 
+    // The project's production branch is `main`; `feat/login` is a real preview
+    // branch, so resolving it by role rejects the domain on its actual role.
     await expect(
       runAppDomainAdd(context, "shop.acme.com", {
         projectRef: "proj_123",
@@ -1361,6 +1372,76 @@ describe("app controller", () => {
       code: "BRANCH_NOT_DEPLOYABLE",
       domain: "branch",
       exitCode: 2,
+    });
+  });
+
+  it("resolves the production branch by role when it is named master", async () => {
+    const requireComputeAuth = vi
+      .fn()
+      .mockResolvedValue(
+        createProjectClient("proj_123", { defaultBranchName: "master" }),
+      );
+    const activeDomain = createDomain({ status: "active" });
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "shop",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+        liveUrl: "https://shop.prisma.app",
+      },
+    ]);
+    const addDomain = vi
+      .fn()
+      .mockResolvedValue({ domain: activeDomain, existing: true });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
+      const actual =
+        await importOriginal<typeof import("../src/lib/app/app-provider")>();
+      return {
+        ...actual,
+        createAppProvider: vi.fn(() =>
+          withBranchDatabaseProviderDefaults({
+            resolveBranch: createResolveBranch(),
+            listApps,
+            listDomains: vi.fn(),
+            addDomain,
+            retryDomain: vi.fn(),
+          }),
+        ),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    // No --branch: the production branch is resolved by role, so the domain is
+    // added on `master` instead of failing because no branch is named
+    // "production".
+    const result = await runAppDomainAdd(context, "shop.acme.com", {
+      projectRef: "proj_123",
+      appName: "shop",
+    });
+
+    expect(addDomain).toHaveBeenCalled();
+    expect(result.result).toMatchObject({
+      branch: { name: "master", kind: "production" },
+      domain: { hostname: "shop.acme.com" },
     });
   });
 

@@ -5,14 +5,31 @@ export function createProjectClient(
   options: {
     branchExists?: boolean;
     isDefault?: boolean;
+    defaultBranchName?: string;
+    extraBranches?: Array<{
+      name: string;
+      role?: "preview" | "production";
+      isDefault?: boolean;
+    }>;
   } = {},
 ) {
-  const branchRecord = (branchName: string) => ({
-    id: `branch_${branchName.replace(/[^a-z0-9]+/gi, "_")}`,
-    gitName: branchName,
-    isDefault: options.isDefault ?? branchName === "main",
-    role: "preview",
-  });
+  const defaultBranchName = options.defaultBranchName ?? "main";
+  const branchRecord = (branchName: string) => {
+    const isDefault = options.isDefault ?? branchName === defaultBranchName;
+    return {
+      id: `branch_${branchName.replace(/[^a-z0-9]+/gi, "_")}`,
+      gitName: branchName,
+      isDefault,
+      // The default (durable) branch is the production branch.
+      role: isDefault ? "production" : "preview",
+    };
+  };
+  const extraBranchRecords = (options.extraBranches ?? []).map((branch) => ({
+    id: `branch_${branch.name.replace(/[^a-z0-9]+/gi, "_")}`,
+    gitName: branch.name,
+    isDefault: branch.isDefault ?? false,
+    role: branch.role ?? "preview",
+  }));
 
   return {
     token: "token",
@@ -48,13 +65,14 @@ export function createProjectClient(
           }
 
           if (pathName === "/v1/projects/{projectId}/branches") {
-            const branchName = request?.params?.query?.gitName ?? "main";
+            const branchName =
+              request?.params?.query?.gitName ?? defaultBranchName;
             return {
               data: {
                 data:
                   options.branchExists === false
                     ? []
-                    : [branchRecord(branchName)],
+                    : [branchRecord(branchName), ...extraBranchRecords],
                 pagination: { hasMore: false, nextCursor: null },
               },
             };
