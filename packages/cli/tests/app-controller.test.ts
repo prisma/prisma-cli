@@ -1445,6 +1445,63 @@ describe("app controller", () => {
     });
   });
 
+  it("domain add rejects explicit missing branches without falling back to production", async () => {
+    const requireComputeAuth = vi
+      .fn()
+      .mockResolvedValue(
+        createProjectClient("proj_123", { defaultBranchName: "master" }),
+      );
+    const listApps = vi.fn();
+    const addDomain = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
+      const actual =
+        await importOriginal<typeof import("../src/lib/app/app-provider")>();
+      return {
+        ...actual,
+        createAppProvider: vi.fn(() =>
+          withBranchDatabaseProviderDefaults({
+            resolveBranch: createResolveBranch(),
+            listApps,
+            addDomain,
+          }),
+        ),
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDomainAdd } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(
+      runAppDomainAdd(context, "shop.acme.com", {
+        projectRef: "proj_123",
+        appName: "shop",
+        branchName: "feat/missing",
+      }),
+    ).rejects.toMatchObject({
+      code: "BRANCH_NOT_FOUND",
+      domain: "branch",
+      exitCode: 1,
+    });
+    expect(listApps).not.toHaveBeenCalled();
+    expect(addDomain).not.toHaveBeenCalled();
+  });
+
   it("domain retry maps API 409 to DOMAIN_RETRY_NOT_ELIGIBLE", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([

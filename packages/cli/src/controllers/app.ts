@@ -2118,11 +2118,19 @@ async function resolveAppDomainTarget(
 function resolveDomainBranch(
   explicitBranchName: string | undefined,
 ): ResolvedDeployBranch {
+  const branchName = explicitBranchName?.trim();
+  if (branchName) {
+    return {
+      name: branchName,
+      annotation: BRANCH_FLAG_ANNOTATION,
+      explicit: true,
+    };
+  }
+
   return {
-    name: explicitBranchName?.trim() || "production",
-    annotation: explicitBranchName
-      ? BRANCH_FLAG_ANNOTATION
-      : "production default",
+    name: "production",
+    annotation: "production default",
+    explicit: false,
   };
 }
 
@@ -3307,14 +3315,20 @@ async function resolveProjectContext(
     // Resolve it by role so a project whose production branch is named e.g.
     // `master` still resolves, instead of guessing from the literal name. An
     // explicit --branch is matched by name so the caller can validate its role.
+    const explicitBranchName = options.branch?.explicit
+      ? requested.name
+      : undefined;
     const production = await resolveProductionBranch(client, {
       projectId: resolved.project.id,
-      branchName:
-        options.branch?.annotation === BRANCH_FLAG_ANNOTATION
-          ? requested.name
-          : undefined,
+      branchName: explicitBranchName,
       signal: context.runtime.signal,
     });
+    if (explicitBranchName && !production) {
+      throw explicitDomainBranchNotFoundError(
+        explicitBranchName,
+        options.commandName,
+      );
+    }
     return { ...resolved, branch: production ?? fallback };
   }
 
@@ -3663,9 +3677,29 @@ function assertExclusiveDeployProjectInputs(options: {
 /** Branch annotation marking a branch the user named via `--branch`. */
 const BRANCH_FLAG_ANNOTATION = "set by --branch";
 
+function explicitDomainBranchNotFoundError(
+  branchName: string,
+  commandName: string | undefined,
+): CliError {
+  return new CliError({
+    code: "BRANCH_NOT_FOUND",
+    domain: "branch",
+    summary: `Branch "${branchName}" not found`,
+    why: "Custom domain commands only target an existing production branch.",
+    fix: "Pass the production branch name for this project, or omit --branch to resolve the production branch by role.",
+    exitCode: 1,
+    nextSteps: [
+      commandName
+        ? `prisma-cli ${commandName}`
+        : "prisma-cli app domain add <hostname>",
+    ],
+  });
+}
+
 interface ResolvedDeployBranch {
   name: string;
   annotation: string;
+  explicit: boolean;
 }
 
 async function resolveDeployBranch(
@@ -3676,6 +3710,7 @@ async function resolveDeployBranch(
     return {
       name: explicitBranchName,
       annotation: BRANCH_FLAG_ANNOTATION,
+      explicit: true,
     };
   }
 
@@ -3687,12 +3722,14 @@ async function resolveDeployBranch(
     return {
       name: gitBranch,
       annotation: "from local Git branch",
+      explicit: false,
     };
   }
 
   return {
     name: "main",
     annotation: "default",
+    explicit: false,
   };
 }
 

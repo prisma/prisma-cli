@@ -1,7 +1,10 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { describe, expect, it, vi } from "vitest";
 
-import { resolveReadBranch } from "../src/lib/app/read-branch";
+import {
+  resolveProductionBranch,
+  resolveReadBranch,
+} from "../src/lib/app/read-branch";
 
 type RawBranch = {
   id: string;
@@ -146,5 +149,87 @@ describe("resolveReadBranch", () => {
         },
       }),
     );
+  });
+});
+
+describe("resolveProductionBranch", () => {
+  it("returns the production-role branch even when it is not named production", async () => {
+    const client = clientReturning([
+      {
+        id: "b_master",
+        gitName: "master",
+        isDefault: true,
+        role: "production",
+      },
+      { id: "b_feat", gitName: "feat/x", isDefault: false, role: "preview" },
+    ]);
+
+    const result = await resolveProductionBranch(client, {
+      projectId: "proj_1",
+    });
+
+    expect(result).toEqual({
+      id: "b_master",
+      name: "master",
+      kind: "production",
+    });
+  });
+
+  it("returns an explicit branch by name so callers can validate its role", async () => {
+    const client = clientReturning([
+      {
+        id: "b_main",
+        gitName: "main",
+        isDefault: true,
+        role: "production",
+      },
+      { id: "b_feat", gitName: "feat/x", isDefault: false, role: "preview" },
+    ]);
+
+    const result = await resolveProductionBranch(client, {
+      projectId: "proj_1",
+      branchName: "feat/x",
+    });
+
+    expect(result).toEqual({ id: "b_feat", name: "feat/x", kind: "preview" });
+  });
+
+  it("returns null when an explicit branch does not exist", async () => {
+    const client = clientReturning([
+      {
+        id: "b_master",
+        gitName: "master",
+        isDefault: true,
+        role: "production",
+      },
+    ]);
+
+    const result = await resolveProductionBranch(client, {
+      projectId: "proj_1",
+      branchName: "feat/missing",
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it("falls back to the default branch when no production-role branch exists", async () => {
+    const client = clientReturning([
+      {
+        id: "b_master",
+        gitName: "master",
+        isDefault: true,
+        role: "preview",
+      },
+    ]);
+
+    const result = await resolveProductionBranch(client, {
+      projectId: "proj_1",
+    });
+
+    expect(result).toEqual({
+      id: "b_master",
+      name: "master",
+      kind: "preview",
+    });
   });
 });

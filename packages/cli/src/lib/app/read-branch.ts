@@ -81,9 +81,10 @@ export async function resolveReadBranch(
  * production-only commands (custom domains) working when that branch is named
  * something other than `production` or `main` (for example `master`).
  *
- * When `branchName` is given (an explicit `--branch`), that branch is matched
- * first so the caller can validate its role; otherwise the production-role
- * branch (falling back to the default branch) is returned.
+ * When `branchName` is given (an explicit `--branch`), only that branch is
+ * returned so the caller can validate its role; a missing explicit branch
+ * returns null. Without `branchName`, the production-role branch (falling back
+ * to the default branch) is returned.
  */
 export async function resolveProductionBranch(
   client: ManagementApiClient,
@@ -93,10 +94,17 @@ export async function resolveProductionBranch(
     projectId: options.projectId,
     signal: options.signal,
   });
+
+  if (options.branchName !== undefined) {
+    const explicit = branches.find(
+      (branch) => branch.name === options.branchName,
+    );
+    return explicit
+      ? { id: explicit.id, name: explicit.name, kind: explicit.kind }
+      : null;
+  }
+
   const chosen =
-    (options.branchName
-      ? branches.find((branch) => branch.name === options.branchName)
-      : undefined) ??
     branches.find((branch) => branch.kind === "production") ??
     branches.find((branch) => branch.isDefault) ??
     null;
