@@ -191,9 +191,13 @@ export class FileTokenStorage implements TokenStorage {
 
       if (!context.exists) {
         await this.setActiveWorkspaceId(latest.workspaceId);
+        return latest;
       }
 
-      return context.exists ? null : latest;
+      // A context file with no active workspace is an explicit local signed-out
+      // state, usually after logging out the active workspace. Do not fall back
+      // to another cached workspace without an explicit `auth workspace use`.
+      return null;
     } catch (_error) {
       if (this.signal?.aborted) throw this.signal.reason;
       return null;
@@ -251,6 +255,8 @@ export class FileTokenStorage implements TokenStorage {
     const current = await this.getTokens();
     if (!tokensEqual(current, tokens)) return;
     await this.credentialsStore.deleteCredentials(tokens.workspaceId);
+    // Preserve the active pointer so a refresh failure for the selected
+    // workspace does not silently move commands to another cached workspace.
     await this.removeRememberedWorkspace(tokens.workspaceId, {
       preserveActivePointer: true,
     });
@@ -608,7 +614,7 @@ export class FileTokenStorage implements TokenStorage {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
           return null;
         }
-        return null;
+        throw error;
       });
 
     if (raw === null) {
@@ -688,7 +694,7 @@ function workspaceMatchesRef(
     stripWorkspacePrefix(workspace.credentialWorkspaceId) ===
       stripWorkspacePrefix(ref) ||
     stripWorkspacePrefix(workspace.id) === stripWorkspacePrefix(ref) ||
-    workspace.name === ref
+    workspace.name.toLowerCase() === ref.toLowerCase()
   );
 }
 

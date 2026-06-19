@@ -113,6 +113,21 @@ describe("FileTokenStorage", () => {
     });
   });
 
+  it("propagates unexpected auth context read errors", async () => {
+    const cwd = await createTempCwd();
+    const authFilePath = path.join(cwd, "auth.json");
+    await writeAuthFile(authFilePath, []);
+    await fs.mkdir(getAuthContextFilePath(authFilePath), { recursive: true });
+
+    const storage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+
+    await expect(storage.listWorkspaces()).rejects.toMatchObject({
+      code: expect.any(String),
+    });
+  });
+
   it("does not reactivate another workspace when refresh stores updated tokens", async () => {
     const cwd = await createTempCwd();
     const authFilePath = path.join(cwd, "auth.json");
@@ -253,6 +268,37 @@ describe("FileTokenStorage", () => {
       name: "Acme Inc",
     });
     await storage.useWorkspace("wksp_cmmxworkspace2");
+
+    await expect(storage.getTokens()).resolves.toMatchObject({
+      workspaceId: "cmmxworkspace2",
+    });
+  });
+
+  it("switches by cached workspace name case-insensitively", async () => {
+    const cwd = await createTempCwd();
+    const authFilePath = path.join(cwd, "auth.json");
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "cmmxworkspace1",
+        token: "access-token-1",
+        refreshToken: "refresh-token-1",
+      },
+      {
+        workspaceId: "cmmxworkspace2",
+        token: "access-token-2",
+        refreshToken: "refresh-token-2",
+      },
+    ]);
+
+    const storage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+
+    await storage.rememberWorkspace("cmmxworkspace2", {
+      id: "wksp_cmmxworkspace2",
+      name: "Acme Inc",
+    });
+    await storage.useWorkspace("acme inc");
 
     await expect(storage.getTokens()).resolves.toMatchObject({
       workspaceId: "cmmxworkspace2",

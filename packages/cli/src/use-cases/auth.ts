@@ -4,7 +4,11 @@ import {
   workspaceAmbiguousError,
   workspaceNotAuthenticatedError,
 } from "../shell/errors";
-import type { AuthProviderId, AuthStateResult } from "../types/auth";
+import type {
+  AuthProviderId,
+  AuthStateResult,
+  AuthWorkspace,
+} from "../types/auth";
 import type {
   AuthUseCases,
   IdentityGateway,
@@ -75,8 +79,8 @@ export function createAuthUseCases(
       const workspaces = dependencies.identityGateway.listUserWorkspaces(
         session.userId,
       );
-      const matches = workspaces.filter(
-        (workspace) => workspace.id === ref || workspace.name === ref,
+      const matches = workspaces.filter((workspace) =>
+        workspaceMatchesRef(workspace, ref),
       );
 
       if (matches.length === 0) {
@@ -117,8 +121,8 @@ export function createAuthUseCases(
       const workspaces = dependencies.identityGateway.listUserWorkspaces(
         session.userId,
       );
-      const matches = workspaces.filter(
-        (workspace) => workspace.id === ref || workspace.name === ref,
+      const matches = workspaces.filter((workspace) =>
+        workspaceMatchesRef(workspace, ref),
       );
 
       if (matches.length === 0) {
@@ -227,6 +231,12 @@ export function createAuthUseCases(
       return workspace;
     },
   };
+}
+
+function workspaceMatchesRef(workspace: AuthWorkspace, ref: string): boolean {
+  return (
+    workspace.id === ref || workspace.name.toLowerCase() === ref.toLowerCase()
+  );
 }
 
 async function resolveCurrentAuthState(

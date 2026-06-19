@@ -464,7 +464,7 @@ Purpose:
 Behavior:
 
 - requires a stored OAuth session for the target workspace
-- accepts the cached workspace id, credential workspace id, or exact cached workspace name
+- accepts the cached workspace id, credential workspace id, or cached workspace name case-insensitively
 - changes local CLI context only; it does not mutate a remote resource
 - fails with `WORKSPACE_SWITCH_UNAVAILABLE` when `PRISMA_SERVICE_TOKEN` is set
 - fails with `WORKSPACE_NOT_AUTHENTICATED` when no cached OAuth session matches
@@ -486,7 +486,7 @@ Purpose:
 Behavior:
 
 - requires a stored OAuth session for the target workspace
-- accepts the cached workspace id, credential workspace id, or exact cached workspace name
+- accepts the cached workspace id, credential workspace id, or cached workspace name case-insensitively
 - removes only the target workspace's local OAuth grant
 - works while `PRISMA_SERVICE_TOKEN` is set; the service token remains the active auth source
 - if the removed workspace was active, leaves no active local OAuth workspace selected
