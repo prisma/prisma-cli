@@ -175,6 +175,30 @@ describe("resolveProductionBranch", () => {
     });
   });
 
+  it("resolves the production branch by role even when a different branch is the default", async () => {
+    // The platform model marks `isDefault` independently from `role`, so the
+    // default branch is not necessarily the production branch. Resolve by role.
+    const client = clientReturning([
+      { id: "b_dev", gitName: "dev", isDefault: true, role: "preview" },
+      {
+        id: "b_release",
+        gitName: "release",
+        isDefault: false,
+        role: "production",
+      },
+    ]);
+
+    const result = await resolveProductionBranch(client, {
+      projectId: "proj_1",
+    });
+
+    expect(result).toEqual({
+      id: "b_release",
+      name: "release",
+      kind: "production",
+    });
+  });
+
   it("returns an explicit branch by name so callers can validate its role", async () => {
     const client = clientReturning([
       {
