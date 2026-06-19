@@ -3,7 +3,10 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { FileTokenStorage } from "../src/adapters/token-storage";
+import {
+  FileTokenStorage,
+  getAuthContextFilePath,
+} from "../src/adapters/token-storage";
 import { createTempCwd } from "./helpers";
 
 async function writeAuthFile(
@@ -15,6 +18,376 @@ async function writeAuthFile(
 }
 
 describe("FileTokenStorage", () => {
+  it("migrates an existing single-workspace auth file to an active workspace context", async () => {
+    const cwd = await createTempCwd();
+    const authFilePath = path.join(cwd, "auth.json");
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "workspace-1",
+        token: "access-token",
+        refreshToken: "refresh-token",
+      },
+    ]);
+
+    const storage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+
+    await expect(storage.getTokens()).resolves.toEqual({
+      workspaceId: "workspace-1",
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+    });
+
+    await expect(
+      fs
+        .readFile(getAuthContextFilePath(authFilePath), "utf8")
+        .then(JSON.parse),
+    ).resolves.toMatchObject({
+      activeWorkspaceId: "workspace-1",
+    });
+  });
+
+  it("uses the active workspace context instead of the latest stored credential", async () => {
+    const cwd = await createTempCwd();
+    const authFilePath = path.join(cwd, "auth.json");
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "workspace-1",
+        token: "access-token-1",
+        refreshToken: "refresh-token-1",
+      },
+      {
+        workspaceId: "workspace-2",
+        token: "access-token-2",
+        refreshToken: "refresh-token-2",
+      },
+    ]);
+
+    const storage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+
+    await storage.useWorkspace("workspace-1");
+
+    await expect(storage.getTokens()).resolves.toEqual({
+      workspaceId: "workspace-1",
+      accessToken: "access-token-1",
+      refreshToken: "refresh-token-1",
+    });
+  });
+
+  it("does not reactivate another workspace when refresh stores updated tokens", async () => {
+    const cwd = await createTempCwd();
+    const authFilePath = path.join(cwd, "auth.json");
+    const env = {
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv;
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "workspace-1",
+        token: "access-token-1",
+        refreshToken: "refresh-token-1",
+      },
+      {
+        workspaceId: "workspace-2",
+        token: "access-token-2",
+        refreshToken: "refresh-token-2",
+      },
+    ]);
+
+    const storage = new FileTokenStorage(env);
+    await storage.useWorkspace("workspace-2");
+
+    const refreshStorage = new FileTokenStorage(env, undefined, {
+      activateOnSetTokens: false,
+    });
+    await refreshStorage.setTokens({
+      workspaceId: "workspace-1",
+      accessToken: "new-access-token-1",
+      refreshToken: "new-refresh-token-1",
+    });
+
+    await expect(storage.getTokens()).resolves.toEqual({
+      workspaceId: "workspace-2",
+      accessToken: "access-token-2",
+      refreshToken: "refresh-token-2",
+    });
+    await expect(storage.listWorkspaces()).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          credentialWorkspaceId: "workspace-1",
+          active: false,
+        }),
+        expect.objectContaining({
+          credentialWorkspaceId: "workspace-2",
+          active: true,
+        }),
+      ]),
+    );
+  });
+
+  it("keeps a workspace switch ordered after an in-flight refresh write", async () => {
+    const cwd = await createTempCwd();
+    const authFilePath = path.join(cwd, "auth.json");
+    const env = {
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv;
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "workspace-1",
+        token: "access-token-1",
+        refreshToken: "refresh-token-1",
+      },
+      {
+        workspaceId: "workspace-2",
+        token: "access-token-2",
+        refreshToken: "refresh-token-2",
+      },
+    ]);
+
+    const switchStorage = new FileTokenStorage(env);
+    await switchStorage.useWorkspace("workspace-1");
+
+    const refreshStorage = new FileTokenStorage(env, undefined, {
+      activateOnSetTokens: false,
+      lockSetTokens: false,
+    });
+    let releaseRefresh!: () => void;
+    let markRefreshStarted!: () => void;
+    const refreshReleased = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const refreshStarted = new Promise<void>((resolve) => {
+      markRefreshStarted = resolve;
+    });
+
+    const refresh = refreshStorage.withRefreshLock(async () => {
+      await refreshStorage.setTokens({
+        workspaceId: "workspace-1",
+        accessToken: "new-access-token-1",
+        refreshToken: "new-refresh-token-1",
+      });
+      markRefreshStarted();
+      await refreshReleased;
+    });
+    await refreshStarted;
+
+    const switchWorkspace = switchStorage.useWorkspace("workspace-2");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    await expect(switchStorage.getTokens()).resolves.toEqual({
+      workspaceId: "workspace-1",
+      accessToken: "new-access-token-1",
+      refreshToken: "new-refresh-token-1",
+    });
+
+    releaseRefresh();
+    await Promise.all([refresh, switchWorkspace]);
+
+    await expect(switchStorage.getTokens()).resolves.toEqual({
+      workspaceId: "workspace-2",
+      accessToken: "access-token-2",
+      refreshToken: "refresh-token-2",
+    });
+  });
+
+  it("switches by cached canonical workspace id", async () => {
+    const cwd = await createTempCwd();
+    const authFilePath = path.join(cwd, "auth.json");
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "cmmxworkspace1",
+        token: "access-token-1",
+        refreshToken: "refresh-token-1",
+      },
+      {
+        workspaceId: "cmmxworkspace2",
+        token: "access-token-2",
+        refreshToken: "refresh-token-2",
+      },
+    ]);
+
+    const storage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+
+    await storage.rememberWorkspace("cmmxworkspace2", {
+      id: "wksp_cmmxworkspace2",
+      name: "Acme Inc",
+    });
+    await storage.useWorkspace("wksp_cmmxworkspace2");
+
+    await expect(storage.getTokens()).resolves.toMatchObject({
+      workspaceId: "cmmxworkspace2",
+    });
+  });
+
+  it("clears every stored workspace token on logout", async () => {
+    const cwd = await createTempCwd();
+    const authFilePath = path.join(cwd, "auth.json");
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "workspace-1",
+        token: "access-token-1",
+        refreshToken: "refresh-token-1",
+      },
+      {
+        workspaceId: "workspace-2",
+        token: "access-token-2",
+        refreshToken: "refresh-token-2",
+      },
+    ]);
+
+    const storage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+
+    await storage.clearTokens();
+
+    await expect(storage.getTokens()).resolves.toBeNull();
+    await expect(
+      fs.readFile(authFilePath, "utf8").then(JSON.parse),
+    ).resolves.toEqual({ tokens: [] });
+    await expect(
+      fs.stat(getAuthContextFilePath(authFilePath)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("logs out an inactive workspace without changing the active workspace", async () => {
+    const cwd = await createTempCwd();
+    const authFilePath = path.join(cwd, "auth.json");
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "workspace-1",
+        token: "access-token-1",
+        refreshToken: "refresh-token-1",
+      },
+      {
+        workspaceId: "workspace-2",
+        token: "access-token-2",
+        refreshToken: "refresh-token-2",
+      },
+    ]);
+
+    const storage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+    await storage.useWorkspace("workspace-1");
+
+    await expect(storage.logoutWorkspace("workspace-2")).resolves.toEqual({
+      workspace: expect.objectContaining({
+        credentialWorkspaceId: "workspace-2",
+      }),
+      wasActive: false,
+      activeWorkspace: expect.objectContaining({
+        credentialWorkspaceId: "workspace-1",
+      }),
+    });
+
+    await expect(storage.getTokens()).resolves.toEqual({
+      workspaceId: "workspace-1",
+      accessToken: "access-token-1",
+      refreshToken: "refresh-token-1",
+    });
+    await expect(
+      fs.readFile(authFilePath, "utf8").then(JSON.parse),
+    ).resolves.toEqual({
+      tokens: [
+        {
+          workspaceId: "workspace-1",
+          token: "access-token-1",
+          refreshToken: "refresh-token-1",
+        },
+      ],
+    });
+  });
+
+  it("logs out the active workspace without falling through to another workspace", async () => {
+    const cwd = await createTempCwd();
+    const authFilePath = path.join(cwd, "auth.json");
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "workspace-1",
+        token: "access-token-1",
+        refreshToken: "refresh-token-1",
+      },
+      {
+        workspaceId: "workspace-2",
+        token: "access-token-2",
+        refreshToken: "refresh-token-2",
+      },
+    ]);
+
+    const storage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+    await storage.useWorkspace("workspace-2");
+
+    await expect(storage.logoutWorkspace("workspace-2")).resolves.toEqual({
+      workspace: expect.objectContaining({
+        credentialWorkspaceId: "workspace-2",
+      }),
+      wasActive: true,
+      activeWorkspace: null,
+    });
+
+    await expect(storage.getTokens()).resolves.toBeNull();
+    await expect(storage.listWorkspaces()).resolves.toEqual([
+      expect.objectContaining({
+        credentialWorkspaceId: "workspace-1",
+        active: false,
+      }),
+    ]);
+  });
+
+  it("clears only the active matching workspace when refresh invalidation wins the race", async () => {
+    const cwd = await createTempCwd();
+    const authFilePath = path.join(cwd, "auth.json");
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "workspace-1",
+        token: "access-token-1",
+        refreshToken: "refresh-token-1",
+      },
+      {
+        workspaceId: "workspace-2",
+        token: "access-token-2",
+        refreshToken: "refresh-token-2",
+      },
+    ]);
+
+    const storage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+    await storage.useWorkspace("workspace-2");
+
+    await storage.clearTokensIfCurrent({
+      workspaceId: "workspace-2",
+      accessToken: "access-token-2",
+      refreshToken: "refresh-token-2",
+    });
+
+    await expect(
+      fs.readFile(authFilePath, "utf8").then(JSON.parse),
+    ).resolves.toEqual({
+      tokens: [
+        {
+          workspaceId: "workspace-1",
+          token: "access-token-1",
+          refreshToken: "refresh-token-1",
+        },
+      ],
+    });
+    await expect(storage.getTokens()).resolves.toBeNull();
+    await expect(storage.listWorkspaces()).resolves.toEqual([
+      expect.objectContaining({
+        credentialWorkspaceId: "workspace-1",
+        active: false,
+      }),
+    ]);
+  });
+
   it("clears tokens only when they still match the caller's stale view", async () => {
     const cwd = await createTempCwd();
     const authFilePath = path.join(cwd, "auth.json");

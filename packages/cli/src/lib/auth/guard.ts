@@ -36,7 +36,10 @@ export async function requireComputeAuth(
     });
   }
 
-  const tokenStorage = new FileTokenStorage(env, signal);
+  const tokenStorage = new FileTokenStorage(env, signal, {
+    activateOnSetTokens: false,
+    lockSetTokens: false,
+  });
   const tokens = await tokenStorage.getTokens();
 
   if (!tokens) {

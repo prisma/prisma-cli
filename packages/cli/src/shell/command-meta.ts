@@ -51,6 +51,43 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: ["prisma-cli auth whoami", "prisma-cli auth whoami --json"],
   },
   {
+    id: "auth.workspace",
+    path: ["prisma", "auth", "workspace"],
+    description: "Manage local authenticated workspaces",
+    examples: [
+      "prisma-cli auth workspace list",
+      "prisma-cli auth workspace use wksp_123",
+      "prisma-cli auth workspace logout wksp_123",
+    ],
+  },
+  {
+    id: "auth.workspace.list",
+    path: ["prisma", "auth", "workspace", "list"],
+    description: "List locally authenticated workspaces",
+    examples: [
+      "prisma-cli auth workspace list",
+      "prisma-cli auth workspace list --json",
+    ],
+  },
+  {
+    id: "auth.workspace.use",
+    path: ["prisma", "auth", "workspace", "use"],
+    description: "Switch the local CLI workspace",
+    examples: [
+      "prisma-cli auth workspace use wksp_123",
+      'prisma-cli auth workspace use "Acme Inc"',
+    ],
+  },
+  {
+    id: "auth.workspace.logout",
+    path: ["prisma", "auth", "workspace", "logout"],
+    description: "Remove one local OAuth workspace session",
+    examples: [
+      "prisma-cli auth workspace logout wksp_123",
+      'prisma-cli auth workspace logout "Acme Inc"',
+    ],
+  },
+  {
     id: "project",
     path: ["prisma", "project"],
     description: "Manage and inspect your Prisma projects",

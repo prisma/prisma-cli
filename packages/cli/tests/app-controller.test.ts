@@ -2890,6 +2890,69 @@ describe("app controller", () => {
     });
   });
 
+  it("returns LOCAL_PROJECT_WORKSPACE_MISMATCH when deploy pin belongs to another workspace", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn();
+    const deployApp = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd, {
+      workspaceId: "ws_other",
+      projectId: "proj_123",
+    });
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(
+      runAppDeploy(context, undefined, {
+        framework: "hono",
+      }),
+    ).rejects.toMatchObject({
+      code: "LOCAL_PROJECT_WORKSPACE_MISMATCH",
+      domain: "project",
+      meta: {
+        pinPath: ".prisma/local.json",
+        pinnedWorkspaceId: "ws_other",
+        pinnedProjectId: "proj_123",
+        activeWorkspaceId: "ws_123",
+      },
+      nextSteps: [
+        "prisma-cli auth workspace use ws_other",
+        "prisma-cli project list",
+        "prisma-cli project link <id-or-name>",
+      ],
+    });
+    expect(listApps).not.toHaveBeenCalled();
+    expect(deployApp).not.toHaveBeenCalled();
+  });
+
   it("returns LOCAL_STATE_STALE when the pinned project is gone", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn();

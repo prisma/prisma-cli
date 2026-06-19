@@ -99,6 +99,9 @@ Current MVP commands map to patterns like this:
 | `auth login` | `mutate` |
 | `auth logout` | `mutate` |
 | `auth whoami` | `show` |
+| `auth workspace list` | `list` |
+| `auth workspace use` | `mutate` |
+| `auth workspace logout` | `mutate` |
 | `project list` | `list` |
 | `project show` | `show` |
 | `git connect` | `mutate` |

@@ -3,7 +3,12 @@ import { collectCommandDiagnostics } from "../lib/diagnostics";
 import type { CommandDescriptor } from "./command-meta";
 import { getCommandDescriptor } from "./command-meta";
 import { renderCommandDiagnostics } from "./diagnostics-output";
-import { authRequiredError, CliError, commandCanceledError } from "./errors";
+import {
+  authConfigInvalidError,
+  authRequiredError,
+  CliError,
+  commandCanceledError,
+} from "./errors";
 import { resolveGlobalFlags } from "./global-flags";
 import type { CommandSuccess } from "./output";
 import {
@@ -41,6 +46,13 @@ function toCliError(error: unknown, runtime: CliRuntime): CliError | null {
     return authRequiredError(["prisma-cli auth login"], {
       debug: error.message,
     });
+  }
+
+  if (
+    error instanceof Error &&
+    error.message.startsWith("PRISMA_SERVICE_TOKEN is set but empty")
+  ) {
+    return authConfigInvalidError(error.message);
   }
 
   return null;

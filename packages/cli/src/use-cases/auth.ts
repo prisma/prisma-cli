@@ -1,4 +1,9 @@
-import { usageError } from "../shell/errors";
+import {
+  authRequiredError,
+  usageError,
+  workspaceAmbiguousError,
+  workspaceNotAuthenticatedError,
+} from "../shell/errors";
 import type { AuthProviderId, AuthStateResult } from "../types/auth";
 import type {
   AuthUseCases,
@@ -29,6 +34,124 @@ export function createAuthUseCases(
     logout: async () => {
       await dependencies.sessionGateway.clearAuthSession();
       return resolveCurrentAuthState(dependencies);
+    },
+    listWorkspaces: async () => {
+      const session = await dependencies.sessionGateway.readAuthSession();
+      if (!session) {
+        return {
+          authSource: "none",
+          activeWorkspace: null,
+          workspaces: [],
+        };
+      }
+
+      const workspaces = dependencies.identityGateway.listUserWorkspaces(
+        session.userId,
+      );
+      const activeWorkspace =
+        workspaces.find((workspace) => workspace.id === session.workspaceId) ??
+        null;
+
+      return {
+        authSource: "oauth",
+        activeWorkspace,
+        workspaces: workspaces.map((workspace) => ({
+          ...workspace,
+          credentialWorkspaceId: workspace.id,
+          active: workspace.id === session.workspaceId,
+          source: "oauth" as const,
+          switchable: true,
+          lastSeenAt: null,
+        })),
+      };
+    },
+    useWorkspace: async (workspaceRef: string) => {
+      const session = await dependencies.sessionGateway.readAuthSession();
+      if (!session) {
+        throw authRequiredError(["prisma-cli auth login"]);
+      }
+
+      const ref = workspaceRef.trim();
+      const workspaces = dependencies.identityGateway.listUserWorkspaces(
+        session.userId,
+      );
+      const matches = workspaces.filter(
+        (workspace) => workspace.id === ref || workspace.name === ref,
+      );
+
+      if (matches.length === 0) {
+        throw workspaceNotAuthenticatedError(workspaceRef);
+      }
+
+      if (matches.length > 1) {
+        throw workspaceAmbiguousError(
+          workspaceRef,
+          matches.map((workspace) => ({
+            id: workspace.id,
+            name: workspace.name,
+            credentialWorkspaceId: workspace.id,
+          })),
+        );
+      }
+
+      const selected = matches[0];
+      const previousWorkspace =
+        dependencies.identityGateway.getWorkspace(session.workspaceId) ?? null;
+      await dependencies.sessionGateway.writeAuthSession({
+        ...session,
+        workspaceId: selected.id,
+      });
+
+      return {
+        previousWorkspace,
+        workspace: selected,
+      };
+    },
+    logoutWorkspace: async (workspaceRef: string) => {
+      const session = await dependencies.sessionGateway.readAuthSession();
+      if (!session) {
+        throw workspaceNotAuthenticatedError(workspaceRef);
+      }
+
+      const ref = workspaceRef.trim();
+      const workspaces = dependencies.identityGateway.listUserWorkspaces(
+        session.userId,
+      );
+      const matches = workspaces.filter(
+        (workspace) => workspace.id === ref || workspace.name === ref,
+      );
+
+      if (matches.length === 0) {
+        throw workspaceNotAuthenticatedError(workspaceRef);
+      }
+
+      if (matches.length > 1) {
+        throw workspaceAmbiguousError(
+          workspaceRef,
+          matches.map((workspace) => ({
+            id: workspace.id,
+            name: workspace.name,
+            credentialWorkspaceId: workspace.id,
+          })),
+        );
+      }
+
+      const workspace = matches[0];
+      const wasActive = workspace.id === session.workspaceId;
+      const activeWorkspace = wasActive
+        ? null
+        : (dependencies.identityGateway.getWorkspace(session.workspaceId) ??
+          null);
+
+      if (wasActive) {
+        await dependencies.sessionGateway.clearAuthSession();
+      }
+
+      return {
+        workspace,
+        wasActive,
+        activeWorkspace,
+      };
     },
     listProviders: async () => dependencies.identityGateway.listProviders(),
     resolveProvider: async (providerId) => {
