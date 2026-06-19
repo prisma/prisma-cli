@@ -38,6 +38,9 @@ export async function requireComputeAuth(
 
   const tokenStorage = new FileTokenStorage(env, signal, {
     activateOnSetTokens: false,
+    // createManagementApiSdk already wraps refresh writes in withRefreshLock.
+    // Re-acquiring the same file lock inside setTokens would deadlock until
+    // the bounded lock wait fails, so refresh storage writes opt out here.
     lockSetTokens: false,
   });
   const tokens = await tokenStorage.getTokens();

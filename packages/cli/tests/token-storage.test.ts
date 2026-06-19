@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   FileTokenStorage,
   getAuthContextFilePath,
+  RefreshLockTimeoutError,
 } from "../src/adapters/token-storage";
 import { createTempCwd } from "./helpers";
 
@@ -74,6 +75,41 @@ describe("FileTokenStorage", () => {
       workspaceId: "workspace-1",
       accessToken: "access-token-1",
       refreshToken: "refresh-token-1",
+    });
+  });
+
+  it("recovers from a malformed auth context file by migrating to the latest valid credential", async () => {
+    const cwd = await createTempCwd();
+    const authFilePath = path.join(cwd, "auth.json");
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "workspace-1",
+        token: "access-token-1",
+        refreshToken: "refresh-token-1",
+      },
+      {
+        workspaceId: "workspace-2",
+        token: "access-token-2",
+        refreshToken: "refresh-token-2",
+      },
+    ]);
+    await fs.writeFile(getAuthContextFilePath(authFilePath), "{ nope");
+
+    const storage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+
+    await expect(storage.getTokens()).resolves.toEqual({
+      workspaceId: "workspace-2",
+      accessToken: "access-token-2",
+      refreshToken: "refresh-token-2",
+    });
+    await expect(
+      fs
+        .readFile(getAuthContextFilePath(authFilePath), "utf8")
+        .then(JSON.parse),
+    ).resolves.toMatchObject({
+      activeWorkspaceId: "workspace-2",
     });
   });
 
@@ -174,7 +210,7 @@ describe("FileTokenStorage", () => {
     await refreshStarted;
 
     const switchWorkspace = switchStorage.useWorkspace("workspace-2");
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await new Promise((resolve) => setImmediate(resolve));
 
     await expect(switchStorage.getTokens()).resolves.toEqual({
       workspaceId: "workspace-1",
@@ -301,6 +337,61 @@ describe("FileTokenStorage", () => {
         },
       ],
     });
+  });
+
+  it("logs out one of three workspaces without changing the surviving active workspace", async () => {
+    const cwd = await createTempCwd();
+    const authFilePath = path.join(cwd, "auth.json");
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "workspace-1",
+        token: "access-token-1",
+        refreshToken: "refresh-token-1",
+      },
+      {
+        workspaceId: "workspace-2",
+        token: "access-token-2",
+        refreshToken: "refresh-token-2",
+      },
+      {
+        workspaceId: "workspace-3",
+        token: "access-token-3",
+        refreshToken: "refresh-token-3",
+      },
+    ]);
+
+    const storage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+    await storage.useWorkspace("workspace-2");
+
+    await expect(storage.logoutWorkspace("workspace-1")).resolves.toEqual({
+      workspace: expect.objectContaining({
+        credentialWorkspaceId: "workspace-1",
+      }),
+      wasActive: false,
+      activeWorkspace: expect.objectContaining({
+        credentialWorkspaceId: "workspace-2",
+      }),
+    });
+
+    await expect(storage.getTokens()).resolves.toEqual({
+      workspaceId: "workspace-2",
+      accessToken: "access-token-2",
+      refreshToken: "refresh-token-2",
+    });
+    await expect(storage.listWorkspaces()).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          credentialWorkspaceId: "workspace-2",
+          active: true,
+        }),
+        expect.objectContaining({
+          credentialWorkspaceId: "workspace-3",
+          active: false,
+        }),
+      ]),
+    );
   });
 
   it("logs out the active workspace without falling through to another workspace", async () => {
@@ -450,7 +541,7 @@ describe("FileTokenStorage", () => {
       events.push("second:end");
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await new Promise((resolve) => setImmediate(resolve));
     expect(events).toEqual(["first:start"]);
 
     releaseFirst();
@@ -500,6 +591,46 @@ describe("FileTokenStorage", () => {
     controller.abort(reason);
 
     await expect(second).rejects.toBe(reason);
+    releaseFirst();
+    await first;
+  });
+
+  it("fails loudly when waiting for the refresh lock times out", async () => {
+    const cwd = await createTempCwd();
+    const authFilePath = path.join(cwd, "auth.json");
+    const firstStorage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+    const secondStorage = new FileTokenStorage(
+      {
+        PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+      } as NodeJS.ProcessEnv,
+      undefined,
+      {
+        lockRetryMs: 1,
+        lockStaleMs: 10_000,
+        lockWaitTimeoutMs: 5,
+      },
+    );
+    let releaseFirst!: () => void;
+    const firstReleased = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let markFirstStarted!: () => void;
+    const firstStarted = new Promise<void>((resolve) => {
+      markFirstStarted = resolve;
+    });
+
+    const first = firstStorage.withRefreshLock(async () => {
+      markFirstStarted();
+      await firstReleased;
+    });
+    await firstStarted;
+
+    await expect(
+      secondStorage.withRefreshLock(async () => undefined),
+    ).rejects.toBeInstanceOf(RefreshLockTimeoutError);
+
     releaseFirst();
     await first;
   });

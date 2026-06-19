@@ -45,7 +45,14 @@ interface AuthContextReadResult {
 export interface FileTokenStorageOptions {
   activateOnSetTokens?: boolean;
   lockSetTokens?: boolean;
+  lockRetryMs?: number;
+  lockStaleMs?: number;
+  lockWaitTimeoutMs?: number;
 }
+
+const REFRESH_LOCK_RETRY_MS = 100;
+const REFRESH_LOCK_STALE_MS = 30_000;
+const REFRESH_LOCK_WAIT_TIMEOUT_MS = 25_000;
 
 const EMPTY_AUTH_CONTEXT: AuthContextState = {
   activeWorkspaceId: null,
@@ -194,6 +201,9 @@ export class FileTokenStorage implements TokenStorage {
   }
 
   async setTokens(tokens: Tokens): Promise<void> {
+    // The management-api-sdk calls setTokens from inside withRefreshLock during
+    // refresh. That path must pass lockSetTokens:false, otherwise setTokens
+    // would wait on the lock it already owns and eventually time out.
     if (this.options.lockSetTokens === false) {
       await this.setTokensUnlocked(tokens);
       return;
@@ -222,6 +232,8 @@ export class FileTokenStorage implements TokenStorage {
     this.signal?.throwIfAborted();
     // Logout clears every OAuth grant in the local auth file. SDK refresh
     // failures use clearTokensIfCurrent below, which stays workspace-scoped.
+    // CredentialsStore exposes workspace-scoped deletion only, so full logout
+    // writes the store's empty on-disk shape directly.
     await fs.mkdir(path.dirname(this.authFilePath), { recursive: true });
     this.signal?.throwIfAborted();
     await fs.writeFile(
@@ -419,41 +431,65 @@ export class FileTokenStorage implements TokenStorage {
 
   private async acquireRefreshLock(): Promise<string> {
     const lockId = randomUUID();
+    const startedAt = Date.now();
+    const retryMs = this.options.lockRetryMs ?? REFRESH_LOCK_RETRY_MS;
+    const waitTimeoutMs =
+      this.options.lockWaitTimeoutMs ?? REFRESH_LOCK_WAIT_TIMEOUT_MS;
     this.signal?.throwIfAborted();
     // mkdir does not accept AbortSignal; check before the filesystem boundary.
     await fs.mkdir(path.dirname(this.lockFilePath), { recursive: true });
 
     while (true) {
       this.signal?.throwIfAborted();
-      let lockFileCreated = false;
-      try {
-        // open does not accept AbortSignal; check before the filesystem boundary.
-        const handle = await fs.open(this.lockFilePath, "wx");
-        lockFileCreated = true;
-        try {
-          this.signal?.throwIfAborted();
-          await handle.writeFile(lockId, { encoding: "utf8" });
-          this.signal?.throwIfAborted();
-        } finally {
-          await handle.close();
-        }
+      if (await this.tryCreateRefreshLock(lockId)) {
         return lockId;
-      } catch (error) {
-        if (lockFileCreated) {
-          await fs.unlink(this.lockFilePath).catch(() => undefined);
-        }
-        const code = (error as NodeJS.ErrnoException).code;
-        if (code !== "EEXIST") throw error;
-
-        const staleLockId = await this.getStaleRefreshLockId();
-        if (staleLockId) {
-          await this.releaseRefreshLock(staleLockId);
-          continue;
-        }
-
-        await sleep(100, this.signal);
       }
+
+      if (await this.releaseStaleRefreshLock()) continue;
+
+      this.throwIfRefreshLockWaitTimedOut(startedAt, waitTimeoutMs);
+      await sleep(retryMs, this.signal);
     }
+  }
+
+  private async tryCreateRefreshLock(lockId: string): Promise<boolean> {
+    let lockFileCreated = false;
+    try {
+      // open does not accept AbortSignal; check before the filesystem boundary.
+      const handle = await fs.open(this.lockFilePath, "wx");
+      lockFileCreated = true;
+      try {
+        this.signal?.throwIfAborted();
+        await handle.writeFile(lockId, { encoding: "utf8" });
+        this.signal?.throwIfAborted();
+      } finally {
+        await handle.close();
+      }
+      return true;
+    } catch (error) {
+      if (lockFileCreated) {
+        await fs.unlink(this.lockFilePath).catch(() => undefined);
+      }
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "EEXIST") return false;
+      throw error;
+    }
+  }
+
+  private async releaseStaleRefreshLock(): Promise<boolean> {
+    const staleLockId = await this.getStaleRefreshLockId();
+    if (!staleLockId) return false;
+
+    await this.releaseRefreshLock(staleLockId);
+    return true;
+  }
+
+  private throwIfRefreshLockWaitTimedOut(
+    startedAt: number,
+    waitTimeoutMs: number,
+  ): void {
+    if (Date.now() - startedAt < waitTimeoutMs) return;
+    throw new RefreshLockTimeoutError(this.lockFilePath, waitTimeoutMs);
   }
 
   private async getStaleRefreshLockId(): Promise<string | null> {
@@ -471,7 +507,8 @@ export class FileTokenStorage implements TokenStorage {
     const stats = await fs.stat(this.lockFilePath).catch(() => null);
     this.signal?.throwIfAborted();
     if (!stats) return null;
-    return Date.now() - stats.mtimeMs > 30_000 ? lockId : null;
+    const staleMs = this.options.lockStaleMs ?? REFRESH_LOCK_STALE_MS;
+    return Date.now() - stats.mtimeMs > staleMs ? lockId : null;
   }
 
   private async releaseRefreshLock(lockId: string): Promise<void> {
@@ -629,6 +666,15 @@ export class WorkspaceSelectionError extends Error {
   ) {
     super(reason);
     this.name = "WorkspaceSelectionError";
+  }
+}
+
+export class RefreshLockTimeoutError extends Error {
+  constructor(lockFilePath: string, waitTimeoutMs: number) {
+    super(
+      `Timed out waiting ${waitTimeoutMs}ms for auth refresh lock at ${lockFilePath}`,
+    );
+    this.name = "RefreshLockTimeoutError";
   }
 }
 
