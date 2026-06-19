@@ -443,6 +443,7 @@ Behavior:
 
 - succeeds when signed out
 - lists local OAuth workspaces stored on this machine
+- human output includes a table with workspace name and workspace id
 - marks the active local workspace when one is selected
 - when `PRISMA_SERVICE_TOKEN` is set, shows the token workspace when resolvable and also shows stored local OAuth workspaces as non-switchable until the variable is unset
 - does not claim to list every workspace the user can access unless each workspace has been authorized locally
@@ -468,13 +469,34 @@ Behavior:
 - changes local CLI context only; it does not mutate a remote resource
 - fails with `WORKSPACE_SWITCH_UNAVAILABLE` when `PRISMA_SERVICE_TOKEN` is set
 - fails with `WORKSPACE_NOT_AUTHENTICATED` when no cached OAuth session matches
-- fails with `WORKSPACE_AMBIGUOUS` when an exact workspace name matches multiple cached workspaces
+- fails with `WORKSPACE_AMBIGUOUS` when a workspace name matches multiple cached workspaces
 
 Examples:
 
 ```bash
 prisma-cli auth workspace use wksp_123
 prisma-cli auth workspace use "Acme Inc"
+```
+
+## `prisma-cli auth workspace select`
+
+Purpose:
+
+- interactively switch the local CLI workspace
+
+Behavior:
+
+- lists locally authenticated OAuth workspaces in an interactive picker
+- shows the workspace name and workspace id for each choice
+- changes local CLI context only; it does not mutate a remote resource
+- fails with `WORKSPACE_SWITCH_UNAVAILABLE` when `PRISMA_SERVICE_TOKEN` is set
+- when exactly one local OAuth workspace is available, selects it without prompting
+- fails in non-interactive mode when more than one local OAuth workspace is available
+
+Examples:
+
+```bash
+prisma-cli auth workspace select
 ```
 
 ## `prisma-cli auth workspace logout <id-or-name>`
@@ -492,7 +514,7 @@ Behavior:
 - if the removed workspace was active, leaves no active local OAuth workspace selected
 - does not mutate a remote resource and does not revoke remote access
 - fails with `WORKSPACE_NOT_AUTHENTICATED` when no cached OAuth session matches
-- fails with `WORKSPACE_AMBIGUOUS` when an exact workspace name matches multiple cached workspaces
+- fails with `WORKSPACE_AMBIGUOUS` when a workspace name matches multiple cached workspaces
 
 Examples:
 

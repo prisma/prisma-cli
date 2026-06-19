@@ -126,7 +126,7 @@ export async function runAuthWorkspaceUse(
   if (!workspaceRef?.trim()) {
     throw usageError(
       "Workspace required",
-      "auth workspace use needs a workspace id or exact workspace name.",
+      "auth workspace use needs a workspace id or cached workspace name.",
       "Pass a workspace from prisma-cli auth workspace list.",
       ["prisma-cli auth workspace list"],
       "auth",
@@ -147,6 +147,17 @@ export async function runAuthWorkspaceUse(
   };
 }
 
+export async function runAuthWorkspaceSelect(
+  context: CommandContext,
+): Promise<CommandSuccess<AuthWorkspaceUseResult>> {
+  const workspaceRef = await selectWorkspaceSession(context);
+  const success = await runAuthWorkspaceUse(context, workspaceRef);
+  return {
+    ...success,
+    command: "auth.workspace.select",
+  };
+}
+
 export async function runAuthWorkspaceLogout(
   context: CommandContext,
   workspaceRef: string | undefined,
@@ -154,7 +165,7 @@ export async function runAuthWorkspaceLogout(
   if (!workspaceRef?.trim()) {
     throw usageError(
       "Workspace required",
-      "auth workspace logout needs a workspace id or exact workspace name.",
+      "auth workspace logout needs a workspace id or cached workspace name.",
       "Pass a workspace from prisma-cli auth workspace list.",
       ["prisma-cli auth workspace list"],
       "auth",
@@ -349,6 +360,59 @@ async function logoutRealAuthWorkspace(
 
     throw error;
   }
+}
+
+async function selectWorkspaceSession(
+  context: CommandContext,
+): Promise<string> {
+  const realMode = isRealMode(context);
+  if (realMode && context.runtime.env[SERVICE_TOKEN_ENV_VAR] !== undefined) {
+    throw workspaceSwitchUnavailableError();
+  }
+
+  const result = realMode
+    ? await listRealAuthWorkspaces(context)
+    : await createAuthUseCases(
+        createCliUseCaseGateways(context),
+      ).listWorkspaces();
+  const workspaces = result.workspaces.filter(
+    (workspace) => workspace.switchable,
+  );
+
+  if (workspaces.length === 0) {
+    throw usageError(
+      "No authenticated workspaces",
+      "There are no local OAuth workspace sessions to select.",
+      "Run prisma-cli auth login and authorize a workspace.",
+      ["prisma-cli auth login"],
+      "auth",
+    );
+  }
+
+  if (workspaces.length === 1) {
+    return workspaces[0].id;
+  }
+
+  if (!canPrompt(context)) {
+    throw usageError(
+      "Interactive workspace selection unavailable",
+      "auth workspace select needs an interactive terminal when more than one workspace is available.",
+      "Run prisma-cli auth workspace use <id-or-name> with a workspace from prisma-cli auth workspace list.",
+      ["prisma-cli auth workspace list"],
+      "auth",
+    );
+  }
+
+  const prompt = createSelectPromptPort(context);
+  const selected = await prompt.select({
+    message: "Select a workspace",
+    choices: workspaces.map((workspace) => ({
+      label: `${workspace.name} (${workspace.id})${workspace.active ? " active" : ""}`,
+      value: workspace,
+    })),
+  });
+
+  return selected.id;
 }
 
 function toAuthWorkspace(workspace: StoredAuthWorkspace): AuthWorkspace {

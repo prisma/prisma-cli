@@ -1,6 +1,9 @@
-import { renderList, renderMutate, renderShow } from "../output/patterns";
+import stringWidth from "string-width";
+import { renderMutate, renderShow } from "../output/patterns";
 import type { CommandDescriptor } from "../shell/command-meta";
+import { formatDescriptorLabel } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
+import { padDisplay } from "../shell/ui";
 import type {
   AuthProviderId,
   AuthStateResult,
@@ -84,29 +87,56 @@ export function renderAuthWorkspaceList(
   descriptor: CommandDescriptor,
   result: AuthWorkspaceListResult,
 ): string[] {
+  const ui = context.ui;
+  const rail = ui.dim("│");
+  const lines = [
+    `${ui.strong(formatDescriptorLabel(descriptor))} ${ui.dim("→")} ${ui.dim("Listing authenticated workspaces on this machine.")}`,
+    "",
+    `${rail}  ${ui.accent("auth source:")}  ${authSourceLabel(result.authSource)}`,
+  ];
   const hasMixedSources =
     new Set(result.workspaces.map((workspace) => workspace.source)).size > 1;
 
-  return renderList(
-    {
-      title: "Listing authenticated workspaces on this machine.",
-      descriptor,
-      parentContext: {
-        key: "auth source",
-        value: authSourceLabel(result.authSource),
-      },
-      items: result.workspaces.map((workspace) => ({
-        noun: "workspace",
-        label: hasMixedSources
-          ? `${workspace.name} (${workspaceSourceLabel(workspace.source)})`
-          : workspace.name,
-        id: workspace.id,
-        status: workspace.active ? "active" : null,
-      })),
-      emptyMessage: "No local OAuth workspaces found.",
-    },
-    context.ui,
+  if (result.workspaces.length === 0) {
+    lines.push(`${rail}  ${ui.dim("No local OAuth workspaces found.")}`);
+    return lines;
+  }
+
+  const nameWidth = Math.max(
+    "name".length,
+    ...result.workspaces.map((workspace) => stringWidth(workspace.name)),
   );
+  const idWidth = Math.max(
+    "id".length,
+    ...result.workspaces.map((workspace) => stringWidth(workspace.id)),
+  );
+  const sourceWidth = hasMixedSources
+    ? Math.max(
+        "source".length,
+        ...result.workspaces.map((workspace) =>
+          stringWidth(workspaceSourceLabel(workspace.source)),
+        ),
+      )
+    : 0;
+
+  lines.push(rail);
+  lines.push(
+    hasMixedSources
+      ? `${rail}  ${ui.accent(padDisplay("name", nameWidth))}  ${ui.accent(padDisplay("id", idWidth))}  ${ui.accent(padDisplay("source", sourceWidth))}  ${ui.accent("status")}`
+      : `${rail}  ${ui.accent(padDisplay("name", nameWidth))}  ${ui.accent(padDisplay("id", idWidth))}  ${ui.accent("status")}`,
+  );
+
+  for (const workspace of result.workspaces) {
+    const status = workspace.active ? "active" : "";
+    const source = workspaceSourceLabel(workspace.source);
+    lines.push(
+      hasMixedSources
+        ? `${rail}  ${padDisplay(workspace.name, nameWidth)}  ${padDisplay(workspace.id, idWidth)}  ${padDisplay(source, sourceWidth)}  ${status}`
+        : `${rail}  ${padDisplay(workspace.name, nameWidth)}  ${padDisplay(workspace.id, idWidth)}  ${status}`,
+    );
+  }
+
+  return lines;
 }
 
 export function serializeAuthWorkspaceList(result: AuthWorkspaceListResult) {

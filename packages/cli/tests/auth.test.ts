@@ -155,6 +155,21 @@ describe("auth commands", () => {
       },
     });
 
+    const humanList = await executeCli({
+      argv: ["auth", "workspace", "list"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const humanListOutput = stripAnsi(humanList.stderr);
+
+    expect(humanList.exitCode).toBe(0);
+    expect(humanList.stdout).toBe("");
+    expect(humanListOutput).toContain("auth source:  local OAuth");
+    expect(humanListOutput).toContain("name         id      status");
+    expect(humanListOutput).toContain("Acme Inc     ws_123  active");
+    expect(humanListOutput).toContain("Prisma Labs  ws_456");
+
     const use = await executeCli({
       argv: ["auth", "workspace", "use", "ws_456", "--json"],
       cwd,
@@ -187,6 +202,94 @@ describe("auth commands", () => {
     expect(JSON.parse(whoami.stdout).result.workspace).toEqual({
       id: "ws_456",
       name: "Prisma Labs",
+    });
+  });
+
+  it("interactively selects a mock workspace", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    await executeCli({
+      argv: [
+        "auth",
+        "login",
+        "--provider",
+        "github",
+        "--user",
+        "usr_123",
+        "--workspace",
+        "ws_123",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    const result = await executeCli({
+      argv: ["auth", "workspace", "select"],
+      cwd,
+      stateDir,
+      fixturePath,
+      isTTY: true,
+      stdinText: "\u001B[B\r",
+    });
+    const stderr = stripAnsi(result.stderr);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(stderr).toContain("Select a workspace");
+    expect(stderr).toContain("Prisma Labs (ws_456)");
+
+    const whoami = await executeCli({
+      argv: ["auth", "whoami", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    expect(JSON.parse(whoami.stdout).result.workspace).toEqual({
+      id: "ws_456",
+      name: "Prisma Labs",
+    });
+  });
+
+  it("returns a usage error for non-interactive workspace select with multiple workspaces", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    await executeCli({
+      argv: [
+        "auth",
+        "login",
+        "--provider",
+        "github",
+        "--user",
+        "usr_123",
+        "--workspace",
+        "ws_123",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    const result = await executeCli({
+      argv: ["auth", "workspace", "select", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      command: "auth.workspace.select",
+      error: {
+        code: "USAGE_ERROR",
+        domain: "auth",
+        summary: "Interactive workspace selection unavailable",
+      },
+      nextSteps: ["prisma-cli auth workspace list"],
     });
   });
 

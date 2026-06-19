@@ -56,6 +56,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
     description: "Manage local authenticated workspaces",
     examples: [
       "prisma-cli auth workspace list",
+      "prisma-cli auth workspace select",
       "prisma-cli auth workspace use wksp_123",
       "prisma-cli auth workspace logout wksp_123",
     ],
@@ -77,6 +78,12 @@ const DESCRIPTORS: CommandDescriptor[] = [
       "prisma-cli auth workspace use wksp_123",
       'prisma-cli auth workspace use "Acme Inc"',
     ],
+  },
+  {
+    id: "auth.workspace.select",
+    path: ["prisma", "auth", "workspace", "select"],
+    description: "Interactively select the local CLI workspace",
+    examples: ["prisma-cli auth workspace select"],
   },
   {
     id: "auth.workspace.logout",

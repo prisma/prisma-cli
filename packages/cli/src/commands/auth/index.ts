@@ -8,6 +8,7 @@ import {
   runAuthWhoAmI,
   runAuthWorkspaceList,
   runAuthWorkspaceLogout,
+  runAuthWorkspaceSelect,
   runAuthWorkspaceUse,
 } from "../../controllers/auth";
 import {
@@ -159,6 +160,7 @@ function createAuthWorkspaceCommand(runtime: CliRuntime): Command {
 
   workspace.addCommand(createAuthWorkspaceListCommand(runtime));
   workspace.addCommand(createAuthWorkspaceUseCommand(runtime));
+  workspace.addCommand(createAuthWorkspaceSelectCommand(runtime));
   workspace.addCommand(createAuthWorkspaceLogoutCommand(runtime));
 
   return workspace;
@@ -182,6 +184,31 @@ function createAuthWorkspaceListCommand(runtime: CliRuntime): Command {
         renderHuman: (context, descriptor, result) =>
           renderAuthWorkspaceList(context, descriptor, result),
         renderJson: (result) => serializeAuthWorkspaceList(result),
+      },
+    );
+  });
+
+  return command;
+}
+
+function createAuthWorkspaceSelectCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("select"), runtime),
+    "auth.workspace.select",
+  );
+
+  addGlobalFlags(command);
+
+  command.action(async (options) => {
+    await runCommand<AuthWorkspaceUseResult>(
+      runtime,
+      "auth.workspace.select",
+      options as Record<string, unknown>,
+      (context) => runAuthWorkspaceSelect(context),
+      {
+        renderHuman: (context, descriptor, result) =>
+          renderAuthWorkspaceUse(context, descriptor, result),
+        renderJson: (result) => serializeAuthWorkspaceUse(result),
       },
     );
   });
