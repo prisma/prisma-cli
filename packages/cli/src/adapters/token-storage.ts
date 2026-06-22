@@ -58,6 +58,7 @@ const EMPTY_AUTH_CONTEXT: AuthContextState = {
   activeWorkspaceId: null,
   workspaces: {},
 };
+const UNKNOWN_WORKSPACE_NAME = "Unknown workspace";
 
 export function getAuthContextFilePath(authFilePath: string): string {
   const extension = path.extname(authFilePath);
@@ -283,8 +284,8 @@ export class FileTokenStorage implements TokenStorage {
             : tokens.workspaceId;
         const name =
           typeof cached?.name === "string" && cached.name.trim().length > 0
-            ? cached.name.trim()
-            : id;
+            ? workspaceDisplayName(cached.name.trim(), tokens.workspaceId)
+            : UNKNOWN_WORKSPACE_NAME;
         const lastSeenAt =
           typeof cached?.lastSeenAt === "string" &&
           cached.lastSeenAt.trim().length > 0
@@ -299,6 +300,14 @@ export class FileTokenStorage implements TokenStorage {
           lastSeenAt,
         };
       });
+  }
+
+  async listWorkspaceTokens(): Promise<Tokens[]> {
+    this.signal?.throwIfAborted();
+    const credentials = await this.readCredentialsFromDisk();
+    return credentials
+      .map((credential) => storedCredentialToTokens(credential))
+      .filter((tokens): tokens is Tokens => tokens !== null);
   }
 
   async useWorkspace(workspaceRef: string): Promise<{
@@ -704,4 +713,8 @@ function workspaceMatchesRef(
 
 function stripWorkspacePrefix(value: string): string {
   return value.startsWith("wksp_") ? value.slice("wksp_".length) : value;
+}
+
+function workspaceDisplayName(name: string, credentialWorkspaceId: string) {
+  return name === credentialWorkspaceId ? UNKNOWN_WORKSPACE_NAME : name;
 }

@@ -4,13 +4,17 @@ import stripAnsi from "strip-ansi";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MockApi } from "../src/adapters/mock-api";
-import { renderAuthSuccess } from "../src/presenters/auth";
+import {
+  renderAuthSuccess,
+  renderAuthWorkspaceList,
+} from "../src/presenters/auth";
 import { getCommandDescriptor } from "../src/shell/command-meta";
 
 const fixturePath = path.resolve("fixtures/mock-api.json");
 
 afterEach(() => {
   vi.doUnmock("../src/lib/auth/auth-ops");
+  vi.doUnmock("@prisma/management-api-sdk");
   vi.resetModules();
   vi.restoreAllMocks();
 });
@@ -270,6 +274,231 @@ describe("real auth mode", () => {
           switchable: false,
         },
       ],
+    });
+  });
+
+  it("hydrates placeholder OAuth workspace metadata before rendering the workspace list", async () => {
+    const getWorkspace = vi.fn().mockResolvedValue({
+      data: {
+        data: {
+          id: "wksp_acme",
+          name: "Acme Inc",
+        },
+      },
+      response: { status: 200 },
+    });
+
+    vi.doMock("@prisma/management-api-sdk", () => ({
+      AuthError: class SDKAuthError extends Error {},
+      createManagementApiSdk: vi.fn().mockReturnValue({
+        client: { GET: getWorkspace },
+      }),
+    }));
+
+    const { FileTokenStorage } = await import("../src/adapters/token-storage");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAuthWorkspaceList } = await import("../src/controllers/auth");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const authFilePath = path.join(cwd, "auth.json");
+    const env = {
+      ...process.env,
+      PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+      PRISMA_SERVICE_TOKEN: undefined,
+    };
+    const storage = new FileTokenStorage(env);
+    await storage.setTokens({
+      workspaceId: "cmmxlp7ae1251zyfs8mdpnavm",
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+    });
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env,
+    });
+
+    const result = await runAuthWorkspaceList(context);
+    const output = stripAnsi(
+      renderAuthWorkspaceList(
+        context,
+        getCommandDescriptor("auth.workspace.list"),
+        result.result,
+      ).join("\n"),
+    );
+
+    expect(getWorkspace).toHaveBeenCalledWith(
+      "/v1/workspaces/{id}",
+      expect.objectContaining({
+        params: {
+          path: { id: "cmmxlp7ae1251zyfs8mdpnavm" },
+        },
+      }),
+    );
+    expect(result.result.workspaces).toEqual([
+      expect.objectContaining({
+        id: "wksp_acme",
+        name: "Acme Inc",
+        credentialWorkspaceId: "cmmxlp7ae1251zyfs8mdpnavm",
+        active: true,
+      }),
+    ]);
+    expect(output).toContain("Acme Inc  wksp_acme  active");
+    expect(output).not.toContain(
+      "cmmxlp7ae1251zyfs8mdpnavm  cmmxlp7ae1251zyfs8mdpnavm",
+    );
+    await expect(storage.listWorkspaces()).resolves.toEqual([
+      expect.objectContaining({
+        id: "wksp_acme",
+        name: "Acme Inc",
+      }),
+    ]);
+  });
+
+  it("keeps unresolved OAuth workspace sessions listable without using the credential id as the display name", async () => {
+    vi.doMock("@prisma/management-api-sdk", () => ({
+      AuthError: class SDKAuthError extends Error {},
+      createManagementApiSdk: vi.fn().mockReturnValue({
+        client: {
+          GET: vi.fn().mockResolvedValue({
+            data: null,
+            response: { status: 404 },
+          }),
+        },
+      }),
+    }));
+
+    const { FileTokenStorage } = await import("../src/adapters/token-storage");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAuthWorkspaceList } = await import("../src/controllers/auth");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const authFilePath = path.join(cwd, "auth.json");
+    const env = {
+      ...process.env,
+      PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+      PRISMA_SERVICE_TOKEN: undefined,
+    };
+    const storage = new FileTokenStorage(env);
+    await storage.setTokens({
+      workspaceId: "cmmxlp7ae1251zyfs8mdpnavm",
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+    });
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env,
+    });
+
+    const result = await runAuthWorkspaceList(context);
+    const output = stripAnsi(
+      renderAuthWorkspaceList(
+        context,
+        getCommandDescriptor("auth.workspace.list"),
+        result.result,
+      ).join("\n"),
+    );
+
+    expect(result.result.workspaces).toEqual([
+      expect.objectContaining({
+        id: "cmmxlp7ae1251zyfs8mdpnavm",
+        name: "Unknown workspace",
+        credentialWorkspaceId: "cmmxlp7ae1251zyfs8mdpnavm",
+      }),
+    ]);
+    expect(output).toContain(
+      "Unknown workspace  cmmxlp7ae1251zyfs8mdpnavm  active",
+    );
+    expect(output).not.toContain(
+      "cmmxlp7ae1251zyfs8mdpnavm  cmmxlp7ae1251zyfs8mdpnavm",
+    );
+  });
+
+  it("uses hydrated OAuth workspace names in the interactive workspace picker", async () => {
+    const workspaces = new Map([
+      [
+        "cmmxworkspace1",
+        {
+          id: "wksp_workspace1",
+          name: "Acme Inc",
+        },
+      ],
+      [
+        "cmmxworkspace2",
+        {
+          id: "wksp_workspace2",
+          name: "Prisma Labs",
+        },
+      ],
+    ]);
+    const getWorkspace = vi
+      .fn()
+      .mockImplementation(
+        (
+          _pathName: string,
+          request?: { params?: { path?: { id?: string } } },
+        ) => ({
+          data: {
+            data: workspaces.get(request?.params?.path?.id ?? ""),
+          },
+          response: { status: 200 },
+        }),
+      );
+
+    vi.doMock("@prisma/management-api-sdk", () => ({
+      AuthError: class SDKAuthError extends Error {},
+      createManagementApiSdk: vi.fn().mockReturnValue({
+        client: { GET: getWorkspace },
+      }),
+    }));
+
+    const { FileTokenStorage } = await import("../src/adapters/token-storage");
+    const { createTempCwd, executeCli } = await import("./helpers");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const authFilePath = path.join(cwd, "auth.json");
+    const env = {
+      ...process.env,
+      PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+      PRISMA_SERVICE_TOKEN: undefined,
+    };
+    const storage = new FileTokenStorage(env);
+    await storage.setTokens({
+      workspaceId: "cmmxworkspace1",
+      accessToken: "access-token-1",
+      refreshToken: "refresh-token-1",
+    });
+    await storage.setTokens({
+      workspaceId: "cmmxworkspace2",
+      accessToken: "access-token-2",
+      refreshToken: "refresh-token-2",
+    });
+    await storage.useWorkspace("cmmxworkspace1");
+
+    const result = await executeCli({
+      argv: ["auth", "workspace", "use"],
+      cwd,
+      stateDir,
+      env,
+      isTTY: true,
+      stdinText: "\u001B[B\r",
+    });
+    const stderr = stripAnsi(result.stderr);
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr).toContain("Acme Inc (wksp_workspace1) active");
+    expect(stderr).toContain("Prisma Labs (wksp_workspace2)");
+    expect(stderr).not.toContain("cmmxworkspace1 (cmmxworkspace1)");
+    await expect(storage.getTokens()).resolves.toMatchObject({
+      workspaceId: "cmmxworkspace2",
     });
   });
 
