@@ -165,10 +165,9 @@ describe("auth commands", () => {
 
     expect(humanList.exitCode).toBe(0);
     expect(humanList.stdout).toBe("");
-    expect(humanListOutput).toContain("auth source:  local OAuth");
-    expect(humanListOutput).toContain("name         id      status");
-    expect(humanListOutput).toContain("Acme Inc     ws_123  active");
-    expect(humanListOutput).toContain("Prisma Labs  ws_456");
+    expect(humanListOutput).toBe(
+      "auth workspace list → Listing authenticated workspaces on this machine.\n\n│  auth source:  local OAuth\n│\n│  name         id      status\n│  Acme Inc     ws_123  active\n│  Prisma Labs  ws_456  \n",
+    );
 
     const use = await executeCli({
       argv: ["auth", "workspace", "use", "ws_456", "--json"],

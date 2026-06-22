@@ -1,4 +1,9 @@
 import {
+  createManagementApiSdk,
+  type TokenStorage,
+  type Tokens,
+} from "@prisma/management-api-sdk";
+import {
   FileTokenStorage,
   type StoredAuthWorkspace,
   WorkspaceSelectionError,
@@ -8,7 +13,11 @@ import {
   performLogout,
   readAuthState,
 } from "../lib/auth/auth-ops";
-import { SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
+import {
+  CLIENT_ID,
+  getApiBaseUrl,
+  SERVICE_TOKEN_ENV_VAR,
+} from "../lib/auth/client";
 import {
   authRequiredError,
   usageError,
@@ -217,7 +226,11 @@ async function listRealAuthWorkspaces(
     context.runtime.env,
     context.runtime.signal,
   );
-  const localWorkspaces = await storage.listWorkspaces();
+  const localWorkspaces = await hydrateLocalAuthWorkspaces(
+    context,
+    storage,
+    await storage.listWorkspaces(),
+  );
 
   if (rawServiceToken !== undefined) {
     const authState = await readAuthState(
@@ -279,6 +292,11 @@ async function useRealAuthWorkspace(
     context.runtime.env,
     context.runtime.signal,
   );
+  await hydrateLocalAuthWorkspaces(
+    context,
+    storage,
+    await storage.listWorkspaces(),
+  );
 
   try {
     const result = await storage.useWorkspace(workspaceRef);
@@ -315,6 +333,11 @@ async function logoutRealAuthWorkspace(
   const storage = new FileTokenStorage(
     context.runtime.env,
     context.runtime.signal,
+  );
+  await hydrateLocalAuthWorkspaces(
+    context,
+    storage,
+    await storage.listWorkspaces(),
   );
 
   try {
@@ -397,6 +420,135 @@ async function selectWorkspaceSession(
   });
 
   return selected.id;
+}
+
+async function hydrateLocalAuthWorkspaces(
+  context: CommandContext,
+  storage: FileTokenStorage,
+  workspaces: StoredAuthWorkspace[],
+): Promise<StoredAuthWorkspace[]> {
+  const candidates = workspaces.filter(needsWorkspaceMetadataHydration);
+  if (candidates.length === 0) return workspaces;
+
+  const tokensByCredentialWorkspaceId = new Map(
+    (await storage.listWorkspaceTokens()).map((tokens) => [
+      tokens.workspaceId,
+      tokens,
+    ]),
+  );
+  let nextWorkspaces = workspaces;
+
+  for (const workspace of candidates) {
+    const tokens = tokensByCredentialWorkspaceId.get(
+      workspace.credentialWorkspaceId,
+    );
+    if (!tokens) continue;
+
+    const resolved = await resolveOAuthWorkspaceMetadata(
+      context,
+      tokens,
+    );
+    if (!resolved) continue;
+
+    await rememberResolvedWorkspaceMetadata(context, storage, tokens, resolved);
+    nextWorkspaces = nextWorkspaces.map((candidate) =>
+      candidate.credentialWorkspaceId === workspace.credentialWorkspaceId
+        ? {
+            ...candidate,
+            id: resolved.id,
+            name: resolved.name,
+            lastSeenAt: new Date().toISOString(),
+          }
+        : candidate,
+    );
+  }
+
+  return nextWorkspaces;
+}
+
+async function rememberResolvedWorkspaceMetadata(
+  context: CommandContext,
+  storage: FileTokenStorage,
+  tokens: Tokens,
+  resolved: { id: string; name: string },
+): Promise<void> {
+  try {
+    await storage.rememberWorkspace(tokens.workspaceId, resolved);
+  } catch {
+    context.runtime.signal?.throwIfAborted();
+  }
+}
+
+function needsWorkspaceMetadataHydration(workspace: StoredAuthWorkspace) {
+  return (
+    workspace.id === workspace.credentialWorkspaceId ||
+    workspace.name === "Unknown workspace" ||
+    workspace.name === workspace.credentialWorkspaceId
+  );
+}
+
+async function resolveOAuthWorkspaceMetadata(
+  context: CommandContext,
+  tokens: Tokens,
+): Promise<{ id: string; name: string } | null> {
+  const refreshStorage = new FileTokenStorage(
+    context.runtime.env,
+    context.runtime.signal,
+    { activateOnSetTokens: false },
+  );
+  const tokenStorage = createSingleWorkspaceTokenStorage(refreshStorage, tokens);
+  const sdk = createManagementApiSdk({
+    clientId: CLIENT_ID,
+    redirectUri: "http://localhost:0/auth/callback",
+    tokenStorage,
+    apiBaseUrl: getApiBaseUrl(context.runtime.env),
+  });
+
+  try {
+    const { data } = await sdk.client.GET("/v1/workspaces/{id}", {
+      params: { path: { id: tokens.workspaceId } },
+      signal: context.runtime.signal,
+    });
+    const id = stringOrNull(data?.data?.id) ?? tokens.workspaceId;
+    const name = stringOrNull(data?.data?.name) ?? id;
+
+    if (id === tokens.workspaceId && name === tokens.workspaceId) {
+      return null;
+    }
+
+    return { id, name };
+  } catch {
+    context.runtime.signal?.throwIfAborted();
+    return null;
+  }
+}
+
+function createSingleWorkspaceTokenStorage(
+  storage: FileTokenStorage,
+  initialTokens: Tokens,
+): TokenStorage {
+  let currentTokens: Tokens | null = initialTokens;
+
+  return {
+    getTokens: async () => currentTokens,
+    setTokens: async (tokens) => {
+      currentTokens = tokens;
+      await storage.setTokens(tokens);
+    },
+    clearTokens: async () => {
+      const tokens = currentTokens;
+      currentTokens = null;
+      if (tokens) {
+        await storage.clearTokensIfCurrent(tokens);
+      }
+    },
+  };
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
 }
 
 function toAuthWorkspace(workspace: StoredAuthWorkspace): AuthWorkspace {
