@@ -444,10 +444,7 @@ async function hydrateLocalAuthWorkspaces(
     );
     if (!tokens) continue;
 
-    const resolved = await resolveOAuthWorkspaceMetadata(
-      context,
-      tokens,
-    );
+    const resolved = await resolveOAuthWorkspaceMetadata(context, tokens);
     if (!resolved) continue;
 
     await rememberResolvedWorkspaceMetadata(context, storage, tokens, resolved);
@@ -496,7 +493,10 @@ async function resolveOAuthWorkspaceMetadata(
     context.runtime.signal,
     { activateOnSetTokens: false },
   );
-  const tokenStorage = createSingleWorkspaceTokenStorage(refreshStorage, tokens);
+  const tokenStorage = createSingleWorkspaceTokenStorage(
+    refreshStorage,
+    tokens,
+  );
   const sdk = createManagementApiSdk({
     clientId: CLIENT_ID,
     redirectUri: "http://localhost:0/auth/callback",
