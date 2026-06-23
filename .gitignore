@@ -7,11 +7,6 @@ packages/*/.prisma/
 /prisma.config.ts
 tmp/
 
-# Local agent skill installs
-.agents/skills/
-.claude/skills/
-skills-lock.json
-
 # Build and test output
 dist/
 .publish/
