@@ -156,9 +156,6 @@ describe("app commands", () => {
 
     expect(deployHelp.exitCode).toBe(0);
     expect(deployHelp.stderr).toContain("Creates a new deployment for the app");
-    expect(deployHelp.stderr).toContain(
-      "Agent skills for guided Next.js deploys",
-    );
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy");
     expect(deployHelp.stderr).toContain(
       "$ prisma-cli app deploy --project proj_123",
@@ -171,9 +168,6 @@ describe("app commands", () => {
     expect(deployHelp.stderr).toContain("$ prisma-cli app deploy --db --yes");
     expect(deployHelp.stderr).toContain(
       "$ prisma-cli app deploy --app my-app --framework nextjs --http-port 3000",
-    );
-    expect(deployHelp.stderr).toContain(
-      "$ pnpm dlx skills@latest add prisma/prisma-cli/skills#cli-v<cli-version> --all",
     );
     expect(deployHelp.stderr).toContain("--entry <path>");
     expect(deployHelp.stderr).toContain("--create-project <name>");

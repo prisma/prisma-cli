@@ -98,19 +98,6 @@ npx prisma-cli app promote <deployment-id>
 - Stable command groups, flags, and error codes for scripts and agents.
 - Environment variable values are not printed back to the terminal.
 
-### Agent skills
-
-For agent-guided Next.js deploys, install the Prisma CLI skill cluster at the
-project level. Match the skill ref to the installed CLI version:
-
-```bash
-npx prisma-cli version
-pnpm dlx skills@latest add prisma/prisma-cli/skills#cli-v<cli-version> --all
-```
-
-The skills teach agents how to prepare a Next.js app, run `app deploy`, verify
-the result, and route CLI / Compute feedback to the right Prisma channel.
-
 ---
 
 ## Beta notes

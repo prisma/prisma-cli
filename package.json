@@ -11,19 +11,14 @@
     "format": "biome format . --write",
     "lint": "biome check .",
     "lint:fix": "biome check . --write",
-    "lint:skills": "node scripts/validate-skills.mjs",
-    "prepare": "node scripts/prepare-skills.mjs",
     "smoke:cli-nextjs": "node scripts/smoke-cli-nextjs-artifact.mjs",
-    "test:skills": "node --test scripts/validate-skills.test.mjs",
     "test": "pnpm --filter @prisma/cli test",
     "prisma-cli": "tsx packages/cli/src/bin.ts",
     "prisma": "tsx packages/cli/src/bin.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
-    "gray-matter": "^4.0.3",
     "pkg-pr-new": "^0.0.75",
-    "skills": "^1.5.9",
     "tsx": "^4.22.4"
   }
 }
