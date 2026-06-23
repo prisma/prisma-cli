@@ -63,16 +63,19 @@ Out of scope for the current beta:
 
 ## Authentication
 
-The CLI accepts two authentication sources, in this fixed precedence:
+The CLI accepts these authentication inputs, in this fixed precedence:
 
 1. `PRISMA_SERVICE_TOKEN` environment variable — long-lived service token, intended for CI and other headless contexts.
-2. Stored OAuth session — created by `prisma-cli auth login`, kept in the OS-appropriate credentials store, refreshed automatically.
+2. `PRISMA_CLI_WORKSPACE_ID` environment variable — process-local selector for one locally authenticated OAuth workspace.
+3. Stored active OAuth workspace — created by `prisma-cli auth login`, kept in the OS-appropriate credentials store, refreshed automatically.
 
 Stored OAuth sessions include a short-lived access token and a refresh token. The local credentials store may contain OAuth grants for multiple workspaces. One local active workspace pointer selects which grant authenticated commands use. Commands refresh the selected access token automatically when the API rejects it, coordinate refreshes across concurrent CLI processes, and tolerate short refresh-token rotation races. If the selected session cannot be refreshed, commands fail with a structured `AUTH_REQUIRED` error instead of surfacing SDK stack traces or silently falling through to another workspace.
 
 When `PRISMA_SERVICE_TOKEN` is set and non-empty, the token is fully sufficient for authenticated commands. If `PRISMA_SERVICE_TOKEN` is set but empty or only whitespace, commands fail with an auth configuration error instead of falling back to stored OAuth. The CLI does not read any locally stored OAuth session when a non-empty service token is present, so behavior is identical on a fresh runner and a developer machine that happens to be signed in. The active workspace is derived from the token's `sub` claim; no additional flag or environment variable is required for the common case where the token is scoped to a single workspace.
 
-`auth login`, `auth logout`, and `auth workspace` operate on stored OAuth sessions. They do not affect the `PRISMA_SERVICE_TOKEN` environment variable. `auth login` stores the authorized workspace and makes it active. `auth logout` clears all local OAuth workspace sessions. `auth workspace logout` and `auth logout --workspace` clear one local OAuth workspace session, including while `PRISMA_SERVICE_TOKEN` is set, because they only clean local OAuth state. If that workspace was active, the CLI does not silently fall through to another cached workspace; the user must explicitly choose the next workspace with `auth workspace use`. `auth workspace use` changes only local CLI context and never mutates a remote resource. When `PRISMA_SERVICE_TOKEN` is set, workspace switching is unavailable because the token is the active auth source.
+When `PRISMA_CLI_WORKSPACE_ID` is set and `PRISMA_SERVICE_TOKEN` is not set, authenticated commands use the matching locally stored OAuth workspace for that process only. The value matches a workspace id or canonical workspace id from `auth workspace list`, including the same id with or without a `wksp_` prefix; it does not match workspace names. This environment variable does not mutate the stored active workspace pointer, which makes it suitable for parallel agents or scripts that should not fight over shared CLI state. If it is empty, ambiguous, or does not match a locally authenticated workspace, commands fail with a structured auth error instead of falling back to another workspace.
+
+`auth login`, `auth logout`, and `auth workspace` operate on stored OAuth sessions. They do not affect the `PRISMA_SERVICE_TOKEN` environment variable. `auth login` stores the authorized workspace and makes it active. `auth logout` clears all local OAuth workspace sessions. `auth workspace logout` and `auth logout --workspace` clear one local OAuth workspace session, including while `PRISMA_SERVICE_TOKEN` is set, because they only clean local OAuth state. If that workspace was active, the CLI does not silently fall through to another cached workspace; the user must explicitly choose the next workspace with `auth workspace use`. `auth workspace use` changes only local CLI context and never mutates a remote resource; its output also includes a `PRISMA_CLI_WORKSPACE_ID=<id> prisma-cli project list` example for process-local use. When `PRISMA_SERVICE_TOKEN` is set, workspace switching is unavailable because the token is the active auth source.
 
 ## Context Resolution
 

@@ -4,7 +4,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { CredentialsStore } from "@prisma/credentials-store";
 import type { TokenStorage, Tokens } from "@prisma/management-api-sdk";
-import { getAuthFilePath } from "../lib/auth/client";
+import {
+  getAuthFilePath,
+  getWorkspaceIdOverride,
+  WORKSPACE_ID_ENV_VAR,
+} from "../lib/auth/client";
 
 interface StoredCredential {
   workspaceId?: unknown;
@@ -24,6 +28,10 @@ export interface StoredAuthWorkspaceLogout {
   workspace: StoredAuthWorkspace;
   wasActive: boolean;
   activeWorkspace: StoredAuthWorkspace | null;
+}
+
+interface ListWorkspacesOptions {
+  migrateAuthContext?: boolean;
 }
 
 interface AuthContextWorkspace {
@@ -162,7 +170,7 @@ export class FileTokenStorage implements TokenStorage {
   private readonly lockFilePath: string;
 
   constructor(
-    env: NodeJS.ProcessEnv = process.env,
+    private readonly env: NodeJS.ProcessEnv = process.env,
     private readonly signal?: AbortSignal,
     private readonly options: FileTokenStorageOptions = {},
   ) {
@@ -176,8 +184,18 @@ export class FileTokenStorage implements TokenStorage {
   async getTokens(): Promise<Tokens | null> {
     this.signal?.throwIfAborted();
     try {
+      const workspaceIdOverride = getWorkspaceIdOverride(this.env);
       // CredentialsStore does not accept AbortSignal; check immediately before and after the boundary.
       const credentials = await this.readCredentialsFromDisk();
+
+      if (workspaceIdOverride) {
+        const context = await this.readAuthContext();
+        return this.selectWorkspaceTokens(credentials, context, {
+          ref: workspaceIdOverride,
+          matcher: workspaceMatchesIdRef,
+        });
+      }
+
       const context = await this.readAuthContext();
 
       if (context.state.activeWorkspaceId) {
@@ -199,8 +217,9 @@ export class FileTokenStorage implements TokenStorage {
       // state, usually after logging out the active workspace. Do not fall back
       // to another cached workspace without an explicit `auth workspace use`.
       return null;
-    } catch (_error) {
+    } catch (error) {
       if (this.signal?.aborted) throw this.signal.reason;
+      if (isWorkspaceOverrideError(error)) throw error;
       return null;
     }
   }
@@ -268,38 +287,17 @@ export class FileTokenStorage implements TokenStorage {
     this.signal?.throwIfAborted();
   }
 
-  async listWorkspaces(): Promise<StoredAuthWorkspace[]> {
+  async listWorkspaces(
+    options: ListWorkspacesOptions = {},
+  ): Promise<StoredAuthWorkspace[]> {
     this.signal?.throwIfAborted();
     const credentials = await this.readCredentialsFromDisk();
-    const context = await this.ensureMigratedAuthContext(credentials);
+    const context =
+      options.migrateAuthContext === false
+        ? await this.readAuthContext()
+        : await this.ensureMigratedAuthContext(credentials);
 
-    return credentials
-      .map((credential) => storedCredentialToTokens(credential))
-      .filter((tokens): tokens is Tokens => tokens !== null)
-      .map((tokens) => {
-        const cached = context.state.workspaces[tokens.workspaceId];
-        const id =
-          typeof cached?.id === "string" && cached.id.trim().length > 0
-            ? cached.id.trim()
-            : tokens.workspaceId;
-        const name =
-          typeof cached?.name === "string" && cached.name.trim().length > 0
-            ? workspaceDisplayName(cached.name.trim(), tokens.workspaceId)
-            : UNKNOWN_WORKSPACE_NAME;
-        const lastSeenAt =
-          typeof cached?.lastSeenAt === "string" &&
-          cached.lastSeenAt.trim().length > 0
-            ? cached.lastSeenAt.trim()
-            : null;
-
-        return {
-          id,
-          name,
-          credentialWorkspaceId: tokens.workspaceId,
-          active: context.state.activeWorkspaceId === tokens.workspaceId,
-          lastSeenAt,
-        };
-      });
+    return this.buildStoredAuthWorkspaces(credentials, context);
   }
 
   async listWorkspaceTokens(): Promise<Tokens[]> {
@@ -308,6 +306,21 @@ export class FileTokenStorage implements TokenStorage {
     return credentials
       .map((credential) => storedCredentialToTokens(credential))
       .filter((tokens): tokens is Tokens => tokens !== null);
+  }
+
+  async getTokensForWorkspaceId(workspaceId: string): Promise<Tokens | null> {
+    this.signal?.throwIfAborted();
+    const ref = workspaceId.trim();
+    if (!ref) {
+      throw new WorkspaceSelectionError("missing");
+    }
+
+    const credentials = await this.readCredentialsFromDisk();
+    const context = await this.readAuthContext();
+    return this.selectWorkspaceTokens(credentials, context, {
+      ref,
+      matcher: workspaceMatchesIdRef,
+    });
   }
 
   async useWorkspace(workspaceRef: string): Promise<{
@@ -431,6 +444,14 @@ export class FileTokenStorage implements TokenStorage {
     workspace: { id: string; name: string },
   ): Promise<void> {
     const context = await this.readAuthContext();
+    if (
+      !context.exists &&
+      this.env[WORKSPACE_ID_ENV_VAR] !== undefined &&
+      this.options.activateOnSetTokens !== true
+    ) {
+      return;
+    }
+
     context.state.workspaces[credentialWorkspaceId] = {
       id: workspace.id,
       name: workspace.name,
@@ -546,6 +567,66 @@ export class FileTokenStorage implements TokenStorage {
     return (await this.credentialsStore.getCredentials()) as StoredCredential[];
   }
 
+  private selectWorkspaceTokens(
+    credentials: StoredCredential[],
+    context: AuthContextReadResult,
+    options: {
+      ref: string;
+      matcher: (workspace: StoredAuthWorkspace, ref: string) => boolean;
+    },
+  ): Tokens | null {
+    const workspaces = this.buildStoredAuthWorkspaces(credentials, context);
+    const matches = workspaces.filter((workspace) =>
+      options.matcher(workspace, options.ref),
+    );
+
+    if (matches.length === 0) {
+      throw new WorkspaceSelectionError("not-found", options.ref);
+    }
+
+    if (matches.length > 1) {
+      throw new WorkspaceSelectionError("ambiguous", options.ref, matches);
+    }
+
+    return findTokensForWorkspace(
+      credentials,
+      matches[0].credentialWorkspaceId,
+    );
+  }
+
+  private buildStoredAuthWorkspaces(
+    credentials: StoredCredential[],
+    context: AuthContextReadResult,
+  ): StoredAuthWorkspace[] {
+    return credentials
+      .map((credential) => storedCredentialToTokens(credential))
+      .filter((tokens): tokens is Tokens => tokens !== null)
+      .map((tokens) => {
+        const cached = context.state.workspaces[tokens.workspaceId];
+        const id =
+          typeof cached?.id === "string" && cached.id.trim().length > 0
+            ? cached.id.trim()
+            : tokens.workspaceId;
+        const name =
+          typeof cached?.name === "string" && cached.name.trim().length > 0
+            ? workspaceDisplayName(cached.name.trim(), tokens.workspaceId)
+            : UNKNOWN_WORKSPACE_NAME;
+        const lastSeenAt =
+          typeof cached?.lastSeenAt === "string" &&
+          cached.lastSeenAt.trim().length > 0
+            ? cached.lastSeenAt.trim()
+            : null;
+
+        return {
+          id,
+          name,
+          credentialWorkspaceId: tokens.workspaceId,
+          active: context.state.activeWorkspaceId === tokens.workspaceId,
+          lastSeenAt,
+        };
+      });
+  }
+
   private async ensureMigratedAuthContext(
     credentials: StoredCredential[],
   ): Promise<AuthContextReadResult> {
@@ -584,8 +665,6 @@ export class FileTokenStorage implements TokenStorage {
     const context = await this.readAuthContext();
     if (
       this.options.activateOnSetTokens === false &&
-      context.exists &&
-      context.state.activeWorkspaceId &&
       context.state.activeWorkspaceId !== workspaceId
     ) {
       return;
@@ -605,6 +684,14 @@ export class FileTokenStorage implements TokenStorage {
     options: { preserveActivePointer: boolean },
   ): Promise<void> {
     const context = await this.readAuthContext();
+    if (
+      !context.exists &&
+      this.env[WORKSPACE_ID_ENV_VAR] !== undefined &&
+      options.preserveActivePointer
+    ) {
+      return;
+    }
+
     delete context.state.workspaces[workspaceId];
     if (
       !options.preserveActivePointer &&
@@ -708,6 +795,30 @@ function workspaceMatchesRef(
       stripWorkspacePrefix(ref) ||
     stripWorkspacePrefix(workspace.id) === stripWorkspacePrefix(ref) ||
     workspace.name.toLowerCase() === ref.toLowerCase()
+  );
+}
+
+export function workspaceMatchesIdRef(
+  workspace: StoredAuthWorkspace,
+  ref: string,
+): boolean {
+  return (
+    workspace.credentialWorkspaceId === ref ||
+    workspace.id === ref ||
+    stripWorkspacePrefix(workspace.credentialWorkspaceId) ===
+      stripWorkspacePrefix(ref) ||
+    stripWorkspacePrefix(workspace.id) === stripWorkspacePrefix(ref)
+  );
+}
+
+function isWorkspaceOverrideError(error: unknown): boolean {
+  if (error instanceof WorkspaceSelectionError) {
+    return true;
+  }
+
+  return (
+    error instanceof Error &&
+    error.message.startsWith(`${WORKSPACE_ID_ENV_VAR} is set but empty`)
   );
 }
 

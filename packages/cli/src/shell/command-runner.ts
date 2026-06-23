@@ -1,4 +1,6 @@
 import { AuthError as SDKAuthError } from "@prisma/management-api-sdk";
+import { WorkspaceSelectionError } from "../adapters/token-storage";
+import { WORKSPACE_ID_ENV_VAR } from "../lib/auth/client";
 import { collectCommandDiagnostics } from "../lib/diagnostics";
 import type { CommandDescriptor } from "./command-meta";
 import { getCommandDescriptor } from "./command-meta";
@@ -8,6 +10,8 @@ import {
   authRequiredError,
   CliError,
   commandCanceledError,
+  workspaceAmbiguousError,
+  workspaceNotAuthenticatedError,
 } from "./errors";
 import { resolveGlobalFlags } from "./global-flags";
 import type { CommandSuccess } from "./output";
@@ -48,9 +52,39 @@ function toCliError(error: unknown, runtime: CliRuntime): CliError | null {
     });
   }
 
+  if (error instanceof WorkspaceSelectionError) {
+    const workspaceRef =
+      error.workspaceRef ?? runtime.env[WORKSPACE_ID_ENV_VAR] ?? "";
+    const fromWorkspaceIdOverride =
+      runtime.env[WORKSPACE_ID_ENV_VAR] !== undefined &&
+      workspaceRef === runtime.env[WORKSPACE_ID_ENV_VAR]?.trim();
+    if (error.reason === "ambiguous") {
+      return workspaceAmbiguousError(
+        workspaceRef,
+        error.matches.map((match) => ({
+          id: match.id,
+          name: match.name,
+          credentialWorkspaceId: match.credentialWorkspaceId,
+        })),
+        { workspaceIdOverride: fromWorkspaceIdOverride },
+      );
+    }
+
+    if (error.reason === "missing") {
+      return workspaceNotAuthenticatedError(workspaceRef, {
+        workspaceIdOverride: fromWorkspaceIdOverride,
+      });
+    }
+
+    return workspaceNotAuthenticatedError(workspaceRef, {
+      workspaceIdOverride: fromWorkspaceIdOverride,
+    });
+  }
+
   if (
     error instanceof Error &&
-    error.message.startsWith("PRISMA_SERVICE_TOKEN is set but empty")
+    (error.message.startsWith("PRISMA_SERVICE_TOKEN is set but empty") ||
+      error.message.startsWith(`${WORKSPACE_ID_ENV_VAR} is set but empty`))
   ) {
     return authConfigInvalidError(error.message);
   }

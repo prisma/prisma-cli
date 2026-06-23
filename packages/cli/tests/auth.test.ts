@@ -436,9 +436,74 @@ describe("auth commands", () => {
           name: "Prisma Labs",
         },
       },
+      nextSteps: [
+        "prisma-cli auth whoami",
+        "prisma-cli project list",
+        "PRISMA_CLI_WORKSPACE_ID=wksp_cmmxworkspace2 prisma-cli project list",
+      ],
     });
     await expect(storage.getTokens()).resolves.toMatchObject({
       workspaceId: "cmmxworkspace2",
+    });
+  });
+
+  it("returns env-aware next steps when workspace use runs under PRISMA_CLI_WORKSPACE_ID", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const authFilePath = path.join(cwd, "auth.json");
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "cmmxworkspace1",
+        token: "access-token-1",
+        refreshToken: "refresh-token-1",
+      },
+      {
+        workspaceId: "cmmxworkspace2",
+        token: "access-token-2",
+        refreshToken: "refresh-token-2",
+      },
+    ]);
+    const storage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+    await storage.rememberWorkspace("cmmxworkspace1", {
+      id: "wksp_cmmxworkspace1",
+      name: "Acme Inc",
+    });
+    await storage.rememberWorkspace("cmmxworkspace2", {
+      id: "wksp_cmmxworkspace2",
+      name: "Prisma Labs",
+    });
+    await storage.useWorkspace("wksp_cmmxworkspace1");
+
+    const result = await executeCli({
+      argv: ["auth", "workspace", "use", "wksp_cmmxworkspace2", "--json"],
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+        PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+        PRISMA_SERVICE_TOKEN: undefined,
+        PRISMA_CLI_WORKSPACE_ID: "wksp_cmmxworkspace1",
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      command: "auth.workspace.use",
+      result: {
+        workspace: {
+          id: "wksp_cmmxworkspace2",
+          name: "Prisma Labs",
+        },
+      },
+      nextSteps: [
+        "PRISMA_CLI_WORKSPACE_ID=wksp_cmmxworkspace2 prisma-cli auth whoami",
+        "PRISMA_CLI_WORKSPACE_ID=wksp_cmmxworkspace2 prisma-cli project list",
+        "unset PRISMA_CLI_WORKSPACE_ID",
+      ],
     });
   });
 
@@ -491,6 +556,61 @@ describe("auth commands", () => {
     });
   });
 
+  it("selects the only real OAuth workspace when no workspace argument is provided and PRISMA_CLI_WORKSPACE_ID is stale", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const authFilePath = path.join(cwd, "auth.json");
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "cmmxworkspace1",
+        token: "access-token-1",
+        refreshToken: "refresh-token-1",
+      },
+    ]);
+    const storage = new FileTokenStorage({
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv);
+    await storage.rememberWorkspace("cmmxworkspace1", {
+      id: "wksp_cmmxworkspace1",
+      name: "Acme Inc",
+    });
+
+    const result = await executeCli({
+      argv: ["auth", "workspace", "use", "--json"],
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+        PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+        PRISMA_SERVICE_TOKEN: undefined,
+        PRISMA_CLI_WORKSPACE_ID: "wksp_missing",
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      command: "auth.workspace.use",
+      result: {
+        previousWorkspace: null,
+        workspace: {
+          id: "wksp_cmmxworkspace1",
+          name: "Acme Inc",
+        },
+      },
+      nextSteps: [
+        "PRISMA_CLI_WORKSPACE_ID=wksp_cmmxworkspace1 prisma-cli auth whoami",
+        "PRISMA_CLI_WORKSPACE_ID=wksp_cmmxworkspace1 prisma-cli project list",
+        "unset PRISMA_CLI_WORKSPACE_ID",
+      ],
+    });
+    await expect(storage.getTokens()).resolves.toMatchObject({
+      workspaceId: "cmmxworkspace1",
+    });
+  });
+
   it("logs out one real OAuth workspace by canonical workspace id", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -529,6 +649,7 @@ describe("auth commands", () => {
         PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
         PRISMA_COMPUTE_AUTH_FILE: authFilePath,
         PRISMA_SERVICE_TOKEN: undefined,
+        PRISMA_CLI_WORKSPACE_ID: "wksp_cmmxworkspace2",
       },
     });
 
@@ -544,6 +665,11 @@ describe("auth commands", () => {
         wasActive: true,
         activeWorkspace: null,
       },
+      nextSteps: [
+        "unset PRISMA_CLI_WORKSPACE_ID",
+        "prisma-cli auth workspace list",
+        "prisma-cli auth workspace use <id>",
+      ],
     });
     await expect(storage.getTokens()).resolves.toBeNull();
     await expect(storage.listWorkspaces()).resolves.toEqual([
@@ -592,6 +718,7 @@ describe("auth commands", () => {
         PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
         PRISMA_COMPUTE_AUTH_FILE: authFilePath,
         PRISMA_SERVICE_TOKEN: "service-token",
+        PRISMA_CLI_WORKSPACE_ID: "wksp_cmmxworkspace2",
       },
     });
 
@@ -610,6 +737,7 @@ describe("auth commands", () => {
           name: "Acme Inc",
         },
       },
+      nextSteps: ["prisma-cli auth workspace list"],
     });
     await expect(storage.getTokens()).resolves.toMatchObject({
       workspaceId: "cmmxworkspace1",
@@ -721,6 +849,58 @@ describe("auth commands", () => {
     ]);
   });
 
+  it("clears all real OAuth workspaces when PRISMA_CLI_WORKSPACE_ID is set", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const authFilePath = path.join(cwd, "auth.json");
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "cmmxworkspace1",
+        token: "access-token-1",
+        refreshToken: "refresh-token-1",
+      },
+      {
+        workspaceId: "cmmxworkspace2",
+        token: "access-token-2",
+        refreshToken: "refresh-token-2",
+      },
+    ]);
+    const baseEnv = {
+      PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+    } as NodeJS.ProcessEnv;
+    const storage = new FileTokenStorage(baseEnv);
+    await storage.useWorkspace("cmmxworkspace1");
+
+    const result = await executeCli({
+      argv: ["auth", "logout", "--json"],
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+        PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+        PRISMA_SERVICE_TOKEN: undefined,
+        PRISMA_CLI_WORKSPACE_ID: "cmmxworkspace2",
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      command: "auth.logout",
+      result: {
+        authenticated: false,
+        provider: null,
+        user: null,
+        workspace: null,
+        credential: null,
+      },
+      nextSteps: ["unset PRISMA_CLI_WORKSPACE_ID", "prisma-cli auth login"],
+    });
+    await expect(storage.getTokens()).resolves.toBeNull();
+    await expect(storage.listWorkspaceTokens()).resolves.toEqual([]);
+  });
+
   it("returns WORKSPACE_NOT_AUTHENTICATED when no cached workspace matches", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -749,6 +929,51 @@ describe("auth commands", () => {
           workspaceRef: "wksp_missing",
         },
       },
+    });
+  });
+
+  it("returns WORKSPACE_NOT_AUTHENTICATED when PRISMA_CLI_WORKSPACE_ID has no cached match", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const authFilePath = path.join(cwd, "auth.json");
+    await writeAuthFile(authFilePath, [
+      {
+        workspaceId: "workspace-1",
+        token: "access-token-1",
+        refreshToken: "refresh-token-1",
+      },
+    ]);
+
+    const result = await executeCli({
+      argv: ["auth", "whoami", "--json"],
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+        PRISMA_COMPUTE_AUTH_FILE: authFilePath,
+        PRISMA_SERVICE_TOKEN: undefined,
+        PRISMA_CLI_WORKSPACE_ID: "wksp_missing",
+      },
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      command: "auth.whoami",
+      error: {
+        code: "WORKSPACE_NOT_AUTHENTICATED",
+        domain: "auth",
+        meta: {
+          envVar: "PRISMA_CLI_WORKSPACE_ID",
+          workspaceRef: "wksp_missing",
+        },
+      },
+      nextSteps: [
+        "prisma-cli auth workspace list",
+        "unset PRISMA_CLI_WORKSPACE_ID",
+        "prisma-cli auth login",
+      ],
     });
   });
 
@@ -910,6 +1135,39 @@ describe("auth commands", () => {
         code: "AUTH_CONFIG_INVALID",
         domain: "auth",
       },
+    });
+  });
+
+  it("returns a structured auth config error when PRISMA_CLI_WORKSPACE_ID is empty", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    const result = await executeCli({
+      argv: ["auth", "whoami", "--json"],
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+        PRISMA_SERVICE_TOKEN: undefined,
+        PRISMA_CLI_WORKSPACE_ID: "  ",
+      },
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      command: "auth.whoami",
+      error: {
+        code: "AUTH_CONFIG_INVALID",
+        domain: "auth",
+        why: "PRISMA_CLI_WORKSPACE_ID is set but empty. Provide a workspace id from prisma-cli auth workspace list, or unset the variable.",
+      },
+      nextSteps: [
+        "prisma-cli auth workspace list",
+        "unset PRISMA_CLI_WORKSPACE_ID",
+      ],
     });
   });
 

@@ -12,7 +12,8 @@ import { CLIENT_ID, getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "./client";
  *
  * Priority:
  *   1. PRISMA_SERVICE_TOKEN env var → service token (CI / headless)
- *   2. Stored OAuth tokens     → SDK with auto-refresh
+ *   2. PRISMA_CLI_WORKSPACE_ID env var → stored OAuth workspace override
+ *   3. Stored active OAuth workspace → SDK with auto-refresh
  *
  * Returns null if not authenticated.
  */

@@ -7,6 +7,7 @@ import {
   FileTokenStorage,
   type StoredAuthWorkspace,
   WorkspaceSelectionError,
+  workspaceMatchesIdRef,
 } from "../adapters/token-storage";
 import {
   performLogin,
@@ -16,7 +17,9 @@ import {
 import {
   CLIENT_ID,
   getApiBaseUrl,
+  getWorkspaceIdOverride,
   SERVICE_TOKEN_ENV_VAR,
+  WORKSPACE_ID_ENV_VAR,
 } from "../lib/auth/client";
 import {
   authRequiredError,
@@ -64,16 +67,20 @@ export async function runAuthLogin(
 
   if (isRealMode(context)) {
     await performLogin(context.runtime.env, context.runtime.signal);
-    result = await readAuthState(context.runtime.env, context.runtime.signal);
+    result = await readAuthState(
+      envWithoutWorkspaceIdOverride(context.runtime.env),
+      context.runtime.signal,
+    );
   } else {
     const useCases = createAuthUseCases(createCliUseCaseGateways(context));
     result = await loginWithSelectionFlow(context, useCases, options);
   }
 
-  return createAuthSuccess("auth.login", result, [
-    "prisma-cli auth whoami",
-    "prisma-cli project list",
-  ]);
+  return createAuthSuccess(
+    "auth.login",
+    result,
+    buildAuthLoginNextSteps(context.runtime.env, result),
+  );
 }
 
 export async function runAuthLogout(
@@ -83,13 +90,20 @@ export async function runAuthLogout(
 
   if (isRealMode(context)) {
     await performLogout(context.runtime.env, context.runtime.signal);
-    result = await readAuthState(context.runtime.env, context.runtime.signal);
+    result = await readAuthState(
+      envWithoutWorkspaceIdOverride(context.runtime.env),
+      context.runtime.signal,
+    );
   } else {
     const useCases = createAuthUseCases(createCliUseCaseGateways(context));
     result = await useCases.logout();
   }
 
-  return createAuthSuccess("auth.logout", result, ["prisma-cli auth login"]);
+  return createAuthSuccess(
+    "auth.logout",
+    result,
+    buildAuthLogoutNextSteps(context.runtime.env),
+  );
 }
 
 export async function runAuthWhoAmI(
@@ -147,7 +161,10 @@ export async function runAuthWorkspaceUse(
     command: "auth.workspace.use",
     result,
     warnings: [],
-    nextSteps: ["prisma-cli auth whoami", "prisma-cli project list"],
+    nextSteps: buildWorkspaceUseNextSteps(
+      context.runtime.env,
+      result.workspace.id,
+    ),
   };
 }
 
@@ -175,12 +192,7 @@ export async function runAuthWorkspaceLogout(
     command: "auth.workspace.logout",
     result,
     warnings: [],
-    nextSteps: result.activeWorkspace
-      ? ["prisma-cli auth workspace list"]
-      : [
-          "prisma-cli auth workspace list",
-          "prisma-cli auth workspace use <id>",
-        ],
+    nextSteps: buildWorkspaceLogoutNextSteps(context.runtime.env, result),
   };
 }
 
@@ -201,7 +213,10 @@ export async function requireAuthenticatedAuthState(
     }
 
     await performLogin(context.runtime.env, context.runtime.signal);
-    return readAuthState(context.runtime.env, context.runtime.signal);
+    return readAuthState(
+      envWithoutWorkspaceIdOverride(context.runtime.env),
+      context.runtime.signal,
+    );
   }
 
   const useCases = createAuthUseCases(createCliUseCaseGateways(context));
@@ -220,16 +235,24 @@ export async function requireAuthenticatedAuthState(
 
 async function listRealAuthWorkspaces(
   context: CommandContext,
+  options: { ignoreWorkspaceIdOverride?: boolean } = {},
 ): Promise<AuthWorkspaceListResult> {
   const rawServiceToken = context.runtime.env[SERVICE_TOKEN_ENV_VAR];
-  const storage = new FileTokenStorage(
-    context.runtime.env,
-    context.runtime.signal,
-  );
+  const shouldUseWorkspaceIdOverride =
+    rawServiceToken === undefined && !options.ignoreWorkspaceIdOverride;
+  const workspaceIdOverride = shouldUseWorkspaceIdOverride
+    ? getWorkspaceIdOverride(context.runtime.env)
+    : null;
+  const storageEnv = shouldUseWorkspaceIdOverride
+    ? context.runtime.env
+    : envWithoutWorkspaceIdOverride(context.runtime.env);
+  const storage = new FileTokenStorage(storageEnv, context.runtime.signal);
   const localWorkspaces = await hydrateLocalAuthWorkspaces(
     context,
     storage,
-    await storage.listWorkspaces(),
+    await storage.listWorkspaces({
+      migrateAuthContext: workspaceIdOverride === null,
+    }),
   );
 
   if (rawServiceToken !== undefined) {
@@ -265,19 +288,140 @@ async function listRealAuthWorkspaces(
     };
   }
 
-  const active = localWorkspaces.find((workspace) => workspace.active) ?? null;
+  const active = workspaceIdOverride
+    ? resolveLocalWorkspaceIdOverride(localWorkspaces, workspaceIdOverride)
+    : (localWorkspaces.find((workspace) => workspace.active) ?? null);
   return {
     authSource: localWorkspaces.length > 0 ? "oauth" : "none",
     activeWorkspace: active ? toAuthWorkspace(active) : null,
     workspaces: localWorkspaces.map((workspace) => ({
       ...toAuthWorkspace(workspace),
       credentialWorkspaceId: workspace.credentialWorkspaceId,
-      active: workspace.active,
+      active: active?.credentialWorkspaceId === workspace.credentialWorkspaceId,
       source: "oauth" as const,
       switchable: true,
       lastSeenAt: workspace.lastSeenAt,
     })),
   };
+}
+
+function resolveLocalWorkspaceIdOverride(
+  workspaces: StoredAuthWorkspace[],
+  workspaceIdOverride: string,
+): StoredAuthWorkspace {
+  const matches = workspaces.filter((workspace) =>
+    workspaceMatchesIdRef(workspace, workspaceIdOverride),
+  );
+
+  if (matches.length === 0) {
+    throw workspaceNotAuthenticatedError(workspaceIdOverride, {
+      workspaceIdOverride: true,
+    });
+  }
+
+  if (matches.length > 1) {
+    throw workspaceAmbiguousError(
+      workspaceIdOverride,
+      matches.map((match) => ({
+        id: match.id,
+        name: match.name,
+        credentialWorkspaceId: match.credentialWorkspaceId,
+      })),
+      { workspaceIdOverride: true },
+    );
+  }
+
+  return matches[0];
+}
+
+function workspaceEnvNextStep(workspaceId: string): string {
+  return workspaceEnvCommand(workspaceId, "prisma-cli project list");
+}
+
+function workspaceEnvCommand(workspaceId: string, command: string): string {
+  return `${WORKSPACE_ID_ENV_VAR}=${workspaceId} ${command}`;
+}
+
+function hasEffectiveWorkspaceIdOverride(env: NodeJS.ProcessEnv): boolean {
+  return (
+    env[WORKSPACE_ID_ENV_VAR] !== undefined &&
+    env[SERVICE_TOKEN_ENV_VAR] === undefined
+  );
+}
+
+function buildAuthLoginNextSteps(
+  env: NodeJS.ProcessEnv,
+  result: AuthStateResult,
+): string[] {
+  if (hasEffectiveWorkspaceIdOverride(env) && result.workspace) {
+    return [
+      workspaceEnvCommand(result.workspace.id, "prisma-cli auth whoami"),
+      workspaceEnvNextStep(result.workspace.id),
+      `unset ${WORKSPACE_ID_ENV_VAR}`,
+    ];
+  }
+
+  return ["prisma-cli auth whoami", "prisma-cli project list"];
+}
+
+function buildAuthLogoutNextSteps(env: NodeJS.ProcessEnv): string[] {
+  return hasEffectiveWorkspaceIdOverride(env)
+    ? [`unset ${WORKSPACE_ID_ENV_VAR}`, "prisma-cli auth login"]
+    : ["prisma-cli auth login"];
+}
+
+function buildWorkspaceUseNextSteps(
+  env: NodeJS.ProcessEnv,
+  workspaceId: string,
+): string[] {
+  if (hasEffectiveWorkspaceIdOverride(env)) {
+    return [
+      workspaceEnvCommand(workspaceId, "prisma-cli auth whoami"),
+      workspaceEnvNextStep(workspaceId),
+      `unset ${WORKSPACE_ID_ENV_VAR}`,
+    ];
+  }
+
+  return [
+    "prisma-cli auth whoami",
+    "prisma-cli project list",
+    workspaceEnvNextStep(workspaceId),
+  ];
+}
+
+function buildWorkspaceLogoutNextSteps(
+  env: NodeJS.ProcessEnv,
+  result: AuthWorkspaceLogoutResult,
+): string[] {
+  if (hasEffectiveWorkspaceIdOverride(env)) {
+    return result.activeWorkspace
+      ? [
+          `unset ${WORKSPACE_ID_ENV_VAR}`,
+          "prisma-cli auth workspace list",
+          workspaceEnvNextStep(result.activeWorkspace.id),
+        ]
+      : [
+          `unset ${WORKSPACE_ID_ENV_VAR}`,
+          "prisma-cli auth workspace list",
+          "prisma-cli auth workspace use <id>",
+        ];
+  }
+
+  return result.activeWorkspace
+    ? ["prisma-cli auth workspace list"]
+    : ["prisma-cli auth workspace list", "prisma-cli auth workspace use <id>"];
+}
+
+function envWithoutWorkspaceIdOverride(
+  env: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  if (env[WORKSPACE_ID_ENV_VAR] === undefined) {
+    return env;
+  }
+
+  const next = { ...env };
+  delete next[WORKSPACE_ID_ENV_VAR];
+  return next;
 }
 
 async function useRealAuthWorkspace(
@@ -378,7 +522,9 @@ async function selectWorkspaceSession(
   }
 
   const result = realMode
-    ? await listRealAuthWorkspaces(context)
+    ? await listRealAuthWorkspaces(context, {
+        ignoreWorkspaceIdOverride: true,
+      })
     : await createAuthUseCases(
         createCliUseCaseGateways(context),
       ).listWorkspaces();

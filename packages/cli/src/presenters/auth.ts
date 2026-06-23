@@ -1,4 +1,5 @@
 import stringWidth from "string-width";
+import { WORKSPACE_ID_ENV_VAR } from "../lib/auth/client";
 import { renderMutate, renderShow } from "../output/patterns";
 import type { CommandDescriptor } from "../shell/command-meta";
 import { formatDescriptorLabel } from "../shell/command-meta";
@@ -176,7 +177,10 @@ export function renderAuthWorkspaceUse(
       ],
       operationDescription: "Applying workspace selection",
       operationCount: 1,
-      details: ["Local OAuth workspace selection updated."],
+      details: [
+        "Local OAuth workspace selection updated.",
+        `For parallel agents: ${WORKSPACE_ID_ENV_VAR}=${result.workspace.id} prisma-cli project list`,
+      ],
     },
     context.ui,
   );

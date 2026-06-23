@@ -1,3 +1,4 @@
+import { WORKSPACE_ID_ENV_VAR } from "../lib/auth/client";
 import type { NextAction } from "./next-actions";
 
 export type ErrorDomain =
@@ -99,14 +100,22 @@ export function authRequiredError(
 }
 
 export function authConfigInvalidError(message: string): CliError {
+  const isWorkspaceOverrideError = message.startsWith(
+    `${WORKSPACE_ID_ENV_VAR} is set but empty`,
+  );
+
   return new CliError({
     code: "AUTH_CONFIG_INVALID",
     domain: "auth",
     summary: "Authentication configuration is invalid",
     why: message,
-    fix: "Provide a valid PRISMA_SERVICE_TOKEN value, or unset the variable to use local OAuth login.",
+    fix: isWorkspaceOverrideError
+      ? "Set PRISMA_CLI_WORKSPACE_ID to a workspace id from prisma-cli auth workspace list, or unset the variable to use the active local OAuth workspace."
+      : "Provide a valid PRISMA_SERVICE_TOKEN value, or unset the variable to use local OAuth login.",
     exitCode: 1,
-    nextSteps: ["prisma-cli auth login"],
+    nextSteps: isWorkspaceOverrideError
+      ? ["prisma-cli auth workspace list", "unset PRISMA_CLI_WORKSPACE_ID"]
+      : ["prisma-cli auth login"],
   });
 }
 
@@ -144,37 +153,55 @@ export function workspaceSwitchUnavailableError(): CliError {
   });
 }
 
-export function workspaceNotAuthenticatedError(workspaceRef: string): CliError {
+export function workspaceNotAuthenticatedError(
+  workspaceRef: string,
+  options: { workspaceIdOverride?: boolean } = {},
+): CliError {
   return new CliError({
     code: "WORKSPACE_NOT_AUTHENTICATED",
     domain: "auth",
     summary: "Workspace is not authenticated",
     why: `No stored OAuth session matched "${workspaceRef}".`,
-    fix: "Run prisma-cli auth login and authorize that workspace, then switch to it.",
+    fix: options.workspaceIdOverride
+      ? "Set PRISMA_CLI_WORKSPACE_ID to an authenticated workspace id from prisma-cli auth workspace list, unset it to use the active local OAuth workspace, or run prisma-cli auth login."
+      : "Run prisma-cli auth login and authorize that workspace, then switch to it.",
     meta: {
       workspaceRef,
+      ...(options.workspaceIdOverride ? { envVar: WORKSPACE_ID_ENV_VAR } : {}),
     },
     exitCode: 1,
-    nextSteps: ["prisma-cli auth workspace list", "prisma-cli auth login"],
+    nextSteps: options.workspaceIdOverride
+      ? [
+          "prisma-cli auth workspace list",
+          `unset ${WORKSPACE_ID_ENV_VAR}`,
+          "prisma-cli auth login",
+        ]
+      : ["prisma-cli auth workspace list", "prisma-cli auth login"],
   });
 }
 
 export function workspaceAmbiguousError(
   workspaceRef: string,
   matches: Array<{ id: string; name: string; credentialWorkspaceId: string }>,
+  options: { workspaceIdOverride?: boolean } = {},
 ): CliError {
   return new CliError({
     code: "WORKSPACE_AMBIGUOUS",
     domain: "auth",
     summary: "Workspace name is ambiguous",
     why: `Multiple authenticated workspaces matched "${workspaceRef}".`,
-    fix: "Run prisma-cli auth workspace list and switch by workspace id.",
+    fix: options.workspaceIdOverride
+      ? "Set PRISMA_CLI_WORKSPACE_ID to one full workspace id from prisma-cli auth workspace list, or unset it to use the active local OAuth workspace."
+      : "Run prisma-cli auth workspace list and switch by workspace id.",
     meta: {
       workspaceRef,
       matches,
+      ...(options.workspaceIdOverride ? { envVar: WORKSPACE_ID_ENV_VAR } : {}),
     },
     exitCode: 2,
-    nextSteps: ["prisma-cli auth workspace list"],
+    nextSteps: options.workspaceIdOverride
+      ? ["prisma-cli auth workspace list", `unset ${WORKSPACE_ID_ENV_VAR}`]
+      : ["prisma-cli auth workspace list"],
   });
 }
 
