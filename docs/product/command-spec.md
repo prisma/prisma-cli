@@ -879,7 +879,7 @@ Examples:
 prisma-cli database connection remove conn_123 --confirm conn_123
 ```
 
-## `prisma-cli app build [app] --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|tanstack-start>`
+## `prisma-cli app build [app] --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|nestjs|tanstack-start|custom>`
 
 Purpose:
 
@@ -889,7 +889,7 @@ Behavior:
 
 - resolves the optional `[app]` target, app root, framework, and entrypoint from `prisma.compute.ts` exactly like `app deploy`; explicit `--entry` and a non-`auto` `--build-type` override the config
 - detects supported project shapes when `--build-type auto` is used and no config framework applies
-- supports Bun, Next.js, Nuxt, Astro, and TanStack Start app builds in the beta package
+- supports Bun, Next.js, Nuxt, Astro, NestJS, TanStack Start, and custom artifact app builds in the beta package
 - fails with `USAGE_ERROR` when framework detection is ambiguous
 
 Examples:
@@ -898,9 +898,11 @@ Examples:
 prisma-cli app build --build-type nextjs
 prisma-cli app build --build-type nuxt
 prisma-cli app build --build-type astro
+prisma-cli app build --build-type nestjs
 prisma-cli app build --build-type tanstack-start
 prisma-cli app build --build-type bun --entry server.ts
 prisma-cli app build api
+prisma-cli app build svelte
 ```
 
 ## `prisma-cli app run [app] --entry <path> --build-type <auto|bun|nextjs> --port <port>`
@@ -925,7 +927,7 @@ prisma-cli app run --build-type bun --entry server.ts --port 3000
 prisma-cli app run api
 ```
 
-## `prisma-cli app deploy [app] --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|nuxt|astro|hono|tanstack-start|bun> --entry <path> --http-port <port> --env <name=value|file> --db --no-db --prod`
+## `prisma-cli app deploy [app] --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|nuxt|astro|hono|nestjs|tanstack-start|custom|bun> --entry <path> --http-port <port> --env <name=value|file> --db --no-db --prod`
 
 Purpose:
 
@@ -943,8 +945,9 @@ Compute config file (`prisma.compute.ts`):
   - `apps` — a multi-app or monorepo repository, keyed by deploy target name
 - each app accepts `name`, `root`, `framework`, `entry`, `httpPort`, `env`, and `build`:
   - `env` is a dotenv file path, or `{ file, vars }` with file path(s) and inline assignments
-  - `build` is `{ command, outputDirectory }`; both fields are optional and `command: null` skips the build step
-  - `build` applies to frameworks whose preview build consumes committed settings (`nextjs`, `hono`, `tanstack-start`, `bun`); `nuxt` and `astro` builds run their framework CLI automatically, so a `build` block with those frameworks is a validation error (`BUILD_SETTINGS_UNSUPPORTED` when only detected at deploy time)
+  - `build` is `{ command, outputDirectory, entrypoint }`; all fields are optional except where a framework requires enough information to stage a runnable artifact, and `command: null` skips the build step
+  - `build.entrypoint` is the built artifact entrypoint when `outputDirectory` is set, and is the source entrypoint for Bun/Hono configs that do not set an output directory
+  - `framework: "custom"` deploys a prebuilt or custom-built artifact and requires `build.outputDirectory` and `build.entrypoint`
 - when `build` is present, the compute config owns build settings for that app: fields it sets override framework defaults, fields it omits are inferred; without a `build` block, settings are inferred entirely, with their sources shown
 - the compute config does not declare databases in the current beta; database setup stays on the `--db`/`--no-db` flags (a future project-level `database` field is the reserved growth path, since databases are branch resources shared by every app on the branch)
 
@@ -991,6 +994,15 @@ export default defineComputeConfig({
   apps: {
     web: { root: "apps/web", framework: "nextjs" },
     worker: { root: "apps/worker", framework: "bun", entry: "src/index.ts" },
+    svelte: {
+      root: "apps/svelte",
+      framework: "custom",
+      build: {
+        command: "npm run build",
+        outputDirectory: "build",
+        entrypoint: "handler.js",
+      },
+    },
   },
 });
 ```
@@ -1030,6 +1042,7 @@ Behavior:
   - build commands run with every `node_modules/.bin` between the app and the repository or workspace root on `PATH`, so hoisted workspace binaries resolve
   - otherwise `Build Command` falls back to the framework default, such as `next build`
   - `Output Directory` is a literal framework output path, such as `.next/standalone`, `.output`, or `.`
+  - `Entrypoint` is shown when the config or framework settings provide a concrete built artifact entrypoint
 - `prisma.app.json` is legacy and never read or written; a leftover file that matches the resolved settings produces a deletion warning, an unparsable one is ignored with a warning, and one with custom values fails with `BUILD_SETTINGS_MIGRATION_REQUIRED` including the exact `build` block to move into `prisma.compute.ts`
 - after setup, deploy prints `Deploying to <Project> / <Branch> / <App>`; later deploys print a compact target header such as `Deploying ./j1 to j1 / main / j1`
 - deploy progress uses short stage copy (`Building locally...`, `Built <size>`, `Uploading...`, `Uploaded`, `Deploying...`, `Deployed`) and never prints `Status: running` or `Deployment is running at ...`
@@ -1052,6 +1065,7 @@ Behavior:
 - `--env DATABASE_URL=...`, `--env DIRECT_URL=...`, or the same keys loaded from an env file suppress automatic database prompting; combining those database env vars with `--db` is rejected
 - maps user-facing framework names to deploy build strategies
 - does not accept `--build-command` or `--output-directory`; custom build settings live in the `build` block of `prisma.compute.ts`
+- deploys arbitrary framework output with `framework: "custom"` when the config provides a build command, output directory, and built entrypoint
 - uses `src/index.ts` as the Hono deploy entrypoint when the app has no `package.json#main` or `package.json#module` and that file exists
 - supports vanilla Bun apps with `--framework bun` using `package.json#main` or `package.json#module`, or with `--entry <path>`
 - treats `--entry <path>` without `--framework` as a Bun app deploy

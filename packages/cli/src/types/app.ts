@@ -111,7 +111,14 @@ export interface AppShowResult {
 export interface AppBuildResult {
   directory: string;
   entrypoint: string | null;
-  buildType: "bun" | "nextjs" | "nuxt" | "astro" | "nestjs" | "tanstack-start";
+  buildType:
+    | "bun"
+    | "nextjs"
+    | "nuxt"
+    | "astro"
+    | "nestjs"
+    | "tanstack-start"
+    | "custom";
 }
 
 export interface AppShowDeployResult {

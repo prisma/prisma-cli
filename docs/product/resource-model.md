@@ -104,7 +104,7 @@ Rules:
 - the runtime app service is scoped by branch in the platform model
 - the app may be selected or created as part of app deployment workflows
 - app selection is local CLI state when needed for the beta package
-- app build settings live in the `build` block of `prisma.compute.ts` (`command`, `outputDirectory`); `prisma.app.json` is legacy and no longer read
+- app build settings live in the `build` block of `prisma.compute.ts` (`command`, `outputDirectory`, `entrypoint`); `prisma.app.json` is legacy and no longer read
 
 ### Deployment
 

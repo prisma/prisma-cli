@@ -29,6 +29,7 @@ import {
   maybeSetupBranchDatabase,
 } from "../lib/app/branch-database-deploy";
 import {
+  APP_BUILD_TYPE_LABELS,
   APP_BUILD_TYPES,
   type AppBuildSettings,
   type AppBuildSettingsResolution,
@@ -845,7 +846,8 @@ async function runSingleAppDeploy(
           name: framework.displayName,
           source: framework.annotation,
         },
-        entrypoint: entrypoint ?? null,
+        entrypoint:
+          entrypoint ?? buildSettingsResolution.settings.entrypoint ?? null,
         httpPort: runtime.port,
         region: selectedApp.region ?? null,
         envVars: envVarNames(envVars),
@@ -4079,11 +4081,6 @@ function frameworkFromUserFacingValue(
   };
 }
 
-/**
- * The nuxt and astro strategies build with their framework CLI and stage
- * fixed output, so a compute config `build` block has nothing to apply to.
- * Erroring beats silently ignoring committed settings.
- */
 function assertConfigBackedBuildSettings(
   buildType: FrameworkBuildType,
 ): asserts buildType is ConfigBackedBuildType {
@@ -4185,6 +4182,15 @@ function maybeRenderDeployBuildSettings(
           value: settings.outputDirectory,
           origin: settings.outputDirectorySource ?? undefined,
         },
+        ...(settings.entrypoint
+          ? [
+              {
+                label: "Entrypoint",
+                value: settings.entrypoint,
+                origin: settings.entrypointSource ?? undefined,
+              },
+            ]
+          : []),
       ]).join("\n")}\n\n`,
   );
 }
@@ -4394,7 +4400,7 @@ function normalizeBuildType(
 
   throw usageError(
     `Unsupported build type "${requestedBuildType}"`,
-    `Only ${APP_BUILD_TYPES.join(", ")} are supported in the current preview.`,
+    `Only ${APP_BUILD_TYPE_LABELS} are supported in the current preview.`,
     "Pass a supported --build-type value.",
     getBuildTypeExamples("build"),
     "app",
@@ -4844,22 +4850,18 @@ function isAutoBuildDetectionError(error: unknown): boolean {
 }
 
 function formatBuildTypeName(buildType: AppBuildType): string {
-  switch (buildType) {
-    case "nextjs":
-      return "Next.js";
-    case "nuxt":
-      return "Nuxt";
-    case "astro":
-      return "Astro";
-    case "nestjs":
-      return "NestJS";
-    case "tanstack-start":
-      return "TanStack Start";
-    case "bun":
-      return "Bun";
-    case "auto":
-      return "Auto";
+  if (buildType === "auto") {
+    return "Auto";
   }
+
+  for (let index = FRAMEWORKS.length - 1; index >= 0; index -= 1) {
+    const framework = FRAMEWORKS[index];
+    if (framework?.buildType === buildType) {
+      return framework.displayName;
+    }
+  }
+
+  return buildType;
 }
 
 function removeFailedError(
