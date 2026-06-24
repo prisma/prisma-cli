@@ -902,7 +902,7 @@ prisma-cli app build --build-type nestjs
 prisma-cli app build --build-type tanstack-start
 prisma-cli app build --build-type bun --entry server.ts
 prisma-cli app build api
-prisma-cli app build svelte
+prisma-cli app build frontend
 ```
 
 ## `prisma-cli app run [app] --entry <path> --build-type <auto|bun|nextjs> --port <port>`
@@ -994,8 +994,8 @@ export default defineComputeConfig({
   apps: {
     web: { root: "apps/web", framework: "nextjs" },
     worker: { root: "apps/worker", framework: "bun", entry: "src/index.ts" },
-    svelte: {
-      root: "apps/svelte",
+    frontend: {
+      root: "apps/frontend",
       framework: "custom",
       build: {
         command: "npm run build",

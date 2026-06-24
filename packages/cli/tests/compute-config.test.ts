@@ -198,8 +198,8 @@ describe("normalizeComputeConfig", () => {
             framework: "hono",
             build: { command: null },
           },
-          svelte: {
-            root: "apps/svelte",
+          frontend: {
+            root: "apps/frontend",
             framework: "custom",
             build: {
               command: "npm run build",
