@@ -5,4 +5,4 @@ allowBuilds:
   esbuild: true
 
 minimumReleaseAgeExclude:
-  - '@prisma/compute-sdk@0.28.0'
+  - '@prisma/compute-sdk@0.29.0'
