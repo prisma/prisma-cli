@@ -335,17 +335,17 @@ export function createAppProvider(
     },
 
     async removeApp(appId, options) {
-      const appResult = await sdk.showService({
-        serviceId: appId,
+      const appResult = await sdk.showApp({
+        appId,
         signal: options?.signal,
       });
       if (appResult.isErr()) {
         throw new Error(appResult.error.message);
       }
 
-      const destroyResult = await sdk.destroyService({
-        serviceId: appId,
-        keepService: false,
+      const destroyResult = await sdk.destroyApp({
+        appId,
+        keepApp: false,
         timeoutSeconds: 120,
         pollIntervalMs: 2_000,
         signal: options?.signal,
@@ -366,18 +366,15 @@ export function createAppProvider(
     },
 
     async addDomain(options) {
-      const result = await client.POST(
-        "/v1/compute-services/{computeServiceId}/domains",
-        {
-          params: {
-            path: { computeServiceId: options.appId },
-          },
-          body: {
-            hostname: options.hostname,
-          },
-          signal: options.signal,
+      const result = await client.POST("/v1/apps/{appId}/domains", {
+        params: {
+          path: { appId: options.appId },
         },
-      );
+        body: {
+          hostname: options.hostname,
+        },
+        signal: options.signal,
+      });
 
       if (result.error || !result.data) {
         if (result.response.status === 409) {
@@ -466,8 +463,8 @@ export function createAppProvider(
 
     async promoteDeployment(options) {
       const promoteResult = await sdk.promote({
-        serviceId: options.appId,
-        versionId: options.deploymentId,
+        appId: options.appId,
+        deploymentId: options.deploymentId,
         timeoutSeconds: 120,
         pollIntervalMs: 2000,
         signal: options.signal,
@@ -509,8 +506,8 @@ export function createAppProvider(
           buildSettings: options.buildSettings,
         }),
         projectId: options.projectId,
-        serviceId: resolvedApp.appId,
-        serviceName: resolvedApp.appName,
+        appId: resolvedApp.appId,
+        appName: resolvedApp.appName,
         region: resolvedApp.region,
         portMapping: options.portMapping,
         envVars: options.envVars,
@@ -530,18 +527,18 @@ export function createAppProvider(
       return {
         projectId: deployed.projectId,
         app: {
-          id: deployed.serviceId,
-          name: deployed.serviceName,
+          id: deployed.appId,
+          name: deployed.appName,
           region: deployed.region ?? null,
-          liveDeploymentId: deployed.versionId,
-          liveUrl: toAbsoluteUrl(deployed.serviceEndpointDomain ?? null),
+          liveDeploymentId: deployed.deploymentId,
+          liveUrl: toAbsoluteUrl(deployed.appEndpointDomain ?? null),
         },
         deployment: {
-          id: deployed.versionId,
+          id: deployed.deploymentId,
           status: "running",
           url: toAbsoluteUrl(
-            deployed.serviceEndpointDomain ??
-              deployed.versionEndpointDomain ??
+            deployed.appEndpointDomain ??
+              deployed.deploymentEndpointDomain ??
               null,
           ),
         },
@@ -550,7 +547,7 @@ export function createAppProvider(
 
     async updateAppEnv(options) {
       const updateResult = await sdk.updateEnv({
-        serviceId: options.appId,
+        appId: options.appId,
         envVars: options.envVars,
         timeoutSeconds: 120,
         pollIntervalMs: 2000,
@@ -563,8 +560,8 @@ export function createAppProvider(
       }
 
       const promoteResult = await sdk.promote({
-        serviceId: options.appId,
-        versionId: updateResult.value.versionId,
+        appId: options.appId,
+        deploymentId: updateResult.value.deploymentId,
         timeoutSeconds: 120,
         pollIntervalMs: 2000,
         signal: options.signal,
@@ -576,9 +573,9 @@ export function createAppProvider(
       }
 
       const [serviceResult, versionResult] = await Promise.all([
-        sdk.showService({ serviceId: options.appId, signal: options.signal }),
-        sdk.showVersion({
-          versionId: updateResult.value.versionId,
+        sdk.showApp({ appId: options.appId, signal: options.signal }),
+        sdk.showDeployment({
+          deploymentId: updateResult.value.deploymentId,
           signal: options.signal,
         }),
       ]);
@@ -597,17 +594,15 @@ export function createAppProvider(
           id: serviceResult.value.id,
           name: serviceResult.value.name,
           region: serviceResult.value.region ?? null,
-          liveDeploymentId: serviceResult.value.latestVersionId ?? null,
-          liveUrl: toAbsoluteUrl(
-            serviceResult.value.serviceEndpointDomain ?? null,
-          ),
+          liveDeploymentId: serviceResult.value.latestDeploymentId ?? null,
+          liveUrl: toAbsoluteUrl(serviceResult.value.appEndpointDomain ?? null),
         },
         deployment: {
           id: versionResult.value.id,
           status: versionResult.value.status,
           createdAt: versionResult.value.createdAt,
           url: toAbsoluteUrl(
-            serviceResult.value.serviceEndpointDomain ??
+            serviceResult.value.appEndpointDomain ??
               versionResult.value.previewDomain ??
               null,
           ),
@@ -619,9 +614,9 @@ export function createAppProvider(
 
     async listAppEnvNames(options) {
       const [serviceResult, versionResult] = await Promise.all([
-        sdk.showService({ serviceId: options.appId, signal: options.signal }),
-        sdk.showVersion({
-          versionId: options.deploymentId,
+        sdk.showApp({ appId: options.appId, signal: options.signal }),
+        sdk.showDeployment({
+          deploymentId: options.deploymentId,
           signal: options.signal,
         }),
       ]);
@@ -640,17 +635,16 @@ export function createAppProvider(
           id: serviceResult.value.id,
           name: serviceResult.value.name,
           region: serviceResult.value.region ?? null,
-          liveDeploymentId: serviceResult.value.latestVersionId ?? null,
-          liveUrl: toAbsoluteUrl(
-            serviceResult.value.serviceEndpointDomain ?? null,
-          ),
+          liveDeploymentId: serviceResult.value.latestDeploymentId ?? null,
+          liveUrl: toAbsoluteUrl(serviceResult.value.appEndpointDomain ?? null),
         },
         deployment: {
           id: versionResult.value.id,
           status: versionResult.value.status,
           createdAt: versionResult.value.createdAt,
           url: toAbsoluteUrl(versionResult.value.previewDomain ?? null),
-          live: serviceResult.value.latestVersionId === versionResult.value.id,
+          live:
+            serviceResult.value.latestDeploymentId === versionResult.value.id,
         },
         variables: envVarNames(versionResult.value.envVars),
       };
@@ -658,8 +652,8 @@ export function createAppProvider(
 
     async listDeployments(appId, options) {
       const [appResult, versionsResult] = await Promise.all([
-        sdk.showService({ serviceId: appId, signal: options?.signal }),
-        sdk.listVersions({ serviceId: appId, signal: options?.signal }),
+        sdk.showApp({ appId, signal: options?.signal }),
+        sdk.listDeployments({ appId, signal: options?.signal }),
       ]);
 
       if (appResult.isErr()) {
@@ -675,8 +669,8 @@ export function createAppProvider(
           id: appResult.value.id,
           name: appResult.value.name,
           region: appResult.value.region ?? null,
-          liveDeploymentId: appResult.value.latestVersionId ?? null,
-          liveUrl: toAbsoluteUrl(appResult.value.serviceEndpointDomain ?? null),
+          liveDeploymentId: appResult.value.latestDeploymentId ?? null,
+          liveUrl: toAbsoluteUrl(appResult.value.appEndpointDomain ?? null),
         },
         deployments: versionsResult.value
           .slice()
@@ -695,8 +689,8 @@ export function createAppProvider(
     },
 
     async showDeployment(deploymentId, options) {
-      const deploymentResult = await sdk.showVersion({
-        versionId: deploymentId,
+      const deploymentResult = await sdk.showDeployment({
+        deploymentId,
         signal: options?.signal,
       });
       if (deploymentResult.isErr()) {
@@ -739,7 +733,7 @@ export function createAppProvider(
         {
           baseUrl: options.baseUrl,
           token: await options.getToken(),
-          versionId: streamOptions.deploymentId,
+          deploymentId: streamOptions.deploymentId,
           signal: streamOptions.signal,
         },
         streamOptions.onRecord,
@@ -764,7 +758,7 @@ interface RawBranchRecord {
   role: BranchKind;
 }
 
-interface RawComputeServiceRecord {
+interface RawAppRecord {
   id: string;
   name: string;
   region: {
@@ -773,8 +767,8 @@ interface RawComputeServiceRecord {
   };
   projectId: string;
   branchId: string | null;
-  latestVersionId: string | null;
-  serviceEndpointDomain: string | null;
+  latestDeploymentId: string | null;
+  appEndpointDomain: string | null;
 }
 
 interface RawApiErrorBody {
@@ -893,12 +887,12 @@ async function listComputeServices(
     signal?: AbortSignal;
   },
 ): Promise<AppRecord[]> {
-  const services: RawComputeServiceRecord[] = [];
+  const services: RawAppRecord[] = [];
   let cursor: string | undefined;
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const result = await client.GET("/v1/compute-services", {
+    const result = await client.GET("/v1/apps", {
       params: {
         query: {
           projectId: options.projectId,
@@ -912,7 +906,7 @@ async function listComputeServices(
       throw apiCallError("Failed to list apps", result.response, result.error);
     }
 
-    services.push(...(result.data.data as RawComputeServiceRecord[]));
+    services.push(...(result.data.data as RawAppRecord[]));
 
     if (!result.data.pagination.hasMore || !result.data.pagination.nextCursor) {
       break;
@@ -925,8 +919,8 @@ async function listComputeServices(
     name: service.name,
     region: service.region.id ?? null,
     branchId: service.branchId,
-    liveDeploymentId: service.latestVersionId ?? null,
-    liveUrl: toAbsoluteUrl(service.serviceEndpointDomain ?? null),
+    liveDeploymentId: service.latestDeploymentId ?? null,
+    liveUrl: toAbsoluteUrl(service.appEndpointDomain ?? null),
   }));
 }
 
@@ -935,15 +929,12 @@ async function listComputeServiceDomains(
   computeServiceId: string,
   signal?: AbortSignal,
 ): Promise<DomainRecord[]> {
-  const result = await client.GET(
-    "/v1/compute-services/{computeServiceId}/domains",
-    {
-      params: {
-        path: { computeServiceId },
-      },
-      signal,
+  const result = await client.GET("/v1/apps/{appId}/domains", {
+    params: {
+      path: { appId: computeServiceId },
     },
-  );
+    signal,
+  });
 
   if (result.error || !result.data) {
     throw domainApiCallError(
@@ -1027,7 +1018,7 @@ async function createBranchApp(
     gitName: options.branchName,
     signal: options.signal,
   });
-  const result = await client.POST("/v1/compute-services", {
+  const result = await client.POST("/v1/apps", {
     body: {
       projectId: options.projectId,
       branchId: branch.id,
@@ -1060,7 +1051,7 @@ async function createBranchApp(
     );
   }
 
-  const service = result.data.data as RawComputeServiceRecord;
+  const service = result.data.data as RawAppRecord;
   return {
     appId: service.id,
     appName: service.name,
@@ -1110,7 +1101,7 @@ async function findAppForDeployment(
   }
 
   for (const project of projectsResult.value) {
-    const servicesResult = await sdk.listServices({
+    const servicesResult = await sdk.listApps({
       projectId: project.id,
       signal,
     });
@@ -1140,8 +1131,8 @@ async function findServiceAppForDeployment(
   deploymentId: string,
   signal?: AbortSignal,
 ): Promise<AppRecord | null> {
-  const detailResult = await sdk.showService({
-    serviceId,
+  const detailResult = await sdk.showApp({
+    appId: serviceId,
     signal,
   });
   if (detailResult.isErr()) {
@@ -1152,16 +1143,16 @@ async function findServiceAppForDeployment(
     id: detailResult.value.id,
     name: detailResult.value.name,
     region: detailResult.value.region ?? null,
-    liveDeploymentId: detailResult.value.latestVersionId ?? null,
-    liveUrl: toAbsoluteUrl(detailResult.value.serviceEndpointDomain ?? null),
+    liveDeploymentId: detailResult.value.latestDeploymentId ?? null,
+    liveUrl: toAbsoluteUrl(detailResult.value.appEndpointDomain ?? null),
   };
 
   if (app.liveDeploymentId === deploymentId) {
     return app;
   }
 
-  const versionsResult = await sdk.listVersions({
-    serviceId,
+  const versionsResult = await sdk.listDeployments({
+    appId: serviceId,
     signal,
   });
   if (versionsResult.isErr()) {

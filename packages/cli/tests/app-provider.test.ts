@@ -64,12 +64,12 @@ describe("preview app provider", () => {
       isOk: () => true,
       value: {
         projectId: "proj_123",
-        serviceId: "app_1",
-        serviceName: "hello-world",
+        appId: "app_1",
+        appName: "hello-world",
         region: "eu-central-1",
-        versionId: "dep_123",
-        versionEndpointDomain: "cv-123.fra.prisma.build",
-        serviceEndpointDomain: "hello-world.fra.prisma.build",
+        deploymentId: "dep_123",
+        deploymentEndpointDomain: "cv-123.fra.prisma.build",
+        appEndpointDomain: "hello-world.fra.prisma.build",
       },
     });
     const AppBuildStrategy = mockAppBuildStrategy();
@@ -106,7 +106,7 @@ describe("preview app provider", () => {
     expect(deploy).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: "proj_123",
-        serviceName: "hello-world",
+        appName: "hello-world",
         portMapping: { http: 3000 },
       }),
     );
@@ -118,12 +118,12 @@ describe("preview app provider", () => {
       isOk: () => true,
       value: {
         projectId: "proj_123",
-        serviceId: "svc_branch",
-        serviceName: "hello-world",
+        appId: "svc_branch",
+        appName: "hello-world",
         region: "eu-central-1",
-        versionId: "dep_123",
-        versionEndpointDomain: "cv-123.fra.prisma.build",
-        serviceEndpointDomain: "hello-world.fra.prisma.build",
+        deploymentId: "dep_123",
+        deploymentEndpointDomain: "cv-123.fra.prisma.build",
+        appEndpointDomain: "hello-world.fra.prisma.build",
       },
     });
     const AppBuildStrategy = mockAppBuildStrategy();
@@ -150,17 +150,18 @@ describe("preview app provider", () => {
           };
         }
 
-        if (pathName === "/v1/compute-services") {
+        if (pathName === "/v1/apps") {
           return {
             data: {
               data: {
                 id: "svc_branch",
+                type: "app",
                 name: "hello-world",
                 region: { id: "eu-central-1", name: "Europe (Frankfurt)" },
                 projectId: "proj_123",
                 branchId: "br_billing",
-                latestVersionId: null,
-                serviceEndpointDomain: "hello-world.fra.prisma.build",
+                latestDeploymentId: null,
+                appEndpointDomain: "hello-world.fra.prisma.build",
               },
             },
             response: { status: 201 },
@@ -213,7 +214,7 @@ describe("preview app provider", () => {
       }),
     );
     expect(client.POST).toHaveBeenCalledWith(
-      "/v1/compute-services",
+      "/v1/apps",
       expect.objectContaining({
         body: {
           projectId: "proj_123",
@@ -225,8 +226,8 @@ describe("preview app provider", () => {
     expect(deploy).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: "proj_123",
-        serviceId: "svc_branch",
-        serviceName: "hello-world",
+        appId: "svc_branch",
+        appName: "hello-world",
         portMapping: { http: 3000 },
       }),
     );
@@ -238,12 +239,12 @@ describe("preview app provider", () => {
       isOk: () => true,
       value: {
         projectId: "proj_123",
-        serviceId: "svc_branch",
-        serviceName: "hello-world",
+        appId: "svc_branch",
+        appName: "hello-world",
         region: "eu-central-1",
-        versionId: "dep_123",
-        versionEndpointDomain: "cv-123.fra.prisma.build",
-        serviceEndpointDomain: "hello-world.fra.prisma.build",
+        deploymentId: "dep_123",
+        deploymentEndpointDomain: "cv-123.fra.prisma.build",
+        appEndpointDomain: "hello-world.fra.prisma.build",
       },
     });
     const AppBuildStrategy = mockAppBuildStrategy();
@@ -266,18 +267,19 @@ describe("preview app provider", () => {
           };
         }
 
-        if (pathName === "/v1/compute-services") {
+        if (pathName === "/v1/apps") {
           return {
             data: {
               data: [
                 {
                   id: "svc_branch",
+                  type: "app",
                   name: "hello-world",
                   region: { id: "eu-central-1", name: "Europe (Frankfurt)" },
                   projectId: "proj_123",
                   branchId: "br_billing",
-                  latestVersionId: null,
-                  serviceEndpointDomain: "hello-world.fra.prisma.build",
+                  latestDeploymentId: null,
+                  appEndpointDomain: "hello-world.fra.prisma.build",
                 },
               ],
               pagination: { hasMore: false, nextCursor: null },
@@ -289,7 +291,7 @@ describe("preview app provider", () => {
         throw new Error(`Unexpected path ${pathName}`);
       }),
       POST: vi.fn().mockImplementation((pathName: string) => {
-        if (pathName === "/v1/compute-services") {
+        if (pathName === "/v1/apps") {
           return {
             error: {
               error: {
@@ -330,7 +332,7 @@ describe("preview app provider", () => {
     });
 
     expect(client.POST).toHaveBeenCalledWith(
-      "/v1/compute-services",
+      "/v1/apps",
       expect.objectContaining({
         body: {
           projectId: "proj_123",
@@ -340,7 +342,7 @@ describe("preview app provider", () => {
       }),
     );
     expect(client.GET).toHaveBeenCalledWith(
-      "/v1/compute-services",
+      "/v1/apps",
       expect.objectContaining({
         params: {
           query: {
@@ -354,8 +356,8 @@ describe("preview app provider", () => {
     expect(deploy).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: "proj_123",
-        serviceId: "svc_branch",
-        serviceName: "hello-world",
+        appId: "svc_branch",
+        appName: "hello-world",
         portMapping: { http: 3000 },
       }),
     );
@@ -364,7 +366,7 @@ describe("preview app provider", () => {
   it("treats re-adding an existing custom domain as idempotent", async () => {
     const client = {
       GET: vi.fn().mockImplementation((pathName: string) => {
-        if (pathName === "/v1/compute-services/{computeServiceId}/domains") {
+        if (pathName === "/v1/apps/{appId}/domains") {
           return {
             data: {
               data: [
@@ -392,7 +394,7 @@ describe("preview app provider", () => {
         throw new Error(`Unexpected path ${pathName}`);
       }),
       POST: vi.fn().mockImplementation((pathName: string) => {
-        if (pathName === "/v1/compute-services/{computeServiceId}/domains") {
+        if (pathName === "/v1/apps/{appId}/domains") {
           return {
             error: {
               error: {
@@ -431,10 +433,10 @@ describe("preview app provider", () => {
       },
     });
     expect(client.POST).toHaveBeenCalledWith(
-      "/v1/compute-services/{computeServiceId}/domains",
+      "/v1/apps/{appId}/domains",
       expect.objectContaining({
         params: {
-          path: { computeServiceId: "app_1" },
+          path: { appId: "app_1" },
         },
         body: {
           hostname: "Shop.Acme.com",
@@ -442,10 +444,10 @@ describe("preview app provider", () => {
       }),
     );
     expect(client.GET).toHaveBeenCalledWith(
-      "/v1/compute-services/{computeServiceId}/domains",
+      "/v1/apps/{appId}/domains",
       expect.objectContaining({
         params: {
-          path: { computeServiceId: "app_1" },
+          path: { appId: "app_1" },
         },
       }),
     );
@@ -454,7 +456,7 @@ describe("preview app provider", () => {
   it("surfaces domain conflicts when the hostname is not on the selected app", async () => {
     const client = {
       GET: vi.fn().mockImplementation((pathName: string) => {
-        if (pathName === "/v1/compute-services/{computeServiceId}/domains") {
+        if (pathName === "/v1/apps/{appId}/domains") {
           return {
             data: {
               data: [
@@ -482,7 +484,7 @@ describe("preview app provider", () => {
         throw new Error(`Unexpected path ${pathName}`);
       }),
       POST: vi.fn().mockImplementation((pathName: string) => {
-        if (pathName === "/v1/compute-services/{computeServiceId}/domains") {
+        if (pathName === "/v1/apps/{appId}/domains") {
           return {
             error: {
               error: {

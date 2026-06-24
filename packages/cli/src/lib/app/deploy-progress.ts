@@ -68,8 +68,8 @@ export function createDeployProgress(
     onUploadStart() {
       write("Uploading...");
     },
-    onVersionCreated(versionId) {
-      state.versionId = versionId;
+    onDeploymentCreated(deploymentId) {
+      state.versionId = deploymentId;
     },
     onUploadComplete() {
       state.uploadCompleted = true;
@@ -107,16 +107,16 @@ export function createPromoteProgress(
   };
 
   return {
-    onVersionStarting(versionId) {
-      write(`Starting deployment ${versionId}...`);
+    onDeploymentStarting(deploymentId) {
+      write(`Starting deployment ${deploymentId}...`);
     },
-    onVersionStartRequested() {
+    onDeploymentStartRequested() {
       write("Requesting deployment start...");
     },
     onStatusChange(status) {
       write(`Status: ${status}`);
     },
-    onVersionRunning() {
+    onDeploymentRunning() {
       write("Deployment is running.");
     },
     onPromoteStart() {
@@ -149,8 +149,8 @@ export function createUpdateEnvProgress(
   };
 
   return {
-    onVersionCreated(versionId) {
-      write(`Creating updated deployment ${versionId}...`);
+    onDeploymentCreated(deploymentId) {
+      write(`Creating updated deployment ${deploymentId}...`);
     },
     onStartRequested() {
       write("Starting deployment...");
