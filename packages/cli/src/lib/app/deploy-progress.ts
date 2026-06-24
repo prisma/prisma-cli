@@ -12,7 +12,7 @@ export interface DeployProgressState {
   buildCompleted: boolean;
   archiveReady: boolean;
   uploadCompleted: boolean;
-  versionId: string | null;
+  deploymentId: string | null;
   startRequested: boolean;
   containerLive: boolean;
   deploymentUrl: string | null;
@@ -25,7 +25,7 @@ export function createDeployProgressState(): DeployProgressState {
     buildCompleted: false,
     archiveReady: false,
     uploadCompleted: false,
-    versionId: null,
+    deploymentId: null,
     startRequested: false,
     containerLive: false,
     deploymentUrl: null,
@@ -69,7 +69,7 @@ export function createDeployProgress(
       write("Uploading...");
     },
     onDeploymentCreated(deploymentId) {
-      state.versionId = deploymentId;
+      state.deploymentId = deploymentId;
     },
     onUploadComplete() {
       state.uploadCompleted = true;
