@@ -4,6 +4,11 @@ packages:
 allowBuilds:
   esbuild: true
 
+# First-party SDKs we publish from our own CI (with npm provenance) and consume
+# the same day. minimumReleaseAge is a quarantine for untrusted third-party
+# publishes; it's the wrong threat model for packages we build ourselves, and
+# provenance is the stronger control for "is this really our build". Exempt at
+# the package level rather than re-pinning each version on every release.
 minimumReleaseAgeExclude:
-  - '@prisma/compute-sdk@0.30.0'
-  - '@prisma/management-api-sdk@1.44.0'
+  - '@prisma/compute-sdk'
+  - '@prisma/management-api-sdk'
