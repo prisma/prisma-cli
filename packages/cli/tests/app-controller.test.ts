@@ -2166,7 +2166,7 @@ describe("app controller", () => {
           onArchiveCreating?: () => void;
           onArchiveReady?: (byteLength: number) => void;
           onUploadStart?: () => void;
-          onVersionCreated?: (versionId: string) => void;
+          onDeploymentCreated?: (deploymentId: string) => void;
           onUploadComplete?: () => void;
           onStartRequested?: () => void;
           onRunning?: (url?: string) => void;
@@ -2177,7 +2177,7 @@ describe("app controller", () => {
         options.progress?.onArchiveCreating?.();
         options.progress?.onArchiveReady?.(11_114_905);
         options.progress?.onUploadStart?.();
-        options.progress?.onVersionCreated?.("dep_failed");
+        options.progress?.onDeploymentCreated?.("dep_failed");
         options.progress?.onUploadComplete?.();
         options.progress?.onStartRequested?.();
         options.progress?.onRunning?.("https://cv-example.fra.prisma.build");

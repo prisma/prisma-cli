@@ -4656,10 +4656,10 @@ function appDeployFailedError(
   const phaseHeadline = progress.containerLive
     ? "The deployment started, but the app is not ready yet."
     : "Deploy failed after the build completed.";
-  const recoveryLines = progress.versionId
+  const recoveryLines = progress.deploymentId
     ? [
         "See what happened",
-        `prisma-cli app logs --deployment ${progress.versionId}`,
+        `prisma-cli app logs --deployment ${progress.deploymentId}`,
       ]
     : [
         "Fix",
@@ -4689,8 +4689,8 @@ function appDeployFailedError(
         "",
         ...recoveryLines,
       ];
-  const fix = progress.versionId
-    ? `Inspect logs with prisma-cli app logs --deployment ${progress.versionId}.`
+  const fix = progress.deploymentId
+    ? `Inspect logs with prisma-cli app logs --deployment ${progress.deploymentId}.`
     : "Retry the command, or rerun with --trace for more detailed diagnostics.";
 
   return new CliError({
@@ -4702,7 +4702,7 @@ function appDeployFailedError(
     debug,
     meta: {
       phase: progress.containerLive ? "runtime_ready" : "deploy",
-      deploymentId: progress.versionId,
+      deploymentId: progress.deploymentId,
       deploymentUrl: progress.deploymentUrl,
     },
     humanLines,
