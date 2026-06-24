@@ -1682,6 +1682,102 @@ describe("app controller", () => {
     );
   });
 
+  it("uses and renders configured build entrypoints for custom deploys", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([]);
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_new",
+        name: "frontend",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://frontend.prisma.app",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writeFile(
+      path.join(cwd, "prisma.compute.ts"),
+      [
+        "export default {",
+        "  app: {",
+        '    name: "frontend",',
+        '    framework: "custom",',
+        "    build: {",
+        '      outputDirectory: "dist",',
+        '      entrypoint: "server.js",',
+        "    },",
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    const { context, stderr } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppDeploy(context, undefined, {
+      projectRef: "proj_123",
+    });
+
+    expect(deployApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appName: "frontend",
+        buildType: "custom",
+        entrypoint: undefined,
+        buildSettings: {
+          buildCommand: null,
+          buildCommandSource: null,
+          outputDirectory: "dist",
+          outputDirectorySource: "set by prisma.compute.ts",
+          entrypoint: "server.js",
+          entrypointSource: "set by prisma.compute.ts",
+        },
+      }),
+    );
+    expect(asSingleDeployResult(result).result.deploySettings).toMatchObject({
+      config: {
+        path: "prisma.compute.ts",
+        status: "config",
+      },
+      entrypoint: "server.js",
+    });
+    expect(stderr.buffer).toContain("Using prisma.compute.ts");
+    expect(stderr.buffer).toContain("Entrypoint");
+    expect(stderr.buffer).toContain("server.js");
+  });
+
   it("returns LOCAL_STATE_WRITE_FAILED when deploy cannot store the local binding", async () => {
     const requireComputeAuth = vi
       .fn()

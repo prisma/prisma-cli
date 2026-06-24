@@ -1065,7 +1065,7 @@ Behavior:
 - `--env DATABASE_URL=...`, `--env DIRECT_URL=...`, or the same keys loaded from an env file suppress automatic database prompting; combining those database env vars with `--db` is rejected
 - maps user-facing framework names to deploy build strategies
 - does not accept `--build-command` or `--output-directory`; custom build settings live in the `build` block of `prisma.compute.ts`
-- deploys arbitrary framework output with `framework: "custom"` when the config provides a build command, output directory, and built entrypoint
+- deploys arbitrary framework output with `framework: "custom"` when the config provides a built output directory and entrypoint; `build.command` is optional for prebuilt artifacts
 - uses `src/index.ts` as the Hono deploy entrypoint when the app has no `package.json#main` or `package.json#module` and that file exists
 - supports vanilla Bun apps with `--framework bun` using `package.json#main` or `package.json#module`, or with `--entry <path>`
 - treats `--entry <path>` without `--framework` as a Bun app deploy

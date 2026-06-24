@@ -198,6 +198,14 @@ describe("normalizeComputeConfig", () => {
             framework: "hono",
             build: { command: null },
           },
+          docs: {
+            root: "apps/docs",
+            framework: "astro",
+            build: {
+              command: "npm run build",
+              outputDirectory: "dist/server/",
+            },
+          },
           frontend: {
             root: "apps/frontend",
             framework: "custom",
@@ -225,6 +233,14 @@ describe("normalizeComputeConfig", () => {
       },
     });
     expect(config.targets[2]).toMatchObject({
+      framework: "astro",
+      build: {
+        command: "npm run build",
+        outputDirectory: "dist/server",
+        entrypoint: undefined,
+      },
+    });
+    expect(config.targets[3]).toMatchObject({
       framework: "custom",
       build: {
         command: "npm run build",
