@@ -24,8 +24,8 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0
       '@prisma/compute-sdk':
-        specifier: ^0.28.0
-        version: 0.28.0(@prisma/management-api-sdk@1.37.0)(rollup@4.61.0)
+        specifier: ^0.29.0
+        version: 0.29.0(@prisma/management-api-sdk@1.37.0)(rollup@4.61.0)
       '@prisma/credentials-store':
         specifier: ^7.8.0
         version: 7.8.0
@@ -548,8 +548,8 @@ packages:
   '@oxc-project/types@0.127.0':
     resolution: {integrity: sha512-aIYXQBo4lCbO4z0R3FHeucQHpF46l2LbMdxRvqvuRuW2OxdnSkcng5B8+K12spgLDj93rtN3+J2Vac/TIO+ciQ==}
 
-  '@prisma/compute-sdk@0.28.0':
-    resolution: {integrity: sha512-Oy9E/Y3SrRezoVoXGFiZsWcXQOjO57inTNuIGkki9/CL7eMYqu10hdJEdoarlQPRFIqsYvJcUnHjISgfr5RaLA==}
+  '@prisma/compute-sdk@0.29.0':
+    resolution: {integrity: sha512-9AEXHx9VUDHmRJ3KuccF0r+lYEGXEjv4yxzObIj8OE7+fBt2Khol8rGioBt6YdUkMqImf6U3NbWj7KVX9tfQjQ==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@prisma/management-api-sdk': '>=1.36.0'
@@ -1838,7 +1838,7 @@ snapshots:
 
   '@oxc-project/types@0.127.0': {}
 
-  '@prisma/compute-sdk@0.28.0(@prisma/management-api-sdk@1.37.0)(rollup@4.61.0)':
+  '@prisma/compute-sdk@0.29.0(@prisma/management-api-sdk@1.37.0)(rollup@4.61.0)':
     dependencies:
       '@prisma/management-api-sdk': 1.37.0
       '@vercel/nft': 1.10.2(rollup@4.61.0)

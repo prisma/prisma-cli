@@ -121,6 +121,7 @@ export async function resolveConfiguredAppBuildSettings(options: {
   configured: {
     command: string | null | undefined;
     outputDirectory: string | undefined;
+    entrypoint?: string | undefined;
   };
   /** Absolute path of the compute config file owning these settings. */
   configPath: string;

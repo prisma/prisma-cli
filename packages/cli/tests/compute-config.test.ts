@@ -160,7 +160,7 @@ describe("normalizeComputeConfig", () => {
       "`apps.web.name` must be a non-empty string.",
     );
     expect(issues.join(" ")).toContain(
-      "`apps.web.framework` must be one of: nextjs, nuxt, astro, hono, nestjs, tanstack-start, bun.",
+      "`apps.web.framework` must be one of: nextjs, nuxt, astro, hono, nestjs, tanstack-start, custom, bun.",
     );
     expect(issues.join(" ")).toContain(
       "`apps.web.httpPort` must be an integer between 1 and 65535.",
@@ -171,19 +171,6 @@ describe("normalizeComputeConfig", () => {
     expect(issues.join(" ")).toContain(
       "`apps.web.env.vars.EMPTY` must be a non-empty string.",
     );
-  });
-
-  it("rejects build blocks for frameworks whose strategy owns the build", () => {
-    expect(
-      normalizeIssues({
-        app: { framework: "nuxt", build: { command: "nuxt build" } },
-      }).join(" "),
-    ).toContain("`app.build` is not supported with the nuxt framework");
-    expect(
-      normalizeIssues({
-        app: { framework: "astro", build: { outputDirectory: "dist" } },
-      }).join(" "),
-    ).toContain("`app.build` is not supported with the astro framework");
   });
 
   it("rejects roots that escape the config directory, including Windows drive-relative paths", () => {
@@ -211,6 +198,23 @@ describe("normalizeComputeConfig", () => {
             framework: "hono",
             build: { command: null },
           },
+          docs: {
+            root: "apps/docs",
+            framework: "astro",
+            build: {
+              command: "npm run build",
+              outputDirectory: "dist/server/",
+            },
+          },
+          frontend: {
+            root: "apps/frontend",
+            framework: "custom",
+            build: {
+              command: "npm run build",
+              outputDirectory: "build",
+              entrypoint: "handler.js",
+            },
+          },
         },
       }),
     );
@@ -222,7 +226,27 @@ describe("normalizeComputeConfig", () => {
       },
     });
     expect(config.targets[1]).toMatchObject({
-      build: { command: null, outputDirectory: undefined },
+      build: {
+        command: null,
+        outputDirectory: undefined,
+        entrypoint: undefined,
+      },
+    });
+    expect(config.targets[2]).toMatchObject({
+      framework: "astro",
+      build: {
+        command: "npm run build",
+        outputDirectory: "dist/server",
+        entrypoint: undefined,
+      },
+    });
+    expect(config.targets[3]).toMatchObject({
+      framework: "custom",
+      build: {
+        command: "npm run build",
+        outputDirectory: "build",
+        entrypoint: "handler.js",
+      },
     });
   });
 
@@ -247,7 +271,7 @@ describe("normalizeComputeConfig", () => {
     );
     expect(issues.join(" ")).toContain('Unknown key "db" in `apps.web`.');
     expect(issues.join(" ")).toContain(
-      "`apps.api.build` must set `command` and/or `outputDirectory`.",
+      "`apps.api.build` must set `command`, `outputDirectory`, and/or `entrypoint`.",
     );
   });
 
@@ -436,6 +460,7 @@ describe("mergeComputeLocalInputs", () => {
     expect(computeFrameworkToBuildType("tanstack-start")).toBe(
       "tanstack-start",
     );
+    expect(computeFrameworkToBuildType("custom")).toBe("custom");
   });
 
   it("uses config values when flags are absent or default", () => {

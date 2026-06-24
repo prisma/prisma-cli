@@ -239,7 +239,7 @@ Recommended meanings:
 - `COMPUTE_CONFIG_TARGET_REQUIRED`: a multi-app compute config needs an `[app]` target and none was given or inferred
 - `COMPUTE_CONFIG_TARGET_UNKNOWN`: the `[app]` target matches no configured app
 - `BUILD_SETTINGS_MIGRATION_REQUIRED`: a legacy `prisma.app.json` contains custom build settings that must move into the `build` block of `prisma.compute.ts`
-- `BUILD_SETTINGS_UNSUPPORTED`: a compute config `build` block targets a framework whose strategy owns its build (nuxt, astro)
+- `BUILD_SETTINGS_UNSUPPORTED`: a compute config `build` block targets a framework whose SDK strategy does not consume committed build settings
 - `FRAMEWORK_NOT_DETECTED`: app deploy could not detect a supported Beta framework and no explicit framework/build type was provided
 - `DEPLOYMENT_NOT_FOUND`: requested deployment id does not exist
 - `NO_DEPLOYMENTS`: command resolved a branch or app but found no deployments
