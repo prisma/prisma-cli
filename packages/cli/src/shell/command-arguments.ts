@@ -4,3 +4,13 @@ export function formatCommandArgument(value: string): string {
     ? value
     : `'${value.replace(/'/g, "'\\''")}'`;
 }
+
+export function formatShellCommand(command: readonly string[]): string {
+  return command.map(formatShellCommandWord).join(" ");
+}
+
+function formatShellCommandWord(value: string): string {
+  return /^[A-Za-z0-9_./:@=-]+$/.test(value)
+    ? value
+    : `'${value.replace(/'/g, "'\\''")}'`;
+}

@@ -37,6 +37,7 @@ export interface BranchDatabaseSignal {
 
 const SKIPPED_DIRECTORIES = new Set([
   ".git",
+  ".agents",
   ".next",
   ".nuxt",
   ".output",

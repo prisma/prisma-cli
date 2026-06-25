@@ -10,6 +10,7 @@ This file is authoritative for command group scope during beta.
 
 The beta package includes these command groups:
 
+- `agent`
 - `auth`
 - `project` (includes `project env` subgroup)
 - `git`
@@ -376,6 +377,83 @@ prisma-cli --version --json
 
 `prisma-cli version` is the richer environment report; `prisma-cli --version` is the terse one-liner. Both report the same `cli.version`. Use the flag for quick checks, the subcommand for support tickets and bug reports.
 
+## `<runner> @prisma/cli@latest agent install --agent <agent> --all-agents --skill <skill> --global --copy`
+
+Purpose:
+
+- install Prisma context for AI coding agents
+
+Behavior:
+
+- user-facing agent install commands use the package runner detected from the project: `bunx`, `pnpm dlx`, `yarn dlx`, or `npx -y`
+- installs Prisma skills from `prisma/skills` by invoking `skills@latest` through the detected project package manager:
+  `<runner> skills@latest add prisma/skills --skill "*" --agent codex --agent claude-code --yes`
+- detects the runner from the current directory and its ancestors:
+  - `bun.lock`, `bun.lockb`, or `packageManager: "bun@..."` -> `bunx`
+  - `pnpm-lock.yaml`, `pnpm-workspace.yaml`, or `packageManager: "pnpm@..."` -> `pnpm dlx`
+  - `yarn.lock` or `packageManager: "yarn@..."` -> `yarn dlx`
+  - `package-lock.json`, `npm-shrinkwrap.json`, `packageManager: "npm@..."`, or no package-manager signal -> `npx -y`
+- defaults to the `codex` and `claude-code` agent targets because those are the primary local agent workflows during beta
+- accepts repeated `--agent <agent>` flags to target specific skills CLI agents, such as `codex`, `claude-code`, or `cursor`
+- accepts `--all-agents` to pass `--agent "*"` to the skills CLI
+- accepts repeated `--skill <skill>` flags to install a subset such as `prisma-compute`
+- accepts `--global` and `--copy` and forwards them to the skills CLI
+- accepts `--dry-run` to report the skills CLI command without spawning the installer
+
+Examples:
+
+```bash
+npx -y @prisma/cli@latest agent install
+pnpm dlx @prisma/cli@latest agent install --agent codex
+pnpm dlx @prisma/cli@latest agent install --agent codex --agent cursor
+pnpm dlx @prisma/cli@latest agent install --all-agents
+pnpm dlx @prisma/cli@latest agent install --skill prisma-compute
+```
+
+## `<runner> @prisma/cli@latest agent update --agent <agent> --all-agents --skill <skill> --global --copy`
+
+Purpose:
+
+- refresh Prisma skills
+
+Behavior:
+
+- has the same flags and behavior as `agent install`
+- reruns the detected package-manager runner with `skills@latest add prisma/skills ...` instead of `skills update`, so it refreshes only Prisma's skills and works for project-scoped installs
+
+Examples:
+
+```bash
+npx -y @prisma/cli@latest agent update
+pnpm dlx @prisma/cli@latest agent update --agent codex
+pnpm dlx @prisma/cli@latest agent update --all-agents
+```
+
+## `<runner> @prisma/cli@latest agent status --global`
+
+Purpose:
+
+- show whether Prisma skills are installed for the current project or globally
+
+Behavior:
+
+- resolves the Compute config directory before checking project skills, so running from an app subdirectory still checks the project root
+- runs `skills@latest list --json` through the detected package runner and reports installed Prisma skills from the skills CLI by default
+- accepts `--global` to run `skills@latest list -g --json` and report globally installed Prisma skills instead
+- filters the list to Prisma skills and includes each skill's name, path, scope, and agent targets in JSON output
+- for project status, falls back to whether `skills-lock.json` references `prisma/skills` when the skills CLI list command fails
+- for global status, reports the Skills CLI list failure instead of falling back to project-local state
+- reports whether the project has dismissed the interactive agent setup prompt
+- does not require authentication
+
+Examples:
+
+```bash
+npx -y @prisma/cli@latest agent status
+pnpm dlx @prisma/cli@latest agent status --json
+pnpm dlx @prisma/cli@latest agent status --global
+```
+
 ## `prisma-cli auth login`
 
 Purpose:
@@ -389,6 +467,9 @@ Behavior:
 - resolves active workspace when required
 - confirms successful browser authentication and directs the user back to the terminal
 - returns the current auth state after login
+- in human output, when run from a project directory that does not already have Prisma skills and has not dismissed the setup prompt, suggests the detected package-runner command, such as `pnpm dlx @prisma/cli@latest agent install`
+- does not install skills during auth; auth is not project-scoped and must not mutate the project
+- does not show the agent setup tip in `--json`, `--quiet`, CI, non-TTY output, or directories that do not look like projects
 
 Examples:
 
@@ -1072,6 +1153,8 @@ Behavior:
 - maps user-facing framework names to deploy build strategies
 - does not accept `--build-command` or `--output-directory`; custom build settings live in the `build` block of `prisma.compute.ts`
 - deploys arbitrary framework output with `framework: "custom"` when the config provides a built output directory and entrypoint; `build.command` is optional for prebuilt artifacts
+- in interactive human deploys, prompts once to install the Prisma Compute skill for the project when `prisma-compute` is missing; accepting installs `prisma-compute` from `prisma/skills` from the project directory, equivalent to the detected package-runner command such as `pnpm dlx @prisma/cli@latest agent install --skill prisma-compute`; declining records the prompt as dismissed in local CLI state
+- does not prompt for agent setup in `--json`, `--quiet`, CI, `--no-interactive`, or `--yes`
 - uses `src/index.ts` as the Hono deploy entrypoint when the app has no `package.json#main` or `package.json#module` and that file exists
 - supports vanilla Bun apps with `--framework bun` using `package.json#main` or `package.json#module`, or with `--entry <path>`
 - treats `--entry <path>` without `--framework` as a Bun app deploy

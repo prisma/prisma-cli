@@ -41,7 +41,14 @@ export function renderAuthSuccess(
         context: rows,
         operationDescription: "Applying authentication session changes",
         operationCount: 1,
-        details: ["Session stored in local CLI state."],
+        details: [
+          "Session stored in local CLI state.",
+          ...(result.agentSetupTip
+            ? [
+                `Install Prisma skills for this project with ${result.agentSetupTip.command}.`,
+              ]
+            : []),
+        ],
       },
       context.ui,
     );

@@ -82,6 +82,21 @@ export function usageError(
   });
 }
 
+export function isUsageError(
+  error: unknown,
+  summary?: string,
+): error is CliError {
+  return (
+    isErrorRecord(error) &&
+    error.code === "USAGE_ERROR" &&
+    (summary === undefined || error.summary === summary)
+  );
+}
+
+function isErrorRecord(error: unknown): error is Record<string, unknown> {
+  return typeof error === "object" && error !== null;
+}
+
 export function authRequiredError(
   nextSteps: string[] = ["prisma-cli auth login"],
   options: { debug?: string | null } = {},

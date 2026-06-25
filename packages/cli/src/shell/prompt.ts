@@ -1,7 +1,9 @@
 import type { Readable, Writable } from "node:stream";
 import { confirm, isCancel, select, text } from "@clack/prompts";
 
-import { usageError } from "./errors";
+import { isUsageError, usageError } from "./errors";
+
+const PROMPT_CANCELED_SUMMARY = "Interactive prompt canceled";
 
 export interface SelectOption<T> {
   label: string;
@@ -11,6 +13,7 @@ export interface SelectOption<T> {
 export async function selectPrompt<T>(options: {
   input: Readable;
   output: Writable;
+  signal?: AbortSignal;
   message: string;
   choices: SelectOption<T>[];
 }): Promise<T> {
@@ -22,13 +25,14 @@ export async function selectPrompt<T>(options: {
   const response = await select({
     input: options.input,
     output: options.output,
+    signal: options.signal,
     message: options.message,
     options: promptOptions,
   });
 
   if (isCancel(response)) {
     throw usageError(
-      "Interactive prompt canceled",
+      PROMPT_CANCELED_SUMMARY,
       "The command was canceled before a selection was made.",
       "Re-run the command and choose an option to continue.",
     );
@@ -40,6 +44,7 @@ export async function selectPrompt<T>(options: {
 export async function textPrompt(options: {
   input: Readable;
   output: Writable;
+  signal?: AbortSignal;
   message: string;
   placeholder?: string;
   validate?: (value: string | undefined) => string | undefined;
@@ -47,6 +52,7 @@ export async function textPrompt(options: {
   const response = await text({
     input: options.input,
     output: options.output,
+    signal: options.signal,
     message: options.message,
     placeholder: options.placeholder,
     validate: options.validate,
@@ -54,7 +60,7 @@ export async function textPrompt(options: {
 
   if (isCancel(response)) {
     throw usageError(
-      "Interactive prompt canceled",
+      PROMPT_CANCELED_SUMMARY,
       "The command was canceled before a value was entered.",
       "Re-run the command and provide a value to continue.",
     );
@@ -66,25 +72,31 @@ export async function textPrompt(options: {
 export async function confirmPrompt(options: {
   input: Readable;
   output: Writable;
+  signal?: AbortSignal;
   message: string;
   initialValue?: boolean;
 }): Promise<boolean> {
   const response = await confirm({
     input: options.input,
     output: options.output,
+    signal: options.signal,
     message: options.message,
     initialValue: options.initialValue ?? false,
   });
 
   if (isCancel(response)) {
     throw usageError(
-      "Interactive prompt canceled",
+      PROMPT_CANCELED_SUMMARY,
       "The command was canceled before a confirmation was made.",
       "Re-run the command and choose an option to continue.",
     );
   }
 
   return response;
+}
+
+export function isPromptCancelError(error: unknown): boolean {
+  return isUsageError(error, PROMPT_CANCELED_SUMMARY);
 }
 
 export function disposePromptState(_input: Readable): void {

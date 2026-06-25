@@ -23,6 +23,9 @@ export interface AuthStateResult {
   user: AuthUser | null;
   workspace: AuthWorkspace | null;
   credential: AuthCredential | null;
+  agentSetupTip?: {
+    command: string;
+  };
 }
 
 export interface AuthWorkspaceSession {

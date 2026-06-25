@@ -8,6 +8,14 @@ import {
   type StoredAuthWorkspace,
   WorkspaceSelectionError,
 } from "../adapters/token-storage";
+import { resolvePrismaCliPackageCommand } from "../lib/agent/cli-command";
+import { PRISMA_AGENT_INSTALL_ARGS } from "../lib/agent/constants";
+import {
+  isLikelyProjectDirectory,
+  readPrismaAgentSetupStatus,
+  resolvePrismaAgentSetupCwd,
+  shouldOfferPrismaAgentSetup,
+} from "../lib/agent/setup-status";
 import {
   performLogin,
   performLogout,
@@ -70,9 +78,20 @@ export async function runAuthLogin(
     result = await loginWithSelectionFlow(context, useCases, options);
   }
 
+  const agentSetupTipCommand = await resolveAgentSetupTipCommand(context);
+  if (agentSetupTipCommand) {
+    result = {
+      ...result,
+      agentSetupTip: {
+        command: agentSetupTipCommand,
+      },
+    };
+  }
+
   return createAuthSuccess("auth.login", result, [
     "prisma-cli auth whoami",
     "prisma-cli project list",
+    ...(result.agentSetupTip ? [result.agentSetupTip.command] : []),
   ]);
 }
 
@@ -683,4 +702,51 @@ function createAuthSuccess(
     warnings: [],
     nextSteps,
   };
+}
+
+async function resolveAgentSetupTipCommand(
+  context: CommandContext,
+): Promise<string | null> {
+  if (context.flags.json || context.flags.quiet) {
+    return null;
+  }
+
+  if (context.runtime.env.CI && context.flags.interactive !== true) {
+    return null;
+  }
+
+  if (!context.runtime.stderr.isTTY && context.flags.interactive !== true) {
+    return null;
+  }
+
+  const setupCwd = await resolvePrismaAgentSetupCwd({
+    cwd: context.runtime.cwd,
+    signal: context.runtime.signal,
+  });
+
+  if (
+    !(await isLikelyProjectDirectory({
+      cwd: setupCwd,
+      signal: context.runtime.signal,
+    }))
+  ) {
+    return null;
+  }
+
+  const shouldOffer = shouldOfferPrismaAgentSetup(
+    await readPrismaAgentSetupStatus({
+      cwd: setupCwd,
+      stateStore: context.stateStore,
+      signal: context.runtime.signal,
+    }),
+  );
+  if (!shouldOffer) {
+    return null;
+  }
+
+  return await resolvePrismaCliPackageCommand({
+    cwd: setupCwd,
+    signal: context.runtime.signal,
+    args: PRISMA_AGENT_INSTALL_ARGS,
+  });
 }

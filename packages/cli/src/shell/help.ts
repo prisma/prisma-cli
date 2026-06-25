@@ -35,7 +35,7 @@ export function renderHelp(command: Command, runtime: CliRuntime): string {
   lines.push(
     ...renderVisibleOptions(rail, ui, visibleCommands, visibleOptions),
   );
-  lines.push(...renderExamples(rail, descriptor.examples));
+  lines.push(...renderExamples(rail, runtime, descriptor.examples));
   lines.push(...renderDocsPath(rail, ui, descriptor.docsPath));
 
   lines.push("");
@@ -93,16 +93,20 @@ function shouldLabelGlobalOptions(
 
 function renderExamples(
   rail: string,
-  examples: string[] | undefined,
+  runtime: CliRuntime,
+  examples: string[] | ((runtime: CliRuntime) => string[]) | undefined,
 ): string[] {
-  if (!examples || examples.length === 0) {
+  const resolvedExamples =
+    typeof examples === "function" ? examples(runtime) : examples;
+
+  if (!resolvedExamples || resolvedExamples.length === 0) {
     return [];
   }
 
   return [
     `${rail}`,
     `${rail}  Examples:`,
-    ...examples.map((example) => `${rail}    $ ${example}`),
+    ...resolvedExamples.map((example) => `${rail}    $ ${example}`),
   ];
 }
 

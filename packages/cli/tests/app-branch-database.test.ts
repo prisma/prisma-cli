@@ -1,4 +1,3 @@
-import { EventEmitter } from "node:events";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -47,6 +46,24 @@ afterEach(() => {
   vi.resetModules();
   vi.restoreAllMocks();
 });
+
+async function writePrismaComputeSkillsLock(cwd: string): Promise<void> {
+  await writeFile(
+    path.join(cwd, "skills-lock.json"),
+    JSON.stringify({
+      version: 1,
+      skills: {
+        "prisma-compute": {
+          source: "prisma/skills",
+          sourceType: "github",
+          skillPath: "prisma-compute/SKILL.md",
+          computedHash: "test",
+        },
+      },
+    }),
+    "utf8",
+  );
+}
 
 describe("app deploy branch database setup", () => {
   it("deploy --db creates a branch database and writes branch env overrides before deploying", async () => {
@@ -1221,6 +1238,7 @@ describe("app deploy branch database setup", () => {
     );
     const { runAppDeploy } = await import("../src/controllers/app");
     const cwd = await createTempCwd();
+    await writePrismaComputeSkillsLock(cwd);
     await mkdir(path.join(cwd, "prisma"), { recursive: true });
     await writeFile(
       path.join(cwd, "prisma/schema.prisma"),
@@ -1613,6 +1631,31 @@ describe("app deploy branch database setup", () => {
     );
 
     expect(signal.schema?.path).toBe(path.join(cwd, "prisma/schema.prisma"));
+  });
+
+  it("ignores installed agent skills when scanning for DATABASE_URL references", async () => {
+    const { createTempCwd } = await import("./helpers");
+    const { hasBranchDatabaseSignal, inspectBranchDatabaseSignal } =
+      await import("../src/lib/app/branch-database");
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, ".agents/skills/prisma-compute/scripts"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(
+        cwd,
+        ".agents/skills/prisma-compute/scripts/verify-compute-surface.mjs",
+      ),
+      "console.log('DATABASE_URL')\n",
+    );
+
+    const signal = await inspectBranchDatabaseSignal(
+      cwd,
+      new AbortController().signal,
+    );
+
+    expect(signal.databaseUrlReferences).toEqual([]);
+    expect(hasBranchDatabaseSignal(signal)).toBe(false);
   });
 
   it("prefers a Prisma Next config over schema.prisma when both exist", async () => {

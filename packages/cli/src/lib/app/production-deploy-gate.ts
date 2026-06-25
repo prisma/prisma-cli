@@ -52,6 +52,7 @@ export async function enforceProductionDeployGate(
   const confirmed = await confirmPrompt({
     input: context.runtime.stdin,
     output: context.output.stderr,
+    signal: context.runtime.signal,
     message: "Deploy to production?",
     initialValue: false,
   });

@@ -83,6 +83,7 @@ export async function promptForProjectSetupChoice(options: {
   const rawName = await textPrompt({
     input: options.context.runtime.stdin,
     output: options.context.runtime.stderr,
+    signal: options.context.runtime.signal,
     message: "Project name",
     placeholder: suggestedName.name,
     validate: (value) =>
