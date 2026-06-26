@@ -293,6 +293,7 @@ const DESCRIPTORS: CommandDescriptor[] = [
       "prisma-cli app deploy --db",
       "prisma-cli app deploy --db --yes",
       "prisma-cli app deploy --app my-app --framework nextjs --http-port 3000",
+      "prisma-cli app deploy --app my-app --region us-west-1",
       "prisma-cli app deploy --branch feat-login --framework hono",
       "prisma-cli app deploy --prod --yes",
       "prisma-cli app deploy --framework bun --entry src/server.ts",

@@ -1,6 +1,8 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
+import { Result } from "better-result";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { asSingleDeployResult } from "./helpers/deploy-result";
@@ -40,6 +42,7 @@ afterEach(() => {
   vi.doUnmock("../src/lib/auth/guard");
   vi.doUnmock("../src/lib/app/app-provider");
   vi.doUnmock("../src/lib/app/branch-database");
+  vi.doUnmock("../src/lib/app/compute-config");
   vi.doUnmock("../src/shell/prompt");
   vi.doUnmock("open");
   vi.resetModules();
@@ -264,6 +267,301 @@ describe("app controller", () => {
     });
   });
 
+  it("uses the configured region when creating a new app from config", async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "prisma-cli-"));
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([]);
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_new",
+        name: "frontend",
+        region: "us-west-1",
+        liveDeploymentId: "dep_123",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://frontend.prisma.app",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+    vi.doMock("../src/lib/app/compute-config", async (importOriginal) => {
+      const actual =
+        await importOriginal<typeof import("../src/lib/app/compute-config")>();
+      return {
+        ...actual,
+        loadComputeConfig: vi.fn().mockResolvedValue(
+          Result.ok({
+            configPath: path.join(cwd, "prisma.compute.ts"),
+            configDir: cwd,
+            relativeConfigPath: "prisma.compute.ts",
+            kind: "single",
+            targets: [
+              {
+                key: null,
+                name: "frontend",
+                region: "us-west-1",
+                root: null,
+                framework: "hono",
+                entry: null,
+                httpPort: null,
+                envInputs: [],
+                build: null,
+              },
+            ],
+          }),
+        ),
+      };
+    });
+
+    const { createTestCommandContext } = await import("./helpers");
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppDeploy(context, undefined, {
+      projectRef: "proj_123",
+    });
+
+    expect(deployApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appName: "frontend",
+        region: "us-west-1",
+      }),
+    );
+    expect(asSingleDeployResult(result).result.deploySettings.region).toBe(
+      "us-west-1",
+    );
+  });
+
+  it("uses --region when creating a new app", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([]);
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_new",
+        name: "frontend",
+        region: "ap-southeast-1",
+        liveDeploymentId: "dep_123",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://frontend.prisma.app",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppDeploy(context, "frontend", {
+      projectRef: "proj_123",
+      framework: "hono",
+      region: "ap-southeast-1",
+    });
+
+    expect(deployApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appName: "frontend",
+        region: "ap-southeast-1",
+      }),
+    );
+    expect(asSingleDeployResult(result).result.deploySettings.region).toBe(
+      "ap-southeast-1",
+    );
+  });
+
+  it("rejects unsupported --region values before deploy", async () => {
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(
+      runAppDeploy(context, "frontend", {
+        projectRef: "proj_123",
+        framework: "hono",
+        region: "moon-1",
+      }),
+    ).rejects.toMatchObject({
+      code: "USAGE_ERROR",
+      summary: "Invalid app region",
+    });
+  });
+
+  it("rejects --region when the selected app already exists in another region", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_frontend",
+        name: "frontend",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_live",
+        liveUrl: null,
+      },
+    ]);
+    const deployApp = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(
+      runAppDeploy(context, "frontend", {
+        projectRef: "proj_123",
+        framework: "hono",
+        region: "us-west-1",
+      }),
+    ).rejects.toMatchObject({
+      code: "USAGE_ERROR",
+      summary: "App already exists in another region",
+    });
+    expect(deployApp).not.toHaveBeenCalled();
+  });
+
+  it("rejects --region when PRISMA_APP_ID selects an app in another region", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_frontend",
+        name: "frontend",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_live",
+        liveUrl: null,
+      },
+    ]);
+    const deployApp = vi.fn();
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_APP_ID: "app_frontend",
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(
+      runAppDeploy(context, undefined, {
+        projectRef: "proj_123",
+        framework: "hono",
+        region: "us-west-1",
+      }),
+    ).rejects.toMatchObject({
+      code: "USAGE_ERROR",
+      summary: "App already exists in another region",
+    });
+    expect(deployApp).not.toHaveBeenCalled();
+  });
+
   it("deploy-all stops at the first failing target and reports the rest", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
@@ -358,10 +656,10 @@ describe("app controller", () => {
     });
 
     await expect(
-      runAppDeploy(context, undefined, { framework: "hono" }),
+      runAppDeploy(context, undefined, { region: "us-west-1" }),
     ).rejects.toMatchObject({
       code: "USAGE_ERROR",
-      summary: expect.stringContaining("--framework"),
+      summary: expect.stringContaining("--region"),
     });
   });
 

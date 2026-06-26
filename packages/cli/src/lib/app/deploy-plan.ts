@@ -67,6 +67,7 @@ export interface DeployAllPerAppInputs {
   framework: string | undefined;
   entrypoint: string | undefined;
   httpPort: string | undefined;
+  region: string | undefined;
   envAssignments: string[] | undefined;
   /** App-id environment override, passed with its variable name for the message. */
   appIdEnvVar: { name: string; value: string | undefined };
@@ -85,6 +86,7 @@ export function perAppInputsForDeployAll(
     ["--framework", inputs.framework],
     ["--entry", inputs.entrypoint],
     ["--http-port", inputs.httpPort],
+    ["--region", inputs.region],
     [
       "--env",
       inputs.envAssignments?.length ? inputs.envAssignments : undefined,

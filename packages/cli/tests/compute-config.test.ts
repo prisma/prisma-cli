@@ -58,18 +58,17 @@ describe("normalizeComputeConfig", () => {
 
     expect(config.kind).toBe("single");
     expect(config.relativeConfigPath).toBe(COMPUTE_CONFIG_FILENAME);
-    expect(config.targets).toEqual([
-      {
-        key: null,
-        name: "api",
-        root: null,
-        framework: "hono",
-        entry: null,
-        httpPort: 8080,
-        envInputs: [".env"],
-        build: null,
-      },
-    ]);
+    expect(config.targets).toHaveLength(1);
+    expect(config.targets[0]).toMatchObject({
+      key: null,
+      name: "api",
+      root: null,
+      framework: "hono",
+      entry: null,
+      httpPort: 8080,
+      envInputs: [".env"],
+      build: null,
+    });
   });
 
   it("normalizes a multi-app config with roots and env objects", () => {
@@ -351,16 +350,17 @@ describe("selectComputeDeployTarget", () => {
 });
 
 describe("mergeComputeDeployInputs", () => {
-  const target: ComputeDeployTarget = {
+  const target = {
     key: "web",
     name: null,
+    region: "us-west-1",
     root: "apps/web",
     framework: "nextjs",
     entry: null,
     httpPort: 8080,
     envInputs: [".env", "LOG_LEVEL=debug"],
     build: null,
-  };
+  } as ComputeDeployTarget;
 
   it("uses config values when flags are absent", () => {
     const merged = mergeComputeDeployInputs({
@@ -377,6 +377,10 @@ describe("mergeComputeDeployInputs", () => {
       value: "8080",
       annotation: "set by prisma.compute.ts",
     });
+    expect(merged.region).toEqual({
+      value: "us-west-1",
+      annotation: "set by prisma.compute.ts",
+    });
     expect(merged.envInputs).toEqual([".env", "LOG_LEVEL=debug"]);
     expect(merged.configAppName).toEqual({
       value: "web",
@@ -391,6 +395,7 @@ describe("mergeComputeDeployInputs", () => {
         framework: "bun",
         entrypoint: "server.ts",
         httpPort: "3000",
+        region: "eu-west-3",
         envInputs: ["DATABASE_URL=postgresql://example"],
       },
       target,
@@ -408,6 +413,10 @@ describe("mergeComputeDeployInputs", () => {
     expect(merged.httpPort).toEqual({
       value: "3000",
       annotation: "set by --http-port",
+    });
+    expect(merged.region).toEqual({
+      value: "eu-west-3",
+      annotation: "set by --region",
     });
     // --env replaces config env inputs entirely; they never merge.
     expect(merged.envInputs).toEqual(["DATABASE_URL=postgresql://example"]);
@@ -435,6 +444,7 @@ describe("mergeComputeDeployInputs", () => {
       annotation: "set by --framework",
     });
     expect(merged.entrypoint).toBeUndefined();
+    expect(merged.region).toBeUndefined();
     expect(merged.envInputs).toBeUndefined();
     expect(merged.configAppName).toBeUndefined();
     expect(merged.appRoot).toBeUndefined();
@@ -442,16 +452,17 @@ describe("mergeComputeDeployInputs", () => {
 });
 
 describe("mergeComputeLocalInputs", () => {
-  const target: ComputeDeployTarget = {
+  const target = {
     key: "api",
     name: null,
+    region: null,
     root: "apps/api",
     framework: "hono",
     entry: "src/index.ts",
     httpPort: 8080,
     envInputs: [],
     build: null,
-  };
+  } as ComputeDeployTarget;
 
   it("maps the configured framework to a local build type", () => {
     expect(computeFrameworkToBuildType("nextjs")).toBe("nextjs");

@@ -19,6 +19,7 @@ function config(
     targets: keys.map((key) => ({
       key,
       name: null,
+      region: null,
       root: key ? `apps/${key}` : null,
       framework: null,
       entry: null,
@@ -34,6 +35,7 @@ const noPerAppInputs = {
   framework: undefined,
   entrypoint: undefined,
   httpPort: undefined,
+  region: undefined,
   envAssignments: undefined,
   appIdEnvVar: { name: "PRISMA_APP_ID", value: undefined },
 };
@@ -114,6 +116,7 @@ describe("perAppInputsForDeployAll", () => {
         framework: "hono",
         entrypoint: "src/index.ts",
         httpPort: "8080",
+        region: "us-west-1",
         envAssignments: ["KEY=value"],
         appIdEnvVar: { name: "PRISMA_APP_ID", value: "app_1" },
       }),
@@ -122,6 +125,7 @@ describe("perAppInputsForDeployAll", () => {
       "--framework",
       "--entry",
       "--http-port",
+      "--region",
       "--env",
       "PRISMA_APP_ID",
     ]);

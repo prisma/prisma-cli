@@ -230,6 +230,12 @@ function createDeployCommand(runtime: CliRuntime): Command {
     )
     .addOption(
       new Option(
+        "--region <region>",
+        "Region for a newly created app; existing apps keep their region",
+      ),
+    )
+    .addOption(
+      new Option(
         "--env <name=value|file>",
         "Environment variable assignment or dotenv file",
       ).argParser(collectRepeatableValues),
@@ -250,6 +256,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
     const branchName = (options as { branch?: string }).branch;
     const framework = (options as { framework?: string }).framework;
     const httpPort = (options as { httpPort?: string }).httpPort;
+    const region = (options as { region?: string }).region;
     const envAssignments = (options as { env?: string[] }).env;
     const projectRef = (options as { project?: string }).project;
     const createProjectName = (options as { createProject?: string })
@@ -281,6 +288,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
           entrypoint: entry,
           framework,
           httpPort,
+          region,
           envAssignments,
           prod: prod === true,
           db,

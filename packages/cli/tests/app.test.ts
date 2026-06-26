@@ -174,6 +174,7 @@ describe("app commands", () => {
     expect(deployHelp.stderr).toContain("--framework <name>");
     expect(deployHelp.stderr).not.toContain("--build-type <type>");
     expect(deployHelp.stderr).toContain("--http-port <port>");
+    expect(deployHelp.stderr).toContain("--region <region>");
     expect(deployHelp.stderr).toContain("--env <name=value|file>");
     expect(deployHelp.stderr).toContain("--db");
     expect(deployHelp.stderr).toContain("--no-db");
