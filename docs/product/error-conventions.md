@@ -143,7 +143,7 @@ Rules:
 - `ok` is always `false`
 - `command` is always present
 - `error.code` is stable and machine-readable
-- `error.domain` is a stable logical area such as `cli`, `auth`, `project`, `branch`, `app`, or `database`
+- `error.domain` is a stable logical area such as `cli`, `agent`, `auth`, `project`, `branch`, `app`, or `database`
 - `error.severity` is stable and machine-readable
 - `error.summary` is the short human-readable headline
 - `error.why` explains the immediate cause when known
@@ -161,6 +161,7 @@ These codes are the minimum stable set for the MVP:
 - `USAGE_ERROR`
 - `AUTH_REQUIRED`
 - `AUTH_CONFIG_INVALID`
+- `AGENT_SKILLS_INSTALL_FAILED`
 - `WORKSPACE_SWITCH_UNAVAILABLE`
 - `WORKSPACE_NOT_AUTHENTICATED`
 - `WORKSPACE_AMBIGUOUS`
@@ -222,6 +223,7 @@ Recommended meanings:
 - `USAGE_ERROR`: invalid arguments or invalid command combination
 - `AUTH_REQUIRED`: command needs an authenticated session
 - `AUTH_CONFIG_INVALID`: environment auth configuration is present but unusable, such as an empty `PRISMA_SERVICE_TOKEN`
+- `AGENT_SKILLS_INSTALL_FAILED`: installing Prisma skills through the external skills CLI failed; callers should inspect the command, exit code, and stderr in `error.meta`
 - `WORKSPACE_SWITCH_UNAVAILABLE`: `PRISMA_SERVICE_TOKEN` is the active auth source, so local OAuth workspace switching cannot apply
 - `WORKSPACE_NOT_AUTHENTICATED`: requested workspace is not present in the local OAuth credentials store for a switch/logout operation; callers should run `auth login` for that workspace
 - `WORKSPACE_AMBIGUOUS`: requested workspace name matches more than one local OAuth workspace; callers should switch by workspace id
