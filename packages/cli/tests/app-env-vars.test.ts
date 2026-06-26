@@ -556,7 +556,7 @@ describe("app env vars", () => {
     expect(JSON.stringify(result.result)).not.toContain("enabled");
   });
 
-  it("parses deploy build, port, prod, explicit project, and JSON output through the CLI command layer", async () => {
+  it("parses deploy build, port, region, prod, explicit project, and JSON output through the CLI command layer", async () => {
     const runAppDeploy = vi.fn().mockResolvedValue({
       command: "app.deploy",
       result: {
@@ -637,6 +637,8 @@ describe("app env vars", () => {
         "nextjs",
         "--http-port",
         "3000",
+        "--region",
+        "us-west-1",
         "--env",
         "DATABASE_URL=postgresql://example",
         "--project",
@@ -699,6 +701,7 @@ describe("app env vars", () => {
         entrypoint: undefined,
         framework: "nextjs",
         httpPort: "3000",
+        region: "us-west-1",
         envAssignments: ["DATABASE_URL=postgresql://example"],
         projectRef: "proj_123",
         prod: true,

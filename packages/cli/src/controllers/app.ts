@@ -2,6 +2,7 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";
 import {
+  COMPUTE_REGIONS,
   type ComputeFramework,
   type ConfigBackedBuildType,
   ENTRYPOINT_BUILD_TYPES,
@@ -38,7 +39,6 @@ import {
   executeAppBuild,
   PRISMA_APP_CONFIG_FILENAME,
   RESOLVED_APP_BUILD_TYPES,
-  type ResolvedAppBuildType,
   resolveConfiguredAppBuildSettings,
   resolveInferredAppBuildSettings,
 } from "../lib/app/build";
@@ -165,6 +165,7 @@ type AppDomainCommand = "add" | "show" | "remove" | "retry" | "wait";
 const FRAMEWORK_DEFAULT_HTTP_PORT = 3000;
 const PRISMA_PROJECT_ID_ENV_VAR = "PRISMA_PROJECT_ID";
 const PRISMA_APP_ID_ENV_VAR = "PRISMA_APP_ID";
+const COMPUTE_REGION_IDS = new Set<string>(COMPUTE_REGIONS);
 
 function isRealMode(context: CommandContext): boolean {
   return (
@@ -373,6 +374,7 @@ interface AppDeployOptions {
   entrypoint?: string;
   framework?: string;
   httpPort?: string;
+  region?: string;
   envAssignments?: string[];
   prod?: boolean;
   db?: boolean;
@@ -427,7 +429,7 @@ async function runAppDeployAll(
   appName: string | undefined,
   options?: AppDeployOptions,
 ): Promise<CommandSuccess<AppDeployAllResult>> {
-  assertNoPerAppInputsForDeployAll(context, config, appName, options);
+  assertNoPerAppInputsForDeployAll(context, plannedTargets, appName, options);
 
   const deployments: AppDeployAllResult["deployments"] = [];
   const warnings: string[] = [];
@@ -444,6 +446,7 @@ async function runAppDeployAll(
         : undefined,
     };
     try {
+      // biome-ignore lint/performance/noAwaitInLoops: deploy-all must run in order so --create-project writes the local project pin before later targets resolve it.
       const single = await runSingleAppDeploy(
         context,
         undefined,
@@ -453,7 +456,12 @@ async function runAppDeployAll(
       deployments.push({ target: planned.targetKey, result: single.result });
       warnings.push(...single.warnings);
     } catch (error) {
-      throw deployAllFailedError(error, config, planned.index, deployments);
+      throw deployAllFailedError(
+        error,
+        plannedTargets,
+        planned.index,
+        deployments,
+      );
     }
   }
 
@@ -469,7 +477,7 @@ async function runAppDeployAll(
 
 function assertNoPerAppInputsForDeployAll(
   context: CommandContext,
-  config: LoadedComputeConfig,
+  plannedTargets: PlannedDeployTarget[],
   appName: string | undefined,
   options?: AppDeployOptions,
 ): void {
@@ -478,6 +486,7 @@ function assertNoPerAppInputsForDeployAll(
     framework: options?.framework,
     entrypoint: options?.entrypoint,
     httpPort: options?.httpPort,
+    region: options?.region,
     envAssignments: options?.envAssignments,
     appIdEnvVar: {
       name: PRISMA_APP_ID_ENV_VAR,
@@ -488,12 +497,12 @@ function assertNoPerAppInputsForDeployAll(
     return;
   }
 
-  const targets = config.targets.map((target) => target.key!).join(", ");
+  const targetKeys = plannedTargets.map((target) => target.targetKey);
   throw usageError(
     `Deploying all apps does not accept ${used.join(", ")}`,
-    `Without a target, app deploy deploys every configured app (${targets}), so per-app inputs are ambiguous.`,
+    `Without a target, app deploy deploys every configured app (${targetKeys.join(", ")}), so per-app inputs are ambiguous.`,
     "Pass the app target to apply per-app inputs to one app, or remove them to deploy all apps.",
-    config.targets.map((target) => `prisma-cli app deploy ${target.key}`),
+    targetKeys.map((target) => `prisma-cli app deploy ${target}`),
     "app",
   );
 }
@@ -513,7 +522,7 @@ function maybeRenderDeployAllTargetHeader(
 
 function deployAllFailedError(
   error: unknown,
-  config: LoadedComputeConfig,
+  plannedTargets: PlannedDeployTarget[],
   failedIndex: number,
   deployments: AppDeployAllResult["deployments"],
 ): unknown {
@@ -522,7 +531,7 @@ function deployAllFailedError(
   }
 
   const failure = describeDeployAllFailure({
-    targetKeys: config.targets.map((target) => target.key!),
+    targetKeys: plannedTargets.map((target) => target.targetKey),
     failedIndex,
     completed: deployments.map(({ target, result }) => ({
       target,
@@ -593,6 +602,7 @@ async function runSingleAppDeploy(
       framework: options?.framework,
       entrypoint: options?.entrypoint,
       httpPort: options?.httpPort,
+      region: options?.region,
       envInputs: options?.envAssignments,
     },
     target: computeConfig.target,
@@ -619,6 +629,7 @@ async function runSingleAppDeploy(
   if (merged.httpPort) {
     parseDeployHttpPort(merged.httpPort.value);
   }
+  const deployRegion = normalizeDeployRegionInput(merged.region);
   assertSupportedEntrypointForRequestedDeployShape({
     requestedFramework: merged.framework?.value,
     entrypoint: merged.entrypoint?.value,
@@ -689,6 +700,7 @@ async function runSingleAppDeploy(
       explicitAppName: appName,
       explicitAppId: envAppId,
       configAppName: merged.configAppName,
+      configRegion: deployRegion,
       firstDeploy: Boolean(target.localPinAction),
       inferName: () => inferTargetName(appDir, context.runtime.signal),
     },
@@ -734,27 +746,12 @@ async function runSingleAppDeploy(
     merged.entrypoint?.value,
     context.runtime.signal,
   );
-  if (computeConfig.target?.build) {
-    assertConfigBackedBuildSettings(buildType);
-  }
-  // Build settings come from the compute config's build block over framework
-  // defaults; nothing is read from or written to disk for them.
-  const buildSettingsResolution =
-    computeConfig.config &&
-    computeConfig.target?.build &&
-    isConfigBackedBuildType(buildType)
-      ? await resolveConfiguredAppBuildSettings({
-          appPath: appDir,
-          buildType,
-          configured: computeConfig.target.build,
-          configPath: computeConfig.config.configPath,
-          signal: context.runtime.signal,
-        })
-      : await resolveInferredAppBuildSettings({
-          appPath: appDir,
-          buildType,
-          signal: context.runtime.signal,
-        });
+  const buildSettingsResolution = await resolveDeployBuildSettings({
+    computeConfig,
+    appDir,
+    buildType,
+    signal: context.runtime.signal,
+  });
   const legacyWarnings = await handleLegacyBuildSettings(
     context,
     appDir,
@@ -849,7 +846,7 @@ async function runSingleAppDeploy(
         entrypoint:
           entrypoint ?? buildSettingsResolution.settings.entrypoint ?? null,
         httpPort: runtime.port,
-        region: selectedApp.region ?? null,
+        region: deployResult.app.region ?? selectedApp.region ?? null,
         envVars: envVarNames(envVars),
       },
       durationMs: deployDurationMs,
@@ -861,6 +858,44 @@ async function runSingleAppDeploy(
       `prisma-cli app show-deploy ${deployResult.deployment.id}`,
     ],
   };
+}
+
+async function resolveDeployBuildSettings(options: {
+  computeConfig: {
+    config: LoadedComputeConfig | null;
+    target: ComputeDeployTarget | null;
+  };
+  appDir: string;
+  buildType: FrameworkBuildType;
+  signal: AbortSignal;
+}): Promise<AppBuildSettingsResolution> {
+  const { computeConfig, appDir, buildType, signal } = options;
+
+  if (computeConfig.target?.build) {
+    assertConfigBackedBuildSettings(buildType);
+  }
+
+  // Build settings come from the compute config's build block over framework
+  // defaults; nothing is read from or written to disk for them.
+  if (
+    computeConfig.config &&
+    computeConfig.target?.build &&
+    isConfigBackedBuildType(buildType)
+  ) {
+    return resolveConfiguredAppBuildSettings({
+      appPath: appDir,
+      buildType,
+      configured: computeConfig.target.build,
+      configPath: computeConfig.config.configPath,
+      signal,
+    });
+  }
+
+  return resolveInferredAppBuildSettings({
+    appPath: appDir,
+    buildType,
+    signal,
+  });
 }
 
 export async function runAppListDeploys(
@@ -2623,6 +2658,7 @@ async function resolveDeployAppSelection(
     explicitAppName: string | undefined;
     explicitAppId: string | undefined;
     configAppName: MergedDeployInput | undefined;
+    configRegion: MergedDeployInput | undefined;
     firstDeploy: boolean;
     inferName: () => Promise<InferredTargetName>;
   },
@@ -2634,33 +2670,16 @@ async function resolveDeployAppSelection(
   annotation: string;
   firstDeploy: boolean;
 }> {
+  const newAppRegion = deployNewAppRegion(options.configRegion);
   if (options.explicitAppName) {
-    const matches = findAppsByName(apps, options.explicitAppName);
-    if (matches.length > 1) {
-      return resolveAmbiguousDeployApp(
-        context,
-        matches,
-        options.explicitAppName,
-        options.firstDeploy,
-      );
-    }
-    const matched = matches[0];
-    if (matched) {
-      return {
-        appId: matched.id,
-        displayName: matched.name,
-        annotation: "set by --app",
-        firstDeploy: options.firstDeploy,
-      };
-    }
-
-    return {
-      appName: options.explicitAppName,
-      region: DEFAULT_REGION,
-      displayName: options.explicitAppName,
-      annotation: "set by --app",
+    return resolveDeployAppByName(context, apps, {
+      name: options.explicitAppName,
+      matchedAnnotation: "set by --app",
+      newAnnotation: "set by --app",
+      requestedRegion: options.configRegion,
+      newAppRegion,
       firstDeploy: options.firstDeploy,
-    };
+    });
   }
 
   if (options.explicitAppId) {
@@ -2674,6 +2693,7 @@ async function resolveDeployAppSelection(
         "app",
       );
     }
+    assertDeployRegionMatchesExistingApp(matched, options.configRegion);
 
     return {
       appId: matched.id,
@@ -2685,72 +2705,112 @@ async function resolveDeployAppSelection(
 
   if (options.configAppName) {
     const configName = options.configAppName;
-    const matches = findAppsByName(apps, configName.value);
-    if (matches.length > 1) {
-      return resolveAmbiguousDeployApp(
-        context,
-        matches,
-        configName.value,
-        options.firstDeploy,
-      );
-    }
-
-    const matched = matches[0];
-    if (matched) {
-      return {
-        appId: matched.id,
-        displayName: matched.name,
-        annotation: configName.annotation,
-        firstDeploy: options.firstDeploy,
-      };
-    }
-
-    return {
-      appName: configName.value,
-      region: DEFAULT_REGION,
-      displayName: configName.value,
-      annotation: configName.annotation,
+    return resolveDeployAppByName(context, apps, {
+      name: configName.value,
+      matchedAnnotation: configName.annotation,
+      newAnnotation: configName.annotation,
+      requestedRegion: options.configRegion,
+      newAppRegion,
       firstDeploy: options.firstDeploy,
-    };
+    });
   }
 
   const inferredName = await options.inferName();
-  const matches = findAppsByName(apps, inferredName.name);
+  const newAnnotation =
+    inferredName.source === "package-name"
+      ? "created from package.json"
+      : "created from directory name";
+  return resolveDeployAppByName(context, apps, {
+    name: inferredName.name,
+    matchedAnnotation: "existing app on this branch",
+    newAnnotation,
+    requestedRegion: options.configRegion,
+    newAppRegion,
+    firstDeploy: options.firstDeploy,
+  });
+}
+
+async function resolveDeployAppByName(
+  context: CommandContext,
+  apps: AppRecord[],
+  options: {
+    name: string;
+    matchedAnnotation: string;
+    newAnnotation: string;
+    requestedRegion: MergedDeployInput | undefined;
+    newAppRegion: string;
+    firstDeploy: boolean;
+  },
+): Promise<{
+  appId?: string;
+  appName?: string;
+  region?: string;
+  displayName: string;
+  annotation: string;
+  firstDeploy: boolean;
+}> {
+  const matches = findAppsByName(apps, options.name);
   if (matches.length > 1) {
     return resolveAmbiguousDeployApp(
       context,
       matches,
-      inferredName.name,
+      options.name,
+      options.requestedRegion,
+      options.newAppRegion,
       options.firstDeploy,
     );
   }
 
   const matched = matches[0];
   if (matched) {
+    assertDeployRegionMatchesExistingApp(matched, options.requestedRegion);
     return {
       appId: matched.id,
       displayName: matched.name,
-      annotation: "existing app on this branch",
+      annotation: options.matchedAnnotation,
       firstDeploy: options.firstDeploy,
     };
   }
 
   return {
-    appName: inferredName.name,
-    region: DEFAULT_REGION,
-    displayName: inferredName.name,
-    annotation:
-      inferredName.source === "package-name"
-        ? "created from package.json"
-        : "created from directory name",
+    appName: options.name,
+    region: options.newAppRegion,
+    displayName: options.name,
+    annotation: options.newAnnotation,
     firstDeploy: options.firstDeploy,
   };
+}
+
+function assertDeployRegionMatchesExistingApp(
+  app: AppRecord,
+  requestedRegion: MergedDeployInput | undefined,
+): void {
+  if (
+    requestedRegion?.annotation !== "set by --region" ||
+    !app.region ||
+    app.region === requestedRegion.value
+  ) {
+    return;
+  }
+
+  throw usageError(
+    "App already exists in another region",
+    `The selected app "${app.name}" is in region "${app.region}", but --region requested "${requestedRegion.value}".`,
+    "Remove --region to deploy the existing app, or pass --app <new-name> to create a new app in that region.",
+    [
+      `prisma-cli app deploy --app ${formatCommandArgument(app.name)}`,
+      `prisma-cli app deploy --app <new-name> --region ${formatCommandArgument(requestedRegion.value)}`,
+    ],
+    "app",
+  );
 }
 
 async function resolveAmbiguousDeployApp(
   context: CommandContext,
   matches: AppRecord[],
   targetName: string,
+  requestedRegion: MergedDeployInput | undefined,
+  newAppRegion: string,
   firstDeploy: boolean,
 ): Promise<{
   appId?: string;
@@ -2798,12 +2858,14 @@ async function resolveAmbiguousDeployApp(
     if (selected === createNew) {
       return {
         appName: targetName,
-        region: DEFAULT_REGION,
+        region: newAppRegion,
         displayName: targetName,
         annotation: "created from package.json",
         firstDeploy,
       };
     }
+
+    assertDeployRegionMatchesExistingApp(selected, requestedRegion);
 
     return {
       appId: selected.id,
@@ -2825,6 +2887,12 @@ async function resolveAmbiguousDeployApp(
     exitCode: 2,
     nextSteps: ["prisma-cli app deploy --app <name>"],
   });
+}
+
+function deployNewAppRegion(
+  configRegion: MergedDeployInput | undefined,
+): string {
+  return configRegion?.value ?? DEFAULT_REGION;
 }
 
 async function resolveExistingAppSelection(
@@ -4339,10 +4407,6 @@ function maybeRenderDeploySettingsPreview(
   );
 }
 
-function frameworkDisplayName(framework: ComputeFramework): string {
-  return frameworkByKey(framework).displayName;
-}
-
 function validateDeployHttpPortText(
   value: string | undefined,
 ): string | undefined {
@@ -4558,6 +4622,44 @@ function parseDeployHttpPort(requestedPort: string): number {
   }
 
   return port;
+}
+
+function parseDeployRegion(requestedRegion: string, source: string): string {
+  const region = requestedRegion.trim();
+  if (region.length === 0) {
+    throw usageError(
+      "Invalid app region",
+      `The app region ${source} must be a non-empty region id.`,
+      "Pass a Prisma Compute region id.",
+      ["prisma-cli app deploy --region eu-central-1"],
+      "app",
+    );
+  }
+
+  if (!COMPUTE_REGION_IDS.has(region)) {
+    throw usageError(
+      "Invalid app region",
+      `The app region ${source} must be one of: ${COMPUTE_REGIONS.join(", ")}.`,
+      "Pass a supported Prisma Compute region id.",
+      ["prisma-cli app deploy --region eu-central-1"],
+      "app",
+    );
+  }
+
+  return region;
+}
+
+function normalizeDeployRegionInput(
+  region: MergedDeployInput | undefined,
+): MergedDeployInput | undefined {
+  if (!region) {
+    return undefined;
+  }
+
+  return {
+    ...region,
+    value: parseDeployRegion(region.value, region.annotation),
+  };
 }
 
 function ensurePreviewAppMode(context: CommandContext) {

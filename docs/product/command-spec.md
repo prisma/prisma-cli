@@ -58,7 +58,7 @@ Out of scope for the current beta:
   non-TTY stderr, and when `NO_UPDATE_NOTIFIER` is set. When shown, update
   notifications are stderr-only human output and do not change the original
   command result.
-- Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for Project -> Branch resolution. `.prisma/local.json` is a gitignored local pin/cache, not a declarative repo config file. `prisma.app.json` is legacy and no longer read or written. `prisma.compute.ts` supplies typed `app deploy` defaults (app name, app root, framework, entrypoint, HTTP port, env inputs) and never selects Project or Branch scope.
+- Public Beta does not read or write committed config files such as `prisma.config.ts` or `.prisma/settings.json` for Project -> Branch resolution. `.prisma/local.json` is a gitignored local pin/cache, not a declarative repo config file. `prisma.app.json` is legacy and no longer read or written. `prisma.compute.ts` supplies typed `app deploy` defaults (app name, app region, app root, framework, entrypoint, HTTP port, env inputs) and never selects Project or Branch scope.
 - Remote commands do not silently change local context.
 
 ## Authentication
@@ -125,6 +125,9 @@ source. Unlike deploy, management commands never require a target: with
 multiple targets, no argument, and nothing inferred from the invocation
 directory, they fall back to the selection order above — except step 7;
 management commands never create apps or mutate remote state to resolve one.
+
+Config `region` and `--region` are not app selectors. They are used only when
+`app deploy` creates a new app; existing apps keep their current region.
 
 `.prisma/local.json` pins the directory to a Workspace and Project only. It does
 not pin an App ID. App services are branch-scoped; a service ID from `main`
@@ -927,7 +930,7 @@ prisma-cli app run --build-type bun --entry server.ts --port 3000
 prisma-cli app run api
 ```
 
-## `prisma-cli app deploy [app] --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|nuxt|astro|hono|nestjs|tanstack-start|custom|bun> --entry <path> --http-port <port> --env <name=value|file> --db --no-db --prod`
+## `prisma-cli app deploy [app] --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|nuxt|astro|hono|nestjs|tanstack-start|custom|bun> --entry <path> --http-port <port> --region <region> --env <name=value|file> --db --no-db --prod`
 
 Purpose:
 
@@ -943,7 +946,8 @@ Compute config file (`prisma.compute.ts`):
 - the config defines exactly one of:
   - `app` — a single-app repository
   - `apps` — a multi-app or monorepo repository, keyed by deploy target name
-- each app accepts `name`, `root`, `framework`, `entry`, `httpPort`, `env`, and `build`:
+- each app accepts `name`, `region`, `root`, `framework`, `entry`, `httpPort`, `env`, and `build`:
+  - `region` is the Compute region id used when deploy creates a new app; existing apps keep their current region
   - `env` is a dotenv file path, or `{ file, vars }` with file path(s) and inline assignments
   - `build` is `{ command, outputDirectory, entrypoint }`; all fields are optional except where a framework requires enough information to stage a runnable artifact, and `command: null` skips the build step
   - `build.entrypoint` is the built artifact entrypoint when `outputDirectory` is set, and is the source entrypoint for Bun/Hono configs that do not set an output directory
@@ -959,14 +963,15 @@ with ORM config keys, and `database.schema` will become unnecessary once the
 unified file's own `schema` field is in scope. Project, branch, and
 production targeting stay out of committed config in the unified file for the
 same reasons they are excluded today.
-- config values are deploy defaults; explicit flags always win: `--framework`, `--entry`, `--http-port` override per value, and any `--env` flag replaces the config env inputs entirely
+- config values are deploy defaults; explicit flags always win: `--framework`, `--entry`, `--http-port`, and `--region` override per value, and any `--env` flag replaces the config env inputs entirely
 - the config `name` (or the `apps` key when `name` is absent) selects the app like `--app`, but ranks below both `--app` and `PRISMA_APP_ID`
+- `--region` and config `region` apply only when the resolved app does not exist yet and deploy creates it; `--app` and `PRISMA_APP_ID` still control which app is selected
 - `root` is a relative path inside the repository; framework detection, entrypoint resolution, build settings, and the build/upload run in that directory while Project binding and the local pin stay in the config file's directory
 - `prisma.compute.ts` never selects Project or Branch scope; project resolution is unchanged
 - the `[app]` argument selects an `apps` target by key:
   - without an `[app]` argument, a command run from inside a target's `root` selects that target, so `cd apps/api && prisma-cli app deploy` deploys `api`; the deepest matching root wins and an ambiguous tie selects nothing
   - with multiple `apps` entries, no `[app]` argument, and no target inferred from the invocation directory, deploy deploys every target sequentially in declaration order — the config declares the system, and a bare `prisma-cli app deploy` ships it
-  - deploying all targets rejects per-app inputs (`--app`, `--framework`, `--entry`, `--http-port`, `--env`, `PRISMA_APP_ID`) with a usage error; project- and branch-level flags (`--project`, `--create-project`, `--branch`, `--db`, `--no-db`, `--prod`, `--yes`) apply to the whole run, with `--create-project` creating and binding the Project once before the first target
+  - deploying all targets rejects per-app inputs (`--app`, `--framework`, `--entry`, `--http-port`, `--region`, `--env`, `PRISMA_APP_ID`) with a usage error; project- and branch-level flags (`--project`, `--create-project`, `--branch`, `--db`, `--no-db`, `--prod`, `--yes`) apply to the whole run, with `--create-project` creating and binding the Project once before the first target
   - a deploy-all run stops at the first failure and reports the targets already live; `--json` output aggregates one full deploy result per target
   - `app build` and `app run` still require a target in multi-app configs and fail with `COMPUTE_CONFIG_TARGET_REQUIRED` (a dev server cannot run N apps at once; build keeps the same shape)
   - an `[app]` argument that matches no target fails with `COMPUTE_CONFIG_TARGET_UNKNOWN`
@@ -983,6 +988,7 @@ import { defineComputeConfig } from "@prisma/compute-sdk/config";
 export default defineComputeConfig({
   app: {
     name: "api",
+    region: "eu-central-1",
     framework: "hono",
     httpPort: 8080,
     env: ".env",
@@ -1079,6 +1085,7 @@ prisma-cli app deploy
 prisma-cli app deploy --project proj_123
 prisma-cli app deploy --create-project my-app --yes
 prisma-cli app deploy --app my-app --env DATABASE_URL=postgresql://example
+prisma-cli app deploy --app my-app --region us-west-1
 prisma-cli app deploy --db
 prisma-cli app deploy --db --yes
 prisma-cli app deploy --no-db

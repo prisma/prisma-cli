@@ -67,6 +67,8 @@ export interface MergedComputeDeployInputs {
   framework: MergedDeployInput | undefined;
   entrypoint: MergedDeployInput | undefined;
   httpPort: MergedDeployInput | undefined;
+  /** Region from config, applied only when the deploy creates a new app. */
+  region: MergedDeployInput | undefined;
   /** `--env` flags replace config env inputs entirely; they never merge. */
   envInputs: string[] | undefined;
   /** True when env inputs came from the config; their file paths then resolve from the config directory. */
@@ -82,6 +84,7 @@ export function mergeComputeDeployInputs(options: {
     framework?: string;
     entrypoint?: string;
     httpPort?: string;
+    region?: string;
     envInputs?: string[];
   };
   target: ComputeDeployTarget | null;
@@ -90,23 +93,31 @@ export function mergeComputeDeployInputs(options: {
   const { cli, target, configFilename } = options;
   const configAnnotation = `set by ${configFilename}`;
 
-  const framework = cli.framework
-    ? { value: cli.framework, annotation: "set by --framework" }
-    : target?.framework
-      ? { value: target.framework, annotation: configAnnotation }
-      : undefined;
+  const framework = mergeStringInput(
+    cli.framework,
+    "set by --framework",
+    target?.framework ?? undefined,
+    configAnnotation,
+  );
+  const entrypoint = mergeStringInput(
+    cli.entrypoint,
+    "set by --entry",
+    target?.entry ?? undefined,
+    configAnnotation,
+  );
+  const httpPort = mergeStringInput(
+    cli.httpPort,
+    "set by --http-port",
+    target?.httpPort ? String(target.httpPort) : undefined,
+    configAnnotation,
+  );
 
-  const entrypoint = cli.entrypoint
-    ? { value: cli.entrypoint, annotation: "set by --entry" }
-    : target?.entry
-      ? { value: target.entry, annotation: configAnnotation }
-      : undefined;
-
-  const httpPort = cli.httpPort
-    ? { value: cli.httpPort, annotation: "set by --http-port" }
-    : target?.httpPort
-      ? { value: String(target.httpPort), annotation: configAnnotation }
-      : undefined;
+  const region = mergeStringInput(
+    cli.region,
+    "set by --region",
+    target?.region ?? undefined,
+    configAnnotation,
+  );
 
   const cliEnvInputs =
     cli.envInputs && cli.envInputs.length > 0 ? cli.envInputs : undefined;
@@ -114,21 +125,46 @@ export function mergeComputeDeployInputs(options: {
     target && target.envInputs.length > 0 ? target.envInputs : undefined;
   const envInputs = cliEnvInputs ?? configEnvInputs;
 
-  const configAppName = target?.name
-    ? { value: target.name, annotation: configAnnotation }
-    : target?.key
-      ? { value: target.key, annotation: configAnnotation }
-      : undefined;
+  const configAppName = readConfigAppName(target, configAnnotation);
 
   return {
     framework,
     entrypoint,
     httpPort,
+    region,
     envInputs,
     envInputsFromConfig: !cliEnvInputs && configEnvInputs !== undefined,
     configAppName,
     appRoot: target?.root ?? undefined,
   };
+}
+
+function mergeStringInput(
+  cliValue: string | undefined,
+  cliAnnotation: string,
+  configValue: string | undefined,
+  configAnnotation: string,
+): MergedDeployInput | undefined {
+  if (cliValue !== undefined) {
+    return { value: cliValue, annotation: cliAnnotation };
+  }
+  if (configValue) {
+    return { value: configValue, annotation: configAnnotation };
+  }
+  return undefined;
+}
+
+function readConfigAppName(
+  target: ComputeDeployTarget | null,
+  configAnnotation: string,
+): MergedDeployInput | undefined {
+  if (target?.name) {
+    return { value: target.name, annotation: configAnnotation };
+  }
+  if (target?.key) {
+    return { value: target.key, annotation: configAnnotation };
+  }
+  return undefined;
 }
 
 export interface MergedComputeLocalInputs {
