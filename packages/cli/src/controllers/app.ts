@@ -2288,7 +2288,7 @@ function toAppDomainSummary(domain: DomainRecord): AppDomainSummary {
     type: domain.type,
     url: domain.url,
     hostname: domain.hostname,
-    computeServiceId: domain.computeServiceId,
+    appId: domain.appId,
     status: domain.status,
     foundryStatus: domain.foundryStatus,
     failureReason: domain.failureReason,

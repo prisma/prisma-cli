@@ -106,7 +106,7 @@ export interface DomainRecord {
   type: "custom-domain";
   url: string;
   hostname: string;
-  computeServiceId: string;
+  appId: string;
   status: DomainStatus;
   foundryStatus: string;
   failureReason: string | null;
@@ -791,7 +791,7 @@ interface RawDomainRecord {
   type: "custom-domain";
   url: string;
   hostname: string;
-  computeServiceId: string;
+  appId: string;
   status: DomainStatus;
   foundryStatus: string;
   failureReason: string | null;
@@ -926,12 +926,12 @@ async function listComputeServices(
 
 async function listComputeServiceDomains(
   client: ManagementApiClient,
-  computeServiceId: string,
+  appId: string,
   signal?: AbortSignal,
 ): Promise<DomainRecord[]> {
   const result = await client.GET("/v1/apps/{appId}/domains", {
     params: {
-      path: { appId: computeServiceId },
+      path: { appId: appId },
     },
     signal,
   });
@@ -953,7 +953,7 @@ function normalizeDomainRecord(domain: RawDomainRecord): DomainRecord {
     type: domain.type,
     url: domain.url,
     hostname: domain.hostname,
-    computeServiceId: domain.computeServiceId,
+    appId: domain.appId,
     status: domain.status,
     foundryStatus: domain.foundryStatus,
     failureReason: domain.failureReason,

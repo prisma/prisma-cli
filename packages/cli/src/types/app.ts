@@ -191,7 +191,7 @@ export interface AppDomainSummary {
   type: "custom-domain";
   url: string;
   hostname: string;
-  computeServiceId: string;
+  appId: string;
   status: AppDomainStatus;
   foundryStatus: string;
   failureReason: string | null;

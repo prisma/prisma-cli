@@ -25,7 +25,7 @@ function createDomain(
     type: "custom-domain",
     url: "https://api.prisma.io/v1/domains/dom_123",
     hostname: "shop.acme.com",
-    computeServiceId: "app_1",
+    appId: "app_1",
     status: "pending_dns",
     foundryStatus: "pending",
     failureReason: null,
