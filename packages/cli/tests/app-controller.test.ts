@@ -91,7 +91,7 @@ function createDomain(
   overrides: Partial<{
     id: string;
     hostname: string;
-    computeServiceId: string;
+    appId: string;
     status:
       | "pending_dns"
       | "verifying"
@@ -116,7 +116,7 @@ function createDomain(
     type: "custom-domain" as const,
     url: `https://api.prisma.io/v1/domains/${overrides.id ?? "dom_123"}`,
     hostname,
-    computeServiceId: overrides.computeServiceId ?? "app_1",
+    appId: overrides.appId ?? "app_1",
     status: overrides.status ?? "pending_dns",
     foundryStatus: overrides.status ?? "pending_dns",
     failureReason: overrides.failureReason ?? null,
