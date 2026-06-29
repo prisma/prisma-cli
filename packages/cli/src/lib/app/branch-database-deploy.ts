@@ -145,6 +145,7 @@ export async function maybeSetupBranchDatabase(
     const shouldCreate = await confirmPrompt({
       input: context.runtime.stdin,
       output: context.output.stderr,
+      signal: context.runtime.signal,
       message: databasePromptMessage(branch),
       initialValue: false,
     });

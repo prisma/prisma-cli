@@ -53,6 +53,83 @@ describe("auth commands", () => {
     );
   });
 
+  it("suggests agent setup after login from a project directory", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writeFile(
+      path.join(cwd, "package.json"),
+      JSON.stringify({ packageManager: "pnpm@11.0.0" }, null, 2),
+      "utf8",
+    );
+
+    const result = await executeCli({
+      argv: ["auth", "login", "--provider", "github", "--user", "usr_456"],
+      cwd,
+      stateDir,
+      fixturePath,
+      isTTY: true,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain(
+      "Install Prisma skills for this project with pnpm dlx @prisma/cli@latest agent install.",
+    );
+  });
+
+  it("suggests agent setup from a subdirectory under a compute config root", async () => {
+    const cwd = await createTempCwd();
+    const appDir = path.join(cwd, "apps", "web");
+    const stateDir = path.join(cwd, ".state");
+    await mkdir(appDir, { recursive: true });
+    await mkdir(path.join(cwd, ".git"), { recursive: true });
+    await writeFile(
+      path.join(cwd, "prisma.compute.ts"),
+      'export default { apps: { web: { root: "apps/web" } } };\n',
+      "utf8",
+    );
+    await writeFile(
+      path.join(cwd, "package.json"),
+      JSON.stringify({ packageManager: "pnpm@11.0.0" }, null, 2),
+      "utf8",
+    );
+
+    const result = await executeCli({
+      argv: ["auth", "login", "--provider", "github", "--user", "usr_456"],
+      cwd: appDir,
+      stateDir,
+      fixturePath,
+      isTTY: true,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain(
+      "Install Prisma skills for this project with pnpm dlx @prisma/cli@latest agent install.",
+    );
+  });
+
+  it("does not suggest agent setup after login when Prisma skills are installed", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writeFile(path.join(cwd, "package.json"), "{}\n", "utf8");
+    await writeFile(
+      path.join(cwd, "skills-lock.json"),
+      JSON.stringify({ sources: ["prisma/skills"] }),
+      "utf8",
+    );
+
+    const result = await executeCli({
+      argv: ["auth", "login", "--provider", "github", "--user", "usr_456"],
+      cwd,
+      stateDir,
+      fixturePath,
+      isTTY: true,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toContain("@prisma/cli@latest agent install");
+  });
+
   it("returns the stable signed-in JSON shape for whoami", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");

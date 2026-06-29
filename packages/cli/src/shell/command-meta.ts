@@ -1,4 +1,12 @@
 import type { Command } from "commander";
+import { resolvePrismaCliPackageCommandFormatterSync } from "../lib/agent/cli-command";
+import {
+  PRISMA_AGENT_INSTALL_ARGS,
+  PRISMA_AGENT_STATUS_ARGS,
+  PRISMA_AGENT_UPDATE_ARGS,
+  PRISMA_COMPUTE_AGENT_SKILL,
+} from "../lib/agent/constants";
+import type { CliRuntime } from "./runtime";
 
 const COMMAND_DESCRIPTOR_ID = Symbol("prisma.commandDescriptorId");
 
@@ -7,8 +15,18 @@ export interface CommandDescriptor {
   path: string[];
   description: string;
   docsPath?: string;
-  examples?: string[];
+  examples?: string[] | ((runtime: CliRuntime) => string[]);
   longDescription?: string;
+}
+
+function agentCommandExamples(
+  runtime: CliRuntime,
+  commands: readonly (readonly string[])[],
+): string[] {
+  const formatCommand = resolvePrismaCliPackageCommandFormatterSync(
+    runtime.cwd,
+  );
+  return commands.map((command) => formatCommand(command));
 }
 
 const DESCRIPTORS: CommandDescriptor[] = [
@@ -25,6 +43,51 @@ const DESCRIPTORS: CommandDescriptor[] = [
     path: ["prisma", "version"],
     description: "Show CLI build and environment",
     examples: ["prisma-cli version", "prisma-cli version --json"],
+  },
+  {
+    id: "agent",
+    path: ["prisma", "agent"],
+    description: "Install Prisma context for AI coding agents",
+    examples: (runtime) =>
+      agentCommandExamples(runtime, [
+        PRISMA_AGENT_INSTALL_ARGS,
+        PRISMA_AGENT_UPDATE_ARGS,
+        PRISMA_AGENT_STATUS_ARGS,
+      ]),
+  },
+  {
+    id: "agent.install",
+    path: ["prisma", "agent", "install"],
+    description: "Install Prisma skills for AI coding agents",
+    examples: (runtime) =>
+      agentCommandExamples(runtime, [
+        PRISMA_AGENT_INSTALL_ARGS,
+        [...PRISMA_AGENT_INSTALL_ARGS, "--agent", "codex"],
+        [...PRISMA_AGENT_INSTALL_ARGS, "--all-agents"],
+        [...PRISMA_AGENT_INSTALL_ARGS, "--skill", PRISMA_COMPUTE_AGENT_SKILL],
+      ]),
+  },
+  {
+    id: "agent.update",
+    path: ["prisma", "agent", "update"],
+    description: "Refresh Prisma skills for AI coding agents",
+    examples: (runtime) =>
+      agentCommandExamples(runtime, [
+        PRISMA_AGENT_UPDATE_ARGS,
+        [...PRISMA_AGENT_UPDATE_ARGS, "--agent", "codex"],
+        [...PRISMA_AGENT_UPDATE_ARGS, "--all-agents"],
+      ]),
+  },
+  {
+    id: "agent.status",
+    path: ["prisma", "agent", "status"],
+    description: "Show installed Prisma skills",
+    examples: (runtime) =>
+      agentCommandExamples(runtime, [
+        PRISMA_AGENT_STATUS_ARGS,
+        [...PRISMA_AGENT_STATUS_ARGS, "--json"],
+        [...PRISMA_AGENT_STATUS_ARGS, "--global"],
+      ]),
   },
   {
     id: "auth",

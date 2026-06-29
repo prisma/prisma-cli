@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { Result } from "better-result";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import { usageError } from "../src/shell/errors";
 import { asSingleDeployResult } from "./helpers/deploy-result";
 import {
   createProjectClient,
@@ -40,6 +40,7 @@ afterEach(() => {
 
   vi.doUnmock("../src/lib/auth/auth-ops");
   vi.doUnmock("../src/lib/auth/guard");
+  vi.doUnmock("../src/controllers/agent");
   vi.doUnmock("../src/lib/app/app-provider");
   vi.doUnmock("../src/lib/app/branch-database");
   vi.doUnmock("../src/lib/app/compute-config");
@@ -176,6 +177,106 @@ async function writeLocalPin(
     path.join(cwd, ".prisma/local.json"),
     typeof pin === "string" ? pin : `${JSON.stringify(pin, null, 2)}\n`,
   );
+}
+
+async function writeAgentSetupInstalled(cwd: string): Promise<void> {
+  await writeFile(
+    path.join(cwd, "skills-lock.json"),
+    JSON.stringify({
+      version: 1,
+      skills: {
+        "prisma-compute": {
+          source: "prisma/skills",
+          sourceType: "github",
+          skillPath: "prisma-compute/SKILL.md",
+          computedHash: "test",
+        },
+      },
+    }),
+    "utf8",
+  );
+}
+
+async function setupAgentPromptDeployTest(options: {
+  confirmPrompt: ReturnType<typeof vi.fn>;
+  deployApp?: ReturnType<typeof vi.fn>;
+  runAgentInstall?: ReturnType<typeof vi.fn>;
+}) {
+  const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+  const runAgentInstall = options.runAgentInstall ?? vi.fn();
+  const deployApp =
+    options.deployApp ??
+    vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
+
+  vi.doMock("../src/lib/auth/guard", () => ({
+    requireComputeAuth,
+  }));
+  vi.doMock("../src/controllers/agent", () => ({
+    runAgentInstall,
+  }));
+  vi.doMock("../src/shell/prompt", async () => {
+    const actual = await vi.importActual<typeof import("../src/shell/prompt")>(
+      "../src/shell/prompt",
+    );
+    return {
+      ...actual,
+      confirmPrompt: options.confirmPrompt,
+    };
+  });
+  vi.doMock("../src/lib/app/app-provider", () => ({
+    createAppProvider: vi.fn(() =>
+      withBranchDatabaseProviderDefaults({
+        resolveBranch: createResolveBranch(),
+        createProject: vi.fn(),
+        listApps: vi.fn().mockResolvedValue([
+          {
+            id: "app_1",
+            name: "hello-world",
+            region: "eu-central-1",
+            liveDeploymentId: null,
+            liveUrl: null,
+          },
+        ]),
+        deployApp,
+        listDeployments: vi.fn(),
+        showDeployment: vi.fn(),
+      }),
+    ),
+  }));
+
+  const { createTempCwd, createTestCommandContext } = await import("./helpers");
+  const { runAppDeploy } = await import("../src/controllers/app");
+  const cwd = await createTempCwd();
+  const { context } = await createTestCommandContext({
+    cwd,
+    stateDir: path.join(cwd, ".state"),
+    isTTY: true,
+    env: {
+      ...process.env,
+      PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+    },
+  });
+
+  return {
+    context,
+    deployApp,
+    requireComputeAuth,
+    runAgentInstall,
+    runAppDeploy,
+  };
 }
 
 describe("app controller", () => {
@@ -3042,6 +3143,9 @@ describe("app controller", () => {
         PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
+    await context.stateStore.setAgentSetupPromptDismissedAt(
+      "2026-06-25T00:00:00.000Z",
+    );
 
     const result = await runAppDeploy(context, "hello-world", {
       framework: "hono",
@@ -3111,6 +3215,7 @@ describe("app controller", () => {
         next: "15.0.0",
       },
     });
+    await writeAgentSetupInstalled(cwd);
     const stateDir = path.join(cwd, ".state");
     const { context, stderr } = await createTestCommandContext({
       cwd,
@@ -3148,6 +3253,227 @@ describe("app controller", () => {
     expect(stderr.buffer).not.toContain("Using deploy settings:");
     expect(stderr.buffer).not.toContain("build:");
     expect(promptIndex).toBeGreaterThan(detectedIndex);
+  });
+
+  it("prompts to install the Prisma Compute skill during interactive deploy", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const confirmPrompt = vi.fn().mockResolvedValue(true);
+    const runAgentInstall = vi.fn().mockResolvedValue({
+      command: "agent.install",
+      result: {
+        operation: "install",
+        skills: { status: "installed", command: [] },
+      },
+      warnings: [],
+      nextSteps: [],
+    });
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_123",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/controllers/agent", () => ({
+      runAgentInstall,
+    }));
+    vi.doMock("../src/shell/prompt", async () => {
+      const actual = await vi.importActual<
+        typeof import("../src/shell/prompt")
+      >("../src/shell/prompt");
+      return {
+        ...actual,
+        confirmPrompt,
+      };
+    });
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps: vi.fn().mockResolvedValue([
+            {
+              id: "app_1",
+              name: "hello-world",
+              region: "eu-central-1",
+              liveDeploymentId: null,
+              liveUrl: null,
+            },
+          ]),
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      isTTY: true,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      framework: "hono",
+    });
+
+    expect(confirmPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Install the Prisma Compute skill for this project?",
+        initialValue: true,
+      }),
+    );
+    expect(runAgentInstall).toHaveBeenCalledTimes(1);
+    expect(runAgentInstall.mock.calls[0][0]).toBe(context);
+    expect(runAgentInstall.mock.calls[0][1]).toEqual({
+      skill: ["prisma-compute"],
+    });
+    expect(runAgentInstall.mock.calls[0][2]).toBe("install");
+    expect(runAgentInstall.mock.calls[0][3]).toEqual({ cwd });
+    expect(deployApp).toHaveBeenCalled();
+  });
+
+  it("prompts for Prisma skills before deploy setup failures", async () => {
+    const requireComputeAuth = vi
+      .fn()
+      .mockRejectedValue(new Error("auth setup failed"));
+    const confirmPrompt = vi.fn().mockResolvedValue(true);
+    const runAgentInstall = vi.fn().mockResolvedValue({
+      command: "agent.install",
+      result: {
+        operation: "install",
+        skills: { status: "installed", command: [] },
+      },
+      warnings: [],
+      nextSteps: [],
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/controllers/agent", () => ({
+      runAgentInstall,
+    }));
+    vi.doMock("../src/shell/prompt", async () => {
+      const actual = await vi.importActual<
+        typeof import("../src/shell/prompt")
+      >("../src/shell/prompt");
+      return {
+        ...actual,
+        confirmPrompt,
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      isTTY: true,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await expect(
+      runAppDeploy(context, "hello-world", {
+        projectRef: "proj_123",
+        framework: "hono",
+      }),
+    ).rejects.toThrow("auth setup failed");
+
+    expect(confirmPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Install the Prisma Compute skill for this project?",
+      }),
+    );
+    expect(runAgentInstall).toHaveBeenCalledTimes(1);
+    expect(runAgentInstall.mock.calls[0][0]).toBe(context);
+    expect(runAgentInstall.mock.calls[0][1]).toEqual({
+      skill: ["prisma-compute"],
+    });
+    expect(runAgentInstall.mock.calls[0][2]).toBe("install");
+    expect(runAgentInstall.mock.calls[0][3]).toEqual({ cwd });
+    expect(requireComputeAuth).toHaveBeenCalled();
+  });
+
+  it("does not prompt again after agent setup is declined during deploy", async () => {
+    const confirmPrompt = vi.fn().mockResolvedValue(false);
+    const { context, deployApp, runAgentInstall, runAppDeploy } =
+      await setupAgentPromptDeployTest({
+        confirmPrompt,
+      });
+
+    await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      framework: "hono",
+    });
+    await runAppDeploy(context, "hello-world", {
+      projectRef: "proj_123",
+      framework: "hono",
+    });
+
+    expect(confirmPrompt).toHaveBeenCalledTimes(1);
+    expect(runAgentInstall).not.toHaveBeenCalled();
+    expect(deployApp).toHaveBeenCalledTimes(2);
+    await expect(
+      context.stateStore.readAgentSetupPromptDismissedAt(),
+    ).resolves.toEqual(expect.any(String));
+  });
+
+  it("cancels deploy when the agent setup prompt is canceled", async () => {
+    const confirmPrompt = vi
+      .fn()
+      .mockRejectedValue(
+        usageError(
+          "Interactive prompt canceled",
+          "The command was canceled before a confirmation was made.",
+          "Re-run the command and choose an option to continue.",
+        ),
+      );
+    const { context, deployApp, runAgentInstall, runAppDeploy } =
+      await setupAgentPromptDeployTest({
+        confirmPrompt,
+      });
+
+    await expect(
+      runAppDeploy(context, "hello-world", {
+        projectRef: "proj_123",
+        framework: "hono",
+      }),
+    ).rejects.toThrow("Interactive prompt canceled");
+
+    expect(confirmPrompt).toHaveBeenCalledTimes(1);
+    expect(runAgentInstall).not.toHaveBeenCalled();
+    expect(deployApp).not.toHaveBeenCalled();
+    await expect(
+      context.stateStore.readAgentSetupPromptDismissedAt(),
+    ).resolves.toBeNull();
   });
 
   it("interactive first deploy can create a new Project from an editable suggested name", async () => {
@@ -3196,6 +3522,7 @@ describe("app controller", () => {
     await writePackageJson(cwd, {
       name: "suggested-name",
     });
+    await writeAgentSetupInstalled(cwd);
     const stateDir = path.join(cwd, ".state");
     const { context, stderr } = await createTestCommandContext({
       cwd,
@@ -3663,6 +3990,9 @@ describe("app controller", () => {
         PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
+    await context.stateStore.setAgentSetupPromptDismissedAt(
+      "2026-06-25T00:00:00.000Z",
+    );
 
     const result = await runAppDeploy(context, undefined, {
       projectRef: "proj_123",

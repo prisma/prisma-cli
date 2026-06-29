@@ -10,6 +10,7 @@ export function createSelectPromptPort(
       selectPrompt({
         input: context.runtime.stdin,
         output: context.runtime.stderr,
+        signal: context.runtime.signal,
         message,
         choices,
       }),

@@ -22,6 +22,9 @@ export interface LocalState {
     selectedByProject: Record<string, SelectedAppState>;
     knownLiveDeploymentByProject: Record<string, Record<string, string>>;
   };
+  agent: {
+    setupPromptDismissedAt: string | null;
+  };
 }
 
 export interface SelectedAppState {
@@ -48,6 +51,9 @@ const DEFAULT_STATE: LocalState = {
   app: {
     selectedByProject: {},
     knownLiveDeploymentByProject: {},
+  },
+  agent: {
+    setupPromptDismissedAt: null,
   },
 };
 
@@ -90,6 +96,9 @@ export class LocalStateStore {
           selectedByProject: parsed.app?.selectedByProject ?? {},
           knownLiveDeploymentByProject:
             parsed.app?.knownLiveDeploymentByProject ?? {},
+        },
+        agent: {
+          setupPromptDismissedAt: parsed.agent?.setupPromptDismissedAt ?? null,
         },
       };
     } catch (error) {
@@ -250,6 +259,20 @@ export class LocalStateStore {
       delete state.app.knownLiveDeploymentByProject[projectId];
     }
 
+    await this.write(state);
+    return state;
+  }
+
+  async readAgentSetupPromptDismissedAt(): Promise<string | null> {
+    const state = await this.read();
+    return state.agent.setupPromptDismissedAt;
+  }
+
+  async setAgentSetupPromptDismissedAt(
+    dismissedAt: string,
+  ): Promise<LocalState> {
+    const state = await this.read();
+    state.agent.setupPromptDismissedAt = dismissedAt;
     await this.write(state);
     return state;
   }

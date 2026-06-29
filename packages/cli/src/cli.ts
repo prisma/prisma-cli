@@ -2,6 +2,7 @@ import process from "node:process";
 
 import { Command, CommanderError, Option } from "commander";
 
+import { createAgentCommand } from "./commands/agent";
 import { createAppCommand } from "./commands/app";
 import { createAuthCommand } from "./commands/auth";
 import { createBranchCommand } from "./commands/branch";
@@ -81,6 +82,7 @@ export function createProgram(runtime: CliRuntime): Command {
   program.name("prisma").showSuggestionAfterError();
 
   program.addCommand(createVersionCommand(runtime));
+  program.addCommand(createAgentCommand(runtime));
   program.addCommand(createAuthCommand(runtime));
   program.addCommand(createProjectCommand(runtime));
   program.addCommand(createGitCommand(runtime));

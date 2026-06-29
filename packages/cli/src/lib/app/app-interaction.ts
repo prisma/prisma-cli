@@ -26,6 +26,7 @@ export function createDeployInteraction(
       const selection = await selectPrompt<string | null>({
         input: context.runtime.stdin,
         output: context.runtime.stderr,
+        signal: context.runtime.signal,
         message: "Select an app",
         choices: [
           ...sorted.map((app) => ({
@@ -45,6 +46,7 @@ export function createDeployInteraction(
       return textPrompt({
         input: context.runtime.stdin,
         output: context.runtime.stderr,
+        signal: context.runtime.signal,
         message: "App name",
         validate: (value) =>
           !value?.trim() ? "App name is required" : undefined,

@@ -18,6 +18,15 @@ import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { matchError, Result } from "better-result";
 import open from "open";
 import { FileTokenStorage } from "../adapters/token-storage";
+import { resolvePrismaCliPackageCommand } from "../lib/agent/cli-command";
+import {
+  PRISMA_AGENT_INSTALL_ARGS,
+  PRISMA_COMPUTE_AGENT_SKILL,
+} from "../lib/agent/constants";
+import {
+  readPrismaAgentSetupStatus,
+  shouldOfferPrismaAgentSetup,
+} from "../lib/agent/setup-status";
 import { DEFAULT_REGION } from "../lib/app/app-interaction";
 import {
   type AppRecord,
@@ -130,7 +139,7 @@ import {
 import { type CommandSuccess, writeJsonEvent } from "../shell/output";
 import { confirmPrompt, selectPrompt, textPrompt } from "../shell/prompt";
 import { type CommandContext, canPrompt } from "../shell/runtime";
-import { renderCommandHeader } from "../shell/ui";
+import { renderCommandHeader, renderSummaryLine } from "../shell/ui";
 import type {
   AppBuildResult,
   AppDeployAllResult,
@@ -157,6 +166,7 @@ import type {
 import type { AuthWorkspace } from "../types/auth";
 import type { BranchKind } from "../types/branch";
 import type { ProjectResolution, ProjectSummary } from "../types/project";
+import { runAgentInstall } from "./agent";
 import { requireAuthenticatedAuthState } from "./auth";
 import { listRealWorkspaceProjects } from "./project";
 import { createSelectPromptPort } from "./select-prompt-port";
@@ -613,6 +623,10 @@ async function runSingleAppDeploy(
   // The compute config marks the project root: the Project binding and other
   // repo-level concerns live next to the config, not wherever deploy ran.
   const projectDir = computeConfig.config?.configDir ?? context.runtime.cwd;
+  const agentSetupWarnings = await maybePromptForAgentSetup(
+    context,
+    projectDir,
+  );
 
   const skipLocalPin = Boolean(
     envProjectId || options?.projectRef || options?.createProjectName,
@@ -852,7 +866,11 @@ async function runSingleAppDeploy(
       durationMs: deployDurationMs,
       localPin: localPinResult,
     },
-    warnings: [...legacyWarnings, ...branchDatabaseSetup.warnings],
+    warnings: [
+      ...agentSetupWarnings,
+      ...legacyWarnings,
+      ...branchDatabaseSetup.warnings,
+    ],
     nextSteps: [
       "prisma-cli app list-deploys",
       `prisma-cli app show-deploy ${deployResult.deployment.id}`,
@@ -2330,6 +2348,7 @@ async function confirmDomainRemoval(
   const confirmed = await confirmPrompt({
     input: context.runtime.stdin,
     output: context.output.stderr,
+    signal: context.runtime.signal,
     message: `Detach ${hostname} from App "${target.app.name}"?`,
     initialValue: false,
   });
@@ -3011,6 +3030,7 @@ async function confirmAppRemoval(
   await textPrompt({
     input: context.runtime.stdin,
     output: context.output.stderr,
+    signal: context.runtime.signal,
     message: `Type ${app.name} to confirm app removal`,
     placeholder: app.name,
     validate: (value) =>
@@ -4279,6 +4299,75 @@ function maybeRenderProjectLinked(
   );
 }
 
+async function maybePromptForAgentSetup(
+  context: CommandContext,
+  projectDir: string,
+): Promise<string[]> {
+  if (!canPrompt(context) || context.flags.yes) {
+    return [];
+  }
+
+  const status = await readPrismaAgentSetupStatus({
+    cwd: projectDir,
+    stateStore: context.stateStore,
+    signal: context.runtime.signal,
+    requiredSkill: PRISMA_COMPUTE_AGENT_SKILL,
+  });
+  if (!shouldOfferPrismaAgentSetup(status)) {
+    return [];
+  }
+
+  const shouldInstall = await confirmPrompt({
+    input: context.runtime.stdin,
+    output: context.runtime.stderr,
+    signal: context.runtime.signal,
+    message: "Install the Prisma Compute skill for this project?",
+    initialValue: true,
+  });
+
+  if (!shouldInstall) {
+    await context.stateStore.setAgentSetupPromptDismissedAt(
+      new Date().toISOString(),
+    );
+    return [];
+  }
+
+  try {
+    await runAgentInstall(
+      context,
+      { skill: [PRISMA_COMPUTE_AGENT_SKILL] },
+      "install",
+      { cwd: projectDir },
+    );
+    if (!context.flags.quiet && !context.flags.json) {
+      context.output.stderr.write(
+        `${renderSummaryLine(context.ui, "success", "Installed the Prisma Compute skill for this project.")}\n\n`,
+      );
+    }
+    return [];
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Prisma skill install failed.";
+    if (!context.flags.quiet && !context.flags.json) {
+      context.output.stderr.write(
+        `${renderSummaryLine(context.ui, "warning", `Skipped Prisma skill install: ${message}`)}\n\n`,
+      );
+    }
+    const retryCommand = await resolvePrismaCliPackageCommand({
+      cwd: projectDir,
+      signal: context.runtime.signal,
+      args: [
+        ...PRISMA_AGENT_INSTALL_ARGS,
+        "--skill",
+        PRISMA_COMPUTE_AGENT_SKILL,
+      ],
+    });
+    return [
+      `The Prisma Compute skill was not installed. Run ${retryCommand} to try again.`,
+    ];
+  }
+}
+
 async function maybeCustomizeDeploySettings(
   context: CommandContext,
   options: {
@@ -4315,6 +4404,7 @@ async function maybeCustomizeDeploySettings(
   const shouldCustomize = await confirmPrompt({
     input: context.runtime.stdin,
     output: context.runtime.stderr,
+    signal: context.runtime.signal,
     message: "Customize build settings?",
     initialValue: false,
   });
@@ -4329,6 +4419,7 @@ async function maybeCustomizeDeploySettings(
   const frameworkKey = await selectPrompt<ComputeFramework>({
     input: context.runtime.stdin,
     output: context.runtime.stderr,
+    signal: context.runtime.signal,
     message: `Framework (${options.framework.displayName})`,
     choices: FRAMEWORKS.map((framework) => ({
       label: framework.displayName,
@@ -4339,6 +4430,7 @@ async function maybeCustomizeDeploySettings(
   const requestedPort = await textPrompt({
     input: context.runtime.stdin,
     output: context.runtime.stderr,
+    signal: context.runtime.signal,
     message: `HTTP port (${options.runtime.port})`,
     placeholder: String(options.runtime.port),
     validate: validateDeployHttpPortText,
