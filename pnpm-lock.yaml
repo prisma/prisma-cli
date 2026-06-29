@@ -25,13 +25,13 @@ importers:
         version: 1.5.0
       '@prisma/compute-sdk':
         specifier: 0.31.0
-        version: 0.31.0(@prisma/management-api-sdk@1.45.0)(rollup@4.62.2)
+        version: 0.31.0(@prisma/management-api-sdk@1.46.0)(rollup@4.62.2)
       '@prisma/credentials-store':
         specifier: ^7.8.0
         version: 7.8.0
       '@prisma/management-api-sdk':
-        specifier: ^1.45.0
-        version: 1.45.0
+        specifier: ^1.46.0
+        version: 1.46.0
       better-result:
         specifier: ^2.9.2
         version: 2.9.2
@@ -560,8 +560,8 @@ packages:
   '@prisma/credentials-store@7.8.0':
     resolution: {integrity: sha512-T9yp5uYSowV2ZRkBeCZrqWFP4REUlxd5WEYgOFJDjZBRRV+zx3VFCBf0zJI7Z3/PYFF9o3+ZzLwokQ9nY5EbqA==}
 
-  '@prisma/management-api-sdk@1.45.0':
-    resolution: {integrity: sha512-gwZrm1vQLlZrhkMN1wL8EZnWkDu8OHfO9ufGZkwQRljG/4HHtJmjZa1TAYpqaxIF5YCcNk10KBCq7lcGmOtOIQ==}
+  '@prisma/management-api-sdk@1.46.0':
+    resolution: {integrity: sha512-a7VrApSeCa6wM0TsY3aGUCHOMH0I7dT1VTvVDUAXohgytJir7a45SbArkhK6uaiyOg+nlzeeM+fyWMU4PTHm7Q==}
 
   '@quansync/fs@1.0.0':
     resolution: {integrity: sha512-4TJ3DFtlf1L5LDMaM6CanJ/0lckGNtJcMjQ1NAV6zDmA0tEHKZtxNKin8EgPaVX1YzljbxckyT2tJrpQKAtngQ==}
@@ -1937,9 +1937,9 @@ snapshots:
 
   '@oxc-project/types@0.127.0': {}
 
-  '@prisma/compute-sdk@0.31.0(@prisma/management-api-sdk@1.45.0)(rollup@4.62.2)':
+  '@prisma/compute-sdk@0.31.0(@prisma/management-api-sdk@1.46.0)(rollup@4.62.2)':
     dependencies:
-      '@prisma/management-api-sdk': 1.45.0
+      '@prisma/management-api-sdk': 1.46.0
       '@vercel/nft': 1.10.2(rollup@4.62.2)
       better-result: 2.9.2
       jiti: 2.7.0
@@ -1961,7 +1961,7 @@ snapshots:
     dependencies:
       xdg-app-paths: 8.3.0
 
-  '@prisma/management-api-sdk@1.45.0':
+  '@prisma/management-api-sdk@1.46.0':
     dependencies:
       openapi-fetch: 0.14.0
 
