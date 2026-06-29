@@ -95,9 +95,13 @@ function writeBuildLogRecord(
   }
 
   if (record.type === "log") {
-    context.output.stdout.write(record.text);
+    const stream =
+      record.source === "stderr" || record.level === "error"
+        ? context.output.stderr
+        : context.output.stdout;
+    stream.write(record.text);
     if (!record.text.endsWith("\n")) {
-      context.output.stdout.write("\n");
+      stream.write("\n");
     }
     return;
   }
