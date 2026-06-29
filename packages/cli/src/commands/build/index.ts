@@ -49,6 +49,9 @@ function createLogsCommand(runtime: CliRuntime): Command {
       "build.logs",
       options as Record<string, unknown>,
       (context) => runBuildLogs(context, buildId, { follow, cursor }),
+      // build logs emits its own per-record JSON ending in a terminal record;
+      // suppress the redundant wrapper success event.
+      { emitJsonSuccessEvent: false },
     );
   });
 

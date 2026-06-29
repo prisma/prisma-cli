@@ -190,6 +190,7 @@ export async function runStreamingCommand(
   handler: (
     context: Awaited<ReturnType<typeof createCommandContext>>,
   ) => Promise<void>,
+  streamOptions?: { emitJsonSuccessEvent?: boolean },
 ): Promise<void> {
   const flags = resolveGlobalFlags(runtime.argv, options);
   const context = await createCommandContext(runtime, flags);
@@ -197,7 +198,11 @@ export async function runStreamingCommand(
   try {
     await handler(context);
 
-    if (flags.json) {
+    // Handlers that stream their own per-record JSON (e.g. `build logs`) end with
+    // a `terminal` record that conveys completion and any error, and signal
+    // failure via process.exitCode rather than throwing — so this wrapper success
+    // event is redundant and would mislabel a failed stream as succeeded. Opt out.
+    if (flags.json && (streamOptions?.emitJsonSuccessEvent ?? true)) {
       writeJsonEvent(context.output, {
         type: "success",
         command: commandName,
