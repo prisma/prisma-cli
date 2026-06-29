@@ -178,6 +178,21 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: ["prisma-cli branch list"],
   },
   {
+    id: "build",
+    path: ["prisma", "build"],
+    description: "Inspect builds",
+    examples: ["prisma-cli build logs <build_id>"],
+  },
+  {
+    id: "build.logs",
+    path: ["prisma", "build", "logs"],
+    description: "Stream the logs for a build",
+    examples: [
+      "prisma-cli build logs <build_id>",
+      "prisma-cli build logs <build_id> --follow",
+    ],
+  },
+  {
     id: "database",
     path: ["prisma", "database"],
     description: "Manage Prisma Postgres databases for a project",

@@ -6,6 +6,7 @@ import { createAgentCommand } from "./commands/agent";
 import { createAppCommand } from "./commands/app";
 import { createAuthCommand } from "./commands/auth";
 import { createBranchCommand } from "./commands/branch";
+import { createBuildCommand } from "./commands/build";
 import { createDatabaseCommand } from "./commands/database";
 import { createGitCommand } from "./commands/git";
 import { createProjectCommand } from "./commands/project";
@@ -87,6 +88,7 @@ export function createProgram(runtime: CliRuntime): Command {
   program.addCommand(createProjectCommand(runtime));
   program.addCommand(createGitCommand(runtime));
   program.addCommand(createBranchCommand(runtime));
+  program.addCommand(createBuildCommand(runtime));
   program.addCommand(createDatabaseCommand(runtime));
   program.addCommand(createAppCommand(runtime));
 
