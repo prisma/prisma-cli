@@ -31,10 +31,39 @@ export interface BuildLogsOptions {
   cursor?: string;
 }
 
+/**
+ * Backoff between retry attempts. The length also bounds the retry budget: with
+ * two delays the stream is opened at most three times. Injectable so tests can
+ * exercise the retry paths without real timers.
+ */
+const RETRY_BACKOFF_MS: readonly number[] = [500, 1500];
+
+const TRANSIENT_OPEN_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+
+type TerminalRecord = Extract<BuildLogRecord, { type: "terminal" }>;
+
+type BuildLogsClient = NonNullable<
+  Awaited<ReturnType<typeof requireComputeAuth>>
+>;
+
+interface BuildLogsDeps {
+  backoffMs?: readonly number[];
+}
+
+type ReadOutcome =
+  | { kind: "done" }
+  | { kind: "auth" }
+  | { kind: "not-found" }
+  | { kind: "fatal"; status: number }
+  | { kind: "retryable-open"; status: number }
+  | { kind: "retryable-network" }
+  | { kind: "retryable-terminal"; record: TerminalRecord };
+
 export async function runBuildLogs(
   context: CommandContext,
   buildId: string,
   options: BuildLogsOptions = {},
+  deps: BuildLogsDeps = {},
 ): Promise<void> {
   const client = await requireComputeAuth(
     context.runtime.env,
@@ -50,34 +79,199 @@ export async function runBuildLogs(
     );
   }
 
-  const { data, response } = await client.GET("/v1/builds/{buildId}/logs", {
-    params: {
-      path: { buildId },
-      query: {
-        ...(options.follow ? { follow: "true" as const } : {}),
-        ...(options.cursor ? { cursor: options.cursor } : {}),
-      },
-    },
-    parseAs: "stream",
-    signal: context.runtime.signal,
-  });
+  const backoffMs = deps.backoffMs ?? RETRY_BACKOFF_MS;
+  const signal = context.runtime.signal;
+  // Resume from the last cursor we saw so a reconnect doesn't reprint logs.
+  let cursor = options.cursor;
 
-  const body = data as ReadableStream<Uint8Array> | null | undefined;
-  if (!response.ok || !body) {
-    throw buildLogsRequestError(buildId, response.status);
-  }
+  for (let attempt = 0; ; attempt++) {
+    // biome-ignore lint/performance/noAwaitInLoops: retries are sequential — each attempt resumes from the prior cursor.
+    const result = await readBuildLogs(
+      context,
+      client,
+      buildId,
+      options,
+      cursor,
+    );
+    cursor = result.cursor;
+    const { outcome } = result;
 
-  let sawError = false;
-  await forEachNdjsonRecord<BuildLogRecord>(body, (record) => {
-    if (record.type === "terminal" && record.kind === "error") {
-      sawError = true;
+    if (outcome.kind === "done") {
+      return;
     }
-    writeBuildLogRecord(context, record);
-  });
 
-  if (sawError) {
-    process.exitCode = 1;
+    const immediate = immediateStatus(outcome);
+    if (immediate !== null) {
+      throw buildLogsRequestError(buildId, immediate);
+    }
+
+    if (attempt >= backoffMs.length) {
+      surfaceExhaustedRetry(context, buildId, outcome);
+      return;
+    }
+
+    if (!(await backoffBeforeRetry(backoffMs[attempt], signal))) {
+      return;
+    }
   }
+}
+
+/**
+ * HTTP status to surface immediately (no retry), or null when the outcome is a
+ * retryable failure the loop should back off and re-attempt.
+ */
+function immediateStatus(outcome: ReadOutcome): number | null {
+  switch (outcome.kind) {
+    case "auth":
+      return 401;
+    case "not-found":
+      return 404;
+    case "fatal":
+      return outcome.status;
+    default:
+      return null;
+  }
+}
+
+function surfaceExhaustedRetry(
+  context: CommandContext,
+  buildId: string,
+  outcome: ReadOutcome,
+): void {
+  if (outcome.kind === "retryable-terminal") {
+    writeBuildLogRecord(context, outcome.record);
+    process.exitCode = 1;
+    return;
+  }
+  throw buildLogsRequestError(
+    buildId,
+    outcome.kind === "retryable-open" ? outcome.status : 0,
+  );
+}
+
+/** Waits the backoff, returning false if the wait was canceled by an abort. */
+async function backoffBeforeRetry(
+  ms: number,
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (signal.aborted) {
+    return false;
+  }
+  try {
+    await sleep(ms, signal);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readBuildLogs(
+  context: CommandContext,
+  client: BuildLogsClient,
+  buildId: string,
+  options: BuildLogsOptions,
+  cursor: string | undefined,
+): Promise<{ outcome: ReadOutcome; cursor: string | undefined }> {
+  const opened = await openBuildLogStream(
+    context,
+    client,
+    buildId,
+    options,
+    cursor,
+  );
+  if (opened.kind !== "ok") {
+    return { outcome: opened, cursor };
+  }
+  return consumeBuildLogStream(context, opened.body, cursor);
+}
+
+type OpenOutcome =
+  | { kind: "ok"; body: ReadableStream<Uint8Array> }
+  | Exclude<ReadOutcome, { kind: "done" | "retryable-terminal" }>;
+
+async function openBuildLogStream(
+  context: CommandContext,
+  client: BuildLogsClient,
+  buildId: string,
+  options: BuildLogsOptions,
+  cursor: string | undefined,
+): Promise<OpenOutcome> {
+  try {
+    const { data, response } = await client.GET("/v1/builds/{buildId}/logs", {
+      params: {
+        path: { buildId },
+        query: {
+          ...(options.follow ? { follow: "true" as const } : {}),
+          ...(cursor ? { cursor } : {}),
+        },
+      },
+      parseAs: "stream",
+      signal: context.runtime.signal,
+    });
+    const body = data as ReadableStream<Uint8Array> | null | undefined;
+    if (response.ok && body) {
+      return { kind: "ok", body };
+    }
+    return openFailureOutcome(response.status);
+  } catch (error) {
+    if (isAbortError(error) || context.runtime.signal.aborted) {
+      throw error;
+    }
+    return { kind: "retryable-network" };
+  }
+}
+
+function openFailureOutcome(
+  status: number,
+): Exclude<ReadOutcome, { kind: "done" | "retryable-terminal" }> {
+  if (status === 401) {
+    return { kind: "auth" };
+  }
+  if (status === 404) {
+    return { kind: "not-found" };
+  }
+  if (TRANSIENT_OPEN_STATUSES.has(status)) {
+    return { kind: "retryable-open", status };
+  }
+  return { kind: "fatal", status };
+}
+
+async function consumeBuildLogStream(
+  context: CommandContext,
+  body: ReadableStream<Uint8Array>,
+  cursor: string | undefined,
+): Promise<{ outcome: ReadOutcome; cursor: string | undefined }> {
+  let latestCursor = cursor;
+  let retryableTerminal: TerminalRecord | null = null;
+  try {
+    await forEachNdjsonRecord<BuildLogRecord>(body, (record) => {
+      if (record.cursor) {
+        latestCursor = record.cursor;
+      }
+      if (
+        record.type === "terminal" &&
+        record.kind === "error" &&
+        record.retryable
+      ) {
+        retryableTerminal = record;
+        return;
+      }
+      writeBuildLogRecord(context, record);
+    });
+  } catch (error) {
+    if (isAbortError(error) || context.runtime.signal.aborted) {
+      throw error;
+    }
+    return { outcome: { kind: "retryable-network" }, cursor: latestCursor };
+  }
+
+  if (retryableTerminal) {
+    return {
+      outcome: { kind: "retryable-terminal", record: retryableTerminal },
+      cursor: latestCursor,
+    };
+  }
+  return { outcome: { kind: "done" }, cursor: latestCursor };
 }
 
 function writeBuildLogRecord(
@@ -149,7 +343,29 @@ async function forEachNdjsonRecord<T>(
   }
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function sleep(milliseconds: number, signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(signal.reason);
+    };
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 function buildLogsRequestError(buildId: string, status: number): CliError {
+  if (status === 401) {
+    return authRequiredError(["prisma-cli auth login"]);
+  }
   if (status === 404) {
     return new CliError({
       code: "BUILD_NOT_FOUND",
@@ -164,7 +380,10 @@ function buildLogsRequestError(buildId: string, status: number): CliError {
     code: "BUILD_LOGS_FAILED",
     domain: "app",
     summary: `Failed to read logs for build ${buildId}`,
-    why: `The Management API returned HTTP ${status}.`,
+    why:
+      status > 0
+        ? `The Management API returned HTTP ${status}.`
+        : "The log stream could not be read after several attempts.",
     fix: "Retry the command, or rerun with --trace for more detail.",
     exitCode: 1,
   });
