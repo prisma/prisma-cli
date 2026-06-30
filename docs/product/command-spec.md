@@ -17,6 +17,7 @@ The beta package includes these command groups:
 - `branch`
 - `database` (includes `database connection` subgroup)
 - `app`
+- `build` (includes `build logs`)
 
 The beta package also includes one top-level utility command:
 
@@ -1525,6 +1526,31 @@ Examples:
 ```bash
 prisma-cli app logs
 prisma-cli app logs --deployment dep_123
+```
+
+## `prisma-cli build logs <build-id> --follow --cursor <cursor>`
+
+Purpose:
+
+- stream the build log for a specific build (from a git-push or a Console deploy)
+
+Behavior:
+
+- requires auth; authorizes against the workspace that owned the build when it ran (build logs can contain secrets, so access stays with that workspace)
+- takes a build id — shown in the Console build view and in git-push output; this is a build id, distinct from a runtime deployment id (`prisma-cli app logs` streams a deployment's runtime logs; this streams a build's logs)
+- streams the build's log records to stdout in human mode (each line carries its source — `runner` / `stdout` / `stderr` — and the build step); `stderr` and error-level records are written to stderr so stdout stays redirectable to a clean build log
+- a clean end prints no trailing line; a build with no recorded logs prints `No build logs are available for this build.`, and read errors print their message (these terminal messages are written to stderr)
+- `--follow` keeps the connection open and streams new lines while an in-flight build runs; it ends on its own once the build reaches a terminal state
+- `--cursor <cursor>` resumes from a prior terminal cursor
+- `--json` emits one JSON event per record, ending in a terminal record (no trailing wrapper success event)
+- returns an indistinguishable `BUILD_NOT_FOUND` when the build does not exist or the caller's workspace does not own it
+
+Examples:
+
+```bash
+prisma-cli build logs cmcz3v6ft0a1b2c3d
+prisma-cli build logs cmcz3v6ft0a1b2c3d --follow
+prisma-cli build logs cmcz3v6ft0a1b2c3d --json
 ```
 
 ## `prisma-cli app list-deploys [app] --app <name>`
