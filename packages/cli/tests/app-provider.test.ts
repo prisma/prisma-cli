@@ -363,6 +363,136 @@ describe("preview app provider", () => {
     );
   });
 
+  it("forwards skipPromote and maps a promotionless deploy to the candidate", async () => {
+    const deploy = vi.fn().mockResolvedValue({
+      isErr: () => false,
+      isOk: () => true,
+      value: {
+        projectId: "proj_123",
+        appId: "app_1",
+        appName: "hello-world",
+        region: "eu-central-1",
+        deploymentId: "dep_new",
+        deploymentEndpointDomain: "dep-new.fra.prisma.build",
+        appEndpointDomain: null,
+        promoted: false,
+        previousDeploymentId: "dep_live",
+        previousDeploymentAction: "still-active",
+      },
+    });
+    const AppBuildStrategy = mockAppBuildStrategy();
+
+    vi.doMock("../src/lib/app/build", () => ({
+      AppBuildStrategy,
+    }));
+    vi.doMock("@prisma/compute-sdk", () => ({
+      ApiError: { is: () => false },
+      ComputeClient: class {
+        deploy = deploy;
+      },
+    }));
+
+    const { createAppProvider } = await import("../src/lib/app/app-provider");
+
+    const provider = createAppProvider({} as never);
+    const cwd = path.resolve("/tmp/next-smoke");
+
+    const record = await provider.deployApp({
+      cwd,
+      projectId: "proj_123",
+      appId: "app_1",
+      appName: "hello-world",
+      buildType: "nextjs",
+      portMapping: { http: 3000 },
+      skipPromote: true,
+    });
+
+    expect(deploy).toHaveBeenCalledWith(
+      expect.objectContaining({ skipPromote: true }),
+    );
+    expect(record).toEqual({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_live",
+        liveUrl: null,
+      },
+      deployment: {
+        id: "dep_new",
+        status: "running",
+        url: "https://dep-new.fra.prisma.build",
+        live: false,
+      },
+      promoted: false,
+    });
+  });
+
+  it("maps a promoted deploy to the live app URL", async () => {
+    const deploy = vi.fn().mockResolvedValue({
+      isErr: () => false,
+      isOk: () => true,
+      value: {
+        projectId: "proj_123",
+        appId: "app_1",
+        appName: "hello-world",
+        region: "eu-central-1",
+        deploymentId: "dep_new",
+        deploymentEndpointDomain: "dep-new.fra.prisma.build",
+        appEndpointDomain: "hello-world.fra.prisma.build",
+        promoted: true,
+        previousDeploymentId: "dep_live",
+        previousDeploymentAction: "stopped",
+      },
+    });
+    const AppBuildStrategy = mockAppBuildStrategy();
+
+    vi.doMock("../src/lib/app/build", () => ({
+      AppBuildStrategy,
+    }));
+    vi.doMock("@prisma/compute-sdk", () => ({
+      ApiError: { is: () => false },
+      ComputeClient: class {
+        deploy = deploy;
+      },
+    }));
+
+    const { createAppProvider } = await import("../src/lib/app/app-provider");
+
+    const provider = createAppProvider({} as never);
+
+    const record = await provider.deployApp({
+      cwd: path.resolve("/tmp/next-smoke"),
+      projectId: "proj_123",
+      appId: "app_1",
+      appName: "hello-world",
+      buildType: "nextjs",
+      portMapping: { http: 3000 },
+    });
+
+    expect(deploy).toHaveBeenCalledWith(
+      expect.objectContaining({ skipPromote: undefined }),
+    );
+    expect(record).toEqual({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: "dep_new",
+        liveUrl: "https://hello-world.fra.prisma.build",
+      },
+      deployment: {
+        id: "dep_new",
+        status: "running",
+        url: "https://hello-world.fra.prisma.build",
+        live: true,
+      },
+      promoted: true,
+    });
+  });
+
   it("treats re-adding an existing custom domain as idempotent", async () => {
     const client = {
       GET: vi.fn().mockImplementation((pathName: string) => {

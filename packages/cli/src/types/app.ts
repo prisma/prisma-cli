@@ -75,7 +75,10 @@ export interface AppDeployResult {
     id: string;
     status: string;
     url: string | null;
+    live: boolean;
   };
+  /** Whether the new deployment was promoted to live. False for --no-promote. */
+  promoted: boolean;
   deploySettings: AppDeploySettings;
   durationMs: number;
   localPin?: {

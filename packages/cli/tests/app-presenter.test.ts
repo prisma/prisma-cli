@@ -69,7 +69,9 @@ function createDeployResult(): AppDeployResult {
       id: "dep_123",
       status: "running",
       url: "https://api.prisma.build",
+      live: true,
     },
+    promoted: true,
     deploySettings: {
       config: {
         path: null,
@@ -274,5 +276,57 @@ describe("app deploy presenter", () => {
       kind: "production",
     });
     expect(json.branch).not.toHaveProperty("id");
+  });
+
+  it("renders a promotionless deploy as built-not-live with a promote hint", async () => {
+    const { context } = await createTestCommandContext({});
+    const result: AppDeployResult = {
+      ...createDeployResult(),
+      deployment: {
+        id: "dep_candidate",
+        status: "running",
+        url: "https://dep-candidate.fra.prisma.build",
+        live: false,
+      },
+      promoted: false,
+    };
+
+    const lines = renderAppDeploy(
+      context,
+      getCommandDescriptor("app.deploy"),
+      result,
+    ).join("\n");
+
+    expect(lines).toContain("Built dep_candidate");
+    expect(lines).toContain("(not promoted)");
+    expect(lines).toContain("The live deployment is unchanged.");
+    expect(lines).toContain("https://dep-candidate.fra.prisma.build");
+    expect(lines).toContain("prisma-cli app promote dep_candidate");
+    expect(lines).not.toMatch(/^Live in/m);
+  });
+
+  it("keeps promoted status and candidate url in JSON serialization", () => {
+    const json = JSON.parse(
+      JSON.stringify(
+        serializeAppDeploy({
+          ...createDeployResult(),
+          deployment: {
+            id: "dep_candidate",
+            status: "running",
+            url: "https://dep-candidate.fra.prisma.build",
+            live: false,
+          },
+          promoted: false,
+        }),
+      ),
+    );
+
+    expect(json.promoted).toBe(false);
+    expect(json.deployment).toEqual({
+      id: "dep_candidate",
+      status: "running",
+      url: "https://dep-candidate.fra.prisma.build",
+      live: false,
+    });
   });
 });

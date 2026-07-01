@@ -247,7 +247,13 @@ function createDeployCommand(runtime: CliRuntime): Command {
       ),
     )
     .addOption(new Option("--no-db", "Skip database setup"))
-    .addOption(new Option("--prod", "Confirm intent to deploy to production"));
+    .addOption(new Option("--prod", "Confirm intent to deploy to production"))
+    .addOption(
+      new Option(
+        "--no-promote",
+        "Build the new deployment without promoting it to live (promote later with app promote <id>)",
+      ),
+    );
   addGlobalFlags(command);
 
   command.action(async (configTarget: string | undefined, options) => {
@@ -262,6 +268,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
     const createProjectName = (options as { createProject?: string })
       .createProject;
     const prod = (options as { prod?: boolean }).prod;
+    const noPromote = (options as { promote?: boolean }).promote === false;
     const db = (options as { db?: boolean }).db;
     const hasDbConflict =
       hasFlag(runtime.argv, "--db") && hasFlag(runtime.argv, "--no-db");
@@ -291,6 +298,7 @@ function createDeployCommand(runtime: CliRuntime): Command {
           region,
           envAssignments,
           prod: prod === true,
+          noPromote,
           db,
           configTarget,
         });
