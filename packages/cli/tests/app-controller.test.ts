@@ -7037,6 +7037,11 @@ describe("app controller", () => {
       "prisma-cli app promote dep_candidate",
       "prisma-cli app show-deploy dep_candidate",
     ]);
+    // The un-promoted candidate must not be cached as the known-live deployment;
+    // the previously-live one keeps serving.
+    expect(
+      await context.stateStore.readKnownLiveDeployment("proj_123", "app_1"),
+    ).toBe("dep_live");
   });
 
   it("deploy --no-promote on the production branch bypasses the production gate", async () => {

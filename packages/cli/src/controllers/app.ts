@@ -823,11 +823,18 @@ async function runSingleAppDeploy(
     id: deployResult.app.id,
     name: deployResult.app.name,
   });
-  await context.stateStore.setKnownLiveDeployment(
-    projectId,
-    deployResult.app.id,
-    deployResult.deployment.id,
-  );
+  // With --no-promote the live deployment is unchanged, so cache the actually-live
+  // id (never the un-promoted candidate); skip when the app has nothing live yet.
+  const knownLiveDeploymentId = deployResult.promoted
+    ? deployResult.deployment.id
+    : deployResult.app.liveDeploymentId;
+  if (knownLiveDeploymentId) {
+    await context.stateStore.setKnownLiveDeployment(
+      projectId,
+      deployResult.app.id,
+      knownLiveDeploymentId,
+    );
+  }
 
   return {
     command: "app.deploy",
