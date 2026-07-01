@@ -1012,7 +1012,7 @@ prisma-cli app run --build-type bun --entry server.ts --port 3000
 prisma-cli app run api
 ```
 
-## `prisma-cli app deploy [app] --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|nuxt|astro|hono|nestjs|tanstack-start|custom|bun> --entry <path> --http-port <port> --region <region> --env <name=value|file> --db --no-db --prod`
+## `prisma-cli app deploy [app] --project <id-or-name> --create-project <name> --app <name> --branch <name> --framework <nextjs|nuxt|astro|hono|nestjs|tanstack-start|custom|bun> --entry <path> --http-port <port> --region <region> --env <name=value|file> --db --no-db --prod --no-promote`
 
 Purpose:
 
@@ -1053,7 +1053,7 @@ same reasons they are excluded today.
 - the `[app]` argument selects an `apps` target by key:
   - without an `[app]` argument, a command run from inside a target's `root` selects that target, so `cd apps/api && prisma-cli app deploy` deploys `api`; the deepest matching root wins and an ambiguous tie selects nothing
   - with multiple `apps` entries, no `[app]` argument, and no target inferred from the invocation directory, deploy deploys every target sequentially in declaration order — the config declares the system, and a bare `prisma-cli app deploy` ships it
-  - deploying all targets rejects per-app inputs (`--app`, `--framework`, `--entry`, `--http-port`, `--region`, `--env`, `PRISMA_APP_ID`) with a usage error; project- and branch-level flags (`--project`, `--create-project`, `--branch`, `--db`, `--no-db`, `--prod`, `--yes`) apply to the whole run, with `--create-project` creating and binding the Project once before the first target
+  - deploying all targets rejects per-app inputs (`--app`, `--framework`, `--entry`, `--http-port`, `--region`, `--env`, `PRISMA_APP_ID`) with a usage error; project- and branch-level flags (`--project`, `--create-project`, `--branch`, `--db`, `--no-db`, `--prod`, `--no-promote`, `--yes`) apply to the whole run, with `--create-project` creating and binding the Project once before the first target
   - a deploy-all run stops at the first failure and reports the targets already live; `--json` output aggregates one full deploy result per target
   - `app build` and `app run` still require a target in multi-app configs and fail with `COMPUTE_CONFIG_TARGET_REQUIRED` (a dev server cannot run N apps at once; build keeps the same shape)
   - an `[app]` argument that matches no target fails with `COMPUTE_CONFIG_TARGET_UNKNOWN`
@@ -1120,6 +1120,8 @@ Behavior:
 - resolves or creates app context inside the resolved branch from `--app`, `PRISMA_APP_ID`, `package.json#name`, or current directory name
 - auto-promotes the first production deploy for an App without `--prod`
 - requires `--prod` for subsequent deploys to a production Branch; `--yes` only skips the confirmation prompt when `--prod` is also present
+- supports `--no-promote` to build a new deployment without promoting it to live: the previous deployment keeps serving, and the new deployment is reachable only at its own candidate URL until a later `app promote <deployment-id>` makes it live
+- `--no-promote` never replaces the live deployment, so it bypasses the production gate: `app deploy --no-promote` on a production Branch builds a candidate without `--prod` and without confirmation. It is the CI build-then-verify path — build the candidate, health-check its URL, then `app promote`
 - does not prompt when there is no real choice; zero matching apps creates the inferred app
 - writes `.prisma/local.json` after Project binding succeeds and before build/deploy starts, so retries after a failed deploy do not repeat setup
 - before asking `Customize build settings? (y/N)`, previews the detected framework and runtime so the user can see the defaults they are accepting or changing
@@ -1135,6 +1137,7 @@ Behavior:
 - after setup, deploy prints `Deploying to <Project> / <Branch> / <App>`; later deploys print a compact target header such as `Deploying ./j1 to j1 / main / j1`
 - deploy progress uses short stage copy (`Building locally...`, `Built <size>`, `Uploading...`, `Uploaded`, `Deploying...`, `Deployed`) and never prints `Status: running` or `Deployment is running at ...`
 - success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma-cli app logs`
+- with `--no-promote`, success human output instead prints `Built <deployment-id> in <duration> (not promoted)`, the candidate URL on its own line, a note that the live deployment is unchanged, and a `Promote   prisma-cli app promote <deployment-id>` next step
 - accepts repeated `--env NAME=VALUE` flags and dotenv file paths such as `--env .env`
 - supports `--db` to create a new empty Prisma Postgres database and write `DATABASE_URL` and `DIRECT_URL` through the existing `project env` storage; the CLI never runs schema or migration commands — applying the schema stays with the user's own tooling
 - `--db` is the opinionated single-database path: it creates **one** branch database and exposes `DATABASE_URL`/`DIRECT_URL` as branch-scoped env vars, so every app on the branch shares it. In a multi-app deploy-all run the database is created once (on the first target) and reused by the rest; the run never creates a database per app. Per-app or per-service database topologies are explicit-configuration territory — set each app's database env vars yourself rather than relying on `--db` to infer app-to-database ownership
@@ -1176,6 +1179,7 @@ prisma-cli app deploy --no-db
 prisma-cli app deploy --framework nextjs --http-port 3000
 prisma-cli app deploy --branch feat-login --framework hono --http-port 3000
 prisma-cli app deploy --prod --yes
+prisma-cli app deploy --no-promote
 prisma-cli app deploy --framework bun --entry src/server.ts --http-port 3000
 prisma-cli app deploy --entry src/server.ts --http-port 3000
 prisma-cli app deploy web

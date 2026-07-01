@@ -65,7 +65,9 @@ export interface DeployRecord {
     id: string;
     status: string;
     url: string | null;
+    live: boolean;
   };
+  promoted: boolean;
 }
 
 export interface EnvRecord {
@@ -229,6 +231,7 @@ export interface AppProvider {
     buildSettings?: AppBuildSettings;
     portMapping?: PortMapping;
     envVars?: Record<string, string>;
+    skipPromote?: boolean;
     interaction?: unknown;
     signal?: AbortSignal;
     progress?: unknown;
@@ -511,6 +514,7 @@ export function createAppProvider(
         region: resolvedApp.region,
         portMapping: options.portMapping,
         envVars: options.envVars,
+        skipPromote: options.skipPromote,
         timeoutSeconds: 120,
         pollIntervalMs: 2000,
         interaction: options.interaction as never,
@@ -524,13 +528,18 @@ export function createAppProvider(
 
       const deployed = deployResult.value;
 
+      // On a promotionless deploy the SDK leaves appEndpointDomain null and the
+      // previous deployment serving live, so the live pointer stays on the old
+      // deployment and both URL expressions resolve to the candidate endpoint.
       return {
         projectId: deployed.projectId,
         app: {
           id: deployed.appId,
           name: deployed.appName,
           region: deployed.region ?? null,
-          liveDeploymentId: deployed.deploymentId,
+          liveDeploymentId: deployed.promoted
+            ? deployed.deploymentId
+            : deployed.previousDeploymentId,
           liveUrl: toAbsoluteUrl(deployed.appEndpointDomain ?? null),
         },
         deployment: {
@@ -541,7 +550,9 @@ export function createAppProvider(
               deployed.deploymentEndpointDomain ??
               null,
           ),
+          live: deployed.promoted,
         },
+        promoted: deployed.promoted,
       };
     },
 

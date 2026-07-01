@@ -6955,4 +6955,166 @@ describe("app controller", () => {
       "The app was removed remotely, but the local selected app state could not be cleared: disk full",
     ]);
   });
+
+  it("deploy --no-promote builds the candidate without promoting it", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_live",
+        liveUrl: "https://hello-world.prisma.app",
+      },
+    ]);
+    const listDeployments = vi.fn();
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_live",
+        liveUrl: null,
+      },
+      deployment: {
+        id: "dep_candidate",
+        status: "running",
+        url: "https://dep-candidate.fra.prisma.build",
+        live: false,
+      },
+      promoted: false,
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps,
+          deployApp,
+          listDeployments,
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = asSingleDeployResult(
+      await runAppDeploy(context, "hello-world", {
+        projectRef: "proj_123",
+        framework: "hono",
+        noPromote: true,
+      }),
+    );
+
+    expect(deployApp).toHaveBeenCalledWith(
+      expect.objectContaining({ skipPromote: true }),
+    );
+    expect(result.result.promoted).toBe(false);
+    expect(result.result.deployment).toEqual({
+      id: "dep_candidate",
+      status: "running",
+      url: "https://dep-candidate.fra.prisma.build",
+      live: false,
+    });
+    expect(result.nextSteps).toEqual([
+      "prisma-cli app promote dep_candidate",
+      "prisma-cli app show-deploy dep_candidate",
+    ]);
+  });
+
+  it("deploy --no-promote on the production branch bypasses the production gate", async () => {
+    const requireComputeAuth = vi
+      .fn()
+      .mockResolvedValue(createProjectClient("proj_123", { isDefault: true }));
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_live",
+        liveUrl: "https://hello-world.prisma.app",
+      },
+    ]);
+    // The gate inspects existing deployments; --no-promote must not reach it.
+    const listDeployments = vi.fn();
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_123",
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_live",
+        liveUrl: null,
+      },
+      deployment: {
+        id: "dep_candidate",
+        status: "running",
+        url: "https://dep-candidate.fra.prisma.build",
+        live: false,
+      },
+      promoted: false,
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch("production"),
+          listApps,
+          deployApp,
+          listDeployments,
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = asSingleDeployResult(
+      await runAppDeploy(context, "hello-world", {
+        projectRef: "proj_123",
+        branchName: "production",
+        framework: "hono",
+        noPromote: true,
+      }),
+    );
+
+    expect(result.result.branch.kind).toBe("production");
+    expect(result.result.promoted).toBe(false);
+    expect(listDeployments).not.toHaveBeenCalled();
+    expect(deployApp).toHaveBeenCalledWith(
+      expect.objectContaining({ skipPromote: true }),
+    );
+  });
 });

@@ -705,7 +705,100 @@ describe("app env vars", () => {
         envAssignments: ["DATABASE_URL=postgresql://example"],
         projectRef: "proj_123",
         prod: true,
+        noPromote: false,
       },
+    );
+  });
+
+  it("threads --no-promote and surfaces the candidate deployment in --json", async () => {
+    const runAppDeploy = vi.fn().mockResolvedValue({
+      command: "app.deploy",
+      result: {
+        workspace: { id: "ws_123", name: "Acme Inc" },
+        project: { id: "proj_123", name: "Acme Dashboard" },
+        branch: { id: "br_prod", name: "production", kind: "production" },
+        resolution: { projectSource: "explicit" },
+        app: { id: "app_1", name: "hello-world" },
+        deployment: {
+          id: "dep_candidate",
+          status: "running",
+          url: "https://dep-candidate.fra.prisma.build",
+          live: false,
+        },
+        promoted: false,
+        deploySettings: {
+          config: { path: null, status: "inferred" },
+          buildCommand: { value: null, source: null },
+          outputDirectory: { value: ".", source: null },
+          framework: {
+            key: "hono",
+            buildType: "bun",
+            name: "Hono",
+            source: "explicit",
+          },
+          entrypoint: "src/index.ts",
+          httpPort: 3000,
+          region: null,
+          envVars: [],
+        },
+        durationMs: 1234,
+      },
+      warnings: [],
+      nextSteps: ["prisma-cli app promote dep_candidate"],
+    });
+
+    vi.doMock("../src/controllers/app", async () => {
+      const actual = await vi.importActual<
+        typeof import("../src/controllers/app")
+      >("../src/controllers/app");
+      return {
+        ...actual,
+        runAppDeploy,
+      };
+    });
+
+    const { createTempCwd, executeCli } = await import("./helpers");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    const result = await executeCli({
+      argv: [
+        "app",
+        "deploy",
+        "--app",
+        "hello-world",
+        "--framework",
+        "hono",
+        "--project",
+        "proj_123",
+        "--no-promote",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      command: "app.deploy",
+      result: {
+        promoted: false,
+        deployment: {
+          id: "dep_candidate",
+          url: "https://dep-candidate.fra.prisma.build",
+          live: false,
+        },
+      },
+    });
+    expect(runAppDeploy).toHaveBeenCalledWith(
+      expect.anything(),
+      "hello-world",
+      expect.objectContaining({ noPromote: true }),
     );
   });
 });

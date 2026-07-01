@@ -387,6 +387,7 @@ interface AppDeployOptions {
   region?: string;
   envAssignments?: string[];
   prod?: boolean;
+  noPromote?: boolean;
   db?: boolean;
   configTarget?: string;
 }
@@ -739,16 +740,18 @@ async function runSingleAppDeploy(
   framework = customized.framework;
   runtime = customized.runtime;
 
-  const productionDeployGate = await enforceProductionDeployGate(
-    context,
-    provider,
-    {
-      appId: selectedApp.appId,
-      appName: selectedApp.displayName,
-      branchKind: target.branch.kind,
-      prod: options?.prod === true,
-    },
-  );
+  const noPromote = options?.noPromote === true;
+  // A promotionless deploy never replaces the live deployment, so the
+  // production-confirmation gate does not apply: --no-promote on the production
+  // branch builds a candidate without --prod.
+  const productionDeployGate = noPromote
+    ? { firstProductionDeploy: false }
+    : await enforceProductionDeployGate(context, provider, {
+        appId: selectedApp.appId,
+        appName: selectedApp.displayName,
+        branchKind: target.branch.kind,
+        prod: options?.prod === true,
+      });
 
   // Customization can switch from a Bun-compatible framework to one that
   // derives its entrypoint from build output, so validate --entry again after it.
@@ -801,6 +804,7 @@ async function runSingleAppDeploy(
       buildSettings: buildSettingsResolution.settings,
       portMapping,
       envVars,
+      skipPromote: noPromote,
       interaction: undefined,
       signal: context.runtime.signal,
       progress: createDeployProgress(
@@ -838,6 +842,7 @@ async function runSingleAppDeploy(
         name: deployResult.app.name,
       },
       deployment: deployResult.deployment,
+      promoted: deployResult.promoted,
       deploySettings: {
         config: {
           path: buildSettingsResolution.relativeConfigPath,
@@ -871,10 +876,15 @@ async function runSingleAppDeploy(
       ...legacyWarnings,
       ...branchDatabaseSetup.warnings,
     ],
-    nextSteps: [
-      "prisma-cli app list-deploys",
-      `prisma-cli app show-deploy ${deployResult.deployment.id}`,
-    ],
+    nextSteps: deployResult.promoted
+      ? [
+          "prisma-cli app list-deploys",
+          `prisma-cli app show-deploy ${deployResult.deployment.id}`,
+        ]
+      : [
+          `prisma-cli app promote ${deployResult.deployment.id}`,
+          `prisma-cli app show-deploy ${deployResult.deployment.id}`,
+        ],
   };
 }
 

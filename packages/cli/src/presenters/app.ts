@@ -68,12 +68,33 @@ export function renderAppDeploy(
   const logsCommand = options?.logsTarget
     ? `prisma-cli app logs ${options.logsTarget}`
     : "prisma-cli app logs";
+  const headline = result.promoted
+    ? [
+        `Live in ${formatDuration(result.durationMs)}`,
+        ...(result.deployment.url
+          ? [context.ui.link(result.deployment.url)]
+          : []),
+      ]
+    : [
+        `Built ${result.deployment.id} in ${formatDuration(result.durationMs)} (not promoted)`,
+        ...(result.deployment.url
+          ? [context.ui.link(result.deployment.url)]
+          : []),
+        context.ui.dim("The live deployment is unchanged."),
+      ];
   const lines = [
-    `Live in ${formatDuration(result.durationMs)}`,
-    ...(result.deployment.url ? [context.ui.link(result.deployment.url)] : []),
+    ...headline,
     ...renderBranchDatabaseDeploySummary(context, result),
     "",
     ...renderDeployOutputRows(context.ui, [
+      ...(result.promoted
+        ? []
+        : [
+            {
+              label: "Promote",
+              value: `prisma-cli app promote ${result.deployment.id}`,
+            },
+          ]),
       { label: "Logs", value: logsCommand },
     ]),
     ...renderDeployResolvedContextBlock(context, result),
