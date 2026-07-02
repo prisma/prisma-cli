@@ -594,20 +594,22 @@ describe("database commands", () => {
   it("rejects impossible calendar dates for usage periods", async () => {
     const { cwd, stateDir } = await setupLinkedProject();
 
-    const result = await executeCli({
-      argv: ["database", "usage", "db_123", "--from", "2026-02-30", "--json"],
-      cwd,
-      stateDir,
-      fixturePath,
-    });
-    const payload = JSON.parse(result.stdout);
+    for (const from of ["2026-02-30", "2026-02-30T10:00:00Z"]) {
+      const result = await executeCli({
+        argv: ["database", "usage", "db_123", "--from", from, "--json"],
+        cwd,
+        stateDir,
+        fixturePath,
+      });
+      const payload = JSON.parse(result.stdout);
 
-    expect(result.exitCode).toBe(2);
-    expect(payload).toMatchObject({
-      ok: false,
-      command: "database.usage",
-      error: { code: "USAGE_ERROR" },
-    });
+      expect(result.exitCode).toBe(2);
+      expect(payload).toMatchObject({
+        ok: false,
+        command: "database.usage",
+        error: { code: "USAGE_ERROR" },
+      });
+    }
   });
 
   it("rejects an invalid usage period before calling the API", async () => {
