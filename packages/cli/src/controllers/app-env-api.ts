@@ -33,6 +33,7 @@ export async function findVariableByNaturalKey(
   resolved: ResolvedEnvApiScope,
   signal: AbortSignal,
 ): Promise<RawEnvironmentVariable | null> {
+  // Filter by branchId server-side — the list pages at 100, so client-side-only filtering drops branch rows past page 1.
   const { data, error, response } = await client.GET(
     "/v1/environment-variables",
     {
@@ -41,6 +42,9 @@ export async function findVariableByNaturalKey(
           projectId,
           class: resolved.apiTarget.class,
           key,
+          ...(resolved.apiTarget.branchId !== null
+            ? { branchId: resolved.apiTarget.branchId }
+            : {}),
         },
       },
       signal,
