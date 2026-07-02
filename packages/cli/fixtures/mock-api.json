@@ -183,5 +183,45 @@
       "createdAt": "2026-06-02T00:00:00.000Z",
       "connectionString": "postgresql://secret-production.example.prisma.io/postgres"
     }
+  ],
+  "databaseBackups": [
+    {
+      "id": "bkp_101",
+      "databaseId": "db_123",
+      "backupType": "full",
+      "status": "completed",
+      "size": 1048576,
+      "createdAt": "2026-06-20T00:00:00.000Z"
+    },
+    {
+      "id": "bkp_102",
+      "databaseId": "db_123",
+      "backupType": "incremental",
+      "status": "completed",
+      "createdAt": "2026-06-21T00:00:00.000Z"
+    },
+    {
+      "id": "bkp_201",
+      "databaseId": "db_456",
+      "backupType": "full",
+      "status": "completed",
+      "size": 5242880,
+      "createdAt": "2026-06-22T00:00:00.000Z"
+    }
+  ],
+  "databaseBackupRetentionDays": 35,
+  "databaseUsage": [
+    {
+      "databaseId": "db_123",
+      "period": {
+        "start": "2026-06-01T00:00:00.000Z",
+        "end": "2026-06-30T23:59:59.999Z"
+      },
+      "metrics": {
+        "operations": { "used": 12500, "unit": "ops" },
+        "storage": { "used": 1.25, "unit": "GiB" }
+      },
+      "generatedAt": "2026-07-01T00:00:00.000Z"
+    }
   ]
 }

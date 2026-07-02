@@ -69,6 +69,25 @@ interface DatabaseConnectionRecord {
   connectionString?: string;
 }
 
+interface DatabaseBackupRecord {
+  id: string;
+  databaseId: string;
+  backupType: string;
+  status: string;
+  size?: number;
+  createdAt: string;
+}
+
+interface DatabaseUsageRecord {
+  databaseId: string;
+  period: { start: string; end: string };
+  metrics: {
+    operations: { used: number; unit: string };
+    storage: { used: number; unit: string };
+  };
+  generatedAt: string;
+}
+
 interface MockApiData {
   providers: ProviderRecord[];
   users: UserRecord[];
@@ -79,6 +98,9 @@ interface MockApiData {
   deployments: DeploymentRecord[];
   databases?: DatabaseRecord[];
   databaseConnections?: DatabaseConnectionRecord[];
+  databaseBackups?: DatabaseBackupRecord[];
+  databaseUsage?: DatabaseUsageRecord[];
+  databaseBackupRetentionDays?: number;
 }
 
 export class MockApi {
@@ -316,6 +338,116 @@ export class MockApi {
       (candidate) => candidate.id !== connectionId,
     );
     return connection;
+  }
+
+  getDatabaseUsage(
+    databaseId: string,
+    period?: { from?: string; to?: string },
+  ): {
+    period: { start: string; end: string };
+    metrics: {
+      operations: { used: number; unit: string };
+      storage: { used: number; unit: string };
+    };
+    generatedAt: string;
+  } {
+    const usage = (this.data.databaseUsage ?? []).find(
+      (record) => record.databaseId === databaseId,
+    );
+    const defaults = usage ?? {
+      databaseId,
+      period: {
+        start: "2026-06-01T00:00:00.000Z",
+        end: "2026-06-30T23:59:59.999Z",
+      },
+      metrics: {
+        operations: { used: 0, unit: "ops" },
+        storage: { used: 0, unit: "GiB" },
+      },
+      generatedAt: "2026-07-01T00:00:00.000Z",
+    };
+
+    return {
+      period: {
+        start: period?.from ?? defaults.period.start,
+        end: period?.to ?? defaults.period.end,
+      },
+      metrics: defaults.metrics,
+      generatedAt: defaults.generatedAt,
+    };
+  }
+
+  listDatabaseBackups(
+    databaseId: string,
+    limit?: number,
+  ): {
+    backups: Array<{
+      id: string;
+      backupType: string;
+      status: string;
+      size: number | null;
+      createdAt: string;
+    }>;
+    retentionDays: number | null;
+    hasMore: boolean;
+  } {
+    const backups = (this.data.databaseBackups ?? []).filter(
+      (backup) => backup.databaseId === databaseId,
+    );
+    const limited = limit === undefined ? backups : backups.slice(0, limit);
+
+    return {
+      backups: limited.map((backup) => ({
+        id: backup.id,
+        backupType: backup.backupType,
+        status: backup.status,
+        size: backup.size ?? null,
+        createdAt: backup.createdAt,
+      })),
+      retentionDays: this.data.databaseBackupRetentionDays ?? null,
+      hasMore: limited.length < backups.length,
+    };
+  }
+
+  restoreDatabase(input: {
+    targetDatabaseId: string;
+    sourceDatabaseId: string;
+    backupId: string;
+  }):
+    | { outcome: "restored"; database: DatabaseRecord }
+    | { outcome: "target-not-found" }
+    | { outcome: "backup-not-found" } {
+    const target = this.getDatabase(input.targetDatabaseId);
+    if (!target) {
+      return { outcome: "target-not-found" };
+    }
+
+    const backup = (this.data.databaseBackups ?? []).find(
+      (candidate) =>
+        candidate.id === input.backupId &&
+        candidate.databaseId === input.sourceDatabaseId,
+    );
+    if (!backup) {
+      return { outcome: "backup-not-found" };
+    }
+
+    target.status = "recovering";
+    return { outcome: "restored", database: target };
+  }
+
+  rotateDatabaseConnection(
+    connectionId: string,
+  ):
+    | { connection: DatabaseConnectionRecord; connectionString: string }
+    | undefined {
+    const connection = this.getDatabaseConnection(connectionId);
+    if (!connection) {
+      return undefined;
+    }
+
+    const connectionString = `postgresql://rotated-${connection.databaseId}-${connection.id}.example.prisma.io/postgres`;
+    connection.connectionString = connectionString;
+    return { connection, connectionString };
   }
 }
 

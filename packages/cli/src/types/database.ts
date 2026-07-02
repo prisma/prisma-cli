@@ -80,3 +80,66 @@ export interface DatabaseConnectionRemoveResult {
     id: string;
   };
 }
+
+export interface DatabaseUsagePeriod {
+  start: string;
+  end: string;
+}
+
+export interface DatabaseUsageMetric {
+  used: number;
+  unit: string;
+}
+
+export interface DatabaseUsageMetrics {
+  operations: DatabaseUsageMetric;
+  storage: DatabaseUsageMetric;
+}
+
+export interface DatabaseUsageResult {
+  projectId: string;
+  projectName: string;
+  verboseContext?: DatabaseResolvedContext;
+  database: DatabaseSummary;
+  period: DatabaseUsagePeriod;
+  metrics: DatabaseUsageMetrics;
+  generatedAt: string;
+}
+
+export interface DatabaseBackupSummary {
+  id: string;
+  backupType: string;
+  status: string;
+  size: number | null;
+  createdAt: string;
+}
+
+export interface DatabaseBackupListResult {
+  projectId: string;
+  projectName: string;
+  verboseContext?: DatabaseResolvedContext;
+  database: DatabaseSummary;
+  backups: DatabaseBackupSummary[];
+  retentionDays: number | null;
+  hasMore: boolean;
+}
+
+export interface DatabaseRestoreResult {
+  projectId: string;
+  projectName: string;
+  verboseContext?: DatabaseResolvedContext;
+  database: DatabaseSummary;
+  source: {
+    databaseId: string;
+    backupId: string;
+  };
+}
+
+export interface DatabaseConnectionRotateResult {
+  connection: DatabaseConnectionSummary;
+  database: {
+    id: string;
+    name: string;
+  } | null;
+  connectionString: string;
+}

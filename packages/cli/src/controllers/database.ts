@@ -21,14 +21,18 @@ import {
 import type { CommandSuccess } from "../shell/output";
 import type { CommandContext } from "../shell/runtime";
 import type {
+  DatabaseBackupListResult,
   DatabaseConnectionCreateResult,
   DatabaseConnectionListResult,
   DatabaseConnectionRemoveResult,
+  DatabaseConnectionRotateResult,
   DatabaseCreateResult,
   DatabaseListResult,
   DatabaseRemoveResult,
+  DatabaseRestoreResult,
   DatabaseShowResult,
   DatabaseSummary,
+  DatabaseUsageResult,
 } from "../types/database";
 import { requireAuthenticatedAuthState } from "./auth";
 import {
@@ -54,6 +58,25 @@ interface DatabaseConnectionCreateFlags extends DatabaseCommandFlags {
 }
 
 interface DatabaseConnectionRemoveFlags {
+  confirm?: string;
+}
+
+interface DatabaseUsageFlags extends DatabaseCommandFlags {
+  from?: string;
+  to?: string;
+}
+
+interface DatabaseBackupListFlags extends DatabaseCommandFlags {
+  limit?: string;
+}
+
+interface DatabaseRestoreFlags extends DatabaseCommandFlags {
+  backupId?: string;
+  sourceDatabaseRef?: string;
+  confirm?: string;
+}
+
+interface DatabaseConnectionRotateFlags {
   confirm?: string;
 }
 
@@ -335,6 +358,259 @@ export async function runDatabaseConnectionRemove(
   };
 }
 
+export async function runDatabaseUsage(
+  context: CommandContext,
+  databaseRef: string,
+  flags: DatabaseUsageFlags,
+): Promise<CommandSuccess<DatabaseUsageResult>> {
+  const from = parseUsageDate(flags.from, "--from");
+  const to = parseUsageDate(flags.to, "--to");
+  if (from && to && Date.parse(from) > Date.parse(to)) {
+    throw usageError(
+      "Invalid usage period",
+      "--from must not be later than --to.",
+      "Pass a --from date that is on or before the --to date.",
+      [
+        "prisma-cli database usage <database> --from 2026-06-01 --to 2026-06-30",
+      ],
+      "database",
+    );
+  }
+
+  const { provider, target } = await requireDatabaseContext(
+    context,
+    flags,
+    "database usage",
+  );
+  const database = await resolveDatabase(
+    provider,
+    target,
+    databaseRef,
+    flags.branchName,
+    context.runtime.signal,
+  );
+  const usage = await provider.getUsage(database.id, {
+    from,
+    to,
+    signal: context.runtime.signal,
+  });
+
+  return {
+    command: "database.usage",
+    result: {
+      projectId: target.project.id,
+      projectName: target.project.name,
+      verboseContext: target,
+      database,
+      period: usage.period,
+      metrics: usage.metrics,
+      generatedAt: usage.generatedAt,
+    },
+    warnings: [],
+    nextSteps: [],
+  };
+}
+
+export async function runDatabaseBackupList(
+  context: CommandContext,
+  databaseRef: string,
+  flags: DatabaseBackupListFlags,
+): Promise<CommandSuccess<DatabaseBackupListResult>> {
+  const limit = parseBackupLimit(flags.limit);
+
+  const { provider, target } = await requireDatabaseContext(
+    context,
+    flags,
+    "database backup list",
+  );
+  const database = await resolveDatabase(
+    provider,
+    target,
+    databaseRef,
+    flags.branchName,
+    context.runtime.signal,
+  );
+  const backups = await provider.listBackups(database.id, {
+    limit,
+    signal: context.runtime.signal,
+  });
+
+  return {
+    command: "database.backup.list",
+    result: {
+      projectId: target.project.id,
+      projectName: target.project.name,
+      verboseContext: target,
+      database,
+      backups: backups.backups,
+      retentionDays: backups.retentionDays,
+      hasMore: backups.hasMore,
+    },
+    warnings: [],
+    nextSteps: [],
+  };
+}
+
+export async function runDatabaseRestore(
+  context: CommandContext,
+  databaseRef: string,
+  flags: DatabaseRestoreFlags,
+): Promise<CommandSuccess<DatabaseRestoreResult>> {
+  const backupId = flags.backupId?.trim();
+  if (!backupId) {
+    throw usageError(
+      "Backup id required",
+      "Database restore needs the backup to restore from.",
+      "Pass --backup <backup-id> from prisma-cli database backup list.",
+      ["prisma-cli database backup list <database>"],
+      "database",
+    );
+  }
+
+  const { provider, target } = await requireDatabaseContext(
+    context,
+    flags,
+    "database restore",
+  );
+  const database = await resolveDatabase(
+    provider,
+    target,
+    databaseRef,
+    flags.branchName,
+    context.runtime.signal,
+  );
+  const sourceDatabase = flags.sourceDatabaseRef
+    ? await resolveDatabase(
+        provider,
+        target,
+        flags.sourceDatabaseRef,
+        flags.branchName,
+        context.runtime.signal,
+      )
+    : database;
+
+  requireExactConfirmation({
+    resourceName: "database",
+    commandName: "database restore",
+    id: database.id,
+    confirm: flags.confirm,
+    summary: "Confirm database restore",
+    why: "Restoring immediately and irreversibly overwrites all data in the target database, so it requires the exact target database id.",
+    nextStep: `prisma-cli database restore ${database.id} --backup ${backupId} --confirm ${database.id}`,
+  });
+
+  const restored = await provider.restoreDatabase({
+    targetDatabaseId: database.id,
+    sourceDatabaseId: sourceDatabase.id,
+    backupId,
+    projectId: target.project.id,
+    signal: context.runtime.signal,
+  });
+
+  return {
+    command: "database.restore",
+    result: {
+      projectId: target.project.id,
+      projectName: target.project.name,
+      verboseContext: target,
+      database: ensureProjectId(restored, target.project.id),
+      source: {
+        databaseId: sourceDatabase.id,
+        backupId,
+      },
+    },
+    warnings: [],
+    nextSteps: [`prisma-cli database show ${database.id}`],
+  };
+}
+
+export async function runDatabaseConnectionRotate(
+  context: CommandContext,
+  connectionRef: string,
+  flags: DatabaseConnectionRotateFlags,
+): Promise<CommandSuccess<DatabaseConnectionRotateResult>> {
+  const connectionId = connectionRef.trim();
+  if (!connectionId) {
+    throw usageError(
+      "Connection id required",
+      "Database connection rotation needs a connection id.",
+      "Pass the connection id to rotate.",
+      [
+        "prisma-cli database connection rotate <connection-id> --confirm <connection-id>",
+      ],
+      "database",
+    );
+  }
+
+  requireExactConfirmation({
+    resourceName: "database connection",
+    commandName: "database connection rotate",
+    id: connectionId,
+    confirm: flags.confirm,
+    summary: "Confirm database connection rotation",
+    why: "Rotating revokes the previous credentials and breaks clients still using them, so it requires the exact connection id.",
+  });
+
+  const provider = await requireDatabaseProviderOnly(context);
+  const rotated = await provider.rotateConnection(connectionId, {
+    signal: context.runtime.signal,
+  });
+
+  return {
+    command: "database.connection.rotate",
+    result: {
+      connection: rotated.connection,
+      database: rotated.database,
+      connectionString: rotated.connectionString,
+    },
+    warnings: [],
+    nextSteps: [],
+  };
+}
+
+function parseUsageDate(
+  value: string | undefined,
+  flagName: string,
+): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed || Number.isNaN(Date.parse(trimmed))) {
+    throw usageError(
+      "Invalid usage period",
+      `${flagName} must be an ISO date such as 2026-06-01.`,
+      `Pass an ISO date to ${flagName}.`,
+      [
+        "prisma-cli database usage <database> --from 2026-06-01 --to 2026-06-30",
+      ],
+      "database",
+    );
+  }
+
+  return trimmed;
+}
+
+function parseBackupLimit(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const limit = Number(value.trim());
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw usageError(
+      "Invalid backup limit",
+      "--limit must be an integer between 1 and 100.",
+      "Pass a --limit between 1 and 100.",
+      ["prisma-cli database backup list <database> --limit 50"],
+      "database",
+    );
+  }
+
+  return limit;
+}
+
 async function requireDatabaseContext(
   context: CommandContext,
   flags: DatabaseCommandFlags,
@@ -477,6 +753,54 @@ function createFixtureDatabaseProvider(
         throw connectionNotFoundError(connectionId);
       }
     },
+
+    async getUsage(databaseId, options) {
+      if (!context.api.getDatabase(databaseId)) {
+        throw databaseNotFoundError(databaseId);
+      }
+      return context.api.getDatabaseUsage(databaseId, {
+        from: options?.from,
+        to: options?.to,
+      });
+    },
+
+    async listBackups(databaseId, options) {
+      if (!context.api.getDatabase(databaseId)) {
+        throw databaseNotFoundError(databaseId);
+      }
+      return context.api.listDatabaseBackups(databaseId, options?.limit);
+    },
+
+    async restoreDatabase(options) {
+      const restored = context.api.restoreDatabase({
+        targetDatabaseId: options.targetDatabaseId,
+        sourceDatabaseId: options.sourceDatabaseId,
+        backupId: options.backupId,
+      });
+      if (restored.outcome === "target-not-found") {
+        throw databaseNotFoundError(options.targetDatabaseId);
+      }
+      if (restored.outcome === "backup-not-found") {
+        throw backupNotFoundError(options.backupId, options.sourceDatabaseId);
+      }
+      return normalizeDatabase(restored.database, options.projectId);
+    },
+
+    async rotateConnection(connectionId) {
+      const rotated = context.api.rotateDatabaseConnection(connectionId);
+      if (!rotated) {
+        throw connectionNotFoundError(connectionId);
+      }
+      const database = context.api.getDatabase(rotated.connection.databaseId);
+      return {
+        connection: normalizeConnection(
+          rotated.connection,
+          rotated.connection.databaseId,
+        ),
+        database: database ? { id: database.id, name: database.name } : null,
+        connectionString: rotated.connectionString,
+      };
+    },
   };
 }
 
@@ -549,6 +873,9 @@ function requireExactConfirmation(options: {
   commandName: string;
   id: string;
   confirm: string | undefined;
+  summary?: string;
+  why?: string;
+  nextStep?: string;
 }): void {
   if (options.confirm === options.id) {
     return;
@@ -557,12 +884,15 @@ function requireExactConfirmation(options: {
   throw new CliError({
     code: "CONFIRMATION_REQUIRED",
     domain: "database",
-    summary: `Confirm ${options.resourceName} removal`,
-    why: `Removing this ${options.resourceName} is destructive and requires the exact id.`,
+    summary: options.summary ?? `Confirm ${options.resourceName} removal`,
+    why:
+      options.why ??
+      `Removing this ${options.resourceName} is destructive and requires the exact id.`,
     fix: `Rerun with --confirm ${options.id}.`,
     exitCode: 2,
     nextSteps: [
-      `prisma-cli ${options.commandName} ${options.id} --confirm ${options.id}`,
+      options.nextStep ??
+        `prisma-cli ${options.commandName} ${options.id} --confirm ${options.id}`,
     ],
     meta: {
       expectedConfirm: options.id,
@@ -621,6 +951,21 @@ function databaseAmbiguousError(
         branchName: database.branchName,
       })),
     },
+  });
+}
+
+function backupNotFoundError(
+  backupId: string,
+  sourceDatabaseId: string,
+): CliError {
+  return new CliError({
+    code: "DATABASE_BACKUP_NOT_FOUND",
+    domain: "database",
+    summary: "Database backup not found",
+    why: `No backup matched "${backupId}" for database "${sourceDatabaseId}".`,
+    fix: "Pass a backup id from prisma-cli database backup list.",
+    exitCode: 1,
+    nextSteps: [`prisma-cli database backup list ${sourceDatabaseId}`],
   });
 }
 

@@ -861,6 +861,91 @@ prisma-cli database create my-db --branch feature/foo --region eu-central-1
 prisma-cli database create my-db --json
 ```
 
+## `prisma-cli database usage <database> --project <id-or-name> --branch <git-name> --from <iso-date> --to <iso-date>`
+
+Purpose:
+
+- show usage metrics for one Prisma Postgres database
+
+Behavior:
+
+- requires auth and resolved project context; accepts `--project <id-or-name>` as an explicit fallback
+- resolves `<database>` by exact database id or exact database name inside the resolved project
+- `--branch <git-name>` narrows name resolution when the same database name exists on multiple Branches
+- `--from <iso-date>` and `--to <iso-date>` bound the reporting period; when omitted, the platform defaults the period to the current month so far
+- the CLI validates that `--from` and `--to` parse as dates and that `--from` is not after `--to` before calling the API
+- reports operations used (`ops`) and storage used (`GiB`) for the period, plus the resolved period bounds and the generation timestamp
+- read-only; never prints or returns connection strings, passwords, or endpoint secrets
+- fails with `DATABASE_NOT_FOUND` or `DATABASE_AMBIGUOUS` when the target cannot be selected safely
+
+Examples:
+
+```bash
+prisma-cli database usage db_123
+prisma-cli database usage acme-production --from 2026-06-01 --to 2026-06-30
+prisma-cli database usage db_123 --json
+```
+
+## `prisma-cli database backup`
+
+Manage backups for a database. `backup` is nested under `database` because
+backups exist only in the context of one Prisma Postgres database, following
+the same parent-noun/subordinate-noun/action shape as `database connection`.
+The platform creates backups automatically; the first slice is read-only.
+
+### `prisma-cli database backup list <database> --limit <n>`
+
+Purpose:
+
+- list backups for a database
+
+Behavior:
+
+- requires auth and resolved project context; accepts `--project <id-or-name>` as an explicit fallback
+- resolves `<database>` by exact database id or exact database name inside the resolved project
+- supports `--branch <git-name>` to narrow database name resolution
+- `--limit <n>` caps the number of returned backups; the platform accepts 1 to 100 and defaults to 25
+- lists backup id, type (`full` or `incremental`), status (`running`, `completed`, `failed`, or `unknown`), size when available, and created timestamp
+- includes the platform's backup retention window in days
+- read-only; never prints or returns secret values
+- fails with `DATABASE_BACKUPS_UNSUPPORTED` when the platform reports backups are not available for the database (for example remote/BYO databases)
+- fails with `DATABASE_NOT_FOUND` or `DATABASE_AMBIGUOUS` when the target cannot be selected safely
+
+Examples:
+
+```bash
+prisma-cli database backup list db_123
+prisma-cli database backup list acme-production --limit 50
+prisma-cli database backup list db_123 --json
+```
+
+## `prisma-cli database restore <database> --backup <backup-id> --source-database <database> --confirm <database-id>`
+
+Purpose:
+
+- restore a database's data from a backup
+
+Behavior:
+
+- requires auth and resolved project context; accepts `--project <id-or-name>` as an explicit fallback
+- restores into the resolved `<database>` (the target): all current data is immediately and irreversibly overwritten with the backup contents; connections and credentials are preserved, so no new connection URL is printed
+- resolves `<database>` by exact database id or exact database name inside the resolved project; `--branch <git-name>` narrows name resolution
+- `--backup <backup-id>` is required and names the backup to restore from; ids come from `database backup list`
+- by default the backup must belong to the target database; `--source-database <database>` restores from another database's backup, for example a production backup into a scratch database, and requires access to both databases' projects
+- requires `--confirm <database-id>` where the value exactly matches the resolved target database id; `--yes` does not satisfy this confirmation
+- the restore runs asynchronously: the target database status becomes `recovering` until the restore completes, and `database show` reports the current status; `nextSteps` includes the show command
+- fails with `DATABASE_RESTORE_CONFLICT` when the target database is provisioning or already recovering
+- fails with `DATABASE_NOT_FOUND` or `DATABASE_AMBIGUOUS` when a database target cannot be selected safely
+- never prints or returns connection strings, passwords, or endpoint secrets
+
+Examples:
+
+```bash
+prisma-cli database restore db_123 --backup bkp_456 --confirm db_123
+prisma-cli database restore scratch --backup bkp_456 --source-database acme-production --confirm db_789
+prisma-cli database restore db_123 --backup bkp_456 --confirm db_123 --json
+```
+
 ## `prisma-cli database remove <database> --confirm <database-id>`
 
 Purpose:
@@ -891,7 +976,8 @@ valid in the context of a Prisma Postgres database. The subgroup mirrors the
 `project env <action>` shape: the parent command names the resource family,
 the nested noun names the subordinate resource, and the final token is the
 action. There is no `database connection show` command because connection
-strings are one-time-view secrets.
+strings are one-time-view secrets: the platform returns them only from
+`connection create` and `connection rotate`, never from read endpoints.
 
 ### `prisma-cli database connection list <database>`
 
@@ -942,6 +1028,34 @@ Examples:
 prisma-cli database connection create db_123
 prisma-cli database connection create db_123 --name readonly
 prisma-cli database connection create db_123 --json
+```
+
+### `prisma-cli database connection rotate <connection> --confirm <connection-id>`
+
+Purpose:
+
+- rotate a database connection's credentials and print the new one-time connection URL
+
+Behavior:
+
+- requires auth
+- treats `<connection>` as the connection id to rotate
+- requires `--confirm <connection-id>` where the value exactly matches the connection id; `--yes` does not satisfy this confirmation, because rotation revokes the previous credentials (best-effort) and breaks clients still using them
+- mints new credentials for the same connection; the connection id and name are unchanged
+- the new connection URL is a one-time-view secret with the same output contract as `database connection create`:
+  - in default human mode, stderr shows a short rotation summary and stdout contains exactly one line, the raw new connection URL
+  - human stderr does not repeat, label, or wrap the connection URL
+  - `--verbose` adds human-only metadata rows such as database and connection id on stderr before the URL is written to stdout
+  - `--quiet` suppresses successful stderr output and leaves stdout as exactly the raw connection URL
+  - in `--json`, `result.connectionString` contains the raw one-time URL exactly once
+- no `DATABASE_URL=` or `DIRECT_URL=` formatting is added; consumers decide how to store the URL
+- fails with `DATABASE_CONNECTION_NOT_FOUND` when the connection does not exist
+
+Examples:
+
+```bash
+prisma-cli database connection rotate conn_123 --confirm conn_123
+prisma-cli database connection rotate conn_123 --confirm conn_123 --json
 ```
 
 ### `prisma-cli database connection remove <connection> --confirm <connection-id>`
