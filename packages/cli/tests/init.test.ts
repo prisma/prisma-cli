@@ -65,7 +65,10 @@ describe("init", () => {
         },
         link: { status: "skipped", project: null },
       },
-      nextSteps: ["prisma-cli app deploy", "prisma-cli project link"],
+      nextSteps: [
+        "npx -y @prisma/cli@latest app deploy",
+        "npx -y @prisma/cli@latest project link",
+      ],
     });
 
     const config = await readConfig(cwd);
@@ -199,7 +202,7 @@ describe("init", () => {
       status: "linked",
       project: { id: "proj_123", name: "Acme Dashboard" },
     });
-    expect(payload.nextSteps).toEqual(["prisma-cli app deploy"]);
+    expect(payload.nextSteps).toEqual(["npx -y @prisma/cli@latest app deploy"]);
     await expect(
       readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
     ).resolves.toContain("proj_123");
@@ -222,7 +225,9 @@ describe("init", () => {
     expect(result.exitCode).toBe(0);
     expect(payload.result.link.status).toBe("failed");
     expect(payload.warnings[0]).toContain("Project link failed");
-    expect(payload.nextSteps).toContain("prisma-cli project link");
+    expect(payload.nextSteps).toContain(
+      "npx -y @prisma/cli@latest project link",
+    );
     await expect(readConfig(cwd)).resolves.toContain('framework: "hono"');
   });
 
@@ -246,7 +251,7 @@ describe("init", () => {
 
     expect(result.exitCode).toBe(0);
     expect(payload.result.link.status).toBe("already-linked");
-    expect(payload.nextSteps).toEqual(["prisma-cli app deploy"]);
+    expect(payload.nextSteps).toEqual(["npx -y @prisma/cli@latest app deploy"]);
   });
 
   it("prints the human summary with the wrote line", async () => {

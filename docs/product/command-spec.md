@@ -407,7 +407,8 @@ Behavior:
   - interactive mode asks `Link this directory to a Prisma Project now? (Y/n)` when the directory has no project binding; accepting enters the same picker `project link` uses
   - `--no-link` suppresses the question; `--link` requires the step; `--project <id-or-name>` links to that project without prompting
   - link failures and cancellations after the config is written downgrade to warnings and `nextSteps`; the config write stands and init exits 0
-- `nextSteps` includes `prisma-cli app deploy`, plus `prisma-cli project link` when the directory is still unlinked
+- `nextSteps` includes the deploy command, plus the project link command when the directory is still unlinked
+- user-facing command hints in init output (next steps, link hints, error recovery commands) use the package runner detected from the project, such as `pnpm dlx @prisma/cli@latest project link` or `npx -y @prisma/cli@latest app deploy`, matching the `agent` group's convention
 - in `--json`, `result` includes `configPath`, the written `app` values, per-value `settings` sources, and `link` state; `--json` never prompts
 
 Examples:
@@ -1374,7 +1375,7 @@ Behavior:
 - after setup, deploy prints `Deploying to <Project> / <Branch> / <App>`; later deploys print a compact target header such as `Deploying ./j1 to j1 / main / j1`
 - deploy progress uses short stage copy (`Building locally...`, `Built <size>`, `Uploading...`, `Uploaded`, `Deploying...`, `Deployed`) and never prints `Status: running` or `Deployment is running at ...`
 - success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma-cli app logs`
-- when the deploy resolved its settings without a compute config, success human output adds a `Config   prisma-cli init` hint line, pointing at the command that pins the inferred settings; the hint is omitted once a config file is discovered
+- when the deploy resolved its settings without a compute config, success human output adds a `Config` hint line with the runner-formatted init command (such as `pnpm dlx @prisma/cli@latest init`), pointing at the command that pins the inferred settings; the hint is omitted once a config file is discovered
 - with `--no-promote`, success human output instead prints `Built <deployment-id> in <duration> (not promoted)`, the candidate URL on its own line, a note that the live deployment is unchanged, and a `Promote   prisma-cli app promote <deployment-id>` next step
 - accepts repeated `--env NAME=VALUE` flags and dotenv file paths such as `--env .env`
 - supports `--db` to create a new empty Prisma Postgres database and write `DATABASE_URL` and `DIRECT_URL` through the existing `project env` storage; the CLI never runs schema or migration commands — applying the schema stays with the user's own tooling

@@ -1,3 +1,4 @@
+import { resolvePrismaCliPackageCommandSync } from "../lib/agent/cli-command";
 import { renderDeployOutputRows } from "../lib/app/deploy-output";
 import { formatDomainFailureFix } from "../lib/app/domain-guidance";
 import { renderList, renderShow, serializeList } from "../output/patterns";
@@ -98,7 +99,14 @@ export function renderAppDeploy(
       { label: "Logs", value: logsCommand },
       ...(deployUsedComputeConfig(result)
         ? []
-        : [{ label: "Config", value: "prisma-cli init" }]),
+        : [
+            {
+              label: "Config",
+              value: resolvePrismaCliPackageCommandSync(context.runtime.cwd, [
+                "init",
+              ]),
+            },
+          ]),
     ]),
     ...renderDeployResolvedContextBlock(context, result),
     ...renderDeploySettingsBlock(context, result),

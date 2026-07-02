@@ -17,6 +17,10 @@ import {
 } from "@prisma/compute-sdk/config";
 
 import {
+  type PrismaCliPackageCommandFormatter,
+  resolvePrismaCliPackageCommandFormatterSync,
+} from "../lib/agent/cli-command";
+import {
   readBunPackageEntrypoint,
   readBunPackageJson,
 } from "../lib/app/bun-project";
@@ -56,13 +60,16 @@ export async function runInit(
 ): Promise<CommandSuccess<InitResult>> {
   const cwd = context.runtime.cwd;
   const signal = context.runtime.signal;
+  // User-facing command hints use the project's package runner (pnpm dlx,
+  // bunx, npx -y), matching the agent group's convention.
+  const formatCommand = resolvePrismaCliPackageCommandFormatterSync(cwd);
 
   await requireNoExistingComputeConfig(cwd, signal);
 
-  const region = parseInitRegion(flags.region);
-  let framework = await resolveInitFramework(context, flags);
-  const name = await resolveInitAppName(cwd, flags.name, signal);
-  let httpPort = parseInitHttpPort(flags.httpPort) ?? {
+  const region = parseInitRegion(flags.region, formatCommand);
+  let framework = await resolveInitFramework(context, flags, formatCommand);
+  const name = await resolveInitAppName(cwd, flags.name, signal, formatCommand);
+  let httpPort = parseInitHttpPort(flags.httpPort, formatCommand) ?? {
     value: defaultHttpPortForBuildType(frameworkByKey(framework.key).buildType),
     source: "framework default",
   };
@@ -124,6 +131,7 @@ export async function runInit(
   const warnings: string[] = [];
   const link = await resolveInitLink(context, flags, {
     onWarning: (message) => warnings.push(message),
+    formatCommand,
   });
 
   const unlinked = link.status !== "linked" && link.status !== "already-linked";
@@ -144,8 +152,8 @@ export async function runInit(
     },
     warnings,
     nextSteps: [
-      "prisma-cli app deploy",
-      ...(unlinked ? ["prisma-cli project link"] : []),
+      formatCommand(["app", "deploy"]),
+      ...(unlinked ? [formatCommand(["project", "link"])] : []),
     ],
   };
 }
@@ -188,6 +196,7 @@ function initConfigExistsError(existingPath: string): CliError {
 async function resolveInitFramework(
   context: CommandContext,
   flags: InitFlags,
+  formatCommand: PrismaCliPackageCommandFormatter,
 ): Promise<ResolvedInitFramework> {
   if (flags.framework) {
     const framework = frameworkFromAlias(flags.framework.trim());
@@ -196,7 +205,7 @@ async function resolveInitFramework(
         "Unknown framework",
         `"${flags.framework}" is not a supported framework.`,
         `Pass one of: ${FRAMEWORKS.map((candidate) => candidate.key).join(", ")}.`,
-        ["prisma-cli init --framework hono"],
+        [formatCommand(["init", "--framework", "hono"])],
         "app",
       );
     }
@@ -244,8 +253,8 @@ async function resolveInitFramework(
     why: "The directory has none of the framework signals init detects from, and no --framework was passed.",
     fix: `Pass --framework with one of: ${FRAMEWORKS.map((framework) => framework.key).join(", ")}.`,
     exitCode: 1,
-    nextSteps: FRAMEWORKS.slice(0, 3).map(
-      (framework) => `prisma-cli init --framework ${framework.key}`,
+    nextSteps: FRAMEWORKS.slice(0, 3).map((framework) =>
+      formatCommand(["init", "--framework", framework.key]),
     ),
     meta: { frameworks: FRAMEWORKS.map((framework) => framework.key) },
   });
@@ -255,6 +264,7 @@ async function resolveInitAppName(
   cwd: string,
   explicitName: string | undefined,
   signal: AbortSignal,
+  formatCommand: PrismaCliPackageCommandFormatter,
 ): Promise<{ value: string; source: string }> {
   const trimmed = explicitName?.trim();
   if (explicitName !== undefined && !trimmed) {
@@ -262,7 +272,7 @@ async function resolveInitAppName(
       "App name required",
       "--name needs a non-empty value.",
       "Pass a non-empty app name.",
-      ["prisma-cli init --name api"],
+      [formatCommand(["init", "--name", "api"])],
       "app",
     );
   }
@@ -282,6 +292,7 @@ async function resolveInitAppName(
 
 function parseInitHttpPort(
   value: string | undefined,
+  formatCommand: PrismaCliPackageCommandFormatter,
 ): { value: number; source: string } | undefined {
   if (value === undefined) {
     return undefined;
@@ -293,7 +304,7 @@ function parseInitHttpPort(
       "Invalid HTTP port",
       "--http-port must be an integer between 1 and 65535.",
       "Pass a valid port.",
-      ["prisma-cli init --http-port 3000"],
+      [formatCommand(["init", "--http-port", "3000"])],
       "app",
     );
   }
@@ -301,7 +312,10 @@ function parseInitHttpPort(
   return { value: port, source: "flag" };
 }
 
-function parseInitRegion(value: string | undefined): ComputeRegion | undefined {
+function parseInitRegion(
+  value: string | undefined,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): ComputeRegion | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -315,7 +329,7 @@ function parseInitRegion(value: string | undefined): ComputeRegion | undefined {
     "Unknown region",
     `"${value}" is not a supported Compute region.`,
     `Pass one of: ${COMPUTE_REGIONS.join(", ")}.`,
-    ["prisma-cli init --region us-east-1"],
+    [formatCommand(["init", "--region", "us-east-1"])],
     "app",
   );
 }
@@ -440,7 +454,10 @@ function renderInitSettingsPreview(
 async function resolveInitLink(
   context: CommandContext,
   flags: InitFlags,
-  hooks: { onWarning: (message: string) => void },
+  hooks: {
+    onWarning: (message: string) => void;
+    formatCommand: PrismaCliPackageCommandFormatter;
+  },
 ): Promise<InitLinkState> {
   const pin = await readLocalResolutionPin(
     context.runtime.cwd,
@@ -495,7 +512,7 @@ async function resolveInitLink(
       }
       // The config write already succeeded; a failed link must not undo it.
       hooks.onWarning(
-        `Project link failed: ${error.summary}. Link later with prisma-cli project link.`,
+        `Project link failed: ${error.summary}. Link later with ${hooks.formatCommand(["project", "link"])}.`,
       );
       return { status: "failed", project: null };
     }

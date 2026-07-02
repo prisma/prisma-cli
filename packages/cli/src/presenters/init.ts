@@ -1,3 +1,4 @@
+import { resolvePrismaCliPackageCommandFormatterSync } from "../lib/agent/cli-command";
 import type { CommandDescriptor } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
 import { renderNextSteps, renderSummaryLine } from "../shell/ui";
@@ -9,6 +10,9 @@ export function renderInit(
   result: InitResult,
 ): string[] {
   const ui = context.ui;
+  const formatCommand = resolvePrismaCliPackageCommandFormatterSync(
+    context.runtime.cwd,
+  );
   const lines = [
     renderSummaryLine(ui, "success", `Wrote ${result.configPath}`),
   ];
@@ -28,7 +32,7 @@ export function renderInit(
     case "skipped":
     case "declined":
       lines.push(
-        `  ${ui.dim("Not linked to a Project yet; link with prisma-cli project link.")}`,
+        `  ${ui.dim(`Not linked to a Project yet; link with ${formatCommand(["project", "link"])}.`)}`,
       );
       break;
     case "failed":
@@ -40,8 +44,8 @@ export function renderInit(
     result.link.status === "linked" || result.link.status === "already-linked";
   lines.push(
     ...renderNextSteps([
-      "prisma-cli app deploy",
-      ...(linked ? [] : ["prisma-cli project link"]),
+      formatCommand(["app", "deploy"]),
+      ...(linked ? [] : [formatCommand(["project", "link"])]),
     ]),
   );
 
