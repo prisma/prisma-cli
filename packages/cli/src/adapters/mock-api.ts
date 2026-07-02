@@ -156,6 +156,10 @@ export class MockApi {
     );
   }
 
+  listWorkspaces(): WorkspaceRecord[] {
+    return this.data.workspaces;
+  }
+
   getWorkspace(workspaceId: string): WorkspaceRecord | undefined {
     return this.data.workspaces.find(
       (workspace) => workspace.id === workspaceId,
@@ -188,6 +192,67 @@ export class MockApi {
     return this.listProjectsForWorkspace(workspaceId).find(
       (project) => project.id === projectId,
     );
+  }
+
+  renameProject(projectId: string, name: string): ProjectRecord | undefined {
+    const project = this.getProject(projectId);
+    if (!project) {
+      return undefined;
+    }
+
+    project.name = name;
+    return project;
+  }
+
+  removeProject(
+    projectId: string,
+  ):
+    | { outcome: "removed"; project: ProjectRecord }
+    | { outcome: "not-found" }
+    | { outcome: "blocked" } {
+    const project = this.getProject(projectId);
+    if (!project) {
+      return { outcome: "not-found" };
+    }
+
+    // Mirrors the platform rule: removal is blocked while the project still
+    // has active deployments.
+    const hasDeployments = this.data.deployments.some(
+      (deployment) => deployment.projectId === projectId,
+    );
+    if (hasDeployments) {
+      return { outcome: "blocked" };
+    }
+
+    this.data.projects = this.data.projects.filter(
+      (candidate) => candidate.id !== projectId,
+    );
+    this.data.branches = this.data.branches.filter(
+      (branch) => branch.projectId !== projectId,
+    );
+    this.data.databases = (this.data.databases ?? []).filter(
+      (database) => database.projectId !== projectId,
+    );
+    return { outcome: "removed", project };
+  }
+
+  transferProject(
+    projectId: string,
+    targetWorkspaceId: string,
+  ):
+    | { outcome: "transferred"; project: ProjectRecord }
+    | { outcome: "not-found" }
+    | { outcome: "workspace-not-found" } {
+    const project = this.getProject(projectId);
+    if (!project) {
+      return { outcome: "not-found" };
+    }
+    if (!this.getWorkspace(targetWorkspaceId)) {
+      return { outcome: "workspace-not-found" };
+    }
+
+    project.workspaceId = targetWorkspaceId;
+    return { outcome: "transferred", project };
   }
 
   listBranchesForProject(projectId: string): BranchRecord[] {

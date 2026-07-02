@@ -37,6 +37,11 @@ describe("project use cases", () => {
           name: "Billing API",
           url: "https://prisma.build/acme/billing-api",
         },
+        {
+          id: "proj_999",
+          name: "Sandbox",
+          url: "https://prisma.build/acme/sandbox",
+        },
       ],
     });
   });

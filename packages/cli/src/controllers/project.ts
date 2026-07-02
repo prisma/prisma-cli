@@ -1,3 +1,6 @@
+import { unlink } from "node:fs/promises";
+import path from "node:path";
+
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { matchError } from "better-result";
 import open from "open";
@@ -7,13 +10,31 @@ import {
   parseGitHubRepositoryUrl,
   readGitOriginRemote,
 } from "../adapters/git";
+import {
+  FileTokenStorage,
+  WorkspaceSelectionError,
+} from "../adapters/token-storage";
 import { createAppProvider } from "../lib/app/app-provider";
+import { SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
 import { requireComputeAuth } from "../lib/auth/guard";
+import {
+  RecipientSessionInvalidError,
+  resolveRecipientWorkspaceSession,
+} from "../lib/auth/recipient";
 import { promptForProjectSetupChoice } from "../lib/project/interactive-setup";
 import {
+  LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
   type LocalResolutionPinReadError,
   readLocalResolutionPin,
+  writeLocalResolutionPin,
 } from "../lib/project/local-pin";
+import {
+  createManagementProjectProvider,
+  type ProjectProvider,
+  projectRemoveBlockedError,
+  projectRenameFailedError,
+  projectTransferRejectedError,
+} from "../lib/project/provider";
 import {
   buildProjectSetupNextActions,
   inferTargetName,
@@ -39,6 +60,8 @@ import {
   CliError,
   featureUnavailableError,
   usageError,
+  workspaceAmbiguousError,
+  workspaceNotAuthenticatedError,
   workspaceRequiredError,
 } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
@@ -48,10 +71,13 @@ import type { AuthWorkspace } from "../types/auth";
 import type {
   GitRepositoryConnection,
   ProjectListResult,
+  ProjectRemoveResult,
+  ProjectRenameResult,
   ProjectRepositoryConnectionResult,
   ProjectSetupResult,
   ProjectShowResult,
   ProjectSummary,
+  ProjectTransferResult,
 } from "../types/project";
 import { createCliUseCaseGateways } from "../use-cases/create-cli-gateways";
 import { createProjectUseCases } from "../use-cases/project";
@@ -489,6 +515,547 @@ async function projectLinkTargetRequiredError(
         "Project link needs the user to choose an existing Project or create a new one. Existing Projects, package names, and directory names are candidates only, not selections.",
     }),
   });
+}
+
+export interface ProjectRenameOptions {
+  project?: string;
+}
+
+export interface ProjectRemoveOptions {
+  confirm?: string;
+}
+
+export interface ProjectTransferOptions {
+  toWorkspace?: string;
+  recipientToken?: string;
+  confirm?: string;
+}
+
+export async function runProjectRename(
+  context: CommandContext,
+  newName: string,
+  options: ProjectRenameOptions,
+): Promise<CommandSuccess<ProjectRenameResult>> {
+  const authState = await requireAuthenticatedAuthState(context);
+  const workspace = authState.workspace;
+  if (!workspace) {
+    throw workspaceRequiredError();
+  }
+
+  const name = newName.trim();
+  if (!isValidProjectSetupName(name)) {
+    throw projectSetupNameRequiredError("project rename");
+  }
+
+  const { provider, target } = await requireProjectCommandContext(
+    context,
+    workspace,
+    options.project,
+    "project rename",
+  );
+
+  const previousName = target.project.name;
+  const renamed = await provider.renameProject({
+    projectId: target.project.id,
+    name,
+    signal: context.runtime.signal,
+  });
+
+  return {
+    command: "project.rename",
+    result: {
+      workspace,
+      project: renamed,
+      previousName,
+    },
+    warnings: [],
+    nextSteps: [],
+  };
+}
+
+export async function runProjectRemove(
+  context: CommandContext,
+  projectRef: string,
+  options: ProjectRemoveOptions,
+): Promise<CommandSuccess<ProjectRemoveResult>> {
+  const authState = await requireAuthenticatedAuthState(context);
+  const workspace = authState.workspace;
+  if (!workspace) {
+    throw workspaceRequiredError();
+  }
+
+  const { provider, projects } = await requireProjectMutationContext(
+    context,
+    workspace,
+  );
+  const project = toProjectSummary(
+    resolveProjectForSetup(projectRef.trim(), projects, workspace),
+  );
+
+  requireProjectExactConfirmation({
+    id: project.id,
+    confirm: options.confirm,
+    summary: "Confirm project removal",
+    why: "Removing a project is permanent, deletes its databases, and stops its apps, so it requires the exact project id.",
+    nextStep: `prisma-cli project remove ${project.id} --confirm ${project.id}`,
+  });
+
+  await provider.removeProject({
+    projectId: project.id,
+    signal: context.runtime.signal,
+  });
+
+  const warnings: string[] = [];
+  const cleared = await cleanupLocalPinForProject(context, project.id, {
+    onError: (message) => warnings.push(message),
+  });
+
+  return {
+    command: "project.remove",
+    result: {
+      workspace,
+      project,
+      localPin: { cleared },
+    },
+    warnings,
+    nextSteps: [],
+  };
+}
+
+export async function runProjectTransfer(
+  context: CommandContext,
+  projectRef: string,
+  options: ProjectTransferOptions,
+): Promise<CommandSuccess<ProjectTransferResult>> {
+  const authState = await requireAuthenticatedAuthState(context);
+  const workspace = authState.workspace;
+  if (!workspace) {
+    throw workspaceRequiredError();
+  }
+
+  if (options.toWorkspace && options.recipientToken) {
+    throw usageError(
+      "Choose one transfer recipient source",
+      "--to-workspace and --recipient-token are mutually exclusive.",
+      "Pass either --to-workspace <id-or-name> or --recipient-token <token>.",
+      [
+        "prisma-cli project transfer <project> --to-workspace <id-or-name> --confirm <project-id>",
+      ],
+      "project",
+    );
+  }
+  if (!options.toWorkspace?.trim() && !options.recipientToken?.trim()) {
+    throw transferRecipientRequiredError();
+  }
+
+  const { provider, projects } = await requireProjectMutationContext(
+    context,
+    workspace,
+  );
+  const project = toProjectSummary(
+    resolveProjectForSetup(projectRef.trim(), projects, workspace),
+  );
+
+  requireProjectExactConfirmation({
+    id: project.id,
+    confirm: options.confirm,
+    summary: "Confirm project transfer",
+    why: "Transferring moves the project to another workspace and this workspace loses access, so it requires the exact project id.",
+    nextStep: `prisma-cli project transfer ${project.id} ${
+      options.toWorkspace
+        ? `--to-workspace ${formatCommandArgument(options.toWorkspace)}`
+        : "--recipient-token <token>"
+    } --confirm ${project.id}`,
+  });
+
+  const recipient = await resolveTransferRecipient(context, options);
+  await provider.transferProject({
+    projectId: project.id,
+    recipientAccessToken: recipient.accessToken,
+    signal: context.runtime.signal,
+  });
+
+  const warnings: string[] = [];
+  const pinAction = await rewriteOrClearLocalPinForProject(
+    context,
+    project.id,
+    recipient.workspaceId,
+    { onError: (message) => warnings.push(message) },
+  );
+
+  return {
+    command: "project.transfer",
+    result: {
+      workspace,
+      project,
+      recipient: {
+        workspaceId: recipient.workspaceId,
+        workspaceName: recipient.workspaceName,
+        source: recipient.source,
+      },
+      localPin: { action: pinAction },
+    },
+    warnings,
+    nextSteps: options.toWorkspace
+      ? [
+          `prisma-cli auth workspace use ${formatCommandArgument(options.toWorkspace)}`,
+        ]
+      : [],
+  };
+}
+
+interface ResolvedTransferRecipient {
+  accessToken: string;
+  workspaceId: string | null;
+  workspaceName: string | null;
+  source: "workspace-session" | "recipient-token";
+}
+
+async function resolveTransferRecipient(
+  context: CommandContext,
+  options: ProjectTransferOptions,
+): Promise<ResolvedTransferRecipient> {
+  const recipientToken = options.recipientToken?.trim();
+  if (recipientToken) {
+    return {
+      accessToken: recipientToken,
+      workspaceId: isRealMode(context)
+        ? null
+        : // Fixture convention: the recipient token is the target workspace id.
+          recipientToken,
+      workspaceName: null,
+      source: "recipient-token",
+    };
+  }
+
+  const workspaceRef = options.toWorkspace?.trim();
+  if (!workspaceRef) {
+    throw transferRecipientRequiredError();
+  }
+
+  if (!isRealMode(context)) {
+    const workspaces = context.api.listWorkspaces();
+    const matches = workspaces.filter(
+      (candidate) =>
+        candidate.id === workspaceRef ||
+        candidate.name.toLowerCase() === workspaceRef.toLowerCase(),
+    );
+    if (matches.length === 0) {
+      throw workspaceNotAuthenticatedError(workspaceRef);
+    }
+    if (matches.length > 1) {
+      throw workspaceAmbiguousError(
+        workspaceRef,
+        matches.map((match) => ({
+          id: match.id,
+          name: match.name,
+          credentialWorkspaceId: match.id,
+        })),
+      );
+    }
+    return {
+      // Fixture transfers authorize by workspace id instead of a real token.
+      accessToken: matches[0]!.id,
+      workspaceId: matches[0]!.id,
+      workspaceName: matches[0]!.name,
+      source: "workspace-session",
+    };
+  }
+
+  if (context.runtime.env[SERVICE_TOKEN_ENV_VAR] !== undefined) {
+    throw transferRecipientUnavailableError();
+  }
+
+  try {
+    const session = await resolveRecipientWorkspaceSession(
+      workspaceRef,
+      context.runtime.env,
+      context.runtime.signal,
+    );
+    return {
+      accessToken: session.accessToken,
+      workspaceId: session.workspace.id,
+      workspaceName: session.workspace.name,
+      source: "workspace-session",
+    };
+  } catch (error) {
+    if (error instanceof WorkspaceSelectionError) {
+      if (error.reason === "ambiguous") {
+        throw workspaceAmbiguousError(
+          error.workspaceRef ?? workspaceRef,
+          error.matches.map((match) => ({
+            id: match.id,
+            name: match.name,
+            credentialWorkspaceId: match.credentialWorkspaceId,
+          })),
+        );
+      }
+      throw workspaceNotAuthenticatedError(error.workspaceRef ?? workspaceRef);
+    }
+    if (error instanceof RecipientSessionInvalidError) {
+      throw workspaceNotAuthenticatedError(error.workspaceRef);
+    }
+    throw error;
+  }
+}
+
+interface ProjectMutationContext {
+  provider: ProjectProvider;
+  projects: ProjectCandidate[];
+}
+
+async function requireProjectMutationContext(
+  context: CommandContext,
+  workspace: AuthWorkspace,
+): Promise<ProjectMutationContext> {
+  if (isRealMode(context)) {
+    const client = await requireComputeAuth(
+      context.runtime.env,
+      context.runtime.signal,
+    );
+    if (!client) {
+      throw authRequiredError();
+    }
+    return {
+      provider: createManagementProjectProvider(client),
+      projects: await listRealWorkspaceProjects(
+        client,
+        workspace,
+        context.runtime.signal,
+      ),
+    };
+  }
+
+  return {
+    provider: createFixtureProjectProvider(context),
+    projects: listFixtureWorkspaceProjects(context, workspace),
+  };
+}
+
+async function requireProjectCommandContext(
+  context: CommandContext,
+  workspace: AuthWorkspace,
+  explicitProject: string | undefined,
+  commandName: string,
+): Promise<{ provider: ProjectProvider; target: ResolvedProjectTarget }> {
+  const listProjects = async () =>
+    isRealMode(context)
+      ? listRealWorkspaceProjects(
+          await requireProjectClient(context),
+          workspace,
+          context.runtime.signal,
+        )
+      : listFixtureWorkspaceProjects(context, workspace);
+
+  const targetResult = await resolveProjectTarget({
+    context,
+    workspace,
+    explicitProject,
+    listProjects,
+    commandName,
+  });
+  if (targetResult.isErr()) {
+    throw projectResolutionErrorToCliError(targetResult.error);
+  }
+
+  const provider = isRealMode(context)
+    ? createManagementProjectProvider(await requireProjectClient(context))
+    : createFixtureProjectProvider(context);
+
+  return { provider, target: targetResult.value };
+}
+
+async function requireProjectClient(
+  context: CommandContext,
+): Promise<ManagementApiClient> {
+  const client = await requireComputeAuth(
+    context.runtime.env,
+    context.runtime.signal,
+  );
+  if (!client) {
+    throw authRequiredError();
+  }
+  return client;
+}
+
+function createFixtureProjectProvider(
+  context: CommandContext,
+): ProjectProvider {
+  return {
+    async renameProject(options) {
+      const renamed = context.api.renameProject(
+        options.projectId,
+        options.name,
+      );
+      if (!renamed) {
+        throw projectRenameFailedError(options.name, undefined);
+      }
+      return {
+        id: renamed.id,
+        name: renamed.name,
+        ...(renamed.url ? { url: renamed.url } : {}),
+      };
+    },
+
+    async removeProject(options) {
+      const removed = context.api.removeProject(options.projectId);
+      if (removed.outcome === "blocked") {
+        throw projectRemoveBlockedError(options.projectId, undefined);
+      }
+      if (removed.outcome === "not-found") {
+        throw new CliError({
+          code: "PROJECT_NOT_FOUND",
+          domain: "project",
+          summary: "Project not found",
+          why: `No project matched "${options.projectId}".`,
+          fix: "Pass a project id or name from prisma-cli project list.",
+          exitCode: 1,
+          nextSteps: ["prisma-cli project list"],
+        });
+      }
+    },
+
+    async transferProject(options) {
+      const transferred = context.api.transferProject(
+        options.projectId,
+        options.recipientAccessToken,
+      );
+      if (transferred.outcome !== "transferred") {
+        throw projectTransferRejectedError(options.projectId, undefined);
+      }
+    },
+  };
+}
+
+function requireProjectExactConfirmation(options: {
+  id: string;
+  confirm: string | undefined;
+  summary: string;
+  why: string;
+  nextStep: string;
+}): void {
+  if (options.confirm === options.id) {
+    return;
+  }
+
+  throw new CliError({
+    code: "CONFIRMATION_REQUIRED",
+    domain: "project",
+    summary: options.summary,
+    why: options.why,
+    fix: `Rerun with --confirm ${options.id}.`,
+    exitCode: 2,
+    nextSteps: [options.nextStep],
+    meta: {
+      expectedConfirm: options.id,
+      receivedConfirm: options.confirm ?? null,
+    },
+  });
+}
+
+function transferRecipientRequiredError(): CliError {
+  return new CliError({
+    code: "TRANSFER_RECIPIENT_REQUIRED",
+    domain: "project",
+    summary: "Transfer recipient required",
+    why: "Project transfer needs the receiving workspace.",
+    fix: "Pass --to-workspace <id-or-name> for a locally authenticated workspace, or --recipient-token <token> for a cross-account transfer.",
+    exitCode: 2,
+    nextSteps: [
+      "prisma-cli auth workspace list",
+      "prisma-cli project transfer <project> --to-workspace <id-or-name> --confirm <project-id>",
+    ],
+  });
+}
+
+function transferRecipientUnavailableError(): CliError {
+  return new CliError({
+    code: "TRANSFER_RECIPIENT_UNAVAILABLE",
+    domain: "project",
+    summary: "Local workspace sessions are unavailable",
+    why: `--to-workspace resolves locally stored OAuth sessions, but ${SERVICE_TOKEN_ENV_VAR} is set and service-token mode does not read them.`,
+    fix: "Pass --recipient-token <token> with an access token for the receiving workspace, or unset the service token.",
+    exitCode: 1,
+    nextSteps: [
+      "prisma-cli project transfer <project> --recipient-token <token> --confirm <project-id>",
+    ],
+  });
+}
+
+async function cleanupLocalPinForProject(
+  context: CommandContext,
+  projectId: string,
+  hooks: { onError: (message: string) => void },
+): Promise<boolean> {
+  const pinResult = await readLocalResolutionPin(
+    context.runtime.cwd,
+    context.runtime.signal,
+  );
+  if (pinResult.isErr()) {
+    return false;
+  }
+  const pin = pinResult.value;
+  if (pin.kind !== "present" || pin.pin.projectId !== projectId) {
+    return false;
+  }
+
+  try {
+    await unlink(
+      path.join(context.runtime.cwd, LOCAL_RESOLUTION_PIN_RELATIVE_PATH),
+    );
+    return true;
+  } catch {
+    hooks.onError(
+      `The local pin ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} points at the removed project but could not be deleted.`,
+    );
+    return false;
+  }
+}
+
+async function rewriteOrClearLocalPinForProject(
+  context: CommandContext,
+  projectId: string,
+  recipientWorkspaceId: string | null,
+  hooks: { onError: (message: string) => void },
+): Promise<"rewritten" | "cleared" | "none"> {
+  const pinResult = await readLocalResolutionPin(
+    context.runtime.cwd,
+    context.runtime.signal,
+  );
+  if (pinResult.isErr()) {
+    return "none";
+  }
+  const pin = pinResult.value;
+  if (pin.kind !== "present" || pin.pin.projectId !== projectId) {
+    return "none";
+  }
+
+  if (recipientWorkspaceId) {
+    const writeResult = await writeLocalResolutionPin(
+      context.runtime.cwd,
+      { workspaceId: recipientWorkspaceId, projectId },
+      context.runtime.signal,
+    );
+    if (writeResult.isOk()) {
+      return "rewritten";
+    }
+    hooks.onError(
+      `The local pin ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} points at the transferred project but could not be rewritten.`,
+    );
+    return "none";
+  }
+
+  try {
+    await unlink(
+      path.join(context.runtime.cwd, LOCAL_RESOLUTION_PIN_RELATIVE_PATH),
+    );
+    return "cleared";
+  } catch {
+    hooks.onError(
+      `The local pin ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} points at the transferred project but could not be cleared.`,
+    );
+    return "none";
+  }
 }
 
 export async function runGitConnect(
