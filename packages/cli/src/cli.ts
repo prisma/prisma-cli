@@ -9,6 +9,7 @@ import { createBranchCommand } from "./commands/branch";
 import { createBuildCommand } from "./commands/build";
 import { createDatabaseCommand } from "./commands/database";
 import { createGitCommand } from "./commands/git";
+import { createInitCommand } from "./commands/init";
 import { createProjectCommand } from "./commands/project";
 import { createVersionCommand } from "./commands/version";
 import { runVersion } from "./controllers/version";
@@ -83,6 +84,7 @@ export function createProgram(runtime: CliRuntime): Command {
   program.name("prisma").showSuggestionAfterError();
 
   program.addCommand(createVersionCommand(runtime));
+  program.addCommand(createInitCommand(runtime));
   program.addCommand(createAgentCommand(runtime));
   program.addCommand(createAuthCommand(runtime));
   program.addCommand(createProjectCommand(runtime));

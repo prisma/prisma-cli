@@ -45,6 +45,16 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: ["prisma-cli version", "prisma-cli version --json"],
   },
   {
+    id: "init",
+    path: ["prisma", "init"],
+    description: "Write a committed prisma.compute.ts for this app",
+    examples: [
+      "prisma-cli init",
+      "prisma-cli init --framework hono --entry src/index.ts",
+      "prisma-cli init --no-link",
+    ],
+  },
+  {
     id: "agent",
     path: ["prisma", "agent"],
     description: "Install Prisma context for AI coding agents",

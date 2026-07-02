@@ -96,11 +96,25 @@ export function renderAppDeploy(
             },
           ]),
       { label: "Logs", value: logsCommand },
+      ...(deployUsedComputeConfig(result)
+        ? []
+        : [{ label: "Config", value: "prisma-cli init" }]),
     ]),
     ...renderDeployResolvedContextBlock(context, result),
     ...renderDeploySettingsBlock(context, result),
   ];
   return lines;
+}
+
+function deployUsedComputeConfig(result: AppDeployResult): boolean {
+  return (
+    result.deploySettings.config.path !== null ||
+    [
+      result.deploySettings.framework.source,
+      result.deploySettings.buildCommand.source,
+      result.deploySettings.outputDirectory.source,
+    ].some((source) => source?.includes("prisma.compute"))
+  );
 }
 
 export function isAppDeployAllResult(

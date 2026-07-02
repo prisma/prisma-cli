@@ -3777,7 +3777,7 @@ async function resolveDeployBranch(
   };
 }
 
-interface ResolvedDeployFramework {
+export interface ResolvedDeployFramework {
   key: string;
   buildType: FrameworkBuildType;
   displayName: string;
@@ -4074,7 +4074,7 @@ async function resolveDeployEntrypoint(
   }
 }
 
-async function detectDeployFramework(
+export async function detectDeployFramework(
   cwd: string,
   signal: AbortSignal,
 ): Promise<ResolvedDeployFramework | null> {
