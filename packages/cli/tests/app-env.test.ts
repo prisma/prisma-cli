@@ -944,6 +944,67 @@ describe("env update", () => {
     );
   });
 
+  it("scopes the branch-override lookup by branchId so it survives pagination", async () => {
+    const client = createMockClient();
+    client.envGET
+      .mockResolvedValueOnce({
+        data: {
+          data: [makeBranchRow()],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [
+            makeVariableRow({
+              id: "envvar_branch",
+              key: "DATABASE_URL",
+              class: "preview",
+              branchId: "br_feature",
+            }),
+          ],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      });
+    client.PATCH.mockResolvedValueOnce({
+      data: {
+        data: makeVariableRow({
+          id: "envvar_branch",
+          key: "DATABASE_URL",
+          class: "preview",
+          branchId: "br_feature",
+        }),
+      },
+      response: { status: 200 },
+    });
+
+    const { controllers, createTempCwd, createTestCommandContext } =
+      await loadControllers(client, "proj_123");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd);
+    const { context } = await createTestCommandContext({ cwd });
+
+    await controllers.runEnvUpdate(context, "DATABASE_URL=postgresql://new", {
+      branchName: "feature/foo",
+    });
+
+    expect(client.GET).toHaveBeenCalledWith(
+      "/v1/environment-variables",
+      expect.objectContaining({
+        params: {
+          query: expect.objectContaining({
+            projectId: "proj_123",
+            class: "preview",
+            key: "DATABASE_URL",
+            branchId: "br_feature",
+          }),
+        },
+      }),
+    );
+  });
+
   it("updates variables from a dotenv file via PATCH", async () => {
     const client = createMockClient();
     client.envGET
