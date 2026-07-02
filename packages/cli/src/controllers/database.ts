@@ -489,6 +489,10 @@ export async function runDatabaseRestore(
       )
     : database;
 
+  const sourceDatabaseArg =
+    sourceDatabase.id === database.id
+      ? ""
+      : ` --source-database ${sourceDatabase.id}`;
   requireExactConfirmation({
     resourceName: "database",
     commandName: "database restore",
@@ -496,7 +500,7 @@ export async function runDatabaseRestore(
     confirm: flags.confirm,
     summary: "Confirm database restore",
     why: "Restoring immediately and irreversibly overwrites all data in the target database, so it requires the exact target database id.",
-    nextStep: `prisma-cli database restore ${database.id} --backup ${backupId} --confirm ${database.id}`,
+    nextStep: `prisma-cli database restore ${database.id} --backup ${backupId}${sourceDatabaseArg} --confirm ${database.id}`,
   });
 
   const restored = await provider.restoreDatabase({
@@ -568,6 +572,9 @@ export async function runDatabaseConnectionRotate(
   };
 }
 
+const USAGE_DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const USAGE_DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}T/;
+
 function parseUsageDate(
   value: string | undefined,
   flagName: string,
@@ -576,20 +583,37 @@ function parseUsageDate(
     return undefined;
   }
 
+  // The Management API validates startDate/endDate as full ISO datetimes, so
+  // date-only input is expanded to midnight UTC. Date.parse alone is too
+  // permissive: it rolls over invalid calendar dates such as 2026-02-30, so
+  // the date part must round-trip through toISOString unchanged.
   const trimmed = value.trim();
-  if (!trimmed || Number.isNaN(Date.parse(trimmed))) {
-    throw usageError(
-      "Invalid usage period",
-      `${flagName} must be an ISO date such as 2026-06-01.`,
-      `Pass an ISO date to ${flagName}.`,
-      [
-        "prisma-cli database usage <database> --from 2026-06-01 --to 2026-06-30",
-      ],
-      "database",
-    );
+  if (USAGE_DATE_ONLY_PATTERN.test(trimmed) && isValidCalendarDate(trimmed)) {
+    return `${trimmed}T00:00:00.000Z`;
+  }
+  if (
+    USAGE_DATETIME_PATTERN.test(trimmed) &&
+    !Number.isNaN(Date.parse(trimmed)) &&
+    isValidCalendarDate(trimmed.slice(0, 10))
+  ) {
+    return trimmed;
   }
 
-  return trimmed;
+  throw usageError(
+    "Invalid usage period",
+    `${flagName} must be an ISO date such as 2026-06-01 or an ISO datetime such as 2026-06-01T12:00:00Z.`,
+    `Pass an ISO date or datetime to ${flagName}.`,
+    ["prisma-cli database usage <database> --from 2026-06-01 --to 2026-06-30"],
+    "database",
+  );
+}
+
+function isValidCalendarDate(datePart: string): boolean {
+  const timestamp = Date.parse(`${datePart}T00:00:00.000Z`);
+  return (
+    !Number.isNaN(timestamp) &&
+    new Date(timestamp).toISOString().startsWith(datePart)
+  );
 }
 
 function parseBackupLimit(value: string | undefined): number | undefined {

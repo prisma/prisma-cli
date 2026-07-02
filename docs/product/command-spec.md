@@ -873,7 +873,8 @@ Behavior:
 - resolves `<database>` by exact database id or exact database name inside the resolved project
 - `--branch <git-name>` narrows name resolution when the same database name exists on multiple Branches
 - `--from <iso-date>` and `--to <iso-date>` bound the reporting period; when omitted, the platform defaults the period to the current month so far
-- the CLI validates that `--from` and `--to` parse as dates and that `--from` is not after `--to` before calling the API
+- `--from` and `--to` accept a calendar date (`2026-06-01`) or an ISO datetime (`2026-06-01T12:00:00Z`); calendar dates are expanded to midnight UTC before calling the API, and the platform treats the end bound as inclusive of its day
+- the CLI rejects malformed or impossible calendar dates (for example `2026-02-30`) and a `--from` later than `--to` before calling the API
 - reports operations used (`ops`) and storage used (`GiB`) for the period, plus the resolved period bounds and the generation timestamp
 - read-only; never prints or returns connection strings, passwords, or endpoint secrets
 - fails with `DATABASE_NOT_FOUND` or `DATABASE_AMBIGUOUS` when the target cannot be selected safely
@@ -934,6 +935,7 @@ Behavior:
 - by default the backup must belong to the target database; `--source-database <database>` restores from another database's backup, for example a production backup into a scratch database, and requires access to both databases' projects
 - requires `--confirm <database-id>` where the value exactly matches the resolved target database id; `--yes` does not satisfy this confirmation
 - the restore runs asynchronously: the target database status becomes `recovering` until the restore completes, and `database show` reports the current status; `nextSteps` includes the show command
+- fails with `DATABASE_BACKUP_NOT_FOUND` when the backup id cannot be resolved for the source database
 - fails with `DATABASE_RESTORE_CONFLICT` when the target database is provisioning or already recovering
 - fails with `DATABASE_NOT_FOUND` or `DATABASE_AMBIGUOUS` when a database target cannot be selected safely
 - never prints or returns connection strings, passwords, or endpoint secrets

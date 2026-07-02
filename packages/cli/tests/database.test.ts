@@ -546,6 +546,70 @@ describe("database commands", () => {
     expect(stderr).toContain("1.25 GiB");
   });
 
+  it("normalizes calendar dates and accepts ISO datetimes for usage periods", async () => {
+    const { cwd, stateDir } = await setupLinkedProject();
+
+    const dateOnly = await executeCli({
+      argv: [
+        "database",
+        "usage",
+        "db_123",
+        "--from",
+        "2026-06-01",
+        "--to",
+        "2026-06-30",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const dateOnlyPayload = JSON.parse(dateOnly.stdout);
+
+    expect(dateOnly.exitCode).toBe(0);
+    expect(dateOnlyPayload.result.period).toMatchObject({
+      start: "2026-06-01T00:00:00.000Z",
+      end: "2026-06-30T00:00:00.000Z",
+    });
+
+    const dateTime = await executeCli({
+      argv: [
+        "database",
+        "usage",
+        "db_123",
+        "--from",
+        "2026-06-01T12:00:00Z",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const dateTimePayload = JSON.parse(dateTime.stdout);
+
+    expect(dateTime.exitCode).toBe(0);
+    expect(dateTimePayload.result.period.start).toBe("2026-06-01T12:00:00Z");
+  });
+
+  it("rejects impossible calendar dates for usage periods", async () => {
+    const { cwd, stateDir } = await setupLinkedProject();
+
+    const result = await executeCli({
+      argv: ["database", "usage", "db_123", "--from", "2026-02-30", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(2);
+    expect(payload).toMatchObject({
+      ok: false,
+      command: "database.usage",
+      error: { code: "USAGE_ERROR" },
+    });
+  });
+
   it("rejects an invalid usage period before calling the API", async () => {
     const { cwd, stateDir } = await setupLinkedProject();
 
@@ -777,6 +841,33 @@ describe("database commands", () => {
       command: "database.restore",
       error: { code: "DATABASE_BACKUP_NOT_FOUND" },
     });
+  });
+
+  it("keeps --source-database in the confirmation recovery command", async () => {
+    const { cwd, stateDir } = await setupLinkedProject();
+
+    const result = await executeCli({
+      argv: [
+        "database",
+        "restore",
+        "acme-preview",
+        "--backup",
+        "bkp_201",
+        "--source-database",
+        "acme-production",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(2);
+    expect(payload.error.code).toBe("CONFIRMATION_REQUIRED");
+    expect(payload.nextSteps).toEqual([
+      "prisma-cli database restore db_123 --backup bkp_201 --source-database db_456 --confirm db_123",
+    ]);
   });
 
   it("restores from another database's backup with --source-database", async () => {
