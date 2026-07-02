@@ -1,11 +1,13 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Database pagination requests must run sequentially.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
+import { formatPrismaCliCommand } from "../../shell/cli-command";
 import { CliError } from "../../shell/errors";
 import type {
   DatabaseConnectionSummary,
   DatabaseSummary,
 } from "../../types/database";
+import type { PrismaCliPackageCommandFormatter } from "../agent/cli-command";
 
 export interface DatabaseCreateInput {
   projectId: string;
@@ -207,7 +209,11 @@ interface RawDatabaseRecord {
 
 export function createManagementDatabaseProvider(
   client: ManagementApiClient,
+  options?: { formatCommand?: PrismaCliPackageCommandFormatter },
 ): DatabaseProvider {
+  const formatCommand =
+    options?.formatCommand ?? ((args) => formatPrismaCliCommand(args));
+
   return {
     async listDatabases(options) {
       const databases: RawDatabaseRecord[] = [];
@@ -445,12 +451,16 @@ export function createManagementDatabaseProvider(
         },
       );
       if (result.response?.status === 409) {
-        throw restoreConflictError(options.targetDatabaseId, result.error);
+        throw restoreConflictError(
+          options.targetDatabaseId,
+          result.error,
+          formatCommand,
+        );
       }
       // Target and source databases are resolved before this call, so a 404
       // here identifies the backup.
       if (result.response?.status === 404) {
-        throw restoreBackupNotFoundError(options, result.error);
+        throw restoreBackupNotFoundError(options, result.error, formatCommand);
       }
       if (result.error || !result.data) {
         throw databaseApiError(
@@ -698,7 +708,14 @@ function backupsUnsupportedError(
 function restoreBackupNotFoundError(
   options: { backupId: string; sourceDatabaseId: string },
   error: RawApiErrorBody | undefined,
+  formatCommand: PrismaCliPackageCommandFormatter,
 ): CliError {
+  const listCommand = formatCommand([
+    "database",
+    "backup",
+    "list",
+    options.sourceDatabaseId,
+  ]);
   return new CliError({
     code: "DATABASE_BACKUP_NOT_FOUND",
     domain: "database",
@@ -706,15 +723,16 @@ function restoreBackupNotFoundError(
     why:
       error?.error?.message ??
       `No backup matched "${options.backupId}" for database "${options.sourceDatabaseId}".`,
-    fix: "Pass a backup id from prisma-cli database backup list.",
+    fix: `Pass a backup id from ${listCommand}.`,
     exitCode: 1,
-    nextSteps: [`prisma-cli database backup list ${options.sourceDatabaseId}`],
+    nextSteps: [listCommand],
   });
 }
 
 function restoreConflictError(
   targetDatabaseId: string,
   error: RawApiErrorBody | undefined,
+  formatCommand: PrismaCliPackageCommandFormatter,
 ): CliError {
   return new CliError({
     code: "DATABASE_RESTORE_CONFLICT",
@@ -725,7 +743,7 @@ function restoreConflictError(
       `Database "${targetDatabaseId}" is provisioning or already recovering.`,
     fix: "Wait for the database to become ready, then retry the restore.",
     exitCode: 1,
-    nextSteps: [`prisma-cli database show ${targetDatabaseId}`],
+    nextSteps: [formatCommand(["database", "show", targetDatabaseId])],
   });
 }
 

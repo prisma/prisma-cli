@@ -1,5 +1,9 @@
 import { randomBytes } from "node:crypto";
 
+import {
+  type PrismaCliPackageCommandFormatter,
+  resolvePrismaCliPackageCommandFormatterSync,
+} from "../lib/agent/cli-command";
 import { requireComputeAuth } from "../lib/auth/guard";
 import {
   createManagementDatabaseProvider,
@@ -363,15 +367,26 @@ export async function runDatabaseUsage(
   databaseRef: string,
   flags: DatabaseUsageFlags,
 ): Promise<CommandSuccess<DatabaseUsageResult>> {
-  const from = parseUsageDate(flags.from, "--from");
-  const to = parseUsageDate(flags.to, "--to");
+  const formatCommand = resolvePrismaCliPackageCommandFormatterSync(
+    context.runtime.cwd,
+  );
+  const from = parseUsageDate(flags.from, "--from", formatCommand);
+  const to = parseUsageDate(flags.to, "--to", formatCommand);
   if (from && to && Date.parse(from) > Date.parse(to)) {
     throw usageError(
       "Invalid usage period",
       "--from must not be later than --to.",
       "Pass a --from date that is on or before the --to date.",
       [
-        "prisma-cli database usage <database> --from 2026-06-01 --to 2026-06-30",
+        formatCommand([
+          "database",
+          "usage",
+          "<database>",
+          "--from",
+          "2026-06-01",
+          "--to",
+          "2026-06-30",
+        ]),
       ],
       "database",
     );
@@ -416,7 +431,10 @@ export async function runDatabaseBackupList(
   databaseRef: string,
   flags: DatabaseBackupListFlags,
 ): Promise<CommandSuccess<DatabaseBackupListResult>> {
-  const limit = parseBackupLimit(flags.limit);
+  const limit = parseBackupLimit(
+    flags.limit,
+    resolvePrismaCliPackageCommandFormatterSync(context.runtime.cwd),
+  );
 
   const { provider, target } = await requireDatabaseContext(
     context,
@@ -456,13 +474,16 @@ export async function runDatabaseRestore(
   databaseRef: string,
   flags: DatabaseRestoreFlags,
 ): Promise<CommandSuccess<DatabaseRestoreResult>> {
+  const formatCommand = resolvePrismaCliPackageCommandFormatterSync(
+    context.runtime.cwd,
+  );
   const backupId = flags.backupId?.trim();
   if (!backupId) {
     throw usageError(
       "Backup id required",
       "Database restore needs the backup to restore from.",
-      "Pass --backup <backup-id> from prisma-cli database backup list.",
-      ["prisma-cli database backup list <database>"],
+      `Pass --backup <backup-id> from ${formatCommand(["database", "backup", "list", "<database>"])}.`,
+      [formatCommand(["database", "backup", "list", "<database>"])],
       "database",
     );
   }
@@ -500,7 +521,7 @@ export async function runDatabaseRestore(
     confirm: flags.confirm,
     summary: "Confirm database restore",
     why: "Restoring immediately and irreversibly overwrites all data in the target database, so it requires the exact target database id.",
-    nextStep: `prisma-cli database restore ${database.id} --backup ${backupId}${sourceDatabaseArg} --confirm ${database.id}`,
+    nextStep: `${formatCommand(["database", "restore", database.id, "--backup", backupId])}${sourceDatabaseArg} --confirm ${database.id}`,
   });
 
   const restored = await provider.restoreDatabase({
@@ -524,7 +545,7 @@ export async function runDatabaseRestore(
       },
     },
     warnings: [],
-    nextSteps: [`prisma-cli database show ${database.id}`],
+    nextSteps: [formatCommand(["database", "show", database.id])],
   };
 }
 
@@ -533,6 +554,9 @@ export async function runDatabaseConnectionRotate(
   connectionRef: string,
   flags: DatabaseConnectionRotateFlags,
 ): Promise<CommandSuccess<DatabaseConnectionRotateResult>> {
+  const formatCommand = resolvePrismaCliPackageCommandFormatterSync(
+    context.runtime.cwd,
+  );
   const connectionId = connectionRef.trim();
   if (!connectionId) {
     throw usageError(
@@ -540,7 +564,14 @@ export async function runDatabaseConnectionRotate(
       "Database connection rotation needs a connection id.",
       "Pass the connection id to rotate.",
       [
-        "prisma-cli database connection rotate <connection-id> --confirm <connection-id>",
+        formatCommand([
+          "database",
+          "connection",
+          "rotate",
+          "<connection-id>",
+          "--confirm",
+          "<connection-id>",
+        ]),
       ],
       "database",
     );
@@ -553,6 +584,14 @@ export async function runDatabaseConnectionRotate(
     confirm: flags.confirm,
     summary: "Confirm database connection rotation",
     why: "Rotating revokes the previous credentials and breaks clients still using them, so it requires the exact connection id.",
+    nextStep: formatCommand([
+      "database",
+      "connection",
+      "rotate",
+      connectionId,
+      "--confirm",
+      connectionId,
+    ]),
   });
 
   const provider = await requireDatabaseProviderOnly(context);
@@ -578,6 +617,7 @@ const USAGE_DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}T/;
 function parseUsageDate(
   value: string | undefined,
   flagName: string,
+  formatCommand: PrismaCliPackageCommandFormatter,
 ): string | undefined {
   if (value === undefined) {
     return undefined;
@@ -603,7 +643,17 @@ function parseUsageDate(
     "Invalid usage period",
     `${flagName} must be an ISO date such as 2026-06-01 or an ISO datetime such as 2026-06-01T12:00:00Z.`,
     `Pass an ISO date or datetime to ${flagName}.`,
-    ["prisma-cli database usage <database> --from 2026-06-01 --to 2026-06-30"],
+    [
+      formatCommand([
+        "database",
+        "usage",
+        "<database>",
+        "--from",
+        "2026-06-01",
+        "--to",
+        "2026-06-30",
+      ]),
+    ],
     "database",
   );
 }
@@ -616,7 +666,10 @@ function isValidCalendarDate(datePart: string): boolean {
   );
 }
 
-function parseBackupLimit(value: string | undefined): number | undefined {
+function parseBackupLimit(
+  value: string | undefined,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): number | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -627,7 +680,16 @@ function parseBackupLimit(value: string | undefined): number | undefined {
       "Invalid backup limit",
       "--limit must be an integer between 1 and 100.",
       "Pass a --limit between 1 and 100.",
-      ["prisma-cli database backup list <database> --limit 50"],
+      [
+        formatCommand([
+          "database",
+          "backup",
+          "list",
+          "<database>",
+          "--limit",
+          "50",
+        ]),
+      ],
       "database",
     );
   }
@@ -668,7 +730,11 @@ async function requireDatabaseContext(
     }
 
     return {
-      provider: createManagementDatabaseProvider(client),
+      provider: createManagementDatabaseProvider(client, {
+        formatCommand: resolvePrismaCliPackageCommandFormatterSync(
+          context.runtime.cwd,
+        ),
+      }),
       target: targetResult.value,
     };
   }
@@ -703,7 +769,11 @@ async function requireDatabaseProviderOnly(
     if (!client) {
       throw authRequiredError();
     }
-    return createManagementDatabaseProvider(client);
+    return createManagementDatabaseProvider(client, {
+      formatCommand: resolvePrismaCliPackageCommandFormatterSync(
+        context.runtime.cwd,
+      ),
+    });
   }
 
   return createFixtureDatabaseProvider(context);
@@ -805,7 +875,11 @@ function createFixtureDatabaseProvider(
         throw databaseNotFoundError(options.targetDatabaseId);
       }
       if (restored.outcome === "backup-not-found") {
-        throw backupNotFoundError(options.backupId, options.sourceDatabaseId);
+        throw backupNotFoundError(
+          options.backupId,
+          options.sourceDatabaseId,
+          resolvePrismaCliPackageCommandFormatterSync(context.runtime.cwd),
+        );
       }
       return normalizeDatabase(restored.database, options.projectId);
     },
@@ -981,15 +1055,22 @@ function databaseAmbiguousError(
 function backupNotFoundError(
   backupId: string,
   sourceDatabaseId: string,
+  formatCommand: PrismaCliPackageCommandFormatter,
 ): CliError {
+  const listCommand = formatCommand([
+    "database",
+    "backup",
+    "list",
+    sourceDatabaseId,
+  ]);
   return new CliError({
     code: "DATABASE_BACKUP_NOT_FOUND",
     domain: "database",
     summary: "Database backup not found",
     why: `No backup matched "${backupId}" for database "${sourceDatabaseId}".`,
-    fix: "Pass a backup id from prisma-cli database backup list.",
+    fix: `Pass a backup id from ${listCommand}.`,
     exitCode: 1,
-    nextSteps: [`prisma-cli database backup list ${sourceDatabaseId}`],
+    nextSteps: [listCommand],
   });
 }
 

@@ -798,7 +798,7 @@ describe("database commands", () => {
           backupId: "bkp_101",
         },
       },
-      nextSteps: ["prisma-cli database show db_123"],
+      nextSteps: ["npx -y @prisma/cli@latest database show db_123"],
     });
   });
 
@@ -868,7 +868,7 @@ describe("database commands", () => {
     expect(result.exitCode).toBe(2);
     expect(payload.error.code).toBe("CONFIRMATION_REQUIRED");
     expect(payload.nextSteps).toEqual([
-      "prisma-cli database restore db_123 --backup bkp_201 --source-database db_456 --confirm db_123",
+      "npx -y @prisma/cli@latest database restore db_123 --backup bkp_201 --source-database db_456 --confirm db_123",
     ]);
   });
 
