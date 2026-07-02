@@ -48,8 +48,16 @@ export function createManagementProjectProvider(
         },
         signal: options.signal,
       });
-      if (result.error || !result.data) {
+      const status = result.response?.status ?? 0;
+      if (status === 400 || status === 422) {
         throw projectRenameFailedError(options.name, result.error);
+      }
+      if (result.error || !result.data) {
+        throw projectApiError(
+          "Failed to rename project",
+          result.response,
+          result.error,
+        );
       }
 
       const project = result.data.data as RawProjectRecord;

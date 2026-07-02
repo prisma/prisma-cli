@@ -809,13 +809,7 @@ async function requireProjectMutationContext(
   workspace: AuthWorkspace,
 ): Promise<ProjectMutationContext> {
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(
-      context.runtime.env,
-      context.runtime.signal,
-    );
-    if (!client) {
-      throw authRequiredError();
-    }
+    const client = await requireProjectClient(context);
     return {
       provider: createManagementProjectProvider(client),
       projects: await listRealWorkspaceProjects(
@@ -838,13 +832,11 @@ async function requireProjectCommandContext(
   explicitProject: string | undefined,
   commandName: string,
 ): Promise<{ provider: ProjectProvider; target: ResolvedProjectTarget }> {
+  const realMode = isRealMode(context);
+  const client = realMode ? await requireProjectClient(context) : null;
   const listProjects = async () =>
-    isRealMode(context)
-      ? listRealWorkspaceProjects(
-          await requireProjectClient(context),
-          workspace,
-          context.runtime.signal,
-        )
+    client
+      ? listRealWorkspaceProjects(client, workspace, context.runtime.signal)
       : listFixtureWorkspaceProjects(context, workspace);
 
   const targetResult = await resolveProjectTarget({
@@ -858,8 +850,8 @@ async function requireProjectCommandContext(
     throw projectResolutionErrorToCliError(targetResult.error);
   }
 
-  const provider = isRealMode(context)
-    ? createManagementProjectProvider(await requireProjectClient(context))
+  const provider = client
+    ? createManagementProjectProvider(client)
     : createFixtureProjectProvider(context);
 
   return { provider, target: targetResult.value };

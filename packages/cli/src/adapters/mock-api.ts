@@ -224,6 +224,12 @@ export class MockApi {
       return { outcome: "blocked" };
     }
 
+    const removedDatabaseIds = new Set(
+      (this.data.databases ?? [])
+        .filter((database) => database.projectId === projectId)
+        .map((database) => database.id),
+    );
+
     this.data.projects = this.data.projects.filter(
       (candidate) => candidate.id !== projectId,
     );
@@ -233,6 +239,9 @@ export class MockApi {
     this.data.databases = (this.data.databases ?? []).filter(
       (database) => database.projectId !== projectId,
     );
+    this.data.databaseConnections = (
+      this.data.databaseConnections ?? []
+    ).filter((connection) => !removedDatabaseIds.has(connection.databaseId));
     return { outcome: "removed", project };
   }
 
