@@ -1,5 +1,6 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
+import { formatPrismaCliCommand } from "../../shell/cli-command";
 import { CliError } from "../../shell/errors";
 import type { ProjectSummary } from "../../types/project";
 
@@ -141,7 +142,7 @@ export function projectRemoveBlockedError(
       `Project "${projectId}" still has active deployments.`,
     fix: "Remove the project's apps first, then retry the removal.",
     exitCode: 1,
-    nextSteps: ["prisma-cli app remove --app <name>"],
+    nextSteps: [formatPrismaCliCommand(["app", "remove", "--app", "<name>"])],
   });
 }
 

@@ -14,6 +14,10 @@ import {
   FileTokenStorage,
   WorkspaceSelectionError,
 } from "../adapters/token-storage";
+import {
+  type PrismaCliPackageCommandFormatter,
+  resolvePrismaCliPackageCommandFormatterSync,
+} from "../lib/agent/cli-command";
 import { createAppProvider } from "../lib/app/app-provider";
 import { SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
 import { requireComputeAuth } from "../lib/auth/guard";
@@ -578,6 +582,9 @@ export async function runProjectRemove(
   projectRef: string,
   options: ProjectRemoveOptions,
 ): Promise<CommandSuccess<ProjectRemoveResult>> {
+  const formatCommand = resolvePrismaCliPackageCommandFormatterSync(
+    context.runtime.cwd,
+  );
   const authState = await requireAuthenticatedAuthState(context);
   const workspace = authState.workspace;
   if (!workspace) {
@@ -597,7 +604,13 @@ export async function runProjectRemove(
     confirm: options.confirm,
     summary: "Confirm project removal",
     why: "Removing a project is permanent, deletes its databases, and stops its apps, so it requires the exact project id.",
-    nextStep: `prisma-cli project remove ${project.id} --confirm ${project.id}`,
+    nextStep: formatCommand([
+      "project",
+      "remove",
+      project.id,
+      "--confirm",
+      project.id,
+    ]),
   });
 
   await provider.removeProject({
@@ -627,6 +640,9 @@ export async function runProjectTransfer(
   projectRef: string,
   options: ProjectTransferOptions,
 ): Promise<CommandSuccess<ProjectTransferResult>> {
+  const formatCommand = resolvePrismaCliPackageCommandFormatterSync(
+    context.runtime.cwd,
+  );
   const authState = await requireAuthenticatedAuthState(context);
   const workspace = authState.workspace;
   if (!workspace) {
@@ -639,13 +655,21 @@ export async function runProjectTransfer(
       "--to-workspace and --recipient-token are mutually exclusive.",
       "Pass either --to-workspace <id-or-name> or --recipient-token <token>.",
       [
-        "prisma-cli project transfer <project> --to-workspace <id-or-name> --confirm <project-id>",
+        formatCommand([
+          "project",
+          "transfer",
+          "<project>",
+          "--to-workspace",
+          "<id-or-name>",
+          "--confirm",
+          "<project-id>",
+        ]),
       ],
       "project",
     );
   }
   if (!options.toWorkspace?.trim() && !options.recipientToken?.trim()) {
-    throw transferRecipientRequiredError();
+    throw transferRecipientRequiredError(formatCommand);
   }
 
   const { provider, projects } = await requireProjectMutationContext(
@@ -661,7 +685,7 @@ export async function runProjectTransfer(
     confirm: options.confirm,
     summary: "Confirm project transfer",
     why: "Transferring moves the project to another workspace and this workspace loses access, so it requires the exact project id.",
-    nextStep: `prisma-cli project transfer ${project.id} ${
+    nextStep: `${formatCommand(["project", "transfer", project.id])} ${
       options.toWorkspace
         ? `--to-workspace ${formatCommandArgument(options.toWorkspace)}`
         : "--recipient-token <token>"
@@ -698,7 +722,7 @@ export async function runProjectTransfer(
     warnings,
     nextSteps: options.toWorkspace
       ? [
-          `prisma-cli auth workspace use ${formatCommandArgument(options.toWorkspace)}`,
+          `${formatCommand(["auth", "workspace", "use"])} ${formatCommandArgument(options.toWorkspace)}`,
         ]
       : [],
   };
@@ -715,6 +739,9 @@ async function resolveTransferRecipient(
   context: CommandContext,
   options: ProjectTransferOptions,
 ): Promise<ResolvedTransferRecipient> {
+  const formatCommand = resolvePrismaCliPackageCommandFormatterSync(
+    context.runtime.cwd,
+  );
   const recipientToken = options.recipientToken?.trim();
   if (recipientToken) {
     return {
@@ -730,7 +757,7 @@ async function resolveTransferRecipient(
 
   const workspaceRef = options.toWorkspace?.trim();
   if (!workspaceRef) {
-    throw transferRecipientRequiredError();
+    throw transferRecipientRequiredError(formatCommand);
   }
 
   if (!isRealMode(context)) {
@@ -763,7 +790,7 @@ async function resolveTransferRecipient(
   }
 
   if (context.runtime.env[SERVICE_TOKEN_ENV_VAR] !== undefined) {
-    throw transferRecipientUnavailableError();
+    throw transferRecipientUnavailableError(formatCommand);
   }
 
   try {
@@ -873,6 +900,9 @@ async function requireProjectClient(
 function createFixtureProjectProvider(
   context: CommandContext,
 ): ProjectProvider {
+  const fixtureFormatCommand = resolvePrismaCliPackageCommandFormatterSync(
+    context.runtime.cwd,
+  );
   return {
     async renameProject(options) {
       const renamed = context.api.renameProject(
@@ -900,9 +930,9 @@ function createFixtureProjectProvider(
           domain: "project",
           summary: "Project not found",
           why: `No project matched "${options.projectId}".`,
-          fix: "Pass a project id or name from prisma-cli project list.",
+          fix: `Pass a project id or name from ${fixtureFormatCommand(["project", "list"])}.`,
           exitCode: 1,
-          nextSteps: ["prisma-cli project list"],
+          nextSteps: [fixtureFormatCommand(["project", "list"])],
         });
       }
     },
@@ -945,7 +975,9 @@ function requireProjectExactConfirmation(options: {
   });
 }
 
-function transferRecipientRequiredError(): CliError {
+function transferRecipientRequiredError(
+  formatCommand: PrismaCliPackageCommandFormatter,
+): CliError {
   return new CliError({
     code: "TRANSFER_RECIPIENT_REQUIRED",
     domain: "project",
@@ -954,13 +986,23 @@ function transferRecipientRequiredError(): CliError {
     fix: "Pass --to-workspace <id-or-name> for a locally authenticated workspace, or --recipient-token <token> for a cross-account transfer.",
     exitCode: 2,
     nextSteps: [
-      "prisma-cli auth workspace list",
-      "prisma-cli project transfer <project> --to-workspace <id-or-name> --confirm <project-id>",
+      formatCommand(["auth", "workspace", "list"]),
+      formatCommand([
+        "project",
+        "transfer",
+        "<project>",
+        "--to-workspace",
+        "<id-or-name>",
+        "--confirm",
+        "<project-id>",
+      ]),
     ],
   });
 }
 
-function transferRecipientUnavailableError(): CliError {
+function transferRecipientUnavailableError(
+  formatCommand: PrismaCliPackageCommandFormatter,
+): CliError {
   return new CliError({
     code: "TRANSFER_RECIPIENT_UNAVAILABLE",
     domain: "project",
@@ -969,7 +1011,15 @@ function transferRecipientUnavailableError(): CliError {
     fix: "Pass --recipient-token <token> with an access token for the receiving workspace, or unset the service token.",
     exitCode: 1,
     nextSteps: [
-      "prisma-cli project transfer <project> --recipient-token <token> --confirm <project-id>",
+      formatCommand([
+        "project",
+        "transfer",
+        "<project>",
+        "--recipient-token",
+        "<token>",
+        "--confirm",
+        "<project-id>",
+      ]),
     ],
   });
 }
