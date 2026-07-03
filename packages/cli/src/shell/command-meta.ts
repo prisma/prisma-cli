@@ -297,10 +297,42 @@ const DESCRIPTORS: CommandDescriptor[] = [
     ],
   },
   {
+    id: "database.usage",
+    path: ["prisma", "database", "usage"],
+    description: "Show usage metrics for a database",
+    examples: [
+      "prisma-cli database usage db_123",
+      "prisma-cli database usage acme-production --from 2026-06-01 --to 2026-06-30",
+    ],
+  },
+  {
+    id: "database.restore",
+    path: ["prisma", "database", "restore"],
+    description: "Restore a database from a backup after exact id confirmation",
+    examples: [
+      "prisma-cli database restore db_123 --backup bkp_456 --confirm db_123",
+    ],
+  },
+  {
     id: "database.remove",
     path: ["prisma", "database", "remove"],
     description: "Remove a database after exact id confirmation",
     examples: ["prisma-cli database remove db_123 --confirm db_123"],
+  },
+  {
+    id: "database.backup",
+    path: ["prisma", "database", "backup"],
+    description: "Inspect platform-created database backups",
+    examples: ["prisma-cli database backup list db_123"],
+  },
+  {
+    id: "database.backup.list",
+    path: ["prisma", "database", "backup", "list"],
+    description: "List backups for a database",
+    examples: [
+      "prisma-cli database backup list db_123",
+      "prisma-cli database backup list acme-production --limit 50",
+    ],
   },
   {
     id: "database.connection",
@@ -329,6 +361,15 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: [
       "prisma-cli database connection create db_123",
       "prisma-cli database connection create db_123 --name readonly",
+    ],
+  },
+  {
+    id: "database.connection.rotate",
+    path: ["prisma", "database", "connection", "rotate"],
+    description:
+      "Rotate connection credentials and print the new one-time connection URL",
+    examples: [
+      "prisma-cli database connection rotate conn_123 --confirm conn_123",
     ],
   },
   {

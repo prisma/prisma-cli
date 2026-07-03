@@ -1,11 +1,13 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Database pagination requests must run sequentially.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
+import { formatPrismaCliCommand } from "../../shell/cli-command";
 import { CliError } from "../../shell/errors";
 import type {
   DatabaseConnectionSummary,
   DatabaseSummary,
 } from "../../types/database";
+import type { PrismaCliPackageCommandFormatter } from "../agent/cli-command";
 
 export interface DatabaseCreateInput {
   projectId: string;
@@ -29,6 +31,46 @@ export interface DatabaseCreateRecord {
 
 export interface DatabaseConnectionCreateRecord {
   connection: DatabaseConnectionSummary;
+  connectionString: string;
+}
+
+export interface DatabaseUsageRecord {
+  period: {
+    start: string;
+    end: string;
+  };
+  metrics: {
+    operations: { used: number; unit: string };
+    storage: { used: number; unit: string };
+  };
+  generatedAt: string;
+}
+
+export interface DatabaseBackupRecord {
+  id: string;
+  backupType: string;
+  status: string;
+  size: number | null;
+  createdAt: string;
+}
+
+export interface DatabaseBackupListRecord {
+  backups: DatabaseBackupRecord[];
+  retentionDays: number | null;
+  hasMore: boolean;
+}
+
+export interface DatabaseRestoreInput {
+  targetDatabaseId: string;
+  sourceDatabaseId: string;
+  backupId: string;
+  projectId: string;
+  signal?: AbortSignal;
+}
+
+export interface DatabaseConnectionRotateRecord {
+  connection: DatabaseConnectionSummary;
+  database: { id: string; name: string } | null;
   connectionString: string;
 }
 
@@ -61,6 +103,26 @@ export interface DatabaseProvider {
     connectionId: string,
     options?: { signal?: AbortSignal },
   ): Promise<void>;
+  getUsage(
+    databaseId: string,
+    options?: {
+      from?: string;
+      to?: string;
+      signal?: AbortSignal;
+    },
+  ): Promise<DatabaseUsageRecord>;
+  listBackups(
+    databaseId: string,
+    options?: {
+      limit?: number;
+      signal?: AbortSignal;
+    },
+  ): Promise<DatabaseBackupListRecord>;
+  restoreDatabase(options: DatabaseRestoreInput): Promise<DatabaseSummary>;
+  rotateConnection(
+    connectionId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<DatabaseConnectionRotateRecord>;
 }
 
 interface RawApiErrorBody {
@@ -97,6 +159,36 @@ interface RawDatabaseConnectionRecord {
     direct?: RawConnectionEndpoint | null;
     accelerate?: RawConnectionEndpoint | null;
   } | null;
+  database?: {
+    id?: string | null;
+    name?: string | null;
+  } | null;
+}
+
+interface RawDatabaseUsageRecord {
+  period?: {
+    start?: string | null;
+    end?: string | null;
+  } | null;
+  metrics?: {
+    operations?: { used?: number | null; unit?: string | null } | null;
+    storage?: { used?: number | null; unit?: string | null } | null;
+  } | null;
+  generatedAt?: string | null;
+}
+
+interface RawDatabaseBackupRecord {
+  id: string;
+  backupType?: string | null;
+  status?: string | null;
+  size?: number | null;
+  createdAt?: string | null;
+}
+
+interface RawDatabaseBackupListBody {
+  data?: RawDatabaseBackupRecord[] | null;
+  meta?: { backupRetentionDays?: number | null } | null;
+  pagination?: { hasMore?: boolean | null } | null;
 }
 
 interface RawDatabaseRecord {
@@ -117,7 +209,11 @@ interface RawDatabaseRecord {
 
 export function createManagementDatabaseProvider(
   client: ManagementApiClient,
+  options?: { formatCommand?: PrismaCliPackageCommandFormatter },
 ): DatabaseProvider {
+  const formatCommand =
+    options?.formatCommand ?? ((args) => formatPrismaCliCommand(args));
+
   return {
     async listDatabases(options) {
       const databases: RawDatabaseRecord[] = [];
@@ -290,6 +386,115 @@ export function createManagementDatabaseProvider(
         );
       }
     },
+
+    async getUsage(databaseId, options) {
+      const result = await client.GET("/v1/databases/{databaseId}/usage", {
+        params: {
+          path: { databaseId },
+          query: {
+            ...(options?.from ? { startDate: options.from } : {}),
+            ...(options?.to ? { endDate: options.to } : {}),
+          },
+        },
+        signal: options?.signal,
+      });
+      if (result.error || !result.data) {
+        throw databaseApiError(
+          "Failed to fetch database usage",
+          result.response,
+          result.error,
+        );
+      }
+
+      return normalizeUsage(result.data as RawDatabaseUsageRecord);
+    },
+
+    async listBackups(databaseId, options) {
+      const result = await client.GET("/v1/databases/{databaseId}/backups", {
+        params: {
+          path: { databaseId },
+          query: {
+            ...(options?.limit !== undefined ? { limit: options.limit } : {}),
+          },
+        },
+        signal: options?.signal,
+      });
+      if (result.response?.status === 422) {
+        throw backupsUnsupportedError(databaseId, result.error);
+      }
+      if (result.error || !result.data) {
+        throw databaseApiError(
+          "Failed to list database backups",
+          result.response,
+          result.error,
+        );
+      }
+
+      return normalizeBackupList(result.data as RawDatabaseBackupListBody);
+    },
+
+    async restoreDatabase(options) {
+      const result = await client.POST(
+        "/v1/databases/{targetDatabaseId}/restore",
+        {
+          params: {
+            path: { targetDatabaseId: options.targetDatabaseId },
+          },
+          body: {
+            source: {
+              type: "backup",
+              databaseId: options.sourceDatabaseId,
+              backupId: options.backupId,
+            },
+          },
+          signal: options.signal,
+        },
+      );
+      if (result.response?.status === 409) {
+        throw restoreConflictError(
+          options.targetDatabaseId,
+          result.error,
+          formatCommand,
+        );
+      }
+      // Target and source databases are resolved before this call, so a 404
+      // here identifies the backup.
+      if (result.response?.status === 404) {
+        throw restoreBackupNotFoundError(options, result.error, formatCommand);
+      }
+      if (result.error || !result.data) {
+        throw databaseApiError(
+          "Failed to restore database",
+          result.response,
+          result.error,
+        );
+      }
+
+      return normalizeDatabase(
+        result.data.data as RawDatabaseRecord,
+        options.projectId,
+      );
+    },
+
+    async rotateConnection(connectionId, options) {
+      const result = await client.POST("/v1/connections/{id}/rotate", {
+        params: {
+          path: { id: connectionId },
+        },
+        signal: options?.signal,
+      });
+      if (result.error || !result.data) {
+        throw databaseApiError(
+          "Failed to rotate database connection",
+          result.response,
+          result.error,
+        );
+      }
+
+      return normalizeRotatedConnection(
+        result.data.data as RawDatabaseConnectionRecord,
+      );
+    },
   };
 }
 
@@ -412,6 +617,134 @@ function extractConnectionString(
     connection.endpoints?.accelerate?.connectionString ??
     null
   );
+}
+
+export function normalizeUsage(
+  usage: RawDatabaseUsageRecord,
+): DatabaseUsageRecord {
+  return {
+    period: {
+      start: usage.period?.start ?? "",
+      end: usage.period?.end ?? "",
+    },
+    metrics: {
+      operations: {
+        used: usage.metrics?.operations?.used ?? 0,
+        unit: usage.metrics?.operations?.unit ?? "ops",
+      },
+      storage: {
+        used: usage.metrics?.storage?.used ?? 0,
+        unit: usage.metrics?.storage?.unit ?? "GiB",
+      },
+    },
+    generatedAt: usage.generatedAt ?? "",
+  };
+}
+
+export function normalizeBackupList(
+  body: RawDatabaseBackupListBody,
+): DatabaseBackupListRecord {
+  return {
+    backups: (body.data ?? []).map((backup) => ({
+      id: backup.id,
+      backupType: backup.backupType ?? "unknown",
+      status: backup.status ?? "unknown",
+      size: backup.size ?? null,
+      createdAt: backup.createdAt ?? "",
+    })),
+    retentionDays: body.meta?.backupRetentionDays ?? null,
+    hasMore: body.pagination?.hasMore ?? false,
+  };
+}
+
+export function normalizeRotatedConnection(
+  connection: RawDatabaseConnectionRecord,
+): DatabaseConnectionRotateRecord {
+  const connectionString = extractConnectionString(connection);
+  if (!connectionString) {
+    throw new CliError({
+      code: "DATABASE_CONNECTION_STRING_MISSING",
+      domain: "database",
+      summary: "Rotated connection did not return a connection string",
+      why: "Rotated connection strings are one-time-view secrets, but the Management API did not include one in this rotate response.",
+      fix: "Re-run the rotation, or create a replacement connection and store the returned URL immediately.",
+      exitCode: 1,
+      nextSteps: [],
+    });
+  }
+
+  const database =
+    connection.database?.id && connection.database?.name
+      ? { id: connection.database.id, name: connection.database.name }
+      : null;
+
+  return {
+    connection: normalizeConnection(
+      connection,
+      connection.database?.id ?? connection.databaseId ?? "",
+    ),
+    database,
+    connectionString,
+  };
+}
+
+function backupsUnsupportedError(
+  databaseId: string,
+  error: RawApiErrorBody | undefined,
+): CliError {
+  return new CliError({
+    code: "DATABASE_BACKUPS_UNSUPPORTED",
+    domain: "database",
+    summary: "Backups are not available for this database",
+    why:
+      error?.error?.message ??
+      `The platform does not manage backups for database "${databaseId}", for example because it is a remote/BYO database.`,
+    fix: "Use your own backup tooling for externally managed databases.",
+    exitCode: 1,
+    nextSteps: [],
+  });
+}
+
+function restoreBackupNotFoundError(
+  options: { backupId: string; sourceDatabaseId: string },
+  error: RawApiErrorBody | undefined,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): CliError {
+  const listCommand = formatCommand([
+    "database",
+    "backup",
+    "list",
+    options.sourceDatabaseId,
+  ]);
+  return new CliError({
+    code: "DATABASE_BACKUP_NOT_FOUND",
+    domain: "database",
+    summary: "Database backup not found",
+    why:
+      error?.error?.message ??
+      `No backup matched "${options.backupId}" for database "${options.sourceDatabaseId}".`,
+    fix: `Pass a backup id from ${listCommand}.`,
+    exitCode: 1,
+    nextSteps: [listCommand],
+  });
+}
+
+function restoreConflictError(
+  targetDatabaseId: string,
+  error: RawApiErrorBody | undefined,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): CliError {
+  return new CliError({
+    code: "DATABASE_RESTORE_CONFLICT",
+    domain: "database",
+    summary: "Database cannot be restored right now",
+    why:
+      error?.error?.message ??
+      `Database "${targetDatabaseId}" is provisioning or already recovering.`,
+    fix: "Wait for the database to become ready, then retry the restore.",
+    exitCode: 1,
+    nextSteps: [formatCommand(["database", "show", targetDatabaseId])],
+  });
 }
 
 function databaseApiError(

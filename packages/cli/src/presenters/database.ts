@@ -4,14 +4,18 @@ import { formatDescriptorLabel } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
 import { formatColumns, renderSummaryLine } from "../shell/ui";
 import type {
+  DatabaseBackupListResult,
   DatabaseConnectionCreateResult,
   DatabaseConnectionListResult,
   DatabaseConnectionRemoveResult,
+  DatabaseConnectionRotateResult,
   DatabaseCreateResult,
   DatabaseListResult,
   DatabaseRemoveResult,
+  DatabaseRestoreResult,
   DatabaseShowResult,
   DatabaseSummary,
+  DatabaseUsageResult,
 } from "../types/database";
 import {
   renderResolvedProjectContextBlock,
@@ -328,6 +332,262 @@ export function serializeDatabaseConnectionRemove(
   result: DatabaseConnectionRemoveResult,
 ) {
   return { connection: result.connection };
+}
+
+export function renderDatabaseUsage(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: DatabaseUsageResult,
+): string[] {
+  const lines = renderShow(
+    {
+      title: "Showing database usage metrics.",
+      descriptor,
+      fields: [
+        { key: "project", value: result.projectName },
+        { key: "database", value: result.database.name },
+        { key: "id", value: result.database.id, tone: "dim" },
+        {
+          key: "period",
+          value: `${formatUsageTimestamp(result.period.start)} to ${formatUsageTimestamp(result.period.end)}`,
+        },
+        {
+          key: "operations",
+          value: `${result.metrics.operations.used} ${result.metrics.operations.unit}`,
+        },
+        {
+          key: "storage",
+          value: `${result.metrics.storage.used} ${result.metrics.storage.unit}`,
+        },
+        {
+          key: "generated",
+          value: formatUsageTimestamp(result.generatedAt),
+          tone: "dim",
+        },
+      ],
+    },
+    context.ui,
+  );
+  lines.push(
+    ...renderResolvedProjectContextBlock(context.ui, result.verboseContext),
+  );
+  return lines;
+}
+
+export function serializeDatabaseUsage(result: DatabaseUsageResult) {
+  return stripVerboseContext(result);
+}
+
+export function renderDatabaseBackupList(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: DatabaseBackupListResult,
+): string[] {
+  const ui = context.ui;
+  const lines = [
+    `${ui.strong(formatDescriptorLabel(descriptor))} ${ui.dim("→")} ${ui.dim("Listing platform-created database backups.")}`,
+    "",
+  ];
+  const rail = ui.dim("│");
+  lines.push(`${rail}  ${ui.accent("database:")}  ${result.database.name}`);
+  if (result.retentionDays !== null) {
+    lines.push(
+      `${rail}  ${ui.accent("retention:")} ${result.retentionDays} days`,
+    );
+  }
+  lines.push(rail);
+
+  if (result.backups.length === 0) {
+    lines.push(`${rail}  ${ui.dim("No backups found.")}`);
+    lines.push(
+      ...renderResolvedProjectContextBlock(context.ui, result.verboseContext),
+    );
+    return lines;
+  }
+
+  const rows = result.backups.map((backup) => [
+    backup.id,
+    backup.backupType,
+    backup.status,
+    formatBackupSize(backup.size),
+    backup.createdAt,
+  ]);
+  const widths = [
+    Math.max("Id".length, ...rows.map((row) => row[0].length)),
+    Math.max("Type".length, ...rows.map((row) => row[1].length)),
+    Math.max("Status".length, ...rows.map((row) => row[2].length)),
+    Math.max("Size".length, ...rows.map((row) => row[3].length)),
+    Math.max("Created".length, ...rows.map((row) => row[4].length)),
+  ];
+
+  lines.push(
+    `${rail}  ${ui.accent(formatColumns(["Id", "Type", "Status", "Size", "Created"], widths))}`,
+  );
+  for (const row of rows) {
+    lines.push(`${rail}  ${formatColumns(row, widths)}`);
+  }
+
+  if (result.hasMore) {
+    lines.push(rail);
+    lines.push(
+      `${rail}  ${ui.dim("More backups exist; raise --limit to see them.")}`,
+    );
+  }
+
+  lines.push(
+    ...renderResolvedProjectContextBlock(context.ui, result.verboseContext),
+  );
+  return lines;
+}
+
+export function serializeDatabaseBackupList(result: DatabaseBackupListResult) {
+  return {
+    ...serializeList({
+      context: {
+        project: result.projectName,
+        database: result.database.name,
+      },
+      items: result.backups.map((backup) => ({
+        noun: "backup",
+        label: backup.id,
+        id: backup.id,
+        status: null,
+      })),
+    }),
+    projectId: result.projectId,
+    database: result.database,
+    backups: result.backups,
+    retentionDays: result.retentionDays,
+    hasMore: result.hasMore,
+  };
+}
+
+export function renderDatabaseRestore(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: DatabaseRestoreResult,
+): string[] {
+  const lines = renderMutate(
+    {
+      title: "Restoring database from backup.",
+      descriptor,
+      context: [
+        { key: "project", value: result.projectName },
+        { key: "database", value: result.database.name },
+        { key: "id", value: result.database.id, tone: "dim" },
+        { key: "backup", value: result.source.backupId },
+        ...(result.source.databaseId !== result.database.id
+          ? [{ key: "source", value: result.source.databaseId }]
+          : []),
+      ],
+      operationDescription: "Restoring database",
+      operationCount: 1,
+      details: [
+        `The restore is running; the database status is "${result.database.status ?? "recovering"}" until it completes.`,
+        "Connections and credentials are preserved.",
+      ],
+    },
+    context.ui,
+  );
+  lines.push(
+    ...renderResolvedProjectContextBlock(context.ui, result.verboseContext),
+  );
+  return lines;
+}
+
+export function serializeDatabaseRestore(result: DatabaseRestoreResult) {
+  return stripVerboseContext(result);
+}
+
+export function renderDatabaseConnectionRotateStdout(
+  _context: CommandContext,
+  _descriptor: CommandDescriptor,
+  result: DatabaseConnectionRotateResult,
+): string[] {
+  return [result.connectionString];
+}
+
+export function renderDatabaseConnectionRotate(
+  context: CommandContext,
+  _descriptor: CommandDescriptor,
+  result: DatabaseConnectionRotateResult,
+): string[] {
+  const ui = context.ui;
+  const target = result.database
+    ? `"${result.database.name}"`
+    : `connection ${result.connection.id}`;
+  const lines = [
+    "Rotating connection...",
+    renderSummaryLine(
+      ui,
+      "success",
+      `Rotated credentials for ${target}. The previous credentials no longer work.`,
+    ),
+    "  The connection URL below is shown once, so save it now.",
+  ];
+
+  if (ui.verbose) {
+    lines.push("");
+    lines.push(...renderDatabaseConnectionRotateVerboseRows(context, result));
+  }
+
+  return lines;
+}
+
+export function serializeDatabaseConnectionRotate(
+  result: DatabaseConnectionRotateResult,
+) {
+  return result;
+}
+
+function renderDatabaseConnectionRotateVerboseRows(
+  context: CommandContext,
+  result: DatabaseConnectionRotateResult,
+): string[] {
+  const rows = [
+    ...(result.database
+      ? [
+          [
+            "database",
+            formatResourceWithId(
+              context,
+              result.database.name,
+              result.database.id,
+            ),
+          ],
+        ]
+      : []),
+    [
+      "connection",
+      formatResourceWithId(
+        context,
+        result.connection.name,
+        result.connection.id,
+      ),
+    ],
+  ];
+
+  return renderMetadataRows(rows);
+}
+
+function formatBackupSize(size: number | null): string {
+  if (size === null) {
+    return "unknown";
+  }
+  if (size < 1024) {
+    return `${size} B`;
+  }
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KiB`;
+  }
+  if (size < 1024 * 1024 * 1024) {
+    return `${(size / (1024 * 1024)).toFixed(1)} MiB`;
+  }
+  return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GiB`;
+}
+
+function formatUsageTimestamp(value: string): string {
+  return value || "unknown";
 }
 
 function formatStatus(database: DatabaseSummary): string {

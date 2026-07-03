@@ -213,6 +213,9 @@ These codes are the minimum stable set for the MVP:
 - `DATABASE_CONNECTION_MISSING`
 - `DATABASE_CONNECTION_STRING_MISSING`
 - `DATABASE_API_ERROR`
+- `DATABASE_BACKUPS_UNSUPPORTED`
+- `DATABASE_BACKUP_NOT_FOUND`
+- `DATABASE_RESTORE_CONFLICT`
 - `RUN_FAILED`
 - `DEPLOY_FAILED`
 - `VERSION_UNAVAILABLE`
@@ -275,6 +278,9 @@ Recommended meanings:
 - `DATABASE_CONNECTION_MISSING`: database creation succeeded but the API response did not include the first one-time connection payload
 - `DATABASE_CONNECTION_STRING_MISSING`: connection creation succeeded but the API response did not include the one-time connection string
 - `DATABASE_API_ERROR`: database Management API request failed without a more specific CLI error code
+- `DATABASE_BACKUPS_UNSUPPORTED`: the platform does not manage backups for the database, for example remote/BYO databases
+- `DATABASE_BACKUP_NOT_FOUND`: requested backup id does not exist for the resolved source database
+- `DATABASE_RESTORE_CONFLICT`: restore target database is provisioning or already recovering
 - `RUN_FAILED`: local framework run command could not be started or exited unsuccessfully
 - `DEPLOY_FAILED`: deployment or post-build health failed
 - `VERSION_UNAVAILABLE`: CLI could not read its own bundled package metadata to report a version (defensive; not expected in normal installs)

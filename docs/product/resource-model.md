@@ -156,22 +156,26 @@ top-level target-context group is `branch`, not `env`.
 resource.
 
 The beta package exposes `database` as the canonical database management group.
-The first slice manages Prisma Postgres database metadata and one-time-view
+It manages Prisma Postgres database metadata, usage, backups, and one-time-view
 connection strings:
 
 - `database list`
 - `database show <database>`
 - `database create <name>`
+- `database usage <database>`
+- `database restore <database>`
 - `database remove <database>`
+- `database backup list <database>`
 - `database connection list <database>`
 - `database connection create <database>`
+- `database connection rotate <connection>`
 - `database connection remove <connection>`
 
-The `database connection` subgroup is nested because connection strings exist
-only for databases. It follows the same parent-noun/subordinate-noun/action
-shape as `project env <action>`. There is no `database connection show` command:
-connection strings are secrets and the platform returns them only during create
-operations.
+The `database connection` and `database backup` subgroups are nested because
+connections and backups exist only for databases. They follow the same
+parent-noun/subordinate-noun/action shape as `project env <action>`. There is
+no `database connection show` command: connection strings are secrets and the
+platform returns them only from create and rotate operations.
 
 Rules:
 
@@ -185,6 +189,13 @@ Rules:
   or return secret values
 - database and database connection removal require exact id confirmation with
   `--confirm <id>`; `--yes` is not sufficient
+- database restore and connection rotation are equally destructive (restore
+  overwrites the target's data; rotation revokes the previous credentials) and
+  require the same exact id confirmation with `--confirm <id>`
+- backups are platform-created; the CLI lists them and restores from them but
+  never creates or deletes them in the current slice
+- `database usage` and `database backup list` are read-only and never print
+  secret values
 - preview Branch setup writes branch-scoped `DATABASE_URL` and `DIRECT_URL` overrides, not separate app bindings
 - first production deploy setup writes production `DATABASE_URL` and `DIRECT_URL` env vars before the App has a live deployment
 - database setup never overwrites an existing branch-scoped `DATABASE_URL`

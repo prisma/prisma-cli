@@ -1,31 +1,44 @@
 import { Command, Option } from "commander";
 
 import {
+  runDatabaseBackupList,
   runDatabaseConnectionCreate,
   runDatabaseConnectionList,
   runDatabaseConnectionRemove,
+  runDatabaseConnectionRotate,
   runDatabaseCreate,
   runDatabaseList,
   runDatabaseRemove,
+  runDatabaseRestore,
   runDatabaseShow,
+  runDatabaseUsage,
 } from "../../controllers/database";
 import {
+  renderDatabaseBackupList,
   renderDatabaseConnectionCreate,
   renderDatabaseConnectionCreateStdout,
   renderDatabaseConnectionList,
   renderDatabaseConnectionRemove,
+  renderDatabaseConnectionRotate,
+  renderDatabaseConnectionRotateStdout,
   renderDatabaseCreate,
   renderDatabaseCreateStdout,
   renderDatabaseList,
   renderDatabaseRemove,
+  renderDatabaseRestore,
   renderDatabaseShow,
+  renderDatabaseUsage,
+  serializeDatabaseBackupList,
   serializeDatabaseConnectionCreate,
   serializeDatabaseConnectionList,
   serializeDatabaseConnectionRemove,
+  serializeDatabaseConnectionRotate,
   serializeDatabaseCreate,
   serializeDatabaseList,
   serializeDatabaseRemove,
+  serializeDatabaseRestore,
   serializeDatabaseShow,
+  serializeDatabaseUsage,
 } from "../../presenters/database";
 import { attachCommandDescriptor } from "../../shell/command-meta";
 import { runCommand } from "../../shell/command-runner";
@@ -35,13 +48,17 @@ import {
 } from "../../shell/global-flags";
 import { type CliRuntime, configureRuntimeCommand } from "../../shell/runtime";
 import type {
+  DatabaseBackupListResult,
   DatabaseConnectionCreateResult,
   DatabaseConnectionListResult,
   DatabaseConnectionRemoveResult,
+  DatabaseConnectionRotateResult,
   DatabaseCreateResult,
   DatabaseListResult,
   DatabaseRemoveResult,
+  DatabaseRestoreResult,
   DatabaseShowResult,
+  DatabaseUsageResult,
 } from "../../types/database";
 
 export function createDatabaseCommand(runtime: CliRuntime): Command {
@@ -55,7 +72,10 @@ export function createDatabaseCommand(runtime: CliRuntime): Command {
   database.addCommand(createDatabaseListCommand(runtime));
   database.addCommand(createDatabaseShowCommand(runtime));
   database.addCommand(createDatabaseCreateCommand(runtime));
+  database.addCommand(createDatabaseUsageCommand(runtime));
+  database.addCommand(createDatabaseRestoreCommand(runtime));
   database.addCommand(createDatabaseRemoveCommand(runtime));
+  database.addCommand(createDatabaseBackupCommand(runtime));
   database.addCommand(createDatabaseConnectionCommand(runtime));
 
   return database;
@@ -163,6 +183,155 @@ function createDatabaseCreateCommand(runtime: CliRuntime): Command {
   return command;
 }
 
+function createDatabaseUsageCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("usage"), runtime),
+    "database.usage",
+  );
+
+  command
+    .argument("<database>", "Database id or name")
+    .addOption(new Option("--from <iso-date>", "Start of the usage period"))
+    .addOption(new Option("--to <iso-date>", "End of the usage period"));
+  addProjectAndBranchOptions(command);
+  addGlobalFlags(command);
+
+  command.action(async (databaseRef: string, options) => {
+    const projectRef = (options as { project?: string }).project;
+    const branchName = (options as { branch?: string }).branch;
+    const from = (options as { from?: string }).from;
+    const to = (options as { to?: string }).to;
+
+    await runCommand<DatabaseUsageResult>(
+      runtime,
+      "database.usage",
+      options as Record<string, unknown>,
+      (context) =>
+        runDatabaseUsage(context, databaseRef, {
+          projectRef,
+          branchName,
+          from,
+          to,
+        }),
+      {
+        renderHuman: (context, descriptor, result) =>
+          renderDatabaseUsage(context, descriptor, result),
+        renderJson: (result) => serializeDatabaseUsage(result),
+      },
+    );
+  });
+
+  return command;
+}
+
+function createDatabaseRestoreCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("restore"), runtime),
+    "database.restore",
+  );
+
+  command
+    .argument("<database>", "Target database id or name")
+    .addOption(new Option("--backup <backup-id>", "Backup to restore from"))
+    .addOption(
+      new Option(
+        "--source-database <database>",
+        "Database the backup belongs to (defaults to the target)",
+      ),
+    )
+    .addOption(
+      new Option(
+        "--confirm <database-id>",
+        "Exact target database id required to restore",
+      ),
+    );
+  addProjectAndBranchOptions(command);
+  addGlobalFlags(command);
+
+  command.action(async (databaseRef: string, options) => {
+    const projectRef = (options as { project?: string }).project;
+    const branchName = (options as { branch?: string }).branch;
+    const backupId = (options as { backup?: string }).backup;
+    const sourceDatabaseRef = (options as { sourceDatabase?: string })
+      .sourceDatabase;
+    const confirm = (options as { confirm?: string }).confirm;
+
+    await runCommand<DatabaseRestoreResult>(
+      runtime,
+      "database.restore",
+      options as Record<string, unknown>,
+      (context) =>
+        runDatabaseRestore(context, databaseRef, {
+          projectRef,
+          branchName,
+          backupId,
+          sourceDatabaseRef,
+          confirm,
+        }),
+      {
+        renderHuman: (context, descriptor, result) =>
+          renderDatabaseRestore(context, descriptor, result),
+        renderJson: (result) => serializeDatabaseRestore(result),
+      },
+    );
+  });
+
+  return command;
+}
+
+function createDatabaseBackupCommand(runtime: CliRuntime): Command {
+  const backup = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("backup"), runtime),
+    "database.backup",
+  );
+
+  addCompactGlobalFlags(backup);
+
+  backup.addCommand(createDatabaseBackupListCommand(runtime));
+
+  return backup;
+}
+
+function createDatabaseBackupListCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("list"), runtime),
+    "database.backup.list",
+  );
+
+  command
+    .argument("<database>", "Database id or name")
+    .addOption(
+      new Option("--limit <n>", "Maximum number of backups to return"),
+    );
+  addProjectAndBranchOptions(command);
+  addGlobalFlags(command);
+
+  command.action(async (databaseRef: string, options) => {
+    const projectRef = (options as { project?: string }).project;
+    const branchName = (options as { branch?: string }).branch;
+    const limit = (options as { limit?: string }).limit;
+
+    await runCommand<DatabaseBackupListResult>(
+      runtime,
+      "database.backup.list",
+      options as Record<string, unknown>,
+      (context) =>
+        runDatabaseBackupList(context, databaseRef, {
+          projectRef,
+          branchName,
+          limit,
+        }),
+      {
+        renderHuman: (context, descriptor, result) =>
+          renderDatabaseBackupList(context, descriptor, result),
+        renderJson: (result) => serializeDatabaseBackupList(result),
+      },
+    );
+  });
+
+  return command;
+}
+
 function createDatabaseRemoveCommand(runtime: CliRuntime): Command {
   const command = attachCommandDescriptor(
     configureRuntimeCommand(new Command("remove"), runtime),
@@ -216,9 +385,48 @@ function createDatabaseConnectionCommand(runtime: CliRuntime): Command {
 
   connection.addCommand(createDatabaseConnectionListCommand(runtime));
   connection.addCommand(createDatabaseConnectionCreateCommand(runtime));
+  connection.addCommand(createDatabaseConnectionRotateCommand(runtime));
   connection.addCommand(createDatabaseConnectionRemoveCommand(runtime));
 
   return connection;
+}
+
+function createDatabaseConnectionRotateCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("rotate"), runtime),
+    "database.connection.rotate",
+  );
+
+  command
+    .argument("<connection>", "Connection id")
+    .addOption(
+      new Option(
+        "--confirm <connection-id>",
+        "Exact connection id required to rotate",
+      ),
+    );
+  addGlobalFlags(command);
+
+  command.action(async (connectionRef: string, options) => {
+    const confirm = (options as { confirm?: string }).confirm;
+
+    await runCommand<DatabaseConnectionRotateResult>(
+      runtime,
+      "database.connection.rotate",
+      options as Record<string, unknown>,
+      (context) =>
+        runDatabaseConnectionRotate(context, connectionRef, { confirm }),
+      {
+        renderStdout: (context, descriptor, result) =>
+          renderDatabaseConnectionRotateStdout(context, descriptor, result),
+        renderHuman: (context, descriptor, result) =>
+          renderDatabaseConnectionRotate(context, descriptor, result),
+        renderJson: (result) => serializeDatabaseConnectionRotate(result),
+      },
+    );
+  });
+
+  return command;
 }
 
 function createDatabaseConnectionListCommand(runtime: CliRuntime): Command {
