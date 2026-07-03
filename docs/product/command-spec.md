@@ -19,18 +19,24 @@ The beta package includes these command groups:
 - `app`
 - `build` (includes `build logs`)
 
-The beta package also includes one top-level utility command:
+The beta package also includes two top-level commands:
 
 - `version`
+- `init`
 
 `version` is intentionally outside the workflow groups: it reports CLI build and environment state, requires no auth, no project context, and no network, and is the canonical answer to "is this CLI installed and on the build I expect?"
+
+`init` is a top-level workflow verb: it acts on the local project directory
+(writing the committed compute config) rather than managing a remote resource,
+so it sits beside the ORM's verb register (`generate`, `migrate`, `validate`)
+that the unified CLI will absorb. `init` never scaffolds application code;
+creating new apps is `create-prisma`'s job.
 
 The Git repository connection slice uses the `git` group. It does not add a
 provider-specific `GitHub` group.
 
 Out of scope for the current beta:
 
-- `init`
 - `schema`
 - `migrate`
 - product-specific namespaces such as `compute`
@@ -38,7 +44,7 @@ Out of scope for the current beta:
 ## Global Rules
 
 - Canonical shape is `prisma <group> <action>`.
-- `version` is the one top-level command outside that shape (see Scope above).
+- `version` and `init` are the top-level commands outside that shape (see Scope above).
 - Every command supports `--json`.
 - Shared global flags are:
   - `--json`
@@ -377,6 +383,49 @@ prisma-cli --version --json
 ```
 
 `prisma-cli version` is the richer environment report; `prisma-cli --version` is the terse one-liner. Both report the same `cli.version`. Use the flag for quick checks, the subcommand for support tickets and bug reports.
+
+## `prisma-cli init --framework <nextjs|nuxt|astro|hono|nestjs|tanstack-start|bun|custom> --entry <path> --http-port <port> --region <region> --name <app-name> --link --no-link --project <id-or-name> --install --no-install`
+
+Purpose:
+
+- write a committed `prisma.compute.ts` for the app in this directory
+
+Behavior:
+
+- init is the config formalizer: `app deploy` works with zero config, and init writes down what deploy would infer so the setup is committed, reviewable, and stable for teammates and CI
+- writing the config requires no auth and no network; linking is the only remote step
+- fails with `INIT_CONFIG_EXISTS` when a compute config already exists in the invocation directory or any ancestor up to the repository or workspace root; the error names the existing file, and init never overwrites or merges — editing a committed config is the user's editor's job
+- detects the framework from the same registry and signals `app deploy` uses; explicit `--framework` wins over detection
+- `--entry` sets the source entrypoint for entrypoint frameworks (Bun, Hono); `--http-port` overrides the framework default port; `--name` overrides the app name inferred from `package.json#name` or the directory name
+- previews the resolved values with per-value source annotations (`detected`, `framework default`, `package.json`, `flag`) before writing; in interactive mode the preview is followed by an optional adjust step for framework and HTTP port, and `--yes` accepts the preview as shown
+- the generated config pins the app's identity: `name`, `framework`, and `httpPort` always; `entry` when the framework consumes a source entrypoint; `region` only when `--region` is passed, because pinning a region the user did not choose would silently place new apps
+- the generated config does not include a `build` block: build settings stay inferred (and shown with their sources by deploy) until the user adds one, which keeps package-manager and build-script inference live
+- init never scaffolds application code, never creates schema or database resources, and never deploys
+- with `--framework custom`, the config includes a commented `build` stub, since custom artifacts require `build.outputDirectory` and `build.entrypoint` before deploy can use them
+- when detection fails and no `--framework` is passed: interactive mode prompts for the framework from the supported list; non-interactive and `--json` mode fail with `INIT_DETECTION_FAILED`, with `nextActions` enumerating the `--framework` choices
+- types step, after the config is written: the generated config's typed import (`@prisma/compute-sdk/config`) is resolved by the CLI at deploy time without a local install, so a local `@prisma/compute-sdk` devDependency exists purely for editor types
+  - when the package is already a dependency or devDependency, the step is a no-op
+  - interactive mode asks `Install @prisma/compute-sdk for config types?` (default yes) and runs the detected package manager's add command (`pnpm add -D`, `bun add -d`, `yarn add -D`, `npm install -D`)
+  - `--install` runs the install without prompting; `--no-install` skips the step; non-interactive and `--json` mode skip by default
+  - a skipped, declined, or failed install downgrades to a hint or warning with the exact add command in `nextSteps`; the config write stands and init exits 0
+  - a directory without a `package.json` skips the step with the hint
+- link step, after the config is written:
+  - interactive mode asks `Link this directory to a Prisma Project now? (Y/n)` when the directory has no project binding; accepting enters the same picker `project link` uses
+  - `--no-link` suppresses the question; `--link` requires the step; `--project <id-or-name>` links to that project without prompting
+  - link failures and cancellations after the config is written downgrade to warnings and `nextSteps`; the config write stands and init exits 0
+- `nextSteps` includes the deploy command, plus the project link command when the directory is still unlinked
+- user-facing command hints in init output (next steps, link hints, error recovery commands) use the package runner detected from the project, such as `pnpm dlx @prisma/cli@latest project link` or `npx -y @prisma/cli@latest app deploy`, matching the `agent` group's convention
+- in `--json`, `result` includes `configPath`, the written `app` values, per-value `settings` sources, and `link` state; `--json` never prompts
+
+Examples:
+
+```bash
+prisma-cli init
+prisma-cli init --framework hono --entry src/index.ts
+prisma-cli init --name api --http-port 8080 --no-link
+prisma-cli init --project proj_123
+prisma-cli init --json
+```
 
 ## `<runner> @prisma/cli@latest agent install --agent <agent> --all-agents --skill <skill> --global --copy`
 
@@ -1333,6 +1382,7 @@ Behavior:
 - after setup, deploy prints `Deploying to <Project> / <Branch> / <App>`; later deploys print a compact target header such as `Deploying ./j1 to j1 / main / j1`
 - deploy progress uses short stage copy (`Building locally...`, `Built <size>`, `Uploading...`, `Uploaded`, `Deploying...`, `Deployed`) and never prints `Status: running` or `Deployment is running at ...`
 - success human output prints `Live in <duration>`, the URL on its own line, and `Logs   prisma-cli app logs`
+- when the deploy resolved its settings without a compute config, success human output adds a `Config` hint line with the runner-formatted init command (such as `pnpm dlx @prisma/cli@latest init`), pointing at the command that pins the inferred settings; the hint is omitted once a config file is discovered
 - with `--no-promote`, success human output instead prints `Built <deployment-id> in <duration> (not promoted)`, the candidate URL on its own line, a note that the live deployment is unchanged, and a `Promote   prisma-cli app promote <deployment-id>` next step
 - accepts repeated `--env NAME=VALUE` flags and dotenv file paths such as `--env .env`
 - supports `--db` to create a new empty Prisma Postgres database and write `DATABASE_URL` and `DIRECT_URL` through the existing `project env` storage; the CLI never runs schema or migration commands — applying the schema stays with the user's own tooling
@@ -1726,6 +1776,62 @@ Examples:
 ```bash
 prisma-cli app logs
 prisma-cli app logs --deployment dep_123
+```
+
+## `prisma-cli build list [app] --app <name> --project <id-or-name> --branch <name> --limit <n>`
+
+Status: blocked on Management API rollout. The `GET /v1/apps/{appId}/builds`
+endpoint exists in the control plane but is not yet deployed or published in
+`@prisma/management-api-sdk`. This section is normative for the implementation
+that lands once the SDK exposes the endpoint.
+
+Purpose:
+
+- list the git build jobs for an app, so build ids are discoverable without the Console
+
+Behavior:
+
+- requires auth and project context
+- resolves the selected app exactly like the other app management commands: `[app]` target argument, `--app`, compute config target, locally selected app, inferred name; never creates apps or branches
+- resolves the branch it reads like management commands: explicit `--branch`, active Git branch when it exists in the project, then the project's default branch
+- lists builds newest first: build id, state (`pending`, `running`, `succeeded`, `failed`, `cancelled`), source (`webhook`, `setup`, `manual`), Git branch, short commit sha, created and finished timestamps, and the produced deployment id when the build reached that stage
+- build ids are the ids `build logs <build-id>` accepts
+- `--limit <n>` caps the number of returned builds; JSON output includes `pagination.nextCursor` and `pagination.hasMore` so agents can page
+- read-only; never prints secret values
+- `nextSteps` includes `prisma-cli build logs <build-id>` for the newest build
+- fails with the standard app selection errors (`APP_AMBIGUOUS`, app not found) when the target cannot be resolved safely
+
+Examples:
+
+```bash
+prisma-cli build list
+prisma-cli build list --app my-app --limit 50
+prisma-cli build list --json
+```
+
+## `prisma-cli build show <build-id>`
+
+Status: blocked on Management API rollout, same as `build list`; the backing
+endpoint is `GET /v1/builds/{buildId}`.
+
+Purpose:
+
+- show one build in detail
+
+Behavior:
+
+- requires auth
+- takes a build id, as shown by `build list`, the Console build view, and git-push output
+- authorization matches `build logs`: access stays with the workspace that owned the build when it ran, and an unknown or foreign build id fails with an indistinguishable `BUILD_NOT_FOUND`
+- shows state, source, Git branch, commit sha, created/started/finished timestamps, the error message when the build failed, and the produced deployment id and deployed URL when present
+- read-only; never prints secret values
+- `nextSteps` includes `prisma-cli build logs <build-id>`
+
+Examples:
+
+```bash
+prisma-cli build show cmcz3v6ft0a1b2c3d
+prisma-cli build show cmcz3v6ft0a1b2c3d --json
 ```
 
 ## `prisma-cli build logs <build-id> --follow --cursor <cursor>`

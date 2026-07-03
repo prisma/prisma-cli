@@ -1,3 +1,4 @@
+import { resolvePrismaCliPackageCommandSync } from "../lib/agent/cli-command";
 import { renderDeployOutputRows } from "../lib/app/deploy-output";
 import { formatDomainFailureFix } from "../lib/app/domain-guidance";
 import { renderList, renderShow, serializeList } from "../output/patterns";
@@ -96,11 +97,32 @@ export function renderAppDeploy(
             },
           ]),
       { label: "Logs", value: logsCommand },
+      ...(deployUsedComputeConfig(result)
+        ? []
+        : [
+            {
+              label: "Config",
+              value: resolvePrismaCliPackageCommandSync(context.runtime.cwd, [
+                "init",
+              ]),
+            },
+          ]),
     ]),
     ...renderDeployResolvedContextBlock(context, result),
     ...renderDeploySettingsBlock(context, result),
   ];
   return lines;
+}
+
+function deployUsedComputeConfig(result: AppDeployResult): boolean {
+  return (
+    result.deploySettings.config.path !== null ||
+    [
+      result.deploySettings.framework.source,
+      result.deploySettings.buildCommand.source,
+      result.deploySettings.outputDirectory.source,
+    ].some((source) => source?.includes("prisma.compute"))
+  );
 }
 
 export function isAppDeployAllResult(
