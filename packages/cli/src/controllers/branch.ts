@@ -1,8 +1,13 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Branch pagination requests must run sequentially.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
+import {
+  type PrismaCliPackageCommandFormatter,
+  resolvePrismaCliPackageCommandFormatterSync,
+} from "../lib/agent/cli-command";
 import { requireComputeAuth } from "../lib/auth/guard";
 import {
   projectResolutionErrorToCliError,
+  type ResolvedProjectTarget,
   resolveProjectTarget,
 } from "../lib/project/resolution";
 import {
@@ -14,13 +19,17 @@ import type { CommandSuccess } from "../shell/output";
 import type { CommandContext } from "../shell/runtime";
 import type {
   BranchListResult,
+  BranchRemoveResult,
   BranchRole,
   BranchSummary,
 } from "../types/branch";
 import { createBranchUseCases } from "../use-cases/branch";
 import { createCliUseCaseGateways } from "../use-cases/create-cli-gateways";
 import { requireAuthenticatedAuthState } from "./auth";
-import { listRealWorkspaceProjects } from "./project";
+import {
+  listFixtureWorkspaceProjects,
+  listRealWorkspaceProjects,
+} from "./project";
 
 function isRealMode(context: CommandContext): boolean {
   return (
@@ -102,6 +111,217 @@ async function listRealBranches(
     },
     branches: sortBranches(branches.map(toBranchSummary)),
   };
+}
+
+export interface BranchRemoveFlags {
+  projectRef?: string;
+  confirm?: string;
+}
+
+export async function runBranchRemove(
+  context: CommandContext,
+  branchRef: string,
+  flags: BranchRemoveFlags,
+): Promise<CommandSuccess<BranchRemoveResult>> {
+  const formatCommand = resolvePrismaCliPackageCommandFormatterSync(
+    context.runtime.cwd,
+  );
+  const authState = await requireAuthenticatedAuthState(context);
+  const workspace = authState.workspace;
+  if (!workspace) {
+    throw workspaceRequiredError();
+  }
+
+  const realMode = isRealMode(context);
+  const client = realMode
+    ? await requireComputeAuth(context.runtime.env, context.runtime.signal)
+    : null;
+  if (realMode && !client) {
+    throw authRequiredError(["prisma-cli auth login"]);
+  }
+
+  const targetResult = await resolveProjectTarget({
+    context,
+    workspace,
+    explicitProject: flags.projectRef,
+    listProjects: () =>
+      client
+        ? listRealWorkspaceProjects(client, workspace, context.runtime.signal)
+        : Promise.resolve(listFixtureWorkspaceProjects(context, workspace)),
+    commandName: "branch remove",
+  });
+  if (targetResult.isErr()) {
+    throw projectResolutionErrorToCliError(targetResult.error);
+  }
+  const target = targetResult.value;
+
+  const branches = client
+    ? await listBranches(client, target.project.id, context.runtime.signal)
+    : context.api.listBranchesForProject(target.project.id).map((branch) => ({
+        id: branch.id,
+        gitName: branch.name,
+        role: branch.role,
+      }));
+  const branch = resolveBranchForRemoval(branchRef, branches, target);
+
+  if (branch.role === "production") {
+    throw branchProtectedError(branch.gitName);
+  }
+
+  requireBranchRemoveConfirmation({
+    id: branch.id,
+    confirm: flags.confirm,
+    formatCommand,
+  });
+
+  if (client) {
+    await deleteBranch(client, branch, context.runtime.signal, formatCommand);
+  } else {
+    removeFixtureBranch(context, branch, formatCommand);
+  }
+
+  return {
+    command: "branch.remove",
+    result: {
+      projectId: target.project.id,
+      projectName: target.project.name,
+      verboseContext: {
+        workspace,
+        project: target.project,
+        resolution: target.resolution,
+      },
+      branch: toBranchSummary(branch),
+    },
+    warnings: [],
+    nextSteps: [],
+  };
+}
+
+function resolveBranchForRemoval(
+  branchRef: string,
+  branches: RawBranchRecord[],
+  target: ResolvedProjectTarget,
+): RawBranchRecord {
+  const ref = branchRef.trim();
+  const match = branches.find(
+    (branch) => branch.id === ref || branch.gitName === ref,
+  );
+  if (!match) {
+    throw new CliError({
+      code: "BRANCH_NOT_FOUND",
+      domain: "branch",
+      summary: "Branch not found",
+      why: `No branch matched "${branchRef}" in project "${target.project.name}".`,
+      fix: "Pass a branch id or git name from prisma-cli branch list.",
+      exitCode: 1,
+      nextSteps: ["prisma-cli branch list"],
+    });
+  }
+  return match;
+}
+
+function requireBranchRemoveConfirmation(options: {
+  id: string;
+  confirm: string | undefined;
+  formatCommand: PrismaCliPackageCommandFormatter;
+}): void {
+  if (options.confirm === options.id) {
+    return;
+  }
+
+  throw new CliError({
+    code: "CONFIRMATION_REQUIRED",
+    domain: "branch",
+    summary: "Confirm branch removal",
+    why: "Removing a branch is destructive and requires the exact branch id.",
+    fix: `Rerun with --confirm ${options.id}.`,
+    exitCode: 2,
+    nextSteps: [
+      options.formatCommand([
+        "branch",
+        "remove",
+        options.id,
+        "--confirm",
+        options.id,
+      ]),
+    ],
+    meta: {
+      expectedConfirm: options.id,
+      receivedConfirm: options.confirm ?? null,
+    },
+  });
+}
+
+function branchProtectedError(branchName: string): CliError {
+  return new CliError({
+    code: "BRANCH_PROTECTED",
+    domain: "branch",
+    summary: "Branch is protected",
+    why: `"${branchName}" is the project's production or default branch; protected branches cannot be removed.`,
+    fix: "Only preview branches can be removed.",
+    exitCode: 1,
+    nextSteps: ["prisma-cli branch list"],
+  });
+}
+
+function branchNotEmptyError(
+  branchName: string,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): CliError {
+  return new CliError({
+    code: "BRANCH_NOT_EMPTY",
+    domain: "branch",
+    summary: "Branch still has live resources",
+    why: `"${branchName}" still has live apps or databases; branch removal never deletes member resources.`,
+    fix: "Remove the branch's apps and databases first, then retry.",
+    exitCode: 1,
+    nextSteps: [
+      formatCommand([
+        "app",
+        "remove",
+        "--app",
+        "<name>",
+        "--branch",
+        branchName,
+      ]),
+      formatCommand(["database", "list", "--branch", branchName]),
+    ],
+  });
+}
+
+async function deleteBranch(
+  client: ManagementApiClient,
+  branch: RawBranchRecord,
+  signal: AbortSignal,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): Promise<void> {
+  const { error, response } = await client.DELETE("/v1/branches/{branchId}", {
+    params: { path: { branchId: branch.id } },
+    signal,
+  });
+  if (response?.status === 422) {
+    throw branchProtectedError(branch.gitName);
+  }
+  if (response?.status === 409) {
+    throw branchNotEmptyError(branch.gitName, formatCommand);
+  }
+  if (error) {
+    throw branchApiError("Failed to remove branch", response, error);
+  }
+}
+
+function removeFixtureBranch(
+  context: CommandContext,
+  branch: RawBranchRecord,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): void {
+  const removed = context.api.removeBranch(branch.id);
+  if (removed.outcome === "protected") {
+    throw branchProtectedError(branch.gitName);
+  }
+  if (removed.outcome === "not-empty") {
+    throw branchNotEmptyError(branch.gitName, formatCommand);
+  }
 }
 
 function sortBranches(branches: BranchSummary[]): BranchSummary[] {

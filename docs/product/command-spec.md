@@ -865,6 +865,31 @@ prisma-cli branch list
 prisma-cli branch list --json
 ```
 
+## `prisma-cli branch remove <branch> --project <id-or-name> --confirm <branch-id>`
+
+Purpose:
+
+- remove a preview Branch from the resolved project
+
+Behavior:
+
+- requires auth and resolved project context; accepts `--project <id-or-name>` as an explicit fallback
+- resolves `<branch>` by exact Branch id or exact git name within the resolved project
+- requires `--confirm <branch-id>` where the value exactly matches the resolved Branch id; `--yes` does not satisfy this confirmation
+- production Branches and the project's default Branch are protected: removal fails with `BRANCH_PROTECTED`
+- a Branch that still has live Apps or databases fails with `BRANCH_NOT_EMPTY`; branch removal never deletes member resources, so remove the Branch's apps and databases first
+- removal is a platform soft-delete: the Branch disappears from `branch list`, and the platform owns retention of soft-deleted Branches
+- Branch creation stays implicit (git-push automation and `app deploy`); there is deliberately no `branch create`
+- never touches local Git branches
+- fails with `BRANCH_NOT_FOUND` when no Branch matches
+
+Examples:
+
+```bash
+prisma-cli branch remove feat-login --confirm br_123
+prisma-cli branch remove br_123 --confirm br_123 --json
+```
+
 ## `prisma-cli database list --project <id-or-name> --branch <git-name>`
 
 Purpose:

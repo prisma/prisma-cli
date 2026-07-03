@@ -21,3 +21,14 @@ export interface BranchListResult {
   };
   branches: BranchSummary[];
 }
+
+export interface BranchRemoveResult {
+  projectId: string;
+  projectName: string;
+  verboseContext?: {
+    workspace: AuthWorkspace;
+    project: ProjectSummary;
+    resolution: ProjectResolution;
+  };
+  branch: BranchSummary;
+}

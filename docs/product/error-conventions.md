@@ -181,6 +181,9 @@ These codes are the minimum stable set for the MVP:
 - `LOCAL_STATE_WRITE_FAILED`
 - `LOCAL_STATE_STALE`
 - `BRANCH_NOT_DEPLOYABLE`
+- `BRANCH_NOT_FOUND`
+- `BRANCH_PROTECTED`
+- `BRANCH_NOT_EMPTY`
 - `COMPUTE_CONFIG_INVALID`
 - `COMPUTE_CONFIG_TARGET_REQUIRED`
 - `COMPUTE_CONFIG_TARGET_UNKNOWN`
@@ -252,6 +255,9 @@ Recommended meanings:
 - `LOCAL_STATE_WRITE_FAILED`: the CLI could not save local Project binding state such as `.prisma/local.json` or the matching `.gitignore` entry; callers should fix directory permissions or filesystem state before retrying
 - `LOCAL_STATE_STALE`: local Project pin no longer matches platform data and continuing would be ambiguous
 - `BRANCH_NOT_DEPLOYABLE`: command tried to deploy to a non-deployable branch context
+- `BRANCH_NOT_FOUND`: requested branch id or git name does not exist in the resolved project
+- `BRANCH_PROTECTED`: branch removal refused because the branch is the project's production or default branch
+- `BRANCH_NOT_EMPTY`: branch removal refused because the branch still has live apps or databases
 - `COMPUTE_CONFIG_INVALID`: `prisma.compute.ts` failed to load or validate
 - `COMPUTE_CONFIG_TARGET_REQUIRED`: a multi-app compute config needs an `[app]` target and none was given or inferred
 - `COMPUTE_CONFIG_TARGET_UNKNOWN`: the `[app]` target matches no configured app

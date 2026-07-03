@@ -1,8 +1,9 @@
+import { renderMutate } from "../output/patterns";
 import type { CommandDescriptor } from "../shell/command-meta";
 import { formatDescriptorLabel } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
 import { formatColumns } from "../shell/ui";
-import type { BranchListResult } from "../types/branch";
+import type { BranchListResult, BranchRemoveResult } from "../types/branch";
 import { renderResolvedProjectContextBlock } from "./verbose-context";
 
 export function renderBranchList(
@@ -66,4 +67,37 @@ function renderBranchResolvedContextBlock(
   result: BranchListResult,
 ): string[] {
   return renderResolvedProjectContextBlock(context.ui, result.verboseContext);
+}
+
+export function renderBranchRemove(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: BranchRemoveResult,
+): string[] {
+  const lines = renderMutate(
+    {
+      title: "Removing branch.",
+      descriptor,
+      context: [
+        { key: "project", value: result.projectName },
+        { key: "branch", value: result.branch.name },
+        { key: "id", value: result.branch.id, tone: "dim" },
+      ],
+      operationDescription: "Removing branch",
+      operationCount: 1,
+      details: [
+        "The branch was removed from the platform. Local Git branches are untouched.",
+      ],
+    },
+    context.ui,
+  );
+  lines.push(
+    ...renderResolvedProjectContextBlock(context.ui, result.verboseContext),
+  );
+  return lines;
+}
+
+export function serializeBranchRemove(result: BranchRemoveResult) {
+  const { verboseContext: _verboseContext, ...serialized } = result;
+  return serialized;
 }

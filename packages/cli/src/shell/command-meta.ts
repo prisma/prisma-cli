@@ -174,8 +174,11 @@ const DESCRIPTORS: CommandDescriptor[] = [
   {
     id: "branch",
     path: ["prisma", "branch"],
-    description: "View your Platform branches",
-    examples: ["prisma-cli branch list"],
+    description: "View and manage your Platform branches",
+    examples: [
+      "prisma-cli branch list",
+      "prisma-cli branch remove feat-login --confirm br_123",
+    ],
   },
   {
     id: "build",
@@ -291,6 +294,12 @@ const DESCRIPTORS: CommandDescriptor[] = [
     path: ["prisma", "branch", "list"],
     description: "List Platform branches for the resolved project",
     examples: ["prisma-cli branch list", "prisma-cli branch list --json"],
+  },
+  {
+    id: "branch.remove",
+    path: ["prisma", "branch", "remove"],
+    description: "Remove a preview branch after exact id confirmation",
+    examples: ["prisma-cli branch remove feat-login --confirm br_123"],
   },
   {
     id: "database.list",

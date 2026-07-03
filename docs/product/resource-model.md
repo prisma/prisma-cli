@@ -63,6 +63,11 @@ Rules:
 - every other named branch is a preview branch by default
 - preview branches are disposable by default
 - non-production branches can become durable later
+- Branch creation is implicit (git-push automation and `app deploy`); the CLI
+  has no `branch create`
+- `branch remove` removes a preview Branch with exact id confirmation; the
+  platform refuses production/default Branches and Branches that still have
+  live Apps or databases, so removal never cascades into member resources
 - `local` is local CLI context only, not a branch
 - branch context comes from explicit targeting, Git, or safe command defaults,
   not `prisma.config.ts`

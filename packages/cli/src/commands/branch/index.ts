@@ -1,7 +1,12 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 
-import { runBranchList } from "../../controllers/branch";
-import { renderBranchList, serializeBranchList } from "../../presenters/branch";
+import { runBranchList, runBranchRemove } from "../../controllers/branch";
+import {
+  renderBranchList,
+  renderBranchRemove,
+  serializeBranchList,
+  serializeBranchRemove,
+} from "../../presenters/branch";
 import { attachCommandDescriptor } from "../../shell/command-meta";
 import { runCommand } from "../../shell/command-runner";
 import {
@@ -9,7 +14,7 @@ import {
   addGlobalFlags,
 } from "../../shell/global-flags";
 import { type CliRuntime, configureRuntimeCommand } from "../../shell/runtime";
-import type { BranchListResult } from "../../types/branch";
+import type { BranchListResult, BranchRemoveResult } from "../../types/branch";
 
 export function createBranchCommand(runtime: CliRuntime): Command {
   const branch = attachCommandDescriptor(
@@ -20,8 +25,43 @@ export function createBranchCommand(runtime: CliRuntime): Command {
   addCompactGlobalFlags(branch);
 
   branch.addCommand(createBranchListCommand(runtime));
+  branch.addCommand(createBranchRemoveCommand(runtime));
 
   return branch;
+}
+
+function createBranchRemoveCommand(runtime: CliRuntime): Command {
+  const command = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("remove"), runtime),
+    "branch.remove",
+  );
+
+  command
+    .argument("<branch>", "Branch id or git name")
+    .addOption(new Option("--project <id-or-name>", "Project id or name"))
+    .addOption(
+      new Option("--confirm <branch-id>", "Exact branch id required to remove"),
+    );
+  addGlobalFlags(command);
+
+  command.action(async (branchRef: string, options) => {
+    const projectRef = (options as { project?: string }).project;
+    const confirm = (options as { confirm?: string }).confirm;
+
+    await runCommand<BranchRemoveResult>(
+      runtime,
+      "branch.remove",
+      options as Record<string, unknown>,
+      (context) => runBranchRemove(context, branchRef, { projectRef, confirm }),
+      {
+        renderHuman: (context, descriptor, result) =>
+          renderBranchRemove(context, descriptor, result),
+        renderJson: (result) => serializeBranchRemove(result),
+      },
+    );
+  });
+
+  return command;
 }
 
 function createBranchListCommand(runtime: CliRuntime): Command {

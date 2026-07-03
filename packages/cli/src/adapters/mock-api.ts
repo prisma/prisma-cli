@@ -279,6 +279,43 @@ export class MockApi {
     );
   }
 
+  removeBranch(
+    branchId: string,
+  ):
+    | { outcome: "removed"; branch: BranchRecord }
+    | { outcome: "not-found" }
+    | { outcome: "protected" }
+    | { outcome: "not-empty" } {
+    const branch = this.data.branches.find(
+      (candidate) => candidate.id === branchId,
+    );
+    if (!branch) {
+      return { outcome: "not-found" };
+    }
+    if (branch.role === "production") {
+      return { outcome: "protected" };
+    }
+
+    // Mirrors the platform rule: removal is refused while the branch still
+    // has live member resources.
+    const hasDatabases = (this.data.databases ?? []).some(
+      (database) => database.branchId === branchId,
+    );
+    const hasDeployments = this.data.deployments.some(
+      (deployment) =>
+        deployment.projectId === branch.projectId &&
+        deployment.branch === branch.name,
+    );
+    if (hasDatabases || hasDeployments) {
+      return { outcome: "not-empty" };
+    }
+
+    this.data.branches = this.data.branches.filter(
+      (candidate) => candidate.id !== branchId,
+    );
+    return { outcome: "removed", branch };
+  }
+
   getDeployment(deploymentId: string): DeploymentRecord | undefined {
     return this.data.deployments.find(
       (deployment) => deployment.id === deploymentId,

@@ -142,7 +142,7 @@ describe("shell behavior", () => {
 
     expect(branchResult.exitCode).toBe(0);
     expect(branchResult.stderr).toContain(
-      "branch → View your Platform branches",
+      "branch → View and manage your Platform branches",
     );
     expect(branchResult.stderr).toContain("Global options:");
 

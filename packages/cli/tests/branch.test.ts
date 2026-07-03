@@ -134,7 +134,7 @@ describe("branch commands", () => {
     });
   });
 
-  it("shows only branch list in branch help", async () => {
+  it("shows branch list and remove in branch help", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
 
@@ -152,10 +152,14 @@ describe("branch commands", () => {
     });
 
     expect(branchHelp.exitCode).toBe(0);
-    expect(branchHelp.stderr).toContain("View your Platform branches");
+    expect(branchHelp.stderr).toContain(
+      "View and manage your Platform branches",
+    );
     expect(branchHelp.stderr).toContain("$ prisma-cli branch list");
+    expect(branchHelp.stderr).toContain("remove <branch>");
     expect(branchHelp.stderr).not.toContain("branch show");
     expect(branchHelp.stderr).not.toContain("branch use");
+    expect(branchHelp.stderr).not.toContain("branch create");
 
     expect(listHelp.exitCode).toBe(0);
     expect(listHelp.stderr).toContain(
