@@ -1,6 +1,5 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-
 import {
   COMPUTE_CONFIG_FILENAME,
   COMPUTE_REGIONS,
@@ -15,11 +14,16 @@ import {
   frameworkFromAlias,
   serializeComputeConfig,
 } from "@prisma/compute-sdk/config";
+import { execa } from "execa";
 
 import {
   type PrismaCliPackageCommandFormatter,
   resolvePrismaCliPackageCommandFormatterSync,
 } from "../lib/agent/cli-command";
+import {
+  type AgentPackageManager,
+  detectPackageManagerSync,
+} from "../lib/agent/package-manager";
 import {
   readBunPackageEntrypoint,
   readBunPackageJson,
@@ -34,7 +38,12 @@ import {
   textPrompt,
 } from "../shell/prompt";
 import { type CommandContext, canPrompt } from "../shell/runtime";
-import type { InitLinkState, InitResult, InitSettingRow } from "../types/init";
+import type {
+  InitLinkState,
+  InitResult,
+  InitSettingRow,
+  InitTypesState,
+} from "../types/init";
 import { detectDeployFramework } from "./app";
 import { runProjectLink } from "./project";
 
@@ -46,6 +55,7 @@ export interface InitFlags {
   name?: string;
   link?: boolean;
   project?: string;
+  install?: boolean;
 }
 
 interface ResolvedInitFramework {
@@ -129,12 +139,17 @@ export async function runInit(
   }
 
   const warnings: string[] = [];
+  const types = await resolveInitTypes(context, flags, {
+    onWarning: (message) => warnings.push(message),
+  });
   const link = await resolveInitLink(context, flags, {
     onWarning: (message) => warnings.push(message),
     formatCommand,
   });
 
   const unlinked = link.status !== "linked" && link.status !== "already-linked";
+  const typesMissing =
+    types.status !== "installed" && types.status !== "already-installed";
   return {
     command: "init",
     result: {
@@ -148,14 +163,159 @@ export async function runInit(
         ...(region ? { region } : {}),
       },
       settings,
+      types,
       link,
     },
     warnings,
     nextSteps: [
+      ...(typesMissing && types.installCommand ? [types.installCommand] : []),
       formatCommand(["app", "deploy"]),
       ...(unlinked ? [formatCommand(["project", "link"])] : []),
     ],
   };
+}
+
+/** Dev dependency that provides editor types for the generated config. */
+const COMPUTE_SDK_PACKAGE = "@prisma/compute-sdk";
+
+function packageAddCommand(packageManager: AgentPackageManager): string[] {
+  switch (packageManager) {
+    case "pnpm":
+      return ["pnpm", "add", "-D", COMPUTE_SDK_PACKAGE];
+    case "bun":
+      return ["bun", "add", "-d", COMPUTE_SDK_PACKAGE];
+    case "yarn":
+      return ["yarn", "add", "-D", COMPUTE_SDK_PACKAGE];
+    case "npm":
+      return ["npm", "install", "-D", COMPUTE_SDK_PACKAGE];
+  }
+}
+
+/**
+ * Offers to install `@prisma/compute-sdk` as a devDependency so the generated
+ * config's typed import resolves in the editor. Deploy resolves the import
+ * without a local install, so every outcome short of success is a hint, never
+ * a failure.
+ */
+async function resolveInitTypes(
+  context: CommandContext,
+  flags: InitFlags,
+  hooks: { onWarning: (message: string) => void },
+): Promise<InitTypesState> {
+  const cwd = context.runtime.cwd;
+  const packageJson = await readBunPackageJson(cwd, context.runtime.signal);
+  if (hasComputeSdkDependency(packageJson)) {
+    return {
+      status: "already-installed",
+      package: COMPUTE_SDK_PACKAGE,
+      installCommand: null,
+    };
+  }
+
+  const packageManager = detectPackageManagerSync(cwd) ?? "npm";
+  const installCommand = packageAddCommand(packageManager);
+  const installCommandText = installCommand.join(" ");
+  const state = (status: InitTypesState["status"]): InitTypesState => ({
+    status,
+    package: COMPUTE_SDK_PACKAGE,
+    installCommand: installCommandText,
+  });
+
+  // A directory without a package.json has nowhere to record the dependency.
+  if (!packageJson) {
+    return state("skipped");
+  }
+
+  if (flags.install === false) {
+    return state("skipped");
+  }
+
+  let shouldInstall = flags.install === true;
+  if (!shouldInstall) {
+    if (!canPrompt(context) || context.flags.yes) {
+      return state("skipped");
+    }
+    try {
+      shouldInstall = await confirmPrompt({
+        input: context.runtime.stdin,
+        output: context.output.stderr,
+        signal: context.runtime.signal,
+        message: `Install ${COMPUTE_SDK_PACKAGE} for config types? (${installCommandText})`,
+        initialValue: true,
+      });
+    } catch (error) {
+      if (isPromptCancelError(error)) {
+        return state("declined");
+      }
+      throw error;
+    }
+    if (!shouldInstall) {
+      return state("declined");
+    }
+  }
+
+  const command = resolveInitInstallCommandOverride(context) ?? installCommand;
+  if (!context.flags.quiet && !context.flags.json) {
+    context.output.stderr.write(`Installing ${COMPUTE_SDK_PACKAGE}...\n`);
+  }
+  try {
+    const [executable, ...args] = command;
+    await execa(executable as string, args, {
+      cwd,
+      env: context.runtime.env,
+      cancelSignal: context.runtime.signal,
+      stdin: "ignore",
+    });
+    return state("installed");
+  } catch (error) {
+    if (context.runtime.signal.aborted) {
+      throw error;
+    }
+    // execa's first message line is the short "Command failed" summary; the
+    // full package-manager output stays out of the warning.
+    const detail =
+      error instanceof Error ? error.message.split("\n")[0] : String(error);
+    hooks.onWarning(
+      `Installing ${COMPUTE_SDK_PACKAGE} failed: ${detail}. Install it later with ${installCommandText}.`,
+    );
+    return state("failed");
+  }
+}
+
+function hasComputeSdkDependency(
+  packageJson: Awaited<ReturnType<typeof readBunPackageJson>>,
+): boolean {
+  for (const group of [
+    packageJson?.dependencies,
+    packageJson?.devDependencies,
+  ]) {
+    if (
+      group &&
+      typeof group === "object" &&
+      COMPUTE_SDK_PACKAGE in (group as Record<string, unknown>)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Test hook: JSON array command that replaces the real package-manager install. */
+function resolveInitInstallCommandOverride(
+  context: CommandContext,
+): string[] | null {
+  const raw = context.runtime.env.PRISMA_CLI_INIT_INSTALL_COMMAND;
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.every((p) => typeof p === "string")
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 const CUSTOM_BUILD_STUB = `

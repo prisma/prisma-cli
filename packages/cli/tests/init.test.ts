@@ -63,9 +63,15 @@ describe("init", () => {
           framework: "hono",
           entry: "src/index.ts",
         },
+        types: {
+          status: "skipped",
+          package: "@prisma/compute-sdk",
+          installCommand: "npm install -D @prisma/compute-sdk",
+        },
         link: { status: "skipped", project: null },
       },
       nextSteps: [
+        "npm install -D @prisma/compute-sdk",
         "npx -y @prisma/cli@latest app deploy",
         "npx -y @prisma/cli@latest project link",
       ],
@@ -202,7 +208,10 @@ describe("init", () => {
       status: "linked",
       project: { id: "proj_123", name: "Acme Dashboard" },
     });
-    expect(payload.nextSteps).toEqual(["npx -y @prisma/cli@latest app deploy"]);
+    expect(payload.nextSteps).toEqual([
+      "npm install -D @prisma/compute-sdk",
+      "npx -y @prisma/cli@latest app deploy",
+    ]);
     await expect(
       readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
     ).resolves.toContain("proj_123");
@@ -251,7 +260,10 @@ describe("init", () => {
 
     expect(result.exitCode).toBe(0);
     expect(payload.result.link.status).toBe("already-linked");
-    expect(payload.nextSteps).toEqual(["npx -y @prisma/cli@latest app deploy"]);
+    expect(payload.nextSteps).toEqual([
+      "npm install -D @prisma/compute-sdk",
+      "npx -y @prisma/cli@latest app deploy",
+    ]);
   });
 
   it("prints the human summary with the wrote line", async () => {
@@ -290,5 +302,112 @@ describe("init", () => {
     const config = await readConfig(cwd);
     expect(config).toContain('framework: "custom"');
     expect(config).toContain("// build: {");
+  });
+});
+
+describe("init types install", () => {
+  it("reports already-installed when the sdk is a devDependency", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writePackageJson(cwd, {
+      name: "api",
+      devDependencies: { "@prisma/compute-sdk": "^0.1.0" },
+    });
+
+    const result = await executeCli({
+      argv: ["init", "--framework", "hono", "--no-link", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.result.types).toEqual({
+      status: "already-installed",
+      package: "@prisma/compute-sdk",
+      installCommand: null,
+    });
+    expect(payload.nextSteps).not.toContain(
+      "npm install -D @prisma/compute-sdk",
+    );
+  });
+
+  it("skips with --no-install and keeps the hint in nextSteps", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writePackageJson(cwd, { name: "api" });
+
+    const result = await executeCli({
+      argv: [
+        "init",
+        "--framework",
+        "hono",
+        "--no-install",
+        "--no-link",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.result.types.status).toBe("skipped");
+    expect(payload.nextSteps).toContain("npm install -D @prisma/compute-sdk");
+  });
+
+  it("installs with --install and reports success", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writePackageJson(cwd, { name: "api" });
+
+    const result = await executeCli({
+      argv: ["init", "--framework", "hono", "--install", "--no-link", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+      env: {
+        PRISMA_CLI_INIT_INSTALL_COMMAND: JSON.stringify([
+          "node",
+          "-e",
+          "process.exit(0)",
+        ]),
+      },
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.result.types.status).toBe("installed");
+    expect(payload.warnings).toEqual([]);
+  });
+
+  it("downgrades a failed install to a warning", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writePackageJson(cwd, { name: "api" });
+
+    const result = await executeCli({
+      argv: ["init", "--framework", "hono", "--install", "--no-link", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+      env: {
+        PRISMA_CLI_INIT_INSTALL_COMMAND: JSON.stringify([
+          "node",
+          "-e",
+          "process.exit(1)",
+        ]),
+      },
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.result.types.status).toBe("failed");
+    expect(payload.warnings[0]).toContain(
+      "Installing @prisma/compute-sdk failed",
+    );
+    expect(payload.warnings[0]).toContain("npm install -D @prisma/compute-sdk");
   });
 });

@@ -39,7 +39,11 @@ export function createInitCommand(runtime: CliRuntime): Command {
     .addOption(new Option("--no-link", "Skip the Project link step"))
     .addOption(
       new Option("--project <id-or-name>", "Project to link this directory to"),
-    );
+    )
+    .addOption(
+      new Option("--install", "Install @prisma/compute-sdk for config types"),
+    )
+    .addOption(new Option("--no-install", "Skip the types install step"));
   addGlobalFlags(command);
 
   command.action(async (options) => {
@@ -51,6 +55,7 @@ export function createInitCommand(runtime: CliRuntime): Command {
       name?: string;
       link?: boolean;
       project?: string;
+      install?: boolean;
     };
 
     await runCommand<InitResult>(
@@ -66,6 +71,7 @@ export function createInitCommand(runtime: CliRuntime): Command {
           name: flags.name,
           link: flags.link,
           project: flags.project,
+          install: flags.install,
         }),
       {
         renderHuman: (context, descriptor, result) =>

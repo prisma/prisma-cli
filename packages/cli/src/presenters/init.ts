@@ -17,6 +17,31 @@ export function renderInit(
     renderSummaryLine(ui, "success", `Wrote ${result.configPath}`),
   ];
 
+  if (result.types.status === "installed") {
+    lines.push(
+      renderSummaryLine(
+        ui,
+        "success",
+        `Installed ${result.types.package} (config types)`,
+      ),
+    );
+  } else if (result.types.status === "failed" && result.types.installCommand) {
+    lines.push(
+      renderSummaryLine(
+        ui,
+        "warning",
+        `Could not install ${result.types.package}; install later with ${result.types.installCommand}`,
+      ),
+    );
+  } else if (
+    result.types.status !== "already-installed" &&
+    result.types.installCommand
+  ) {
+    lines.push(
+      `  ${ui.dim(`For editor types: ${result.types.installCommand}`)}`,
+    );
+  }
+
   switch (result.link.status) {
     case "linked":
       lines.push(
@@ -36,7 +61,14 @@ export function renderInit(
       );
       break;
     case "failed":
-      // The failure detail is in warnings; nothing extra here.
+      // Human mode does not render success.warnings, so surface it here.
+      lines.push(
+        renderSummaryLine(
+          ui,
+          "warning",
+          `Project link failed; link later with ${formatCommand(["project", "link"])}`,
+        ),
+      );
       break;
   }
 

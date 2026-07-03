@@ -384,7 +384,7 @@ prisma-cli --version --json
 
 `prisma-cli version` is the richer environment report; `prisma-cli --version` is the terse one-liner. Both report the same `cli.version`. Use the flag for quick checks, the subcommand for support tickets and bug reports.
 
-## `prisma-cli init --framework <nextjs|nuxt|astro|hono|nestjs|tanstack-start|bun|custom> --entry <path> --http-port <port> --region <region> --name <app-name> --link --no-link --project <id-or-name>`
+## `prisma-cli init --framework <nextjs|nuxt|astro|hono|nestjs|tanstack-start|bun|custom> --entry <path> --http-port <port> --region <region> --name <app-name> --link --no-link --project <id-or-name> --install --no-install`
 
 Purpose:
 
@@ -403,6 +403,12 @@ Behavior:
 - init never scaffolds application code, never creates schema or database resources, and never deploys
 - with `--framework custom`, the config includes a commented `build` stub, since custom artifacts require `build.outputDirectory` and `build.entrypoint` before deploy can use them
 - when detection fails and no `--framework` is passed: interactive mode prompts for the framework from the supported list; non-interactive and `--json` mode fail with `INIT_DETECTION_FAILED`, with `nextActions` enumerating the `--framework` choices
+- types step, after the config is written: the generated config's typed import (`@prisma/compute-sdk/config`) is resolved by the CLI at deploy time without a local install, so a local `@prisma/compute-sdk` devDependency exists purely for editor types
+  - when the package is already a dependency or devDependency, the step is a no-op
+  - interactive mode asks `Install @prisma/compute-sdk for config types?` (default yes) and runs the detected package manager's add command (`pnpm add -D`, `bun add -d`, `yarn add -D`, `npm install -D`)
+  - `--install` runs the install without prompting; `--no-install` skips the step; non-interactive and `--json` mode skip by default
+  - a skipped, declined, or failed install downgrades to a hint or warning with the exact add command in `nextSteps`; the config write stands and init exits 0
+  - a directory without a `package.json` skips the step with the hint
 - link step, after the config is written:
   - interactive mode asks `Link this directory to a Prisma Project now? (Y/n)` when the directory has no project binding; accepting enters the same picker `project link` uses
   - `--no-link` suppresses the question; `--link` requires the step; `--project <id-or-name>` links to that project without prompting

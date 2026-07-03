@@ -19,6 +19,20 @@ export interface InitLinkState {
   } | null;
 }
 
+export type InitTypesStatus =
+  | "installed"
+  | "already-installed"
+  | "skipped"
+  | "declined"
+  | "failed";
+
+export interface InitTypesState {
+  status: InitTypesStatus;
+  package: string;
+  /** Human-runnable install command for hints when not installed. */
+  installCommand: string | null;
+}
+
 export interface InitResult {
   configPath: string;
   directory: string;
@@ -30,5 +44,6 @@ export interface InitResult {
     region?: string;
   };
   settings: InitSettingRow[];
+  types: InitTypesState;
   link: InitLinkState;
 }
