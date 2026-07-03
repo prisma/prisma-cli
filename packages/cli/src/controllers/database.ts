@@ -370,8 +370,8 @@ export async function runDatabaseUsage(
   const formatCommand = resolvePrismaCliPackageCommandFormatterSync(
     context.runtime.cwd,
   );
-  const from = parseUsageDate(flags.from, "--from", formatCommand);
-  const to = parseUsageDate(flags.to, "--to", formatCommand);
+  const from = parseUsageDate(flags.from, "--from", "start", formatCommand);
+  const to = parseUsageDate(flags.to, "--to", "end", formatCommand);
   if (from && to && Date.parse(from) > Date.parse(to)) {
     throw usageError(
       "Invalid usage period",
@@ -617,6 +617,7 @@ const USAGE_DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}T/;
 function parseUsageDate(
   value: string | undefined,
   flagName: string,
+  dayBoundary: "start" | "end",
   formatCommand: PrismaCliPackageCommandFormatter,
 ): string | undefined {
   if (value === undefined) {
@@ -624,12 +625,17 @@ function parseUsageDate(
   }
 
   // The Management API validates startDate/endDate as full ISO datetimes, so
-  // date-only input is expanded to midnight UTC. Date.parse alone is too
-  // permissive: it rolls over invalid calendar dates such as 2026-02-30, so
-  // the date part must round-trip through toISOString unchanged.
+  // date-only input is expanded to a full UTC day boundary: --from to the
+  // start of its day, --to to the end, keeping `--from X --to Y` a
+  // calendar-day-inclusive range without relying on server-side end-of-day
+  // handling. Date.parse alone is too permissive: it rolls over invalid
+  // calendar dates such as 2026-02-30, so the date part must round-trip
+  // through toISOString unchanged.
   const trimmed = value.trim();
   if (USAGE_DATE_ONLY_PATTERN.test(trimmed) && isValidCalendarDate(trimmed)) {
-    return `${trimmed}T00:00:00.000Z`;
+    return dayBoundary === "start"
+      ? `${trimmed}T00:00:00.000Z`
+      : `${trimmed}T23:59:59.999Z`;
   }
   if (
     USAGE_DATETIME_PATTERN.test(trimmed) &&

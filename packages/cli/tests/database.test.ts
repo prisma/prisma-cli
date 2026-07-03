@@ -569,7 +569,32 @@ describe("database commands", () => {
     expect(dateOnly.exitCode).toBe(0);
     expect(dateOnlyPayload.result.period).toMatchObject({
       start: "2026-06-01T00:00:00.000Z",
-      end: "2026-06-30T00:00:00.000Z",
+      // A calendar-date --to expands to the END of its UTC day so the range
+      // is calendar-day inclusive.
+      end: "2026-06-30T23:59:59.999Z",
+    });
+
+    const sameDay = await executeCli({
+      argv: [
+        "database",
+        "usage",
+        "db_123",
+        "--from",
+        "2026-06-15",
+        "--to",
+        "2026-06-15",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const sameDayPayload = JSON.parse(sameDay.stdout);
+
+    expect(sameDay.exitCode).toBe(0);
+    expect(sameDayPayload.result.period).toMatchObject({
+      start: "2026-06-15T00:00:00.000Z",
+      end: "2026-06-15T23:59:59.999Z",
     });
 
     const dateTime = await executeCli({

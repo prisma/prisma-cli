@@ -873,7 +873,7 @@ Behavior:
 - resolves `<database>` by exact database id or exact database name inside the resolved project
 - `--branch <git-name>` narrows name resolution when the same database name exists on multiple Branches
 - `--from <iso-date>` and `--to <iso-date>` bound the reporting period; when omitted, the platform defaults the period to the current month so far
-- `--from` and `--to` accept a calendar date (`2026-06-01`) or an ISO datetime (`2026-06-01T12:00:00Z`); calendar dates are expanded to midnight UTC before calling the API, and the platform treats the end bound as inclusive of its day
+- `--from` and `--to` accept a calendar date (`2026-06-01`) or an ISO datetime (`2026-06-01T12:00:00Z`); a calendar-date `--from` expands to the start of its UTC day and a calendar-date `--to` expands to the end of its UTC day, so `--from 2026-06-01 --to 2026-06-30` is a calendar-day-inclusive June range without relying on server-side end-of-day handling
 - the CLI rejects malformed or impossible calendar dates (for example `2026-02-30`) and a `--from` later than `--to` before calling the API
 - reports operations used (`ops`) and storage used (`GiB`) for the period, plus the resolved period bounds and the generation timestamp
 - read-only; never prints or returns connection strings, passwords, or endpoint secrets
