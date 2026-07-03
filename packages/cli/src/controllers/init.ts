@@ -83,13 +83,15 @@ export async function runInit(
     value: defaultHttpPortForBuildType(frameworkByKey(framework.key).buildType),
     source: "framework default",
   };
-  const entry = await resolveInitEntry(cwd, framework.key, flags.entry, signal);
-
   const adjusted = await maybeAdjustSettings(context, framework, httpPort, {
     portExplicit: flags.httpPort !== undefined,
   });
   framework = adjusted.framework;
   httpPort = adjusted.httpPort;
+
+  // Entry resolves against the FINAL framework so an interactive framework
+  // switch cannot leave a stale (or missing) entry in the written config.
+  const entry = await resolveInitEntry(cwd, framework, flags.entry, signal);
 
   const settings: InitSettingRow[] = [
     { key: "app", value: name.value, source: name.source },
@@ -203,7 +205,25 @@ async function resolveInitTypes(
   hooks: { onWarning: (message: string) => void },
 ): Promise<InitTypesState> {
   const cwd = context.runtime.cwd;
-  const packageJson = await readBunPackageJson(cwd, context.runtime.signal);
+  // This step runs after prisma.compute.ts is written; an unreadable
+  // package.json (malformed JSON, permissions) must not turn the already
+  // successful write into a command failure, so it degrades to a skip.
+  let packageJson: Awaited<ReturnType<typeof readBunPackageJson>>;
+  try {
+    packageJson = await readBunPackageJson(cwd, context.runtime.signal);
+  } catch (error) {
+    if (context.runtime.signal.aborted) {
+      throw error;
+    }
+    hooks.onWarning(
+      `Skipped the ${COMPUTE_SDK_PACKAGE} types install: package.json could not be read (${error instanceof Error ? error.message.split("\n")[0] : String(error)}).`,
+    );
+    return {
+      status: "skipped",
+      package: COMPUTE_SDK_PACKAGE,
+      installCommand: null,
+    };
+  }
   if (hasComputeSdkDependency(packageJson)) {
     return {
       status: "already-installed",
@@ -496,16 +516,25 @@ function parseInitRegion(
 
 async function resolveInitEntry(
   cwd: string,
-  frameworkKey: ComputeFramework,
+  resolvedFramework: ResolvedInitFramework,
   explicitEntry: string | undefined,
   signal: AbortSignal,
 ): Promise<{ value: string; source: string } | undefined> {
-  const framework = frameworkByKey(frameworkKey);
+  const framework = frameworkByKey(resolvedFramework.key);
+  const trimmed = explicitEntry?.trim();
   if (!framework.usesEntrypoint) {
+    if (trimmed) {
+      throw usageError(
+        "--entry is not supported for this framework",
+        `${resolvedFramework.displayName} derives its entrypoint from build output; --entry applies only to frameworks that run a source entrypoint (Bun, Hono).`,
+        "Drop --entry, or pass an entrypoint framework with --framework.",
+        [],
+        "app",
+      );
+    }
     return undefined;
   }
 
-  const trimmed = explicitEntry?.trim();
   if (trimmed) {
     return { value: trimmed, source: "flag" };
   }

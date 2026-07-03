@@ -187,6 +187,8 @@ These codes are the minimum stable set for the MVP:
 - `BUILD_SETTINGS_MIGRATION_REQUIRED`
 - `BUILD_SETTINGS_UNSUPPORTED`
 - `FRAMEWORK_NOT_DETECTED`
+- `INIT_CONFIG_EXISTS`
+- `INIT_DETECTION_FAILED`
 - `DEPLOYMENT_NOT_FOUND`
 - `NO_DEPLOYMENTS`
 - `NO_PREVIOUS_DEPLOYMENT`
@@ -258,6 +260,8 @@ Recommended meanings:
 - `BUILD_SETTINGS_MIGRATION_REQUIRED`: a legacy `prisma.app.json` contains custom build settings that must move into the `build` block of `prisma.compute.ts`
 - `BUILD_SETTINGS_UNSUPPORTED`: a compute config `build` block targets a framework whose SDK strategy does not consume committed build settings
 - `FRAMEWORK_NOT_DETECTED`: app deploy could not detect a supported Beta framework and no explicit framework/build type was provided
+- `INIT_CONFIG_EXISTS`: a compute config already exists in this directory or an ancestor; init never overwrites or merges
+- `INIT_DETECTION_FAILED`: no supported framework detected and no --framework passed; `meta.frameworks` lists the valid values
 - `DEPLOYMENT_NOT_FOUND`: requested deployment id does not exist
 - `NO_DEPLOYMENTS`: command resolved a branch or app but found no deployments
 - `NO_PREVIOUS_DEPLOYMENT`: rollback could not find an earlier deployment for the selected app

@@ -411,3 +411,65 @@ describe("init types install", () => {
     expect(payload.warnings[0]).toContain("npm install -D @prisma/compute-sdk");
   });
 });
+
+describe("init edge cases", () => {
+  it("rejects --entry for frameworks that derive their entrypoint", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writePackageJson(cwd, { name: "web" });
+
+    const result = await executeCli({
+      argv: [
+        "init",
+        "--framework",
+        "nextjs",
+        "--entry",
+        "src/index.ts",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(2);
+    expect(payload).toMatchObject({
+      ok: false,
+      command: "init",
+      error: { code: "USAGE_ERROR" },
+    });
+    await expect(readConfig(cwd)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("keeps the written config when package.json is unreadable in the types step", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writeFile(path.join(cwd, "package.json"), "{ not json", "utf8");
+
+    const result = await executeCli({
+      argv: [
+        "init",
+        "--framework",
+        "hono",
+        "--entry",
+        "src/index.ts",
+        "--name",
+        "api",
+        "--no-link",
+        "--install",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.ok).toBe(true);
+    expect(payload.result.types.status).toBe("skipped");
+    expect(payload.warnings[0]).toContain("package.json could not be read");
+    await expect(readConfig(cwd)).resolves.toContain('framework: "hono"');
+  });
+});

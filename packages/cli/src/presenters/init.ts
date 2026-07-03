@@ -17,6 +17,8 @@ export function renderInit(
     renderSummaryLine(ui, "success", `Wrote ${result.configPath}`),
   ];
 
+  // Failed steps surface through the runner's success-warning rendering, so
+  // this block only covers the success and quiet-hint cases.
   if (result.types.status === "installed") {
     lines.push(
       renderSummaryLine(
@@ -25,16 +27,8 @@ export function renderInit(
         `Installed ${result.types.package} (config types)`,
       ),
     );
-  } else if (result.types.status === "failed" && result.types.installCommand) {
-    lines.push(
-      renderSummaryLine(
-        ui,
-        "warning",
-        `Could not install ${result.types.package}; install later with ${result.types.installCommand}`,
-      ),
-    );
   } else if (
-    result.types.status !== "already-installed" &&
+    (result.types.status === "skipped" || result.types.status === "declined") &&
     result.types.installCommand
   ) {
     lines.push(
@@ -61,14 +55,7 @@ export function renderInit(
       );
       break;
     case "failed":
-      // Human mode does not render success.warnings, so surface it here.
-      lines.push(
-        renderSummaryLine(
-          ui,
-          "warning",
-          `Project link failed; link later with ${formatCommand(["project", "link"])}`,
-        ),
-      );
+      // The failure detail renders via the runner's success-warning lines.
       break;
   }
 
