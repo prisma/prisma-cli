@@ -299,7 +299,10 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "branch.remove",
     path: ["prisma", "branch", "remove"],
     description: "Remove a preview branch after exact id confirmation",
-    examples: ["prisma-cli branch remove feat-login --confirm br_123"],
+    examples: [
+      "prisma-cli branch remove feat-login --confirm br_123",
+      "prisma-cli branch remove feat-login --confirm br_123 --cascade",
+    ],
   },
   {
     id: "database.list",

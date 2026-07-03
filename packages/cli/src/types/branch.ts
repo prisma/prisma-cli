@@ -22,6 +22,11 @@ export interface BranchListResult {
   branches: BranchSummary[];
 }
 
+export interface BranchRemovedResource {
+  id: string;
+  name: string;
+}
+
 export interface BranchRemoveResult {
   projectId: string;
   projectName: string;
@@ -31,4 +36,9 @@ export interface BranchRemoveResult {
     resolution: ProjectResolution;
   };
   branch: BranchSummary;
+  /** Member resources removed by --cascade; absent for plain removal. */
+  removed?: {
+    apps: BranchRemovedResource[];
+    databases: BranchRemovedResource[];
+  };
 }

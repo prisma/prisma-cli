@@ -87,6 +87,16 @@ export function renderBranchRemove(
       operationCount: 1,
       details: [
         "The branch was removed from the platform. Local Git branches are untouched.",
+        ...(result.removed
+          ? [
+              result.removed.apps.length > 0
+                ? `Removed apps: ${result.removed.apps.map((app) => app.name).join(", ")}`
+                : "No apps were on the branch.",
+              result.removed.databases.length > 0
+                ? `Removed databases: ${result.removed.databases.map((database) => database.name).join(", ")}`
+                : "No databases were on the branch.",
+            ]
+          : []),
       ],
     },
     context.ui,

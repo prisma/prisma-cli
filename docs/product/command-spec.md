@@ -865,7 +865,7 @@ prisma-cli branch list
 prisma-cli branch list --json
 ```
 
-## `prisma-cli branch remove <branch> --project <id-or-name> --confirm <branch-id>`
+## `prisma-cli branch remove <branch> --project <id-or-name> --confirm <branch-id> --cascade`
 
 Purpose:
 
@@ -876,9 +876,11 @@ Behavior:
 - requires auth and resolved project context; accepts `--project <id-or-name>` as an explicit fallback
 - resolves `<branch>` by exact Branch id or exact git name within the resolved project
 - requires `--confirm <branch-id>` where the value exactly matches the resolved Branch id; `--yes` does not satisfy this confirmation
-- production Branches and the project's default Branch are protected: removal fails with `BRANCH_PROTECTED`
-- a Branch that still has live Apps or databases fails with `BRANCH_NOT_EMPTY`; branch removal never deletes member resources, so remove the Branch's apps and databases first
-- removal is a platform soft-delete: the Branch disappears from `branch list`, and the platform owns retention of soft-deleted Branches
+- production Branches and the project's default Branch are protected: removal fails with `BRANCH_PROTECTED`, and `--cascade` never widens that; the protection check runs before any member resource is touched
+- without `--cascade`, a Branch that still has live Apps or databases fails with `BRANCH_NOT_EMPTY`; plain removal never deletes member resources, and the recovery steps offer both the cascade rerun and individual `app remove --branch` / `database` cleanup
+- with `--cascade`, the CLI removes the Branch's Apps, then its databases, then the Branch itself; the result lists every removed resource so the blast radius is explicit, in human output and in `result.removed` for `--json`
+- cascade is client-orchestrated because the platform's branch delete refuses non-empty Branches; a mid-cascade failure stops immediately and fails with `BRANCH_CASCADE_INCOMPLETE`, whose `meta` lists what was already removed (removed resources are not restored, and the Branch itself remains)
+- removal is a platform soft-delete: the Branch disappears from `branch list`, and the platform owns retention of soft-deleted Branches; cascaded member resources are removed through their own APIs
 - Branch creation stays implicit (git-push automation and `app deploy`); there is deliberately no `branch create`
 - never touches local Git branches
 - fails with `BRANCH_NOT_FOUND` when no Branch matches
@@ -887,6 +889,7 @@ Examples:
 
 ```bash
 prisma-cli branch remove feat-login --confirm br_123
+prisma-cli branch remove feat-login --confirm br_123 --cascade
 prisma-cli branch remove br_123 --confirm br_123 --json
 ```
 
@@ -1854,16 +1857,18 @@ prisma-cli app rollback
 prisma-cli app rollback --app hello-world --to dep_123
 ```
 
-## `prisma-cli app remove [app] --app <name> -y --yes`
+## `prisma-cli app remove [app] --app <name> --branch <name> -y --yes`
 
 Purpose:
 
-- remove the app from the current branch
+- remove the app from the resolved branch
 
 Behavior:
 
 - requires auth and project context
-- resolves the selected app
+- resolves the branch it reads like the other management commands: explicit `--branch` honored as-is, then the active Git branch when it exists in the project, then the project's default branch
+- `--branch <name>` makes branch cleanup possible for branches that are not checked out locally, such as a teammate's preview branch
+- resolves the selected app within that branch
 - requires confirmation unless `-y` or `--yes` is passed
 - clears local selected app state when the removed app was selected
 

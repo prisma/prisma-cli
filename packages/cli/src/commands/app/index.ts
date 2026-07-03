@@ -835,18 +835,21 @@ function createRemoveCommand(runtime: CliRuntime): Command {
       "App target from prisma.compute.ts when the config defines multiple apps",
     )
     .addOption(new Option("--app <name>", "App name"))
-    .addOption(new Option("--project <id-or-name>", "Project id or name"));
+    .addOption(new Option("--project <id-or-name>", "Project id or name"))
+    .addOption(new Option("--branch <name>", "Branch name"));
   addGlobalFlags(command);
 
   command.action(async (configTarget: string | undefined, options) => {
     const appName = (options as { app?: string }).app;
     const projectRef = (options as { project?: string }).project;
+    const branchName = (options as { branch?: string }).branch;
 
     await runCommand<AppRemoveResult>(
       runtime,
       "app.remove",
       options as Record<string, unknown>,
-      (context) => runAppRemove(context, appName, projectRef, configTarget),
+      (context) =>
+        runAppRemove(context, appName, projectRef, configTarget, branchName),
       {
         renderHuman: (context, descriptor, result) =>
           renderAppRemove(context, descriptor, result),

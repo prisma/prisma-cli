@@ -152,3 +152,98 @@ describe("branch remove", () => {
     expect(payload.result.branch.id).toBe("br_345");
   });
 });
+
+describe("branch remove --cascade", () => {
+  async function setup() {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await executeCli({
+      argv: ["auth", "login", "--provider", "github", "--user", "usr_456"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    await mkdir(path.join(cwd, ".prisma"), { recursive: true });
+    await writeFile(
+      path.join(cwd, ".prisma/local.json"),
+      `${JSON.stringify({ workspaceId: "ws_123", projectId: "proj_123" }, null, 2)}\n`,
+      "utf8",
+    );
+    return { cwd, stateDir };
+  }
+
+  it("offers the cascade rerun in the BRANCH_NOT_EMPTY recovery steps", async () => {
+    const { cwd, stateDir } = await setup();
+
+    const result = await executeCli({
+      argv: ["branch", "remove", "br_123", "--confirm", "br_123", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(1);
+    expect(payload.error.code).toBe("BRANCH_NOT_EMPTY");
+    expect(payload.nextSteps[0]).toContain("--cascade");
+    expect(payload.nextSteps.join(" ")).toContain(
+      "app remove --app <name> --branch preview",
+    );
+  });
+
+  it("removes the branch and its resources with --cascade and lists them", async () => {
+    const { cwd, stateDir } = await setup();
+
+    const result = await executeCli({
+      argv: [
+        "branch",
+        "remove",
+        "preview",
+        "--confirm",
+        "br_123",
+        "--cascade",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload).toMatchObject({
+      ok: true,
+      command: "branch.remove",
+      result: {
+        branch: { id: "br_123", name: "preview" },
+        removed: {
+          databases: [{ id: "db_123", name: "acme-preview" }],
+        },
+      },
+    });
+    expect(payload.result.removed.apps.length).toBeGreaterThan(0);
+  });
+
+  it("still refuses production branches with --cascade", async () => {
+    const { cwd, stateDir } = await setup();
+
+    const result = await executeCli({
+      argv: [
+        "branch",
+        "remove",
+        "production",
+        "--confirm",
+        "br_456",
+        "--cascade",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(1);
+    expect(payload.error.code).toBe("BRANCH_PROTECTED");
+  });
+});

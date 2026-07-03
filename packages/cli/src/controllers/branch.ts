@@ -4,7 +4,9 @@ import {
   type PrismaCliPackageCommandFormatter,
   resolvePrismaCliPackageCommandFormatterSync,
 } from "../lib/agent/cli-command";
+import { createAppProvider } from "../lib/app/app-provider";
 import { requireComputeAuth } from "../lib/auth/guard";
+import { createManagementDatabaseProvider } from "../lib/database/provider";
 import {
   projectResolutionErrorToCliError,
   type ResolvedProjectTarget,
@@ -42,6 +44,7 @@ interface RawBranchRecord {
   id: string;
   gitName: string;
   role: BranchRole;
+  isDefault?: boolean;
 }
 
 export async function runBranchList(
@@ -116,6 +119,7 @@ async function listRealBranches(
 export interface BranchRemoveFlags {
   projectRef?: string;
   confirm?: string;
+  cascade?: boolean;
 }
 
 export async function runBranchRemove(
@@ -164,7 +168,9 @@ export async function runBranchRemove(
       }));
   const branch = resolveBranchForRemoval(branchRef, branches, target);
 
-  if (branch.role === "production") {
+  // Production and default branches are protected outright; --cascade never
+  // widens that. The check runs before any member resource is touched.
+  if (branch.role === "production" || branch.isDefault) {
     throw branchProtectedError(branch.gitName);
   }
 
@@ -173,6 +179,19 @@ export async function runBranchRemove(
     confirm: flags.confirm,
     formatCommand,
   });
+
+  let removed: BranchRemoveResult["removed"];
+  if (flags.cascade) {
+    removed = client
+      ? await cascadeRealBranchResources(
+          context,
+          client,
+          target.project.id,
+          branch,
+          formatCommand,
+        )
+      : cascadeFixtureBranchResources(context, branch);
+  }
 
   if (client) {
     await deleteBranch(client, branch, context.runtime.signal, formatCommand);
@@ -191,10 +210,113 @@ export async function runBranchRemove(
         resolution: target.resolution,
       },
       branch: toBranchSummary(branch),
+      ...(removed ? { removed } : {}),
     },
     warnings: [],
     nextSteps: [],
   };
+}
+
+/**
+ * Client-orchestrated cascade: the platform's branch delete refuses non-empty
+ * branches, so the CLI removes the branch's apps, then its databases, before
+ * the branch itself. A failure stops immediately and reports exactly what was
+ * already removed, so the partial state is never silent.
+ */
+async function cascadeRealBranchResources(
+  context: CommandContext,
+  client: ManagementApiClient,
+  projectId: string,
+  branch: RawBranchRecord,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): Promise<NonNullable<BranchRemoveResult["removed"]>> {
+  const signal = context.runtime.signal;
+  const appProvider = createAppProvider(client);
+  const databaseProvider = createManagementDatabaseProvider(client, {
+    formatCommand,
+  });
+
+  const apps = await appProvider.listApps(projectId, {
+    branchName: branch.gitName,
+    signal,
+  });
+  const databases = await databaseProvider.listDatabases({
+    projectId,
+    branchName: branch.gitName,
+    signal,
+  });
+
+  const removed: NonNullable<BranchRemoveResult["removed"]> = {
+    apps: [],
+    databases: [],
+  };
+
+  for (const app of apps) {
+    try {
+      await appProvider.removeApp(app.id, { signal });
+    } catch (error) {
+      throw branchCascadeIncompleteError(branch.gitName, removed, {
+        kind: "app",
+        id: app.id,
+        name: app.name,
+        error,
+      });
+    }
+    removed.apps.push({ id: app.id, name: app.name });
+  }
+
+  for (const database of databases) {
+    try {
+      await databaseProvider.removeDatabase(database.id, { signal });
+    } catch (error) {
+      throw branchCascadeIncompleteError(branch.gitName, removed, {
+        kind: "database",
+        id: database.id,
+        name: database.name,
+        error,
+      });
+    }
+    removed.databases.push({ id: database.id, name: database.name });
+  }
+
+  return removed;
+}
+
+function cascadeFixtureBranchResources(
+  context: CommandContext,
+  branch: RawBranchRecord,
+): NonNullable<BranchRemoveResult["removed"]> {
+  const cascaded = context.api.cascadeBranchResources(branch.id);
+  return {
+    apps: cascaded.apps,
+    databases: cascaded.databases,
+  };
+}
+
+function branchCascadeIncompleteError(
+  branchName: string,
+  removed: NonNullable<BranchRemoveResult["removed"]>,
+  failed: {
+    kind: "app" | "database";
+    id: string;
+    name: string;
+    error: unknown;
+  },
+): CliError {
+  return new CliError({
+    code: "BRANCH_CASCADE_INCOMPLETE",
+    domain: "branch",
+    summary: "Branch cascade stopped before completing",
+    why: `Removing ${failed.kind} "${failed.name}" (${failed.id}) on branch "${branchName}" failed: ${failed.error instanceof Error ? failed.error.message.split("\n")[0] : String(failed.error)}. The branch was not removed.`,
+    fix: "Resolve the failure and rerun the cascade; already-removed resources are listed in meta and are not restored.",
+    exitCode: 1,
+    nextSteps: [],
+    meta: {
+      removedApps: removed.apps,
+      removedDatabases: removed.databases,
+      failed: { kind: failed.kind, id: failed.id, name: failed.name },
+    },
+  });
 }
 
 function resolveBranchForRemoval(
@@ -265,26 +387,34 @@ function branchProtectedError(branchName: string): CliError {
 }
 
 function branchNotEmptyError(
-  branchName: string,
+  branch: RawBranchRecord,
   formatCommand: PrismaCliPackageCommandFormatter,
 ): CliError {
   return new CliError({
     code: "BRANCH_NOT_EMPTY",
     domain: "branch",
     summary: "Branch still has live resources",
-    why: `"${branchName}" still has live apps or databases; branch removal never deletes member resources.`,
-    fix: "Remove the branch's apps and databases first, then retry.",
+    why: `"${branch.gitName}" still has live apps or databases; plain branch removal never deletes member resources.`,
+    fix: "Rerun with --cascade to remove the branch's apps and databases with it, or remove them individually first.",
     exitCode: 1,
     nextSteps: [
+      formatCommand([
+        "branch",
+        "remove",
+        branch.gitName,
+        "--confirm",
+        branch.id,
+        "--cascade",
+      ]),
       formatCommand([
         "app",
         "remove",
         "--app",
         "<name>",
         "--branch",
-        branchName,
+        branch.gitName,
       ]),
-      formatCommand(["database", "list", "--branch", branchName]),
+      formatCommand(["database", "list", "--branch", branch.gitName]),
     ],
   });
 }
@@ -303,7 +433,7 @@ async function deleteBranch(
     throw branchProtectedError(branch.gitName);
   }
   if (response?.status === 409) {
-    throw branchNotEmptyError(branch.gitName, formatCommand);
+    throw branchNotEmptyError(branch, formatCommand);
   }
   if (error) {
     throw branchApiError("Failed to remove branch", response, error);
@@ -320,7 +450,7 @@ function removeFixtureBranch(
     throw branchProtectedError(branch.gitName);
   }
   if (removed.outcome === "not-empty") {
-    throw branchNotEmptyError(branch.gitName, formatCommand);
+    throw branchNotEmptyError(branch, formatCommand);
   }
 }
 

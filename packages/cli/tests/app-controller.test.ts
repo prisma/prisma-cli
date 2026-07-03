@@ -6620,6 +6620,78 @@ describe("app controller", () => {
     });
   });
 
+  it("remove honors an explicit --branch for apps on branches not checked out", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_9",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: null,
+      },
+    ]);
+    const removeApp = vi.fn().mockResolvedValue({
+      id: "app_9",
+      name: "hello-world",
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          removeApp,
+          promoteDeployment: vi.fn(),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppRemove } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      flags: {
+        yes: true,
+      },
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppRemove(
+      context,
+      "hello-world",
+      undefined,
+      undefined,
+      "feat-not-checked-out",
+    );
+
+    // The explicit --branch scopes app resolution to that branch, without any
+    // local Git branch of that name existing.
+    expect(listApps).toHaveBeenCalledWith(
+      "proj_123",
+      expect.objectContaining({ branchName: "feat-not-checked-out" }),
+    );
+    expect(removeApp).toHaveBeenCalledWith("app_9", {
+      signal: context.runtime.signal,
+    });
+    expect(result.result.removed).toBe(true);
+  });
+
   it("remove deletes the selected app when --yes is passed", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([

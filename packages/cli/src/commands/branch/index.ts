@@ -41,18 +41,26 @@ function createBranchRemoveCommand(runtime: CliRuntime): Command {
     .addOption(new Option("--project <id-or-name>", "Project id or name"))
     .addOption(
       new Option("--confirm <branch-id>", "Exact branch id required to remove"),
+    )
+    .addOption(
+      new Option(
+        "--cascade",
+        "Also remove the branch's apps and databases (preview branches only)",
+      ),
     );
   addGlobalFlags(command);
 
   command.action(async (branchRef: string, options) => {
     const projectRef = (options as { project?: string }).project;
     const confirm = (options as { confirm?: string }).confirm;
+    const cascade = (options as { cascade?: boolean }).cascade;
 
     await runCommand<BranchRemoveResult>(
       runtime,
       "branch.remove",
       options as Record<string, unknown>,
-      (context) => runBranchRemove(context, branchRef, { projectRef, confirm }),
+      (context) =>
+        runBranchRemove(context, branchRef, { projectRef, confirm, cascade }),
       {
         renderHuman: (context, descriptor, result) =>
           renderBranchRemove(context, descriptor, result),

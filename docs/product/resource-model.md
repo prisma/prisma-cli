@@ -66,8 +66,11 @@ Rules:
 - Branch creation is implicit (git-push automation and `app deploy`); the CLI
   has no `branch create`
 - `branch remove` removes a preview Branch with exact id confirmation; the
-  platform refuses production/default Branches and Branches that still have
-  live Apps or databases, so removal never cascades into member resources
+  platform refuses production/default Branches outright, and plain removal
+  refuses Branches that still have live Apps or databases
+- `branch remove --cascade` removes a preview Branch's Apps and databases with
+  it, with the blast radius listed explicitly; production/default Branches stay
+  refused regardless of flags
 - `local` is local CLI context only, not a branch
 - branch context comes from explicit targeting, Git, or safe command defaults,
   not `prisma.config.ts`

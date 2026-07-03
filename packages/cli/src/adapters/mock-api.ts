@@ -279,6 +279,55 @@ export class MockApi {
     );
   }
 
+  cascadeBranchResources(branchId: string): {
+    apps: Array<{ id: string; name: string }>;
+    databases: Array<{ id: string; name: string }>;
+  } {
+    const branch = this.data.branches.find(
+      (candidate) => candidate.id === branchId,
+    );
+    if (!branch) {
+      return { apps: [], databases: [] };
+    }
+
+    const databases = (this.data.databases ?? []).filter(
+      (database) => database.branchId === branchId,
+    );
+    const databaseIds = new Set(databases.map((database) => database.id));
+    // The fixture has no standalone app records; deployments on the branch
+    // stand in for its apps.
+    const apps = this.data.deployments.filter(
+      (deployment) =>
+        deployment.projectId === branch.projectId &&
+        deployment.branch === branch.name,
+    );
+
+    this.data.databases = (this.data.databases ?? []).filter(
+      (database) => database.branchId !== branchId,
+    );
+    this.data.databaseConnections = (
+      this.data.databaseConnections ?? []
+    ).filter((connection) => !databaseIds.has(connection.databaseId));
+    this.data.deployments = this.data.deployments.filter(
+      (deployment) =>
+        !(
+          deployment.projectId === branch.projectId &&
+          deployment.branch === branch.name
+        ),
+    );
+
+    return {
+      apps: apps.map((deployment) => ({
+        id: deployment.id,
+        name: deployment.id,
+      })),
+      databases: databases.map((database) => ({
+        id: database.id,
+        name: database.name,
+      })),
+    };
+  }
+
   removeBranch(
     branchId: string,
   ):

@@ -2043,6 +2043,7 @@ export async function runAppRemove(
   appName: string | undefined,
   projectRef?: string,
   configTarget?: string,
+  branchName?: string,
 ): Promise<CommandSuccess<AppRemoveResult>> {
   ensurePreviewAppMode(context);
 
@@ -2056,6 +2057,12 @@ export async function runAppRemove(
     await requireProviderAndProjectContext(context, projectRef, {
       commandName: "app remove",
       projectDir: compute.projectDir,
+      // Branch cleanup needs "remove this app from that branch" even when the
+      // branch is not checked out locally, so an explicit --branch is honored
+      // as-is like the other read-branch commands.
+      branch: branchName
+        ? await resolveDeployBranch(context, branchName)
+        : undefined,
     });
   const apps = await listApps(context, provider, projectId, target.branch.name);
   const selectedApp = await requireReleaseAppSelection(
