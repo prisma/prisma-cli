@@ -1299,13 +1299,13 @@ Behavior:
 
   ```text
   ? Which Project should this directory use?
-    ❯ Create a new Project
+    ❯ + Create a new Project
       Acme Dashboard
       Billing API
       Cancel
   ```
 
-- "Create a new Project" is listed first so it stays reachable without paging through a long project list; Cancel is last
+- "Create a new Project" is listed first, highlighted with a `+` glyph that does not rely on color, so it stays reachable without paging through a long project list; Cancel is last
 - when "Create a new Project" is selected, prompts for a Project name with the package/directory name as a suggestion
 - when no Project is resolved in `--json` / `--no-interactive` mode, fails with `PROJECT_SETUP_REQUIRED`
 - `PROJECT_SETUP_REQUIRED` preserves readable recovery commands in `nextSteps` and includes structured `nextActions` for choosing, linking, creating, or retrying with an explicit Project
