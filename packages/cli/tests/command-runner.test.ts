@@ -89,14 +89,14 @@ afterEach(() => {
 
 describe("command runner success output", () => {
   it("renders success warnings in human output", async () => {
-    const { runtime, stderr } = await createRuntime(["project", "remove"]);
+    const { runtime, stderr } = await createRuntime(["project", "show"]);
 
     await runCommand(
       runtime,
-      "project.remove",
+      "project.show",
       {},
       async () => ({
-        command: "project.remove",
+        command: "project.show",
         result: { ok: true },
         warnings: [
           "The local pin .prisma/local.json points at the removed project but could not be deleted.",
