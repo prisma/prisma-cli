@@ -283,7 +283,7 @@ describe("project controller", () => {
       cwd,
       stateDir,
       isTTY: true,
-      stdinText: "\u001B[B\rInteractive Project\r",
+      stdinText: "\rInteractive Project\r",
       env: {
         ...process.env,
         PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",

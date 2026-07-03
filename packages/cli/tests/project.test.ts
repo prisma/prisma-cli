@@ -211,7 +211,7 @@ describe("project commands", () => {
       stateDir,
       fixturePath,
       isTTY: true,
-      stdinText: "\r",
+      stdinText: "\u001B[B\r",
     });
     const stderr = stripAnsi(result.stderr);
 
@@ -264,7 +264,7 @@ describe("project commands", () => {
       stateDir,
       fixturePath: ambiguousFixturePath,
       isTTY: true,
-      stdinText: "\r",
+      stdinText: "\u001B[B\r",
     });
     const stderr = stripAnsi(result.stderr);
 

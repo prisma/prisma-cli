@@ -3136,7 +3136,7 @@ describe("app controller", () => {
       cwd,
       stateDir,
       isTTY: true,
-      stdinText: "\r",
+      stdinText: "\u001B[B\r",
       env: {
         ...process.env,
         PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
@@ -3221,7 +3221,7 @@ describe("app controller", () => {
       cwd,
       stateDir,
       isTTY: true,
-      stdinText: "\r\r",
+      stdinText: "\u001B[B\r\r",
       env: {
         ...process.env,
         PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
@@ -3528,7 +3528,7 @@ describe("app controller", () => {
       cwd,
       stateDir,
       isTTY: true,
-      stdinText: "\u001B[B\rinteractive-project\r",
+      stdinText: "\rinteractive-project\r",
       env: {
         ...process.env,
         PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",

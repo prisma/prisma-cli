@@ -45,14 +45,16 @@ export async function promptForProjectSetupChoice(options: {
     input: options.context.runtime.stdin,
     output: options.context.runtime.stderr,
     message: "Which Project should this directory use?",
+    // "Create a new Project" stays first so it is reachable without paging
+    // through a long project list; Cancel stays last by convention.
     choices: [
+      { label: "Create a new Project", value: { kind: "create" as const } },
       ...sortedProjects.map((project) => ({
         label: duplicateNames.has(project.name)
           ? `${project.name} (${project.id})`
           : project.name,
         value: { kind: "project" as const, project },
       })),
-      { label: "Create a new Project", value: { kind: "create" as const } },
       { label: "Cancel", value: { kind: "cancel" as const } },
     ],
   });
