@@ -42,6 +42,10 @@ Rules:
 - Project setup is explicit: users choose an existing Project or explicitly create a new one before remote work starts
 - `app deploy` may orchestrate Project setup, but it must not silently choose or create Project scope
 - everything under a project happens in a branch
+- `project rename` mutates only the remote Project name; pins bind by id and stay valid
+- `project remove` and `project transfer` take an explicit positional Project target and exact id confirmation with `--confirm <project-id>`; they never default to the directory's bound Project and `--yes` is not sufficient
+- removal is permanent and takes the Project's databases with it; transfer moves ownership to another workspace without changing resource ids
+- when a destructive Project command invalidates this directory's local pin, the CLI cleans the pin up (clear on remove; rewrite or clear on transfer) and reports it
 
 ### Branch
 

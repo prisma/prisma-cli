@@ -133,7 +133,7 @@ describe("project commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "project list → Listing projects for the authenticated workspace.\n\n│  workspace:  Acme Inc\n│\n│  name            id\n│  Acme Dashboard  proj_123\n│  Billing API     proj_456\n\nNext steps:\n- Link an existing Project you choose: prisma-cli project link <id-or-name>\n- Create a new Project: prisma-cli project create <name>\n",
+      "project list → Listing projects for the authenticated workspace.\n\n│  workspace:  Acme Inc\n│\n│  name            id\n│  Acme Dashboard  proj_123\n│  Billing API     proj_456\n│  Sandbox         proj_999\n\nNext steps:\n- Link an existing Project you choose: prisma-cli project link <id-or-name>\n- Create a new Project: prisma-cli project create <name>\n",
     );
   });
 
@@ -287,7 +287,7 @@ describe("project commands", () => {
       stateDir,
       fixturePath,
       isTTY: true,
-      stdinText: "\u001B[B\u001B[B\u001B[B\r",
+      stdinText: "\u001B[B\u001B[B\u001B[B\u001B[B\r",
     });
     const stderr = stripAnsi(result.stderr);
 

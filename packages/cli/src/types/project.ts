@@ -77,6 +77,33 @@ export interface ProjectSetupResult {
   action: "created" | "linked";
 }
 
+export interface ProjectRenameResult {
+  workspace: AuthWorkspace;
+  project: ProjectSummary;
+  previousName: string;
+}
+
+export interface ProjectRemoveResult {
+  workspace: AuthWorkspace;
+  project: ProjectSummary;
+  localPin: {
+    cleared: boolean;
+  };
+}
+
+export interface ProjectTransferResult {
+  workspace: AuthWorkspace;
+  project: ProjectSummary;
+  recipient: {
+    workspaceId: string | null;
+    workspaceName: string | null;
+    source: "workspace-session" | "recipient-token";
+  };
+  localPin: {
+    action: "rewritten" | "cleared" | "none";
+  };
+}
+
 export interface GitRepositoryConnection {
   id: string | null;
   provider: "github";

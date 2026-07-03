@@ -15,9 +15,12 @@ import {
 import type {
   GitRepositoryConnection,
   ProjectListResult,
+  ProjectRemoveResult,
+  ProjectRenameResult,
   ProjectRepositoryConnectionResult,
   ProjectSetupResult,
   ProjectShowResult,
+  ProjectTransferResult,
 } from "../types/project";
 import { renderResolvedProjectContextBlock } from "./verbose-context";
 
@@ -176,6 +179,108 @@ export function renderProjectSetup(
 }
 
 export function serializeProjectSetup(result: ProjectSetupResult) {
+  return result;
+}
+
+export function renderProjectRename(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: ProjectRenameResult,
+): string[] {
+  return renderMutate(
+    {
+      title: "Renaming project.",
+      descriptor,
+      context: [
+        { key: "workspace", value: result.workspace.name },
+        { key: "project", value: result.previousName },
+        { key: "id", value: result.project.id, tone: "dim" },
+      ],
+      operationDescription: "Renaming project",
+      operationCount: 1,
+      details: [
+        `The project is now named "${result.project.name}". Directory bindings pin the project id, so they stay valid.`,
+      ],
+    },
+    context.ui,
+  );
+}
+
+export function serializeProjectRename(result: ProjectRenameResult) {
+  return result;
+}
+
+export function renderProjectRemove(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: ProjectRemoveResult,
+): string[] {
+  return renderMutate(
+    {
+      title: "Removing project.",
+      descriptor,
+      context: [
+        { key: "workspace", value: result.workspace.name },
+        { key: "project", value: result.project.name },
+        { key: "id", value: result.project.id, tone: "dim" },
+      ],
+      operationDescription: "Removing project",
+      operationCount: 1,
+      details: [
+        "The project, its databases, and its apps were removed.",
+        ...(result.localPin.cleared
+          ? ["This directory's local project binding was cleared."]
+          : []),
+      ],
+    },
+    context.ui,
+  );
+}
+
+export function serializeProjectRemove(result: ProjectRemoveResult) {
+  return result;
+}
+
+export function renderProjectTransfer(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: ProjectTransferResult,
+): string[] {
+  return renderMutate(
+    {
+      title: "Transferring project.",
+      descriptor,
+      context: [
+        { key: "workspace", value: result.workspace.name },
+        { key: "project", value: result.project.name },
+        { key: "id", value: result.project.id, tone: "dim" },
+        {
+          key: "recipient",
+          value:
+            result.recipient.workspaceName ??
+            result.recipient.workspaceId ??
+            "workspace of the provided recipient token",
+        },
+      ],
+      operationDescription: "Transferring project",
+      operationCount: 1,
+      details: [
+        "The project now belongs to the recipient workspace; this workspace no longer has access.",
+        ...(result.localPin.action === "rewritten"
+          ? [
+              "This directory's local project binding now points at the recipient workspace.",
+            ]
+          : []),
+        ...(result.localPin.action === "cleared"
+          ? ["This directory's local project binding was cleared."]
+          : []),
+      ],
+    },
+    context.ui,
+  );
+}
+
+export function serializeProjectTransfer(result: ProjectTransferResult) {
   return result;
 }
 

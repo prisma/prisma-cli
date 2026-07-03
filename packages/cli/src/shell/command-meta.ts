@@ -243,6 +243,31 @@ const DESCRIPTORS: CommandDescriptor[] = [
     ],
   },
   {
+    id: "project.rename",
+    path: ["prisma", "project", "rename"],
+    description: "Rename the resolved Project",
+    examples: [
+      'prisma-cli project rename "Acme Dashboard v2"',
+      "prisma-cli project rename billing-api --project proj_123",
+    ],
+  },
+  {
+    id: "project.remove",
+    path: ["prisma", "project", "remove"],
+    description: "Remove a Project permanently after exact id confirmation",
+    examples: ["prisma-cli project remove proj_123 --confirm proj_123"],
+  },
+  {
+    id: "project.transfer",
+    path: ["prisma", "project", "transfer"],
+    description:
+      "Transfer a Project to another workspace after exact id confirmation",
+    examples: [
+      'prisma-cli project transfer proj_123 --to-workspace "Prisma Labs" --confirm proj_123',
+      "prisma-cli project transfer proj_123 --recipient-token <token> --confirm proj_123",
+    ],
+  },
+  {
     id: "git.connect",
     path: ["prisma", "git", "connect"],
     description: "Connect the resolved project to a GitHub repository",

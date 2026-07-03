@@ -48,6 +48,13 @@ export interface FileTokenStorageOptions {
   lockRetryMs?: number;
   lockStaleMs?: number;
   lockWaitTimeoutMs?: number;
+  /**
+   * Pin this storage view to one workspace's credentials. getTokens then
+   * ignores the active-workspace pointer, so an SDK built on a pinned view
+   * authenticates (and refreshes) as that workspace without touching the
+   * user's selected workspace.
+   */
+  pinnedWorkspaceId?: string;
 }
 
 const REFRESH_LOCK_RETRY_MS = 100;
@@ -178,6 +185,14 @@ export class FileTokenStorage implements TokenStorage {
     try {
       // CredentialsStore does not accept AbortSignal; check immediately before and after the boundary.
       const credentials = await this.readCredentialsFromDisk();
+
+      if (this.options.pinnedWorkspaceId) {
+        return findTokensForWorkspace(
+          credentials,
+          this.options.pinnedWorkspaceId,
+        );
+      }
+
       const context = await this.readAuthContext();
 
       if (context.state.activeWorkspaceId) {
@@ -273,6 +288,13 @@ export class FileTokenStorage implements TokenStorage {
     const credentials = await this.readCredentialsFromDisk();
     const context = await this.ensureMigratedAuthContext(credentials);
 
+    return this.workspacesFromState(credentials, context);
+  }
+
+  private workspacesFromState(
+    credentials: StoredCredential[],
+    context: AuthContextReadResult,
+  ): StoredAuthWorkspace[] {
     return credentials
       .map((credential) => storedCredentialToTokens(credential))
       .filter((tokens): tokens is Tokens => tokens !== null)
@@ -315,6 +337,38 @@ export class FileTokenStorage implements TokenStorage {
     selected: StoredAuthWorkspace;
   }> {
     return this.withRefreshLock(() => this.useWorkspaceUnlocked(workspaceRef));
+  }
+
+  /**
+   * Resolve a workspace ref (id, credential workspace id, or cached name)
+   * against the locally stored sessions without changing the active
+   * workspace. Read-only counterpart of useWorkspace: it reads the auth
+   * context as-is and never runs the legacy-state migration, so it writes
+   * nothing.
+   */
+  async resolveWorkspace(workspaceRef: string): Promise<StoredAuthWorkspace> {
+    const ref = workspaceRef.trim();
+    if (!ref) {
+      throw new WorkspaceSelectionError("missing");
+    }
+
+    this.signal?.throwIfAborted();
+    const credentials = await this.readCredentialsFromDisk();
+    const context = await this.readAuthContext();
+    const workspaces = this.workspacesFromState(credentials, context);
+    const matches = workspaces.filter((workspace) =>
+      workspaceMatchesRef(workspace, ref),
+    );
+
+    if (matches.length === 0) {
+      throw new WorkspaceSelectionError("not-found", ref);
+    }
+
+    if (matches.length > 1) {
+      throw new WorkspaceSelectionError("ambiguous", ref, matches);
+    }
+
+    return matches[0];
   }
 
   private async useWorkspaceUnlocked(workspaceRef: string): Promise<{
@@ -581,6 +635,13 @@ export class FileTokenStorage implements TokenStorage {
   }
 
   private async maybeActivateWorkspaceId(workspaceId: string): Promise<void> {
+    // A pinned view is a per-workspace read/refresh surface; its token writes
+    // must never move the user's workspace selection, even when no active
+    // workspace is set.
+    if (this.options.pinnedWorkspaceId) {
+      return;
+    }
+
     const context = await this.readAuthContext();
     if (
       this.options.activateOnSetTokens === false &&

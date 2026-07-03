@@ -64,6 +64,13 @@
       "slug": "website",
       "url": "https://prisma.build/prisma/website",
       "workspaceId": "ws_456"
+    },
+    {
+      "id": "proj_999",
+      "name": "Sandbox",
+      "slug": "sandbox",
+      "url": "https://prisma.build/acme/sandbox",
+      "workspaceId": "ws_123"
     }
   ],
   "branches": [

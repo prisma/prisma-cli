@@ -696,6 +696,85 @@ prisma-cli project link proj_123
 prisma-cli project link "Acme Dashboard" --json
 ```
 
+## `prisma-cli project rename <name> --project <id-or-name>`
+
+Purpose:
+
+- rename the resolved Prisma Project
+
+Behavior:
+
+- requires auth
+- renames the resolved Project; accepts `--project <id-or-name>` as an explicit fallback and otherwise uses the directory's durable Project binding
+- requires a non-empty `<name>`
+- renames the remote Project only; `.prisma/local.json` pins Project IDs, so existing directory bindings stay valid without rewrite
+- returns the previous and new name
+- does not mutate any other remote resource
+- fails with `PROJECT_NOT_FOUND`, `PROJECT_AMBIGUOUS`, or `PROJECT_SETUP_REQUIRED` when the Project cannot be resolved safely
+- fails with `PROJECT_RENAME_FAILED` when the platform rejects the rename
+
+Examples:
+
+```bash
+prisma-cli project rename "Acme Dashboard v2"
+prisma-cli project rename billing-api --project proj_123
+prisma-cli project rename billing-api --json
+```
+
+## `prisma-cli project remove <project> --confirm <project-id>`
+
+Purpose:
+
+- remove a Prisma Project permanently
+
+Behavior:
+
+- requires auth
+- resolves `<project>` by exact Project id or exact Project name inside the active workspace
+- never defaults to the directory's bound Project: the positional target is required, because removal is destructive
+- requires `--confirm <project-id>` where the value exactly matches the resolved Project id; `--yes` does not satisfy this confirmation
+- removal is permanent: the Project's databases are deleted and its Apps stop being served
+- fails with `PROJECT_REMOVE_BLOCKED` when the platform reports the Project still has active deployments; remove or tear down the Apps first
+- when this directory's `.prisma/local.json` pin points at the removed Project, the pin is cleared and the result reports it
+- fails with `PROJECT_NOT_FOUND` or `PROJECT_AMBIGUOUS` when the target cannot be selected safely
+
+Examples:
+
+```bash
+prisma-cli project remove proj_123 --confirm proj_123
+prisma-cli project remove "Old Sandbox" --confirm proj_456
+prisma-cli project remove proj_123 --confirm proj_123 --json
+```
+
+## `prisma-cli project transfer <project> (--to-workspace <id-or-name> | --recipient-token <token>) --confirm <project-id>`
+
+Purpose:
+
+- transfer a Prisma Project to another workspace
+
+Behavior:
+
+- requires auth
+- resolves `<project>` by exact Project id or exact Project name inside the active workspace; the positional target is required and never defaults to the directory's bound Project
+- exactly one recipient source is required:
+  - `--to-workspace <id-or-name>` resolves a locally authenticated OAuth workspace, the same targets `auth workspace use` accepts, and authorizes the transfer with that workspace's stored session; this is the same-user path
+  - `--recipient-token <token>` passes an access token for the receiving workspace directly; this is the cross-account and headless path
+- `--to-workspace` and `--recipient-token` are mutually exclusive; passing neither fails with `TRANSFER_RECIPIENT_REQUIRED`
+- `--to-workspace` fails with `WORKSPACE_NOT_AUTHENTICATED` or `WORKSPACE_AMBIGUOUS` when no unique local OAuth session matches, and with `TRANSFER_RECIPIENT_UNAVAILABLE` when `PRISMA_SERVICE_TOKEN` is set, because service-token mode does not read local OAuth sessions
+- requires `--confirm <project-id>` where the value exactly matches the resolved Project id; `--yes` does not satisfy this confirmation
+- after the transfer the Project belongs to the recipient workspace and the source workspace loses access; Project, Branch, App, and database ids are unchanged
+- when this directory's `.prisma/local.json` pin points at the transferred Project: with `--to-workspace` the pin's workspace id is rewritten to the recipient workspace, otherwise the pin is cleared; the result reports which happened
+- fails with `PROJECT_TRANSFER_REJECTED` when the platform rejects the transfer, for example an invalid or expired recipient token
+- fails with `PROJECT_NOT_FOUND` or `PROJECT_AMBIGUOUS` when the target cannot be selected safely
+
+Examples:
+
+```bash
+prisma-cli project transfer proj_123 --to-workspace "Prisma Labs" --confirm proj_123
+prisma-cli project transfer proj_123 --recipient-token <token> --confirm proj_123
+prisma-cli project transfer proj_123 --to-workspace wksp_456 --confirm proj_123 --json
+```
+
 ## `prisma-cli git connect [git-url]`
 
 Purpose:

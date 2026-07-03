@@ -20,6 +20,7 @@ import {
   writeJsonSuccess,
 } from "./output";
 import { type CliRuntime, createCommandContext } from "./runtime";
+import { renderSummaryLine } from "./ui";
 
 interface CommandPresenter<T> {
   renderStdout?: (
@@ -126,11 +127,17 @@ async function writeCommandSuccess<T>(
   }
 
   const rendered = presenter.renderHuman(context, descriptor, success.result);
+  // Warnings are part of the success contract in JSON; render them in human
+  // mode too so partial failures (best-effort cleanup, degraded steps) are
+  // never silent.
+  const warningLines = success.warnings.map((warning) =>
+    renderSummaryLine(context.ui, "warning", warning),
+  );
   const diagnostics = await renderBestEffortCommandDiagnostics(context, {
     enabled: context.flags.verbose && rendered.length > 0,
     durationMs,
   });
-  const humanLines = [...rendered, ...diagnostics];
+  const humanLines = [...rendered, ...warningLines, ...diagnostics];
   if (stdout.length > 0 && humanLines.length > 0) {
     humanLines.push("");
   }

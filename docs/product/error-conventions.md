@@ -168,6 +168,12 @@ These codes are the minimum stable set for the MVP:
 - `PROJECT_SETUP_REQUIRED`
 - `PROJECT_LINK_TARGET_REQUIRED`
 - `PROJECT_CREATE_FAILED`
+- `PROJECT_RENAME_FAILED`
+- `PROJECT_REMOVE_BLOCKED`
+- `PROJECT_TRANSFER_REJECTED`
+- `PROJECT_API_ERROR`
+- `TRANSFER_RECIPIENT_REQUIRED`
+- `TRANSFER_RECIPIENT_UNAVAILABLE`
 - `PROJECT_NOT_FOUND`
 - `PROJECT_AMBIGUOUS`
 - `APP_AMBIGUOUS`
@@ -233,6 +239,12 @@ Recommended meanings:
 - `PROJECT_SETUP_REQUIRED`: command needs explicit or durable Project context before it can continue
 - `PROJECT_LINK_TARGET_REQUIRED`: `project link` needs the user to choose an existing Project or create a new one
 - `PROJECT_CREATE_FAILED`: Project creation failed before deployment or linking could continue
+- `PROJECT_RENAME_FAILED`: the platform rejected the new project name
+- `PROJECT_REMOVE_BLOCKED`: project removal is blocked while it still has active deployments
+- `PROJECT_TRANSFER_REJECTED`: the platform rejected the transfer, for example an invalid or expired recipient token
+- `PROJECT_API_ERROR`: project Management API request failed without a more specific CLI error code
+- `TRANSFER_RECIPIENT_REQUIRED`: project transfer needs --to-workspace or --recipient-token
+- `TRANSFER_RECIPIENT_UNAVAILABLE`: --to-workspace cannot resolve local OAuth sessions while PRISMA_SERVICE_TOKEN is set
 - `PROJECT_NOT_FOUND`: requested project does not exist or is not accessible
 - `PROJECT_AMBIGUOUS`: multiple safe project candidates matched
 - `APP_AMBIGUOUS`: multiple apps matched the inferred or explicit app target
