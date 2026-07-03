@@ -88,6 +88,32 @@ afterEach(() => {
 });
 
 describe("command runner success output", () => {
+  it("renders success warnings in human output", async () => {
+    const { runtime, stderr } = await createRuntime(["project", "remove"]);
+
+    await runCommand(
+      runtime,
+      "project.remove",
+      {},
+      async () => ({
+        command: "project.remove",
+        result: { ok: true },
+        warnings: [
+          "The local pin .prisma/local.json points at the removed project but could not be deleted.",
+        ],
+        nextSteps: [],
+      }),
+      {
+        renderHuman: () => ["Project removed"],
+      },
+    );
+
+    expect(process.exitCode).toBeUndefined();
+    expect(stderr.buffer).toContain("Project removed");
+    expect(stderr.buffer).toContain("⚠");
+    expect(stderr.buffer).toContain("could not be deleted");
+  });
+
   it("adds local diagnostics to successful verbose human output", async () => {
     const { runtime, stderr } = await createRuntime([
       "project",
