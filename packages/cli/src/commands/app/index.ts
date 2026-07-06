@@ -849,7 +849,11 @@ function createRemoveCommand(runtime: CliRuntime): Command {
       "app.remove",
       options as Record<string, unknown>,
       (context) =>
-        runAppRemove(context, appName, projectRef, configTarget, branchName),
+        runAppRemove(context, appName, {
+          projectRef,
+          configTarget,
+          branchName,
+        }),
       {
         renderHuman: (context, descriptor, result) =>
           renderAppRemove(context, descriptor, result),

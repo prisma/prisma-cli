@@ -3,7 +3,11 @@ import type { CommandDescriptor } from "../shell/command-meta";
 import { formatDescriptorLabel } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
 import { formatColumns } from "../shell/ui";
-import type { BranchListResult, BranchRemoveResult } from "../types/branch";
+import type {
+  BranchListResult,
+  BranchRemovedResource,
+  BranchRemoveResult,
+} from "../types/branch";
 import { renderResolvedProjectContextBlock } from "./verbose-context";
 
 export function renderBranchList(
@@ -69,6 +73,15 @@ function renderBranchResolvedContextBlock(
   return renderResolvedProjectContextBlock(context.ui, result.verboseContext);
 }
 
+function formatRemovedResourceLine(
+  label: string,
+  resources: BranchRemovedResource[],
+): string {
+  return resources.length > 0
+    ? `Removed ${label}: ${resources.map((resource) => resource.name).join(", ")}`
+    : `No ${label} were on the branch.`;
+}
+
 export function renderBranchRemove(
   context: CommandContext,
   descriptor: CommandDescriptor,
@@ -89,12 +102,8 @@ export function renderBranchRemove(
         "The branch was removed from the platform. Local Git branches are untouched.",
         ...(result.removed
           ? [
-              result.removed.apps.length > 0
-                ? `Removed apps: ${result.removed.apps.map((app) => app.name).join(", ")}`
-                : "No apps were on the branch.",
-              result.removed.databases.length > 0
-                ? `Removed databases: ${result.removed.databases.map((database) => database.name).join(", ")}`
-                : "No databases were on the branch.",
+              formatRemovedResourceLine("apps", result.removed.apps),
+              formatRemovedResourceLine("databases", result.removed.databases),
             ]
           : []),
       ],

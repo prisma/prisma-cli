@@ -2041,10 +2041,13 @@ export async function runAppRollback(
 export async function runAppRemove(
   context: CommandContext,
   appName: string | undefined,
-  projectRef?: string,
-  configTarget?: string,
-  branchName?: string,
+  options: {
+    projectRef?: string;
+    configTarget?: string;
+    branchName?: string;
+  } = {},
 ): Promise<CommandSuccess<AppRemoveResult>> {
+  const { projectRef, configTarget, branchName } = options;
   ensurePreviewAppMode(context);
 
   const compute = await resolveComputeManagementContext(

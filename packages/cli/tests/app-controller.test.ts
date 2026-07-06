@@ -6672,13 +6672,9 @@ describe("app controller", () => {
       },
     });
 
-    const result = await runAppRemove(
-      context,
-      "hello-world",
-      undefined,
-      undefined,
-      "feat-not-checked-out",
-    );
+    const result = await runAppRemove(context, "hello-world", {
+      branchName: "feat-not-checked-out",
+    });
 
     // The explicit --branch scopes app resolution to that branch, without any
     // local Git branch of that name existing.

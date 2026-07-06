@@ -72,6 +72,7 @@ describe("branch remove", () => {
         branch: { id: "br_345", name: "staging", role: "preview" },
       },
     });
+    expect(payload.result).not.toHaveProperty("removed");
   });
 
   it("refuses production branches with BRANCH_PROTECTED", async () => {
@@ -197,26 +198,8 @@ describe("branch remove", () => {
 });
 
 describe("branch remove --cascade", () => {
-  async function setup() {
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    await executeCli({
-      argv: ["auth", "login", "--provider", "github", "--user", "usr_456"],
-      cwd,
-      stateDir,
-      fixturePath,
-    });
-    await mkdir(path.join(cwd, ".prisma"), { recursive: true });
-    await writeFile(
-      path.join(cwd, ".prisma/local.json"),
-      `${JSON.stringify({ workspaceId: "ws_123", projectId: "proj_123" }, null, 2)}\n`,
-      "utf8",
-    );
-    return { cwd, stateDir };
-  }
-
   it("offers the cascade rerun in the BRANCH_NOT_EMPTY recovery steps", async () => {
-    const { cwd, stateDir } = await setup();
+    const { cwd, stateDir } = await setupLinkedProject();
 
     const result = await executeCli({
       argv: ["branch", "remove", "br_123", "--confirm", "br_123", "--json"],
@@ -235,7 +218,7 @@ describe("branch remove --cascade", () => {
   });
 
   it("removes the branch and its resources with --cascade and lists them", async () => {
-    const { cwd, stateDir } = await setup();
+    const { cwd, stateDir } = await setupLinkedProject();
 
     const result = await executeCli({
       argv: [
@@ -268,7 +251,7 @@ describe("branch remove --cascade", () => {
   });
 
   it("still refuses production branches with --cascade", async () => {
-    const { cwd, stateDir } = await setup();
+    const { cwd, stateDir } = await setupLinkedProject();
 
     const result = await executeCli({
       argv: [
