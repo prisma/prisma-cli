@@ -165,6 +165,7 @@ export async function runBranchRemove(
         id: branch.id,
         gitName: branch.name,
         role: branch.role,
+        isDefault: branch.isDefault,
       }));
   const branch = resolveBranchForRemoval(branchRef, branches, target);
 

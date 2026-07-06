@@ -38,6 +38,7 @@ interface BranchRecord {
   projectId: string;
   name: string;
   role: "production" | "preview";
+  isDefault?: boolean;
   currentDeploymentId: string | null;
 }
 
@@ -341,7 +342,9 @@ export class MockApi {
     if (!branch) {
       return { outcome: "not-found" };
     }
-    if (branch.role === "production") {
+    // Mirrors the platform rule: production and default branches are
+    // protected outright.
+    if (branch.role === "production" || branch.isDefault) {
       return { outcome: "protected" };
     }
 

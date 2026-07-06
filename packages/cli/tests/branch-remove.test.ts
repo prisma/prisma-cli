@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -82,6 +82,49 @@ describe("branch remove", () => {
       cwd,
       stateDir,
       fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(1);
+    expect(payload.error.code).toBe("BRANCH_PROTECTED");
+  });
+
+  it("refuses default branches with BRANCH_PROTECTED even when role is preview", async () => {
+    const { cwd, stateDir } = await setupLinkedProject();
+
+    const raw = JSON.parse(await readFile(fixturePath, "utf8")) as {
+      branches: Array<Record<string, unknown>>;
+    };
+    raw.branches.push({
+      id: "br_567",
+      projectId: "proj_123",
+      name: "legacy-default",
+      role: "preview",
+      isDefault: true,
+      currentDeploymentId: null,
+    });
+    const defaultBranchFixturePath = path.join(
+      cwd,
+      "default-branch-fixture.json",
+    );
+    await writeFile(
+      defaultBranchFixturePath,
+      `${JSON.stringify(raw, null, 2)}\n`,
+      "utf8",
+    );
+
+    const result = await executeCli({
+      argv: [
+        "branch",
+        "remove",
+        "legacy-default",
+        "--confirm",
+        "br_567",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath: defaultBranchFixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
