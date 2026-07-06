@@ -480,4 +480,51 @@ describe("app local dev commands", () => {
       command: "bun --watch server.ts",
     });
   });
+
+  it("run resolves an explicit entrypoint to Bun even when Next.js is detectable", async () => {
+    const runLocalApp = vi.fn().mockResolvedValue({
+      framework: "bun",
+      entrypoint: "server.ts",
+      port: 3000,
+      command: "bun --watch server.ts",
+      exitCode: 0,
+      signal: null,
+    });
+
+    vi.doMock("../src/lib/app/local-dev", async () => {
+      const actual = await vi.importActual<
+        typeof import("../src/lib/app/local-dev")
+      >("../src/lib/app/local-dev");
+      return {
+        ...actual,
+        runLocalApp,
+      };
+    });
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppRun } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writeFile(
+      path.join(cwd, "package.json"),
+      `${JSON.stringify({ dependencies: { next: "15.0.0" } }, null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      path.join(cwd, "server.ts"),
+      "export default { fetch: () => new Response('ok') };\n",
+      "utf8",
+    );
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+    });
+
+    await runAppRun(context, { entrypoint: "server.ts", buildType: "auto" });
+
+    expect(runLocalApp).toHaveBeenCalledWith(
+      expect.objectContaining({ buildType: "bun", entrypoint: "server.ts" }),
+    );
+  });
 });

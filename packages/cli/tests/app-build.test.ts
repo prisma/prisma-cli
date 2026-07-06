@@ -674,6 +674,34 @@ describe("preview build strategy", () => {
     });
   });
 
+  it("resolves an explicit entrypoint to Bun even when Next.js is detectable", async () => {
+    const { resolveAppBuildStrategy } = await import("../src/lib/app/build");
+    const cwd = await createTempCwd();
+    const appPath = path.join(cwd, "app");
+
+    await mkdir(appPath, { recursive: true });
+    await writeFile(
+      path.join(appPath, "package.json"),
+      `${JSON.stringify({ dependencies: { next: "15.0.0" } }, null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      path.join(appPath, "server.ts"),
+      "export default { fetch: () => new Response('ok') };\n",
+      "utf8",
+    );
+
+    await expect(
+      resolveAppBuildStrategy({
+        appPath,
+        entrypoint: "server.ts",
+        buildType: "auto",
+      }),
+    ).resolves.toMatchObject({
+      buildType: "bun",
+    });
+  });
+
   it("runs package.json build scripts before staging Next.js output", async () => {
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");

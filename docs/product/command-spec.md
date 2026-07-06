@@ -1217,7 +1217,7 @@ Purpose:
 Behavior:
 
 - resolves the optional `[app]` target, app root, framework, and entrypoint from `prisma.compute.ts` exactly like `app deploy`; explicit `--entry` and a non-`auto` `--build-type` override the config
-- detects supported project shapes when `--build-type auto` is used and no config framework applies
+- detects supported project shapes when `--build-type auto` is used and no config framework applies; an explicit `--entry` targets a Bun build and wins over that detection, exactly like `app deploy` resolves `--entry`
 - supports Bun, Next.js, Nuxt, Astro, NestJS, TanStack Start, and custom artifact app builds in the beta package
 - fails with `USAGE_ERROR` when framework detection is ambiguous
 
@@ -1244,7 +1244,7 @@ Behavior:
 
 - resolves the optional `[app]` target, app root, framework, entrypoint, and port from `prisma.compute.ts` exactly like `app deploy`; explicit `--entry`, `--port`, and a non-`auto` `--build-type` override the config
 - fails with `USAGE_ERROR` when the configured framework has no local dev server in the current preview
-- detects supported project shapes when `--build-type auto` is used and no config framework applies
+- detects supported project shapes when `--build-type auto` is used and no config framework applies; an explicit `--entry` targets a Bun app and wins over that detection, exactly like `app deploy` resolves `--entry`
 - starts the local framework command
 - reports `RUN_FAILED` when the local process cannot start or exits unsuccessfully
 
@@ -1306,6 +1306,7 @@ same reasons they are excluded today.
   - `[app]` without any compute config file is a usage error
 - a config that fails to load or validate fails with `COMPUTE_CONFIG_INVALID` before any remote work
 - settings sourced from the config are annotated `set by prisma.compute.ts` in human output and deploy settings metadata
+- `deploySettings.config.path` reports the compute config file in effect whenever one loaded, even when it has no `build` block, so `path: null` means "no config loaded" rather than "no build block"; `deploySettings.config.status` stays `"config"` when the build block owned the build settings and `"inferred"` when they came from framework defaults
 
 ```ts
 import { defineComputeConfig } from "@prisma/compute-sdk/config";

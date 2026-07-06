@@ -328,6 +328,7 @@ export async function runAppRun(
     requestedBuildType: buildType,
     configFramework: compute.target?.framework ?? null,
     appDir,
+    entrypoint: merged.entrypoint,
   });
   // Hono apps get the same src/index.ts entrypoint default as deploy.
   const entrypoint =
@@ -852,7 +853,11 @@ async function runSingleAppDeploy(
       promoted: deployResult.promoted,
       deploySettings: {
         config: {
-          path: buildSettingsResolution.relativeConfigPath,
+          // The compute config in effect, even when it has no build block, so
+          // `path: null` means "no config loaded" rather than "no build-settings
+          // block". `status` still says whether the build block owned the
+          // build settings ("config") or they were inferred ("inferred").
+          path: computeConfig.config?.relativeConfigPath ?? null,
           status: buildSettingsResolution.status,
         },
         buildCommand: {
@@ -4641,8 +4646,15 @@ async function resolveLocalRunFramework(
     requestedBuildType: AppBuildType;
     configFramework: ComputeFramework | null;
     appDir: string;
+    entrypoint?: string;
   },
 ): Promise<ResolvedDeployFramework> {
+  // An explicit entrypoint targets a Bun app, so honor it over framework
+  // auto-detection, matching deploy and local build.
+  if (options.requestedBuildType === "auto" && options.entrypoint) {
+    return frameworkFromUserFacingValue("bun", "set by --entry");
+  }
+
   if (
     (LOCAL_DEV_BUILD_TYPES as readonly string[]).includes(
       options.requestedBuildType,
