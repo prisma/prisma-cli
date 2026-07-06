@@ -455,6 +455,12 @@ describe("app controller", () => {
     expect(asSingleDeployResult(result).result.deploySettings.region).toBe(
       "us-west-1",
     );
+    // A loaded config with no build block still reports its path; only the
+    // build-settings ownership stays "inferred".
+    expect(asSingleDeployResult(result).result.deploySettings.config).toEqual({
+      path: "prisma.compute.ts",
+      status: "inferred",
+    });
   });
 
   it("uses --region when creating a new app", async () => {

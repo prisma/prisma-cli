@@ -146,12 +146,21 @@ export async function resolveAppBuildStrategy(options: {
   strategy: BuildStrategy;
   buildType: ResolvedAppBuildType;
 }> {
+  // An explicit entrypoint targets a Bun build, so honor it over framework
+  // auto-detection instead of letting a detected framework (e.g. Next.js)
+  // silently ignore --entry. This mirrors how deploy resolves --entry and the
+  // "auto may fall back to Bun" contract in assertSupportedEntrypoint.
+  const buildType =
+    options.buildType === "auto" && options.entrypoint
+      ? "bun"
+      : options.buildType;
+
   // Detection, per-framework construction, and Bun entrypoint resolution
   // (package.json `main`) all live in the SDK now; the CLI forwards. The CLI's
   // build types map 1:1 to the SDK's, and `auto` is the SDK default.
   return resolveBuildStrategy({
     appPath: options.appPath,
-    buildType: options.buildType,
+    buildType,
     entrypoint: options.entrypoint,
     buildSettings: options.buildSettings,
     signal: options.signal,
