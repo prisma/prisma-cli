@@ -189,6 +189,31 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: ["prisma-cli branch list"],
   },
   {
+    id: "github",
+    path: ["prisma", "github"],
+    description: "Manage the workspace's GitHub connection",
+    examples: ["prisma-cli github list"],
+  },
+  {
+    id: "github.list",
+    path: ["prisma", "github", "list"],
+    description: "List connected and connectable GitHub accounts",
+    examples: ["prisma-cli github list"],
+  },
+  {
+    id: "github.connect",
+    path: ["prisma", "github", "connect"],
+    description:
+      "Connect a GitHub account already installed via another workspace",
+    examples: ["prisma-cli github connect acme-org"],
+  },
+  {
+    id: "github.install",
+    path: ["prisma", "github", "install"],
+    description: "Get the Prisma GitHub App install link",
+    examples: ["prisma-cli github install"],
+  },
+  {
     id: "build",
     path: ["prisma", "build"],
     description: "Inspect builds",

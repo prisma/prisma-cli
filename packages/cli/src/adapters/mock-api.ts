@@ -25,6 +25,16 @@ interface MembershipRecord {
   workspaceId: string;
 }
 
+interface ScmInstallationRecord {
+  /** Numeric GitHub App installation id. */
+  installationId: number;
+  accountId: number;
+  accountLogin: string;
+  accountType: "user" | "organization";
+  suspended?: boolean;
+  workspaceId: string;
+}
+
 interface ProjectRecord {
   id: string;
   name: string;
@@ -93,6 +103,7 @@ interface MockApiData {
   users: UserRecord[];
   workspaces: WorkspaceRecord[];
   memberships: MembershipRecord[];
+  scmInstallations?: ScmInstallationRecord[];
   projects: ProjectRecord[];
   branches: BranchRecord[];
   deployments: DeploymentRecord[];
@@ -262,6 +273,69 @@ export class MockApi {
 
     project.workspaceId = targetWorkspaceId;
     return { outcome: "transferred", project };
+  }
+
+  listScmInstallations(workspaceId: string) {
+    return (this.data.scmInstallations ?? [])
+      .filter((record) => record.workspaceId === workspaceId)
+      .map((record) => ({
+        installationId: record.installationId,
+        accountLogin: record.accountLogin,
+        accountType: record.accountType,
+        suspended: record.suspended ?? false,
+      }));
+  }
+
+  // Fixture sessions belong to every fixture workspace, so connectable means
+  // active rows of other workspaces, deduped per account with the last
+  // fixture entry (the newest) winning — mirroring the platform rule.
+  listConnectableScmInstallations(workspaceId: string) {
+    const rows = this.data.scmInstallations ?? [];
+    const accountsConnectedHere = new Set(
+      rows
+        .filter((record) => record.workspaceId === workspaceId)
+        .map((record) => record.accountId),
+    );
+    const seenAccounts = new Set<number>();
+    const connectable: { installationId: number; accountLogin: string }[] = [];
+    for (const record of [...rows].reverse()) {
+      if (record.workspaceId === workspaceId) continue;
+      if (accountsConnectedHere.has(record.accountId)) continue;
+      if (seenAccounts.has(record.accountId)) continue;
+      seenAccounts.add(record.accountId);
+      connectable.push({
+        installationId: record.installationId,
+        accountLogin: record.accountLogin,
+      });
+    }
+    return connectable;
+  }
+
+  connectScmInstallation(workspaceId: string, installationId: number) {
+    const source = (this.data.scmInstallations ?? []).find(
+      (record) => record.installationId === installationId,
+    );
+    if (!source) {
+      throw new Error(`Unknown fixture installation ${installationId}`);
+    }
+    const connected: ScmInstallationRecord = {
+      installationId: source.installationId,
+      accountId: source.accountId,
+      accountLogin: source.accountLogin,
+      accountType: source.accountType,
+      suspended: source.suspended ?? false,
+      workspaceId,
+    };
+    this.data.scmInstallations = [
+      ...(this.data.scmInstallations ?? []),
+      connected,
+    ];
+    return {
+      installationId: connected.installationId,
+      accountLogin: connected.accountLogin,
+      accountType: connected.accountType,
+      suspended: connected.suspended ?? false,
+    };
   }
 
   listBranchesForProject(projectId: string): BranchRecord[] {

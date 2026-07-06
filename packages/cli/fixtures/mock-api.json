@@ -1,7 +1,13 @@
 {
   "providers": [
-    { "id": "github", "name": "GitHub" },
-    { "id": "google", "name": "Google" }
+    {
+      "id": "github",
+      "name": "GitHub"
+    },
+    {
+      "id": "google",
+      "name": "Google"
+    }
   ],
   "users": [
     {
@@ -225,10 +231,39 @@
         "end": "2026-06-30T23:59:59.999Z"
       },
       "metrics": {
-        "operations": { "used": 12500, "unit": "ops" },
-        "storage": { "used": 1.25, "unit": "GiB" }
+        "operations": {
+          "used": 12500,
+          "unit": "ops"
+        },
+        "storage": {
+          "used": 1.25,
+          "unit": "GiB"
+        }
       },
       "generatedAt": "2026-07-01T00:00:00.000Z"
+    }
+  ],
+  "scmInstallations": [
+    {
+      "installationId": 555001,
+      "accountId": 700100,
+      "accountLogin": "acme-bot",
+      "accountType": "organization",
+      "workspaceId": "ws_123"
+    },
+    {
+      "installationId": 555002,
+      "accountId": 700200,
+      "accountLogin": "prisma-labs",
+      "accountType": "organization",
+      "workspaceId": "ws_456"
+    },
+    {
+      "installationId": 555003,
+      "accountId": 700200,
+      "accountLogin": "prisma-labs",
+      "accountType": "organization",
+      "workspaceId": "ws_456"
     }
   ]
 }
