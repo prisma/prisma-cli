@@ -184,6 +184,7 @@ These codes are the minimum stable set for the MVP:
 - `GIT_ACCOUNT_REQUIRED`
 - `GIT_ACCOUNT_NOT_FOUND`
 - `GIT_CONNECT_FAILED`
+- `GIT_INSTALL_TIMED_OUT`
 - `COMPUTE_CONFIG_INVALID`
 - `COMPUTE_CONFIG_TARGET_REQUIRED`
 - `COMPUTE_CONFIG_TARGET_UNKNOWN`
@@ -257,9 +258,10 @@ Recommended meanings:
 - `LOCAL_STATE_WRITE_FAILED`: the CLI could not save local Project binding state such as `.prisma/local.json` or the matching `.gitignore` entry; callers should fix directory permissions or filesystem state before retrying
 - `LOCAL_STATE_STALE`: local Project pin no longer matches platform data and continuing would be ambiguous
 - `BRANCH_NOT_DEPLOYABLE`: command tried to deploy to a non-deployable branch context
-- `GIT_ACCOUNT_REQUIRED`: `git connect-account` needs a GitHub account argument; connectable accounts are listed in `error.meta.connectable` and as next steps
+- `GIT_ACCOUNT_REQUIRED`: `git account connect` needs a GitHub account in a non-interactive context; connectable accounts are in `error.meta.connectable` (and `error.meta.installUrl` when nothing is connectable) and as next steps
 - `GIT_ACCOUNT_NOT_FOUND`: the requested GitHub account is not connectable to the active workspace
 - `GIT_CONNECT_FAILED`: GitHub reports the installation no longer exists; stale platform records were cleaned up
+- `GIT_INSTALL_TIMED_OUT`: the browser GitHub App install did not complete before the wait timed out; it may still finish, so re-check with `git account list`
 - `COMPUTE_CONFIG_INVALID`: `prisma.compute.ts` failed to load or validate
 - `COMPUTE_CONFIG_TARGET_REQUIRED`: a multi-app compute config needs an `[app]` target and none was given or inferred
 - `COMPUTE_CONFIG_TARGET_UNKNOWN`: the `[app]` target matches no configured app

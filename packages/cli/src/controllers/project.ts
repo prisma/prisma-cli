@@ -69,6 +69,7 @@ import {
   workspaceRequiredError,
 } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
+import { selectPrompt } from "../shell/prompt";
 import { type CommandContext, canPrompt } from "../shell/runtime";
 import { renderSummaryLine } from "../shell/ui";
 import type { AuthWorkspace } from "../types/auth";
@@ -2393,7 +2394,7 @@ async function listConnectableGitAccounts(
   }));
 }
 
-export async function runGitAccounts(
+export async function runGitAccountList(
   context: CommandContext,
 ): Promise<CommandSuccess<GitAccountsResult>> {
   const { workspace, formatCommand, api } =
@@ -2412,7 +2413,7 @@ export async function runGitAccounts(
       ];
 
   return {
-    command: "git.accounts",
+    command: "git.account.list",
     result: { workspace, connected, connectable },
     warnings: [],
     nextSteps:
@@ -2420,15 +2421,18 @@ export async function runGitAccounts(
         ? [
             formatCommand([
               "git",
-              "connect-account",
+              "account",
+              "connect",
               connectable[0].accountLogin,
             ]),
           ]
-        : [],
+        : [formatCommand(["git", "account", "connect"])],
   };
 }
 
-export async function runGitConnectAccount(
+const INSTALL_NEW_ACCOUNT = Symbol("install-new-account");
+
+export async function runGitAccountConnect(
   context: CommandContext,
   accountRef: string | undefined,
 ): Promise<CommandSuccess<GitConnectAccountResult>> {
@@ -2443,18 +2447,66 @@ export async function runGitConnectAccount(
       )
     : context.api.listConnectableScmInstallations(workspace.id);
 
-  if (!accountRef) {
-    throw gitAccountRequiredError(connectable, formatCommand);
+  // Explicit account: resolve and connect, no prompt (agent-friendly path).
+  if (accountRef) {
+    const target = connectable.find(
+      (candidate) =>
+        candidate.accountLogin === accountRef ||
+        String(candidate.installationId) === accountRef,
+    );
+    if (!target) {
+      throw gitAccountNotFoundError(accountRef, connectable, formatCommand);
+    }
+    return connectResult(context, workspace, api, target.installationId);
   }
 
-  const target = connectable.find(
-    (candidate) =>
-      candidate.accountLogin === accountRef ||
-      String(candidate.installationId) === accountRef,
-  );
-  if (!target) {
-    throw gitAccountNotFoundError(accountRef, connectable, formatCommand);
+  // No account and no TTY (agent / CI / --json): never prompt. Return the
+  // connectable options as structured data, or the install URL when there is
+  // nothing to connect, so the caller can decide without blocking.
+  if (!canPrompt(context)) {
+    const installUrl =
+      connectable.length === 0
+        ? await resolveInstallUrl(context, api, workspace.id)
+        : undefined;
+    throw gitAccountRequiredError(connectable, installUrl, formatCommand);
   }
+
+  // Interactive: pick a connectable account, or install a brand-new one.
+  const choice = await selectPrompt<GitConnectableAccountSummary | symbol>({
+    input: context.runtime.stdin,
+    output: context.runtime.stderr,
+    signal: context.runtime.signal,
+    message: "Connect a GitHub account:",
+    choices: [
+      ...connectable.map((candidate) => ({
+        label: `${candidate.accountLogin} (installed via another workspace)`,
+        value: candidate,
+      })),
+      { label: "+ Install a new GitHub account", value: INSTALL_NEW_ACCOUNT },
+    ],
+  });
+
+  if (choice === INSTALL_NEW_ACCOUNT) {
+    return installAndWaitForAccount(context, workspace, api, formatCommand);
+  }
+
+  return connectResult(
+    context,
+    workspace,
+    api,
+    (choice as GitConnectableAccountSummary).installationId,
+  );
+}
+
+async function connectResult(
+  context: CommandContext,
+  workspace: GitConnectAccountResult["workspace"],
+  api: SourceRepositoryApiClient | null,
+  installationId: number,
+): Promise<CommandSuccess<GitConnectAccountResult>> {
+  const formatCommand = resolvePrismaCliPackageCommandFormatterSync(
+    context.runtime.cwd,
+  );
 
   let account: GitAccountSummary;
   if (api) {
@@ -2464,7 +2516,7 @@ export async function runGitConnectAccount(
         body: {
           provider: "github",
           workspaceId: workspace.id,
-          installationId: target.installationId,
+          installationId,
         },
         signal: context.runtime.signal,
       },
@@ -2475,37 +2527,132 @@ export async function runGitConnectAccount(
     account = toGitAccountSummary(data.data);
   } else {
     account = toGitAccountSummary(
-      context.api.connectScmInstallation(workspace.id, target.installationId),
+      context.api.connectScmInstallation(workspace.id, installationId),
     );
   }
 
   return {
-    command: "git.connect-account",
-    result: { workspace, account },
+    command: "git.account.connect",
+    result: { workspace, account, newlyInstalled: false },
     warnings: [],
-    nextSteps: [formatCommand(["git", "accounts"])],
+    nextSteps: [formatCommand(["git", "account", "list"])],
   };
 }
 
-export async function runGitInstall(
+async function resolveInstallUrl(
   context: CommandContext,
-): Promise<CommandSuccess<GitInstallResult>> {
-  const { workspace, api } = await resolveGitAccountContext(context);
+  api: SourceRepositoryApiClient | null,
+  workspaceId: string,
+): Promise<string> {
+  if (!api) {
+    return "https://github.com/apps/prisma/installations/new?state=fixture-nonce";
+  }
+  return createGitHubInstallIntent(api, workspaceId, context.runtime.signal);
+}
 
-  const installUrl = api
-    ? await createGitHubInstallIntent(api, workspace.id, context.runtime.signal)
-    : "https://github.com/apps/prisma/installations/new?state=fixture-nonce";
+// Opens the GitHub App install page and waits for the new account to appear,
+// so an install never dead-ends without a response. Mirrors the poll the repo
+// connect flow already uses.
+async function installAndWaitForAccount(
+  context: CommandContext,
+  workspace: GitConnectAccountResult["workspace"],
+  api: SourceRepositoryApiClient | null,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): Promise<CommandSuccess<GitConnectAccountResult>> {
+  if (!api) {
+    // Fixture mode has no real GitHub round trip; return the seeded account so
+    // the interactive path stays exercisable offline.
+    const account = toGitAccountSummary(
+      context.api.listScmInstallations(workspace.id)[0] ?? {
+        installationId: 0,
+        accountLogin: "fixture-account",
+        accountType: "organization" as const,
+        suspended: false,
+      },
+    );
+    return {
+      command: "git.account.connect",
+      result: { workspace, account, newlyInstalled: true },
+      warnings: [],
+      nextSteps: [formatCommand(["git", "account", "list"])],
+    };
+  }
+
+  const before = new Set(
+    (await listScmInstallations(api, workspace.id, context.runtime.signal)).map(
+      (row) => row.installationId,
+    ),
+  );
+  const installUrl = await createGitHubInstallIntent(
+    api,
+    workspace.id,
+    context.runtime.signal,
+  );
+  const opened = await openInstallUrlIfInteractive(context, installUrl);
+  writeInstallWaitStatus(context, opened, installUrl);
+
+  const account = await waitForNewInstallation(
+    context,
+    api,
+    workspace.id,
+    before,
+  );
+  if (!account) {
+    throw gitInstallTimedOutError(installUrl, formatCommand);
+  }
 
   return {
-    command: "git.install",
-    result: { workspace, installUrl },
+    command: "git.account.connect",
+    result: { workspace, account, newlyInstalled: true },
     warnings: [],
-    nextSteps: [],
+    nextSteps: [formatCommand(["git", "account", "list"])],
   };
+}
+
+async function waitForNewInstallation(
+  context: CommandContext,
+  api: SourceRepositoryApiClient,
+  workspaceId: string,
+  knownInstallationIds: Set<number>,
+): Promise<GitAccountSummary | null> {
+  const timeoutMs = readPositiveIntegerEnv(
+    context.runtime.env.PRISMA_CLI_GITHUB_INSTALL_TIMEOUT_MS,
+    GITHUB_INSTALL_POLL_TIMEOUT_MS,
+  );
+  const intervalMs = readPositiveIntegerEnv(
+    context.runtime.env.PRISMA_CLI_GITHUB_INSTALL_POLL_INTERVAL_MS,
+    GITHUB_INSTALL_POLL_INTERVAL_MS,
+  );
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() <= deadline) {
+    context.runtime.signal.throwIfAborted();
+    // biome-ignore lint/performance/noAwaitInLoops: Polling waits for each remote inspection before retrying.
+    const installations = await listScmInstallations(
+      api,
+      workspaceId,
+      context.runtime.signal,
+    );
+    const fresh = installations.find(
+      (row) => !knownInstallationIds.has(row.installationId),
+    );
+    if (fresh) {
+      return toGitAccountSummary(fresh);
+    }
+
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      break;
+    }
+    await sleep(Math.min(intervalMs, remainingMs), context.runtime.signal);
+  }
+
+  return null;
 }
 
 function gitAccountRequiredError(
   connectable: GitConnectableAccountSummary[],
+  installUrl: string | undefined,
   formatCommand: PrismaCliPackageCommandFormatter,
 ): CliError {
   return new CliError({
@@ -2514,20 +2661,25 @@ function gitAccountRequiredError(
     summary: "GitHub account required",
     why:
       connectable.length > 0
-        ? "Pass the GitHub account to connect to this workspace."
-        : "No GitHub account is connectable to this workspace; accounts already installed via other workspaces you belong to would appear here.",
+        ? "Pass the GitHub account to connect, or run in a terminal to pick one."
+        : "No GitHub account is connectable to this workspace; install the Prisma GitHub App to add one.",
     fix:
       connectable.length > 0
         ? "Rerun with one of the connectable accounts."
-        : "Install the Prisma GitHub App first, then connect it.",
+        : "Open the install URL in a browser to install the app, then rerun.",
     exitCode: 2,
-    meta: { connectable },
+    meta: { connectable, ...(installUrl ? { installUrl } : {}) },
     nextSteps:
       connectable.length > 0
         ? connectable.map((candidate) =>
-            formatCommand(["git", "connect-account", candidate.accountLogin]),
+            formatCommand([
+              "git",
+              "account",
+              "connect",
+              candidate.accountLogin,
+            ]),
           )
-        : [formatCommand(["git", "install"])],
+        : [formatCommand(["git", "account", "connect"])],
   });
 }
 
@@ -2550,9 +2702,30 @@ function gitAccountNotFoundError(
     nextSteps:
       connectable.length > 0
         ? connectable.map((candidate) =>
-            formatCommand(["git", "connect-account", candidate.accountLogin]),
+            formatCommand([
+              "git",
+              "account",
+              "connect",
+              candidate.accountLogin,
+            ]),
           )
-        : [formatCommand(["git", "install"])],
+        : [formatCommand(["git", "account", "connect"])],
+  });
+}
+
+function gitInstallTimedOutError(
+  installUrl: string,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): CliError {
+  return new CliError({
+    code: "GIT_INSTALL_TIMED_OUT",
+    domain: "project",
+    summary: "Timed out waiting for the GitHub App install",
+    why: "The install did not complete before the wait timed out; it may still be in progress.",
+    fix: "Finish the install in your browser, then check the connected accounts.",
+    exitCode: 1,
+    meta: { installUrl },
+    nextSteps: [formatCommand(["git", "account", "list"])],
   });
 }
 
@@ -2569,7 +2742,7 @@ function gitConnectAccountError(
       why: "The Prisma GitHub App was uninstalled from this account out of band; the stale connection records were cleaned up.",
       fix: "Reinstall the app on the GitHub account, then connect it again.",
       exitCode: 1,
-      nextSteps: [formatCommand(["git", "install"])],
+      nextSteps: [formatCommand(["git", "account", "connect"])],
     });
   }
   return repoConnectionApiError(

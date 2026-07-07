@@ -894,65 +894,53 @@ prisma-cli git disconnect --project proj_123
 prisma-cli git disconnect --json
 ```
 
-## `prisma-cli git accounts`
+## `prisma-cli git account list`
 
 Purpose:
 
-- show the active workspace's GitHub account connections
+- show the GitHub accounts connected to the active workspace, and which accounts can be connected without reinstalling
 
 Behavior:
 
 - requires auth
-- lists GitHub accounts connected to the active workspace (login, account type, numeric installation id, suspension state)
-- lists accounts connectable without a GitHub round trip: installations of other workspaces the user belongs to, deduplicated per GitHub account with the newest installation winning
-- suggests `git connect-account <account>` as a next step when connectable accounts exist
+- lists connected accounts with their login, account type (`user` or `organization`), numeric installation id, and suspension state
+- lists connectable accounts: GitHub accounts already installed via other workspaces the user belongs to, deduplicated per account with the newest installation winning, so they can be connected here without a GitHub round trip
+- suggests `git account connect` as a next step
 
 Examples:
 
 ```bash
-prisma-cli git accounts
-prisma-cli git accounts --json
+prisma-cli git account list
+prisma-cli git account list --json
 ```
 
-## `prisma-cli git connect-account [account]`
+## `prisma-cli git account connect [account]`
 
 Purpose:
 
-- connect a GitHub account that already has the Prisma GitHub App installed (via another workspace) to the active workspace, without a GitHub round trip
+- add a GitHub account to the active workspace, either by connecting one already installed elsewhere or by installing the Prisma GitHub App on a new account
 
 Behavior:
 
 - requires auth
-- resolves `[account]` by login or numeric installation id among the connectable accounts
-- without `[account]`, fails with `GIT_ACCOUNT_REQUIRED`; the connectable accounts are listed in `error.meta.connectable` and as runnable next steps, so agents can pick without prompting
+- with `[account]` (login or numeric installation id): connects that account directly, no prompt. This is the path agents and CI use.
+- without `[account]` in an interactive terminal: shows a picker of connectable accounts plus a `+ Install a new GitHub account` option. Choosing an account connects it; choosing install opens GitHub in the browser and waits for the install to finish, so the command never dead-ends without a result.
+- without `[account]` in a non-interactive context (agent, CI, `--json`): never prompts. Fails with `GIT_ACCOUNT_REQUIRED`, carrying the connectable accounts in `error.meta.connectable` (and the install URL in `error.meta.installUrl` when nothing is connectable) plus runnable next steps, so the caller can pick without blocking.
 - an unknown account fails with `GIT_ACCOUNT_NOT_FOUND` and the same machine-readable options
-- authorization is enforced by the platform: a full user session whose user is a member of a workspace the installation is already actively connected to
+- authorization is enforced by the platform: a full user session whose user is a member of a workspace the account is already actively connected to
+- if the browser install does not complete before the wait times out, fails with `GIT_INSTALL_TIMED_OUT`; the install may still finish, so re-check with `git account list`
 - if GitHub reports the installation gone, fails with `GIT_CONNECT_FAILED` after the platform cleans up its stale records
-- this is the account-level connection; link a repository to a project with `git connect`
+- this connects the account (organization/user) to the workspace; link a specific repository to a project with `git connect`
 
 Examples:
 
 ```bash
-prisma-cli git connect-account acme-org
-prisma-cli git connect-account 555003
-```
+# Interactive: pick a connectable account or install a new one
+prisma-cli git account connect
 
-## `prisma-cli git install`
-
-Purpose:
-
-- get the Prisma GitHub App install link for a brand-new GitHub account
-
-Behavior:
-
-- requires auth
-- prints a single-use, time-limited install URL bound to the active workspace
-- the install completes in the browser; then connect a repository with `git connect`
-
-Examples:
-
-```bash
-prisma-cli git install
+# Non-interactive: connect a specific account
+prisma-cli git account connect acme-org
+prisma-cli git account connect 555003 --json
 ```
 
 ## `prisma-cli branch list`

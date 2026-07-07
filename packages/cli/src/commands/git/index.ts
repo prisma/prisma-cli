@@ -1,21 +1,18 @@
 import { Command } from "commander";
 
 import {
-  runGitAccounts,
+  runGitAccountConnect,
+  runGitAccountList,
   runGitConnect,
-  runGitConnectAccount,
   runGitDisconnect,
-  runGitInstall,
 } from "../../controllers/project";
 import {
-  renderGitAccounts,
+  renderGitAccountConnect,
+  renderGitAccountList,
   renderGitConnect,
-  renderGitConnectAccount,
   renderGitDisconnect,
-  renderGitInstall,
-  serializeGitAccounts,
-  serializeGitConnectAccount,
-  serializeGitInstall,
+  serializeGitAccountConnect,
+  serializeGitAccountList,
 } from "../../presenters/project";
 import { attachCommandDescriptor } from "../../shell/command-meta";
 import { runCommand } from "../../shell/command-runner";
@@ -27,7 +24,6 @@ import { type CliRuntime, configureRuntimeCommand } from "../../shell/runtime";
 import type {
   GitAccountsResult,
   GitConnectAccountResult,
-  GitInstallResult,
   ProjectRepositoryConnectionResult,
 } from "../../types/project";
 
@@ -41,9 +37,7 @@ export function createGitCommand(runtime: CliRuntime): Command {
 
   git.addCommand(createGitConnectCommand(runtime));
   git.addCommand(createGitDisconnectCommand(runtime));
-  git.addCommand(createGitAccountsCommand(runtime));
-  git.addCommand(createGitConnectAccountCommand(runtime));
-  git.addCommand(createGitInstallCommand(runtime));
+  git.addCommand(createGitAccountCommand(runtime));
 
   return git;
 }
@@ -107,10 +101,24 @@ function createGitDisconnectCommand(runtime: CliRuntime): Command {
   return command;
 }
 
-function createGitAccountsCommand(runtime: CliRuntime): Command {
+function createGitAccountCommand(runtime: CliRuntime): Command {
+  const account = attachCommandDescriptor(
+    configureRuntimeCommand(new Command("account"), runtime),
+    "git.account",
+  );
+
+  addCompactGlobalFlags(account);
+
+  account.addCommand(createGitAccountListCommand(runtime));
+  account.addCommand(createGitAccountConnectCommand(runtime));
+
+  return account;
+}
+
+function createGitAccountListCommand(runtime: CliRuntime): Command {
   const command = attachCommandDescriptor(
-    configureRuntimeCommand(new Command("accounts"), runtime),
-    "git.accounts",
+    configureRuntimeCommand(new Command("list"), runtime),
+    "git.account.list",
   );
 
   addGlobalFlags(command);
@@ -118,13 +126,13 @@ function createGitAccountsCommand(runtime: CliRuntime): Command {
   command.action(async (options) => {
     await runCommand<GitAccountsResult>(
       runtime,
-      "git.accounts",
+      "git.account.list",
       options as Record<string, unknown>,
-      (context) => runGitAccounts(context),
+      (context) => runGitAccountList(context),
       {
         renderHuman: (context, descriptor, result) =>
-          renderGitAccounts(context, descriptor, result),
-        renderJson: (result) => serializeGitAccounts(result),
+          renderGitAccountList(context, descriptor, result),
+        renderJson: (result) => serializeGitAccountList(result),
       },
     );
   });
@@ -132,10 +140,10 @@ function createGitAccountsCommand(runtime: CliRuntime): Command {
   return command;
 }
 
-function createGitConnectAccountCommand(runtime: CliRuntime): Command {
+function createGitAccountConnectCommand(runtime: CliRuntime): Command {
   const command = attachCommandDescriptor(
-    configureRuntimeCommand(new Command("connect-account"), runtime),
-    "git.connect-account",
+    configureRuntimeCommand(new Command("connect"), runtime),
+    "git.account.connect",
   );
 
   command.argument(
@@ -147,38 +155,13 @@ function createGitConnectAccountCommand(runtime: CliRuntime): Command {
   command.action(async (account: string | undefined, options) => {
     await runCommand<GitConnectAccountResult>(
       runtime,
-      "git.connect-account",
+      "git.account.connect",
       options as Record<string, unknown>,
-      (context) => runGitConnectAccount(context, account),
+      (context) => runGitAccountConnect(context, account),
       {
         renderHuman: (context, descriptor, result) =>
-          renderGitConnectAccount(context, descriptor, result),
-        renderJson: (result) => serializeGitConnectAccount(result),
-      },
-    );
-  });
-
-  return command;
-}
-
-function createGitInstallCommand(runtime: CliRuntime): Command {
-  const command = attachCommandDescriptor(
-    configureRuntimeCommand(new Command("install"), runtime),
-    "git.install",
-  );
-
-  addGlobalFlags(command);
-
-  command.action(async (options) => {
-    await runCommand<GitInstallResult>(
-      runtime,
-      "git.install",
-      options as Record<string, unknown>,
-      (context) => runGitInstall(context),
-      {
-        renderHuman: (context, descriptor, result) =>
-          renderGitInstall(context, descriptor, result),
-        renderJson: (result) => serializeGitInstall(result),
+          renderGitAccountConnect(context, descriptor, result),
+        renderJson: (result) => serializeGitAccountConnect(result),
       },
     );
   });

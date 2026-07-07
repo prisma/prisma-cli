@@ -158,6 +158,8 @@ export interface GitAccountsResult {
 export interface GitConnectAccountResult {
   workspace: AuthWorkspace;
   account: GitAccountSummary;
+  /** True when the account was just installed via the browser, not connected from another workspace. */
+  newlyInstalled: boolean;
 }
 
 export interface GitInstallResult {

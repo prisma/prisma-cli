@@ -15,7 +15,6 @@ import {
 import type {
   GitAccountsResult,
   GitConnectAccountResult,
-  GitInstallResult,
   GitRepositoryConnection,
   ProjectListResult,
   ProjectRemoveResult,
@@ -389,15 +388,15 @@ function formatGitConnectionDetail(
   }
 }
 
-export function renderGitAccounts(
+export function renderGitAccountList(
   context: CommandContext,
   descriptor: CommandDescriptor,
   result: GitAccountsResult,
 ): string[] {
   const ui = context.ui;
-  const rail = ui.dim("│");
+  const rail = ui.dim("\u2502");
   const lines = [
-    `${ui.strong(formatDescriptorLabel(descriptor))} ${ui.dim("→")} ${ui.dim("GitHub accounts for the active workspace.")}`,
+    `${ui.strong(formatDescriptorLabel(descriptor))} ${ui.dim("\u2192")} ${ui.dim("GitHub accounts for the active workspace.")}`,
     "",
     `${rail}  ${ui.accent("workspace:")}  ${result.workspace.name}`,
     rail,
@@ -426,19 +425,19 @@ export function renderGitAccounts(
   return lines;
 }
 
-export function serializeGitAccounts(result: GitAccountsResult) {
+export function serializeGitAccountList(result: GitAccountsResult) {
   return result;
 }
 
-export function renderGitConnectAccount(
+export function renderGitAccountConnect(
   context: CommandContext,
   descriptor: CommandDescriptor,
   result: GitConnectAccountResult,
 ): string[] {
   const ui = context.ui;
-  const rail = ui.dim("│");
+  const rail = ui.dim("\u2502");
   return [
-    `${ui.strong(formatDescriptorLabel(descriptor))} ${ui.dim("→")} ${ui.dim("Connecting a GitHub account.")}`,
+    `${ui.strong(formatDescriptorLabel(descriptor))} ${ui.dim("\u2192")} ${ui.dim(result.newlyInstalled ? "Installed and connected a GitHub account." : "Connected a GitHub account.")}`,
     "",
     `${rail}  ${ui.accent("workspace:")}  ${result.workspace.name}`,
     `${rail}  ${ui.accent("account:")}    ${result.account.accountLogin}`,
@@ -446,27 +445,6 @@ export function renderGitConnectAccount(
   ];
 }
 
-export function serializeGitConnectAccount(result: GitConnectAccountResult) {
-  return result;
-}
-
-export function renderGitInstall(
-  context: CommandContext,
-  descriptor: CommandDescriptor,
-  result: GitInstallResult,
-): string[] {
-  const ui = context.ui;
-  const rail = ui.dim("│");
-  return [
-    `${ui.strong(formatDescriptorLabel(descriptor))} ${ui.dim("→")} ${ui.dim("Install the Prisma GitHub App.")}`,
-    "",
-    `${rail}  ${ui.accent("workspace:")}  ${result.workspace.name}`,
-    `${rail}  ${ui.accent("open:")}       ${result.installUrl}`,
-    rail,
-    `${rail}  ${ui.dim("Finish the install on GitHub; then connect a repo with git connect.")}`,
-  ];
-}
-
-export function serializeGitInstall(result: GitInstallResult) {
+export function serializeGitAccountConnect(result: GitConnectAccountResult) {
   return result;
 }
