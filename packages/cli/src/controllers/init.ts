@@ -101,6 +101,7 @@ export async function runInit(
       solePath !== undefined && path.extname(solePath) === ".json";
     // Conversion must be explicit: plain init refuses every existing config.
     if (soleIsJson && format.value === "typescript" && format.explicit) {
+      rejectConversionResolutionFlags(flags, formatCommand);
       return runInitConversion(context, flags, solePath, formatCommand);
     }
     if (solePath && !soleIsJson && format.value === "json") {
@@ -460,6 +461,49 @@ function parseInitFormat(
   );
 }
 
+/**
+ * Conversion transports the existing config's values; it never re-resolves
+ * settings. Refusing resolution flags beats silently ignoring them.
+ */
+function rejectConversionResolutionFlags(
+  flags: InitFlags,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): void {
+  const passed = [
+    flags.framework !== undefined ? "--framework" : null,
+    flags.entry !== undefined ? "--entry" : null,
+    flags.httpPort !== undefined ? "--http-port" : null,
+    flags.name !== undefined ? "--name" : null,
+    flags.region !== undefined ? "--region" : null,
+  ].filter((flag): flag is string => flag !== null);
+  if (passed.length === 0) {
+    return;
+  }
+  throw usageError(
+    `${passed.join(", ")} ${passed.length === 1 ? "does" : "do"} not apply when converting an existing config`,
+    `--format ts with an existing ${COMPUTE_CONFIG_JSON_FILENAME} converts it as-is; settings are transported, never re-resolved.`,
+    `Convert first, then edit ${COMPUTE_CONFIG_FILENAME} directly.`,
+    [formatCommand(["init", "--format", "ts"])],
+    "app",
+  );
+}
+
+function initConvertIncompleteError(
+  jsonConfigPath: string,
+  tsConfigPath: string,
+): CliError {
+  return new CliError({
+    code: "INIT_CONVERT_INCOMPLETE",
+    domain: "app",
+    summary: "Conversion left two config files behind",
+    why: `${path.basename(tsConfigPath)} was written but ${path.basename(jsonConfigPath)} could not be deleted, and rolling back the write also failed. Commands refuse to load a directory with two config files.`,
+    fix: `Delete one file by hand: keep ${path.basename(tsConfigPath)} to finish the conversion, or keep ${path.basename(jsonConfigPath)} to undo it.`,
+    exitCode: 1,
+    nextSteps: [],
+    meta: { jsonConfigPath, tsConfigPath },
+  });
+}
+
 function initConvertUnsupportedError(existingPath: string): CliError {
   return new CliError({
     code: "INIT_CONVERT_UNSUPPORTED",
@@ -529,7 +573,11 @@ async function runInitConversion(
   } catch (error) {
     // Two coexisting config files are a hard loader error, so a failed
     // delete rolls the write back and leaves the JSON config untouched.
-    await rm(tsConfigPath, { force: true });
+    try {
+      await rm(tsConfigPath, { force: true });
+    } catch {
+      throw initConvertIncompleteError(jsonConfigPath, tsConfigPath);
+    }
     throw error;
   }
 

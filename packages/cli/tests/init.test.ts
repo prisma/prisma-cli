@@ -715,6 +715,151 @@ describe("init config format", () => {
     });
   });
 
+  it("preserves env, build, root, and the project region through conversion", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writeFile(
+      path.join(cwd, "prisma.compute.json"),
+      `${JSON.stringify({
+        region: "eu-central-1",
+        app: {
+          name: "web",
+          framework: "nextjs",
+          root: "apps/web",
+          httpPort: 3000,
+          env: { file: ".env.production", vars: { NODE_ENV: "production" } },
+          build: { command: "pnpm build", outputDirectory: ".next" },
+        },
+      })}\n`,
+    );
+
+    const result = await executeCli({
+      argv: ["init", "--format", "ts", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.result.converted).toBe(true);
+
+    const config = await readConfig(cwd);
+    expect(config).toContain('region: "eu-central-1"');
+    expect(config).toContain('root: "apps/web"');
+    expect(config).toContain('file: ".env.production"');
+    expect(config).toContain('NODE_ENV: "production"');
+    expect(config).toContain('command: "pnpm build"');
+    expect(config).toContain('outputDirectory: ".next"');
+
+    const loaded = await loadComputeConfig(cwd);
+    expect(loaded.isOk() && loaded.value?.targets[0]).toMatchObject({
+      name: "web",
+      framework: "nextjs",
+      root: "apps/web",
+      region: "eu-central-1",
+      envInputs: [".env.production", "NODE_ENV=production"],
+      build: {
+        command: "pnpm build",
+        outputDirectory: ".next",
+        entrypoint: undefined,
+      },
+    });
+  });
+
+  it("converts a multi-app config, including a null build command", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writeFile(
+      path.join(cwd, "prisma.compute.json"),
+      `${JSON.stringify({
+        apps: {
+          web: {
+            framework: "nextjs",
+            root: "apps/web",
+            build: { command: null },
+          },
+          api: {
+            framework: "hono",
+            root: "apps/api",
+            entry: "src/index.ts",
+            httpPort: 8080,
+          },
+        },
+      })}\n`,
+    );
+
+    const result = await executeCli({
+      argv: ["init", "--format", "ts", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.result.converted).toBe(true);
+    // Multi-app configs carry no single app identity.
+    expect(payload.result.app).toBeNull();
+
+    const config = await readConfig(cwd);
+    expect(config).toContain("command: null");
+    await expect(readJsonConfig(cwd)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+
+    const loaded = await loadComputeConfig(cwd);
+    expect(loaded.isOk() && loaded.value?.kind).toBe("multi");
+    expect(loaded.isOk() && loaded.value?.targets).toEqual([
+      expect.objectContaining({
+        key: "web",
+        framework: "nextjs",
+        build: expect.objectContaining({ command: null }),
+      }),
+      expect.objectContaining({
+        key: "api",
+        framework: "hono",
+        entry: "src/index.ts",
+        httpPort: 8080,
+      }),
+    ]);
+  });
+
+  it("rejects resolution flags during conversion instead of ignoring them", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const jsonSource = `${JSON.stringify({
+      app: { name: "api", framework: "hono", httpPort: 8080 },
+    })}\n`;
+    await writeFile(path.join(cwd, "prisma.compute.json"), jsonSource);
+
+    const result = await executeCli({
+      argv: [
+        "init",
+        "--format",
+        "ts",
+        "--framework",
+        "nextjs",
+        "--http-port",
+        "3000",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(2);
+    expect(payload.error.code).toBe("USAGE_ERROR");
+    expect(payload.error.summary).toContain("--framework");
+    expect(payload.error.summary).toContain("--http-port");
+
+    // Nothing on disk changed: no TS config, JSON untouched.
+    await expect(readConfig(cwd)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readJsonConfig(cwd)).toBe(jsonSource);
+  });
+
   it("runs the types install step when converting with --install", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
