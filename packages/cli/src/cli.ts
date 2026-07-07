@@ -9,7 +9,6 @@ import { createBranchCommand } from "./commands/branch";
 import { createBuildCommand } from "./commands/build";
 import { createDatabaseCommand } from "./commands/database";
 import { createGitCommand } from "./commands/git";
-import { createGithubCommand } from "./commands/github";
 import { createInitCommand } from "./commands/init";
 import { createProjectCommand } from "./commands/project";
 import { createVersionCommand } from "./commands/version";
@@ -91,7 +90,6 @@ export function createProgram(runtime: CliRuntime): Command {
   program.addCommand(createProjectCommand(runtime));
   program.addCommand(createGitCommand(runtime));
   program.addCommand(createBranchCommand(runtime));
-  program.addCommand(createGithubCommand(runtime));
   program.addCommand(createBuildCommand(runtime));
   program.addCommand(createDatabaseCommand(runtime));
   program.addCommand(createAppCommand(runtime));

@@ -73,6 +73,11 @@ import { type CommandContext, canPrompt } from "../shell/runtime";
 import { renderSummaryLine } from "../shell/ui";
 import type { AuthWorkspace } from "../types/auth";
 import type {
+  GitAccountSummary,
+  GitAccountsResult,
+  GitConnectAccountResult,
+  GitConnectableAccountSummary,
+  GitInstallResult,
   GitRepositoryConnection,
   ProjectListResult,
   ProjectRemoveResult,
@@ -1607,6 +1612,37 @@ interface SourceRepositoryApiClient {
     }>
   >;
   GET(
+    path: "/v1/scm-installations/connectable",
+    options: {
+      params: {
+        query: {
+          workspaceId: string;
+        };
+      };
+      signal?: AbortSignal;
+    },
+  ): Promise<
+    SourceRepositoryApiResult<{
+      data: {
+        type: "connectable-scm-installation";
+        provider: "github";
+        installationId: number;
+        accountLogin: string;
+      }[];
+    }>
+  >;
+  POST(
+    path: "/v1/scm-installations/connect",
+    options: {
+      body: {
+        provider: "github";
+        workspaceId: string;
+        installationId: number;
+      };
+      signal?: AbortSignal;
+    },
+  ): Promise<SourceRepositoryApiResult<{ data: ScmInstallationResponse }>>;
+  GET(
     path: "/v1/scm-installations/{installationId}/repositories",
     options: {
       params: {
@@ -2285,4 +2321,260 @@ function repoConnectionFixForStatus(status: number): string {
   }
 
   return "Re-run with --trace for the underlying API response details.";
+}
+
+function toGitAccountSummary(record: {
+  installationId: number;
+  accountLogin: string;
+  accountType: "user" | "organization";
+  suspended: boolean;
+}): GitAccountSummary {
+  return {
+    installationId: record.installationId,
+    accountLogin: record.accountLogin,
+    accountType: record.accountType,
+    suspended: record.suspended,
+  };
+}
+
+async function resolveGitAccountContext(context: CommandContext): Promise<{
+  workspace: NonNullable<
+    Awaited<ReturnType<typeof requireAuthenticatedAuthState>>["workspace"]
+  >;
+  formatCommand: PrismaCliPackageCommandFormatter;
+  api: SourceRepositoryApiClient | null;
+}> {
+  const formatCommand = resolvePrismaCliPackageCommandFormatterSync(
+    context.runtime.cwd,
+  );
+  const authState = await requireAuthenticatedAuthState(context);
+  const workspace = authState.workspace;
+  if (!workspace) {
+    throw workspaceRequiredError();
+  }
+
+  if (!isRealMode(context)) {
+    return { workspace, formatCommand, api: null };
+  }
+
+  const client = await requireComputeAuth(
+    context.runtime.env,
+    context.runtime.signal,
+  );
+  if (!client) {
+    throw authRequiredError();
+  }
+  return {
+    workspace,
+    formatCommand,
+    api: client as unknown as SourceRepositoryApiClient,
+  };
+}
+
+async function listConnectableGitAccounts(
+  api: SourceRepositoryApiClient,
+  workspaceId: string,
+  signal: AbortSignal,
+): Promise<GitConnectableAccountSummary[]> {
+  const { data, error, response } = await api.GET(
+    "/v1/scm-installations/connectable",
+    { params: { query: { workspaceId } }, signal },
+  );
+  if (error || !data) {
+    throw repoConnectionApiError(
+      "Failed to list connectable GitHub accounts",
+      response,
+      error,
+    );
+  }
+  return data.data.map((record) => ({
+    installationId: record.installationId,
+    accountLogin: record.accountLogin,
+  }));
+}
+
+export async function runGitAccounts(
+  context: CommandContext,
+): Promise<CommandSuccess<GitAccountsResult>> {
+  const { workspace, formatCommand, api } =
+    await resolveGitAccountContext(context);
+
+  const [connected, connectable] = api
+    ? await Promise.all([
+        listScmInstallations(api, workspace.id, context.runtime.signal).then(
+          (rows) => rows.map(toGitAccountSummary),
+        ),
+        listConnectableGitAccounts(api, workspace.id, context.runtime.signal),
+      ])
+    : [
+        context.api.listScmInstallations(workspace.id).map(toGitAccountSummary),
+        context.api.listConnectableScmInstallations(workspace.id),
+      ];
+
+  return {
+    command: "git.accounts",
+    result: { workspace, connected, connectable },
+    warnings: [],
+    nextSteps:
+      connectable.length > 0
+        ? [
+            formatCommand([
+              "git",
+              "connect-account",
+              connectable[0].accountLogin,
+            ]),
+          ]
+        : [],
+  };
+}
+
+export async function runGitConnectAccount(
+  context: CommandContext,
+  accountRef: string | undefined,
+): Promise<CommandSuccess<GitConnectAccountResult>> {
+  const { workspace, formatCommand, api } =
+    await resolveGitAccountContext(context);
+
+  const connectable = api
+    ? await listConnectableGitAccounts(
+        api,
+        workspace.id,
+        context.runtime.signal,
+      )
+    : context.api.listConnectableScmInstallations(workspace.id);
+
+  if (!accountRef) {
+    throw gitAccountRequiredError(connectable, formatCommand);
+  }
+
+  const target = connectable.find(
+    (candidate) =>
+      candidate.accountLogin === accountRef ||
+      String(candidate.installationId) === accountRef,
+  );
+  if (!target) {
+    throw gitAccountNotFoundError(accountRef, connectable, formatCommand);
+  }
+
+  let account: GitAccountSummary;
+  if (api) {
+    const { data, error, response } = await api.POST(
+      "/v1/scm-installations/connect",
+      {
+        body: {
+          provider: "github",
+          workspaceId: workspace.id,
+          installationId: target.installationId,
+        },
+        signal: context.runtime.signal,
+      },
+    );
+    if (error || !data) {
+      throw gitConnectAccountError(response, error, formatCommand);
+    }
+    account = toGitAccountSummary(data.data);
+  } else {
+    account = toGitAccountSummary(
+      context.api.connectScmInstallation(workspace.id, target.installationId),
+    );
+  }
+
+  return {
+    command: "git.connect-account",
+    result: { workspace, account },
+    warnings: [],
+    nextSteps: [formatCommand(["git", "accounts"])],
+  };
+}
+
+export async function runGitInstall(
+  context: CommandContext,
+): Promise<CommandSuccess<GitInstallResult>> {
+  const { workspace, api } = await resolveGitAccountContext(context);
+
+  const installUrl = api
+    ? await createGitHubInstallIntent(api, workspace.id, context.runtime.signal)
+    : "https://github.com/apps/prisma/installations/new?state=fixture-nonce";
+
+  return {
+    command: "git.install",
+    result: { workspace, installUrl },
+    warnings: [],
+    nextSteps: [],
+  };
+}
+
+function gitAccountRequiredError(
+  connectable: GitConnectableAccountSummary[],
+  formatCommand: PrismaCliPackageCommandFormatter,
+): CliError {
+  return new CliError({
+    code: "GIT_ACCOUNT_REQUIRED",
+    domain: "project",
+    summary: "GitHub account required",
+    why:
+      connectable.length > 0
+        ? "Pass the GitHub account to connect to this workspace."
+        : "No GitHub account is connectable to this workspace; accounts already installed via other workspaces you belong to would appear here.",
+    fix:
+      connectable.length > 0
+        ? "Rerun with one of the connectable accounts."
+        : "Install the Prisma GitHub App first, then connect it.",
+    exitCode: 2,
+    meta: { connectable },
+    nextSteps:
+      connectable.length > 0
+        ? connectable.map((candidate) =>
+            formatCommand(["git", "connect-account", candidate.accountLogin]),
+          )
+        : [formatCommand(["git", "install"])],
+  });
+}
+
+function gitAccountNotFoundError(
+  accountRef: string,
+  connectable: GitConnectableAccountSummary[],
+  formatCommand: PrismaCliPackageCommandFormatter,
+): CliError {
+  return new CliError({
+    code: "GIT_ACCOUNT_NOT_FOUND",
+    domain: "project",
+    summary: `Unknown GitHub account "${accountRef}"`,
+    why: "The account is not connectable to this workspace: it is either unknown, already connected here, or belongs to workspaces you are not a member of.",
+    fix:
+      connectable.length > 0
+        ? "Pass one of the connectable accounts by login or installation id."
+        : "Install the Prisma GitHub App on the account first.",
+    exitCode: 1,
+    meta: { accountRef, connectable },
+    nextSteps:
+      connectable.length > 0
+        ? connectable.map((candidate) =>
+            formatCommand(["git", "connect-account", candidate.accountLogin]),
+          )
+        : [formatCommand(["git", "install"])],
+  });
+}
+
+function gitConnectAccountError(
+  response: Response | undefined,
+  error: SourceRepositoryApiError | undefined,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): CliError {
+  if (response?.status === 422) {
+    return new CliError({
+      code: "GIT_CONNECT_FAILED",
+      domain: "project",
+      summary: "GitHub reports the installation no longer exists",
+      why: "The Prisma GitHub App was uninstalled from this account out of band; the stale connection records were cleaned up.",
+      fix: "Reinstall the app on the GitHub account, then connect it again.",
+      exitCode: 1,
+      nextSteps: [formatCommand(["git", "install"])],
+    });
+  }
+  return repoConnectionApiError(
+    "Failed to connect the GitHub account",
+    response,
+    error,
+  );
 }

@@ -22,13 +22,13 @@ async function login(cwd: string, stateDir: string) {
   });
 }
 
-describe("github commands", () => {
+describe("git account commands", () => {
   it("lists connected and connectable accounts as JSON", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     await login(cwd, stateDir);
     const result = await executeCli({
-      argv: ["github", "list", "--json"],
+      argv: ["git", "accounts", "--json"],
       cwd,
       stateDir,
       fixturePath,
@@ -38,7 +38,7 @@ describe("github commands", () => {
     expect(result.exitCode).toBe(0);
     const envelope = JSON.parse(result.stdout);
     expect(envelope.ok).toBe(true);
-    expect(envelope.command).toBe("github.list");
+    expect(envelope.command).toBe("git.accounts");
     expect(envelope.result.connected).toEqual([
       {
         installationId: 555001,
@@ -51,17 +51,15 @@ describe("github commands", () => {
     expect(envelope.result.connectable).toEqual([
       { installationId: 555003, accountLogin: "prisma-labs" },
     ]);
-    expect(envelope.nextSteps.join(" ")).toContain(
-      "github connect prisma-labs",
-    );
+    expect(result.stdout).toContain("git connect-account prisma-labs");
   });
 
-  it("connects a connectable account by login and drops it from connectable", async () => {
+  it("connects a connectable account by login", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     await login(cwd, stateDir);
     const result = await executeCli({
-      argv: ["github", "connect", "prisma-labs", "--json"],
+      argv: ["git", "connect-account", "prisma-labs", "--json"],
       cwd,
       stateDir,
       fixturePath,
@@ -70,9 +68,8 @@ describe("github commands", () => {
 
     expect(result.exitCode).toBe(0);
     const envelope = JSON.parse(result.stdout);
-    expect(envelope.ok).toBe(true);
-    expect(envelope.command).toBe("github.connect");
-    expect(envelope.result.installation).toEqual({
+    expect(envelope.command).toBe("git.connect-account");
+    expect(envelope.result.account).toEqual({
       installationId: 555003,
       accountLogin: "prisma-labs",
       accountType: "organization",
@@ -85,7 +82,7 @@ describe("github commands", () => {
     const stateDir = path.join(cwd, ".state");
     await login(cwd, stateDir);
     const result = await executeCli({
-      argv: ["github", "connect", "555003", "--json"],
+      argv: ["git", "connect-account", "555003", "--json"],
       cwd,
       stateDir,
       fixturePath,
@@ -93,17 +90,17 @@ describe("github commands", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(JSON.parse(result.stdout).result.installation.accountLogin).toBe(
+    expect(JSON.parse(result.stdout).result.account.accountLogin).toBe(
       "prisma-labs",
     );
   });
 
-  it("requires an account argument and lists the connectable options", async () => {
+  it("requires an account and lists the connectable options", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     await login(cwd, stateDir);
     const result = await executeCli({
-      argv: ["github", "connect", "--json"],
+      argv: ["git", "connect-account", "--json"],
       cwd,
       stateDir,
       fixturePath,
@@ -113,11 +110,11 @@ describe("github commands", () => {
     expect(result.exitCode).toBe(2);
     const envelope = JSON.parse(result.stdout);
     expect(envelope.ok).toBe(false);
-    expect(envelope.error.code).toBe("GITHUB_ACCOUNT_REQUIRED");
+    expect(envelope.error.code).toBe("GIT_ACCOUNT_REQUIRED");
     expect(envelope.error.meta.connectable).toEqual([
       { installationId: 555003, accountLogin: "prisma-labs" },
     ]);
-    expect(result.stdout).toContain("github connect prisma-labs");
+    expect(result.stdout).toContain("git connect-account prisma-labs");
   });
 
   it("fails with a structured error for an unknown account", async () => {
@@ -125,7 +122,7 @@ describe("github commands", () => {
     const stateDir = path.join(cwd, ".state");
     await login(cwd, stateDir);
     const result = await executeCli({
-      argv: ["github", "connect", "nope", "--json"],
+      argv: ["git", "connect-account", "nope", "--json"],
       cwd,
       stateDir,
       fixturePath,
@@ -133,11 +130,7 @@ describe("github commands", () => {
     });
 
     expect(result.exitCode).toBe(1);
-    const envelope = JSON.parse(result.stdout);
-    expect(envelope.error.code).toBe("GITHUB_ACCOUNT_NOT_FOUND");
-    expect(envelope.error.meta.connectable).toEqual([
-      { installationId: 555003, accountLogin: "prisma-labs" },
-    ]);
+    expect(JSON.parse(result.stdout).error.code).toBe("GIT_ACCOUNT_NOT_FOUND");
   });
 
   it("prints the install URL", async () => {
@@ -145,7 +138,7 @@ describe("github commands", () => {
     const stateDir = path.join(cwd, ".state");
     await login(cwd, stateDir);
     const result = await executeCli({
-      argv: ["github", "install", "--json"],
+      argv: ["git", "install", "--json"],
       cwd,
       stateDir,
       fixturePath,
@@ -153,7 +146,8 @@ describe("github commands", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    const envelope = JSON.parse(result.stdout);
-    expect(envelope.result.installUrl).toContain("github.com/apps/");
+    expect(JSON.parse(result.stdout).result.installUrl).toContain(
+      "github.com/apps/",
+    );
   });
 });

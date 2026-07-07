@@ -134,3 +134,33 @@ export interface ProjectRepositoryConnectionResult
   extends BoundProjectShowResult {
   repositoryConnection: GitRepositoryConnection;
 }
+
+export interface GitAccountSummary {
+  /** Numeric GitHub App installation id. */
+  installationId: number;
+  accountLogin: string;
+  accountType: "user" | "organization";
+  suspended: boolean;
+}
+
+export interface GitConnectableAccountSummary {
+  /** Numeric GitHub App installation id. */
+  installationId: number;
+  accountLogin: string;
+}
+
+export interface GitAccountsResult {
+  workspace: AuthWorkspace;
+  connected: GitAccountSummary[];
+  connectable: GitConnectableAccountSummary[];
+}
+
+export interface GitConnectAccountResult {
+  workspace: AuthWorkspace;
+  account: GitAccountSummary;
+}
+
+export interface GitInstallResult {
+  workspace: AuthWorkspace;
+  installUrl: string;
+}

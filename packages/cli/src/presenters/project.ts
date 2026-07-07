@@ -13,6 +13,9 @@ import {
   renderVerboseBlock,
 } from "../shell/ui";
 import type {
+  GitAccountsResult,
+  GitConnectAccountResult,
+  GitInstallResult,
   GitRepositoryConnection,
   ProjectListResult,
   ProjectRemoveResult,
@@ -384,4 +387,86 @@ function formatGitConnectionDetail(
     default:
       return "GitHub repository is connected, but branch automation is not active.";
   }
+}
+
+export function renderGitAccounts(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: GitAccountsResult,
+): string[] {
+  const ui = context.ui;
+  const rail = ui.dim("│");
+  const lines = [
+    `${ui.strong(formatDescriptorLabel(descriptor))} ${ui.dim("→")} ${ui.dim("GitHub accounts for the active workspace.")}`,
+    "",
+    `${rail}  ${ui.accent("workspace:")}  ${result.workspace.name}`,
+    rail,
+  ];
+
+  if (result.connected.length === 0) {
+    lines.push(`${rail}  ${ui.dim("No GitHub account connected.")}`);
+  } else {
+    for (const account of result.connected) {
+      const status = account.suspended ? ui.dim(" (suspended)") : "";
+      lines.push(
+        `${rail}  ${ui.accent("connected:")}  ${account.accountLogin} ${ui.dim(`(${account.accountType}, installation ${account.installationId})`)}${status}`,
+      );
+    }
+  }
+
+  if (result.connectable.length > 0) {
+    lines.push(rail);
+    for (const candidate of result.connectable) {
+      lines.push(
+        `${rail}  ${ui.accent("connectable:")} ${candidate.accountLogin} ${ui.dim(`(installation ${candidate.installationId}, via another workspace)`)}`,
+      );
+    }
+  }
+
+  return lines;
+}
+
+export function serializeGitAccounts(result: GitAccountsResult) {
+  return result;
+}
+
+export function renderGitConnectAccount(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: GitConnectAccountResult,
+): string[] {
+  const ui = context.ui;
+  const rail = ui.dim("│");
+  return [
+    `${ui.strong(formatDescriptorLabel(descriptor))} ${ui.dim("→")} ${ui.dim("Connecting a GitHub account.")}`,
+    "",
+    `${rail}  ${ui.accent("workspace:")}  ${result.workspace.name}`,
+    `${rail}  ${ui.accent("account:")}    ${result.account.accountLogin}`,
+    `${rail}  ${ui.accent("connected:")}  yes`,
+  ];
+}
+
+export function serializeGitConnectAccount(result: GitConnectAccountResult) {
+  return result;
+}
+
+export function renderGitInstall(
+  context: CommandContext,
+  descriptor: CommandDescriptor,
+  result: GitInstallResult,
+): string[] {
+  const ui = context.ui;
+  const rail = ui.dim("│");
+  return [
+    `${ui.strong(formatDescriptorLabel(descriptor))} ${ui.dim("→")} ${ui.dim("Install the Prisma GitHub App.")}`,
+    "",
+    `${rail}  ${ui.accent("workspace:")}  ${result.workspace.name}`,
+    `${rail}  ${ui.accent("open:")}       ${result.installUrl}`,
+    rail,
+    `${rail}  ${ui.dim("Finish the install on GitHub; then connect a repo with git connect.")}`,
+  ];
+}
+
+export function serializeGitInstall(result: GitInstallResult) {
+  return result;
 }

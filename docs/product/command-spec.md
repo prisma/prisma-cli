@@ -894,61 +894,65 @@ prisma-cli git disconnect --project proj_123
 prisma-cli git disconnect --json
 ```
 
-## `prisma-cli github list`
+## `prisma-cli git accounts`
 
 Purpose:
 
-- show the active workspace's GitHub connection state
+- show the active workspace's GitHub account connections
 
 Behavior:
 
+- requires auth
 - lists GitHub accounts connected to the active workspace (login, account type, numeric installation id, suspension state)
 - lists accounts connectable without a GitHub round trip: installations of other workspaces the user belongs to, deduplicated per GitHub account with the newest installation winning
-- suggests `github connect <account>` as a next step when connectable accounts exist
+- suggests `git connect-account <account>` as a next step when connectable accounts exist
 
 Examples:
 
 ```bash
-prisma-cli github list
-prisma-cli github list --json
+prisma-cli git accounts
+prisma-cli git accounts --json
 ```
 
-## `prisma-cli github connect [account]`
+## `prisma-cli git connect-account [account]`
 
 Purpose:
 
-- connect a GitHub account that already has the Prisma GitHub App installed to the active workspace, without a GitHub round trip
+- connect a GitHub account that already has the Prisma GitHub App installed (via another workspace) to the active workspace, without a GitHub round trip
 
 Behavior:
 
+- requires auth
 - resolves `[account]` by login or numeric installation id among the connectable accounts
-- without `[account]`, fails with `GITHUB_ACCOUNT_REQUIRED`; the connectable accounts are listed in `error.meta.connectable` and as runnable next steps, so agents can pick without prompting
-- an unknown account fails with `GITHUB_ACCOUNT_NOT_FOUND` and the same machine-readable options
-- authorization is enforced by the platform: the user must be a member of a workspace the installation is already actively connected to
-- if GitHub reports the installation gone, fails with `GITHUB_CONNECT_FAILED` after the platform cleans up its stale records
+- without `[account]`, fails with `GIT_ACCOUNT_REQUIRED`; the connectable accounts are listed in `error.meta.connectable` and as runnable next steps, so agents can pick without prompting
+- an unknown account fails with `GIT_ACCOUNT_NOT_FOUND` and the same machine-readable options
+- authorization is enforced by the platform: a full user session whose user is a member of a workspace the installation is already actively connected to
+- if GitHub reports the installation gone, fails with `GIT_CONNECT_FAILED` after the platform cleans up its stale records
+- this is the account-level connection; link a repository to a project with `git connect`
 
 Examples:
 
 ```bash
-prisma-cli github connect acme-org
-prisma-cli github connect 555003
+prisma-cli git connect-account acme-org
+prisma-cli git connect-account 555003
 ```
 
-## `prisma-cli github install`
+## `prisma-cli git install`
 
 Purpose:
 
-- get the GitHub App install link for connecting a brand-new GitHub account
+- get the Prisma GitHub App install link for a brand-new GitHub account
 
 Behavior:
 
+- requires auth
 - prints a single-use, time-limited install URL bound to the active workspace
-- the install completes in the browser; the Console callback finishes the connection
+- the install completes in the browser; then connect a repository with `git connect`
 
 Examples:
 
 ```bash
-prisma-cli github install
+prisma-cli git install
 ```
 
 ## `prisma-cli branch list`
