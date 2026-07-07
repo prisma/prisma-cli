@@ -43,7 +43,13 @@ export function createInitCommand(runtime: CliRuntime): Command {
     .addOption(
       new Option("--install", "Install @prisma/compute-sdk for config types"),
     )
-    .addOption(new Option("--no-install", "Skip the types install step"));
+    .addOption(new Option("--no-install", "Skip the types install step"))
+    .addOption(
+      new Option(
+        "--format <ts|json>",
+        "Config file format: ts (default) writes prisma.compute.ts, json writes dependency-free prisma.compute.json; --format ts converts an existing prisma.compute.json",
+      ),
+    );
   addGlobalFlags(command);
 
   command.action(async (options) => {
@@ -56,6 +62,7 @@ export function createInitCommand(runtime: CliRuntime): Command {
       link?: boolean;
       project?: string;
       install?: boolean;
+      format?: string;
     };
 
     await runCommand<InitResult>(
@@ -72,6 +79,7 @@ export function createInitCommand(runtime: CliRuntime): Command {
           link: flags.link,
           project: flags.project,
           install: flags.install,
+          format: flags.format,
         }),
       {
         renderHuman: (context, descriptor, result) =>

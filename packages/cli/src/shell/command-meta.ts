@@ -47,11 +47,12 @@ const DESCRIPTORS: CommandDescriptor[] = [
   {
     id: "init",
     path: ["prisma", "init"],
-    description: "Write a committed prisma.compute.ts for this app",
+    description: "Write a committed compute config for this app",
     examples: (runtime) =>
       agentCommandExamples(runtime, [
         ["init"],
         ["init", "--framework", "hono", "--entry", "src/index.ts"],
+        ["init", "--format", "json"],
         ["init", "--no-link"],
       ]),
   },

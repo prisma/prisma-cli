@@ -1,3 +1,5 @@
+import { COMPUTE_CONFIG_JSON_FILENAME } from "@prisma/compute-sdk/config";
+
 import { resolvePrismaCliPackageCommandFormatterSync } from "../lib/agent/cli-command";
 import type { CommandDescriptor } from "../shell/command-meta";
 import type { CommandContext } from "../shell/runtime";
@@ -14,7 +16,13 @@ export function renderInit(
     context.runtime.cwd,
   );
   const lines = [
-    renderSummaryLine(ui, "success", `Wrote ${result.configPath}`),
+    renderSummaryLine(
+      ui,
+      "success",
+      result.converted
+        ? `Converted ${COMPUTE_CONFIG_JSON_FILENAME} to ${result.configPath}`
+        : `Wrote ${result.configPath}`,
+    ),
   ];
 
   // Failed steps surface through the runner's success-warning rendering, so
