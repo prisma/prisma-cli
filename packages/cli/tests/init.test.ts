@@ -421,7 +421,7 @@ describe("init types install", () => {
 });
 
 describe("init config format", () => {
-  it("writes a $schema-first prisma.compute.json with --format json that round-trips through the loader", async () => {
+  it("writes prisma.compute.json with --format json that round-trips through the loader", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     await writePackageJson(cwd, { name: "billing-api" });
@@ -472,8 +472,9 @@ describe("init config format", () => {
     ]);
 
     const written = JSON.parse(await readJsonConfig(cwd));
-    expect(Object.keys(written)[0]).toBe("$schema");
-    expect(written.$schema).toBe(COMPUTE_CONFIG_JSON_SCHEMA_URL);
+    // No $schema until the schema URL actually resolves; the loader accepts
+    // it either way, so hand-added references keep working.
+    expect(written).not.toHaveProperty("$schema");
     expect(written.app).toMatchObject({
       name: "billing-api",
       framework: "hono",

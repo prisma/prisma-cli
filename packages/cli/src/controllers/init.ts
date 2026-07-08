@@ -201,7 +201,7 @@ export async function runInit(
 
   const warnings: string[] = [];
   // The JSON format exists to be dependency-free, so the types install step
-  // never runs for it; prisma.compute.json validates through $schema instead.
+  // never runs for it; validation happens when commands load the config.
   const types: InitTypesState =
     format.value === "json"
       ? {
