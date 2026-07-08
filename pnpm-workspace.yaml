@@ -12,8 +12,3 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - '@prisma/compute-sdk'
   - '@prisma/management-api-sdk'
-
-# Local development link pending the @prisma/compute-sdk 0.33 release; drop
-# before merge.
-overrides:
-  '@prisma/compute-sdk': link:../project-compute/sdk
