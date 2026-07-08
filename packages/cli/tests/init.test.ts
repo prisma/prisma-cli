@@ -892,6 +892,55 @@ describe("init config format", () => {
     expect(payload.result.types.status).toBe("installed");
   });
 
+  it("honors link flags when converting, like fresh init", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writePackageJson(cwd, { name: "api" });
+    await login(cwd, stateDir);
+    const jsonConfig = `${JSON.stringify({ app: { framework: "hono", httpPort: 8080 } })}\n`;
+    await writeFile(path.join(cwd, "prisma.compute.json"), jsonConfig);
+
+    const linked = await executeCli({
+      argv: [
+        "init",
+        "--format",
+        "ts",
+        "--project",
+        "proj_123",
+        "--no-install",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const linkedPayload = JSON.parse(linked.stdout);
+
+    expect(linked.exitCode).toBe(0);
+    expect(linkedPayload.result.converted).toBe(true);
+    expect(linkedPayload.result.link).toMatchObject({
+      status: "linked",
+      project: { id: "proj_123" },
+    });
+    // Linked conversions do not suggest linking again.
+    expect(linkedPayload.nextSteps).not.toContainEqual(
+      expect.stringContaining("project link"),
+    );
+
+    // --no-link stays an explicit skip.
+    const cwd2 = await createTempCwd();
+    await writeFile(path.join(cwd2, "prisma.compute.json"), jsonConfig);
+    const skipped = await executeCli({
+      argv: ["init", "--format", "ts", "--no-link", "--no-install", "--json"],
+      cwd: cwd2,
+      stateDir,
+      fixturePath,
+    });
+    const skippedPayload = JSON.parse(skipped.stdout);
+    expect(skipped.exitCode).toBe(0);
+    expect(skippedPayload.result.link.status).toBe("skipped");
+  });
+
   it("prints the human conversion summary", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");

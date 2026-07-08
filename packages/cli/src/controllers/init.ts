@@ -588,15 +588,16 @@ async function runInitConversion(
   const types = await resolveInitTypes(context, flags, {
     onWarning: (message) => warnings.push(message),
   });
-  // Conversion changes the config's serialization, not the directory's
-  // project binding, so it reports the link state without prompting.
-  const pin = await readLocalResolutionPin(cwd, signal);
-  const link: InitLinkState =
-    pin.isOk() && pin.value.kind === "present"
-      ? { status: "already-linked", project: null }
-      : { status: "skipped", project: null };
+  // Conversion transports the config's values but its side-effect steps
+  // behave exactly like fresh init: install flags feed resolveInitTypes
+  // above, and link flags (--link/--no-link/--project) resolve here
+  // instead of being silently ignored.
+  const link = await resolveInitLink(context, flags, {
+    onWarning: (message) => warnings.push(message),
+    formatCommand,
+  });
 
-  const unlinked = link.status !== "already-linked";
+  const unlinked = link.status !== "already-linked" && link.status !== "linked";
   const typesMissing =
     types.status !== "installed" && types.status !== "already-installed";
   return {
