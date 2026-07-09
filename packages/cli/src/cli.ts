@@ -23,6 +23,7 @@ import {
   writeJsonError,
   writeJsonSuccess,
 } from "./shell/output";
+import { canonicalizeWindowsPathKey } from "./shell/path-env";
 import { disposePromptState } from "./shell/prompt";
 import {
   type CliRuntime,
@@ -37,6 +38,11 @@ export interface RunCliOptions extends Partial<CliRuntime> {
 }
 
 export async function runCli(options: RunCliOptions = {}): Promise<number> {
+  // The compute SDK spreads process.env into plain objects when building the
+  // environment for local build subprocesses; a Windows `Path` key breaks
+  // that (see canonicalizeWindowsPathKey), so normalize before any command.
+  canonicalizeWindowsPathKey(process.env);
+
   const runtime = resolveRuntime(options);
   const program = createProgram(runtime);
   process.exitCode = 0;
