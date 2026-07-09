@@ -384,17 +384,22 @@ prisma-cli --version --json
 
 `prisma-cli version` is the richer environment report; `prisma-cli --version` is the terse one-liner. Both report the same `cli.version`. Use the flag for quick checks, the subcommand for support tickets and bug reports.
 
-## `prisma-cli init --framework <nextjs|nuxt|astro|hono|nestjs|tanstack-start|bun|custom> --entry <path> --http-port <port> --region <region> --name <app-name> --link --no-link --project <id-or-name> --install --no-install`
+## `prisma-cli init --framework <nextjs|nuxt|astro|hono|nestjs|tanstack-start|bun|custom> --entry <path> --http-port <port> --region <region> --name <app-name> --link --no-link --project <id-or-name> --install --no-install --format <ts|json>`
 
 Purpose:
 
-- write a committed `prisma.compute.ts` for the app in this directory
+- write a committed `prisma.compute.ts` (or, with `--format json`, a dependency-free `prisma.compute.json`) for the app in this directory
 
 Behavior:
 
 - init is the config formalizer: `app deploy` works with zero config, and init writes down what deploy would infer so the setup is committed, reviewable, and stable for teammates and CI
 - writing the config requires no auth and no network; linking is the only remote step
 - fails with `INIT_CONFIG_EXISTS` when a compute config already exists in the invocation directory or any ancestor up to the repository or workspace root; the error names the existing file, and init never overwrites or merges — editing a committed config is the user's editor's job
+- `--format <ts|json>` selects the config serialization; `ts` (alias `typescript`) is the default and writes `prisma.compute.ts`, `json` writes `prisma.compute.json` via the shared SDK serializer, a dependency-free static document (a `$schema` reference will be emitted once the schema is hosted; the loader already accepts and strips one); both formats pin exactly the same resolved values, and the CLI's global `--json` output flag is unrelated to the config format
+- with `--format json`, the types install step never runs: the JSON format exists to be dependency-free, so `--install` is a usage error; without `--install`, the result reports the step as skipped with no install hint
+- with `--format json` and the custom framework, init fails with a usage error: custom needs `build.outputDirectory` and `build.entrypoint`, which init does not collect, and strict JSON cannot carry the commented build stub the TypeScript format uses; the fix is the TypeScript format or a hand-written `build` object
+- graduation path: an explicit `--format ts` with an existing `prisma.compute.json` converts it in place; the JSON config is loaded and validated, the equivalent `prisma.compute.ts` wrapping the same object in `defineComputeConfig` is written next to it, the JSON file is then deleted (a failed delete rolls the write back, and a failed rollback fails with `INIT_CONVERT_INCOMPLETE` so two config files never coexist silently), and the types install and link steps run as usual (`--install`/`--no-install`, `--link`/`--no-link`/`--project`) and act on the discovered config directory, not the invocation directory, so a conversion run from a nested app dir installs types and writes the project pin where the config lives; config values are transported, never re-resolved, so the value-resolution flags (`--framework`, `--entry`, `--http-port`, `--name`, `--region`) are usage errors during conversion, and the conversion is reported with `converted: true`
+- conversion is one-way and explicit: plain `init` with any existing config still fails with `INIT_CONFIG_EXISTS`, and `--format json` with an existing TypeScript config fails with `INIT_CONVERT_UNSUPPORTED` because TypeScript configs may contain logic that a static JSON file cannot express; a fully static config can be rewritten by hand
 - detects the framework from the same registry and signals `app deploy` uses; explicit `--framework` wins over detection
 - `--entry` sets the source entrypoint for entrypoint frameworks (Bun, Hono); `--http-port` overrides the framework default port; `--name` overrides the app name inferred from `package.json#name` or the directory name
 - previews the resolved values with per-value source annotations (`detected`, `framework default`, `package.json`, `flag`) before writing; in interactive mode the preview is followed by an optional adjust step for framework and HTTP port, and `--yes` accepts the preview as shown
@@ -415,7 +420,7 @@ Behavior:
   - link failures and cancellations after the config is written downgrade to warnings and `nextSteps`; the config write stands and init exits 0
 - `nextSteps` includes the deploy command, plus the project link command when the directory is still unlinked
 - user-facing command hints in init output (next steps, link hints, error recovery commands) use the package runner detected from the project, such as `pnpm dlx @prisma/cli@latest project link` or `npx -y @prisma/cli@latest app deploy`, matching the `agent` group's convention
-- in `--json`, `result` includes `configPath`, the written `app` values, per-value `settings` sources, and `link` state; `--json` never prompts
+- in `--json`, `result` includes `configPath`, `format` (`typescript` or `json`), `converted` (true only for the `--format ts` conversion path), the written `app` values (null when a conversion transported a config that does not pin a single fully-resolved app), per-value `settings` sources, and `link` state; `--json` never prompts
 
 Examples:
 
@@ -424,6 +429,8 @@ prisma-cli init
 prisma-cli init --framework hono --entry src/index.ts
 prisma-cli init --name api --http-port 8080 --no-link
 prisma-cli init --project proj_123
+prisma-cli init --format json
+prisma-cli init --format ts
 prisma-cli init --json
 ```
 

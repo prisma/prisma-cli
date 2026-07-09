@@ -188,6 +188,8 @@ These codes are the minimum stable set for the MVP:
 - `BUILD_SETTINGS_UNSUPPORTED`
 - `FRAMEWORK_NOT_DETECTED`
 - `INIT_CONFIG_EXISTS`
+- `INIT_CONVERT_UNSUPPORTED`
+- `INIT_CONVERT_INCOMPLETE`
 - `INIT_DETECTION_FAILED`
 - `DEPLOYMENT_NOT_FOUND`
 - `NO_DEPLOYMENTS`
@@ -261,6 +263,8 @@ Recommended meanings:
 - `BUILD_SETTINGS_UNSUPPORTED`: a compute config `build` block targets a framework whose SDK strategy does not consume committed build settings
 - `FRAMEWORK_NOT_DETECTED`: app deploy could not detect a supported Beta framework and no explicit framework/build type was provided
 - `INIT_CONFIG_EXISTS`: a compute config already exists in this directory or an ancestor; init never overwrites or merges
+- `INIT_CONVERT_UNSUPPORTED`: `init --format json` found an existing TypeScript config; TypeScript configs may contain logic, so converting them to JSON automatically would be lossy and the rewrite is manual
+- `INIT_CONVERT_INCOMPLETE`: a conversion wrote prisma.compute.ts but could not delete prisma.compute.json, and rolling back the write also failed; both files exist and one must be deleted by hand
 - `INIT_DETECTION_FAILED`: no supported framework detected and no --framework passed; `meta.frameworks` lists the valid values
 - `DEPLOYMENT_NOT_FOUND`: requested deployment id does not exist
 - `NO_DEPLOYMENTS`: command resolved a branch or app but found no deployments

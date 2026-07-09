@@ -1,7 +1,8 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   COMPUTE_CONFIG_FILENAME,
+  COMPUTE_CONFIG_JSON_FILENAME,
   COMPUTE_REGIONS,
   type ComputeConfig,
   type ComputeFramework,
@@ -12,7 +13,10 @@ import {
   findComputeConfigDir,
   frameworkByKey,
   frameworkFromAlias,
+  type LoadedComputeConfig,
+  normalizeComputeConfig,
   serializeComputeConfig,
+  serializeComputeConfigJson,
 } from "@prisma/compute-sdk/config";
 import { execa } from "execa";
 
@@ -39,6 +43,7 @@ import {
 } from "../shell/prompt";
 import { type CommandContext, canPrompt } from "../shell/runtime";
 import type {
+  InitConfigFormat,
   InitLinkState,
   InitResult,
   InitSettingRow,
@@ -56,6 +61,7 @@ export interface InitFlags {
   link?: boolean;
   project?: string;
   install?: boolean;
+  format?: string;
 }
 
 interface ResolvedInitFramework {
@@ -74,7 +80,37 @@ export async function runInit(
   // bunx, npx -y), matching the agent group's convention.
   const formatCommand = resolvePrismaCliPackageCommandFormatterSync(cwd);
 
-  await requireNoExistingComputeConfig(cwd, signal);
+  const format = parseInitFormat(flags.format, formatCommand);
+  if (format.value === "json" && flags.install === true) {
+    throw usageError(
+      "--install does not apply to the JSON config format",
+      `${COMPUTE_CONFIG_JSON_FILENAME} is a dependency-free static config; the ${COMPUTE_SDK_PACKAGE} devDependency exists only for ${COMPUTE_CONFIG_FILENAME} editor types.`,
+      "Drop --install, or use the TypeScript format.",
+      [formatCommand(["init", "--format", "json"])],
+      "app",
+    );
+  }
+
+  const existingConfig = await findExistingComputeConfig(cwd, signal);
+  if (existingConfig) {
+    const solePath =
+      existingConfig.candidates.length === 1
+        ? existingConfig.candidates[0]
+        : undefined;
+    const soleIsJson =
+      solePath !== undefined && path.extname(solePath) === ".json";
+    // Conversion must be explicit: plain init refuses every existing config.
+    if (soleIsJson && format.value === "typescript" && format.explicit) {
+      rejectConversionResolutionFlags(flags, formatCommand);
+      return runInitConversion(context, flags, solePath, formatCommand);
+    }
+    if (solePath && !soleIsJson && format.value === "json") {
+      throw initConvertUnsupportedError(solePath);
+    }
+    throw initConfigExistsError(
+      existingConfig.candidates[0] ?? existingConfig.directory,
+    );
+  }
 
   const region = parseInitRegion(flags.region, formatCommand);
   let framework = await resolveInitFramework(context, flags, formatCommand);
@@ -88,6 +124,20 @@ export async function runInit(
   });
   framework = adjusted.framework;
   httpPort = adjusted.httpPort;
+
+  // The custom framework needs build.outputDirectory and build.entrypoint,
+  // which init does not collect. The TypeScript format carries a commented
+  // build stub to fill in; strict JSON cannot hold comments, so refuse here
+  // instead of writing a config that deploy would reject.
+  if (format.value === "json" && framework.key === "custom") {
+    throw usageError(
+      "Custom framework requires the TypeScript config format",
+      "The custom framework needs build.outputDirectory and build.entrypoint, which init does not collect; the TypeScript format includes a commented build stub to complete, and strict JSON cannot carry it.",
+      `Rerun without --format json and fill in the build stub, or write ${COMPUTE_CONFIG_JSON_FILENAME} by hand with a build object.`,
+      [formatCommand(["init", "--framework", "custom"])],
+      "app",
+    );
+  }
 
   // Entry resolves against the FINAL framework so an interactive framework
   // switch cannot leave a stale (or missing) entry in the written config.
@@ -123,10 +173,19 @@ export async function runInit(
     },
   };
 
-  const configPath = path.join(cwd, COMPUTE_CONFIG_FILENAME);
-  let source = serializeComputeConfig(config);
-  if (framework.key === "custom") {
-    source += CUSTOM_BUILD_STUB;
+  const configFilename =
+    format.value === "json"
+      ? COMPUTE_CONFIG_JSON_FILENAME
+      : COMPUTE_CONFIG_FILENAME;
+  const configPath = path.join(cwd, configFilename);
+  let source: string;
+  if (format.value === "json") {
+    source = serializeComputeConfigJson(config);
+  } else {
+    source = serializeComputeConfig(config);
+    if (framework.key === "custom") {
+      source += CUSTOM_BUILD_STUB;
+    }
   }
 
   signal.throwIfAborted();
@@ -141,9 +200,18 @@ export async function runInit(
   }
 
   const warnings: string[] = [];
-  const types = await resolveInitTypes(context, flags, {
-    onWarning: (message) => warnings.push(message),
-  });
+  // The JSON format exists to be dependency-free, so the types install step
+  // never runs for it; validation happens when commands load the config.
+  const types: InitTypesState =
+    format.value === "json"
+      ? {
+          status: "skipped",
+          package: COMPUTE_SDK_PACKAGE,
+          installCommand: null,
+        }
+      : await resolveInitTypes(context, flags, {
+          onWarning: (message) => warnings.push(message),
+        });
   const link = await resolveInitLink(context, flags, {
     onWarning: (message) => warnings.push(message),
     formatCommand,
@@ -155,7 +223,9 @@ export async function runInit(
   return {
     command: "init",
     result: {
-      configPath: COMPUTE_CONFIG_FILENAME,
+      configPath: configFilename,
+      format: format.value,
+      converted: false,
       directory: formatInitDirectory(cwd),
       app: {
         name: name.value,
@@ -347,17 +417,292 @@ const CUSTOM_BUILD_STUB = `
 // },
 `;
 
-async function requireNoExistingComputeConfig(
+/**
+ * Nearest existing compute config, searching from `cwd` up to the source
+ * root. Init routes on this: refuse, convert, or proceed fresh.
+ */
+async function findExistingComputeConfig(
   cwd: string,
   signal: AbortSignal,
-): Promise<void> {
+): Promise<{ directory: string; candidates: string[] } | null> {
   const configDir = await findComputeConfigDir(cwd, signal);
   if (!configDir) {
-    return;
+    return null;
   }
 
-  const candidates = await findComputeConfigCandidates(configDir, signal);
-  throw initConfigExistsError(candidates[0] ?? configDir);
+  return {
+    directory: configDir,
+    candidates: await findComputeConfigCandidates(configDir, signal),
+  };
+}
+
+function parseInitFormat(
+  value: string | undefined,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): { value: InitConfigFormat; explicit: boolean } {
+  if (value === undefined) {
+    return { value: "typescript", explicit: false };
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "ts" || normalized === "typescript") {
+    return { value: "typescript", explicit: true };
+  }
+  if (normalized === "json") {
+    return { value: "json", explicit: true };
+  }
+
+  throw usageError(
+    "Unknown config format",
+    `"${value}" is not a supported config format.`,
+    "Pass --format ts or --format json.",
+    [formatCommand(["init", "--format", "json"])],
+    "app",
+  );
+}
+
+/**
+ * Conversion transports the existing config's values; it never re-resolves
+ * settings. Refusing resolution flags beats silently ignoring them.
+ */
+function rejectConversionResolutionFlags(
+  flags: InitFlags,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): void {
+  const passed = [
+    flags.framework !== undefined ? "--framework" : null,
+    flags.entry !== undefined ? "--entry" : null,
+    flags.httpPort !== undefined ? "--http-port" : null,
+    flags.name !== undefined ? "--name" : null,
+    flags.region !== undefined ? "--region" : null,
+  ].filter((flag): flag is string => flag !== null);
+  if (passed.length === 0) {
+    return;
+  }
+  throw usageError(
+    `${passed.join(", ")} ${passed.length === 1 ? "does" : "do"} not apply when converting an existing config`,
+    `--format ts with an existing ${COMPUTE_CONFIG_JSON_FILENAME} converts it as-is; settings are transported, never re-resolved.`,
+    `Convert first, then edit ${COMPUTE_CONFIG_FILENAME} directly.`,
+    [formatCommand(["init", "--format", "ts"])],
+    "app",
+  );
+}
+
+function initConvertIncompleteError(
+  jsonConfigPath: string,
+  tsConfigPath: string,
+): CliError {
+  return new CliError({
+    code: "INIT_CONVERT_INCOMPLETE",
+    domain: "app",
+    summary: "Conversion left two config files behind",
+    why: `${path.basename(tsConfigPath)} was written but ${path.basename(jsonConfigPath)} could not be deleted, and rolling back the write also failed. Commands refuse to load a directory with two config files.`,
+    fix: `Delete one file by hand: keep ${path.basename(tsConfigPath)} to finish the conversion, or keep ${path.basename(jsonConfigPath)} to undo it.`,
+    exitCode: 1,
+    nextSteps: [],
+    meta: { jsonConfigPath, tsConfigPath },
+  });
+}
+
+function initConvertUnsupportedError(existingPath: string): CliError {
+  return new CliError({
+    code: "INIT_CONVERT_UNSUPPORTED",
+    domain: "app",
+    summary: "TypeScript configs do not convert to JSON",
+    why: `${existingPath} may contain imports, expressions, or comments that the static ${COMPUTE_CONFIG_JSON_FILENAME} format cannot express, so an automatic conversion would be lossy.`,
+    fix: `If the config is fully static, rewrite it by hand as ${COMPUTE_CONFIG_JSON_FILENAME} and delete ${path.basename(existingPath)}.`,
+    exitCode: 1,
+    nextSteps: [],
+    meta: { existingConfigPath: existingPath },
+  });
+}
+
+/**
+ * The graduation path: an explicit `--format ts` with an existing
+ * `prisma.compute.json` rewrites the same config as `prisma.compute.ts` and
+ * deletes the JSON file, so a static config can grow into a programmatic one.
+ * The values are transported, never re-resolved.
+ */
+async function runInitConversion(
+  context: CommandContext,
+  flags: InitFlags,
+  jsonConfigPath: string,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): Promise<CommandSuccess<InitResult>> {
+  const cwd = context.runtime.cwd;
+  const signal = context.runtime.signal;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(jsonConfigPath, "utf8"));
+  } catch (error) {
+    if (signal.aborted) {
+      throw error;
+    }
+    throw initConvertInvalidError(jsonConfigPath, [
+      error instanceof Error
+        ? (error.message.split("\n")[0] as string)
+        : String(error),
+    ]);
+  }
+
+  // "$schema" is editor tooling metadata, not config; the TypeScript format
+  // carries types through its import instead.
+  const config = stripJsonSchemaKey(parsed);
+  const normalized = normalizeComputeConfig(config, jsonConfigPath);
+  if (normalized.isErr()) {
+    throw initConvertInvalidError(jsonConfigPath, normalized.error.issues);
+  }
+  const loaded = normalized.value;
+
+  const tsConfigPath = path.join(loaded.configDir, COMPUTE_CONFIG_FILENAME);
+  const source = serializeComputeConfig(config as ComputeConfig);
+
+  signal.throwIfAborted();
+  try {
+    // wx: fail instead of clobbering a config that appeared since discovery.
+    await writeFile(tsConfigPath, source, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw initConfigExistsError(tsConfigPath);
+    }
+    throw error;
+  }
+  try {
+    await rm(jsonConfigPath);
+  } catch (error) {
+    // Two coexisting config files are a hard loader error, so a failed
+    // delete rolls the write back and leaves the JSON config untouched.
+    try {
+      await rm(tsConfigPath, { force: true });
+    } catch {
+      throw initConvertIncompleteError(jsonConfigPath, tsConfigPath);
+    }
+    throw error;
+  }
+
+  const settings = conversionSettings(loaded);
+  renderInitSettingsPreview(context, settings);
+
+  const warnings: string[] = [];
+  // Conversion transports the config's values but its side-effect steps
+  // behave exactly like fresh init: install flags feed resolveInitTypes,
+  // and link flags (--link/--no-link/--project) resolve via resolveInitLink
+  // instead of being silently ignored. Both act on the config's home, not
+  // the invocation directory: discovery may have found the config in an
+  // ancestor, and the types dependency and project pin belong where the
+  // config lives (fresh init has no such split; it writes at cwd).
+  const stepContext = withRuntimeCwd(context, loaded.configDir);
+  const types = await resolveInitTypes(stepContext, flags, {
+    onWarning: (message) => warnings.push(message),
+  });
+  const link = await resolveInitLink(stepContext, flags, {
+    onWarning: (message) => warnings.push(message),
+    formatCommand,
+  });
+
+  const unlinked = link.status !== "already-linked" && link.status !== "linked";
+  const typesMissing =
+    types.status !== "installed" && types.status !== "already-installed";
+  return {
+    command: "init",
+    result: {
+      configPath: path.relative(cwd, tsConfigPath) || COMPUTE_CONFIG_FILENAME,
+      format: "typescript",
+      converted: true,
+      directory: formatInitDirectory(loaded.configDir),
+      app: conversionApp(loaded),
+      settings,
+      types,
+      link,
+    },
+    warnings,
+    nextSteps: [
+      ...(typesMissing && types.installCommand ? [types.installCommand] : []),
+      formatCommand(["app", "deploy"]),
+      ...(unlinked ? [formatCommand(["project", "link"])] : []),
+    ],
+  };
+}
+
+/** The same command context, acting from `cwd` instead of the invocation directory. */
+function withRuntimeCwd(context: CommandContext, cwd: string): CommandContext {
+  if (path.resolve(context.runtime.cwd) === path.resolve(cwd)) {
+    return context;
+  }
+  return { ...context, runtime: { ...context.runtime, cwd } };
+}
+
+function stripJsonSchemaKey(parsed: unknown): unknown {
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return parsed;
+  }
+  const { $schema: _schema, ...config } = parsed as Record<string, unknown>;
+  return config;
+}
+
+function initConvertInvalidError(
+  jsonConfigPath: string,
+  issues: string[],
+): CliError {
+  return new CliError({
+    code: "COMPUTE_CONFIG_INVALID",
+    domain: "app",
+    summary: `Invalid ${path.basename(jsonConfigPath)}`,
+    why: issues.join(" "),
+    fix: `Fix ${path.basename(jsonConfigPath)} and rerun the conversion.`,
+    where: jsonConfigPath,
+    meta: { configPath: jsonConfigPath, issues },
+    exitCode: 2,
+    nextSteps: [],
+  });
+}
+
+/** Preview rows for a conversion; every value is sourced from the JSON file. */
+function conversionSettings(loaded: LoadedComputeConfig): InitSettingRow[] {
+  const target = loaded.kind === "single" ? loaded.targets[0] : undefined;
+  if (!target) {
+    return [];
+  }
+
+  const source = COMPUTE_CONFIG_JSON_FILENAME;
+  return [
+    ...(target.name ? [{ key: "app", value: target.name, source }] : []),
+    ...(target.framework
+      ? [
+          {
+            key: "framework",
+            value: frameworkByKey(target.framework).displayName,
+            source,
+          },
+        ]
+      : []),
+    ...(target.entry ? [{ key: "entry", value: target.entry, source }] : []),
+    ...(target.httpPort !== null
+      ? [{ key: "http port", value: String(target.httpPort), source }]
+      : []),
+    ...(target.region ? [{ key: "region", value: target.region, source }] : []),
+  ];
+}
+
+/**
+ * App identity for the conversion result. Configs written by init pin all of
+ * name, framework, and httpPort; hand-written configs that omit any of them
+ * (or define multiple apps) report null instead of a partial identity.
+ */
+function conversionApp(loaded: LoadedComputeConfig): InitResult["app"] {
+  const target = loaded.kind === "single" ? loaded.targets[0] : undefined;
+  if (!target?.name || !target.framework || target.httpPort === null) {
+    return null;
+  }
+
+  return {
+    name: target.name,
+    framework: target.framework,
+    httpPort: target.httpPort,
+    ...(target.entry ? { entry: target.entry } : {}),
+    ...(target.region ? { region: target.region } : {}),
+  };
 }
 
 function initConfigExistsError(existingPath: string): CliError {

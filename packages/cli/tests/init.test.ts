@@ -1,5 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  COMPUTE_CONFIG_JSON_SCHEMA_URL,
+  loadComputeConfig,
+} from "@prisma/compute-sdk/config";
 import stripAnsi from "strip-ansi";
 import { describe, expect, it } from "vitest";
 
@@ -29,6 +33,10 @@ async function writePackageJson(
 
 async function readConfig(cwd: string): Promise<string> {
   return readFile(path.join(cwd, "prisma.compute.ts"), "utf8");
+}
+
+async function readJsonConfig(cwd: string): Promise<string> {
+  return readFile(path.join(cwd, "prisma.compute.json"), "utf8");
 }
 
 describe("init", () => {
@@ -409,6 +417,620 @@ describe("init types install", () => {
       "Installing @prisma/compute-sdk failed",
     );
     expect(payload.warnings[0]).toContain("npm install -D @prisma/compute-sdk");
+  });
+});
+
+describe("init config format", () => {
+  it("writes prisma.compute.json with --format json that round-trips through the loader", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writePackageJson(cwd, { name: "billing-api" });
+
+    const result = await executeCli({
+      argv: [
+        "init",
+        "--framework",
+        "hono",
+        "--entry",
+        "src/index.ts",
+        "--no-link",
+        "--format",
+        "json",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload).toMatchObject({
+      ok: true,
+      command: "init",
+      result: {
+        configPath: "prisma.compute.json",
+        format: "json",
+        converted: false,
+        app: {
+          name: "billing-api",
+          framework: "hono",
+          entry: "src/index.ts",
+        },
+        // The JSON format is dependency-free by design, so the types install
+        // step never runs and no install hint is emitted.
+        types: {
+          status: "skipped",
+          package: "@prisma/compute-sdk",
+          installCommand: null,
+        },
+      },
+    });
+    expect(payload.nextSteps).toEqual([
+      "npx -y @prisma/cli@latest app deploy",
+      "npx -y @prisma/cli@latest project link",
+    ]);
+
+    const written = JSON.parse(await readJsonConfig(cwd));
+    // No $schema until the schema URL actually resolves; the loader accepts
+    // it either way, so hand-added references keep working.
+    expect(written).not.toHaveProperty("$schema");
+    expect(written.app).toMatchObject({
+      name: "billing-api",
+      framework: "hono",
+      entry: "src/index.ts",
+    });
+
+    const loaded = await loadComputeConfig(cwd);
+    expect(loaded.isOk()).toBe(true);
+    expect(loaded.isOk() && loaded.value?.targets[0]).toMatchObject({
+      name: "billing-api",
+      framework: "hono",
+      entry: "src/index.ts",
+      httpPort: payload.result.app.httpPort,
+    });
+    await expect(readConfig(cwd)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("writes prisma.compute.ts with an explicit --format ts", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writePackageJson(cwd, { name: "api" });
+
+    const result = await executeCli({
+      argv: [
+        "init",
+        "--framework",
+        "hono",
+        "--no-link",
+        "--format",
+        "ts",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.result).toMatchObject({
+      configPath: "prisma.compute.ts",
+      format: "typescript",
+      converted: false,
+    });
+    await expect(readConfig(cwd)).resolves.toContain("defineComputeConfig");
+  });
+
+  it("rejects --install with --format json as a usage error", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writePackageJson(cwd, { name: "api" });
+
+    const result = await executeCli({
+      argv: [
+        "init",
+        "--framework",
+        "hono",
+        "--install",
+        "--format",
+        "json",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(2);
+    expect(payload.error.code).toBe("USAGE_ERROR");
+    await expect(readJsonConfig(cwd)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("rejects unknown --format values as a usage error", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    const result = await executeCli({
+      argv: ["init", "--framework", "hono", "--format", "yaml", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(2);
+    expect(payload.error.code).toBe("USAGE_ERROR");
+  });
+
+  it("rejects --format json for the custom framework and writes nothing", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+
+    const result = await executeCli({
+      argv: [
+        "init",
+        "--framework",
+        "custom",
+        "--no-link",
+        "--format",
+        "json",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(2);
+    expect(payload.error.code).toBe("USAGE_ERROR");
+    expect(payload.error.summary).toContain("TypeScript config format");
+    await expect(readJsonConfig(cwd)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("fails with INIT_CONVERT_UNSUPPORTED when a TypeScript config exists and --format json is passed", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writeFile(
+      path.join(cwd, "prisma.compute.ts"),
+      'export default { app: { framework: "hono" } };\n',
+    );
+
+    const result = await executeCli({
+      argv: ["init", "--framework", "hono", "--format", "json", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(1);
+    expect(payload.error.code).toBe("INIT_CONVERT_UNSUPPORTED");
+    expect(payload.error.fix).toContain("rewrite it by hand");
+    expect(payload.error.meta.existingConfigPath).toContain(
+      "prisma.compute.ts",
+    );
+    await expect(readJsonConfig(cwd)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("refuses plain init when prisma.compute.json exists", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writeFile(
+      path.join(cwd, "prisma.compute.json"),
+      `${JSON.stringify({ app: { framework: "hono" } })}\n`,
+    );
+
+    // Conversion must be explicit via --format ts; plain init and a repeated
+    // --format json both refuse.
+    for (const argv of [
+      ["init", "--framework", "hono", "--json"],
+      ["init", "--framework", "hono", "--format", "json", "--json"],
+    ]) {
+      const result = await executeCli({ argv, cwd, stateDir, fixturePath });
+      const payload = JSON.parse(result.stdout);
+      expect(result.exitCode).toBe(1);
+      expect(payload.error.code).toBe("INIT_CONFIG_EXISTS");
+      expect(payload.error.meta.existingConfigPath).toContain(
+        "prisma.compute.json",
+      );
+    }
+  });
+
+  it("converts prisma.compute.json to prisma.compute.ts with --format ts", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writeFile(
+      path.join(cwd, "prisma.compute.json"),
+      `${JSON.stringify(
+        {
+          $schema: COMPUTE_CONFIG_JSON_SCHEMA_URL,
+          app: {
+            name: "billing-api",
+            framework: "hono",
+            entry: "src/index.ts",
+            httpPort: 8080,
+            region: "us-east-1",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const result = await executeCli({
+      argv: ["init", "--format", "ts", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.result).toMatchObject({
+      configPath: "prisma.compute.ts",
+      format: "typescript",
+      converted: true,
+      app: {
+        name: "billing-api",
+        framework: "hono",
+        entry: "src/index.ts",
+        httpPort: 8080,
+        region: "us-east-1",
+      },
+    });
+    expect(payload.result.settings).toContainEqual({
+      key: "framework",
+      value: "Hono",
+      source: "prisma.compute.json",
+    });
+
+    const config = await readConfig(cwd);
+    expect(config).toContain("defineComputeConfig");
+    expect(config).toContain('name: "billing-api"');
+    expect(config).toContain('framework: "hono"');
+    expect(config).toContain('entry: "src/index.ts"');
+    expect(config).toContain("httpPort: 8080");
+    expect(config).toContain('region: "us-east-1"');
+    expect(config).not.toContain("$schema");
+    await expect(readJsonConfig(cwd)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+
+    const loaded = await loadComputeConfig(cwd);
+    expect(loaded.isOk()).toBe(true);
+    expect(loaded.isOk() && loaded.value?.targets[0]).toMatchObject({
+      name: "billing-api",
+      framework: "hono",
+      entry: "src/index.ts",
+      httpPort: 8080,
+      region: "us-east-1",
+    });
+  });
+
+  it("preserves env, build, root, and the project region through conversion", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writeFile(
+      path.join(cwd, "prisma.compute.json"),
+      `${JSON.stringify({
+        region: "eu-central-1",
+        app: {
+          name: "web",
+          framework: "nextjs",
+          root: "apps/web",
+          httpPort: 3000,
+          env: { file: ".env.production", vars: { NODE_ENV: "production" } },
+          build: { command: "pnpm build", outputDirectory: ".next" },
+        },
+      })}\n`,
+    );
+
+    const result = await executeCli({
+      argv: ["init", "--format", "ts", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.result.converted).toBe(true);
+
+    const config = await readConfig(cwd);
+    expect(config).toContain('region: "eu-central-1"');
+    expect(config).toContain('root: "apps/web"');
+    expect(config).toContain('file: ".env.production"');
+    expect(config).toContain('NODE_ENV: "production"');
+    expect(config).toContain('command: "pnpm build"');
+    expect(config).toContain('outputDirectory: ".next"');
+
+    const loaded = await loadComputeConfig(cwd);
+    expect(loaded.isOk() && loaded.value?.targets[0]).toMatchObject({
+      name: "web",
+      framework: "nextjs",
+      root: "apps/web",
+      region: "eu-central-1",
+      envInputs: [".env.production", "NODE_ENV=production"],
+      build: {
+        command: "pnpm build",
+        outputDirectory: ".next",
+        entrypoint: undefined,
+      },
+    });
+  });
+
+  it("converts a multi-app config, including a null build command", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writeFile(
+      path.join(cwd, "prisma.compute.json"),
+      `${JSON.stringify({
+        apps: {
+          web: {
+            framework: "nextjs",
+            root: "apps/web",
+            build: { command: null },
+          },
+          api: {
+            framework: "hono",
+            root: "apps/api",
+            entry: "src/index.ts",
+            httpPort: 8080,
+          },
+        },
+      })}\n`,
+    );
+
+    const result = await executeCli({
+      argv: ["init", "--format", "ts", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.result.converted).toBe(true);
+    // Multi-app configs carry no single app identity.
+    expect(payload.result.app).toBeNull();
+
+    const config = await readConfig(cwd);
+    expect(config).toContain("command: null");
+    await expect(readJsonConfig(cwd)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+
+    const loaded = await loadComputeConfig(cwd);
+    expect(loaded.isOk() && loaded.value?.kind).toBe("multi");
+    expect(loaded.isOk() && loaded.value?.targets).toEqual([
+      expect.objectContaining({
+        key: "web",
+        framework: "nextjs",
+        build: expect.objectContaining({ command: null }),
+      }),
+      expect.objectContaining({
+        key: "api",
+        framework: "hono",
+        entry: "src/index.ts",
+        httpPort: 8080,
+      }),
+    ]);
+  });
+
+  it("rejects resolution flags during conversion instead of ignoring them", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const jsonSource = `${JSON.stringify({
+      app: { name: "api", framework: "hono", httpPort: 8080 },
+    })}\n`;
+    await writeFile(path.join(cwd, "prisma.compute.json"), jsonSource);
+
+    const result = await executeCli({
+      argv: [
+        "init",
+        "--format",
+        "ts",
+        "--framework",
+        "nextjs",
+        "--http-port",
+        "3000",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(2);
+    expect(payload.error.code).toBe("USAGE_ERROR");
+    expect(payload.error.summary).toContain("--framework");
+    expect(payload.error.summary).toContain("--http-port");
+
+    // Nothing on disk changed: no TS config, JSON untouched.
+    await expect(readConfig(cwd)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readJsonConfig(cwd)).toBe(jsonSource);
+  });
+
+  it("runs the types install step when converting with --install", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writePackageJson(cwd, { name: "api" });
+    await writeFile(
+      path.join(cwd, "prisma.compute.json"),
+      `${JSON.stringify({ app: { framework: "hono", httpPort: 8080 } })}\n`,
+    );
+
+    const result = await executeCli({
+      argv: ["init", "--format", "ts", "--install", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+      env: {
+        PRISMA_CLI_INIT_INSTALL_COMMAND: JSON.stringify([
+          "node",
+          "-e",
+          "process.exit(0)",
+        ]),
+      },
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.result.converted).toBe(true);
+    // A hand-written config without a pinned name reports no app identity.
+    expect(payload.result.app).toBeNull();
+    expect(payload.result.types.status).toBe("installed");
+  });
+
+  it("honors link flags when converting, like fresh init", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writePackageJson(cwd, { name: "api" });
+    await login(cwd, stateDir);
+    const jsonConfig = `${JSON.stringify({ app: { framework: "hono", httpPort: 8080 } })}\n`;
+    await writeFile(path.join(cwd, "prisma.compute.json"), jsonConfig);
+
+    const linked = await executeCli({
+      argv: [
+        "init",
+        "--format",
+        "ts",
+        "--project",
+        "proj_123",
+        "--no-install",
+        "--json",
+      ],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const linkedPayload = JSON.parse(linked.stdout);
+
+    expect(linked.exitCode).toBe(0);
+    expect(linkedPayload.result.converted).toBe(true);
+    expect(linkedPayload.result.link).toMatchObject({
+      status: "linked",
+      project: { id: "proj_123" },
+    });
+    // Linked conversions do not suggest linking again.
+    expect(linkedPayload.nextSteps).not.toContainEqual(
+      expect.stringContaining("project link"),
+    );
+
+    // --no-link stays an explicit skip.
+    const cwd2 = await createTempCwd();
+    await writeFile(path.join(cwd2, "prisma.compute.json"), jsonConfig);
+    const skipped = await executeCli({
+      argv: ["init", "--format", "ts", "--no-link", "--no-install", "--json"],
+      cwd: cwd2,
+      stateDir,
+      fixturePath,
+    });
+    const skippedPayload = JSON.parse(skipped.stdout);
+    expect(skipped.exitCode).toBe(0);
+    expect(skippedPayload.result.link.status).toBe("skipped");
+  });
+
+  it("runs conversion side effects in the config directory, not the invocation directory", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await mkdir(path.join(cwd, ".git"), { recursive: true });
+    await writePackageJson(cwd, { name: "root-app" });
+    await writeFile(
+      path.join(cwd, "prisma.compute.json"),
+      `${JSON.stringify({ app: { framework: "hono", httpPort: 8080 } })}\n`,
+    );
+    const nested = path.join(cwd, "apps", "api");
+    await mkdir(nested, { recursive: true });
+    await writePackageJson(nested, { name: "api" });
+    await login(cwd, stateDir);
+
+    const result = await executeCli({
+      argv: [
+        "init",
+        "--format",
+        "ts",
+        "--install",
+        "--project",
+        "proj_123",
+        "--json",
+      ],
+      cwd: nested,
+      stateDir,
+      fixturePath,
+      env: {
+        // The fake installer records its working directory on disk.
+        PRISMA_CLI_INIT_INSTALL_COMMAND: JSON.stringify([
+          "node",
+          "-e",
+          "require('fs').writeFileSync('install-cwd.txt','ok')",
+        ]),
+      },
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.result.configPath).toBe(
+      path.join("..", "..", "prisma.compute.ts"),
+    );
+    expect(payload.result.types.status).toBe("installed");
+    expect(payload.result.link).toMatchObject({
+      status: "linked",
+      project: { id: "proj_123" },
+    });
+
+    // The install ran in the config's directory, and the project pin was
+    // written there too; the nested invocation directory got neither.
+    await expect(
+      readFile(path.join(cwd, "install-cwd.txt"), "utf8"),
+    ).resolves.toBe("ok");
+    await expect(
+      readFile(path.join(nested, "install-cwd.txt"), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
+    ).resolves.toContain("proj_123");
+    await expect(
+      readFile(path.join(nested, ".prisma/local.json"), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+
+    // The conversion itself happened at the config's home.
+    await expect(readConfig(cwd)).resolves.toContain("defineComputeConfig");
+    await expect(readJsonConfig(cwd)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("prints the human conversion summary", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await writeFile(
+      path.join(cwd, "prisma.compute.json"),
+      `${JSON.stringify({ app: { framework: "hono", httpPort: 8080 } })}\n`,
+    );
+
+    const result = await executeCli({
+      argv: ["init", "--format", "ts", "--no-install"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const stderr = stripAnsi(result.stderr);
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr).toContain(
+      "✔ Converted prisma.compute.json to prisma.compute.ts",
+    );
   });
 });
 
