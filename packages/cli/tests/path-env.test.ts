@@ -42,6 +42,25 @@ describe("canonicalizeWindowsPathKey", () => {
     expect(env).toEqual({ PATH: "C:\\kept" });
   });
 
+  it("prefers the Windows-native Path over other variants, independent of insertion order", () => {
+    // With several non-canonical spellings and no `PATH`, precedence is fixed
+    // (Path wins) rather than dependent on Object.keys insertion order.
+    const pathFirst: NodeJS.ProcessEnv = {
+      path: "C:\\other",
+      Path: "C:\\windows-native",
+    };
+    const pathLast: NodeJS.ProcessEnv = {
+      Path: "C:\\windows-native",
+      path: "C:\\other",
+    };
+
+    canonicalizeWindowsPathKey(pathFirst, "win32");
+    canonicalizeWindowsPathKey(pathLast, "win32");
+
+    expect(pathFirst).toEqual({ PATH: "C:\\windows-native" });
+    expect(pathLast).toEqual({ PATH: "C:\\windows-native" });
+  });
+
   it("leaves a canonical PATH untouched", () => {
     const env: NodeJS.ProcessEnv = { PATH: "C:\\Windows\\System32" };
 

@@ -2,18 +2,17 @@
  * Collapses case-variant spellings of the `PATH` environment variable into
  * the canonical `PATH` key, in place. No-op outside Windows.
  *
- * Windows typically keys the variable as `Path` (its registry casing), and
- * `process.env` papers over that with case-insensitive lookups. Anything that
- * spreads `process.env` into a plain object — the compute SDK does this when
- * it prepends `node_modules/.bin` directories for a local build — loses that
- * case-insensitivity: reading `env.PATH` returns undefined, so the rewritten
- * PATH drops every inherited entry, and writing `env.PATH` forks a second key
- * alongside `Path`. The child's environment block is case-insensitive again,
- * so the truncated `PATH` clobbers the real `Path` and the spawned build
- * cannot resolve commands like `bun` ("'bun' is not recognized ...").
+ * Windows keys the variable as `Path` (its registry casing) and resolves
+ * environment lookups case-insensitively, so `process.env.PATH` works even
+ * though the underlying key is `Path`. Code that spreads `process.env` into a
+ * plain object loses that case-insensitivity — the compute SDK does exactly
+ * this when it prepends `node_modules/.bin` to PATH for a local build, and the
+ * result is a truncated PATH that leaves the spawned build unable to resolve
+ * `bun`/`next`. Normalizing to `PATH` up front keeps that spread correct.
+ * See tests/path-env.test.ts for the reproduced failure mode.
  *
- * Windows itself resolves environment variables case-insensitively, so
- * renaming the key to `PATH` is invisible to this process and its children.
+ * Renaming `Path` -> `PATH` is invisible to this process and its children
+ * because Windows resolves the lookup case-insensitively either way.
  */
 export function canonicalizeWindowsPathKey(
   env: NodeJS.ProcessEnv,
@@ -30,15 +29,22 @@ export function canonicalizeWindowsPathKey(
     return;
   }
 
-  // On the real Windows process.env, `env.PATH` already resolves the `Path`
-  // entry case-insensitively; a plain-object copy needs the variant lookup.
-  const value = env.PATH ?? env[variants[0]];
+  // Precedence when several spellings coexist, so the result never depends on
+  // key insertion order: an existing canonical `PATH`, then the Windows-native
+  // `Path`, then any remaining variant. On the real process.env, `env.PATH`
+  // already reflects the `Path` value case-insensitively.
+  const value = env.PATH ?? env.Path ?? env[selectPreferredVariant(variants)];
   for (const variant of variants) {
     delete env[variant];
   }
-  // On process.env the deletes above also remove the case-insensitive `PATH`
-  // entry itself, so always write the canonical key back.
+  // Deleting the variants above also clears the case-insensitive `PATH` entry
+  // on the real process.env, so always write the canonical key back.
   if (value !== undefined) {
     env.PATH = value;
   }
+}
+
+/** The Windows-native `Path` if present, otherwise the first variant. */
+function selectPreferredVariant(variants: string[]): string {
+  return variants.includes("Path") ? "Path" : variants[0];
 }
