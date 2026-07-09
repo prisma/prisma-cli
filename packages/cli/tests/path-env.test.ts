@@ -16,10 +16,10 @@ describe("canonicalizeWindowsPathKey", () => {
   });
 
   it("keeps a spread of the env readable and rewritable via env.PATH", () => {
-    // The failure mode from the field: the compute SDK spreads process.env
-    // into a plain object and rebuilds PATH from `baseEnv.PATH`. With the
-    // Windows `Path` casing that read is undefined, so the rebuilt PATH loses
-    // every inherited entry and the spawned `bun run build` cannot find bun.
+    // The reported failure mode: the compute SDK spreads process.env into a
+    // plain object and rebuilds PATH from `baseEnv.PATH`. With the Windows
+    // `Path` casing that read is undefined, so the rebuilt PATH loses every
+    // inherited entry and the spawned `bun run build` cannot find bun.
     const env: NodeJS.ProcessEnv = { Path: "C:\\Users\\flo\\.bun\\bin" };
 
     canonicalizeWindowsPathKey(env, "win32");
@@ -42,23 +42,18 @@ describe("canonicalizeWindowsPathKey", () => {
     expect(env).toEqual({ PATH: "C:\\kept" });
   });
 
-  it("prefers the Windows-native Path over other variants, independent of insertion order", () => {
-    // With several non-canonical spellings and no `PATH`, precedence is fixed
-    // (Path wins) rather than dependent on Object.keys insertion order.
-    const pathFirst: NodeJS.ProcessEnv = {
-      path: "C:\\other",
-      Path: "C:\\windows-native",
-    };
-    const pathLast: NodeJS.ProcessEnv = {
-      Path: "C:\\windows-native",
-      path: "C:\\other",
-    };
+  it("picks the same variant regardless of insertion order", () => {
+    // Several non-canonical spellings and no `PATH`: the sorted fallback must
+    // pick deterministically rather than following Object.keys order. "PaTH"
+    // sorts before "path" (uppercase precedes lowercase), so it wins both ways.
+    const first: NodeJS.ProcessEnv = { path: "C:\\other", PaTH: "C:\\kept" };
+    const second: NodeJS.ProcessEnv = { PaTH: "C:\\kept", path: "C:\\other" };
 
-    canonicalizeWindowsPathKey(pathFirst, "win32");
-    canonicalizeWindowsPathKey(pathLast, "win32");
+    canonicalizeWindowsPathKey(first, "win32");
+    canonicalizeWindowsPathKey(second, "win32");
 
-    expect(pathFirst).toEqual({ PATH: "C:\\windows-native" });
-    expect(pathLast).toEqual({ PATH: "C:\\windows-native" });
+    expect(first).toEqual({ PATH: "C:\\kept" });
+    expect(second).toEqual({ PATH: "C:\\kept" });
   });
 
   it("leaves a canonical PATH untouched", () => {

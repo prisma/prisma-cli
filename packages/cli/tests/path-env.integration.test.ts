@@ -7,21 +7,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { canonicalizeWindowsPathKey } from "../src/shell/path-env";
 
-// Guards the end-to-end failure path the fix exists for:
-//   process.env  ->  spread/copy  ->  PATH rewrite  ->  spawned child
-// The compute SDK builds a local build subprocess exactly this way — it
-// spreads the inherited env and prepends `node_modules/.bin` to PATH — so we
-// reproduce that env shape here and assert a real child can still resolve a
-// binary on the inherited path (the `bun` the report could not find).
+// Guards the whole chain the fix protects: process.env -> spread -> PATH
+// rewrite -> spawned child. The compute SDK builds its local-build subprocess
+// this way, so on Windows the truncated PATH left the spawned build unable to
+// find `bun`; here a real child must still resolve a binary on the inherited
+// path.
 
 const isWindows = process.platform === "win32";
 
-/**
- * Mirrors `@prisma/compute-sdk`'s `buildCommandEnv`: spread the inherited env
- * into a plain object, then rebuild PATH with extra bin dirs prepended. This
- * is the operation that silently truncates PATH when the inherited key is the
- * Windows-native `Path` rather than `PATH`.
- */
+// Mirrors the compute SDK's `buildCommandEnv`: spread the inherited env, then
+// rebuild PATH with bin dirs prepended — the step that silently truncated PATH
+// when the inherited key was the Windows-native `Path`.
 function buildCommandEnvLikeSdk(
   baseEnv: NodeJS.ProcessEnv,
   binDirs: string[],
@@ -66,7 +62,7 @@ describe("local build env resolves binaries (integration)", () => {
     await mkdir(binDir, { recursive: true });
 
     if (isWindows) {
-      // A .cmd shim is what a real installer drops on Windows.
+      // A .cmd shim, as a real installer drops on Windows.
       await writeFile(
         path.join(binDir, `${binaryName}.cmd`),
         "@echo faux-bun-ran\r\n",
@@ -83,9 +79,8 @@ describe("local build env resolves binaries (integration)", () => {
   });
 
   it("spawns a child that finds a binary on the inherited path after the SDK-style rewrite", async () => {
-    // Inherit the real environment, but place our binary dir on the path
-    // under the OS-native key: `Path` on Windows (where the bug lives), the
-    // canonical `PATH` elsewhere.
+    // Put the binary dir on PATH under the OS-native key: `Path` on Windows
+    // (where the bug lives), canonical `PATH` elsewhere.
     const baseEnv: NodeJS.ProcessEnv = { ...process.env };
     const pathKey = isWindows ? "Path" : "PATH";
     const existingPath = process.env.PATH ?? "";
@@ -95,11 +90,10 @@ describe("local build env resolves binaries (integration)", () => {
       .filter(Boolean)
       .join(path.delimiter);
 
-    // The fix: normalize before the env is spread for the subprocess.
     canonicalizeWindowsPathKey(baseEnv);
 
-    // The node_modules/.bin dir the SDK prepends; empty here, but it forces the
-    // PATH rewrite that dropped inherited entries in the reported failure.
+    // Prepend an (empty) node_modules/.bin as the SDK does, forcing the PATH
+    // rewrite that dropped inherited entries in the reported failure.
     const childEnv = buildCommandEnvLikeSdk(baseEnv, [
       path.join(workdir, "node_modules", ".bin"),
     ]);
