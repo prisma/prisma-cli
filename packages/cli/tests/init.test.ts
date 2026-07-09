@@ -941,6 +941,76 @@ describe("init config format", () => {
     expect(skippedPayload.result.link.status).toBe("skipped");
   });
 
+  it("runs conversion side effects in the config directory, not the invocation directory", async () => {
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    await mkdir(path.join(cwd, ".git"), { recursive: true });
+    await writePackageJson(cwd, { name: "root-app" });
+    await writeFile(
+      path.join(cwd, "prisma.compute.json"),
+      `${JSON.stringify({ app: { framework: "hono", httpPort: 8080 } })}\n`,
+    );
+    const nested = path.join(cwd, "apps", "api");
+    await mkdir(nested, { recursive: true });
+    await writePackageJson(nested, { name: "api" });
+    await login(cwd, stateDir);
+
+    const result = await executeCli({
+      argv: [
+        "init",
+        "--format",
+        "ts",
+        "--install",
+        "--project",
+        "proj_123",
+        "--json",
+      ],
+      cwd: nested,
+      stateDir,
+      fixturePath,
+      env: {
+        // The fake installer records its working directory on disk.
+        PRISMA_CLI_INIT_INSTALL_COMMAND: JSON.stringify([
+          "node",
+          "-e",
+          "require('fs').writeFileSync('install-cwd.txt','ok')",
+        ]),
+      },
+    });
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.result.configPath).toBe(
+      path.join("..", "..", "prisma.compute.ts"),
+    );
+    expect(payload.result.types.status).toBe("installed");
+    expect(payload.result.link).toMatchObject({
+      status: "linked",
+      project: { id: "proj_123" },
+    });
+
+    // The install ran in the config's directory, and the project pin was
+    // written there too; the nested invocation directory got neither.
+    await expect(
+      readFile(path.join(cwd, "install-cwd.txt"), "utf8"),
+    ).resolves.toBe("ok");
+    await expect(
+      readFile(path.join(nested, "install-cwd.txt"), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
+    ).resolves.toContain("proj_123");
+    await expect(
+      readFile(path.join(nested, ".prisma/local.json"), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+
+    // The conversion itself happened at the config's home.
+    await expect(readConfig(cwd)).resolves.toContain("defineComputeConfig");
+    await expect(readJsonConfig(cwd)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
   it("prints the human conversion summary", async () => {
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");

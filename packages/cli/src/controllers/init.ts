@@ -585,14 +585,18 @@ async function runInitConversion(
   renderInitSettingsPreview(context, settings);
 
   const warnings: string[] = [];
-  const types = await resolveInitTypes(context, flags, {
+  // Conversion transports the config's values but its side-effect steps
+  // behave exactly like fresh init: install flags feed resolveInitTypes,
+  // and link flags (--link/--no-link/--project) resolve via resolveInitLink
+  // instead of being silently ignored. Both act on the config's home, not
+  // the invocation directory: discovery may have found the config in an
+  // ancestor, and the types dependency and project pin belong where the
+  // config lives (fresh init has no such split; it writes at cwd).
+  const stepContext = withRuntimeCwd(context, loaded.configDir);
+  const types = await resolveInitTypes(stepContext, flags, {
     onWarning: (message) => warnings.push(message),
   });
-  // Conversion transports the config's values but its side-effect steps
-  // behave exactly like fresh init: install flags feed resolveInitTypes
-  // above, and link flags (--link/--no-link/--project) resolve here
-  // instead of being silently ignored.
-  const link = await resolveInitLink(context, flags, {
+  const link = await resolveInitLink(stepContext, flags, {
     onWarning: (message) => warnings.push(message),
     formatCommand,
   });
@@ -619,6 +623,14 @@ async function runInitConversion(
       ...(unlinked ? [formatCommand(["project", "link"])] : []),
     ],
   };
+}
+
+/** The same command context, acting from `cwd` instead of the invocation directory. */
+function withRuntimeCwd(context: CommandContext, cwd: string): CommandContext {
+  if (path.resolve(context.runtime.cwd) === path.resolve(cwd)) {
+    return context;
+  }
+  return { ...context, runtime: { ...context.runtime, cwd } };
 }
 
 function stripJsonSchemaKey(parsed: unknown): unknown {
