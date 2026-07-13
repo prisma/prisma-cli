@@ -49,6 +49,7 @@ import type {
   InitSettingRow,
   InitTypesState,
 } from "../types/init";
+import { maybePromptForAgentSetup } from "./agent-setup";
 import { detectDeployFramework } from "./app";
 import { runProjectLink } from "./project";
 
@@ -216,6 +217,7 @@ export async function runInit(
     onWarning: (message) => warnings.push(message),
     formatCommand,
   });
+  warnings.push(...(await maybePromptForAgentSetup(context, cwd)));
 
   const unlinked = link.status !== "linked" && link.status !== "already-linked";
   const typesMissing =
@@ -600,6 +602,9 @@ async function runInitConversion(
     onWarning: (message) => warnings.push(message),
     formatCommand,
   });
+  warnings.push(
+    ...(await maybePromptForAgentSetup(stepContext, loaded.configDir)),
+  );
 
   const unlinked = link.status !== "already-linked" && link.status !== "linked";
   const typesMissing =

@@ -10,6 +10,7 @@ import {
   createProjectClient,
   createResolveBranch,
 } from "./helpers/mock-factories";
+import { writeSkillsLockWithSkill } from "./helpers/skills-lock";
 
 beforeEach(() => {
   process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_ID = "proj_123";
@@ -176,24 +177,6 @@ async function writeLocalPin(
   await writeFile(
     path.join(cwd, ".prisma/local.json"),
     typeof pin === "string" ? pin : `${JSON.stringify(pin, null, 2)}\n`,
-  );
-}
-
-async function writeAgentSetupInstalled(cwd: string): Promise<void> {
-  await writeFile(
-    path.join(cwd, "skills-lock.json"),
-    JSON.stringify({
-      version: 1,
-      skills: {
-        "prisma-compute": {
-          source: "prisma/skills",
-          sourceType: "github",
-          skillPath: "prisma-compute/SKILL.md",
-          computedHash: "test",
-        },
-      },
-    }),
-    "utf8",
   );
 }
 
@@ -3221,7 +3204,7 @@ describe("app controller", () => {
         next: "15.0.0",
       },
     });
-    await writeAgentSetupInstalled(cwd);
+    await writeSkillsLockWithSkill(cwd);
     const stateDir = path.join(cwd, ".state");
     const { context, stderr } = await createTestCommandContext({
       cwd,
@@ -3528,7 +3511,7 @@ describe("app controller", () => {
     await writePackageJson(cwd, {
       name: "suggested-name",
     });
-    await writeAgentSetupInstalled(cwd);
+    await writeSkillsLockWithSkill(cwd);
     const stateDir = path.join(cwd, ".state");
     const { context, stderr } = await createTestCommandContext({
       cwd,
