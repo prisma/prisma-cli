@@ -270,9 +270,7 @@ async function runWithFallback(
 /**
  * Runs one candidate to completion with inherited stdio, returning its exit
  * information, or "unavailable" when the binary does not exist so the ladder
- * can try the next candidate. execa spawns through cross-spawn, so Windows
- * `.cmd` shims (npx, `node_modules/.bin` entries) resolve via PATHEXT instead
- * of failing with a false ENOENT.
+ * can try the next candidate.
  */
 async function spawnCommand(
   candidate: CommandCandidate,
@@ -288,10 +286,9 @@ async function spawnCommand(
       signal: NodeJS.Signals | null;
     }
 > {
-  // The caller passes the full runtime env; extending over process.env again
-  // would let parent vars leak past a deliberate omission.
   const result = await execa(candidate.command, candidate.args, {
     cwd: options.cwd,
+    // The env is fully constructed by the caller; do not re-merge process.env.
     env: options.env,
     extendEnv: false,
     cancelSignal: options.signal,
