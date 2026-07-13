@@ -22,7 +22,9 @@ export async function maybePromptForAgentSetup(
   context: CommandContext,
   projectDir: string,
 ): Promise<string[]> {
-  if (!canPrompt(context) || context.flags.yes) {
+  // canPrompt covers json/CI/non-TTY/--no-interactive; quiet and yes runs
+  // must also stay prompt-free even on a TTY.
+  if (!canPrompt(context) || context.flags.yes || context.flags.quiet) {
     return [];
   }
 

@@ -16,6 +16,7 @@ async function setupInitAgentPromptTest(options: {
   runAgentInstall?: ReturnType<typeof vi.fn>;
   skillsInstalled?: boolean;
   isTTY?: boolean;
+  quiet?: boolean;
 }) {
   const runAgentInstall =
     options.runAgentInstall ??
@@ -60,6 +61,7 @@ async function setupInitAgentPromptTest(options: {
     cwd,
     stateDir: path.join(cwd, ".state"),
     isTTY: options.isTTY ?? true,
+    flags: options.quiet ? { quiet: true } : undefined,
     env: {
       ...process.env,
       PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
@@ -135,6 +137,17 @@ describe("init agent setup prompt", () => {
     expect(result.warnings).toEqual([
       expect.stringContaining("The Prisma Compute skill was not installed."),
     ]);
+  });
+
+  it("does not offer the skill install in quiet runs", async () => {
+    const { context, confirmPrompt, runAgentInstall, runInit } =
+      await setupInitAgentPromptTest({ quiet: true });
+
+    const result = await runInit(context, { framework: "hono" });
+
+    expect(result.command).toBe("init");
+    expect(skillPromptCalls(confirmPrompt)).toHaveLength(0);
+    expect(runAgentInstall).not.toHaveBeenCalled();
   });
 
   it("does not offer the skill install in non-interactive runs", async () => {
