@@ -393,7 +393,7 @@ Purpose:
 Behavior:
 
 - init is the config formalizer: `app deploy` works with zero config, and init writes down what deploy would infer so the setup is committed, reviewable, and stable for teammates and CI
-- writing the config requires no auth and no network; the only steps that go remote are an accepted link and an accepted agent skill install, both optional and both after the config is written
+- writing the config requires no auth and no network; the only steps that may go remote are the accepted types install, link, and agent skill install, all optional and all after the config is written
 - fails with `INIT_CONFIG_EXISTS` when a compute config already exists in the invocation directory or any ancestor up to the repository or workspace root; the error names the existing file, and init never overwrites or merges — editing a committed config is the user's editor's job
 - `--format <ts|json>` selects the config serialization; `ts` (alias `typescript`) is the default and writes `prisma.compute.ts`, `json` writes `prisma.compute.json` via the shared SDK serializer, a dependency-free static document (a `$schema` reference will be emitted once the schema is hosted; the loader already accepts and strips one); both formats pin exactly the same resolved values, and the CLI's global `--json` output flag is unrelated to the config format
 - with `--format json`, the types install step never runs: the JSON format exists to be dependency-free, so `--install` is a usage error; without `--install`, the result reports the step as skipped with no install hint
