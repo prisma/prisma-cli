@@ -1,7 +1,8 @@
-import { writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { writeSkillsLockWithSkill } from "./helpers/skills-lock";
 
 afterEach(() => {
   vi.resetModules();
@@ -9,24 +10,6 @@ afterEach(() => {
 
 const SKILL_PROMPT_MESSAGE =
   "Install the Prisma Compute skill for this project?";
-
-async function writeSkillsLockInstalled(cwd: string): Promise<void> {
-  await writeFile(
-    path.join(cwd, "skills-lock.json"),
-    JSON.stringify({
-      version: 1,
-      skills: {
-        "prisma-compute": {
-          source: "prisma/skills",
-          sourceType: "github",
-          skillPath: "prisma-compute/SKILL.md",
-          computedHash: "test",
-        },
-      },
-    }),
-    "utf8",
-  );
-}
 
 async function setupInitAgentPromptTest(options: {
   skillAnswer?: boolean;
@@ -71,7 +54,7 @@ async function setupInitAgentPromptTest(options: {
   const { runInit } = await import("../src/controllers/init");
   const cwd = await createTempCwd();
   if (options.skillsInstalled) {
-    await writeSkillsLockInstalled(cwd);
+    await writeSkillsLockWithSkill(cwd);
   }
   const { context } = await createTestCommandContext({
     cwd,

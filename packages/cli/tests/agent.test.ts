@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createTempCwd, executeCli } from "./helpers";
+import { writeSkillsLockWithSkill } from "./helpers/skills-lock";
 
 function expectSkillsCommandPrefix(
   command: string[],
@@ -348,21 +349,7 @@ describe("agent commands", () => {
 
   it("checks required Prisma skills from the skills lock", async () => {
     const cwd = await createTempCwd();
-    await writeFile(
-      path.join(cwd, "skills-lock.json"),
-      JSON.stringify({
-        version: 1,
-        skills: {
-          "prisma-client-api": {
-            source: "prisma/skills",
-            sourceType: "github",
-            skillPath: "prisma-client-api/SKILL.md",
-            computedHash: "test",
-          },
-        },
-      }),
-      "utf8",
-    );
+    await writeSkillsLockWithSkill(cwd, "prisma-client-api");
 
     const { readPrismaAgentSetupStatus } = await import(
       "../src/lib/agent/setup-status"
@@ -380,21 +367,7 @@ describe("agent commands", () => {
       }),
     ).resolves.toMatchObject({ skillsInstalled: false });
 
-    await writeFile(
-      path.join(cwd, "skills-lock.json"),
-      JSON.stringify({
-        version: 1,
-        skills: {
-          "prisma-compute": {
-            source: "prisma/skills",
-            sourceType: "github",
-            skillPath: "prisma-compute/SKILL.md",
-            computedHash: "test",
-          },
-        },
-      }),
-      "utf8",
-    );
+    await writeSkillsLockWithSkill(cwd, "prisma-compute");
 
     await expect(
       readPrismaAgentSetupStatus({
