@@ -57,13 +57,20 @@ export function renderProjectList(
     "name".length,
     ...result.projects.map((project) => stringWidth(project.name)),
   );
+  const idWidth = Math.max(
+    "id".length,
+    ...result.projects.map((project) => project.id.length),
+  );
   lines.push(rail);
   lines.push(
-    `${rail}  ${ui.accent(padDisplay("name", nameWidth))}  ${ui.accent("id")}`,
+    `${rail}  ${ui.accent(padDisplay("name", nameWidth))}  ${ui.accent(padDisplay("id", idWidth))}  ${ui.accent("region")}`,
   );
   for (const project of result.projects) {
+    const region = project.defaultRegion
+      ? project.defaultRegion
+      : ui.dim("none");
     lines.push(
-      `${rail}  ${padDisplay(project.name, nameWidth)}  ${project.id}`,
+      `${rail}  ${padDisplay(project.name, nameWidth)}  ${padDisplay(project.id, idWidth)}  ${region}`,
     );
   }
 

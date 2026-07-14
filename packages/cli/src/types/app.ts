@@ -49,6 +49,8 @@ export interface AppDeploySettings {
   entrypoint: string | null;
   httpPort: number;
   region: string | null;
+  /** Annotation from the deploy input that produced region (e.g. "set by --region"). Null when the server assigned the region with no explicit input. */
+  regionSource: string | null;
   envVars: string[];
 }
 

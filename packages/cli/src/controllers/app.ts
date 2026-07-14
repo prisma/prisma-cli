@@ -869,6 +869,7 @@ async function runSingleAppDeploy(
           entrypoint ?? buildSettingsResolution.settings.entrypoint ?? null,
         httpPort: runtime.port,
         region: deployResult.app.region ?? selectedApp.region ?? null,
+        regionSource: deployRegion?.annotation ?? null,
         envVars: envVarNames(envVars),
       },
       durationMs: deployDurationMs,

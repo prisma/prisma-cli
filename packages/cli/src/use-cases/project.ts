@@ -56,11 +56,15 @@ function toProjectSummary(project: {
   id: string;
   name: string;
   url?: string;
+  defaultRegion?: string | null;
 }): ProjectSummary {
   return {
     id: project.id,
     name: project.name,
     ...(project.url ? { url: project.url } : {}),
+    ...(project.defaultRegion != null
+      ? { defaultRegion: project.defaultRegion }
+      : {}),
   };
 }
 

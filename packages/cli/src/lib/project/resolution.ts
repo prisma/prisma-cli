@@ -753,11 +753,14 @@ function buildProjectRecoveryCommands(
 }
 
 function toProjectSummary(
-  project: Pick<ProjectCandidate, "id" | "name" | "url">,
+  project: Pick<ProjectCandidate, "id" | "name" | "url" | "defaultRegion">,
 ): ProjectSummary {
   return {
     id: project.id,
     name: project.name,
     ...(project.url ? { url: project.url } : {}),
+    ...(project.defaultRegion != null
+      ? { defaultRegion: project.defaultRegion }
+      : {}),
   };
 }
