@@ -703,7 +703,7 @@ prisma-cli project show --json
 prisma-cli project show --project proj_123 --json
 ```
 
-## `prisma-cli project create <name> --region <region>`
+## `prisma-cli project create <name> [--region <region>]`
 
 Purpose:
 

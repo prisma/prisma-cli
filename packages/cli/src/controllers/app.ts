@@ -3654,6 +3654,9 @@ async function createProjectForDeploySetup(
   return {
     id: created.id,
     name: created.name,
+    ...(created.defaultRegion != null
+      ? { defaultRegion: created.defaultRegion }
+      : {}),
     workspace,
   };
 }

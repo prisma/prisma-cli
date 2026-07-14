@@ -319,6 +319,9 @@ export async function runProjectCreate(
     {
       id: created.id,
       name: created.name,
+      ...(created.defaultRegion != null
+        ? { defaultRegion: created.defaultRegion }
+        : {}),
     },
     "created",
   );
