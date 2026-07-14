@@ -235,6 +235,7 @@ These codes are the minimum stable set for the MVP:
 Recommended meanings:
 
 - `USAGE_ERROR`: invalid arguments or invalid command combination
+- `FEEDBACK_SEND_FAILED`: the feedback service was unreachable, timed out, or returned a non-2xx response
 - `AUTH_REQUIRED`: command needs an authenticated session
 - `AUTH_CONFIG_INVALID`: environment auth configuration is present but unusable, such as an empty `PRISMA_SERVICE_TOKEN`
 - `AGENT_SKILLS_INSTALL_FAILED`: installing Prisma skills through the external skills CLI failed; callers should inspect the command, exit code, and stderr in `error.meta`
