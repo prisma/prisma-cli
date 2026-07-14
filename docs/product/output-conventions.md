@@ -96,6 +96,7 @@ Current MVP commands map to patterns like this:
 | Command | Pattern |
 | --- | --- |
 | `version` | `show` |
+| `feedback` | `show` (send confirmation card) |
 | `auth login` | `mutate` |
 | `auth logout` | `mutate` |
 | `auth whoami` | `show` |

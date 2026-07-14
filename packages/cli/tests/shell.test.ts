@@ -4,7 +4,12 @@ import stripAnsi from "strip-ansi";
 import { describe, expect, it } from "vitest";
 
 import { formatCommandArgument } from "../src/shell/command-arguments";
-import { formatUnexpectedError } from "../src/shell/output";
+import {
+  formatUnexpectedError,
+  unexpectedErrorCommandLabel,
+  unexpectedErrorFeedbackCommand,
+  writeJsonUnexpectedError,
+} from "../src/shell/output";
 import { maskValue } from "../src/shell/ui";
 import { createTempCwd, executeCli } from "./helpers";
 
@@ -31,6 +36,71 @@ describe("shell behavior", () => {
     );
     expect(formatUnexpectedError(error, false)).not.toContain("at explode");
     expect(formatUnexpectedError(error, true)).toContain("at explode");
+  });
+
+  it("appends the feedback hint to unexpected errors when provided", () => {
+    const error = new Error("boom");
+    const hint = 'prisma-cli feedback "app deploy crashed: boom"';
+
+    expect(formatUnexpectedError(error, false, hint)).toContain(
+      `Tell us what happened: ${hint}`,
+    );
+    expect(formatUnexpectedError(error, true, hint)).toContain(
+      `Tell us what happened: ${hint}`,
+    );
+    expect(formatUnexpectedError(error, false)).not.toContain(
+      "Tell us what happened",
+    );
+  });
+
+  it("labels crashed commands and pre-fills the feedback report", () => {
+    expect(unexpectedErrorCommandLabel(["app", "deploy", "--json"])).toBe(
+      "app.deploy",
+    );
+    expect(unexpectedErrorCommandLabel(["init", "--json"])).toBe("init");
+    expect(unexpectedErrorCommandLabel(["--json"])).toBe("unknown");
+
+    const command = unexpectedErrorFeedbackCommand(
+      ["app", "deploy", "--json"],
+      new Error("boom happened\nstack line"),
+    );
+    expect(command).toBe(
+      "prisma-cli feedback 'app deploy crashed: boom happened'",
+    );
+  });
+
+  it("emits a structured envelope with a recover action for --json crashes", () => {
+    const chunks: string[] = [];
+    const sink = {
+      write(chunk: string) {
+        chunks.push(chunk);
+        return true;
+      },
+    };
+
+    writeJsonUnexpectedError(
+      // biome-ignore lint/suspicious/noExplicitAny: minimal writable stub for the test
+      { stdout: sink as any, stderr: sink as any },
+      ["app", "deploy", "--json"],
+      new Error("boom"),
+    );
+    const envelope = JSON.parse(chunks.join(""));
+
+    expect(envelope).toMatchObject({
+      ok: false,
+      command: "app.deploy",
+      error: { code: "UNEXPECTED_ERROR", domain: "cli", why: "boom" },
+      nextActions: [
+        {
+          kind: "run-command",
+          journey: "recover",
+          command: "prisma-cli feedback 'app deploy crashed: boom'",
+        },
+      ],
+    });
+    expect(envelope.nextSteps).toEqual([
+      "prisma-cli feedback 'app deploy crashed: boom'",
+    ]);
   });
 
   it("masks sensitive email local parts with RFC-style characters", () => {
