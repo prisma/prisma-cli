@@ -19,12 +19,17 @@ The beta package includes these command groups:
 - `app`
 - `build` (includes `build logs`)
 
-The beta package also includes two top-level commands:
+The beta package also includes three top-level commands:
 
 - `version`
 - `init`
+- `feedback`
 
 `version` is intentionally outside the workflow groups: it reports CLI build and environment state, requires no auth, no project context, and no network, and is the canonical answer to "is this CLI installed and on the build I expect?"
+
+`feedback` is also outside the workflow groups: it sends a message to the
+Prisma CLI team's feedback service and touches no platform resource, so it
+requires no auth, no workspace, and no project context.
 
 `init` is a top-level workflow verb: it acts on the local project directory
 (writing the committed compute config) rather than managing a remote resource,
@@ -433,6 +438,30 @@ prisma-cli init --project proj_123
 prisma-cli init --format json
 prisma-cli init --format ts
 prisma-cli init --json
+```
+
+## `prisma-cli feedback <message> --email <email>`
+
+Purpose:
+
+- send feedback about the CLI to the Prisma team
+
+Behavior:
+
+- requires no auth, no workspace, no project context, and no config; never prompts, in any mode
+- anonymous by default; `--email <address>` opts into being contactable, and the address is validated when passed
+- attaches non-PII environment context to every submission: CLI version, node version, and OS platform and arch; nothing else is collected, and the help text says so
+- `<message>` is required, trimmed, and limited to 4000 characters; an empty or oversized message is a usage error and nothing is sent
+- posts to the feedback service with a 3-second timeout; delivery failures (unreachable service, timeout, non-2xx response) fail with `FEEDBACK_SEND_FAILED` and exit 1, and the message is not persisted anywhere locally
+- `PRISMA_CLI_FEEDBACK_URL` overrides the service endpoint for testing and staging
+- in `--json`, `result` includes the submission `id` returned by the service (null when the response carries none), the `email` sent (null when anonymous), and the attached `context`
+
+Examples:
+
+```bash
+prisma-cli feedback "the deploy flow is great"
+prisma-cli feedback "please add X" --email you@example.com
+prisma-cli feedback "agent output is solid" --json
 ```
 
 ## `<runner> @prisma/cli@latest agent install --agent <agent> --all-agents --skill <skill> --global --copy`

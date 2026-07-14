@@ -58,8 +58,10 @@ describe("database commands", () => {
     });
 
     expect(root.exitCode).toBe(0);
-    expect(root.stderr).toContain(
-      "database  Manage Prisma Postgres databases for a project",
+    // The column width flexes with the widest command name, so only the
+    // row's presence is asserted, not its exact padding.
+    expect(root.stderr).toMatch(
+      /database\s+Manage Prisma Postgres databases for a project/,
     );
 
     expect(database.exitCode).toBe(0);

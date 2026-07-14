@@ -45,6 +45,15 @@ const DESCRIPTORS: CommandDescriptor[] = [
     examples: ["prisma-cli version", "prisma-cli version --json"],
   },
   {
+    id: "feedback",
+    path: ["prisma", "feedback"],
+    description: "Send feedback to the Prisma CLI team",
+    examples: [
+      'prisma-cli feedback "the deploy flow is great"',
+      'prisma-cli feedback "please add X" --email you@example.com',
+    ],
+  },
+  {
     id: "init",
     path: ["prisma", "init"],
     description: "Write a committed compute config for this app",
