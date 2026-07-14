@@ -20,9 +20,11 @@ import { CliError } from "./shell/errors";
 import { addCompactGlobalFlags } from "./shell/global-flags";
 import {
   formatUnexpectedError,
+  unexpectedErrorFeedbackCommand,
   writeHumanError,
   writeJsonError,
   writeJsonSuccess,
+  writeJsonUnexpectedError,
 } from "./shell/output";
 import { disposePromptState } from "./shell/prompt";
 import {
@@ -63,8 +65,25 @@ export async function runCli(options: RunCliOptions = {}): Promise<number> {
       return error.code === "commander.helpDisplayed" ? 0 : 2;
     }
 
+    // Crashes must not break the --json contract; agents get a structured
+    // UNEXPECTED_ERROR envelope with a recover action pointing at feedback.
+    if (runtime.argv.includes("--json")) {
+      writeJsonUnexpectedError(
+        { stdout: runtime.stdout, stderr: runtime.stderr },
+        runtime.argv,
+        error,
+      );
+      return 1;
+    }
+
+    const quiet =
+      runtime.argv.includes("--quiet") || runtime.argv.includes("-q");
     runtime.stderr.write(
-      formatUnexpectedError(error, runtime.argv.includes("--trace")),
+      formatUnexpectedError(
+        error,
+        runtime.argv.includes("--trace"),
+        quiet ? undefined : unexpectedErrorFeedbackCommand(runtime.argv, error),
+      ),
     );
     return 1;
   } finally {

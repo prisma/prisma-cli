@@ -455,6 +455,7 @@ Behavior:
 - `<message>` is required, trimmed, and limited to 4000 characters; an empty or oversized message is a usage error and nothing is sent
 - posts to the feedback service with a 3-second timeout; delivery failures (unreachable service, timeout, non-2xx response) fail with `FEEDBACK_SEND_FAILED` and exit 1, and the message is not persisted anywhere locally
 - `PRISMA_CLI_FEEDBACK_URL` overrides the service endpoint for testing and staging
+- unexpected CLI crashes point here: the human crash message ends with a `Tell us what happened: prisma-cli feedback "..."` hint pre-filled with the failing command and error line (suppressed by `--quiet`), and `--json` crashes return an `UNEXPECTED_ERROR` envelope whose `nextActions` carries the same pre-filled command as a `recover` action; expected failures and usage errors never advertise feedback
 - in `--json`, `result` includes the submission `id` returned by the service (null when the response carries none), the `email` sent (null when anonymous), and the attached `context`
 
 Examples:

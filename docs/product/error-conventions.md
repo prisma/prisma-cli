@@ -66,7 +66,7 @@ Examples:
 - unexpected `undefined`
 - internal serialization or state invariant broken
 
-Bugs should fail fast and preserve stack traces. Catch them only at the outermost boundary for crash formatting.
+Bugs should fail fast and preserve stack traces. Catch them only at the outermost boundary for crash formatting. At that boundary, `--json` runs still emit the standard error envelope with code `UNEXPECTED_ERROR`, and both output modes point at `prisma-cli feedback` pre-filled with the failing command and error line (`--quiet` suppresses the human hint; expected failures never carry the feedback suggestion).
 
 ## Boundary Handling
 
@@ -159,6 +159,7 @@ Rules:
 These codes are the minimum stable set for the MVP:
 
 - `USAGE_ERROR`
+- `UNEXPECTED_ERROR`
 - `FEEDBACK_SEND_FAILED`
 - `AUTH_REQUIRED`
 - `AUTH_CONFIG_INVALID`
@@ -235,6 +236,7 @@ These codes are the minimum stable set for the MVP:
 Recommended meanings:
 
 - `USAGE_ERROR`: invalid arguments or invalid command combination
+- `UNEXPECTED_ERROR`: the CLI crashed on an unexpected fault; the envelope carries a `recover` next action suggesting `prisma-cli feedback`
 - `FEEDBACK_SEND_FAILED`: the feedback service was unreachable, timed out, or returned a non-2xx response
 - `AUTH_REQUIRED`: command needs an authenticated session
 - `AUTH_CONFIG_INVALID`: environment auth configuration is present but unusable, such as an empty `PRISMA_SERVICE_TOKEN`
