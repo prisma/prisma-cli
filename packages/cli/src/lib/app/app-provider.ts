@@ -37,6 +37,7 @@ export interface AppRecord {
 export interface ProjectRecord {
   id: string;
   name: string;
+  defaultRegion?: string;
 }
 
 export interface BranchRecord {
@@ -144,6 +145,7 @@ export class DomainApiError extends Error {
 export interface AppProvider {
   createProject(options: {
     name: string;
+    region?: string;
     signal?: AbortSignal;
   }): Promise<ProjectRecord>;
   resolveBranch(
@@ -279,6 +281,7 @@ export function createAppProvider(
     async createProject(options) {
       const projectResult = await sdk.createProject({
         name: options.name,
+        region: options.region,
         signal: options.signal,
       });
       if (projectResult.isErr()) {
@@ -288,6 +291,7 @@ export function createAppProvider(
       return {
         id: projectResult.value.id,
         name: projectResult.value.name,
+        defaultRegion: projectResult.value.defaultRegion,
       };
     },
 

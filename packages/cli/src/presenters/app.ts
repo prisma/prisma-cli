@@ -97,6 +97,19 @@ export function renderAppDeploy(
             },
           ]),
       { label: "Logs", value: logsCommand },
+      ...(result.deploySettings.region &&
+      result.deploySettings.regionSource === null
+        ? [
+            {
+              label: "Region",
+              value: result.deploySettings.region,
+              origin:
+                result.project.defaultRegion != null
+                  ? "project default"
+                  : "platform default — pass --region to choose",
+            },
+          ]
+        : []),
       ...(deployUsedComputeConfig(result)
         ? []
         : [

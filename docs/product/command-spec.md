@@ -734,7 +734,7 @@ prisma-cli project show --json
 prisma-cli project show --project proj_123 --json
 ```
 
-## `prisma-cli project create <name>`
+## `prisma-cli project create <name> [--region <region>]`
 
 Purpose:
 
@@ -744,6 +744,7 @@ Behavior:
 
 - requires auth
 - creates a Project in the authenticated workspace
+- `--region <region>` sets the Project's default Compute region; Apps created in the Project inherit this region unless overridden at deploy time with `--region`; when omitted the platform assigns the default region
 - writes `.prisma/local.json` with Workspace and Project IDs
 - ensures `.prisma/` is ignored by Git
 - does not create a Branch, App, Deployment, database, or Git repository connection
@@ -753,6 +754,7 @@ Examples:
 
 ```bash
 prisma-cli project create my-app
+prisma-cli project create my-app --region us-east-1
 prisma-cli project create my-app --json
 ```
 

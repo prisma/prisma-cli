@@ -4,6 +4,7 @@ export interface ProjectSummary {
   id: string;
   name: string;
   url?: string;
+  defaultRegion?: string | null;
 }
 
 export type ProjectSource =

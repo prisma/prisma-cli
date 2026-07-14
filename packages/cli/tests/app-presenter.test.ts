@@ -94,6 +94,7 @@ function createDeployResult(): AppDeployResult {
       entrypoint: "src/index.ts",
       httpPort: 8080,
       region: "fra",
+      regionSource: null,
       envVars: ["DATABASE_URL"],
     },
     durationMs: 12_345,
@@ -303,6 +304,79 @@ describe("app deploy presenter", () => {
     expect(lines).toContain("https://dep-candidate.fra.prisma.build");
     expect(lines).toContain("prisma-cli app promote dep_candidate");
     expect(lines).not.toMatch(/^Live in/m);
+  });
+
+  it("shows region with platform-default provenance when no --region was passed and project has no default region", async () => {
+    const { context } = await createTestCommandContext({});
+    context.ui.dim = (text) => `dim(${text})`;
+    const result: AppDeployResult = {
+      ...createDeployResult(),
+      project: { id: "proj_123", name: "Billing API" },
+      deploySettings: {
+        ...createDeployResult().deploySettings,
+        region: "us-east-1",
+        regionSource: null,
+      },
+    };
+
+    const lines = renderAppDeploy(
+      context,
+      getCommandDescriptor("app.deploy"),
+      result,
+    ).join("\n");
+
+    expect(lines).toContain("Region");
+    expect(lines).toContain("us-east-1");
+    expect(lines).toContain("platform default — pass --region to choose");
+  });
+
+  it("shows region with project-default provenance when no --region was passed and project has a default region", async () => {
+    const { context } = await createTestCommandContext({});
+    context.ui.dim = (text) => `dim(${text})`;
+    const result: AppDeployResult = {
+      ...createDeployResult(),
+      project: {
+        id: "proj_123",
+        name: "Billing API",
+        defaultRegion: "eu-central-1",
+      },
+      deploySettings: {
+        ...createDeployResult().deploySettings,
+        region: "eu-central-1",
+        regionSource: null,
+      },
+    };
+
+    const lines = renderAppDeploy(
+      context,
+      getCommandDescriptor("app.deploy"),
+      result,
+    ).join("\n");
+
+    expect(lines).toContain("Region");
+    expect(lines).toContain("eu-central-1");
+    expect(lines).toContain("project default");
+  });
+
+  it("omits the provenance region row when --region was passed explicitly", async () => {
+    const { context } = await createTestCommandContext({});
+    const result: AppDeployResult = {
+      ...createDeployResult(),
+      deploySettings: {
+        ...createDeployResult().deploySettings,
+        region: "us-east-1",
+        regionSource: "set by --region",
+      },
+    };
+
+    const lines = renderAppDeploy(
+      context,
+      getCommandDescriptor("app.deploy"),
+      result,
+    ).join("\n");
+
+    expect(lines).not.toContain("platform default");
+    expect(lines).not.toContain("project default");
   });
 
   it("keeps promoted status and candidate url in JSON serialization", () => {

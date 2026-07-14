@@ -18,7 +18,6 @@ import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { matchError, Result } from "better-result";
 import open from "open";
 import { FileTokenStorage } from "../adapters/token-storage";
-import { DEFAULT_REGION } from "../lib/app/app-interaction";
 import {
   type AppRecord,
   createAppProvider,
@@ -645,6 +644,7 @@ async function runSingleAppDeploy(
     await requireProviderAndDeployProjectContext(context, options?.projectRef, {
       branch,
       createProjectName: options?.createProjectName,
+      createProjectRegion: deployRegion?.value,
       envProjectId,
       localPin,
     });
@@ -869,6 +869,7 @@ async function runSingleAppDeploy(
           entrypoint ?? buildSettingsResolution.settings.entrypoint ?? null,
         httpPort: runtime.port,
         region: deployResult.app.region ?? selectedApp.region ?? null,
+        regionSource: deployRegion?.annotation ?? null,
         envVars: envVarNames(envVars),
       },
       durationMs: deployDurationMs,
@@ -2770,7 +2771,7 @@ async function resolveDeployAppByName(
     matchedAnnotation: string;
     newAnnotation: string;
     requestedRegion: MergedDeployInput | undefined;
-    newAppRegion: string;
+    newAppRegion: string | undefined;
     firstDeploy: boolean;
   },
 ): Promise<{
@@ -2842,7 +2843,7 @@ async function resolveAmbiguousDeployApp(
   matches: AppRecord[],
   targetName: string,
   requestedRegion: MergedDeployInput | undefined,
-  newAppRegion: string,
+  newAppRegion: string | undefined,
   firstDeploy: boolean,
 ): Promise<{
   appId?: string;
@@ -2923,8 +2924,8 @@ async function resolveAmbiguousDeployApp(
 
 function deployNewAppRegion(
   configRegion: MergedDeployInput | undefined,
-): string {
-  return configRegion?.value ?? DEFAULT_REGION;
+): string | undefined {
+  return configRegion?.value;
 }
 
 async function resolveExistingAppSelection(
@@ -3324,6 +3325,7 @@ async function requireProviderAndDeployProjectContext(
   options: {
     branch?: ResolvedDeployBranch;
     createProjectName?: string;
+    createProjectRegion?: string;
     envProjectId?: string;
     localPin: LocalResolutionPinReadResult;
   },
@@ -3417,6 +3419,7 @@ async function resolveDeployProjectContext(
   options: {
     branch?: ResolvedDeployBranch;
     createProjectName?: string;
+    createProjectRegion?: string;
     envProjectId?: string;
     localPin: LocalResolutionPinReadResult;
   },
@@ -3469,6 +3472,7 @@ async function resolveDeployProjectContext(
       projectName,
       workspace,
       context.runtime.signal,
+      options.createProjectRegion,
     );
     return withRemoteDeployBranch(
       provider,
@@ -3567,6 +3571,7 @@ async function resolveDeployProjectContext(
       provider,
       workspace,
       projects,
+      options.createProjectRegion,
     );
     return withRemoteDeployBranch(
       provider,
@@ -3588,6 +3593,7 @@ async function resolveInteractiveDeployProjectSetup(
   provider: ReturnType<typeof createAppProvider>,
   workspace: AuthWorkspace,
   projects: ProjectCandidate[],
+  createProjectRegion?: string,
 ): Promise<Omit<ResolvedAppProjectContext, "branch">> {
   const setup = await promptForProjectSetupChoice({
     context,
@@ -3598,6 +3604,7 @@ async function resolveInteractiveDeployProjectSetup(
         projectName,
         workspace,
         context.runtime.signal,
+        createProjectRegion,
       ),
     cancel: {
       why: "Deploy needs a Project before it can continue.",
@@ -3626,9 +3633,10 @@ async function createProjectForDeploySetup(
   projectName: string,
   workspace: AuthWorkspace,
   signal: AbortSignal,
+  region?: string,
 ): Promise<ProjectCandidate> {
   const created = await provider
-    .createProject({ name: projectName, signal })
+    .createProject({ name: projectName, region, signal })
     .catch((error) => {
       throw projectCreateFailedError(error, projectName, workspace, {
         nextSteps: [
@@ -3646,6 +3654,9 @@ async function createProjectForDeploySetup(
   return {
     id: created.id,
     name: created.name,
+    ...(created.defaultRegion != null
+      ? { defaultRegion: created.defaultRegion }
+      : {}),
     workspace,
   };
 }
