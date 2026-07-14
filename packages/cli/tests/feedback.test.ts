@@ -150,6 +150,45 @@ describe("feedback", () => {
     expect(requests).toHaveLength(0);
   });
 
+  it("rejects a regex-valid email over 320 characters without sending", async () => {
+    const { url, requests } = await startFeedbackService({});
+    const longEmail = `${"a".repeat(320)}@example.com`;
+
+    const result = await runFeedbackCli(url, [
+      "hello",
+      "--email",
+      longEmail,
+      "--json",
+    ]);
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(2);
+    expect(payload.error.code).toBe("USAGE_ERROR");
+    expect(requests).toHaveLength(0);
+  });
+
+  it("fails with FEEDBACK_SEND_FAILED when a 2xx response body stalls", async () => {
+    server = createServer((req, res) => {
+      req.on("data", () => {});
+      req.on("end", () => {
+        res.writeHead(201, { "content-type": "application/json" });
+        res.write('{"ok":true,'); // start the body, never finish it
+      });
+    });
+    await new Promise<void>((resolve) => server?.listen(0, resolve));
+    const { port } = server.address() as AddressInfo;
+
+    const result = await runFeedbackCli(`http://127.0.0.1:${port}/feedback`, [
+      "hello",
+      "--json",
+    ]);
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(1);
+    expect(payload.error.code).toBe("FEEDBACK_SEND_FAILED");
+    expect(payload.error.why).toContain("did not answer within 3 seconds");
+  }, 10_000);
+
   it("fails with FEEDBACK_SEND_FAILED when the service errors", async () => {
     const { url } = await startFeedbackService({
       status: 500,

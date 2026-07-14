@@ -49,7 +49,7 @@ Out of scope for the current beta:
 ## Global Rules
 
 - Canonical shape is `prisma <group> <action>`.
-- `version` and `init` are the top-level commands outside that shape (see Scope above).
+- `version`, `init`, and `feedback` are the top-level commands outside that shape (see Scope above).
 - Every command supports `--json`.
 - Shared global flags are:
   - `--json`
@@ -450,7 +450,8 @@ Behavior:
 
 - requires no auth, no workspace, no project context, and no config; never prompts, in any mode
 - anonymous by default; `--email <address>` opts into being contactable, and the address is validated when passed
-- attaches non-PII environment context to every submission: CLI version, node version, and OS platform and arch; nothing else is collected, and the help text says so
+- attaches non-PII environment context to every submission: CLI version, node version, and OS platform and arch; the command help discloses exactly this list
+- the feedback service uses the client IP transiently, in memory, to rate limit submissions; the IP is never stored with the feedback
 - `<message>` is required, trimmed, and limited to 4000 characters; an empty or oversized message is a usage error and nothing is sent
 - posts to the feedback service with a 3-second timeout; delivery failures (unreachable service, timeout, non-2xx response) fail with `FEEDBACK_SEND_FAILED` and exit 1, and the message is not persisted anywhere locally
 - `PRISMA_CLI_FEEDBACK_URL` overrides the service endpoint for testing and staging

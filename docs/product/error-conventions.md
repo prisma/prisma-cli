@@ -159,6 +159,7 @@ Rules:
 These codes are the minimum stable set for the MVP:
 
 - `USAGE_ERROR`
+- `FEEDBACK_SEND_FAILED`
 - `AUTH_REQUIRED`
 - `AUTH_CONFIG_INVALID`
 - `AGENT_SKILLS_INSTALL_FAILED`

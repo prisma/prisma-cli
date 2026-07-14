@@ -12,6 +12,7 @@ const FEEDBACK_TIMEOUT_MS = 3_000;
 // Mirrors the feedback service's own limits so refusals happen before the
 // network round trip.
 const MAX_MESSAGE_LENGTH = 4_000;
+const MAX_EMAIL_LENGTH = 320;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export interface FeedbackFlags {
@@ -41,10 +42,13 @@ export async function runFeedback(
   }
 
   const email = flags.email?.trim();
-  if (email !== undefined && !EMAIL_PATTERN.test(email)) {
+  if (
+    email !== undefined &&
+    (email.length > MAX_EMAIL_LENGTH || !EMAIL_PATTERN.test(email))
+  ) {
     throw usageError(
       "Invalid email",
-      `"${flags.email}" is not a valid email address.`,
+      `"${flags.email}" is not a valid email address of at most ${MAX_EMAIL_LENGTH} characters.`,
       "Pass a valid address with --email, or drop the flag to stay anonymous.",
       ['prisma-cli feedback "please add X" --email you@example.com'],
     );
@@ -102,27 +106,57 @@ async function postFeedback(
     }
     const detail =
       error instanceof Error && error.name === "TimeoutError"
-        ? `The feedback service did not answer within ${FEEDBACK_TIMEOUT_MS / 1000} seconds.`
+        ? TIMEOUT_DETAIL
         : `The feedback service could not be reached${error instanceof Error && error.cause instanceof Error ? ` (${error.cause.message})` : ""}.`;
     throw feedbackSendFailed(detail);
   }
 
   if (!response.ok) {
     throw feedbackSendFailed(
-      `The feedback service responded with HTTP ${response.status}${await readServiceError(response)}.`,
+      `The feedback service responded with HTTP ${response.status}${await readServiceError(context, response)}.`,
     );
   }
 
-  const payload = (await response.json().catch(() => null)) as {
-    id?: unknown;
-  } | null;
+  // The body read runs under the same abort signal as the request, so a
+  // stalled response or a user cancellation here must not be mistaken for a
+  // fully received non-JSON body.
+  let payload: { id?: unknown } | null;
+  try {
+    payload = (await response.json()) as { id?: unknown } | null;
+  } catch (error) {
+    if (context.runtime.signal.aborted) {
+      throw error;
+    }
+    if (!(error instanceof SyntaxError)) {
+      throw feedbackSendFailed(
+        error instanceof Error && error.name === "TimeoutError"
+          ? TIMEOUT_DETAIL
+          : "The feedback service response could not be read.",
+      );
+    }
+    // The body arrived but was not JSON; the submission itself succeeded.
+    payload = null;
+  }
   return typeof payload?.id === "string" ? payload.id : null;
 }
 
-async function readServiceError(response: Response): Promise<string> {
-  const payload = (await response.json().catch(() => null)) as {
-    error?: { message?: unknown };
-  } | null;
+const TIMEOUT_DETAIL = `The feedback service did not answer within ${FEEDBACK_TIMEOUT_MS / 1000} seconds.`;
+
+async function readServiceError(
+  context: CommandContext,
+  response: Response,
+): Promise<string> {
+  let payload: { error?: { message?: unknown } } | null;
+  try {
+    payload = (await response.json()) as {
+      error?: { message?: unknown };
+    } | null;
+  } catch (error) {
+    if (context.runtime.signal.aborted) {
+      throw error;
+    }
+    return "";
+  }
   return typeof payload?.error?.message === "string"
     ? ` (${payload.error.message})`
     : "";

@@ -48,6 +48,8 @@ const DESCRIPTORS: CommandDescriptor[] = [
     id: "feedback",
     path: ["prisma", "feedback"],
     description: "Send feedback to the Prisma CLI team",
+    longDescription:
+      "Anonymous unless --email is passed. Every submission includes the CLI version, node version, and OS platform/arch, and nothing else.",
     examples: [
       'prisma-cli feedback "the deploy flow is great"',
       'prisma-cli feedback "please add X" --email you@example.com',
