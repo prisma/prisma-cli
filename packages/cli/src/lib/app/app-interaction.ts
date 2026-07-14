@@ -1,14 +1,9 @@
-import type {
-  AppInfo,
-  DeployInteraction,
-  RegionInfo,
-} from "@prisma/compute-sdk";
+import type { AppInfo, DeployInteraction } from "@prisma/compute-sdk";
 
 import { selectPrompt, textPrompt } from "../../shell/prompt";
 import type { CommandContext } from "../../shell/runtime";
 
 const CREATE_NEW_APP = "__create_new_app__";
-export const DEFAULT_REGION = "eu-central-1";
 
 export function createDeployInteraction(
   context: CommandContext,
@@ -51,9 +46,6 @@ export function createDeployInteraction(
         validate: (value) =>
           !value?.trim() ? "App name is required" : undefined,
       }).then((value) => value.trim());
-    },
-    async selectRegion(_regions: RegionInfo[]): Promise<string> {
-      return DEFAULT_REGION;
     },
   };
 }

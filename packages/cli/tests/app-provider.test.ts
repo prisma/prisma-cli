@@ -233,6 +233,104 @@ describe("preview app provider", () => {
     );
   });
 
+  it("includes regionId in app POST body when region is specified", async () => {
+    const deploy = vi.fn().mockResolvedValue({
+      isErr: () => false,
+      isOk: () => true,
+      value: {
+        projectId: "proj_123",
+        appId: "svc_branch",
+        appName: "hello-world",
+        region: "us-east-1",
+        deploymentId: "dep_123",
+        deploymentEndpointDomain: "cv-123.iad.prisma.build",
+        appEndpointDomain: "hello-world.iad.prisma.build",
+      },
+    });
+    const AppBuildStrategy = mockAppBuildStrategy();
+    const client = {
+      GET: vi.fn().mockResolvedValue({
+        data: {
+          data: [],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200 },
+      }),
+      POST: vi.fn().mockImplementation((pathName: string) => {
+        if (pathName === "/v1/projects/{projectId}/branches") {
+          return {
+            data: {
+              data: {
+                id: "br_billing",
+                gitName: "feat/billing",
+                isDefault: false,
+                role: "preview",
+              },
+            },
+            response: { status: 201 },
+          };
+        }
+
+        if (pathName === "/v1/apps") {
+          return {
+            data: {
+              data: {
+                id: "svc_branch",
+                type: "app",
+                name: "hello-world",
+                region: { id: "us-east-1", name: "US East (N. Virginia)" },
+                projectId: "proj_123",
+                branchId: "br_billing",
+                latestDeploymentId: null,
+                appEndpointDomain: "hello-world.iad.prisma.build",
+              },
+            },
+            response: { status: 201 },
+          };
+        }
+
+        throw new Error(`Unexpected path ${pathName}`);
+      }),
+    };
+
+    vi.doMock("../src/lib/app/build", () => ({
+      AppBuildStrategy,
+    }));
+    vi.doMock("@prisma/compute-sdk", () => ({
+      ApiError: { is: () => false },
+      ComputeClient: class {
+        deploy = deploy;
+      },
+    }));
+
+    const { createAppProvider } = await import("../src/lib/app/app-provider");
+
+    const provider = createAppProvider(client as never);
+    const cwd = path.resolve("/tmp/next-smoke");
+
+    await provider.deployApp({
+      cwd,
+      projectId: "proj_123",
+      branchName: "feat/billing",
+      appName: "hello-world",
+      region: "us-east-1",
+      buildType: "nextjs",
+      portMapping: { http: 3000 },
+    });
+
+    expect(client.POST).toHaveBeenCalledWith(
+      "/v1/apps",
+      expect.objectContaining({
+        body: {
+          projectId: "proj_123",
+          branchId: "br_billing",
+          displayName: "hello-world",
+          regionId: "us-east-1",
+        },
+      }),
+    );
+  });
+
   it("uses an existing branch-scoped service when app creation races", async () => {
     const deploy = vi.fn().mockResolvedValue({
       isErr: () => false,

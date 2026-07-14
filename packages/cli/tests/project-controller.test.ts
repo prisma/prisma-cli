@@ -224,6 +224,60 @@ describe("project controller", () => {
     );
   });
 
+  it("passes region to createProject when --region is provided", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const createProject = vi.fn().mockResolvedValue({
+      id: "proj_new",
+      name: "New Dashboard",
+      defaultRegion: "us-east-1",
+    });
+
+    vi.doMock("../src/lib/auth/auth-ops", () => ({
+      readAuthState: vi.fn().mockResolvedValue({
+        authenticated: true,
+        provider: null,
+        user: {
+          email: "test@example.com",
+        },
+        workspace: {
+          id: "ws_123",
+          name: "Acme Inc",
+        },
+      }),
+      performLogin: vi.fn(),
+      performLogout: vi.fn(),
+    }));
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() => ({
+        createProject,
+      })),
+    }));
+
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const { runProjectCreate } = await import("../src/controllers/project");
+    await runProjectCreate(context, "New Dashboard", { region: "us-east-1" });
+
+    expect(createProject).toHaveBeenCalledWith({
+      name: "New Dashboard",
+      region: "us-east-1",
+      signal: context.runtime.signal,
+    });
+  });
+
   it("bare project link can create a new project from the interactive setup picker", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue({
       token: "token",

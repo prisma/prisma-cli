@@ -186,15 +186,18 @@ function createProjectCreateCommand(runtime: CliRuntime): Command {
     "project.create",
   );
 
-  command.argument("<name>", "Project name");
+  command
+    .argument("<name>", "Project name")
+    .addOption(new Option("--region <region>", "Prisma Compute region id"));
   addGlobalFlags(command);
 
   command.action(async (name, options) => {
+    const region = (options as { region?: string }).region;
     await runCommand<ProjectSetupResult>(
       runtime,
       "project.create",
       options as Record<string, unknown>,
-      (context) => runProjectCreate(context, String(name)),
+      (context) => runProjectCreate(context, String(name), { region }),
       {
         renderHuman: (context, descriptor, result) =>
           renderProjectSetup(context, descriptor, result),

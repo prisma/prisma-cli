@@ -4066,7 +4066,7 @@ describe("app controller", () => {
     );
   });
 
-  it("creates a named new app with the default Frankfurt region in non-interactive mode", async () => {
+  it("omits region from deployApp when --region is not passed for a new app", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi.fn().mockResolvedValue({
@@ -4125,7 +4125,7 @@ describe("app controller", () => {
         projectId: "proj_123",
         appId: undefined,
         appName: "hello-world",
-        region: "eu-central-1",
+        region: undefined,
         interaction: undefined,
       }),
     );
@@ -4231,6 +4231,74 @@ describe("app controller", () => {
     await expect(readFile(path.join(cwd, ".gitignore"), "utf8")).resolves.toBe(
       ".prisma/\n",
     );
+  });
+
+  it("passes --region to createProject when --create-project and --region are used together", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const createProject = vi.fn(async (options: { name: string }) => ({
+      id: "proj_new",
+      name: options.name,
+    }));
+    const listApps = vi.fn().mockResolvedValue([]);
+    const deployApp = vi.fn().mockResolvedValue({
+      projectId: "proj_new",
+      app: {
+        id: "app_new",
+        name: "hello-world",
+        region: "us-east-1",
+        liveDeploymentId: "dep_123",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://hello-world.prisma.app",
+      },
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject,
+          listApps,
+          deployApp,
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      isTTY: false,
+      env: {
+        ...process.env,
+        PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await runAppDeploy(context, "hello-world", {
+      createProjectName: "my-project",
+      region: "us-east-1",
+      framework: "hono",
+    });
+
+    expect(createProject).toHaveBeenCalledWith({
+      name: "my-project",
+      region: "us-east-1",
+      signal: context.runtime.signal,
+    });
   });
 
   it("reuses the created project on second deploy instead of creating another one", async () => {

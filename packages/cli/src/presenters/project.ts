@@ -356,6 +356,12 @@ function renderBoundProjectShow(
     lines.push(`${rail}  ${ui.dim("→")} ${ui.link(result.project.url)}`);
   }
 
+  if (result.project.defaultRegion) {
+    lines.push(
+      `${rail}  ${ui.accent(padDisplay("region", keyWidth))}  ${ui.dim(result.project.defaultRegion)}`,
+    );
+  }
+
   lines.push(
     ...renderResolvedProjectContextBlock(context.ui, {
       workspace: result.workspace,

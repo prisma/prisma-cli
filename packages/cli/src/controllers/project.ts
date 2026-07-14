@@ -263,6 +263,7 @@ export async function runProjectShow(
 export async function runProjectCreate(
   context: CommandContext,
   projectName: string,
+  options?: { region?: string },
 ): Promise<CommandSuccess<ProjectSetupResult>> {
   const authState = await requireAuthenticatedAuthState(context);
   const workspace = authState.workspace;
@@ -295,7 +296,11 @@ export async function runProjectCreate(
   const provider = createAppProvider(client);
   const name = projectName.trim();
   const created = await provider
-    .createProject({ name, signal: context.runtime.signal })
+    .createProject({
+      name,
+      region: options?.region,
+      signal: context.runtime.signal,
+    })
     .catch((error) => {
       throw projectCreateFailedError(error, name, workspace, {
         nextSteps: [
@@ -1443,6 +1448,9 @@ export async function listRealWorkspaceProjects(
         name: project.name,
         ...("url" in project && typeof project.url === "string"
           ? { url: project.url }
+          : {}),
+        ...("defaultRegion" in project
+          ? { defaultRegion: project.defaultRegion }
           : {}),
         slug:
           "slug" in project && typeof project.slug === "string"
