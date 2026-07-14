@@ -123,6 +123,17 @@ describe("feedback", () => {
     expect(requests).toHaveLength(0);
   });
 
+  it("rejects a message over 4000 characters as a usage error without sending", async () => {
+    const { url, requests } = await startFeedbackService({});
+
+    const result = await runFeedbackCli(url, ["x".repeat(4001), "--json"]);
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(2);
+    expect(payload.error.code).toBe("USAGE_ERROR");
+    expect(requests).toHaveLength(0);
+  });
+
   it("rejects an invalid --email as a usage error without sending", async () => {
     const { url, requests } = await startFeedbackService({});
 
