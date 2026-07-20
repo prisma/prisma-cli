@@ -88,6 +88,8 @@ The CLI groups commands by developer workflow:
 - `project`
 - `git`
 - `branch`
+- `database`
+- `bucket`
 - `app`
 
 The canonical command shape is:

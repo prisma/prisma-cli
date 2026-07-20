@@ -115,6 +115,12 @@ Current MVP commands map to patterns like this:
 | `database connection list` | `list` |
 | `database connection create` | compact mutate stderr + raw secret stdout + JSON envelope |
 | `database connection remove` | `mutate` |
+| `bucket list` | `list` |
+| `bucket create` | `mutate` |
+| `bucket delete` | `mutate` |
+| `bucket key list` | `list` |
+| `bucket key create` | compact mutate stderr + S3 env-block stdout + JSON envelope |
+| `bucket key delete` | `mutate` |
 
 No current MVP command uses `verify` or `inspect`, but new commands must still choose one existing pattern rather than inventing a new one casually.
 

@@ -18,7 +18,9 @@ output, and implementation.
 | Deployment | One build-and-release instance of an app. | [Resource model](../product/resource-model.md) |
 | Source revision | Code state a deployment was built from. | [Resource model](../product/resource-model.md) |
 | Schema | Local data model in the codebase. Out of scope for the current beta package. | [Resource model](../product/resource-model.md) |
-| Database | Branch-bound data store. Out of scope for the current beta package. | [Resource model](../product/resource-model.md) |
+| Database | Branch-bound Prisma Postgres data store managed by the `database` command group. | [Resource model](../product/resource-model.md) |
+| Bucket | Branch-scoped Tigris object-store resource managed by the `bucket` command group. | [Resource model](../product/resource-model.md) |
+| Bucket key | One-time-credential access key for a bucket, with role `read` or `read_write`. | [Resource model](../product/resource-model.md) |
 | Command group | First command segment after `prisma`, such as `auth` or `app`. | [Command spec](../product/command-spec.md) |
 | Action | Operation inside a command group, such as `deploy` or `whoami`. | [Command spec](../product/command-spec.md) |
 | Structured output | Explicit `--json` output intended for automation. | [Output conventions](../product/output-conventions.md) |

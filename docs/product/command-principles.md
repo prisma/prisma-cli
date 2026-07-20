@@ -39,7 +39,7 @@ The long-term command surface grows through workflow groups such as:
 - `app`
 - `git`
 
-The preview implements only `agent`, `auth`, `project`, `git`, `branch`, `database`, and `app`.
+The preview implements only `agent`, `auth`, `project`, `git`, `branch`, `database`, `bucket`, and `app`.
 
 ## Stable Nouns
 
@@ -50,6 +50,7 @@ The CLI should keep the meaning of these nouns stable:
 - `branch`
 - `schema`
 - `database`
+- `bucket`
 - `app`
 - `deployment`
 - `domain`
