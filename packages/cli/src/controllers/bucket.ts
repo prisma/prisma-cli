@@ -250,6 +250,22 @@ export async function runBucketKeyDelete(
   };
 }
 
+async function resolveBucketProvider(
+  context: CommandContext,
+): Promise<BucketProvider> {
+  if (isRealMode(context)) {
+    const client = await requireComputeAuth(
+      context.runtime.env,
+      context.runtime.signal,
+    );
+    if (!client) {
+      throw authRequiredError();
+    }
+    return createManagementBucketProvider(client);
+  }
+  return createFixtureBucketProvider(context);
+}
+
 async function requireBucketContext(
   context: CommandContext,
   flags: BucketCommandFlags,
@@ -309,19 +325,7 @@ async function requireBucketProviderOnly(
   context: CommandContext,
 ): Promise<BucketProvider> {
   await requireAuthenticatedAuthState(context);
-
-  if (isRealMode(context)) {
-    const client = await requireComputeAuth(
-      context.runtime.env,
-      context.runtime.signal,
-    );
-    if (!client) {
-      throw authRequiredError();
-    }
-    return createManagementBucketProvider(client);
-  }
-
-  return createFixtureBucketProvider(context);
+  return resolveBucketProvider(context);
 }
 
 function createFixtureBucketProvider(context: CommandContext): BucketProvider {
@@ -338,6 +342,9 @@ function createFixtureBucketProvider(context: CommandContext): BucketProvider {
         name: options.name,
         branchGitName: options.branchGitName,
       });
+      if (!created) {
+        throw branchNotFoundError(options.branchGitName ?? "");
+      }
       return normalizeBucket(created);
     },
 
@@ -385,20 +392,18 @@ function createFixtureBucketProvider(context: CommandContext): BucketProvider {
 }
 
 function resolveKeyRole(role: string | undefined): "read" | "read_write" {
-  if (!role || role === "read_write") {
-    return "read_write";
-  }
-  if (role === "read") {
-    return "read";
-  }
-  throw new CliError({
-    code: "USAGE_ERROR",
+  return role === "read" ? "read" : "read_write";
+}
+
+function branchNotFoundError(branchGitName: string): CliError {
+  return new CliError({
+    code: "BRANCH_NOT_FOUND",
     domain: "bucket",
-    summary: "Invalid key role",
-    why: `"${role}" is not a valid role. Valid roles are "read" and "read_write".`,
-    fix: "Pass --role read or --role read_write.",
-    exitCode: 2,
-    nextSteps: [],
+    summary: "Branch not found",
+    why: `No branch matched "${branchGitName}" in the resolved project.`,
+    fix: "Pass a branch git name from prisma-cli branch list.",
+    exitCode: 1,
+    nextSteps: ["prisma-cli branch list"],
   });
 }
 

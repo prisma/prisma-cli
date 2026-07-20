@@ -571,16 +571,21 @@ export class MockApi {
     projectId: string;
     name?: string;
     branchGitName?: string;
-  }): BucketRecord {
+  }): BucketRecord | undefined {
     this.data.buckets ??= [];
 
-    const branchId = input.branchGitName
-      ? (this.data.branches.find(
-          (branch) =>
-            branch.projectId === input.projectId &&
-            branch.name === input.branchGitName,
-        )?.id ?? null)
-      : null;
+    let branchId: string | null = null;
+    if (input.branchGitName) {
+      const branch = this.data.branches.find(
+        (b) =>
+          b.projectId === input.projectId && b.name === input.branchGitName,
+      );
+      if (!branch) {
+        return undefined;
+      }
+      branchId = branch.id;
+    }
+
     const bucket: BucketRecord = {
       id: `bkt_${this.data.buckets.length + 1_000}`,
       projectId: input.projectId,

@@ -71,18 +71,16 @@ export function renderBucketList(
 
 export function serializeBucketList(result: BucketListResult) {
   return {
-    ...serializeList({
-      context: {
-        project: result.projectName,
-        ...(result.branchName ? { branch: result.branchName } : {}),
-      },
-      items: result.buckets.map((bucket) => ({
-        noun: "bucket",
-        label: bucket.name,
-        id: bucket.id,
-        status: null,
-      })),
-    }),
+    context: {
+      project: result.projectName,
+      ...(result.branchName ? { branch: result.branchName } : {}),
+    },
+    items: result.buckets.map((bucket) => ({
+      name: bucket.name,
+      id: bucket.id,
+      status: bucket.status,
+    })),
+    count: result.buckets.length,
     projectId: result.projectId,
     branchName: result.branchName,
     buckets: result.buckets,

@@ -353,22 +353,37 @@ describe("bucket commands", () => {
     expect(payload.result.bucketName).toBeTruthy();
   });
 
-  it("rejects an invalid key role", async () => {
+  it("rejects an invalid key role at parse time", async () => {
     const { cwd, stateDir } = await setupLinkedProject();
 
     const result = await executeCli({
-      argv: ["bucket", "key", "create", "bkt_123", "--role", "admin", "--json"],
+      argv: ["bucket", "key", "create", "bkt_123", "--role", "admin"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("admin");
+  });
+
+  it("fails with BRANCH_NOT_FOUND when creating a bucket with a non-existent branch", async () => {
+    const { cwd, stateDir } = await setupLinkedProject();
+
+    const result = await executeCli({
+      argv: ["bucket", "create", "--branch", "nonexistent-branch", "--json"],
       cwd,
       stateDir,
       fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(1);
     expect(payload).toMatchObject({
       ok: false,
-      command: "bucket.key.create",
-      error: { code: "USAGE_ERROR", domain: "bucket" },
+      command: "bucket.create",
+      error: { code: "BRANCH_NOT_FOUND", domain: "bucket" },
     });
   });
 

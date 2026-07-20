@@ -202,10 +202,10 @@ function createBucketKeyCreateCommand(runtime: CliRuntime): Command {
   command
     .argument("<bucketId>", "Bucket id")
     .addOption(
-      new Option(
-        "--role <role>",
-        'Access role: "read" or "read_write" (default: read_write)',
-      ),
+      new Option("--role <role>", "Access role (default: read_write)").choices([
+        "read",
+        "read_write",
+      ]),
     )
     .addOption(
       new Option(
