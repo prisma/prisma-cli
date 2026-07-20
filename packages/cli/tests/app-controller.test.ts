@@ -6761,6 +6761,69 @@ describe("app controller", () => {
     ).resolves.toBeNull();
   });
 
+  it("remove scopes the app lookup to an explicit --branch", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: null,
+      },
+    ]);
+    const removeApp = vi.fn().mockResolvedValue({
+      id: "app_1",
+      name: "hello-world",
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          removeApp,
+          promoteDeployment: vi.fn(),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppRemove } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      flags: {
+        yes: true,
+      },
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await runAppRemove(context, "hello-world", undefined, undefined, "pr-42");
+
+    expect(listApps).toHaveBeenCalledWith(
+      "proj_123",
+      expect.objectContaining({ branchName: "pr-42" }),
+    );
+    expect(removeApp).toHaveBeenCalledWith("app_1", {
+      signal: context.runtime.signal,
+    });
+  });
+
   it("remove prompts for confirmation in interactive mode", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([

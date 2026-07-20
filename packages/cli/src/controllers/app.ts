@@ -2040,6 +2040,7 @@ export async function runAppRemove(
   appName: string | undefined,
   projectRef?: string,
   configTarget?: string,
+  branchName?: string,
 ): Promise<CommandSuccess<AppRemoveResult>> {
   ensurePreviewAppMode(context);
 
@@ -2049,8 +2050,17 @@ export async function runAppRemove(
     "remove",
   );
   appName = appName ?? compute.configAppName;
+  // Removing an app destroys every deployment in the *resolved branch*. Thread
+  // an explicit --branch through so callers (e.g. PR-teardown CI) can scope the
+  // removal to a specific branch instead of relying on implicit Git-branch
+  // resolution, which falls back to the production branch when it can't read a
+  // local branch. Without --branch, keep the existing inferred resolution.
+  const branch = branchName
+    ? await resolveDeployBranch(context, branchName)
+    : undefined;
   const { provider, target, projectId } =
     await requireProviderAndProjectContext(context, projectRef, {
+      branch,
       commandName: "app remove",
       projectDir: compute.projectDir,
     });
