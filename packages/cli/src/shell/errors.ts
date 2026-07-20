@@ -6,7 +6,8 @@ export type ErrorDomain =
   | "project"
   | "branch"
   | "app"
-  | "database";
+  | "database"
+  | "bucket";
 export type ErrorSeverity = "error";
 
 export interface CliErrorOptions {

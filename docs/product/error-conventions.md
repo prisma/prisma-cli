@@ -143,7 +143,7 @@ Rules:
 - `ok` is always `false`
 - `command` is always present
 - `error.code` is stable and machine-readable
-- `error.domain` is a stable logical area such as `cli`, `agent`, `auth`, `project`, `branch`, `app`, or `database`
+- `error.domain` is a stable logical area such as `cli`, `agent`, `auth`, `project`, `branch`, `app`, `database`, or `bucket`
 - `error.severity` is stable and machine-readable
 - `error.summary` is the short human-readable headline
 - `error.why` explains the immediate cause when known
@@ -228,6 +228,10 @@ These codes are the minimum stable set for the MVP:
 - `DATABASE_BACKUPS_UNSUPPORTED`
 - `DATABASE_BACKUP_NOT_FOUND`
 - `DATABASE_RESTORE_CONFLICT`
+- `BUCKET_NOT_FOUND`
+- `BUCKET_KEY_NOT_FOUND`
+- `BUCKET_KEY_SECRET_MISSING`
+- `BRANCH_NOT_FOUND`
 - `RUN_FAILED`
 - `DEPLOY_FAILED`
 - `VERSION_UNAVAILABLE`
@@ -305,6 +309,10 @@ Recommended meanings:
 - `DATABASE_BACKUPS_UNSUPPORTED`: the platform does not manage backups for the database, for example remote/BYO databases
 - `DATABASE_BACKUP_NOT_FOUND`: requested backup id does not exist for the resolved source database
 - `DATABASE_RESTORE_CONFLICT`: restore target database is provisioning or already recovering
+- `BUCKET_NOT_FOUND`: requested bucket id does not exist or is not accessible
+- `BUCKET_KEY_NOT_FOUND`: requested key id does not exist for the resolved bucket
+- `BUCKET_KEY_SECRET_MISSING`: bucket key creation succeeded but the API response did not include the one-time credential payload
+- `BRANCH_NOT_FOUND`: the branch name passed to a bucket command does not exist in the resolved project
 - `RUN_FAILED`: local framework run command could not be started or exited unsuccessfully
 - `DEPLOY_FAILED`: deployment or post-build health failed
 - `VERSION_UNAVAILABLE`: CLI could not read its own bundled package metadata to report a version (defensive; not expected in normal installs)

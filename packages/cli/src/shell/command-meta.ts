@@ -226,6 +226,78 @@ const DESCRIPTORS: CommandDescriptor[] = [
     ],
   },
   {
+    id: "bucket",
+    path: ["prisma", "bucket"],
+    description: "Manage object-store buckets for a project",
+    examples: [
+      "prisma-cli bucket list",
+      "prisma-cli bucket create",
+      "prisma-cli bucket key create bkt_123",
+    ],
+  },
+  {
+    id: "bucket.list",
+    path: ["prisma", "bucket", "list"],
+    description: "List object-store buckets for the resolved project",
+    examples: [
+      "prisma-cli bucket list",
+      "prisma-cli bucket list --branch preview",
+      "prisma-cli bucket list --json",
+    ],
+  },
+  {
+    id: "bucket.create",
+    path: ["prisma", "bucket", "create"],
+    description: "Create an object-store bucket",
+    examples: [
+      "prisma-cli bucket create",
+      "prisma-cli bucket create --name my-store",
+      "prisma-cli bucket create --branch preview --json",
+    ],
+  },
+  {
+    id: "bucket.delete",
+    path: ["prisma", "bucket", "delete"],
+    description: "Delete a bucket and all its access keys",
+    examples: ["prisma-cli bucket delete bkt_123"],
+  },
+  {
+    id: "bucket.key",
+    path: ["prisma", "bucket", "key"],
+    description: "Manage access keys for an object-store bucket",
+    examples: [
+      "prisma-cli bucket key list bkt_123",
+      "prisma-cli bucket key create bkt_123",
+      "prisma-cli bucket key delete bkt_123 bkey_456",
+    ],
+  },
+  {
+    id: "bucket.key.list",
+    path: ["prisma", "bucket", "key", "list"],
+    description: "List access keys for a bucket",
+    examples: [
+      "prisma-cli bucket key list bkt_123",
+      "prisma-cli bucket key list bkt_123 --json",
+    ],
+  },
+  {
+    id: "bucket.key.create",
+    path: ["prisma", "bucket", "key", "create"],
+    description:
+      "Create a bucket access key and print its one-time credentials",
+    examples: [
+      "prisma-cli bucket key create bkt_123",
+      "prisma-cli bucket key create bkt_123 --role read",
+      "prisma-cli bucket key create bkt_123 --name ci-key --role read_write",
+    ],
+  },
+  {
+    id: "bucket.key.delete",
+    path: ["prisma", "bucket", "key", "delete"],
+    description: "Revoke and delete a bucket access key",
+    examples: ["prisma-cli bucket key delete bkt_123 bkey_456"],
+  },
+  {
     id: "git",
     path: ["prisma", "git"],
     description: "Manage Git repository connections for a project",

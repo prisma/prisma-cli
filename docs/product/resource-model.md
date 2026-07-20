@@ -11,7 +11,7 @@ deployment, database, and environment variables.
 The Prisma CLI resolves through one hierarchy:
 
 ```text
-workspace -> project -> branch -> { app, database }
+workspace -> project -> branch -> { app, database, bucket }
 ```
 
 The preview implementation exposes only part of this hierarchy, but current
@@ -155,6 +155,43 @@ Rules:
 The `env` word is reserved for environment-variable ergonomics. The current
 top-level target-context group is `branch`, not `env`.
 
+### Object Store and Bucket
+
+`bucket` is a branch-scoped object-store resource backed by Tigris.
+
+A bucket is created inside a project and may be scoped to a branch. Access to
+its contents is controlled by access keys. Each access key has a role (`read`
+or `read_write`) and is issued as a one-time secret: the secret access key is
+returned only when the key is created and cannot be retrieved again.
+
+The `bucket key` subgroup manages access keys for a bucket. Its secret-reveal
+behavior mirrors `database connection create`: the one-time credential is
+written to stdout as a four-line S3-compatible env block, and human metadata
+goes to stderr.
+
+Rules:
+
+- `bucket` is the canonical public group; Public Beta does not add public
+  `storage` or `object-store` aliases
+- `bucket create` provisions the bucket; `--branch <git-name>` scopes it to
+  that branch
+- `bucket key create` returns the secret access key exactly once, as an env
+  block on stdout: `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`,
+  `S3_BUCKET`
+- `bucket list` and `bucket key list` never print or return secret values
+- successful bucket deletion also revokes all of the bucket's access keys;
+  deletion requires the bucket to be empty and currently fails with an
+  internal Management API error when it is not
+
+The beta package exposes:
+
+- `bucket list`
+- `bucket create`
+- `bucket delete <bucketId>`
+- `bucket key list <bucketId>`
+- `bucket key create <bucketId>`
+- `bucket key delete <bucketId> <keyId>`
+
 ### Schema and Database
 
 `schema` stays a local code artifact. `database` stays a branch-bound remote
@@ -217,10 +254,12 @@ workspace -> project
 project -> branch
 branch -> app*
 branch -> database*
+branch -> bucket*
 app -> deployment*
+bucket -> bucket_key*
 ```
 
-Long-term, branch is where app and database relationships meet.
+Long-term, branch is where app, database, and bucket relationships meet.
 
 ## Invariants
 

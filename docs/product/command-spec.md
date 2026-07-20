@@ -16,6 +16,7 @@ The beta package includes these command groups:
 - `git`
 - `branch`
 - `database` (includes `database connection` subgroup)
+- `bucket` (includes `bucket key` subgroup)
 - `app`
 - `build` (includes `build logs`)
 
@@ -1247,6 +1248,255 @@ Examples:
 
 ```bash
 prisma-cli database connection remove conn_123 --confirm conn_123
+```
+
+## `prisma-cli bucket`
+
+Manage Tigris-backed object-store buckets for a project. `bucket` is a
+top-level group, parallel to `database`, because buckets are branch-scoped
+platform resources with their own key-management subgroup.
+
+`bucket key` is nested under `bucket` because access keys exist only in the
+context of one bucket. There is no `bucket key show` command because the secret
+access key is a one-time-view secret: the platform returns it only from
+`bucket key create`.
+
+### `prisma-cli bucket list --project <id-or-name> --branch <git-name>`
+
+Purpose:
+
+- list object-store buckets for the resolved project
+
+Behavior:
+
+- requires auth and resolved project context; accepts `--project <id-or-name>` as an explicit fallback
+- lists bucket metadata only: name, id, status, branch id, and created timestamp
+- `--branch <git-name>` narrows the list to buckets attached to that branch
+- does not create, delete, or mutate remote state
+- uses the standard list JSON envelope with bucket metadata
+
+In `--json`, `result` uses this shape:
+
+```json
+{
+  "context": { "project": "Acme Dashboard" },
+  "items": [
+    { "name": "acme-preview-store", "id": "bkt_123", "status": "ready" }
+  ],
+  "count": 1,
+  "projectId": "proj_123",
+  "branchName": null,
+  "buckets": [
+    {
+      "id": "bkt_123",
+      "name": "acme-preview-store",
+      "status": "ready",
+      "branchId": "br_123",
+      "createdAt": "2026-06-01T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+Examples:
+
+```bash
+prisma-cli bucket list
+prisma-cli bucket list --branch preview
+prisma-cli bucket list --json
+```
+
+### `prisma-cli bucket create --name <name> --project <id-or-name> --branch <git-name>`
+
+Purpose:
+
+- create an object-store bucket in the resolved project
+
+Behavior:
+
+- requires auth and resolved project context; accepts `--project <id-or-name>` as an explicit fallback
+- `--name <name>` sets the bucket display name; when omitted, the platform assigns an auto-generated name
+- `--branch <git-name>` scopes the bucket to that branch; when omitted, the bucket is unscoped and visible across all branches
+- the bucket is created with `ready` status when provisioning succeeds
+- fails with `BRANCH_NOT_FOUND` when `--branch` names a branch that does not exist in the resolved project
+
+In `--json`, `result` uses this shape:
+
+```json
+{
+  "projectId": "proj_123",
+  "projectName": "Acme Dashboard",
+  "bucket": {
+    "id": "bkt_123",
+    "name": "acme-preview-store",
+    "status": "ready",
+    "branchId": "br_123",
+    "createdAt": "2026-06-01T00:00:00.000Z"
+  }
+}
+```
+
+Examples:
+
+```bash
+prisma-cli bucket create
+prisma-cli bucket create --name my-store
+prisma-cli bucket create --branch preview --json
+```
+
+### `prisma-cli bucket delete <bucketId>`
+
+Purpose:
+
+- delete a bucket and all its access keys
+
+Behavior:
+
+- requires auth
+- treats `<bucketId>` as the bucket id to delete
+- removes the bucket and all its access keys through the Management API
+- fails with `BUCKET_NOT_FOUND` when the bucket id does not exist
+- deletion requires the bucket to be empty; deleting a bucket that still
+  contains objects currently fails with an internal Management API error
+  rather than a conflict error
+
+In `--json`, `result` uses this shape:
+
+```json
+{
+  "bucket": { "id": "bkt_123" }
+}
+```
+
+Examples:
+
+```bash
+prisma-cli bucket delete bkt_123
+prisma-cli bucket delete bkt_123 --json
+```
+
+### `prisma-cli bucket key list <bucketId>`
+
+Purpose:
+
+- list access keys for a bucket
+
+Behavior:
+
+- requires auth
+- lists key metadata only: name, id, role, value hint, and created timestamp
+- never prints or returns the secret access key
+- fails with `BUCKET_NOT_FOUND` when the bucket id does not exist
+
+In `--json`, `result` uses this shape:
+
+```json
+{
+  "context": { "bucket": "bkt_123" },
+  "items": [
+    { "name": "primary", "id": "bkey_123", "status": null }
+  ],
+  "count": 1,
+  "bucketId": "bkt_123",
+  "keys": [
+    {
+      "id": "bkey_123",
+      "name": "primary",
+      "role": "read_write",
+      "valueHint": "AKIABKT123...",
+      "createdAt": "2026-06-01T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+Examples:
+
+```bash
+prisma-cli bucket key list bkt_123
+prisma-cli bucket key list bkt_123 --json
+```
+
+### `prisma-cli bucket key create <bucketId> --role <read|read_write> --name <name>`
+
+Purpose:
+
+- create an access key for a bucket and print its one-time credentials as an S3-compatible env block
+
+Behavior:
+
+- requires auth
+- `--role <read|read_write>` sets the access role; defaults to `read_write`; Commander validates the choice at parse time — any other value is rejected as a usage error before the action runs
+- `--name <name>` sets the key display name; when omitted, the platform assigns an auto-generated name
+- the secret access key is a one-time-view secret: it is returned only from this command and cannot be retrieved again
+- in default human mode, stderr shows a short creation summary with a "shown once" warning; stdout contains exactly four lines — the S3-compatible env block:
+  ```
+  S3_ENDPOINT=<endpoint>
+  S3_ACCESS_KEY_ID=<access-key-id>
+  S3_SECRET_ACCESS_KEY=<secret-access-key>
+  S3_BUCKET=<bucket-name>
+  ```
+- human stderr does not repeat, label, or wrap the credential values
+- `--quiet` suppresses successful stderr output and leaves stdout as exactly the four-line env block
+- in `--json`, `result` contains the full credential set exactly once, including `secretAccessKey`
+- fails with `BUCKET_NOT_FOUND` when the bucket id does not exist
+- fails with `BUCKET_KEY_SECRET_MISSING` when the Management API response does not include the one-time credential payload
+
+In `--json`, `result` uses this shape:
+
+```json
+{
+  "bucketId": "bkt_123",
+  "key": {
+    "id": "bkey_456",
+    "name": "ci-key",
+    "role": "read",
+    "valueHint": "AKIABKT456...",
+    "createdAt": "2026-06-09T00:00:00.000Z"
+  },
+  "secretAccessKey": "<one-time-secret>",
+  "accessKeyId": "<access-key-id>",
+  "endpoint": "https://fly.storage.tigris.dev",
+  "bucketName": "acme-preview-store"
+}
+```
+
+Examples:
+
+```bash
+prisma-cli bucket key create bkt_123
+prisma-cli bucket key create bkt_123 --role read
+prisma-cli bucket key create bkt_123 --name ci-key --role read_write
+prisma-cli bucket key create bkt_123 --json
+```
+
+### `prisma-cli bucket key delete <bucketId> <keyId>`
+
+Purpose:
+
+- revoke and delete a bucket access key
+
+Behavior:
+
+- requires auth
+- treats `<bucketId>` and `<keyId>` as the bucket id and key id to target
+- revokes and removes the access key through the Management API
+- fails with `BUCKET_NOT_FOUND` when the bucket id does not exist
+- fails with `BUCKET_KEY_NOT_FOUND` when the key id does not exist for the bucket
+
+In `--json`, `result` uses this shape:
+
+```json
+{
+  "key": { "id": "bkey_123" }
+}
+```
+
+Examples:
+
+```bash
+prisma-cli bucket key delete bkt_123 bkey_123
+prisma-cli bucket key delete bkt_123 bkey_123 --json
 ```
 
 ## `prisma-cli app build [app] --entry <path> --build-type <auto|bun|nextjs|nuxt|astro|nestjs|tanstack-start|custom>`
