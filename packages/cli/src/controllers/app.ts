@@ -3126,7 +3126,12 @@ async function resolveCurrentLiveDeploymentId(
     return knownLiveDeploymentId;
   }
 
-  return deployments[0]?.id ?? null;
+  // No authoritative live signal (app pointer, provider flag, or local state):
+  // report "no known live deployment" rather than assuming the newest one is
+  // live. Guessing newest-is-live makes a promote treat its own freshly created
+  // candidate as already-live and skip the endpoint rebind, so an app whose live
+  // pointer was cleared never gets re-bound and stays unreachable.
+  return null;
 }
 
 function buildAppShowNextSteps(

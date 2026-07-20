@@ -5912,6 +5912,79 @@ describe("app controller", () => {
     ]);
   });
 
+  it("promote rebinds instead of assuming the newest deployment is live when there is no authoritative live signal", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: null,
+      },
+    ]);
+    const listDeployments = vi.fn().mockResolvedValue({
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: null,
+      },
+      deployments: [
+        {
+          id: "dep_2",
+          status: "running",
+          url: "https://preview-2.prisma.app",
+          createdAt: "2026-04-11T12:00:00.000Z",
+          live: false,
+        },
+      ],
+    });
+    const promoteDeployment = vi.fn().mockResolvedValue(undefined);
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          promoteDeployment,
+          deployApp: vi.fn(),
+          listDeployments,
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppPromote } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const result = await runAppPromote(context, "dep_2", "hello-world");
+
+    expect(promoteDeployment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: "app_1",
+        deploymentId: "dep_2",
+      }),
+    );
+    expect(result.warnings).toEqual([]);
+  });
+
   it("rollback chooses the previous deployment when no explicit target is provided", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
