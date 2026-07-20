@@ -2055,9 +2055,22 @@ export async function runAppRemove(
   // removal to a specific branch instead of relying on implicit Git-branch
   // resolution, which falls back to the production branch when it can't read a
   // local branch. Without --branch, keep the existing inferred resolution.
-  const branch = branchName
-    ? await resolveDeployBranch(context, branchName)
-    : undefined;
+  // Reject an explicitly supplied empty --branch rather than letting it fall
+  // through to inference — the caller asked to scope the removal, so a blank
+  // value is a mistake, not a request for the default branch.
+  if (branchName !== undefined && branchName.trim() === "") {
+    throw usageError(
+      "The --branch value cannot be empty",
+      "app remove scopes the removal to the given branch; an empty --branch would silently fall back to the inferred (possibly production) branch.",
+      "Pass a non-empty branch name, e.g. --branch <branch>, or omit --branch to use the inferred branch.",
+      ["prisma-cli app remove --app <name> --branch <branch>"],
+      "app",
+    );
+  }
+  const branch =
+    branchName !== undefined
+      ? await resolveDeployBranch(context, branchName)
+      : undefined;
   const { provider, target, projectId } =
     await requireProviderAndProjectContext(context, projectRef, {
       branch,
