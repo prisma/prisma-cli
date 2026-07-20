@@ -230,5 +230,33 @@
       },
       "generatedAt": "2026-07-01T00:00:00.000Z"
     }
+  ],
+  "buckets": [
+    {
+      "id": "bkt_123",
+      "projectId": "proj_123",
+      "branchId": "br_123",
+      "name": "acme-preview-store",
+      "status": "ready",
+      "createdAt": "2026-06-01T00:00:00.000Z"
+    },
+    {
+      "id": "bkt_456",
+      "projectId": "proj_123",
+      "branchId": "br_456",
+      "name": "acme-production-store",
+      "status": "ready",
+      "createdAt": "2026-06-02T00:00:00.000Z"
+    }
+  ],
+  "bucketKeys": [
+    {
+      "id": "bkey_123",
+      "bucketId": "bkt_123",
+      "name": "primary",
+      "role": "read_write",
+      "valueHint": "AKIABKT123...",
+      "createdAt": "2026-06-01T00:00:00.000Z"
+    }
   ]
 }

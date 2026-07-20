@@ -6,6 +6,7 @@ import { createAgentCommand } from "./commands/agent";
 import { createAppCommand } from "./commands/app";
 import { createAuthCommand } from "./commands/auth";
 import { createBranchCommand } from "./commands/branch";
+import { createBucketCommand } from "./commands/bucket";
 import { createBuildCommand } from "./commands/build";
 import { createDatabaseCommand } from "./commands/database";
 import { createFeedbackCommand } from "./commands/feedback";
@@ -113,6 +114,7 @@ export function createProgram(runtime: CliRuntime): Command {
   program.addCommand(createBranchCommand(runtime));
   program.addCommand(createBuildCommand(runtime));
   program.addCommand(createDatabaseCommand(runtime));
+  program.addCommand(createBucketCommand(runtime));
   program.addCommand(createAppCommand(runtime));
 
   return program;

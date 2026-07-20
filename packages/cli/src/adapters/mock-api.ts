@@ -88,6 +88,28 @@ interface DatabaseUsageRecord {
   generatedAt: string;
 }
 
+interface BucketRecord {
+  id: string;
+  projectId: string;
+  branchId: string | null;
+  name: string;
+  status: string;
+  createdAt: string;
+}
+
+interface BucketKeyRecord {
+  id: string;
+  bucketId: string;
+  name: string;
+  role: "read" | "read_write";
+  valueHint: string;
+  createdAt: string;
+  secretAccessKey?: string;
+  accessKeyId?: string;
+  endpoint?: string;
+  bucketName?: string;
+}
+
 interface MockApiData {
   providers: ProviderRecord[];
   users: UserRecord[];
@@ -101,6 +123,8 @@ interface MockApiData {
   databaseBackups?: DatabaseBackupRecord[];
   databaseUsage?: DatabaseUsageRecord[];
   databaseBackupRetentionDays?: number;
+  buckets?: BucketRecord[];
+  bucketKeys?: BucketKeyRecord[];
 }
 
 export class MockApi {
@@ -523,10 +547,140 @@ export class MockApi {
     connection.connectionString = connectionString;
     return { connection, connectionString };
   }
+
+  listBucketsForProject(
+    projectId: string,
+    branchName?: string,
+  ): BucketRecord[] {
+    return (this.data.buckets ?? []).filter(
+      (bucket) =>
+        bucket.projectId === projectId &&
+        (!branchName ||
+          this.data.branches.find(
+            (branch) =>
+              branch.id === bucket.branchId && branch.name === branchName,
+          )),
+    );
+  }
+
+  getBucket(bucketId: string): BucketRecord | undefined {
+    return (this.data.buckets ?? []).find((bucket) => bucket.id === bucketId);
+  }
+
+  createBucket(input: {
+    projectId: string;
+    name?: string;
+    branchGitName?: string;
+  }): BucketRecord {
+    this.data.buckets ??= [];
+
+    const branchId = input.branchGitName
+      ? (this.data.branches.find(
+          (branch) =>
+            branch.projectId === input.projectId &&
+            branch.name === input.branchGitName,
+        )?.id ?? null)
+      : null;
+    const bucket: BucketRecord = {
+      id: `bkt_${this.data.buckets.length + 1_000}`,
+      projectId: input.projectId,
+      branchId,
+      name: input.name ?? `bucket-${this.data.buckets.length + 1_000}`,
+      status: "ready",
+      createdAt: "2026-06-09T00:00:00.000Z",
+    };
+
+    this.data.buckets.push(bucket);
+    return bucket;
+  }
+
+  deleteBucket(bucketId: string): BucketRecord | undefined {
+    this.data.buckets ??= [];
+    this.data.bucketKeys ??= [];
+    const bucket = this.getBucket(bucketId);
+    if (!bucket) {
+      return undefined;
+    }
+
+    this.data.buckets = this.data.buckets.filter(
+      (candidate) => candidate.id !== bucketId,
+    );
+    this.data.bucketKeys = this.data.bucketKeys.filter(
+      (key) => key.bucketId !== bucketId,
+    );
+    return bucket;
+  }
+
+  listBucketKeys(bucketId: string): BucketKeyRecord[] {
+    return (this.data.bucketKeys ?? []).filter(
+      (key) => key.bucketId === bucketId,
+    );
+  }
+
+  createBucketKey(input: {
+    bucketId: string;
+    name?: string;
+    role: "read" | "read_write";
+  }):
+    | {
+        key: BucketKeyRecord;
+        secretAccessKey: string;
+        accessKeyId: string;
+        endpoint: string;
+        bucketName: string;
+      }
+    | undefined {
+    const bucket = this.getBucket(input.bucketId);
+    if (!bucket) {
+      return undefined;
+    }
+
+    this.data.bucketKeys ??= [];
+    const secretAccessKey = `secret-${input.bucketId}-${this.data.bucketKeys.length + 1}`;
+    const accessKeyId = `AKIA${input.bucketId.toUpperCase().replace(/_/g, "")}${this.data.bucketKeys.length + 1}`;
+    const endpoint = `https://fly.storage.tigris.dev`;
+    const bucketName = bucket.name;
+
+    const key: BucketKeyRecord = {
+      id: `bkey_${this.data.bucketKeys.length + 1_000}`,
+      bucketId: input.bucketId,
+      name: input.name ?? `key-${this.data.bucketKeys.length + 1_000}`,
+      role: input.role,
+      valueHint: `${accessKeyId.slice(0, 8)}...`,
+      createdAt: "2026-06-09T00:00:00.000Z",
+      secretAccessKey,
+      accessKeyId,
+      endpoint,
+      bucketName,
+    };
+
+    this.data.bucketKeys.push(key);
+    return { key, secretAccessKey, accessKeyId, endpoint, bucketName };
+  }
+
+  deleteBucketKey(
+    bucketId: string,
+    keyId: string,
+  ): BucketKeyRecord | undefined {
+    this.data.bucketKeys ??= [];
+    const key = (this.data.bucketKeys ?? []).find(
+      (candidate) => candidate.id === keyId && candidate.bucketId === bucketId,
+    );
+    if (!key) {
+      return undefined;
+    }
+
+    this.data.bucketKeys = this.data.bucketKeys.filter(
+      (candidate) => candidate.id !== keyId,
+    );
+    return key;
+  }
 }
 
 export type {
   BranchRecord,
+  BucketKeyRecord,
+  BucketRecord,
   DatabaseConnectionRecord,
   DatabaseRecord,
   DeploymentRecord,
