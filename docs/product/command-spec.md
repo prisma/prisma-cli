@@ -1356,6 +1356,9 @@ Behavior:
 - treats `<bucketId>` as the bucket id to delete
 - removes the bucket and all its access keys through the Management API
 - fails with `BUCKET_NOT_FOUND` when the bucket id does not exist
+- deletion requires the bucket to be empty; deleting a bucket that still
+  contains objects currently fails with an internal Management API error
+  rather than a conflict error
 
 In `--json`, `result` uses this shape:
 

@@ -179,7 +179,9 @@ Rules:
   block on stdout: `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`,
   `S3_BUCKET`
 - `bucket list` and `bucket key list` never print or return secret values
-- bucket deletion also revokes all of the bucket's access keys
+- successful bucket deletion also revokes all of the bucket's access keys;
+  deletion requires the bucket to be empty and currently fails with an
+  internal Management API error when it is not
 
 The beta package exposes:
 

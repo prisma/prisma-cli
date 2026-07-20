@@ -77,7 +77,7 @@ The beta package exposes `prisma-cli` so it can coexist with the existing
 | `git` | Connect or disconnect a project from a GitHub repository. |
 | `branch` | List Prisma branches for the resolved project. |
 | `database` | Create, inspect, and remove Prisma Postgres databases and their connection strings. |
-| `bucket` | Create, inspect, and remove Tigris object-store buckets and their access keys. |
+| `bucket` | Create, list, and delete Tigris object-store buckets and their access keys. |
 | `app` | Build, run, deploy, inspect, open, stream logs, promote, roll back, and remove apps. |
 
 Common examples:
