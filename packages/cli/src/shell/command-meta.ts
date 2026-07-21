@@ -639,10 +639,11 @@ const DESCRIPTORS: CommandDescriptor[] = [
   {
     id: "app.remove",
     path: ["prisma", "app", "remove"],
-    description: "Remove the app from the current branch",
+    description: "Remove the app from the resolved branch",
     examples: [
       "prisma-cli app remove --app hello-world",
       "prisma-cli app remove --app hello-world --yes",
+      "prisma-cli app remove --app hello-world --branch feature/foo --yes",
     ],
   },
   {
