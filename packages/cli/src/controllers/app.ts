@@ -3119,6 +3119,14 @@ function requireDeploymentForApp(
   });
 }
 
+/**
+ * Resolves the app's live deployment from the app pointer, the provider's live
+ * flag, then locally cached state.
+ *
+ * @returns the live deployment id, or null when no authoritative signal exists.
+ * Callers must treat null as "not known to be live" rather than assuming the
+ * newest deployment is live.
+ */
 async function resolveCurrentLiveDeploymentId(
   context: CommandContext,
   projectId: string,
@@ -3148,7 +3156,7 @@ async function resolveCurrentLiveDeploymentId(
     return knownLiveDeploymentId;
   }
 
-  return deployments[0]?.id ?? null;
+  return null;
 }
 
 function buildAppShowNextSteps(
