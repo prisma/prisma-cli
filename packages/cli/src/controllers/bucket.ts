@@ -40,6 +40,10 @@ interface BucketCreateFlags extends BucketCommandFlags {
   name?: string;
 }
 
+interface BucketDeleteFlags {
+  confirm?: string;
+}
+
 interface BucketKeyCreateFlags {
   role?: string;
   name?: string;
@@ -118,6 +122,7 @@ export async function runBucketCreate(
 export async function runBucketDelete(
   context: CommandContext,
   bucketId: string,
+  flags: BucketDeleteFlags,
 ): Promise<CommandSuccess<BucketDeleteResult>> {
   const id = bucketId.trim();
   if (!id) {
@@ -129,6 +134,19 @@ export async function runBucketDelete(
       fix: "Pass the bucket id to delete.",
       exitCode: 2,
       nextSteps: ["prisma-cli bucket list"],
+    });
+  }
+
+  if (flags.confirm !== id) {
+    throw new CliError({
+      code: "CONFIRMATION_REQUIRED",
+      domain: "bucket",
+      summary: "Confirm bucket deletion",
+      why: "Deleting this bucket permanently removes all objects and access keys.",
+      fix: `Rerun with --confirm ${id}.`,
+      exitCode: 2,
+      nextSteps: [`prisma-cli bucket delete ${id} --confirm ${id}`],
+      meta: { expectedConfirm: id, receivedConfirm: flags.confirm ?? null },
     });
   }
 

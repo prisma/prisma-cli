@@ -1344,21 +1344,22 @@ prisma-cli bucket create --name my-store
 prisma-cli bucket create --branch preview --json
 ```
 
-### `prisma-cli bucket delete <bucketId>`
+### `prisma-cli bucket delete <bucketId> --confirm <bucketId>`
 
 Purpose:
 
-- delete a bucket and all its access keys
+- permanently delete a bucket, all objects stored in it, and all its access keys
 
 Behavior:
 
 - requires auth
 - treats `<bucketId>` as the bucket id to delete
-- removes the bucket and all its access keys through the Management API
+- requires `--confirm <bucketId>` to match the positional argument exactly;
+  exits with code 2 and `CONFIRMATION_REQUIRED` if the flag is missing or
+  does not match
+- cascades the deletion through the Management API: all stored objects are
+  removed and then all access keys are revoked before the bucket is destroyed
 - fails with `BUCKET_NOT_FOUND` when the bucket id does not exist
-- deletion requires the bucket to be empty; deleting a bucket that still
-  contains objects currently fails with an internal Management API error
-  rather than a conflict error
 
 In `--json`, `result` uses this shape:
 
@@ -1371,8 +1372,8 @@ In `--json`, `result` uses this shape:
 Examples:
 
 ```bash
-prisma-cli bucket delete bkt_123
-prisma-cli bucket delete bkt_123 --json
+prisma-cli bucket delete bkt_123 --confirm bkt_123
+prisma-cli bucket delete bkt_123 --confirm bkt_123 --json
 ```
 
 ### `prisma-cli bucket key list <bucketId>`

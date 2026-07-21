@@ -199,7 +199,7 @@ describe("bucket commands", () => {
     const { cwd, stateDir } = await setupLinkedProject();
 
     const result = await executeCli({
-      argv: ["bucket", "delete", "bkt_123", "--json"],
+      argv: ["bucket", "delete", "bkt_123", "--confirm", "bkt_123", "--json"],
       cwd,
       stateDir,
       fixturePath,
@@ -217,11 +217,57 @@ describe("bucket commands", () => {
     });
   });
 
+  it("requires --confirm matching the bucket id before deletion", async () => {
+    const { cwd, stateDir } = await setupLinkedProject();
+
+    const noConfirm = await executeCli({
+      argv: ["bucket", "delete", "bkt_123", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const noConfirmPayload = JSON.parse(noConfirm.stdout);
+
+    expect(noConfirm.exitCode).toBe(2);
+    expect(noConfirmPayload).toMatchObject({
+      ok: false,
+      command: "bucket.delete",
+      error: {
+        code: "CONFIRMATION_REQUIRED",
+        domain: "bucket",
+        meta: { expectedConfirm: "bkt_123", receivedConfirm: null },
+      },
+    });
+  });
+
+  it("rejects --confirm that does not match the bucket id", async () => {
+    const { cwd, stateDir } = await setupLinkedProject();
+
+    const wrongConfirm = await executeCli({
+      argv: ["bucket", "delete", "bkt_123", "--confirm", "bkt_456", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const wrongPayload = JSON.parse(wrongConfirm.stdout);
+
+    expect(wrongConfirm.exitCode).toBe(2);
+    expect(wrongPayload).toMatchObject({
+      ok: false,
+      command: "bucket.delete",
+      error: {
+        code: "CONFIRMATION_REQUIRED",
+        domain: "bucket",
+        meta: { expectedConfirm: "bkt_123", receivedConfirm: "bkt_456" },
+      },
+    });
+  });
+
   it("fails with BUCKET_NOT_FOUND when deleting an unknown bucket", async () => {
     const { cwd, stateDir } = await setupLinkedProject();
 
     const result = await executeCli({
-      argv: ["bucket", "delete", "bkt_999", "--json"],
+      argv: ["bucket", "delete", "bkt_999", "--confirm", "bkt_999", "--json"],
       cwd,
       stateDir,
       fixturePath,
