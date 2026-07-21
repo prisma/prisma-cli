@@ -3097,6 +3097,14 @@ function requireDeploymentForApp(
   });
 }
 
+/**
+ * Resolves the app's live deployment from the app pointer, the provider's live
+ * flag, then locally cached state.
+ *
+ * @returns the live deployment id, or null when no authoritative signal exists.
+ * Callers must treat null as "not known to be live" rather than assuming the
+ * newest deployment is live.
+ */
 async function resolveCurrentLiveDeploymentId(
   context: CommandContext,
   projectId: string,
@@ -3126,11 +3134,6 @@ async function resolveCurrentLiveDeploymentId(
     return knownLiveDeploymentId;
   }
 
-  // No authoritative live signal (app pointer, provider flag, or local state):
-  // report "no known live deployment" rather than assuming the newest one is
-  // live. Guessing newest-is-live makes a promote treat its own freshly created
-  // candidate as already-live and skip the endpoint rebind, so an app whose live
-  // pointer was cleared never gets re-bound and stays unreachable.
   return null;
 }
 
