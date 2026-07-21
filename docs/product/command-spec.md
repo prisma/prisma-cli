@@ -2228,16 +2228,18 @@ prisma-cli app rollback
 prisma-cli app rollback --app hello-world --to dep_123
 ```
 
-## `prisma-cli app remove [app] --app <name> -y --yes`
+## `prisma-cli app remove [app] --app <name> --branch <name> -y --yes`
 
 Purpose:
 
-- remove the app from the current branch
+- remove the app, and every deployment it owns, from the resolved branch
 
 Behavior:
 
 - requires auth and project context
-- resolves the selected app
+- resolves the selected app on the resolved branch
+- `--branch <name>` scopes the removal to that branch, honored as-is; an empty value is rejected rather than inferred
+- without `--branch`, the branch is inferred (active Git branch, else the project's default production branch), so automation that must not touch production should always pass `--branch`
 - requires confirmation unless `-y` or `--yes` is passed
 - clears local selected app state when the removed app was selected
 
@@ -2246,4 +2248,5 @@ Examples:
 ```bash
 prisma-cli app remove --app hello-world
 prisma-cli app remove --app hello-world --yes
+prisma-cli app remove --app hello-world --branch feature/foo --yes
 ```

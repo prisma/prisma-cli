@@ -254,10 +254,13 @@ describe("app commands", () => {
 
     expect(removeHelp.exitCode).toBe(0);
     expect(removeHelp.stderr).toContain(
-      "Remove the app from the current branch",
+      "Remove the app from the resolved branch",
     );
     expect(removeHelp.stderr).toContain(
       "$ prisma-cli app remove --app hello-world",
+    );
+    expect(removeHelp.stderr).toContain(
+      "$ prisma-cli app remove --app hello-world --branch feature/foo --yes",
     );
   });
 

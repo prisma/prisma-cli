@@ -2035,11 +2035,18 @@ export async function runAppRollback(
   };
 }
 
+/**
+ * Removes an app and every deployment it owns in the resolved branch.
+ *
+ * @param branchName Scopes the removal to this branch. When omitted the branch
+ * is inferred from the local Git branch, falling back to the production branch.
+ */
 export async function runAppRemove(
   context: CommandContext,
   appName: string | undefined,
   projectRef?: string,
   configTarget?: string,
+  branchName?: string,
 ): Promise<CommandSuccess<AppRemoveResult>> {
   ensurePreviewAppMode(context);
 
@@ -2049,8 +2056,23 @@ export async function runAppRemove(
     "remove",
   );
   appName = appName ?? compute.configAppName;
+  // A blank --branch must not fall through to inference, which can reach production.
+  if (branchName !== undefined && branchName.trim() === "") {
+    throw usageError(
+      "The --branch value cannot be empty",
+      "app remove scopes the removal to the given branch; an empty --branch would silently fall back to the inferred (possibly production) branch.",
+      "Pass a non-empty branch name, e.g. --branch <branch>, or omit --branch to use the inferred branch.",
+      ["prisma-cli app remove --app <name> --branch <branch>"],
+      "app",
+    );
+  }
+  const branch =
+    branchName !== undefined
+      ? await resolveDeployBranch(context, branchName)
+      : undefined;
   const { provider, target, projectId } =
     await requireProviderAndProjectContext(context, projectRef, {
+      branch,
       commandName: "app remove",
       projectDir: compute.projectDir,
     });
