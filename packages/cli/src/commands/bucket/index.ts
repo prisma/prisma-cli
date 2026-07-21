@@ -133,14 +133,19 @@ function createBucketDeleteCommand(runtime: CliRuntime): Command {
   );
 
   command.argument("<bucketId>", "Bucket id");
+  command.addOption(
+    new Option("--confirm <bucket-id>", "Exact bucket id to confirm deletion"),
+  );
   addGlobalFlags(command);
 
   command.action(async (bucketId: string, options) => {
+    const confirm = (options as { confirm?: string }).confirm;
+
     await runCommand<BucketDeleteResult>(
       runtime,
       "bucket.delete",
       options as Record<string, unknown>,
-      (context) => runBucketDelete(context, bucketId),
+      (context) => runBucketDelete(context, bucketId, { confirm }),
       {
         renderHuman: (context, descriptor, result) =>
           renderBucketDelete(context, descriptor, result),
