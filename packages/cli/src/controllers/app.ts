@@ -2035,6 +2035,12 @@ export async function runAppRollback(
   };
 }
 
+/**
+ * Removes an app and every deployment it owns in the resolved branch.
+ *
+ * @param branchName Scopes the removal to this branch. When omitted the branch
+ * is inferred from the local Git branch, falling back to the production branch.
+ */
 export async function runAppRemove(
   context: CommandContext,
   appName: string | undefined,
@@ -2050,14 +2056,7 @@ export async function runAppRemove(
     "remove",
   );
   appName = appName ?? compute.configAppName;
-  // Removing an app destroys every deployment in the *resolved branch*. Thread
-  // an explicit --branch through so callers (e.g. PR-teardown CI) can scope the
-  // removal to a specific branch instead of relying on implicit Git-branch
-  // resolution, which falls back to the production branch when it can't read a
-  // local branch. Without --branch, keep the existing inferred resolution.
-  // Reject an explicitly supplied empty --branch rather than letting it fall
-  // through to inference — the caller asked to scope the removal, so a blank
-  // value is a mistake, not a request for the default branch.
+  // A blank --branch must not fall through to inference, which can reach production.
   if (branchName !== undefined && branchName.trim() === "") {
     throw usageError(
       "The --branch value cannot be empty",

@@ -6958,10 +6958,6 @@ describe("app controller", () => {
       { from: "user" },
     );
 
-    // Proves the whole chain: commander parses --branch, createRemoveCommand
-    // forwards options.branch to runAppRemove, and the controller scopes the
-    // lookup to that branch. Dropping the forwarding falls back to the inferred
-    // branch and fails this assertion.
     expect(listApps).toHaveBeenCalledWith(
       "proj_123",
       expect.objectContaining({ branchName: "pr-42" }),
