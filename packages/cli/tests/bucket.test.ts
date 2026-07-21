@@ -238,6 +238,17 @@ describe("bucket commands", () => {
         meta: { expectedConfirm: "bkt_123", receivedConfirm: null },
       },
     });
+
+    const list = await executeCli({
+      argv: ["bucket", "list", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const listPayload = JSON.parse(list.stdout);
+    expect(listPayload.result.items).toContainEqual(
+      expect.objectContaining({ id: "bkt_123" }),
+    );
   });
 
   it("rejects --confirm that does not match the bucket id", async () => {
@@ -261,6 +272,17 @@ describe("bucket commands", () => {
         meta: { expectedConfirm: "bkt_123", receivedConfirm: "bkt_456" },
       },
     });
+
+    const list = await executeCli({
+      argv: ["bucket", "list", "--json"],
+      cwd,
+      stateDir,
+      fixturePath,
+    });
+    const listPayload = JSON.parse(list.stdout);
+    expect(listPayload.result.items).toContainEqual(
+      expect.objectContaining({ id: "bkt_123" }),
+    );
   });
 
   it("fails with BUCKET_NOT_FOUND when deleting an unknown bucket", async () => {
