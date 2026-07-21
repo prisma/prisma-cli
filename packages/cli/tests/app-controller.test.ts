@@ -6893,6 +6893,81 @@ describe("app controller", () => {
     );
   });
 
+  it("app remove forwards --branch from the parsed command through to the provider", async () => {
+    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const listApps = vi.fn().mockResolvedValue([
+      {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-central-1",
+        liveDeploymentId: null,
+      },
+    ]);
+    const removeApp = vi.fn().mockResolvedValue({
+      id: "app_1",
+      name: "hello-world",
+    });
+
+    vi.doMock("../src/lib/auth/guard", () => ({
+      requireComputeAuth,
+    }));
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          createProject: vi.fn(),
+          listApps,
+          removeApp,
+          promoteDeployment: vi.fn(),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment: vi.fn(),
+        }),
+      ),
+    }));
+
+    const { createAppCommand } = await import("../src/commands/app");
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const cwd = await createTempCwd();
+    await writeLocalPin(cwd, { workspaceId: "ws_123", projectId: "proj_123" });
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir: path.join(cwd, ".state"),
+      flags: {
+        yes: true,
+      },
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    const app = createAppCommand(context.runtime);
+    await app.parseAsync(
+      [
+        "remove",
+        "--app",
+        "hello-world",
+        "--branch",
+        "pr-42",
+        "--yes",
+        "--json",
+      ],
+      { from: "user" },
+    );
+
+    // Proves the whole chain: commander parses --branch, createRemoveCommand
+    // forwards options.branch to runAppRemove, and the controller scopes the
+    // lookup to that branch. Dropping the forwarding falls back to the inferred
+    // branch and fails this assertion.
+    expect(listApps).toHaveBeenCalledWith(
+      "proj_123",
+      expect.objectContaining({ branchName: "pr-42" }),
+    );
+  });
+
   it("remove prompts for confirmation in interactive mode", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
