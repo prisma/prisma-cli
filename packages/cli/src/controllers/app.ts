@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { access } from "node:fs/promises";
 import path from "node:path";
 import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";
 import {
@@ -8,12 +8,12 @@ import {
   ENTRYPOINT_BUILD_TYPES,
   FRAMEWORKS,
   type FrameworkBuildType,
-  type FrameworkDescriptor,
   frameworkByKey,
   frameworkFromAlias,
   isConfigBackedBuildType,
   LOCAL_DEV_BUILD_TYPES,
 } from "@prisma/compute-sdk/config";
+import { detectComputeAppFromDirectory } from "@prisma/compute-sdk/config/directory";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { matchError, Result } from "better-result";
 import open from "open";
@@ -42,7 +42,6 @@ import {
   resolveInferredAppBuildSettings,
 } from "../lib/app/build";
 import {
-  type BunPackageJsonLike,
   readBunPackageEntrypoint,
   readBunPackageJson,
 } from "../lib/app/bun-project";
@@ -4115,95 +4114,22 @@ export async function detectDeployFramework(
   cwd: string,
   signal: AbortSignal,
 ): Promise<ResolvedDeployFramework | null> {
-  const packageJson = await readBunPackageJson(cwd, signal);
+  const detected = await detectComputeAppFromDirectory({
+    appPath: cwd,
+    signal,
+  });
+  if (!detected) return null;
 
-  for (const framework of FRAMEWORKS) {
-    if (
-      framework.detectConfigFiles.length === 0 &&
-      framework.detectPackages.length === 0
-    ) {
-      continue;
-    }
-
-    const configFile = await detectFrameworkConfigFile(cwd, framework, signal);
-    if (
-      !configFile.exists &&
-      !hasAnyPackageDependency(packageJson, framework.detectPackages)
-    ) {
-      continue;
-    }
-
-    // Next.js standalone output gets a richer annotation; everything else is
-    // attributed to the signal that matched.
-    const annotation =
-      framework.key === "nextjs" && configFile.standalone
-        ? "standalone output detected"
-        : configFile.exists
-          ? `detected from ${path.basename(configFile.path!)}`
-          : "detected from package.json";
-
-    return {
-      key: framework.key,
-      buildType: framework.buildType,
-      displayName: framework.displayName,
-      annotation,
-    };
-  }
-
-  return null;
-}
-
-async function detectFrameworkConfigFile(
-  cwd: string,
-  framework: FrameworkDescriptor,
-  signal: AbortSignal,
-): Promise<{ exists: boolean; standalone: boolean; path: string | null }> {
-  for (const candidate of framework.detectConfigFiles) {
-    const filePath = path.join(cwd, candidate);
-    signal.throwIfAborted();
-    try {
-      const content = await readFile(filePath, { encoding: "utf8", signal });
-      return {
-        exists: true,
-        standalone: /\boutput\s*:\s*["'`]standalone["'`]/.test(content),
-        path: filePath,
-      };
-    } catch (error) {
-      if (signal.aborted) throw error;
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        throw error;
-      }
-    }
-  }
-
-  return { exists: false, standalone: false, path: null };
-}
-
-function hasPackageDependency(
-  packageJson: BunPackageJsonLike | null,
-  dependencyName: string,
-): boolean {
-  return (
-    hasDependency(packageJson?.dependencies, dependencyName) ||
-    hasDependency(packageJson?.devDependencies, dependencyName)
-  );
-}
-
-function hasAnyPackageDependency(
-  packageJson: BunPackageJsonLike | null,
-  dependencyNames: readonly string[],
-): boolean {
-  return dependencyNames.some((dependencyName) =>
-    hasPackageDependency(packageJson, dependencyName),
-  );
-}
-
-function hasDependency(dependencies: unknown, dependencyName: string): boolean {
-  return Boolean(
-    dependencies &&
-      typeof dependencies === "object" &&
-      dependencyName in dependencies,
-  );
+  return {
+    key: detected.framework,
+    buildType: detected.buildType,
+    displayName: detected.frameworkName,
+    annotation: detected.configFile?.standaloneOutput
+      ? "standalone output detected"
+      : detected.configFile
+        ? `detected from ${path.basename(detected.configFile.path)}`
+        : "detected from package.json",
+  };
 }
 
 function frameworkFromUserFacingValue(
