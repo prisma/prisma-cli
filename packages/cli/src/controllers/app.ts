@@ -4120,15 +4120,18 @@ export async function detectDeployFramework(
   });
   if (!detected) return null;
 
+  let annotation = "detected from package.json";
+  if (detected.configFile?.standaloneOutput) {
+    annotation = "standalone output detected";
+  } else if (detected.configFile) {
+    annotation = `detected from ${path.basename(detected.configFile.path)}`;
+  }
+
   return {
     key: detected.framework,
     buildType: detected.buildType,
     displayName: detected.frameworkName,
-    annotation: detected.configFile?.standaloneOutput
-      ? "standalone output detected"
-      : detected.configFile
-        ? `detected from ${path.basename(detected.configFile.path)}`
-        : "detected from package.json",
+    annotation,
   };
 }
 

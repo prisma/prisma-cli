@@ -888,7 +888,7 @@ describe("preview build strategy", () => {
     ).resolves.toContain("value = 1");
   });
 
-  it("stages Next.js standalone artifacts by materializing symlinks and falling back to app node_modules", async () => {
+  it("stages Next.js standalone artifacts by preserving internal symlinks and materializing fallback targets", async () => {
     const { stageStandaloneArtifact: stageNextjsStandaloneArtifact } =
       await import("@prisma/compute-sdk");
     const cwd = await createTempCwd();
@@ -950,7 +950,7 @@ describe("preview build strategy", () => {
       "node_modules/.pnpm/node_modules/semver",
     );
 
-    expect((await lstat(copiedStandaloneTarget)).isSymbolicLink()).toBe(false);
+    expect((await lstat(copiedStandaloneTarget)).isSymbolicLink()).toBe(true);
     expect((await lstat(copiedFallbackTarget)).isSymbolicLink()).toBe(false);
     await expect(
       readFile(path.join(copiedStandaloneTarget, "index.js"), "utf8"),
