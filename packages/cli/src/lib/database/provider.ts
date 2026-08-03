@@ -1,5 +1,5 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Database pagination requests must run sequentially.
-import type { ManagementApiClient } from "@prisma/management-api-sdk";
+import type { ManagementApiClient, paths } from "@prisma/management-api-sdk";
 
 import { formatPrismaCliCommand } from "../../shell/cli-command";
 import { CliError } from "../../shell/errors";
@@ -16,6 +16,9 @@ export interface DatabaseCreateInput {
   region?: string;
   signal?: AbortSignal;
 }
+
+type WorkspaceSubscriptionDetails =
+  paths["/v1/workspaces/{id}/subscription"]["get"]["responses"][200]["content"]["application/json"]["data"];
 
 export interface DatabaseConnectionCreateInput {
   databaseId: string;
@@ -806,29 +809,30 @@ async function databaseApiError(options: {
     const workspaceLine = options.workspaceId
       ? `Workspace: ${options.workspaceId}`
       : "Workspace: unavailable";
-    const recoveryLines = subscription
-      ? [
-          `Current plan: ${subscription.planName}`,
-          `Upgrade: ${subscription.upgradeUrl}`,
-        ]
-      : [
-          "Upgrade: Open Prisma Console and upgrade the affected workspace plan.",
-        ];
+    const planName = subscription?.planName || null;
+    const usageBlocked = subscription?.usageBlocked ?? null;
+    const upgradeUrl = subscription?.upgradeUrl || null;
+    const recoveryLines = [
+      ...(planName ? [`Current plan: ${planName}`] : []),
+      upgradeUrl
+        ? `Upgrade: ${upgradeUrl}`
+        : "Upgrade: Open Prisma Console and upgrade the affected workspace plan.",
+    ];
 
     return new CliError({
       code: "PLAN_LIMIT_REACHED",
       domain: "database",
       summary: "Workspace plan limit reached",
       why: "Database operations are blocked because this workspace has used the operations included in its plan. This is a workspace plan limit, not a Prisma outage.",
-      fix: subscription
-        ? `Upgrade the workspace plan at ${subscription.upgradeUrl}.`
+      fix: upgradeUrl
+        ? `Upgrade the workspace plan at ${upgradeUrl}.`
         : "Open Prisma Console and upgrade the affected workspace plan.",
       meta: {
         workspaceId: options.workspaceId ?? null,
         blockedFeature: null,
-        planName: subscription?.planName ?? null,
-        usageBlocked: subscription?.usageBlocked ?? null,
-        upgradeUrl: subscription?.upgradeUrl ?? null,
+        planName,
+        usageBlocked,
+        upgradeUrl,
       },
       exitCode: 1,
       nextSteps: [],
@@ -867,13 +871,16 @@ async function readWorkspaceSubscription(
   client: ManagementApiClient,
   workspaceId: string,
   signal?: AbortSignal,
-) {
+): Promise<WorkspaceSubscriptionDetails | null> {
   try {
     const result = await client.GET("/v1/workspaces/{id}/subscription", {
       params: { path: { id: workspaceId } },
       signal,
     });
     signal?.throwIfAborted();
+    if (result.error) {
+      return null;
+    }
     return result.data?.data ?? null;
   } catch {
     signal?.throwIfAborted();

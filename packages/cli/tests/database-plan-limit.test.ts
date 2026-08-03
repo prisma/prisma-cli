@@ -40,7 +40,22 @@ function subscriptionResponse() {
   };
 }
 
-function createClient(options?: { subscriptionFails?: boolean }) {
+function partialSubscriptionResponse() {
+  return {
+    data: {
+      data: {
+        planName: "Free",
+        usageBlocked: true,
+      },
+    },
+    response: new Response(null, { status: 200 }),
+  };
+}
+
+function createClient(options?: {
+  subscriptionFails?: boolean;
+  partialSubscription?: boolean;
+}) {
   return {
     GET: vi.fn().mockImplementation((path: string) => {
       if (path === "/v1/workspaces/{id}/subscription") {
@@ -55,7 +70,9 @@ function createClient(options?: { subscriptionFails?: boolean }) {
                 },
                 response: new Response(null, { status: 503 }),
               }
-            : subscriptionResponse(),
+            : options?.partialSubscription
+              ? partialSubscriptionResponse()
+              : subscriptionResponse(),
         );
       }
       return Promise.resolve(planLimitResponse());
@@ -66,6 +83,7 @@ function createClient(options?: { subscriptionFails?: boolean }) {
 async function runPlanLimitCommand(options?: {
   json?: boolean;
   subscriptionFails?: boolean;
+  partialSubscription?: boolean;
   includeWorkspace?: boolean;
 }) {
   const argv = [
@@ -77,6 +95,7 @@ async function runPlanLimitCommand(options?: {
   const { runtime, stdout, stderr } = await createTestCommandContext({ argv });
   const client = createClient({
     subscriptionFails: options?.subscriptionFails,
+    partialSubscription: options?.partialSubscription,
   });
   const provider = createManagementDatabaseProvider(
     client as unknown as ManagementApiClient,
@@ -196,6 +215,31 @@ describe("database plan-limit recovery", () => {
     expect(stderr).not.toContain("https://console.prisma.io");
   });
 
+  it("falls back safely when successful subscription metadata is partial", async () => {
+    const human = await runPlanLimitCommand({ partialSubscription: true });
+
+    expect(human.stderr).toContain("Current plan: Free");
+    expect(human.stderr).toContain(
+      "Upgrade: Open Prisma Console and upgrade the affected workspace plan.",
+    );
+    expect(human.stderr).not.toContain("undefined");
+
+    const json = await runPlanLimitCommand({
+      json: true,
+      partialSubscription: true,
+    });
+    const payload = JSON.parse(json.stdout);
+
+    expect(payload.error.fix).toBe(
+      "Open Prisma Console and upgrade the affected workspace plan.",
+    );
+    expect(payload.error.meta).toMatchObject({
+      planName: "Free",
+      usageBlocked: true,
+      upgradeUrl: null,
+    });
+  });
+
   it("uses null metadata and skips lookup when workspace context is unavailable", async () => {
     const { client, stdout } = await runPlanLimitCommand({
       json: true,
@@ -235,12 +279,12 @@ describe("database plan-limit recovery", () => {
   });
 
   it.each([
-    ["503", undefined, 503],
-    ["429", "rateLimitReached", 429],
-    ["auth", "AUTH_REQUIRED", 401],
-    ["spend limit", "spendLimitReached", 400],
-    ["generic API error", "DATABASE_API_ERROR", 400],
-  ])("does not classify a %s response as a plan limit", async (_name, code, status) => {
+    ["503", undefined, 503, "DATABASE_API_ERROR"],
+    ["429", "rateLimitReached", 429, undefined],
+    ["auth", "AUTH_REQUIRED", 401, "AUTH_REQUIRED"],
+    ["spend limit", "spendLimitReached", 400, undefined],
+    ["generic API error", "DATABASE_API_ERROR", 400, "DATABASE_API_ERROR"],
+  ])("does not classify a %s response as a plan limit", async (_name, code, status, expectedStableCode) => {
     const client = {
       GET: vi.fn().mockResolvedValue({
         error: {
@@ -263,7 +307,9 @@ describe("database plan-limit recovery", () => {
       .catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(CliError);
-    expect((error as CliError).code).toBe(code ?? "DATABASE_API_ERROR");
+    if (expectedStableCode) {
+      expect((error as CliError).code).toBe(expectedStableCode);
+    }
     expect((error as CliError).code).not.toBe("PLAN_LIMIT_REACHED");
     expect(client.GET).toHaveBeenCalledTimes(1);
   });
