@@ -279,4 +279,26 @@ describe("database plan-limit recovery", () => {
     await expect(provider.showDatabase("db_synthetic")).rejects.toBe(timeout);
     expect(client.GET).toHaveBeenCalledTimes(1);
   });
+
+  it("preserves cancellation during subscription enrichment", async () => {
+    const controller = new AbortController();
+    const client = {
+      GET: vi
+        .fn()
+        .mockResolvedValueOnce(planLimitResponse())
+        .mockImplementationOnce(async () => {
+          controller.abort();
+          return subscriptionResponse();
+        }),
+    };
+    const provider = createManagementDatabaseProvider(
+      client as unknown as ManagementApiClient,
+      { workspaceId },
+    );
+
+    await expect(
+      provider.showDatabase("db_synthetic", { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(client.GET).toHaveBeenCalledTimes(2);
+  });
 });

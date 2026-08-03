@@ -873,6 +873,7 @@ async function readWorkspaceSubscription(
       params: { path: { id: workspaceId } },
       signal,
     });
+    signal?.throwIfAborted();
     return result.data?.data ?? null;
   } catch {
     signal?.throwIfAborted();
