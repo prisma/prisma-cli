@@ -209,10 +209,27 @@ interface RawDatabaseRecord {
 
 export function createManagementDatabaseProvider(
   client: ManagementApiClient,
-  options?: { formatCommand?: PrismaCliPackageCommandFormatter },
+  options?: {
+    formatCommand?: PrismaCliPackageCommandFormatter;
+    workspaceId?: string;
+  },
 ): DatabaseProvider {
   const formatCommand =
     options?.formatCommand ?? ((args) => formatPrismaCliCommand(args));
+  const toDatabaseApiError = (
+    summary: string,
+    response: Response | undefined,
+    error: RawApiErrorBody | undefined,
+    signal?: AbortSignal,
+  ) =>
+    databaseApiError({
+      client,
+      workspaceId: options?.workspaceId,
+      summary,
+      response,
+      error,
+      signal,
+    });
 
   return {
     async listDatabases(options) {
@@ -232,10 +249,11 @@ export function createManagementDatabaseProvider(
           signal: options.signal,
         });
         if (result.error || !result.data) {
-          throw databaseApiError(
+          throw await toDatabaseApiError(
             "Failed to list databases",
             result.response,
             result.error,
+            options.signal,
           );
         }
 
@@ -262,14 +280,18 @@ export function createManagementDatabaseProvider(
         },
         signal: options?.signal,
       });
-      if (result.response?.status === 404) {
+      if (
+        result.response?.status === 404 &&
+        !isPlanLimitApiError(result.error)
+      ) {
         return null;
       }
       if (result.error || !result.data) {
-        throw databaseApiError(
+        throw await toDatabaseApiError(
           "Failed to show database",
           result.response,
           result.error,
+          options?.signal,
         );
       }
 
@@ -292,10 +314,11 @@ export function createManagementDatabaseProvider(
         signal: options.signal,
       });
       if (result.error || !result.data) {
-        throw databaseApiError(
+        throw await toDatabaseApiError(
           "Failed to create database",
           result.response,
           result.error,
+          options.signal,
         );
       }
 
@@ -313,10 +336,11 @@ export function createManagementDatabaseProvider(
         signal: options?.signal,
       });
       if (result.error) {
-        throw databaseApiError(
+        throw await toDatabaseApiError(
           "Failed to remove database",
           result.response,
           result.error,
+          options?.signal,
         );
       }
     },
@@ -332,10 +356,11 @@ export function createManagementDatabaseProvider(
         },
       );
       if (result.error || !result.data) {
-        throw databaseApiError(
+        throw await toDatabaseApiError(
           "Failed to list database connections",
           result.response,
           result.error,
+          options?.signal,
         );
       }
 
@@ -358,10 +383,11 @@ export function createManagementDatabaseProvider(
         },
       );
       if (result.error || !result.data) {
-        throw databaseApiError(
+        throw await toDatabaseApiError(
           "Failed to create database connection",
           result.response,
           result.error,
+          options.signal,
         );
       }
 
@@ -379,10 +405,11 @@ export function createManagementDatabaseProvider(
         signal: options?.signal,
       });
       if (result.error) {
-        throw databaseApiError(
+        throw await toDatabaseApiError(
           "Failed to remove database connection",
           result.response,
           result.error,
+          options?.signal,
         );
       }
     },
@@ -399,10 +426,11 @@ export function createManagementDatabaseProvider(
         signal: options?.signal,
       });
       if (result.error || !result.data) {
-        throw databaseApiError(
+        throw await toDatabaseApiError(
           "Failed to fetch database usage",
           result.response,
           result.error,
+          options?.signal,
         );
       }
 
@@ -419,14 +447,18 @@ export function createManagementDatabaseProvider(
         },
         signal: options?.signal,
       });
-      if (result.response?.status === 422) {
+      if (
+        result.response?.status === 422 &&
+        !isPlanLimitApiError(result.error)
+      ) {
         throw backupsUnsupportedError(databaseId, result.error);
       }
       if (result.error || !result.data) {
-        throw databaseApiError(
+        throw await toDatabaseApiError(
           "Failed to list database backups",
           result.response,
           result.error,
+          options?.signal,
         );
       }
 
@@ -450,7 +482,10 @@ export function createManagementDatabaseProvider(
           signal: options.signal,
         },
       );
-      if (result.response?.status === 409) {
+      if (
+        result.response?.status === 409 &&
+        !isPlanLimitApiError(result.error)
+      ) {
         throw restoreConflictError(
           options.targetDatabaseId,
           result.error,
@@ -459,14 +494,18 @@ export function createManagementDatabaseProvider(
       }
       // Target and source databases are resolved before this call, so a 404
       // here identifies the backup.
-      if (result.response?.status === 404) {
+      if (
+        result.response?.status === 404 &&
+        !isPlanLimitApiError(result.error)
+      ) {
         throw restoreBackupNotFoundError(options, result.error, formatCommand);
       }
       if (result.error || !result.data) {
-        throw databaseApiError(
+        throw await toDatabaseApiError(
           "Failed to restore database",
           result.response,
           result.error,
+          options.signal,
         );
       }
 
@@ -484,10 +523,11 @@ export function createManagementDatabaseProvider(
         signal: options?.signal,
       });
       if (result.error || !result.data) {
-        throw databaseApiError(
+        throw await toDatabaseApiError(
           "Failed to rotate database connection",
           result.response,
           result.error,
+          options?.signal,
         );
       }
 
@@ -747,23 +787,95 @@ function restoreConflictError(
   });
 }
 
-function databaseApiError(
-  summary: string,
-  response: Response | undefined,
-  error: RawApiErrorBody | undefined,
-): CliError {
-  const status = response?.status ?? 0;
+async function databaseApiError(options: {
+  client: ManagementApiClient;
+  workspaceId?: string;
+  summary: string;
+  response: Response | undefined;
+  error: RawApiErrorBody | undefined;
+  signal?: AbortSignal;
+}): Promise<CliError> {
+  if (isPlanLimitApiError(options.error)) {
+    const subscription = options.workspaceId
+      ? await readWorkspaceSubscription(
+          options.client,
+          options.workspaceId,
+          options.signal,
+        )
+      : null;
+    const workspaceLine = options.workspaceId
+      ? `Workspace: ${options.workspaceId}`
+      : "Workspace: unavailable";
+    const recoveryLines = subscription
+      ? [
+          `Current plan: ${subscription.planName}`,
+          `Upgrade: ${subscription.upgradeUrl}`,
+        ]
+      : [
+          "Upgrade: Open Prisma Console and upgrade the affected workspace plan.",
+        ];
+
+    return new CliError({
+      code: "PLAN_LIMIT_REACHED",
+      domain: "database",
+      summary: "Workspace plan limit reached",
+      why: "Database operations are blocked because this workspace has used the operations included in its plan. This is a workspace plan limit, not a Prisma outage.",
+      fix: subscription
+        ? `Upgrade the workspace plan at ${subscription.upgradeUrl}.`
+        : "Open Prisma Console and upgrade the affected workspace plan.",
+      meta: {
+        workspaceId: options.workspaceId ?? null,
+        blockedFeature: null,
+        planName: subscription?.planName ?? null,
+        usageBlocked: subscription?.usageBlocked ?? null,
+        upgradeUrl: subscription?.upgradeUrl ?? null,
+      },
+      exitCode: 1,
+      nextSteps: [],
+      humanLines: [
+        "Workspace plan limit reached [PLAN_LIMIT_REACHED]",
+        "",
+        "Database operations are blocked because this workspace has used the operations included in its plan. This is a workspace plan limit, not a Prisma outage.",
+        "",
+        workspaceLine,
+        ...recoveryLines,
+      ],
+    });
+  }
+
+  const status = options.response?.status ?? 0;
   return new CliError({
-    code: error?.error?.code ?? "DATABASE_API_ERROR",
+    code: options.error?.error?.code ?? "DATABASE_API_ERROR",
     domain: "database",
-    summary,
+    summary: options.summary,
     why:
-      error?.error?.message ??
+      options.error?.error?.message ??
       `The Management API returned status ${status || "unknown"}.`,
     fix:
-      error?.error?.hint ??
+      options.error?.error?.hint ??
       "Re-run with --trace for the underlying API response details.",
     exitCode: 1,
     nextSteps: [],
   });
+}
+
+function isPlanLimitApiError(error: RawApiErrorBody | undefined): boolean {
+  return error?.error?.code === "planLimitReached";
+}
+
+async function readWorkspaceSubscription(
+  client: ManagementApiClient,
+  workspaceId: string,
+  signal?: AbortSignal,
+) {
+  try {
+    const result = await client.GET("/v1/workspaces/{id}/subscription", {
+      params: { path: { id: workspaceId } },
+      signal,
+    });
+    return result.data?.data ?? null;
+  } catch {
+    signal?.throwIfAborted();
+    return null;
+  }
 }
