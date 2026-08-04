@@ -1,7 +1,10 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createManagementDatabaseProvider } from "../src/lib/database/provider";
+import {
+  createManagementDatabaseProvider,
+  SUBSCRIPTION_LOOKUP_TIMEOUT_MS,
+} from "../src/lib/database/provider";
 import { runCommand } from "../src/shell/command-runner";
 import { CliError } from "../src/shell/errors";
 import { createTestCommandContext } from "./helpers";
@@ -13,6 +16,7 @@ const upgradeUrl =
 afterEach(() => {
   process.exitCode = undefined;
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 function planLimitResponse(status = 400) {
@@ -279,10 +283,50 @@ describe("database plan-limit recovery", () => {
   });
 
   it.each([
+    ["backup 422", "backup", 422],
+    ["restore 409", "restore", 409],
+    ["restore 404", "restore", 404],
+  ])("keeps the discriminator authoritative for %s", async (_name, operation, status) => {
+    const client = {
+      GET: vi
+        .fn()
+        .mockImplementation((path: string) =>
+          Promise.resolve(
+            path === "/v1/workspaces/{id}/subscription"
+              ? subscriptionResponse()
+              : planLimitResponse(status),
+          ),
+        ),
+      POST: vi.fn().mockResolvedValue(planLimitResponse(status)),
+    };
+    const provider = createManagementDatabaseProvider(
+      client as unknown as ManagementApiClient,
+      { workspaceId },
+    );
+
+    const error = await (operation === "backup"
+      ? provider.listBackups("db_synthetic")
+      : provider.restoreDatabase({
+          targetDatabaseId: "db_target",
+          sourceDatabaseId: "db_source",
+          backupId: "backup_synthetic",
+          projectId: "project_synthetic",
+        })
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(CliError);
+    expect((error as CliError).code).toBe("PLAN_LIMIT_REACHED");
+    expect(client.GET).toHaveBeenCalledWith(
+      "/v1/workspaces/{id}/subscription",
+      expect.anything(),
+    );
+  });
+
+  it.each([
     ["503", undefined, 503, "DATABASE_API_ERROR"],
-    ["429", "rateLimitReached", 429, undefined],
+    ["429", "rateLimitReached", 429, "rateLimitReached"],
     ["auth", "AUTH_REQUIRED", 401, "AUTH_REQUIRED"],
-    ["spend limit", "spendLimitReached", 400, undefined],
+    ["spend limit", "spendLimitReached", 400, "spendLimitReached"],
     ["generic API error", "DATABASE_API_ERROR", 400, "DATABASE_API_ERROR"],
   ])("does not classify a %s response as a plan limit", async (_name, code, status, expectedStableCode) => {
     const client = {
@@ -307,9 +351,7 @@ describe("database plan-limit recovery", () => {
       .catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(CliError);
-    if (expectedStableCode) {
-      expect((error as CliError).code).toBe(expectedStableCode);
-    }
+    expect((error as CliError).code).toBe(expectedStableCode);
     expect((error as CliError).code).not.toBe("PLAN_LIMIT_REACHED");
     expect(client.GET).toHaveBeenCalledTimes(1);
   });
@@ -326,8 +368,12 @@ describe("database plan-limit recovery", () => {
     expect(client.GET).toHaveBeenCalledTimes(1);
   });
 
-  it("preserves cancellation during subscription enrichment", async () => {
+  it("emits COMMAND_CANCELED when the caller cancels during enrichment", async () => {
     const controller = new AbortController();
+    const { runtime, stdout, stderr } = await createTestCommandContext({
+      argv: ["database", "show", "db_synthetic", "--json"],
+    });
+    runtime.signal = controller.signal;
     const client = {
       GET: vi
         .fn()
@@ -342,9 +388,64 @@ describe("database plan-limit recovery", () => {
       { workspaceId },
     );
 
-    await expect(
-      provider.showDatabase("db_synthetic", { signal: controller.signal }),
-    ).rejects.toMatchObject({ name: "AbortError" });
+    await runCommand(
+      runtime,
+      "database.show",
+      { json: true },
+      async () => {
+        await provider.showDatabase("db_synthetic", {
+          signal: runtime.signal,
+        });
+        throw new Error("Expected the synthetic operation to be canceled.");
+      },
+      { renderHuman: () => [] },
+    );
+
+    expect(process.exitCode).toBe(130);
+    expect(stderr.buffer).toBe("");
+    expect(JSON.parse(stdout.buffer).error.code).toBe("COMMAND_CANCELED");
+    expect(client.GET).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back when subscription enrichment stalls", async () => {
+    vi.useFakeTimers();
+    const client = {
+      GET: vi
+        .fn()
+        .mockResolvedValueOnce(planLimitResponse())
+        .mockImplementationOnce(
+          (_path: string, options: { signal: AbortSignal }) =>
+            new Promise((_resolve, reject) => {
+              options.signal.addEventListener(
+                "abort",
+                () => reject(options.signal.reason),
+                { once: true },
+              );
+            }),
+        ),
+    };
+    const provider = createManagementDatabaseProvider(
+      client as unknown as ManagementApiClient,
+      { workspaceId },
+    );
+
+    const errorPromise = provider
+      .showDatabase("db_synthetic")
+      .catch((caught: unknown) => caught);
+    await vi.waitFor(() => expect(client.GET).toHaveBeenCalledTimes(2));
+    await vi.advanceTimersByTimeAsync(SUBSCRIPTION_LOOKUP_TIMEOUT_MS);
+    const error = await errorPromise;
+
+    expect(error).toBeInstanceOf(CliError);
+    expect(error).toMatchObject({
+      code: "PLAN_LIMIT_REACHED",
+      meta: {
+        workspaceId,
+        planName: null,
+        usageBlocked: null,
+        upgradeUrl: null,
+      },
+    });
     expect(client.GET).toHaveBeenCalledTimes(2);
   });
 });

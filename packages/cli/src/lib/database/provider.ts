@@ -19,6 +19,7 @@ export interface DatabaseCreateInput {
 
 type WorkspaceSubscriptionDetails =
   paths["/v1/workspaces/{id}/subscription"]["get"]["responses"][200]["content"]["application/json"]["data"];
+export const SUBSCRIPTION_LOOKUP_TIMEOUT_MS = 3_000;
 
 export interface DatabaseConnectionCreateInput {
   databaseId: string;
@@ -872,10 +873,20 @@ async function readWorkspaceSubscription(
   workspaceId: string,
   signal?: AbortSignal,
 ): Promise<WorkspaceSubscriptionDetails | null> {
+  signal?.throwIfAborted();
+  const timeoutController = new AbortController();
+  const timeout = setTimeout(
+    () => timeoutController.abort(),
+    SUBSCRIPTION_LOOKUP_TIMEOUT_MS,
+  );
+  const requestSignal = signal
+    ? AbortSignal.any([signal, timeoutController.signal])
+    : timeoutController.signal;
+
   try {
     const result = await client.GET("/v1/workspaces/{id}/subscription", {
       params: { path: { id: workspaceId } },
-      signal,
+      signal: requestSignal,
     });
     signal?.throwIfAborted();
     if (result.error) {
@@ -885,5 +896,7 @@ async function readWorkspaceSubscription(
   } catch {
     signal?.throwIfAborted();
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
