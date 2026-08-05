@@ -89,6 +89,20 @@ Human-facing output should follow `cli-style-guide.md` and optimize for:
 
 Human output patterns are shared across commands. If two commands perform the same kind of action, they must use the same structural pattern and differ only in nouns, values, and documented annotations.
 
+### Plan-limit recovery
+
+When a database operation returns the structured `planLimitReached`
+discriminator, human output on stderr identifies the workspace plan limit,
+states that it is not a Prisma outage, and prints the current plan and canonical
+workspace upgrade URL when the subscription lookup succeeds. If that lookup
+fails, the diagnosis remains `PLAN_LIMIT_REACHED` and the CLI gives generic
+Prisma Console guidance without constructing a URL.
+
+In `--json` mode, stdout contains one standard failure envelope. Its
+`error.meta` object always includes `workspaceId`, `blockedFeature`, `planName`,
+`usageBlocked`, and `upgradeUrl`; unavailable optional values are `null`.
+Agents and CI branch on these structured fields, not the human prose.
+
 ### Pattern Mapping
 
 Current MVP commands map to patterns like this:

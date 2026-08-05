@@ -740,6 +740,7 @@ async function requireDatabaseContext(
         formatCommand: resolvePrismaCliPackageCommandFormatterSync(
           context.runtime.cwd,
         ),
+        workspaceId: workspace.id,
       }),
       target: targetResult.value,
     };
@@ -765,7 +766,7 @@ async function requireDatabaseContext(
 async function requireDatabaseProviderOnly(
   context: CommandContext,
 ): Promise<DatabaseProvider> {
-  await requireAuthenticatedAuthState(context);
+  const authState = await requireAuthenticatedAuthState(context);
 
   if (isRealMode(context)) {
     const client = await requireComputeAuth(
@@ -779,6 +780,7 @@ async function requireDatabaseProviderOnly(
       formatCommand: resolvePrismaCliPackageCommandFormatterSync(
         context.runtime.cwd,
       ),
+      workspaceId: authState.workspace?.id,
     });
   }
 

@@ -225,6 +225,7 @@ These codes are the minimum stable set for the MVP:
 - `DATABASE_CONNECTION_MISSING`
 - `DATABASE_CONNECTION_STRING_MISSING`
 - `DATABASE_API_ERROR`
+- `PLAN_LIMIT_REACHED`
 - `DATABASE_BACKUPS_UNSUPPORTED`
 - `DATABASE_BACKUP_NOT_FOUND`
 - `DATABASE_RESTORE_CONFLICT`
@@ -306,6 +307,7 @@ Recommended meanings:
 - `DATABASE_CONNECTION_MISSING`: database creation succeeded but the API response did not include the first one-time connection payload
 - `DATABASE_CONNECTION_STRING_MISSING`: connection creation succeeded but the API response did not include the one-time connection string
 - `DATABASE_API_ERROR`: database Management API request failed without a more specific CLI error code
+- `PLAN_LIMIT_REACHED`: a database operation returned the structured `planLimitReached` discriminator; `error.meta` includes `workspaceId`, `blockedFeature`, `planName`, `usageBlocked`, and `upgradeUrl`, using `null` when optional recovery data is unavailable. This is a workspace plan restriction, not a Prisma outage. Agents and CI must branch on the code and metadata rather than the human prose
 - `DATABASE_BACKUPS_UNSUPPORTED`: the platform does not manage backups for the database, for example remote/BYO databases
 - `DATABASE_BACKUP_NOT_FOUND`: requested backup id does not exist for the resolved source database
 - `DATABASE_RESTORE_CONFLICT`: restore target database is provisioning or already recovering
