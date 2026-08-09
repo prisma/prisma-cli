@@ -377,39 +377,46 @@ export interface Credentials {
 }
 
 /**
- * §4a Prompts. Every prompt except `consent` may carry a
- * product-specified `default`. Interactively, Enter accepts the default.
- * Under --yes, a prompt WITH a default resolves to it without
- * displaying; a prompt WITHOUT a default cannot be operated and the
- * invocation halts with a structured error (exit 2). In non-interactive
+ * §4a Prompts (operator ruling, 2026-08-09: prompts return their answer
+ * value, or throw). Every prompt resolves to its answered value
+ * directly. Failures THROW engine-internal structured errors the engine
+ * catches and settles: user cancellation (Ctrl-C/EOF at the prompt)
+ * exits 3; a prompt that cannot be operated (no default under --yes or
+ * non-interactive, an invalid answer) exits 2 as a structural error. A
+ * handler that does not catch simply propagates and the engine settles;
+ * one that catches cannot swallow the settlement — rethrow or notOk.
+ *
+ * Every prompt except `consent` may carry a product-specified
+ * `default`. Interactively, Enter accepts the default. Under --yes, a
+ * prompt WITH a default resolves to it without displaying; a prompt
+ * WITHOUT a default cannot be operated and throws. In non-interactive
  * contexts (no TTY stdin, CI, --no-interactive — format never decides
  * interactivity) the same default rule applies; the prompt UI writes to
  * stderr, so an interactive json run prompts without touching the
- * stdout stream. User cancellation (Ctrl-C at the prompt) is a distinct
- * structured error the engine maps to exit 3.
+ * stdout stream.
  */
 export interface PromptSurface {
   readonly confirm: (
     question: string,
     opts?: { readonly default?: boolean },
-  ) => Promise<Result<boolean, CliStructuredError>>
+  ) => Promise<boolean>
   /**
    * A question requiring EXPLICIT consent — never inferable, not
    * necessarily destructive. Structurally undefaultable: no default
    * parameter exists, so --yes, Enter-through, and non-interactive
-   * contexts can never satisfy it; the command's fix names the explicit
+   * contexts can never satisfy it; the command documents the explicit
    * flag that grants consent non-interactively.
    */
-  readonly consent: (question: string) => Promise<Result<boolean, CliStructuredError>>
+  readonly consent: (question: string) => Promise<boolean>
   readonly select: <T extends string>(
     question: string,
     options: ReadonlyArray<{ value: T; label: string }>,
     opts?: { readonly default?: T },
-  ) => Promise<Result<T, CliStructuredError>>
+  ) => Promise<T>
   readonly text: (
     question: string,
     opts?: { readonly placeholder?: string; readonly default?: string },
-  ) => Promise<Result<string, CliStructuredError>>
+  ) => Promise<string>
 }
 
 // ————————————————————————————————————————————————————————————————————————

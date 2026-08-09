@@ -257,36 +257,40 @@ export interface Credentials {
 }
 
 /**
- * §4a Prompts. Every prompt except `consent` may carry a
- * product-specified `default`. Under --yes and in non-interactive
- * contexts (no TTY stdin, CI, --no-interactive — format never decides
- * interactivity) a prompt with a default resolves to it; one without a
- * default halts the invocation with a structured error. The prompt UI
- * writes to stderr, so an interactive json run prompts without touching
- * the stdout stream.
+ * §4a Prompts. Every prompt resolves to its answered value directly.
+ * Failures THROW engine-internal structured errors the engine catches
+ * and settles: cancellation exits 3; a prompt that cannot be operated
+ * (no default under --yes or non-interactive, an invalid answer) exits
+ * 2. A handler that does not catch simply propagates; one that catches
+ * cannot swallow the settlement — rethrow or return notOk.
+ *
+ * Every prompt except `consent` may carry a product-specified
+ * `default`. Under --yes and in non-interactive contexts (no TTY
+ * stdin, CI, --no-interactive — format never decides interactivity) a
+ * prompt with a default resolves to it; one without a default throws.
+ * The prompt UI writes to stderr, so an interactive json run prompts
+ * without touching the stdout stream.
  */
 export interface PromptSurface {
   readonly confirm: (
     question: string,
     opts?: { readonly default?: boolean },
-  ) => Promise<Result<boolean, CliStructuredError>>;
+  ) => Promise<boolean>;
   /**
    * A question requiring explicit consent — never inferable.
    * Structurally undefaultable: no default parameter exists, so --yes,
    * Enter-through, and non-interactive contexts can never satisfy it.
    */
-  readonly consent: (
-    question: string,
-  ) => Promise<Result<boolean, CliStructuredError>>;
+  readonly consent: (question: string) => Promise<boolean>;
   readonly select: <T extends string>(
     question: string,
     options: ReadonlyArray<{ value: T; label: string }>,
     opts?: { readonly default?: T },
-  ) => Promise<Result<T, CliStructuredError>>;
+  ) => Promise<T>;
   readonly text: (
     question: string,
     opts?: { readonly placeholder?: string; readonly default?: string },
-  ) => Promise<Result<string, CliStructuredError>>;
+  ) => Promise<string>;
 }
 
 // —————————————————————————————————————————————————————————————————————

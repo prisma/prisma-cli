@@ -46,13 +46,11 @@ function cliWith(run: (prompt: PromptSurface) => Promise<unknown>) {
 const INTERACTIVE = { isTty: { stdin: true, stdout: true } };
 
 function confirmDefaultTrue(prompt: PromptSurface) {
-  return prompt
-    .confirm("Proceed?", { default: true })
-    .then((r) => r.assertOk());
+  return prompt.confirm("Proceed?", { default: true });
 }
 
 function confirmNoDefault(prompt: PromptSurface) {
-  return prompt.confirm("Proceed?").then((r) => r.assertOk());
+  return prompt.confirm("Proceed?");
 }
 
 describe("prompt defaults", () => {
@@ -156,6 +154,23 @@ describe("prompts with no default halt", () => {
     expect(result.stderr).toContain("not interactive");
   });
 
+  test("a handler that catches the prompt throw and rethrows still settles structurally", async () => {
+    const catching = async (prompt: PromptSurface) => {
+      try {
+        return await prompt.confirm("Proceed?");
+      } catch (cause) {
+        throw cause;
+      }
+    };
+    const result = await cliWith(catching).run(["probe", "--yes", "--json"]);
+
+    expect(result.exitCode).toBe(2);
+    const last = result.json[result.json.length - 1];
+    expect(
+      last.kind === "result" && !last.envelope.ok && last.envelope.error.code,
+    ).toBe("CLI.PROMPT_REQUIRED");
+  });
+
   test("json format with a non-TTY stdin halts a prompt with no default", async () => {
     const result = await cliWith(confirmNoDefault).run(["probe", "--json"]);
 
@@ -199,7 +214,7 @@ describe("format and interactivity are independent axes", () => {
 
 describe("consent", () => {
   const consenting = (prompt: PromptSurface) =>
-    prompt.consent("Delete everything?").then((r) => r.assertOk());
+    prompt.consent("Delete everything?");
 
   test("--yes can never grant consent: halt, exit 2", async () => {
     const result = await cliWith(consenting).run(
@@ -261,8 +276,7 @@ describe("select and text", () => {
           { value: "beta", label: "Second" },
         ],
         { default: "beta" },
-      )
-      .then((r) => r.assertOk());
+      );
 
   test("select: Enter accepts the default", async () => {
     const result = await cliWith(selecting).run(["probe"], {
@@ -300,7 +314,7 @@ describe("select and text", () => {
   });
 
   const texting = (prompt: PromptSurface) =>
-    prompt.text("Name?", { default: "world" }).then((r) => r.assertOk());
+    prompt.text("Name?", { default: "world" });
 
   test("text: Enter accepts the default", async () => {
     const result = await cliWith(texting).run(["probe"], {

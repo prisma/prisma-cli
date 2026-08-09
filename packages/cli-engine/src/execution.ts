@@ -1317,8 +1317,10 @@ function makeContext(
 }
 
 // —————————————————————————————————————————————————————————————————————
-// Prompts (§4a). Under --yes and in non-interactive contexts a prompt
-// with a product-declared default resolves to it without displaying; one
+// Prompts (§4a). Each prompt resolves to its answered value directly;
+// failures throw structured errors the engine catches and settles.
+// Under --yes and in non-interactive contexts a prompt with a
+// product-declared default resolves to it without displaying; one
 // without a default HALTS the invocation with a structured error (the
 // engine renders the errored envelope, exit 2). consent is structurally
 // undefaultable and always halts in those contexts. Cancellation (EOF at
@@ -1464,19 +1466,19 @@ function makePromptSurface(invocation: Invocation): PromptSurface {
         if (fallback === undefined) {
           throw promptUnanswerable(question, state);
         }
-        return ok(fallback);
+        return fallback;
       }
       const hint =
         fallback === undefined ? "(y/n)" : fallback ? "(Y/n)" : "(y/N)";
       const raw = await ask(question, `? ${question} ${hint} `);
-      return ok(parseBooleanAnswer(raw, fallback, question));
+      return parseBooleanAnswer(raw, fallback, question);
     },
     consent: async (question) => {
       if (state.yes || !state.interactive) {
         throw consentUnavailable(question, state);
       }
       const raw = await ask(question, `? ${question} (y/n) `);
-      return ok(isExplicitYes(raw));
+      return isExplicitYes(raw);
     },
     select: async (question, options, opts) => {
       const fallback = opts?.default;
@@ -1484,7 +1486,7 @@ function makePromptSurface(invocation: Invocation): PromptSurface {
         if (fallback === undefined) {
           throw promptUnanswerable(question, state);
         }
-        return ok(fallback);
+        return fallback;
       }
       const rendered = [
         `? ${question}`,
@@ -1503,13 +1505,13 @@ function makePromptSurface(invocation: Invocation): PromptSurface {
         if (fallback === undefined) {
           throw promptInvalid(question, raw);
         }
-        return ok(fallback);
+        return fallback;
       }
       const match = options.find((option) => option.value === answer);
       if (match === undefined) {
         throw promptInvalid(question, raw);
       }
-      return ok(match.value);
+      return match.value;
     },
     text: async (question, opts) => {
       const fallback = opts?.default;
@@ -1517,7 +1519,7 @@ function makePromptSurface(invocation: Invocation): PromptSurface {
         if (fallback === undefined) {
           throw promptUnanswerable(question, state);
         }
-        return ok(fallback);
+        return fallback;
       }
       const hint = fallback === undefined ? "" : ` (${fallback})`;
       const raw = await ask(question, `? ${question}${hint} `);
@@ -1525,9 +1527,9 @@ function makePromptSurface(invocation: Invocation): PromptSurface {
         throw promptInvalid(question, String(raw));
       }
       if (raw === "") {
-        return ok(fallback ?? "");
+        return fallback ?? "";
       }
-      return ok(raw);
+      return raw;
     },
   };
 }
