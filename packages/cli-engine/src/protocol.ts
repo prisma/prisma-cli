@@ -70,9 +70,13 @@ export class CliStructuredError extends Error {
       readonly where?: { readonly path?: string; readonly line?: number };
       readonly meta?: Record<string, unknown>;
       readonly docsUrl?: string;
+      readonly cause?: unknown;
     },
   ) {
-    super(summary);
+    super(
+      summary,
+      options?.cause !== undefined ? { cause: options.cause } : undefined,
+    );
     this.name = "CliStructuredError";
     this.code = code;
     this.severity = options?.severity ?? "error";

@@ -90,6 +90,22 @@ describe("CliStructuredError.toEnvelope", () => {
     });
   });
 
+  test("an optional cause reaches Error.cause and stays out of the envelope", () => {
+    const original = new Error("token file unreadable");
+    const error = new CliStructuredError("AUTH.CONFIG_INVALID", "Bad config", {
+      cause: original,
+    });
+
+    expect(error.cause).toBe(original);
+    expect(error.toEnvelope()).toEqual({
+      ok: false,
+      code: "AUTH.CONFIG_INVALID",
+      severity: "error",
+      summary: "Bad config",
+      nextActions: [],
+    });
+  });
+
   test("is() duck-types across module boundaries", () => {
     const error = new protocol.CliStructuredError("A.B", "boom");
     const foreignCopy = Object.assign(new Error("boom"), {

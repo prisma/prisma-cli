@@ -8,7 +8,9 @@ export function firstLine(text: string): string {
   return (newline === -1 ? text : text.slice(0, newline)).trim();
 }
 
-const STEP_OUTCOME_SYMBOL: Readonly<Record<string, string>> = {
+const STEP_OUTCOME_SYMBOL: Readonly<
+  Record<Extract<EngineEvent, { kind: "step-finished" }>["outcome"], string>
+> = {
   ok: "✔",
   failed: "✖",
   skipped: "↷",
@@ -60,7 +62,9 @@ export function renderEventHuman(
   }
 }
 
-const TONE_SYMBOL: Readonly<Record<string, string>> = {
+const TONE_SYMBOL: Readonly<
+  Record<Extract<Block, { kind: "summary" }>["tone"], string>
+> = {
   ok: "✔",
   error: "✖",
   warn: "⚠",

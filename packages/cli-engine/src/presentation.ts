@@ -81,9 +81,9 @@ export type Block =
   | {
       readonly kind: "fields";
       readonly rows: ReadonlyArray<{
-        label: string;
-        value: string;
-        sensitive?: boolean;
+        readonly label: string;
+        readonly value: string;
+        readonly sensitive?: boolean;
       }>;
     }
   | {
