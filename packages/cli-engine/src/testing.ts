@@ -1,10 +1,47 @@
-import type { CommandFamily, MountedTree } from "../command-family";
-import type { Credentials } from "../context";
-import type { StreamEvent } from "../envelopes";
-import type { EngineEvent } from "../events";
-import type { PresentedResult } from "../presentation";
-import type { Runtime, TestCli } from "../runtime";
-import { buildEngine } from "./run";
+import type { CommandFamily, MountedTree } from "./command-family";
+import type { Credentials } from "./context";
+import type { EngineEvent, StreamEvent } from "./events";
+import { buildEngine } from "./execution/engine";
+import type { PresentedResult } from "./presentation";
+import type { Runtime } from "./runtime";
+
+export interface TestCli {
+  run(
+    argv: readonly string[],
+    opts?: {
+      readonly stdin?: string;
+      /**
+       * Scripted prompt answers, consumed in order; a run that prompts
+       * past the script fails the test.
+       */
+      readonly answers?: ReadonlyArray<string | boolean>;
+      /**
+       * Abort the run (session tests): its firing is delivered to the
+       * engine as a signal (SIGTERM when the reason is 'SIGTERM',
+       * SIGINT otherwise).
+       */
+      readonly abort?: AbortSignal;
+      /** Live event tap, for asserting mid-session behavior. */
+      readonly onEvent?: (event: EngineEvent) => void;
+      readonly cwd?: string;
+      readonly isTty?: { stdin?: boolean; stdout?: boolean; stderr?: boolean };
+      readonly env?: Readonly<Record<string, string | undefined>>;
+    },
+  ): Promise<{
+    readonly exitCode: number;
+    readonly stdout: string;
+    readonly stderr: string;
+    /** Parsed stream (events + the terminal result) when json mode. */
+    readonly json: readonly StreamEvent[];
+    /** Every EngineEvent the handler emitted, for semantic assertions. */
+    readonly events: readonly EngineEvent[];
+    /**
+     * The PresentedResult the handler returned, for semantic assertions
+     * without byte-scraping; undefined when the run never presented.
+     */
+    readonly presented: PresentedResult<unknown> | undefined;
+  }>;
+}
 
 function inputStreamFromString(text: string) {
   const bytes = new TextEncoder().encode(text);
@@ -18,7 +55,7 @@ function inputStreamFromString(text: string) {
 }
 
 /**
- * The test harness: the same engine over in-memory streams (R7). The
+ * The test harness: the same engine over in-memory streams. The
  * harness hands the engine no real process access at all — its exit
  * proxy throws and its streams are in-memory — which is how "the engine
  * never touches process globals and writes only to provided streams" is

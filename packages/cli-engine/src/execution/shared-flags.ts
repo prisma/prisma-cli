@@ -1,7 +1,7 @@
-import type { LogLevel } from "../events";
+import type { Severity } from "../events";
 import type { Format } from "../presentation";
 import type { Runtime } from "../runtime";
-import type { RunState } from "./invocation";
+import type { RunState } from "./engine";
 
 /** The engine-injected shared flag family. Commands cannot declare
  *  these names or aliases; handlers never see their values. */
@@ -77,7 +77,7 @@ export const SHARED_ALIASES = { v: "verbose", q: "quiet", y: "yes" } as const;
 export interface SharedFlags {
   readonly format?: Format;
   readonly json?: boolean;
-  readonly logLevel?: LogLevel;
+  readonly logLevel?: Severity;
   readonly verbose?: boolean;
   readonly quiet?: boolean;
   readonly yes?: boolean;
@@ -147,7 +147,7 @@ function resolveAutoFormat(shared: SharedFlags, runtime: Runtime): Format {
 
 /** --quiet and --verbose are log-level shorthands; either one beats an
  *  explicit --log-level given alongside it. */
-function resolveLogLevel(shared: SharedFlags): LogLevel {
+function resolveLogLevel(shared: SharedFlags): Severity {
   if (shared.quiet === true) {
     return "error";
   }

@@ -10,8 +10,8 @@
  */
 import type { PromptSurface } from "../context";
 import { CliStructuredError } from "../protocol";
-import type { InputStream } from "../streams";
-import type { Invocation, RunState } from "./invocation";
+import type { InputStream } from "../runtime";
+import type { Invocation, RunState } from "./engine";
 
 function makeLineReader(
   stdin: InputStream,

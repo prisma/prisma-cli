@@ -5,9 +5,9 @@ import type { ConfigSection, SectionValidation } from "../config-section";
 import type { Credentials } from "../context";
 import { CliStructuredError, type Diagnostic } from "../protocol";
 import type { Runtime } from "../runtime";
-import { SEVERITY_RANK } from "./events";
-import { firstLine, type Invocation } from "./invocation";
-import { withDocsUrl, writeDiagnostic } from "./render";
+import type { Invocation } from "./engine";
+import { firstLine, withDocsUrl, writeDiagnostic } from "./rendering";
+import { SEVERITY_RANK } from "./reporting";
 
 export type NeedsOutcome =
   | { readonly kind: "ok"; readonly config: unknown }
@@ -48,10 +48,7 @@ export async function checkNeeds(
   invocation: Invocation,
 ): Promise<NeedsOutcome> {
   const needs = def.needs;
-  if (needs === undefined) {
-    return { kind: "ok", config: undefined };
-  }
-  if (needs.interaction === true && !invocation.state.interactive) {
+  if (needs.interaction && !invocation.state.interactive) {
     return needsErrored(
       new CliStructuredError(
         "CLI.INTERACTION_REQUIRED",
@@ -69,16 +66,14 @@ export async function checkNeeds(
       ),
     );
   }
-  if (needs.dependencies !== undefined) {
-    for (const specifier of needs.dependencies) {
-      if (!dependencyResolvable(specifier, invocation.runtime.cwd)) {
-        return needsErrored(
-          missingDependencyError(specifier, invocation.runtime.packageManager),
-        );
-      }
+  for (const specifier of needs.dependencies) {
+    if (!dependencyResolvable(specifier, invocation.runtime.cwd)) {
+      return needsErrored(
+        missingDependencyError(specifier, invocation.runtime.packageManager),
+      );
     }
   }
-  if (needs.credentials === true) {
+  if (needs.credentials) {
     let credentials: Credentials | undefined;
     try {
       credentials = await invocation.runtime.getCredentials();
@@ -134,7 +129,7 @@ export async function checkNeeds(
   return { kind: "ok", config: undefined };
 }
 
-/** Validates the command's needed config section (R10). The validator
+/** Validates the command's needed config section. The validator
  *  owns absence (it receives undefined when the section is missing) and
  *  never throws — a throw is an engine-boundary bug, settled as one. */
 function validateConfigSection(
@@ -220,7 +215,7 @@ function installCommand(
   }
 }
 
-/** Optional peer dependencies: the engine probes and phrases (R13). */
+/** Optional peer dependencies: the engine probes and phrases. */
 export function missingDependencyError(
   specifier: string,
   packageManager: Runtime["packageManager"],

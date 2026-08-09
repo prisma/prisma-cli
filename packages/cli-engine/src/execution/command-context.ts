@@ -6,10 +6,10 @@ import {
   type Ui,
 } from "../presentation";
 import { type Diagnostic, notOk, okVoid } from "../protocol";
-import { reportEvent } from "./events";
-import type { Invocation, RunState } from "./invocation";
+import type { Invocation, RunState } from "./engine";
 import { dependencyResolvable, missingDependencyError } from "./needs";
 import { makePromptSurface } from "./prompts";
+import { reportEvent } from "./reporting";
 
 export function makeUi(colorEnabled: boolean): Ui {
   if (!colorEnabled) {
@@ -35,14 +35,17 @@ function materializePresentation(
 ): PresentedResult<unknown>["presentation"] {
   if (state.format === "json") {
     return {
+      human: [],
+      stdout: [],
       json: presentations.json?.(),
-      next: presentations.next?.(),
+      next: presentations.next?.() ?? [],
     };
   }
   return {
     human: presentations.human(ui),
-    stdout: presentations.stdout?.(),
-    next: presentations.next?.(),
+    stdout: presentations.stdout?.() ?? [],
+    json: undefined,
+    next: presentations.next?.() ?? [],
   };
 }
 

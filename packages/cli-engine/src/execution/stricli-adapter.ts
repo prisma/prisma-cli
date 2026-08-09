@@ -23,7 +23,7 @@ import {
 } from "../args";
 import type { AnyCommand } from "../commands";
 import type { CommandTreeEntry, CommandTreeNode } from "./command-tree";
-import type { EngineSpec, Invocation, RunState } from "./invocation";
+import type { EngineSpec, Invocation, RunState } from "./engine";
 import { SHARED_ALIASES, SHARED_FLAG_PARAMETERS } from "./shared-flags";
 
 export interface EngineRunContext extends StricliBaseContext {
@@ -139,7 +139,7 @@ function stricliPositional(
 function commandParameters(def: AnyCommand): Record<string, unknown> {
   const declaredFlags: Record<string, unknown> = {};
   const aliases: Record<string, string> = {};
-  for (const [key, spec] of Object.entries(def.args?.flags ?? {})) {
+  for (const [key, spec] of Object.entries(def.args.flags)) {
     const runtime = flagRuntime(spec);
     declaredFlags[key] = stricliFlagParameter(runtime);
     if (runtime.alias !== undefined) {
@@ -148,7 +148,7 @@ function commandParameters(def: AnyCommand): Record<string, unknown> {
   }
   const injectShared = def.kind !== "server-command";
   const positionalEntries = Object.entries<PositionalSpec<unknown>>(
-    def.args?.positionals ?? {},
+    def.args.positionals,
   ).map(([key, spec]) => [key, positionalRuntime(spec)] as const);
   const positional = stricliPositional(positionalEntries);
   return {
@@ -173,7 +173,7 @@ function commandDocs(
   def: AnyCommand,
   cliName: string,
 ): { brief: string; fullDescription?: string } {
-  const examples = (def.help.examples ?? []).map((example) =>
+  const examples = def.help.examples.map((example) =>
     resolveExample(example, cliName),
   );
   if (examples.length === 0) {

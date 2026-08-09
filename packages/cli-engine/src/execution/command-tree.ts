@@ -1,7 +1,7 @@
 import { flagRuntime, type PositionalSpec, positionalRuntime } from "../args";
 import type { CommandFamily } from "../command-family";
 import type { AnyCommand } from "../commands";
-import type { EngineSpec } from "./invocation";
+import type { EngineSpec } from "./engine";
 import { RESERVED_ALIASES, RESERVED_FLAG_NAMES } from "./shared-flags";
 
 export function constructionError(message: string): Error {
@@ -12,7 +12,7 @@ const CAMEL_CASE = /^[a-z][a-zA-Z0-9]*$/;
 const INTEGER_LIKE = /^\d+$/;
 
 function validateFlags(path: string, def: AnyCommand): void {
-  const flags = def.args?.flags ?? {};
+  const flags = def.args.flags;
   const seenAliases = new Set<string>();
   for (const [key, spec] of Object.entries(flags)) {
     if (RESERVED_FLAG_NAMES.has(key)) {
@@ -44,9 +44,7 @@ function validateFlags(path: string, def: AnyCommand): void {
 }
 
 function validatePositionals(path: string, def: AnyCommand): void {
-  const entries = Object.entries<PositionalSpec<unknown>>(
-    def.args?.positionals ?? {},
-  );
+  const entries = Object.entries<PositionalSpec<unknown>>(def.args.positionals);
   let sawOptional = false;
   for (const [index, [key, spec]] of entries.entries()) {
     const runtime = positionalRuntime(spec);
@@ -72,7 +70,7 @@ function validatePositionals(path: string, def: AnyCommand): void {
 }
 
 function validateExitCodes(path: string, def: AnyCommand): void {
-  if (def.kind !== "result-command" || def.exitCodes === undefined) {
+  if (def.kind !== "result-command") {
     return;
   }
   for (const key of Object.keys(def.exitCodes)) {
@@ -149,7 +147,7 @@ function validateSectionOwnership(
   path: string,
   def: AnyCommand,
 ): void {
-  const section = def.needs?.config;
+  const section = def.needs.config;
   if (section === undefined) {
     return;
   }
