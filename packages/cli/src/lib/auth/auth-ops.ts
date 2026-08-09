@@ -7,6 +7,16 @@ import { login } from "./login";
 
 const WORKSPACE_SUB_PREFIX = "workspace:";
 
+/** Thrown when PRISMA_SERVICE_TOKEN is set to an empty/blank value. */
+export class EmptyServiceTokenError extends Error {
+  constructor() {
+    super(
+      `${SERVICE_TOKEN_ENV_VAR} is set but empty. Provide a valid token or unset the variable.`,
+    );
+    this.name = "EmptyServiceTokenError";
+  }
+}
+
 function decodeJwtPayload(token: string): Record<string, unknown> {
   try {
     const payload = token.split(".")[1];
@@ -61,9 +71,7 @@ export async function readAuthState(
   if (rawServiceToken !== undefined) {
     const serviceToken = rawServiceToken.trim();
     if (serviceToken.length === 0) {
-      throw new Error(
-        `${SERVICE_TOKEN_ENV_VAR} is set but empty. Provide a valid token or unset the variable.`,
-      );
+      throw new EmptyServiceTokenError();
     }
     return readServiceTokenAuthState(serviceToken, env, signal);
   }

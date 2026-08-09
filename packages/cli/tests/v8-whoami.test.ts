@@ -2,11 +2,15 @@ import { createTestCli, defineCommand } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { readAuthState } from "../src/lib/auth/auth-ops";
+import {
+  EmptyServiceTokenError,
+  readAuthState,
+} from "../src/lib/auth/auth-ops";
 import type { AuthStateResult } from "../src/types/auth";
 import { authWhoamiCommand } from "../src/v8/auth/whoami";
 
-vi.mock("../src/lib/auth/auth-ops", () => ({
+vi.mock("../src/lib/auth/auth-ops", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/auth/auth-ops")>()),
   readAuthState: vi.fn(),
 }));
 
@@ -150,11 +154,7 @@ describe("prisma-v8 auth whoami", () => {
   });
 
   it("errors with exit 2 when PRISMA_SERVICE_TOKEN is set but empty", async () => {
-    vi.mocked(readAuthState).mockRejectedValue(
-      new Error(
-        "PRISMA_SERVICE_TOKEN is set but empty. Provide a valid token or unset the variable.",
-      ),
-    );
+    vi.mocked(readAuthState).mockRejectedValue(new EmptyServiceTokenError());
 
     const result = await makeCli().run(["auth", "whoami"], {
       isTty: { stdout: true },
@@ -170,11 +170,7 @@ describe("prisma-v8 auth whoami", () => {
   });
 
   it("emits the errored envelope on the json stream", async () => {
-    vi.mocked(readAuthState).mockRejectedValue(
-      new Error(
-        "PRISMA_SERVICE_TOKEN is set but empty. Provide a valid token or unset the variable.",
-      ),
-    );
+    vi.mocked(readAuthState).mockRejectedValue(new EmptyServiceTokenError());
 
     const result = await makeCli().run(["auth", "whoami", "--json"]);
 

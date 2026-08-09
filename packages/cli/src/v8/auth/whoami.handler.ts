@@ -5,7 +5,7 @@ import {
   notOk,
   ok,
 } from "@prisma/cli-engine/protocol";
-import { readAuthState } from "../../lib/auth/auth-ops";
+import { EmptyServiceTokenError, readAuthState } from "../../lib/auth/auth-ops";
 import type { AuthProviderId, AuthStateResult } from "../../types/auth";
 import type { authWhoamiCommand } from "./whoami";
 
@@ -81,10 +81,7 @@ const run: CommandHandler<typeof authWhoamiCommand> = async (_args, ctx) => {
   try {
     state = await readAuthState(process.env, ctx.signal);
   } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message.startsWith("PRISMA_SERVICE_TOKEN is set but empty")
-    ) {
+    if (error instanceof EmptyServiceTokenError) {
       return notOk(
         new CliStructuredError(
           "AUTH.CONFIG_INVALID",
