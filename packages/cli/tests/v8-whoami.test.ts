@@ -264,3 +264,18 @@ describe("needs.credentials early failure", () => {
     expect(result.exitCode).toBe(0);
   });
 });
+
+describe("handler env access", () => {
+  it("reads the environment from ctx.env (the harness run's env), not process.env", async () => {
+    vi.mocked(readAuthState).mockResolvedValue(SIGNED_OUT);
+    const env = { PRISMA_SERVICE_TOKEN: "tok_from_ctx" };
+
+    const result = await makeCli().run(["auth", "whoami"], {
+      isTty: { stdout: true },
+      env,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(vi.mocked(readAuthState).mock.calls[0][0]).toBe(env);
+  });
+});

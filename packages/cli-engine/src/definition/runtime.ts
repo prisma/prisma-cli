@@ -51,6 +51,27 @@ export interface Runtime {
   readonly packageManager: "npm" | "pnpm" | "yarn" | "bun" | "unknown";
 }
 
+/**
+ * The minimal process surface a bin adapts a Runtime from — Node's
+ * `process` satisfies it structurally. The engine never reads it; it
+ * exists so bins and their tests share one adapter shape.
+ */
+export interface HostProcess {
+  readonly argv: readonly string[];
+  readonly env: Readonly<Record<string, string | undefined>>;
+  cwd(): string;
+  readonly stdout: { write(text: string): unknown; isTTY?: boolean };
+  readonly stderr: { write(text: string): unknown; isTTY?: boolean };
+  readonly stdin: {
+    isTTY?: boolean;
+    setRawMode?(enabled: boolean): unknown;
+    [Symbol.asyncIterator](): AsyncIterator<Uint8Array>;
+  };
+  on(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;
+  off(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;
+  exit(code: number): never;
+}
+
 export interface LoadedConfig {
   /**
    * Raw section values by name; validation happens per command via its

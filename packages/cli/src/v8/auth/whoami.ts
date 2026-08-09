@@ -5,7 +5,10 @@ import {
   notOk,
   ok,
 } from "@prisma/cli-engine/protocol";
-import { EmptyServiceTokenError, readAuthState } from "../../lib/auth/auth-ops";
+import {
+  isEmptyServiceTokenError,
+  readAuthState,
+} from "../../lib/auth/auth-ops";
 import type { AuthProviderId, AuthStateResult } from "../../types/auth";
 
 const TITLE = "Showing the current authenticated identity.";
@@ -84,9 +87,9 @@ export const authWhoamiCommand = defineCommand({
   handler: async (_args, ctx) => {
     let state: AuthStateResult;
     try {
-      state = await readAuthState(process.env, ctx.signal);
+      state = await readAuthState(ctx.env, ctx.signal);
     } catch (error) {
-      if (error instanceof EmptyServiceTokenError) {
+      if (isEmptyServiceTokenError(error)) {
         return notOk(
           new CliStructuredError(
             "AUTH.CONFIG_INVALID",

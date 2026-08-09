@@ -56,6 +56,12 @@ export interface CommandContext<
   readonly cwd: string;
 
   /**
+   * The invocation's environment, from Runtime.env. Handlers read env
+   * via ctx.env, never process.env (R4).
+   */
+  readonly env: Readonly<Record<string, string | undefined>>;
+
+  /**
    * Conditional optional-dependency need (R13). Resolves when the
    * optional peer dependency is importable from the user's project;
    * otherwise returns the engine's structured missing-dependency error

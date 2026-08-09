@@ -61,6 +61,7 @@ export {
 } from "../definition/presentation";
 export {
   type Cli,
+  type HostProcess,
   type LoadedConfig,
   PRISMA_CONFIG_VERSION,
   type Runtime,

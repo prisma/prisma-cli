@@ -7,7 +7,7 @@ import {
   main,
   makeGetCredentials,
   makeOnSignal,
-  type ProcessLike,
+  type HostProcess,
 } from "../src/v8/main";
 
 vi.mock("../src/adapters/token-storage", () => ({
@@ -25,7 +25,7 @@ function makeProcess(overrides?: {
   argv?: string[];
   env?: NodeJS.ProcessEnv;
   isTty?: { stdin?: boolean; stdout?: boolean; stderr?: boolean };
-}): ProcessLike & {
+}): HostProcess & {
   listeners: Map<string, Array<() => void>>;
   exitedWith: number[];
   stderrText: string;
@@ -56,7 +56,7 @@ function makeProcess(overrides?: {
     stdin: {
       isTTY: overrides?.isTty?.stdin,
       async *[Symbol.asyncIterator]() {},
-    } as unknown as ProcessLike["stdin"],
+    } as unknown as HostProcess["stdin"],
     on(event: "SIGINT" | "SIGTERM", listener: () => void) {
       const existing = listeners.get(event) ?? [];
       listeners.set(event, [...existing, listener]);

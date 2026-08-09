@@ -170,13 +170,15 @@ slice's scope. The harness e2e instead stubs the operations layer.
 
 ## 11. Operations residue pending S2 extraction
 
-The v8 handler reads `process.env` directly to call
-`readAuthState(process.env, ctx.signal)` — the engine context
-deliberately carries no `env`, and the auth operations still live in
-`packages/cli/src/lib/auth/`. The same applies to the bin's
-`getCredentials` (service token env var, else the stored access token
-via `FileTokenStorage`). Both are explicitly "in place" per the slice
-contract; the S2 auth-library extraction is where this residue resolves.
+RESOLVED for the handler (operator review round 1): `CommandContext`
+now carries `env` from `Runtime.env`, and the v8 handler calls
+`readAuthState(ctx.env, ctx.signal)` — no `process.env` read remains in
+command code. The auth operations themselves still live in
+`packages/cli/src/lib/auth/`, and the bin's `getCredentials` (service
+token env var, else the stored access token via `FileTokenStorage`)
+reads the process environment in the adapter layer, where node-ness
+belongs. The S2 auth-library extraction is where the remaining
+operations residue resolves.
 
 ## 12. Update notification / agent tips
 
@@ -213,6 +215,9 @@ none were resolved unilaterally.
 6. DEFERRED to S3: running the config loader under plain Node (the S1
    bin is tsx-run by design, so evaluating a `.ts` config on a bare
    `node` host is the S3 loader slice's problem).
+7. DEFERRED by operator ruling (review round 1): O13 — using a schema
+   library such as Arktype for construction-time validation. A heavy
+   dependency for the engine's minimal validation needs.
 
 The D6 finding about the lazy-handler pattern's circular type inference
 is resolved by an operator ruling (2026-08-09): handlers are never

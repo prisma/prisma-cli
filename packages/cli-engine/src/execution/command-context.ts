@@ -87,6 +87,7 @@ export function makeContext(
     prompt: makePromptSurface(invocation),
     signal: invocation.signal,
     cwd: invocation.runtime.cwd,
+    env: invocation.runtime.env,
     requireDependency: async (specifier) =>
       dependencyResolvable(specifier, invocation.runtime.cwd)
         ? okVoid()

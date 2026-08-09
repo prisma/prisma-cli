@@ -11,7 +11,7 @@
  * dependency violates) with a ./protocol subpath for types-only
  * consumers;
  * NextAction.journey dropped (no consumer); docs URLs derived from a
- * manifest-supplied base; committed versions for releases; auth library
+ * family-supplied base; committed versions for releases; auth library
  * lives in the CLI repo, distinct from Prisma Cloud. Prior versions
  * preserved as -v1…-v7.ts; reviews in ./reviews/.
  *
@@ -381,6 +381,10 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
   /** Where the user invoked the CLI. Handlers never read process.cwd(). */
   readonly cwd: string
 
+  /** The invocation's environment, from Runtime.env. Handlers read env
+   *  via ctx.env, never process.env (R4). */
+  readonly env: Readonly<Record<string, string | undefined>>
+
   /**
    * R13, the conditional form (evidence: composer needs @prisma/dev only
    * when the config declares postgres resources — unconditional needs
@@ -705,7 +709,7 @@ export declare function defineServerCommand<
   def: Omit<ServerCommandDefinition<TFlags, TConfig>, 'kind'>,
 ): ServerCommandDefinition<TFlags, TConfig>
 
-/** Erased union for manifests and mount maps; `kind` discriminates. */
+/** Erased union for command families and mount maps; `kind` discriminates. */
 export type AnyCommand =
   | CommandDefinition<any, any, any, any>
   | SessionCommandDefinition<any, any, any>
@@ -886,6 +890,24 @@ export interface Runtime {
   /** Used by the ENGINE to phrase install commands (handlers never
    *  do — see needs.dependencies and ctx.requireDependency). */
   readonly packageManager: 'npm' | 'pnpm' | 'yarn' | 'bun' | 'unknown'
+}
+
+/** The minimal process surface a bin adapts a Runtime from — Node's
+ *  `process` satisfies it structurally; the engine never reads it. */
+export interface HostProcess {
+  readonly argv: readonly string[]
+  readonly env: Readonly<Record<string, string | undefined>>
+  cwd(): string
+  readonly stdout: { write(text: string): unknown; isTTY?: boolean }
+  readonly stderr: { write(text: string): unknown; isTTY?: boolean }
+  readonly stdin: {
+    isTTY?: boolean
+    setRawMode?(enabled: boolean): unknown
+    [Symbol.asyncIterator](): AsyncIterator<Uint8Array>
+  }
+  on(event: 'SIGINT' | 'SIGTERM', listener: () => void): unknown
+  off(event: 'SIGINT' | 'SIGTERM', listener: () => void): unknown
+  exit(code: number): never
 }
 
 export interface LoadedConfig {

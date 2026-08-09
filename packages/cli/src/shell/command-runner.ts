@@ -1,5 +1,5 @@
 import { AuthError as SDKAuthError } from "@prisma/management-api-sdk";
-import { EmptyServiceTokenError } from "../lib/auth/auth-ops";
+import { isEmptyServiceTokenError } from "../lib/auth/auth-ops";
 import { collectCommandDiagnostics } from "../lib/diagnostics";
 import type { CommandDescriptor } from "./command-meta";
 import { getCommandDescriptor } from "./command-meta";
@@ -50,7 +50,7 @@ function toCliError(error: unknown, runtime: CliRuntime): CliError | null {
     });
   }
 
-  if (error instanceof EmptyServiceTokenError) {
+  if (isEmptyServiceTokenError(error)) {
     return authConfigInvalidError(error.message);
   }
 

@@ -9,12 +9,26 @@ const WORKSPACE_SUB_PREFIX = "workspace:";
 
 /** Thrown when PRISMA_SERVICE_TOKEN is set to an empty/blank value. */
 export class EmptyServiceTokenError extends Error {
+  readonly code = "EMPTY_SERVICE_TOKEN";
+
   constructor() {
     super(
       `${SERVICE_TOKEN_ENV_VAR} is set but empty. Provide a valid token or unset the variable.`,
     );
     this.name = "EmptyServiceTokenError";
   }
+}
+
+/** Matches by the code discriminator, not instanceof, so the check
+ *  survives duplicate module instances. */
+export function isEmptyServiceTokenError(
+  error: unknown,
+): error is EmptyServiceTokenError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "EMPTY_SERVICE_TOKEN"
+  );
 }
 
 function decodeJwtPayload(token: string): Record<string, unknown> {

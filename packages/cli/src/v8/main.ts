@@ -2,6 +2,7 @@ import {
   type Cli,
   type Credentials,
   createCli,
+  type HostProcess,
   type InputStream,
   loadConfig,
   type Runtime,
@@ -25,24 +26,9 @@ export function buildCli(): Cli {
   });
 }
 
-export interface SignalProcess {
-  on(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;
-  off(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;
-  exit(code: number): never;
-}
+export type SignalProcess = Pick<HostProcess, "on" | "off" | "exit">;
 
-export interface ProcessLike extends SignalProcess {
-  readonly argv: readonly string[];
-  readonly env: NodeJS.ProcessEnv;
-  cwd(): string;
-  readonly stdout: { write(text: string): unknown; isTTY?: boolean };
-  readonly stderr: { write(text: string): unknown; isTTY?: boolean };
-  readonly stdin: {
-    isTTY?: boolean;
-    setRawMode?(enabled: boolean): unknown;
-    [Symbol.asyncIterator](): AsyncIterator<Uint8Array>;
-  };
-}
+export type { HostProcess };
 
 /** Dumb wiring: forwards process signals to the engine's subscribers.
  *  The signal policy (first aborts, second force-exits) is the engine's. */
@@ -86,7 +72,7 @@ export function makeGetCredentials(
   };
 }
 
-export async function assembleRuntime(proc: ProcessLike): Promise<Runtime> {
+export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
   const stdin: InputStream = {
     setRawMode:
       proc.stdin.isTTY === true && proc.stdin.setRawMode !== undefined
@@ -128,7 +114,7 @@ export async function assembleRuntime(proc: ProcessLike): Promise<Runtime> {
  *  process.exit. A construction error prints one line to stderr and
  *  exits 1. */
 export async function main(
-  proc: ProcessLike,
+  proc: HostProcess,
   buildCliForRun: () => Cli = buildCli,
 ): Promise<number> {
   let cli: Cli;
