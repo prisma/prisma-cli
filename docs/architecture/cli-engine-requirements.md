@@ -167,10 +167,20 @@ produces per-section diagnostics, and a command fails only if a section it
 needs is invalid. "Never a crash" covers loading too: a file that fails to
 import or evaluate — a syntax error, a throwing top-level statement — is
 caught by the engine and surfaced as a typed file-level diagnostic naming
-the config path, never a stack trace. The config value carries a version
-marker written by `defineConfig`; an evaluated file without the marker (in
-particular a classic Prisma 7 config, which uses the same filename) fails
-early with a clear, typed error. No best-effort reading of unmarked files.
+the config path, never a stack trace.
+
+The version-marker contract is exact. The engine package owns both sides
+of it: its `defineConfig` stamps the exported config value with a
+`$prismaConfig` field carrying the config contract version, and its
+loader checks that field before interpreting anything else. Each failure
+mode has its own typed, file-level diagnostic carrying the config path:
+an evaluated file without the marker (in particular a classic Prisma 7
+config, which uses the same filename) fails early with
+`CLI.CONFIG_MISSING_MARKER`; a marker declaring a version this CLI does
+not support — older or newer, future markers included — fails with
+`CLI.CONFIG_INVALID`; a file that cannot be evaluated at all fails with
+`CLI.CONFIG_UNREADABLE`, per the previous paragraph. No best-effort
+reading of unmarked files.
 
 **Why:** the unified CLI claims a filename Prisma 7 already owns; a silently
 misparsed v7 file is the worst launch bug available, so detection is a
