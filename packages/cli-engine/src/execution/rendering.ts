@@ -156,7 +156,10 @@ export function withDocsUrl(
   if (diagnostic.docsUrl !== undefined || state.docsBaseUrl === undefined) {
     return diagnostic;
   }
-  return { ...diagnostic, docsUrl: `${state.docsBaseUrl}${diagnostic.code}` };
+  const base = state.docsBaseUrl.endsWith("/")
+    ? state.docsBaseUrl
+    : `${state.docsBaseUrl}/`;
+  return { ...diagnostic, docsUrl: `${base}${diagnostic.code}` };
 }
 
 /** Channel discipline (operator ruling, 2026-08-09): human Blocks,

@@ -739,6 +739,7 @@ export interface ServerCommandDefinition<
       readonly stderr: OutputStream
       readonly signal: AbortSignal
       readonly cwd: string
+      readonly env: Readonly<Record<string, string | undefined>>
       readonly config: TConfig
     },
   ) => Promise<number>

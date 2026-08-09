@@ -308,6 +308,19 @@ describe("optional dependencies", () => {
     expect(result.presented?.data).toEqual({ resolvable: true });
   });
 
+  test("a relative runtime cwd still resolves installed dependencies", async () => {
+    const command = defineCommand({
+      help: { summary: "Probes a dependency" },
+      needs: { dependencies: ["typescript"] },
+      handler: async (_args, ctx) =>
+        ok(ctx.present({ data: null }, { human: (): readonly Block[] => [] })),
+    });
+    const cli = createTestCli({ commands: { command }, now: EPOCH });
+    const result = await cli.run(["command", "--json"], { cwd: "." });
+
+    expect(result.exitCode).toBe(0);
+  });
+
   test("ctx.requireDependency returns the engine-phrased install error for the handler to pass to notOk", async () => {
     const command = defineCommand({
       help: { summary: "Needs a missing dependency" },
@@ -423,6 +436,49 @@ describe("server commands", () => {
     expect(result.stdout).toBe("Content-Length: 2\r\n\r\n{}");
     expect(result.stderr).toBe("");
     expect(result.json).toEqual([]);
+  });
+
+  test("the handler reads the invocation's environment from io.env", async () => {
+    const echoing = defineServerCommand({
+      help: { summary: "Echoes an environment value" },
+      handler: async (_args, io) => {
+        io.stderr.write(`${io.env.SERVER_MODE}\n`);
+        return 0;
+      },
+    });
+    const cli = createTestCli({ commands: { echoing }, now: EPOCH });
+    const result = await cli.run(["echoing"], {
+      env: { SERVER_MODE: "attached" },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("attached\n");
+  });
+
+  test("a non-integer exit code settles as an internal error", async () => {
+    const broken = defineServerCommand({
+      help: { summary: "Returns NaN" },
+      handler: async () => Number.NaN,
+    });
+    const cli = createTestCli({ commands: { broken }, now: EPOCH });
+    const result = await cli.run(["broken"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("CLI.INTERNAL_ERROR");
+    expect(result.stderr).toContain("not an integer in 0-255");
+  });
+
+  test("an out-of-range exit code settles as an internal error", async () => {
+    const broken = defineServerCommand({
+      help: { summary: "Returns 300" },
+      handler: async () => 300,
+    });
+    const cli = createTestCli({ commands: { broken }, now: EPOCH });
+    const result = await cli.run(["broken"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("CLI.INTERNAL_ERROR");
   });
 
   test("the handler's returned exit code is the run's exit code", async () => {

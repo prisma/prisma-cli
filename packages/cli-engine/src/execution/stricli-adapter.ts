@@ -42,6 +42,9 @@ export type RunEntry = (
 ) => Promise<void>;
 
 function parseNumberInput(input: string): number {
+  if (input.trim() === "") {
+    throw new Error("expected a number, received an empty value");
+  }
   const value = Number(input);
   if (!Number.isFinite(value)) {
     throw new Error(`expected a number, received '${input}'`);

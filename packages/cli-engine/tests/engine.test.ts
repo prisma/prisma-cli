@@ -202,6 +202,17 @@ describe("construction validation", () => {
     );
   });
 
+  test("a 'version' flag fails construction (--version is intercepted globally)", () => {
+    const offender = defineCommand({
+      help: { summary: "Offender" },
+      args: { flags: { version: flag.boolean({ brief: "mine" }) } },
+      handler: null as never,
+    });
+    expect(() => createTestCli({ commands: { offender } })).toThrow(
+      "reserved flag 'version'",
+    );
+  });
+
   test("reserved aliases fail construction", () => {
     const offender = defineCommand({
       help: { summary: "Offender" },

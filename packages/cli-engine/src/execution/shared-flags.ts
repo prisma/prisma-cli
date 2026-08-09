@@ -16,6 +16,7 @@ export const RESERVED_FLAG_NAMES: ReadonlySet<string> = new Set([
   "color",
   "help",
   "helpAll",
+  "version",
 ]);
 
 export const RESERVED_ALIASES: ReadonlySet<string> = new Set([

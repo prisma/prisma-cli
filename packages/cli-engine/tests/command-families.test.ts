@@ -141,6 +141,42 @@ describe("docs-URL derivation", () => {
     );
   });
 
+  test("a docsBaseUrl without a trailing slash still derives a well-formed link", async () => {
+    const family = defineCommandFamily({
+      commands: { failing },
+      docsBaseUrl: "https://pris.ly/cli/errors",
+    });
+    const cli = createTestCli({
+      commandFamilies: [family],
+      commands: { failing },
+      now: EPOCH,
+    });
+    const result = await cli.run(["failing", "--json"]);
+
+    const frame = result.json[0];
+    if (frame.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored result frame");
+    }
+    expect(frame.envelope.error.docsUrl).toBe(
+      "https://pris.ly/cli/errors/TOY.BROKEN",
+    );
+  });
+
+  test("a docsBaseUrl that is not a URL fails construction", () => {
+    const family = defineCommandFamily({
+      commands: { failing },
+      docsBaseUrl: "not a url",
+    });
+
+    expect(() =>
+      createTestCli({
+        commandFamilies: [family],
+        commands: { failing },
+        now: EPOCH,
+      }),
+    ).toThrow("docsBaseUrl 'not a url' is not a valid URL");
+  });
+
   test("a per-raise docsUrl wins over the derived one", async () => {
     const result = await familyCli().run(["overriding", "--json"]);
 

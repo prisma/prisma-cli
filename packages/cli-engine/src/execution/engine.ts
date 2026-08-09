@@ -123,6 +123,7 @@ type ErasedServerHandler = (
     readonly stderr: { write(text: string): void };
     readonly signal: AbortSignal;
     readonly cwd: string;
+    readonly env: Readonly<Record<string, string | undefined>>;
     readonly config: unknown;
   },
 ) => Promise<number>;
@@ -329,8 +330,18 @@ export class EngineImpl implements Engine {
         stderr: runtime.stderr,
         signal: invocation.signal,
         cwd: runtime.cwd,
+        env: runtime.env,
         config: needsOutcome.config,
       });
+      if (!Number.isInteger(exitCode) || exitCode < 0 || exitCode > 255) {
+        settleBug(
+          invocation,
+          new Error(
+            `@prisma/cli-engine: the '${entry.id}' server command returned exit code ${String(exitCode)}, which is not an integer in 0-255`,
+          ),
+        );
+        return;
+      }
       state.settledExitCode = exitCode;
     } catch (cause) {
       settleThrown(invocation, cause);

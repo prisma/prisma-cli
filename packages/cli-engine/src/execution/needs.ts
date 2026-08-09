@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { resolve } from "node:path";
 import type { AnyCommand } from "../commands";
 import type { ConfigSection, SectionValidation } from "../config-section";
 import type { Credentials } from "../context";
@@ -190,7 +190,7 @@ function writeSectionWarnings(
 
 export function dependencyResolvable(specifier: string, cwd: string): boolean {
   try {
-    createRequire(join(cwd, "__cli_engine_probe__.js")).resolve(specifier);
+    createRequire(resolve(cwd, "__cli_engine_probe__.js")).resolve(specifier);
     return true;
   } catch {
     return false;

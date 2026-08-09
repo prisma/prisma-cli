@@ -162,11 +162,23 @@ function validateSectionOwnership(
   }
 }
 
+function validateDocsBaseUrls(spec: EngineSpec): void {
+  for (const commandFamily of spec.commandFamilies) {
+    const base = commandFamily.docsBaseUrl;
+    if (base !== undefined && !URL.canParse(base)) {
+      throw constructionError(
+        `command family docsBaseUrl '${base}' is not a valid URL`,
+      );
+    }
+  }
+}
+
 export function buildCommandTree(spec: EngineSpec): CommandTreeNode {
   const paths = Object.keys(spec.commands);
   if (paths.length === 0) {
     throw constructionError("createCli requires at least one mounted command");
   }
+  validateDocsBaseUrls(spec);
   const root = emptyNode();
   for (const path of paths) {
     const def = spec.commands[path];

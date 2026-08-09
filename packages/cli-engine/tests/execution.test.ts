@@ -847,6 +847,24 @@ describe("parse and route failures", () => {
     );
   });
 
+  test("an empty numeric flag value is a usage error, not zero", async () => {
+    const counting = defineCommand({
+      help: { summary: "Counts" },
+      args: {
+        flags: { count: flag.number({ brief: "how many", placeholder: "n" }) },
+      },
+      handler: async (_args, ctx) =>
+        ok(ctx.present({ data: null }, { human: () => [] })),
+    });
+    const cli = createTestCli({ commands: { counting }, now: EPOCH });
+    const result = await cli.run(["counting", "--count", ""], {
+      isTty: { stdout: true },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("expected a number, received an empty value");
+  });
+
   test("a positional value after -- does not flip the pre-parse format sniff", async () => {
     const tooMany = await makeCli().run(["greet", "--", "--json", "extra"], {
       isTty: { stdout: true },
