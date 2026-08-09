@@ -3,7 +3,7 @@
  * v1 initial · v2 round-1 fixes · v3 return-site presentation ·
  * v4 completed/errored, --format, log levels, prompt defaults ·
  * v5 round-3 closure · v6 Diagnostic, warnings fold, stream flatten ·
- * v7 outcome-first present, help/args/needs, product manifests ·
+ * v7 outcome-first present, help/args/needs, command families ·
  * v8 packaging and residue rulings: ONE library package
  * (@prisma/cli-engine, with @stricli/core as an ordinary exact-pinned
  * dependency — bundling was considered and rejected: unusual for a
@@ -32,7 +32,7 @@
  * amendment also adopts the `fix` → typed `nextActions` rename
  * (operator ruling, 2026-08-09), for the same reason.
  *
- * Everything a product package imports for CLI purposes lives here (R3).
+ * Everything a package imports for CLI purposes lives here (R3).
  * Requirement references (R1–R14) point at docs/architecture/
  * cli-engine-requirements.md in prisma-cli. Nothing from stricli appears —
  * it is an internal of the engine package.
@@ -47,7 +47,7 @@
  *   return site. Presentation always runs for completed results.
  *
  *   ERRORED — it returns notOk(structuredError): the command did not
- *   complete. The engine renders the error envelope; there is no product
+ *   complete. The engine renders the error envelope; there is no command
  *   presentation on the error path. The primary error is severity
  *   'error' by definition and carries its own typed `nextActions`
  *   (operator ruling, 2026-08-09: `fix` renamed — fix and nextActions
@@ -61,7 +61,7 @@
  *
  * Session commands run until context.signal fires, then clean up and
  * return. Server commands hand the stdio conversation to a foreign
- * client. Liveness display is the engine's. Nothing product-authored
+ * client. Liveness display is the engine's. Nothing command-family-authored
  * executes after the handler resolves.
  *
  * FORMATS AND LEVELS. `--format <human|json>`, auto-selected when
@@ -88,7 +88,7 @@
  * The engine injects the shared flag family on every non-server
  * command: --format/--json, --log-level/-v/--verbose, -q/--quiet,
  * -y/--yes, --interactive/--no-interactive, --color/--no-color.
- * Products cannot declare flags with those names. Product flag keys are
+ * Commands cannot declare flags with those names. Declared flag keys are
  * camelCase and transliterate to --kebab-case.
  *
  * EXIT CODES (R6): 0 completed; 1 bug only; 2 errored (expected,
@@ -139,15 +139,15 @@ export type LogLevel = Severity
 export type Format = 'human' | 'json'
 
 // ————————————————————————————————————————————————————————————————————————
-// §1 Events — R14: one engine vocabulary, product extensions in `data`
+// §1 Events — R14: one engine vocabulary, command-family extensions in `data`
 // ————————————————————————————————————————————————————————————————————————
 
 /**
  * The engine event envelope. `kind`-specific fields are the common
  * vocabulary the engine renders consistently (human mode) and streams
- * (json mode, §9). `data` is the product extension: passed through to
+ * (json mode, §9). `data` is the command family's extension: passed through to
  * machine consumers untouched, never interpreted by the engine,
- * documented and versioned by the product as its own public API. A
+ * documented and versioned by the owning command family as its own public API. A
  * structure recurring inside `data` across commands is the promotion
  * signal (R14).
  *
@@ -258,7 +258,7 @@ declare const PRESENTED: unique symbol
  * Built exclusively by ctx.present (the brand makes hand-construction a
  * type error) — the context knows the format, calls only the
  * presentation functions it needs, and the value crossing the
- * product→engine boundary is data all the way down.
+ * handler→engine boundary is data all the way down.
  *
  * `data` is what the envelope's `result` serializes (json presentation
  * overrides when supplied). Materialization by format: human → human +
@@ -306,19 +306,19 @@ export interface Presentations {
 }
 
 // ————————————————————————————————————————————————————————————————————————
-// §3 Config sections — a PRODUCT-level fact (one product, one section)
+// §3 Config sections — a FAMILY-level fact (one command family, one section)
 // ————————————————————————————————————————————————————————————————————————
 
 /**
- * A product's named slice of prisma.config.ts, declared once in the
- * product's manifest (§10). The token couples the section name, its
+ * A command family's named slice of prisma.config.ts, declared once in
+ * the family's declaration (§10). The token couples the section name, its
  * validated type, and its total validator. Commands that need the
  * section reference the token in `needs.config`, which is how the
  * engine knows which commands an invalid section fails — and how
  * ctx.config gets its type.
  *
  * The validator OWNS absence: its input is the raw section value, or
- * undefined when the config file has no such section. A product that
+ * undefined when the config file has no such section. A family that
  * wants defaults applies them here; one that requires the section emits
  * a section-required diagnostic here. It returns findings; it never
  * throws (R10). Keep validators dependency-light: they load with the
@@ -348,7 +348,7 @@ export declare function defineConfigSection<T>(spec: {
 
 export interface CommandContext<TConfig = undefined, TCode extends number = never> {
   /** The validated value of the command's needed config section —
-   *  exactly TConfig; absence semantics belong to the product's
+   *  exactly TConfig; absence semantics belong to the section's
    *  validator (§3). Commands with no config need get undefined. */
   readonly config: TConfig
 
@@ -378,7 +378,7 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
    *  it. */
   readonly signal: AbortSignal
 
-  /** Where the user invoked the CLI. Products never read process.cwd(). */
+  /** Where the user invoked the CLI. Handlers never read process.cwd(). */
   readonly cwd: string
 
   /**
@@ -388,13 +388,13 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
    * dependency is importable from the user's project; otherwise returns
    * the ENGINE'S structured missing-dependency error — install command
    * phrased by the engine with the user's package manager — for the
-   * handler to pass to notOk. Products never craft install prose.
+   * handler to pass to notOk. Handlers never craft install prose.
    */
   readonly requireDependency: (specifier: string) => Promise<Result<void, CliStructuredError>>
 }
 
 export interface Credentials {
-  /** Opaque to the engine; shape owned by the Cloud product's auth
+  /** Opaque to the engine; shape owned by the Cloud auth
    *  library (placeholder pending its design). Workspace selection is
    *  session state, not a credential — it lives with that library, not
    *  here. */
@@ -411,7 +411,7 @@ export interface Credentials {
  * handler that does not catch simply propagates and the engine settles;
  * one that catches cannot swallow the settlement — rethrow or notOk.
  *
- * Every prompt except `consent` may carry a product-specified
+ * Every prompt except `consent` may carry a declared
  * `default`. Interactively, Enter accepts the default. Under --yes, a
  * prompt WITH a default resolves to it without displaying; a prompt
  * WITHOUT a default cannot be operated and throws. In non-interactive
@@ -449,7 +449,7 @@ export interface PromptSurface {
 // ————————————————————————————————————————————————————————————————————————
 
 /**
- * Product-declared flags. The shared family (§header) is engine-injected
+ * Command-declared flags. The shared flag family (§header) is engine-injected
  * and reserved; handlers never see those values. Parse-time validation
  * failures become structured errors carrying the allowed values.
  *
@@ -566,7 +566,7 @@ export interface HelpSpec {
  * never runs in a world where it can't operate.
  */
 export interface NeedsSpec<TConfig> {
-  /** The product's config section token: validate it, fail me on its
+  /** The command family's config section token: validate it, fail me on its
    *  error diagnostics, hand me the value as ctx.config. */
   readonly config?: ConfigSection<TConfig>
   /** Fail early with the sign-in error when unauthenticated. */
@@ -815,21 +815,21 @@ export interface StreamMeta {
 }
 
 // ————————————————————————————————————————————————————————————————————————
-// §10 Product manifests and shell mounting — R12: the shell owns the
-// tree; a product owns its section
+// §10 Command families and shell mounting — R12: the shell owns the
+// tree; a command family owns its section
 // ————————————————————————————————————————————————————————————————————————
 
 /**
- * What a product package exports: its config section (declared once —
- * a product-level fact) and its commands by NAME. The unified config
- * loader consumes the sections; the shell mounts the commands. A
- * command whose needs.config token is not its product's section is a
- * construction error.
+ * The unit of contribution and ownership a package exports for CLI
+ * purposes: its config section (declared once — a family-level fact)
+ * and its commands by NAME. The unified config loader consumes the
+ * sections; the shell mounts the commands. A command whose needs.config
+ * token is not its command family's section is a construction error.
  */
-export interface ProductManifest {
+export interface CommandFamily {
   readonly configSection?: ConfigSection<unknown>
   readonly commands: Readonly<Record<string, AnyCommand>>
-  /** The product's documentation base URL. The engine derives each
+  /** The family's documentation base URL. The engine derives each
    *  diagnostic's docs link from base + code; a diagnostic's own
    *  `docsUrl` field is the per-raise override (unused until a use case
    *  appears). */
@@ -842,7 +842,7 @@ export type MountedTree = Readonly<Record<string, AnyCommand>>
 
 /**
  * Shell-side construction. Group help is declared with the mount, since
- * groups belong to the tree, not to products. Collisions, unknown
+ * groups belong to the tree, not to command families. Collisions, unknown
  * groups, reserved-flag violations, grammar violations, and
  * foreign-section references fail construction (build time, not run
  * time).
@@ -850,7 +850,7 @@ export type MountedTree = Readonly<Record<string, AnyCommand>>
 export declare function createCli(spec: {
   readonly name: string
   readonly version: string
-  readonly products: readonly ProductManifest[]
+  readonly commandFamilies: readonly CommandFamily[]
   readonly groups: Readonly<Record<string, { readonly brief: string; readonly description?: string }>>
   readonly commands: MountedTree
 }): Cli
@@ -883,14 +883,14 @@ export interface Runtime {
    *  the unified loader (R10). Tests hand in fixtures. */
   readonly config: LoadedConfig
   readonly getCredentials: () => Promise<Credentials | undefined>
-  /** Used by the ENGINE to phrase install commands (products never
+  /** Used by the ENGINE to phrase install commands (handlers never
    *  do — see needs.dependencies and ctx.requireDependency). */
   readonly packageManager: 'npm' | 'pnpm' | 'yarn' | 'bun' | 'unknown'
 }
 
 export interface LoadedConfig {
   /** Raw section values by name; validation happens per command via its
-   *  product's section token. */
+   *  command family's section token. */
   readonly sections: Readonly<Record<string, unknown>>
   /** File-level problems (unevaluable module, missing version marker)
    *  carry section: null and fail only commands with a needs.config
@@ -903,11 +903,11 @@ export interface LoadedConfig {
 }
 
 // ————————————————————————————————————————————————————————————————————————
-// §11 The product-repo test harness — R7: same machinery, bytes out
+// §11 The test harness — R7: same machinery, bytes out
 // ————————————————————————————————————————————————————————————————————————
 
 export declare function createTestCli(spec: {
-  readonly products?: readonly ProductManifest[]
+  readonly commandFamilies?: readonly CommandFamily[]
   readonly commands: MountedTree
   readonly groups?: Readonly<Record<string, { readonly brief: string }>>
   readonly config?: Readonly<Record<string, unknown>>

@@ -43,7 +43,7 @@ passes.
 defineSessionCommand / defineServerCommand, flag + positional builders
 with the `Char` alias typing, `Args`, `Outcome`, `Presentations` /
 `PresentedResult`, `defineConfigSection` + `SectionValidation`,
-`NeedsSpec` / `HelpSpec`, `ProductManifest`, `createCli` mounting types,
+`NeedsSpec` / `HelpSpec`, `CommandFamily`, `createCli` mounting types,
 `Runtime` / `LoadedConfig` / `Credentials` shapes. Pure types and
 constructors only — no execution.
 **Builds on:** D1's package + protocol types.

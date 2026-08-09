@@ -48,7 +48,7 @@ ADR 239 amendment), **prisma/composer** (Composer product integration).
    in particular a classic Prisma 7 config — fails early with a typed
    error naming the migration path (fail-early is ruled; no best-effort
    reading). Products contribute sections via manifests
-   (`ProductManifest`: section token + commands + docs base); validation
+   (`CommandFamily`: section token + commands + docs base); validation
    is per-section diagnostics; a command fails only when a section it
    needs is invalid.
 4. **The shell**: the `prisma` binary in the prisma-cli repo — mounts

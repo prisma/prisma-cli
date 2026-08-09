@@ -60,7 +60,7 @@ package's own test harness.
 ## Out of scope
 
 Every other command; commander-shell removal (S2); auth-library
-extraction (S2); ProductManifest consumption from another repo (S3);
+extraction (S2); CommandFamily consumption from another repo (S3);
 publishing.
 
 ## Design authority

@@ -40,7 +40,7 @@ deleted, per-family shell integration proofs, parity list reviewed.
 
 ### S3 — Composer adoption (first cross-repo consumer)
 
-Repos: composer + prisma-cli. Composer exports a `ProductManifest`
+Repos: composer + prisma-cli. Composer exports a `CommandFamily`
 (the `composer` config section token — its validator rewritten from the
 current throwing loader per the section API — plus its command set);
 ports `deploy`/`destroy` (result commands), `dev`/`log` (session
