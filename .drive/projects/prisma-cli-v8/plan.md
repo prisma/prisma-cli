@@ -90,7 +90,7 @@ when the operator can publish with one action (project DoD).
 
 ## Dependency graph
 
-```
+```text
 S1 ──► S2 ──► S3 ──► S5 ──► S7
         │      ▲      ▲
         └──────┘ (published engine exists after S2's engine hardening)

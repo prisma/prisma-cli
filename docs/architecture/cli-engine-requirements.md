@@ -57,9 +57,21 @@ engine's internals is one package's problem, not an ecosystem event.
 
 ### R4 — Products receive a context, never the environment
 
-Product code does not read disk, environment variables, or the TTY. Handlers
-receive one typed context object carrying their validated config section,
-credentials, and the output surface.
+Product code never reads engine-owned state directly: the process
+environment, the process streams, TTY state, and the CLI's configuration
+reach a handler only through one typed context object, which carries its
+validated config section, credentials, the invocation's `cwd` and `env`,
+and the output surface. The output surface is a typed result and event
+sink — it exposes no writable streams and no way to exit the process;
+rendering and exit codes stay in the engine (R5), and the process ends
+only through the runtime's exit proxy, which the engine alone calls.
+
+This does not prohibit product-domain disk access. Reading the user's
+project — including Composer importing the user's own modules at
+execution time under R9 — is a product's job, done inside the handler
+and anchored at the context's `cwd` (with `requireDependency` on the
+context resolving optional dependencies from the user's project per
+R13). What is banned is reaching around the context to process globals.
 
 **Why:** three reasons. Cross-cutting state — above all authentication
 credentials, which Composer needs even when the user authenticated through a
@@ -134,8 +146,10 @@ product: each test lives where its failure would be introduced.
 ### R9 — Static tree, lazy guts
 
 Command definitions are cheap and load at startup; heavy dependencies load
-inside handlers at execution time. No dynamic discovery, no runtime tree
-construction.
+inside handlers at execution time. No dynamic or discovery-driven tree
+construction: each engine instance builds its tree once at startup from
+statically defined structure — command definitions are direct function
+references, and nothing about the tree is discovered at run time.
 
 **Why:** a statically known tree is simpler to reason about, renders complete
 help without executing product code, and fails at build time when it is wrong.
@@ -150,10 +164,23 @@ dependency subtrees behind execution-time imports.
 The engine discovers and evaluates one `prisma.config.ts`. Each product
 contributes a named section and a never-throwing validator; validation
 produces per-section diagnostics, and a command fails only if a section it
-needs is invalid. The config value carries a version marker written by
-`defineConfig`; an evaluated file without the marker (in particular a classic
-Prisma 7 config, which uses the same filename) fails early with a clear,
-typed error. No best-effort reading of unmarked files.
+needs is invalid. "Never a crash" covers loading too: a file that fails to
+import or evaluate — a syntax error, a throwing top-level statement — is
+caught by the engine and surfaced as a typed file-level diagnostic naming
+the config path, never a stack trace.
+
+The version-marker contract is exact. The engine package owns both sides
+of it: its `defineConfig` stamps the exported config value with a
+`$prismaConfig` field carrying the config contract version, and its
+loader checks that field before interpreting anything else. Each failure
+mode has its own typed, file-level diagnostic carrying the config path:
+an evaluated file without the marker (in particular a classic Prisma 7
+config, which uses the same filename) fails early with
+`CLI.CONFIG_MISSING_MARKER`; a marker declaring a version this CLI does
+not support — older or newer, future markers included — fails with
+`CLI.CONFIG_INVALID`; a file that cannot be evaluated at all fails with
+`CLI.CONFIG_UNREADABLE`, per the previous paragraph. No best-effort
+reading of unmarked files.
 
 **Why:** the unified CLI claims a filename Prisma 7 already owns; a silently
 misparsed v7 file is the worst launch bug available, so detection is a
@@ -239,14 +266,18 @@ Decided (Will Madden, 2026-08-09): the engine wraps **@stricli/core**,
 fully hidden per R3 — no stricli type appears in the engine's public
 interface, so the internals remain replaceable.
 
-The decision followed the evaluation rubric recorded in prisma/prisma's
-`docs/architecture docs/research/commander-friction-points.md`. Commander
+The decision followed the evaluation rubric recorded in prisma/prisma at
+[`docs/architecture docs/research/commander-friction-points.md`](https://github.com/prisma/prisma/blob/main/docs/architecture%20docs/research/commander-friction-points.md)
+(the directory really is named `architecture docs`, space included). Commander
 was ruled out there. Clipanion, the incumbent candidate with in-house
 precedent, passes the rubric's nine technical criteria but fails the tenth:
-at decision time its last publish was 23 months old with its 4.x line in
-release-candidate state for three years. Stricli passes all ten — zero
-runtime dependencies, no `node:` imports, no `process.exit` (verified
-against the published artifact), per-invocation injected context, static
+at decision time its last publish, 4.0.0-rc.4 (2024-09-06), was 23 months
+old with its 4.x line in release-candidate state for three years, and its
+latest stable release, 3.2.1, dated from June 2023. Stricli — evaluated at
+`@stricli/core` 1.3.0 (published 2026-07-16), the version the engine now
+pins exactly — passes all ten: zero runtime dependencies, no `node:`
+imports, no `process.exit` (verified against the published 1.3.0
+artifact), per-invocation injected context, static
 route maps with lazy command loading, parse-time validation with typed
 errors, active institutional maintenance — and its known limitations
 (per-command flags only, fixed help layout without formatter replacement)
