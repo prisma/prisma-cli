@@ -141,12 +141,20 @@ describe("makeGetCredentials", () => {
     expect(await getCredentials()).toEqual({ token: "svc_token" });
   });
 
-  it("reads the stored token even after the run signal aborted", async () => {
-    const controller = new AbortController();
-    controller.abort("SIGINT");
+  it("reads the stored token when no service token is set", async () => {
     const getCredentials = makeGetCredentials({} as NodeJS.ProcessEnv);
 
     expect(await getCredentials()).toEqual({ token: "stored_token" });
+  });
+
+  it("fails when PRISMA_SERVICE_TOKEN is set but blank instead of falling back to stored tokens", async () => {
+    const getCredentials = makeGetCredentials({
+      PRISMA_SERVICE_TOKEN: "  ",
+    } as NodeJS.ProcessEnv);
+
+    await expect(getCredentials()).rejects.toThrow(
+      "PRISMA_SERVICE_TOKEN is set but empty",
+    );
   });
 });
 

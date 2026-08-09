@@ -6,6 +6,7 @@ import {
   type Runtime,
 } from "@prisma/cli-engine";
 import { FileTokenStorage } from "../adapters/token-storage";
+import { EmptyServiceTokenError } from "../lib/auth/auth-ops";
 import { SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
 
 export type SignalProcess = Pick<HostProcess, "on" | "off" | "exit">;
@@ -45,8 +46,12 @@ export function makeGetCredentials(
   env: NodeJS.ProcessEnv,
 ): () => Promise<Credentials | undefined> {
   return async () => {
-    const serviceToken = env[SERVICE_TOKEN_ENV_VAR]?.trim();
-    if (serviceToken) {
+    const rawServiceToken = env[SERVICE_TOKEN_ENV_VAR];
+    if (rawServiceToken !== undefined) {
+      const serviceToken = rawServiceToken.trim();
+      if (serviceToken.length === 0) {
+        throw new EmptyServiceTokenError();
+      }
       return { token: serviceToken };
     }
     const tokens = await new FileTokenStorage(env).getTokens();
