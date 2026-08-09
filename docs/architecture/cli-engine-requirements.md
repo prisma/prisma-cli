@@ -271,10 +271,13 @@ The decision followed the evaluation rubric recorded in prisma/prisma at
 (the directory really is named `architecture docs`, space included). Commander
 was ruled out there. Clipanion, the incumbent candidate with in-house
 precedent, passes the rubric's nine technical criteria but fails the tenth:
-at decision time its last publish was 23 months old with its 4.x line in
-release-candidate state for three years. Stricli passes all ten — zero
-runtime dependencies, no `node:` imports, no `process.exit` (verified
-against the published artifact), per-invocation injected context, static
+at decision time its last publish, 4.0.0-rc.4 (2024-09-06), was 23 months
+old with its 4.x line in release-candidate state for three years, and its
+latest stable release, 3.2.1, dated from June 2023. Stricli — evaluated at
+`@stricli/core` 1.3.0 (published 2026-07-16), the version the engine now
+pins exactly — passes all ten: zero runtime dependencies, no `node:`
+imports, no `process.exit` (verified against the published 1.3.0
+artifact), per-invocation injected context, static
 route maps with lazy command loading, parse-time validation with typed
 errors, active institutional maintenance — and its known limitations
 (per-command flags only, fixed help layout without formatter replacement)
