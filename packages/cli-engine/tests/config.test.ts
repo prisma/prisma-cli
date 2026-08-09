@@ -73,7 +73,13 @@ describe("loadConfig", () => {
             summary:
               "prisma.config.ts is not a Prisma v8 config: its default export does not carry the defineConfig version marker.",
             why: "A classic Prisma 7 config file uses the same name, and the CLI never guesses at unmarked files — a silently misread config is worse than a hard stop.",
-            fix: "Wrap the exported config object in defineConfig from @prisma/cli-engine and export the result as the default export.",
+            nextActions: [
+              {
+                kind: "user-choice",
+                label:
+                  "Wrap the exported config object in defineConfig from @prisma/cli-engine and export the result as the default export.",
+              },
+            ],
             where: { path: join(FIXTURES, "unmarked", "prisma.config.ts") },
           },
         },
@@ -91,7 +97,13 @@ describe("loadConfig", () => {
             code: "CLI.CONFIG_INVALID",
             severity: "error",
             summary: `prisma.config.ts declares config version 2, but this CLI supports only version ${PRISMA_CONFIG_VERSION}.`,
-            fix: "Regenerate the config with a defineConfig matching this CLI, or update the CLI to a version that supports the declared config version.",
+            nextActions: [
+              {
+                kind: "user-choice",
+                label:
+                  "Regenerate the config with a defineConfig matching this CLI, or update the CLI to a version that supports the declared config version.",
+              },
+            ],
             where: {
               path: join(FIXTURES, "wrong-version", "prisma.config.ts"),
             },
@@ -139,7 +151,12 @@ function toySection(seen?: unknown[]): ConfigSection<ToyConfig> {
             code: "TOY.GREETING_INVALID",
             severity: "error",
             summary: "toy.greeting must be a string.",
-            fix: "Set toy.greeting to a string in prisma.config.ts.",
+            nextActions: [
+              {
+                kind: "user-choice",
+                label: "Set toy.greeting to a string in prisma.config.ts.",
+              },
+            ],
           },
         ],
       };
@@ -232,17 +249,34 @@ describe("needs.config", () => {
             code: "CLI.CONFIG_INVALID",
             severity: "error",
             summary: "The 'toy' section of prisma.config.ts is invalid.",
-            fix: "Fix the reported problems in that section, then run the command again.",
+            nextActions: [
+              {
+                kind: "user-choice",
+                label:
+                  "Fix the reported problems in that section, then run the command again.",
+              },
+            ],
           },
           diagnostics: [
             {
               code: "TOY.GREETING_INVALID",
               severity: "error",
               summary: "toy.greeting must be a string.",
-              fix: "Set toy.greeting to a string in prisma.config.ts.",
+              nextActions: [
+                {
+                  kind: "user-choice",
+                  label: "Set toy.greeting to a string in prisma.config.ts.",
+                },
+              ],
             },
           ],
-          nextActions: [],
+          nextActions: [
+            {
+              kind: "user-choice",
+              label:
+                "Fix the reported problems in that section, then run the command again.",
+            },
+          ],
         },
         commandId: "show",
         timestamp: T0,

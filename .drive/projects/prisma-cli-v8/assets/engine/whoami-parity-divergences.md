@@ -125,11 +125,12 @@ envelope written to stdout even in error, EXIT 1.
 
 v8: structured error `AUTH.CONFIG_INVALID` (dotted namespace form, no
 domain field), settled as ERRORED per the v8 protocol → EXIT 2. Same
-summary ("Authentication configuration is invalid"), same why/fix text.
-Human rendering differs: engine layout
-`✖ [AUTH.CONFIG_INVALID] … / why: … / fix: …` on stderr, versus the
-current CLI's `✖ summary [CODE]` + `Why:`/`Fix:` +
-"More: Re-run with --trace" block.
+summary ("Authentication configuration is invalid"), same why text; the
+fix prose is now a typed `nextActions` entry (operator ruling,
+2026-08-09: `fix` renamed to `nextActions`). Human rendering differs:
+engine layout `✖ [AUTH.CONFIG_INVALID] … / why: … / → <next action>`
+on stderr, versus the current CLI's `✖ summary [CODE]` +
+`Why:`/`Fix:` + "More: Re-run with --trace" block.
 
 ## 7. Exit-code semantics generally
 
@@ -195,8 +196,12 @@ none were resolved unilaterally.
    lines are the machine-usable payload and are always written to
    stdout in human mode — that is what the surface is for. Human mode
    is pipe-clean; json mode unchanged (frame stream on stdout).
-2. D4: remediation events render as nextActions at settlement in human
-   mode (not live in the transcript); json streams them live as frames.
+2. RULED (2026-08-09): the engine never aggregates remediation events
+   into any envelope. The event kind stays in the vocabulary as
+   transcript-only — json streams it live as a frame; human mode never
+   renders it. Follow-ups are handler-owned: completed via
+   `presentations.next`, errored via the error's own typed
+   `nextActions` (the renamed `fix`), which the envelope copies.
 3. Diagnostic severity stays `error|warn|info`; the trim to two awaits
    the ADR 239 amendment (project slice S4).
 4. RULED (2026-08-09): a file-level config diagnostic fails only

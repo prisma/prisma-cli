@@ -139,7 +139,13 @@ describe("prompts with no default halt", () => {
       severity: "error",
       summary:
         '--yes cannot answer "Proceed?" because the prompt has no default.',
-      fix: "Run the command from an interactive terminal, or pass a flag that answers the prompt.",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label:
+            "Run the command from an interactive terminal, or pass a flag that answers the prompt.",
+        },
+      ],
     });
   });
 
@@ -231,7 +237,13 @@ describe("consent", () => {
       severity: "error",
       summary:
         '"Delete everything?" requires explicit consent, which --yes cannot grant.',
-      fix: "Run the command interactively, or pass the command's explicit consent flag if it documents one.",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label:
+            "Run the command interactively, or pass the command's explicit consent flag if it documents one.",
+        },
+      ],
     });
   });
 
@@ -408,7 +420,12 @@ describe("needs.interaction", () => {
       severity: "error",
       summary: "This command requires an interactive terminal.",
       why: "It prompts for input that cannot be supplied when the session is not interactive (no TTY stdin, CI, or --no-interactive).",
-      fix: "Run it from an interactive terminal, or pass --interactive.",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label: "Run it from an interactive terminal, or pass --interactive.",
+        },
+      ],
     });
   });
 

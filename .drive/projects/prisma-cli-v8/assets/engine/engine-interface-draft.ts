@@ -28,7 +28,9 @@
  * failures with exit 2, as it classifies them today. The amendment also
  * checks whether any shipped error uses severity 'info'; if none does,
  * the severity scale of CliStructuredError and Diagnostic trims to
- * error|warn — together, so the two shapes stay identical.
+ * error|warn — together, so the two shapes stay identical. The
+ * amendment also adopts the `fix` → typed `nextActions` rename
+ * (operator ruling, 2026-08-09), for the same reason.
  *
  * Everything a product package imports for CLI purposes lives here (R3).
  * Requirement references (R1–R14) point at docs/architecture/
@@ -47,8 +49,9 @@
  *   ERRORED — it returns notOk(structuredError): the command did not
  *   complete. The engine renders the error envelope; there is no product
  *   presentation on the error path. The primary error is severity
- *   'error' by definition. `remediation` events emitted before the
- *   error are aggregated into the errored envelope's nextActions.
+ *   'error' by definition and carries its own typed `nextActions`
+ *   (operator ruling, 2026-08-09: `fix` renamed — fix and nextActions
+ *   solved the same problem); the envelope copies them.
  *
  * PRECONDITIONS (a command's `needs`) are enforced by the engine BEFORE
  * the handler runs: an invalid needed config section, missing
@@ -112,9 +115,13 @@ import type { CliStructuredError, Diagnostic, NextAction, Result } from '@prisma
  *
  * Diagnostic — a recorded finding: pure data, never thrown, no stack.
  *   { code: 'NAMESPACE.SUBCODE', severity: 'error' | 'warn' | 'info',
- *     summary, why?, fix?, where?, meta?, docsUrl? }
+ *     summary, why?, nextActions?: readonly NextAction[], where?,
+ *     meta?, docsUrl? }
+ *   `fix` prose is gone (operator ruling, 2026-08-09): remediation is
+ *   typed nextActions, rendered as → lines in human mode.
  *   Field-for-field the settled error envelope (ADR 239) minus `ok` —
- *   identical scales included; the two shapes never diverge.
+ *   identical scales included; the two shapes never diverge (the ADR
+ *   239 amendment adopts the same rename).
  *
  * NextAction — the typed agent-facing follow-up (platform-shipped form,
  * minus its `journey` grouping label — dropped: no consumer branches on
@@ -147,9 +154,11 @@ export type Format = 'human' | 'json'
  * Rendering, human mode: `output` events with channel 'data' are the
  * command's data and go to OUR stdout; everything else is commentary on
  * stderr, filtered by the active log level. Events are transcript: they
- * are NOT aggregated into the envelope (the one exception is
- * `remediation` → nextActions). Findings that belong in the envelope
- * are diagnostics on the presented outcome, not events.
+ * are NEVER aggregated into any envelope (`remediation` included — it
+ * is transcript-only, framed in json mode, unrendered in human mode).
+ * Follow-ups are handler-owned: completed via `presentations.next`,
+ * errored via the error's own `nextActions`. Findings that belong in
+ * the envelope are diagnostics on the presented outcome, not events.
  *
  * report() is synchronous fire-and-forget; the engine buffers and writes
  * asynchronously. Calling it after the handler has resolved is a bug
@@ -194,6 +203,8 @@ export type EngineEvent =
       readonly line: string
       readonly data?: unknown
     }
+  /** Transcript-only: framed in json mode, never rendered in human
+   *  mode, never aggregated into any envelope. */
   | { readonly kind: 'remediation'; readonly action: NextAction; readonly data?: unknown }
   | {
       readonly kind: 'endpoint'
@@ -785,7 +796,8 @@ export interface ErroredEnvelope {
   /** Accompanying findings when the abort had several (three config
    *  typos are three diagnostics, not one flattened error). */
   readonly diagnostics: readonly Diagnostic[]
-  /** Aggregated from remediation events. */
+  /** Copied from the error's own nextActions — the uniform consumer
+   *  read path (envelope.nextActions) on both settlement paths. */
   readonly nextActions: readonly NextAction[]
 }
 

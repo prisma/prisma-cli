@@ -92,7 +92,13 @@ export const authWhoamiCommand = defineCommand({
             "Authentication configuration is invalid",
             {
               why: error.message,
-              fix: "Provide a valid PRISMA_SERVICE_TOKEN value, or unset the variable to use local OAuth login.",
+              nextActions: [
+                {
+                  kind: "user-choice",
+                  label:
+                    "Provide a valid PRISMA_SERVICE_TOKEN value, or unset the variable to use local OAuth login.",
+                },
+              ],
             },
           ),
         );

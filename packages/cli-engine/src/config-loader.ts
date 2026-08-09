@@ -38,7 +38,13 @@ function missingMarkerDiagnostic(path: string): Diagnostic {
     summary:
       "prisma.config.ts is not a Prisma v8 config: its default export does not carry the defineConfig version marker.",
     why: "A classic Prisma 7 config file uses the same name, and the CLI never guesses at unmarked files — a silently misread config is worse than a hard stop.",
-    fix: "Wrap the exported config object in defineConfig from @prisma/cli-engine and export the result as the default export.",
+    nextActions: [
+      {
+        kind: "user-choice",
+        label:
+          "Wrap the exported config object in defineConfig from @prisma/cli-engine and export the result as the default export.",
+      },
+    ],
     where: { path },
   };
 }
@@ -53,7 +59,13 @@ function unsupportedVersionDiagnostic(path: string, found: number): Diagnostic {
     code: "CLI.CONFIG_INVALID",
     severity: "error",
     summary: `prisma.config.ts declares config version ${found}, but this CLI supports only version ${PRISMA_CONFIG_VERSION}.`,
-    fix: "Regenerate the config with a defineConfig matching this CLI, or update the CLI to a version that supports the declared config version.",
+    nextActions: [
+      {
+        kind: "user-choice",
+        label:
+          "Regenerate the config with a defineConfig matching this CLI, or update the CLI to a version that supports the declared config version.",
+      },
+    ],
     where: { path },
   };
 }
@@ -64,7 +76,12 @@ function unreadableDiagnostic(path: string, cause: unknown): Diagnostic {
     code: "CLI.CONFIG_UNREADABLE",
     severity: "error",
     summary: `prisma.config.ts could not be evaluated: ${firstLine(message)}`,
-    fix: "Fix the error in the file, then run the command again.",
+    nextActions: [
+      {
+        kind: "user-choice",
+        label: "Fix the error in the file, then run the command again.",
+      },
+    ],
     where: { path },
   };
 }

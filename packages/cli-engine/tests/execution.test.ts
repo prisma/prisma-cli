@@ -68,7 +68,7 @@ const failing = defineCommand({
     return notOk(
       new CliStructuredError("DEMO.BROKEN", "It broke", {
         why: "The demo always breaks.",
-        fix: "Do not run the demo.",
+        nextActions: [{ kind: "user-choice", label: "Do not run the demo." }],
       }),
     );
   },
@@ -377,8 +377,7 @@ describe("errored commands", () => {
     expect(result.stderr).toBe(
       "✖ [DEMO.BROKEN] It broke\n" +
         "  why: The demo always breaks.\n" +
-        "  fix: Do not run the demo.\n" +
-        "→ Try again: demo retry\n",
+        "→ Do not run the demo.\n",
     );
   });
 
@@ -407,11 +406,13 @@ describe("errored commands", () => {
             severity: "error",
             summary: "It broke",
             why: "The demo always breaks.",
-            fix: "Do not run the demo.",
+            nextActions: [
+              { kind: "user-choice", label: "Do not run the demo." },
+            ],
           },
           diagnostics: [],
           nextActions: [
-            { kind: "run-command", label: "Try again", command: "demo retry" },
+            { kind: "user-choice", label: "Do not run the demo." },
           ],
         },
         commandId: "failing",
@@ -450,10 +451,20 @@ describe("needs preconditions", () => {
             code: "CLI.CREDENTIALS_REQUIRED",
             severity: "error",
             summary: "You must be signed in to run this command.",
-            fix: "Sign in, then run the command again.",
+            nextActions: [
+              {
+                kind: "user-choice",
+                label: "Sign in, then run the command again.",
+              },
+            ],
           },
           diagnostics: [],
-          nextActions: [],
+          nextActions: [
+            {
+              kind: "user-choice",
+              label: "Sign in, then run the command again.",
+            },
+          ],
         },
         commandId: "auth.whoami",
         timestamp: T0,

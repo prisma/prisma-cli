@@ -10,7 +10,9 @@ export const diagnostic: Diagnostic = {
   code: "AUTH.NOT_LOGGED_IN",
   severity: "error",
   summary: "Not logged in",
-  fix: "Run prisma auth login",
+  nextActions: [
+    { kind: "run-command", label: "Sign in", command: "prisma auth login" },
+  ],
 };
 
 export const nextAction: NextAction = {

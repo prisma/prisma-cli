@@ -41,7 +41,9 @@ describe("CliStructuredError.toEnvelope", () => {
       {
         severity: "warn",
         why: "The section failed validation",
-        fix: "Correct the section value",
+        nextActions: [
+          { kind: "user-choice", label: "Correct the section value" },
+        ],
         where: { path: "prisma.config.ts", line: 3 },
         meta: { section: "platform" },
         docsUrl: "https://example.invalid/docs/config.invalid-section",
@@ -54,20 +56,24 @@ describe("CliStructuredError.toEnvelope", () => {
       severity: "warn",
       summary: "Section is invalid",
       why: "The section failed validation",
-      fix: "Correct the section value",
+      nextActions: [
+        { kind: "user-choice", label: "Correct the section value" },
+      ],
       where: { path: "prisma.config.ts", line: 3 },
       meta: { section: "platform" },
       docsUrl: "https://example.invalid/docs/config.invalid-section",
     });
   });
 
-  test("keeps fix as given even when it equals why", () => {
+  test("keeps nextActions as given even when a label repeats why", () => {
     const error = new CliStructuredError(
       "CONFIG.FILE_NOT_FOUND",
       "Config file not found",
       {
         why: "Run init",
-        fix: "Run init",
+        nextActions: [
+          { kind: "run-command", label: "Run init", command: "prisma init" },
+        ],
       },
     );
 
@@ -77,7 +83,9 @@ describe("CliStructuredError.toEnvelope", () => {
       severity: "error",
       summary: "Config file not found",
       why: "Run init",
-      fix: "Run init",
+      nextActions: [
+        { kind: "run-command", label: "Run init", command: "prisma init" },
+      ],
     });
   });
 

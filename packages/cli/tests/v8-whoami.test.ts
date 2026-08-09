@@ -174,7 +174,7 @@ describe("prisma-v8 auth whoami", () => {
     expect(result.stderr).toBe(
       "✖ [AUTH.CONFIG_INVALID] Authentication configuration is invalid\n" +
         "  why: PRISMA_SERVICE_TOKEN is set but empty. Provide a valid token or unset the variable.\n" +
-        "  fix: Provide a valid PRISMA_SERVICE_TOKEN value, or unset the variable to use local OAuth login.\n",
+        "→ Provide a valid PRISMA_SERVICE_TOKEN value, or unset the variable to use local OAuth login.\n",
     );
   });
 
@@ -197,10 +197,22 @@ describe("prisma-v8 auth whoami", () => {
         severity: "error",
         summary: "Authentication configuration is invalid",
         why: "PRISMA_SERVICE_TOKEN is set but empty. Provide a valid token or unset the variable.",
-        fix: "Provide a valid PRISMA_SERVICE_TOKEN value, or unset the variable to use local OAuth login.",
+        nextActions: [
+          {
+            kind: "user-choice",
+            label:
+              "Provide a valid PRISMA_SERVICE_TOKEN value, or unset the variable to use local OAuth login.",
+          },
+        ],
       },
       diagnostics: [],
-      nextActions: [],
+      nextActions: [
+        {
+          kind: "user-choice",
+          label:
+            "Provide a valid PRISMA_SERVICE_TOKEN value, or unset the variable to use local OAuth login.",
+        },
+      ],
     });
   });
 
@@ -227,7 +239,7 @@ describe("needs.credentials early failure", () => {
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
       "✖ [CLI.CREDENTIALS_REQUIRED] You must be signed in to run this command.\n" +
-        "  fix: Sign in, then run the command again.\n",
+        "→ Sign in, then run the command again.\n",
     );
   });
 

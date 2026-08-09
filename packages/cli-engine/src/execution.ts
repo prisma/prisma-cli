@@ -211,7 +211,6 @@ interface RunState {
   colorEnabled: boolean;
   resolved: boolean;
   settledExitCode: number | undefined;
-  remediations: NextAction[];
   usageErrorText: string | undefined;
   internalErrorText: string | undefined;
   stricliStderr: string;
@@ -727,7 +726,6 @@ async function executeRun(
     colorEnabled: false,
     resolved: false,
     settledExitCode: undefined,
-    remediations: [],
     usageErrorText: undefined,
     internalErrorText: undefined,
     stricliStderr: "",
@@ -1044,7 +1042,7 @@ function structuredErrorFromDiagnostic(
   return new CliStructuredError(diagnostic.code, diagnostic.summary, {
     severity: diagnostic.severity,
     why: diagnostic.why,
-    fix: diagnostic.fix,
+    nextActions: diagnostic.nextActions,
     where: diagnostic.where,
     meta: diagnostic.meta,
     docsUrl: diagnostic.docsUrl,
@@ -1071,7 +1069,12 @@ async function checkNeeds(
         "This command requires an interactive terminal.",
         {
           why: "It prompts for input that cannot be supplied when the session is not interactive (no TTY stdin, CI, or --no-interactive).",
-          fix: "Run it from an interactive terminal, or pass --interactive.",
+          nextActions: [
+            {
+              kind: "user-choice",
+              label: "Run it from an interactive terminal, or pass --interactive.",
+            },
+          ],
         },
       ),
     );
@@ -1098,7 +1101,13 @@ async function checkNeeds(
             why: firstLine(
               cause instanceof Error ? cause.message : String(cause),
             ),
-            fix: "Sign in again to replace the stored credentials, then run the command again.",
+            nextActions: [
+              {
+                kind: "user-choice",
+                label:
+                  "Sign in again to replace the stored credentials, then run the command again.",
+              },
+            ],
           },
         ),
       );
@@ -1108,7 +1117,14 @@ async function checkNeeds(
         new CliStructuredError(
           "CLI.CREDENTIALS_REQUIRED",
           "You must be signed in to run this command.",
-          { fix: "Sign in, then run the command again." },
+          {
+            nextActions: [
+              {
+                kind: "user-choice",
+                label: "Sign in, then run the command again.",
+              },
+            ],
+          },
         ),
       );
     }
@@ -1154,7 +1170,13 @@ function validateConfigSection(
         "CLI.CONFIG_INVALID",
         `The '${section.name}' section of prisma.config.ts is invalid.`,
         {
-          fix: "Fix the reported problems in that section, then run the command again.",
+          nextActions: [
+            {
+              kind: "user-choice",
+              label:
+                "Fix the reported problems in that section, then run the command again.",
+            },
+          ],
         },
       ),
       validation.diagnostics,
@@ -1221,10 +1243,18 @@ function missingDependencyError(
     "CLI.MISSING_DEPENDENCY",
     `This command requires the optional dependency '${specifier}', which is not installed in this project.`,
     {
-      fix:
+      nextActions: [
         install === undefined
-          ? `Install '${specifier}' with your package manager, then run the command again.`
-          : `Install it (${install}), then run the command again.`,
+          ? {
+              kind: "user-choice",
+              label: `Install '${specifier}' with your package manager, then run the command again.`,
+            }
+          : {
+              kind: "run-command",
+              label: `Install '${specifier}'`,
+              command: install,
+            },
+      ],
       meta: {
         specifier,
         ...(install === undefined ? {} : { installCommand: install }),
@@ -1397,7 +1427,13 @@ function promptUnanswerable(
       ? `--yes cannot answer "${question}" because the prompt has no default.`
       : `The command asked "${question}" but the session is not interactive and the prompt has no default.`,
     {
-      fix: "Run the command from an interactive terminal, or pass a flag that answers the prompt.",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label:
+            "Run the command from an interactive terminal, or pass a flag that answers the prompt.",
+        },
+      ],
     },
   );
 }
@@ -1412,7 +1448,13 @@ function consentUnavailable(
       ? `"${question}" requires explicit consent, which --yes cannot grant.`
       : `"${question}" requires explicit consent, and the session is not interactive.`,
     {
-      fix: "Run the command interactively, or pass the command's explicit consent flag if it documents one.",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label:
+            "Run the command interactively, or pass the command's explicit consent flag if it documents one.",
+        },
+      ],
     },
   );
 }
@@ -1616,9 +1658,6 @@ function reportEvent(invocation: Invocation, event: EngineEvent): void {
     return;
   }
   invocation.hooks.onEvent?.(event);
-  if (event.kind === "remediation") {
-    state.remediations.push(event.action);
-  }
   const severity = eventDisplaySeverity(event);
   if (
     severity !== undefined &&
@@ -1645,9 +1684,9 @@ const STEP_OUTCOME_SYMBOL: Readonly<Record<string, string>> = {
 };
 
 /** Human rendering: `output` data lines are the command's data on OUR
- *  stdout; everything else is commentary on stderr. `remediation` is the
- *  aggregation exception — it surfaces as nextActions at settlement, not
- *  as live transcript. */
+ *  stdout; everything else is commentary on stderr. `remediation` is
+ *  transcript-only: framed in json mode, never rendered in human mode,
+ *  never aggregated into any envelope. */
 function renderEventHuman(invocation: Invocation, event: EngineEvent): void {
   const { stdout, stderr } = invocation.runtime;
   switch (event.kind) {
@@ -1814,7 +1853,7 @@ function settleErrored(
     commandId: state.commandId,
     error: diagnosticOf(error),
     diagnostics,
-    nextActions: [...state.remediations],
+    nextActions: error.nextActions ?? [],
   });
 }
 
@@ -1856,7 +1895,7 @@ function settleAborted(invocation: Invocation): void {
       summary: "The command was aborted before it completed.",
     },
     diagnostics: [],
-    nextActions: [...state.remediations],
+    nextActions: [],
   });
 }
 
@@ -1875,7 +1914,7 @@ function settleSessionCompleted(invocation: Invocation): void {
     result: null,
     exitCode: 0,
     diagnostics: [],
-    nextActions: [...state.remediations],
+    nextActions: [],
   };
   emitFrame(invocation, {
     kind: "result",
@@ -1899,7 +1938,7 @@ function settleBug(invocation: Invocation, cause: unknown): void {
       ),
     },
     diagnostics: [],
-    nextActions: [...state.remediations],
+    nextActions: [],
   });
 }
 
@@ -1925,9 +1964,6 @@ function emitErrored(invocation: Invocation, raw: ErroredEnvelope): void {
   writeDiagnostic(stderr, envelope.error);
   for (const diagnostic of envelope.diagnostics) {
     writeDiagnostic(stderr, diagnostic);
-  }
-  for (const action of envelope.nextActions) {
-    stderr.write(`${renderNextAction(action)}\n`);
   }
 }
 
@@ -2010,8 +2046,8 @@ function writeDiagnostic(
   if (diagnostic.why !== undefined) {
     stream.write(`  why: ${diagnostic.why}\n`);
   }
-  if (diagnostic.fix !== undefined) {
-    stream.write(`  fix: ${diagnostic.fix}\n`);
+  for (const action of diagnostic.nextActions ?? []) {
+    stream.write(`${renderNextAction(action)}\n`);
   }
   if (diagnostic.docsUrl !== undefined) {
     stream.write(`  docs: ${diagnostic.docsUrl}\n`);

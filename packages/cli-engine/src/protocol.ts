@@ -13,7 +13,7 @@ export interface Diagnostic {
   readonly severity: "error" | "warn" | "info";
   readonly summary: string;
   readonly why?: string;
-  readonly fix?: string;
+  readonly nextActions?: readonly NextAction[];
   readonly where?: { readonly path?: string; readonly line?: number };
   readonly meta?: Record<string, unknown>;
   readonly docsUrl?: string;
@@ -51,7 +51,7 @@ export class CliStructuredError extends Error {
   readonly code: `${string}.${string}`;
   readonly severity: Diagnostic["severity"];
   declare readonly why?: string;
-  declare readonly fix?: string;
+  declare readonly nextActions?: readonly NextAction[];
   declare readonly where?: { readonly path?: string; readonly line?: number };
   declare readonly meta?: Record<string, unknown>;
   declare readonly docsUrl?: string;
@@ -62,7 +62,7 @@ export class CliStructuredError extends Error {
     options?: {
       readonly severity?: Diagnostic["severity"];
       readonly why?: string;
-      readonly fix?: string;
+      readonly nextActions?: readonly NextAction[];
       readonly where?: { readonly path?: string; readonly line?: number };
       readonly meta?: Record<string, unknown>;
       readonly docsUrl?: string;
@@ -80,7 +80,7 @@ export class CliStructuredError extends Error {
       : undefined;
     Object.assign(this, {
       ...ifDefined("why", options?.why),
-      ...ifDefined("fix", options?.fix),
+      ...ifDefined("nextActions", options?.nextActions),
       ...ifDefined("where", where),
       ...ifDefined("meta", options?.meta),
       ...ifDefined("docsUrl", options?.docsUrl),
@@ -97,7 +97,7 @@ export class CliStructuredError extends Error {
       severity: this.severity,
       summary: this.message,
       ...ifDefined("why", this.why),
-      ...ifDefined("fix", this.fix),
+      ...ifDefined("nextActions", this.nextActions),
       ...ifDefined("where", this.where),
       ...ifDefined("meta", this.meta),
       ...ifDefined("docsUrl", this.docsUrl),

@@ -58,6 +58,9 @@ codes as diagnostics inside completed envelopes with documented exit
 codes; the severity-'info' evidence check (trim both scales together if
 unused). Small, independent; the only ordering constraint is landing
 before S5 relies on the semantics.
+The amendment must also adopt the engine's `fix` → typed `nextActions`
+rename (operator ruling, 2026-08-09) so Diagnostic stays
+field-for-field identical to the settled envelope.
 
 ### S5 — ORM adoption
 

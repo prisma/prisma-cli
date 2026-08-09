@@ -32,8 +32,9 @@ export type Format = "human" | "json";
  * The engine event envelope. `kind`-specific fields are the common
  * vocabulary the engine renders (human mode) and streams (json mode);
  * `data` is the product extension, passed through untouched. Events are
- * transcript, not aggregated into the envelope — the one exception is
- * `remediation` → nextActions.
+ * transcript, never aggregated into any envelope. Follow-ups are
+ * handler-owned: completed via `presentations.next`, errored via the
+ * error's own `nextActions`.
  */
 export type EngineEvent =
   | {
@@ -75,6 +76,10 @@ export type EngineEvent =
       readonly line: string;
       readonly data?: unknown;
     }
+  /**
+   * Transcript-only: framed in json mode, never rendered in human mode,
+   * never aggregated into any envelope.
+   */
   | {
       readonly kind: "remediation";
       readonly action: NextAction;
@@ -795,7 +800,10 @@ export interface ErroredEnvelope {
   readonly error: Diagnostic;
   /** Accompanying findings when the abort had several. */
   readonly diagnostics: readonly Diagnostic[];
-  /** Aggregated from remediation events. */
+  /**
+   * Copied from the error's own nextActions — the uniform consumer
+   * read path (envelope.nextActions) on both settlement paths.
+   */
   readonly nextActions: readonly NextAction[];
 }
 

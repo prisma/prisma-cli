@@ -313,7 +313,13 @@ describe("optional dependencies", () => {
       code: "CLI.MISSING_DEPENDENCY",
       severity: "error",
       summary: `This command requires the optional dependency '${MISSING}', which is not installed in this project.`,
-      fix: `Install it (pnpm add ${MISSING}), then run the command again.`,
+      nextActions: [
+        {
+          kind: "run-command",
+          label: `Install '${MISSING}'`,
+          command: `pnpm add ${MISSING}`,
+        },
+      ],
       meta: {
         specifier: MISSING,
         installCommand: `pnpm add ${MISSING}`,
@@ -344,8 +350,16 @@ describe("optional dependencies", () => {
     expect(ran).toBe(false);
     const last = result.json[result.json.length - 1];
     expect(
-      last.kind === "result" && !last.envelope.ok && last.envelope.error.fix,
-    ).toBe(`Install it (npm install ${MISSING}), then run the command again.`);
+      last.kind === "result" &&
+        !last.envelope.ok &&
+        last.envelope.error.nextActions,
+    ).toEqual([
+      {
+        kind: "run-command",
+        label: `Install '${MISSING}'`,
+        command: `npm install ${MISSING}`,
+      },
+    ]);
   });
 
   test("needs.dependencies passes when every specifier resolves", async () => {
