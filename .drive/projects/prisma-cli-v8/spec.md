@@ -63,7 +63,12 @@ ADR 239 amendment), **prisma/composer** (Composer product integration).
    command reach every product's operations through context.
 6. **All three command families port onto the tree** per the grammar
    doc: ORM (`contract *`, `migration *`, `db *`, `init`, `lsp`, …),
-   Composer (`project deploy|dev|log|destroy`, stubs where ruled), and
+   Composer (`project deploy|dev|log|destroy`, stubs where ruled — a
+   subgroup is owned by exactly ONE command family; mixing management-API
+   and Composer commands in one subgroup is ruled out (operator,
+   2026-08-10), so the platform's Prisma-Cloud-project CRUD does not
+   share the `project` group: its home is an open grammar question
+   tracked as TML-3189), and
    Cloud/platform (`auth *`, `project *`, `postgres *`, `service *`,
    `bucket *`, `git`, `agent`, with the ruled renames). Parity bar:
    behavior equivalent to the shipping CLIs except where a settled
