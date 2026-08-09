@@ -6,12 +6,12 @@ file is the map.
 
 ## Settled (do not re-litigate without the operator)
 
-- **Engine interface, v8** — `assets/engine/engine-interface-draft.ts`
-  (v1–v7 history alongside). Settled through facilitated
-  line-by-line design with Will plus five adversarial review rounds
-  (architect + principal engineer, both closed clean; artifacts in
-  `assets/engine/reviews/`). Every novel typing claim
-  compile-verified.
+- **Engine interface, v8** — `assets/engine/engine-interface-draft.ts`.
+  Settled through facilitated line-by-line design with Will plus five
+  adversarial review rounds (architect + principal engineer, both
+  closed clean). Every novel typing claim compile-verified; the claims
+  live on as the permanent type-test suite in `@prisma/cli-engine`
+  (review artifacts and superseded draft versions are not committed).
 - **Requirements R1–R14** — prisma-cli PR #128
   (`docs/architecture/cli-engine-requirements.md`), unmerged.
 - **Packaging** — ONE library package `@prisma/cli-engine` with a
