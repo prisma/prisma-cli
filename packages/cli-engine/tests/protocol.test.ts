@@ -1,6 +1,11 @@
 import * as protocol from "@prisma/cli-engine/protocol";
+import {
+  CliStructuredError,
+  notOk,
+  ok,
+  okVoid,
+} from "@prisma/cli-engine/protocol";
 import { describe, expect, test } from "vitest";
-import { CliStructuredError, notOk, ok, okVoid } from "../src/protocol";
 
 describe("./protocol subpath", () => {
   test("is importable and exports only the protocol runtime surface", () => {
@@ -56,7 +61,7 @@ describe("CliStructuredError.toEnvelope", () => {
     });
   });
 
-  test("drops fix when it duplicates why", () => {
+  test("keeps fix as given even when it equals why", () => {
     const error = new CliStructuredError(
       "CONFIG.FILE_NOT_FOUND",
       "Config file not found",
@@ -72,13 +77,20 @@ describe("CliStructuredError.toEnvelope", () => {
       severity: "error",
       summary: "Config file not found",
       why: "Run init",
+      fix: "Run init",
     });
   });
 
   test("is() duck-types across module boundaries", () => {
     const error = new protocol.CliStructuredError("A.B", "boom");
+    const foreignCopy = Object.assign(new Error("boom"), {
+      name: "CliStructuredError",
+      code: "A.B",
+      toEnvelope: () => ({ ok: false }),
+    });
 
     expect(CliStructuredError.is(error)).toBe(true);
+    expect(CliStructuredError.is(foreignCopy)).toBe(true);
     expect(CliStructuredError.is(new Error("boom"))).toBe(false);
     expect(CliStructuredError.is("boom")).toBe(false);
   });

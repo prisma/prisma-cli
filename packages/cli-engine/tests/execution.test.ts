@@ -5,10 +5,13 @@
  * selection, log-level filtering, and quiet mode.
  */
 import {
+  createCli,
   createTestCli,
   defineCommand,
+  type EngineEvent,
   flag,
   positional,
+  type Runtime,
 } from "@prisma/cli-engine";
 import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
 import { describe, expect, test } from "vitest";
@@ -447,6 +450,176 @@ describe("needs preconditions", () => {
   });
 });
 
+describe("undocumented completion exit codes", () => {
+  test("a completed exit code the command never documented settles as a bug", async () => {
+    const rogue = defineCommand({
+      help: { summary: "Returns an undocumented exit code" },
+      handler: async () => ({
+        default: async (_args, ctx) =>
+          ok(
+            ctx.present(
+              { data: null, exitCode: 7 } as unknown as { data: null },
+              { human: () => [] },
+            ),
+          ),
+      }),
+    });
+    const cli = createTestCli({ commands: { rogue }, now: EPOCH });
+    const result = await cli.run(["rogue", "--json"]);
+
+    expect(result.exitCode).toBe(1);
+    const last = result.json[result.json.length - 1];
+    if (last.kind !== "result" || last.envelope.ok) {
+      throw new Error("expected an errored result frame");
+    }
+    expect(last.envelope.error.code).toBe("CLI.INTERNAL_ERROR");
+    expect(last.envelope.error.summary).toContain("exit code 7");
+  });
+
+  test("a completed exit code outside the documented set settles as a bug", async () => {
+    const rogue = defineCommand({
+      help: { summary: "Documents 4 but returns 5" },
+      exitCodes: { 4: "findings" },
+      handler: async () => ({
+        default: async (_args, ctx) =>
+          ok(
+            ctx.present({ data: null, exitCode: 5 as 4 }, { human: () => [] }),
+          ),
+      }),
+    });
+    const cli = createTestCli({ commands: { rogue }, now: EPOCH });
+    const result = await cli.run(["rogue", "--json"]);
+
+    expect(result.exitCode).toBe(1);
+    const last = result.json[result.json.length - 1];
+    expect(
+      last.kind === "result" && !last.envelope.ok && last.envelope.error.code,
+    ).toBe("CLI.INTERNAL_ERROR");
+  });
+
+  test("a documented exit code still passes through", async () => {
+    const result = await makeCli().run(["check", "--json"]);
+
+    expect(result.exitCode).toBe(4);
+  });
+});
+
+describe("sensitive field rows", () => {
+  const reveal = defineCommand({
+    help: { summary: "Show a credential" },
+    handler: async () => ({
+      default: async (_args, ctx) =>
+        ok(
+          ctx.present(
+            { data: { token: "tok_secret" } },
+            {
+              human: () => [
+                {
+                  kind: "fields",
+                  rows: [
+                    { label: "name", value: "deploy key" },
+                    { label: "token", value: "tok_secret", sensitive: true },
+                  ],
+                },
+              ],
+            },
+          ),
+        ),
+    }),
+  });
+
+  test("human rendering masks a sensitive field value", async () => {
+    const cli = createTestCli({ commands: { reveal }, now: EPOCH });
+    const result = await cli.run(["reveal", "--format", "human"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("name: deploy key\ntoken: ********\n");
+  });
+
+  test("the json result payload is the command's own and stays unmasked", async () => {
+    const cli = createTestCli({ commands: { reveal }, now: EPOCH });
+    const result = await cli.run(["reveal", "--json"]);
+
+    const last = result.json[result.json.length - 1];
+    expect(
+      last.kind === "result" && last.envelope.ok && last.envelope.result,
+    ).toEqual({ token: "tok_secret" });
+  });
+});
+
+describe("report() after the handler resolved", () => {
+  test("a detached report after settlement is noted, not thrown", async () => {
+    let smuggled: ((event: EngineEvent) => void) | undefined;
+    const leaky = defineCommand({
+      help: { summary: "Leaks its report function" },
+      handler: async () => ({
+        default: async (_args, ctx) => {
+          smuggled = ctx.report;
+          return ok(ctx.present({ data: null }, { human: () => [] }));
+        },
+      }),
+    });
+    const cli = createTestCli({ commands: { leaky }, now: EPOCH });
+    const result = await cli.run(["leaky", "--format", "human"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(smuggled).toBeDefined();
+    expect(() =>
+      smuggled?.({ kind: "message", severity: "info", text: "late" }),
+    ).not.toThrow();
+  });
+});
+
+describe("credentials that cannot be read", () => {
+  test("a rejecting getCredentials settles as a structured error, exit 2", async () => {
+    const locked = defineCommand({
+      help: { summary: "Needs credentials" },
+      needs: { credentials: true },
+      handler: async () => ({
+        default: async (_args, ctx) =>
+          ok(ctx.present({ data: null }, { human: () => [] })),
+      }),
+    });
+    const cli = createCli({
+      name: "t",
+      version: "0.0.0",
+      products: [],
+      groups: {},
+      commands: { locked },
+    });
+    let stdoutText = "";
+    const runtime: Runtime = {
+      stdout: {
+        write: (text) => {
+          stdoutText += text;
+        },
+      },
+      stderr: { write: () => {} },
+      stdin: {
+        async *[Symbol.asyncIterator]() {},
+      },
+      cwd: "/",
+      env: {},
+      isTty: { stdin: false, stdout: false, stderr: false },
+      signal: new AbortController().signal,
+      config: { sections: {}, diagnostics: [] },
+      getCredentials: async () => {
+        throw new Error("token file corrupt: unexpected end of JSON input");
+      },
+      packageManager: "unknown",
+    };
+    const exitCode = await cli.run(["locked"], runtime);
+
+    expect(exitCode).toBe(2);
+    const frame = JSON.parse(stdoutText.trim());
+    expect(frame.envelope.ok).toBe(false);
+    expect(frame.envelope.error.code).toBe("CLI.CREDENTIALS_UNREADABLE");
+    expect(frame.envelope.error.why).toBe(
+      "token file corrupt: unexpected end of JSON input",
+    );
+  });
+});
+
 describe("parse and route failures", () => {
   test("an unknown flag is a structured usage error with exit 2", async () => {
     const result = await makeCli().run(["greet", "world", "--nope", "--json"]);
@@ -482,6 +655,57 @@ describe("parse and route failures", () => {
     expect(result.exitCode).toBe(2);
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain("CLI.INVALID_ARGUMENTS");
+  });
+
+  test("a multi-error parse keeps the full text: first line as summary, rest as why", async () => {
+    const strict = defineCommand({
+      help: { summary: "Strictly typed flags" },
+      args: {
+        flags: {
+          mode: flag.enum({ brief: "mode", values: ["a", "b"] }),
+          count: flag.number({ brief: "how many", placeholder: "n" }),
+        },
+        positionals: {
+          name: positional.string({ brief: "who", placeholder: "name" }),
+        },
+      },
+      handler: async () => ({
+        default: async (_args, ctx) =>
+          ok(ctx.present({ data: null }, { human: () => [] })),
+      }),
+    });
+    const cli = createTestCli({ commands: { strict }, now: EPOCH });
+    const result = await cli.run(["strict", "--mode", "z", "--count", "q"], {
+      isTty: { stdout: true },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      "✖ [CLI.INVALID_ARGUMENTS] Expected argument for name\n" +
+        '  why: Expected "z" to be one of (a|b), did you mean "a" or "b"?\n' +
+        "Failed to parse \"q\" for count: expected a number, received 'q'\n",
+    );
+  });
+
+  test("a positional value after -- does not flip the pre-parse format sniff", async () => {
+    const tooMany = await makeCli().run(["greet", "--", "--json", "extra"], {
+      isTty: { stdout: true },
+    });
+
+    expect(tooMany.exitCode).toBe(2);
+    expect(tooMany.json).toEqual([]);
+    expect(tooMany.stdout).toBe("");
+    expect(tooMany.stderr).toContain("CLI.INVALID_ARGUMENTS");
+  });
+
+  test("a -- positional value that looks like --json is passed through literally", async () => {
+    const result = await makeCli().run(["greet", "--", "--json"], {
+      isTty: { stdout: true },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("✔ Hello --json\n→ Nothing else to do\n");
   });
 
   test("kebab-case input matches camelCase flag keys", async () => {

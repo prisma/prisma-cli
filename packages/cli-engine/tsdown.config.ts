@@ -10,4 +10,5 @@ export default defineConfig({
   clean: true,
   fixedExtension: false,
   outDir: "dist",
+  deps: { neverBundle: ["@prisma/cli-engine/protocol"] },
 });

@@ -12,7 +12,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { type LoadedConfig, PRISMA_CONFIG_VERSION } from "./index";
+import { type LoadedConfig, PRISMA_CONFIG_VERSION } from "./core";
 import type { Diagnostic } from "./protocol";
 
 export const CONFIG_FILE_NAME = "prisma.config.ts";
@@ -48,6 +48,16 @@ function firstLine(text: string): string {
   return (newline === -1 ? text : text.slice(0, newline)).trim();
 }
 
+function unsupportedVersionDiagnostic(path: string, found: number): Diagnostic {
+  return {
+    code: "CLI.CONFIG_INVALID",
+    severity: "error",
+    summary: `prisma.config.ts declares config version ${found}, but this CLI supports only version ${PRISMA_CONFIG_VERSION}.`,
+    fix: "Regenerate the config with a defineConfig matching this CLI, or update the CLI to a version that supports the declared config version.",
+    where: { path },
+  };
+}
+
 function unreadableDiagnostic(path: string, cause: unknown): Diagnostic {
   const message = cause instanceof Error ? cause.message : String(cause);
   return {
@@ -79,6 +89,10 @@ export async function loadConfigImpl(cwd: string): Promise<LoadedConfig> {
   const exported = (loaded as { readonly default?: unknown }).default;
   if (!isMarked(exported)) {
     return fileLevelConfig(missingMarkerDiagnostic(path));
+  }
+  const version = exported[MARKER_KEY] as number;
+  if (version !== PRISMA_CONFIG_VERSION) {
+    return fileLevelConfig(unsupportedVersionDiagnostic(path, version));
   }
   const sections: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(exported)) {

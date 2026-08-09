@@ -46,7 +46,7 @@ import {
   type StreamEvent,
   type TestCli,
   type Ui,
-} from "./index";
+} from "./core";
 import {
   CliStructuredError,
   type Diagnostic,
@@ -202,6 +202,7 @@ export interface Engine {
 
 interface RunState {
   commandId: string;
+  docsBaseUrl: string | undefined;
   prefix: readonly string[];
   format: Format;
   logLevel: LogLevel;
@@ -316,6 +317,7 @@ function validateExitCodes(path: string, def: AnyCommand): void {
 interface MountEntry {
   readonly def: AnyCommand;
   readonly id: string;
+  readonly docsBaseUrl: string | undefined;
 }
 
 interface MountNode {
@@ -327,7 +329,12 @@ function emptyNode(): MountNode {
   return { commands: new Map(), children: new Map() };
 }
 
-function insertMount(root: MountNode, path: string, def: AnyCommand): void {
+function insertMount(
+  root: MountNode,
+  path: string,
+  def: AnyCommand,
+  docsBaseUrl: string | undefined,
+): void {
   const segments = path.split(" ");
   if (segments.some((segment) => segment.length === 0)) {
     throw constructionError(`invalid mount path '${path}'`);
@@ -350,7 +357,38 @@ function insertMount(root: MountNode, path: string, def: AnyCommand): void {
   if (node.commands.has(leaf) || node.children.has(leaf)) {
     throw constructionError(`mount path '${path}' collides with another mount`);
   }
-  node.commands.set(leaf, { def, id: segments.join(".") });
+  node.commands.set(leaf, { def, id: segments.join("."), docsBaseUrl });
+}
+
+/** A command belongs to the manifest whose commands record contains it
+ *  (identity). Harness-mounted commands with no product are unowned. */
+function productOf(
+  spec: EngineSpec,
+  def: AnyCommand,
+): ProductManifest | undefined {
+  return spec.products.find((manifest) =>
+    Object.values(manifest.commands).includes(def),
+  );
+}
+
+function validateProductSection(
+  spec: EngineSpec,
+  path: string,
+  def: AnyCommand,
+): void {
+  const section = def.needs?.config;
+  if (section === undefined) {
+    return;
+  }
+  const product = productOf(spec, def);
+  if (product === undefined) {
+    return;
+  }
+  if (product.configSection !== section) {
+    throw constructionError(
+      `command '${path}' needs the '${section.name}' config section, which is not its product's declared section`,
+    );
+  }
 }
 
 function buildMountTree(spec: EngineSpec): MountNode {
@@ -364,6 +402,7 @@ function buildMountTree(spec: EngineSpec): MountNode {
     validateFlags(path, def);
     validatePositionals(path, def);
     validateExitCodes(path, def);
+    validateProductSection(spec, path, def);
     const segments = path.split(" ");
     for (let depth = 1; depth < segments.length; depth += 1) {
       const groupPath = segments.slice(0, depth).join(" ");
@@ -373,7 +412,7 @@ function buildMountTree(spec: EngineSpec): MountNode {
         );
       }
     }
-    insertMount(root, path, def);
+    insertMount(root, path, def, productOf(spec, def)?.docsBaseUrl);
   }
   return root;
 }
@@ -574,6 +613,9 @@ export function buildEngine(
 
 function sniffFormat(argv: readonly string[], runtime: Runtime): Format {
   for (const [index, input] of argv.entries()) {
+    if (input === "--") {
+      break;
+    }
     if (input === "--json" || input === "--format=json") {
       return "json";
     }
@@ -644,6 +686,7 @@ async function executeRun(
   const format = sniffFormat(argv, runtime);
   const state: RunState = {
     commandId: "",
+    docsBaseUrl: undefined,
     prefix: [],
     format,
     logLevel: "info",
@@ -671,7 +714,10 @@ async function executeRun(
   };
   const app = buildApplication<EngineRunContext>(root, {
     name: spec.name,
-    scanner: { caseStyle: "allow-kebab-for-camel" },
+    scanner: {
+      caseStyle: "allow-kebab-for-camel",
+      allowArgumentEscapeSequence: true,
+    },
     localization: { text: capturingText(state) },
   });
   await runStricli(app, [...argv], {
@@ -719,19 +765,25 @@ function settleUnhandled(
     state.format = "human";
   }
   const usage = usageErrorCode(raw) !== undefined;
-  const summary =
-    state.usageErrorText ??
-    state.internalErrorText ??
-    state.stricliStderr.trim();
+  const captured = usage
+    ? state.stricliStderr.trim()
+    : (state.usageErrorText ??
+      state.internalErrorText ??
+      state.stricliStderr.trim());
+  const full =
+    captured.length > 0 ? captured : "The command failed unexpectedly";
+  const summary = firstLine(full);
+  const remainder = full.slice(full.indexOf("\n") + 1).trim();
   const envelope: ErroredEnvelope = {
     ok: false,
     commandId: segments.join("."),
     error: {
       code: usageErrorCode(raw) ?? "CLI.INTERNAL_ERROR",
       severity: "error",
-      summary: firstLine(
-        summary.length > 0 ? summary : "The command failed unexpectedly",
-      ),
+      summary,
+      ...(usage && full.includes("\n") && remainder.length > 0
+        ? { why: remainder }
+        : {}),
     },
     diagnostics: [],
     nextActions: [],
@@ -820,12 +872,19 @@ async function executeMounted(
 ): Promise<void> {
   const state = invocation.state;
   state.commandId = entry.id;
+  state.docsBaseUrl = entry.docsBaseUrl;
   if (entry.def.kind === "server-command") {
     await executeServer(invocation, entry, rawFlags);
     return;
   }
-  applySharedFlags(state, rawFlags as SharedFlags, invocation.runtime);
-  const needsOutcome = await checkNeeds(entry.def, invocation);
+  let needsOutcome: NeedsOutcome;
+  try {
+    applySharedFlags(state, rawFlags as SharedFlags, invocation.runtime);
+    needsOutcome = await checkNeeds(entry.def, invocation);
+  } catch (cause) {
+    settleBug(invocation, cause);
+    return;
+  }
   if (needsOutcome.kind === "errored") {
     settleErrored(invocation, needsOutcome.error, needsOutcome.diagnostics);
     return;
@@ -866,7 +925,7 @@ async function executeMounted(
     const result = await (handler as LooseHandler)(args, ctx);
     state.resolved = true;
     if (result.ok) {
-      settleCompleted(invocation, result.value);
+      settleCompleted(invocation, entry.def, result.value);
     } else {
       settleErrored(invocation, result.failure);
     }
@@ -886,7 +945,13 @@ async function executeServer(
 ): Promise<void> {
   const state = invocation.state;
   state.format = "human";
-  const needsOutcome = await checkNeeds(entry.def, invocation);
+  let needsOutcome: NeedsOutcome;
+  try {
+    needsOutcome = await checkNeeds(entry.def, invocation);
+  } catch (cause) {
+    settleBug(invocation, cause);
+    return;
+  }
   if (needsOutcome.kind === "errored") {
     settleErrored(invocation, needsOutcome.error, needsOutcome.diagnostics);
     return;
@@ -992,7 +1057,23 @@ async function checkNeeds(
     }
   }
   if (needs.credentials === true) {
-    const credentials = await invocation.runtime.getCredentials();
+    let credentials: Credentials | undefined;
+    try {
+      credentials = await invocation.runtime.getCredentials();
+    } catch (cause) {
+      return needsErrored(
+        new CliStructuredError(
+          "CLI.CREDENTIALS_UNREADABLE",
+          "The stored credentials could not be read.",
+          {
+            why: firstLine(
+              cause instanceof Error ? cause.message : String(cause),
+            ),
+            fix: "Sign in again to replace the stored credentials, then run the command again.",
+          },
+        ),
+      );
+    }
     if (credentials === undefined) {
       return needsErrored(
         new CliStructuredError(
@@ -1464,12 +1545,25 @@ function eventDisplaySeverity(event: EngineEvent): Severity | undefined {
   return "info";
 }
 
+/** report() after the handler resolved is a bug (InternalError). While
+ *  the run is still settling it becomes the run's bug settlement; after
+ *  full settlement it can only be noted on stderr — throwing here would
+ *  surface as an unhandled rejection in a detached async context. */
+function reportAfterResolution(invocation: Invocation): void {
+  const message =
+    "@prisma/cli-engine: report() was called after the handler resolved";
+  if (invocation.state.settledExitCode === undefined) {
+    settleBug(invocation, new Error(message));
+    return;
+  }
+  invocation.runtime.stderr.write(`✖ [CLI.INTERNAL_ERROR] ${message}\n`);
+}
+
 function reportEvent(invocation: Invocation, event: EngineEvent): void {
   const state = invocation.state;
   if (state.resolved) {
-    throw new Error(
-      "@prisma/cli-engine: report() was called after the handler resolved",
-    );
+    reportAfterResolution(invocation);
+    return;
   }
   invocation.hooks.onEvent?.(event);
   if (event.kind === "remediation") {
@@ -1551,8 +1645,37 @@ function emitFrame(invocation: Invocation, frame: StreamEvent): void {
 // Settlement + rendering
 // —————————————————————————————————————————————————————————————————————
 
+/** Populates docsUrl from the owning product's docsBaseUrl (base + code)
+ *  when the diagnostic does not carry its own — a per-raise docsUrl wins. */
+function withDocsUrl(state: RunState, diagnostic: Diagnostic): Diagnostic {
+  if (diagnostic.docsUrl !== undefined || state.docsBaseUrl === undefined) {
+    return diagnostic;
+  }
+  return { ...diagnostic, docsUrl: `${state.docsBaseUrl}${diagnostic.code}` };
+}
+
+function undocumentedExitCode(
+  def: AnyCommand,
+  exitCode: number,
+): Error | undefined {
+  if (exitCode === 0) {
+    return undefined;
+  }
+  const documented =
+    def.kind === "result-command" && def.exitCodes !== undefined
+      ? Object.keys(def.exitCodes).map(Number)
+      : [];
+  if (documented.includes(exitCode)) {
+    return undefined;
+  }
+  return new Error(
+    `@prisma/cli-engine: the handler completed with exit code ${exitCode}, which is not 0 or one of the command's documented exit codes`,
+  );
+}
+
 function settleCompleted(
   invocation: Invocation,
+  def: AnyCommand,
   presented: PresentedResult<unknown>,
 ): void {
   if (
@@ -1568,6 +1691,11 @@ function settleCompleted(
     );
     return;
   }
+  const violation = undocumentedExitCode(def, presented.exitCode);
+  if (violation !== undefined) {
+    settleBug(invocation, violation);
+    return;
+  }
   const state = invocation.state;
   invocation.hooks.onPresented?.(presented);
   state.settledExitCode = presented.exitCode;
@@ -1580,7 +1708,9 @@ function settleCompleted(
           ? presented.data
           : presented.presentation.json,
       exitCode: presented.exitCode,
-      diagnostics: presented.diagnostics,
+      diagnostics: presented.diagnostics.map((diagnostic) =>
+        withDocsUrl(state, diagnostic),
+      ),
       nextActions: presented.presentation.next ?? [],
     };
     emitFrame(invocation, {
@@ -1612,7 +1742,7 @@ function renderCompletedHuman(
     runtime.stdout.write(`${renderNextAction(action)}\n`);
   }
   for (const diagnostic of presented.diagnostics) {
-    writeDiagnostic(runtime.stderr, diagnostic);
+    writeDiagnostic(runtime.stderr, withDocsUrl(state, diagnostic));
   }
 }
 
@@ -1728,8 +1858,15 @@ function settleBug(invocation: Invocation, cause: unknown): void {
   });
 }
 
-function emitErrored(invocation: Invocation, envelope: ErroredEnvelope): void {
+function emitErrored(invocation: Invocation, raw: ErroredEnvelope): void {
   const state = invocation.state;
+  const envelope: ErroredEnvelope = {
+    ...raw,
+    error: withDocsUrl(state, raw.error),
+    diagnostics: raw.diagnostics.map((diagnostic) =>
+      withDocsUrl(state, diagnostic),
+    ),
+  };
   if (state.format === "json") {
     emitFrame(invocation, {
       kind: "result",
@@ -1767,7 +1904,9 @@ function renderBlock(block: Block, write: (line: string) => void): void {
       return;
     case "fields":
       for (const row of block.rows) {
-        write(`${row.label}: ${row.value}`);
+        write(
+          `${row.label}: ${row.sensitive === true ? "********" : row.value}`,
+        );
       }
       return;
     case "table":
@@ -1828,6 +1967,9 @@ function writeDiagnostic(
   }
   if (diagnostic.fix !== undefined) {
     stream.write(`  fix: ${diagnostic.fix}\n`);
+  }
+  if (diagnostic.docsUrl !== undefined) {
+    stream.write(`  docs: ${diagnostic.docsUrl}\n`);
   }
 }
 

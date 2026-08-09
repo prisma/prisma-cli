@@ -72,7 +72,6 @@ export class CliStructuredError extends Error {
     this.name = "CliStructuredError";
     this.code = code;
     this.severity = options?.severity ?? "error";
-    const fix = options?.fix === options?.why ? undefined : options?.fix;
     const where = options?.where
       ? {
           ...ifDefined("path", options.where.path),
@@ -81,7 +80,7 @@ export class CliStructuredError extends Error {
       : undefined;
     Object.assign(this, {
       ...ifDefined("why", options?.why),
-      ...ifDefined("fix", fix),
+      ...ifDefined("fix", options?.fix),
       ...ifDefined("where", where),
       ...ifDefined("meta", options?.meta),
       ...ifDefined("docsUrl", options?.docsUrl),

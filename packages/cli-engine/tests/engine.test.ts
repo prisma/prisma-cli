@@ -1,5 +1,4 @@
 import * as engine from "@prisma/cli-engine";
-import { describe, expect, test } from "vitest";
 import {
   createCli,
   createTestCli,
@@ -9,7 +8,8 @@ import {
   defineSessionCommand,
   flag,
   positional,
-} from "../src/index";
+} from "@prisma/cli-engine";
+import { describe, expect, test } from "vitest";
 
 describe("main export", () => {
   test("exposes exactly the definition-surface runtime values", () => {

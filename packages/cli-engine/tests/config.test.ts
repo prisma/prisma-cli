@@ -6,7 +6,6 @@
  */
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, test } from "vitest";
 import {
   type ConfigSection,
   createCli,
@@ -18,8 +17,9 @@ import {
   PRISMA_CONFIG_VERSION,
   type Runtime,
   type SectionValidation,
-} from "../src/index";
-import { ok } from "../src/protocol";
+} from "@prisma/cli-engine";
+import { ok } from "@prisma/cli-engine/protocol";
+import { describe, expect, test } from "vitest";
 
 const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -75,6 +75,26 @@ describe("loadConfig", () => {
             why: "A classic Prisma 7 config file uses the same name, and the CLI never guesses at unmarked files — a silently misread config is worse than a hard stop.",
             fix: "Wrap the exported config object in defineConfig from @prisma/cli-engine and export the result as the default export.",
             where: { path: join(FIXTURES, "unmarked", "prisma.config.ts") },
+          },
+        },
+      ],
+    });
+  });
+
+  test("a marker version other than the supported one fails with a file-level diagnostic", async () => {
+    expect(await loadConfig(join(FIXTURES, "wrong-version"))).toEqual({
+      sections: {},
+      diagnostics: [
+        {
+          section: null,
+          diagnostic: {
+            code: "CLI.CONFIG_INVALID",
+            severity: "error",
+            summary: `prisma.config.ts declares config version 2, but this CLI supports only version ${PRISMA_CONFIG_VERSION}.`,
+            fix: "Regenerate the config with a defineConfig matching this CLI, or update the CLI to a version that supports the declared config version.",
+            where: {
+              path: join(FIXTURES, "wrong-version", "prisma.config.ts"),
+            },
           },
         },
       ],
