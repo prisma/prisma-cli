@@ -15,7 +15,7 @@ Branch `s1-engine-vertical` (off `cli-engine-requirements`, the living decision-
 - D2 done (0df7a10): full v8 type surface in `src/index.ts` + permanent type-test suite from the review record; stale-`@ts-expect-error` fails the package test run.
 - D3 done (78383c6): execution engine on exact-pinned `@stricli/core@1.3.0` (fully internal, fake process injected); parse → needs → context → handler → `ctx.present` (active-format-only materialization) → envelope → exit code; formats/log-levels; StreamEvent framing; real `createTestCli` harness.
 - D4 done (a6b0a0b): prompts (defaults + `--yes`, consent undefaultable), needs.interaction, full event vocabulary + rendering, requireDependency, session/server settlement, signal exit codes 130/143/3.
-- D5: config loader (defineConfig marker, Prisma 7 fail-early diagnostic, needs.config → ctx.config). Check `git log` — if a commit like `feat(cli-engine): config loader…` exists, D5 landed; read the commit message and the loader tests for its hand-off details. If absent, re-dispatch D5 per the dispatch plan.
+- D5 done (6c1e845): config loader. cwd-only discovery of `prisma.config.ts` (test-pinned; the draft is silent on walking up), plain dynamic `import()` evaluation (no new deps; the bin must run under a TS-capable runtime like tsx for user config evaluation), `defineConfig` stamps `$prismaConfig: 1` (exported as `PRISMA_CONFIG_VERSION`), Prisma 7 fail-early diagnostic pinned as `CLI.CONFIG_MISSING_MARKER` (plus `CLI.CONFIG_UNREADABLE`, `CLI.CONFIG_INVALID`); `needs.config` validation wired in `checkNeeds`, `ctx.config` carries the validated section value; validator throw settles as `CLI.INTERNAL_ERROR` exit 1 with the handler proven not to run. `loadConfig(cwd)` and `defineConfig` sit on the main entry pending S3's naming ruling. D6 wiring: `config: await loadConfig(process.cwd())` in the real Runtime.
 - D6 NOT started: `prisma-v8` bin + `auth whoami` port + slice e2e + parity-divergence list. Full dispatch spec is in `../../plans/s1-engine-vertical.md` § D6. Grounding: the whoami vertical is `runAuthWhoAmI` (packages/cli/src/controllers/auth.ts:114) over `createAuthUseCases().whoami` (packages/cli/src/use-cases/auth.ts), presenters in packages/cli/src/presenters/auth.ts, token storage in packages/cli/src/adapters/token-storage.ts.
 
 Verify state with: `pnpm --filter @prisma/cli-engine test` (all green at handover: 93 tests after D4), root `pnpm lint` (exit 0), `pnpm --recursive exec tsc --noEmit` (exit 0).
@@ -25,8 +25,10 @@ Verify state with: `pnpm --filter @prisma/cli-engine test` (all green at handove
 1. D3 interpretation: in human non-quiet mode the engine renders human Blocks only; the materialized `stdout` presentation lines are written only under `--quiet` (they would duplicate the blocks). The draft honors materialization exactly; the rendering-rule reading is unruled. Revisit during D6 whoami parity.
 2. D4 interpretation: remediation events render as nextActions at settlement in human mode (not live in the transcript); json streams them live as frames.
 3. Diagnostic severity stays `error|warn|info`; the trim to two awaits the ADR 239 amendment (project slice S4).
+4. D5: a file-level config diagnostic (unmarked/unreadable `prisma.config.ts`) fails EVERY command, including ones with no config need — the draft's `LoadedConfig` comment says so and won over the 1a foundation design, which says the opposite. Needs an operator ruling before S3.
+5. D5: diagnostics returned on a SUCCESSFUL `SectionValidation` (warnings) are currently dropped; the draft doesn't say where they go.
 
-Put all three on the slice PR's parity-divergence list for Will's review.
+Put all of these on the slice PR's parity-divergence list for Will's review.
 
 ## Process rules (non-negotiable)
 
