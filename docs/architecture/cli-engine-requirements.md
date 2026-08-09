@@ -146,8 +146,10 @@ product: each test lives where its failure would be introduced.
 ### R9 — Static tree, lazy guts
 
 Command definitions are cheap and load at startup; heavy dependencies load
-inside handlers at execution time. No dynamic discovery, no runtime tree
-construction.
+inside handlers at execution time. No dynamic or discovery-driven tree
+construction: each engine instance builds its tree once at startup from
+statically defined structure — command definitions are direct function
+references, and nothing about the tree is discovered at run time.
 
 **Why:** a statically known tree is simpler to reason about, renders complete
 help without executing product code, and fails at build time when it is wrong.
