@@ -36,8 +36,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # turbo builds workspace:* dependencies (^build) before each
+      # package's tsc run, so imports of built dist output resolve.
       - name: Type check
-        run: pnpm --recursive exec tsc --noEmit
+        run: pnpm typecheck
 
   lint:
     name: Lint
@@ -77,5 +79,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # turbo builds workspace:* dependencies (^build) before each
+      # package's tests, so imports of built dist output resolve.
       - name: Test
-        run: pnpm --recursive test
+        run: pnpm test

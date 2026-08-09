@@ -29,7 +29,6 @@
   "license": "Apache-2.0",
   "scripts": {
     "build": "tsdown",
-    "prepare": "pnpm run build",
     "typecheck": "tsc --noEmit",
     "test": "pnpm run build && pnpm run typecheck && vitest run"
   },

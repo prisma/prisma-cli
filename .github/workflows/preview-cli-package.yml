@@ -44,6 +44,12 @@ jobs:
             --sha '${{ github.event.pull_request.head.sha }}' \
             --pr-number '${{ github.event.pull_request.number }}' >> "$GITHUB_OUTPUT"
 
+      # Build every workspace package up front via the turbo graph so
+      # workspace:* dependencies (the CLI's @prisma/cli-engine) have
+      # their dist output before the test and build steps below.
+      - name: Build workspace packages
+        run: pnpm build
+
       - name: Run focused CLI tests
         id: cli_tests
         run: pnpm --filter @prisma/cli test

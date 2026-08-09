@@ -38,6 +38,7 @@
   "scripts": {
     "build": "tsdown",
     "prepack": "pnpm run build",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "devDependencies": {
