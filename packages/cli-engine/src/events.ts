@@ -1,4 +1,4 @@
-import type { NextAction } from "../protocol";
+import type { NextAction } from "./protocol";
 
 /**
  * The commentary severity scale; also the log-level axis. Distinct from

@@ -1,6 +1,6 @@
-import type { CliStructuredError, Result } from "../protocol";
 import type { EngineEvent } from "./events";
 import type { Outcome, Presentations, PresentedResult } from "./presentation";
+import type { CliStructuredError, Result } from "./protocol";
 
 export interface Credentials {
   /** Opaque to the engine; shape owned by the Cloud auth library. */

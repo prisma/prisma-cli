@@ -1,8 +1,8 @@
-import type { CliStructuredError, Result } from "../protocol";
 import type { Args, ArgsSpec, FlagSpec, PositionalSpec } from "./args";
 import type { ConfigSection } from "./config-section";
 import type { CommandContext } from "./context";
 import type { PresentedResult } from "./presentation";
+import type { CliStructuredError, Result } from "./protocol";
 import type { InputStream, OutputStream } from "./streams";
 
 /**

@@ -1,8 +1,8 @@
-import type { Diagnostic } from "../protocol";
 import type { Credentials } from "./context";
 import type { StreamEvent } from "./envelopes";
 import type { EngineEvent } from "./events";
 import type { PresentedResult } from "./presentation";
+import type { Diagnostic } from "./protocol";
 import type { InputStream, OutputStream } from "./streams";
 
 export interface Cli {

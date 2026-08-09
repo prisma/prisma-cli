@@ -3,15 +3,15 @@ import {
   run as runStricli,
   type RouteMap as StricliRouteMap,
 } from "@stricli/core";
-import { type PositionalSpec, positionalRuntime } from "../definition/args";
-import type { CommandFamily, MountedTree } from "../definition/command-family";
-import type { AnyCommand } from "../definition/commands";
-import type { CommandContext } from "../definition/context";
-import type { ErroredEnvelope } from "../definition/envelopes";
-import type { PresentedResult } from "../definition/presentation";
-import type { Cli, Runtime } from "../definition/runtime";
-import type { InputStream } from "../definition/streams";
+import { type PositionalSpec, positionalRuntime } from "../args";
+import type { CommandFamily, MountedTree } from "../command-family";
+import type { AnyCommand } from "../commands";
+import type { CommandContext } from "../context";
+import type { ErroredEnvelope } from "../envelopes";
+import type { PresentedResult } from "../presentation";
 import type { CliStructuredError, Result } from "../protocol";
+import type { Cli, Runtime } from "../runtime";
+import type { InputStream } from "../streams";
 import { makeContext } from "./command-context";
 import { buildCommandTree, type CommandTreeEntry } from "./command-tree";
 import { emitFrame } from "./events";

@@ -1,9 +1,6 @@
-import type { AnyCommand } from "../definition/commands";
-import type {
-  CompletedEnvelope,
-  ErroredEnvelope,
-} from "../definition/envelopes";
-import { PRESENTED, type PresentedResult } from "../definition/presentation";
+import type { AnyCommand } from "../commands";
+import type { CompletedEnvelope, ErroredEnvelope } from "../envelopes";
+import { PRESENTED, type PresentedResult } from "../presentation";
 import { CliStructuredError, type Diagnostic } from "../protocol";
 import { emitFrame } from "./events";
 import { firstLine, type Invocation } from "./invocation";

@@ -1,4 +1,4 @@
-import type { Diagnostic } from "../protocol";
+import type { Diagnostic } from "./protocol";
 
 /**
  * A command family's named slice of prisma.config.ts. The token couples

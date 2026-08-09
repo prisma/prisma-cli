@@ -8,7 +8,6 @@
  * engine-interface-draft.ts (v8).
  */
 
-export { defineConfig, loadConfig } from "../config-loader";
 export {
   type Args,
   type ArgsSpec,
@@ -19,8 +18,8 @@ export {
   POSITIONAL,
   type PositionalSpec,
   positional,
-} from "../definition/args";
-export type { CommandFamily, MountedTree } from "../definition/command-family";
+} from "../args";
+export type { CommandFamily, MountedTree } from "../command-family";
 export {
   type AnyCommand,
   type CommandDefinition,
@@ -33,24 +32,27 @@ export {
   type NeedsSpec,
   type ServerCommandDefinition,
   type SessionCommandDefinition,
-} from "../definition/commands";
+} from "../commands";
+export { defineConfig, loadConfig } from "../config-loader";
 export {
   type ConfigSection,
   defineConfigSection,
   type SectionValidation,
-} from "../definition/config-section";
+} from "../config-section";
 export type {
   CommandContext,
   Credentials,
   PromptSurface,
-} from "../definition/context";
+} from "../context";
 export type {
   CompletedEnvelope,
   ErroredEnvelope,
   StreamEvent,
   StreamMeta,
-} from "../definition/envelopes";
-export type { EngineEvent, LogLevel, Severity } from "../definition/events";
+} from "../envelopes";
+export type { EngineEvent, LogLevel, Severity } from "../events";
+export { createTestCli } from "../execution/harness";
+export { createCli } from "../execution/run";
 export {
   type Block,
   type Format,
@@ -60,7 +62,7 @@ export {
   type PresentedResult,
   type TreeNode,
   type Ui,
-} from "../definition/presentation";
+} from "../presentation";
 export {
   type Cli,
   type HostProcess,
@@ -68,7 +70,5 @@ export {
   PRISMA_CONFIG_VERSION,
   type Runtime,
   type TestCli,
-} from "../definition/runtime";
-export type { InputStream, OutputStream } from "../definition/streams";
-export { createTestCli } from "../execution/harness";
-export { createCli } from "../execution/run";
+} from "../runtime";
+export type { InputStream, OutputStream } from "../streams";

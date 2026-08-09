@@ -1,5 +1,5 @@
-import type { EngineEvent } from "../definition/events";
-import type { Block, PresentedResult } from "../definition/presentation";
+import type { EngineEvent } from "../events";
+import type { Block, PresentedResult } from "../presentation";
 import type { Diagnostic, NextAction } from "../protocol";
 import type { Invocation, RunState } from "./invocation";
 

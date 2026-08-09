@@ -1,10 +1,6 @@
-import {
-  flagRuntime,
-  type PositionalSpec,
-  positionalRuntime,
-} from "../definition/args";
-import type { CommandFamily } from "../definition/command-family";
-import type { AnyCommand } from "../definition/commands";
+import { flagRuntime, type PositionalSpec, positionalRuntime } from "../args";
+import type { CommandFamily } from "../command-family";
+import type { AnyCommand } from "../commands";
 import type { EngineSpec } from "./invocation";
 import { RESERVED_ALIASES, RESERVED_FLAG_NAMES } from "./shared-flags";
 

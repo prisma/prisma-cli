@@ -1,10 +1,10 @@
-import type { CommandContext, Credentials } from "../definition/context";
+import type { CommandContext, Credentials } from "../context";
 import {
   PRESENTED,
   type Presentations,
   type PresentedResult,
   type Ui,
-} from "../definition/presentation";
+} from "../presentation";
 import { type Diagnostic, notOk, okVoid } from "../protocol";
 import { reportEvent } from "./events";
 import type { Invocation, RunState } from "./invocation";

@@ -1,9 +1,9 @@
-import type { CommandFamily, MountedTree } from "../definition/command-family";
-import type { Credentials } from "../definition/context";
-import type { StreamEvent } from "../definition/envelopes";
-import type { EngineEvent } from "../definition/events";
-import type { PresentedResult } from "../definition/presentation";
-import type { Runtime, TestCli } from "../definition/runtime";
+import type { CommandFamily, MountedTree } from "../command-family";
+import type { Credentials } from "../context";
+import type { StreamEvent } from "../envelopes";
+import type { EngineEvent } from "../events";
+import type { PresentedResult } from "../presentation";
+import type { Runtime, TestCli } from "../runtime";
 import { buildEngine } from "./run";
 
 function inputStreamFromString(text: string) {

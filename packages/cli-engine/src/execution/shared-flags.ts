@@ -1,6 +1,6 @@
-import type { LogLevel } from "../definition/events";
-import type { Format } from "../definition/presentation";
-import type { Runtime } from "../definition/runtime";
+import type { LogLevel } from "../events";
+import type { Format } from "../presentation";
+import type { Runtime } from "../runtime";
 import type { RunState } from "./invocation";
 
 /** The engine-injected shared flag family. Commands cannot declare

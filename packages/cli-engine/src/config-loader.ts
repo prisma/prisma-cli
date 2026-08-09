@@ -12,9 +12,9 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { LoadedConfig } from "./definition/runtime";
-import { PRISMA_CONFIG_VERSION } from "./definition/runtime";
 import type { Diagnostic } from "./protocol";
+import type { LoadedConfig } from "./runtime";
+import { PRISMA_CONFIG_VERSION } from "./runtime";
 
 export const CONFIG_FILE_NAME = "prisma.config.ts";
 

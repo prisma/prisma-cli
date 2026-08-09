@@ -20,8 +20,8 @@ import {
   type PositionalRuntimeSpec,
   type PositionalSpec,
   positionalRuntime,
-} from "../definition/args";
-import type { AnyCommand } from "../definition/commands";
+} from "../args";
+import type { AnyCommand } from "../commands";
 import type { CommandTreeEntry, CommandTreeNode } from "./command-tree";
 import type { EngineSpec, Invocation, RunState } from "./invocation";
 import { SHARED_ALIASES, SHARED_FLAG_PARAMETERS } from "./shared-flags";

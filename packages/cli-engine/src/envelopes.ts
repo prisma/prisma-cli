@@ -1,5 +1,5 @@
-import type { Diagnostic, NextAction } from "../protocol";
 import type { EngineEvent } from "./events";
+import type { Diagnostic, NextAction } from "./protocol";
 
 export interface CompletedEnvelope<T = unknown> {
   /**

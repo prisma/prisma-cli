@@ -1,4 +1,4 @@
-import type { Diagnostic, NextAction } from "../protocol";
+import type { Diagnostic, NextAction } from "./protocol";
 
 export type Format = "human" | "json";
 

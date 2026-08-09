@@ -8,9 +8,9 @@
  * always halts in those contexts. Cancellation (EOF at the prompt) is a
  * distinct structured error mapped to exit 3.
  */
-import type { PromptSurface } from "../definition/context";
-import type { InputStream } from "../definition/streams";
+import type { PromptSurface } from "../context";
 import { CliStructuredError } from "../protocol";
+import type { InputStream } from "../streams";
 import type { Invocation, RunState } from "./invocation";
 
 function makeLineReader(

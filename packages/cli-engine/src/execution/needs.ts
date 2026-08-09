@@ -1,13 +1,10 @@
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import type { AnyCommand } from "../definition/commands";
-import type {
-  ConfigSection,
-  SectionValidation,
-} from "../definition/config-section";
-import type { Credentials } from "../definition/context";
-import type { Runtime } from "../definition/runtime";
+import type { AnyCommand } from "../commands";
+import type { ConfigSection, SectionValidation } from "../config-section";
+import type { Credentials } from "../context";
 import { CliStructuredError, type Diagnostic } from "../protocol";
+import type { Runtime } from "../runtime";
 import { SEVERITY_RANK } from "./events";
 import { firstLine, type Invocation } from "./invocation";
 import { withDocsUrl, writeDiagnostic } from "./render";
