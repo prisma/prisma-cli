@@ -25,6 +25,7 @@ import {
   type Block,
   type CommandContext,
   type CompletedEnvelope,
+  type ConfigSection,
   type Credentials,
   type EngineEvent,
   type ErroredEnvelope,
@@ -40,6 +41,7 @@ import {
   type ProductManifest,
   type PromptSurface,
   type Runtime,
+  type SectionValidation,
   type Severity,
   type StreamEvent,
   type TestCli,
@@ -790,12 +792,12 @@ type LooseArgs = {
 
 type LooseHandler = (
   args: LooseArgs,
-  ctx: CommandContext<undefined, number>,
+  ctx: CommandContext<unknown, number>,
 ) => Promise<Result<PresentedResult<unknown>, CliStructuredError>>;
 
 type LooseSessionHandler = (
   args: LooseArgs,
-  ctx: CommandContext<undefined, number>,
+  ctx: CommandContext<unknown, number>,
 ) => Promise<Result<void, CliStructuredError>>;
 
 type LooseServerHandler = (
@@ -806,7 +808,7 @@ type LooseServerHandler = (
     readonly stderr: { write(text: string): void };
     readonly signal: AbortSignal;
     readonly cwd: string;
-    readonly config: undefined;
+    readonly config: unknown;
   },
 ) => Promise<number>;
 
@@ -823,9 +825,13 @@ async function executeMounted(
     return;
   }
   applySharedFlags(state, rawFlags as SharedFlags, invocation.runtime);
-  const needsError = await checkNeeds(entry.def, invocation);
-  if (needsError !== undefined) {
-    settleErrored(invocation, needsError);
+  const needsOutcome = await checkNeeds(entry.def, invocation);
+  if (needsOutcome.kind === "errored") {
+    settleErrored(invocation, needsOutcome.error, needsOutcome.diagnostics);
+    return;
+  }
+  if (needsOutcome.kind === "bug") {
+    settleBug(invocation, needsOutcome.cause);
     return;
   }
   let handler: unknown;
@@ -840,7 +846,7 @@ async function executeMounted(
     flags: productFlags(entry.def, rawFlags),
     positionals: distributePositionals(entry.def, values),
   };
-  const ctx = makeContext(invocation);
+  const ctx = makeContext(invocation, needsOutcome.config);
   if (entry.def.kind === "session-command") {
     try {
       const result = await (handler as LooseSessionHandler)(args, ctx);
@@ -880,9 +886,13 @@ async function executeServer(
 ): Promise<void> {
   const state = invocation.state;
   state.format = "human";
-  const needsError = await checkNeeds(entry.def, invocation);
-  if (needsError !== undefined) {
-    settleErrored(invocation, needsError);
+  const needsOutcome = await checkNeeds(entry.def, invocation);
+  if (needsOutcome.kind === "errored") {
+    settleErrored(invocation, needsOutcome.error, needsOutcome.diagnostics);
+    return;
+  }
+  if (needsOutcome.kind === "bug") {
+    settleBug(invocation, needsOutcome.cause);
     return;
   }
   let handler: unknown;
@@ -902,7 +912,7 @@ async function executeServer(
       stderr: runtime.stderr,
       signal: runtime.signal,
       cwd: runtime.cwd,
-      config: undefined,
+      config: needsOutcome.config,
     });
     state.settledExitCode = exitCode;
   } catch (cause) {
@@ -910,32 +920,73 @@ async function executeServer(
   }
 }
 
+type NeedsOutcome =
+  | { readonly kind: "ok"; readonly config: unknown }
+  | {
+      readonly kind: "errored";
+      readonly error: CliStructuredError;
+      readonly diagnostics: readonly Diagnostic[];
+    }
+  | { readonly kind: "bug"; readonly cause: unknown };
+
+function needsErrored(
+  error: CliStructuredError,
+  diagnostics: readonly Diagnostic[] = [],
+): NeedsOutcome {
+  return { kind: "errored", error, diagnostics };
+}
+
+function structuredErrorFromDiagnostic(
+  diagnostic: Diagnostic,
+): CliStructuredError {
+  return new CliStructuredError(diagnostic.code, diagnostic.summary, {
+    severity: diagnostic.severity,
+    why: diagnostic.why,
+    fix: diagnostic.fix,
+    where: diagnostic.where,
+    meta: diagnostic.meta,
+    docsUrl: diagnostic.docsUrl,
+  });
+}
+
 /** The needs checks the engine enforces before the handler loads:
- *  interaction, dependencies, credentials. Config validation is D5. */
+ *  file-level config problems (which fail every command), interaction,
+ *  dependencies, credentials, and the command's config section. On
+ *  success it carries the validated section value for ctx.config. */
 async function checkNeeds(
   def: AnyCommand,
   invocation: Invocation,
-): Promise<CliStructuredError | undefined> {
+): Promise<NeedsOutcome> {
+  const fileLevel = invocation.runtime.config.diagnostics.filter(
+    (entry) => entry.section === null,
+  );
+  if (fileLevel.length > 0) {
+    return needsErrored(
+      structuredErrorFromDiagnostic(fileLevel[0].diagnostic),
+      fileLevel.slice(1).map((entry) => entry.diagnostic),
+    );
+  }
   const needs = def.needs;
   if (needs === undefined) {
-    return undefined;
+    return { kind: "ok", config: undefined };
   }
   if (needs.interaction === true && !invocation.state.interactive) {
-    return new CliStructuredError(
-      "CLI.INTERACTION_REQUIRED",
-      "This command requires an interactive terminal.",
-      {
-        why: "It prompts for input that cannot be supplied in json, non-interactive, CI, or non-TTY contexts.",
-        fix: "Run it from an interactive terminal, without --json or --no-interactive.",
-      },
+    return needsErrored(
+      new CliStructuredError(
+        "CLI.INTERACTION_REQUIRED",
+        "This command requires an interactive terminal.",
+        {
+          why: "It prompts for input that cannot be supplied in json, non-interactive, CI, or non-TTY contexts.",
+          fix: "Run it from an interactive terminal, without --json or --no-interactive.",
+        },
+      ),
     );
   }
   if (needs.dependencies !== undefined) {
     for (const specifier of needs.dependencies) {
       if (!dependencyResolvable(specifier, invocation.runtime.cwd)) {
-        return missingDependencyError(
-          specifier,
-          invocation.runtime.packageManager,
+        return needsErrored(
+          missingDependencyError(specifier, invocation.runtime.packageManager),
         );
       }
     }
@@ -943,14 +994,54 @@ async function checkNeeds(
   if (needs.credentials === true) {
     const credentials = await invocation.runtime.getCredentials();
     if (credentials === undefined) {
-      return new CliStructuredError(
-        "CLI.CREDENTIALS_REQUIRED",
-        "You must be signed in to run this command.",
-        { fix: "Sign in, then run the command again." },
+      return needsErrored(
+        new CliStructuredError(
+          "CLI.CREDENTIALS_REQUIRED",
+          "You must be signed in to run this command.",
+          { fix: "Sign in, then run the command again." },
+        ),
       );
     }
   }
-  return undefined;
+  if (needs.config !== undefined) {
+    return validateConfigSection(needs.config, invocation);
+  }
+  return { kind: "ok", config: undefined };
+}
+
+/** Validates the command's needed config section (R10). The validator
+ *  owns absence (it receives undefined when the section is missing) and
+ *  never throws — a throw is an engine-boundary bug, settled as one. */
+function validateConfigSection(
+  section: ConfigSection<unknown>,
+  invocation: Invocation,
+): NeedsOutcome {
+  const raw = invocation.runtime.config.sections[section.name];
+  let validation: SectionValidation<unknown>;
+  try {
+    validation = section.validate(raw);
+  } catch (cause) {
+    return {
+      kind: "bug",
+      cause: new Error(
+        `@prisma/cli-engine: the '${section.name}' config section validator threw instead of returning diagnostics (a validator never throws)`,
+        { cause },
+      ),
+    };
+  }
+  if (!validation.ok) {
+    return needsErrored(
+      new CliStructuredError(
+        "CLI.CONFIG_INVALID",
+        `The '${section.name}' section of prisma.config.ts is invalid.`,
+        {
+          fix: "Fix the reported problems in that section, then run the command again.",
+        },
+      ),
+      validation.diagnostics,
+    );
+  }
+  return { kind: "ok", config: validation.value };
 }
 
 // —————————————————————————————————————————————————————————————————————
@@ -1059,7 +1150,8 @@ function makeUi(colorEnabled: boolean): Ui {
 
 function makeContext(
   invocation: Invocation,
-): CommandContext<undefined, number> {
+  config: unknown,
+): CommandContext<unknown, number> {
   const state = invocation.state;
   const ui = makeUi(state.colorEnabled);
   const present = <T>(
@@ -1089,8 +1181,8 @@ function makeContext(
     });
   };
   return {
-    config: undefined,
-    present: present as CommandContext<undefined, number>["present"],
+    config,
+    present: present as CommandContext<unknown, number>["present"],
     getCredentials: (): Promise<Credentials | undefined> =>
       invocation.runtime.getCredentials(),
     report: (event) => reportEvent(invocation, event),
@@ -1532,6 +1624,7 @@ function diagnosticOf(error: CliStructuredError): Diagnostic {
 function settleErrored(
   invocation: Invocation,
   error: CliStructuredError,
+  diagnostics: readonly Diagnostic[] = [],
 ): void {
   const state = invocation.state;
   state.settledExitCode = error.code === "CLI.PROMPT_CANCELLED" ? 3 : 2;
@@ -1539,7 +1632,7 @@ function settleErrored(
     ok: false,
     commandId: state.commandId,
     error: diagnosticOf(error),
-    diagnostics: [],
+    diagnostics,
     nextActions: [...state.remediations],
   });
 }

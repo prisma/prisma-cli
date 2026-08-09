@@ -17,13 +17,16 @@ describe("main export", () => {
       "FLAG",
       "POSITIONAL",
       "PRESENTED",
+      "PRISMA_CONFIG_VERSION",
       "createCli",
       "createTestCli",
       "defineCommand",
+      "defineConfig",
       "defineConfigSection",
       "defineServerCommand",
       "defineSessionCommand",
       "flag",
+      "loadConfig",
       "positional",
     ]);
   });

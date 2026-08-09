@@ -13,6 +13,7 @@ import type {
   NextAction,
   Result,
 } from "@prisma/cli-engine/protocol";
+import { loadConfigImpl, stampConfigMarker } from "./config-loader";
 import { buildEngine, createTestCliImpl } from "./execution";
 
 /**
@@ -890,6 +891,33 @@ export interface LoadedConfig {
     readonly section: string | null;
     readonly diagnostic: Diagnostic;
   }>;
+}
+
+/**
+ * The config contract version defineConfig writes as the structural
+ * `$prismaConfig` marker; the loader checks it before interpreting
+ * anything (R10).
+ */
+export const PRISMA_CONFIG_VERSION = 1;
+
+/**
+ * Stamps the version marker on a prisma.config.ts export. Top-level keys
+ * are the product config sections. Never throws — bad section values are
+ * the section validator's problem, not defineConfig's.
+ */
+export function defineConfig<T extends Record<string, unknown>>(
+  config: T,
+): T & { readonly $prismaConfig: number } {
+  return stampConfigMarker(config);
+}
+
+/**
+ * The real-disk loader behind Runtime.config: reads prisma.config.ts
+ * from cwd (cwd only — no walking up) and produces LoadedConfig. The
+ * bin builds Runtime.config with this; tests hand in fixtures instead.
+ */
+export function loadConfig(cwd: string): Promise<LoadedConfig> {
+  return loadConfigImpl(cwd);
 }
 
 // —————————————————————————————————————————————————————————————————————
