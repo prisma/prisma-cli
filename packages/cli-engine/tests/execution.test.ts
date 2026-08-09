@@ -8,6 +8,7 @@ import {
   createCli,
   createTestCli,
   defineCommand,
+  defineConfigSection,
   type EngineEvent,
   flag,
   positional,
@@ -462,6 +463,100 @@ describe("needs preconditions", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("✔ Signed in (tok-123)\n");
   });
+
+  function demanding(dependency: string) {
+    return defineCommand({
+      help: { summary: "Has every need" },
+      needs: {
+        interaction: true,
+        dependencies: [dependency],
+        credentials: true,
+        config: defineConfigSection({
+          name: "toy",
+          validate: () => ({ ok: true, value: null, diagnostics: [] }),
+        }),
+      },
+      handler: async (_args, ctx) =>
+        ok(ctx.present({ data: null }, { human: () => [] })),
+    });
+  }
+
+  async function runDemanding(opts: {
+    readonly dependency: string;
+    readonly interactive: boolean;
+    readonly credentials?: { token: string };
+  }): Promise<{ exitCode: number; stderr: string }> {
+    const cli = createCli({
+      name: "t",
+      version: "0.0.0",
+      products: [],
+      groups: {},
+      commands: { demanding: demanding(opts.dependency) },
+    });
+    let stderrText = "";
+    const runtime: Runtime = {
+      stdout: { write: () => {} },
+      stderr: {
+        write: (text) => {
+          stderrText += text;
+        },
+      },
+      stdin: {
+        async *[Symbol.asyncIterator]() {},
+      },
+      cwd: process.cwd(),
+      env: {},
+      isTty: { stdin: opts.interactive, stdout: false, stderr: false },
+      signal: new AbortController().signal,
+      config: {
+        sections: {},
+        diagnostics: [
+          {
+            section: null,
+            diagnostic: {
+              code: "CONFIG.UNREADABLE",
+              severity: "error",
+              summary: "The config file could not be read",
+            },
+          },
+        ],
+      },
+      getCredentials: async () => opts.credentials,
+      packageManager: "unknown",
+    };
+    const exitCode = await cli.run(["demanding", "--format", "human"], runtime);
+    return { exitCode, stderr: stderrText };
+  }
+
+  test("needs are evaluated in a pinned order: interaction, then dependencies, then credentials, then file-level config", async () => {
+    const missing = "@prisma/definitely-not-installed";
+
+    const nothingMet = await runDemanding({
+      dependency: missing,
+      interactive: false,
+    });
+    expect(nothingMet.exitCode).toBe(2);
+    expect(nothingMet.stderr).toContain("CLI.INTERACTION_REQUIRED");
+
+    const interactionMet = await runDemanding({
+      dependency: missing,
+      interactive: true,
+    });
+    expect(interactionMet.stderr).toContain("CLI.MISSING_DEPENDENCY");
+
+    const dependenciesMet = await runDemanding({
+      dependency: "typescript",
+      interactive: true,
+    });
+    expect(dependenciesMet.stderr).toContain("CLI.CREDENTIALS_REQUIRED");
+
+    const credentialsMet = await runDemanding({
+      dependency: "typescript",
+      interactive: true,
+      credentials: { token: "tok" },
+    });
+    expect(credentialsMet.stderr).toContain("CONFIG.UNREADABLE");
+  });
 });
 
 describe("undocumented completion exit codes", () => {
@@ -554,7 +649,7 @@ describe("sensitive field rows", () => {
 });
 
 describe("report() after the handler resolved", () => {
-  test("a detached report after settlement is noted, not thrown", async () => {
+  test("a detached report after settlement is noted on stderr, not thrown", async () => {
     let smuggled: ((event: EngineEvent) => void) | undefined;
     const leaky = defineCommand({
       help: { summary: "Leaks its report function" },
@@ -563,14 +658,42 @@ describe("report() after the handler resolved", () => {
         return ok(ctx.present({ data: null }, { human: () => [] }));
       },
     });
-    const cli = createTestCli({ commands: { leaky }, now: EPOCH });
-    const result = await cli.run(["leaky", "--format", "human"]);
+    const cli = createCli({
+      name: "t",
+      version: "0.0.0",
+      products: [],
+      groups: {},
+      commands: { leaky },
+    });
+    let stderrText = "";
+    const runtime: Runtime = {
+      stdout: { write: () => {} },
+      stderr: {
+        write: (text) => {
+          stderrText += text;
+        },
+      },
+      stdin: {
+        async *[Symbol.asyncIterator]() {},
+      },
+      cwd: "/",
+      env: {},
+      isTty: { stdin: false, stdout: false, stderr: false },
+      signal: new AbortController().signal,
+      config: { sections: {}, diagnostics: [] },
+      getCredentials: async () => undefined,
+      packageManager: "unknown",
+    };
+    const exitCode = await cli.run(["leaky", "--format", "human"], runtime);
 
-    expect(result.exitCode).toBe(0);
+    expect(exitCode).toBe(0);
     expect(smuggled).toBeDefined();
     expect(() =>
       smuggled?.({ kind: "message", severity: "info", text: "late" }),
     ).not.toThrow();
+    expect(stderrText).toContain(
+      "report() was called after the handler resolved",
+    );
   });
 });
 
@@ -725,5 +848,25 @@ describe("parse and route failures", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({ bang: true });
+  });
+});
+
+describe("help examples", () => {
+  test("examples get the CLI name: {bin} is substituted, plain examples are prefixed", async () => {
+    const exemplified = defineCommand({
+      help: {
+        summary: "Greets someone",
+        examples: ["greet world --loud", "{bin} greet world | cat"],
+      },
+      handler: async (_args, ctx) =>
+        ok(ctx.present({ data: null }, { human: () => [] })),
+    });
+    const cli = createTestCli({ commands: { greet: exemplified }, now: EPOCH });
+    const result = await cli.run(["greet", "--help"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("prisma-test greet world --loud");
+    expect(result.stdout).toContain("prisma-test greet world | cat");
+    expect(result.stdout).not.toContain("{bin}");
   });
 });

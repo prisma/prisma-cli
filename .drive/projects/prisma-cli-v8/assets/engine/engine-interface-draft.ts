@@ -63,8 +63,14 @@
  *
  * FORMATS AND LEVELS. `--format <human|json>`, auto-selected when
  * unspecified (human on a TTY stdout, json otherwise); `--json` is
- * shorthand for `--format json`. In json mode the engine suppresses
- * prompts (they fail structurally) and emits one StreamEvent per line.
+ * shorthand for `--format json`. In json mode the engine emits one
+ * StreamEvent per line. Format selects output shape ONLY (operator
+ * ruling, 2026-08-09): interactivity is detected from the environment
+ * (TTY stdin outside CI) and overridden by
+ * `--interactive`/`--no-interactive`. An interactive json run may
+ * prompt — the prompt UI writes to stderr, so stdout stays a clean
+ * frame stream; a non-interactive prompt with no default fails
+ * structurally.
  * Commentary is filtered by `--log-level <error|warn|info|verbose>`
  * (default info); `--verbose` is shorthand for `--log-level verbose`;
  * `-q/--quiet` for `--log-level error` (operator ruling, 2026-08-09: a
@@ -375,9 +381,11 @@ export interface Credentials {
  * product-specified `default`. Interactively, Enter accepts the default.
  * Under --yes, a prompt WITH a default resolves to it without
  * displaying; a prompt WITHOUT a default cannot be operated and the
- * invocation halts with a structured error (exit 2). In
- * json/non-interactive/CI/non-TTY contexts the same default rule
- * applies. User cancellation (Ctrl-C at the prompt) is a distinct
+ * invocation halts with a structured error (exit 2). In non-interactive
+ * contexts (no TTY stdin, CI, --no-interactive — format never decides
+ * interactivity) the same default rule applies; the prompt UI writes to
+ * stderr, so an interactive json run prompts without touching the
+ * stdout stream. User cancellation (Ctrl-C at the prompt) is a distinct
  * structured error the engine maps to exit 3.
  */
 export interface PromptSurface {
@@ -499,8 +507,10 @@ export interface Args<
 }
 
 // ————————————————————————————————————————————————————————————————————————
-// §6 Command definitions — light at startup (R9), path-free (R12),
-// runtime-discriminated by `kind`. Three modalities at equal rank:
+// §6 Command definitions — path-free (R12), runtime-discriminated by
+// `kind`. Definitions load their handler's import graph at startup;
+// R9's remaining force is that handler bodies defer heavy work to
+// execution time. Three modalities at equal rank:
 // result / session / server.
 // ————————————————————————————————————————————————————————————————————————
 
@@ -510,7 +520,9 @@ export interface HelpSpec {
   /** One line, imperative, shown in listings. */
   readonly summary: string
   readonly description?: string
-  /** Copy-pastable invocations, shown verbatim. */
+  /** Invocations WITHOUT the binary name (operator ruling, 2026-08-09):
+   *  at help render time every `{bin}` is substituted with createCli's
+   *  `name`; an example containing no `{bin}` gets the name prepended. */
   readonly examples?: readonly string[]
 }
 
@@ -533,7 +545,8 @@ export interface NeedsSpec<TConfig> {
   readonly dependencies?: readonly string[]
   /**
    * Fail early (before execution, before side effects) in
-   * json/non-interactive/CI/non-TTY contexts. This is a MECHANICAL
+   * non-interactive contexts (no TTY stdin, CI, or --no-interactive;
+   * format never decides interactivity). This is a MECHANICAL
    * precondition — "an interactive terminal is required" — and
    * deliberately NOT an agent barrier: the client's nature is
    * unverifiable, and a flag claiming to exclude agents would be a

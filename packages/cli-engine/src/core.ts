@@ -259,8 +259,11 @@ export interface Credentials {
 /**
  * §4a Prompts. Every prompt except `consent` may carry a
  * product-specified `default`. Under --yes and in non-interactive
- * contexts a prompt with a default resolves to it; one without a
- * default halts the invocation with a structured error.
+ * contexts (no TTY stdin, CI, --no-interactive — format never decides
+ * interactivity) a prompt with a default resolves to it; one without a
+ * default halts the invocation with a structured error. The prompt UI
+ * writes to stderr, so an interactive json run prompts without touching
+ * the stdout stream.
  */
 export interface PromptSurface {
   readonly confirm: (
@@ -455,8 +458,10 @@ export interface Args<
 }
 
 // —————————————————————————————————————————————————————————————————————
-// §6 Command definitions — light at startup (R9), path-free (R12),
-// runtime-discriminated by `kind`
+// §6 Command definitions — path-free (R12), runtime-discriminated by
+// `kind`. Definitions load their handler's import graph at startup;
+// R9's remaining force is that handler bodies defer heavy work to
+// execution time
 // —————————————————————————————————————————————————————————————————————
 
 /** The help SPI: words only — the engine formats. */
@@ -464,7 +469,11 @@ export interface HelpSpec {
   /** One line, imperative, shown in listings. */
   readonly summary: string;
   readonly description?: string;
-  /** Copy-pastable invocations, shown verbatim. */
+  /**
+   * Invocations WITHOUT the binary name: at help render time every
+   * `{bin}` is substituted with createCli's `name`; an example
+   * containing no `{bin}` gets the name prepended.
+   */
   readonly examples?: readonly string[];
 }
 
@@ -488,7 +497,8 @@ export interface NeedsSpec<TConfig> {
    */
   readonly dependencies?: readonly string[];
   /**
-   * Fail early in json/non-interactive/CI/non-TTY contexts. This is a
+   * Fail early in non-interactive contexts (no TTY stdin, CI, or
+   * --no-interactive; format never decides interactivity). This is a
    * MECHANICAL precondition — "an interactive terminal is required" —
    * and deliberately NOT an agent barrier: the client's nature is
    * unverifiable, and a flag claiming to exclude agents would be a

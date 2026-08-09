@@ -3,8 +3,11 @@
  * product-declared defaults are accepted by --yes and by Enter; a prompt
  * with no default halts under --yes and in non-interactive contexts;
  * consent is structurally undefaultable and always halts there;
- * cancellation maps to exit 3. Plus needs.interaction, the mechanical
- * interactive-terminal precondition.
+ * cancellation maps to exit 3. Format and interactivity are independent
+ * axes (operator ruling, 2026-08-09): json selects output shape only,
+ * interactivity comes from TTY-stdin detection overridden by
+ * --interactive/--no-interactive. Plus needs.interaction, the
+ * mechanical interactive-terminal precondition.
  */
 import {
   type Block,
@@ -102,7 +105,7 @@ describe("prompt defaults", () => {
     expect(result.presented?.data).toEqual({ answer: true });
   });
 
-  test("json mode resolves a defaulted prompt to its default", async () => {
+  test("a non-TTY json run resolves a defaulted prompt to its default", async () => {
     const result = await cliWith(confirmDefaultTrue).run(["probe", "--json"]);
 
     const last = result.json[result.json.length - 1];
@@ -142,7 +145,7 @@ describe("prompts with no default halt", () => {
     });
   });
 
-  test("a non-interactive context halts with exit 2", async () => {
+  test("human format with --no-interactive halts with exit 2", async () => {
     const result = await cliWith(confirmNoDefault).run(
       ["probe", "--no-interactive", "--format", "human"],
       INTERACTIVE,
@@ -153,7 +156,7 @@ describe("prompts with no default halt", () => {
     expect(result.stderr).toContain("not interactive");
   });
 
-  test("json mode halts a prompt with no default", async () => {
+  test("json format with a non-TTY stdin halts a prompt with no default", async () => {
     const result = await cliWith(confirmNoDefault).run(["probe", "--json"]);
 
     expect(result.exitCode).toBe(2);
@@ -161,6 +164,36 @@ describe("prompts with no default halt", () => {
     expect(
       last.kind === "result" && !last.envelope.ok && last.envelope.error.code,
     ).toBe("CLI.PROMPT_REQUIRED");
+  });
+});
+
+describe("format and interactivity are independent axes", () => {
+  test("a TTY stdin keeps a json run interactive: the prompt is asked", async () => {
+    const result = await cliWith(confirmNoDefault).run(["probe", "--json"], {
+      isTty: { stdin: true },
+      stdin: "y\n",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual({ answer: true });
+    expect(result.stderr).toBe("? Proceed? (y/n) ");
+  });
+
+  test("--interactive switches a non-TTY json run back on: prompt UI on stderr, stdout stays single-line frames", async () => {
+    const result = await cliWith(confirmNoDefault).run(
+      ["probe", "--json", "--interactive"],
+      { stdin: "y\n" },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual({ answer: true });
+    expect(result.stderr).toBe("? Proceed? (y/n) ");
+    const lines = result.stdout.trim().split("\n");
+    for (const line of lines) {
+      expect(() => JSON.parse(line)).not.toThrow();
+    }
+    const last = result.json[result.json.length - 1];
+    expect(last.kind === "result" && last.envelope.ok).toBe(true);
   });
 });
 
@@ -311,20 +344,13 @@ describe("the input stream and the script", () => {
   });
 
   test("prompting past the scripted answers fails the run as a bug", async () => {
-    const result = await cliWith(confirmNoDefault).run(["probe", "--json"], {
-      isTty: { stdin: true },
-      answers: [],
-    });
-
-    // json mode is non-interactive, so force the interactive path instead.
-    const interactive = await cliWith(confirmNoDefault).run(["probe"], {
+    const result = await cliWith(confirmNoDefault).run(["probe"], {
       ...INTERACTIVE,
       answers: [],
     });
 
-    expect(interactive.exitCode).toBe(1);
-    expect(interactive.stderr).toContain("past the scripted answers");
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("past the scripted answers");
   });
 });
 
@@ -367,8 +393,8 @@ describe("needs.interaction", () => {
       code: "CLI.INTERACTION_REQUIRED",
       severity: "error",
       summary: "This command requires an interactive terminal.",
-      why: "It prompts for input that cannot be supplied in json, non-interactive, CI, or non-TTY contexts.",
-      fix: "Run it from an interactive terminal, without --json or --no-interactive.",
+      why: "It prompts for input that cannot be supplied when the session is not interactive (no TTY stdin, CI, or --no-interactive).",
+      fix: "Run it from an interactive terminal, or pass --interactive.",
     });
   });
 

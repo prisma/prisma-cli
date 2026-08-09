@@ -543,7 +543,40 @@ type EngineRoutingTarget =
   | StricliCommand<EngineRunContext>
   | StricliRouteMap<EngineRunContext>;
 
-function toStricliCommand(entry: MountEntry): EngineRoutingTarget {
+/** Help examples never contain the binary name (operator ruling,
+ *  2026-08-09): `{bin}` is substituted with the CLI name; an example
+ *  without `{bin}` gets the name prepended. */
+function resolveExample(example: string, cliName: string): string {
+  return example.includes("{bin}")
+    ? example.replaceAll("{bin}", cliName)
+    : `${cliName} ${example}`;
+}
+
+function commandDocs(
+  def: AnyCommand,
+  cliName: string,
+): { brief: string; fullDescription?: string } {
+  const examples = (def.help.examples ?? []).map((example) =>
+    resolveExample(example, cliName),
+  );
+  if (examples.length === 0) {
+    return { brief: def.help.summary, fullDescription: def.help.description };
+  }
+  return {
+    brief: def.help.summary,
+    fullDescription: [
+      def.help.description ?? def.help.summary,
+      "",
+      "Examples:",
+      ...examples.map((example) => `  ${example}`),
+    ].join("\n"),
+  };
+}
+
+function toStricliCommand(
+  entry: MountEntry,
+  cliName: string,
+): EngineRoutingTarget {
   const parameters = commandParameters(
     entry.def,
   ) as unknown as TypedCommandParameters<
@@ -564,10 +597,7 @@ function toStricliCommand(entry: MountEntry): EngineRoutingTarget {
       await executeMounted(this.invocation, entry, flags, values);
     },
     parameters,
-    docs: {
-      brief: entry.def.help.summary,
-      fullDescription: entry.def.help.description,
-    },
+    docs: commandDocs(entry.def, cliName),
   });
 }
 
@@ -578,7 +608,7 @@ function buildRoutes(
 ): StricliRouteMap<EngineRunContext> {
   const routes: Record<string, EngineRoutingTarget> = {};
   for (const [name, entry] of node.commands) {
-    routes[name] = toStricliCommand(entry);
+    routes[name] = toStricliCommand(entry, spec.name);
   }
   for (const [name, child] of node.children) {
     const childPath = groupPath === "" ? name : `${groupPath} ${name}`;
@@ -690,7 +720,7 @@ async function executeRun(
     format,
     logLevel: "info",
     yes: false,
-    interactive: defaultInteractive(format, runtime),
+    interactive: defaultInteractive(runtime),
     colorEnabled: false,
     resolved: false,
     settledExitCode: undefined,
@@ -801,20 +831,20 @@ function applySharedFlags(
 ): void {
   state.format = shared.format ?? resolveAutoFormat(shared, runtime);
   state.yes = shared.yes === true;
-  state.interactive =
-    shared.interactive ?? defaultInteractive(state.format, runtime);
+  state.interactive = shared.interactive ?? defaultInteractive(runtime);
   state.logLevel = resolveLogLevel(shared);
   state.colorEnabled =
     shared.color ??
     (runtime.isTty.stdout && runtime.env.NO_COLOR === undefined);
 }
 
-/** Interactive iff human format on a TTY stdin outside CI; --interactive
- *  and --no-interactive override in either direction. */
-function defaultInteractive(format: Format, runtime: Runtime): boolean {
-  return (
-    format === "human" && runtime.isTty.stdin && runtime.env.CI === undefined
-  );
+/** Interactive iff TTY stdin outside CI; --interactive and
+ *  --no-interactive override in either direction. Format never decides
+ *  interactivity (operator ruling, 2026-08-09): an interactive json run
+ *  may prompt — the prompt UI writes to stderr, so stdout stays a clean
+ *  frame stream. */
+function defaultInteractive(runtime: Runtime): boolean {
+  return runtime.isTty.stdin && runtime.env.CI === undefined;
 }
 
 function resolveAutoFormat(shared: SharedFlags, runtime: Runtime): Format {
@@ -1018,8 +1048,8 @@ async function checkNeeds(
         "CLI.INTERACTION_REQUIRED",
         "This command requires an interactive terminal.",
         {
-          why: "It prompts for input that cannot be supplied in json, non-interactive, CI, or non-TTY contexts.",
-          fix: "Run it from an interactive terminal, without --json or --no-interactive.",
+          why: "It prompts for input that cannot be supplied when the session is not interactive (no TTY stdin, CI, or --no-interactive).",
+          fix: "Run it from an interactive terminal, or pass --interactive.",
         },
       ),
     );
@@ -1545,18 +1575,14 @@ function eventDisplaySeverity(event: EngineEvent): Severity | undefined {
   return "info";
 }
 
-/** report() after the handler resolved is a bug (InternalError). While
- *  the run is still settling it becomes the run's bug settlement; after
- *  full settlement it can only be noted on stderr — throwing here would
+/** report() after the handler resolved is a bug (InternalError). The
+ *  run has always settled by the time the resolved flag is observable,
+ *  so the only surface left is a stderr note — throwing here would
  *  surface as an unhandled rejection in a detached async context. */
 function reportAfterResolution(invocation: Invocation): void {
-  const message =
-    "@prisma/cli-engine: report() was called after the handler resolved";
-  if (invocation.state.settledExitCode === undefined) {
-    settleBug(invocation, new Error(message));
-    return;
-  }
-  invocation.runtime.stderr.write(`✖ [CLI.INTERNAL_ERROR] ${message}\n`);
+  invocation.runtime.stderr.write(
+    "✖ [CLI.INTERNAL_ERROR] @prisma/cli-engine: report() was called after the handler resolved\n",
+  );
 }
 
 function reportEvent(invocation: Invocation, event: EngineEvent): void {

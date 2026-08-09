@@ -78,7 +78,7 @@ function presentationsFor(state: AuthStateResult): Presentations {
 export const authWhoamiCommand = defineCommand({
   help: {
     summary: "Show the authenticated user and accessible workspace",
-    examples: ["prisma-v8 auth whoami", "prisma-v8 auth whoami --json"],
+    examples: ["auth whoami", "auth whoami --json"],
   },
   handler: async (_args, ctx) => {
     let state: AuthStateResult;
