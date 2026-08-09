@@ -209,6 +209,30 @@ missing, not to become a second, worse package manager. The structured
 "optional dependency missing" error follows R6 like every other expected
 failure.
 
+
+### R14 — One event vocabulary, engine-defined, with product extensions
+
+Commands report progress as structured events in a vocabulary the engine
+defines: generic, CLI-shaped concepts (steps, warnings, remediation,
+child-process output, endpoints) with consistent fields the engine knows how
+to present in both human and `--json` modes. Products must fill and
+primarily use those common fields. Alongside them, an event may carry
+product-populated extension data: context-dependent structures the product
+defines, versions, and documents as part of its own public API — the engine
+passes them through to `--json` consumers untouched and does not enforce
+them. A structure recurring across commands or products is the signal that
+the engine vocabulary is missing a concept and should adopt it.
+
+**Why:** two event dialects already evolved independently (Composer's
+per-operation event unions; the ORM's progress spans), which is the machine-
+surface version of the presentational drift R5 exists to kill — one
+vocabulary means agents and CI learn one language for the whole CLI. But a
+strictly closed vocabulary would either lose product-specific facts or grow
+by fiat; the extension field keeps machine consumers fully informed, puts
+the compatibility burden where the knowledge is (the product publishes its
+extension interfaces), and gives the vocabulary an evidence-driven growth
+path instead of speculation.
+
 ## The engine's internals
 
 Decided (Will Madden, 2026-08-09): the engine wraps **@stricli/core**,
