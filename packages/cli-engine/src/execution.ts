@@ -222,6 +222,9 @@ interface Invocation {
   readonly hooks: RunHooks;
   readonly now: () => Date;
   readonly state: RunState;
+  /** The engine-owned abort signal behind ctx.signal, fed by the
+   *  runtime's signal subscription. */
+  readonly signal: AbortSignal;
 }
 
 interface EngineRunContext extends StricliBaseContext {
@@ -729,7 +732,22 @@ async function executeRun(
     internalErrorText: undefined,
     stricliStderr: "",
   };
-  const invocation: Invocation = { runtime, hooks, now, state };
+  const controller = new AbortController();
+  let signalDelivered = false;
+  const unsubscribe = runtime.onSignal((signal) => {
+    if (signalDelivered) {
+      runtime.exit(signal === "SIGTERM" ? 143 : 130);
+    }
+    signalDelivered = true;
+    controller.abort(signal);
+  });
+  const invocation: Invocation = {
+    runtime,
+    hooks,
+    now,
+    state,
+    signal: controller.signal,
+  };
   const stricliProcess = {
     stdout: { write: (text: string) => runtime.stdout.write(text) },
     stderr: {
@@ -748,13 +766,17 @@ async function executeRun(
     },
     localization: { text: capturingText(state) },
   });
-  await runStricli(app, [...argv], {
-    process: stricliProcess,
-    forCommand: (info) => {
-      state.prefix = info.prefix;
-      return { process: stricliProcess, invocation };
-    },
-  });
+  try {
+    await runStricli(app, [...argv], {
+      process: stricliProcess,
+      forCommand: (info) => {
+        state.prefix = info.prefix;
+        return { process: stricliProcess, invocation };
+      },
+    });
+  } finally {
+    unsubscribe();
+  }
   if (state.settledExitCode !== undefined) {
     return state.settledExitCode;
   }
@@ -990,7 +1012,7 @@ async function executeServer(
       stdin: runtime.stdin,
       stdout: runtime.stdout,
       stderr: runtime.stderr,
-      signal: runtime.signal,
+      signal: invocation.signal,
       cwd: runtime.cwd,
       config: needsOutcome.config,
     });
@@ -1302,7 +1324,7 @@ function makeContext(
       invocation.runtime.getCredentials(),
     report: (event) => reportEvent(invocation, event),
     prompt: makePromptSurface(invocation),
-    signal: invocation.runtime.signal,
+    signal: invocation.signal,
     cwd: invocation.runtime.cwd,
     requireDependency: async (specifier) =>
       dependencyResolvable(specifier, invocation.runtime.cwd)
@@ -1789,16 +1811,10 @@ function settleErrored(
   });
 }
 
-/** Signal exit codes (R6): 130 SIGINT, 143 SIGTERM, 3 for an
- *  engine-initiated abort (or any other reason). */
+/** Signal exit codes (R6): 130 SIGINT, 143 SIGTERM. The engine's own
+ *  controller only ever aborts with a signal name. */
 function signalExitCode(reason: unknown): number {
-  if (reason === "SIGINT") {
-    return 130;
-  }
-  if (reason === "SIGTERM") {
-    return 143;
-  }
-  return 3;
+  return reason === "SIGTERM" ? 143 : 130;
 }
 
 function isAbortCause(cause: unknown, signal: AbortSignal): boolean {
@@ -1812,7 +1828,7 @@ function isAbortCause(cause: unknown, signal: AbortSignal): boolean {
 }
 
 function settleThrown(invocation: Invocation, cause: unknown): void {
-  if (isAbortCause(cause, invocation.runtime.signal)) {
+  if (isAbortCause(cause, invocation.signal)) {
     settleAborted(invocation);
   } else if (CliStructuredError.is(cause)) {
     settleErrored(invocation, cause);
@@ -1823,7 +1839,7 @@ function settleThrown(invocation: Invocation, cause: unknown): void {
 
 function settleAborted(invocation: Invocation): void {
   const state = invocation.state;
-  state.settledExitCode = signalExitCode(invocation.runtime.signal.reason);
+  state.settledExitCode = signalExitCode(invocation.signal.reason);
   emitErrored(invocation, {
     ok: false,
     commandId: state.commandId,
@@ -2042,21 +2058,13 @@ export function createTestCliImpl(spec: TestCliSpec): TestCli {
       const frames: StreamEvent[] = [];
       const events: EngineEvent[] = [];
       let presented: PresentedResult<unknown> | undefined;
-      const controller = new AbortController();
-      const abort = opts?.abort;
-      if (abort !== undefined) {
-        if (abort.aborted) {
-          controller.abort(abort.reason);
-        } else {
-          abort.addEventListener(
-            "abort",
-            () => controller.abort(abort.reason),
-            {
-              once: true,
-            },
-          );
+      const signalListeners = new Set<(signal: "SIGINT" | "SIGTERM") => void>();
+      const deliverSignal = (reason: unknown): void => {
+        const signal = reason === "SIGTERM" ? "SIGTERM" : "SIGINT";
+        for (const listener of [...signalListeners]) {
+          listener(signal);
         }
-      }
+      };
       const runtime: Runtime = {
         stdout: {
           write: (text) => {
@@ -2076,12 +2084,22 @@ export function createTestCliImpl(spec: TestCliSpec): TestCli {
           stdout: opts?.isTty?.stdout ?? false,
           stderr: opts?.isTty?.stderr ?? false,
         },
-        signal: controller.signal,
+        exit: (code: number): never => {
+          throw new Error(
+            `@prisma/cli-engine: runtime.exit(${code}) reached the test harness`,
+          );
+        },
+        onSignal: (cb) => {
+          signalListeners.add(cb);
+          return () => {
+            signalListeners.delete(cb);
+          };
+        },
         config: { sections: spec.config ?? {}, diagnostics: [] },
         getCredentials: async () => spec.credentials,
         packageManager: spec.packageManager ?? "unknown",
       };
-      const exitCode = await engine.execute(argv, runtime, {
+      const running = engine.execute(argv, runtime, {
         onEvent: (event) => {
           events.push(event);
           opts?.onEvent?.(event);
@@ -2094,6 +2112,17 @@ export function createTestCliImpl(spec: TestCliSpec): TestCli {
         },
         answers: opts?.answers,
       });
+      const abort = opts?.abort;
+      if (abort !== undefined) {
+        if (abort.aborted) {
+          deliverSignal(abort.reason);
+        } else {
+          abort.addEventListener("abort", () => deliverSignal(abort.reason), {
+            once: true,
+          });
+        }
+      }
+      const exitCode = await running;
       return {
         exitCode,
         stdout: stdoutText,

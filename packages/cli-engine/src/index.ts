@@ -119,9 +119,10 @@ export function loadConfig(cwd: string): Promise<LoadedConfig> {
 
 /**
  * The product-repo test harness: the same engine over in-memory streams.
- * The harness hands the engine no real process access at all, which is
- * how "the engine never calls process.exit and writes only to provided
- * streams" is proven by construction.
+ * The harness hands the engine no real process access at all — its exit
+ * proxy throws and its streams are in-memory — which is how "the engine
+ * never touches process globals and writes only to provided streams" is
+ * proven by construction.
  */
 export function createTestCli(spec: {
   readonly products?: readonly ProductManifest[];

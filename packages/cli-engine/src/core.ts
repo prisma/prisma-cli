@@ -232,8 +232,9 @@ export interface CommandContext<
   readonly prompt: PromptSurface;
 
   /**
-   * Fires on Ctrl-C/SIGTERM (engine-owned; second signal force-exits).
-   * Session commands run until it fires.
+   * Fires on Ctrl-C/SIGTERM (engine-owned; a second signal force-exits
+   * through the runtime's exit proxy). Session commands run until it
+   * fires.
    */
   readonly signal: AbortSignal;
 
@@ -838,8 +839,9 @@ export type MountedTree = Readonly<Record<string, AnyCommand>>;
 
 export interface Cli {
   /**
-   * Parse, execute, render, return the exit code. Never calls
-   * process.exit; never touches streams other than the provided ones.
+   * Parse, execute, render, return the exit code. Never touches
+   * process globals — it exits only through the runtime's exit proxy
+   * (second-signal force exit) and writes only to the provided streams.
    */
   run(argv: readonly string[], runtime: Runtime): Promise<number>;
 }
@@ -856,7 +858,20 @@ export interface Runtime {
     readonly stdout: boolean;
     readonly stderr: boolean;
   };
-  readonly signal: AbortSignal;
+  /**
+   * Ends the process. The bin passes process.exit; the engine is the
+   * only caller (second-signal force exit, 130/143).
+   */
+  readonly exit: (code: number) => never;
+  /**
+   * Subscribes to delivered SIGINT/SIGTERM; returns the unsubscribe.
+   * The bin is dumb wiring — the engine owns the whole signal policy:
+   * the first signal aborts ctx.signal and awaits teardown; a second
+   * calls exit(130|143) immediately.
+   */
+  readonly onSignal: (
+    cb: (signal: "SIGINT" | "SIGTERM") => void,
+  ) => () => void;
   /**
    * Loaded config + file-level diagnostics; the shell builds this via
    * the unified loader (R10). Tests hand in fixtures.
@@ -904,7 +919,11 @@ export interface TestCli {
        * past the script fails the test.
        */
       readonly answers?: ReadonlyArray<string | boolean>;
-      /** Abort the run (session tests): fires the context signal. */
+      /**
+       * Abort the run (session tests): its firing is delivered to the
+       * engine as a signal (SIGTERM when the reason is 'SIGTERM',
+       * SIGINT otherwise).
+       */
       readonly abort?: AbortSignal;
       /** Live event tap, for asserting mid-session behavior. */
       readonly onEvent?: (event: EngineEvent) => void;

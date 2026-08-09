@@ -1,14 +1,18 @@
 /**
- * Session and server command lifetimes, signal exit codes (3/130/143),
- * and the optional-dependency story (needs.dependencies +
- * ctx.requireDependency with the engine-phrased install error).
+ * Session and server command lifetimes, the engine-owned signal policy
+ * (first signal aborts and settles 130/143; a second exits immediately
+ * through the runtime's exit proxy), and the optional-dependency story
+ * (needs.dependencies + ctx.requireDependency with the engine-phrased
+ * install error).
  */
 import {
   type Block,
+  createCli,
   createTestCli,
   defineCommand,
   defineServerCommand,
   defineSessionCommand,
+  type Runtime,
 } from "@prisma/cli-engine";
 import {
   CliStructuredError,
@@ -148,10 +152,109 @@ describe("signal exit codes", () => {
     expect(result.exitCode).toBe(143);
   });
 
-  test("an engine-initiated abort maps to exit 3", async () => {
+  test("an abort with no named signal is delivered as SIGINT: exit 130", async () => {
     const result = await runAborted();
 
-    expect(result.exitCode).toBe(3);
+    expect(result.exitCode).toBe(130);
+  });
+});
+
+describe("the engine owns the double-signal policy", () => {
+  function hangingRuntime() {
+    let subscriber: ((signal: "SIGINT" | "SIGTERM") => void) | undefined;
+    const exited: number[] = [];
+    const runtime: Runtime = {
+      stdout: { write: () => {} },
+      stderr: { write: () => {} },
+      stdin: {
+        async *[Symbol.asyncIterator]() {},
+      },
+      cwd: "/",
+      env: {},
+      isTty: { stdin: false, stdout: false, stderr: false },
+      exit: (code: number): never => {
+        exited.push(code);
+        throw new Error(`runtime.exit(${code})`);
+      },
+      onSignal: (cb) => {
+        subscriber = cb;
+        return () => {
+          subscriber = undefined;
+        };
+      },
+      config: { sections: {}, diagnostics: [] },
+      getCredentials: async () => undefined,
+      packageManager: "unknown",
+    };
+    return {
+      runtime,
+      exited,
+      deliver: (signal: "SIGINT" | "SIGTERM") => subscriber?.(signal),
+    };
+  }
+
+  const stuck = defineCommand({
+    help: { summary: "Never resolves, even after the signal" },
+    handler: () => new Promise<never>(() => {}),
+  });
+
+  function stuckCli() {
+    return createCli({
+      name: "t",
+      version: "0.0.0",
+      products: [],
+      groups: {},
+      commands: { stuck },
+    });
+  }
+
+  test("a second SIGINT calls runtime.exit(130) and the run never settles normally", async () => {
+    const { runtime, exited, deliver } = hangingRuntime();
+    const running = stuckCli().run(["stuck"], runtime);
+
+    deliver("SIGINT");
+    expect(exited).toEqual([]);
+    expect(() => deliver("SIGINT")).toThrow("runtime.exit(130)");
+    expect(exited).toEqual([130]);
+
+    const settled = await Promise.race([
+      running.then(() => true),
+      Promise.resolve(false),
+    ]);
+    expect(settled).toBe(false);
+  });
+
+  test("a second SIGTERM exits 143", async () => {
+    const { runtime, exited, deliver } = hangingRuntime();
+    void stuckCli().run(["stuck"], runtime);
+
+    deliver("SIGINT");
+    expect(() => deliver("SIGTERM")).toThrow("runtime.exit(143)");
+    expect(exited).toEqual([143]);
+  });
+
+  test("a first signal on a cooperating handler settles the run with the signal exit code", async () => {
+    const cooperative = defineCommand({
+      help: { summary: "Aborts in-flight work with the signal" },
+      handler: async (_args, ctx) => {
+        await signalDone(ctx.signal);
+        throw ctx.signal.reason;
+      },
+    });
+    const cli = createCli({
+      name: "t",
+      version: "0.0.0",
+      products: [],
+      groups: {},
+      commands: { cooperative },
+    });
+    const { runtime, exited, deliver } = hangingRuntime();
+    const running = cli.run(["cooperative"], runtime);
+
+    deliver("SIGTERM");
+
+    expect(await running).toBe(143);
+    expect(exited).toEqual([]);
   });
 });
 

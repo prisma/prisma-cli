@@ -357,7 +357,10 @@ export const runtimeShape: Runtime = {
   cwd: "/",
   env: { CI: "1" },
   isTty: { stdin: true, stdout: true, stderr: true },
-  signal: new AbortController().signal,
+  exit: (code: number): never => {
+    throw new Error(String(code));
+  },
+  onSignal: () => () => {},
   config: loadedConfig,
   getCredentials: async () => undefined,
   packageManager: "pnpm",

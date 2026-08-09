@@ -5,8 +5,8 @@ import {
   detectPackageManager,
   main,
   makeGetCredentials,
+  makeOnSignal,
   type ProcessLike,
-  wireSignals,
 } from "../src/v8/main";
 
 vi.mock("../src/adapters/token-storage", () => ({
@@ -61,8 +61,17 @@ function makeProcess(overrides?: {
       listeners.set(event, [...existing, listener]);
       return proc;
     },
-    exit(code: number) {
+    off(event: "SIGINT" | "SIGTERM", listener: () => void) {
+      const existing = listeners.get(event) ?? [];
+      listeners.set(
+        event,
+        existing.filter((registered) => registered !== listener),
+      );
+      return proc;
+    },
+    exit(code: number): never {
       exitedWith.push(code);
+      throw new Error(`process.exit(${code})`);
     },
   };
   return proc;
@@ -95,37 +104,30 @@ describe("detectPackageManager", () => {
   });
 });
 
-describe("wireSignals", () => {
-  it("aborts the controller with the signal name on the first signal", () => {
+describe("makeOnSignal", () => {
+  it("forwards process signals to the subscriber, applying no policy of its own", () => {
     const proc = makeProcess();
-    const controller = new AbortController();
-    wireSignals(proc, controller);
-
-    fire(proc, "SIGINT");
-
-    expect(controller.signal.aborted).toBe(true);
-    expect(controller.signal.reason).toBe("SIGINT");
-    expect(proc.exitedWith).toEqual([]);
-  });
-
-  it("force-exits 130 on a second SIGINT", () => {
-    const proc = makeProcess();
-    wireSignals(proc, new AbortController());
-
-    fire(proc, "SIGINT");
-    fire(proc, "SIGINT");
-
-    expect(proc.exitedWith).toEqual([130]);
-  });
-
-  it("force-exits 143 when the second signal is SIGTERM", () => {
-    const proc = makeProcess();
-    wireSignals(proc, new AbortController());
+    const seen: string[] = [];
+    makeOnSignal(proc)((signal) => seen.push(signal));
 
     fire(proc, "SIGINT");
     fire(proc, "SIGTERM");
+    fire(proc, "SIGINT");
 
-    expect(proc.exitedWith).toEqual([143]);
+    expect(seen).toEqual(["SIGINT", "SIGTERM", "SIGINT"]);
+    expect(proc.exitedWith).toEqual([]);
+  });
+
+  it("the returned unsubscribe detaches the process listeners", () => {
+    const proc = makeProcess();
+    const seen: string[] = [];
+    const unsubscribe = makeOnSignal(proc)((signal) => seen.push(signal));
+
+    unsubscribe();
+    fire(proc, "SIGINT");
+    fire(proc, "SIGTERM");
+
+    expect(seen).toEqual([]);
   });
 });
 
@@ -153,13 +155,10 @@ describe("assembleRuntime", () => {
       env: { npm_config_user_agent: "pnpm/9.0.0" },
       isTty: { stdin: true, stdout: true, stderr: false },
     });
-    const controller = new AbortController();
-
-    const runtime = await assembleRuntime(proc, controller.signal);
+    const runtime = await assembleRuntime(proc);
 
     expect(runtime.cwd).toBe("/tmp/v8-bin-test-cwd");
     expect(runtime.isTty).toEqual({ stdin: true, stdout: true, stderr: false });
-    expect(runtime.signal).toBe(controller.signal);
     expect(runtime.packageManager).toBe("pnpm");
     expect(runtime.config).toEqual({ sections: {}, diagnostics: [] });
 
@@ -167,6 +166,19 @@ describe("assembleRuntime", () => {
     runtime.stderr.write("err");
     expect(proc.stdoutText).toBe("out");
     expect(proc.stderrText).toBe("err");
+  });
+
+  it("proxies exit to process.exit and signals to the process listeners", async () => {
+    const proc = makeProcess();
+    const runtime = await assembleRuntime(proc);
+
+    const seen: string[] = [];
+    runtime.onSignal((signal) => seen.push(signal));
+    fire(proc, "SIGTERM");
+    expect(seen).toEqual(["SIGTERM"]);
+
+    expect(() => runtime.exit(130)).toThrow("process.exit(130)");
+    expect(proc.exitedWith).toEqual([130]);
   });
 });
 

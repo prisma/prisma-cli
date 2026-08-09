@@ -300,7 +300,10 @@ describe("needs.config", () => {
       cwd: "/",
       env: {},
       isTty: { stdin: false, stdout: false, stderr: false },
-      signal: new AbortController().signal,
+      exit: (code: number): never => {
+        throw new Error(`runtime.exit(${code})`);
+      },
+      onSignal: () => () => {},
       config,
       getCredentials: async () => undefined,
       packageManager: "unknown",

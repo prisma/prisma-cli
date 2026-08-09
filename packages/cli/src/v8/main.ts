@@ -27,7 +27,8 @@ export function buildCli(): Cli {
 
 export interface SignalProcess {
   on(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;
-  exit(code: number): void;
+  off(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;
+  exit(code: number): never;
 }
 
 export interface ProcessLike extends SignalProcess {
@@ -43,22 +44,19 @@ export interface ProcessLike extends SignalProcess {
   };
 }
 
-/** First signal aborts the run; a second one force-exits (130/143). */
-export function wireSignals(
-  proc: SignalProcess,
-  controller: AbortController,
-): void {
-  let delivered = false;
-  const onSignal = (name: "SIGINT" | "SIGTERM"): void => {
-    if (delivered) {
-      proc.exit(name === "SIGINT" ? 130 : 143);
-      return;
-    }
-    delivered = true;
-    controller.abort(name);
+/** Dumb wiring: forwards process signals to the engine's subscribers.
+ *  The signal policy (first aborts, second force-exits) is the engine's. */
+export function makeOnSignal(proc: SignalProcess): Runtime["onSignal"] {
+  return (cb) => {
+    const onInt = (): void => cb("SIGINT");
+    const onTerm = (): void => cb("SIGTERM");
+    proc.on("SIGINT", onInt);
+    proc.on("SIGTERM", onTerm);
+    return () => {
+      proc.off("SIGINT", onInt);
+      proc.off("SIGTERM", onTerm);
+    };
   };
-  proc.on("SIGINT", () => onSignal("SIGINT"));
-  proc.on("SIGTERM", () => onSignal("SIGTERM"));
 }
 
 export function detectPackageManager(
@@ -73,8 +71,8 @@ export function detectPackageManager(
   return "unknown";
 }
 
-/** Token reads ignore the run signal so they still work during teardown
- *  after the first Ctrl-C. */
+/** Token reads ignore the run's abort signal so they still work during
+ *  teardown after the first Ctrl-C. */
 export function makeGetCredentials(
   env: NodeJS.ProcessEnv,
 ): () => Promise<Credentials | undefined> {
@@ -88,10 +86,7 @@ export function makeGetCredentials(
   };
 }
 
-export async function assembleRuntime(
-  proc: ProcessLike,
-  signal: AbortSignal,
-): Promise<Runtime> {
+export async function assembleRuntime(proc: ProcessLike): Promise<Runtime> {
   const stdin: InputStream = {
     setRawMode:
       proc.stdin.isTTY === true && proc.stdin.setRawMode !== undefined
@@ -120,15 +115,18 @@ export async function assembleRuntime(
       stdout: proc.stdout.isTTY === true,
       stderr: proc.stderr.isTTY === true,
     },
-    signal,
+    exit: (code) => proc.exit(code),
+    onSignal: makeOnSignal(proc),
     config: await loadConfig(proc.cwd()),
     getCredentials: makeGetCredentials(proc.env),
     packageManager: detectPackageManager(proc.env),
   };
 }
 
-/** The bin body: build, wire signals, run, return the exit code. A
- *  construction error prints one line to stderr and exits 1. */
+/** The bin body: build, run, return the exit code. Signal policy lives
+ *  in the engine; the bin only forwards signals and provides
+ *  process.exit. A construction error prints one line to stderr and
+ *  exits 1. */
 export async function main(
   proc: ProcessLike,
   buildCliForRun: () => Cli = buildCli,
@@ -142,8 +140,6 @@ export async function main(
     );
     return 1;
   }
-  const controller = new AbortController();
-  wireSignals(proc, controller);
-  const runtime = await assembleRuntime(proc, controller.signal);
+  const runtime = await assembleRuntime(proc);
   return cli.run(proc.argv.slice(2), runtime);
 }

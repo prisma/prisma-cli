@@ -507,7 +507,10 @@ describe("needs preconditions", () => {
       cwd: process.cwd(),
       env: {},
       isTty: { stdin: opts.interactive, stdout: false, stderr: false },
-      signal: new AbortController().signal,
+      exit: (code: number): never => {
+        throw new Error(`runtime.exit(${code})`);
+      },
+      onSignal: () => () => {},
       config: {
         sections: {},
         diagnostics: [
@@ -679,7 +682,10 @@ describe("report() after the handler resolved", () => {
       cwd: "/",
       env: {},
       isTty: { stdin: false, stdout: false, stderr: false },
-      signal: new AbortController().signal,
+      exit: (code: number): never => {
+        throw new Error(`runtime.exit(${code})`);
+      },
+      onSignal: () => () => {},
       config: { sections: {}, diagnostics: [] },
       getCredentials: async () => undefined,
       packageManager: "unknown",
@@ -726,7 +732,10 @@ describe("credentials that cannot be read", () => {
       cwd: "/",
       env: {},
       isTty: { stdin: false, stdout: false, stderr: false },
-      signal: new AbortController().signal,
+      exit: (code: number): never => {
+        throw new Error(`runtime.exit(${code})`);
+      },
+      onSignal: () => () => {},
       config: { sections: {}, diagnostics: [] },
       getCredentials: async () => {
         throw new Error("token file corrupt: unexpected end of JSON input");
