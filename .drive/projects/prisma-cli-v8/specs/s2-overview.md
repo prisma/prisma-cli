@@ -1,0 +1,76 @@
+# S2 — Platform family port (slice overview)
+
+S2 ports the platform CLI onto `@prisma/cli-engine` and retires the
+commander shell. It ships as FOUR stacked PRs, split by area, each its
+own contract + dispatch plan, each ≥1k LOC (operator floor, applies to
+the port PRs; infrastructure PRs may be smaller where inherently so):
+
+| PR | Contract | Content |
+| --- | --- | --- |
+| S2a | `s2a-foundations.md` | Engine publishable + production dep; `ctx.api`; auth module extraction; `auth *` family; update check; telemetry package move + wiring; clack prompt renderer |
+| S2b | `s2b-resources.md` | `project *`, `postgres *` (database), `bucket *` (incl. keys), `branch list` |
+| S2c | `s2c-services.md` | `service *` (renamed from `app`, incl. env + domain subgroups), `build *`, `git *`, `agent *`, `feedback` |
+| S2d | `s2d-init-and-retirement.md` | `init` wizard; commander-shell deletion; fixture-mode machinery deletion; final parity review |
+
+Branch mechanics: each PR branches off `main` (S1 merged as PR #129)
+and lands into `main`. S2b depends on S2a; S2c on S2b; S2d on S2c.
+
+## Standing rulings that govern every S2 PR
+
+All operator-ruled; none are open to implementer judgment.
+
+1. **Vocabulary**: the contribution/ownership entity is `CommandFamily`
+   (never "product"/"manifest"; `commandFamily`/`commandFamilies` never
+   shortened in identifiers). A subgroup is owned by exactly one
+   command family. `project` belongs to the platform family; Composer
+   parks under a `composer` root in S3 (TML-3189 holds the final
+   grammar).
+2. **Renames**: the deployable-unit noun is Service — the `app` group
+   ports as `service` (S2c). No other renames are ruled.
+3. **Types**: no conditional properties on stored types — `define*`
+   inputs may be optional, normalized definitions are total (`T |
+   undefined` or a natural empty).
+4. **Testing**: semantic-first. Commands are tested through
+   `createTestCli` (`@prisma/cli-engine/testing`) with the management
+   API faked at `ctx.api` and auth stubbed at the auth-module seam.
+   Assertions target the envelope, presented data, events, and exit
+   codes — NOT output bytes. A single small golden suite per output
+   surface pins human rendering and channel discipline globally.
+   Fixture-mode tests are deleted batch-by-batch as their commands
+   port; no fixture machinery survives S2d.
+5. **`ctx.api`**: the management API client lives directly on
+   `CommandContext` (operator: no extension mechanisms — this is
+   Prisma's engine). Spec in S2a.
+6. **Auth**: an internal module (`packages/cli/src/auth/`), not a
+   workspace package. Spec in S2a.
+7. **Telemetry is essential**: this CLI reports exactly the way the
+   ORM CLI does today; the `@internal/cli-telemetry` implementation
+   moves to this repo (prisma/prisma retires it with its CLI at S5).
+   Spec in S2a.
+8. **`--trace` is dropped** (log levels cover it). The update
+   notification is ported in S2a (not deferred).
+9. **Prompts**: interactive rendering is backed by `@clack/prompts`
+   1.5.0 (exact-pinned, fully internal, prompts only — never its
+   spinners; progress stays engine events). Spike-verified
+   (2026-08-10); landing spec in S2a.
+10. **Parity**: divergences from the shipping CLI are enumerated per
+    PR in a divergence list for operator review, not discovered.
+    Maintainability outranks byte parity.
+
+## Grounding inventory
+
+`assets/s2/command-inventory.md` catalogues every current command
+(flags, positionals, auth requirement, API calls, behavior class,
+output, prompts, side effects, tests, engine mapping). S2b–S2d
+contracts enumerate their commands FROM that inventory; the inventory
+is the single source for "what exists today".
+
+## Definition of done (whole slice)
+
+- Every platform command runs on the engine; the commander shell and
+  fixture machinery are deleted; `prisma-v8` naming is retired in
+  favor of the real bin wiring (final naming ruled in S2d).
+- Per-PR divergence lists reviewed by the operator.
+- Engine published and consumed as a production dependency.
+- Telemetry reporting live with the ORM-identical client and shared
+  installation id.
