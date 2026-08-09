@@ -12,8 +12,7 @@ import {
   type TokenStorage,
 } from "@prisma/management-api-sdk";
 import open from "open";
-import { FileTokenStorage } from "../../adapters/token-storage";
-import { CLIENT_ID, getApiBaseUrl } from "./client";
+import { CLIENT_ID, FileTokenStorage, getApiBaseUrl } from "../../auth";
 
 export class AuthError extends Error {
   constructor(message: string) {

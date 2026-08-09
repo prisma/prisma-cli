@@ -7,7 +7,7 @@ import { createTempCwd, createTestCommandContext } from "./helpers";
 const fixturePath = path.resolve("fixtures/mock-api.json");
 
 afterEach(() => {
-  vi.doUnmock("../src/lib/auth/auth-ops");
+  vi.doUnmock("../src/auth");
   vi.doUnmock("../src/lib/auth/guard");
   vi.doUnmock("../src/lib/app/app-provider");
   vi.resetModules();
@@ -162,7 +162,8 @@ describe("project controller", () => {
       name: "New Dashboard",
     });
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth")>()),
       readAuthState: vi.fn().mockResolvedValue({
         authenticated: true,
         provider: null,
@@ -232,7 +233,8 @@ describe("project controller", () => {
       defaultRegion: "us-east-1",
     });
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth")>()),
       readAuthState: vi.fn().mockResolvedValue({
         authenticated: true,
         provider: null,
@@ -302,7 +304,8 @@ describe("project controller", () => {
       name: "Interactive Project",
     });
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth")>()),
       readAuthState: vi.fn().mockResolvedValue({
         authenticated: true,
         provider: null,
@@ -377,7 +380,8 @@ describe("project controller", () => {
       .fn()
       .mockRejectedValue(new Error("Internal Server Error (HTTP 503)"));
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth")>()),
       readAuthState: vi.fn().mockResolvedValue({
         authenticated: true,
         provider: null,

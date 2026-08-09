@@ -1,13 +1,10 @@
 import {
-  type Credentials,
   type HostProcess,
   type InputStream,
   loadConfig,
   type Runtime,
 } from "@prisma/cli-engine";
-import { FileTokenStorage } from "../adapters/token-storage";
-import { EmptyServiceTokenError } from "../lib/auth/auth-ops";
-import { SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
+import { makeGetCredentials } from "../auth";
 
 export type SignalProcess = Pick<HostProcess, "on" | "off" | "exit">;
 
@@ -38,25 +35,6 @@ export function detectPackageManager(
     }
   }
   return "unknown";
-}
-
-/** Token reads ignore the run's abort signal so they still work during
- *  teardown after the first Ctrl-C. */
-export function makeGetCredentials(
-  env: NodeJS.ProcessEnv,
-): () => Promise<Credentials | undefined> {
-  return async () => {
-    const rawServiceToken = env[SERVICE_TOKEN_ENV_VAR];
-    if (rawServiceToken !== undefined) {
-      const serviceToken = rawServiceToken.trim();
-      if (serviceToken.length === 0) {
-        throw new EmptyServiceTokenError();
-      }
-      return { token: serviceToken };
-    }
-    const tokens = await new FileTokenStorage(env).getTokens();
-    return tokens ? { token: tokens.accessToken } : undefined;
-  };
 }
 
 export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {

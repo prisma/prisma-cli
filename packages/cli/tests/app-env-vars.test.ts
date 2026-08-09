@@ -8,7 +8,8 @@ beforeEach(() => {
   process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME = "Acme Dashboard";
   process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID = "ws_123";
 
-  vi.doMock("../src/lib/auth/auth-ops", () => ({
+  vi.doMock("../src/auth", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../src/auth")>()),
     readAuthState: vi.fn().mockResolvedValue({
       authenticated: true,
       provider: null,
@@ -30,7 +31,7 @@ afterEach(() => {
   delete process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME;
   delete process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID;
 
-  vi.doUnmock("../src/lib/auth/auth-ops");
+  vi.doUnmock("../src/auth");
   vi.doUnmock("../src/lib/auth/guard");
   vi.doUnmock("../src/lib/app/app-provider");
   vi.resetModules();

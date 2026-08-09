@@ -7,7 +7,7 @@ import {
   FileTokenStorage,
   getAuthContextFilePath,
   RefreshLockTimeoutError,
-} from "../src/adapters/token-storage";
+} from "../src/auth/token-storage";
 import { createTempCwd } from "./helpers";
 
 async function writeAuthFile(

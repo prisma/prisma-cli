@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 afterEach(() => {
-  vi.doUnmock("../src/adapters/token-storage");
+  vi.doUnmock("../src/auth/token-storage");
   vi.doUnmock("../src/lib/auth/guard");
   vi.resetModules();
   vi.restoreAllMocks();
@@ -71,14 +71,15 @@ describe("readAuthState", () => {
       }),
     });
 
-    vi.doMock("../src/adapters/token-storage", () => ({
+    vi.doMock("../src/auth/token-storage", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
 
-    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const { readAuthState } = await import("../src/auth/operations");
 
     await expect(readAuthState({} as NodeJS.ProcessEnv)).resolves.toEqual({
       authenticated: true,
@@ -143,8 +144,8 @@ describe("readAuthState", () => {
       requireComputeAuth,
     }));
 
-    const { readAuthState } = await import("../src/lib/auth/auth-ops");
-    const { FileTokenStorage } = await import("../src/adapters/token-storage");
+    const { readAuthState } = await import("../src/auth/operations");
+    const { FileTokenStorage } = await import("../src/auth/token-storage");
 
     await expect(
       readAuthState({
@@ -205,14 +206,15 @@ describe("readAuthState", () => {
         ),
     });
 
-    vi.doMock("../src/adapters/token-storage", () => ({
+    vi.doMock("../src/auth/token-storage", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
 
-    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const { readAuthState } = await import("../src/auth/operations");
 
     await expect(readAuthState({} as NodeJS.ProcessEnv)).resolves.toEqual({
       authenticated: true,
@@ -246,14 +248,15 @@ describe("readAuthState", () => {
       }),
     });
 
-    vi.doMock("../src/adapters/token-storage", () => ({
+    vi.doMock("../src/auth/token-storage", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
 
-    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const { readAuthState } = await import("../src/auth/operations");
 
     await expect(readAuthState({} as NodeJS.ProcessEnv)).resolves.toMatchObject(
       {
@@ -283,14 +286,15 @@ describe("readAuthState", () => {
       }),
     });
 
-    vi.doMock("../src/adapters/token-storage", () => ({
+    vi.doMock("../src/auth/token-storage", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
 
-    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const { readAuthState } = await import("../src/auth/operations");
 
     await expect(readAuthState({} as NodeJS.ProcessEnv)).resolves.toMatchObject(
       {
@@ -350,14 +354,15 @@ describe("readAuthState", () => {
         ),
     });
 
-    vi.doMock("../src/adapters/token-storage", () => ({
+    vi.doMock("../src/auth/token-storage", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth,
     }));
 
-    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({
       sub: "workspace:clitq5hfg0000qv0gtg9nv9fy",
       email: "service@example.com",
@@ -407,12 +412,13 @@ describe("readAuthState", () => {
       }),
     });
 
-    vi.doMock("../src/adapters/token-storage", () => ({
+    vi.doMock("../src/auth/token-storage", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
 
-    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
 
     const result = await readAuthState({
@@ -439,12 +445,13 @@ describe("readAuthState", () => {
       }),
     });
 
-    vi.doMock("../src/adapters/token-storage", () => ({
+    vi.doMock("../src/auth/token-storage", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(vi.fn()),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
 
-    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
 
     await expect(
@@ -471,12 +478,13 @@ describe("readAuthState", () => {
       }),
     });
 
-    vi.doMock("../src/adapters/token-storage", () => ({
+    vi.doMock("../src/auth/token-storage", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(vi.fn()),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
 
-    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
 
     await expect(
@@ -498,12 +506,13 @@ describe("readAuthState", () => {
       GET: vi.fn().mockRejectedValue(new Error("network down")),
     });
 
-    vi.doMock("../src/adapters/token-storage", () => ({
+    vi.doMock("../src/auth/token-storage", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(vi.fn()),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
 
-    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
 
     await expect(
@@ -530,14 +539,15 @@ describe("readAuthState", () => {
       }),
     });
 
-    vi.doMock("../src/adapters/token-storage", () => ({
+    vi.doMock("../src/auth/token-storage", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: vi.fn().mockImplementation(() => ({
         getTokens: vi.fn(),
       })),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
 
-    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
 
     await expect(
@@ -562,14 +572,15 @@ describe("readAuthState", () => {
       }),
     });
 
-    vi.doMock("../src/adapters/token-storage", () => ({
+    vi.doMock("../src/auth/token-storage", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: vi.fn().mockImplementation(() => ({
         getTokens: vi.fn(),
       })),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
 
-    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
 
     await expect(
@@ -582,14 +593,15 @@ describe("readAuthState", () => {
 
   it("returns signed-out state when PRISMA_SERVICE_TOKEN does not carry a workspace subject", async () => {
     const getTokens = vi.fn();
-    vi.doMock("../src/adapters/token-storage", () => ({
+    vi.doMock("../src/auth/token-storage", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth: vi.fn(),
     }));
 
-    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "user:usr_123" });
 
     await expect(
@@ -607,14 +619,15 @@ describe("readAuthState", () => {
   it("treats an empty PRISMA_SERVICE_TOKEN as invalid and does not fall back to FileTokenStorage", async () => {
     const getTokens = vi.fn().mockResolvedValue(null);
 
-    vi.doMock("../src/adapters/token-storage", () => ({
+    vi.doMock("../src/auth/token-storage", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/lib/auth/guard", () => ({
       requireComputeAuth: vi.fn(),
     }));
 
-    const { readAuthState } = await import("../src/lib/auth/auth-ops");
+    const { readAuthState } = await import("../src/auth/operations");
 
     await expect(
       readAuthState({ PRISMA_SERVICE_TOKEN: "   " } as NodeJS.ProcessEnv),

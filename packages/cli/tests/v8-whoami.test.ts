@@ -3,15 +3,12 @@ import { ok } from "@prisma/cli-engine/protocol";
 import { createTestCli } from "@prisma/cli-engine/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  EmptyServiceTokenError,
-  readAuthState,
-} from "../src/lib/auth/auth-ops";
+import { EmptyServiceTokenError, readAuthState } from "../src/auth";
 import type { AuthStateResult } from "../src/types/auth";
 import { authWhoamiCommand } from "../src/v8/auth/whoami";
 
-vi.mock("../src/lib/auth/auth-ops", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/lib/auth/auth-ops")>()),
+vi.mock("../src/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/auth")>()),
   readAuthState: vi.fn(),
 }));
 

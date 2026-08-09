@@ -5,10 +5,7 @@ import {
   notOk,
   ok,
 } from "@prisma/cli-engine/protocol";
-import {
-  isEmptyServiceTokenError,
-  readAuthState,
-} from "../../lib/auth/auth-ops";
+import { isEmptyServiceTokenError, readAuthState } from "../../auth";
 import type { AuthProviderId, AuthStateResult } from "../../types/auth";
 
 const TITLE = "Showing the current authenticated identity.";

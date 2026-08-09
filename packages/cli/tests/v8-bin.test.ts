@@ -1,16 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { makeGetCredentials } from "../src/auth";
 import { buildCli } from "../src/v8/cli";
 import { main } from "../src/v8/main";
 import {
   assembleRuntime,
   detectPackageManager,
   type HostProcess,
-  makeGetCredentials,
   makeOnSignal,
 } from "../src/v8/runtime";
 
-vi.mock("../src/adapters/token-storage", () => ({
+vi.mock("../src/auth/token-storage", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
   FileTokenStorage: class {
     getTokens() {
       return Promise.resolve({

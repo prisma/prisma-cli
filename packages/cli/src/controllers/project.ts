@@ -12,14 +12,14 @@ import {
 } from "../adapters/git";
 import {
   FileTokenStorage,
+  SERVICE_TOKEN_ENV_VAR,
   WorkspaceSelectionError,
-} from "../adapters/token-storage";
+} from "../auth";
 import {
   type PrismaCliPackageCommandFormatter,
   resolvePrismaCliPackageCommandFormatterSync,
 } from "../lib/agent/cli-command";
 import { createAppProvider } from "../lib/app/app-provider";
-import { SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
 import { requireComputeAuth } from "../lib/auth/guard";
 import {
   RecipientSessionInvalidError,

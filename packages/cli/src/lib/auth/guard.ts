@@ -4,8 +4,12 @@ import {
   type ManagementApiClient,
 } from "@prisma/management-api-sdk";
 
-import { FileTokenStorage } from "../../adapters/token-storage";
-import { CLIENT_ID, getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "./client";
+import {
+  CLIENT_ID,
+  FileTokenStorage,
+  getApiBaseUrl,
+  SERVICE_TOKEN_ENV_VAR,
+} from "../../auth";
 
 /**
  * Resolve authentication and return a ManagementApiClient.

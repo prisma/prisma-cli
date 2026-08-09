@@ -1,9 +1,9 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-import { FileTokenStorage } from "../../adapters/token-storage";
-import type { AuthStateResult } from "../../types/auth";
+import { requireComputeAuth } from "../lib/auth/guard";
+import { login } from "../lib/auth/login";
+import type { AuthStateResult } from "../types/auth";
 import { SERVICE_TOKEN_ENV_VAR } from "./client";
-import { requireComputeAuth } from "./guard";
-import { login } from "./login";
+import { FileTokenStorage } from "./token-storage";
 
 const WORKSPACE_SUB_PREFIX = "workspace:";
 
