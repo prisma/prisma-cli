@@ -1,7 +1,7 @@
 # Requirements for the unified CLI engine
 
-Status: **Agreed** (Will Madden, 2026-08-09), except the question in
-"Open" at the end. This document records the design constraints for the
+Status: **Agreed** (Will Madden, 2026-08-09), including the engine-internals
+decision at the end. This document records the design constraints for the
 consolidated `prisma` CLI — the interface between the CLI shell and the
 product packages it hosts (Prisma ORM, Prisma Composer, Prisma Cloud) — and
 why each constraint matters. It precedes and will govern the engine's design;
@@ -209,12 +209,22 @@ missing, not to become a second, worse package manager. The structured
 "optional dependency missing" error follows R6 like every other expected
 failure.
 
-## Open
+## The engine's internals
 
-One question this document deliberately leaves undecided:
+Decided (Will Madden, 2026-08-09): the engine wraps **@stricli/core**,
+fully hidden per R3 — no stricli type appears in the engine's public
+interface, so the internals remain replaceable.
 
-1. **Build the engine on a third-party framework or own it end to end.**
-   The preference is to reuse a wheel that fits the constraints above
-   (instance-based, typed, no global state, static-tree friendly), wrapped
-   per R3; owning the whole engine is the fallback if none fits. Candidates
-   are evaluated against this document.
+The decision followed the evaluation rubric recorded in prisma/prisma's
+`docs/architecture docs/research/commander-friction-points.md`. Commander
+was ruled out there. Clipanion, the incumbent candidate with in-house
+precedent, passes the rubric's nine technical criteria but fails the tenth:
+at decision time its last publish was 23 months old with its 4.x line in
+release-candidate state for three years. Stricli passes all ten — zero
+runtime dependencies, no `node:` imports, no `process.exit` (verified
+against the published artifact), per-invocation injected context, static
+route maps with lazy command loading, parse-time validation with typed
+errors, active institutional maintenance — and its known limitations
+(per-command flags only, fixed help layout without formatter replacement)
+are neutralized or made irrelevant by this document's own rules (R5's
+engine-owned rendering; the no-global-flags rule).
