@@ -8,7 +8,6 @@
 import {
   type Block,
   createCli,
-  createTestCli,
   defineCommand,
   defineServerCommand,
   defineSessionCommand,
@@ -20,6 +19,7 @@ import {
   ok,
   okVoid,
 } from "@prisma/cli-engine/protocol";
+import { createTestCli } from "@prisma/cli-engine/testing";
 import { describe, expect, test } from "vitest";
 
 const EPOCH = () => new Date(0);
@@ -143,6 +143,7 @@ describe("signal exit codes", () => {
       code: "CLI.ABORTED",
       severity: "error",
       summary: "The command was aborted before it completed.",
+      nextActions: [],
     });
   });
 

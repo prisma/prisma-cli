@@ -1,5 +1,5 @@
 /**
- * D5: the minimal config loader behind Runtime.config (R10) — cwd-only
+ * D5: the minimal config loader behind Runtime.config — cwd-only
  * discovery, defineConfig marker semantics with the pinned Prisma 7
  * fail-early diagnostic, and needs.config validation wired end to end
  * through the harness.
@@ -9,7 +9,6 @@ import { fileURLToPath } from "node:url";
 import {
   type ConfigSection,
   createCli,
-  createTestCli,
   defineCommand,
   defineConfig,
   defineConfigSection,
@@ -19,6 +18,7 @@ import {
   type SectionValidation,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
+import { createTestCli } from "@prisma/cli-engine/testing";
 import { describe, expect, test } from "vitest";
 
 const FIXTURES = join(
@@ -411,6 +411,7 @@ describe("warnings on a successful section validation", () => {
           code: "TOY.LEGACY_GREETING",
           severity: "warn",
           summary: "toy.legacy is deprecated.",
+          nextActions: [],
         },
       ],
     }),

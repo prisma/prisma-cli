@@ -3,13 +3,13 @@
  * docs-URL derivation from the owning command family's docsBaseUrl.
  */
 import {
-  type CommandFamily,
   type ConfigSection,
-  createTestCli,
   defineCommand,
+  defineCommandFamily,
   defineConfigSection,
 } from "@prisma/cli-engine";
 import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
+import { createTestCli } from "@prisma/cli-engine/testing";
 import { describe, expect, test } from "vitest";
 
 const EPOCH = () => new Date(0);
@@ -36,10 +36,10 @@ function configCommand<T>(section: ConfigSection<T>) {
 describe("foreign-section references", () => {
   test("a command needing a section that is not its command family's fails construction", () => {
     const command = configCommand(foreignSection);
-    const family: CommandFamily = {
+    const family = defineCommandFamily({
       configSection: ownSection,
       commands: { command },
-    };
+    });
 
     expect(() =>
       createTestCli({ commandFamilies: [family], commands: { command } }),
@@ -50,10 +50,10 @@ describe("foreign-section references", () => {
 
   test("a command needing its own command family's section constructs", () => {
     const command = configCommand(ownSection);
-    const family: CommandFamily = {
+    const family = defineCommandFamily({
       configSection: ownSection,
       commands: { command },
-    };
+    });
 
     expect(() =>
       createTestCli({ commandFamilies: [family], commands: { command } }),
@@ -96,7 +96,12 @@ describe("docs-URL derivation", () => {
             data: null,
             exitCode: 4,
             diagnostics: [
-              { code: "TOY.FINDING", severity: "warn", summary: "Found" },
+              {
+                code: "TOY.FINDING",
+                severity: "warn",
+                summary: "Found",
+                nextActions: [],
+              },
             ],
           },
           { human: () => [] },
@@ -105,10 +110,10 @@ describe("docs-URL derivation", () => {
   });
 
   function familyCli() {
-    const family: CommandFamily = {
+    const family = defineCommandFamily({
       commands: { failing, overriding, finding },
       docsBaseUrl: BASE,
-    };
+    });
     return createTestCli({
       commandFamilies: [family],
       commands: { failing, overriding, finding },
@@ -160,13 +165,14 @@ describe("docs-URL derivation", () => {
         code: "TOY.FINDING",
         severity: "warn",
         summary: "Found",
+        nextActions: [],
         docsUrl: `${BASE}TOY.FINDING`,
       },
     ]);
   });
 
   test("a command from a command family without docsBaseUrl stays undecorated", async () => {
-    const family: CommandFamily = { commands: { failing } };
+    const family = defineCommandFamily({ commands: { failing } });
     const cli = createTestCli({
       commandFamilies: [family],
       commands: { failing },

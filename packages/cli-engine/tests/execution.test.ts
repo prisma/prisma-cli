@@ -6,7 +6,6 @@
  */
 import {
   createCli,
-  createTestCli,
   defineCommand,
   defineConfigSection,
   type EngineEvent,
@@ -15,6 +14,7 @@ import {
   type Runtime,
 } from "@prisma/cli-engine";
 import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
+import { createTestCli } from "@prisma/cli-engine/testing";
 import { describe, expect, test } from "vitest";
 
 const EPOCH = () => new Date(0);
@@ -88,6 +88,7 @@ const check = defineCommand({
               code: "CHECK.FINDING",
               severity: "warn",
               summary: "One finding",
+              nextActions: [],
             },
           ],
         },
@@ -209,7 +210,12 @@ describe("completed commands", () => {
           result: { findings: 1 },
           exitCode: 4,
           diagnostics: [
-            { code: "CHECK.FINDING", severity: "warn", summary: "One finding" },
+            {
+              code: "CHECK.FINDING",
+              severity: "warn",
+              summary: "One finding",
+              nextActions: [],
+            },
           ],
           nextActions: [],
         },
@@ -428,6 +434,7 @@ describe("errored commands", () => {
       code: "CLI.INTERNAL_ERROR",
       severity: "error",
       summary: "kaboom",
+      nextActions: [],
     });
   });
 });
@@ -538,6 +545,7 @@ describe("needs preconditions", () => {
               code: "CONFIG.UNREADABLE",
               severity: "error",
               summary: "The config file could not be read",
+              nextActions: [],
             },
           },
         ],

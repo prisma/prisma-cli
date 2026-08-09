@@ -12,12 +12,12 @@
 import {
   type Block,
   createCli,
-  createTestCli,
   defineCommand,
   type PromptSurface,
   type Runtime,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
+import { createTestCli } from "@prisma/cli-engine/testing";
 import { describe, expect, test } from "vitest";
 
 const EPOCH = () => new Date(0);

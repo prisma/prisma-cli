@@ -23,7 +23,7 @@ describe("./protocol subpath", () => {
 });
 
 describe("CliStructuredError.toEnvelope", () => {
-  test("minimal error yields exactly ok, code, severity, summary", () => {
+  test("minimal error yields ok, code, severity, summary, and empty nextActions", () => {
     const error = new CliStructuredError("AUTH.NOT_LOGGED_IN", "Not logged in");
 
     expect(error.toEnvelope()).toEqual({
@@ -31,6 +31,7 @@ describe("CliStructuredError.toEnvelope", () => {
       code: "AUTH.NOT_LOGGED_IN",
       severity: "error",
       summary: "Not logged in",
+      nextActions: [],
     });
   });
 

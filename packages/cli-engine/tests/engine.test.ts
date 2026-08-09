@@ -1,7 +1,6 @@
 import * as engine from "@prisma/cli-engine";
 import {
   createCli,
-  createTestCli,
   defineCommand,
   defineConfigSection,
   defineServerCommand,
@@ -9,18 +8,18 @@ import {
   flag,
   positional,
 } from "@prisma/cli-engine";
+import * as testing from "@prisma/cli-engine/testing";
+import { createTestCli } from "@prisma/cli-engine/testing";
 import { describe, expect, test } from "vitest";
 
 describe("main export", () => {
   test("exposes exactly the definition-surface runtime values", () => {
     expect(Object.keys(engine).sort()).toEqual([
-      "FLAG",
-      "POSITIONAL",
       "PRESENTED",
       "PRISMA_CONFIG_VERSION",
       "createCli",
-      "createTestCli",
       "defineCommand",
+      "defineCommandFamily",
       "defineConfig",
       "defineConfigSection",
       "defineServerCommand",
@@ -29,6 +28,10 @@ describe("main export", () => {
       "loadConfig",
       "positional",
     ]);
+  });
+
+  test("the ./testing subpath exposes exactly the harness", () => {
+    expect(Object.keys(testing).sort()).toEqual(["createTestCli"]);
   });
 });
 
@@ -45,7 +48,18 @@ describe("definition constructors", () => {
     });
 
     expect(definition.kind).toBe("result-command");
-    expect(definition.help).toEqual({ summary: "Check" });
+    expect(definition.help).toEqual({
+      summary: "Check",
+      description: undefined,
+      examples: [],
+    });
+    expect(definition.args).toEqual({ flags: {}, positionals: {} });
+    expect(definition.needs).toEqual({
+      config: undefined,
+      credentials: false,
+      dependencies: [],
+      interaction: false,
+    });
     expect(definition.exitCodes).toEqual({ 4: "findings" });
     expect(definition.handler).toBe(handler);
     expect(Object.isFrozen(definition)).toBe(true);
@@ -58,6 +72,7 @@ describe("definition constructors", () => {
     });
 
     expect(definition.kind).toBe("session-command");
+    expect(definition.args).toEqual({ flags: {}, positionals: {} });
     expect(Object.isFrozen(definition)).toBe(true);
   });
 

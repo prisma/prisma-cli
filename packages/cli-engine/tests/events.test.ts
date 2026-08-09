@@ -4,8 +4,9 @@
  * log-level-filtered commentary on stderr; json mode frames every
  * unfiltered event as a StreamEvent.
  */
-import { type Block, createTestCli, defineCommand } from "@prisma/cli-engine";
+import { type Block, defineCommand } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
+import { createTestCli } from "@prisma/cli-engine/testing";
 import { describe, expect, test } from "vitest";
 
 const EPOCH = () => new Date(0);

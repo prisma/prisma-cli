@@ -26,7 +26,6 @@ import type {
 } from "@prisma/cli-engine";
 import {
   type createCli,
-  type createTestCli,
   defineCommand,
   defineConfigSection,
   defineServerCommand,
@@ -40,6 +39,7 @@ import type {
   Result,
 } from "@prisma/cli-engine/protocol";
 import { ok } from "@prisma/cli-engine/protocol";
+import type { createTestCli } from "@prisma/cli-engine/testing";
 
 type MutuallyAssignable<A, B> = [A] extends [B]
   ? [B] extends [A]
@@ -71,6 +71,10 @@ export const enumFlag: FlagSpec<"a" | "b" | undefined> = flag.enum({
   values: ["a", "b"],
   alias: "F",
 });
+
+// Args specs are phantom-typed, not symbol-branded: the carrier is a
+// never-assigned optional property, and inference still flows from the
+// builders into handler-visible types (asserted in runCheck below).
 
 // @ts-expect-error r4(a): multi-character alias 'ab' is rejected
 export const multiAlias = flag.boolean({ brief: "force", alias: "ab" });
@@ -121,6 +125,7 @@ const diagnostic: Diagnostic = {
   code: "CHECK.FINDING",
   severity: "warn",
   summary: "A finding",
+  nextActions: [],
 };
 
 const presentations: Presentations = { human: () => [] };
@@ -208,7 +213,7 @@ export const forgedPresented: PresentedResult<number> = {
   data: 1,
   exitCode: 0,
   diagnostics: [],
-  presentation: {},
+  presentation: { human: [], stdout: [], json: undefined, next: [] },
 };
 
 export const runForged: CommandHandler<typeof plainCommand> = async (
@@ -220,7 +225,7 @@ export const runForged: CommandHandler<typeof plainCommand> = async (
     data: 1,
     exitCode: 0,
     diagnostics: [],
-    presentation: {},
+    presentation: { human: [], stdout: [], json: undefined, next: [] },
   });
   return forged;
 };
@@ -275,6 +280,22 @@ export const commandFamily: CommandFamily = {
   docsBaseUrl: "https://example.invalid/docs",
 };
 
+// Normalized definitions: every field is always present
+export const normalizedHelp: MutuallyAssignable<
+  (typeof checkCommand)["help"]["examples"],
+  readonly string[]
+> = true;
+export const normalizedNeeds: MutuallyAssignable<
+  (typeof plainCommand)["needs"]["dependencies"],
+  readonly string[]
+> = true;
+export const normalizedArgs: {
+  flags: Record<never, unknown>;
+  positionals: Record<never, unknown>;
+} = plainCommand.args;
+export const normalizedExitCodes: Readonly<Record<never, string>> =
+  plainCommand.exitCodes;
+
 export const createCliSpec: Parameters<typeof createCli>[0] = {
   name: "prisma-v8",
   version: "0.0.0",
@@ -311,6 +332,7 @@ export const erroredEnvelope: ErroredEnvelope = {
     code: "AUTH.NOT_LOGGED_IN",
     severity: "error",
     summary: "Not logged in",
+    nextActions: [],
   },
   diagnostics: [diagnostic],
   nextActions: [
