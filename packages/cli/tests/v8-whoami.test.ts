@@ -1,5 +1,6 @@
-import { createTestCli, defineCommand } from "@prisma/cli-engine";
+import { defineCommand } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
+import { createTestCli } from "@prisma/cli-engine/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -257,7 +258,7 @@ describe("needs.credentials early failure", () => {
 
   it("whoami itself completes without credentials (no needs.credentials)", async () => {
     vi.mocked(readAuthState).mockResolvedValue(SIGNED_OUT);
-    expect(authWhoamiCommand.needs).toBeUndefined();
+    expect(authWhoamiCommand.needs.credentials).toBe(false);
 
     const result = await makeCli().run(["auth", "whoami", "--json"]);
 

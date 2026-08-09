@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { buildCli } from "../src/v8/cli";
+import { main } from "../src/v8/main";
 import {
   assembleRuntime,
-  buildCli,
   detectPackageManager,
   type HostProcess,
-  main,
   makeGetCredentials,
   makeOnSignal,
-} from "../src/v8/main";
+} from "../src/v8/runtime";
 
 vi.mock("../src/adapters/token-storage", () => ({
   FileTokenStorage: class {
