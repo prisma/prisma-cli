@@ -28,3 +28,6 @@ npm-debug.log*
 .DS_Store
 .idea/
 .vscode/
+
+# Turborepo cache
+.turbo/
