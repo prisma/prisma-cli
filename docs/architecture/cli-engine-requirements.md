@@ -57,9 +57,21 @@ engine's internals is one package's problem, not an ecosystem event.
 
 ### R4 — Products receive a context, never the environment
 
-Product code does not read disk, environment variables, or the TTY. Handlers
-receive one typed context object carrying their validated config section,
-credentials, and the output surface.
+Product code never reads engine-owned state directly: the process
+environment, the process streams, TTY state, and the CLI's configuration
+reach a handler only through one typed context object, which carries its
+validated config section, credentials, the invocation's `cwd` and `env`,
+and the output surface. The output surface is a typed result and event
+sink — it exposes no writable streams and no way to exit the process;
+rendering and exit codes stay in the engine (R5), and the process ends
+only through the runtime's exit proxy, which the engine alone calls.
+
+This does not prohibit product-domain disk access. Reading the user's
+project — including Composer importing the user's own modules at
+execution time under R9 — is a product's job, done inside the handler
+and anchored at the context's `cwd` (with `requireDependency` on the
+context resolving optional dependencies from the user's project per
+R13). What is banned is reaching around the context to process globals.
 
 **Why:** three reasons. Cross-cutting state — above all authentication
 credentials, which Composer needs even when the user authenticated through a
