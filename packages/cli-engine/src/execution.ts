@@ -734,6 +734,7 @@ async function executeRun(
   const unsubscribe = runtime.onSignal((signal) => {
     if (signalDelivered) {
       runtime.exit(signal === "SIGTERM" ? 143 : 130);
+      return;
     }
     signalDelivered = true;
     controller.abort(signal);

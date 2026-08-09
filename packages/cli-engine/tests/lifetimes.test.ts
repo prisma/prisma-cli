@@ -233,6 +233,28 @@ describe("the engine owns the double-signal policy", () => {
     expect(exited).toEqual([143]);
   });
 
+  test("the engine unsubscribes at settlement: signals after the run reach no subscriber", async () => {
+    const quick = defineCommand({
+      help: { summary: "Completes immediately" },
+      handler: async (_args, ctx) =>
+        ok(ctx.present({ data: null }, { human: () => [] })),
+    });
+    const cli = createCli({
+      name: "t",
+      version: "0.0.0",
+      products: [],
+      groups: {},
+      commands: { quick },
+    });
+    const { runtime, exited, deliver } = hangingRuntime();
+
+    expect(await cli.run(["quick"], runtime)).toBe(0);
+
+    deliver("SIGINT");
+    deliver("SIGINT");
+    expect(exited).toEqual([]);
+  });
+
   test("a first signal on a cooperating handler settles the run with the signal exit code", async () => {
     const cooperative = defineCommand({
       help: { summary: "Aborts in-flight work with the signal" },
