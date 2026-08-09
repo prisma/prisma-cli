@@ -4,7 +4,10 @@
  * v4 completed/errored, --format, log levels, prompt defaults ·
  * v5 round-3 closure · v6 Diagnostic, warnings fold, stream flatten ·
  * v7 outcome-first present, help/args/needs, command families ·
- * v8 packaging and residue rulings: ONE library package
+ * v8 packaging and residue rulings, amended in review round 2
+ * (normalized definition shapes, defineCommandFamily, one severity
+ * scale, phantom-typed arg specs, ./testing subpath): ONE library
+ * package
  * (@prisma/cli-engine, with @stricli/core as an ordinary exact-pinned
  * dependency — bundling was considered and rejected: unusual for a
  * library, blinds security audit; R3's hiding is about types, which no
@@ -115,8 +118,8 @@ import type { CliStructuredError, Diagnostic, NextAction, Result } from '@prisma
  *
  * Diagnostic — a recorded finding: pure data, never thrown, no stack.
  *   { code: 'NAMESPACE.SUBCODE', severity: 'error' | 'warn' | 'info',
- *     summary, why?, nextActions?: readonly NextAction[], where?,
- *     meta?, docsUrl? }
+ *     summary, why?, nextActions: readonly NextAction[] (always
+ *     present, empty when there are none), where?, meta?, docsUrl? }
  *   `fix` prose is gone (operator ruling, 2026-08-09): remediation is
  *   typed nextActions, rendered as → lines in human mode.
  *   Field-for-field the settled error envelope (ADR 239) minus `ok` —
@@ -130,11 +133,11 @@ import type { CliStructuredError, Diagnostic, NextAction, Result } from '@prisma
  *     label, command?, commands?, reason? }
  */
 
-/** The commentary severity scale; also the log-level axis. Distinct from
- *  Diagnostic severity: 'verbose' grades commentary, which never enters
- *  the envelope. Step outcomes are completion states, not severities. */
+/** The commentary severity scale; also the log-level axis (one name —
+ *  the --log-level flag selects a Severity). Distinct from Diagnostic
+ *  severity: 'verbose' grades commentary, which never enters the
+ *  envelope. Step outcomes are completion states, not severities. */
 export type Severity = 'error' | 'warn' | 'info' | 'verbose'
-export type LogLevel = Severity
 
 export type Format = 'human' | 'json'
 
@@ -278,11 +281,15 @@ export interface PresentedResult<T> {
   readonly exitCode: number
   /** Never undefined; empty when the outcome recorded no findings. */
   readonly diagnostics: readonly Diagnostic[]
+  /** Only the active format's presentation is materialized; the other
+   *  format's fields are normalized to empty. `json` stays undefined
+   *  when the handler supplied no json presentation — the envelope's
+   *  `result` then falls back to `data`. */
   readonly presentation: {
-    readonly human?: readonly Block[]
-    readonly stdout?: readonly string[]
-    readonly json?: unknown
-    readonly next?: readonly NextAction[]
+    readonly human: readonly Block[]
+    readonly stdout: readonly string[]
+    readonly json: unknown
+    readonly next: readonly NextAction[]
   }
 }
 export { PRESENTED }
@@ -501,12 +508,10 @@ export type Char<S extends string> = S extends `${string}${infer Rest}`
     : never
   : never
 
-declare const FLAG: unique symbol
 export interface FlagSpec<T> {
-  /** Phantom carrier for inference; exported so declaration emit works. */
-  readonly [FLAG]: T
+  /** Phantom type carrier for inference; never present at runtime. */
+  readonly __flag?: T
 }
-export { FLAG }
 
 export declare const positional: {
   string(spec: { brief: string; placeholder: string }): PositionalSpec<string>
@@ -515,11 +520,10 @@ export declare const positional: {
    *  declaration order; keys must not be integer-like). */
   variadic(spec: { brief: string; placeholder: string }): PositionalSpec<readonly string[]>
 }
-declare const POSITIONAL: unique symbol
 export interface PositionalSpec<T> {
-  readonly [POSITIONAL]: T
+  /** Phantom type carrier for inference; never present at runtime. */
+  readonly __positional?: T
 }
-export { POSITIONAL }
 
 /** The parse SPI: a command's argument surface, one property. */
 export interface ArgsSpec<
@@ -528,6 +532,16 @@ export interface ArgsSpec<
 > {
   readonly flags?: TFlags
   readonly positionals?: TPositionals
+}
+
+/** The normalized argument surface a definition carries: both
+ *  namespaces always present, empty when the command declares none. */
+export interface CommandArgs<
+  TFlags extends Record<string, FlagSpec<unknown>>,
+  TPositionals extends Record<string, PositionalSpec<unknown>>,
+> {
+  readonly flags: TFlags
+  readonly positionals: TPositionals
 }
 
 /** What a handler receives: separate namespaces, symmetric access —
@@ -548,6 +562,12 @@ export interface Args<
 // R9's remaining force is that handler bodies defer heavy work to
 // execution time. Three modalities at equal rank:
 // result / session / server.
+//
+// Definitions carry NO conditional properties (operator ruling, round
+// 2): the define* constructors accept ergonomic specs (optional help
+// details, args, needs, exitCodes) and normalize them — every
+// definition field is always present, with empty collections and
+// explicit undefined.
 // ————————————————————————————————————————————————————————————————————————
 
 /** The help SPI: how the command shows itself in help output. Words
@@ -560,6 +580,13 @@ export interface HelpSpec {
    *  at help render time every `{bin}` is substituted with createCli's
    *  `name`; an example containing no `{bin}` gets the name prepended. */
   readonly examples?: readonly string[]
+}
+
+/** The normalized help a definition carries. */
+export interface CommandHelp {
+  readonly summary: string
+  readonly description: string | undefined
+  readonly examples: readonly string[]
 }
 
 /**
@@ -592,6 +619,14 @@ export interface NeedsSpec<TConfig> {
   readonly interaction?: true
 }
 
+/** The normalized preconditions a definition carries. */
+export interface CommandNeeds<TConfig> {
+  readonly config: ConfigSection<TConfig> | undefined
+  readonly credentials: boolean
+  readonly dependencies: readonly string[]
+  readonly interaction: boolean
+}
+
 export interface CommandDefinition<
   TFlags extends Record<string, FlagSpec<unknown>> = {},
   TPositionals extends Record<string, PositionalSpec<unknown>> = {},
@@ -599,18 +634,18 @@ export interface CommandDefinition<
   TCode extends number = never,
 > {
   readonly kind: 'result-command'
-  readonly help: HelpSpec
-  readonly args?: ArgsSpec<TFlags, TPositionals>
-  readonly needs?: NeedsSpec<TConfig>
+  readonly help: CommandHelp
+  readonly args: CommandArgs<TFlags, TPositionals>
+  readonly needs: CommandNeeds<TConfig>
 
   /**
    * The command's documented exit codes (4–99): code → meaning.
    * Rendered in help without executing anything; the keys type the
    * outcome's exitCode, making it REQUIRED at every return site (`0` or
-   * a documented code). Absent = the command only exits 0/1/2/3 and the
+   * a documented code). Empty = the command only exits 0/1/2/3 and the
    * outcome carries no exitCode.
    */
-  readonly exitCodes?: Readonly<Record<TCode, string>>
+  readonly exitCodes: Readonly<Record<TCode, string>>
 
   /** The handler function, referenced directly — never a dynamic import
    *  (operator ruling, 2026-08-09: "DO NOT DYNAMICALLY IMPORT HANDLERS").
@@ -641,9 +676,13 @@ export declare function defineCommand<
   TPositionals extends Record<string, PositionalSpec<unknown>> = {},
   TConfig = undefined,
   TCode extends number = never,
->(
-  def: Omit<CommandDefinition<TFlags, TPositionals, TConfig, TCode>, 'kind'>,
-): CommandDefinition<TFlags, TPositionals, TConfig, TCode>
+>(def: {
+  readonly help: HelpSpec
+  readonly args?: ArgsSpec<TFlags, TPositionals>
+  readonly needs?: NeedsSpec<TConfig>
+  readonly exitCodes?: Readonly<Record<TCode, string>>
+  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode>
+}): CommandDefinition<TFlags, TPositionals, TConfig, TCode>
 
 /**
  * A session command (dev, log tail): runs until the signal fires,
@@ -657,9 +696,9 @@ export interface SessionCommandDefinition<
   TConfig = undefined,
 > {
   readonly kind: 'session-command'
-  readonly help: HelpSpec
-  readonly args?: ArgsSpec<TFlags, TPositionals>
-  readonly needs?: NeedsSpec<TConfig>
+  readonly help: CommandHelp
+  readonly args: CommandArgs<TFlags, TPositionals>
+  readonly needs: CommandNeeds<TConfig>
   readonly handler: (
     args: Args<TFlags, TPositionals>,
     ctx: CommandContext<TConfig>,
@@ -670,9 +709,12 @@ export declare function defineSessionCommand<
   TFlags extends Record<string, FlagSpec<unknown>> = {},
   TPositionals extends Record<string, PositionalSpec<unknown>> = {},
   TConfig = undefined,
->(
-  def: Omit<SessionCommandDefinition<TFlags, TPositionals, TConfig>, 'kind'>,
-): SessionCommandDefinition<TFlags, TPositionals, TConfig>
+>(def: {
+  readonly help: HelpSpec
+  readonly args?: ArgsSpec<TFlags, TPositionals>
+  readonly needs?: NeedsSpec<TConfig>
+  readonly handler: SessionCommandDefinition<TFlags, TPositionals, TConfig>['handler']
+}): SessionCommandDefinition<TFlags, TPositionals, TConfig>
 
 /**
  * A server command (lsp): a foreign client on the other end of stdio
@@ -686,9 +728,9 @@ export interface ServerCommandDefinition<
   TConfig = undefined,
 > {
   readonly kind: 'server-command'
-  readonly help: HelpSpec
-  readonly args?: ArgsSpec<TFlags, {}>
-  readonly needs?: NeedsSpec<TConfig>
+  readonly help: CommandHelp
+  readonly args: CommandArgs<TFlags, {}>
+  readonly needs: CommandNeeds<TConfig>
   readonly handler: (
     args: Args<TFlags, {}>,
     io: {
@@ -705,9 +747,12 @@ export interface ServerCommandDefinition<
 export declare function defineServerCommand<
   TFlags extends Record<string, FlagSpec<unknown>> = {},
   TConfig = undefined,
->(
-  def: Omit<ServerCommandDefinition<TFlags, TConfig>, 'kind'>,
-): ServerCommandDefinition<TFlags, TConfig>
+>(def: {
+  readonly help: HelpSpec
+  readonly args?: ArgsSpec<TFlags, {}>
+  readonly needs?: NeedsSpec<TConfig>
+  readonly handler: ServerCommandDefinition<TFlags, TConfig>['handler']
+}): ServerCommandDefinition<TFlags, TConfig>
 
 /** Erased union for command families and mount maps; `kind` discriminates. */
 export type AnyCommand =
@@ -831,14 +876,20 @@ export interface StreamMeta {
  * token is not its command family's section is a construction error.
  */
 export interface CommandFamily {
-  readonly configSection?: ConfigSection<unknown>
+  readonly configSection: ConfigSection<unknown> | undefined
   readonly commands: Readonly<Record<string, AnyCommand>>
   /** The family's documentation base URL. The engine derives each
    *  diagnostic's docs link from base + code; a diagnostic's own
    *  `docsUrl` field is the per-raise override (unused until a use case
    *  appears). */
-  readonly docsBaseUrl?: string
+  readonly docsBaseUrl: string | undefined
 }
+
+export declare function defineCommandFamily(spec: {
+  readonly configSection?: ConfigSection<unknown>
+  readonly commands: Readonly<Record<string, AnyCommand>>
+  readonly docsBaseUrl?: string
+}): CommandFamily
 
 /** What the shell builds: commands by PATH (space-separated,
  *  'db migrate'). */
@@ -925,7 +976,9 @@ export interface LoadedConfig {
 }
 
 // ————————————————————————————————————————————————————————————————————————
-// §11 The test harness — R7: same machinery, bytes out
+// §11 The test harness — R7: same machinery, bytes out. Lives on its
+// own public subpath, `@prisma/cli-engine/testing` (composer's
+// ./testing convention): the main entry ships no test machinery.
 // ————————————————————————————————————————————————————————————————————————
 
 export declare function createTestCli(spec: {
@@ -966,7 +1019,8 @@ export interface TestCli {
     /** Every EngineEvent the handler emitted, for semantic assertions. */
     readonly events: readonly EngineEvent[]
     /** The PresentedResult the handler returned, for semantic
-     *  assertions without byte-scraping. */
-    readonly presented?: PresentedResult<unknown>
+     *  assertions without byte-scraping; undefined when the run never
+     *  presented. */
+    readonly presented: PresentedResult<unknown> | undefined
   }>
 }
