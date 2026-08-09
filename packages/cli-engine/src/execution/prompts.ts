@@ -7,10 +7,21 @@
  * errored envelope, exit 2). consent is structurally undefaultable and
  * always halts in those contexts. Cancellation (EOF at the prompt) is a
  * distinct structured error mapped to exit 3.
+ *
+ * Rendering is two-tier: real TTYs (isTty.stdin AND stdin.setRawMode
+ * present, no scripted answers) render through @clack/prompts via
+ * clack-renderer.ts; everything else uses the plain line renderer
+ * below. --yes resolution and structural failures are decided before
+ * the tier branch, so both tiers share identical semantics.
  */
 import type { PromptSurface } from "../context";
 import { CliStructuredError } from "../protocol";
 import type { InputStream } from "../runtime";
+import {
+  type ClackRenderer,
+  clackCapable,
+  makeClackRenderer,
+} from "./clack-renderer";
 import type { Invocation, RunState } from "./engine";
 
 function makeLineReader(
@@ -136,6 +147,31 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
   const { runtime, hooks, state } = invocation;
   let readLine: (() => Promise<string | undefined>) | undefined;
   let answerCursor = 0;
+  let renderer: Promise<ClackRenderer> | undefined;
+
+  const useClack = (): boolean =>
+    hooks.answers === undefined && clackCapable(runtime);
+
+  const renderWithClack = async <T>(
+    question: string,
+    run: (r: ClackRenderer) => Promise<T | symbol>,
+  ): Promise<T> => {
+    renderer ??= (() => {
+      const iterator = runtime.stdin[Symbol.asyncIterator]();
+      invocation.state.stdinIterator = iterator;
+      const stdin: InputStream = {
+        [Symbol.asyncIterator]: () => iterator,
+        setRawMode: (enabled) => runtime.stdin.setRawMode?.(enabled),
+      };
+      return makeClackRenderer(stdin, runtime.stderr);
+    })();
+    const r = await renderer;
+    const value = await run(r);
+    if (r.isCancel(value)) {
+      throw promptCancelled(question);
+    }
+    return value as T;
+  };
 
   const ask = async (
     question: string,
@@ -170,6 +206,9 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
         }
         return fallback;
       }
+      if (useClack()) {
+        return renderWithClack(question, (r) => r.confirm(question, fallback));
+      }
       let hint = "(y/n)";
       if (fallback === true) {
         hint = "(Y/n)";
@@ -183,6 +222,9 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
       if (state.yes || !state.interactive) {
         throw consentUnavailable(question, state);
       }
+      if (useClack()) {
+        return renderWithClack(question, (r) => r.consent(question));
+      }
       const raw = await ask(question, `? ${question} (y/n) `);
       return isExplicitYes(raw);
     },
@@ -193,6 +235,11 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
           throw promptUnanswerable(question, state);
         }
         return fallback;
+      }
+      if (useClack()) {
+        return renderWithClack(question, (r) =>
+          r.select(question, options, fallback),
+        );
       }
       const rendered = [
         `? ${question}`,
@@ -226,6 +273,12 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
           throw promptUnanswerable(question, state);
         }
         return fallback;
+      }
+      if (useClack()) {
+        const value = await renderWithClack<string>(question, (r) =>
+          r.text(question, opts?.placeholder, fallback),
+        );
+        return value === "" ? (fallback ?? "") : value;
       }
       const hint = fallback === undefined ? "" : ` (${fallback})`;
       const raw = await ask(question, `? ${question}${hint} `);

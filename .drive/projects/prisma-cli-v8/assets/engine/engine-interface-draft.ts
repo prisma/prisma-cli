@@ -442,6 +442,21 @@ export type ManagementApiClient = import('@prisma/management-api-sdk').Managemen
  * interactivity) the same default rule applies; the prompt UI writes to
  * stderr, so an interactive json run prompts without touching the
  * stdout stream.
+ *
+ * Rendering is two-tier (S2a D4). A plain line renderer serves
+ * scripted answers and any stdin that cannot enter raw mode (piped
+ * stdin, the test harness); real TTYs — Runtime.isTty.stdin AND
+ * Runtime.stdin.setRawMode present, no scripted answers — render
+ * through @clack/prompts, loaded by dynamic import only on that path.
+ * Both tiers write prompt UI to stderr and share the same structural
+ * rules: --yes resolution and structural failures are decided before
+ * the tier branch. Clack's cancel symbol (including the \x03 byte
+ * path) maps to the same CLI.PROMPT_CANCELLED exit-3 settlement.
+ * Clack's spinner/log helpers are forbidden (process-global handlers);
+ * progress remains engine events.
+ *
+ * Accepted quirk: clack reads process.stdout.columns for wrap width —
+ * the one process-global read on the interactive path.
  */
 export interface PromptSurface {
   readonly confirm: (
@@ -456,6 +471,12 @@ export interface PromptSurface {
    * flag that grants consent non-interactively.
    */
   readonly consent: (question: string) => Promise<boolean>
+  /**
+   * On the clack tier, Enter picks the HIGHLIGHTED option — the
+   * declared default when present, else the first option — so moving
+   * the highlight and pressing Enter selects the highlighted value,
+   * not the declared default.
+   */
   readonly select: <T extends string>(
     question: string,
     options: ReadonlyArray<{ value: T; label: string }>,
