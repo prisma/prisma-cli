@@ -3,7 +3,13 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**", "package.json", "tsconfig.json", "tsdown.config.ts"],
+      "inputs": [
+        "src/**",
+        "package.json",
+        "tsconfig.json",
+        "tsdown.config.ts",
+        "$TURBO_ROOT$/packages/tsconfig/base.json"
+      ],
       "outputs": ["dist/**"]
     },
     "test": {
@@ -15,12 +21,19 @@
         "package.json",
         "tsconfig.json",
         "tsdown.config.ts",
-        "vitest.config.ts"
+        "vitest.config.ts",
+        "$TURBO_ROOT$/packages/tsconfig/base.json"
       ]
     },
     "typecheck": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**", "tests/**", "package.json", "tsconfig.json"]
+      "inputs": [
+        "src/**",
+        "tests/**",
+        "package.json",
+        "tsconfig.json",
+        "$TURBO_ROOT$/packages/tsconfig/base.json"
+      ]
     }
   }
 }

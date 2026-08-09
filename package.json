@@ -7,7 +7,7 @@
   "packageManager": "pnpm@11.6.0",
   "scripts": {
     "build": "turbo run build",
-    "build:cli": "pnpm --filter @prisma/cli build",
+    "build:cli": "turbo run build --filter=@prisma/cli",
     "build:compute": "pnpm --filter @prisma/compute build",
     "format": "biome format . --write",
     "lint": "biome check .",
