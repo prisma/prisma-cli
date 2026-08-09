@@ -1,6 +1,6 @@
 # Requirements for the unified CLI engine
 
-Status: **Agreed** (Will Madden, 2026-08-09), except the two questions in
+Status: **Agreed** (Will Madden, 2026-08-09), except the question in
 "Open" at the end. This document records the design constraints for the
 consolidated `prisma` CLI — the interface between the CLI shell and the
 product packages it hosts (Prisma ORM, Prisma Composer, Prisma Cloud) — and
@@ -163,17 +163,47 @@ product code — support and reproducibility poison. Exact pins mean a shell
 version fully determines behavior. The cost is tandem releasing, which is
 tedious but simple, and simplicity wins.
 
+### R12 — The shell defines the command tree
+
+Products export commands; the shell decides where each one mounts. A command's
+path in the tree does not appear in the product's code or its interface.
+
+**Why:** the tree is a whole-CLI concern, and the evidence is its own history:
+defining the consolidated tree took roughly six months of iteration by the
+responsible product manager, coordinating renames and regroupings across
+product lines (`app` → `service`, `database` → `postgres`, standalone
+`format` folded into `contract format`) that no product would have made
+locally. From a product's point of view the path is purely cosmetic — the
+real invocation is the command and its arguments, and a product's in-repo
+e2e tests exercise exactly that by mounting the command at any path. From
+the shell's point of view the tree is structural: central definition makes
+path collisions impossible and keeps the shipped tree checkable against the
+agreed grammar in one place.
+
+### R13 — The CLI never touches a package manager
+
+The shell does not install, download, or vendor packages at runtime — no
+self-installing command modules, no hidden `node_modules`, ever. Components
+that only some commands need are declared as optional peer dependencies; a
+command that requires one checks for it at execution time and, when it is
+absent, returns a structured error naming the dependency and how to install
+it with the user's own package manager.
+
+**Why:** a previous incarnation of the Prisma CLI installed command
+submodules on demand into a hidden `node_modules` in the working directory.
+That approach is compatible with exactly one package manager and produces
+edge cases everywhere else — lockfiles that lie, deduplication that never
+happens, state the user cannot see or clean. The user already has a package
+manager; the CLI's job is to declare what it needs and say clearly what is
+missing, not to become a second, worse package manager. The structured
+"optional dependency missing" error follows R6 like every other expected
+failure.
+
 ## Open
 
-Two questions this document deliberately leaves undecided:
+One question this document deliberately leaves undecided:
 
-1. **Who defines the command tree.** The tree is a whole-CLI concern
-   (cross-product renames and coherence argue for the shell owning it), but
-   product-declared paths keep in-repo e2e tests running the real
-   invocations, and a middle shape exists: products declare paths in their
-   command definitions, the shell holds the agreed tree as data and refuses
-   to build on any mismatch.
-2. **Build the engine on a third-party framework or own it end to end.**
+1. **Build the engine on a third-party framework or own it end to end.**
    The preference is to reuse a wheel that fits the constraints above
    (instance-based, typed, no global state, static-tree friendly), wrapped
    per R3; owning the whole engine is the fallback if none fits. Candidates
