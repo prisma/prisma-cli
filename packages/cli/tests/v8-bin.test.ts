@@ -4,10 +4,10 @@ import {
   assembleRuntime,
   buildCli,
   detectPackageManager,
+  type HostProcess,
   main,
   makeGetCredentials,
   makeOnSignal,
-  type HostProcess,
 } from "../src/v8/main";
 
 vi.mock("../src/adapters/token-storage", () => ({

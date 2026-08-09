@@ -3,8 +3,8 @@
  * boundaries. Importing it drags no engine code.
  */
 export {
-  CliStructuredError,
   type CliErrorEnvelope,
+  CliStructuredError,
   type Diagnostic,
   type NextAction,
   type NotOk,

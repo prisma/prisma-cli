@@ -3,11 +3,11 @@
  * docs-URL derivation from the owning command family's docsBaseUrl.
  */
 import {
+  type CommandFamily,
   type ConfigSection,
   createTestCli,
   defineCommand,
   defineConfigSection,
-  type CommandFamily,
 } from "@prisma/cli-engine";
 import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
 import { describe, expect, test } from "vitest";

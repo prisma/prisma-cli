@@ -1,24 +1,20 @@
 import {
-  type PositionalSpec,
-  positionalRuntime,
-} from "../definition/args";
-import type { AnyCommand } from "../definition/commands";
-import type { Cli, Runtime } from "../definition/runtime";
-import type {
-  CommandFamily,
-  MountedTree,
-} from "../definition/command-family";
-import type { CommandContext } from "../definition/context";
-import type { InputStream } from "../definition/streams";
-import type { PresentedResult } from "../definition/presentation";
-import {
   buildApplication,
   run as runStricli,
   type RouteMap as StricliRouteMap,
 } from "@stricli/core";
+import { type PositionalSpec, positionalRuntime } from "../definition/args";
+import type { CommandFamily, MountedTree } from "../definition/command-family";
+import type { AnyCommand } from "../definition/commands";
+import type { CommandContext } from "../definition/context";
+import type { ErroredEnvelope } from "../definition/envelopes";
+import type { PresentedResult } from "../definition/presentation";
+import type { Cli, Runtime } from "../definition/runtime";
+import type { InputStream } from "../definition/streams";
 import type { CliStructuredError, Result } from "../protocol";
-import { buildCommandTree, type CommandTreeEntry } from "./command-tree";
 import { makeContext } from "./command-context";
+import { buildCommandTree, type CommandTreeEntry } from "./command-tree";
+import { emitFrame } from "./events";
 import type {
   Engine,
   EngineSpec,
@@ -27,7 +23,6 @@ import type {
   RunState,
 } from "./invocation";
 import { firstLine } from "./invocation";
-import { emitFrame } from "./events";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import {
   emitErrored,
@@ -49,7 +44,6 @@ import {
   type EngineRunContext,
   usageErrorCode,
 } from "./stricli-adapter";
-import type { ErroredEnvelope } from "../definition/envelopes";
 
 export function buildEngine(
   spec: EngineSpec,

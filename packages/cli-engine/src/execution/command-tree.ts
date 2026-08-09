@@ -3,8 +3,8 @@ import {
   type PositionalSpec,
   positionalRuntime,
 } from "../definition/args";
-import type { AnyCommand } from "../definition/commands";
 import type { CommandFamily } from "../definition/command-family";
+import type { AnyCommand } from "../definition/commands";
 import type { EngineSpec } from "./invocation";
 import { RESERVED_ALIASES, RESERVED_FLAG_NAMES } from "./shared-flags";
 

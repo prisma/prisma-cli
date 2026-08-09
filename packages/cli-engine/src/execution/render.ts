@@ -1,6 +1,5 @@
-import type { Block } from "../definition/presentation";
 import type { EngineEvent } from "../definition/events";
-import type { PresentedResult } from "../definition/presentation";
+import type { Block, PresentedResult } from "../definition/presentation";
 import type { Diagnostic, NextAction } from "../protocol";
 import type { Invocation, RunState } from "./invocation";
 
@@ -63,10 +62,7 @@ const TONE_SYMBOL: Readonly<Record<string, string>> = {
   info: "ℹ",
 };
 
-export function renderBlock(
-  block: Block,
-  write: (line: string) => void,
-): void {
+export function renderBlock(block: Block, write: (line: string) => void): void {
   switch (block.kind) {
     case "summary":
       write(`${TONE_SYMBOL[block.tone]} ${block.text}`);
@@ -148,7 +144,10 @@ export function renderNextAction(action: NextAction): string {
 
 /** Populates docsUrl from the owning family's docsBaseUrl (base + code)
  *  when the diagnostic does not carry its own — a per-raise docsUrl wins. */
-export function withDocsUrl(state: RunState, diagnostic: Diagnostic): Diagnostic {
+export function withDocsUrl(
+  state: RunState,
+  diagnostic: Diagnostic,
+): Diagnostic {
   if (diagnostic.docsUrl !== undefined || state.docsBaseUrl === undefined) {
     return diagnostic;
   }

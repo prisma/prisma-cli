@@ -1,5 +1,5 @@
-import type { EngineEvent, LogLevel, Severity } from "../definition/events";
 import type { StreamEvent } from "../definition/envelopes";
+import type { EngineEvent, LogLevel, Severity } from "../definition/events";
 import type { Invocation } from "./invocation";
 import { renderEventHuman } from "./render";
 

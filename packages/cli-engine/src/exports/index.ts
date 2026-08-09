@@ -7,6 +7,8 @@
  * Normative source: .drive/projects/prisma-cli-v8/assets/engine/
  * engine-interface-draft.ts (v8).
  */
+
+export { defineConfig, loadConfig } from "../config-loader";
 export {
   type Args,
   type ArgsSpec,
@@ -68,6 +70,5 @@ export {
   type TestCli,
 } from "../definition/runtime";
 export type { InputStream, OutputStream } from "../definition/streams";
-export { defineConfig, loadConfig } from "../config-loader";
 export { createTestCli } from "../execution/harness";
 export { createCli } from "../execution/run";

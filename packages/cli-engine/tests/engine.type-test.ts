@@ -8,6 +8,7 @@
 import type {
   Char,
   CommandContext,
+  CommandFamily,
   CommandHandler,
   CompletedEnvelope,
   ConfigSection,
@@ -19,7 +20,6 @@ import type {
   MountedTree,
   Presentations,
   PresentedResult,
-  CommandFamily,
   Runtime,
   SectionValidation,
   StreamEvent,

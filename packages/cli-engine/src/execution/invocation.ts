@@ -1,10 +1,7 @@
-import type { CommandFamily } from "../definition/command-family";
-import type { MountedTree } from "../definition/command-family";
-import type { EngineEvent } from "../definition/events";
+import type { CommandFamily, MountedTree } from "../definition/command-family";
 import type { StreamEvent } from "../definition/envelopes";
-import type { Format } from "../definition/presentation";
-import type { LogLevel } from "../definition/events";
-import type { PresentedResult } from "../definition/presentation";
+import type { EngineEvent, LogLevel } from "../definition/events";
+import type { Format, PresentedResult } from "../definition/presentation";
 import type { Runtime } from "../definition/runtime";
 
 export interface EngineSpec {
