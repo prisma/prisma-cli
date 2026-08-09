@@ -143,12 +143,14 @@ function makeCli() {
 }
 
 describe("completed commands", () => {
-  test("human format renders blocks to stdout and commentary to stderr", async () => {
+  test("human format renders payload lines to stdout and blocks with commentary to stderr", async () => {
     const result = await makeCli().run(["greet", "world", "--format", "human"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("✔ Hello world\n→ Nothing else to do\n");
-    expect(result.stderr).toBe("greeting world\n");
+    expect(result.stdout).toBe("Hello world\n");
+    expect(result.stderr).toBe(
+      "greeting world\n✔ Hello world\n→ Nothing else to do\n",
+    );
   });
 
   test("json format streams events then exactly one terminal result frame", async () => {
@@ -217,12 +219,14 @@ describe("completed commands", () => {
     ]);
   });
 
-  test("completed diagnostics render to stderr in human format", async () => {
+  test("completed blocks and diagnostics render to stderr in human format", async () => {
     const result = await makeCli().run(["check", "--format", "human"]);
 
     expect(result.exitCode).toBe(4);
-    expect(result.stdout).toBe("⚠ 1 finding\n");
-    expect(result.stderr).toBe("⚠ [CHECK.FINDING] One finding\n");
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      "⚠ 1 finding\n⚠ [CHECK.FINDING] One finding\n",
+    );
   });
 
   test("the harness exposes events and the presented result", async () => {
@@ -260,7 +264,10 @@ describe("format selection", () => {
     });
 
     expect(result.json).toEqual([]);
-    expect(result.stdout).toBe("✔ Hello world\n→ Nothing else to do\n");
+    expect(result.stdout).toBe("Hello world\n");
+    expect(result.stderr).toBe(
+      "greeting world\n✔ Hello world\n→ Nothing else to do\n",
+    );
   });
 
   test("--json is shorthand for --format json", async () => {
@@ -306,7 +313,7 @@ describe("log levels and quiet", () => {
     ).toHaveLength(1);
   });
 
-  test("--log-level error silences info commentary in human format", async () => {
+  test("--log-level error silences info commentary but never the presentation", async () => {
     const result = await makeCli().run([
       "greet",
       "world",
@@ -316,10 +323,11 @@ describe("log levels and quiet", () => {
       "error",
     ]);
 
-    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("Hello world\n");
+    expect(result.stderr).toBe("✔ Hello world\n→ Nothing else to do\n");
   });
 
-  test("--quiet is shorthand for --log-level error: commentary silenced, blocks kept", async () => {
+  test("--quiet is shorthand for --log-level error: commentary silenced, presentation kept", async () => {
     const result = await makeCli().run([
       "greet",
       "world",
@@ -329,8 +337,8 @@ describe("log levels and quiet", () => {
     ]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("✔ Hello world\n→ Nothing else to do\n");
-    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("Hello world\n");
+    expect(result.stderr).toBe("✔ Hello world\n→ Nothing else to do\n");
   });
 
   test("--quiet beats an explicit --log-level, exactly like --verbose does", async () => {
@@ -353,8 +361,10 @@ describe("log levels and quiet", () => {
       "error",
     ]);
 
-    expect(quiet.stderr).toBe("");
-    expect(verbose.stderr).toBe("greeting world\nverbose detail\n");
+    expect(quiet.stderr).toBe("✔ Hello world\n→ Nothing else to do\n");
+    expect(verbose.stderr).toBe(
+      "greeting world\nverbose detail\n✔ Hello world\n→ Nothing else to do\n",
+    );
   });
 });
 
@@ -461,7 +471,8 @@ describe("needs preconditions", () => {
     const result = await cli.run(["auth", "whoami", "--format", "human"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("✔ Signed in (tok-123)\n");
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("✔ Signed in (tok-123)\n");
   });
 
   function demanding(dependency: string) {
@@ -637,7 +648,8 @@ describe("sensitive field rows", () => {
     const result = await cli.run(["reveal", "--format", "human"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("name: deploy key\ntoken: ********\n");
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("name: deploy key\ntoken: ********\n");
   });
 
   test("the json result payload is the command's own and stays unmasked", async () => {
@@ -837,7 +849,10 @@ describe("parse and route failures", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("✔ Hello --json\n→ Nothing else to do\n");
+    expect(result.stdout).toBe("Hello --json\n");
+    expect(result.stderr).toBe(
+      "greeting --json\n✔ Hello --json\n→ Nothing else to do\n",
+    );
   });
 
   test("kebab-case input matches camelCase flag keys", async () => {

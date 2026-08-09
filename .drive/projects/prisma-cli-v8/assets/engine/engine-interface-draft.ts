@@ -76,6 +76,12 @@
  * `-q/--quiet` for `--log-level error` (operator ruling, 2026-08-09: a
  * log-level alias only, not otherwise retained — it never changes what
  * a completed result renders).
+ * CHANNELS, human mode (operator ruling, 2026-08-09): decoration goes
+ * to stderr, machine-usable payload to stdout. Human Blocks,
+ * next-action lines, and diagnostics are presentation prose on STDERR;
+ * the `Presentations.stdout` payload lines (and `output` events with
+ * channel 'data') are the only writes to STDOUT — human mode is
+ * pipe-clean. json mode is unchanged: the frame stream owns stdout.
  * The engine injects the shared flag family on every non-server
  * command: --format/--json, --log-level/-v/--verbose, -q/--quiet,
  * -y/--yes, --interactive/--no-interactive, --color/--no-color.
@@ -245,7 +251,9 @@ declare const PRESENTED: unique symbol
  *
  * `data` is what the envelope's `result` serializes (json presentation
  * overrides when supplied). Materialization by format: human → human +
- * stdout + next; json → json + next.
+ * stdout + next; json → json + next. Human rendering writes the blocks,
+ * next-action lines, and diagnostics to stderr and the `stdout` lines
+ * to stdout (§header CHANNELS).
  *
  * Guardrail (runtime, at the return site): a severity-'error' diagnostic
  * requires a non-zero exitCode — a genuine could-not-complete belongs in
@@ -271,11 +279,13 @@ export { PRESENTED }
 /**
  * The per-format presentation functions a handler supplies to
  * ctx.present. Only the active format's functions are invoked, at the
- * return site. `human` composes engine primitives (R5); `stdout` is the
- * machine-consumable data lines — what a pipe receives; `json`
- * overrides the envelope's `result` (default: the
+ * return site. `human` composes engine primitives (R5), rendered to
+ * stderr; `stdout` is the machine-consumable data lines — what a pipe
+ * receives, the human mode's only stdout writes; `json` overrides the
+ * envelope's `result` (default: the
  * data); `next` supplies the typed nextActions — agents branch on them;
- * the human renderer formats them as prose (no stored string form).
+ * the human renderer formats them as prose on stderr (no stored string
+ * form).
  */
 export interface Presentations {
   readonly human: (ui: Ui) => readonly Block[]

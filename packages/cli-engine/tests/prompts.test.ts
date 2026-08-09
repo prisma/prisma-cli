@@ -62,7 +62,7 @@ describe("prompt defaults", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({ answer: true });
-    expect(result.stderr).toBe("");
+    expect(result.stderr).toBe("✔ answer=true\n");
   });
 
   test("plain Enter accepts the default in interactive mode", async () => {
@@ -119,7 +119,7 @@ describe("prompt defaults", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({ answer: true });
-    expect(result.stderr).toBe("");
+    expect(result.stderr).toBe("✔ answer=true\n");
   });
 });
 
@@ -344,7 +344,7 @@ describe("the input stream and the script", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({ answer: true });
-    expect(result.stderr).toBe("? Proceed? (y/n) ");
+    expect(result.stderr).toBe("? Proceed? (y/n) ✔ answer=true\n");
   });
 
   test("EOF at the prompt is a cancellation: exit 3", async () => {
@@ -426,6 +426,7 @@ describe("needs.interaction", () => {
 
     expect(result.exitCode).toBe(0);
     expect(wasRun()).toBe(true);
-    expect(result.stdout).toBe("✔ ran\n");
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("✔ ran\n");
   });
 });

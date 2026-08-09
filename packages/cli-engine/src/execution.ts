@@ -1774,19 +1774,26 @@ function settleCompleted(
   renderCompletedHuman(invocation, presented);
 }
 
+/** Channel discipline (operator ruling, 2026-08-09): human Blocks,
+ *  next-action lines, and diagnostics are presentation prose on stderr;
+ *  the materialized `stdout` presentation lines are the machine-usable
+ *  payload on stdout, always — human mode stays pipe-clean. */
 function renderCompletedHuman(
   invocation: Invocation,
   presented: PresentedResult<unknown>,
 ): void {
   const { runtime, state } = invocation;
   for (const block of presented.presentation.human ?? []) {
-    renderBlock(block, (line) => runtime.stdout.write(`${line}\n`));
+    renderBlock(block, (line) => runtime.stderr.write(`${line}\n`));
   }
   for (const action of presented.presentation.next ?? []) {
-    runtime.stdout.write(`${renderNextAction(action)}\n`);
+    runtime.stderr.write(`${renderNextAction(action)}\n`);
   }
   for (const diagnostic of presented.diagnostics) {
     writeDiagnostic(runtime.stderr, withDocsUrl(state, diagnostic));
+  }
+  for (const line of presented.presentation.stdout ?? []) {
+    runtime.stdout.write(`${line}\n`);
   }
 }
 

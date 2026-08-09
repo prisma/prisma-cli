@@ -1,9 +1,8 @@
 /**
  * The full event vocabulary (§1 of the draft) through both renderers:
  * human mode writes `output` data lines to stdout and everything else as
- * log-level-filtered commentary on stderr (remediation surfaces as
- * nextActions at settlement, not as live transcript); json mode frames
- * every unfiltered event as a StreamEvent.
+ * log-level-filtered commentary on stderr; json mode frames every
+ * unfiltered event as a StreamEvent.
  */
 import { type Block, createTestCli, defineCommand } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
@@ -84,11 +83,11 @@ function makeCli() {
 }
 
 describe("human rendering", () => {
-  test("data lines go to stdout; commentary goes to stderr", async () => {
+  test("payload lines go to stdout; blocks and commentary go to stderr", async () => {
     const result = await makeCli().run(["noisy", "--format", "human"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("generated 3 files\n✔ done\n→ Nothing else\n");
+    expect(result.stdout).toBe("generated 3 files\ndone\n");
     expect(result.stderr).toBe(
       "▸ compile\n" +
         "compile 1/2\n" +
@@ -99,7 +98,9 @@ describe("human rendering", () => {
         "generator warmed up\n" +
         "studio: http://localhost:5555\n" +
         "db: starting → ready\n" +
-        "out/contract.json — the contract\n",
+        "out/contract.json — the contract\n" +
+        "✔ done\n" +
+        "→ Nothing else\n",
     );
   });
 
@@ -112,11 +113,11 @@ describe("human rendering", () => {
       "warn",
     ]);
 
-    expect(result.stdout).toBe("generated 3 files\n✔ done\n→ Nothing else\n");
-    expect(result.stderr).toBe("heads up\n");
+    expect(result.stdout).toBe("generated 3 files\ndone\n");
+    expect(result.stderr).toBe("heads up\n✔ done\n→ Nothing else\n");
   });
 
-  test("--quiet silences commentary but keeps blocks and data lines", async () => {
+  test("--quiet silences commentary but keeps the presentation and data lines", async () => {
     const result = await makeCli().run([
       "noisy",
       "--format",
@@ -124,8 +125,8 @@ describe("human rendering", () => {
       "--quiet",
     ]);
 
-    expect(result.stdout).toBe("generated 3 files\n✔ done\n→ Nothing else\n");
-    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("generated 3 files\ndone\n");
+    expect(result.stderr).toBe("✔ done\n→ Nothing else\n");
   });
 });
 

@@ -208,7 +208,8 @@ describe("needs.config", () => {
     expect(seen).toEqual([undefined]);
     expect(run.exitCode).toBe(0);
     expect(run.presented?.data).toEqual({ greeting: "default" });
-    expect(run.stdout).toBe("✔ default\n");
+    expect(run.stdout).toBe("");
+    expect(run.stderr).toBe("✔ default\n");
   });
 
   test("an invalid section fails early with the validator's diagnostics in the errored envelope", async () => {
@@ -392,9 +393,9 @@ describe("warnings on a successful section validation", () => {
   test("the warning goes to stderr and the command still completes", async () => {
     const run = await warningCli().run(["show"], { isTty: { stdout: true } });
     expect(run.exitCode).toBe(0);
-    expect(run.stdout).toBe("✔ hi\n");
+    expect(run.stdout).toBe("");
     expect(run.stderr).toBe(
-      "⚠ [TOY.LEGACY_GREETING] toy.legacy is deprecated.\n",
+      "⚠ [TOY.LEGACY_GREETING] toy.legacy is deprecated.\n✔ hi\n",
     );
   });
 
@@ -421,11 +422,11 @@ describe("warnings on a successful section validation", () => {
     ]);
   });
 
-  test("--log-level error hides the warning", async () => {
+  test("--log-level error hides the warning but not the presentation", async () => {
     const run = await warningCli().run(["show", "--log-level", "error"], {
       isTty: { stdout: true },
     });
     expect(run.exitCode).toBe(0);
-    expect(run.stderr).toBe("");
+    expect(run.stderr).toBe("✔ hi\n");
   });
 });

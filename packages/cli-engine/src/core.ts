@@ -129,7 +129,9 @@ export const PRESENTED: unique symbol = Symbol.for(
  * What a completed command's handler returns inside `ok(...)`: the
  * outcome plus the presentation the active format already materialized.
  * Built exclusively by ctx.present — the brand makes hand-construction
- * a type error.
+ * a type error. Human rendering writes the blocks, next-action lines,
+ * and diagnostics to stderr and the `stdout` lines to stdout — human
+ * mode is pipe-clean (operator ruling, 2026-08-09).
  */
 export interface PresentedResult<T> {
   readonly [PRESENTED]: true;
@@ -149,7 +151,9 @@ export interface PresentedResult<T> {
 /**
  * The per-format presentation functions a handler supplies to
  * ctx.present. Only the active format's functions are invoked, at the
- * return site.
+ * return site. `human` composes engine primitives, rendered to stderr;
+ * `stdout` is the machine-consumable data lines — what a pipe
+ * receives, the human mode's only stdout writes.
  */
 export interface Presentations {
   readonly human: (ui: Ui) => readonly Block[];

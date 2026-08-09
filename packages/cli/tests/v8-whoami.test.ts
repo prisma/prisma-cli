@@ -62,7 +62,7 @@ beforeEach(() => {
 });
 
 describe("prisma-v8 auth whoami", () => {
-  it("renders the signed-out human output and completes with exit 0", async () => {
+  it("renders the signed-out human card on stderr and the payload lines on stdout, exit 0", async () => {
     vi.mocked(readAuthState).mockResolvedValue(SIGNED_OUT);
 
     const result = await makeCli().run(["auth", "whoami"], {
@@ -70,15 +70,15 @@ describe("prisma-v8 auth whoami", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe(
+    expect(result.stdout).toBe("status: signed out\n");
+    expect(result.stderr).toBe(
       "ℹ Showing the current authenticated identity.\n" +
         "status: signed out\n" +
         "→ Sign in: prisma-cli auth login\n",
     );
-    expect(result.stderr).toBe("");
   });
 
-  it("renders the signed-in human output", async () => {
+  it("renders the signed-in human output: card on stderr, payload on stdout", async () => {
     vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
 
     const result = await makeCli().run(["auth", "whoami"], {
@@ -87,13 +87,18 @@ describe("prisma-v8 auth whoami", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe(
+      "status: signed in\n" +
+        "user: bob@example.com\n" +
+        "provider: GitHub\n" +
+        "workspace: Acme Inc\n",
+    );
+    expect(result.stderr).toBe(
       "ℹ Showing the current authenticated identity.\n" +
         "status: signed in\n" +
         "user: bob@example.com\n" +
         "provider: GitHub\n" +
         "workspace: Acme Inc\n",
     );
-    expect(result.stderr).toBe("");
   });
 
   it("emits the json stream with a terminal completed envelope", async () => {
@@ -134,7 +139,7 @@ describe("prisma-v8 auth whoami", () => {
     });
   });
 
-  it("renders the unchanged human blocks under --quiet (a log-level alias)", async () => {
+  it("renders the unchanged presentation under --quiet (a log-level alias)", async () => {
     vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
 
     const result = await makeCli().run(["auth", "whoami", "--quiet"], {
@@ -143,13 +148,18 @@ describe("prisma-v8 auth whoami", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe(
+      "status: signed in\n" +
+        "user: bob@example.com\n" +
+        "provider: GitHub\n" +
+        "workspace: Acme Inc\n",
+    );
+    expect(result.stderr).toBe(
       "ℹ Showing the current authenticated identity.\n" +
         "status: signed in\n" +
         "user: bob@example.com\n" +
         "provider: GitHub\n" +
         "workspace: Acme Inc\n",
     );
-    expect(result.stderr).toBe("");
   });
 
   it("errors with exit 2 when PRISMA_SERVICE_TOKEN is set but empty", async () => {
@@ -229,8 +239,8 @@ describe("needs.credentials early failure", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("✔ ran\n");
-    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("✔ ran\n");
   });
 
   it("whoami itself completes without credentials (no needs.credentials)", async () => {

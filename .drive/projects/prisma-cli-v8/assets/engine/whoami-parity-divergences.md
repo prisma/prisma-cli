@@ -60,7 +60,7 @@ auth whoami → Showing the current authenticated identity.
 - rail (`│`) card with column-aligned, color-toned values
   (`signed in` green, `signed out` dim).
 
-v8 (signed out):
+v8 (signed out), stderr:
 
 ```
 ℹ Showing the current authenticated identity.
@@ -68,13 +68,26 @@ status: signed out
 → Sign in: prisma-cli auth login
 ```
 
-- written to STDOUT (the engine's rule: presented result is data →
-  stdout; commentary/events → stderr),
-- the title survives as a `summary` block (tone `info`, rendered `ℹ …`)
-  because the Block vocabulary has no title/descriptor primitive,
-- fields render as unpadded `label: value` lines — no rail, no column
-  alignment, no per-value color tones,
-- the sign-in follow-up renders as a `→` line (see §4).
+v8 (signed out), stdout:
+
+```
+status: signed out
+```
+
+- the CHANNELS match the current CLI (operator ruling, 2026-08-09):
+  human Blocks, next-action lines, and diagnostics are presentation
+  prose on STDERR, exactly where the current CLI writes its card. The
+  divergence shrinks to rendering STYLE:
+  - the title survives as a `summary` block (tone `info`, rendered
+    `ℹ …`) because the Block vocabulary has no title/descriptor
+    primitive,
+  - fields render as unpadded `label: value` lines — no rail, no
+    column alignment, no per-value color tones,
+  - the sign-in follow-up renders as a `→` line (see §4).
+- one addition beyond the current CLI: the handler's
+  `Presentations.stdout` payload lines (`label: value` rows) are
+  written to STDOUT, always — the machine-usable payload of a pipe.
+  The current CLI's whoami writes nothing to stdout in human mode.
 
 Signed-in rows are otherwise identical in order and values: `status:
 signed in`, `user: <email or token placeholder>`, `provider:
@@ -101,9 +114,9 @@ nothing at all.
 
 v8: `--quiet` is a log-level alias — shorthand for `--log-level error`
 (operator ruling, 2026-08-09) — and nothing more. It silences
-commentary on stderr; whoami's human output is unchanged by it, and
-since whoami emits no commentary, a `--quiet` run's output is identical
-to a plain run.
+commentary on stderr; whoami's presentation (the stderr card and the
+stdout payload lines) is unchanged by it, and since whoami emits no
+commentary, a `--quiet` run's output is identical to a plain run.
 
 ## 6. Empty `PRISMA_SERVICE_TOKEN` (the errored path)
 
@@ -177,13 +190,11 @@ v8 bin has none of that shell behavior.
 Recorded during D3–D5 and re-listed here per the handover instruction;
 none were resolved unilaterally.
 
-1. D3: in human mode the engine renders human Blocks only; the
-   materialized `stdout` presentation lines are never written. PARTIALLY
-   SUPERSEDED by the 2026-08-09 `--quiet` ruling: the quiet arm is
-   settled (`--quiet` is a log-level alias and no longer selects the
-   stdout lines). The remaining open half is what the
-   `Presentations.stdout` surface is for now — the surface itself stays
-   in the draft pending an operator answer.
+1. RULED (2026-08-09, Option A channel discipline): human Blocks are
+   presentation prose on stderr; the `Presentations.stdout` payload
+   lines are the machine-usable payload and are always written to
+   stdout in human mode — that is what the surface is for. Human mode
+   is pipe-clean; json mode unchanged (frame stream on stdout).
 2. D4: remediation events render as nextActions at settlement in human
    mode (not live in the transcript); json streams them live as frames.
 3. Diagnostic severity stays `error|warn|info`; the trim to two awaits
