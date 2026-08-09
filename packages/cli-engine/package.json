@@ -5,6 +5,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
     "./package.json": "./package.json",
     "./protocol": {
       "types": "./dist/protocol.d.ts",
@@ -25,7 +29,8 @@
   "license": "Apache-2.0",
   "scripts": {
     "build": "tsdown",
-    "test": "pnpm run build && vitest run"
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm run build && pnpm run typecheck && vitest run"
   },
   "devDependencies": {
     "@types/node": "^22.19.19",
