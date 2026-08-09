@@ -5,6 +5,9 @@
  * and runs the pipeline: parse → needs → lazy handler load → context →
  * handler → envelope → exit code.
  */
+
+import { createRequire } from "node:module";
+import { join } from "node:path";
 import {
   type ApplicationText,
   buildApplication,
@@ -27,6 +30,7 @@ import {
   type ErroredEnvelope,
   type FlagSpec,
   type Format,
+  type InputStream,
   type LogLevel,
   type MountedTree,
   type PositionalSpec,
@@ -34,7 +38,9 @@ import {
   type Presentations,
   type PresentedResult,
   type ProductManifest,
+  type PromptSurface,
   type Runtime,
+  type Severity,
   type StreamEvent,
   type TestCli,
   type Ui,
@@ -43,6 +49,9 @@ import {
   CliStructuredError,
   type Diagnostic,
   type NextAction,
+  notOk,
+  ok,
+  okVoid,
   type Result,
 } from "./protocol";
 
@@ -195,6 +204,8 @@ interface RunState {
   format: Format;
   logLevel: LogLevel;
   quiet: boolean;
+  yes: boolean;
+  interactive: boolean;
   colorEnabled: boolean;
   resolved: boolean;
   settledExitCode: number | undefined;
@@ -628,12 +639,15 @@ async function executeRun(
   hooks: RunHooks,
   now: () => Date,
 ): Promise<number> {
+  const format = sniffFormat(argv, runtime);
   const state: RunState = {
     commandId: "",
     prefix: [],
-    format: sniffFormat(argv, runtime),
+    format,
     logLevel: "info",
     quiet: false,
+    yes: false,
+    interactive: defaultInteractive(format, runtime),
     colorEnabled: false,
     resolved: false,
     settledExitCode: undefined,
@@ -668,7 +682,7 @@ async function executeRun(
   if (state.settledExitCode !== undefined) {
     return state.settledExitCode;
   }
-  return settleUnhandled(invocation, stricliProcess.exitCode);
+  return settleUnhandled(spec, invocation, stricliProcess.exitCode);
 }
 
 function usageErrorCode(
@@ -684,8 +698,11 @@ function usageErrorCode(
 }
 
 /** Maps stricli's own settlement (parse/route failures, framework bugs)
- *  onto the engine protocol when the pipeline never settled. */
+ *  onto the engine protocol when the pipeline never settled. A failure
+ *  addressed at a server command renders to stderr — a foreign client on
+ *  the other end of stdout must never receive an engine envelope. */
 function settleUnhandled(
+  spec: EngineSpec,
   invocation: Invocation,
   stricliExitCode: number | string | null | undefined,
 ): number {
@@ -694,6 +711,11 @@ function settleUnhandled(
   if (raw === 0) {
     return 0;
   }
+  const segments =
+    state.prefix[0] === spec.name ? state.prefix.slice(1) : state.prefix;
+  if (spec.commands[segments.join(" ")]?.kind === "server-command") {
+    state.format = "human";
+  }
   const usage = usageErrorCode(raw) !== undefined;
   const summary =
     state.usageErrorText ??
@@ -701,7 +723,7 @@ function settleUnhandled(
     state.stricliStderr.trim();
   const envelope: ErroredEnvelope = {
     ok: false,
-    commandId: state.prefix.join("."),
+    commandId: segments.join("."),
     error: {
       code: usageErrorCode(raw) ?? "CLI.INTERNAL_ERROR",
       severity: "error",
@@ -727,10 +749,21 @@ function applySharedFlags(
 ): void {
   state.format = shared.format ?? resolveAutoFormat(shared, runtime);
   state.quiet = shared.quiet === true;
+  state.yes = shared.yes === true;
+  state.interactive =
+    shared.interactive ?? defaultInteractive(state.format, runtime);
   state.logLevel = resolveLogLevel(state.quiet, shared);
   state.colorEnabled =
     shared.color ??
     (runtime.isTty.stdout && runtime.env.NO_COLOR === undefined);
+}
+
+/** Interactive iff human format on a TTY stdin outside CI; --interactive
+ *  and --no-interactive override in either direction. */
+function defaultInteractive(format: Format, runtime: Runtime): boolean {
+  return (
+    format === "human" && runtime.isTty.stdin && runtime.env.CI === undefined
+  );
 }
 
 function resolveAutoFormat(shared: SharedFlags, runtime: Runtime): Format {
@@ -750,13 +783,32 @@ function resolveLogLevel(quiet: boolean, shared: SharedFlags): LogLevel {
   return shared.logLevel ?? "info";
 }
 
+type LooseArgs = {
+  readonly flags: Record<string, unknown>;
+  readonly positionals: Record<string, unknown>;
+};
+
 type LooseHandler = (
-  args: {
-    readonly flags: Record<string, unknown>;
-    readonly positionals: Record<string, unknown>;
-  },
+  args: LooseArgs,
   ctx: CommandContext<undefined, number>,
 ) => Promise<Result<PresentedResult<unknown>, CliStructuredError>>;
+
+type LooseSessionHandler = (
+  args: LooseArgs,
+  ctx: CommandContext<undefined, number>,
+) => Promise<Result<void, CliStructuredError>>;
+
+type LooseServerHandler = (
+  args: LooseArgs,
+  io: {
+    readonly stdin: InputStream;
+    readonly stdout: { write(text: string): void };
+    readonly stderr: { write(text: string): void };
+    readonly signal: AbortSignal;
+    readonly cwd: string;
+    readonly config: undefined;
+  },
+) => Promise<number>;
 
 async function executeMounted(
   invocation: Invocation,
@@ -766,25 +818,20 @@ async function executeMounted(
 ): Promise<void> {
   const state = invocation.state;
   state.commandId = entry.id;
-  applySharedFlags(state, rawFlags as SharedFlags, invocation.runtime);
-  if (entry.def.kind !== "result-command") {
-    settleBug(
-      invocation,
-      new Error(
-        `@prisma/cli-engine: ${entry.def.kind} execution is not implemented yet (it lands in D4)`,
-      ),
-    );
+  if (entry.def.kind === "server-command") {
+    await executeServer(invocation, entry, rawFlags);
     return;
   }
-  const needsError = await checkNeeds(entry.def, invocation.runtime);
+  applySharedFlags(state, rawFlags as SharedFlags, invocation.runtime);
+  const needsError = await checkNeeds(entry.def, invocation);
   if (needsError !== undefined) {
     settleErrored(invocation, needsError);
     return;
   }
-  let handler: LooseHandler;
+  let handler: unknown;
   try {
     const module = await entry.def.handler();
-    handler = module.default as LooseHandler;
+    handler = module.default;
   } catch (cause) {
     settleBug(invocation, cause);
     return;
@@ -794,8 +841,23 @@ async function executeMounted(
     positionals: distributePositionals(entry.def, values),
   };
   const ctx = makeContext(invocation);
+  if (entry.def.kind === "session-command") {
+    try {
+      const result = await (handler as LooseSessionHandler)(args, ctx);
+      state.resolved = true;
+      if (result.ok) {
+        settleSessionCompleted(invocation);
+      } else {
+        settleErrored(invocation, result.failure);
+      }
+    } catch (cause) {
+      state.resolved = true;
+      settleThrown(invocation, cause);
+    }
+    return;
+  }
   try {
-    const result = await handler(args, ctx);
+    const result = await (handler as LooseHandler)(args, ctx);
     state.resolved = true;
     if (result.ok) {
       settleCompleted(invocation, result.value);
@@ -804,32 +866,142 @@ async function executeMounted(
     }
   } catch (cause) {
     state.resolved = true;
-    if (CliStructuredError.is(cause)) {
-      settleErrored(invocation, cause);
-    } else {
-      settleBug(invocation, cause);
-    }
+    settleThrown(invocation, cause);
   }
 }
 
-/** The needs checks the engine enforces before the handler loads. D3
- *  implements credentials; config (D5), dependencies and interaction
- *  (D4) land with their dispatches. */
+/** The stdio handoff: a foreign client owns the conversation, so the
+ *  engine hands over the streams and stays out of stdout. The handler
+ *  returns the exit code directly; there is no envelope. */
+async function executeServer(
+  invocation: Invocation,
+  entry: MountEntry,
+  rawFlags: Record<string, unknown>,
+): Promise<void> {
+  const state = invocation.state;
+  state.format = "human";
+  const needsError = await checkNeeds(entry.def, invocation);
+  if (needsError !== undefined) {
+    settleErrored(invocation, needsError);
+    return;
+  }
+  let handler: unknown;
+  try {
+    const module = await entry.def.handler();
+    handler = module.default;
+  } catch (cause) {
+    settleBug(invocation, cause);
+    return;
+  }
+  const runtime = invocation.runtime;
+  const args = { flags: productFlags(entry.def, rawFlags), positionals: {} };
+  try {
+    const exitCode = await (handler as LooseServerHandler)(args, {
+      stdin: runtime.stdin,
+      stdout: runtime.stdout,
+      stderr: runtime.stderr,
+      signal: runtime.signal,
+      cwd: runtime.cwd,
+      config: undefined,
+    });
+    state.settledExitCode = exitCode;
+  } catch (cause) {
+    settleThrown(invocation, cause);
+  }
+}
+
+/** The needs checks the engine enforces before the handler loads:
+ *  interaction, dependencies, credentials. Config validation is D5. */
 async function checkNeeds(
   def: AnyCommand,
-  runtime: Runtime,
+  invocation: Invocation,
 ): Promise<CliStructuredError | undefined> {
-  if (def.needs?.credentials !== true) {
+  const needs = def.needs;
+  if (needs === undefined) {
     return undefined;
   }
-  const credentials = await runtime.getCredentials();
-  if (credentials !== undefined) {
-    return undefined;
+  if (needs.interaction === true && !invocation.state.interactive) {
+    return new CliStructuredError(
+      "CLI.INTERACTION_REQUIRED",
+      "This command requires an interactive terminal.",
+      {
+        why: "It prompts for input that cannot be supplied in json, non-interactive, CI, or non-TTY contexts.",
+        fix: "Run it from an interactive terminal, without --json or --no-interactive.",
+      },
+    );
   }
+  if (needs.dependencies !== undefined) {
+    for (const specifier of needs.dependencies) {
+      if (!dependencyResolvable(specifier, invocation.runtime.cwd)) {
+        return missingDependencyError(
+          specifier,
+          invocation.runtime.packageManager,
+        );
+      }
+    }
+  }
+  if (needs.credentials === true) {
+    const credentials = await invocation.runtime.getCredentials();
+    if (credentials === undefined) {
+      return new CliStructuredError(
+        "CLI.CREDENTIALS_REQUIRED",
+        "You must be signed in to run this command.",
+        { fix: "Sign in, then run the command again." },
+      );
+    }
+  }
+  return undefined;
+}
+
+// —————————————————————————————————————————————————————————————————————
+// Optional peer dependencies — the engine probes and phrases (R13)
+// —————————————————————————————————————————————————————————————————————
+
+function dependencyResolvable(specifier: string, cwd: string): boolean {
+  try {
+    createRequire(join(cwd, "__cli_engine_probe__.js")).resolve(specifier);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function installCommand(
+  packageManager: Runtime["packageManager"],
+  specifier: string,
+): string | undefined {
+  switch (packageManager) {
+    case "npm":
+      return `npm install ${specifier}`;
+    case "pnpm":
+      return `pnpm add ${specifier}`;
+    case "yarn":
+      return `yarn add ${specifier}`;
+    case "bun":
+      return `bun add ${specifier}`;
+    case "unknown":
+      return undefined;
+  }
+}
+
+function missingDependencyError(
+  specifier: string,
+  packageManager: Runtime["packageManager"],
+): CliStructuredError {
+  const install = installCommand(packageManager, specifier);
   return new CliStructuredError(
-    "CLI.CREDENTIALS_REQUIRED",
-    "You must be signed in to run this command.",
-    { fix: "Sign in, then run the command again." },
+    "CLI.MISSING_DEPENDENCY",
+    `This command requires the optional dependency '${specifier}', which is not installed in this project.`,
+    {
+      fix:
+        install === undefined
+          ? `Install '${specifier}' with your package manager, then run the command again.`
+          : `Install it (${install}), then run the command again.`,
+      meta: {
+        specifier,
+        ...(install === undefined ? {} : { installCommand: install }),
+      },
+    },
   );
 }
 
@@ -885,12 +1057,6 @@ function makeUi(colorEnabled: boolean): Ui {
   };
 }
 
-function promptsUnavailable(): never {
-  throw new Error(
-    "@prisma/cli-engine: prompts are not implemented yet (they land in D4)",
-  );
-}
-
 function makeContext(
   invocation: Invocation,
 ): CommandContext<undefined, number> {
@@ -928,18 +1094,233 @@ function makeContext(
     getCredentials: (): Promise<Credentials | undefined> =>
       invocation.runtime.getCredentials(),
     report: (event) => reportEvent(invocation, event),
-    prompt: {
-      confirm: async () => promptsUnavailable(),
-      consent: async () => promptsUnavailable(),
-      select: async () => promptsUnavailable(),
-      text: async () => promptsUnavailable(),
-    },
+    prompt: makePromptSurface(invocation),
     signal: invocation.runtime.signal,
     cwd: invocation.runtime.cwd,
-    requireDependency: async () => {
-      throw new Error(
-        "@prisma/cli-engine: requireDependency is not implemented yet (it lands in D4)",
-      );
+    requireDependency: async (specifier) =>
+      dependencyResolvable(specifier, invocation.runtime.cwd)
+        ? okVoid()
+        : notOk(
+            missingDependencyError(
+              specifier,
+              invocation.runtime.packageManager,
+            ),
+          ),
+  };
+}
+
+// —————————————————————————————————————————————————————————————————————
+// Prompts (§4a). Under --yes and in non-interactive contexts a prompt
+// with a product-declared default resolves to it without displaying; one
+// without a default HALTS the invocation with a structured error (the
+// engine renders the errored envelope, exit 2). consent is structurally
+// undefaultable and always halts in those contexts. Cancellation (EOF at
+// the prompt) is a distinct structured error mapped to exit 3.
+// —————————————————————————————————————————————————————————————————————
+
+function makeLineReader(stdin: InputStream): () => Promise<string | undefined> {
+  const iterator = stdin[Symbol.asyncIterator]();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let done = false;
+  return async () => {
+    for (;;) {
+      const newline = buffer.indexOf("\n");
+      if (newline !== -1) {
+        const line = buffer.slice(0, newline);
+        buffer = buffer.slice(newline + 1);
+        return line.endsWith("\r") ? line.slice(0, -1) : line;
+      }
+      if (done) {
+        if (buffer.length > 0) {
+          const line = buffer;
+          buffer = "";
+          return line;
+        }
+        return undefined;
+      }
+      const next = await iterator.next();
+      if (next.done === true) {
+        done = true;
+        continue;
+      }
+      buffer += decoder.decode(next.value, { stream: true });
+    }
+  };
+}
+
+function promptCancelled(question: string): CliStructuredError {
+  return new CliStructuredError(
+    "CLI.PROMPT_CANCELLED",
+    `The prompt "${question}" was cancelled before it was answered.`,
+  );
+}
+
+function promptUnanswerable(
+  question: string,
+  state: RunState,
+): CliStructuredError {
+  return new CliStructuredError(
+    "CLI.PROMPT_REQUIRED",
+    state.yes
+      ? `--yes cannot answer "${question}" because the prompt has no default.`
+      : `The command asked "${question}" but the session is not interactive and the prompt has no default.`,
+    {
+      fix: "Run the command from an interactive terminal, or pass a flag that answers the prompt.",
+    },
+  );
+}
+
+function consentUnavailable(
+  question: string,
+  state: RunState,
+): CliStructuredError {
+  return new CliStructuredError(
+    "CLI.CONSENT_REQUIRED",
+    state.yes
+      ? `"${question}" requires explicit consent, which --yes cannot grant.`
+      : `"${question}" requires explicit consent, and the session is not interactive.`,
+    {
+      fix: "Run the command interactively, or pass the command's explicit consent flag if it documents one.",
+    },
+  );
+}
+
+function promptInvalid(question: string, raw: string): CliStructuredError {
+  return new CliStructuredError(
+    "CLI.PROMPT_INVALID",
+    `"${raw}" is not a valid answer to "${question}".`,
+  );
+}
+
+function isExplicitYes(raw: string | boolean): boolean {
+  if (typeof raw === "boolean") {
+    return raw;
+  }
+  return ["y", "yes", "true"].includes(raw.trim().toLowerCase());
+}
+
+function parseBooleanAnswer(
+  raw: string | boolean,
+  fallback: boolean | undefined,
+  question: string,
+): boolean {
+  if (typeof raw === "boolean") {
+    return raw;
+  }
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "") {
+    return fallback ?? false;
+  }
+  if (["y", "yes", "true"].includes(normalized)) {
+    return true;
+  }
+  if (["n", "no", "false"].includes(normalized)) {
+    return false;
+  }
+  throw promptInvalid(question, raw);
+}
+
+function makePromptSurface(invocation: Invocation): PromptSurface {
+  const { runtime, hooks, state } = invocation;
+  let readLine: (() => Promise<string | undefined>) | undefined;
+  let answerCursor = 0;
+
+  const ask = async (
+    question: string,
+    rendered: string,
+  ): Promise<string | boolean> => {
+    const answers = hooks.answers;
+    if (answers !== undefined) {
+      if (answerCursor >= answers.length) {
+        throw new Error(
+          `@prisma/cli-engine: the run prompted ("${question}") past the scripted answers`,
+        );
+      }
+      const answer = answers[answerCursor];
+      answerCursor += 1;
+      return answer;
+    }
+    runtime.stderr.write(rendered);
+    readLine ??= makeLineReader(runtime.stdin);
+    const line = await readLine();
+    if (line === undefined) {
+      throw promptCancelled(question);
+    }
+    return line;
+  };
+
+  return {
+    confirm: async (question, opts) => {
+      const fallback = opts?.default;
+      if (state.yes || !state.interactive) {
+        if (fallback === undefined) {
+          throw promptUnanswerable(question, state);
+        }
+        return ok(fallback);
+      }
+      const hint =
+        fallback === undefined ? "(y/n)" : fallback ? "(Y/n)" : "(y/N)";
+      const raw = await ask(question, `? ${question} ${hint} `);
+      return ok(parseBooleanAnswer(raw, fallback, question));
+    },
+    consent: async (question) => {
+      if (state.yes || !state.interactive) {
+        throw consentUnavailable(question, state);
+      }
+      const raw = await ask(question, `? ${question} (y/n) `);
+      return ok(isExplicitYes(raw));
+    },
+    select: async (question, options, opts) => {
+      const fallback = opts?.default;
+      if (state.yes || !state.interactive) {
+        if (fallback === undefined) {
+          throw promptUnanswerable(question, state);
+        }
+        return ok(fallback);
+      }
+      const rendered = [
+        `? ${question}`,
+        ...options.map(
+          (option) =>
+            `  ${option.value === fallback ? "▸" : " "} ${option.value}: ${option.label}`,
+        ),
+        "> ",
+      ].join("\n");
+      const raw = await ask(question, rendered);
+      if (typeof raw !== "string") {
+        throw promptInvalid(question, String(raw));
+      }
+      const answer = raw.trim();
+      if (answer === "") {
+        if (fallback === undefined) {
+          throw promptInvalid(question, raw);
+        }
+        return ok(fallback);
+      }
+      const match = options.find((option) => option.value === answer);
+      if (match === undefined) {
+        throw promptInvalid(question, raw);
+      }
+      return ok(match.value);
+    },
+    text: async (question, opts) => {
+      const fallback = opts?.default;
+      if (state.yes || !state.interactive) {
+        if (fallback === undefined) {
+          throw promptUnanswerable(question, state);
+        }
+        return ok(fallback);
+      }
+      const hint = fallback === undefined ? "" : ` (${fallback})`;
+      const raw = await ask(question, `? ${question}${hint} `);
+      if (typeof raw !== "string") {
+        throw promptInvalid(question, String(raw));
+      }
+      if (raw === "") {
+        return ok(fallback ?? "");
+      }
+      return ok(raw);
     },
   };
 }
@@ -979,6 +1360,18 @@ const SEVERITY_RANK: Readonly<Record<LogLevel, number>> = {
   verbose: 3,
 };
 
+/** The display severity a commentary event is filtered by. `output`
+ *  data lines are the command's data, never filtered (undefined). */
+function eventDisplaySeverity(event: EngineEvent): Severity | undefined {
+  if (event.kind === "message") {
+    return event.severity;
+  }
+  if (event.kind === "output" && event.channel === "data") {
+    return undefined;
+  }
+  return "info";
+}
+
 function reportEvent(invocation: Invocation, event: EngineEvent): void {
   const state = invocation.state;
   if (state.resolved) {
@@ -990,9 +1383,10 @@ function reportEvent(invocation: Invocation, event: EngineEvent): void {
   if (event.kind === "remediation") {
     state.remediations.push(event.action);
   }
+  const severity = eventDisplaySeverity(event);
   if (
-    event.kind === "message" &&
-    SEVERITY_RANK[event.severity] > SEVERITY_RANK[state.logLevel]
+    severity !== undefined &&
+    SEVERITY_RANK[severity] > SEVERITY_RANK[state.logLevel]
   ) {
     return;
   }
@@ -1007,19 +1401,52 @@ function reportEvent(invocation: Invocation, event: EngineEvent): void {
   renderEventHuman(invocation, event);
 }
 
-/** Human rendering for the D3 slice of the vocabulary; the rest of the
- *  rendering rules land in D4. */
+const STEP_OUTCOME_SYMBOL: Readonly<Record<string, string>> = {
+  ok: "✔",
+  failed: "✖",
+  skipped: "↷",
+  warning: "⚠",
+};
+
+/** Human rendering: `output` data lines are the command's data on OUR
+ *  stdout; everything else is commentary on stderr. `remediation` is the
+ *  aggregation exception — it surfaces as nextActions at settlement, not
+ *  as live transcript. */
 function renderEventHuman(invocation: Invocation, event: EngineEvent): void {
-  if (event.kind === "message") {
-    invocation.runtime.stderr.write(`${event.text}\n`);
-    return;
-  }
-  if (event.kind === "output") {
-    const stream =
-      event.channel === "data"
-        ? invocation.runtime.stdout
-        : invocation.runtime.stderr;
-    stream.write(`${event.line}\n`);
+  const { stdout, stderr } = invocation.runtime;
+  switch (event.kind) {
+    case "message":
+      stderr.write(`${event.text}\n`);
+      return;
+    case "output":
+      (event.channel === "data" ? stdout : stderr).write(`${event.line}\n`);
+      return;
+    case "step-started":
+      stderr.write(`▸ ${event.step}\n`);
+      return;
+    case "step-finished":
+      stderr.write(`${STEP_OUTCOME_SYMBOL[event.outcome]} ${event.step}\n`);
+      return;
+    case "progress":
+      stderr.write(
+        `${event.step === undefined ? "progress" : event.step} ${event.completed}${event.total === undefined ? "" : `/${event.total}`}\n`,
+      );
+      return;
+    case "remediation":
+      return;
+    case "endpoint":
+      stderr.write(`${event.name}: ${event.url}\n`);
+      return;
+    case "status":
+      stderr.write(
+        `${event.subject}: ${event.from === undefined ? "" : `${event.from} → `}${event.status}\n`,
+      );
+      return;
+    case "artifact":
+      stderr.write(
+        `${event.path}${event.description === undefined ? "" : ` — ${event.description}`}\n`,
+      );
+      return;
   }
 }
 
@@ -1107,13 +1534,86 @@ function settleErrored(
   error: CliStructuredError,
 ): void {
   const state = invocation.state;
-  state.settledExitCode = 2;
+  state.settledExitCode = error.code === "CLI.PROMPT_CANCELLED" ? 3 : 2;
   emitErrored(invocation, {
     ok: false,
     commandId: state.commandId,
     error: diagnosticOf(error),
     diagnostics: [],
     nextActions: [...state.remediations],
+  });
+}
+
+/** Signal exit codes (R6): 130 SIGINT, 143 SIGTERM, 3 for an
+ *  engine-initiated abort (or any other reason). */
+function signalExitCode(reason: unknown): number {
+  if (reason === "SIGINT") {
+    return 130;
+  }
+  if (reason === "SIGTERM") {
+    return 143;
+  }
+  return 3;
+}
+
+function isAbortCause(cause: unknown, signal: AbortSignal): boolean {
+  if (!signal.aborted) {
+    return false;
+  }
+  if (cause === signal.reason) {
+    return true;
+  }
+  return cause instanceof Error && cause.name === "AbortError";
+}
+
+function settleThrown(invocation: Invocation, cause: unknown): void {
+  if (isAbortCause(cause, invocation.runtime.signal)) {
+    settleAborted(invocation);
+  } else if (CliStructuredError.is(cause)) {
+    settleErrored(invocation, cause);
+  } else {
+    settleBug(invocation, cause);
+  }
+}
+
+function settleAborted(invocation: Invocation): void {
+  const state = invocation.state;
+  state.settledExitCode = signalExitCode(invocation.runtime.signal.reason);
+  emitErrored(invocation, {
+    ok: false,
+    commandId: state.commandId,
+    error: {
+      code: "CLI.ABORTED",
+      severity: "error",
+      summary: "The command was aborted before it completed.",
+    },
+    diagnostics: [],
+    nextActions: [...state.remediations],
+  });
+}
+
+/** A session command that returned ok — including after the signal
+ *  fired — shut down cleanly: exit 0, no presentation. In json mode the
+ *  stream still terminates with exactly one result frame. */
+function settleSessionCompleted(invocation: Invocation): void {
+  const state = invocation.state;
+  state.settledExitCode = 0;
+  if (state.format !== "json") {
+    return;
+  }
+  const envelope: CompletedEnvelope = {
+    ok: true,
+    commandId: state.commandId,
+    result: null,
+    exitCode: 0,
+    diagnostics: [],
+    nextActions: [...state.remediations],
+  };
+  emitFrame(invocation, {
+    kind: "result",
+    envelope,
+    commandId: state.commandId,
+    timestamp: invocation.now().toISOString(),
   });
 }
 

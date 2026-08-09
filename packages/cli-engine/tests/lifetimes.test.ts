@@ -1,0 +1,345 @@
+/**
+ * Session and server command lifetimes, signal exit codes (3/130/143),
+ * and the optional-dependency story (needs.dependencies +
+ * ctx.requireDependency with the engine-phrased install error).
+ */
+import {
+  type Block,
+  createTestCli,
+  defineCommand,
+  defineServerCommand,
+  defineSessionCommand,
+} from "@prisma/cli-engine";
+import {
+  CliStructuredError,
+  notOk,
+  ok,
+  okVoid,
+} from "@prisma/cli-engine/protocol";
+import { describe, expect, test } from "vitest";
+
+const EPOCH = () => new Date(0);
+const T0 = "1970-01-01T00:00:00.000Z";
+
+function signalDone(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    signal.addEventListener("abort", () => resolve(), { once: true });
+  });
+}
+
+describe("session commands", () => {
+  const dev = defineSessionCommand({
+    help: { summary: "Runs until the signal fires" },
+    handler: async () => ({
+      default: async (_args, ctx) => {
+        ctx.report({ kind: "status", subject: "server", status: "listening" });
+        await signalDone(ctx.signal);
+        ctx.report({
+          kind: "message",
+          severity: "info",
+          text: "shutting down",
+        });
+        return okVoid();
+      },
+    }),
+  });
+
+  test("runs until the abort signal fires, then exits 0 on clean shutdown", async () => {
+    const controller = new AbortController();
+    const cli = createTestCli({ commands: { dev }, now: EPOCH });
+    const result = await cli.run(["dev", "--format", "human"], {
+      abort: controller.signal,
+      onEvent: (event) => {
+        if (event.kind === "status") {
+          controller.abort();
+        }
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("server: listening\nshutting down\n");
+    expect(result.events.map((event) => event.kind)).toEqual([
+      "status",
+      "message",
+    ]);
+  });
+
+  test("json mode terminates the event stream with one completed result frame", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const cli = createTestCli({ commands: { dev }, now: EPOCH });
+    const result = await cli.run(["dev", "--json"], {
+      abort: controller.signal,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.json[result.json.length - 1]).toEqual({
+      kind: "result",
+      envelope: {
+        ok: true,
+        commandId: "dev",
+        result: null,
+        exitCode: 0,
+        diagnostics: [],
+        nextActions: [],
+      },
+      commandId: "dev",
+      timestamp: T0,
+    });
+  });
+
+  test("a session returning notOk settles as errored with exit 2", async () => {
+    const broken = defineSessionCommand({
+      help: { summary: "Fails to start" },
+      handler: async () => ({
+        default: async () =>
+          notOk(
+            new CliStructuredError("DEV.PORT_TAKEN", "Port already in use"),
+          ),
+      }),
+    });
+    const cli = createTestCli({ commands: { broken }, now: EPOCH });
+    const result = await cli.run(["broken", "--json"]);
+
+    expect(result.exitCode).toBe(2);
+    const last = result.json[result.json.length - 1];
+    expect(
+      last.kind === "result" && !last.envelope.ok && last.envelope.error.code,
+    ).toBe("DEV.PORT_TAKEN");
+  });
+});
+
+describe("signal exit codes", () => {
+  const hang = defineCommand({
+    help: { summary: "Aborts in-flight work with the signal" },
+    handler: async () => ({
+      default: async (_args, ctx) => {
+        await signalDone(ctx.signal);
+        throw ctx.signal.reason;
+      },
+    }),
+  });
+
+  async function runAborted(reason?: string) {
+    const controller = new AbortController();
+    if (reason === undefined) {
+      controller.abort();
+    } else {
+      controller.abort(reason);
+    }
+    const cli = createTestCli({ commands: { hang }, now: EPOCH });
+    return cli.run(["hang", "--json"], { abort: controller.signal });
+  }
+
+  test("SIGINT maps to exit 130", async () => {
+    const result = await runAborted("SIGINT");
+
+    expect(result.exitCode).toBe(130);
+    const last = result.json[result.json.length - 1];
+    expect(
+      last.kind === "result" && !last.envelope.ok && last.envelope.error,
+    ).toEqual({
+      code: "CLI.ABORTED",
+      severity: "error",
+      summary: "The command was aborted before it completed.",
+    });
+  });
+
+  test("SIGTERM maps to exit 143", async () => {
+    const result = await runAborted("SIGTERM");
+
+    expect(result.exitCode).toBe(143);
+  });
+
+  test("an engine-initiated abort maps to exit 3", async () => {
+    const result = await runAborted();
+
+    expect(result.exitCode).toBe(3);
+  });
+});
+
+describe("optional dependencies", () => {
+  const MISSING = "@prisma/definitely-not-installed";
+
+  test("ctx.requireDependency resolves ok for an importable specifier", async () => {
+    const command = defineCommand({
+      help: { summary: "Probes a dependency" },
+      handler: async () => ({
+        default: async (_args, ctx) => {
+          const probe = await ctx.requireDependency("typescript");
+          return ok(
+            ctx.present(
+              { data: { resolvable: probe.ok } },
+              {
+                human: (): readonly Block[] => [],
+              },
+            ),
+          );
+        },
+      }),
+    });
+    const cli = createTestCli({ commands: { command }, now: EPOCH });
+    const result = await cli.run(["command", "--json"], {
+      cwd: process.cwd(),
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual({ resolvable: true });
+  });
+
+  test("ctx.requireDependency returns the engine-phrased install error for the handler to pass to notOk", async () => {
+    const command = defineCommand({
+      help: { summary: "Needs a missing dependency" },
+      handler: async () => ({
+        default: async (_args, ctx) => {
+          const probe = await ctx.requireDependency(MISSING);
+          if (!probe.ok) {
+            return notOk(probe.failure);
+          }
+          throw new Error("unreachable");
+        },
+      }),
+    });
+    const cli = createTestCli({
+      commands: { command },
+      packageManager: "pnpm",
+      now: EPOCH,
+    });
+    const result = await cli.run(["command", "--json"], {
+      cwd: process.cwd(),
+    });
+
+    expect(result.exitCode).toBe(2);
+    const last = result.json[result.json.length - 1];
+    expect(
+      last.kind === "result" && !last.envelope.ok && last.envelope.error,
+    ).toEqual({
+      code: "CLI.MISSING_DEPENDENCY",
+      severity: "error",
+      summary: `This command requires the optional dependency '${MISSING}', which is not installed in this project.`,
+      fix: `Install it (pnpm add ${MISSING}), then run the command again.`,
+      meta: {
+        specifier: MISSING,
+        installCommand: `pnpm add ${MISSING}`,
+      },
+    });
+  });
+
+  test("needs.dependencies fails early, before the handler loads", async () => {
+    let loaded = false;
+    const command = defineCommand({
+      help: { summary: "Unconditionally needs a missing dependency" },
+      needs: { dependencies: [MISSING] },
+      handler: async () => {
+        loaded = true;
+        return { default: null as never };
+      },
+    });
+    const cli = createTestCli({
+      commands: { command },
+      packageManager: "npm",
+      now: EPOCH,
+    });
+    const result = await cli.run(["command", "--json"], {
+      cwd: process.cwd(),
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(loaded).toBe(false);
+    const last = result.json[result.json.length - 1];
+    expect(
+      last.kind === "result" && !last.envelope.ok && last.envelope.error.fix,
+    ).toBe(`Install it (npm install ${MISSING}), then run the command again.`);
+  });
+
+  test("needs.dependencies passes when every specifier resolves", async () => {
+    const command = defineCommand({
+      help: { summary: "Needs installed dependencies" },
+      needs: { dependencies: ["typescript", "vitest"] },
+      handler: async () => ({
+        default: async (_args, ctx) =>
+          ok(
+            ctx.present({ data: null }, { human: (): readonly Block[] => [] }),
+          ),
+      }),
+    });
+    const cli = createTestCli({ commands: { command }, now: EPOCH });
+    const result = await cli.run(["command", "--json"], {
+      cwd: process.cwd(),
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+});
+
+describe("server commands", () => {
+  const lsp = defineServerCommand({
+    help: { summary: "Speaks a foreign protocol over stdio" },
+    handler: async () => ({
+      default: async (_args, io) => {
+        let received = "";
+        const decoder = new TextDecoder();
+        for await (const chunk of io.stdin) {
+          received += decoder.decode(chunk, { stream: true });
+        }
+        io.stdout.write(
+          `Content-Length: ${received.length}\r\n\r\n${received}`,
+        );
+        return 0;
+      },
+    }),
+  });
+
+  test("the foreign client owns stdio: raw bytes out, no envelope, exit code passthrough", async () => {
+    const cli = createTestCli({ commands: { lsp }, now: EPOCH });
+    const result = await cli.run(["lsp"], { stdin: "{}" });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("Content-Length: 2\r\n\r\n{}");
+    expect(result.stderr).toBe("");
+    expect(result.json).toEqual([]);
+  });
+
+  test("the handler's returned exit code is the run's exit code", async () => {
+    const failing = defineServerCommand({
+      help: { summary: "Exits nonzero" },
+      handler: async () => ({ default: async () => 42 }),
+    });
+    const cli = createTestCli({ commands: { failing }, now: EPOCH });
+    const result = await cli.run(["failing"]);
+
+    expect(result.exitCode).toBe(42);
+    expect(result.stdout).toBe("");
+  });
+
+  test("the shared flag family is not injected", async () => {
+    const cli = createTestCli({ commands: { lsp }, now: EPOCH });
+    const result = await cli.run(["lsp", "--json"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("CLI.INVALID_ARGUMENTS");
+  });
+
+  test("a thrown error renders on stderr only, never stdout", async () => {
+    const crashing = defineServerCommand({
+      help: { summary: "Crashes" },
+      handler: async () => ({
+        default: async () => {
+          throw new Error("protocol violation");
+        },
+      }),
+    });
+    const cli = createTestCli({ commands: { crashing }, now: EPOCH });
+    const result = await cli.run(["crashing"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("protocol violation");
+  });
+});
