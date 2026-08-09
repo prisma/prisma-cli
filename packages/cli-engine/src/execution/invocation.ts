@@ -46,6 +46,9 @@ export interface RunState {
   usageErrorText: string | undefined;
   internalErrorText: string | undefined;
   stricliStderr: string;
+  /** The stdin iterator a prompt opened, closed when the run settles so
+   *  a real process's stdin never keeps the event loop alive. */
+  stdinIterator: AsyncIterator<Uint8Array> | undefined;
 }
 
 export interface Invocation {

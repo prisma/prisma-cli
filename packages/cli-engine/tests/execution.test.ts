@@ -893,11 +893,64 @@ describe("help examples", () => {
         ok(ctx.present({ data: null }, { human: () => [] })),
     });
     const cli = createTestCli({ commands: { greet: exemplified }, now: EPOCH });
-    const result = await cli.run(["greet", "--help"]);
+    const result = await cli.run(["greet", "--help"], {
+      isTty: { stdout: true },
+    });
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("prisma-test greet world --loud");
     expect(result.stdout).toContain("prisma-test greet world | cat");
     expect(result.stdout).not.toContain("{bin}");
+  });
+
+  test("json mode --help keeps stdout frame-clean: help prose goes to stderr", async () => {
+    const cli = createTestCli({ commands: { greet: greet }, now: EPOCH });
+    const result = await cli.run(["greet", "--help"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("USAGE");
+  });
+});
+
+describe("--version", () => {
+  test("prints the version and exits 0 in human mode", async () => {
+    const cli = createTestCli({ commands: { greet: greet }, now: EPOCH });
+    const result = await cli.run(["--version"], { isTty: { stdout: true } });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("0.0.0\n");
+    expect(result.stderr).toBe("");
+  });
+
+  test("works after a command path too", async () => {
+    const cli = createTestCli({ commands: { greet: greet }, now: EPOCH });
+    const result = await cli.run(["greet", "--version"], {
+      isTty: { stdout: true },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("0.0.0\n");
+  });
+
+  test("emits a single result frame in json mode", async () => {
+    const cli = createTestCli({ commands: { greet: greet }, now: EPOCH });
+    const result = await cli.run(["--version"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.json).toHaveLength(1);
+    expect(result.json[0]).toEqual({
+      kind: "result",
+      envelope: {
+        ok: true,
+        commandId: "version",
+        result: { version: "0.0.0" },
+        exitCode: 0,
+        diagnostics: [],
+        nextActions: [],
+      },
+      commandId: "version",
+      timestamp: "1970-01-01T00:00:00.000Z",
+    });
   });
 });

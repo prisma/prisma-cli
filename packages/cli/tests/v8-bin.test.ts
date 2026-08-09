@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   assembleRuntime,
+  buildCli,
   detectPackageManager,
   main,
   makeGetCredentials,
@@ -205,5 +206,37 @@ describe("main", () => {
       "@prisma/cli-engine: mount path 'x' collides\n",
     );
     expect(proc.stdoutText).toBe("");
+  });
+});
+
+describe("buildCli", () => {
+  it("constructs the shipped command tree without throwing", () => {
+    expect(() => buildCli()).not.toThrow();
+  });
+
+  it("runs --help through the real tree with a stub process", async () => {
+    const proc = makeProcess({
+      argv: ["node", "bin.js", "--help"],
+      isTty: { stdout: true },
+    });
+
+    const exitCode = await main(proc);
+
+    expect(exitCode).toBe(0);
+    expect(proc.stdoutText).toContain("USAGE");
+    expect(proc.stdoutText).toContain("auth");
+  });
+
+  it("runs --version through the real tree, printing the version with exit 0", async () => {
+    const proc = makeProcess({
+      argv: ["node", "bin.js", "--version"],
+      isTty: { stdout: true },
+    });
+
+    const exitCode = await main(proc);
+
+    expect(exitCode).toBe(0);
+    expect(proc.stdoutText).toMatch(/^\d+\.\d+\.\d+/);
+    expect(proc.stderrText).toBe("");
   });
 });

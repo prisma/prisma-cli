@@ -11,9 +11,11 @@
  */
 import {
   type Block,
+  createCli,
   createTestCli,
   defineCommand,
   type PromptSurface,
+  type Runtime,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { describe, expect, test } from "vitest";
@@ -447,5 +449,57 @@ describe("needs.interaction", () => {
     expect(wasRun()).toBe(true);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe("✔ ran\n");
+  });
+});
+
+describe("stdin cleanup", () => {
+  test("a run that prompted closes the stdin iterator, so an unending stdin cannot keep it alive", async () => {
+    let returned = false;
+    const unendingStdin = {
+      [Symbol.asyncIterator]: () => ({
+        next: (): Promise<IteratorResult<Uint8Array>> =>
+          new Promise((resolve) => {
+            setTimeout(
+              () =>
+                resolve({
+                  done: false,
+                  value: new TextEncoder().encode("yes\n"),
+                }),
+              0,
+            );
+          }),
+        return: async (): Promise<IteratorResult<Uint8Array>> => {
+          returned = true;
+          return { done: true, value: undefined };
+        },
+      }),
+    };
+    const cli = createCli({
+      name: "t",
+      version: "0.0.0",
+      commandFamilies: [],
+      groups: {},
+      commands: { probe: promptCommand(confirmNoDefault) },
+    });
+    const runtime: Runtime = {
+      stdout: { write: () => {} },
+      stderr: { write: () => {} },
+      stdin: unendingStdin,
+      cwd: "/",
+      env: {},
+      isTty: { stdin: true, stdout: true, stderr: true },
+      exit: (code: number): never => {
+        throw new Error(`runtime.exit(${code})`);
+      },
+      onSignal: () => () => {},
+      config: { sections: {}, diagnostics: [] },
+      getCredentials: async () => undefined,
+      packageManager: "unknown",
+    };
+
+    const exitCode = await cli.run(["probe"], runtime);
+
+    expect(exitCode).toBe(0);
+    expect(returned).toBe(true);
   });
 });

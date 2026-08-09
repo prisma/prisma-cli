@@ -13,8 +13,12 @@ import type { InputStream } from "../definition/streams";
 import { CliStructuredError } from "../protocol";
 import type { Invocation, RunState } from "./invocation";
 
-function makeLineReader(stdin: InputStream): () => Promise<string | undefined> {
+function makeLineReader(
+  stdin: InputStream,
+  invocation: Invocation,
+): () => Promise<string | undefined> {
   const iterator = stdin[Symbol.asyncIterator]();
+  invocation.state.stdinIterator = iterator;
   const decoder = new TextDecoder();
   let buffer = "";
   let done = false;
@@ -149,7 +153,7 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
       return answer;
     }
     runtime.stderr.write(rendered);
-    readLine ??= makeLineReader(runtime.stdin);
+    readLine ??= makeLineReader(runtime.stdin, invocation);
     const line = await readLine();
     if (line === undefined) {
       throw promptCancelled(question);

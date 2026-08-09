@@ -210,6 +210,9 @@ none were resolved unilaterally.
 5. RULED (2026-08-09): diagnostics on a SUCCESSFUL `SectionValidation`
    are written to stderr as warning commentary (log-level filtered,
    both formats), never into the stream or the envelope.
+6. DEFERRED to S3: running the config loader under plain Node (the S1
+   bin is tsx-run by design, so evaluating a `.ts` config on a bare
+   `node` host is the S3 loader slice's problem).
 
 The D6 finding about the lazy-handler pattern's circular type inference
 is resolved by an operator ruling (2026-08-09): handlers are never

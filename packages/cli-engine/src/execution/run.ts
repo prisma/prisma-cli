@@ -27,6 +27,7 @@ import type {
   RunState,
 } from "./invocation";
 import { firstLine } from "./invocation";
+import { emitFrame } from "./events";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import {
   emitErrored,
@@ -106,6 +107,7 @@ async function executeRun(
     usageErrorText: undefined,
     internalErrorText: undefined,
     stricliStderr: "",
+    stdinIterator: undefined,
   };
   const controller = new AbortController();
   let signalDelivered = false;
@@ -124,8 +126,18 @@ async function executeRun(
     state,
     signal: controller.signal,
   };
+  if (versionRequested(argv)) {
+    return settleVersion(spec, invocation);
+  }
   const stricliProcess = {
-    stdout: { write: (text: string) => runtime.stdout.write(text) },
+    /** stricli writes only help text here. In json mode stdout carries
+     *  exactly the frame stream, so help prose goes to stderr instead. */
+    stdout: {
+      write: (text: string) =>
+        (state.format === "human" ? runtime.stdout : runtime.stderr).write(
+          text,
+        ),
+    },
     stderr: {
       write: (text: string) => {
         state.stricliStderr += text;
@@ -152,11 +164,48 @@ async function executeRun(
     });
   } finally {
     unsubscribe();
+    await state.stdinIterator?.return?.();
   }
   if (state.settledExitCode !== undefined) {
     return state.settledExitCode;
   }
   return settleUnhandled(spec, invocation, stricliProcess.exitCode);
+}
+
+function versionRequested(argv: readonly string[]): boolean {
+  for (const argument of argv) {
+    if (argument === "--") {
+      return false;
+    }
+    if (argument === "--version") {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** `--version` prints createCli's version and exits 0. In json mode the
+ *  version travels as the run's single result frame. */
+function settleVersion(spec: EngineSpec, invocation: Invocation): number {
+  const { runtime, state } = invocation;
+  if (state.format === "human") {
+    runtime.stdout.write(`${spec.version}\n`);
+    return 0;
+  }
+  emitFrame(invocation, {
+    kind: "result",
+    envelope: {
+      ok: true,
+      commandId: "version",
+      result: { version: spec.version },
+      exitCode: 0,
+      diagnostics: [],
+      nextActions: [],
+    },
+    commandId: "version",
+    timestamp: invocation.now().toISOString(),
+  });
+  return 0;
 }
 
 /** Maps stricli's own settlement (parse/route failures, framework bugs)
