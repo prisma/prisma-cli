@@ -3,7 +3,8 @@
   "compilerOptions": {
     "paths": {
       "@prisma/cli-engine": ["./src/exports/index.ts"],
-      "@prisma/cli-engine/protocol": ["./src/exports/protocol.ts"]
+      "@prisma/cli-engine/protocol": ["./src/exports/protocol.ts"],
+      "@prisma/cli-engine/testing": ["./src/exports/testing.ts"]
     }
   },
   "include": ["src/**/*.ts", "tests/**/*.ts"]

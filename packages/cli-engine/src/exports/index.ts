@@ -1,8 +1,8 @@
 /**
- * The v8 engine surface (R3): everything a command-family package
- * imports for CLI purposes — definition constructors, flag/positional
- * builders, the context/envelope/runtime types, and the
- * createCli/createTestCli entry points.
+ * The v8 engine surface: everything a command-family package imports
+ * for CLI purposes — definition constructors, flag/positional builders,
+ * the context/envelope/runtime types, and the createCli entry point.
+ * The test harness lives on the ./testing subpath.
  *
  * Normative source: .drive/projects/prisma-cli-v8/assets/engine/
  * engine-interface-draft.ts (v8).
@@ -12,21 +12,29 @@ export {
   type Args,
   type ArgsSpec,
   type Char,
-  FLAG,
+  type CommandArgs,
   type FlagSpec,
   flag,
-  POSITIONAL,
   type PositionalSpec,
   positional,
 } from "../args";
-export type { CommandFamily, MountedTree } from "../command-family";
+export { type Cli, createCli } from "../cli";
+export {
+  type CommandFamily,
+  defineCommandFamily,
+  type MountedTree,
+} from "../command-family";
 export {
   type AnyCommand,
   type CommandDefinition,
   type CommandHandler,
+  type CommandHelp,
+  type CommandNeeds,
+  type CompletedEnvelope,
   defineCommand,
   defineServerCommand,
   defineSessionCommand,
+  type ErroredEnvelope,
   type Handler,
   type HelpSpec,
   type NeedsSpec,
@@ -45,14 +53,11 @@ export type {
   PromptSurface,
 } from "../context";
 export type {
-  CompletedEnvelope,
-  ErroredEnvelope,
+  EngineEvent,
+  Severity,
   StreamEvent,
   StreamMeta,
-} from "../envelopes";
-export type { EngineEvent, LogLevel, Severity } from "../events";
-export { createTestCli } from "../execution/harness";
-export { createCli } from "../execution/run";
+} from "../events";
 export {
   type Block,
   type Format,
@@ -64,11 +69,10 @@ export {
   type Ui,
 } from "../presentation";
 export {
-  type Cli,
   type HostProcess,
+  type InputStream,
   type LoadedConfig,
+  type OutputStream,
   PRISMA_CONFIG_VERSION,
   type Runtime,
-  type TestCli,
 } from "../runtime";
-export type { InputStream, OutputStream } from "../streams";
