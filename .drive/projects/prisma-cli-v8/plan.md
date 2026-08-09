@@ -40,7 +40,7 @@ deleted, per-family shell integration proofs, parity list reviewed.
 
 ### S3 — Composer adoption (first cross-repo consumer)
 
-Repos: composer + prisma-cli. Composer exports a `ProductManifest`
+Repos: composer + prisma-cli. Composer exports a `CommandFamily`
 (the `composer` config section token — its validator rewritten from the
 current throwing loader per the section API — plus its command set);
 ports `deploy`/`destroy` (result commands), `dev`/`log` (session
@@ -58,11 +58,14 @@ codes as diagnostics inside completed envelopes with documented exit
 codes; the severity-'info' evidence check (trim both scales together if
 unused). Small, independent; the only ordering constraint is landing
 before S5 relies on the semantics.
+The amendment must also adopt the engine's `fix` → typed `nextActions`
+rename (operator ruling, 2026-08-09) so Diagnostic stays
+field-for-field identical to the settled envelope.
 
 ### S5 — ORM adoption
 
 Repos: prisma/prisma + prisma-cli. The `orm` section token +
-manifest; port `contract *`, `migration *` (retiring the clipanion
+command family; port `contract *`, `migration *` (retiring the clipanion
 migration-cli), `db *`, `init`, `telemetry`, `lsp` (the server
 command). Proves the diagnostics model (`migration check`, `db verify`
 as completed-with-findings + catalogued exit codes) and the
@@ -103,7 +106,7 @@ S6 (after S1) ─────────────► wired in during S3/S5
 | Prompts (defaults, consent, wizard) | S2 (init) |
 | Poll + status events; output streams | S2 (domain wait; app/build logs) |
 | Auth via context, refresh under long runs | S2, S3 (deploy) |
-| Config sections, manifests, validator absence | S3, S5 |
+| Config sections, command families, validator absence | S3, S5 |
 | Session commands, signal lifetime | S3 (dev, log) |
 | Cross-repo/published consumption, pins, tandem releases | S3 |
 | Child-status passthrough exception | S3 |

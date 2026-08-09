@@ -6,19 +6,23 @@
   },
   "packageManager": "pnpm@11.6.0",
   "scripts": {
-    "build:cli": "pnpm --filter @prisma/cli build",
+    "build": "turbo run build",
+    "build:cli": "turbo run build --filter=@prisma/cli",
     "build:compute": "pnpm --filter @prisma/compute build",
     "format": "biome format . --write",
     "lint": "biome check .",
     "lint:fix": "biome check . --write",
     "smoke:cli-nextjs": "node scripts/smoke-cli-nextjs-artifact.mjs",
-    "test": "pnpm --filter @prisma/cli test",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
     "prisma-cli": "tsx packages/cli/src/bin.ts",
-    "prisma": "tsx packages/cli/src/bin.ts"
+    "prisma": "tsx packages/cli/src/bin.ts",
+    "prisma-v8": "tsx packages/cli/src/v8/bin.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
     "pkg-pr-new": "^0.0.75",
-    "tsx": "^4.22.4"
+    "tsx": "^4.22.4",
+    "turbo": "^2.10.9"
   }
 }

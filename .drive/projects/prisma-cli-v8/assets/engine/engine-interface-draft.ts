@@ -3,15 +3,18 @@
  * v1 initial · v2 round-1 fixes · v3 return-site presentation ·
  * v4 completed/errored, --format, log levels, prompt defaults ·
  * v5 round-3 closure · v6 Diagnostic, warnings fold, stream flatten ·
- * v7 outcome-first present, help/args/needs, product manifests ·
- * v8 packaging and residue rulings: ONE library package
+ * v7 outcome-first present, help/args/needs, command families ·
+ * v8 packaging and residue rulings, amended in review round 2
+ * (normalized definition shapes, defineCommandFamily, one severity
+ * scale, phantom-typed arg specs, ./testing subpath): ONE library
+ * package
  * (@prisma/cli-engine, with @stricli/core as an ordinary exact-pinned
  * dependency — bundling was considered and rejected: unusual for a
  * library, blinds security audit; R3's hiding is about types, which no
  * dependency violates) with a ./protocol subpath for types-only
  * consumers;
  * NextAction.journey dropped (no consumer); docs URLs derived from a
- * manifest-supplied base; committed versions for releases; auth library
+ * family-supplied base; committed versions for releases; auth library
  * lives in the CLI repo, distinct from Prisma Cloud. Prior versions
  * preserved as -v1…-v7.ts; reviews in ./reviews/.
  *
@@ -28,9 +31,11 @@
  * failures with exit 2, as it classifies them today. The amendment also
  * checks whether any shipped error uses severity 'info'; if none does,
  * the severity scale of CliStructuredError and Diagnostic trims to
- * error|warn — together, so the two shapes stay identical.
+ * error|warn — together, so the two shapes stay identical. The
+ * amendment also adopts the `fix` → typed `nextActions` rename
+ * (operator ruling, 2026-08-09), for the same reason.
  *
- * Everything a product package imports for CLI purposes lives here (R3).
+ * Everything a package imports for CLI purposes lives here (R3).
  * Requirement references (R1–R14) point at docs/architecture/
  * cli-engine-requirements.md in prisma-cli. Nothing from stricli appears —
  * it is an internal of the engine package.
@@ -45,38 +50,57 @@
  *   return site. Presentation always runs for completed results.
  *
  *   ERRORED — it returns notOk(structuredError): the command did not
- *   complete. The engine renders the error envelope; there is no product
+ *   complete. The engine renders the error envelope; there is no command
  *   presentation on the error path. The primary error is severity
- *   'error' by definition. `remediation` events emitted before the
- *   error are aggregated into the errored envelope's nextActions.
+ *   'error' by definition and carries its own typed `nextActions`
+ *   (operator ruling, 2026-08-09: `fix` renamed — fix and nextActions
+ *   solved the same problem); the envelope copies them.
  *
  * PRECONDITIONS (a command's `needs`) are enforced by the engine BEFORE
- * the handler loads: an invalid needed config section, missing
+ * the handler runs: an invalid needed config section, missing
  * credentials, an absent optional dependency, or a non-interactive
  * context each fail the command early with the engine's own structured
  * error — a handler only ever runs in a world where it can operate.
  *
  * Session commands run until context.signal fires, then clean up and
  * return. Server commands hand the stdio conversation to a foreign
- * client. Liveness display is the engine's. Nothing product-authored
+ * client. Liveness display is the engine's. Nothing command-family-authored
  * executes after the handler resolves.
  *
  * FORMATS AND LEVELS. `--format <human|json>`, auto-selected when
  * unspecified (human on a TTY stdout, json otherwise); `--json` is
- * shorthand for `--format json`. In json mode the engine suppresses
- * prompts (they fail structurally) and emits one StreamEvent per line.
+ * shorthand for `--format json`. In json mode the engine emits one
+ * StreamEvent per line. Format selects output shape ONLY (operator
+ * ruling, 2026-08-09): interactivity is detected from the environment
+ * (TTY stdin outside CI) and overridden by
+ * `--interactive`/`--no-interactive`. An interactive json run may
+ * prompt — the prompt UI writes to stderr, so stdout stays a clean
+ * frame stream; a non-interactive prompt with no default fails
+ * structurally.
  * Commentary is filtered by `--log-level <error|warn|info|verbose>`
- * (default info); `--verbose` is shorthand for `--log-level verbose`.
+ * (default info); `--verbose` is shorthand for `--log-level verbose`;
+ * `-q/--quiet` for `--log-level error` (operator ruling, 2026-08-09: a
+ * log-level alias only, not otherwise retained — it never changes what
+ * a completed result renders).
+ * CHANNELS, human mode (operator ruling, 2026-08-09): decoration goes
+ * to stderr, machine-usable payload to stdout. Human Blocks,
+ * next-action lines, and diagnostics are presentation prose on STDERR;
+ * the `Presentations.stdout` payload lines (and `output` events with
+ * channel 'data') are the only writes to STDOUT — human mode is
+ * pipe-clean. json mode is unchanged: the frame stream owns stdout.
  * The engine injects the shared flag family on every non-server
  * command: --format/--json, --log-level/-v/--verbose, -q/--quiet,
  * -y/--yes, --interactive/--no-interactive, --color/--no-color.
- * Products cannot declare flags with those names. Product flag keys are
+ * Commands cannot declare flags with those names. Declared flag keys are
  * camelCase and transliterate to --kebab-case.
  *
  * EXIT CODES (R6): 0 completed; 1 bug only; 2 errored (expected,
  * structured); 3 user abort; 4–99 documented per command in
- * `exitCodes`; 130/143 delivered signals. First signal fires
- * context.signal and awaits teardown; a second exits immediately.
+ * `exitCodes`; 130/143 delivered signals. The engine owns the whole
+ * signal policy (operator ruling, 2026-08-09): the first delivered
+ * signal fires context.signal and awaits teardown (settling 130/143);
+ * a second exits immediately through the runtime's exit proxy — the
+ * engine ends the process only ever via Runtime.exit.
  */
 
 // ————————————————————————————————————————————————————————————————————————
@@ -94,9 +118,13 @@ import type { CliStructuredError, Diagnostic, NextAction, Result } from '@prisma
  *
  * Diagnostic — a recorded finding: pure data, never thrown, no stack.
  *   { code: 'NAMESPACE.SUBCODE', severity: 'error' | 'warn' | 'info',
- *     summary, why?, fix?, where?, meta?, docsUrl? }
+ *     summary, why?, nextActions: readonly NextAction[] (always
+ *     present, empty when there are none), where?, meta?, docsUrl? }
+ *   `fix` prose is gone (operator ruling, 2026-08-09): remediation is
+ *   typed nextActions, rendered as → lines in human mode.
  *   Field-for-field the settled error envelope (ADR 239) minus `ok` —
- *   identical scales included; the two shapes never diverge.
+ *   identical scales included; the two shapes never diverge (the ADR
+ *   239 amendment adopts the same rename).
  *
  * NextAction — the typed agent-facing follow-up (platform-shipped form,
  * minus its `journey` grouping label — dropped: no consumer branches on
@@ -105,33 +133,35 @@ import type { CliStructuredError, Diagnostic, NextAction, Result } from '@prisma
  *     label, command?, commands?, reason? }
  */
 
-/** The commentary severity scale; also the log-level axis. Distinct from
- *  Diagnostic severity: 'verbose' grades commentary, which never enters
- *  the envelope. Step outcomes are completion states, not severities. */
+/** The commentary severity scale; also the log-level axis (one name —
+ *  the --log-level flag selects a Severity). Distinct from Diagnostic
+ *  severity: 'verbose' grades commentary, which never enters the
+ *  envelope. Step outcomes are completion states, not severities. */
 export type Severity = 'error' | 'warn' | 'info' | 'verbose'
-export type LogLevel = Severity
 
 export type Format = 'human' | 'json'
 
 // ————————————————————————————————————————————————————————————————————————
-// §1 Events — R14: one engine vocabulary, product extensions in `data`
+// §1 Events — R14: one engine vocabulary, command-family extensions in `data`
 // ————————————————————————————————————————————————————————————————————————
 
 /**
  * The engine event envelope. `kind`-specific fields are the common
  * vocabulary the engine renders consistently (human mode) and streams
- * (json mode, §9). `data` is the product extension: passed through to
+ * (json mode, §9). `data` is the command family's extension: passed through to
  * machine consumers untouched, never interpreted by the engine,
- * documented and versioned by the product as its own public API. A
+ * documented and versioned by the owning command family as its own public API. A
  * structure recurring inside `data` across commands is the promotion
  * signal (R14).
  *
  * Rendering, human mode: `output` events with channel 'data' are the
  * command's data and go to OUR stdout; everything else is commentary on
  * stderr, filtered by the active log level. Events are transcript: they
- * are NOT aggregated into the envelope (the one exception is
- * `remediation` → nextActions). Findings that belong in the envelope
- * are diagnostics on the presented outcome, not events.
+ * are NEVER aggregated into any envelope (`remediation` included — it
+ * is transcript-only, framed in json mode, unrendered in human mode).
+ * Follow-ups are handler-owned: completed via `presentations.next`,
+ * errored via the error's own `nextActions`. Findings that belong in
+ * the envelope are diagnostics on the presented outcome, not events.
  *
  * report() is synchronous fire-and-forget; the engine buffers and writes
  * asynchronously. Calling it after the handler has resolved is a bug
@@ -176,6 +206,8 @@ export type EngineEvent =
       readonly line: string
       readonly data?: unknown
     }
+  /** Transcript-only: framed in json mode, never rendered in human
+   *  mode, never aggregated into any envelope. */
   | { readonly kind: 'remediation'; readonly action: NextAction; readonly data?: unknown }
   | {
       readonly kind: 'endpoint'
@@ -229,11 +261,13 @@ declare const PRESENTED: unique symbol
  * Built exclusively by ctx.present (the brand makes hand-construction a
  * type error) — the context knows the format, calls only the
  * presentation functions it needs, and the value crossing the
- * product→engine boundary is data all the way down.
+ * handler→engine boundary is data all the way down.
  *
  * `data` is what the envelope's `result` serializes (json presentation
  * overrides when supplied). Materialization by format: human → human +
- * stdout + next; human+--quiet → stdout; json → json + next.
+ * stdout + next; json → json + next. Human rendering writes the blocks,
+ * next-action lines, and diagnostics to stderr and the `stdout` lines
+ * to stdout (§header CHANNELS).
  *
  * Guardrail (runtime, at the return site): a severity-'error' diagnostic
  * requires a non-zero exitCode — a genuine could-not-complete belongs in
@@ -247,11 +281,15 @@ export interface PresentedResult<T> {
   readonly exitCode: number
   /** Never undefined; empty when the outcome recorded no findings. */
   readonly diagnostics: readonly Diagnostic[]
+  /** Only the active format's presentation is materialized; the other
+   *  format's fields are normalized to empty. `json` stays undefined
+   *  when the handler supplied no json presentation — the envelope's
+   *  `result` then falls back to `data`. */
   readonly presentation: {
-    readonly human?: readonly Block[]
-    readonly stdout?: readonly string[]
-    readonly json?: unknown
-    readonly next?: readonly NextAction[]
+    readonly human: readonly Block[]
+    readonly stdout: readonly string[]
+    readonly json: unknown
+    readonly next: readonly NextAction[]
   }
 }
 export { PRESENTED }
@@ -259,11 +297,13 @@ export { PRESENTED }
 /**
  * The per-format presentation functions a handler supplies to
  * ctx.present. Only the active format's functions are invoked, at the
- * return site. `human` composes engine primitives (R5); `stdout` is the
- * machine-consumable data lines — what --quiet leaves, what a pipe
- * receives; `json` overrides the envelope's `result` (default: the
+ * return site. `human` composes engine primitives (R5), rendered to
+ * stderr; `stdout` is the machine-consumable data lines — what a pipe
+ * receives, the human mode's only stdout writes; `json` overrides the
+ * envelope's `result` (default: the
  * data); `next` supplies the typed nextActions — agents branch on them;
- * the human renderer formats them as prose (no stored string form).
+ * the human renderer formats them as prose on stderr (no stored string
+ * form).
  */
 export interface Presentations {
   readonly human: (ui: Ui) => readonly Block[]
@@ -273,19 +313,19 @@ export interface Presentations {
 }
 
 // ————————————————————————————————————————————————————————————————————————
-// §3 Config sections — a PRODUCT-level fact (one product, one section)
+// §3 Config sections — a FAMILY-level fact (one command family, one section)
 // ————————————————————————————————————————————————————————————————————————
 
 /**
- * A product's named slice of prisma.config.ts, declared once in the
- * product's manifest (§10). The token couples the section name, its
+ * A command family's named slice of prisma.config.ts, declared once in
+ * the family's declaration (§10). The token couples the section name, its
  * validated type, and its total validator. Commands that need the
  * section reference the token in `needs.config`, which is how the
  * engine knows which commands an invalid section fails — and how
  * ctx.config gets its type.
  *
  * The validator OWNS absence: its input is the raw section value, or
- * undefined when the config file has no such section. A product that
+ * undefined when the config file has no such section. A family that
  * wants defaults applies them here; one that requires the section emits
  * a section-required diagnostic here. It returns findings; it never
  * throws (R10). Keep validators dependency-light: they load with the
@@ -296,6 +336,10 @@ export interface ConfigSection<T> {
   readonly validate: (raw: unknown | undefined) => SectionValidation<T>
 }
 
+/** Diagnostics on an OK validation are warnings: the engine writes them
+ *  to stderr as commentary (log-level filtered, human and json alike);
+ *  they never enter the stream or the envelope (operator ruling,
+ *  2026-08-09). */
 export type SectionValidation<T> =
   | { readonly ok: true; readonly value: T; readonly diagnostics: readonly Diagnostic[] }
   | { readonly ok: false; readonly diagnostics: readonly Diagnostic[] }
@@ -311,7 +355,7 @@ export declare function defineConfigSection<T>(spec: {
 
 export interface CommandContext<TConfig = undefined, TCode extends number = never> {
   /** The validated value of the command's needed config section —
-   *  exactly TConfig; absence semantics belong to the product's
+   *  exactly TConfig; absence semantics belong to the section's
    *  validator (§3). Commands with no config need get undefined. */
   readonly config: TConfig
 
@@ -335,13 +379,18 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
   /** Interactive input (§4a). */
   readonly prompt: PromptSurface
 
-  /** Fires on Ctrl-C/SIGTERM (engine-owned; second signal force-exits).
-   *  Session commands run until it fires; everything else aborts
-   *  in-flight work with it. */
+  /** Fires on Ctrl-C/SIGTERM (engine-owned; a second signal
+   *  force-exits through the runtime's exit proxy). Session commands
+   *  run until it fires; everything else aborts in-flight work with
+   *  it. */
   readonly signal: AbortSignal
 
-  /** Where the user invoked the CLI. Products never read process.cwd(). */
+  /** Where the user invoked the CLI. Handlers never read process.cwd(). */
   readonly cwd: string
+
+  /** The invocation's environment, from Runtime.env. Handlers read env
+   *  via ctx.env, never process.env (R4). */
+  readonly env: Readonly<Record<string, string | undefined>>
 
   /**
    * R13, the conditional form (evidence: composer needs @prisma/dev only
@@ -350,13 +399,13 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
    * dependency is importable from the user's project; otherwise returns
    * the ENGINE'S structured missing-dependency error — install command
    * phrased by the engine with the user's package manager — for the
-   * handler to pass to notOk. Products never craft install prose.
+   * handler to pass to notOk. Handlers never craft install prose.
    */
   readonly requireDependency: (specifier: string) => Promise<Result<void, CliStructuredError>>
 }
 
 export interface Credentials {
-  /** Opaque to the engine; shape owned by the Cloud product's auth
+  /** Opaque to the engine; shape owned by the Cloud auth
    *  library (placeholder pending its design). Workspace selection is
    *  session state, not a credential — it lives with that library, not
    *  here. */
@@ -364,37 +413,46 @@ export interface Credentials {
 }
 
 /**
- * §4a Prompts. Every prompt except `consent` may carry a
- * product-specified `default`. Interactively, Enter accepts the default.
- * Under --yes, a prompt WITH a default resolves to it without
- * displaying; a prompt WITHOUT a default cannot be operated and the
- * invocation halts with a structured error (exit 2). In
- * json/non-interactive/CI/non-TTY contexts the same default rule
- * applies. User cancellation (Ctrl-C at the prompt) is a distinct
- * structured error the engine maps to exit 3.
+ * §4a Prompts (operator ruling, 2026-08-09: prompts return their answer
+ * value, or throw). Every prompt resolves to its answered value
+ * directly. Failures THROW engine-internal structured errors the engine
+ * catches and settles: user cancellation (Ctrl-C/EOF at the prompt)
+ * exits 3; a prompt that cannot be operated (no default under --yes or
+ * non-interactive, an invalid answer) exits 2 as a structural error. A
+ * handler that does not catch simply propagates and the engine settles;
+ * one that catches cannot swallow the settlement — rethrow or notOk.
+ *
+ * Every prompt except `consent` may carry a declared
+ * `default`. Interactively, Enter accepts the default. Under --yes, a
+ * prompt WITH a default resolves to it without displaying; a prompt
+ * WITHOUT a default cannot be operated and throws. In non-interactive
+ * contexts (no TTY stdin, CI, --no-interactive — format never decides
+ * interactivity) the same default rule applies; the prompt UI writes to
+ * stderr, so an interactive json run prompts without touching the
+ * stdout stream.
  */
 export interface PromptSurface {
   readonly confirm: (
     question: string,
     opts?: { readonly default?: boolean },
-  ) => Promise<Result<boolean, CliStructuredError>>
+  ) => Promise<boolean>
   /**
    * A question requiring EXPLICIT consent — never inferable, not
    * necessarily destructive. Structurally undefaultable: no default
    * parameter exists, so --yes, Enter-through, and non-interactive
-   * contexts can never satisfy it; the command's fix names the explicit
+   * contexts can never satisfy it; the command documents the explicit
    * flag that grants consent non-interactively.
    */
-  readonly consent: (question: string) => Promise<Result<boolean, CliStructuredError>>
+  readonly consent: (question: string) => Promise<boolean>
   readonly select: <T extends string>(
     question: string,
     options: ReadonlyArray<{ value: T; label: string }>,
     opts?: { readonly default?: T },
-  ) => Promise<Result<T, CliStructuredError>>
+  ) => Promise<T>
   readonly text: (
     question: string,
     opts?: { readonly placeholder?: string; readonly default?: string },
-  ) => Promise<Result<string, CliStructuredError>>
+  ) => Promise<string>
 }
 
 // ————————————————————————————————————————————————————————————————————————
@@ -402,7 +460,7 @@ export interface PromptSurface {
 // ————————————————————————————————————————————————————————————————————————
 
 /**
- * Product-declared flags. The shared family (§header) is engine-injected
+ * Command-declared flags. The shared flag family (§header) is engine-injected
  * and reserved; handlers never see those values. Parse-time validation
  * failures become structured errors carrying the allowed values.
  *
@@ -450,12 +508,10 @@ export type Char<S extends string> = S extends `${string}${infer Rest}`
     : never
   : never
 
-declare const FLAG: unique symbol
 export interface FlagSpec<T> {
-  /** Phantom carrier for inference; exported so declaration emit works. */
-  readonly [FLAG]: T
+  /** Phantom type carrier for inference; never present at runtime. */
+  readonly __flag?: T
 }
-export { FLAG }
 
 export declare const positional: {
   string(spec: { brief: string; placeholder: string }): PositionalSpec<string>
@@ -464,11 +520,10 @@ export declare const positional: {
    *  declaration order; keys must not be integer-like). */
   variadic(spec: { brief: string; placeholder: string }): PositionalSpec<readonly string[]>
 }
-declare const POSITIONAL: unique symbol
 export interface PositionalSpec<T> {
-  readonly [POSITIONAL]: T
+  /** Phantom type carrier for inference; never present at runtime. */
+  readonly __positional?: T
 }
-export { POSITIONAL }
 
 /** The parse SPI: a command's argument surface, one property. */
 export interface ArgsSpec<
@@ -477,6 +532,16 @@ export interface ArgsSpec<
 > {
   readonly flags?: TFlags
   readonly positionals?: TPositionals
+}
+
+/** The normalized argument surface a definition carries: both
+ *  namespaces always present, empty when the command declares none. */
+export interface CommandArgs<
+  TFlags extends Record<string, FlagSpec<unknown>>,
+  TPositionals extends Record<string, PositionalSpec<unknown>>,
+> {
+  readonly flags: TFlags
+  readonly positionals: TPositionals
 }
 
 /** What a handler receives: separate namespaces, symmetric access —
@@ -492,9 +557,17 @@ export interface Args<
 }
 
 // ————————————————————————————————————————————————————————————————————————
-// §6 Command definitions — light at startup (R9), path-free (R12),
-// runtime-discriminated by `kind`. Three modalities at equal rank:
+// §6 Command definitions — path-free (R12), runtime-discriminated by
+// `kind`. Definitions load their handler's import graph at startup;
+// R9's remaining force is that handler bodies defer heavy work to
+// execution time. Three modalities at equal rank:
 // result / session / server.
+//
+// Definitions carry NO conditional properties (operator ruling, round
+// 2): the define* constructors accept ergonomic specs (optional help
+// details, args, needs, exitCodes) and normalize them — every
+// definition field is always present, with empty collections and
+// explicit undefined.
 // ————————————————————————————————————————————————————————————————————————
 
 /** The help SPI: how the command shows itself in help output. Words
@@ -503,18 +576,28 @@ export interface HelpSpec {
   /** One line, imperative, shown in listings. */
   readonly summary: string
   readonly description?: string
-  /** Copy-pastable invocations, shown verbatim. */
+  /** Invocations WITHOUT the binary name (operator ruling, 2026-08-09):
+   *  at help render time every `{bin}` is substituted with createCli's
+   *  `name`; an example containing no `{bin}` gets the name prepended. */
   readonly examples?: readonly string[]
 }
 
+/** The normalized help a definition carries. */
+export interface CommandHelp {
+  readonly summary: string
+  readonly description: string | undefined
+  readonly examples: readonly string[]
+}
+
 /**
- * The preconditions SPI: everything the engine gates BEFORE the handler
- * loads. Each unmet need fails the command early with the engine's own
+ * The preconditions SPI: everything the engine enforces BEFORE the
+ * handler runs. Each unmet need fails the command early with the
+ * engine's own
  * structured error — consistent phrasing by construction, and a handler
  * never runs in a world where it can't operate.
  */
 export interface NeedsSpec<TConfig> {
-  /** The product's config section token: validate it, fail me on its
+  /** The command family's config section token: validate it, fail me on its
    *  error diagnostics, hand me the value as ctx.config. */
   readonly config?: ConfigSection<TConfig>
   /** Fail early with the sign-in error when unauthenticated. */
@@ -525,7 +608,8 @@ export interface NeedsSpec<TConfig> {
   readonly dependencies?: readonly string[]
   /**
    * Fail early (before execution, before side effects) in
-   * json/non-interactive/CI/non-TTY contexts. This is a MECHANICAL
+   * non-interactive contexts (no TTY stdin, CI, or --no-interactive;
+   * format never decides interactivity). This is a MECHANICAL
    * precondition — "an interactive terminal is required" — and
    * deliberately NOT an agent barrier: the client's nature is
    * unverifiable, and a flag claiming to exclude agents would be a
@@ -535,6 +619,14 @@ export interface NeedsSpec<TConfig> {
   readonly interaction?: true
 }
 
+/** The normalized preconditions a definition carries. */
+export interface CommandNeeds<TConfig> {
+  readonly config: ConfigSection<TConfig> | undefined
+  readonly credentials: boolean
+  readonly dependencies: readonly string[]
+  readonly interaction: boolean
+}
+
 export interface CommandDefinition<
   TFlags extends Record<string, FlagSpec<unknown>> = {},
   TPositionals extends Record<string, PositionalSpec<unknown>> = {},
@@ -542,23 +634,26 @@ export interface CommandDefinition<
   TCode extends number = never,
 > {
   readonly kind: 'result-command'
-  readonly help: HelpSpec
-  readonly args?: ArgsSpec<TFlags, TPositionals>
-  readonly needs?: NeedsSpec<TConfig>
+  readonly help: CommandHelp
+  readonly args: CommandArgs<TFlags, TPositionals>
+  readonly needs: CommandNeeds<TConfig>
 
   /**
    * The command's documented exit codes (4–99): code → meaning.
    * Rendered in help without executing anything; the keys type the
    * outcome's exitCode, making it REQUIRED at every return site (`0` or
-   * a documented code). Absent = the command only exits 0/1/2/3 and the
+   * a documented code). Empty = the command only exits 0/1/2/3 and the
    * outcome carries no exitCode.
    */
-  readonly exitCodes?: Readonly<Record<TCode, string>>
+  readonly exitCodes: Readonly<Record<TCode, string>>
 
-  /** The heavy part, loaded only at execution (R9). The module's default
-   *  export is the handler — annotate it with CommandHandler<typeof def>
-   *  (type-only import of the light definition; no runtime cycle). */
-  readonly handler: () => Promise<{ default: Handler<TFlags, TPositionals, TConfig, TCode> }>
+  /** The handler function, referenced directly — never a dynamic import
+   *  (operator ruling, 2026-08-09: "DO NOT DYNAMICALLY IMPORT HANDLERS").
+   *  R9's keep-heavy-work-out-of-startup concern is the handler BODY's
+   *  business: a handler that needs heavy dependencies imports them at
+   *  execution time, inside itself. A handler defined in another file is
+   *  imported statically and annotated CommandHandler<typeof def>. */
+  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode>
 }
 
 export type Handler<
@@ -581,9 +676,13 @@ export declare function defineCommand<
   TPositionals extends Record<string, PositionalSpec<unknown>> = {},
   TConfig = undefined,
   TCode extends number = never,
->(
-  def: Omit<CommandDefinition<TFlags, TPositionals, TConfig, TCode>, 'kind'>,
-): CommandDefinition<TFlags, TPositionals, TConfig, TCode>
+>(def: {
+  readonly help: HelpSpec
+  readonly args?: ArgsSpec<TFlags, TPositionals>
+  readonly needs?: NeedsSpec<TConfig>
+  readonly exitCodes?: Readonly<Record<TCode, string>>
+  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode>
+}): CommandDefinition<TFlags, TPositionals, TConfig, TCode>
 
 /**
  * A session command (dev, log tail): runs until the signal fires,
@@ -597,24 +696,25 @@ export interface SessionCommandDefinition<
   TConfig = undefined,
 > {
   readonly kind: 'session-command'
-  readonly help: HelpSpec
-  readonly args?: ArgsSpec<TFlags, TPositionals>
-  readonly needs?: NeedsSpec<TConfig>
-  readonly handler: () => Promise<{
-    default: (
-      args: Args<TFlags, TPositionals>,
-      ctx: CommandContext<TConfig>,
-    ) => Promise<Result<void, CliStructuredError>>
-  }>
+  readonly help: CommandHelp
+  readonly args: CommandArgs<TFlags, TPositionals>
+  readonly needs: CommandNeeds<TConfig>
+  readonly handler: (
+    args: Args<TFlags, TPositionals>,
+    ctx: CommandContext<TConfig>,
+  ) => Promise<Result<void, CliStructuredError>>
 }
 
 export declare function defineSessionCommand<
   TFlags extends Record<string, FlagSpec<unknown>> = {},
   TPositionals extends Record<string, PositionalSpec<unknown>> = {},
   TConfig = undefined,
->(
-  def: Omit<SessionCommandDefinition<TFlags, TPositionals, TConfig>, 'kind'>,
-): SessionCommandDefinition<TFlags, TPositionals, TConfig>
+>(def: {
+  readonly help: HelpSpec
+  readonly args?: ArgsSpec<TFlags, TPositionals>
+  readonly needs?: NeedsSpec<TConfig>
+  readonly handler: SessionCommandDefinition<TFlags, TPositionals, TConfig>['handler']
+}): SessionCommandDefinition<TFlags, TPositionals, TConfig>
 
 /**
  * A server command (lsp): a foreign client on the other end of stdio
@@ -628,32 +728,34 @@ export interface ServerCommandDefinition<
   TConfig = undefined,
 > {
   readonly kind: 'server-command'
-  readonly help: HelpSpec
-  readonly args?: ArgsSpec<TFlags, {}>
-  readonly needs?: NeedsSpec<TConfig>
-  readonly handler: () => Promise<{
-    default: (
-      args: Args<TFlags, {}>,
-      io: {
-        readonly stdin: InputStream
-        readonly stdout: OutputStream
-        readonly stderr: OutputStream
-        readonly signal: AbortSignal
-        readonly cwd: string
-        readonly config: TConfig
-      },
-    ) => Promise<number>
-  }>
+  readonly help: CommandHelp
+  readonly args: CommandArgs<TFlags, {}>
+  readonly needs: CommandNeeds<TConfig>
+  readonly handler: (
+    args: Args<TFlags, {}>,
+    io: {
+      readonly stdin: InputStream
+      readonly stdout: OutputStream
+      readonly stderr: OutputStream
+      readonly signal: AbortSignal
+      readonly cwd: string
+      readonly env: Readonly<Record<string, string | undefined>>
+      readonly config: TConfig
+    },
+  ) => Promise<number>
 }
 
 export declare function defineServerCommand<
   TFlags extends Record<string, FlagSpec<unknown>> = {},
   TConfig = undefined,
->(
-  def: Omit<ServerCommandDefinition<TFlags, TConfig>, 'kind'>,
-): ServerCommandDefinition<TFlags, TConfig>
+>(def: {
+  readonly help: HelpSpec
+  readonly args?: ArgsSpec<TFlags, {}>
+  readonly needs?: NeedsSpec<TConfig>
+  readonly handler: ServerCommandDefinition<TFlags, TConfig>['handler']
+}): ServerCommandDefinition<TFlags, TConfig>
 
-/** Erased union for manifests and mount maps; `kind` discriminates. */
+/** Erased union for command families and mount maps; `kind` discriminates. */
 export type AnyCommand =
   | CommandDefinition<any, any, any, any>
   | SessionCommandDefinition<any, any, any>
@@ -744,7 +846,8 @@ export interface ErroredEnvelope {
   /** Accompanying findings when the abort had several (three config
    *  typos are three diagnostics, not one flattened error). */
   readonly diagnostics: readonly Diagnostic[]
-  /** Aggregated from remediation events. */
+  /** Copied from the error's own nextActions — the uniform consumer
+   *  read path (envelope.nextActions) on both settlement paths. */
   readonly nextActions: readonly NextAction[]
 }
 
@@ -762,26 +865,32 @@ export interface StreamMeta {
 }
 
 // ————————————————————————————————————————————————————————————————————————
-// §10 Product manifests and shell mounting — R12: the shell owns the
-// tree; a product owns its section
+// §10 Command families and shell mounting — R12: the shell owns the
+// tree; a command family owns its section
 // ————————————————————————————————————————————————————————————————————————
 
 /**
- * What a product package exports: its config section (declared once —
- * a product-level fact) and its commands by NAME. The unified config
- * loader consumes the sections; the shell mounts the commands. A
- * command whose needs.config token is not its product's section is a
- * construction error.
+ * The unit of contribution and ownership a package exports for CLI
+ * purposes: its config section (declared once — a family-level fact)
+ * and its commands by NAME. The unified config loader consumes the
+ * sections; the shell mounts the commands. A command whose needs.config
+ * token is not its command family's section is a construction error.
  */
-export interface ProductManifest {
-  readonly configSection?: ConfigSection<unknown>
+export interface CommandFamily {
+  readonly configSection: ConfigSection<unknown> | undefined
   readonly commands: Readonly<Record<string, AnyCommand>>
-  /** The product's documentation base URL. The engine derives each
+  /** The family's documentation base URL. The engine derives each
    *  diagnostic's docs link from base + code; a diagnostic's own
    *  `docsUrl` field is the per-raise override (unused until a use case
    *  appears). */
-  readonly docsBaseUrl?: string
+  readonly docsBaseUrl: string | undefined
 }
+
+export declare function defineCommandFamily(spec: {
+  readonly configSection?: ConfigSection<unknown>
+  readonly commands: Readonly<Record<string, AnyCommand>>
+  readonly docsBaseUrl?: string
+}): CommandFamily
 
 /** What the shell builds: commands by PATH (space-separated,
  *  'db migrate'). */
@@ -789,7 +898,7 @@ export type MountedTree = Readonly<Record<string, AnyCommand>>
 
 /**
  * Shell-side construction. Group help is declared with the mount, since
- * groups belong to the tree, not to products. Collisions, unknown
+ * groups belong to the tree, not to command families. Collisions, unknown
  * groups, reserved-flag violations, grammar violations, and
  * foreign-section references fail construction (build time, not run
  * time).
@@ -797,14 +906,16 @@ export type MountedTree = Readonly<Record<string, AnyCommand>>
 export declare function createCli(spec: {
   readonly name: string
   readonly version: string
-  readonly products: readonly ProductManifest[]
+  readonly commandFamilies: readonly CommandFamily[]
   readonly groups: Readonly<Record<string, { readonly brief: string; readonly description?: string }>>
   readonly commands: MountedTree
 }): Cli
 
 export interface Cli {
-  /** Parse, execute, render, return the exit code. Never calls
-   *  process.exit; never touches streams other than the provided ones. */
+  /** Parse, execute, render, return the exit code. Never touches
+   *  process globals — it exits only through the runtime's exit proxy
+   *  (second-signal force exit) and writes only to the provided
+   *  streams. */
   run(argv: readonly string[], runtime: Runtime): Promise<number>
 }
 
@@ -816,22 +927,49 @@ export interface Runtime {
   readonly cwd: string
   readonly env: Readonly<Record<string, string | undefined>>
   readonly isTty: { readonly stdin: boolean; readonly stdout: boolean; readonly stderr: boolean }
-  readonly signal: AbortSignal
+  /** Ends the process. The bin passes process.exit; the engine is the
+   *  only caller (second-signal force exit, 130/143). */
+  readonly exit: (code: number) => never
+  /** Subscribes to delivered SIGINT/SIGTERM; returns the unsubscribe.
+   *  The bin is dumb wiring — the engine owns the whole signal policy:
+   *  the first signal aborts ctx.signal and awaits teardown; a second
+   *  calls exit(130|143) immediately. */
+  readonly onSignal: (cb: (signal: 'SIGINT' | 'SIGTERM') => void) => () => void
   /** Loaded config + file-level diagnostics; the shell builds this via
    *  the unified loader (R10). Tests hand in fixtures. */
   readonly config: LoadedConfig
   readonly getCredentials: () => Promise<Credentials | undefined>
-  /** Used by the ENGINE to phrase install commands (products never
+  /** Used by the ENGINE to phrase install commands (handlers never
    *  do — see needs.dependencies and ctx.requireDependency). */
   readonly packageManager: 'npm' | 'pnpm' | 'yarn' | 'bun' | 'unknown'
 }
 
+/** The minimal process surface a bin adapts a Runtime from — Node's
+ *  `process` satisfies it structurally; the engine never reads it. */
+export interface HostProcess {
+  readonly argv: readonly string[]
+  readonly env: Readonly<Record<string, string | undefined>>
+  cwd(): string
+  readonly stdout: { write(text: string): unknown; isTTY?: boolean }
+  readonly stderr: { write(text: string): unknown; isTTY?: boolean }
+  readonly stdin: {
+    isTTY?: boolean
+    setRawMode?(enabled: boolean): unknown
+    [Symbol.asyncIterator](): AsyncIterator<Uint8Array>
+  }
+  on(event: 'SIGINT' | 'SIGTERM', listener: () => void): unknown
+  off(event: 'SIGINT' | 'SIGTERM', listener: () => void): unknown
+  exit(code: number): never
+}
+
 export interface LoadedConfig {
   /** Raw section values by name; validation happens per command via its
-   *  product's section token. */
+   *  command family's section token. */
   readonly sections: Readonly<Record<string, unknown>>
-  /** File-level problems (unevaluable module, missing version marker) —
-   *  section: null fails every command. */
+  /** File-level problems (unevaluable module, missing version marker)
+   *  carry section: null and fail only commands with a needs.config
+   *  section (operator ruling, 2026-08-09: the CLI still runs; a
+   *  command that needs no config runs normally). */
   readonly diagnostics: ReadonlyArray<{
     readonly section: string | null
     readonly diagnostic: Diagnostic
@@ -839,11 +977,13 @@ export interface LoadedConfig {
 }
 
 // ————————————————————————————————————————————————————————————————————————
-// §11 The product-repo test harness — R7: same machinery, bytes out
+// §11 The test harness — R7: same machinery, bytes out. Lives on its
+// own public subpath, `@prisma/cli-engine/testing` (composer's
+// ./testing convention): the main entry ships no test machinery.
 // ————————————————————————————————————————————————————————————————————————
 
 export declare function createTestCli(spec: {
-  readonly products?: readonly ProductManifest[]
+  readonly commandFamilies?: readonly CommandFamily[]
   readonly commands: MountedTree
   readonly groups?: Readonly<Record<string, { readonly brief: string }>>
   readonly config?: Readonly<Record<string, unknown>>
@@ -861,7 +1001,9 @@ export interface TestCli {
       /** Scripted prompt answers, consumed in order; a run that prompts
        *  past the script fails the test. */
       readonly answers?: ReadonlyArray<string | boolean>
-      /** Abort the run (session tests): fires the context signal. */
+      /** Abort the run (session tests): its firing is delivered to the
+       *  engine as a signal (SIGTERM when the reason is 'SIGTERM',
+       *  SIGINT otherwise). */
       readonly abort?: AbortSignal
       /** Live event tap, for asserting mid-session behavior. */
       readonly onEvent?: (event: EngineEvent) => void
@@ -878,7 +1020,8 @@ export interface TestCli {
     /** Every EngineEvent the handler emitted, for semantic assertions. */
     readonly events: readonly EngineEvent[]
     /** The PresentedResult the handler returned, for semantic
-     *  assertions without byte-scraping. */
-    readonly presented?: PresentedResult<unknown>
+     *  assertions without byte-scraping; undefined when the run never
+     *  presented. */
+    readonly presented: PresentedResult<unknown> | undefined
   }>
 }

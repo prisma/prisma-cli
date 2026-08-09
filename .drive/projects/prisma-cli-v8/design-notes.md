@@ -52,7 +52,7 @@ file is the map.
   deliverables (diagnostics-not-throw loaders, marker, validators) will
   be rewritten against the engine's config API (v8 §3:
   defineConfigSection tokens, validator-owned absence, Diagnostic
-  findings, ProductManifest). Sequencing consequence: the engine's
+  findings, CommandFamily). Sequencing consequence: the engine's
   protocol + config-section API is upstream of resuming 1b/1c; when
   resumed, the briefs need revision first.
 

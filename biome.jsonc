@@ -53,6 +53,19 @@
       "quoteStyle": "double"
     }
   },
+  "overrides": [
+    {
+      // The tsdown entrypoints: re-export hubs are their intended shape.
+      "includes": ["packages/cli-engine/src/exports/**"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "off"
+          }
+        }
+      }
+    }
+  ],
   "assist": {
     "enabled": true,
     "actions": {

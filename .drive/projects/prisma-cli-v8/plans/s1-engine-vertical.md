@@ -43,7 +43,7 @@ passes.
 defineSessionCommand / defineServerCommand, flag + positional builders
 with the `Char` alias typing, `Args`, `Outcome`, `Presentations` /
 `PresentedResult`, `defineConfigSection` + `SectionValidation`,
-`NeedsSpec` / `HelpSpec`, `ProductManifest`, `createCli` mounting types,
+`NeedsSpec` / `HelpSpec`, `CommandFamily`, `createCli` mounting types,
 `Runtime` / `LoadedConfig` / `Credentials` shapes. Pure types and
 constructors only — no execution.
 **Builds on:** D1's package + protocol types.
@@ -78,14 +78,15 @@ codes (0/1/2 + catalogued).
 
 ### D4 — Prompts, events, session/server lifetimes
 
-**Outcome:** the remaining execution surface: `ctx.prompt` (product
-defaults accepted by `--yes`/Enter; no default halts under `--yes`;
+**Outcome:** the remaining execution surface: `ctx.prompt` (command-
+supplied defaults accepted by `--yes`/Enter; no default halts under `--yes`;
 `prompt.consent` structurally undefaultable), the event vocabulary +
 rendering rules (step, progress, message severities, output channels,
-remediation → NextAction, endpoint/status/artifact, opaque product
-`data`), `ctx.report`, `ctx.requireDependency` (engine-phrased install
-error), session-command lifetime (runs until signal, no presentation)
-and server-command stdio handoff, signal exit codes (3, 130, 143).
+remediation (transcript-only per ruling R-I), endpoint/status/artifact,
+opaque command-family `data`), `ctx.report`, `ctx.requireDependency`
+(engine-phrased install error), session-command lifetime (runs until
+signal, no presentation) and server-command stdio handoff, signal exit
+codes (130, 143; 3 is user cancel per ruling R-K).
 **Builds on:** D3's execution engine + harness.
 **Hands to:** the complete engine surface the acceptance sweep checks.
 **Completed when:** each behavior above has a harness test; prompt
@@ -104,7 +105,7 @@ non-linear; the loader needs no prompts/events surface).
 **Hands to:** config loading D6's bin wires into its Runtime.
 **Completed when:** loader tests cover found/absent/marked/unmarked
 files; the Prisma 7 fail-early diagnostic is test-pinned (code +
-summary + fix).
+summary + nextActions, formerly `fix` before ruling R-I).
 
 ### D6 — `prisma-v8` bin + auth whoami port + slice e2e
 

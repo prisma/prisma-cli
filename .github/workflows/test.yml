@@ -50,8 +50,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Build every workspace package up front via the turbo graph so
+      # workspace:* dependencies (the CLI's @prisma/cli-engine) have
+      # their dist output before anything imports them.
+      - name: Build workspace packages
+        run: pnpm build
+
       - name: Run CLI tests
         run: pnpm --filter @prisma/cli test
-
-      - name: Build CLI
-        run: pnpm --filter @prisma/cli build

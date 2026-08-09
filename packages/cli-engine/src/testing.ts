@@ -1,0 +1,166 @@
+import type { CommandFamily, MountedTree } from "./command-family";
+import type { Credentials } from "./context";
+import type { EngineEvent, StreamEvent } from "./events";
+import { buildEngine } from "./execution/engine";
+import type { PresentedResult } from "./presentation";
+import type { Runtime } from "./runtime";
+
+export interface TestCli {
+  run(
+    argv: readonly string[],
+    opts?: {
+      readonly stdin?: string;
+      /**
+       * Scripted prompt answers, consumed in order; a run that prompts
+       * past the script fails the test.
+       */
+      readonly answers?: ReadonlyArray<string | boolean>;
+      /**
+       * Abort the run (session tests): its firing is delivered to the
+       * engine as a signal (SIGTERM when the reason is 'SIGTERM',
+       * SIGINT otherwise).
+       */
+      readonly abort?: AbortSignal;
+      /** Live event tap, for asserting mid-session behavior. */
+      readonly onEvent?: (event: EngineEvent) => void;
+      readonly cwd?: string;
+      readonly isTty?: { stdin?: boolean; stdout?: boolean; stderr?: boolean };
+      readonly env?: Readonly<Record<string, string | undefined>>;
+    },
+  ): Promise<{
+    readonly exitCode: number;
+    readonly stdout: string;
+    readonly stderr: string;
+    /** Parsed stream (events + the terminal result) when json mode. */
+    readonly json: readonly StreamEvent[];
+    /** Every EngineEvent the handler emitted, for semantic assertions. */
+    readonly events: readonly EngineEvent[];
+    /**
+     * The PresentedResult the handler returned, for semantic assertions
+     * without byte-scraping; undefined when the run never presented.
+     */
+    readonly presented: PresentedResult<unknown> | undefined;
+  }>;
+}
+
+function inputStreamFromString(text: string) {
+  const bytes = new TextEncoder().encode(text);
+  return {
+    async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
+      if (bytes.length > 0) {
+        yield bytes;
+      }
+    },
+  };
+}
+
+/**
+ * The test harness: the same engine over in-memory streams. The
+ * harness hands the engine no real process access at all — its exit
+ * proxy throws and its streams are in-memory — which is how "the engine
+ * never touches process globals and writes only to provided streams" is
+ * proven by construction.
+ */
+export function createTestCli(spec: {
+  readonly commandFamilies?: readonly CommandFamily[];
+  readonly commands: MountedTree;
+  readonly groups?: Readonly<Record<string, { readonly brief: string }>>;
+  readonly config?: Readonly<Record<string, unknown>>;
+  readonly credentials?: Credentials;
+  readonly packageManager?: "npm" | "pnpm" | "yarn" | "bun" | "unknown";
+  /** Fixed clock for deterministic stream timestamps. */
+  readonly now?: () => Date;
+}): TestCli {
+  const engine = buildEngine(
+    {
+      name: "prisma-test",
+      version: "0.0.0",
+      commandFamilies: spec.commandFamilies ?? [],
+      groups: spec.groups ?? {},
+      commands: spec.commands,
+    },
+    { now: spec.now },
+  );
+  return {
+    async run(argv, opts) {
+      let stdoutText = "";
+      let stderrText = "";
+      const frames: StreamEvent[] = [];
+      const events: EngineEvent[] = [];
+      let presented: PresentedResult<unknown> | undefined;
+      const signalListeners = new Set<(signal: "SIGINT" | "SIGTERM") => void>();
+      const deliverSignal = (reason: unknown): void => {
+        const signal = reason === "SIGTERM" ? "SIGTERM" : "SIGINT";
+        for (const listener of [...signalListeners]) {
+          listener(signal);
+        }
+      };
+      const runtime: Runtime = {
+        stdout: {
+          write: (text) => {
+            stdoutText += text;
+          },
+        },
+        stderr: {
+          write: (text) => {
+            stderrText += text;
+          },
+        },
+        stdin: inputStreamFromString(opts?.stdin ?? ""),
+        cwd: opts?.cwd ?? "/",
+        env: opts?.env ?? {},
+        isTty: {
+          stdin: opts?.isTty?.stdin ?? false,
+          stdout: opts?.isTty?.stdout ?? false,
+          stderr: opts?.isTty?.stderr ?? false,
+        },
+        exit: (code: number): never => {
+          throw new Error(
+            `@prisma/cli-engine: runtime.exit(${code}) reached the test harness`,
+          );
+        },
+        onSignal: (cb) => {
+          signalListeners.add(cb);
+          return () => {
+            signalListeners.delete(cb);
+          };
+        },
+        config: { sections: spec.config ?? {}, diagnostics: [] },
+        getCredentials: async () => spec.credentials,
+        packageManager: spec.packageManager ?? "unknown",
+      };
+      const running = engine.execute(argv, runtime, {
+        onEvent: (event) => {
+          events.push(event);
+          opts?.onEvent?.(event);
+        },
+        onPresented: (value) => {
+          presented = value;
+        },
+        onStreamEvent: (frame) => {
+          frames.push(frame);
+        },
+        answers: opts?.answers,
+      });
+      const abort = opts?.abort;
+      if (abort !== undefined) {
+        if (abort.aborted) {
+          deliverSignal(abort.reason);
+        } else {
+          abort.addEventListener("abort", () => deliverSignal(abort.reason), {
+            once: true,
+          });
+        }
+      }
+      const exitCode = await running;
+      return {
+        exitCode,
+        stdout: stdoutText,
+        stderr: stderrText,
+        json: frames,
+        events,
+        presented,
+      };
+    },
+  };
+}

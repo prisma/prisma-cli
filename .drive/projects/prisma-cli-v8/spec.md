@@ -47,8 +47,8 @@ ADR 239 amendment), **prisma/composer** (Composer product integration).
    distinguishes v8 configs, and an evaluated file without the marker —
    in particular a classic Prisma 7 config — fails early with a typed
    error naming the migration path (fail-early is ruled; no best-effort
-   reading). Products contribute sections via manifests
-   (`ProductManifest`: section token + commands + docs base); validation
+   reading). Products contribute sections via their command families
+   (`CommandFamily`: section token + commands + docs base); validation
    is per-section diagnostics; a command fails only when a section it
    needs is invalid.
 4. **The shell**: the `prisma` binary in the prisma-cli repo — mounts
@@ -63,14 +63,21 @@ ADR 239 amendment), **prisma/composer** (Composer product integration).
    command reach every product's operations through context.
 6. **All three command families port onto the tree** per the grammar
    doc: ORM (`contract *`, `migration *`, `db *`, `init`, `lsp`, …),
-   Composer (`project deploy|dev|log|destroy`, stubs where ruled), and
+   Composer (`composer deploy|dev|log|destroy`, stubs where ruled — a
+   subgroup is owned by exactly ONE command family; mixing management-API
+   and Composer commands in one subgroup is ruled out (operator,
+   2026-08-10). Interim parking (operator, 2026-08-10): Composer's
+   commands live under a `composer` root, the platform's cloud-project
+   CRUD keeps `project`; the final grammar — including whether the
+   old "no composer-named surface" goal returns — stays open as
+   TML-3189; moving the tree later is cosmetic), and
    Cloud/platform (`auth *`, `project *`, `postgres *`, `service *`,
    `bucket *`, `git`, `agent`, with the ruled renames). Parity bar:
    behavior equivalent to the shipping CLIs except where a settled
    ruling changed it (envelopes, exit codes, renames) — divergences are
    enumerated, not discovered.
 7. **Products integrate as designed**: prisma/prisma and composer export
-   manifests and command sets; the shell pins exact versions; tandem
+   their command families; the shell pins exact versions; tandem
    releases run on committed versions with workflow glue.
 8. **Product-repo e2e is real** (R7): each product runs argv-in/
    bytes-out tests against the engine's harness in its own repo; the
