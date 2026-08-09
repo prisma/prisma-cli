@@ -86,8 +86,12 @@ real-mode helpers (`listRealAuthWorkspaces`, `useRealAuthWorkspace`,
 `logoutRealAuthWorkspace` — extracted from the controller into
 `src/auth/workspaces.ts`, controller delegates), and
 `makeGetCredentials` (moved from `src/v8/runtime.ts`; the v8 runtime
-imports it from here). The legacy shell and controllers import ONLY
-via `src/auth/index.ts`. The `Credentials` shape stays the engine's
+imports it from here), plus `WorkspaceSelectionError` and
+`StoredAuthWorkspace` (production consumers exist). The legacy shell
+and controllers import ONLY via `src/auth/index.ts` — production code
+rule; white-box TESTS of the module's own internals (and `vi.mock`
+targets, which must name the module the code under test imports) are
+the permitted exception. The `Credentials` shape stays the engine's
 `{ token: string }` — S2a does not redesign it.
 
 ## 4. `auth *` family port
@@ -100,7 +104,7 @@ loses `--provider`, `--user`, `--workspace` (mock-selection flags).
 | Command | Args | needs | Behavior |
 | --- | --- | --- | --- |
 | `auth login` | none | none | Real OAuth flow via `performLogin` (browser open + poll), then `readAuthState`; events: `step-started/finished` for the flow, `endpoint` for the verification URL; presented like whoami's card plus the agent-setup tip line when `resolveAgentSetupTipCommand` fires (port that helper's real-mode path); nextActions: `auth whoami`, `project list`, the tip command when present |
-| `auth logout` | none | none | `performLogout` + `readAuthState`; card matching current logout copy; nextAction: `auth login` |
+| `auth logout` | flag `--workspace <ref>` (optional) | none | Without the flag: `performLogout` + `readAuthState`, card matching current logout copy, nextAction `auth login`. With the flag: the workspace-logout operation (same semantics as `auth workspace logout <ref>`, same presentation, same command — call the shared operation directly; the current shell's internal re-dispatch hack does not port) |
 | `auth whoami` | none | none | Already ported (S1) — moves from `src/v8/auth/whoami.ts` handler calling `readAuthState` directly to the auth module import; otherwise untouched |
 | `auth workspace list` | none | none | `listRealAuthWorkspaces`; table Block (name, id, status; source column only when mixed — port the exact column rules from `presenters/auth.ts`); json serializer ports `serializeAuthWorkspaceList` |
 | `auth workspace use [workspace]` | optional positional | none | Resolves by id or case-insensitive name; ambiguous → `AUTH.WORKSPACE_AMBIGUOUS` errored (map the current error's content to nextActions form); absent positional + interactive → `prompt.select` over workspaces (clack path); absent + non-interactive → structural prompt failure (engine default) |

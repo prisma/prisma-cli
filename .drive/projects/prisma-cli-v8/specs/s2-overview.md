@@ -65,6 +65,33 @@ output, prompts, side effects, tests, engine mapping). S2b–S2d
 contracts enumerate their commands FROM that inventory; the inventory
 is the single source for "what exists today".
 
+## Open questions for the operator (S2 ledger)
+
+Contracts build to the stated default where one is given; the ruling
+can overrule before the affected dispatch runs.
+
+- **Q1 — auto-login.** ~30 legacy commands auto-launch interactive
+  OAuth on a TTY when unauthenticated; the engine's `needs.credentials`
+  fails early instead. Default built to: sign-in structured error +
+  `auth login` nextAction (consistent, agent-friendly). Ratify or
+  reinstate auto-login as an engine feature.
+- **Q2 — `service run` child-exit passthrough.** The legacy command
+  passes the dev server's exit code through; session commands have no
+  exit-code channel; the same exception is already ruled for
+  Composer's S3. Decide: build the passthrough mechanism in S2c, or
+  defer `service run` to ride S3's mechanism (S2d then keeps a minimal
+  legacy path for it).
+- **Q3 — `project env remove`'s `rm` alias** (the only alias in the
+  tree) does not port. Ratify the drop or rule alias support.
+- **Q4 — config evaluation in the shipped bin.** The S1 loader
+  requires a TS-capable runtime; the S2d bin cutover cannot. Choose
+  the evaluation strategy (e.g. jiti, esbuild-register, or "TS-capable
+  runtimes only" documented). Blocks S2d's R-S2d-3 only.
+- **Q5 — exit-code unification.** R-S2b-3 changes user-visible codes:
+  legacy consent failures split 1/2 and prod-deploy cancel exits 0;
+  engine rules make these 2 (structural) and 3 (cancel). Built to
+  engine rules; ratify.
+
 ## Definition of done (whole slice)
 
 - Every platform command runs on the engine; the commander shell and
