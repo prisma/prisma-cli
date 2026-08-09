@@ -285,19 +285,7 @@ describe("needs.config", () => {
     );
   });
 
-  test("a file-level diagnostic fails every command, even one with no config need", async () => {
-    const plain = defineCommand({
-      help: { summary: "No needs at all" },
-      handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [] })),
-    });
-    const cli = createCli({
-      name: "t",
-      version: "0.0.0",
-      products: [],
-      groups: {},
-      commands: { plain },
-    });
+  function jsonRuntime(config: Runtime["config"]) {
     let stdoutText = "";
     const runtime: Runtime = {
       stdout: {
@@ -313,31 +301,53 @@ describe("needs.config", () => {
       env: {},
       isTty: { stdin: false, stdout: false, stderr: false },
       signal: new AbortController().signal,
-      config: {
-        sections: {},
-        diagnostics: [
-          {
-            section: null,
-            diagnostic: {
-              code: "CLI.CONFIG_MISSING_MARKER",
-              severity: "error",
-              summary: "unmarked config",
-            },
-          },
-        ],
-      },
+      config,
       getCredentials: async () => undefined,
       packageManager: "unknown",
     };
-    const exitCode = await cli.run(["plain"], runtime);
-    expect(exitCode).toBe(2);
-    const frame = JSON.parse(stdoutText.trim());
-    expect(frame.envelope.ok).toBe(false);
-    expect(frame.envelope.error).toEqual({
-      code: "CLI.CONFIG_MISSING_MARKER",
-      severity: "error",
-      summary: "unmarked config",
+    return { runtime, stdout: () => stdoutText };
+  }
+
+  test("an unmarked Prisma 7 config does not fail a command with no config need", async () => {
+    const plain = defineCommand({
+      help: { summary: "No needs at all" },
+      handler: async (_args, ctx) =>
+        ok(ctx.present({ data: null }, { human: () => [] })),
     });
+    const cli = createCli({
+      name: "t",
+      version: "0.0.0",
+      products: [],
+      groups: {},
+      commands: { plain },
+    });
+    const { runtime, stdout } = jsonRuntime(
+      await loadConfig(join(FIXTURES, "unmarked")),
+    );
+    const exitCode = await cli.run(["plain"], runtime);
+    expect(exitCode).toBe(0);
+    const frame = JSON.parse(stdout().trim());
+    expect(frame.envelope.ok).toBe(true);
+  });
+
+  test("the same unmarked config fails a config-needing command early with exit 2", async () => {
+    const ran = { value: false };
+    const cli = createCli({
+      name: "t",
+      version: "0.0.0",
+      products: [],
+      groups: {},
+      commands: { show: showCommand(toySection(), ran) },
+    });
+    const { runtime, stdout } = jsonRuntime(
+      await loadConfig(join(FIXTURES, "unmarked")),
+    );
+    const exitCode = await cli.run(["show"], runtime);
+    expect(exitCode).toBe(2);
+    expect(ran.value).toBe(false);
+    const frame = JSON.parse(stdout().trim());
+    expect(frame.envelope.ok).toBe(false);
+    expect(frame.envelope.error.code).toBe("CLI.CONFIG_MISSING_MARKER");
   });
 
   test("loadConfig output feeds the engine: disk to ctx.config end to end", async () => {
@@ -349,5 +359,70 @@ describe("needs.config", () => {
     const run = await cli.run(["show"], { isTty: { stdout: true } });
     expect(run.exitCode).toBe(0);
     expect(run.presented?.data).toEqual({ greeting: "hello" });
+  });
+});
+
+describe("warnings on a successful section validation", () => {
+  const warningSection = defineConfigSection<ToyConfig>({
+    name: "toy",
+    validate: () => ({
+      ok: true,
+      value: { greeting: "hi" },
+      diagnostics: [
+        {
+          code: "TOY.LEGACY_GREETING",
+          severity: "warn",
+          summary: "toy.legacy is deprecated.",
+        },
+      ],
+    }),
+  });
+
+  function warningCli() {
+    return createTestCli({
+      commands: { show: showCommand(warningSection) },
+      config: { toy: {} },
+      now: EPOCH,
+    });
+  }
+
+  test("the warning goes to stderr and the command still completes", async () => {
+    const run = await warningCli().run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(run.stdout).toBe("✔ hi\n");
+    expect(run.stderr).toBe(
+      "⚠ [TOY.LEGACY_GREETING] toy.legacy is deprecated.\n",
+    );
+  });
+
+  test("json mode writes the warning to stderr, never the stream or envelope", async () => {
+    const run = await warningCli().run(["show", "--json"]);
+    expect(run.exitCode).toBe(0);
+    expect(run.stderr).toBe(
+      "⚠ [TOY.LEGACY_GREETING] toy.legacy is deprecated.\n",
+    );
+    expect(run.json).toEqual([
+      {
+        kind: "result",
+        envelope: {
+          ok: true,
+          commandId: "show",
+          result: { greeting: "hi" },
+          exitCode: 0,
+          diagnostics: [],
+          nextActions: [],
+        },
+        commandId: "show",
+        timestamp: T0,
+      },
+    ]);
+  });
+
+  test("--log-level error hides the warning", async () => {
+    const run = await warningCli().run(["show", "--log-level", "error"], {
+      isTty: { stdout: true },
+    });
+    expect(run.exitCode).toBe(0);
+    expect(run.stderr).toBe("");
   });
 });

@@ -116,7 +116,7 @@ describe("human rendering", () => {
     expect(result.stderr).toBe("heads up\n");
   });
 
-  test("--quiet suppresses all commentary and blocks, keeps data lines", async () => {
+  test("--quiet silences commentary but keeps blocks and data lines", async () => {
     const result = await makeCli().run([
       "noisy",
       "--format",
@@ -124,7 +124,7 @@ describe("human rendering", () => {
       "--quiet",
     ]);
 
-    expect(result.stdout).toBe("generated 3 files\ndone\n");
+    expect(result.stdout).toBe("generated 3 files\n✔ done\n→ Nothing else\n");
     expect(result.stderr).toBe("");
   });
 });

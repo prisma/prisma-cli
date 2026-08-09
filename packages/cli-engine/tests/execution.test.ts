@@ -318,7 +318,7 @@ describe("log levels and quiet", () => {
     expect(result.stderr).toBe("");
   });
 
-  test("--quiet leaves only the stdout presentation lines", async () => {
+  test("--quiet is shorthand for --log-level error: commentary silenced, blocks kept", async () => {
     const result = await makeCli().run([
       "greet",
       "world",
@@ -328,8 +328,32 @@ describe("log levels and quiet", () => {
     ]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("Hello world\n");
+    expect(result.stdout).toBe("✔ Hello world\n→ Nothing else to do\n");
     expect(result.stderr).toBe("");
+  });
+
+  test("--quiet beats an explicit --log-level, exactly like --verbose does", async () => {
+    const quiet = await makeCli().run([
+      "greet",
+      "world",
+      "--format",
+      "human",
+      "--quiet",
+      "--log-level",
+      "info",
+    ]);
+    const verbose = await makeCli().run([
+      "greet",
+      "world",
+      "--format",
+      "human",
+      "--verbose",
+      "--log-level",
+      "error",
+    ]);
+
+    expect(quiet.stderr).toBe("");
+    expect(verbose.stderr).toBe("greeting world\nverbose detail\n");
   });
 });
 

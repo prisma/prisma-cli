@@ -66,7 +66,10 @@
  * shorthand for `--format json`. In json mode the engine suppresses
  * prompts (they fail structurally) and emits one StreamEvent per line.
  * Commentary is filtered by `--log-level <error|warn|info|verbose>`
- * (default info); `--verbose` is shorthand for `--log-level verbose`.
+ * (default info); `--verbose` is shorthand for `--log-level verbose`;
+ * `-q/--quiet` for `--log-level error` (operator ruling, 2026-08-09: a
+ * log-level alias only, not otherwise retained — it never changes what
+ * a completed result renders).
  * The engine injects the shared flag family on every non-server
  * command: --format/--json, --log-level/-v/--verbose, -q/--quiet,
  * -y/--yes, --interactive/--no-interactive, --color/--no-color.
@@ -233,7 +236,7 @@ declare const PRESENTED: unique symbol
  *
  * `data` is what the envelope's `result` serializes (json presentation
  * overrides when supplied). Materialization by format: human → human +
- * stdout + next; human+--quiet → stdout; json → json + next.
+ * stdout + next; json → json + next.
  *
  * Guardrail (runtime, at the return site): a severity-'error' diagnostic
  * requires a non-zero exitCode — a genuine could-not-complete belongs in
@@ -260,8 +263,8 @@ export { PRESENTED }
  * The per-format presentation functions a handler supplies to
  * ctx.present. Only the active format's functions are invoked, at the
  * return site. `human` composes engine primitives (R5); `stdout` is the
- * machine-consumable data lines — what --quiet leaves, what a pipe
- * receives; `json` overrides the envelope's `result` (default: the
+ * machine-consumable data lines — what a pipe receives; `json`
+ * overrides the envelope's `result` (default: the
  * data); `next` supplies the typed nextActions — agents branch on them;
  * the human renderer formats them as prose (no stored string form).
  */
@@ -296,6 +299,10 @@ export interface ConfigSection<T> {
   readonly validate: (raw: unknown | undefined) => SectionValidation<T>
 }
 
+/** Diagnostics on an OK validation are warnings: the engine writes them
+ *  to stderr as commentary (log-level filtered, human and json alike);
+ *  they never enter the stream or the envelope (operator ruling,
+ *  2026-08-09). */
 export type SectionValidation<T> =
   | { readonly ok: true; readonly value: T; readonly diagnostics: readonly Diagnostic[] }
   | { readonly ok: false; readonly diagnostics: readonly Diagnostic[] }
@@ -830,8 +837,10 @@ export interface LoadedConfig {
   /** Raw section values by name; validation happens per command via its
    *  product's section token. */
   readonly sections: Readonly<Record<string, unknown>>
-  /** File-level problems (unevaluable module, missing version marker) —
-   *  section: null fails every command. */
+  /** File-level problems (unevaluable module, missing version marker)
+   *  carry section: null and fail only commands with a needs.config
+   *  section (operator ruling, 2026-08-09: the CLI still runs; a
+   *  command that needs no config runs normally). */
   readonly diagnostics: ReadonlyArray<{
     readonly section: string | null
     readonly diagnostic: Diagnostic

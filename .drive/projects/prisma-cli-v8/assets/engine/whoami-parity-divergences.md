@@ -99,11 +99,11 @@ signing in still happens through the shipped CLI in S1).
 Current CLI: whoami has no stdout presenter, so `--quiet` prints
 nothing at all.
 
-v8: `--quiet` leaves the machine-consumable data lines, one `label:
-value` line per field (`status: signed out`, or the signed-in
-status/user/provider/workspace rows). The engine contract says quiet
-mode leaves the stdout payload; the port supplies one, so quiet output
-is now non-empty by design.
+v8: `--quiet` is a log-level alias — shorthand for `--log-level error`
+(operator ruling, 2026-08-09) — and nothing more. It silences
+commentary on stderr; whoami's human output is unchanged by it, and
+since whoami emits no commentary, a `--quiet` run's output is identical
+to a plain run.
 
 ## 6. Empty `PRISMA_SERVICE_TOKEN` (the errored path)
 
@@ -177,23 +177,23 @@ v8 bin has none of that shell behavior.
 Recorded during D3–D5 and re-listed here per the handover instruction;
 none were resolved unilaterally.
 
-1. D3: in human non-quiet mode the engine renders human Blocks only;
-   the materialized `stdout` presentation lines are written only under
-   `--quiet` (they would duplicate the blocks). The draft honors
-   materialization exactly; this rendering-rule reading is unruled.
-   (It is what makes §5's quiet behavior observable.)
+1. D3: in human mode the engine renders human Blocks only; the
+   materialized `stdout` presentation lines are never written. PARTIALLY
+   SUPERSEDED by the 2026-08-09 `--quiet` ruling: the quiet arm is
+   settled (`--quiet` is a log-level alias and no longer selects the
+   stdout lines). The remaining open half is what the
+   `Presentations.stdout` surface is for now — the surface itself stays
+   in the draft pending an operator answer.
 2. D4: remediation events render as nextActions at settlement in human
    mode (not live in the transcript); json streams them live as frames.
 3. Diagnostic severity stays `error|warn|info`; the trim to two awaits
    the ADR 239 amendment (project slice S4).
-4. D5: a file-level config diagnostic (unmarked/unreadable
-   `prisma.config.ts`) fails EVERY command, including ones with no
-   config need — the draft's `LoadedConfig` comment says so and won
-   over the 1a foundation design, which says the opposite. Needs an
-   operator ruling before S3.
-5. D5: diagnostics returned on a SUCCESSFUL `SectionValidation`
-   (warnings) are currently dropped; the draft doesn't say where they
-   go.
+4. RULED (2026-08-09): a file-level config diagnostic fails only
+   commands with a `needs.config` section; every other command runs
+   normally, and a missing file was never a diagnostic at all.
+5. RULED (2026-08-09): diagnostics on a SUCCESSFUL `SectionValidation`
+   are written to stderr as warning commentary (log-level filtered,
+   both formats), never into the stream or the envelope.
 
 The D6 finding about the lazy-handler pattern's circular type inference
 is resolved by an operator ruling (2026-08-09): handlers are never

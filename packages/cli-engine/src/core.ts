@@ -174,6 +174,11 @@ export interface ConfigSection<T> {
   readonly validate: (raw: unknown | undefined) => SectionValidation<T>;
 }
 
+/**
+ * Diagnostics on an OK validation are warnings: the engine writes them
+ * to stderr as commentary (log-level filtered, human and json alike);
+ * they never enter the stream or the envelope.
+ */
 export type SectionValidation<T> =
   | {
       readonly ok: true;
@@ -858,8 +863,9 @@ export interface LoadedConfig {
    */
   readonly sections: Readonly<Record<string, unknown>>;
   /**
-   * File-level problems (unevaluable module, missing version marker) —
-   * section: null fails every command.
+   * File-level problems (unevaluable module, missing version marker)
+   * carry section: null and fail only commands with a needs.config
+   * section; commands with no config need run normally.
    */
   readonly diagnostics: ReadonlyArray<{
     readonly section: string | null;

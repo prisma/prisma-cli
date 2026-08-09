@@ -137,7 +137,7 @@ const SHARED_FLAG_PARAMETERS = {
   quiet: {
     kind: "boolean",
     default: false,
-    brief: "Only write machine-consumable data lines",
+    brief: "Shorthand for --log-level error",
   },
   yes: {
     kind: "boolean",
@@ -206,7 +206,6 @@ interface RunState {
   prefix: readonly string[];
   format: Format;
   logLevel: LogLevel;
-  quiet: boolean;
   yes: boolean;
   interactive: boolean;
   colorEnabled: boolean;
@@ -690,7 +689,6 @@ async function executeRun(
     prefix: [],
     format,
     logLevel: "info",
-    quiet: false,
     yes: false,
     interactive: defaultInteractive(format, runtime),
     colorEnabled: false,
@@ -802,11 +800,10 @@ function applySharedFlags(
   runtime: Runtime,
 ): void {
   state.format = shared.format ?? resolveAutoFormat(shared, runtime);
-  state.quiet = shared.quiet === true;
   state.yes = shared.yes === true;
   state.interactive =
     shared.interactive ?? defaultInteractive(state.format, runtime);
-  state.logLevel = resolveLogLevel(state.quiet, shared);
+  state.logLevel = resolveLogLevel(shared);
   state.colorEnabled =
     shared.color ??
     (runtime.isTty.stdout && runtime.env.NO_COLOR === undefined);
@@ -827,8 +824,10 @@ function resolveAutoFormat(shared: SharedFlags, runtime: Runtime): Format {
   return runtime.isTty.stdout ? "human" : "json";
 }
 
-function resolveLogLevel(quiet: boolean, shared: SharedFlags): LogLevel {
-  if (quiet) {
+/** --quiet and --verbose are log-level shorthands; either one beats an
+ *  explicit --log-level given alongside it. */
+function resolveLogLevel(shared: SharedFlags): LogLevel {
+  if (shared.quiet === true) {
     return "error";
   }
   if (shared.verbose === true) {
@@ -1001,22 +1000,14 @@ function structuredErrorFromDiagnostic(
 }
 
 /** The needs checks the engine enforces before the handler runs:
- *  file-level config problems (which fail every command), interaction,
- *  dependencies, credentials, and the command's config section. On
+ *  interaction, dependencies, credentials, and the command's config
+ *  section. File-level config problems fail only commands with a
+ *  needs.config section — every other command runs normally. On
  *  success it carries the validated section value for ctx.config. */
 async function checkNeeds(
   def: AnyCommand,
   invocation: Invocation,
 ): Promise<NeedsOutcome> {
-  const fileLevel = invocation.runtime.config.diagnostics.filter(
-    (entry) => entry.section === null,
-  );
-  if (fileLevel.length > 0) {
-    return needsErrored(
-      structuredErrorFromDiagnostic(fileLevel[0].diagnostic),
-      fileLevel.slice(1).map((entry) => entry.diagnostic),
-    );
-  }
   const needs = def.needs;
   if (needs === undefined) {
     return { kind: "ok", config: undefined };
@@ -1071,6 +1062,15 @@ async function checkNeeds(
     }
   }
   if (needs.config !== undefined) {
+    const fileLevel = invocation.runtime.config.diagnostics.filter(
+      (entry) => entry.section === null,
+    );
+    if (fileLevel.length > 0) {
+      return needsErrored(
+        structuredErrorFromDiagnostic(fileLevel[0].diagnostic),
+        fileLevel.slice(1).map((entry) => entry.diagnostic),
+      );
+    }
     return validateConfigSection(needs.config, invocation);
   }
   return { kind: "ok", config: undefined };
@@ -1108,7 +1108,25 @@ function validateConfigSection(
       validation.diagnostics,
     );
   }
+  writeSectionWarnings(invocation, validation.diagnostics);
   return { kind: "ok", config: validation.value };
+}
+
+/** Diagnostics on an OK validation are warnings: written to stderr as
+ *  commentary in both formats (stderr is free for commentary in json
+ *  mode), filtered by the active log level, never added to the stream
+ *  or the envelope. */
+function writeSectionWarnings(
+  invocation: Invocation,
+  diagnostics: readonly Diagnostic[],
+): void {
+  const state = invocation.state;
+  for (const diagnostic of diagnostics) {
+    if (SEVERITY_RANK[diagnostic.severity] > SEVERITY_RANK[state.logLevel]) {
+      continue;
+    }
+    writeDiagnostic(invocation.runtime.stderr, withDocsUrl(state, diagnostic));
+  }
 }
 
 // —————————————————————————————————————————————————————————————————————
@@ -1485,8 +1503,7 @@ function makePromptSurface(invocation: Invocation): PromptSurface {
 }
 
 /** Materializes ONLY the active format's presentation functions, at the
- *  return site: human → human + stdout + next; human+--quiet → stdout;
- *  json → json + next. */
+ *  return site: human → human + stdout + next; json → json + next. */
 function materializePresentation(
   state: RunState,
   ui: Ui,
@@ -1497,9 +1514,6 @@ function materializePresentation(
       json: presentations.json?.(),
       next: presentations.next?.(),
     };
-  }
-  if (state.quiet) {
-    return { stdout: presentations.stdout?.() };
   }
   return {
     human: presentations.human(ui),
@@ -1715,12 +1729,6 @@ function renderCompletedHuman(
   presented: PresentedResult<unknown>,
 ): void {
   const { runtime, state } = invocation;
-  if (state.quiet) {
-    for (const line of presented.presentation.stdout ?? []) {
-      runtime.stdout.write(`${line}\n`);
-    }
-    return;
-  }
   for (const block of presented.presentation.human ?? []) {
     renderBlock(block, (line) => runtime.stdout.write(`${line}\n`));
   }

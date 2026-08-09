@@ -134,7 +134,7 @@ describe("prisma-v8 auth whoami", () => {
     });
   });
 
-  it("writes only the machine-consumable data lines under --quiet", async () => {
+  it("renders the unchanged human blocks under --quiet (a log-level alias)", async () => {
     vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
 
     const result = await makeCli().run(["auth", "whoami", "--quiet"], {
@@ -143,7 +143,8 @@ describe("prisma-v8 auth whoami", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe(
-      "status: signed in\n" +
+      "ℹ Showing the current authenticated identity.\n" +
+        "status: signed in\n" +
         "user: bob@example.com\n" +
         "provider: GitHub\n" +
         "workspace: Acme Inc\n",
