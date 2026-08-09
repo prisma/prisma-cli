@@ -84,6 +84,16 @@ guides, review comments) demonstrably did not hold the line. Consistency has
 to be structural: a product that cannot render cannot diverge. This is the
 constraint the rest of the design serves.
 
+Two clarifications. First, this requirement constrains *who owns* rendering,
+not how it is built: the engine may adopt its internal framework's renderer
+wherever that output satisfies the CLI Style Guide — custom rendering is the
+escape hatch for what the framework cannot express, not the default. (The
+hand-rolled help formatter in the current ORM CLI exists because its
+framework rendered badly, not because owning the pixels is a goal.) Second,
+there are no global flags: a flag like `--json` is declared per command —
+many commands legitimately don't accept it — and the engine provides a
+shared flag-set so the commands that do support it declare it uniformly.
+
 ### R6 — Errors and results follow the settled conventions
 
 Every user-surfaced failure is a structured error built at its origin, with a
