@@ -1,8 +1,7 @@
 {
   "name": "@prisma/cli-engine",
-  "version": "0.0.0",
-  "description": "The unified Prisma CLI engine.",
-  "private": true,
+  "version": "0.1.0",
+  "description": "The execution engine of the unified Prisma CLI.",
   "type": "module",
   "exports": {
     ".": {
@@ -20,8 +19,13 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=22.12.0"
   },
@@ -30,9 +34,14 @@
     "url": "https://github.com/prisma/prisma-cli.git",
     "directory": "packages/cli-engine"
   },
+  "homepage": "https://github.com/prisma/prisma-cli#readme",
+  "bugs": {
+    "url": "https://github.com/prisma/prisma-cli/issues"
+  },
   "license": "Apache-2.0",
   "scripts": {
     "build": "tsdown",
+    "prepack": "pnpm run build",
     "typecheck": "tsc --noEmit",
     "test": "pnpm run build && pnpm run typecheck && vitest run"
   },

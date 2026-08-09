@@ -26,6 +26,9 @@ importers:
       '@clack/prompts':
         specifier: ^1.5.0
         version: 1.5.0
+      '@prisma/cli-engine':
+        specifier: workspace:*
+        version: link:../cli-engine
       '@prisma/compute-sdk':
         specifier: 0.39.0
         version: 0.39.0(@prisma/management-api-sdk@1.55.0)(rollup@4.62.2)
@@ -66,9 +69,6 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
     devDependencies:
-      '@prisma/cli-engine':
-        specifier: workspace:*
-        version: link:../cli-engine
       '@repo/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
