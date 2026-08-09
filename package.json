@@ -14,7 +14,8 @@
     "smoke:cli-nextjs": "node scripts/smoke-cli-nextjs-artifact.mjs",
     "test": "pnpm --filter @prisma/cli test",
     "prisma-cli": "tsx packages/cli/src/bin.ts",
-    "prisma": "tsx packages/cli/src/bin.ts"
+    "prisma": "tsx packages/cli/src/bin.ts",
+    "prisma-v8": "tsx packages/cli/src/v8/bin.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
