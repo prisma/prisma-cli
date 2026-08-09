@@ -85,25 +85,34 @@ export interface SharedFlags {
   readonly color?: boolean;
 }
 
+/** The pre-parse format decision: json framing must be in effect before
+ *  stricli parses (its own failure output is framed too), so the format
+ *  flags are scanned from raw argv. */
 export function sniffFormat(argv: readonly string[], runtime: Runtime): Format {
-  for (const [index, input] of argv.entries()) {
-    if (input === "--") {
-      break;
+  return explicitFormat(argv) ?? (runtime.isTty.stdout ? "human" : "json");
+}
+
+/** The format requested by --json / --format / --format=<value>, if
+ *  any. Arguments after a bare `--` are positionals, never flags. */
+function explicitFormat(argv: readonly string[]): Format | undefined {
+  for (const [index, argument] of argv.entries()) {
+    if (argument === "--") {
+      return undefined;
     }
-    if (input === "--json" || input === "--format=json") {
+    if (argument === "--json" || argument === "--format=json") {
       return "json";
     }
-    if (input === "--format=human") {
+    if (argument === "--format=human") {
       return "human";
     }
-    if (input === "--format") {
+    if (argument === "--format") {
       const value = argv[index + 1];
       if (value === "json" || value === "human") {
         return value;
       }
     }
   }
-  return runtime.isTty.stdout ? "human" : "json";
+  return undefined;
 }
 
 export function applySharedFlags(

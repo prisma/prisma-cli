@@ -48,13 +48,13 @@ function missingMarkerDiagnostic(path: string): Diagnostic {
     code: "CLI.CONFIG_MISSING_MARKER",
     severity: "error",
     summary:
-      "prisma.config.ts is not a Prisma v8 config: its default export does not carry the defineConfig version marker.",
-    why: "A classic Prisma 7 config file uses the same name, and the CLI never guesses at unmarked files — a silently misread config is worse than a hard stop.",
+      "This prisma.config.ts was not written for this version of the Prisma CLI, so it cannot be used.",
+    why: "Configs for this CLI are created with defineConfig, which records a version marker on the exported object. This file's default export has no marker — it is most likely a Prisma 7 config, which uses the same filename — and the CLI stops rather than misread it.",
     nextActions: [
       {
         kind: "user-choice",
         label:
-          "Wrap the exported config object in defineConfig from @prisma/cli-engine and export the result as the default export.",
+          "Migrate the file: wrap the exported object in defineConfig from @prisma/cli-engine and export the result as the default export.",
       },
     ],
     where: { path },

@@ -50,17 +50,18 @@ function fieldRows(state: AuthStateResult): readonly FieldRow[] {
     return [{ label: "status", value: "signed out" }];
   }
 
+  const rows: FieldRow[] = [{ label: "status", value: "signed in" }];
   const user = userLabel(state);
-  return [
-    { label: "status", value: "signed in" },
-    ...(user ? [{ label: "user", value: user }] : []),
-    ...(state.provider
-      ? [{ label: "provider", value: providerLabel(state.provider) }]
-      : []),
-    ...(state.workspace?.name
-      ? [{ label: "workspace", value: state.workspace.name }]
-      : []),
-  ];
+  if (user) {
+    rows.push({ label: "user", value: user });
+  }
+  if (state.provider) {
+    rows.push({ label: "provider", value: providerLabel(state.provider) });
+  }
+  if (state.workspace?.name) {
+    rows.push({ label: "workspace", value: state.workspace.name });
+  }
+  return rows;
 }
 
 function presentationsFor(state: AuthStateResult): Presentations {
