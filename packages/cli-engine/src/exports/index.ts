@@ -58,6 +58,7 @@ export type {
   StreamEvent,
   StreamMeta,
 } from "../events";
+export type { ManagementApiClient } from "../management-api";
 export {
   type Block,
   type Format,

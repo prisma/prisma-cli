@@ -4,7 +4,7 @@ import {
   loadConfig,
   type Runtime,
 } from "@prisma/cli-engine";
-import { makeGetCredentials } from "../auth";
+import { getApiBaseUrl, makeGetCredentials } from "../auth";
 
 export type SignalProcess = Pick<HostProcess, "on" | "off" | "exit">;
 
@@ -70,6 +70,7 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
     onSignal: makeOnSignal(proc),
     config: await loadConfig(proc.cwd()),
     getCredentials: makeGetCredentials(proc.env),
+    managementApi: { baseUrl: getApiBaseUrl(proc.env) },
     packageManager: detectPackageManager(proc.env),
   };
 }

@@ -131,22 +131,26 @@ async function checkCredentials(
     );
   }
   if (credentials === undefined) {
-    return needsErrored(
-      new CliStructuredError(
-        "CLI.CREDENTIALS_REQUIRED",
-        "You must be signed in to run this command.",
-        {
-          nextActions: [
-            {
-              kind: "user-choice",
-              label: "Sign in, then run the command again.",
-            },
-          ],
-        },
-      ),
-    );
+    return needsErrored(credentialsRequiredError());
   }
   return undefined;
+}
+
+/** The single source of the sign-in error: raised by the needs check
+ *  and by an unauthenticated ctx.api request. */
+export function credentialsRequiredError(): CliStructuredError {
+  return new CliStructuredError(
+    "CLI.CREDENTIALS_REQUIRED",
+    "You must be signed in to run this command.",
+    {
+      nextActions: [
+        {
+          kind: "user-choice",
+          label: "Sign in, then run the command again.",
+        },
+      ],
+    },
+  );
 }
 
 function checkConfiguration(

@@ -551,6 +551,7 @@ describe("needs preconditions", () => {
         ],
       },
       getCredentials: async () => opts.credentials,
+      managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
     };
     const exitCode = await cli.run(["demanding", "--format", "human"], runtime);
@@ -715,6 +716,7 @@ describe("report() after the handler resolved", () => {
       onSignal: () => () => {},
       config: { sections: {}, diagnostics: [] },
       getCredentials: async () => undefined,
+      managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
     };
     const exitCode = await cli.run(["leaky", "--format", "human"], runtime);
@@ -767,6 +769,7 @@ describe("credentials that cannot be read", () => {
       getCredentials: async () => {
         throw new Error("token file corrupt: unexpected end of JSON input");
       },
+      managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
     };
     const exitCode = await cli.run(["locked"], runtime);

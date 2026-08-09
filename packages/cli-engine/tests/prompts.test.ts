@@ -494,6 +494,7 @@ describe("stdin cleanup", () => {
       onSignal: () => () => {},
       config: { sections: {}, diagnostics: [] },
       getCredentials: async () => undefined,
+      managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
     };
 

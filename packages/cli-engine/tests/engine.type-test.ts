@@ -308,6 +308,7 @@ export const createTestCliSpec: Parameters<typeof createTestCli>[0] = {
   commands: tree,
   config: { check: { strict: true } },
   credentials: { token: "t" },
+  managementApi: { baseUrl: "https://test.invalid" },
   packageManager: "pnpm",
   now: () => new Date(0),
 };
@@ -385,5 +386,6 @@ export const runtimeShape: Runtime = {
   onSignal: () => () => {},
   config: loadedConfig,
   getCredentials: async () => undefined,
+  managementApi: { baseUrl: "https://test.invalid" },
   packageManager: "pnpm",
 };

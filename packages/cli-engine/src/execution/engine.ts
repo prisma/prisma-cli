@@ -8,9 +8,11 @@ import type { CommandFamily, MountedTree } from "../command-family";
 import type { AnyCommand } from "../commands";
 import type { CommandContext } from "../context";
 import type { EngineEvent, Severity, StreamEvent } from "../events";
+import type { ManagementApiClient } from "../management-api";
 import type { Format, PresentedResult } from "../presentation";
 import type { CliStructuredError, Result } from "../protocol";
 import type { InputStream, Runtime } from "../runtime";
+import type { CreateManagementApiSdk } from "./api-client";
 import { makeContext } from "./command-context";
 import { buildCommandTree, type CommandTreeEntry } from "./command-tree";
 import { checkNeeds, type NeedsOutcome } from "./needs";
@@ -50,6 +52,12 @@ export interface RunHooks {
   readonly onPresented?: (presented: PresentedResult<unknown>) => void;
   readonly onStreamEvent?: (frame: StreamEvent) => void;
   readonly answers?: ReadonlyArray<string | boolean>;
+  /** Test seams: an injected `client` becomes ctx.api verbatim; an
+   *  injected `createSdk` replaces the SDK factory. */
+  readonly managementApi?: {
+    readonly client?: ManagementApiClient;
+    readonly createSdk?: CreateManagementApiSdk;
+  };
 }
 
 export interface Engine {

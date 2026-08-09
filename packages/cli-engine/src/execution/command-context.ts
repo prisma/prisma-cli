@@ -1,4 +1,5 @@
 import type { CommandContext, Credentials } from "../context";
+import type { ManagementApiClient } from "../management-api";
 import {
   PRESENTED,
   type Presentations,
@@ -6,6 +7,7 @@ import {
   type Ui,
 } from "../presentation";
 import { type Diagnostic, notOk, okVoid } from "../protocol";
+import { buildManagementApiClient } from "./api-client";
 import type { Invocation, RunState } from "./engine";
 import { dependencyResolvable, missingDependencyError } from "./needs";
 import { makePromptSurface } from "./prompts";
@@ -81,11 +83,18 @@ export function makeContext(
       presentation: materializePresentation(state, ui, presentations),
     });
   };
+  let api: ManagementApiClient | undefined;
   return {
     config,
     present: present as CommandContext<unknown, number>["present"],
     getCredentials: (): Promise<Credentials | undefined> =>
       invocation.runtime.getCredentials(),
+    get api(): ManagementApiClient {
+      api ??=
+        invocation.hooks.managementApi?.client ??
+        buildManagementApiClient(invocation);
+      return api;
+    },
     report: (event) => reportEvent(invocation, event),
     prompt: makePromptSurface(invocation),
     signal: invocation.signal,

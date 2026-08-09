@@ -2,6 +2,7 @@ import type { CommandFamily, MountedTree } from "./command-family";
 import type { Credentials } from "./context";
 import type { EngineEvent, StreamEvent } from "./events";
 import { buildEngine } from "./execution/engine";
+import type { ManagementApiClient } from "./management-api";
 import type { PresentedResult } from "./presentation";
 import type { Runtime } from "./runtime";
 
@@ -67,6 +68,12 @@ export function createTestCli(spec: {
   readonly groups?: Readonly<Record<string, { readonly brief: string }>>;
   readonly config?: Readonly<Record<string, unknown>>;
   readonly credentials?: Credentials;
+  /** baseUrl defaults to "https://test.invalid"; when `client` is
+   *  supplied, ctx.api IS that object. */
+  readonly managementApi?: {
+    readonly baseUrl?: string;
+    readonly client?: ManagementApiClient;
+  };
   readonly packageManager?: "npm" | "pnpm" | "yarn" | "bun" | "unknown";
   /** Fixed clock for deterministic stream timestamps. */
   readonly now?: () => Date;
@@ -127,6 +134,9 @@ export function createTestCli(spec: {
         },
         config: { sections: spec.config ?? {}, diagnostics: [] },
         getCredentials: async () => spec.credentials,
+        managementApi: {
+          baseUrl: spec.managementApi?.baseUrl ?? "https://test.invalid",
+        },
         packageManager: spec.packageManager ?? "unknown",
       };
       const running = engine.execute(argv, runtime, {
@@ -141,6 +151,10 @@ export function createTestCli(spec: {
           frames.push(frame);
         },
         answers: opts?.answers,
+        managementApi:
+          spec.managementApi?.client === undefined
+            ? undefined
+            : { client: spec.managementApi.client },
       });
       const abort = opts?.abort;
       if (abort !== undefined) {

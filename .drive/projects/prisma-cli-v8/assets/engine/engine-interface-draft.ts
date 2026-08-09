@@ -373,6 +373,14 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
    *  fails them early with the sign-in error. */
   readonly getCredentials: () => Promise<Credentials | undefined>
 
+  /** The Management API client. Constructed lazily on first access,
+   *  once per run, with its token source backed by ctx.getCredentials
+   *  so refresh during long runs is picked up per request. A request
+   *  made while getCredentials() resolves undefined throws the
+   *  structured CLI.CREDENTIALS_REQUIRED error (the same constructor
+   *  the needs.credentials check uses). */
+  readonly api: ManagementApiClient
+
   /** The one way to emit while running (§1). */
   readonly report: (event: EngineEvent) => void
 
@@ -411,6 +419,10 @@ export interface Credentials {
    *  here. */
   readonly token: string
 }
+
+/** The SDK's typed client, re-exported by the engine so consumers
+ *  never import @prisma/management-api-sdk directly. */
+export type ManagementApiClient = import('@prisma/management-api-sdk').ManagementApiClient
 
 /**
  * §4a Prompts (operator ruling, 2026-08-09: prompts return their answer
@@ -939,6 +951,9 @@ export interface Runtime {
    *  the unified loader (R10). Tests hand in fixtures. */
   readonly config: LoadedConfig
   readonly getCredentials: () => Promise<Credentials | undefined>
+  /** Management API endpoint config; the bin derives baseUrl from env
+   *  (getApiBaseUrl). */
+  readonly managementApi: { readonly baseUrl: string }
   /** Used by the ENGINE to phrase install commands (handlers never
    *  do — see needs.dependencies and ctx.requireDependency). */
   readonly packageManager: 'npm' | 'pnpm' | 'yarn' | 'bun' | 'unknown'
@@ -988,6 +1003,12 @@ export declare function createTestCli(spec: {
   readonly groups?: Readonly<Record<string, { readonly brief: string }>>
   readonly config?: Readonly<Record<string, unknown>>
   readonly credentials?: Credentials
+  /** baseUrl defaults to "https://test.invalid"; when `client` is
+   *  supplied, ctx.api IS that object (the uniform mock seam). */
+  readonly managementApi?: {
+    readonly baseUrl?: string
+    readonly client?: ManagementApiClient
+  }
   readonly packageManager?: 'npm' | 'pnpm' | 'yarn' | 'bun' | 'unknown'
   /** Fixed clock for deterministic stream timestamps. */
   readonly now?: () => Date

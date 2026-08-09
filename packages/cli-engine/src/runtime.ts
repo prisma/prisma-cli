@@ -45,6 +45,8 @@ export interface Runtime {
    */
   readonly config: LoadedConfig;
   readonly getCredentials: () => Promise<Credentials | undefined>;
+  /** Management API endpoint config; the bin derives baseUrl from env. */
+  readonly managementApi: { readonly baseUrl: string };
   /**
    * Used by the ENGINE to phrase install commands (handlers never do —
    * see needs.dependencies and ctx.requireDependency).

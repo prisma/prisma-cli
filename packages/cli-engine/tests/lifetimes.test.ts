@@ -185,6 +185,7 @@ describe("the engine owns the double-signal policy", () => {
       },
       config: { sections: {}, diagnostics: [] },
       getCredentials: async () => undefined,
+      managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
     };
     return {
@@ -334,6 +335,7 @@ describe("optional dependencies", () => {
     });
     const cli = createTestCli({
       commands: { command },
+      managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "pnpm",
       now: EPOCH,
     });
@@ -375,6 +377,7 @@ describe("optional dependencies", () => {
     });
     const cli = createTestCli({
       commands: { command },
+      managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "npm",
       now: EPOCH,
     });

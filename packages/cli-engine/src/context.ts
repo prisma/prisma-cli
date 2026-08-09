@@ -1,4 +1,5 @@
 import type { EngineEvent } from "./events";
+import type { ManagementApiClient } from "./management-api";
 import type { Outcome, Presentations, PresentedResult } from "./presentation";
 import type { CliStructuredError, Result } from "./protocol";
 
@@ -34,6 +35,15 @@ export interface CommandContext<
    * undefined — the engine fails them early.
    */
   readonly getCredentials: () => Promise<Credentials | undefined>;
+
+  /**
+   * The Management API client. Constructed lazily on first access, once
+   * per run, with its token source backed by ctx.getCredentials so
+   * refresh during long runs is picked up per request. A request made
+   * while getCredentials() resolves undefined throws the structured
+   * CLI.CREDENTIALS_REQUIRED error.
+   */
+  readonly api: ManagementApiClient;
 
   /** The one way to emit while running. */
   readonly report: (event: EngineEvent) => void;

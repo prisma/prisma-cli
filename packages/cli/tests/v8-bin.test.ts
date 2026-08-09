@@ -171,11 +171,22 @@ describe("assembleRuntime", () => {
     expect(runtime.isTty).toEqual({ stdin: true, stdout: true, stderr: false });
     expect(runtime.packageManager).toBe("pnpm");
     expect(runtime.config).toEqual({ sections: {}, diagnostics: [] });
+    expect(runtime.managementApi).toEqual({ baseUrl: "https://api.prisma.io" });
 
     runtime.stdout.write("out");
     runtime.stderr.write("err");
     expect(proc.stdoutText).toBe("out");
     expect(proc.stderrText).toBe("err");
+  });
+
+  it("derives managementApi.baseUrl from PRISMA_MANAGEMENT_API_URL", async () => {
+    const proc = makeProcess({
+      env: { PRISMA_MANAGEMENT_API_URL: "https://api.example.test" },
+    });
+    const runtime = await assembleRuntime(proc);
+    expect(runtime.managementApi).toEqual({
+      baseUrl: "https://api.example.test",
+    });
   });
 
   it("proxies exit to process.exit and signals to the process listeners", async () => {
