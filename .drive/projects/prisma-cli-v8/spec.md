@@ -47,7 +47,7 @@ ADR 239 amendment), **prisma/composer** (Composer product integration).
    distinguishes v8 configs, and an evaluated file without the marker —
    in particular a classic Prisma 7 config — fails early with a typed
    error naming the migration path (fail-early is ruled; no best-effort
-   reading). Products contribute sections via manifests
+   reading). Products contribute sections via their command families
    (`CommandFamily`: section token + commands + docs base); validation
    is per-section diagnostics; a command fails only when a section it
    needs is invalid.
@@ -70,7 +70,7 @@ ADR 239 amendment), **prisma/composer** (Composer product integration).
    ruling changed it (envelopes, exit codes, renames) — divergences are
    enumerated, not discovered.
 7. **Products integrate as designed**: prisma/prisma and composer export
-   manifests and command sets; the shell pins exact versions; tandem
+   their command families; the shell pins exact versions; tandem
    releases run on committed versions with workflow glue.
 8. **Product-repo e2e is real** (R7): each product runs argv-in/
    bytes-out tests against the engine's harness in its own repo; the

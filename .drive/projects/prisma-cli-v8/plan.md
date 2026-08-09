@@ -65,7 +65,7 @@ field-for-field identical to the settled envelope.
 ### S5 — ORM adoption
 
 Repos: prisma/prisma + prisma-cli. The `orm` section token +
-manifest; port `contract *`, `migration *` (retiring the clipanion
+command family; port `contract *`, `migration *` (retiring the clipanion
 migration-cli), `db *`, `init`, `telemetry`, `lsp` (the server
 command). Proves the diagnostics model (`migration check`, `db verify`
 as completed-with-findings + catalogued exit codes) and the
@@ -106,7 +106,7 @@ S6 (after S1) ─────────────► wired in during S3/S5
 | Prompts (defaults, consent, wizard) | S2 (init) |
 | Poll + status events; output streams | S2 (domain wait; app/build logs) |
 | Auth via context, refresh under long runs | S2, S3 (deploy) |
-| Config sections, manifests, validator absence | S3, S5 |
+| Config sections, command families, validator absence | S3, S5 |
 | Session commands, signal lifetime | S3 (dev, log) |
 | Cross-repo/published consumption, pins, tandem releases | S3 |
 | Child-status passthrough exception | S3 |

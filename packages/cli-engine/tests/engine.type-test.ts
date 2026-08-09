@@ -259,7 +259,7 @@ export const sessionCtxCheck = (ctx: CommandContext<undefined>) => {
 };
 
 // —————————————————————————————————————————————————————————————————————
-// Mounting types: AnyCommand erasure, manifests, createCli/createTestCli
+// Mounting types: AnyCommand erasure, command families, createCli/createTestCli
 // input shapes
 // —————————————————————————————————————————————————————————————————————
 
@@ -269,7 +269,7 @@ export const tree: MountedTree = {
   lsp: lspServer,
 };
 
-export const manifest: CommandFamily = {
+export const commandFamily: CommandFamily = {
   configSection: checkSection,
   commands: { check: checkCommand, dev: devSession, lsp: lspServer },
   docsBaseUrl: "https://example.invalid/docs",
@@ -278,7 +278,7 @@ export const manifest: CommandFamily = {
 export const createCliSpec: Parameters<typeof createCli>[0] = {
   name: "prisma-v8",
   version: "0.0.0",
-  commandFamilies: [manifest],
+  commandFamilies: [commandFamily],
   groups: { auth: { brief: "Authentication" } },
   commands: tree,
 };

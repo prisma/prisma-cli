@@ -78,12 +78,12 @@ codes (0/1/2 + catalogued).
 
 ### D4 — Prompts, events, session/server lifetimes
 
-**Outcome:** the remaining execution surface: `ctx.prompt` (product
-defaults accepted by `--yes`/Enter; no default halts under `--yes`;
+**Outcome:** the remaining execution surface: `ctx.prompt` (command-
+supplied defaults accepted by `--yes`/Enter; no default halts under `--yes`;
 `prompt.consent` structurally undefaultable), the event vocabulary +
 rendering rules (step, progress, message severities, output channels,
 remediation (transcript-only per ruling R-I), endpoint/status/artifact,
-opaque product `data`), `ctx.report`, `ctx.requireDependency`
+opaque command-family `data`), `ctx.report`, `ctx.requireDependency`
 (engine-phrased install error), session-command lifetime (runs until
 signal, no presentation) and server-command stdio handoff, signal exit
 codes (130, 143; 3 is user cancel per ruling R-K).

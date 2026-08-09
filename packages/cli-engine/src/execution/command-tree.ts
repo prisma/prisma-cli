@@ -143,8 +143,8 @@ function commandFamilyOf(
   spec: EngineSpec,
   def: AnyCommand,
 ): CommandFamily | undefined {
-  return spec.commandFamilies.find((family) =>
-    Object.values(family.commands).includes(def),
+  return spec.commandFamilies.find((commandFamily) =>
+    Object.values(commandFamily.commands).includes(def),
   );
 }
 
@@ -157,11 +157,11 @@ function validateSectionOwnership(
   if (section === undefined) {
     return;
   }
-  const family = commandFamilyOf(spec, def);
-  if (family === undefined) {
+  const commandFamily = commandFamilyOf(spec, def);
+  if (commandFamily === undefined) {
     return;
   }
-  if (family.configSection !== section) {
+  if (commandFamily.configSection !== section) {
     throw constructionError(
       `command '${path}' needs the '${section.name}' config section, which is not its command family's section`,
     );
