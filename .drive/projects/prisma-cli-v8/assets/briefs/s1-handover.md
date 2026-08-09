@@ -4,7 +4,7 @@ Written 2026-08-09 for the next orchestrating agent. The prior session halted af
 
 ## What this is
 
-Drive project `prisma-cli-v8`, slice S1: build `@prisma/cli-engine` and prove it with one ported command (`auth whoami`). Read, in order: `../../spec.md` (project), `../../plan.md` (slices), `../../specs/s1-engine-vertical.md` (slice contract), `../../plans/s1-engine-vertical.md` (dispatch plan — six dispatches D1–D6). The v8 interface draft at `../engine/engine-interface-draft.ts` is NORMATIVE: where implementation would contradict it, stop and ask the operator (Will); never improvise. Review artifacts (compile-verified typing claims) are in `../engine/reviews/`.
+Drive project `prisma-cli-v8`, slice S1: build `@prisma/cli-engine` and prove it with one ported command (`auth whoami`). Read, in order: `../../spec.md` (project), `../../plan.md` (slices), `../../specs/s1-engine-vertical.md` (slice contract), `../../plans/s1-engine-vertical.md` (dispatch plan — six dispatches D1–D6). The v8 interface draft at `../engine/engine-interface-draft.ts` is NORMATIVE: where implementation would contradict it, stop and ask the operator (Will); never improvise. The compile-verified typing claims from the design review rounds live as the permanent type-test suite in `packages/cli-engine/tests/` (review artifacts are never committed).
 
 ## State at handover
 
