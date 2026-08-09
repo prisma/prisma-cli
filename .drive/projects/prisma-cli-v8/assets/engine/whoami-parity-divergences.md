@@ -195,14 +195,8 @@ none were resolved unilaterally.
    (warnings) are currently dropped; the draft doesn't say where they
    go.
 
-One new D6 finding, same category (not a draft contradiction, but
-friction worth an operator look): the draft's lazy-handler pattern
-(`handler: () => import("./whoami.handler")` with the handler annotated
-`CommandHandler<typeof def>`) is circular for TypeScript inference — tsc
-rejects it (TS7022/TS2502) unless the definition const carries an
-explicit type annotation. The port breaks the cycle by annotating
-`authWhoamiCommand: CommandDefinition` (exact here, since whoami has no
-flags/positionals/config/exit codes). Commands WITH inferred surfaces
-will need explicit `CommandDefinition<…>` generics or a different
-pattern; the draft's comment promises the annotation round trip works
-without mentioning this.
+The D6 finding about the lazy-handler pattern's circular type inference
+is resolved by an operator ruling (2026-08-09): handlers are never
+dynamically imported. `handler` is the handler function itself, so the
+inference cycle no longer exists; the whoami handler now lives inline in
+`packages/cli/src/v8/auth/whoami.ts`.

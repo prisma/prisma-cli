@@ -33,7 +33,9 @@ describe("main export", () => {
 });
 
 describe("definition constructors", () => {
-  const handler = async () => ({ default: null as never });
+  const handler = (async () => {
+    throw new Error("never runs");
+  }) as never;
 
   test("defineCommand stamps result-command and preserves the definition", () => {
     const definition = defineCommand({
@@ -144,7 +146,7 @@ describe("flag and positional builders", () => {
 describe("construction validation", () => {
   const command = defineCommand({
     help: { summary: "Noop" },
-    handler: async () => ({ default: null as never }),
+    handler: null as never,
   });
 
   test("an empty mount fails construction", () => {
@@ -178,7 +180,7 @@ describe("construction validation", () => {
     const offender = defineCommand({
       help: { summary: "Offender" },
       args: { flags: { json: flag.boolean({ brief: "mine" }) } },
-      handler: async () => ({ default: null as never }),
+      handler: null as never,
     });
     expect(() => createTestCli({ commands: { offender } })).toThrow(
       "reserved flag 'json'",
@@ -189,7 +191,7 @@ describe("construction validation", () => {
     const offender = defineCommand({
       help: { summary: "Offender" },
       args: { flags: { quick: flag.boolean({ brief: "quick", alias: "q" }) } },
-      handler: async () => ({ default: null as never }),
+      handler: null as never,
     });
     expect(() => createTestCli({ commands: { offender } })).toThrow(
       "reserved alias '-q'",
@@ -200,7 +202,7 @@ describe("construction validation", () => {
     const offender = defineCommand({
       help: { summary: "Offender" },
       args: { flags: { "data-proxy": flag.boolean({ brief: "proxy" }) } },
-      handler: async () => ({ default: null as never }),
+      handler: null as never,
     });
     expect(() => createTestCli({ commands: { offender } })).toThrow(
       "must be camelCase",
@@ -216,7 +218,7 @@ describe("construction validation", () => {
           name: positional.string({ brief: "name", placeholder: "name" }),
         },
       },
-      handler: async () => ({ default: null as never }),
+      handler: null as never,
     });
     expect(() => createTestCli({ commands: { offender } })).toThrow(
       "must be declared last",
@@ -231,7 +233,7 @@ describe("construction validation", () => {
           "0": positional.string({ brief: "zero", placeholder: "zero" }),
         },
       },
-      handler: async () => ({ default: null as never }),
+      handler: null as never,
     });
     expect(() => createTestCli({ commands: { offender } })).toThrow(
       "integer-like",
@@ -242,7 +244,7 @@ describe("construction validation", () => {
     const offender = defineCommand({
       help: { summary: "Offender" },
       exitCodes: { 3: "reserved for user abort" },
-      handler: async () => ({ default: null as never }),
+      handler: null as never,
     });
     expect(() => createTestCli({ commands: { offender } })).toThrow(
       "must be integers in 4-99",

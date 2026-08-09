@@ -465,7 +465,7 @@ export interface HelpSpec {
 
 /**
  * The preconditions SPI: everything the engine enforces BEFORE the
- * handler loads. Each unmet need fails the command early with the
+ * handler runs. Each unmet need fails the command early with the
  * engine's own structured error.
  */
 export interface NeedsSpec<TConfig> {
@@ -519,13 +519,13 @@ export interface CommandDefinition<
   readonly exitCodes?: Readonly<Record<TCode, string>>;
 
   /**
-   * The heavy part, loaded only at execution (R9). The module's
-   * default export is the handler — annotate it with
-   * CommandHandler<typeof def>.
+   * The handler function, referenced directly — never a dynamic import
+   * (operator ruling, 2026-08-09). A handler that needs heavy
+   * dependencies imports them at execution time, inside its body (R9).
+   * A handler defined in another file is imported statically and
+   * annotated CommandHandler<typeof def>.
    */
-  readonly handler: () => Promise<{
-    default: Handler<TFlags, TPositionals, TConfig, TCode>;
-  }>;
+  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode>;
 }
 
 export type Handler<
@@ -582,12 +582,10 @@ export interface SessionCommandDefinition<
   readonly help: HelpSpec;
   readonly args?: ArgsSpec<TFlags, TPositionals>;
   readonly needs?: NeedsSpec<TConfig>;
-  readonly handler: () => Promise<{
-    default: (
-      args: Args<TFlags, TPositionals>,
-      ctx: CommandContext<TConfig>,
-    ) => Promise<Result<void, CliStructuredError>>;
-  }>;
+  readonly handler: (
+    args: Args<TFlags, TPositionals>,
+    ctx: CommandContext<TConfig>,
+  ) => Promise<Result<void, CliStructuredError>>;
 }
 
 export function defineSessionCommand<
@@ -623,19 +621,17 @@ export interface ServerCommandDefinition<
   readonly help: HelpSpec;
   readonly args?: ArgsSpec<TFlags, Record<never, PositionalSpec<unknown>>>;
   readonly needs?: NeedsSpec<TConfig>;
-  readonly handler: () => Promise<{
-    default: (
-      args: Args<TFlags, Record<never, PositionalSpec<unknown>>>,
-      io: {
-        readonly stdin: InputStream;
-        readonly stdout: OutputStream;
-        readonly stderr: OutputStream;
-        readonly signal: AbortSignal;
-        readonly cwd: string;
-        readonly config: TConfig;
-      },
-    ) => Promise<number>;
-  }>;
+  readonly handler: (
+    args: Args<TFlags, Record<never, PositionalSpec<unknown>>>,
+    io: {
+      readonly stdin: InputStream;
+      readonly stdout: OutputStream;
+      readonly stderr: OutputStream;
+      readonly signal: AbortSignal;
+      readonly cwd: string;
+      readonly config: TConfig;
+    },
+  ) => Promise<number>;
 }
 
 export function defineServerCommand<
@@ -652,7 +648,7 @@ export function defineServerCommand<
 
 /**
  * Erased union for manifests and mount maps; `kind` discriminates.
- * Handler modules are erased to `unknown` here — the concrete types
+ * Handler functions are erased to `unknown` here — the concrete types
  * travel through each definition's generics, not through this union.
  */
 export type AnyCommand =
@@ -664,7 +660,7 @@ export type AnyCommand =
         number
       >,
       "handler"
-    > & { readonly handler: () => Promise<{ readonly default: unknown }> })
+    > & { readonly handler: unknown })
   | (Omit<
       SessionCommandDefinition<
         Record<string, FlagSpec<unknown>>,
@@ -672,13 +668,11 @@ export type AnyCommand =
         unknown
       >,
       "handler"
-    > & { readonly handler: () => Promise<{ readonly default: unknown }> })
+    > & { readonly handler: unknown })
   | (Omit<
       ServerCommandDefinition<Record<string, FlagSpec<unknown>>, unknown>,
       "handler"
-    > & {
-      readonly handler: () => Promise<{ readonly default: unknown }>;
-    });
+    > & { readonly handler: unknown });
 
 // —————————————————————————————————————————————————————————————————————
 // §7 Presentation primitives — the R5 vocabulary

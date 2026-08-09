@@ -34,18 +34,16 @@ function signalDone(signal: AbortSignal): Promise<void> {
 describe("session commands", () => {
   const dev = defineSessionCommand({
     help: { summary: "Runs until the signal fires" },
-    handler: async () => ({
-      default: async (_args, ctx) => {
-        ctx.report({ kind: "status", subject: "server", status: "listening" });
-        await signalDone(ctx.signal);
-        ctx.report({
-          kind: "message",
-          severity: "info",
-          text: "shutting down",
-        });
-        return okVoid();
-      },
-    }),
+    handler: async (_args, ctx) => {
+      ctx.report({ kind: "status", subject: "server", status: "listening" });
+      await signalDone(ctx.signal);
+      ctx.report({
+        kind: "message",
+        severity: "info",
+        text: "shutting down",
+      });
+      return okVoid();
+    },
   });
 
   test("runs until the abort signal fires, then exits 0 on clean shutdown", async () => {
@@ -96,12 +94,8 @@ describe("session commands", () => {
   test("a session returning notOk settles as errored with exit 2", async () => {
     const broken = defineSessionCommand({
       help: { summary: "Fails to start" },
-      handler: async () => ({
-        default: async () =>
-          notOk(
-            new CliStructuredError("DEV.PORT_TAKEN", "Port already in use"),
-          ),
-      }),
+      handler: async () =>
+        notOk(new CliStructuredError("DEV.PORT_TAKEN", "Port already in use")),
     });
     const cli = createTestCli({ commands: { broken }, now: EPOCH });
     const result = await cli.run(["broken", "--json"]);
@@ -117,12 +111,10 @@ describe("session commands", () => {
 describe("signal exit codes", () => {
   const hang = defineCommand({
     help: { summary: "Aborts in-flight work with the signal" },
-    handler: async () => ({
-      default: async (_args, ctx) => {
-        await signalDone(ctx.signal);
-        throw ctx.signal.reason;
-      },
-    }),
+    handler: async (_args, ctx) => {
+      await signalDone(ctx.signal);
+      throw ctx.signal.reason;
+    },
   });
 
   async function runAborted(reason?: string) {
@@ -169,19 +161,17 @@ describe("optional dependencies", () => {
   test("ctx.requireDependency resolves ok for an importable specifier", async () => {
     const command = defineCommand({
       help: { summary: "Probes a dependency" },
-      handler: async () => ({
-        default: async (_args, ctx) => {
-          const probe = await ctx.requireDependency("typescript");
-          return ok(
-            ctx.present(
-              { data: { resolvable: probe.ok } },
-              {
-                human: (): readonly Block[] => [],
-              },
-            ),
-          );
-        },
-      }),
+      handler: async (_args, ctx) => {
+        const probe = await ctx.requireDependency("typescript");
+        return ok(
+          ctx.present(
+            { data: { resolvable: probe.ok } },
+            {
+              human: (): readonly Block[] => [],
+            },
+          ),
+        );
+      },
     });
     const cli = createTestCli({ commands: { command }, now: EPOCH });
     const result = await cli.run(["command", "--json"], {
@@ -195,15 +185,13 @@ describe("optional dependencies", () => {
   test("ctx.requireDependency returns the engine-phrased install error for the handler to pass to notOk", async () => {
     const command = defineCommand({
       help: { summary: "Needs a missing dependency" },
-      handler: async () => ({
-        default: async (_args, ctx) => {
-          const probe = await ctx.requireDependency(MISSING);
-          if (!probe.ok) {
-            return notOk(probe.failure);
-          }
-          throw new Error("unreachable");
-        },
-      }),
+      handler: async (_args, ctx) => {
+        const probe = await ctx.requireDependency(MISSING);
+        if (!probe.ok) {
+          return notOk(probe.failure);
+        }
+        throw new Error("unreachable");
+      },
     });
     const cli = createTestCli({
       commands: { command },
@@ -230,14 +218,14 @@ describe("optional dependencies", () => {
     });
   });
 
-  test("needs.dependencies fails early, before the handler loads", async () => {
-    let loaded = false;
+  test("needs.dependencies fails early, before the handler runs", async () => {
+    let ran = false;
     const command = defineCommand({
       help: { summary: "Unconditionally needs a missing dependency" },
       needs: { dependencies: [MISSING] },
-      handler: async () => {
-        loaded = true;
-        return { default: null as never };
+      handler: async (_args, ctx) => {
+        ran = true;
+        return ok(ctx.present({ data: null }, { human: () => [] }));
       },
     });
     const cli = createTestCli({
@@ -250,7 +238,7 @@ describe("optional dependencies", () => {
     });
 
     expect(result.exitCode).toBe(2);
-    expect(loaded).toBe(false);
+    expect(ran).toBe(false);
     const last = result.json[result.json.length - 1];
     expect(
       last.kind === "result" && !last.envelope.ok && last.envelope.error.fix,
@@ -261,12 +249,8 @@ describe("optional dependencies", () => {
     const command = defineCommand({
       help: { summary: "Needs installed dependencies" },
       needs: { dependencies: ["typescript", "vitest"] },
-      handler: async () => ({
-        default: async (_args, ctx) =>
-          ok(
-            ctx.present({ data: null }, { human: (): readonly Block[] => [] }),
-          ),
-      }),
+      handler: async (_args, ctx) =>
+        ok(ctx.present({ data: null }, { human: (): readonly Block[] => [] })),
     });
     const cli = createTestCli({ commands: { command }, now: EPOCH });
     const result = await cli.run(["command", "--json"], {
@@ -280,19 +264,15 @@ describe("optional dependencies", () => {
 describe("server commands", () => {
   const lsp = defineServerCommand({
     help: { summary: "Speaks a foreign protocol over stdio" },
-    handler: async () => ({
-      default: async (_args, io) => {
-        let received = "";
-        const decoder = new TextDecoder();
-        for await (const chunk of io.stdin) {
-          received += decoder.decode(chunk, { stream: true });
-        }
-        io.stdout.write(
-          `Content-Length: ${received.length}\r\n\r\n${received}`,
-        );
-        return 0;
-      },
-    }),
+    handler: async (_args, io) => {
+      let received = "";
+      const decoder = new TextDecoder();
+      for await (const chunk of io.stdin) {
+        received += decoder.decode(chunk, { stream: true });
+      }
+      io.stdout.write(`Content-Length: ${received.length}\r\n\r\n${received}`);
+      return 0;
+    },
   });
 
   test("the foreign client owns stdio: raw bytes out, no envelope, exit code passthrough", async () => {
@@ -308,7 +288,7 @@ describe("server commands", () => {
   test("the handler's returned exit code is the run's exit code", async () => {
     const failing = defineServerCommand({
       help: { summary: "Exits nonzero" },
-      handler: async () => ({ default: async () => 42 }),
+      handler: async () => 42,
     });
     const cli = createTestCli({ commands: { failing }, now: EPOCH });
     const result = await cli.run(["failing"]);
@@ -329,11 +309,9 @@ describe("server commands", () => {
   test("a thrown error renders on stderr only, never stdout", async () => {
     const crashing = defineServerCommand({
       help: { summary: "Crashes" },
-      handler: async () => ({
-        default: async () => {
-          throw new Error("protocol violation");
-        },
-      }),
+      handler: async () => {
+        throw new Error("protocol violation");
+      },
     });
     const cli = createTestCli({ commands: { crashing }, now: EPOCH });
     const result = await cli.run(["crashing"]);

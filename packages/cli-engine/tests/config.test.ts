@@ -154,23 +154,21 @@ function showCommand(
   return defineCommand({
     help: { summary: "Show the validated toy config" },
     needs: { config: section },
-    handler: async () => ({
-      default: async (_args, ctx) => {
-        if (ran !== undefined) {
-          ran.value = true;
-        }
-        return ok(
-          ctx.present(
-            { data: ctx.config },
-            {
-              human: () => [
-                { kind: "summary", tone: "ok", text: ctx.config.greeting },
-              ],
-            },
-          ),
-        );
-      },
-    }),
+    handler: async (_args, ctx) => {
+      if (ran !== undefined) {
+        ran.value = true;
+      }
+      return ok(
+        ctx.present(
+          { data: ctx.config },
+          {
+            human: () => [
+              { kind: "summary", tone: "ok", text: ctx.config.greeting },
+            ],
+          },
+        ),
+      );
+    },
   });
 }
 
@@ -290,10 +288,8 @@ describe("needs.config", () => {
   test("a file-level diagnostic fails every command, even one with no config need", async () => {
     const plain = defineCommand({
       help: { summary: "No needs at all" },
-      handler: async () => ({
-        default: async (_args, ctx) =>
-          ok(ctx.present({ data: null }, { human: () => [] })),
-      }),
+      handler: async (_args, ctx) =>
+        ok(ctx.present({ data: null }, { human: () => [] })),
     });
     const cli = createCli({
       name: "t",

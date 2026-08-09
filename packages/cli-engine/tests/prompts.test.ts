@@ -20,21 +20,19 @@ const EPOCH = () => new Date(0);
 function promptCommand(run: (prompt: PromptSurface) => Promise<unknown>) {
   return defineCommand({
     help: { summary: "Prompt probe" },
-    handler: async () => ({
-      default: async (_args, ctx) => {
-        const answer = await run(ctx.prompt);
-        return ok(
-          ctx.present(
-            { data: { answer } },
-            {
-              human: (): readonly Block[] => [
-                { kind: "summary", tone: "ok", text: `answer=${answer}` },
-              ],
-            },
-          ),
-        );
-      },
-    }),
+    handler: async (_args, ctx) => {
+      const answer = await run(ctx.prompt);
+      return ok(
+        ctx.present(
+          { data: { answer } },
+          {
+            human: (): readonly Block[] => [
+              { kind: "summary", tone: "ok", text: `answer=${answer}` },
+            ],
+          },
+        ),
+      );
+    },
   });
 }
 
@@ -332,39 +330,36 @@ describe("the input stream and the script", () => {
 
 describe("needs.interaction", () => {
   function interactionCli() {
-    let loaded = false;
+    let ran = false;
     const command = defineCommand({
       help: { summary: "Needs a terminal" },
       needs: { interaction: true },
-      handler: async () => {
-        loaded = true;
-        return {
-          default: async (_args, ctx) =>
-            ok(
-              ctx.present(
-                { data: null },
-                {
-                  human: (): readonly Block[] => [
-                    { kind: "summary", tone: "ok", text: "ran" },
-                  ],
-                },
-              ),
-            ),
-        };
+      handler: async (_args, ctx) => {
+        ran = true;
+        return ok(
+          ctx.present(
+            { data: null },
+            {
+              human: (): readonly Block[] => [
+                { kind: "summary", tone: "ok", text: "ran" },
+              ],
+            },
+          ),
+        );
       },
     });
     return {
       cli: createTestCli({ commands: { command }, now: EPOCH }),
-      wasLoaded: () => loaded,
+      wasRun: () => ran,
     };
   }
 
-  test("fails early in a non-TTY context, before the handler loads", async () => {
-    const { cli, wasLoaded } = interactionCli();
+  test("fails early in a non-TTY context, before the handler runs", async () => {
+    const { cli, wasRun } = interactionCli();
     const result = await cli.run(["command", "--json"]);
 
     expect(result.exitCode).toBe(2);
-    expect(wasLoaded()).toBe(false);
+    expect(wasRun()).toBe(false);
     const last = result.json[result.json.length - 1];
     expect(
       last.kind === "result" && !last.envelope.ok && last.envelope.error,
@@ -386,11 +381,11 @@ describe("needs.interaction", () => {
   });
 
   test("passes on an interactive terminal", async () => {
-    const { cli, wasLoaded } = interactionCli();
+    const { cli, wasRun } = interactionCli();
     const result = await cli.run(["command"], INTERACTIVE);
 
     expect(result.exitCode).toBe(0);
-    expect(wasLoaded()).toBe(true);
+    expect(wasRun()).toBe(true);
     expect(result.stdout).toBe("✔ ran\n");
   });
 });

@@ -2,8 +2,8 @@
  * The execution engine — internal machinery behind createCli/createTestCli.
  * Mounts the definition tree on @stricli/core (fully internal: no stricli
  * type appears in the public surface, stricli never owns process lifetime)
- * and runs the pipeline: parse → needs → lazy handler load → context →
- * handler → envelope → exit code.
+ * and runs the pipeline: parse → needs → context → handler → envelope →
+ * exit code.
  */
 
 import { createRequire } from "node:module";
@@ -893,14 +893,7 @@ async function executeMounted(
     settleBug(invocation, needsOutcome.cause);
     return;
   }
-  let handler: unknown;
-  try {
-    const module = await entry.def.handler();
-    handler = module.default;
-  } catch (cause) {
-    settleBug(invocation, cause);
-    return;
-  }
+  const handler: unknown = entry.def.handler;
   const args = {
     flags: productFlags(entry.def, rawFlags),
     positionals: distributePositionals(entry.def, values),
@@ -960,14 +953,7 @@ async function executeServer(
     settleBug(invocation, needsOutcome.cause);
     return;
   }
-  let handler: unknown;
-  try {
-    const module = await entry.def.handler();
-    handler = module.default;
-  } catch (cause) {
-    settleBug(invocation, cause);
-    return;
-  }
+  const handler: unknown = entry.def.handler;
   const runtime = invocation.runtime;
   const args = { flags: productFlags(entry.def, rawFlags), positionals: {} };
   try {
@@ -1014,7 +1000,7 @@ function structuredErrorFromDiagnostic(
   });
 }
 
-/** The needs checks the engine enforces before the handler loads:
+/** The needs checks the engine enforces before the handler runs:
  *  file-level config problems (which fail every command), interaction,
  *  dependencies, credentials, and the command's config section. On
  *  success it carries the validated section value for ctx.config. */

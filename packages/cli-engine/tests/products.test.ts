@@ -28,10 +28,8 @@ function configCommand<T>(section: ConfigSection<T>) {
   return defineCommand({
     help: { summary: "Reads a config section" },
     needs: { config: section },
-    handler: async () => ({
-      default: async (_args, ctx) =>
-        ok(ctx.present({ data: ctx.config }, { human: () => [] })),
-    }),
+    handler: async (_args, ctx) =>
+      ok(ctx.present({ data: ctx.config }, { human: () => [] })),
   });
 }
 
@@ -74,42 +72,36 @@ describe("docs-URL derivation", () => {
 
   const failing = defineCommand({
     help: { summary: "Always errors" },
-    handler: async () => ({
-      default: async () =>
-        notOk(new CliStructuredError("TOY.BROKEN", "It broke")),
-    }),
+    handler: async () =>
+      notOk(new CliStructuredError("TOY.BROKEN", "It broke")),
   });
 
   const overriding = defineCommand({
     help: { summary: "Errors with its own docsUrl" },
-    handler: async () => ({
-      default: async () =>
-        notOk(
-          new CliStructuredError("TOY.BROKEN", "It broke", {
-            docsUrl: "https://example.invalid/override",
-          }),
-        ),
-    }),
+    handler: async () =>
+      notOk(
+        new CliStructuredError("TOY.BROKEN", "It broke", {
+          docsUrl: "https://example.invalid/override",
+        }),
+      ),
   });
 
   const finding = defineCommand({
     help: { summary: "Completes with a finding" },
     exitCodes: { 4: "findings" },
-    handler: async () => ({
-      default: async (_args, ctx) =>
-        ok(
-          ctx.present(
-            {
-              data: null,
-              exitCode: 4,
-              diagnostics: [
-                { code: "TOY.FINDING", severity: "warn", summary: "Found" },
-              ],
-            },
-            { human: () => [] },
-          ),
+    handler: async (_args, ctx) =>
+      ok(
+        ctx.present(
+          {
+            data: null,
+            exitCode: 4,
+            diagnostics: [
+              { code: "TOY.FINDING", severity: "warn", summary: "Found" },
+            ],
+          },
+          { human: () => [] },
         ),
-    }),
+      ),
   });
 
   function productCli() {

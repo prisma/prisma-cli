@@ -35,15 +35,13 @@ const T0 = "1970-01-01T00:00:00.000Z";
 
 const requiresCredentials = defineCommand({
   help: { summary: "Requires a signed-in session" },
-  handler: async () => ({
-    default: async (_args, ctx) =>
-      ok(
-        ctx.present(
-          { data: null },
-          { human: () => [{ kind: "summary", tone: "ok", text: "ran" }] },
-        ),
+  handler: async (_args, ctx) =>
+    ok(
+      ctx.present(
+        { data: null },
+        { human: () => [{ kind: "summary", tone: "ok", text: "ran" }] },
       ),
-  }),
+    ),
   needs: { credentials: true },
 });
 

@@ -51,7 +51,7 @@
  *   error are aggregated into the errored envelope's nextActions.
  *
  * PRECONDITIONS (a command's `needs`) are enforced by the engine BEFORE
- * the handler loads: an invalid needed config section, missing
+ * the handler runs: an invalid needed config section, missing
  * credentials, an absent optional dependency, or a non-interactive
  * context each fail the command early with the engine's own structured
  * error — a handler only ever runs in a world where it can operate.
@@ -508,8 +508,9 @@ export interface HelpSpec {
 }
 
 /**
- * The preconditions SPI: everything the engine gates BEFORE the handler
- * loads. Each unmet need fails the command early with the engine's own
+ * The preconditions SPI: everything the engine enforces BEFORE the
+ * handler runs. Each unmet need fails the command early with the
+ * engine's own
  * structured error — consistent phrasing by construction, and a handler
  * never runs in a world where it can't operate.
  */
@@ -555,10 +556,13 @@ export interface CommandDefinition<
    */
   readonly exitCodes?: Readonly<Record<TCode, string>>
 
-  /** The heavy part, loaded only at execution (R9). The module's default
-   *  export is the handler — annotate it with CommandHandler<typeof def>
-   *  (type-only import of the light definition; no runtime cycle). */
-  readonly handler: () => Promise<{ default: Handler<TFlags, TPositionals, TConfig, TCode> }>
+  /** The handler function, referenced directly — never a dynamic import
+   *  (operator ruling, 2026-08-09: "DO NOT DYNAMICALLY IMPORT HANDLERS").
+   *  R9's keep-heavy-work-out-of-startup concern is the handler BODY's
+   *  business: a handler that needs heavy dependencies imports them at
+   *  execution time, inside itself. A handler defined in another file is
+   *  imported statically and annotated CommandHandler<typeof def>. */
+  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode>
 }
 
 export type Handler<
@@ -600,12 +604,10 @@ export interface SessionCommandDefinition<
   readonly help: HelpSpec
   readonly args?: ArgsSpec<TFlags, TPositionals>
   readonly needs?: NeedsSpec<TConfig>
-  readonly handler: () => Promise<{
-    default: (
-      args: Args<TFlags, TPositionals>,
-      ctx: CommandContext<TConfig>,
-    ) => Promise<Result<void, CliStructuredError>>
-  }>
+  readonly handler: (
+    args: Args<TFlags, TPositionals>,
+    ctx: CommandContext<TConfig>,
+  ) => Promise<Result<void, CliStructuredError>>
 }
 
 export declare function defineSessionCommand<
@@ -631,19 +633,17 @@ export interface ServerCommandDefinition<
   readonly help: HelpSpec
   readonly args?: ArgsSpec<TFlags, {}>
   readonly needs?: NeedsSpec<TConfig>
-  readonly handler: () => Promise<{
-    default: (
-      args: Args<TFlags, {}>,
-      io: {
-        readonly stdin: InputStream
-        readonly stdout: OutputStream
-        readonly stderr: OutputStream
-        readonly signal: AbortSignal
-        readonly cwd: string
-        readonly config: TConfig
-      },
-    ) => Promise<number>
-  }>
+  readonly handler: (
+    args: Args<TFlags, {}>,
+    io: {
+      readonly stdin: InputStream
+      readonly stdout: OutputStream
+      readonly stderr: OutputStream
+      readonly signal: AbortSignal
+      readonly cwd: string
+      readonly config: TConfig
+    },
+  ) => Promise<number>
 }
 
 export declare function defineServerCommand<

@@ -27,113 +27,103 @@ const greet = defineCommand({
       name: positional.string({ brief: "who to greet", placeholder: "name" }),
     },
   },
-  handler: async () => ({
-    default: async (args, ctx) => {
-      ctx.report({
-        kind: "message",
-        severity: "info",
-        text: `greeting ${args.positionals.name}`,
-      });
-      ctx.report({
-        kind: "message",
-        severity: "verbose",
-        text: "verbose detail",
-      });
-      const greeting = `Hello ${args.positionals.name}${args.flags.loud ? "!" : ""}`;
-      return ok(
-        ctx.present(
-          { data: { greeting } },
-          {
-            human: () => [{ kind: "summary", tone: "ok", text: greeting }],
-            stdout: () => [greeting],
-            json: () => ({ greeting }),
-            next: () => [{ kind: "done", label: "Nothing else to do" }],
-          },
-        ),
-      );
-    },
-  }),
+  handler: async (args, ctx) => {
+    ctx.report({
+      kind: "message",
+      severity: "info",
+      text: `greeting ${args.positionals.name}`,
+    });
+    ctx.report({
+      kind: "message",
+      severity: "verbose",
+      text: "verbose detail",
+    });
+    const greeting = `Hello ${args.positionals.name}${args.flags.loud ? "!" : ""}`;
+    return ok(
+      ctx.present(
+        { data: { greeting } },
+        {
+          human: () => [{ kind: "summary", tone: "ok", text: greeting }],
+          stdout: () => [greeting],
+          json: () => ({ greeting }),
+          next: () => [{ kind: "done", label: "Nothing else to do" }],
+        },
+      ),
+    );
+  },
 });
 
 const failing = defineCommand({
   help: { summary: "Always errors" },
-  handler: async () => ({
-    default: async (_args, ctx) => {
-      ctx.report({
-        kind: "remediation",
-        action: {
-          kind: "run-command",
-          label: "Try again",
-          command: "demo retry",
-        },
-      });
-      return notOk(
-        new CliStructuredError("DEMO.BROKEN", "It broke", {
-          why: "The demo always breaks.",
-          fix: "Do not run the demo.",
-        }),
-      );
-    },
-  }),
+  handler: async (_args, ctx) => {
+    ctx.report({
+      kind: "remediation",
+      action: {
+        kind: "run-command",
+        label: "Try again",
+        command: "demo retry",
+      },
+    });
+    return notOk(
+      new CliStructuredError("DEMO.BROKEN", "It broke", {
+        why: "The demo always breaks.",
+        fix: "Do not run the demo.",
+      }),
+    );
+  },
 });
 
 const check = defineCommand({
   help: { summary: "Check with documented exit codes" },
   exitCodes: { 4: "findings" },
-  handler: async () => ({
-    default: async (_args, ctx) =>
-      ok(
-        ctx.present(
-          {
-            data: { findings: 1 },
-            exitCode: 4,
-            diagnostics: [
-              {
-                code: "CHECK.FINDING",
-                severity: "warn",
-                summary: "One finding",
-              },
-            ],
-          },
-          {
-            human: () => [{ kind: "summary", tone: "warn", text: "1 finding" }],
-          },
-        ),
+  handler: async (_args, ctx) =>
+    ok(
+      ctx.present(
+        {
+          data: { findings: 1 },
+          exitCode: 4,
+          diagnostics: [
+            {
+              code: "CHECK.FINDING",
+              severity: "warn",
+              summary: "One finding",
+            },
+          ],
+        },
+        {
+          human: () => [{ kind: "summary", tone: "warn", text: "1 finding" }],
+        },
       ),
-  }),
+    ),
 });
 
 const throwing = defineCommand({
   help: { summary: "Throws a plain error" },
-  handler: async () => ({
-    default: async () => {
-      throw new Error("kaboom");
-    },
-  }),
+  handler: async () => {
+    throw new Error("kaboom");
+  },
 });
 
 const whoami = defineCommand({
   help: { summary: "Show the signed-in user" },
   needs: { credentials: true },
-  handler: async () => ({
-    default: async (_args, ctx) => {
-      const credentials = await ctx.getCredentials();
-      return ok(
-        ctx.present(
-          { data: { token: credentials?.token } },
-          {
-            human: () => [
-              {
-                kind: "summary",
-                tone: "ok",
-                text: `Signed in (${credentials?.token})`,
-              },
-            ],
-          },
-        ),
-      );
-    },
-  }),
+  handler: async (_args, ctx) => {
+    const credentials = await ctx.getCredentials();
+    return ok(
+      ctx.present(
+        { data: { token: credentials?.token } },
+        {
+          human: () => [
+            {
+              kind: "summary",
+              tone: "ok",
+              text: `Signed in (${credentials?.token})`,
+            },
+          ],
+        },
+      ),
+    );
+  },
 });
 
 function makeCli() {
@@ -454,15 +444,13 @@ describe("undocumented completion exit codes", () => {
   test("a completed exit code the command never documented settles as a bug", async () => {
     const rogue = defineCommand({
       help: { summary: "Returns an undocumented exit code" },
-      handler: async () => ({
-        default: async (_args, ctx) =>
-          ok(
-            ctx.present(
-              { data: null, exitCode: 7 } as unknown as { data: null },
-              { human: () => [] },
-            ),
+      handler: async (_args, ctx) =>
+        ok(
+          ctx.present(
+            { data: null, exitCode: 7 } as unknown as { data: null },
+            { human: () => [] },
           ),
-      }),
+        ),
     });
     const cli = createTestCli({ commands: { rogue }, now: EPOCH });
     const result = await cli.run(["rogue", "--json"]);
@@ -480,12 +468,8 @@ describe("undocumented completion exit codes", () => {
     const rogue = defineCommand({
       help: { summary: "Documents 4 but returns 5" },
       exitCodes: { 4: "findings" },
-      handler: async () => ({
-        default: async (_args, ctx) =>
-          ok(
-            ctx.present({ data: null, exitCode: 5 as 4 }, { human: () => [] }),
-          ),
-      }),
+      handler: async (_args, ctx) =>
+        ok(ctx.present({ data: null, exitCode: 5 as 4 }, { human: () => [] })),
     });
     const cli = createTestCli({ commands: { rogue }, now: EPOCH });
     const result = await cli.run(["rogue", "--json"]);
@@ -507,25 +491,23 @@ describe("undocumented completion exit codes", () => {
 describe("sensitive field rows", () => {
   const reveal = defineCommand({
     help: { summary: "Show a credential" },
-    handler: async () => ({
-      default: async (_args, ctx) =>
-        ok(
-          ctx.present(
-            { data: { token: "tok_secret" } },
-            {
-              human: () => [
-                {
-                  kind: "fields",
-                  rows: [
-                    { label: "name", value: "deploy key" },
-                    { label: "token", value: "tok_secret", sensitive: true },
-                  ],
-                },
-              ],
-            },
-          ),
+    handler: async (_args, ctx) =>
+      ok(
+        ctx.present(
+          { data: { token: "tok_secret" } },
+          {
+            human: () => [
+              {
+                kind: "fields",
+                rows: [
+                  { label: "name", value: "deploy key" },
+                  { label: "token", value: "tok_secret", sensitive: true },
+                ],
+              },
+            ],
+          },
         ),
-    }),
+      ),
   });
 
   test("human rendering masks a sensitive field value", async () => {
@@ -552,12 +534,10 @@ describe("report() after the handler resolved", () => {
     let smuggled: ((event: EngineEvent) => void) | undefined;
     const leaky = defineCommand({
       help: { summary: "Leaks its report function" },
-      handler: async () => ({
-        default: async (_args, ctx) => {
-          smuggled = ctx.report;
-          return ok(ctx.present({ data: null }, { human: () => [] }));
-        },
-      }),
+      handler: async (_args, ctx) => {
+        smuggled = ctx.report;
+        return ok(ctx.present({ data: null }, { human: () => [] }));
+      },
     });
     const cli = createTestCli({ commands: { leaky }, now: EPOCH });
     const result = await cli.run(["leaky", "--format", "human"]);
@@ -575,10 +555,8 @@ describe("credentials that cannot be read", () => {
     const locked = defineCommand({
       help: { summary: "Needs credentials" },
       needs: { credentials: true },
-      handler: async () => ({
-        default: async (_args, ctx) =>
-          ok(ctx.present({ data: null }, { human: () => [] })),
-      }),
+      handler: async (_args, ctx) =>
+        ok(ctx.present({ data: null }, { human: () => [] })),
     });
     const cli = createCli({
       name: "t",
@@ -669,10 +647,8 @@ describe("parse and route failures", () => {
           name: positional.string({ brief: "who", placeholder: "name" }),
         },
       },
-      handler: async () => ({
-        default: async (_args, ctx) =>
-          ok(ctx.present({ data: null }, { human: () => [] })),
-      }),
+      handler: async (_args, ctx) =>
+        ok(ctx.present({ data: null }, { human: () => [] })),
     });
     const cli = createTestCli({ commands: { strict }, now: EPOCH });
     const result = await cli.run(["strict", "--mode", "z", "--count", "q"], {
@@ -712,15 +688,13 @@ describe("parse and route failures", () => {
     const shouty = defineCommand({
       help: { summary: "Shout" },
       args: { flags: { withBang: flag.boolean({ brief: "bang" }) } },
-      handler: async () => ({
-        default: async (args, ctx) =>
-          ok(
-            ctx.present(
-              { data: { bang: args.flags.withBang } },
-              { human: () => [] },
-            ),
+      handler: async (args, ctx) =>
+        ok(
+          ctx.present(
+            { data: { bang: args.flags.withBang } },
+            { human: () => [] },
           ),
-      }),
+        ),
     });
     const cli = createTestCli({ commands: { shouty }, now: EPOCH });
     const result = await cli.run(["shouty", "--with-bang", "--json"]);

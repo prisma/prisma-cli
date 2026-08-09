@@ -111,7 +111,7 @@ export const checkCommand = defineCommand({
   },
   needs: { config: checkSection },
   exitCodes: { 4: "findings", 5: "fatal findings" },
-  handler: async () => ({ default: null as never }),
+  handler: null as never,
 });
 
 // defineCommand stamps the discriminant at the type level
@@ -170,7 +170,7 @@ export const runCheck: CommandHandler<typeof checkCommand> = async (
 
 export const plainCommand = defineCommand({
   help: { summary: "Plain command" },
-  handler: async () => ({ default: null as never }),
+  handler: null as never,
 });
 
 export const runPlain: CommandHandler<typeof plainCommand> = async (
@@ -242,13 +242,13 @@ export const exitCodeNeverUndefined: MutuallyAssignable<
 
 export const devSession = defineSessionCommand({
   help: { summary: "Run the dev session" },
-  handler: async () => ({ default: null as never }),
+  handler: null as never,
 });
 export const sessionKind: "session-command" = devSession.kind;
 
 export const lspServer = defineServerCommand({
   help: { summary: "Run the language server" },
-  handler: async () => ({ default: null as never }),
+  handler: null as never,
 });
 export const serverKind: "server-command" = lspServer.kind;
 
