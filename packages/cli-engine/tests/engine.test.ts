@@ -138,22 +138,111 @@ describe("flag and positional builders", () => {
   });
 });
 
-describe("execution placeholders", () => {
-  test("createCli throws not-implemented until the execution dispatch lands", () => {
+describe("construction validation", () => {
+  const command = defineCommand({
+    help: { summary: "Noop" },
+    handler: async () => ({ default: null as never }),
+  });
+
+  test("an empty mount fails construction", () => {
+    expect(() => createTestCli({ commands: {} })).toThrow(
+      "at least one mounted command",
+    );
+  });
+
+  test("createCli requires a groups entry for every mount prefix", () => {
     expect(() =>
       createCli({
         name: "x",
         version: "0",
         products: [],
         groups: {},
-        commands: {},
+        commands: { "auth whoami": command },
       }),
-    ).toThrow("createCli is not implemented yet");
+    ).toThrow("unknown group 'auth'");
   });
 
-  test("createTestCli throws not-implemented until the execution dispatch lands", () => {
-    expect(() => createTestCli({ commands: {} })).toThrow(
-      "createTestCli is not implemented yet",
+  test("a command mount colliding with a group prefix fails construction", () => {
+    expect(() =>
+      createTestCli({
+        commands: { auth: command, "auth whoami": command },
+        groups: { auth: { brief: "Authentication" } },
+      }),
+    ).toThrow("collides");
+  });
+
+  test("reserved shared-family flag names fail construction", () => {
+    const offender = defineCommand({
+      help: { summary: "Offender" },
+      args: { flags: { json: flag.boolean({ brief: "mine" }) } },
+      handler: async () => ({ default: null as never }),
+    });
+    expect(() => createTestCli({ commands: { offender } })).toThrow(
+      "reserved flag 'json'",
+    );
+  });
+
+  test("reserved aliases fail construction", () => {
+    const offender = defineCommand({
+      help: { summary: "Offender" },
+      args: { flags: { quick: flag.boolean({ brief: "quick", alias: "q" }) } },
+      handler: async () => ({ default: null as never }),
+    });
+    expect(() => createTestCli({ commands: { offender } })).toThrow(
+      "reserved alias '-q'",
+    );
+  });
+
+  test("non-camelCase flag keys fail construction", () => {
+    const offender = defineCommand({
+      help: { summary: "Offender" },
+      args: { flags: { "data-proxy": flag.boolean({ brief: "proxy" }) } },
+      handler: async () => ({ default: null as never }),
+    });
+    expect(() => createTestCli({ commands: { offender } })).toThrow(
+      "must be camelCase",
+    );
+  });
+
+  test("a variadic positional that is not last fails construction", () => {
+    const offender = defineCommand({
+      help: { summary: "Offender" },
+      args: {
+        positionals: {
+          rest: positional.variadic({ brief: "rest", placeholder: "extra" }),
+          name: positional.string({ brief: "name", placeholder: "name" }),
+        },
+      },
+      handler: async () => ({ default: null as never }),
+    });
+    expect(() => createTestCli({ commands: { offender } })).toThrow(
+      "must be declared last",
+    );
+  });
+
+  test("integer-like positional keys fail construction", () => {
+    const offender = defineCommand({
+      help: { summary: "Offender" },
+      args: {
+        positionals: {
+          "0": positional.string({ brief: "zero", placeholder: "zero" }),
+        },
+      },
+      handler: async () => ({ default: null as never }),
+    });
+    expect(() => createTestCli({ commands: { offender } })).toThrow(
+      "integer-like",
+    );
+  });
+
+  test("documented exit codes outside 4-99 fail construction", () => {
+    const offender = defineCommand({
+      help: { summary: "Offender" },
+      exitCodes: { 3: "reserved for user abort" },
+      handler: async () => ({ default: null as never }),
+    });
+    expect(() => createTestCli({ commands: { offender } })).toThrow(
+      "must be integers in 4-99",
     );
   });
 });

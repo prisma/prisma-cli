@@ -1,8 +1,8 @@
 /**
  * The v8 engine surface (R3): everything a product package imports for
- * CLI purposes — definition constructors, flag/positional builders, and
- * the context/envelope/runtime types. Execution lands in later
- * dispatches; `createCli` and `createTestCli` throw until then.
+ * CLI purposes — definition constructors, flag/positional builders, the
+ * context/envelope/runtime types, and the createCli/createTestCli
+ * entry points (execution machinery lives in ./execution).
  *
  * Normative source: .drive/projects/prisma-cli-v8/assets/engine/
  * engine-interface-draft.ts (v8).
@@ -13,6 +13,7 @@ import type {
   NextAction,
   Result,
 } from "@prisma/cli-engine/protocol";
+import { buildEngine, createTestCliImpl } from "./execution";
 
 /**
  * The commentary severity scale; also the log-level axis. Distinct from
@@ -823,12 +824,10 @@ export type MountedTree = Readonly<Record<string, AnyCommand>>;
 
 /**
  * Shell-side construction. Group help is declared with the mount.
- * Collisions, unknown groups, reserved-flag violations, grammar
- * violations, and foreign-section references fail construction (build
- * time, not run time). Execution lands in a later dispatch — this
- * throws until then.
+ * Collisions, unknown groups, reserved-flag violations, and grammar
+ * violations fail construction (build time, not run time).
  */
-export function createCli(_spec: {
+export function createCli(spec: {
   readonly name: string;
   readonly version: string;
   readonly products: readonly ProductManifest[];
@@ -837,9 +836,10 @@ export function createCli(_spec: {
   >;
   readonly commands: MountedTree;
 }): Cli {
-  throw new Error(
-    "@prisma/cli-engine: createCli is not implemented yet (execution lands in D3)",
-  );
+  const engine = buildEngine(spec);
+  return {
+    run: (argv, runtime) => engine.execute(argv, runtime, {}),
+  };
 }
 
 export interface Cli {
@@ -896,8 +896,13 @@ export interface LoadedConfig {
 // §11 The product-repo test harness — same machinery, bytes out (R7)
 // —————————————————————————————————————————————————————————————————————
 
-/** Execution lands in a later dispatch — this throws until then. */
-export function createTestCli(_spec: {
+/**
+ * The product-repo test harness: the same engine over in-memory streams.
+ * The harness hands the engine no real process access at all, which is
+ * how "the engine never calls process.exit and writes only to provided
+ * streams" is proven by construction.
+ */
+export function createTestCli(spec: {
   readonly products?: readonly ProductManifest[];
   readonly commands: MountedTree;
   readonly groups?: Readonly<Record<string, { readonly brief: string }>>;
@@ -907,9 +912,7 @@ export function createTestCli(_spec: {
   /** Fixed clock for deterministic stream timestamps. */
   readonly now?: () => Date;
 }): TestCli {
-  throw new Error(
-    "@prisma/cli-engine: createTestCli is not implemented yet (execution lands in D3)",
-  );
+  return createTestCliImpl(spec);
 }
 
 export interface TestCli {
