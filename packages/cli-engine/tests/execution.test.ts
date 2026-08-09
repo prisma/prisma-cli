@@ -862,7 +862,9 @@ describe("parse and route failures", () => {
     });
 
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("expected a number, received an empty value");
+    expect(result.stderr).toContain(
+      "expected a number, received an empty value",
+    );
   });
 
   test("a positional value after -- does not flip the pre-parse format sniff", async () => {

@@ -48,24 +48,48 @@ export async function checkNeeds(
   invocation: Invocation,
 ): Promise<NeedsOutcome> {
   const needs = def.needs;
-  if (needs.interaction && !invocation.state.interactive) {
-    return needsErrored(
-      new CliStructuredError(
-        "CLI.INTERACTION_REQUIRED",
-        "This command requires an interactive terminal.",
-        {
-          why: "It prompts for input that cannot be supplied when the session is not interactive (no TTY stdin, CI, or --no-interactive).",
-          nextActions: [
-            {
-              kind: "user-choice",
-              label:
-                "Run it from an interactive terminal, or pass --interactive.",
-            },
-          ],
-        },
-      ),
-    );
+  const failure =
+    checkInteraction(needs, invocation) ??
+    checkDependencies(needs, invocation) ??
+    (await checkCredentials(needs, invocation));
+  if (failure !== undefined) {
+    return failure;
   }
+  if (needs.config !== undefined) {
+    return checkConfiguration(needs.config, invocation);
+  }
+  return { kind: "ok", config: undefined };
+}
+
+function checkInteraction(
+  needs: AnyCommand["needs"],
+  invocation: Invocation,
+): NeedsOutcome | undefined {
+  if (!needs.interaction || invocation.state.interactive) {
+    return undefined;
+  }
+  return needsErrored(
+    new CliStructuredError(
+      "CLI.INTERACTION_REQUIRED",
+      "This command requires an interactive terminal.",
+      {
+        why: "It prompts for input that cannot be supplied when the session is not interactive (no TTY stdin, CI, or --no-interactive).",
+        nextActions: [
+          {
+            kind: "user-choice",
+            label:
+              "Run it from an interactive terminal, or pass --interactive.",
+          },
+        ],
+      },
+    ),
+  );
+}
+
+function checkDependencies(
+  needs: AnyCommand["needs"],
+  invocation: Invocation,
+): NeedsOutcome | undefined {
   for (const specifier of needs.dependencies) {
     if (!dependencyResolvable(specifier, invocation.runtime.cwd)) {
       return needsErrored(
@@ -73,60 +97,72 @@ export async function checkNeeds(
       );
     }
   }
-  if (needs.credentials) {
-    let credentials: Credentials | undefined;
-    try {
-      credentials = await invocation.runtime.getCredentials();
-    } catch (cause) {
-      return needsErrored(
-        new CliStructuredError(
-          "CLI.CREDENTIALS_UNREADABLE",
-          "The stored credentials could not be read.",
-          {
-            why: firstLine(
-              cause instanceof Error ? cause.message : String(cause),
-            ),
-            nextActions: [
-              {
-                kind: "user-choice",
-                label:
-                  "Sign in again to replace the stored credentials, then run the command again.",
-              },
-            ],
-          },
-        ),
-      );
-    }
-    if (credentials === undefined) {
-      return needsErrored(
-        new CliStructuredError(
-          "CLI.CREDENTIALS_REQUIRED",
-          "You must be signed in to run this command.",
-          {
-            nextActions: [
-              {
-                kind: "user-choice",
-                label: "Sign in, then run the command again.",
-              },
-            ],
-          },
-        ),
-      );
-    }
+  return undefined;
+}
+
+async function checkCredentials(
+  needs: AnyCommand["needs"],
+  invocation: Invocation,
+): Promise<NeedsOutcome | undefined> {
+  if (!needs.credentials) {
+    return undefined;
   }
-  if (needs.config !== undefined) {
-    const fileLevel = invocation.runtime.config.diagnostics.filter(
-      (entry) => entry.section === null,
+  let credentials: Credentials | undefined;
+  try {
+    credentials = await invocation.runtime.getCredentials();
+  } catch (cause) {
+    return needsErrored(
+      new CliStructuredError(
+        "CLI.CREDENTIALS_UNREADABLE",
+        "The stored credentials could not be read.",
+        {
+          why: firstLine(
+            cause instanceof Error ? cause.message : String(cause),
+          ),
+          nextActions: [
+            {
+              kind: "user-choice",
+              label:
+                "Sign in again to replace the stored credentials, then run the command again.",
+            },
+          ],
+        },
+      ),
     );
-    if (fileLevel.length > 0) {
-      return needsErrored(
-        structuredErrorFromDiagnostic(fileLevel[0].diagnostic),
-        fileLevel.slice(1).map((entry) => entry.diagnostic),
-      );
-    }
-    return validateConfigSection(needs.config, invocation);
   }
-  return { kind: "ok", config: undefined };
+  if (credentials === undefined) {
+    return needsErrored(
+      new CliStructuredError(
+        "CLI.CREDENTIALS_REQUIRED",
+        "You must be signed in to run this command.",
+        {
+          nextActions: [
+            {
+              kind: "user-choice",
+              label: "Sign in, then run the command again.",
+            },
+          ],
+        },
+      ),
+    );
+  }
+  return undefined;
+}
+
+function checkConfiguration(
+  section: ConfigSection<unknown>,
+  invocation: Invocation,
+): NeedsOutcome {
+  const fileLevel = invocation.runtime.config.diagnostics.filter(
+    (entry) => entry.section === null,
+  );
+  if (fileLevel.length > 0) {
+    return needsErrored(
+      structuredErrorFromDiagnostic(fileLevel[0].diagnostic),
+      fileLevel.slice(1).map((entry) => entry.diagnostic),
+    );
+  }
+  return validateConfigSection(section, invocation);
 }
 
 /** Validates the command's needed config section. The validator

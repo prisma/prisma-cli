@@ -170,8 +170,12 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
         }
         return fallback;
       }
-      const hint =
-        fallback === undefined ? "(y/n)" : fallback ? "(Y/n)" : "(y/N)";
+      let hint = "(y/n)";
+      if (fallback === true) {
+        hint = "(Y/n)";
+      } else if (fallback === false) {
+        hint = "(y/N)";
+      }
       const raw = await ask(question, `? ${question} ${hint} `);
       return parseBooleanAnswer(raw, fallback, question);
     },
