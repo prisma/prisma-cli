@@ -1,13 +1,13 @@
 /**
- * Product manifests (§10): the foreign-section construction check and
- * docs-URL derivation from the owning product's docsBaseUrl.
+ * Command families (§10): the foreign-section construction check and
+ * docs-URL derivation from the owning command family's docsBaseUrl.
  */
 import {
   type ConfigSection,
   createTestCli,
   defineCommand,
   defineConfigSection,
-  type ProductManifest,
+  type CommandFamily,
 } from "@prisma/cli-engine";
 import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
 import { describe, expect, test } from "vitest";
@@ -34,33 +34,33 @@ function configCommand<T>(section: ConfigSection<T>) {
 }
 
 describe("foreign-section references", () => {
-  test("a command needing a section that is not its product's fails construction", () => {
+  test("a command needing a section that is not its command family's fails construction", () => {
     const command = configCommand(foreignSection);
-    const product: ProductManifest = {
+    const family: CommandFamily = {
       configSection: ownSection,
       commands: { command },
     };
 
     expect(() =>
-      createTestCli({ products: [product], commands: { command } }),
+      createTestCli({ commandFamilies: [family], commands: { command } }),
     ).toThrow(
-      "command 'command' needs the 'other' config section, which is not its product's declared section",
+      "command 'command' needs the 'other' config section, which is not its command family's section",
     );
   });
 
-  test("a command needing its own product's section constructs", () => {
+  test("a command needing its own command family's section constructs", () => {
     const command = configCommand(ownSection);
-    const product: ProductManifest = {
+    const family: CommandFamily = {
       configSection: ownSection,
       commands: { command },
     };
 
     expect(() =>
-      createTestCli({ products: [product], commands: { command } }),
+      createTestCli({ commandFamilies: [family], commands: { command } }),
     ).not.toThrow();
   });
 
-  test("a command owned by no product is not checked (harness mounts)", () => {
+  test("a command owned by no command family is not checked (harness mounts)", () => {
     const command = configCommand(foreignSection);
 
     expect(() => createTestCli({ commands: { command } })).not.toThrow();
@@ -104,20 +104,20 @@ describe("docs-URL derivation", () => {
       ),
   });
 
-  function productCli() {
-    const product: ProductManifest = {
+  function familyCli() {
+    const family: CommandFamily = {
       commands: { failing, overriding, finding },
       docsBaseUrl: BASE,
     };
     return createTestCli({
-      products: [product],
+      commandFamilies: [family],
       commands: { failing, overriding, finding },
       now: EPOCH,
     });
   }
 
   test("an errored envelope carries docsUrl derived as base + code", async () => {
-    const result = await productCli().run(["failing", "--json"]);
+    const result = await familyCli().run(["failing", "--json"]);
 
     const frame = result.json[0];
     if (frame.kind !== "result" || frame.envelope.ok) {
@@ -127,7 +127,7 @@ describe("docs-URL derivation", () => {
   });
 
   test("human rendering shows the derived docs link", async () => {
-    const result = await productCli().run(["failing"], {
+    const result = await familyCli().run(["failing"], {
       isTty: { stdout: true },
     });
 
@@ -137,7 +137,7 @@ describe("docs-URL derivation", () => {
   });
 
   test("a per-raise docsUrl wins over the derived one", async () => {
-    const result = await productCli().run(["overriding", "--json"]);
+    const result = await familyCli().run(["overriding", "--json"]);
 
     const frame = result.json[0];
     if (frame.kind !== "result" || frame.envelope.ok) {
@@ -149,7 +149,7 @@ describe("docs-URL derivation", () => {
   });
 
   test("completed-envelope diagnostics get the derived docsUrl too", async () => {
-    const result = await productCli().run(["finding", "--json"]);
+    const result = await familyCli().run(["finding", "--json"]);
 
     const frame = result.json[0];
     if (frame.kind !== "result" || !frame.envelope.ok) {
@@ -165,10 +165,10 @@ describe("docs-URL derivation", () => {
     ]);
   });
 
-  test("a command from a product without docsBaseUrl stays undecorated", async () => {
-    const product: ProductManifest = { commands: { failing } };
+  test("a command from a command family without docsBaseUrl stays undecorated", async () => {
+    const family: CommandFamily = { commands: { failing } };
     const cli = createTestCli({
-      products: [product],
+      commandFamilies: [family],
       commands: { failing },
       now: EPOCH,
     });

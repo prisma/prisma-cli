@@ -507,7 +507,7 @@ describe("needs preconditions", () => {
     const cli = createCli({
       name: "t",
       version: "0.0.0",
-      products: [],
+      commandFamilies: [],
       groups: {},
       commands: { demanding: demanding(opts.dependency) },
     });
@@ -683,7 +683,7 @@ describe("report() after the handler resolved", () => {
     const cli = createCli({
       name: "t",
       version: "0.0.0",
-      products: [],
+      commandFamilies: [],
       groups: {},
       commands: { leaky },
     });
@@ -733,7 +733,7 @@ describe("credentials that cannot be read", () => {
     const cli = createCli({
       name: "t",
       version: "0.0.0",
-      products: [],
+      commandFamilies: [],
       groups: {},
       commands: { locked },
     });

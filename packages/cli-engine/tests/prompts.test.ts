@@ -1,6 +1,6 @@
 /**
  * The prompt semantics (§4a of the draft), test-pinned ruling by ruling:
- * product-declared defaults are accepted by --yes and by Enter; a prompt
+ * declared defaults are accepted by --yes and by Enter; a prompt
  * with no default halts under --yes and in non-interactive contexts;
  * consent is structurally undefaultable and always halts there;
  * cancellation maps to exit 3. Format and interactivity are independent
@@ -54,7 +54,7 @@ function confirmNoDefault(prompt: PromptSurface) {
 }
 
 describe("prompt defaults", () => {
-  test("--yes accepts a product-declared default without displaying", async () => {
+  test("--yes accepts a declared default without displaying", async () => {
     const result = await cliWith(confirmDefaultTrue).run(
       ["probe", "--yes"],
       INTERACTIVE,

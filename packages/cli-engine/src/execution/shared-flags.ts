@@ -1,0 +1,149 @@
+import type { LogLevel } from "../definition/events";
+import type { Format } from "../definition/presentation";
+import type { Runtime } from "../definition/runtime";
+import type { RunState } from "./invocation";
+
+/** The engine-injected shared flag family. Commands cannot declare
+ *  these names or aliases; handlers never see their values. */
+export const RESERVED_FLAG_NAMES: ReadonlySet<string> = new Set([
+  "format",
+  "json",
+  "logLevel",
+  "verbose",
+  "quiet",
+  "yes",
+  "interactive",
+  "color",
+  "help",
+  "helpAll",
+]);
+
+export const RESERVED_ALIASES: ReadonlySet<string> = new Set([
+  "v",
+  "q",
+  "y",
+  "h",
+]);
+
+export const SHARED_FLAG_PARAMETERS = {
+  format: {
+    kind: "enum",
+    values: ["human", "json"],
+    optional: true,
+    brief: "Output format",
+  },
+  json: {
+    kind: "boolean",
+    default: false,
+    brief: "Shorthand for --format json",
+  },
+  logLevel: {
+    kind: "enum",
+    values: ["error", "warn", "info", "verbose"],
+    optional: true,
+    brief: "Commentary verbosity",
+  },
+  verbose: {
+    kind: "boolean",
+    default: false,
+    brief: "Shorthand for --log-level verbose",
+  },
+  quiet: {
+    kind: "boolean",
+    default: false,
+    brief: "Shorthand for --log-level error",
+  },
+  yes: {
+    kind: "boolean",
+    default: false,
+    brief: "Accept prompt defaults without asking",
+  },
+  interactive: {
+    kind: "boolean",
+    optional: true,
+    withNegated: true,
+    brief: "Force interactive prompts on or off",
+  },
+  color: {
+    kind: "boolean",
+    optional: true,
+    withNegated: true,
+    brief: "Force ANSI color on or off",
+  },
+} as const;
+
+export const SHARED_ALIASES = { v: "verbose", q: "quiet", y: "yes" } as const;
+
+export interface SharedFlags {
+  readonly format?: Format;
+  readonly json?: boolean;
+  readonly logLevel?: LogLevel;
+  readonly verbose?: boolean;
+  readonly quiet?: boolean;
+  readonly yes?: boolean;
+  readonly interactive?: boolean;
+  readonly color?: boolean;
+}
+
+export function sniffFormat(argv: readonly string[], runtime: Runtime): Format {
+  for (const [index, input] of argv.entries()) {
+    if (input === "--") {
+      break;
+    }
+    if (input === "--json" || input === "--format=json") {
+      return "json";
+    }
+    if (input === "--format=human") {
+      return "human";
+    }
+    if (input === "--format") {
+      const value = argv[index + 1];
+      if (value === "json" || value === "human") {
+        return value;
+      }
+    }
+  }
+  return runtime.isTty.stdout ? "human" : "json";
+}
+
+export function applySharedFlags(
+  state: RunState,
+  shared: SharedFlags,
+  runtime: Runtime,
+): void {
+  state.format = shared.format ?? resolveAutoFormat(shared, runtime);
+  state.yes = shared.yes === true;
+  state.interactive = shared.interactive ?? defaultInteractive(runtime);
+  state.logLevel = resolveLogLevel(shared);
+  state.colorEnabled =
+    shared.color ??
+    (runtime.isTty.stdout && runtime.env.NO_COLOR === undefined);
+}
+
+/** Interactive iff TTY stdin outside CI; --interactive and
+ *  --no-interactive override in either direction. Format never decides
+ *  interactivity (operator ruling, 2026-08-09): an interactive json run
+ *  may prompt — the prompt UI writes to stderr, so stdout stays a clean
+ *  frame stream. */
+export function defaultInteractive(runtime: Runtime): boolean {
+  return runtime.isTty.stdin && runtime.env.CI === undefined;
+}
+
+function resolveAutoFormat(shared: SharedFlags, runtime: Runtime): Format {
+  if (shared.json === true) {
+    return "json";
+  }
+  return runtime.isTty.stdout ? "human" : "json";
+}
+
+/** --quiet and --verbose are log-level shorthands; either one beats an
+ *  explicit --log-level given alongside it. */
+function resolveLogLevel(shared: SharedFlags): LogLevel {
+  if (shared.quiet === true) {
+    return "error";
+  }
+  if (shared.verbose === true) {
+    return "verbose";
+  }
+  return shared.logLevel ?? "info";
+}

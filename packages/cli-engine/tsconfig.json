@@ -2,8 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@prisma/cli-engine": ["./src/index.ts"],
-      "@prisma/cli-engine/protocol": ["./src/protocol.ts"]
+      "@prisma/cli-engine": ["./src/exports/index.ts"],
+      "@prisma/cli-engine/protocol": ["./src/exports/protocol.ts"]
     }
   },
   "include": ["src/**/*.ts", "tests/**/*.ts"]

@@ -19,7 +19,7 @@ import type {
   MountedTree,
   Presentations,
   PresentedResult,
-  ProductManifest,
+  CommandFamily,
   Runtime,
   SectionValidation,
   StreamEvent,
@@ -269,7 +269,7 @@ export const tree: MountedTree = {
   lsp: lspServer,
 };
 
-export const manifest: ProductManifest = {
+export const manifest: CommandFamily = {
   configSection: checkSection,
   commands: { check: checkCommand, dev: devSession, lsp: lspServer },
   docsBaseUrl: "https://example.invalid/docs",
@@ -278,7 +278,7 @@ export const manifest: ProductManifest = {
 export const createCliSpec: Parameters<typeof createCli>[0] = {
   name: "prisma-v8",
   version: "0.0.0",
-  products: [manifest],
+  commandFamilies: [manifest],
   groups: { auth: { brief: "Authentication" } },
   commands: tree,
 };

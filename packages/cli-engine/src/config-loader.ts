@@ -12,14 +12,26 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { type LoadedConfig, PRISMA_CONFIG_VERSION } from "./core";
+import type { LoadedConfig } from "./definition/runtime";
+import { PRISMA_CONFIG_VERSION } from "./definition/runtime";
 import type { Diagnostic } from "./protocol";
 
 export const CONFIG_FILE_NAME = "prisma.config.ts";
 
 const MARKER_KEY = "$prismaConfig";
 
-function isMarked(value: unknown): value is Record<string, unknown> {
+/**
+ * Attaches the version marker to a prisma.config.ts export. Top-level
+ * keys are the config sections. Never throws — bad section values are
+ * the section validator's problem, not defineConfig's.
+ */
+export function defineConfig<T extends Record<string, unknown>>(
+  config: T,
+): T & { readonly $prismaConfig: number } {
+  return Object.freeze({ ...config, $prismaConfig: PRISMA_CONFIG_VERSION });
+}
+
+function hasVersionMarker(value: unknown): value is Record<string, unknown> {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -86,13 +98,12 @@ function unreadableDiagnostic(path: string, cause: unknown): Diagnostic {
   };
 }
 
-export function stampConfigMarker<T extends Record<string, unknown>>(
-  config: T,
-): T & { readonly $prismaConfig: number } {
-  return Object.freeze({ ...config, $prismaConfig: PRISMA_CONFIG_VERSION });
-}
-
-export async function loadConfigImpl(cwd: string): Promise<LoadedConfig> {
+/**
+ * The real-disk loader behind Runtime.config: reads prisma.config.ts
+ * from cwd (cwd only — no walking up) and produces LoadedConfig. The
+ * bin builds Runtime.config with this; tests hand in fixtures.
+ */
+export async function loadConfig(cwd: string): Promise<LoadedConfig> {
   const path = join(cwd, CONFIG_FILE_NAME);
   if (!existsSync(path)) {
     return { sections: {}, diagnostics: [] };
@@ -104,7 +115,7 @@ export async function loadConfigImpl(cwd: string): Promise<LoadedConfig> {
     return fileLevelConfig(unreadableDiagnostic(path, cause));
   }
   const exported = (loaded as { readonly default?: unknown }).default;
-  if (!isMarked(exported)) {
+  if (!hasVersionMarker(exported)) {
     return fileLevelConfig(missingMarkerDiagnostic(path));
   }
   const version = exported[MARKER_KEY] as number;

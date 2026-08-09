@@ -355,7 +355,7 @@ describe("needs.config", () => {
     const cli = createCli({
       name: "t",
       version: "0.0.0",
-      products: [],
+      commandFamilies: [],
       groups: {},
       commands: { plain },
     });
@@ -373,7 +373,7 @@ describe("needs.config", () => {
     const cli = createCli({
       name: "t",
       version: "0.0.0",
-      products: [],
+      commandFamilies: [],
       groups: {},
       commands: { show: showCommand(toySection(), ran) },
     });

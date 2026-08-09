@@ -15,7 +15,7 @@ export function buildCli(): Cli {
   return createCli({
     name: "prisma-v8",
     version: getCliVersion(),
-    products: [{ commands: { whoami: authWhoamiCommand } }],
+    commandFamilies: [{ commands: { whoami: authWhoamiCommand } }],
     groups: {
       auth: { brief: "Manage local authentication for the CLI" },
     },

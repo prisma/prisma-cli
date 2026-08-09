@@ -160,7 +160,7 @@ describe("construction validation", () => {
       createCli({
         name: "x",
         version: "0",
-        products: [],
+        commandFamilies: [],
         groups: {},
         commands: { "auth whoami": command },
       }),

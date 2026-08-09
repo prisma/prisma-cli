@@ -202,7 +202,7 @@ describe("the engine owns the double-signal policy", () => {
     return createCli({
       name: "t",
       version: "0.0.0",
-      products: [],
+      commandFamilies: [],
       groups: {},
       commands: { stuck },
     });
@@ -242,7 +242,7 @@ describe("the engine owns the double-signal policy", () => {
     const cli = createCli({
       name: "t",
       version: "0.0.0",
-      products: [],
+      commandFamilies: [],
       groups: {},
       commands: { quick },
     });
@@ -266,7 +266,7 @@ describe("the engine owns the double-signal policy", () => {
     const cli = createCli({
       name: "t",
       version: "0.0.0",
-      products: [],
+      commandFamilies: [],
       groups: {},
       commands: { cooperative },
     });
