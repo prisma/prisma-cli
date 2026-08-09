@@ -29,9 +29,8 @@ package's own test harness.
      Blocks + Ui, envelopes + StreamEvent framing, createCli + Runtime +
      LoadedConfig, createTestCli. `@stricli/core@1.3.0` exact-pinned,
      fully internal.
-   - The compile-verified typing claims from the review record
-     (`assets/engine/reviews/code-review-r4-closure.md`,
-     `-r5-delta.md`) become permanent type-tests in the package
+   - The compile-verified typing claims from the design review rounds
+     become permanent type-tests in the package
      (@ts-expect-error suites): Char alias accept/reject, Outcome
      exitCode required-iff-catalogued both directions, needs.config →
      ctx.config inference, PresentedResult brand.

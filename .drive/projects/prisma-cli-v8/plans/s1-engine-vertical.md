@@ -49,8 +49,8 @@ constructors only — no execution.
 **Builds on:** D1's package + protocol types.
 **Hands to:** the definition types D3 executes against and D5 loads
 config for.
-**Completed when:** every compile-verified claim from the review record
-(reviews/code-review-r4-closure.md, -r5-delta.md) is a permanent
+**Completed when:** every compile-verified claim from the design
+review rounds is a permanent
 type-test with stale-@ts-expect-error discipline: Char alias
 accept/reject, exitCode required-iff-catalogued in both directions,
 needs.config → ctx.config inference, PresentedResult brand. Suite green.
