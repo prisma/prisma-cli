@@ -52,7 +52,6 @@ import {
   type Diagnostic,
   type NextAction,
   notOk,
-  ok,
   okVoid,
   type Result,
 } from "./protocol";
@@ -1072,7 +1071,8 @@ async function checkNeeds(
           nextActions: [
             {
               kind: "user-choice",
-              label: "Run it from an interactive terminal, or pass --interactive.",
+              label:
+                "Run it from an interactive terminal, or pass --interactive.",
             },
           ],
         },

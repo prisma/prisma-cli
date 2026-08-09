@@ -224,9 +224,7 @@ describe("completed commands", () => {
 
     expect(result.exitCode).toBe(4);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe(
-      "⚠ 1 finding\n⚠ [CHECK.FINDING] One finding\n",
-    );
+    expect(result.stderr).toBe("⚠ 1 finding\n⚠ [CHECK.FINDING] One finding\n");
   });
 
   test("the harness exposes events and the presented result", async () => {
@@ -411,9 +409,7 @@ describe("errored commands", () => {
             ],
           },
           diagnostics: [],
-          nextActions: [
-            { kind: "user-choice", label: "Do not run the demo." },
-          ],
+          nextActions: [{ kind: "user-choice", label: "Do not run the demo." }],
         },
         commandId: "failing",
         timestamp: T0,

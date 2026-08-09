@@ -161,15 +161,18 @@ describe("prompts with no default halt", () => {
   });
 
   test("a handler that catches the prompt throw and rethrows still settles structurally", async () => {
+    const caught: unknown[] = [];
     const catching = async (prompt: PromptSurface) => {
       try {
         return await prompt.confirm("Proceed?");
       } catch (cause) {
+        caught.push(cause);
         throw cause;
       }
     };
     const result = await cliWith(catching).run(["probe", "--yes", "--json"]);
 
+    expect(caught).toHaveLength(1);
     expect(result.exitCode).toBe(2);
     const last = result.json[result.json.length - 1];
     expect(
@@ -280,15 +283,14 @@ describe("consent", () => {
 
 describe("select and text", () => {
   const selecting = (prompt: PromptSurface) =>
-    prompt
-      .select(
-        "Pick one",
-        [
-          { value: "alpha", label: "First" },
-          { value: "beta", label: "Second" },
-        ],
-        { default: "beta" },
-      );
+    prompt.select(
+      "Pick one",
+      [
+        { value: "alpha", label: "First" },
+        { value: "beta", label: "Second" },
+      ],
+      { default: "beta" },
+    );
 
   test("select: Enter accepts the default", async () => {
     const result = await cliWith(selecting).run(["probe"], {

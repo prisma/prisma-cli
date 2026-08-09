@@ -881,9 +881,7 @@ export interface Runtime {
    * the first signal aborts ctx.signal and awaits teardown; a second
    * calls exit(130|143) immediately.
    */
-  readonly onSignal: (
-    cb: (signal: "SIGINT" | "SIGTERM") => void,
-  ) => () => void;
+  readonly onSignal: (cb: (signal: "SIGINT" | "SIGTERM") => void) => () => void;
   /**
    * Loaded config + file-level diagnostics; the shell builds this via
    * the unified loader (R10). Tests hand in fixtures.
