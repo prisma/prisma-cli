@@ -1,3 +1,4 @@
+import type { CompletedEnvelope, ErroredEnvelope } from "./commands";
 import type { NextAction } from "./protocol";
 
 /**
@@ -6,7 +7,6 @@ import type { NextAction } from "./protocol";
  * the envelope.
  */
 export type Severity = "error" | "warn" | "info" | "verbose";
-export type LogLevel = Severity;
 
 /**
  * The engine event envelope. `kind`-specific fields are the common
@@ -84,3 +84,21 @@ export type EngineEvent =
       readonly description?: string;
       readonly data?: unknown;
     };
+
+/**
+ * json mode emits one StreamEvent per line: the handler's events,
+ * flattened with the stream metadata, then exactly one terminal
+ * 'result' member carrying the envelope.
+ */
+export type StreamEvent =
+  | (EngineEvent & StreamMeta)
+  | ({
+      readonly kind: "result";
+      readonly envelope: CompletedEnvelope | ErroredEnvelope;
+    } & StreamMeta);
+
+export interface StreamMeta {
+  readonly commandId: string;
+  /** ISO 8601 UTC. Injectable clock in tests. */
+  readonly timestamp: string;
+}

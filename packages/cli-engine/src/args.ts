@@ -8,11 +8,9 @@ export type Char<S extends string> = S extends `${string}${infer Rest}`
     : never
   : never;
 
-export const FLAG: unique symbol = Symbol("prisma.cli-engine.flag");
-
 export interface FlagSpec<T> {
-  /** Phantom carrier for inference; exported so declaration emit works. */
-  readonly [FLAG]: T;
+  /** Phantom type carrier for inference; never present at runtime. */
+  readonly __flag?: T;
 }
 
 export interface FlagRuntimeSpec {
@@ -24,18 +22,33 @@ export interface FlagRuntimeSpec {
     | "enum"
     | "repeated";
   readonly brief: string;
+  readonly placeholder: string | undefined;
+  readonly alias: string | undefined;
+  readonly default: unknown;
+  readonly values: readonly string[] | undefined;
+}
+
+export function flagRuntime(spec: FlagSpec<unknown>): FlagRuntimeSpec {
+  return spec as FlagRuntimeSpec;
+}
+
+function brandFlag<T>(spec: {
+  readonly type: FlagRuntimeSpec["type"];
+  readonly brief: string;
   readonly placeholder?: string;
   readonly alias?: string;
   readonly default?: unknown;
   readonly values?: readonly string[];
-}
-
-export function flagRuntime(spec: FlagSpec<unknown>): FlagRuntimeSpec {
-  return spec as unknown as FlagRuntimeSpec;
-}
-
-function brandFlag<T>(spec: FlagRuntimeSpec): FlagSpec<T> {
-  return Object.freeze(spec) as unknown as FlagSpec<T>;
+}): FlagSpec<T> {
+  const runtime: FlagRuntimeSpec = {
+    type: spec.type,
+    brief: spec.brief,
+    placeholder: spec.placeholder,
+    alias: spec.alias,
+    default: spec.default,
+    values: spec.values,
+  };
+  return Object.freeze(runtime) as FlagSpec<T>;
 }
 
 /**
@@ -92,11 +105,9 @@ export const flag = {
   },
 };
 
-export const POSITIONAL: unique symbol = Symbol("prisma.cli-engine.positional");
-
 export interface PositionalSpec<T> {
-  /** Phantom carrier for inference; exported so declaration emit works. */
-  readonly [POSITIONAL]: T;
+  /** Phantom type carrier for inference; never present at runtime. */
+  readonly __positional?: T;
 }
 
 export interface PositionalRuntimeSpec {
@@ -108,11 +119,11 @@ export interface PositionalRuntimeSpec {
 export function positionalRuntime(
   spec: PositionalSpec<unknown>,
 ): PositionalRuntimeSpec {
-  return spec as unknown as PositionalRuntimeSpec;
+  return spec as PositionalRuntimeSpec;
 }
 
 function brandPositional<T>(spec: PositionalRuntimeSpec): PositionalSpec<T> {
-  return Object.freeze(spec) as unknown as PositionalSpec<T>;
+  return Object.freeze(spec) as PositionalSpec<T>;
 }
 
 export const positional = {
@@ -147,6 +158,18 @@ export interface ArgsSpec<
 > {
   readonly flags?: TFlags;
   readonly positionals?: TPositionals;
+}
+
+/**
+ * The normalized argument surface a definition carries: both namespaces
+ * always present, empty when the command declares none.
+ */
+export interface CommandArgs<
+  TFlags extends Record<string, FlagSpec<unknown>>,
+  TPositionals extends Record<string, PositionalSpec<unknown>>,
+> {
+  readonly flags: TFlags;
+  readonly positionals: TPositionals;
 }
 
 /**

@@ -1,5 +1,5 @@
 /**
- * The minimal prisma.config.ts loader behind Runtime.config (R10):
+ * The minimal prisma.config.ts loader behind Runtime.config:
  * discover the file in cwd (cwd only — no walking up), evaluate it,
  * check the defineConfig version marker, and produce LoadedConfig.
  *

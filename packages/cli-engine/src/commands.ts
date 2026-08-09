@@ -1,15 +1,30 @@
-import type { Args, ArgsSpec, FlagSpec, PositionalSpec } from "./args";
+import type {
+  Args,
+  ArgsSpec,
+  CommandArgs,
+  FlagSpec,
+  PositionalSpec,
+} from "./args";
 import type { ConfigSection } from "./config-section";
 import type { CommandContext } from "./context";
 import type { PresentedResult } from "./presentation";
-import type { CliStructuredError, Result } from "./protocol";
-import type { InputStream, OutputStream } from "./streams";
+import type {
+  CliStructuredError,
+  Diagnostic,
+  NextAction,
+  Result,
+} from "./protocol";
+import type { InputStream, OutputStream } from "./runtime";
 
 /**
- * Command definitions are path-free (R12) and runtime-discriminated by
- * `kind`. Definitions load their handler's import graph at startup;
- * R9's remaining force is that handler bodies defer heavy work to
- * execution time.
+ * Command definitions carry no mount path and are runtime-discriminated
+ * by `kind`. Definitions load their handler's import graph at startup;
+ * handler bodies defer heavy work to execution time.
+ *
+ * The define* constructors accept ergonomic specs (optional help
+ * details, args, needs, exitCodes) and normalize them: every definition
+ * field is always present, with empty collections and explicit
+ * undefined instead of conditional properties.
  */
 
 /** The help SPI: words only — the engine formats. */
@@ -23,6 +38,13 @@ export interface HelpSpec {
    * containing no `{bin}` gets the name prepended.
    */
   readonly examples?: readonly string[];
+}
+
+/** The normalized help a definition carries. */
+export interface CommandHelp {
+  readonly summary: string;
+  readonly description: string | undefined;
+  readonly examples: readonly string[];
 }
 
 /**
@@ -56,6 +78,45 @@ export interface NeedsSpec<TConfig> {
   readonly interaction?: true;
 }
 
+/** The normalized preconditions a definition carries. */
+export interface CommandNeeds<TConfig> {
+  readonly config: ConfigSection<TConfig> | undefined;
+  readonly credentials: boolean;
+  readonly dependencies: readonly string[];
+  readonly interaction: boolean;
+}
+
+function normalizeHelp(spec: HelpSpec): CommandHelp {
+  return Object.freeze({
+    summary: spec.summary,
+    description: spec.description,
+    examples: spec.examples ?? [],
+  });
+}
+
+function normalizeArgs<
+  TFlags extends Record<string, FlagSpec<unknown>>,
+  TPositionals extends Record<string, PositionalSpec<unknown>>,
+>(
+  spec: ArgsSpec<TFlags, TPositionals> | undefined,
+): CommandArgs<TFlags, TPositionals> {
+  return Object.freeze({
+    flags: spec?.flags ?? ({} as TFlags),
+    positionals: spec?.positionals ?? ({} as TPositionals),
+  });
+}
+
+function normalizeNeeds<TConfig>(
+  spec: NeedsSpec<TConfig> | undefined,
+): CommandNeeds<TConfig> {
+  return Object.freeze({
+    config: spec?.config,
+    credentials: spec?.credentials === true,
+    dependencies: spec?.dependencies ?? [],
+    interaction: spec?.interaction === true,
+  });
+}
+
 export interface CommandDefinition<
   TFlags extends Record<string, FlagSpec<unknown>> = Record<
     never,
@@ -69,23 +130,23 @@ export interface CommandDefinition<
   TCode extends number = never,
 > {
   readonly kind: "result-command";
-  readonly help: HelpSpec;
-  readonly args?: ArgsSpec<TFlags, TPositionals>;
-  readonly needs?: NeedsSpec<TConfig>;
+  readonly help: CommandHelp;
+  readonly args: CommandArgs<TFlags, TPositionals>;
+  readonly needs: CommandNeeds<TConfig>;
 
   /**
    * The command's documented exit codes (4–99): code → meaning. The
    * keys type the outcome's exitCode, making it REQUIRED at every
-   * return site (`0` or a documented code). Absent = the command only
+   * return site (`0` or a documented code). Empty = the command only
    * exits 0/1/2/3 and the outcome carries no exitCode.
    */
-  readonly exitCodes?: Readonly<Record<TCode, string>>;
+  readonly exitCodes: Readonly<Record<TCode, string>>;
 
   /**
    * The handler function, referenced directly — never a dynamic import
    * (operator ruling, 2026-08-09). A handler that needs heavy
-   * dependencies imports them at execution time, inside its body (R9).
-   * A handler defined in another file is imported statically and
+   * dependencies imports them at execution time, inside its body. A
+   * handler defined in another file is imported statically and
    * annotated CommandHandler<typeof def>.
    */
   readonly handler: Handler<TFlags, TPositionals, TConfig, TCode>;
@@ -118,10 +179,21 @@ export function defineCommand<
   >,
   TConfig = undefined,
   TCode extends number = never,
->(
-  def: Omit<CommandDefinition<TFlags, TPositionals, TConfig, TCode>, "kind">,
-): CommandDefinition<TFlags, TPositionals, TConfig, TCode> {
-  return Object.freeze({ ...def, kind: "result-command" as const });
+>(def: {
+  readonly help: HelpSpec;
+  readonly args?: ArgsSpec<TFlags, TPositionals>;
+  readonly needs?: NeedsSpec<TConfig>;
+  readonly exitCodes?: Readonly<Record<TCode, string>>;
+  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode>;
+}): CommandDefinition<TFlags, TPositionals, TConfig, TCode> {
+  return Object.freeze({
+    kind: "result-command" as const,
+    help: normalizeHelp(def.help),
+    args: normalizeArgs(def.args),
+    needs: normalizeNeeds(def.needs),
+    exitCodes: def.exitCodes ?? ({} as Readonly<Record<TCode, string>>),
+    handler: def.handler,
+  });
 }
 
 /**
@@ -142,9 +214,9 @@ export interface SessionCommandDefinition<
   TConfig = undefined,
 > {
   readonly kind: "session-command";
-  readonly help: HelpSpec;
-  readonly args?: ArgsSpec<TFlags, TPositionals>;
-  readonly needs?: NeedsSpec<TConfig>;
+  readonly help: CommandHelp;
+  readonly args: CommandArgs<TFlags, TPositionals>;
+  readonly needs: CommandNeeds<TConfig>;
   readonly handler: (
     args: Args<TFlags, TPositionals>,
     ctx: CommandContext<TConfig>,
@@ -161,10 +233,23 @@ export function defineSessionCommand<
     PositionalSpec<unknown>
   >,
   TConfig = undefined,
->(
-  def: Omit<SessionCommandDefinition<TFlags, TPositionals, TConfig>, "kind">,
-): SessionCommandDefinition<TFlags, TPositionals, TConfig> {
-  return Object.freeze({ ...def, kind: "session-command" as const });
+>(def: {
+  readonly help: HelpSpec;
+  readonly args?: ArgsSpec<TFlags, TPositionals>;
+  readonly needs?: NeedsSpec<TConfig>;
+  readonly handler: SessionCommandDefinition<
+    TFlags,
+    TPositionals,
+    TConfig
+  >["handler"];
+}): SessionCommandDefinition<TFlags, TPositionals, TConfig> {
+  return Object.freeze({
+    kind: "session-command" as const,
+    help: normalizeHelp(def.help),
+    args: normalizeArgs(def.args),
+    needs: normalizeNeeds(def.needs),
+    handler: def.handler,
+  });
 }
 
 /**
@@ -181,9 +266,9 @@ export interface ServerCommandDefinition<
   TConfig = undefined,
 > {
   readonly kind: "server-command";
-  readonly help: HelpSpec;
-  readonly args?: ArgsSpec<TFlags, Record<never, PositionalSpec<unknown>>>;
-  readonly needs?: NeedsSpec<TConfig>;
+  readonly help: CommandHelp;
+  readonly args: CommandArgs<TFlags, Record<never, PositionalSpec<unknown>>>;
+  readonly needs: CommandNeeds<TConfig>;
   readonly handler: (
     args: Args<TFlags, Record<never, PositionalSpec<unknown>>>,
     io: {
@@ -203,10 +288,19 @@ export function defineServerCommand<
     FlagSpec<unknown>
   >,
   TConfig = undefined,
->(
-  def: Omit<ServerCommandDefinition<TFlags, TConfig>, "kind">,
-): ServerCommandDefinition<TFlags, TConfig> {
-  return Object.freeze({ ...def, kind: "server-command" as const });
+>(def: {
+  readonly help: HelpSpec;
+  readonly args?: ArgsSpec<TFlags, Record<never, PositionalSpec<unknown>>>;
+  readonly needs?: NeedsSpec<TConfig>;
+  readonly handler: ServerCommandDefinition<TFlags, TConfig>["handler"];
+}): ServerCommandDefinition<TFlags, TConfig> {
+  return Object.freeze({
+    kind: "server-command" as const,
+    help: normalizeHelp(def.help),
+    args: normalizeArgs(def.args),
+    needs: normalizeNeeds(def.needs),
+    handler: def.handler,
+  });
 }
 
 /**
@@ -237,3 +331,41 @@ export type AnyCommand =
       ServerCommandDefinition<Record<string, FlagSpec<unknown>>, unknown>,
       "handler"
     > & { readonly handler: unknown });
+
+export interface CompletedEnvelope<T = unknown> {
+  /**
+   * ok = COMPLETED (the command executed to its end). A completed
+   * result may still carry findings and a non-zero exit code — bad
+   * news is a result, not an error.
+   */
+  readonly ok: true;
+  /**
+   * The command's stable dotted identity — its full command path
+   * ('project.env.add'). The schema-dispatch key for machine consumers.
+   */
+  readonly commandId: string;
+  readonly result: T;
+  readonly exitCode: number;
+  /** The recorded findings, verbatim from the presented outcome. */
+  readonly diagnostics: readonly Diagnostic[];
+  readonly nextActions: readonly NextAction[];
+}
+
+export interface ErroredEnvelope {
+  /** ok = false: the command did NOT complete. */
+  readonly ok: false;
+  readonly commandId: string;
+  /**
+   * The PRIMARY error — what aborted the command. Severity 'error' by
+   * definition. A thrown CliStructuredError serializes to exactly this
+   * shape.
+   */
+  readonly error: Diagnostic;
+  /** Accompanying findings when the abort had several. */
+  readonly diagnostics: readonly Diagnostic[];
+  /**
+   * Copied from the error's own nextActions — the uniform consumer
+   * read path (envelope.nextActions) on both settlement paths.
+   */
+  readonly nextActions: readonly NextAction[];
+}

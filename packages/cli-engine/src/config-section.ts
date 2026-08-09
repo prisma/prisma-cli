@@ -5,7 +5,7 @@ import type { Diagnostic } from "./protocol";
  * the section name, its validated type, and its total validator. The
  * validator owns absence: its input is the raw section value, or
  * undefined when the config file has no such section. It returns
- * findings; it never throws (R10).
+ * findings; it never throws.
  */
 export interface ConfigSection<T> {
   readonly name: string;

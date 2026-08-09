@@ -7,7 +7,7 @@ export interface Credentials {
   readonly token: string;
 }
 
-/** The handler context — the whole world arrives as one argument (R4). */
+/** The handler context — the whole world arrives as one argument. */
 export interface CommandContext<
   TConfig = undefined,
   TCode extends number = never,
@@ -53,12 +53,12 @@ export interface CommandContext<
 
   /**
    * The invocation's environment, from Runtime.env. Handlers read env
-   * via ctx.env, never process.env (R4).
+   * via ctx.env, never process.env.
    */
   readonly env: Readonly<Record<string, string | undefined>>;
 
   /**
-   * Conditional optional-dependency need (R13). Resolves when the
+   * Conditional optional-dependency need. Resolves when the
    * optional peer dependency is importable from the user's project;
    * otherwise returns the engine's structured missing-dependency error
    * for the handler to pass to notOk.

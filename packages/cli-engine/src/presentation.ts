@@ -38,11 +38,17 @@ export interface PresentedResult<T> {
   readonly exitCode: number;
   /** Never undefined; empty when the outcome recorded no findings. */
   readonly diagnostics: readonly Diagnostic[];
+  /**
+   * Only the active format's presentation is materialized; the other
+   * format's fields are normalized to empty. `json` stays undefined
+   * when the handler supplied no json presentation — the envelope's
+   * `result` then falls back to `data`.
+   */
   readonly presentation: {
-    readonly human?: readonly Block[];
-    readonly stdout?: readonly string[];
-    readonly json?: unknown;
-    readonly next?: readonly NextAction[];
+    readonly human: readonly Block[];
+    readonly stdout: readonly string[];
+    readonly json: unknown;
+    readonly next: readonly NextAction[];
   };
 }
 

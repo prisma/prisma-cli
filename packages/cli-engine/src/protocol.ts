@@ -7,13 +7,15 @@
 /**
  * A recorded finding: pure data, never thrown, no stack. Field-for-field
  * the error envelope minus `ok`; the two shapes never diverge.
+ * `nextActions` is always present (empty when there are none); the
+ * remaining optional fields are wire fields whose absence is data.
  */
 export interface Diagnostic {
   readonly code: `${string}.${string}`;
   readonly severity: "error" | "warn" | "info";
   readonly summary: string;
   readonly why?: string;
-  readonly nextActions?: readonly NextAction[];
+  readonly nextActions: readonly NextAction[];
   readonly where?: { readonly path?: string; readonly line?: number };
   readonly meta?: Record<string, unknown>;
   readonly docsUrl?: string;
@@ -50,11 +52,13 @@ function ifDefined<K extends string, V>(
 export class CliStructuredError extends Error {
   readonly code: `${string}.${string}`;
   readonly severity: Diagnostic["severity"];
-  declare readonly why?: string;
-  declare readonly nextActions?: readonly NextAction[];
-  declare readonly where?: { readonly path?: string; readonly line?: number };
-  declare readonly meta?: Record<string, unknown>;
-  declare readonly docsUrl?: string;
+  readonly why: string | undefined;
+  readonly nextActions: readonly NextAction[];
+  readonly where:
+    | { readonly path?: string; readonly line?: number }
+    | undefined;
+  readonly meta: Record<string, unknown> | undefined;
+  readonly docsUrl: string | undefined;
 
   constructor(
     code: `${string}.${string}`,
@@ -72,19 +76,16 @@ export class CliStructuredError extends Error {
     this.name = "CliStructuredError";
     this.code = code;
     this.severity = options?.severity ?? "error";
-    const where = options?.where
+    this.why = options?.why;
+    this.nextActions = options?.nextActions ?? [];
+    this.where = options?.where
       ? {
           ...ifDefined("path", options.where.path),
           ...ifDefined("line", options.where.line),
         }
       : undefined;
-    Object.assign(this, {
-      ...ifDefined("why", options?.why),
-      ...ifDefined("nextActions", options?.nextActions),
-      ...ifDefined("where", where),
-      ...ifDefined("meta", options?.meta),
-      ...ifDefined("docsUrl", options?.docsUrl),
-    });
+    this.meta = options?.meta;
+    this.docsUrl = options?.docsUrl;
   }
 
   /**
@@ -97,7 +98,7 @@ export class CliStructuredError extends Error {
       severity: this.severity,
       summary: this.message,
       ...ifDefined("why", this.why),
-      ...ifDefined("nextActions", this.nextActions),
+      nextActions: this.nextActions,
       ...ifDefined("where", this.where),
       ...ifDefined("meta", this.meta),
       ...ifDefined("docsUrl", this.docsUrl),
