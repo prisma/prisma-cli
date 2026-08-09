@@ -266,8 +266,9 @@ Decided (Will Madden, 2026-08-09): the engine wraps **@stricli/core**,
 fully hidden per R3 — no stricli type appears in the engine's public
 interface, so the internals remain replaceable.
 
-The decision followed the evaluation rubric recorded in prisma/prisma's
-`docs/architecture docs/research/commander-friction-points.md`. Commander
+The decision followed the evaluation rubric recorded in prisma/prisma at
+[`docs/architecture docs/research/commander-friction-points.md`](https://github.com/prisma/prisma/blob/main/docs/architecture%20docs/research/commander-friction-points.md)
+(the directory really is named `architecture docs`, space included). Commander
 was ruled out there. Clipanion, the incumbent candidate with in-house
 precedent, passes the rubric's nine technical criteria but fails the tenth:
 at decision time its last publish was 23 months old with its 4.x line in
