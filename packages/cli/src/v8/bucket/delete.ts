@@ -5,6 +5,7 @@ import {
   type Presentations,
 } from "@prisma/cli-engine";
 import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { CLI_NAME } from "../../cli-name";
 import { usageError } from "../../shell/errors";
 import type { BucketDeleteResult } from "../../types/bucket";
 import { bucketPositional, resolveBucketProviderOnly } from "./context";
@@ -41,7 +42,7 @@ export const bucketDeleteCommand = defineCommand({
           "Bucket id required",
           "Bucket deletion needs a bucket id.",
           "Pass the bucket id to delete.",
-          ["prisma-cli bucket list"],
+          [`${CLI_NAME} bucket list`],
           "bucket",
         );
       }

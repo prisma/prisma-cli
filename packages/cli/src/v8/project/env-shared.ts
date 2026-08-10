@@ -98,11 +98,27 @@ export async function resolveEnvTarget(
   };
 }
 
+/** The human table's rows: the first cell glues the key to where the
+ *  value comes from, which is what a reader wants to see. */
 export function variableRows(
   variables: readonly EnvVariableMetadata[],
 ): string[][] {
   return variables.map((variable) => [
     `${variable.key} (${variable.source})`,
+    variable.id,
+    variable.isManagedBySystem ? "default" : "",
+  ]);
+}
+
+/** The stdout lane's rows: the bare key, because a consumer piping this
+ *  should not have to split on `" ("` to recover it (conventions §8 —
+ *  the stdout lane carries data, not decoration). The source is in the
+ *  `--json` record. */
+export function variableStdoutRows(
+  variables: readonly EnvVariableMetadata[],
+): string[][] {
+  return variables.map((variable) => [
+    variable.key,
     variable.id,
     variable.isManagedBySystem ? "default" : "",
   ]);

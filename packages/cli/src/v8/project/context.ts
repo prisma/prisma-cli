@@ -32,13 +32,17 @@ export type ProjectCommandContext = CommandContext<undefined, never>;
  * surfaces as `Cannot read properties of undefined`, worst case inside
  * `project transfer` after the project has already moved. Refusing the
  * read here names the missing field at the moment it is read instead.
- * Symbols pass through: they are how the language probes an object, not
- * how the legacy code reads a field.
+ * Probes pass through rather than throwing: symbols are how the language
+ * inspects an object, and `then` is their string-keyed equivalent — the
+ * runtime reads it on anything it resolves through a promise. Throwing
+ * on a probe would be the very failure this trap exists to remove.
  */
+const PROBE_KEYS: ReadonlySet<string> = new Set(["then"]);
+
 function refuseUnknownReads<T extends object>(fields: T, prefix: string): T {
   return new Proxy(fields, {
     get(target, key) {
-      if (typeof key !== "string" || key in target) {
+      if (typeof key !== "string" || key in target || PROBE_KEYS.has(key)) {
         return Reflect.get(target, key);
       }
       throw new Error(

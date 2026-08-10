@@ -11,6 +11,7 @@ import {
   parseGitHubRepositoryUrl,
   readGitOriginRemote,
 } from "../../adapters/git";
+import { CLI_NAME } from "../../cli-name";
 import {
   createGitHubInstallIntent,
   findRepositoryInInstallations,
@@ -178,8 +179,8 @@ export const gitConnectCommand = defineCommand({
         throw usageError(
           "Repository connection requires a GitHub repository URL",
           "No git-url was provided and the local repo does not have an origin remote.",
-          "Pass a GitHub repository URL, or add a GitHub origin remote and rerun prisma-cli git connect.",
-          ["prisma-cli git connect git@github.com:prisma/prisma-cli.git"],
+          `Pass a GitHub repository URL, or add a GitHub origin remote and rerun ${CLI_NAME} git connect.`,
+          [`${CLI_NAME} git connect git@github.com:prisma/prisma-cli.git`],
           "project",
         );
       }

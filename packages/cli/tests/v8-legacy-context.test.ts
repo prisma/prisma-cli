@@ -77,6 +77,19 @@ describe("the v8 legacy-context adapter", () => {
     );
   });
 
+  it("lets the language probe it without throwing", async () => {
+    const context = legacyOperationContext(stubContext("/somewhere"));
+
+    // Symbols and `then` are how the runtime inspects an object, not how
+    // the legacy code reads a field. Awaiting the adapter reads `then`;
+    // throwing there would be the very failure the trap exists to remove.
+    expect(
+      (context as unknown as Record<symbol, unknown>)[Symbol.toStringTag],
+    ).toBeUndefined();
+    expect((context as unknown as { then?: unknown }).then).toBeUndefined();
+    await expect(Promise.resolve(context)).resolves.toBe(context);
+  });
+
   it("carries resolveProjectTarget", async () => {
     const context = legacyOperationContext(stubContext(await pinnedCwd()));
 

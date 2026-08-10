@@ -47,6 +47,14 @@ export const projectCreateCommand = defineCommand({
           signal: ctx.signal,
         })
         .catch((error: unknown) => {
+          /** A cancelled run is cancelled, not a failed creation. The
+           *  provider flattens the underlying AbortError into a plain
+           *  Error, which the engine would settle as a bug, so hand it
+           *  back its own abort reason and let it settle the run as
+           *  cancelled. */
+          if (ctx.signal.aborted) {
+            throw ctx.signal.reason;
+          }
           throw projectCreateFailedError(error, name, workspace, {
             nextSteps: [
               "prisma-cli project list",

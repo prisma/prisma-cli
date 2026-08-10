@@ -578,6 +578,29 @@ describe("prisma-v8 project create", () => {
     });
   });
 
+  it("settles a cancelled create as cancelled, not as a failed create", async () => {
+    const controller = new AbortController();
+    const result = await makeCli(
+      fakeClient({
+        post: () => {
+          controller.abort();
+          const aborted = new Error("This operation was aborted");
+          aborted.name = "AbortError";
+          throw aborted;
+        },
+      }),
+    ).run(["project", "create", "my-app", "--json"], {
+      cwd: await tempCwd(),
+      abort: controller.signal,
+    });
+
+    expect(result.exitCode).toBe(130);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "CLI.ABORTED" },
+    });
+  });
+
   it("maps an unwritable pin location to PROJECT.LOCAL_STATE_WRITE_FAILED", async () => {
     const cwd = await tempCwd();
     await writeFile(path.join(cwd, ".prisma"), "not a directory", "utf8");
@@ -731,6 +754,32 @@ describe("prisma-v8 project link", () => {
     expect(result.presented?.data).toMatchObject({
       project: { id: "proj_new" },
       action: "created",
+    });
+  });
+
+  it("settles a cancelled create from the picker as cancelled", async () => {
+    const controller = new AbortController();
+    const cwd = await tempCwd();
+    const result = await makeCli(
+      fakeClient({
+        post: () => {
+          controller.abort();
+          const aborted = new Error("This operation was aborted");
+          aborted.name = "AbortError";
+          throw aborted;
+        },
+      }),
+    ).run(["project", "link", "--json"], {
+      cwd,
+      answers: ["__create__", ""],
+      isTty: { stdin: true, stdout: true },
+      abort: controller.signal,
+    });
+
+    expect(result.exitCode).toBe(130);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "CLI.ABORTED" },
     });
   });
 
@@ -1978,9 +2027,12 @@ describe("prisma-v8 project env list", () => {
         ["API_URL (production)", "env_2", "default"],
       ],
     });
+    // The human table decorates the key with its source; the stdout lane
+    // carries the bare key so a consumer does not have to split on " ("
+    // to recover it (conventions §8).
     expect(result.presented?.presentation.stdout).toEqual([
-      "STRIPE_KEY (production)\tenv_1\t",
-      "API_URL (production)\tenv_2\tdefault",
+      "STRIPE_KEY\tenv_1\t",
+      "API_URL\tenv_2\tdefault",
     ]);
   });
 

@@ -19,7 +19,12 @@ import { listTargetLabel, serializeEnvList } from "../../presenters/app-env";
 import type { EnvListResult } from "../../types/app-env";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { resolvePinnedProject } from "./context";
-import { projectFlag, roleFlag, variableRows } from "./env-shared";
+import {
+  projectFlag,
+  roleFlag,
+  variableRows,
+  variableStdoutRows,
+} from "./env-shared";
 import { mapProjectOperationError } from "./errors";
 
 const TITLE = "Listing environment variables for the selected scope.";
@@ -29,6 +34,7 @@ function listPresentations(
   addScopeFlag: string,
 ): Presentations {
   const rows = variableRows(result.variables);
+  const stdoutRows = variableStdoutRows(result.variables);
   return {
     human: (): Block[] => [
       { kind: "summary", tone: "info", text: TITLE },
@@ -51,7 +57,7 @@ function listPresentations(
             },
           ]),
     ],
-    stdout: () => rows.map((row) => row.join("\t")),
+    stdout: () => stdoutRows.map((row) => row.join("\t")),
     json: () => serializeEnvList(result),
     next: () =>
       result.variables.length === 0
