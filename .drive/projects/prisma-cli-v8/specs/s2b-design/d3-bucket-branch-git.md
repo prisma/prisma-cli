@@ -13,6 +13,29 @@
 > already recorded as unreachable in the divergence list; that residue
 > is not repeated here and D1 is not reopened for it.
 
+> **FOUR DETAILS PINNED (orchestrator, 2026-08-10).** The implementer
+> stopped on these rather than improvising, which was right. All four
+> are mechanical consistency choices with no legacy copy to violate, so
+> they are settled here and ratified through the divergence list at PR
+> review rather than blocking the dispatch.
+>
+> 1. **Positional placeholders** are the kebab-case form of the argument
+>    name: `bucketId` → `bucket-id`, `keyId` → `key-id`. This follows
+>    `gitUrl` → `git-url`, the one placeholder §3.8 already pins.
+> 2. **`bucket key create`'s field-row labels** are the environment
+>    variable names — `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`,
+>    `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`. Legacy human output had no
+>    field rows at all (fact sheet §5: only the two literal lines and
+>    the summary), so the rows are a v8 addition and no legacy label
+>    exists to port. The env-var names are the right labels because the
+>    list line immediately above them says to set these environment
+>    variables.
+> 3. **The git group's `--project` placeholder** is `id-or-name`, as the
+>    shipped project and postgres groups already use. Its brief,
+>    "Project id or name", was already pinned.
+> 4. **D3 divergence entries are numbered from 31**, continuing D2's
+>    sequence in the one shared file.
+
 Binding design for dispatch D3. Parent: `conventions.md`; template
 from D1. Grounding fact sheet: `facts/facts-d3-bucket-branch-git.md`
 (verbatim legacy extraction — part of this doc). Binding corrections
