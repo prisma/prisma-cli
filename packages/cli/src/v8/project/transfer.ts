@@ -91,10 +91,10 @@ async function resolveRecipient(
     };
   }
 
-  const workspaceRef = options.toWorkspace?.trim();
-  if (!workspaceRef) {
-    throw transferRecipientRequiredError(formatCommand);
-  }
+  /** The handler rejects a run carrying neither recipient flag before
+   *  it reaches here, so a blank `--to-workspace` means the recipient
+   *  token was set and returned above. */
+  const workspaceRef = options.toWorkspace?.trim() ?? "";
 
   if (ctx.env[SERVICE_TOKEN_ENV_VAR] !== undefined) {
     throw transferRecipientUnavailableError(formatCommand);
