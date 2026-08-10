@@ -744,6 +744,61 @@ describe("the environment credential", () => {
     expect(calls[0].authorization).toBe(`Bearer ${environmentToken}`);
   });
 
+  /** "Expired" and "ended" describe a stored session. An environment
+   *  credential has none, so neither can be the answer for it however
+   *  its refresh fails. Unreachable today — one environment variable
+   *  carries one bearer string, so there is no refresh token — but
+   *  §11.2 keeps the uniform path on purpose. */
+  test("with a refresh token: invalid_grant is the credential-rejected error, not an expired session", async () => {
+    scriptFetch((url) =>
+      url === TOKEN_ENDPOINT
+        ? jsonResponse(400, { error: "invalid_grant" })
+        : jsonResponse(401, { message: "unauthorized" }),
+    );
+    const cli = createTestCli({
+      commands: { toy: callApi },
+      environmentCredential: {
+        token: environmentToken,
+        refreshToken: "refresh-env",
+        expiresAt: undefined,
+      },
+      managementApiClientConfig: CLIENT_CONFIG,
+    });
+    const { exitCode, json } = await cli.run(["toy", "--json"]);
+    expect(exitCode).toBe(2);
+    expect(json.find((frame) => frame.kind === "result")).toMatchObject({
+      envelope: {
+        ok: false,
+        error: { code: "AUTH.SERVICE_TOKEN_REJECTED" },
+      },
+    });
+  });
+
+  test("with a refresh token: a transient refresh failure stays transient, and is never reported as an ended session", async () => {
+    scriptFetch((url) =>
+      url === TOKEN_ENDPOINT
+        ? jsonResponse(503, { message: "boom" })
+        : jsonResponse(401, { message: "unauthorized" }),
+    );
+    const cli = createTestCli({
+      commands: { toy: callApi },
+      environmentCredential: {
+        token: environmentToken,
+        refreshToken: "refresh-env",
+        expiresAt: undefined,
+      },
+      managementApiClientConfig: CLIENT_CONFIG,
+    });
+    const { exitCode, json } = await cli.run(["toy", "--json"]);
+    expect(exitCode).toBe(2);
+    expect(json.find((frame) => frame.kind === "result")).toMatchObject({
+      envelope: {
+        ok: false,
+        error: { code: "CLI.AUTH_SERVICE_ERROR" },
+      },
+    });
+  });
+
   test("a successful request passes its data through and carries the environment token", async () => {
     const calls = scriptFetch(() => jsonResponse(200, { workspaces: ["env"] }));
     let seen: unknown;

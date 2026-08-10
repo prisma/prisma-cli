@@ -1,14 +1,16 @@
+import { SERVICE_TOKEN_ENV_VAR } from "../auth/client";
 import {
-  listAuthWorkspaces,
-  logoutAuthWorkspace,
   performLogin,
   performLogout,
   readAuthState,
-  SERVICE_TOKEN_ENV_VAR,
   storeLegacyCredential,
+} from "../auth/operations";
+import {
+  listAuthWorkspaces,
+  logoutAuthWorkspace,
   switchAuthWorkspace,
   type WorkspaceOperationContext,
-} from "../auth";
+} from "../auth/workspaces";
 import { resolvePrismaCliPackageCommand } from "../lib/agent/cli-command";
 import { PRISMA_AGENT_INSTALL_ARGS } from "../lib/agent/constants";
 import {

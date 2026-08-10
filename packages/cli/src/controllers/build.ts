@@ -1,4 +1,4 @@
-import { authenticatedManagementApiClient } from "../auth";
+import { authenticatedManagementApiClient } from "../auth/guard";
 import { authRequiredError, CliError } from "../shell/errors";
 import { writeJsonEvent } from "../shell/output";
 import type { CommandContext } from "../shell/runtime";

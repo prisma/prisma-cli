@@ -5,9 +5,9 @@ import {
   type Session,
 } from "@prisma/cli-engine";
 import { type NextAction, ok } from "@prisma/cli-engine/protocol";
-import { environmentSessionInForce } from "../../auth";
+import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
-import { ENVIRONMENT_SESSION_NOTICE } from "./session-card";
+import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
 import { sessionLabel } from "./session-ref";
 
 const LOGIN_NEXT_ACTION: NextAction = {
@@ -19,13 +19,13 @@ const LOGIN_NEXT_ACTION: NextAction = {
 export interface WorkspaceListResult {
   readonly sessions: readonly Session[];
   readonly selectedWorkspaceId: string | undefined;
-  readonly environmentSessionInForce: boolean;
+  readonly environmentCredentialInForce: boolean;
 }
 
 export function serializeWorkspaceList(result: WorkspaceListResult) {
   return {
     context: {
-      environmentSessionInForce: result.environmentSessionInForce,
+      environmentCredentialInForce: result.environmentCredentialInForce,
       currentWorkspaceId: result.selectedWorkspaceId ?? null,
     },
     items: result.sessions.map((session) => ({
@@ -52,12 +52,12 @@ function listPresentations(result: WorkspaceListResult): Presentations {
         tone: "info",
         text: "Listing your workspace sessions on this machine.",
       },
-      ...(result.environmentSessionInForce
+      ...(result.environmentCredentialInForce
         ? [
             {
               kind: "summary",
               tone: "info",
-              text: ENVIRONMENT_SESSION_NOTICE,
+              text: ENVIRONMENT_CREDENTIAL_NOTICE,
             } as const,
           ]
         : []),
@@ -88,7 +88,7 @@ export const authWorkspaceListCommand = defineCommand({
     const result: WorkspaceListResult = {
       sessions: stored.sessions,
       selectedWorkspaceId: stored.selectedWorkspaceId,
-      environmentSessionInForce: environmentSessionInForce(ctx.env),
+      environmentCredentialInForce: environmentCredentialInForce(ctx.env),
     };
     return ok(ctx.present({ data: result }, listPresentations(result)));
   },

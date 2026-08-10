@@ -17,13 +17,10 @@ import { detectComputeAppFromDirectory } from "@prisma/compute-sdk/config/direct
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { matchError, Result } from "better-result";
 import open from "open";
-import {
-  authenticatedManagementApiClient,
-  FileTokenStorage,
-  getApiBaseUrl,
-  readAuthState,
-  SERVICE_TOKEN_ENV_VAR,
-} from "../auth";
+import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../auth/client";
+import { authenticatedManagementApiClient } from "../auth/guard";
+import { readAuthState } from "../auth/operations";
+import { FileTokenStorage } from "../auth/token-storage";
 import {
   type AppRecord,
   createAppProvider,

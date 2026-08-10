@@ -7,10 +7,10 @@
  * reports, so a run that reads its workspace from any other source
  * resolves a different project or prints a different name.
  */
+import { credentialWorkspaceId } from "@prisma/cli-engine";
 import { mintTestJwt } from "@prisma/cli-engine/testing";
 import { describe, expect, it } from "vitest";
 
-import { serviceTokenWorkspaceId } from "../src/auth/claims";
 import {
   domainRecord,
   makeServiceCli,
@@ -39,13 +39,13 @@ function twoWorkspaceRoutes(overrides: Routes = {}): Routes {
 
 /**
  * A service token neither workspace derivation can place: no
- * `workspace_id` claim, and a `sub` that is not `workspace:<id>`. The
- * harness's credential manager derives a workspace from `workspace_id`
- * alone, while the shipping one also accepts the `sub` form
- * (`src/auth/claims.ts`), so a token carrying only `sub` would be
- * refused under test and accepted in production. The test asserts the
- * shipping derivation places no workspace in this one, so the refusal
- * it pins is the refusal the product makes.
+ * `workspace_id` claim, and a `sub` that is not `workspace:<id>`. Both
+ * derivations now live in the engine — `claimedWorkspaceId` reads the
+ * claim, `credentialWorkspaceId` also accepts the `sub` form — so a
+ * token carrying only `sub` would be refused under one and accepted
+ * under the other. The test asserts the wider derivation places no
+ * workspace in this one, so the refusal it pins is the refusal the
+ * product makes.
  */
 const UNSCOPED_SERVICE_TOKEN = mintTestJwt({ sub: "usr_1" });
 
@@ -193,7 +193,7 @@ describe("prisma-v8 service — the workspace comes from the engine session", ()
   });
 
   it("refuses a service token whose claims name no workspace", async () => {
-    expect(serviceTokenWorkspaceId(UNSCOPED_SERVICE_TOKEN)).toBeUndefined();
+    expect(credentialWorkspaceId(UNSCOPED_SERVICE_TOKEN)).toBeUndefined();
 
     const harness = await makeServiceCli({
       authenticated: false,

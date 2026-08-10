@@ -5,20 +5,20 @@ import {
   positional,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { environmentSessionInForce } from "../../auth";
+import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
-import { ENVIRONMENT_SESSION_NOTICE } from "./session-card";
+import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
 import { requireSession, sessionLabel } from "./session-ref";
 
 export interface WorkspaceLogoutResult {
   readonly workspace: { readonly id: string; readonly name: string | null };
-  readonly wasCurrent: boolean;
+  readonly wasSelected: boolean;
 }
 
 function logoutPresentations(spec: {
   readonly label: string;
-  readonly wasCurrent: boolean;
-  readonly environmentSessionInForce: boolean;
+  readonly wasSelected: boolean;
+  readonly environmentCredentialInForce: boolean;
 }): Presentations {
   const rows = [{ label: "workspace", value: spec.label }];
   return {
@@ -32,16 +32,16 @@ function logoutPresentations(spec: {
       {
         kind: "summary",
         tone: "ok",
-        text: spec.wasCurrent
+        text: spec.wasSelected
           ? "Ended the current workspace session; no replacement was selected."
           : "Ended the workspace session.",
       },
-      ...(spec.environmentSessionInForce
+      ...(spec.environmentCredentialInForce
         ? [
             {
               kind: "summary",
               tone: "info",
-              text: ENVIRONMENT_SESSION_NOTICE,
+              text: ENVIRONMENT_CREDENTIAL_NOTICE,
             } as const,
           ]
         : []),
@@ -53,7 +53,7 @@ function logoutPresentations(spec: {
         label: "List your workspace sessions",
         command: `${CLI_NAME} auth workspace list`,
       },
-      ...(spec.wasCurrent
+      ...(spec.wasSelected
         ? [
             {
               kind: "run-command",
@@ -83,22 +83,22 @@ export const authWorkspaceLogoutCommand = defineCommand({
   handler: async (args, ctx) => {
     const stored = await ctx.credentialManager.sessions();
     const session = requireSession(stored.sessions, args.positionals.workspace);
-    const wasCurrent = session.workspaceId === stored.selectedWorkspaceId;
+    const wasSelected = session.workspaceId === stored.selectedWorkspaceId;
     await ctx.credentialManager.endSession(session.workspaceId);
     const result: WorkspaceLogoutResult = {
       workspace: {
         id: session.workspaceId,
         name: session.workspaceName ?? null,
       },
-      wasCurrent,
+      wasSelected,
     };
     return ok(
       ctx.present(
         { data: result },
         logoutPresentations({
           label: sessionLabel(session),
-          wasCurrent,
-          environmentSessionInForce: environmentSessionInForce(ctx.env),
+          wasSelected,
+          environmentCredentialInForce: environmentCredentialInForce(ctx.env),
         }),
       ),
     );

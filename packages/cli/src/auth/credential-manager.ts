@@ -9,16 +9,15 @@ import type {
   TokenStorage,
 } from "@prisma/cli-engine";
 import {
-  credentialsRequiredError,
-  noSessionForWorkspaceError,
-} from "@prisma/cli-engine";
-import { CliStructuredError } from "@prisma/cli-engine/protocol";
-import {
   claimedExpiresAt,
   claimedIdentity,
   claimedWorkspaceId,
-  serviceTokenWorkspaceId,
-} from "./claims";
+  credentialsRequiredError,
+  credentialWorkspaceId,
+  credentialWorkspaceMismatchError,
+  noSessionForWorkspaceError,
+} from "@prisma/cli-engine";
+import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import { environmentServiceToken } from "./service-token";
 import {
   type CredentialState,
@@ -66,25 +65,6 @@ type Pin =
 
 type ResolvedPin = Exclude<Pin, { readonly kind: "unresolved" }>;
 
-function credentialWorkspaceMismatchError(
-  workspaceId: string,
-): CliStructuredError {
-  return new CliStructuredError(
-    "AUTH.CREDENTIAL_WORKSPACE_MISMATCH",
-    "That credential belongs to a different workspace.",
-    {
-      why: `The token's workspace_id claim does not name workspace '${workspaceId}'.`,
-      nextActions: [
-        {
-          kind: "run-command",
-          label: "Sign in again and pick the workspace you want",
-          command: "prisma auth login",
-        },
-      ],
-    },
-  );
-}
-
 /**
  * The memory-backed storage, for a credential with no home record: a
  * free function closing over one local variable. It is never given the
@@ -98,7 +78,7 @@ function memoryBackedStorage(
 ): TokenStorage {
   let tokens: Tokens | null = {
     workspaceId:
-      serviceTokenWorkspaceId(credential.token) ?? NO_WORKSPACE_CLAIMED,
+      credentialWorkspaceId(credential.token) ?? NO_WORKSPACE_CLAIMED,
     accessToken: credential.token,
     refreshToken: credential.refreshToken,
   };
@@ -126,6 +106,10 @@ export class FileCredentialManager implements CredentialManager {
   readonly #debug: DebugLog;
   readonly #fetchWorkspaceName: FetchWorkspaceName | undefined;
   #pin: Pin = { kind: "unresolved" };
+  /** Built for one pinned credential. Every mutation that moves the
+   *  pin discards it, so a command that mutates and then reaches for
+   *  ctx.api cannot be handed storage for the credential it used to be
+   *  acting as. */
   #activeStorage: TokenStorage | undefined;
   #refreshLock: Promise<unknown> = Promise.resolve();
 
@@ -208,7 +192,7 @@ export class FileCredentialManager implements CredentialManager {
     });
 
     if (!environmentInForce) {
-      this.#pin = { kind: "session", workspaceId };
+      this.#repin({ kind: "session", workspaceId });
     }
 
     const name = await this.#lookUpWorkspaceName(credential, workspaceId);
@@ -242,7 +226,7 @@ export class FileCredentialManager implements CredentialManager {
       return { state: next, result: toSession(record) };
     });
     if (!environmentInForce) {
-      this.#pin = { kind: "session", workspaceId };
+      this.#repin({ kind: "session", workspaceId });
     }
     return selected;
   }
@@ -259,7 +243,7 @@ export class FileCredentialManager implements CredentialManager {
     );
 
     if (this.#pin.kind === "session" && this.#pin.workspaceId === workspaceId) {
-      this.#pin = { kind: "none" };
+      this.#repin({ kind: "none" });
     }
   }
 
@@ -274,7 +258,7 @@ export class FileCredentialManager implements CredentialManager {
     await this.#reapLegacyContextFile();
     await this.#reapOrphanedWrites();
     if (!environmentInForce) {
-      this.#pin = { kind: "none" };
+      this.#repin({ kind: "none" });
     }
   }
 
@@ -427,6 +411,13 @@ export class FileCredentialManager implements CredentialManager {
     return pin;
   }
 
+  /** Moves the pin after a mutation, discarding storage built for the
+   *  credential this process was acting as before. */
+  #repin(pin: ResolvedPin): void {
+    this.#pin = pin;
+    this.#activeStorage = undefined;
+  }
+
   #environmentToken(): string | undefined {
     return environmentServiceToken(this.#env);
   }
@@ -442,8 +433,12 @@ export class FileCredentialManager implements CredentialManager {
   /** A blank env token is an error state everywhere the environment
    *  credential would be consulted, including the mutations that no
    *  longer care whether a valid one is set. */
+  /** A blank PRISMA_SERVICE_TOKEN is an error state everywhere the
+   *  environment credential would be consulted, including the two
+   *  mutations that do not otherwise read it. Reading is what raises;
+   *  the value is deliberately unused. */
   #refuseBlankEnvironmentToken(): void {
-    this.#environmentToken();
+    void this.#environmentToken();
   }
 
   /** endAllSessions clears everything, including the legacy context
@@ -574,7 +569,7 @@ function storedCredential(record: StoredSession): ActiveCredential {
  *  workspace id — never the empty string. */
 function environmentCredential(token: string): ActiveCredential {
   return {
-    workspaceId: serviceTokenWorkspaceId(token),
+    workspaceId: credentialWorkspaceId(token),
     workspaceName: undefined,
     expiresAt: claimedExpiresAt(token),
     identity: claimedIdentity(token),

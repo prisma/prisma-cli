@@ -10,14 +10,16 @@ import {
   parseGitHubRepositoryUrl,
   readGitOriginRemote,
 } from "../adapters/git";
+import { SERVICE_TOKEN_ENV_VAR } from "../auth/client";
+import { authenticatedManagementApiClient } from "../auth/guard";
 import {
-  authenticatedManagementApiClient,
-  FileTokenStorage,
   RecipientSessionInvalidError,
   resolveRecipientWorkspaceSession,
-  SERVICE_TOKEN_ENV_VAR,
+} from "../auth/recipient";
+import {
+  FileTokenStorage,
   WorkspaceSelectionError,
-} from "../auth";
+} from "../auth/token-storage";
 import {
   type PrismaCliPackageCommandFormatter,
   resolvePrismaCliPackageCommandFormatterSync,

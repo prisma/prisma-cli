@@ -9,7 +9,12 @@ import type {
   AuthWorkspaceLogoutResult,
   AuthWorkspaceUseResult,
 } from "../types/auth";
-import { CLIENT_ID, getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "./client";
+import {
+  CLIENT_ID,
+  getApiBaseUrl,
+  SERVICE_TOKEN_ENV_VAR,
+  UNUSED_REDIRECT_URI,
+} from "./client";
 import {
   workspaceAmbiguousError,
   workspaceNotAuthenticatedError,
@@ -242,7 +247,7 @@ async function resolveOAuthWorkspaceMetadata(
   );
   const sdk = createManagementApiSdk({
     clientId: CLIENT_ID,
-    redirectUri: "http://localhost:0/auth/callback",
+    redirectUri: UNUSED_REDIRECT_URI,
     tokenStorage,
     apiBaseUrl: getApiBaseUrl(context.env),
   });

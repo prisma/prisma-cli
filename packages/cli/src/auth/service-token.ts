@@ -5,7 +5,7 @@ import { SERVICE_TOKEN_ENV_VAR } from "./client";
  * The env-supplied service token, trimmed — or undefined when the var
  * is not set. A blank or whitespace value is never "not set" and never
  * an override: it raises the single blank-token error, identically
- * everywhere the env session would be consulted.
+ * everywhere the environment credential would be consulted.
  */
 export function environmentServiceToken(
   env: Readonly<Record<string, string | undefined>>,
@@ -18,8 +18,10 @@ export function environmentServiceToken(
   return raw.trim();
 }
 
-/** Whether the env session overrides the stored ones. Blank raises. */
-export function environmentSessionInForce(
+/** Whether the environment credential is the one this process
+ *  authenticates as. It does not change stored state (design §11.7) —
+ *  this is a display fact. Blank raises. */
+export function environmentCredentialInForce(
   env: Readonly<Record<string, string | undefined>>,
 ): boolean {
   return environmentServiceToken(env) !== undefined;

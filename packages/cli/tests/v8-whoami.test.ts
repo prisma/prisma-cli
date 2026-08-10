@@ -95,7 +95,7 @@ describe("prisma-v8 auth whoami", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("status: signed out\n");
     expect(result.stderr).toBe(
-      "ℹ Showing the current authenticated identity.\n" +
+      "ℹ Showing the active authenticated identity.\n" +
         "status: signed out\n" +
         "→ Sign in: prisma-cli auth login\n",
     );
@@ -111,7 +111,7 @@ describe("prisma-v8 auth whoami", () => {
       "status: signed in\nuser: bob@example.com\nworkspace: Acme Inc\n",
     );
     expect(result.stderr).toBe(
-      "ℹ Showing the current authenticated identity.\n" +
+      "ℹ Showing the active authenticated identity.\n" +
         "status: signed in\n" +
         "user: bob@example.com\n" +
         "workspace: Acme Inc\n",
@@ -199,6 +199,62 @@ describe("prisma-v8 auth whoami", () => {
     expect(json.stdout).not.toContain("undefined");
   });
 
+  /** A real service token's subject is its workspace, not a person.
+   *  Reporting `workspace:ws_1` as the user's id would put a workspace
+   *  in the user field of a machine-readable contract. */
+  it("reads a service token's workspace subject as a workspace, not a user", async () => {
+    const cli = makeCli({
+      environmentCredential: {
+        token: mintTestJwt({ sub: "workspace:ws_svc" }),
+        refreshToken: undefined,
+        expiresAt: undefined,
+      },
+    });
+
+    const json = await cli.run(["auth", "whoami", "--json"]);
+    const frame = json.json[0];
+    if (frame.kind !== "result") {
+      throw new Error("expected a result frame");
+    }
+    expect(frame.envelope).toMatchObject({
+      ok: true,
+      result: {
+        authenticated: true,
+        workspace: { id: "ws_svc" },
+        user: null,
+        source: "environment",
+      },
+    });
+    expect(json.stdout).not.toContain("workspace:ws_svc");
+  });
+
+  /** The claims and the lookup are read at different moments, so a
+   *  session replaced in between can have them describing two different
+   *  people. Filling a gap in one from the other would report a user
+   *  who does not exist. */
+  it("does not blend two identities when the lookup names a different user", async () => {
+    const differentUser = {
+      GET: async () => ({
+        data: { data: { user: { id: "usr_999", email: null, name: null } } },
+        response: { status: 200 },
+      }),
+    } as unknown as ManagementApiClient;
+    const result = await makeCli({
+      sessions: [SESSION],
+      selectedWorkspaceId: "ws_123",
+      client: differentUser,
+    }).run(["auth", "whoami", "--json"]);
+
+    const frame = result.json[0];
+    if (frame.kind !== "result") {
+      throw new Error("expected a result frame");
+    }
+    expect(frame.envelope).toMatchObject({
+      ok: true,
+      result: { user: { id: "usr_999", email: null, name: null } },
+    });
+  });
+
   it("falls back to the stored credential's own claims when /v1/me is unreachable", async () => {
     const result = await makeCli({
       sessions: [SESSION],
@@ -228,7 +284,7 @@ describe("prisma-v8 auth whoami", () => {
       "status: signed in\nuser: bob@example.com\nworkspace: Acme Inc\n",
     );
     expect(result.stderr).toBe(
-      "ℹ Showing the current authenticated identity.\n" +
+      "ℹ Showing the active authenticated identity.\n" +
         "status: signed in\n" +
         "user: bob@example.com\n" +
         "workspace: Acme Inc\n",
@@ -250,7 +306,7 @@ describe("needs.credentials early failure", () => {
     );
   });
 
-  it("runs the handler when a session is current", async () => {
+  it("runs the handler when a session is selected", async () => {
     const result = await signedInCli().run(["auth", "locked"], {
       isTty: { stdout: true },
     });

@@ -1,4 +1,4 @@
-import { authenticatedManagementApiClient } from "../auth";
+import { authenticatedManagementApiClient } from "../auth/guard";
 import {
   type BucketProvider,
   createManagementBucketProvider,

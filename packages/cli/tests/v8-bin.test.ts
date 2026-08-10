@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { CLIENT_ID, DEFAULT_REDIRECT_URI } from "../src/auth";
+import { CLIENT_ID, DEFAULT_REDIRECT_URI } from "../src/auth/client";
 import { buildCli, MOUNTED_COMMANDS } from "../src/v8/cli";
 import { main } from "../src/v8/main";
 import {

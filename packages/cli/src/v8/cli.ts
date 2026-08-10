@@ -107,7 +107,7 @@ export function buildCli(): Cli {
       build: { brief: "Inspect builds created by a git push or Console" },
       agent: { brief: "Install Prisma context for AI coding agents" },
       telemetry: {
-        brief: "Inspect and change anonymous CLI telemetry",
+        brief: "Show or change whether the CLI sends anonymous usage data",
         description:
           "Show telemetry status, or enable / disable anonymous CLI usage data.\n" +
           `Telemetry is on by default (opt-out); see ${CLI_DOCS_URL}\n` +

@@ -8,14 +8,16 @@ import open from "open";
 import {
   CLIENT_ID,
   DEFAULT_REDIRECT_URI,
-  DEPRECATED_STATE_FILE_ENV_VAR,
-  FileCredentialManager,
-  fetchWorkspaceName,
   getApiBaseUrl,
   getAuthBaseUrl,
+} from "../auth/client";
+import { FileCredentialManager } from "../auth/credential-manager";
+import {
+  DEPRECATED_STATE_FILE_ENV_VAR,
   resolveStateFilePath,
   STATE_FILE_ENV_VAR,
-} from "../auth";
+} from "../auth/state-file";
+import { fetchWorkspaceName } from "../auth/workspace-name";
 
 export type SignalProcess = Pick<HostProcess, "on" | "off" | "exit">;
 
