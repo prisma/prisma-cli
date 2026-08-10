@@ -115,11 +115,15 @@ async function constructClient(
     );
   }
   if (session.source === "environment") {
-    const token = invocation.runtime.env[SERVICE_TOKEN_ENV_VAR];
-    if (token === undefined) {
+    const raw = invocation.runtime.env[SERVICE_TOKEN_ENV_VAR];
+    if (raw === undefined) {
       throw credentialsRequiredError();
     }
-    if (token.trim() === "") {
+    // Trimmed, exactly as the manager composes the session from it:
+    // the bearer on the wire and the session it belongs to must be
+    // built from the same value.
+    const token = raw.trim();
+    if (token === "") {
       throw emptyServiceTokenError({ envVar: SERVICE_TOKEN_ENV_VAR });
     }
     const { createManagementApiClient } = await import(
@@ -232,6 +236,10 @@ async function mapRequestFailure(
   binding: ClientBinding | undefined,
   cause: unknown,
 ): Promise<unknown> {
+  // Before anything else: a CLI structured error raised inside the
+  // request pipeline — including one the manager raised from a
+  // rotation write — is already the honest answer and must surface as
+  // itself rather than being folded into the transient error.
   const structured = structuredCause(cause);
   if (structured !== undefined) {
     return structured;
@@ -253,7 +261,7 @@ async function mapRequestFailure(
     debug(
       `refresh failed: refreshTokenInvalid=${String(
         authError.refreshTokenInvalid === true,
-      )} error=${authError.message}`,
+      )} error=${endpointVerdict(authError.message)}`,
     );
   }
   if (authError.refreshTokenInvalid === true) {
@@ -342,4 +350,17 @@ function refreshPathFailed(probe: RefreshProbe, cause: unknown): boolean {
 
 function errorTypeOf(error: unknown): string {
   return error instanceof Error ? error.name : typeof error;
+}
+
+/**
+ * The endpoint's verdict, without its free text. The SDK builds a
+ * refresh AuthError's message either as `<error>: <error_description>`
+ * from the token endpoint's body or as one of its own fixed strings
+ * (which carry the HTTP status). Only the part before the description
+ * is logged: the description is text the auth service chose, and the
+ * debug valve must never become a way for it to reach a log.
+ */
+function endpointVerdict(message: string): string {
+  const description = message.indexOf(": ");
+  return description === -1 ? message : message.slice(0, description);
 }

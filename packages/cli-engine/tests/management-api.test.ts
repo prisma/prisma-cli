@@ -463,6 +463,39 @@ describe("a refresh that fails without an AuthError", () => {
     expect(cli.credentialManager?.state().sessions).toHaveLength(1);
   });
 
+  test("a structured error raised BY the rotation write surfaces as itself, not as the transient error", async () => {
+    scriptFetch((url) =>
+      url === TOKEN_ENDPOINT
+        ? jsonResponse(200, {
+            access_token: accessTokenFor("workspace-1", "rotated"),
+            refresh_token: "refresh-2",
+          })
+        : jsonResponse(401, { message: "unauthorized" }),
+    );
+    const runtime = makeRuntime({
+      credentialManager: fakeCredentialManager({
+        currentSession: async () => storedSession("workspace-1"),
+        tokenStorage: () => ({
+          getTokens: async () => ({
+            workspaceId: "workspace-1",
+            accessToken: accessTokenFor("workspace-1", "initial"),
+            refreshToken: "refresh-1",
+          }),
+          // Another process ended this session while the exchange was
+          // in flight, so the write refuses instead of resurrecting it.
+          setTokens: async () => {
+            throw credentialsRequiredError("session-ended");
+          },
+          clearTokens: async () => {},
+        }),
+      }),
+    });
+    const exitCode = await runEngine(callApi, runtime);
+    expect(exitCode).toBe(2);
+    expect(runtime.stdoutText()).toContain('"code":"CLI.CREDENTIALS_REQUIRED"');
+    expect(runtime.stdoutText()).toContain("has ended");
+  });
+
   test("a plain error from outside the refresh path still settles as a bug", async () => {
     scriptFetch(() => jsonResponse(200, {}));
     const runtime = makeRuntime({
@@ -508,8 +541,25 @@ describe("the engine's debug valve", () => {
       env: { PRISMA_NEXT_DEBUG: "1" },
     });
     expect(stderr).toContain("refresh attempted for session workspace-1");
-    expect(stderr).toContain("refresh failed: refreshTokenInvalid=true");
-    expect(stderr).toContain("refresh token already used");
+    expect(stderr).toContain(
+      "refresh failed: refreshTokenInvalid=true error=invalid_grant",
+    );
+    // The endpoint's own free text is deliberately not echoed.
+    expect(stderr).not.toContain("refresh token already used");
+  });
+
+  test("a non-OAuth refresh failure logs the SDK's verdict, which carries the status", async () => {
+    scriptFetch((url) =>
+      url === TOKEN_ENDPOINT
+        ? jsonResponse(503, { message: "boom" })
+        : jsonResponse(401, { message: "unauthorized" }),
+    );
+    const { stderr } = await cliWithDebug().run(["toy", "--json"], {
+      env: { PRISMA_NEXT_DEBUG: "1" },
+    });
+    expect(stderr).toContain(
+      "refresh failed: refreshTokenInvalid=false error=Token request failed with status 503",
+    );
   });
 
   test("a refresh that throws no AuthError is recorded by type alone", async () => {
@@ -591,6 +641,20 @@ describe("the environment-session static path", () => {
     });
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe("https://api.test.invalid/v1/workspaces");
+    expect(calls[0].authorization).toBe(`Bearer ${environmentToken}`);
+  });
+
+  test("the bearer is the trimmed token, matching the session composed from it", async () => {
+    const calls = scriptFetch(() => jsonResponse(200, { workspaces: [] }));
+    const cli = createTestCli({
+      commands: { toy: callApi },
+      environmentToken,
+      managementApiClientConfig: CLIENT_CONFIG,
+    });
+    const { exitCode } = await cli.run(["toy"], {
+      env: { PRISMA_SERVICE_TOKEN: `  ${environmentToken}\n` },
+    });
+    expect(exitCode).toBe(0);
     expect(calls[0].authorization).toBe(`Bearer ${environmentToken}`);
   });
 

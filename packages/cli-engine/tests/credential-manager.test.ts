@@ -608,4 +608,37 @@ describe("harness seed validation", () => {
       }),
     ).toThrow(/legacy `credentials` seed/);
   });
+
+  test("a rotation write onto an ended session refuses with the same structured error the real manager raises", async () => {
+    const toy = defineCommand({
+      help: { summary: "Does nothing" },
+      handler: async (_args, ctx) => {
+        return ok(ctx.present({ data: null }, { human: () => [] }));
+      },
+    });
+    const cli = createTestCli({
+      commands: { toy },
+      sessions: [
+        {
+          workspaceId: "workspace-1",
+          workspaceName: undefined,
+          credential: {
+            token: mintTestJwt({ workspace_id: "workspace-1" }),
+            refreshToken: "refresh-1",
+            expiresAt: undefined,
+          },
+        },
+      ],
+      currentWorkspaceId: "workspace-1",
+    });
+    const storage = cli.credentialManager?.tokenStorage("workspace-gone");
+
+    await expect(
+      storage?.setTokens({
+        workspaceId: "workspace-gone",
+        accessToken: mintTestJwt({ workspace_id: "workspace-gone" }),
+        refreshToken: "refresh-2",
+      }),
+    ).rejects.toMatchObject({ code: "CLI.CREDENTIALS_REQUIRED" });
+  });
 });

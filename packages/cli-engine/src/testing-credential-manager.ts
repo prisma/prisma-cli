@@ -211,9 +211,10 @@ export class TestCredentialManager implements CredentialManager {
       setTokens: async (tokens) => {
         const record = boundRecord();
         if (record === undefined) {
-          throw new Error(
-            "@prisma/cli-engine/testing: the session this rotation belongs to has ended — a refresh write must not resurrect it",
-          );
+          // The same structured error the real manager raises, so a
+          // test of "the session ended mid-rotation" exercises the
+          // production mapping rather than a harness-only shape.
+          throw credentialsRequiredError("session-ended");
         }
         const claimed = claimedWorkspaceId(tokens.accessToken);
         if (claimed !== undefined && claimed !== workspaceId) {

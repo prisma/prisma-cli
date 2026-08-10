@@ -136,7 +136,13 @@ describe("the state file", () => {
       vi.spyOn(nodeFs, "truncateSync"),
       vi.spyOn(nodeFs, "writeSync"),
       vi.spyOn(nodeFs, "unlinkSync"),
+      vi.spyOn(nodeFs, "renameSync"),
+      vi.spyOn(nodeFs, "rmSync"),
+      vi.spyOn(nodeFs, "openSync"),
     ];
+    // These two are the pair a real write goes through, so both carry
+    // a positive control below: a probe that cannot see a write proves
+    // nothing about reads.
     const renames = vi.spyOn(fsPromises, "rename");
     const opens = vi.spyOn(fsPromises, "open");
     try {
@@ -159,6 +165,7 @@ describe("the state file", () => {
 
       await manager.endAllSessions();
       expect(renames).toHaveBeenCalled();
+      expect(opens).toHaveBeenCalled();
     } finally {
       for (const spy of spies) {
         spy.mockRestore();
