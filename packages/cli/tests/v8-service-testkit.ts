@@ -4,6 +4,7 @@ import path from "node:path";
 import type { ManagementApiClient } from "@prisma/cli-engine";
 import { createTestCli, mintTestJwt } from "@prisma/cli-engine/testing";
 import type { AuthStateResult } from "../src/types/auth";
+import { buildLogsCommand } from "../src/v8/build/logs";
 import { serviceBuildCommand } from "../src/v8/service/build";
 import { serviceDeployCommand } from "../src/v8/service/deploy";
 import { serviceDomainAddCommand } from "../src/v8/service/domain-add";
@@ -12,6 +13,7 @@ import { serviceDomainRetryCommand } from "../src/v8/service/domain-retry";
 import { serviceDomainShowCommand } from "../src/v8/service/domain-show";
 import { serviceDomainWaitCommand } from "../src/v8/service/domain-wait";
 import { serviceListDeploysCommand } from "../src/v8/service/list-deploys";
+import { serviceLogsCommand } from "../src/v8/service/logs";
 import { serviceOpenCommand } from "../src/v8/service/open";
 import { servicePromoteCommand } from "../src/v8/service/promote";
 import { serviceRemoveCommand } from "../src/v8/service/remove";
@@ -115,13 +117,13 @@ export function fakeManagementClient(routes: Routes): ManagementApiClient {
       return Promise.resolve({
         data: undefined,
         error: result.error,
-        response: { status: result.status, headers: new Headers() },
+        response: { status: result.status, ok: false, headers: new Headers() },
       });
     }
     return Promise.resolve({
       data: result.data,
       error: undefined,
-      response: { status: 200, headers: new Headers() },
+      response: { status: 200, ok: true, headers: new Headers() },
     });
   };
   const client = {
@@ -272,6 +274,7 @@ export function releaseRoutes(overrides: Routes = {}): Routes {
 export const SERVICE_GROUPS = {
   service: { brief: "Manage services and deployments for a project" },
   "service domain": { brief: "Manage custom domains for a service" },
+  build: { brief: "Inspect builds created by a git push or Console" },
 };
 
 export const SERVICE_COMMANDS = {
@@ -281,6 +284,8 @@ export const SERVICE_COMMANDS = {
   "service open": serviceOpenCommand,
   "service list-deploys": serviceListDeploysCommand,
   "service show-deploy": serviceShowDeployCommand,
+  "service logs": serviceLogsCommand,
+  "build logs": buildLogsCommand,
   "service promote": servicePromoteCommand,
   "service rollback": serviceRollbackCommand,
   "service remove": serviceRemoveCommand,
@@ -297,6 +302,14 @@ export interface ServiceCliOptions {
   /** The browser opener behind ctx.openUrl; pass a spy to assert what
    *  a run opened. */
   openUrl?: (url: string) => Promise<void> | void;
+  /**
+   * Seeds the engine's manager-less `credentials` fallback instead of the
+   * credential manager, so ctx.getCredentials() resolves a raw token.
+   * ESCALATED: the log stream authenticates itself and needs that token,
+   * and the credential manager exposes none to a session command — see
+   * the divergence file. Only the log-stream tests use this.
+   */
+  rawTokenSeed?: boolean;
 }
 
 export interface ServiceCliHarness {
@@ -319,18 +332,20 @@ export async function makeServiceCli(
     groups: SERVICE_GROUPS,
     // The credential manager is the shipping path for needs.credentials;
     // an unauthenticated harness simply seeds no session.
-    ...(options.authenticated === false
-      ? {}
-      : {
-          credential: {
-            token: mintTestJwt({
-              sub: "usr_1",
-              workspace_id: WORKSPACE.id,
-            }),
-            refreshToken: undefined,
-            expiresAt: undefined,
-          },
-        }),
+    ...(options.rawTokenSeed
+      ? { credentials: { token: "tok_1" } }
+      : options.authenticated === false
+        ? {}
+        : {
+            credential: {
+              token: mintTestJwt({
+                sub: "usr_1",
+                workspace_id: WORKSPACE.id,
+              }),
+              refreshToken: undefined,
+              expiresAt: undefined,
+            },
+          }),
     managementApi: {
       client: fakeManagementClient(options.routes ?? readFlowRoutes()),
     },

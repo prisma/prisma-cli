@@ -7,6 +7,7 @@ import { authWhoamiCommand } from "./auth/whoami";
 import { authWorkspaceListCommand } from "./auth/workspace-list";
 import { authWorkspaceLogoutCommand } from "./auth/workspace-logout";
 import { authWorkspaceUseCommand } from "./auth/workspace-use";
+import { buildLogsCommand } from "./build/logs";
 import { serviceBuildCommand } from "./service/build";
 import { serviceDeployCommand } from "./service/deploy";
 import { serviceDomainAddCommand } from "./service/domain-add";
@@ -15,6 +16,7 @@ import { serviceDomainRetryCommand } from "./service/domain-retry";
 import { serviceDomainShowCommand } from "./service/domain-show";
 import { serviceDomainWaitCommand } from "./service/domain-wait";
 import { serviceListDeploysCommand } from "./service/list-deploys";
+import { serviceLogsCommand } from "./service/logs";
 import { serviceOpenCommand } from "./service/open";
 import { servicePromoteCommand } from "./service/promote";
 import { serviceRemoveCommand } from "./service/remove";
@@ -48,6 +50,7 @@ export function buildCli(): Cli {
           serviceOpen: serviceOpenCommand,
           serviceListDeploys: serviceListDeploysCommand,
           serviceShowDeploy: serviceShowDeployCommand,
+          serviceLogs: serviceLogsCommand,
           servicePromote: servicePromoteCommand,
           serviceRollback: serviceRollbackCommand,
           serviceRemove: serviceRemoveCommand,
@@ -64,6 +67,7 @@ export function buildCli(): Cli {
       "auth workspace": { brief: "Manage local workspace sessions" },
       service: { brief: "Manage services and deployments for a project" },
       "service domain": { brief: "Manage custom domains for a service" },
+      build: { brief: "Inspect builds created by a git push or Console" },
       telemetry: {
         brief: "Inspect and change anonymous CLI telemetry",
         description:
@@ -85,6 +89,7 @@ export function buildCli(): Cli {
       "service open": serviceOpenCommand,
       "service list-deploys": serviceListDeploysCommand,
       "service show-deploy": serviceShowDeployCommand,
+      "service logs": serviceLogsCommand,
       "service promote": servicePromoteCommand,
       "service rollback": serviceRollbackCommand,
       "service remove": serviceRemoveCommand,
@@ -93,6 +98,9 @@ export function buildCli(): Cli {
       "service domain remove": serviceDomainRemoveCommand,
       "service domain retry": serviceDomainRetryCommand,
       "service domain wait": serviceDomainWaitCommand,
+      // Platform builds are their own group; `service build` is the local
+      // build verb and shares nothing with it.
+      "build logs": buildLogsCommand,
       // Shell-owned consent surface (no command family).
       "telemetry status": telemetryStatusCommand,
       "telemetry enable": telemetryEnableCommand,

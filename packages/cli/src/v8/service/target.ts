@@ -58,7 +58,14 @@ export const PRISMA_SERVICE_ID_ENV_VAR = "PRISMA_SERVICE_ID";
 
 export type ServiceContext = Pick<
   CommandContext,
-  "api" | "env" | "cwd" | "signal" | "prompt" | "report" | "openUrl"
+  | "api"
+  | "env"
+  | "cwd"
+  | "signal"
+  | "prompt"
+  | "report"
+  | "openUrl"
+  | "getCredentials"
 >;
 
 export interface ResolvedServiceProjectContext {
@@ -564,6 +571,11 @@ export async function resolveServiceReadState(
     configTarget?: string;
     branchName?: string;
     commandName: string;
+    /** Resolve the project context without picking a service. Used by
+     *  `service logs --deployment <id>`, which identifies its target by a
+     *  globally unique id and must not prompt for a service it does not
+     *  need. */
+    skipSelection?: boolean;
   },
 ): Promise<ServiceReadState> {
   const compute = await resolveComputeManagementContext(
@@ -587,13 +599,15 @@ export async function resolveServiceReadState(
     projectId,
     target.branch.name,
   );
-  const selected = await resolveExistingServiceSelection(
-    ctx,
-    stateStore,
-    projectId,
-    services,
-    options.serviceName ?? compute.configServiceName,
-  );
+  const selected = options.skipSelection
+    ? null
+    : await resolveExistingServiceSelection(
+        ctx,
+        stateStore,
+        projectId,
+        services,
+        options.serviceName ?? compute.configServiceName,
+      );
   return { provider, stateStore, target, projectId, selected };
 }
 
