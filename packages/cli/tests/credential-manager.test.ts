@@ -25,16 +25,24 @@ function escapeForRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Releases every caller once `expected` of them are waiting; callers
- *  after that pass straight through. */
+/**
+ * Releases every caller once `expected` of them are waiting, and stays
+ * open from then on so later callers pass straight through. Latching
+ * matters: the waiter that loses the race below comes back for another
+ * look, and a barrier that reset would hold it there forever.
+ */
 function barrierFor(expected: number): () => Promise<void> {
   const waiting: (() => void)[] = [];
-  return () =>
-    new Promise<void>((resolve) => {
+  let open = false;
+  return async () => {
+    if (open) return;
+    await new Promise<void>((resolve) => {
       waiting.push(resolve);
       if (waiting.length < expected) return;
+      open = true;
       for (const release of waiting.splice(0, waiting.length)) release();
     });
+  };
 }
 
 const WORKSPACE_A = "wksp_a";
