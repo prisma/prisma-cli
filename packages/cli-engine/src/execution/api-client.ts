@@ -1,20 +1,19 @@
 import {
   authServiceError,
+  credentialRejectedError,
   credentialsRequiredError,
-  emptyServiceTokenError,
-  serviceTokenRejectedError,
 } from "../credential-errors";
-import type { CredentialManager, Session } from "../credential-manager";
+import type {
+  ActiveCredential,
+  CredentialManager,
+  StoredSessions,
+} from "../credential-manager";
 import type { ManagementApiClient, TokenStorage } from "../management-api";
 import { CliStructuredError } from "../protocol";
 import { type DebugLog, makeDebugLog } from "./debug";
 import type { Invocation } from "./engine";
 
 const SERVICE_TOKEN_ENV_VAR = "PRISMA_SERVICE_TOKEN";
-
-type ClientBinding =
-  | { readonly source: "stored"; readonly workspaceId: string }
-  | { readonly source: "environment" };
 
 /** What the last refresh attempt threw, if it threw. The mapping below
  *  identifies a failure as coming from the refresh path by finding this
@@ -23,30 +22,38 @@ interface RefreshProbe {
   failure: unknown;
 }
 
+/** What the client authenticates as, resolved when it is constructed.
+ *  The failure mapping asks this credential and its storage what
+ *  happened rather than remembering a binding of its own. */
+interface PinnedCredential {
+  readonly active: ActiveCredential;
+  readonly storage: TokenStorage;
+}
+
 /**
  * ctx.api: the ENGINE constructs and owns the management API client —
- * the pinned session's client, once per run (process pinning makes
- * the memoization correct). Nothing resolves until the first method
- * CALL, so a run that never issues a request never pays for — or
- * depends on — the SDK module load. A stored session gets the SDK's
- * refreshing path over the manager's TokenStorage view; an env
- * session gets the SDK's static-token path with its error mapping at
- * the call site. Every request failure passes through the engine-side
- * mapping below. The returned client is a Proxy whose method wrappers
- * await the lazy construction before applying the call — every client
- * method is async, so the deferral is invisible to callers.
+ * ONE client for the active credential, once per run (process pinning
+ * makes the memoization correct). Nothing resolves until the first
+ * method CALL, so a run that never issues a request never pays for —
+ * or depends on — the SDK module load. The client is always the SDK's
+ * refreshing one over the storage the manager hands out, whatever the
+ * credential's origin: a credential refreshes if it has a refresh
+ * token. Every request failure passes through the engine-side mapping
+ * below. The returned client is a Proxy whose method wrappers await
+ * the lazy construction before applying the call — every client method
+ * is async, so the deferral is invisible to callers.
  */
 export function buildManagementApiClient(
   invocation: Invocation,
 ): ManagementApiClient {
   const debug = makeDebugLog(invocation.runtime);
   const probe: RefreshProbe = { failure: undefined };
-  let binding: ClientBinding | undefined;
+  let pinned: PinnedCredential | undefined;
   let clientPromise: Promise<ManagementApiClient> | undefined;
   const resolveClient = (): Promise<ManagementApiClient> => {
     clientPromise ??= constructClient(invocation, debug, probe).then(
       (constructed) => {
-        binding = constructed.binding;
+        pinned = constructed.pinned;
         return constructed.client;
       },
     );
@@ -69,21 +76,13 @@ export function buildManagementApiClient(
               `@prisma/cli-engine: ctx.api.${property} is not a function`,
             );
           }
-          const result: unknown = await (Reflect.apply(
-            value,
-            client,
-            args,
-          ) as Promise<unknown>);
-          if (binding?.source === "environment" && responseWas401(result)) {
-            throw serviceTokenRejectedError({ envVar: SERVICE_TOKEN_ENV_VAR });
-          }
-          return result;
+          return await (Reflect.apply(value, client, args) as Promise<unknown>);
         } catch (cause) {
           throw await mapRequestFailure(
             invocation,
             debug,
             probe,
-            binding,
+            pinned,
             cause,
           );
         }
@@ -98,14 +97,14 @@ async function constructClient(
   probe: RefreshProbe,
 ): Promise<{
   readonly client: ManagementApiClient;
-  readonly binding: ClientBinding;
+  readonly pinned: PinnedCredential;
 }> {
   const manager = invocation.runtime.credentialManager;
   if (manager === undefined) {
     throw credentialsRequiredError();
   }
-  const session = await manager.currentSession();
-  if (session === null) {
+  const active = await manager.activeCredential();
+  if (active === null) {
     throw credentialsRequiredError();
   }
   const config = invocation.runtime.managementApiClientConfig;
@@ -114,62 +113,38 @@ async function constructClient(
       "@prisma/cli-engine: ctx.api requires Runtime.managementApiClientConfig when a credentialManager is wired",
     );
   }
-  if (session.source === "environment") {
-    const raw = invocation.runtime.env[SERVICE_TOKEN_ENV_VAR];
-    if (raw === undefined) {
-      throw credentialsRequiredError();
-    }
-    // Trimmed, exactly as the manager composes the session from it:
-    // the bearer on the wire and the session it belongs to must be
-    // built from the same value.
-    const token = raw.trim();
-    if (token === "") {
-      throw emptyServiceTokenError({ envVar: SERVICE_TOKEN_ENV_VAR });
-    }
-    const { createManagementApiClient } = await import(
-      "@prisma/management-api-sdk"
-    );
-    return {
-      client: createManagementApiClient({
-        baseUrl: config.apiBaseUrl,
-        token,
-      }),
-      binding: { source: "environment" },
-    };
-  }
+  const storage = observedTokenStorage(
+    await manager.activeCredentialStorage(),
+    active,
+    debug,
+    probe,
+  );
   const { createManagementApiSdk } = await import("@prisma/management-api-sdk");
   const sdk = createManagementApiSdk({
     clientId: config.clientId,
     redirectUri: config.redirectUri,
     apiBaseUrl: config.apiBaseUrl,
     authBaseUrl: config.authBaseUrl,
-    tokenStorage: observedTokenStorage(
-      manager.tokenStorage(session.workspaceId),
-      session.workspaceId,
-      debug,
-      probe,
-    ),
+    tokenStorage: storage,
   });
-  return {
-    client: sdk.client,
-    binding: { source: "stored", workspaceId: session.workspaceId },
-  };
+  return { client: sdk.client, pinned: { active, storage } };
 }
 
 /**
- * The manager's view, with the refresh path observed. The SDK enters
+ * The manager's storage, with the refresh path observed. The SDK enters
  * withRefreshLock only from its refresh routine, so it marks both the
  * debug valve's "refresh attempted" line and the boundary whose throws
  * count as refresh-path failures.
  */
 function observedTokenStorage(
   storage: TokenStorage,
-  workspaceId: string,
+  active: ActiveCredential,
   debug: DebugLog,
   probe: RefreshProbe,
 ): TokenStorage {
+  const label = active.workspaceId ?? "(no workspace)";
   const observedRefresh = async <T>(fn: () => Promise<T>): Promise<T> => {
-    debug(`refresh attempted for session ${workspaceId}`);
+    debug(`refresh attempted for session ${label}`);
     try {
       return await fn();
     } catch (failure) {
@@ -198,42 +173,30 @@ function observedTokenStorage(
   };
 }
 
-/** The static-token path has no error middleware, so a 401 arrives as
- *  a resolved openapi-fetch result; the call site inspects it. */
-function responseWas401(result: unknown): boolean {
-  if (typeof result !== "object" || result === null) {
-    return false;
-  }
-  const response = (result as { readonly response?: unknown }).response;
-  return (
-    typeof response === "object" &&
-    response !== null &&
-    (response as { readonly status?: unknown }).status === 401
-  );
-}
-
 /**
  * The engine-side request-failure mapping. A structured error raised
  * inside the pipeline (the SDK wraps non-SDK errors into
  * FetchError(cause), so the cause chain is walked for BOTH AuthError
  * and CLI structured errors) is rethrown unwrapped so it settles as
- * itself. An SDK AuthError is discriminated by STATE, never by
- * message parsing: refreshTokenInvalid === true (the SDK's definitive
+ * itself. An SDK AuthError is discriminated by STATE, never by message
+ * parsing: refreshTokenInvalid === true (the SDK's definitive
  * invalid_grant signal, already cleared by compare-and-clear) maps to
- * the expired CLI.CREDENTIALS_REQUIRED; any other AuthError triggers
- * a re-read of the manager's state for the workspace the client is
- * BOUND to — that session gone means the session-ended
- * CLI.CREDENTIALS_REQUIRED, otherwise the failure was the auth
- * service's and nothing was cleared. A failure that came out of the
- * refresh path without being an AuthError (the SDK throws a plain
- * Error when a rotated token will not decode) is transient too:
+ * the expired CLI.CREDENTIALS_REQUIRED; a refresh the SDK refused
+ * because the token set carries no refresh token maps to the
+ * credential-rejected error, since that credential could never have
+ * been renewed; any other AuthError triggers a re-read of the stored
+ * state for the credential's own workspace — that session gone means
+ * the session-ended CLI.CREDENTIALS_REQUIRED, otherwise the failure was
+ * the auth service's and nothing was cleared. A failure that came out
+ * of the refresh path without being an AuthError (the SDK throws a
+ * plain Error when a rotated token will not decode) is transient too:
  * nothing was cleared, and signing in again is not the fix.
  */
 async function mapRequestFailure(
   invocation: Invocation,
   debug: DebugLog,
   probe: RefreshProbe,
-  binding: ClientBinding | undefined,
+  pinned: PinnedCredential | undefined,
   cause: unknown,
 ): Promise<unknown> {
   // Before anything else: a CLI structured error raised inside the
@@ -268,27 +231,51 @@ async function mapRequestFailure(
     return credentialsRequiredError("expired");
   }
   const manager = invocation.runtime.credentialManager;
-  if (manager === undefined || binding?.source !== "stored") {
+  if (manager === undefined || pinned === undefined) {
     return authServiceError();
   }
-  return mapStoredSessionAuthFailure(manager, binding.workspaceId, cause);
+  if (cameFromRefresh && (await couldNeverHaveBeenRenewed(pinned.storage))) {
+    return credentialRejectedError(pinned.active.origin, SERVICE_TOKEN_ENV_VAR);
+  }
+  return mapAgainstStoredState(manager, pinned.active, cause);
 }
 
-async function mapStoredSessionAuthFailure(
+/**
+ * A 401 that could never have been renewed: the SDK refused to reach
+ * the token endpoint at all because the token set carries no refresh
+ * token. Read from the storage's own state — never from the SDK's
+ * message.
+ */
+async function couldNeverHaveBeenRenewed(
+  storage: TokenStorage,
+): Promise<boolean> {
+  try {
+    const tokens = await storage.getTokens();
+    return tokens !== null && !tokens.refreshToken;
+  } catch {
+    return false;
+  }
+}
+
+async function mapAgainstStoredState(
   manager: CredentialManager,
-  boundWorkspaceId: string,
+  active: ActiveCredential,
   cause: unknown,
 ): Promise<unknown> {
-  let sessions: readonly Session[];
+  const workspaceId = active.workspaceId;
+  if (workspaceId === undefined) {
+    return authServiceError();
+  }
+  let stored: StoredSessions;
   try {
-    sessions = await manager.sessions();
+    stored = await manager.sessions();
   } catch (stateCause) {
     return CliStructuredError.is(stateCause) ? stateCause : cause;
   }
-  const boundSessionGone = !sessions.some(
-    (session) => session.workspaceId === boundWorkspaceId,
+  const sessionGone = !stored.sessions.some(
+    (session) => session.workspaceId === workspaceId,
   );
-  if (boundSessionGone) {
+  if (sessionGone) {
     return credentialsRequiredError("session-ended");
   }
   return authServiceError();

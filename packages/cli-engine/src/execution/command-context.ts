@@ -1,5 +1,8 @@
-import type { CommandContext, Credentials } from "../context";
-import type { CredentialManager, Session } from "../credential-manager";
+import type { CommandContext } from "../context";
+import type {
+  ActiveCredential,
+  CredentialManager,
+} from "../credential-manager";
 import type { ManagementApiClient } from "../management-api";
 import {
   PRESENTED,
@@ -90,11 +93,9 @@ export function makeContext(
   const context: CommandContext<unknown, number> = {
     config,
     present: present as CommandContext<unknown, number>["present"],
-    session: (): Promise<Session | null> =>
-      invocation.runtime.credentialManager?.currentSession() ??
+    activeCredential: (): Promise<ActiveCredential | null> =>
+      invocation.runtime.credentialManager?.activeCredential() ??
       Promise.resolve(null),
-    getCredentials: (): Promise<Credentials | undefined> =>
-      invocation.runtime.getCredentials(),
     get api(): ManagementApiClient {
       api ??=
         invocation.hooks.managementApi?.client ??

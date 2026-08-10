@@ -1,25 +1,31 @@
 /**
- * ctx.api under design rev 5: the ENGINE constructs the pinned
- * session's client from the injected config — the SDK's refreshing
- * path over the manager's TokenStorage view for stored sessions, the
- * static-token path for env sessions — plus the engine-side
- * request-failure mapping (refresh-invalid → expired; other AuthError
- * → bound-workspace state re-read; cause-chain unwrapping). Requests
- * run against the real SDK over a scripted global fetch.
+ * ctx.api under design rev 6: the ENGINE constructs ONE client for the
+ * active credential from the injected config — always the SDK's
+ * refreshing path over the storage the manager hands out, whatever the
+ * credential's origin — plus the engine-side request-failure mapping
+ * (refresh-invalid → expired; a credential that could never be renewed
+ * → credential-rejected; other AuthError → stored-state re-read; cause-
+ * chain unwrapping). Requests run against the real SDK over a scripted
+ * global fetch.
  */
 
 import {
+  type ActiveCredential,
   type CredentialManager,
   credentialsRequiredError,
   defineCommand,
   type ManagementApiClient,
   type ManagementApiClientConfig,
   type Runtime,
-  type Session,
   type TokenStorage,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { createTestCli, mintTestJwt } from "@prisma/cli-engine/testing";
+import {
+  createTestCli,
+  type InMemoryCredentialManager,
+  mintTestJwt,
+  type SessionRecord,
+} from "@prisma/cli-engine/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { AnyCommand } from "../src/commands";
 import { buildEngine, type RunHooks } from "../src/execution/engine";
@@ -31,6 +37,7 @@ const CLIENT_CONFIG: ManagementApiClientConfig = {
   authBaseUrl: "https://auth.test.invalid",
 };
 const TOKEN_ENDPOINT = "https://auth.test.invalid/token";
+const WORKSPACES_ENDPOINT = "https://api.test.invalid/v1/workspaces";
 
 function unusedManagerMethod(name: string): () => never {
   return () => {
@@ -42,23 +49,32 @@ function fakeCredentialManager(
   overrides: Partial<CredentialManager>,
 ): CredentialManager {
   return {
-    currentSession: unusedManagerMethod("currentSession"),
+    activeCredential: unusedManagerMethod("activeCredential"),
     sessions: unusedManagerMethod("sessions"),
     createSession: unusedManagerMethod("createSession"),
-    useSession: unusedManagerMethod("useSession"),
+    selectSession: unusedManagerMethod("selectSession"),
     endSession: unusedManagerMethod("endSession"),
     endAllSessions: unusedManagerMethod("endAllSessions"),
-    tokenStorage: unusedManagerMethod("tokenStorage"),
+    activeCredentialStorage: unusedManagerMethod("activeCredentialStorage"),
     ...overrides,
   };
 }
 
-const storedSession = (workspaceId: string): Session => ({
+const storedCredential = (workspaceId: string): ActiveCredential => ({
   workspaceId,
   workspaceName: undefined,
   expiresAt: undefined,
-  source: "stored",
-  current: true,
+  identity: undefined,
+  origin: { source: "stored" },
+});
+
+const storedSessions = (...workspaceIds: readonly string[]) => ({
+  sessions: workspaceIds.map((workspaceId) => ({
+    workspaceId,
+    workspaceName: undefined,
+    expiresAt: undefined,
+  })),
+  selectedWorkspaceId: workspaceIds[0],
 });
 
 function makeRuntime(overrides?: {
@@ -93,7 +109,6 @@ function makeRuntime(overrides?: {
     config: { sections: {}, diagnostics: [] },
     credentialManager: overrides?.credentialManager,
     managementApiClientConfig: CLIENT_CONFIG,
-    getCredentials: async () => undefined,
     managementApi: { baseUrl: "https://test.invalid" },
     packageManager: "unknown",
     stderrText: () => stderrText,
@@ -164,11 +179,15 @@ const jsonResponse = (status: number, body: unknown): Response =>
 const accessTokenFor = (workspaceId: string, marker: string): string =>
   mintTestJwt({ sub: "user-1", workspace_id: workspaceId, token: marker });
 
-const sessionSeed = (workspaceId: string, refreshToken?: string) => ({
+const sessionSeed = (
+  workspaceId: string,
+  refreshToken?: string,
+  marker = "initial",
+): SessionRecord => ({
   workspaceId,
   workspaceName: undefined,
   credential: {
-    token: accessTokenFor(workspaceId, "initial"),
+    token: accessTokenFor(workspaceId, marker),
     refreshToken,
     expiresAt: undefined,
   },
@@ -228,9 +247,9 @@ describe("ctx.api construction", () => {
     });
   });
 
-  test("the client is constructed once per run over the pinned session's TokenStorage view; calls are proxied", async () => {
+  test("the client is constructed once per run over the active credential's storage; calls are proxied", async () => {
     const calls = scriptFetch(() => jsonResponse(200, { workspaces: [] }));
-    let tokenStorageResolutions = 0;
+    let storageResolutions = 0;
     const storage: TokenStorage = {
       getTokens: async () => ({
         workspaceId: "workspace-1",
@@ -241,10 +260,9 @@ describe("ctx.api construction", () => {
     };
     const runtime = makeRuntime({
       credentialManager: fakeCredentialManager({
-        currentSession: async () => storedSession("workspace-1"),
-        tokenStorage: (workspaceId) => {
-          expect(workspaceId).toBe("workspace-1");
-          tokenStorageResolutions += 1;
+        activeCredential: async () => storedCredential("workspace-1"),
+        activeCredentialStorage: async () => {
+          storageResolutions += 1;
           return storage;
         },
       }),
@@ -257,9 +275,9 @@ describe("ctx.api construction", () => {
       runtime,
     );
     expect(exitCode).toBe(0);
-    expect(tokenStorageResolutions).toBe(1);
+    expect(storageResolutions).toBe(1);
     expect(calls).toHaveLength(2);
-    expect(calls[0].url).toBe("https://api.test.invalid/v1/workspaces");
+    expect(calls[0].url).toBe(WORKSPACES_ENDPOINT);
     expect(calls[0].authorization).toBe(
       `Bearer ${accessTokenFor("workspace-1", "initial")}`,
     );
@@ -267,7 +285,7 @@ describe("ctx.api construction", () => {
 });
 
 describe("the stored-session refresh path", () => {
-  test("a 401 refreshes through the manager's TokenStorage view and retries; the rotated pair lands in the store", async () => {
+  test("a 401 refreshes through the manager's storage and retries; the rotated pair lands in the store", async () => {
     const rotatedAccessToken = accessTokenFor("workspace-1", "rotated");
     const calls = scriptFetch((url) => {
       if (url === TOKEN_ENDPOINT) {
@@ -289,20 +307,70 @@ describe("the stored-session refresh path", () => {
         }),
       },
       sessions: [sessionSeed("workspace-1", "refresh-1")],
-      currentWorkspaceId: "workspace-1",
+      selectedWorkspaceId: "workspace-1",
       managementApiClientConfig: CLIENT_CONFIG,
     });
     const { exitCode } = await cli.run(["toy"]);
     expect(exitCode).toBe(0);
     expect(seen).toMatchObject({ data: { workspaces: ["fresh"] } });
-    const state = cli.credentialManager?.state();
-    expect(state?.sessions).toMatchObject([
+    const state = cli.credentialManager.state();
+    expect(state.sessions).toMatchObject([
       {
         workspaceId: "workspace-1",
         credential: { token: rotatedAccessToken, refreshToken: "refresh-2" },
       },
     ]);
-    expect(state?.currentWorkspaceId).toBe("workspace-1");
+    expect(state.selectedWorkspaceId).toBe("workspace-1");
+  });
+
+  /** Design §11.10, test 5. */
+  test("another process rotated first: the storage re-read serves its newer pair and the retry succeeds without touching the token endpoint", async () => {
+    const rotatedByOtherProcess = accessTokenFor("workspace-1", "rotated-by-b");
+    let manager: InMemoryCredentialManager | undefined;
+    const calls = scriptFetch((url) => {
+      if (url === TOKEN_ENDPOINT) {
+        return jsonResponse(500, { message: "the exchange must not happen" });
+      }
+      if (
+        calls[calls.length - 1].authorization ===
+        `Bearer ${rotatedByOtherProcess}`
+      ) {
+        return jsonResponse(200, { workspaces: ["fresh"] });
+      }
+      // The other process rotated between this process's read and its
+      // request, so the 401 is against a pair the store has replaced.
+      manager?.overwriteStoredState({
+        sessions: [
+          {
+            workspaceId: "workspace-1",
+            workspaceName: undefined,
+            credential: {
+              token: rotatedByOtherProcess,
+              refreshToken: "refresh-2",
+              expiresAt: undefined,
+            },
+          },
+        ],
+      });
+      return jsonResponse(401, { message: "unauthorized" });
+    });
+    const cli = createTestCli({
+      commands: { toy: callApi },
+      sessions: [sessionSeed("workspace-1", "refresh-1")],
+      selectedWorkspaceId: "workspace-1",
+      managementApiClientConfig: CLIENT_CONFIG,
+    });
+    manager = cli.credentialManager;
+    const { exitCode } = await cli.run(["toy"]);
+    expect(exitCode).toBe(0);
+    expect(calls.map((call) => call.url)).toEqual([
+      WORKSPACES_ENDPOINT,
+      WORKSPACES_ENDPOINT,
+    ]);
+    expect(calls[1].authorization).toBe(`Bearer ${rotatedByOtherProcess}`);
+    expect(cli.credentialManager.state().sessions).toMatchObject([
+      { credential: { token: rotatedByOtherProcess } },
+    ]);
   });
 
   test("invalid_grant on refresh maps to CLI.CREDENTIALS_REQUIRED with the expiry wording; compare-and-clear ended the session", async () => {
@@ -314,7 +382,7 @@ describe("the stored-session refresh path", () => {
     const cli = createTestCli({
       commands: { toy: callApi },
       sessions: [sessionSeed("workspace-1", "refresh-1")],
-      currentWorkspaceId: "workspace-1",
+      selectedWorkspaceId: "workspace-1",
       managementApiClientConfig: CLIENT_CONFIG,
     });
     const { exitCode, json } = await cli.run(["toy", "--json"]);
@@ -329,13 +397,40 @@ describe("the stored-session refresh path", () => {
         },
       },
     });
-    expect(cli.credentialManager?.state()).toEqual({
+    expect(cli.credentialManager.state()).toEqual({
       sessions: [],
-      currentWorkspaceId: null,
+      selectedWorkspaceId: undefined,
     });
   });
 
-  test("a transient refresh failure with the bound session still stored maps to CLI.AUTH_SERVICE_ERROR; nothing cleared", async () => {
+  /** Design §11.10, test 4 — §7's migrated entries carry no refresh
+   *  token, and the SDK refuses the exchange rather than attempting it. */
+  test("a stored session with no refresh token is rejected with the sign-in-again wording, not the retry advice", async () => {
+    const calls = scriptFetch(() =>
+      jsonResponse(401, { message: "unauthorized" }),
+    );
+    const cli = createTestCli({
+      commands: { toy: callApi },
+      sessions: [sessionSeed("workspace-1")],
+      selectedWorkspaceId: "workspace-1",
+      managementApiClientConfig: CLIENT_CONFIG,
+    });
+    const { exitCode, json } = await cli.run(["toy", "--json"]);
+    expect(exitCode).toBe(2);
+    const result = json.find((frame) => frame.kind === "result");
+    expect(result).toMatchObject({
+      envelope: {
+        ok: false,
+        error: {
+          code: "CLI.CREDENTIALS_REQUIRED",
+          summary: "Your session has expired — sign in again.",
+        },
+      },
+    });
+    expect(calls.map((call) => call.url)).toEqual([WORKSPACES_ENDPOINT]);
+  });
+
+  test("a transient refresh failure with the credential's session still stored maps to CLI.AUTH_SERVICE_ERROR; nothing cleared", async () => {
     scriptFetch((url) =>
       url === TOKEN_ENDPOINT
         ? jsonResponse(500, { message: "boom" })
@@ -344,7 +439,7 @@ describe("the stored-session refresh path", () => {
     const cli = createTestCli({
       commands: { toy: callApi },
       sessions: [sessionSeed("workspace-1", "refresh-1")],
-      currentWorkspaceId: "workspace-1",
+      selectedWorkspaceId: "workspace-1",
       managementApiClientConfig: CLIENT_CONFIG,
     });
     const { exitCode, json } = await cli.run(["toy", "--json"]);
@@ -356,10 +451,10 @@ describe("the stored-session refresh path", () => {
         error: { code: "CLI.AUTH_SERVICE_ERROR" },
       },
     });
-    expect(cli.credentialManager?.state().sessions).toHaveLength(1);
+    expect(cli.credentialManager.state().sessions).toHaveLength(1);
   });
 
-  test("the failure mapping re-reads the workspace the client is BOUND to, not currentSession()", async () => {
+  test("the failure mapping re-reads the ACTIVE CREDENTIAL's workspace, not whatever is selected now", async () => {
     scriptFetch((url) =>
       url === TOKEN_ENDPOINT
         ? jsonResponse(500, { message: "boom" })
@@ -367,11 +462,11 @@ describe("the stored-session refresh path", () => {
     );
     const runtime = makeRuntime({
       credentialManager: fakeCredentialManager({
-        // The pin still reports workspace-1; the stored state only
-        // holds workspace-2 — the bound session is gone.
-        currentSession: async () => storedSession("workspace-1"),
-        sessions: async () => [storedSession("workspace-2")],
-        tokenStorage: () => ({
+        // The pinned credential is workspace-1; the stored state only
+        // holds workspace-2 — this process's session is gone.
+        activeCredential: async () => storedCredential("workspace-1"),
+        sessions: async () => storedSessions("workspace-2"),
+        activeCredentialStorage: async () => ({
           getTokens: async () => ({
             workspaceId: "workspace-1",
             accessToken: accessTokenFor("workspace-1", "initial"),
@@ -392,10 +487,10 @@ describe("the stored-session refresh path", () => {
     scriptFetch(() => jsonResponse(200, {}));
     const runtime = makeRuntime({
       credentialManager: fakeCredentialManager({
-        currentSession: async () => storedSession("workspace-1"),
-        tokenStorage: () => ({
+        activeCredential: async () => storedCredential("workspace-1"),
+        activeCredentialStorage: async () => ({
           getTokens: async () => {
-            throw credentialsRequiredError("sessions-held-none-current");
+            throw credentialsRequiredError("sessions-held-none-selected");
           },
           setTokens: async () => {},
           clearTokens: async () => {},
@@ -417,8 +512,8 @@ describe("the stored-session refresh path", () => {
     cyclic.cause = inner;
     const runtime = makeRuntime({
       credentialManager: fakeCredentialManager({
-        currentSession: async () => storedSession("workspace-1"),
-        tokenStorage: () => ({
+        activeCredential: async () => storedCredential("workspace-1"),
+        activeCredentialStorage: async () => ({
           getTokens: async () => {
             throw cyclic;
           },
@@ -451,7 +546,7 @@ describe("a refresh that fails without an AuthError", () => {
     const cli = createTestCli({
       commands: { toy: callApi },
       sessions: [sessionSeed("workspace-1", "refresh-1")],
-      currentWorkspaceId: "workspace-1",
+      selectedWorkspaceId: "workspace-1",
       managementApiClientConfig: CLIENT_CONFIG,
     });
     const { exitCode, json } = await cli.run(["toy", "--json"]);
@@ -460,7 +555,7 @@ describe("a refresh that fails without an AuthError", () => {
     expect(result).toMatchObject({
       envelope: { ok: false, error: { code: "CLI.AUTH_SERVICE_ERROR" } },
     });
-    expect(cli.credentialManager?.state().sessions).toHaveLength(1);
+    expect(cli.credentialManager.state().sessions).toHaveLength(1);
   });
 
   test("a structured error raised BY the rotation write surfaces as itself, not as the transient error", async () => {
@@ -474,8 +569,8 @@ describe("a refresh that fails without an AuthError", () => {
     );
     const runtime = makeRuntime({
       credentialManager: fakeCredentialManager({
-        currentSession: async () => storedSession("workspace-1"),
-        tokenStorage: () => ({
+        activeCredential: async () => storedCredential("workspace-1"),
+        activeCredentialStorage: async () => ({
           getTokens: async () => ({
             workspaceId: "workspace-1",
             accessToken: accessTokenFor("workspace-1", "initial"),
@@ -500,8 +595,8 @@ describe("a refresh that fails without an AuthError", () => {
     scriptFetch(() => jsonResponse(200, {}));
     const runtime = makeRuntime({
       credentialManager: fakeCredentialManager({
-        currentSession: async () => storedSession("workspace-1"),
-        tokenStorage: () => ({
+        activeCredential: async () => storedCredential("workspace-1"),
+        activeCredentialStorage: async () => ({
           getTokens: async () => {
             throw new Error("something unrelated broke");
           },
@@ -531,7 +626,7 @@ describe("the engine's debug valve", () => {
     createTestCli({
       commands: { toy: callApi },
       sessions: [sessionSeed("workspace-1", "SECRET-REFRESH-TOKEN")],
-      currentWorkspaceId: "workspace-1",
+      selectedWorkspaceId: "workspace-1",
       managementApiClientConfig: CLIENT_CONFIG,
     });
 
@@ -615,19 +710,21 @@ describe("the engine's debug valve", () => {
   });
 });
 
-describe("the environment-session static path", () => {
-  const environmentToken = mintTestJwt({
-    sub: "svc-1",
-    workspace_id: "workspace-env",
-  });
+describe("the environment credential", () => {
+  const environmentToken = accessTokenFor("workspace-env", "environment");
 
-  test("requests carry the env token; a 401 maps to AUTH.SERVICE_TOKEN_REJECTED without touching the token endpoint", async () => {
+  /** Design §11.10, test 1 — the path that actually runs today. */
+  test("with no refresh token: a 401 is the credential-rejected error naming the variable, and the token endpoint is never touched", async () => {
     const calls = scriptFetch(() =>
       jsonResponse(401, { message: "unauthorized" }),
     );
     const cli = createTestCli({
       commands: { toy: callApi },
-      environmentToken,
+      environmentCredential: {
+        token: environmentToken,
+        refreshToken: undefined,
+        expiresAt: undefined,
+      },
       managementApiClientConfig: CLIENT_CONFIG,
     });
     const { exitCode, json } = await cli.run(["toy", "--json"]);
@@ -636,30 +733,19 @@ describe("the environment-session static path", () => {
     expect(result).toMatchObject({
       envelope: {
         ok: false,
-        error: { code: "AUTH.SERVICE_TOKEN_REJECTED" },
+        error: {
+          code: "AUTH.SERVICE_TOKEN_REJECTED",
+          summary:
+            "The management API rejected the service token from PRISMA_SERVICE_TOKEN.",
+        },
       },
     });
-    expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe("https://api.test.invalid/v1/workspaces");
+    expect(calls.map((call) => call.url)).toEqual([WORKSPACES_ENDPOINT]);
     expect(calls[0].authorization).toBe(`Bearer ${environmentToken}`);
   });
 
-  test("the bearer is the trimmed token, matching the session composed from it", async () => {
-    const calls = scriptFetch(() => jsonResponse(200, { workspaces: [] }));
-    const cli = createTestCli({
-      commands: { toy: callApi },
-      environmentToken,
-      managementApiClientConfig: CLIENT_CONFIG,
-    });
-    const { exitCode } = await cli.run(["toy"], {
-      env: { PRISMA_SERVICE_TOKEN: `  ${environmentToken}\n` },
-    });
-    expect(exitCode).toBe(0);
-    expect(calls[0].authorization).toBe(`Bearer ${environmentToken}`);
-  });
-
-  test("a successful env-session request passes its data through", async () => {
-    scriptFetch(() => jsonResponse(200, { workspaces: ["env"] }));
+  test("a successful request passes its data through and carries the environment token", async () => {
+    const calls = scriptFetch(() => jsonResponse(200, { workspaces: ["env"] }));
     let seen: unknown;
     const cli = createTestCli({
       commands: {
@@ -667,11 +753,86 @@ describe("the environment-session static path", () => {
           seen = await ctx.api.GET("/v1/workspaces", {});
         }),
       },
-      environmentToken,
+      environmentCredential: {
+        token: environmentToken,
+        refreshToken: undefined,
+        expiresAt: undefined,
+      },
       managementApiClientConfig: CLIENT_CONFIG,
     });
     const { exitCode } = await cli.run(["toy"]);
     expect(exitCode).toBe(0);
     expect(seen).toMatchObject({ data: { workspaces: ["env"] } });
+    expect(calls[0].authorization).toBe(`Bearer ${environmentToken}`);
+  });
+
+  /** Design §11.10, test 2 — the uniform refresh path, over memory. */
+  test("with a refresh token: the rotation happens in memory, the store is untouched, and the next request in the same process carries the rotated token", async () => {
+    const rotatedAccessToken = accessTokenFor("workspace-env", "rotated");
+    const calls = scriptFetch((url) => {
+      if (url === TOKEN_ENDPOINT) {
+        return jsonResponse(200, {
+          access_token: rotatedAccessToken,
+          refresh_token: "env-refresh-2",
+        });
+      }
+      return calls[calls.length - 1].authorization ===
+        `Bearer ${rotatedAccessToken}`
+        ? jsonResponse(200, { workspaces: ["fresh"] })
+        : jsonResponse(401, { message: "unauthorized" });
+    });
+    const cli = createTestCli({
+      commands: {
+        toy: succeed(async (ctx) => {
+          await ctx.api.GET("/v1/workspaces", {});
+          await ctx.api.GET("/v1/workspaces", {});
+        }),
+      },
+      sessions: [sessionSeed("workspace-1", "refresh-1")],
+      selectedWorkspaceId: "workspace-1",
+      environmentCredential: {
+        token: environmentToken,
+        refreshToken: "env-refresh-1",
+        expiresAt: undefined,
+      },
+      managementApiClientConfig: CLIENT_CONFIG,
+    });
+    const before = cli.credentialManager.state();
+    const { exitCode } = await cli.run(["toy"]);
+    expect(exitCode).toBe(0);
+    expect(calls.map((call) => call.url)).toEqual([
+      WORKSPACES_ENDPOINT,
+      TOKEN_ENDPOINT,
+      WORKSPACES_ENDPOINT,
+      WORKSPACES_ENDPOINT,
+    ]);
+    expect(calls[3].authorization).toBe(`Bearer ${rotatedAccessToken}`);
+    expect(cli.credentialManager.state()).toEqual(before);
+  });
+
+  /** Design §11.10, test 3 — the memory-backed storage cannot reach the
+   *  stored session that happens to share its workspace. */
+  test("whose workspace matches a stored session: invalid_grant clears only its own memory, leaving the stored session intact", async () => {
+    scriptFetch((url) =>
+      url === TOKEN_ENDPOINT
+        ? jsonResponse(400, { error: "invalid_grant" })
+        : jsonResponse(401, { message: "unauthorized" }),
+    );
+    const cli = createTestCli({
+      commands: { toy: callApi },
+      sessions: [sessionSeed("workspace-shared", "refresh-1")],
+      selectedWorkspaceId: "workspace-shared",
+      environmentCredential: {
+        token: accessTokenFor("workspace-shared", "environment"),
+        refreshToken: "env-refresh-1",
+        expiresAt: undefined,
+      },
+      managementApiClientConfig: CLIENT_CONFIG,
+    });
+    const before = cli.credentialManager.state();
+    const { exitCode } = await cli.run(["toy", "--json"]);
+    expect(exitCode).toBe(2);
+    expect(cli.credentialManager.state().sessions).toHaveLength(1);
+    expect(cli.credentialManager.state()).toEqual(before);
   });
 });

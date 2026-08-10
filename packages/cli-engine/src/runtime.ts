@@ -1,4 +1,3 @@
-import type { Credentials } from "./context";
 import type { CredentialManager } from "./credential-manager";
 import type { ManagementApiClientConfig } from "./management-api";
 import type { Diagnostic } from "./protocol";
@@ -47,19 +46,18 @@ export interface Runtime {
    */
   readonly config: LoadedConfig;
   /**
-   * The credential manager the bin wires. The engine prefers it for
-   * the needs check, ctx.session, and ctx.api; optional only during
-   * the staged swap — getCredentials below is the fallback and is
-   * deleted with the swap's final stage.
+   * The credential manager the bin wires. It is the only source of
+   * the needs check, ctx.activeCredential, and ctx.api; absent means
+   * this host has no credentials at all, and every command that needs
+   * them fails as signed out.
    */
   readonly credentialManager?: CredentialManager;
   /**
    * SDK client construction config the bin injects beside the
    * manager; the engine builds ctx.api from it. Required whenever a
-   * credentialManager is wired; optional only during the staged swap.
+   * credentialManager is wired.
    */
   readonly managementApiClientConfig?: ManagementApiClientConfig;
-  readonly getCredentials: () => Promise<Credentials | undefined>;
   /**
    * Opens a URL in the user's browser, wired by the bin (the login
    * flow's opener). The engine calls it only for interactive sessions,

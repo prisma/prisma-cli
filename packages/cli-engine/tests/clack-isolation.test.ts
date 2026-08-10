@@ -117,7 +117,6 @@ describe("scripted and non-TTY paths are clack-free", () => {
       },
       onSignal: () => () => {},
       config: { sections: {}, diagnostics: [] },
-      getCredentials: async () => undefined,
       managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
     };

@@ -1,13 +1,8 @@
-import type { Session } from "./credential-manager";
+import type { ActiveCredential } from "./credential-manager";
 import type { EngineEvent } from "./events";
 import type { ManagementApiClient } from "./management-api";
 import type { Outcome, Presentations, PresentedResult } from "./presentation";
 import type { CliStructuredError, Result } from "./protocol";
-
-export interface Credentials {
-  /** Opaque to the engine; shape owned by the Cloud auth library. */
-  readonly token: string;
-}
 
 /** The handler context — the whole world arrives as one argument. */
 export interface CommandContext<
@@ -31,26 +26,19 @@ export interface CommandContext<
   ) => PresentedResult<T>;
 
   /**
-   * The session this process is acting as (the manager's
-   * currentSession() pin), or null when signed out. Read-only and
-   * local-only — safe to call anywhere; never touches the network.
-   * Throws the same structured errors the needs check raises for
-   * broken-but-not-signed-out states (sessions held, none current).
+   * What this process authenticates as (the manager's pinned
+   * credential), or null when signed out. Carries no token material.
+   * Read-only and local-only — safe to call anywhere; never touches
+   * the network. Throws the same structured errors the needs check
+   * raises for broken-but-not-signed-out states (sessions held, none
+   * selected).
    */
-  readonly session: () => Promise<Session | null>;
-
-  /**
-   * Management-API credentials, resolved at call time. Undefined when
-   * unauthenticated; commands with needs.credentials never see
-   * undefined — the engine fails them early. Staged for deletion:
-   * ctx.session and ctx.api are the surviving auth surfaces.
-   */
-  readonly getCredentials: () => Promise<Credentials | undefined>;
+  readonly activeCredential: () => Promise<ActiveCredential | null>;
 
   /**
    * The Management API client, constructed and owned by the ENGINE:
-   * the pinned session's client, built on first method call, once per
-   * run. A request made while signed out throws the structured
+   * the pinned credential's client, built on first method call, once
+   * per run. A request made while signed out throws the structured
    * CLI.CREDENTIALS_REQUIRED error (the same constructor the
    * needs.credentials check uses).
    */

@@ -11,8 +11,9 @@ export type ManagementApiClient = SdkClient;
 
 /**
  * The SDK's token-storage contract, re-exported for the same reason.
- * CredentialManager.tokenStorage returns one; the engine forwards it
- * into SDK client config and never calls its methods itself.
+ * CredentialManager.activeCredentialStorage returns one; the engine
+ * forwards it into SDK client config and reads it only to tell a
+ * credential that could never be renewed from one that could.
  */
 export type TokenStorage = SdkTokenStorage;
 

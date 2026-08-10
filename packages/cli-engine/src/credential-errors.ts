@@ -1,3 +1,4 @@
+import type { CredentialOrigin } from "./credential-manager";
 import { CliStructuredError, type NextAction } from "./protocol";
 
 const signInAction: NextAction = {
@@ -15,7 +16,7 @@ export type CredentialsRequiredReason =
   | "unauthenticated"
   | "expired"
   | "session-ended"
-  | "sessions-held-none-current";
+  | "sessions-held-none-selected";
 
 /**
  * The single constructor of CLI.CREDENTIALS_REQUIRED. Raised
@@ -47,7 +48,7 @@ export function credentialsRequiredError(
           nextActions: [useSessionAction, signInAction],
         },
       );
-    case "sessions-held-none-current":
+    case "sessions-held-none-selected":
       return new CliStructuredError(
         "CLI.CREDENTIALS_REQUIRED",
         "No workspace session is current.",
@@ -79,6 +80,20 @@ export function authServiceError(): CliStructuredError {
       ],
     },
   );
+}
+
+/**
+ * The credential in force was rejected and could never be renewed — it
+ * carries no refresh token. The ONE place wording differs by origin;
+ * nothing else compares against `origin.source`.
+ */
+export function credentialRejectedError(
+  origin: CredentialOrigin,
+  envVar: string,
+): CliStructuredError {
+  return origin.source === "environment"
+    ? serviceTokenRejectedError({ envVar })
+    : credentialsRequiredError("expired");
 }
 
 /**

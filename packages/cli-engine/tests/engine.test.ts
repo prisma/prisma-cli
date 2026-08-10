@@ -19,6 +19,7 @@ describe("main export", () => {
       "PRISMA_CONFIG_VERSION",
       "authServiceError",
       "createCli",
+      "credentialRejectedError",
       "credentialsRequiredError",
       "defineCommand",
       "defineCommandFamily",
