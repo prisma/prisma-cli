@@ -24,7 +24,6 @@ import {
   readBunPackageJson,
 } from "../../lib/app/bun-project";
 import {
-  COMPUTE_CONFIG_FILENAME,
   type ComputeDeployTarget,
   computeTargetAppDir,
   type LoadedComputeConfig,
@@ -55,7 +54,6 @@ import { CliError } from "../../shell/errors";
 import type { AuthWorkspace } from "../../types/auth";
 import type { ProjectResolution, ProjectSummary } from "../../types/project";
 import {
-  adviceAction,
   buildSettingsMigrationRequiredError,
   buildSettingsUnsupportedError,
   computeConfigInvalidError,
@@ -69,11 +67,10 @@ import {
   projectNameInvalidError,
   regionInvalidError,
   regionMismatchError,
-  runCommandAction,
   userCancelledError,
 } from "./errors";
 import type { ServiceContext } from "./target";
-import { PRISMA_PROJECT_ID_ENV_VAR, toBranchKind } from "./target";
+import { PRISMA_PROJECT_ID_ENV_VAR } from "./target";
 
 const COMPUTE_REGION_IDS = new Set<string>(COMPUTE_REGIONS);
 
@@ -912,10 +909,3 @@ export function customizationChoices(): Array<{
     label: framework.displayName,
   }));
 }
-
-export {
-  adviceAction,
-  COMPUTE_CONFIG_FILENAME,
-  runCommandAction,
-  toBranchKind,
-};
