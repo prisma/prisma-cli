@@ -75,7 +75,7 @@ Shape per conventions §4. Complete map:
 | `ENV_FILE_APPLY_FAILED` (1) | `PROJECT.ENV_FILE_APPLY_FAILED` |
 | `ENV_API_ERROR` or API-passthrough code X (1) | `PROJECT.ENV_API_ERROR` / `PROJECT.X` |
 | `PROJECT_API_ERROR` or passthrough (1) | `PROJECT.API_ERROR` / `PROJECT.X` |
-| legacy 401/403 → `AUTH_REQUIRED` (`apiCallError`) | not mapped: v8 handlers let SDK auth failures propagate through `ctx.api` → engine settles `CLI.CREDENTIALS_REQUIRED` (divergence entry) |
+| legacy 401/403 → `AUTH_REQUIRED` (`apiCallError`) | SDK-thrown auth failures propagate through `ctx.api` (engine settles `CLI.CREDENTIALS_REQUIRED`); an `AUTH_REQUIRED` CliError returned by `apiCallError` on a raw 401/403 body MAPS to a handler-built `CliStructuredError("CLI.CREDENTIALS_REQUIRED", …)` with the engine's exact summary/nextAction copy, exit 2 — never a rethrow (rethrow would settle `CLI.INTERNAL_ERROR` exit 1, wrong class). Single-source duplication of the engine copy is accepted (engine export is out of this slice's reach) and recorded as a divergence note (amended 2026-08-10 after D1 round 1). |
 | `FEATURE_UNAVAILABLE` (fixture-only) | unreachable in v8 — no entry |
 
 All copy/meta/fix/nextSteps per conventions §4 and the fact sheet's
@@ -360,8 +360,9 @@ preview-missing warning ports as a `warn` diagnostic with the legacy
 text. File mode: per-key precheck, sequential writes, mid-loop
 failure → `PROJECT.ENV_FILE_APPLY_FAILED` with meta
 `{file, failedKey, writtenKeys}` and the split-file nextSteps
-verbatim (as run-command actions; `#`-comment lines stay inside the
-labels). data: single `{ projectId, scope, variable }`; file
+verbatim as run-command actions — a `#`-comment line is NOT its own
+action: it becomes the `reason` of the immediately following
+run-command action (amended 2026-08-10 after D1 round 1). data: single `{ projectId, scope, variable }`; file
 `{ projectId, scope, variables, file: {path, count} }`. human:
 single — summary info `Setting a new environment variable.`, fields
 `project`, `scope`, `key`, `id`, `last updated`; file — summary info
@@ -435,6 +436,14 @@ identically, plus:
 6. NextAction `journey` fields dropped.
 7. Rename's "Project create requires a name" copy bug ports
    verbatim (recorded, not fixed).
+8. Warn-diagnostic code for the env preview-default warning is
+   `PROJECT.ENV_PREVIEW_DEFAULT_MISSING` (pinned 2026-08-10 after D1
+   round 1; operator ratifies via the divergence list).
+9. Legacy resolution/env functions taking the shell CommandContext
+   are called through the `v8/project/context.ts` runtime-slice
+   adapter (cwd/env/signal only, read-surface verified) — accepted
+   for this slice; the structural-signature cleanup belongs to S2d
+   when the legacy shell dies.
 
 ## 5. Legacy test deletion (this dispatch)
 
