@@ -15,16 +15,21 @@ The engine gave commands two auth surfaces — `ctx.api` (consume the
 management API) and `ctx.getCredentials` (read the resolved
 credential) — and no modeled surface for the thing auth commands
 operate ON: the credential machinery. The S2a auth-family port
-therefore imported around the engine and reproduced the legacy
-per-workspace credential registry, contradicting the settled premise
-(draft: "Workspace selection is session state, not a credential").
-Evidence trail (operator-reviewed): the 17-tool survey (no precedent
-for a same-identity workspace-scoped credential registry; the
-universal model is one identity + workspace as context), and
-control-plane validation (user OAuth tokens are workspace-bound at
-consent; refresh cannot re-scope; the platform's multi-workspace
-authorization primitive `ActorUser` exists and serves Console but not
-OAuth tokens today; the platform is not changing now).
+therefore imported around the engine. The defect being corrected is
+the ONTOLOGY and the PLUMBING, not credential plurality: the legacy
+model had no active-identity concept (per-workspace "sessions" with
+login/logout verbs — identity conflated with credential scope), a
+split-brain context sidecar, read paths that write, and commands
+bypassing the engine. Control-plane facts (operator-validated): user
+OAuth tokens are workspace-bound at consent; refresh cannot
+re-scope; the platform's multi-workspace primitive (`ActorUser`)
+serves Console but not OAuth tokens today, and the platform is not
+changing now — so multi-workspace access REQUIRES holding multiple
+workspace-bound credentials. The 17-tool survey found no precedent
+for exposing that plurality as per-workspace sessions; this design
+KNOWINGLY keeps the plurality (operator ruling: functionality is not
+dropped) while fixing the ontology: one identity, grants as
+authorization artifacts, scalar view to every consumer.
 
 ## 2. Ruled outcomes
 
@@ -84,8 +89,10 @@ interface Session {
 interface GrantSummary {              // user-centric listing; NEVER
   readonly workspace: Workspace;      // carries credential material
   readonly expiresAt: Date | undefined;
-  readonly active: boolean;
-}
+  readonly active: boolean;           // cursor position; when an env
+}                                     // token overrides, the LISTING
+                                      // command must say the env
+                                      // session is what's in force
 ```
 
 A GRANT is the pairing of a workspace with the credential the user's
@@ -125,9 +132,12 @@ interface CredentialManager {
 
   /** Login's write. Derives identity, workspace, and expiry from
    *  the credential's claims (single-argument by review ruling).
-   *  UPSERTS the grant for that workspace and makes it ACTIVE (your
-   *  newest consent is what you meant to use). Other grants are
-   *  untouched. */
+   *  Same identity as the held grants: UPSERTS the grant for that
+   *  workspace and makes it ACTIVE; other grants untouched.
+   *  DIFFERENT identity: all existing grants are discarded and
+   *  replaced by this one — the one-identity invariant is enforced
+   *  here, and the stored state carries the identity ONCE beside
+   *  the grants array so the invariant is structural. */
   beginSession(credential: Credential): Promise<Session>;
 
   /** Logout, whole-identity. Local (does not revoke server-side;
@@ -138,17 +148,28 @@ interface CredentialManager {
    *  error's why states whether stored grants also exist. */
   endSession(): Promise<void>;
 
-  /** The held grants, as summaries (no credential material). */
+  /** The held grants, as summaries (no credential material).
+   *  Local-only like session(): never touches the network. */
   grants(): Promise<readonly GrantSummary[]>;
 
-  /** Move the cursor to a HELD grant (id or case-insensitive name).
-   *  Structured error when no grant matches — the COMMAND catches it
-   *  and runs the consent flow, then beginSession (the manager never
-   *  interacts with the user). Ambiguity is a structured error. */
+  /** Records a human-readable workspace name learned by a command
+   *  (e.g. from the consent flow or an API response). The sanctioned
+   *  name-write path — beginSession stays single-argument and
+   *  claims-only. Explicit write; never a read-path side effect. */
+  rememberWorkspaceName(workspaceId: string, name: string): Promise<void>;
+
+  /** Move the cursor to a HELD grant. Ref resolution is the
+   *  manager's, against held grants only: exact id first, then
+   *  case-insensitive name; ambiguity is a structured error;
+   *  no match is a structured error the COMMAND catches to run the
+   *  consent flow + beginSession (the manager never interacts with
+   *  the user). Activating an expired grant succeeds locally (no
+   *  network check) and fails at first use — grants() exposes
+   *  expiresAt so commands can warn. */
   activateGrant(ref: string): Promise<Session>;
 
   /** Drop one grant. If it was active, the cursor clears (no
-   *  auto-promotion of another grant). Env sessions unaffected. */
+   *  auto-promotion of another grant). */
   forgetGrant(ref: string): Promise<void>;
 
   /** The consumer path. Resolves the credential that authorizes a
@@ -165,6 +186,26 @@ interface CredentialManager {
   apiClient(): Promise<ManagementApiClient>;
 }
 ```
+
+Mutation rule under an env override (uniform): while a
+`PRISMA_SERVICE_TOKEN` session is in force, EVERY manager mutation —
+`endSession`, `activateGrant`, `forgetGrant`, `beginSession` — refuses
+with the same structured error family (why names the env var and
+states whether stored grants exist underneath). Stored state is never
+mutated while the user cannot observe it as their session. Reads
+(`session()`, `grants()`, `credential()`) work normally.
+
+State effects, at a glance:
+
+| Verb | Effect |
+| --- | --- |
+| `beginSession` | upsert one grant (same identity) or replace all (new identity); set cursor |
+| `activateGrant` | cursor only |
+| `forgetGrant` | remove one grant; clear cursor if it was active |
+| `endSession` | remove ALL grants and cursor |
+
+(The single-workspace inverse of `beginSession` is `forgetGrant`,
+not `endSession`.)
 
 Boundaries (review-settled):
 - **Custody, not user interaction**: the manager never opens a
@@ -206,11 +247,15 @@ Boundaries (review-settled):
 - `ctx.getCredentials` is DELETED (no handler consumes it; the
   context ends with fewer auth surfaces than before: `api` +
   `session`).
-- Write access is a CAPABILITY, not a need (a declaration never
-  fails a run): `changesSession: true` on the command definition puts
-  `ctx.credentialManager` on the context. `auth login`/`auth logout`
-  only. The doc is honest that this is documentation + testability,
-  not enforcement.
+- Manager access is a CAPABILITY, not a need (a declaration never
+  fails a run): `managesCredentials: true` on the command definition
+  puts `ctx.credentialManager` on the context. Declared by exactly:
+  `auth login`, `auth logout`, `auth workspace list`, `auth
+  workspace use`, `auth workspace forget`. `whoami` uses
+  `ctx.session()` only. `grants()` lives ONLY on the manager — never
+  on the universal context (the plural view stays contained). The
+  doc is honest that this is documentation + testability, not
+  enforcement.
 - `ctx.api` becomes a thin lazy proxy over `manager.apiClient()`
   plus the engine-side error mapping (§6). The engine's placeholder
   OAuth constants and its SDK construction are deleted.
@@ -226,7 +271,7 @@ Boundaries (review-settled):
   one real-filesystem two-process lock test (spawn two node
   processes, both refresh, exactly one token exchange survives).
 - Draft amendments land with the implementation: §4 (context:
-  session, api; getCredentials gone), §6 (`changesSession`), §10
+  session, api; getCredentials gone), §6 (`managesCredentials`), §10
   (`Runtime.credentialManager`), §11 (harness seeding + fixtures).
 
 ## 6. Runtime flows (normative)
@@ -237,14 +282,24 @@ never loads. Bare `ctx.api` touch → the same error (single
 constructor) at request time. `whoami` → completes "signed out",
 exit 0. No auto-login (standing Q1 default).
 
+**Grants held, none active** (migration rows; forget-active): same
+code `CLI.CREDENTIALS_REQUIRED`, distinct why ("you hold grants but
+none is active") and nextAction `auth workspace use` alongside
+sign-in. Single-sourced like the other credential errors: session(),
+credential(), and the needs check produce it identically. NOTHING
+auto-promotes a grant.
+
 **Refresh.** Driven by the SDK on 401, with the manager as its
-`TokenStorage` — the storage view the SDK sees is the ACTIVE GRANT
-only, under the mandatory lock (§8). The manager MUST implement
-`withRefreshLock` (the SDK silently skips locking without it) and
-`clearTokensIfCurrent` scoped to compare-and-clear THE ACTIVE GRANT
-ENTRY (an invalid_grant on the active grant removes that grant and
-clears the cursor; other grants are untouched — the blast radius of
-a definitive refresh failure is one workspace, not the identity). Preemptive refresh is PROHIBITED (a second refresher outside
+`TokenStorage` — the storage view the SDK sees is bound to THE GRANT
+the client was constructed for (not the cursor: a concurrent
+`workspace use` must not redirect a refresh mid-flight), under the
+mandatory lock (§8). The manager MUST implement `withRefreshLock`
+(the SDK silently skips locking without it) and
+`clearTokensIfCurrent` scoped to that grant: remove it if and only
+if its STORED credential still exactly matches the one that failed;
+clear the cursor only if that grant is still the active one. Blast
+radius of a definitive refresh failure: one workspace, never the
+identity. Preemptive refresh is PROHIBITED (a second refresher outside
 the SDK's single-flight can spend a rotated refresh token and
 convert an optimization into a false sign-out). Per-request token
 resolution keeps long runs current.
@@ -287,19 +342,22 @@ refresh, JWTs, even truncated) NEVER appears in any log, error
 message, meta, or envelope — the session read model structurally
 cannot carry it.
 
-## 6a. Switching sessions
+## 6a. Switching grants
 
-No "switch between" — at most one session exists. Workspace, same
-identity: `prisma auth login` (re-consent; consent-only with a live
-auth-service browser session). To/from service token: set/unset the
-env var (wins at read time; also the scripts/parallel-terminal
-override). Different identity: log in as the other account. Known
-trade-off (accepted in the product-case ruling): simultaneous
-user-auth work in two workspaces in parallel terminals is not
-served; mitigations are a service token in one terminal, or the
-future ActorUser routing (after which switching never touches
-credentials and `auth workspace use` may return as a pure context
-command — additive).
+`auth workspace use <ref>` is the switch: it activates a held grant
+(cursor move, §4), or — when no grant matches — announces in one line
+that it is opening the browser to authorize that workspace, runs the
+consent flow, and hands the minted credential to `beginSession`. Run
+fully signed out, `use` is effectively a full login and announces
+itself as such. `auth login` is for signing in (first grant) or
+changing identity. To/from a service token: set/unset the env var
+(wins at read time; also the scripts/parallel-terminal override).
+Known trade-off (accepted): the ACTIVE cursor is one shared piece of
+state on disk, so two terminals share it; simultaneous work against
+two workspaces uses a service token in one terminal. A per-process
+workspace override selecting among held grants without moving the
+cursor is a recognized future affordance — explicitly deferred, not
+designed here.
 
 ## 7. Migration from the legacy store (R4)
 
@@ -318,10 +376,16 @@ mutated only by `beginSession`, `endSession`, and refresh.
 The migration read writes nothing; the adopted view is materialized
 into the NEW single-file format only on the first mutation
 (beginSession / activateGrant / forgetGrant / endSession / refresh
-rotation). Until then the legacy files stay untouched, so a
-still-installed legacy CLI keeps working. `endSession` clears
-everything including legacy files. New writes use mode 0600 and
-tighten looser existing permissions on first write.
+rotation), and materialization writes the FULL adopted set, not only
+the mutated grant. Once the new file exists, the legacy files are
+ignored entirely (a legacy CLI writing after materialization is
+invisible to v8 — accepted). Until then the legacy files stay
+untouched, so a still-installed legacy CLI keeps working.
+`endSession` clears everything including legacy files. New writes
+use mode 0600 and tighten looser existing permissions on first
+write. Mixed-identity legacy entries: adoption applies the
+one-identity rule — see the beginSession invariant; the PE delta
+review's rule is folded in §7 when it lands.
 
 ## 8. Locking and atomicity contract
 
@@ -362,7 +426,7 @@ tighten looser existing permissions on first write.
 ## 9. Change surface on PR #130 (checklist)
 
 Engine (`packages/cli-engine`): Runtime staged swap (§5);
-`ctx.session`; delete `ctx.getCredentials`; `changesSession`
+`ctx.session`; delete `ctx.getCredentials`; `managesCredentials`
 capability; api-client.ts reduced to lazy proxy + §6 error mapping
 (delete SDK construction + placeholder constants); draft amendments
 (§4/§6/§10/§11); harness seeding + fixture surface; type-tests.
@@ -387,17 +451,18 @@ supplies the manager. The legacy operations in `src/auth` still
 serve the legacy shell until S2d.
 
 Docs: rewrite (not append) the auth sections of
-`assets/s2/parity-divergences.md` (dropped subgroup; whoami json
-shape change — the legacy `provider` field has no successor;
-orphan-reaping logout; error-code notes); amend
-`specs/s2a-foundations.md` §3/§4/acceptance (three commands, manager
-exports, erratum note); S2 overview auth rows.
+`assets/s2/parity-divergences.md` (subgroup reworked and renamed —
+`workspace logout` → `workspace forget` is itself a divergence;
+whoami json shape change — the legacy `provider` field has no
+successor, held-grant count added; orphan-reaping logout; error-code
+notes); amend `specs/s2a-foundations.md` §3/§4/acceptance (six
+commands, manager exports, erratum note); S2 overview auth rows.
 
 ## 10. Review disposition record
 
 Rev 2: both reviews accept-with-changes; all recommendations adopted
 (operator, 2026-08-10). Open ends resolved: begin/end verbs kept;
-`ctx.credentialManager` kept as the context key with `changesSession`
+`ctx.credentialManager` kept as the context key with `managesCredentials`
 as the declaration; `session()` on every context (local-only);
 identity carries claim fields only; `beginSession(credential)`
 single-argument; locking per §8. Naming: provenance field `origin`;
