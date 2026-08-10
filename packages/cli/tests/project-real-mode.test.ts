@@ -257,7 +257,9 @@ function expectSourceRepositoryPost(post: ReturnType<typeof vi.fn>): void {
 describe("real project mode", () => {
   it("uses the real API path for project list and sorts by name then id", async () => {
     const readAuthState = mockAuthState();
-    const authenticatedManagementApiClient = vi.fn().mockResolvedValue(mockClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(mockClient());
 
     vi.doMock("../src/auth", async (importOriginal) => ({
       ...(await importOriginal<typeof import("../src/auth")>()),

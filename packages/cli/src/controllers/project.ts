@@ -11,9 +11,9 @@ import {
   readGitOriginRemote,
 } from "../adapters/git";
 import {
+  authenticatedManagementApiClient,
   FileTokenStorage,
   RecipientSessionInvalidError,
-  authenticatedManagementApiClient,
   resolveRecipientWorkspaceSession,
   SERVICE_TOKEN_ENV_VAR,
   WorkspaceSelectionError,

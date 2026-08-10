@@ -18,10 +18,10 @@ import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { matchError, Result } from "better-result";
 import open from "open";
 import {
+  authenticatedManagementApiClient,
   FileTokenStorage,
   getApiBaseUrl,
   readAuthState,
-  authenticatedManagementApiClient,
   SERVICE_TOKEN_ENV_VAR,
 } from "../auth";
 import {

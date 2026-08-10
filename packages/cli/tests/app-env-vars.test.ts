@@ -285,7 +285,9 @@ describe("app env vars", () => {
   });
 
   it("project env list requires explicit or durable Project binding", async () => {
-    const authenticatedManagementApiClient = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
 
     vi.doMock("../src/auth/guard", () => ({
       authenticatedManagementApiClient,
@@ -472,7 +474,9 @@ describe("app env vars", () => {
   });
 
   it("passes env vars to provider deploy without surfacing values", async () => {
-    const authenticatedManagementApiClient = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",

@@ -156,7 +156,9 @@ describe("project controller", () => {
   });
 
   it("creates a project and writes the local pin", async () => {
-    const authenticatedManagementApiClient = vi.fn().mockResolvedValue({ token: "token" });
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue({ token: "token" });
     const createProject = vi.fn().mockResolvedValue({
       id: "proj_new",
       name: "New Dashboard",
@@ -226,7 +228,9 @@ describe("project controller", () => {
   });
 
   it("passes region to createProject when --region is provided", async () => {
-    const authenticatedManagementApiClient = vi.fn().mockResolvedValue({ token: "token" });
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue({ token: "token" });
     const createProject = vi.fn().mockResolvedValue({
       id: "proj_new",
       name: "New Dashboard",
@@ -375,7 +379,9 @@ describe("project controller", () => {
   });
 
   it("returns PROJECT_CREATE_FAILED when project creation fails", async () => {
-    const authenticatedManagementApiClient = vi.fn().mockResolvedValue({ token: "token" });
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue({ token: "token" });
     const createProject = vi
       .fn()
       .mockRejectedValue(new Error("Internal Server Error (HTTP 503)"));

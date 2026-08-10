@@ -416,7 +416,9 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
-    vi.doMock("../src/auth/guard", () => ({ authenticatedManagementApiClient }));
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
+    }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
@@ -449,7 +451,9 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(vi.fn()),
     }));
-    vi.doMock("../src/auth/guard", () => ({ authenticatedManagementApiClient }));
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
+    }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
@@ -482,7 +486,9 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(vi.fn()),
     }));
-    vi.doMock("../src/auth/guard", () => ({ authenticatedManagementApiClient }));
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
+    }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
@@ -510,7 +516,9 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(vi.fn()),
     }));
-    vi.doMock("../src/auth/guard", () => ({ authenticatedManagementApiClient }));
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
+    }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
@@ -545,7 +553,9 @@ describe("readAuthState", () => {
         getTokens: vi.fn(),
       })),
     }));
-    vi.doMock("../src/auth/guard", () => ({ authenticatedManagementApiClient }));
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
+    }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
@@ -578,7 +588,9 @@ describe("readAuthState", () => {
         getTokens: vi.fn(),
       })),
     }));
-    vi.doMock("../src/auth/guard", () => ({ authenticatedManagementApiClient }));
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
+    }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
