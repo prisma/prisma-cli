@@ -2340,32 +2340,39 @@ describe("prisma-v8 project remove", () => {
     expect(existsSync(path.join(cwd, ".prisma", "local.json"))).toBe(false);
   });
 
-  it("warns when the pin it should clear cannot be deleted", async () => {
-    const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
-    await chmod(path.join(cwd, ".prisma"), 0o555);
-    try {
-      const result = await makeCli(fakeClient()).run(
-        ["project", "remove", "proj_1", "--confirm", "proj_1"],
-        { cwd },
-      );
+  // Provoking a failed delete needs a directory whose permissions stop it,
+  // which Windows does not have: chmod there sets a read-only attribute on
+  // files and leaves directory entries removable. The behaviour under test
+  // is platform-independent, only the way of provoking it is not.
+  it.skipIf(process.platform === "win32")(
+    "warns when the pin it should clear cannot be deleted",
+    async () => {
+      const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
+      await chmod(path.join(cwd, ".prisma"), 0o555);
+      try {
+        const result = await makeCli(fakeClient()).run(
+          ["project", "remove", "proj_1", "--confirm", "proj_1"],
+          { cwd },
+        );
 
-      expect(result.exitCode).toBe(0);
-      expect(result.presented?.data).toMatchObject({
-        localPin: { cleared: false },
-      });
-      expect(result.presented?.diagnostics).toEqual([
-        {
-          code: "PROJECT.LOCAL_STATE_WRITE_FAILED",
-          severity: "warn",
-          summary:
-            "The local pin .prisma/local.json points at the removed project but could not be deleted.",
-          nextActions: [],
-        },
-      ]);
-    } finally {
-      await chmod(path.join(cwd, ".prisma"), 0o755);
-    }
-  });
+        expect(result.exitCode).toBe(0);
+        expect(result.presented?.data).toMatchObject({
+          localPin: { cleared: false },
+        });
+        expect(result.presented?.diagnostics).toEqual([
+          {
+            code: "PROJECT.LOCAL_STATE_WRITE_FAILED",
+            severity: "warn",
+            summary:
+              "The local pin .prisma/local.json points at the removed project but could not be deleted.",
+            nextActions: [],
+          },
+        ]);
+      } finally {
+        await chmod(path.join(cwd, ".prisma"), 0o755);
+      }
+    },
+  );
 
   it("refuses to remove without consent in a non-interactive run", async () => {
     const result = await makeCli(fakeClient()).run(
