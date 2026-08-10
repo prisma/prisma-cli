@@ -250,11 +250,18 @@ Common: `needs: { credentials: true }`; data = legacy result minus
      `findRepositoryInInstallations`; on miss,
      `createGitHubInstallIntent` → `ctx.report({ kind: "endpoint",
      name: "github-install", url: installUrl })`; browser open +
-     interactivity per OPERATOR DECISION 3 (pinned default: the
-     re-homed operation function keeps the legacy
-     TTY/CI/browser-open detection internally, the S2a
-     `performLogin` precedent; the v8 handler passes no process
-     globals). Non-interactive: immediate terminal error exactly as
+     wait run only when interactive, decided by the ENGINE-SUPPLIED
+     interactivity fact (OPERATOR DECISION 3, ruled 2026-08-10:
+     process-global TTY/CI detection inside ported code is
+     FORBIDDEN; the S2a `performLogin` internal-detection pattern is
+     not a precedent to extend). The v8 handler reads
+     `ctx.interactive: boolean` — a new engine context field
+     mirroring the engine's existing interactivity resolution (TTY
+     stdin outside CI, overridden by
+     `--interactive`/`--no-interactive`) — and passes it into the
+     re-homed operation function as a plain parameter. This requires
+     the engine amendment below; D3's git dispatch BLOCKS until it
+     lands. Non-interactive: immediate terminal error exactly as
      legacy (`GIT.REPO_NOT_ACCESSIBLE` when
      inspectableInstallationCount > 0, else
      `GIT.REPO_INSTALLATION_REQUIRED`; meta
@@ -307,6 +314,19 @@ Common: `needs: { credentials: true }`; data = legacy result minus
   automation is no longer active for this project."]`.
 - stdout none; json raw; next none.
 - Tests: success; not-connected; API error; json; unauth.
+
+### 3.8a Required engine amendment (out of this slice's hands)
+
+`CommandContext` gains `readonly interactive: boolean`, resolved by
+the engine from the same inputs that drive prompt rendering (TTY
+stdin, CI, `--interactive`/`--no-interactive`; format never decides
+interactivity). Draft amendment §4; harness: `createTestCli`'s
+existing `isTty`/`env` inputs drive it, no new spec field. This
+slice must NOT touch `packages/cli-engine/**` (handover boundary),
+so the amendment lands via the engine-owning stream on
+`s2a-foundations` (or an operator-authorized exception); the git
+dispatch waits for it via merge-down. Bucket and branch commands do
+not depend on it.
 
 ## 4. Divergence entries this dispatch adds
 
