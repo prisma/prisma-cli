@@ -227,17 +227,38 @@ async function mapRequestFailure(
       )} error=${endpointVerdict(authError.message)}`,
     );
   }
-  if (authError.refreshTokenInvalid === true) {
-    return credentialsRequiredError("expired");
-  }
   const manager = invocation.runtime.credentialManager;
   if (manager === undefined || pinned === undefined) {
-    return authServiceError();
+    return authError.refreshTokenInvalid === true
+      ? credentialsRequiredError("expired")
+      : authServiceError();
+  }
+  // "Expired" and "ended" are both statements about a stored session,
+  // so neither can be true of a credential that has no home record.
+  // Today the uniform refresh path cannot reach here with one — an
+  // environment credential carries no refresh token — but §11.2 keeps
+  // that path deliberately, so the discrimination travels with it.
+  const homeRecord = hasHomeRecord(pinned.active);
+  if (authError.refreshTokenInvalid === true) {
+    return homeRecord
+      ? credentialsRequiredError("expired")
+      : credentialRejectedError(pinned.active.origin, SERVICE_TOKEN_ENV_VAR);
   }
   if (cameFromRefresh && (await couldNeverHaveBeenRenewed(pinned.storage))) {
     return credentialRejectedError(pinned.active.origin, SERVICE_TOKEN_ENV_VAR);
   }
-  return mapAgainstStoredState(manager, pinned.active, cause);
+  // Everything left is the auth service failing transiently. Only a
+  // stored session can additionally have been ended underneath us.
+  return homeRecord
+    ? mapAgainstStoredState(manager, pinned.active, cause)
+    : authServiceError();
+}
+
+/** Whether this credential is backed by a stored session. The origin
+ *  is the only thing that answers it, which is why the credential-
+ *  rejected error is allowed to read it (§11.1). */
+function hasHomeRecord(active: ActiveCredential): boolean {
+  return active.origin.source === "stored";
 }
 
 /**

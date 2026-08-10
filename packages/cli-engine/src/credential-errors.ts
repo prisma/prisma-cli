@@ -20,8 +20,8 @@ export type CredentialsRequiredReason =
 
 /**
  * The single constructor of CLI.CREDENTIALS_REQUIRED. Raised
- * identically by the needs check, ctx.session, and the engine's
- * request path.
+ * identically by the needs check, ctx.activeCredential, and the
+ * engine's request path.
  */
 export function credentialsRequiredError(
   reason: CredentialsRequiredReason = "unauthenticated",
@@ -123,8 +123,8 @@ export function credentialWorkspaceMismatchError(
 
 /**
  * The env var that supplies a session is set to a blank value. The one
- * structured error for it, raised identically by currentSession(), the
- * needs check, and the engine's request path.
+ * structured error for it, raised identically by activeCredential(),
+ * the needs check, and the engine's request path.
  */
 export function emptyServiceTokenError(spec: {
   readonly envVar: string;

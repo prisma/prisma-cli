@@ -68,18 +68,33 @@ async function fetchedIdentity(
   }
 }
 
-/** `/v1/me` wins field by field where it disagrees with the claims;
- *  the claims are the offline fallback. */
+/**
+ * `/v1/me` wins field by field where it disagrees with the claims, and
+ * the claims are the offline fallback — but only while both describe
+ * the same person. The two are read at different moments, so another
+ * process replacing the session in between can leave the claims
+ * describing one user and the lookup another; filling a gap in one from
+ * the other would then invent a person who does not exist. When the two
+ * name different users, the lookup is taken whole.
+ */
 function mergedIdentity(
   claimed: CredentialIdentity | undefined,
   fetched: CredentialIdentity | undefined,
 ): CredentialIdentity | null {
-  const userId = fetched?.userId ?? claimed?.userId;
-  const email = fetched?.email ?? claimed?.email;
-  const name = fetched?.name ?? claimed?.name;
-  return userId === undefined && email === undefined && name === undefined
-    ? null
-    : { userId, email, name };
+  if (fetched === undefined) return claimed ?? null;
+  if (claimed === undefined) return fetched;
+
+  const samePerson =
+    fetched.userId === undefined ||
+    claimed.userId === undefined ||
+    fetched.userId === claimed.userId;
+  if (!samePerson) return fetched;
+
+  return {
+    userId: fetched.userId ?? claimed.userId,
+    email: fetched.email ?? claimed.email,
+    name: fetched.name ?? claimed.name,
+  };
 }
 
 function presentationsFor(spec: {

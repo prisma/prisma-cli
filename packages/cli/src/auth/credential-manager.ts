@@ -108,6 +108,10 @@ export class FileCredentialManager implements CredentialManager {
   readonly #debug: DebugLog;
   readonly #fetchWorkspaceName: FetchWorkspaceName | undefined;
   #pin: Pin = { kind: "unresolved" };
+  /** Built for one pinned credential. Every mutation that moves the
+   *  pin discards it, so a command that mutates and then reaches for
+   *  ctx.api cannot be handed storage for the credential it used to be
+   *  acting as. */
   #activeStorage: TokenStorage | undefined;
   #refreshLock: Promise<unknown> = Promise.resolve();
 
@@ -190,7 +194,7 @@ export class FileCredentialManager implements CredentialManager {
     });
 
     if (!environmentInForce) {
-      this.#pin = { kind: "session", workspaceId };
+      this.#repin({ kind: "session", workspaceId });
     }
 
     const name = await this.#lookUpWorkspaceName(credential, workspaceId);
@@ -224,7 +228,7 @@ export class FileCredentialManager implements CredentialManager {
       return { state: next, result: toSession(record) };
     });
     if (!environmentInForce) {
-      this.#pin = { kind: "session", workspaceId };
+      this.#repin({ kind: "session", workspaceId });
     }
     return selected;
   }
@@ -241,7 +245,7 @@ export class FileCredentialManager implements CredentialManager {
     );
 
     if (this.#pin.kind === "session" && this.#pin.workspaceId === workspaceId) {
-      this.#pin = { kind: "none" };
+      this.#repin({ kind: "none" });
     }
   }
 
@@ -256,7 +260,7 @@ export class FileCredentialManager implements CredentialManager {
     await this.#reapLegacyContextFile();
     await this.#reapOrphanedWrites();
     if (!environmentInForce) {
-      this.#pin = { kind: "none" };
+      this.#repin({ kind: "none" });
     }
   }
 
@@ -409,6 +413,13 @@ export class FileCredentialManager implements CredentialManager {
     return pin;
   }
 
+  /** Moves the pin after a mutation, discarding storage built for the
+   *  credential this process was acting as before. */
+  #repin(pin: ResolvedPin): void {
+    this.#pin = pin;
+    this.#activeStorage = undefined;
+  }
+
   #environmentToken(): string | undefined {
     return environmentServiceToken(this.#env);
   }
@@ -424,8 +435,12 @@ export class FileCredentialManager implements CredentialManager {
   /** A blank env token is an error state everywhere the environment
    *  credential would be consulted, including the mutations that no
    *  longer care whether a valid one is set. */
+  /** A blank PRISMA_SERVICE_TOKEN is an error state everywhere the
+   *  environment credential would be consulted, including the two
+   *  mutations that do not otherwise read it. Reading is what raises;
+   *  the value is deliberately unused. */
   #refuseBlankEnvironmentToken(): void {
-    this.#environmentToken();
+    void this.#environmentToken();
   }
 
   /** endAllSessions clears everything, including the legacy context

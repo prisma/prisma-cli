@@ -228,6 +228,33 @@ describe("prisma-v8 auth whoami", () => {
     expect(json.stdout).not.toContain("workspace:ws_svc");
   });
 
+  /** The claims and the lookup are read at different moments, so a
+   *  session replaced in between can have them describing two different
+   *  people. Filling a gap in one from the other would report a user
+   *  who does not exist. */
+  it("does not blend two identities when the lookup names a different user", async () => {
+    const differentUser = {
+      GET: async () => ({
+        data: { data: { user: { id: "usr_999", email: null, name: null } } },
+        response: { status: 200 },
+      }),
+    } as unknown as ManagementApiClient;
+    const result = await makeCli({
+      sessions: [SESSION],
+      selectedWorkspaceId: "ws_123",
+      client: differentUser,
+    }).run(["auth", "whoami", "--json"]);
+
+    const frame = result.json[0];
+    if (frame.kind !== "result") {
+      throw new Error("expected a result frame");
+    }
+    expect(frame.envelope).toMatchObject({
+      ok: true,
+      result: { user: { id: "usr_999", email: null, name: null } },
+    });
+  });
+
   it("falls back to the stored credential's own claims when /v1/me is unreachable", async () => {
     const result = await makeCli({
       sessions: [SESSION],
