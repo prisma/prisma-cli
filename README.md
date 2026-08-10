@@ -144,22 +144,23 @@ inside an example only when you want to run manual end-to-end checks.
 
 ## Publishing
 
-Publishing happens through the `Publish CLI` GitHub Actions workflow. Do not
+Publishing happens through the `Publish to npm` GitHub Actions workflow. Do not
 publish from a local checkout unless the release owner explicitly asks you to do
-so.
+so. The full policy and procedure live in `docs/oss/versioning.md`.
 
-The committed `packages/cli/package.json` version is a development placeholder.
-Release versions are injected by CI before the package is packed and published.
+The committed root `package.json` version (mirrored across the workspace in
+lockstep) is the release source of truth. The workflow publishes
+`@prisma/cli-engine` and then `@prisma/cli`.
 
 Release channels:
 
-- `@prisma/cli` / `latest`: official beta releases. Run `Publish CLI` manually;
-  it computes the next `3.0.0-beta.N`, publishes with the `latest` dist-tag, and
-  creates `cli-v<version>`.
-- `@prisma/cli@dev`: latest successful `main` build. Every push to `main`
-  publishes a unique `3.0.0-dev.<run_number>.<run_attempt>` version with the
-  `dev` dist-tag. Commit traceability comes from npm provenance and the GitHub
-  Actions run.
+- `latest`: releases on the v8 RC line (`8.0.0-rc.N`). A merged
+  `chore(release)` PR that bumps the root version (via `pnpm bump-version`)
+  publishes automatically; `workflow_dispatch` is the manual escape hatch and
+  the dry-run path.
+- `dev`: latest successful `main` build. Every push to `main` that does not
+  change the root version publishes `<base>-dev.N` under the `dev` dist-tag.
+  Commit traceability comes from npm provenance and the GitHub Actions run.
 - PR preview packages: trusted same-repo pull requests get an installable
   pkg.pr.new comment for the exact commit. Fork PRs do not publish preview
   packages automatically. Preview publishing is best-effort and requires the
@@ -167,12 +168,10 @@ Release channels:
   installed, set the repository variable `CLI_PR_PREVIEW_REQUIRED=true` to make
   preview publishing failures block CI.
 
-For an official beta release:
-
-1. Run `Publish CLI` with `dry_run: true`.
-2. Check the computed version and package checks.
-3. Run `Publish CLI` with `dry_run: false`.
+For a release: run `pnpm bump-version` on a branch, commit, open the release
+PR, and merge it — the merge is the publish trigger (`docs/oss/versioning.md`
+has the full procedure).
 
 If a release workflow fails after the npm publish step, check npm before
-rerunning. The package version may already be published even if tag creation
-failed.
+rerunning. The package version may already be published even if the GitHub
+Release creation failed.

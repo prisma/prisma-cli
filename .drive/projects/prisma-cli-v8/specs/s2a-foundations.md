@@ -11,7 +11,10 @@ reference implementation cited for it is the specification.
 ## 1. Engine publishable + production dependency
 
 - `packages/cli-engine/package.json` gains publish metadata:
-  `version: "0.1.0"`, `description` (one line: the execution engine of
+  `version: "8.0.0-rc.1"` (erratum: originally `"0.1.0"`; operator
+  ruling 2026-08-10 adopted prisma/prisma's versioning machinery and
+  number — the lockstep jumps to the 8.0.0-rc line), `description`
+  (one line: the execution engine of
   the unified Prisma CLI), `license: "Apache-2.0"`, `files: ["dist",
   "README.md", "LICENSE"]`, `repository` (type git, url
   https://github.com/prisma/prisma-cli.git, directory

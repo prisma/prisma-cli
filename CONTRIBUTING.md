@@ -60,11 +60,13 @@ The CLI must preserve the unified command model:
 
 ## Package Channels
 
-Official beta releases use `@prisma/cli` and expose the `prisma-cli` binary.
-The `latest` dist-tag points at the latest manually published beta.
+Releases use `@prisma/cli` (exposing the `prisma-cli` binary) plus its
+dependency `@prisma/cli-engine`, versioned in lockstep from the root
+`package.json` on the v8 RC line (`8.0.0-rc.N`). The `latest` dist-tag moves
+when a version-bump PR merges; see `docs/oss/versioning.md`.
 
 The `dev` dist-tag points at the latest successful `main` build, published as
-`3.0.0-dev.<run_number>.<run_attempt>`. Commit traceability comes from npm
+`<base>-dev.N`. Commit traceability comes from npm
 provenance and the GitHub Actions run. Trusted same-repo pull requests receive
 pkg.pr.new preview comments for testing exact unmerged commits. Fork pull
 requests do not publish preview packages automatically. Preview publishing is
@@ -74,7 +76,7 @@ repository. Once that app is installed, set the repository variable
 
 Do not publish from a local checkout unless the release owner has explicitly
 asked you to do so. Release publishing is intended to happen through the
-configured `Publish CLI` GitHub Actions workflow.
+configured `Publish to npm` GitHub Actions workflow.
 
 ## Pull Requests
 
