@@ -128,7 +128,10 @@ export const serviceRollbackCommand = defineCommand({
         ]
       : [];
     return ok(
-      ctx.present({ data: result, diagnostics }, rollbackPresentations(result)),
+      ctx.present(
+        { data: result, diagnostics },
+        rollbackPresentations(result, alreadyLive),
+      ),
     );
   },
 });

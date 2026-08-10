@@ -5,6 +5,7 @@ import {
   DEPLOYMENTS,
   makeServiceCli,
   page,
+  presentedSummary,
   releaseRoutes,
   SIGNED_IN,
 } from "./v8-service-testkit";
@@ -32,7 +33,7 @@ describe("prisma-v8 service rollback", () => {
         "--service",
         "hello-world",
       ],
-      { cwd: harness.cwd, env: harness.env },
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
     expect(result.exitCode).toBe(0);
@@ -40,6 +41,45 @@ describe("prisma-v8 service rollback", () => {
       service: { id: "svc_1", name: "hello-world" },
       deployment: { id: "dep_1", status: "running", live: true },
       previousLiveDeploymentId: "dep_2",
+    });
+    expect(presentedSummary(result.presented)).toEqual({
+      kind: "summary",
+      tone: "ok",
+      text: "Rolled hello-world back to dep_1.",
+    });
+  });
+
+  it("warns instead of rolling back when the target is already live", async () => {
+    const harness = await makeServiceCli({ routes: releaseRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "rollback",
+        "--to",
+        "dep_2",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+      ],
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.diagnostics).toEqual([
+      {
+        code: "SERVICE.DEPLOYMENT_ALREADY_LIVE",
+        severity: "warn",
+        summary: "The selected deployment is already live for this service.",
+        nextActions: [],
+      },
+    ]);
+    expect(result.events).toEqual([]);
+    expect(presentedSummary(result.presented)).toEqual({
+      kind: "summary",
+      tone: "ok",
+      text: "dep_2 was already live for hello-world.",
     });
   });
 

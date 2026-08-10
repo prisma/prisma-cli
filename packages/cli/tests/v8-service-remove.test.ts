@@ -6,6 +6,7 @@ import { readAuthState } from "../src/auth";
 import {
   makeServiceCli,
   page,
+  presentedSummary,
   releaseRoutes,
   SIGNED_IN,
 } from "./v8-service-testkit";
@@ -48,6 +49,11 @@ describe("prisma-v8 service remove", () => {
       projectId: "proj_1",
       service: { id: "svc_1", name: "hello-world" },
       removed: true,
+    });
+    expect(presentedSummary(result.presented)).toEqual({
+      kind: "summary",
+      tone: "ok",
+      text: "Removed hello-world and every deployment it owned.",
     });
   });
 

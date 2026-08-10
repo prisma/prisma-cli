@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
+import { CLI_NAME } from "../../cli-name";
 import type {
   AppProvider,
   BranchDatabaseRecord,
@@ -248,7 +249,7 @@ async function setupBranchDatabase(
       },
       diagnostics: [
         advice(
-          `The new database is empty. Get a connection URL with \`prisma-cli postgres connection create ${database.id}\`, then apply your schema with ${schemaCommand}.`,
+          `The new database is empty. Get a connection URL with \`${CLI_NAME} postgres connection create ${database.id}\`, then apply your schema with ${schemaCommand}.`,
         ),
       ],
     };

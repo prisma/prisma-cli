@@ -4,6 +4,7 @@ import { readAuthState } from "../src/auth";
 import {
   domainRecord,
   makeServiceCli,
+  presentedSummary,
   type Routes,
   readFlowRoutes,
   SIGNED_IN,
@@ -71,6 +72,11 @@ describe("prisma-v8 service domain add", () => {
         ],
       },
     });
+    expect(presentedSummary(result.presented)).toEqual({
+      kind: "summary",
+      tone: "ok",
+      text: "Added shop.acme.com to hello-world.",
+    });
   });
 
   it("emits the completed json envelope with commandId service.domain.add", async () => {
@@ -112,11 +118,16 @@ describe("prisma-v8 service domain add", () => {
 
     const result = await harness.cli.run(
       ["service", "domain", "add", "shop.acme.com", ...TARGET_ARGS],
-      { cwd: harness.cwd, env: harness.env },
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({ existing: true });
+    expect(presentedSummary(result.presented)).toEqual({
+      kind: "summary",
+      tone: "info",
+      text: "Showing the existing custom domain for the selected service.",
+    });
   });
 
   it("maps DNS preflight failures to SERVICE.DOMAIN_DNS_NOT_CONFIGURED", async () => {
@@ -240,13 +251,20 @@ describe("prisma-v8 service domain show", () => {
 
     const result = await harness.cli.run(
       ["service", "domain", "show", "shop.acme.com", ...TARGET_ARGS],
-      { cwd: harness.cwd, env: harness.env },
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
       ...EXPECTED_TARGET,
       domain: { hostname: "shop.acme.com", status: "verifying" },
+    });
+    // A command that only reports keeps the informational heading; the
+    // success marker belongs to the commands that changed something.
+    expect(presentedSummary(result.presented)).toEqual({
+      kind: "summary",
+      tone: "info",
+      text: "Showing custom domain status.",
     });
   });
 
@@ -327,12 +345,17 @@ describe("prisma-v8 service domain retry", () => {
 
     const result = await harness.cli.run(
       ["service", "domain", "retry", "shop.acme.com", ...TARGET_ARGS],
-      { cwd: harness.cwd, env: harness.env },
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
       domain: { status: "verifying" },
+    });
+    expect(presentedSummary(result.presented)).toEqual({
+      kind: "summary",
+      tone: "ok",
+      text: "Retried verification for shop.acme.com.",
     });
   });
 
@@ -440,6 +463,11 @@ describe("prisma-v8 service domain remove", () => {
       ...EXPECTED_TARGET,
       hostname: "shop.acme.com",
       removed: true,
+    });
+    expect(presentedSummary(result.presented)).toEqual({
+      kind: "summary",
+      tone: "ok",
+      text: "Removed shop.acme.com from hello-world.",
     });
   });
 

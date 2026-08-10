@@ -62,6 +62,7 @@ import {
   deployServiceEnvMissingError,
   fromLegacyCliError,
   httpPortInvalidError,
+  LEGACY_CLI_NAME,
   localResolutionPinStaleError,
   projectInputsAmbiguousError,
   projectNameInvalidError,
@@ -346,10 +347,12 @@ async function createProjectForDeploy(
     .catch((error) => {
       throw fromLegacyCliError(
         projectCreateFailedError(error, projectName, workspace, {
+          // Legacy spelling on purpose: fromLegacyCliError renames and
+          // rewrites these into this binary's own command lines.
           nextSteps: [
-            "prisma-cli project list",
-            "prisma-cli app deploy --project <id-or-name>",
-            `prisma-cli app deploy --create-project ${formatCommandArgument(projectName)}`,
+            `${LEGACY_CLI_NAME} project list`,
+            `${LEGACY_CLI_NAME} app deploy --project <id-or-name>`,
+            `${LEGACY_CLI_NAME} app deploy --create-project ${formatCommandArgument(projectName)}`,
           ],
           permissionFix:
             "Choose an existing Project with --project, or grant the token permission to create Projects in this workspace.",

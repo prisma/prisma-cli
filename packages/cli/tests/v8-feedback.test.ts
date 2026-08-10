@@ -4,6 +4,7 @@ import { createTestCli } from "@prisma/cli-engine/testing";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { feedbackCommand } from "../src/v8/feedback";
+import { mountedCommands } from "./v8-service-testkit";
 
 /** The command posts with the global fetch and the engine hands session
  *  commands no HTTP seam, so the service is faked where the legacy
@@ -52,7 +53,7 @@ async function startFeedbackService(options: {
  *  unauthenticated axis of R-S2b-9. */
 function makeCli() {
   return createTestCli({
-    commands: { feedback: feedbackCommand },
+    commands: mountedCommands(["feedback"]),
     now: () => new Date(0),
   });
 }

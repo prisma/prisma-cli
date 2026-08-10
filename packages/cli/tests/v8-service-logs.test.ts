@@ -201,7 +201,7 @@ describe("prisma-v8 service logs", () => {
     ]);
   });
 
-  it("carries a reported terminal record's cursor, code and retryable", async () => {
+  it("carries a reported terminal record's whole record, including the kind that says it failed", async () => {
     vi.mocked(streamLogs).mockImplementation(
       emits([
         {
@@ -211,6 +211,7 @@ describe("prisma-v8 service logs", () => {
           message: "The log stream ended unexpectedly.",
           retryable: true,
           cursor: "77",
+          details: { attempts: 3 },
         },
       ]),
     );
@@ -221,9 +222,41 @@ describe("prisma-v8 service logs", () => {
       env: harness.env,
     });
 
+    // The run still settles 0, so `kind` is the only thing telling a json
+    // consumer that the stream ended in failure rather than normally.
     expect(result.exitCode).toBe(0);
     expect(outputData(result.events).at(-1)).toEqual({
+      kind: "error",
       cursor: "77",
+      code: "stream_lost",
+      retryable: true,
+      details: { attempts: 3 },
+    });
+  });
+
+  it("omits details from a terminal record that carries none", async () => {
+    vi.mocked(streamLogs).mockImplementation(
+      emits([
+        {
+          type: "terminal",
+          kind: "error",
+          code: "stream_lost",
+          message: "The log stream ended unexpectedly.",
+          retryable: true,
+          cursor: null,
+        },
+      ]),
+    );
+    const harness = await makeServiceCli({ rawTokenSeed: true });
+
+    const result = await harness.cli.run(["service", "logs", ...TARGET], {
+      cwd: harness.cwd,
+      env: harness.env,
+    });
+
+    expect(outputData(result.events).at(-1)).toEqual({
+      kind: "error",
+      cursor: null,
       code: "stream_lost",
       retryable: true,
     });

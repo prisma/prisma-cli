@@ -5,17 +5,11 @@ import { createTestCli } from "@prisma/cli-engine/testing";
 import { execa } from "execa";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { agentInstallCommand } from "../src/v8/agent/install";
-import { agentStatusCommand } from "../src/v8/agent/status";
-import { agentUpdateCommand } from "../src/v8/agent/update";
+import { mountedCommands } from "./v8-service-testkit";
 
 vi.mock("execa", () => ({ execa: vi.fn() }));
 
-const AGENT_COMMANDS = {
-  "agent install": agentInstallCommand,
-  "agent update": agentUpdateCommand,
-  "agent status": agentStatusCommand,
-};
+const AGENT_COMMANDS = mountedCommands(["agent"]);
 
 /** The whole group is local: no session is ever seeded, so every run
  *  here also proves the unauthenticated axis of R-S2b-9. */
@@ -80,9 +74,9 @@ beforeEach(() => {
 
 describe("prisma-v8 agent install", () => {
   it("declares no credential needs and runs without a session", async () => {
-    expect(agentInstallCommand.needs.credentials).toBe(false);
-    expect(agentUpdateCommand.needs.credentials).toBe(false);
-    expect(agentStatusCommand.needs.credentials).toBe(false);
+    for (const command of Object.values(AGENT_COMMANDS)) {
+      expect(command.needs.credentials).toBe(false);
+    }
   });
 
   it("builds the installer command without spawning it in dry-run mode", async () => {

@@ -1,4 +1,9 @@
-import { type Cli, createCli, defineCommandFamily } from "@prisma/cli-engine";
+import {
+  type Cli,
+  createCli,
+  defineCommandFamily,
+  type MountedTree,
+} from "@prisma/cli-engine";
 import { CLI_DOCS_URL } from "../cli-name";
 import { getCliVersion } from "../lib/version";
 import { agentInstallCommand } from "./agent/install";
@@ -30,6 +35,44 @@ import { serviceShowDeployCommand } from "./service/show-deploy";
 import { telemetryDisableCommand } from "./telemetry/disable";
 import { telemetryEnableCommand } from "./telemetry/enable";
 import { telemetryStatusCommand } from "./telemetry/status";
+
+/** Every user-facing command path the shipped binary answers to. Exported
+ *  so tests assert and reuse this map instead of restating it. */
+export const MOUNTED_COMMANDS = {
+  "auth login": authLoginCommand,
+  "auth logout": authLogoutCommand,
+  "auth whoami": authWhoamiCommand,
+  "auth workspace list": authWorkspaceListCommand,
+  "auth workspace use": authWorkspaceUseCommand,
+  "auth workspace logout": authWorkspaceLogoutCommand,
+  "service build": serviceBuildCommand,
+  "service deploy": serviceDeployCommand,
+  "service show": serviceShowCommand,
+  "service open": serviceOpenCommand,
+  "service list-deploys": serviceListDeploysCommand,
+  "service show-deploy": serviceShowDeployCommand,
+  "service logs": serviceLogsCommand,
+  "service promote": servicePromoteCommand,
+  "service rollback": serviceRollbackCommand,
+  "service remove": serviceRemoveCommand,
+  "service domain add": serviceDomainAddCommand,
+  "service domain show": serviceDomainShowCommand,
+  "service domain remove": serviceDomainRemoveCommand,
+  "service domain retry": serviceDomainRetryCommand,
+  "service domain wait": serviceDomainWaitCommand,
+  // Platform builds are their own group; `service build` is the local
+  // build verb and shares nothing with it.
+  "build logs": buildLogsCommand,
+  // Shell-owned local utilities (no command family).
+  "agent install": agentInstallCommand,
+  "agent update": agentUpdateCommand,
+  "agent status": agentStatusCommand,
+  feedback: feedbackCommand,
+  // Shell-owned consent surface (no command family).
+  "telemetry status": telemetryStatusCommand,
+  "telemetry enable": telemetryEnableCommand,
+  "telemetry disable": telemetryDisableCommand,
+} satisfies MountedTree;
 
 export function buildCli(): Cli {
   return createCli({
@@ -82,40 +125,6 @@ export function buildCli(): Cli {
           "for what is collected and why.",
       },
     },
-    commands: {
-      "auth login": authLoginCommand,
-      "auth logout": authLogoutCommand,
-      "auth whoami": authWhoamiCommand,
-      "auth workspace list": authWorkspaceListCommand,
-      "auth workspace use": authWorkspaceUseCommand,
-      "auth workspace logout": authWorkspaceLogoutCommand,
-      "service build": serviceBuildCommand,
-      "service deploy": serviceDeployCommand,
-      "service show": serviceShowCommand,
-      "service open": serviceOpenCommand,
-      "service list-deploys": serviceListDeploysCommand,
-      "service show-deploy": serviceShowDeployCommand,
-      "service logs": serviceLogsCommand,
-      "service promote": servicePromoteCommand,
-      "service rollback": serviceRollbackCommand,
-      "service remove": serviceRemoveCommand,
-      "service domain add": serviceDomainAddCommand,
-      "service domain show": serviceDomainShowCommand,
-      "service domain remove": serviceDomainRemoveCommand,
-      "service domain retry": serviceDomainRetryCommand,
-      "service domain wait": serviceDomainWaitCommand,
-      // Platform builds are their own group; `service build` is the local
-      // build verb and shares nothing with it.
-      "build logs": buildLogsCommand,
-      // Shell-owned local utilities (no command family).
-      "agent install": agentInstallCommand,
-      "agent update": agentUpdateCommand,
-      "agent status": agentStatusCommand,
-      feedback: feedbackCommand,
-      // Shell-owned consent surface (no command family).
-      "telemetry status": telemetryStatusCommand,
-      "telemetry enable": telemetryEnableCommand,
-      "telemetry disable": telemetryDisableCommand,
-    },
+    commands: MOUNTED_COMMANDS,
   });
 }

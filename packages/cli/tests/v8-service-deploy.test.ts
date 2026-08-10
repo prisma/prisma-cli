@@ -1,194 +1,327 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { DeployProgress } from "@prisma/compute-sdk";
+import type {
+  DeployError,
+  DeployOptions,
+  DeployProgress,
+  DeployResult,
+} from "@prisma/compute-sdk";
+import { Result } from "better-result";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { readAuthState } from "../src/auth";
-import type { AppProvider } from "../src/lib/app/app-provider";
-import { createAppProvider } from "../src/lib/app/app-provider";
-import { makeServiceCli, PROJECT, SIGNED_IN } from "./v8-service-testkit";
+import {
+  makeServiceCli,
+  PROJECT,
+  page,
+  presentedSummary,
+  type RawDeployment,
+  type RawService,
+  type Routes,
+  SIGNED_IN,
+} from "./v8-service-testkit";
 
 vi.mock("../src/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/auth")>()),
   readAuthState: vi.fn(),
 }));
 
-vi.mock("../src/lib/app/app-provider", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/lib/app/app-provider")>()),
-  createAppProvider: vi.fn(),
+const deployFake = vi.hoisted(() => ({
+  run: null as
+    | ((options: DeployOptions) => Promise<Result<DeployResult, DeployError>>)
+    | null,
 }));
+
+/**
+ * The compute SDK's deploy is the one call no HTTP fake reaches: it builds
+ * an artifact on disk, uploads it, and reports progress through callbacks.
+ * Everything else `service deploy` drives — the project, branch, service,
+ * database and environment-variable calls, and the mapping of the deploy
+ * response itself — runs for real against the routes below.
+ */
+vi.mock("@prisma/compute-sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@prisma/compute-sdk")>();
+  return {
+    ...actual,
+    ComputeClient: class extends actual.ComputeClient {
+      deploy(options: DeployOptions) {
+        if (!deployFake.run) {
+          throw new Error("v8-service-deploy: no deploy fake installed");
+        }
+        return deployFake.run(options);
+      }
+    },
+  };
+});
 
 const INTERACTIVE = { stdin: true, stdout: true, stderr: true };
 
-interface FakeServiceRecord {
+interface RawEnvironmentVariable {
   id: string;
-  name: string;
-  region: string | null;
-  liveDeploymentId: string | null;
-  liveUrl: string | null;
+  key: string;
+  branchId: string | null;
+  class: "production" | "preview";
+  isManagedBySystem: boolean;
 }
 
-interface FakeProviderOptions {
-  services?: FakeServiceRecord[];
-  deployments?: Array<{
-    id: string;
-    status: string;
-    createdAt: string;
-    url: string | null;
-    live: boolean | null;
-  }>;
-  /** Drives the deploy callbacks; throws to simulate a failure mid-flight. */
-  deploy?: (progress: DeployProgress | undefined) => void | Promise<void>;
-  branchKind?: "production" | "preview";
-  promoted?: boolean;
-  envVars?: Array<{
-    id: string;
-    key: string;
-    branchId: string | null;
-    className: string;
-  }>;
+interface DeployCliOptions {
+  services?: RawService[];
+  deployments?: RawDeployment[];
+  envVars?: RawEnvironmentVariable[];
+  branchRole?: "production" | "preview";
+  /** Whether a created database reports a direct connection endpoint. */
+  databaseDirectUrl?: boolean;
   createDatabaseFails?: boolean;
   createEnvVarFails?: boolean;
   deleteDatabaseFails?: boolean;
+  authenticated?: boolean;
+  /** Drives the deploy callbacks; throws to simulate a failure mid-flight. */
+  deploy?: (progress: DeployProgress | undefined) => void | Promise<void>;
+  promoted?: boolean;
 }
 
-interface FakeProviderCalls {
-  deployOptions: Record<string, unknown> | null;
+interface DeployApiCalls {
+  createdProjects: string[];
+  createdServices: string[];
   createdDatabases: string[];
   deletedDatabases: string[];
   createdEnvVars: Array<{ key: string; className: string }>;
-  createdProjects: string[];
+  updatedEnvVars: string[];
+  deletedEnvVars: string[];
 }
 
-function installFakeProvider(options: FakeProviderOptions = {}): {
-  calls: FakeProviderCalls;
+function apiError(message: string, status: number) {
+  return { error: { error: { message } }, status };
+}
+
+function deployRoutes(options: DeployCliOptions): {
+  routes: Routes;
+  calls: DeployApiCalls;
 } {
-  const calls: FakeProviderCalls = {
-    deployOptions: null,
+  const calls: DeployApiCalls = {
+    createdProjects: [],
+    createdServices: [],
     createdDatabases: [],
     deletedDatabases: [],
     createdEnvVars: [],
-    createdProjects: [],
+    updatedEnvVars: [],
+    deletedEnvVars: [],
   };
   const services = options.services ?? [];
   const deployments = options.deployments ?? [];
+  const envVars = options.envVars ?? [];
 
-  const provider = {
-    listApps: async () => services,
-    resolveBranch: async (
-      _projectId: string,
-      init: { branchName: string },
-    ) => ({
-      id: "br_1",
-      name: init.branchName,
-      role: options.branchKind ?? "production",
-    }),
-    listDeployments: async (serviceId: string) => ({
-      app: services.find((service) => service.id === serviceId) ?? {
-        id: serviceId,
-        name: "hello-world",
-        region: null,
-        liveDeploymentId: null,
-        liveUrl: null,
-      },
-      deployments,
-    }),
-    createProject: async (init: { name: string }) => {
-      calls.createdProjects.push(init.name);
-      return { id: "proj_new", name: init.name };
+  const routes: Routes = {
+    "GET /v1/projects": () => ({ data: page([PROJECT]) }),
+    "POST /v1/projects": (init) => {
+      const body = init.body as { name: string };
+      calls.createdProjects.push(body.name);
+      return {
+        data: {
+          data: { id: "proj_new", name: body.name, defaultRegion: null },
+        },
+      };
     },
-    listEnvironmentVariables: async (init: { key: string }) =>
-      (options.envVars ?? []).filter((row) => row.key === init.key),
-    createEnvironmentVariable: async (init: {
-      key: string;
-      className: string;
-    }) => {
+    "GET /v1/projects/{projectId}/branches": (init) => ({
+      data: page([
+        {
+          id: "br_1",
+          gitName:
+            (init.params?.query?.gitName as string | undefined) ?? "main",
+          isDefault: true,
+          role: options.branchRole ?? "production",
+        },
+      ]),
+    }),
+    "GET /v1/apps": () => ({ data: page(services) }),
+    "POST /v1/apps": (init) => {
+      const body = init.body as { displayName: string; regionId?: string };
+      calls.createdServices.push(body.displayName);
+      return {
+        data: {
+          data: {
+            id: "svc_new",
+            name: body.displayName,
+            region: { id: body.regionId ?? null },
+            branchId: "br_1",
+            latestDeploymentId: null,
+            appEndpointDomain: null,
+          },
+        },
+      };
+    },
+    "GET /v1/apps/{appId}": (init) => {
+      const id = init.params?.path?.appId;
+      const service = services.find((candidate) => candidate.id === id);
+      return service
+        ? { data: { data: { ...service, projectId: PROJECT.id } } }
+        : apiError("not found", 404);
+    },
+    "GET /v1/apps/{appId}/deployments": () => ({ data: page(deployments) }),
+    "GET /v1/deployments/{deploymentId}": (init) => {
+      const id = init.params?.path?.deploymentId;
+      const deployment = deployments.find((candidate) => candidate.id === id);
+      return deployment
+        ? { data: { data: deployment } }
+        : apiError("not found", 404);
+    },
+    "GET /v1/environment-variables": (init) => {
+      const query = (init.params?.query ?? {}) as {
+        key?: string;
+        class?: string;
+        branchId?: string;
+      };
+      return {
+        data: page(
+          envVars.filter(
+            (row) =>
+              (query.key === undefined || row.key === query.key) &&
+              (query.class === undefined || row.class === query.class) &&
+              (query.branchId === undefined || row.branchId === query.branchId),
+          ),
+        ),
+      };
+    },
+    "POST /v1/environment-variables": (init) => {
       if (options.createEnvVarFails) {
-        throw new Error("env var write rejected");
+        return apiError("env var write rejected", 500);
       }
-      calls.createdEnvVars.push({ key: init.key, className: init.className });
-      return { id: `env_${init.key}`, key: init.key, branchId: null };
+      const body = init.body as {
+        key: string;
+        class: "production" | "preview";
+        branchId?: string;
+      };
+      calls.createdEnvVars.push({ key: body.key, className: body.class });
+      return {
+        data: {
+          data: {
+            id: `env_${body.key}`,
+            key: body.key,
+            branchId: body.branchId ?? null,
+            class: body.class,
+            isManagedBySystem: false,
+          },
+        },
+      };
     },
-    updateEnvironmentVariable: async () => ({ id: "env_1" }),
-    deleteEnvironmentVariable: async () => undefined,
-    createBranchDatabase: async () => {
+    "PATCH /v1/environment-variables/{envVarId}": (init) => {
+      const id = init.params?.path?.envVarId as string;
+      calls.updatedEnvVars.push(id);
+      const existing = envVars.find((row) => row.id === id);
+      return {
+        data: {
+          data: existing ?? {
+            id,
+            key: "DATABASE_URL",
+            branchId: null,
+            class: "production",
+            isManagedBySystem: false,
+          },
+        },
+      };
+    },
+    "DELETE /v1/environment-variables/{envVarId}": (init) => {
+      calls.deletedEnvVars.push(init.params?.path?.envVarId as string);
+      return { data: { data: {} } };
+    },
+    "POST /v1/databases": () => {
       if (options.createDatabaseFails) {
-        throw new Error("database create rejected");
+        return apiError("database create rejected", 500);
       }
       calls.createdDatabases.push("db_1");
       return {
-        id: "db_1",
-        name: "acme-db",
-        databaseUrl: "postgres://db",
-        directUrl: null,
+        data: {
+          data: {
+            id: "db_1",
+            name: "acme-db",
+            branchId: "br_1",
+            connections: [
+              {
+                endpoints: {
+                  pooled: { connectionString: "postgres://db" },
+                  ...(options.databaseDirectUrl
+                    ? { direct: { connectionString: "postgres://db-direct" } }
+                    : {}),
+                },
+              },
+            ],
+          },
+        },
       };
     },
-    deleteBranchDatabase: async (init: { databaseId: string }) => {
+    "DELETE /v1/databases/{databaseId}": (init) => {
       if (options.deleteDatabaseFails) {
-        throw new Error("database delete rejected");
+        return apiError("database delete rejected", 500);
       }
-      calls.deletedDatabases.push(init.databaseId);
+      calls.deletedDatabases.push(init.params?.path?.databaseId as string);
+      return { data: { data: {} } };
     },
-    deployApp: async (init: Record<string, unknown>) => {
-      calls.deployOptions = init;
-      const progress = init.progress as DeployProgress | undefined;
-      if (options.deploy) {
-        await options.deploy(progress);
-      } else {
-        progress?.onBuildStart?.();
-        progress?.onBuildComplete?.({} as never);
-        progress?.onArchiveCreating?.();
-        progress?.onArchiveReady?.(1024);
-        progress?.onDeploymentCreated?.("dep_new");
-        progress?.onUploadStart?.();
-        progress?.onUploadComplete?.();
-        progress?.onStartRequested?.();
-        progress?.onStatusChange?.("provisioning");
-        progress?.onRunning?.("https://dep-new.prisma.app");
-        if (options.promoted !== false) {
-          progress?.onPromoteStart?.();
-          progress?.onPromoted?.("hello.prisma.app");
-        }
-      }
-      const promoted = options.promoted !== false;
-      return {
-        projectId: "proj_1",
-        app: {
-          id: "svc_1",
-          name: "hello-world",
-          region: "eu-central-1",
-          liveDeploymentId: promoted ? "dep_new" : "dep_old",
-          liveUrl: "https://hello.prisma.app",
-        },
-        deployment: {
-          id: "dep_new",
-          status: "running",
-          url: "https://dep-new.prisma.app",
-          live: promoted,
-        },
-        promoted,
-      };
-    },
-  } as unknown as AppProvider;
+  };
 
-  vi.mocked(createAppProvider).mockReturnValue(provider);
-  return { calls };
+  return { routes, calls };
 }
 
-const EXISTING_SERVICE: FakeServiceRecord = {
+function installDeployFake(options: DeployCliOptions): void {
+  const promoted = options.promoted !== false;
+  deployFake.run = async (deployOptions) => {
+    const progress = deployOptions.progress as DeployProgress | undefined;
+    if (options.deploy) {
+      await options.deploy(progress);
+    } else {
+      progress?.onBuildStart?.();
+      progress?.onBuildComplete?.({} as never);
+      progress?.onArchiveCreating?.();
+      progress?.onArchiveReady?.(1024);
+      progress?.onDeploymentCreated?.("dep_new");
+      progress?.onUploadStart?.();
+      progress?.onUploadComplete?.();
+      progress?.onStartRequested?.();
+      progress?.onStatusChange?.("provisioning");
+      progress?.onRunning?.("https://dep-new.prisma.app");
+      if (promoted) {
+        progress?.onPromoteStart?.();
+        progress?.onPromoted?.("hello.prisma.app");
+      }
+    }
+    return Result.ok({
+      projectId: deployOptions.projectId,
+      appId: deployOptions.appId ?? "svc_1",
+      appName: deployOptions.appName ?? "hello-world",
+      region: deployOptions.region ?? "eu-central-1",
+      deploymentId: "dep_new",
+      deploymentEndpointDomain: "dep-new.prisma.app",
+      appEndpointDomain: promoted ? "hello.prisma.app" : null,
+      promoted,
+      previousDeploymentId: promoted ? null : "dep_old",
+      previousDeploymentAction: null,
+    } as DeployResult);
+  };
+}
+
+async function makeDeployCli(options: DeployCliOptions = {}) {
+  const { routes, calls } = deployRoutes(options);
+  installDeployFake(options);
+  const harness = await makeServiceCli({
+    routes,
+    ...(options.authenticated === false ? { authenticated: false } : {}),
+  });
+  return { ...harness, calls };
+}
+
+const EXISTING_SERVICE: RawService = {
   id: "svc_1",
   name: "hello-world",
-  region: "eu-central-1",
-  liveDeploymentId: "dep_old",
-  liveUrl: "https://hello.prisma.app",
+  region: { id: "eu-central-1" },
+  branchId: "br_1",
+  latestDeploymentId: "dep_old",
+  appEndpointDomain: "hello.prisma.app",
 };
 
-const LIVE_DEPLOYMENT = {
+const LIVE_DEPLOYMENT: RawDeployment = {
   id: "dep_old",
   status: "running",
   createdAt: "2026-08-01T00:00:00.000Z",
-  url: "https://dep-old.prisma.app",
-  live: true,
+  previewDomain: "dep-old.prisma.app",
 };
 
 function deployArgs(extra: string[] = []): string[] {
@@ -205,22 +338,15 @@ function deployArgs(extra: string[] = []): string[] {
   ];
 }
 
-const PROJECT_ROUTES = {
-  "GET /v1/projects": () => ({
-    data: { data: [PROJECT], pagination: { hasMore: false, nextCursor: null } },
-  }),
-};
-
 beforeEach(() => {
   vi.mocked(readAuthState).mockReset();
   vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
-  vi.mocked(createAppProvider).mockReset();
+  deployFake.run = null;
 });
 
 describe("prisma-v8 service deploy", () => {
   it("deploys, promotes, and reports the resolved settings", async () => {
-    installFakeProvider({ services: [EXISTING_SERVICE] });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
+    const harness = await makeDeployCli({ services: [EXISTING_SERVICE] });
 
     const result = await harness.cli.run(deployArgs(), {
       cwd: harness.cwd,
@@ -243,8 +369,7 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("emits one step per deploy phase, in order, with the endpoints", async () => {
-    installFakeProvider({ services: [EXISTING_SERVICE] });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
+    const harness = await makeDeployCli({ services: [EXISTING_SERVICE] });
 
     const result = await harness.cli.run(deployArgs(), {
       cwd: harness.cwd,
@@ -285,8 +410,7 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("emits the completed json envelope with commandId service.deploy", async () => {
-    installFakeProvider({ services: [EXISTING_SERVICE] });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
+    const harness = await makeDeployCli({ services: [EXISTING_SERVICE] });
 
     const result = await harness.cli.run(deployArgs(["--json"]), {
       cwd: harness.cwd,
@@ -306,8 +430,7 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("writes the selected service and the known live deployment", async () => {
-    installFakeProvider({ services: [EXISTING_SERVICE] });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
+    const harness = await makeDeployCli({ services: [EXISTING_SERVICE] });
 
     await harness.cli.run(deployArgs(), {
       cwd: harness.cwd,
@@ -325,12 +448,11 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("skips promotion and the production check with --no-promote", async () => {
-    installFakeProvider({
+    const harness = await makeDeployCli({
       services: [EXISTING_SERVICE],
       deployments: [LIVE_DEPLOYMENT],
       promoted: false,
     });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
 
     const result = await harness.cli.run(deployArgs(["--no-promote"]), {
       cwd: harness.cwd,
@@ -343,14 +465,19 @@ describe("prisma-v8 service deploy", () => {
       .filter((event) => event.kind === "step-started")
       .map((event) => (event as { step: string }).step);
     expect(steps).not.toContain("promote");
+    // The un-promoted candidate never becomes the live pointer: the
+    // provider maps it back to the deployment that is still serving.
+    const state = JSON.parse(
+      await readFile(path.join(harness.stateDir, "state.json"), "utf8"),
+    );
+    expect(state.app.knownLiveDeploymentByProject.proj_1.svc_1).toBe("dep_old");
   });
 
   it("requires --prod for a second production deploy", async () => {
-    installFakeProvider({
+    const harness = await makeDeployCli({
       services: [EXISTING_SERVICE],
       deployments: [LIVE_DEPLOYMENT],
     });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
 
     const result = await harness.cli.run(deployArgs(["--json"]), {
       cwd: harness.cwd,
@@ -366,8 +493,10 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("deploys the first production version without --prod", async () => {
-    installFakeProvider({ services: [EXISTING_SERVICE], deployments: [] });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
+    const harness = await makeDeployCli({
+      services: [EXISTING_SERVICE],
+      deployments: [],
+    });
 
     const result = await harness.cli.run(deployArgs(), {
       cwd: harness.cwd,
@@ -383,11 +512,10 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("asks for type-to-confirm consent on a second production deploy and proceeds when granted", async () => {
-    installFakeProvider({
+    const harness = await makeDeployCli({
       services: [EXISTING_SERVICE],
       deployments: [LIVE_DEPLOYMENT],
     });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
 
     const result = await harness.cli.run(deployArgs(["--prod"]), {
       cwd: harness.cwd,
@@ -401,11 +529,10 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("settles a mistyped production consent token as the engine mismatch error", async () => {
-    installFakeProvider({
+    const harness = await makeDeployCli({
       services: [EXISTING_SERVICE],
       deployments: [LIVE_DEPLOYMENT],
     });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
 
     const result = await harness.cli.run(deployArgs(["--prod"]), {
       cwd: harness.cwd,
@@ -418,11 +545,10 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("settles a non-interactive --prod run with the engine consent error", async () => {
-    installFakeProvider({
+    const harness = await makeDeployCli({
       services: [EXISTING_SERVICE],
       deployments: [LIVE_DEPLOYMENT],
     });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
 
     const result = await harness.cli.run(deployArgs(["--prod", "--json"]), {
       cwd: harness.cwd,
@@ -438,11 +564,10 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("grants the production deploy non-interactively with --confirm <service>", async () => {
-    installFakeProvider({
+    const harness = await makeDeployCli({
       services: [EXISTING_SERVICE],
       deployments: [LIVE_DEPLOYMENT],
     });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
 
     const result = await harness.cli.run(
       deployArgs(["--prod", "--confirm", "hello-world"]),
@@ -454,11 +579,10 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("refuses a --confirm value that is not the target service name", async () => {
-    installFakeProvider({
+    const harness = await makeDeployCli({
       services: [EXISTING_SERVICE],
       deployments: [LIVE_DEPLOYMENT],
     });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
 
     const result = await harness.cli.run(
       deployArgs(["--prod", "--confirm", "some-other-service", "--json"]),
@@ -477,11 +601,10 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("still requires --prod even when --confirm carries the service name", async () => {
-    installFakeProvider({
+    const harness = await makeDeployCli({
       services: [EXISTING_SERVICE],
       deployments: [LIVE_DEPLOYMENT],
     });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
 
     const result = await harness.cli.run(
       deployArgs(["--confirm", "hello-world", "--json"]),
@@ -497,11 +620,10 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("never lets --yes alone grant the production deploy", async () => {
-    installFakeProvider({
+    const harness = await makeDeployCli({
       services: [EXISTING_SERVICE],
       deployments: [LIVE_DEPLOYMENT],
     });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
 
     const result = await harness.cli.run(
       deployArgs(["--prod", "--yes", "--json"]),
@@ -517,11 +639,10 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("creates and wires a branch database with --db", async () => {
-    const { calls } = installFakeProvider({
+    const harness = await makeDeployCli({
       services: [EXISTING_SERVICE],
       deployments: [],
     });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
 
     const result = await harness.cli.run(deployArgs(["--db"]), {
       cwd: harness.cwd,
@@ -529,8 +650,8 @@ describe("prisma-v8 service deploy", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(calls.createdDatabases).toEqual(["db_1"]);
-    expect(calls.createdEnvVars).toEqual([
+    expect(harness.calls.createdDatabases).toEqual(["db_1"]);
+    expect(harness.calls.createdEnvVars).toEqual([
       { key: "DATABASE_URL", className: "production" },
     ]);
     expect(result.presented?.data).toMatchObject({
@@ -547,12 +668,11 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("deletes the created database when wiring it fails", async () => {
-    const { calls } = installFakeProvider({
+    const harness = await makeDeployCli({
       services: [EXISTING_SERVICE],
       deployments: [],
       createEnvVarFails: true,
     });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
 
     const result = await harness.cli.run(deployArgs(["--db", "--json"]), {
       cwd: harness.cwd,
@@ -560,7 +680,7 @@ describe("prisma-v8 service deploy", () => {
     });
 
     expect(result.exitCode).toBe(2);
-    expect(calls.deletedDatabases).toEqual(["db_1"]);
+    expect(harness.calls.deletedDatabases).toEqual(["db_1"]);
     const frame = result.json[result.json.length - 1];
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
@@ -571,8 +691,10 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("refuses --db together with a provided DATABASE_URL", async () => {
-    installFakeProvider({ services: [EXISTING_SERVICE], deployments: [] });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
+    const harness = await makeDeployCli({
+      services: [EXISTING_SERVICE],
+      deployments: [],
+    });
 
     const result = await harness.cli.run(
       deployArgs(["--db", "--env", "DATABASE_URL=postgres://x", "--json"]),
@@ -590,7 +712,7 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("leaves existing production database env vars alone", async () => {
-    const { calls } = installFakeProvider({
+    const harness = await makeDeployCli({
       services: [EXISTING_SERVICE],
       deployments: [],
       envVars: [
@@ -598,11 +720,11 @@ describe("prisma-v8 service deploy", () => {
           id: "env_1",
           key: "DATABASE_URL",
           branchId: null,
-          className: "production",
+          class: "production",
+          isManagedBySystem: false,
         },
       ],
     });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
 
     const result = await harness.cli.run(deployArgs(["--db"]), {
       cwd: harness.cwd,
@@ -610,7 +732,7 @@ describe("prisma-v8 service deploy", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(calls.createdDatabases).toEqual([]);
+    expect(harness.calls.createdDatabases).toEqual([]);
     expect(result.presented?.data).toMatchObject({
       branchDatabase: {
         status: "skipped",
@@ -619,15 +741,74 @@ describe("prisma-v8 service deploy", () => {
     });
   });
 
+  it("updates an existing branch DIRECT_URL instead of adding a second one", async () => {
+    const harness = await makeDeployCli({
+      services: [EXISTING_SERVICE],
+      deployments: [],
+      branchRole: "preview",
+      databaseDirectUrl: true,
+      envVars: [
+        {
+          id: "env_direct",
+          key: "DIRECT_URL",
+          branchId: "br_1",
+          class: "preview",
+          isManagedBySystem: false,
+        },
+      ],
+    });
+
+    const result = await harness.cli.run(deployArgs(["--db"]), {
+      cwd: harness.cwd,
+      env: harness.env,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(harness.calls.createdEnvVars).toEqual([
+      { key: "DATABASE_URL", className: "preview" },
+    ]);
+    expect(harness.calls.updatedEnvVars).toEqual(["env_direct"]);
+    expect(result.presented?.data).toMatchObject({
+      branchDatabase: { envVars: ["DATABASE_URL", "DIRECT_URL"] },
+    });
+  });
+
+  it("removes a stale branch DIRECT_URL when the new database has no direct endpoint", async () => {
+    const harness = await makeDeployCli({
+      services: [EXISTING_SERVICE],
+      deployments: [],
+      branchRole: "preview",
+      envVars: [
+        {
+          id: "env_direct",
+          key: "DIRECT_URL",
+          branchId: "br_1",
+          class: "preview",
+          isManagedBySystem: false,
+        },
+      ],
+    });
+
+    const result = await harness.cli.run(deployArgs(["--db"]), {
+      cwd: harness.cwd,
+      env: harness.env,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(harness.calls.deletedEnvVars).toEqual(["env_direct"]);
+    expect(result.presented?.data).toMatchObject({
+      branchDatabase: { envVars: ["DATABASE_URL"] },
+    });
+  });
+
   it("reports a build-phase failure as SERVICE.BUILD_FAILED with the standalone-output hint", async () => {
-    installFakeProvider({
+    const harness = await makeDeployCli({
       services: [EXISTING_SERVICE],
       deploy: (progress) => {
         progress?.onBuildStart?.();
         throw new Error("Next.js requires standalone output for this build");
       },
     });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
 
     const result = await harness.cli.run(deployArgs(["--json"]), {
       cwd: harness.cwd,
@@ -650,7 +831,7 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("reports a post-build failure with the deployment id and a logs action", async () => {
-    installFakeProvider({
+    const harness = await makeDeployCli({
       services: [EXISTING_SERVICE],
       deploy: (progress) => {
         progress?.onBuildStart?.();
@@ -661,7 +842,6 @@ describe("prisma-v8 service deploy", () => {
         throw new Error("deployment did not start");
       },
     });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
 
     const result = await harness.cli.run(deployArgs(["--json"]), {
       cwd: harness.cwd,
@@ -686,8 +866,7 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("rejects --project together with --create-project", async () => {
-    installFakeProvider({ services: [EXISTING_SERVICE] });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
+    const harness = await makeDeployCli({ services: [EXISTING_SERVICE] });
 
     const result = await harness.cli.run(
       deployArgs(["--create-project", "other", "--json"]),
@@ -703,8 +882,7 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("reports PROJECT_SETUP_REQUIRED for an unlinked directory that cannot be asked", async () => {
-    installFakeProvider({ services: [EXISTING_SERVICE] });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
+    const harness = await makeDeployCli({ services: [EXISTING_SERVICE] });
 
     const result = await harness.cli.run(
       ["service", "deploy", "--framework", "nextjs", "--json"],
@@ -723,8 +901,7 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("creates and links a Project with --create-project", async () => {
-    const { calls } = installFakeProvider({ services: [] });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
+    const harness = await makeDeployCli({ services: [] });
 
     const result = await harness.cli.run(
       [
@@ -741,7 +918,8 @@ describe("prisma-v8 service deploy", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(calls.createdProjects).toEqual(["brand-new"]);
+    expect(harness.calls.createdProjects).toEqual(["brand-new"]);
+    expect(harness.calls.createdServices).toEqual(["hello-world"]);
     expect(result.presented?.data).toMatchObject({
       localPin: { path: ".prisma/local.json", written: true },
     });
@@ -751,9 +929,54 @@ describe("prisma-v8 service deploy", () => {
     expect(pin.projectId).toBe("proj_new");
   });
 
+  it("reports a failed local binding through the operation layer's own error", async () => {
+    const harness = await makeDeployCli({ services: [] });
+    // A file where the .prisma directory belongs: the pin write fails at
+    // its first step.
+    await writeFile(path.join(harness.cwd, ".prisma"), "", "utf8");
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "deploy",
+        "--create-project",
+        "brand-new",
+        "--framework",
+        "nextjs",
+        "--service",
+        "hello-world",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.LOCAL_STATE_WRITE_FAILED");
+    expect(frame.envelope.error.summary).toBe(
+      "Could not save local Project binding",
+    );
+    // The mapper distinguishes the pin write from the .gitignore update and
+    // says which step failed; a stringified error object says neither.
+    expect(frame.envelope.error.why).toBe(
+      "The CLI could not write .prisma/local.json.",
+    );
+    expect(frame.envelope.error.meta).toMatchObject({
+      pinPath: ".prisma/local.json",
+      operation: "create-directory",
+    });
+    expect(frame.envelope.error.nextActions).toContainEqual({
+      kind: "run-command",
+      label: "Run",
+      command: "prisma-cli service deploy --project <id-or-name>",
+    });
+  });
+
   it("rejects an unsupported --framework value at parse time", async () => {
-    installFakeProvider({ services: [EXISTING_SERVICE] });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
+    const harness = await makeDeployCli({ services: [EXISTING_SERVICE] });
 
     const result = await harness.cli.run(
       ["service", "deploy", "--project", "acme-app", "--framework", "django"],
@@ -764,10 +987,9 @@ describe("prisma-v8 service deploy", () => {
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {
-    installFakeProvider({ services: [EXISTING_SERVICE] });
-    const harness = await makeServiceCli({
+    const harness = await makeDeployCli({
+      services: [EXISTING_SERVICE],
       authenticated: false,
-      routes: PROJECT_ROUTES,
     });
 
     const result = await harness.cli.run(deployArgs(), {
@@ -799,13 +1021,15 @@ describe("prisma-v8 service deploy (deploy-all)", () => {
   }
 
   it("deploys every configured target in order, one step per target", async () => {
-    installFakeProvider({ services: [EXISTING_SERVICE], deployments: [] });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
+    const harness = await makeDeployCli({
+      services: [EXISTING_SERVICE],
+      deployments: [],
+    });
     await writeMultiTargetConfig(harness.cwd);
 
     const result = await harness.cli.run(
       ["service", "deploy", "--project", "acme-app"],
-      { cwd: harness.cwd, env: harness.env },
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
     expect(result.exitCode).toBe(0);
@@ -820,11 +1044,18 @@ describe("prisma-v8 service deploy (deploy-all)", () => {
         { target: "api", result: { promoted: true } },
       ],
     });
+    expect(presentedSummary(result.presented)).toEqual({
+      kind: "summary",
+      tone: "ok",
+      text: "Deployed 2 services.",
+    });
   });
 
   it("rejects per-service inputs when deploying every target", async () => {
-    installFakeProvider({ services: [EXISTING_SERVICE], deployments: [] });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
+    const harness = await makeDeployCli({
+      services: [EXISTING_SERVICE],
+      deployments: [],
+    });
     await writeMultiTargetConfig(harness.cwd);
 
     const result = await harness.cli.run(
@@ -853,7 +1084,7 @@ describe("prisma-v8 service deploy (deploy-all)", () => {
 
   it("carries completed and not-attempted targets when one fails", async () => {
     let deployCount = 0;
-    installFakeProvider({
+    const harness = await makeDeployCli({
       services: [EXISTING_SERVICE],
       deployments: [],
       deploy: (progress) => {
@@ -866,7 +1097,6 @@ describe("prisma-v8 service deploy (deploy-all)", () => {
         progress?.onBuildComplete?.({} as never);
       },
     });
-    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
     await writeMultiTargetConfig(harness.cwd);
 
     const result = await harness.cli.run(

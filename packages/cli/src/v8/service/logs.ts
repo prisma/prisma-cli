@@ -247,9 +247,13 @@ export const serviceLogsCommand = defineSessionCommand({
             channel: "diagnostic",
             line: record.message,
             data: {
+              kind: record.kind,
               cursor: record.cursor,
               code: record.code,
               retryable: record.retryable,
+              ...(record.details === undefined
+                ? {}
+                : { details: record.details }),
             },
           });
         }

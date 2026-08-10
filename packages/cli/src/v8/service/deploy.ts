@@ -24,7 +24,10 @@ import {
 } from "../../lib/project/local-pin";
 import type { ProjectCandidate } from "../../lib/project/resolution";
 import { sortProjects } from "../../lib/project/resolution";
-import { bindProjectToDirectory } from "../../lib/project/setup";
+import {
+  bindProjectToDirectory,
+  projectDirectoryBindingErrorToCliError,
+} from "../../lib/project/setup";
 import type { CommandContext as LegacyCommandContext } from "../../shell/runtime";
 import { maybeSetupBranchDatabase } from "./branch-database";
 import {
@@ -495,18 +498,8 @@ async function deploySingleService(
       projectDir,
     );
     if (bound.isErr()) {
-      throw new CliStructuredError(
-        "SERVICE.LOCAL_STATE_WRITE_FAILED",
-        "Could not write the local Project binding",
-        {
-          why: String(bound.error),
-          nextActions: [
-            adviceAction(
-              "Check write permissions for the .prisma directory, then rerun deploy.",
-            ),
-          ],
-          cause: bound.error,
-        },
+      throw fromLegacyCliError(
+        projectDirectoryBindingErrorToCliError(bound.error),
       );
     }
     localPinResult = bound.value.localPin;

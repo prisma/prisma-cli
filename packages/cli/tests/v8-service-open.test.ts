@@ -3,6 +3,7 @@ import { readAuthState } from "../src/auth";
 import {
   makeServiceCli,
   page,
+  presentedSummary,
   readFlowRoutes,
   SERVICE_DETAIL,
   SIGNED_IN,
@@ -34,6 +35,11 @@ describe("prisma-v8 service open", () => {
       service: { id: "svc_1", name: "hello-world" },
       url: "https://hello.prisma.app",
       opened: false,
+    });
+    expect(presentedSummary(result.presented)).toEqual({
+      kind: "summary",
+      tone: "info",
+      text: "Resolved the live URL for the selected service.",
     });
     expect(result.events).toContainEqual({
       kind: "endpoint",
@@ -72,6 +78,11 @@ describe("prisma-v8 service open", () => {
     expect(result.exitCode).toBe(0);
     expect(opener).toHaveBeenCalledWith("https://hello.prisma.app");
     expect(result.presented?.data).toMatchObject({ opened: true });
+    expect(presentedSummary(result.presented)).toEqual({
+      kind: "summary",
+      tone: "ok",
+      text: "Opened the live URL for the selected service.",
+    });
     expect(result.events).toContainEqual({
       kind: "endpoint",
       name: "Live URL",

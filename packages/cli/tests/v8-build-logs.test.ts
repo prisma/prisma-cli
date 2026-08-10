@@ -186,7 +186,7 @@ describe("prisma-v8 build logs", () => {
     ]);
   });
 
-  it("carries a reported terminal record's cursor, code and retryable", async () => {
+  it("carries a reported terminal record's kind, cursor, code and retryable", async () => {
     const harness = await makeServiceCli({
       routes: logRoutes([
         {
@@ -208,7 +208,7 @@ describe("prisma-v8 build logs", () => {
     expect(result.exitCode).toBe(0);
     expect(outputData(result.events)).toEqual([
       undefined,
-      { cursor: "9", code: "no_logs", retryable: false },
+      { kind: "end", cursor: "9", code: "no_logs", retryable: false },
     ]);
   });
 

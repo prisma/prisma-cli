@@ -124,7 +124,10 @@ export const servicePromoteCommand = defineCommand({
         ]
       : [];
     return ok(
-      ctx.present({ data: result, diagnostics }, promotePresentations(result)),
+      ctx.present(
+        { data: result, diagnostics },
+        promotePresentations(result, alreadyLive),
+      ),
     );
   },
 });

@@ -5,7 +5,11 @@ import { createTestCli } from "@prisma/cli-engine/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { executeAppBuild } from "../src/lib/app/build";
-import { SERVICE_COMMANDS, SERVICE_GROUPS } from "./v8-service-testkit";
+import {
+  presentedSummary,
+  SERVICE_COMMANDS,
+  SERVICE_GROUPS,
+} from "./v8-service-testkit";
 
 vi.mock("../src/lib/app/build", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/lib/app/build")>()),
@@ -53,6 +57,11 @@ describe("prisma-v8 service build", () => {
       directory: "/tmp/artifact",
       entrypoint: "server.js",
       buildType: "bun",
+    });
+    expect(presentedSummary(result.presented)).toEqual({
+      kind: "summary",
+      tone: "ok",
+      text: "Built the local service artifact.",
     });
     expect(result.events).toContainEqual({
       kind: "step-started",

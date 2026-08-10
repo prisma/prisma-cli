@@ -1,27 +1,32 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { ManagementApiClient } from "@prisma/cli-engine";
+import type {
+  Block,
+  ManagementApiClient,
+  MountedTree,
+  PresentedResult,
+} from "@prisma/cli-engine";
 import { createTestCli, mintTestJwt } from "@prisma/cli-engine/testing";
 import type { AuthStateResult } from "../src/types/auth";
-import { buildLogsCommand } from "../src/v8/build/logs";
-import { serviceBuildCommand } from "../src/v8/service/build";
-import { serviceDeployCommand } from "../src/v8/service/deploy";
-import { serviceDomainAddCommand } from "../src/v8/service/domain-add";
-import { serviceDomainRemoveCommand } from "../src/v8/service/domain-remove";
-import { serviceDomainRetryCommand } from "../src/v8/service/domain-retry";
-import { serviceDomainShowCommand } from "../src/v8/service/domain-show";
-import { serviceDomainWaitCommand } from "../src/v8/service/domain-wait";
-import { serviceListDeploysCommand } from "../src/v8/service/list-deploys";
-import { serviceLogsCommand } from "../src/v8/service/logs";
-import { serviceOpenCommand } from "../src/v8/service/open";
-import { servicePromoteCommand } from "../src/v8/service/promote";
-import { serviceRemoveCommand } from "../src/v8/service/remove";
-import { serviceRollbackCommand } from "../src/v8/service/rollback";
-import { serviceShowCommand } from "../src/v8/service/show";
-import { serviceShowDeployCommand } from "../src/v8/service/show-deploy";
+import { MOUNTED_COMMANDS } from "../src/v8/cli";
 
 export const WORKSPACE = { id: "ws_1", name: "Acme Inc" };
+
+export type SummaryBlock = Extract<Block, { kind: "summary" }>;
+
+/**
+ * The presented summary of a human-format run: the tone symbol and the
+ * sentence a user reads as the command's outcome. Only materialized when
+ * the run selected human format (`isTty: {stdout: true}`).
+ */
+export function presentedSummary(
+  presented: PresentedResult<unknown> | undefined,
+): SummaryBlock | undefined {
+  return presented?.presentation.human.find(
+    (block): block is SummaryBlock => block.kind === "summary",
+  );
+}
 
 export const SIGNED_IN: AuthStateResult = {
   authenticated: true,
@@ -277,24 +282,21 @@ export const SERVICE_GROUPS = {
   build: { brief: "Inspect builds created by a git push or Console" },
 };
 
-export const SERVICE_COMMANDS = {
-  "service build": serviceBuildCommand,
-  "service deploy": serviceDeployCommand,
-  "service show": serviceShowCommand,
-  "service open": serviceOpenCommand,
-  "service list-deploys": serviceListDeploysCommand,
-  "service show-deploy": serviceShowDeployCommand,
-  "service logs": serviceLogsCommand,
-  "build logs": buildLogsCommand,
-  "service promote": servicePromoteCommand,
-  "service rollback": serviceRollbackCommand,
-  "service remove": serviceRemoveCommand,
-  "service domain add": serviceDomainAddCommand,
-  "service domain show": serviceDomainShowCommand,
-  "service domain remove": serviceDomainRemoveCommand,
-  "service domain retry": serviceDomainRetryCommand,
-  "service domain wait": serviceDomainWaitCommand,
-};
+/**
+ * The shipped mount map narrowed to the groups a suite exercises, so no
+ * test file restates a command path that `src/v8/cli.ts` owns.
+ */
+export function mountedCommands(groups: readonly string[]): MountedTree {
+  return Object.fromEntries(
+    Object.entries(MOUNTED_COMMANDS).filter(([commandPath]) =>
+      groups.some(
+        (group) => commandPath === group || commandPath.startsWith(`${group} `),
+      ),
+    ),
+  );
+}
+
+export const SERVICE_COMMANDS = mountedCommands(["service", "build"]);
 
 export interface ServiceCliOptions {
   routes?: Routes;

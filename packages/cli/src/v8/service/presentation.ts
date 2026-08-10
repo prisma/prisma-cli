@@ -28,8 +28,15 @@ function fields(rows: FieldRow[]): Block {
   return { kind: "fields", rows };
 }
 
+/** The heading a command that only reports opens with. */
 function title(text: string): Block {
   return { kind: "summary", tone: "info", text };
+}
+
+/** The line a command that changed something ends on: what it did, in
+ *  the past tense, marked as a success. */
+function completed(text: string): Block {
+  return { kind: "summary", tone: "ok", text };
 }
 
 function formatRecentDeployments(
@@ -79,7 +86,7 @@ function domainFailureRows(domain: ServiceDomainSummary): FieldRow[] {
 export function buildPresentations(result: ServiceBuildResult): Presentations {
   return {
     human: () => [
-      title("Building the local service artifact."),
+      completed("Built the local service artifact."),
       fields([
         { label: "build type", value: result.buildType },
         { label: "entrypoint", value: result.entrypoint ?? "none" },
@@ -200,11 +207,9 @@ export function openPresentations(
 ): Presentations {
   return {
     human: () => [
-      title(
-        result.opened
-          ? "Opening the live URL for the selected service."
-          : "Resolving the live URL for the selected service.",
-      ),
+      result.opened
+        ? completed("Opened the live URL for the selected service.")
+        : title("Resolved the live URL for the selected service."),
       fields([
         { label: "project", value: result.projectId },
         { label: "service", value: result.service.name },
@@ -229,13 +234,11 @@ export function deployPresentations(
   const settings = result.deploySettings;
   return {
     human: () => [
-      {
-        kind: "summary",
-        tone: "ok",
-        text: result.promoted
+      completed(
+        result.promoted
           ? `Deployed ${result.service.name} to ${result.branch.name}.`
           : `Built ${result.service.name} without promoting it.`,
-      },
+      ),
       fields([
         { label: "project", value: result.project.name },
         { label: "branch", value: result.branch.name },
@@ -293,7 +296,7 @@ export function deployAllPresentations(
 ): Presentations {
   return {
     human: () => [
-      title(`Deployed ${result.deployments.length} services.`),
+      completed(`Deployed ${result.deployments.length} services.`),
       {
         kind: "table",
         columns: ["target", "service", "deployment", "status", "promoted"],
@@ -326,10 +329,15 @@ function deploymentNextActions(deploymentId: string): NextAction[] {
 
 export function promotePresentations(
   result: ServicePromoteResult,
+  alreadyLive: boolean,
 ): Presentations {
   return {
     human: () => [
-      title("Promoting a deployment to production."),
+      completed(
+        alreadyLive
+          ? `${result.deployment.id} was already live for ${result.service.name}.`
+          : `Promoted ${result.deployment.id} to production.`,
+      ),
       fields([
         { label: "project", value: result.projectId },
         { label: "service", value: result.service.name },
@@ -346,10 +354,15 @@ export function promotePresentations(
 
 export function rollbackPresentations(
   result: ServiceRollbackResult,
+  alreadyLive: boolean,
 ): Presentations {
   return {
     human: () => [
-      title("Rolling production back to an earlier deployment."),
+      completed(
+        alreadyLive
+          ? `${result.deployment.id} was already live for ${result.service.name}.`
+          : `Rolled ${result.service.name} back to ${result.deployment.id}.`,
+      ),
       fields([
         { label: "project", value: result.projectId },
         { label: "service", value: result.service.name },
@@ -373,7 +386,9 @@ export function removePresentations(
 ): Presentations {
   return {
     human: () => [
-      title("Removing the service and every deployment it owns."),
+      completed(
+        `Removed ${result.service.name} and every deployment it owned.`,
+      ),
       fields([
         { label: "project", value: result.projectId },
         { label: "service", value: result.service.name },
@@ -392,11 +407,11 @@ export function domainAddPresentations(
 ): Presentations {
   return {
     human: () => [
-      title(
-        result.existing
-          ? "Showing the existing custom domain for the selected service."
-          : "Adding a custom domain to the selected service.",
-      ),
+      result.existing
+        ? title("Showing the existing custom domain for the selected service.")
+        : completed(
+            `Added ${result.domain.hostname} to ${result.service.name}.`,
+          ),
       fields([
         ...domainTargetRows(result),
         { label: "hostname", value: result.domain.hostname },
@@ -463,7 +478,7 @@ export function domainRemovePresentations(
 ): Presentations {
   return {
     human: () => [
-      title("Removing a custom domain from the selected service."),
+      completed(`Removed ${result.hostname} from ${result.service.name}.`),
       fields([
         ...domainTargetRows(result),
         { label: "hostname", value: result.hostname },
@@ -478,7 +493,7 @@ export function domainRetryPresentations(
 ): Presentations {
   return {
     human: () => [
-      title("Retrying custom domain verification."),
+      completed(`Retried verification for ${result.domain.hostname}.`),
       fields([
         ...domainTargetRows(result),
         { label: "hostname", value: result.domain.hostname },
@@ -501,11 +516,7 @@ export function domainWaitPresentations(
 ): Presentations {
   return {
     human: () => [
-      {
-        kind: "summary",
-        tone: "ok",
-        text: `${result.hostname} is live at ${result.liveUrl}`,
-      },
+      completed(`${result.hostname} is live at ${result.liveUrl}`),
       fields([
         ...domainTargetRows(result),
         { label: "hostname", value: result.hostname },

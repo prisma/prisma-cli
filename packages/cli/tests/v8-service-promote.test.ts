@@ -6,6 +6,7 @@ import { readAuthState } from "../src/auth";
 import {
   makeServiceCli,
   page,
+  presentedSummary,
   releaseRoutes,
   SIGNED_IN,
 } from "./v8-service-testkit";
@@ -34,7 +35,7 @@ describe("prisma-v8 service promote", () => {
         "--service",
         "hello-world",
       ],
-      { cwd: harness.cwd, env: harness.env },
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
     expect(result.exitCode).toBe(0);
@@ -42,6 +43,11 @@ describe("prisma-v8 service promote", () => {
       projectId: "proj_1",
       service: { id: "svc_1", name: "hello-world" },
       deployment: { id: "dep_1", status: "running", live: true },
+    });
+    expect(presentedSummary(result.presented)).toEqual({
+      kind: "summary",
+      tone: "ok",
+      text: "Promoted dep_1 to production.",
     });
   });
 
@@ -125,7 +131,7 @@ describe("prisma-v8 service promote", () => {
         "--service",
         "hello-world",
       ],
-      { cwd: harness.cwd, env: harness.env },
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
     expect(result.exitCode).toBe(0);
@@ -138,6 +144,11 @@ describe("prisma-v8 service promote", () => {
       },
     ]);
     expect(result.events).toEqual([]);
+    expect(presentedSummary(result.presented)).toEqual({
+      kind: "summary",
+      tone: "ok",
+      text: "dep_2 was already live for hello-world.",
+    });
   });
 
   it("emits the completed json envelope with commandId service.promote", async () => {
