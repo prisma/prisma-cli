@@ -147,9 +147,15 @@ export function writeDiagnostic(
   }
 }
 
+/** `label` is required, so a mapper building an action out of a bare
+ *  command string — a legacy error's follow-up step, with no prose
+ *  beside it — has nothing to put in the label but the command itself.
+ *  Only the renderer sees both fields, so only it can tell they are the
+ *  same string and print it once. */
 export function renderNextAction(action: NextAction): string {
   const target = action.command ?? action.url;
-  return `→ ${action.label}${target === undefined ? "" : `: ${target}`}`;
+  const repeatsTheLabel = target === undefined || target === action.label;
+  return `→ ${action.label}${repeatsTheLabel ? "" : `: ${target}`}`;
 }
 
 /** Populates docsUrl from the owning family's docsBaseUrl (base + code)
