@@ -458,10 +458,14 @@ dropped). On top of them:
   cases. The project and env help cases stay — they belong to D1 and
   still pass, and one of them also asserts the legacy shell's git help,
   which lives until the shell is deleted in S2d.
-- `project-real-mode.test.ts`: three cases — connecting through an
-  installed GitHub App, the already-connected-same-repository
-  short-circuit, and disconnecting through the source-repositories API.
-  All three are covered by `v8-git.test.ts`.
+- `project-real-mode.test.ts`: six cases in two passes. With the first
+  D3 commit went connecting through an installed GitHub App, the
+  already-connected-same-repository short-circuit, and disconnecting
+  through the source-repositories API. Once `git connect`'s wait landed,
+  three more followed: the non-interactive install intent when the
+  workspace has no GitHub App installation, the interactive wait that
+  connects after approval, and `REPO_NOT_ACCESSIBLE` when the App cannot
+  see the repository. All six are covered by `v8-git.test.ts`.
 
 Kept deliberately: `git-adapter.test.ts` (URL-parsing units for
 `parseGitHubRepositoryUrl`, an operation-layer function v8 calls);
@@ -470,12 +474,10 @@ Kept deliberately: `git-adapter.test.ts` (URL-parsing units for
 the two pagination-cursor-stall cases in `project-real-mode.test.ts`,
 which cover `listScmInstallations` and `findRepositoryInInstallation`,
 operation-layer functions v8 calls and does not otherwise cover; and the
-four `project-real-mode.test.ts` cases covering the GitHub App install
-and wait path. Those four were first kept because `git connect` step 5
-was unported. Step 5 has since landed, and three of the four now have v8
-equivalents in `v8-git.test.ts`. They are still here because the legacy
-shell keeps its own `git connect` until S2d, and because one of them —
-the stored installation that answers 404 or 422 and is skipped — covers
-`findRepositoryInInstallations`, an operation-layer function v8 calls and
-does not otherwise exercise. **Flagged for the operator:** deleting the
-other three is defensible now and was not in this dispatch's scope.
+one `project-real-mode.test.ts` case from the GitHub App install path,
+"creates an install intent when the stored GitHub App installation is
+unavailable". It drives a stored installation answering 422 and being
+skipped inside `findRepositoryInInstallations`, an operation-layer
+function v8 calls and does not otherwise exercise. Its three siblings
+were held while `git connect`'s wait was unported and were deleted once
+the wait landed and gave them v8 equivalents.
