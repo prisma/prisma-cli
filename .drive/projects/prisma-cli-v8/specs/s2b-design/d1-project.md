@@ -1,5 +1,21 @@
 # D1 design — the project group (11 commands) + slice template
 
+> **CONSENT SUPERSESSION (orchestrator amendment, 2026-08-11).** This
+> document was drafted before consent became engine-owned. Wherever a
+> section below still shows a per-command `confirm` flag or a
+> `*.CONFIRMATION_REQUIRED` mapper entry, **conventions §5 wins** — a
+> child doc may add detail, never contradict a rule. Commands declare
+> NO confirm flag; the engine injects the shared repeatable
+> `--confirm <value>`, and the handler calls
+> `ctx.prompt.consent(<the section's pinned confirmation why
+> sentence>, { token: <the section's exact id> })`. The legacy
+> `CONFIRMATION_REQUIRED` error is unreachable, so its mapper row is
+> dead and `meta.expectedConfirm` / `meta.receivedConfirm` do not
+> exist. The affected lines are struck below at their own sites; the
+> sections remain the source for every copy string. Added on the
+> CodeRabbit review of PR #133, which read the surviving declarations
+> as still binding — the per-section notes were not enough.
+
 Binding design for dispatch D1. Parent: `conventions.md`. Grounding
 fact sheet: `facts/facts-d1-project.md` (verbatim legacy extraction
 with file:line references — the implementer treats it as part of this
@@ -64,7 +80,7 @@ Shape per conventions §4. Complete map:
 | `PROJECT_TRANSFER_REJECTED` (1) | `PROJECT.TRANSFER_REJECTED` |
 | `TRANSFER_RECIPIENT_REQUIRED` (2) | `PROJECT.TRANSFER_RECIPIENT_REQUIRED` |
 | `TRANSFER_RECIPIENT_UNAVAILABLE` (1) | `PROJECT.TRANSFER_RECIPIENT_UNAVAILABLE` |
-| `CONFIRMATION_REQUIRED` domain project (2) | `PROJECT.CONFIRMATION_REQUIRED` |
+| ~~`CONFIRMATION_REQUIRED` domain project (2)~~ | ~~`PROJECT.CONFIRMATION_REQUIRED`~~ — struck: unreachable, the engine's `CLI.CONSENT_REQUIRED` replaces it |
 | `PROJECT_LINK_TARGET_REQUIRED` (2) | `PROJECT.LINK_TARGET_REQUIRED` (only reachable via `--yes`-suppressed picker; see 3.4) |
 | `WORKSPACE_NOT_AUTHENTICATED` (1) / `WORKSPACE_AMBIGUOUS` (2) | `AUTH.WORKSPACE_NOT_AUTHENTICATED` / `AUTH.WORKSPACE_AMBIGUOUS` (S2a codes; copy from the recipient machinery ports verbatim) |
 | `ENV_VARIABLE_ALREADY_EXISTS` (1) | `PROJECT.ENV_VARIABLE_ALREADY_EXISTS` |
@@ -286,9 +302,9 @@ as the `summary` block text.
 - help.summary `Remove a Project permanently after exact id
   confirmation`; example
   `project remove proj_123 --confirm proj_123`; positional
-  `project` (brief `Project id or name`); flag `confirm:
+  `project` (brief `Project id or name`); ~~flag `confirm:
   flag.string({ brief: "Exact project id required to remove",
-  placeholder: "project-id" })`.
+  placeholder: "project-id" })`~~ — struck, no flag is declared.
 - Handler: workspace → positional-only resolve → consent (§2.2) →
   `createManagementProjectProvider(ctx.api).removeProject` →
   `cleanupLocalPinForProject` semantics (pin delete when matching;
@@ -316,7 +332,8 @@ as the `summary` block text.
   authenticated workspace to receive the project", placeholder:
   "id-or-name" })`, `recipientToken: flag.string({ brief: "Access
   token for the receiving workspace", placeholder: "token" })`,
-  `confirm` (brief `Exact project id required to transfer`).
+  ~~`confirm` (brief `Exact project id required to transfer`)~~ —
+  struck, no flag is declared.
 - Handler order (fact sheet §7): both recipient flags →
   `PROJECT.USAGE_ERROR` (mutual-exclusion copy verbatim); neither →
   `PROJECT.TRANSFER_RECIPIENT_REQUIRED`; resolve positional-only;

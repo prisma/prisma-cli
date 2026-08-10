@@ -1,5 +1,21 @@
 # D2 design — the postgres group (11 commands)
 
+> **CONSENT SUPERSESSION (orchestrator amendment, 2026-08-11).** This
+> document was drafted before consent became engine-owned. Wherever a
+> section below still shows a per-command `confirm` flag or a
+> `*.CONFIRMATION_REQUIRED` mapper entry, **conventions §5 wins** — a
+> child doc may add detail, never contradict a rule. Commands declare
+> NO confirm flag; the engine injects the shared repeatable
+> `--confirm <value>`, and the handler calls
+> `ctx.prompt.consent(<the section's pinned confirmation why
+> sentence>, { token: <the section's exact id> })`. The legacy
+> `CONFIRMATION_REQUIRED` error is unreachable, so its mapper row is
+> dead and `meta.expectedConfirm` / `meta.receivedConfirm` do not
+> exist. The affected lines are struck below at their own sites; the
+> sections remain the source for every copy string. Added on the
+> CodeRabbit review of PR #133, which read the surviving declarations
+> as still binding — the per-section notes were not enough.
+
 Binding design for dispatch D2. Parent: `conventions.md` (layout,
 mounting, error-mapping, consent, secrets, tests). Grounding:
 `scratchpad fact sheet facts-d2-postgres.md` extracted from the legacy
@@ -154,7 +170,7 @@ implementers add no entries:
 | `USAGE_ERROR` domain auth — workspace required (2) | `AUTH.USAGE_ERROR` |
 | `DATABASE_NOT_FOUND` (1) | `POSTGRES.NOT_FOUND` |
 | `DATABASE_AMBIGUOUS` (1) | `POSTGRES.AMBIGUOUS` |
-| `CONFIRMATION_REQUIRED` (2) | `POSTGRES.CONFIRMATION_REQUIRED` |
+| ~~`CONFIRMATION_REQUIRED` (2)~~ | ~~`POSTGRES.CONFIRMATION_REQUIRED`~~ — struck: unreachable, the engine's `CLI.CONSENT_REQUIRED` replaces it |
 | `PLAN_LIMIT_REACHED` (1) | `POSTGRES.PLAN_LIMIT_REACHED` |
 | `DATABASE_CONNECTION_MISSING` (1) | `POSTGRES.CONNECTION_MISSING` |
 | `DATABASE_CONNECTION_STRING_MISSING` (1) | `POSTGRES.CONNECTION_STRING_MISSING` |
@@ -340,9 +356,9 @@ per command below).
   `backup: flag.string({ brief: "Backup to restore from",
   placeholder: "backup-id" })`, `sourceDatabase: flag.string({
   brief: "Database the backup belongs to (defaults to the target)",
-  placeholder: "database" })`, `confirm: flag.string({ brief: "Exact
+  placeholder: "database" })`, ~~`confirm: flag.string({ brief: "Exact
   target database id required to restore", placeholder:
-  "database-id" })`, project, branch.
+  "database-id" })`~~ — struck, no flag is declared — project, branch.
 - Handler order (legacy database.ts:471): (1) blank `--backup` →
   `POSTGRES.USAGE_ERROR` `Backup id required` / `Database restore
   needs the backup to restore from.` / nextActions from fix+nextStep
@@ -384,8 +400,9 @@ per command below).
 - help.summary: `Remove a database after exact id confirmation`;
   example: `postgres remove db_123 --confirm db_123`.
 - args: positional `database` (brief `Database id or name`); flags
-  `confirm: flag.string({ brief: "Exact database id required to
-  remove", placeholder: "database-id" })`, project, branch.
+  ~~`confirm: flag.string({ brief: "Exact database id required to
+  remove", placeholder: "database-id" })`~~ — struck, no flag is
+  declared — project, branch.
 - Handler: context → resolve → confirmation (§2.3, default copy:
   summary `Confirm database removal`, why `Removing this database is
   destructive and requires the exact id.`, rerun nextAction
@@ -483,8 +500,9 @@ per command below).
   `postgres connection rotate conn_123 --confirm conn_123`.
 - args: positional `connection: positional.string({ brief:
   "Connection id", placeholder: "connection-id" })`; flags
-  `confirm: flag.string({ brief: "Exact connection id required to
-  rotate", placeholder: "connection-id" })`. NO project/branch.
+  ~~`confirm: flag.string({ brief: "Exact connection id required to
+  rotate", placeholder: "connection-id" })`~~ — struck, no flag is
+  declared. NO project/branch.
 - Handler order (legacy database.ts:551): (1) blank id →
   `POSTGRES.USAGE_ERROR` `Connection id required` / `Database
   connection rotation needs a connection id.` / nextActions incl.
@@ -517,8 +535,9 @@ per command below).
 - help.summary: `Remove a database connection after exact id
   confirmation`; example:
   `postgres connection remove conn_123 --confirm conn_123`.
-- args: positional `connection` (as 3.10); flag `confirm` (brief
-  `Exact connection id required to remove`). NO project/branch.
+- args: positional `connection` (as 3.10); ~~flag `confirm` (brief
+  `Exact connection id required to remove`)~~ — struck, no flag is
+  declared. NO project/branch.
 - Handler: blank id → `POSTGRES.USAGE_ERROR` `Connection id
   required` / `Database connection removal needs a connection id.`
   (example nextAction `${CLI_NAME} postgres connection remove

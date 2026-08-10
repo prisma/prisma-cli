@@ -283,17 +283,22 @@ out of contract.
   `packages/cli/tests/v8-project.test.ts`, `v8-postgres.test.ts`,
   `v8-bucket.test.ts`, `v8-branch.test.ts`, `v8-git.test.ts`.
 - Structure copies `v8-auth.test.ts`: `createTestCli({ commands:
-  <flat mount map>, groups, credentials: { token: "tok_1" },
-  managementApi: { client: <fake> }, now: () => new Date(0) })`;
-  the fake client is a plain object implementing exactly the SDK
-  methods the operation layer calls (typed `as ManagementApiClient`),
-  returning recorded SDK-shaped responses; the auth module (workspace
-  read) is mocked via `vi.mock("../src/auth")` exactly as
-  v8-auth.test.ts does. Unauthenticated cases: omit `credentials`.
+  <flat mount map>, groups, sessions: [<session record>],
+  selectedWorkspaceId: <id>, managementApi: { client: <fake> },
+  now: () => new Date(0) })`; the fake client is a plain object
+  implementing exactly the SDK methods the operation layer calls
+  (typed `as ManagementApiClient`), returning recorded SDK-shaped
+  responses. Unauthenticated cases: omit the session seeds.
   Envelope assertions via the `resultFrame(result.json)` helper
-  (copy from v8-auth.test.ts). Adopt the credential-manager seeding
-  surface if it lands mid-slice — merge-down rule from the handover
-  brief.
+  (copy from v8-auth.test.ts).
+  **Corrected 2026-08-11.** This bullet used to seed
+  `credentials: { token }` and to require mocking the auth module with
+  `vi.mock("../src/auth")` for the workspace read. Neither survives the
+  credential-manager merge-down: the workspace comes from
+  `ctx.activeCredential()`, which the harness serves from its seeded
+  sessions, so no auth-module mock is needed and a test following the
+  old instruction would leave resource commands with no workspace at
+  all. The shipped group suites are the reference.
 - Matrix per command: success; errored (at least one mapped legacy
   error); json envelope (commandId, result keys, exitCode,
   nextActions); unauthenticated (needs failure: engine sign-in error,

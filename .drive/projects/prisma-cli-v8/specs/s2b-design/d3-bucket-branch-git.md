@@ -92,9 +92,14 @@ Git: `USAGE_ERROR` domain project raised by git commands (2) →
 `GIT.REPO_NOT_CONNECTED`; `REPO_CONNECTION_FAILED` (1) →
 `GIT.REPO_CONNECTION_FAILED` (status-aware fix text verbatim, incl.
 the 404/409/422 variants; meta `{status, apiCode?}`); legacy
-401/403 → `AUTH_REQUIRED` mapping does not port (SDK auth failures
-propagate → `CLI.CREDENTIALS_REQUIRED`; divergence entry, same class
-as D1). Resolution family → `PROJECT.*` (with `commandName:
+401/403 → `AUTH_REQUIRED`: the engine settles every real credentials
+failure itself, so a genuine sign-in problem never reaches this mapper
+— it becomes `CLI.CREDENTIALS_REQUIRED` before the handler runs. What
+does still arrive is the permission residue of a returned 403, and it
+maps mechanically to `GIT.AUTH_REQUIRED` like any unmapped code
+(corrected 2026-08-11: this line previously read "does not port",
+which contradicted divergence 40 and the shipped
+`v8-git.test.ts` case; divergence entry, same class as D1). Resolution family → `PROJECT.*` (with `commandName:
 "git connect"` / `"git disconnect"` preserved).
 
 All copy verbatim + conventions §0-substitutions (command strings →
@@ -386,9 +391,11 @@ Common: `needs: { credentials: true }`; data = legacy result minus
   no-url usage error; non-GitHub URL; already-connected idempotent
   success; different-repo conflict; installation-required (meta
   asserted); not-accessible; poll-then-found
-  (events asserted: endpoint → status waiting → status connected;
-  fake client scripted across two list calls; interval env set to
-  1ms); poll timeout; connection-failed 409 fix text; json; unauth.
+  (the single `endpoint` event asserted — the struck three-event
+  sequence is superseded by STEP 5 RESOLVED above, which this bullet
+  now follows; fake client scripted across two list calls; interval
+  env set to 1ms); poll timeout; connection-failed 409 fix text;
+  json; unauth.
 - Test-list amendment (orchestrator, 2026-08-10): because `git
   connect` declares `needs: { interaction: true }`, every case that
   reaches the handler must run interactively. The draft's
