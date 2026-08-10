@@ -498,6 +498,10 @@ async function deploySingleService(
       projectDir,
     );
     if (bound.isErr()) {
+      // The binding mapper re-throws an aborted write as its own tagged
+      // error, which the engine cannot tell from a crash. Raising the
+      // signal's own reason first keeps Ctrl-C a cancellation.
+      ctx.signal.throwIfAborted();
       throw fromLegacyCliError(
         projectDirectoryBindingErrorToCliError(bound.error),
       );

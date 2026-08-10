@@ -29,7 +29,12 @@ sections marked orchestrator-owned.
 | D2 round 1 | F1–F5 | closed in `040c750`, `55bb185`, `a0b0ea6` |
 | D3 round 1 | F1–F5 | closed in `8e3b181` + `f7b3635`; **independently verified closed by the slice review**, not accepted from the fix report. F1 was closed per the orchestrator adjudication under it, not per the finding's own conclusion |
 | D4 round 1 | F1, F2 | closed in `f7b3635`; independently verified closed by the slice review |
-| Slice review | ENG-F1–F4, ARCH-F1–F4 | **open** — one fix round dispatched. ENG-F1 is record-only here: the code fix belongs to the S2a stream (see the merge-down note) |
+| Slice review | ENG-F1–F4, ARCH-F1–F4 | closed in `ed7151e` + `0459208`; **independently verified closed** by the round-2 verification pass, which re-counted the affected commands itself and proved the new deploy coverage by mutating `app-provider.ts` and watching the suite fail. ENG-F1 was record-only here: the code fix belongs to the S2a stream (see the merge-down note) |
+| Slice review round 2 | R2-F1 | closed by the orchestrator in the tip commit — a cancellation regression the ARCH-F1 fix introduced. Recorded as deliberately untested; see the finding |
+
+**All findings raised in this slice are closed.** The one open item is not
+a finding against this branch: the credential reader that breaks 13 of
+these commands on merge-down belongs to the S2a stream.
 
 ## Findings log
 
@@ -517,6 +522,37 @@ The entry's statement of the divergence is right: a handler cannot tell `--no-db
 `explicitFlagKeys` (`command-snapshot.ts:57-95`) scans argv for which flag names appear, and lines 77-82 deliberately mark the base flag when they see a `--no-<flag>` token. `buildCommandSnapshot` then labels every declared flag `source: "cli"` or `source: "default"`, documented as "flags explicitly present on argv are 'cli'" (`run-summary.ts:12-24`). Combined with the parsed boolean the handler already receives, that settles all three states: `default` means absent, `cli` with `true` means `--db`, `cli` with `false` means `--no-db`. The engine computes this at parse time on every run. It hands it only to `RunHooks.onSettled`, after the run is over, for telemetry.
 
 The gap is therefore not in the flag model. It is that a fact the engine already holds never reaches the handler — the same shape as the interactivity fact the `--db` prompt entry needs four lines further down, and as the token `service logs` needs. Stating it that way changes what the operator would build: an accessor over an existing computation, rather than a new flag type with its own negation rules. Restate the ask; the divergence itself is recorded correctly and nothing in the code needs to change.
+
+### SLICE-R2-F1 — pressing Ctrl-C during the local Project binding write now reports an internal error (low) — CLOSED by the orchestrator in the tip commit
+
+**Orchestrator note: fixed exactly as the finding recommends —
+`ctx.signal.throwIfAborted()` immediately before the mapper call, which
+is the idiom already used 55 lines above in the same function for the
+pin read. Raising the signal's own reason gives the engine a value it
+recognizes as an abort, so Ctrl-C settles as a cancellation instead of
+falling through to the crash path.**
+
+**Not covered by a test, deliberately.** Pinning it needs the run
+aborted between `resolveDeployProjectContext` returning and the binding
+write, and there is no event or other observable seam in that window —
+the only two statements between them are a field read and the binding
+call itself. Every way of forcing an abort earlier risks the test
+passing because some earlier await rejected, which would assert nothing
+about this line. A fragile test that can pass for the wrong reason is
+worse than none, so the gap is recorded here instead. It closes for free
+if the deploy flow ever emits a step event before the binding.
+
+`packages/cli/src/v8/service/deploy.ts:500-503`, against `deploy.ts:443-447` in the same function, `packages/cli/src/lib/project/setup.ts:98-124`, `packages/cli-engine/src/execution/settlement.ts:113-133` and `packages/cli/src/shell/command-runner.ts:40-43`.
+
+The SLICE-ARCH-F1 fix is right and I am not disputing it: routing through `projectDirectoryBindingErrorToCliError` is what the finding asked for, and leaving the three re-thrown variants re-thrown is what the mapper does. The consequence for two of those three variants was not checked, and it is worse than what the fix replaced.
+
+`LocalResolutionPinWriteAbortedError` and `LocalResolutionPinGitignoreUpdateAbortedError` are produced only when the abort signal has already fired (`local-pin.ts:348-355` and `:390-397`, both `signal?.throwIfAborted()` wrapped in a `Result.try`) — the user pressed Ctrl-C during the pin write on the first deploy of an unlinked directory. The mapper re-throws them unchanged, so a `TaggedError` leaves the handler. The engine recognises an abort in exactly two shapes: the thrown value is identical to `signal.reason`, or it is an `Error` whose `name` is the string `"AbortError"` (`settlement.ts:113-121`). Neither holds here. `better-result`'s `TaggedError` sets `name` to the tag, so the name is `"LocalResolutionPinWriteAbortedError"` (checked by running it, not by reading it), and the engine aborts with the plain string `"SIGINT"` or `"SIGTERM"` as the reason (`engine.ts:229-234`). `settleThrown` therefore falls through to `settleBug`, and the run ends on a `CLI.INTERNAL_ERROR` envelope at exit 1 with no next actions.
+
+Legacy did not do that. `toCliError` converts **any** thrown value into a clean cancellation whenever `runtime.signal.aborted` is true (`command-runner.ts:41-42`), so legacy `app deploy` reported a cancelled command. Before this fix v8 reported `SERVICE.LOCAL_STATE_WRITE_FAILED` at exit 2 with advice about write permissions — also wrong, but a structured command error rather than a crash report.
+
+The correction is one line, and the same function already contains it: the pin **read** path calls `ctx.signal.throwIfAborted()` before throwing its own error (`deploy.ts:446`), which throws `signal.reason` itself and so satisfies the engine's first test, settling `CLI.ABORTED` at 130. Adding the identical call immediately before `throw fromLegacyCliError(…)` closes this and leaves `LocalResolutionPinSerializationError` settling as an internal error, which is the right settlement for a genuine bug.
+
+Filed low because reaching it needs SIGINT inside the pin-write window of a first deploy. It is still a CLI that answers Ctrl-C with "internal error".
 
 ## Round notes
 
@@ -1071,6 +1107,51 @@ That is the judgement worth carrying to the operator: this is not six unrelated 
 - **The AC scoreboard still reads as it did before the last two commits.** It records the divergence file as "NOT met" on the D3 and D4 surfaces, citing five findings that `8e3b181` and `f7b3635` addressed, and none of the seven D3/D4 findings carries the "CLOSED in" marker the D1 and D2 entries use. The code lens reviewer has verified all seven closed. Whoever opens the PR reads this file; it should not still say the file is incomplete.
 - **The cross-slice error-code question is now overdue, not just open.** It has been raised in three separate round notes (D1 round 1, D1 round 2, and implicitly here) and never ruled. S2d consolidates the divergence files, and the consolidation is where a `SERVICE.PROJECT_NOT_FOUND` and a `PROJECT.PROJECT_NOT_FOUND` for one failure become a user-facing inconsistency rather than a table entry. It wants a ruling before S2d starts, not during it.
 - **The engine's own gap set deserves one conversation, not six tickets.** See the judgement above. If the operator would find it useful, the two decisions could be written up as a single short engine amendment for S3 rather than six escalations carried forward — the individual entries are all recorded accurately (with the one qualification in SLICE-ARCH-F4) and would survive being restated that way.
+
+### Slice review round 2 (verification) — reviewer
+
+**Verdict: NOT SATISFIED.** All eight findings are closed, verified in the code rather than accepted from the fix report. One new low finding, SLICE-R2-F1, is open: the SLICE-ARCH-F1 fix turns a Ctrl-C during the local Project binding write into a `CLI.INTERNAL_ERROR` envelope.
+
+- **SLICE-ENG-F1 — closed.** The count is 13, and 13 is right.
+- **SLICE-ENG-F2 — closed.** The entry now lists exactly what the code emits.
+- **SLICE-ENG-F3 — closed.** All three citations corrected; the rest of the file's citations check out.
+- **SLICE-ENG-F4 — closed.** One shipped map, an exact-set assertion over it, and every test harness derived from it.
+- **SLICE-ARCH-F1 — closed.** The mapper is called; summary, both `why` sentences, `fix` and `meta` are back. See SLICE-R2-F1 for the one consequence the fix did not check.
+- **SLICE-ARCH-F2 — closed.** All nine now end on a past-tense `ok` line; the three that were already right did not regress.
+- **SLICE-ARCH-F3 — closed.** The provider factory mock is gone and the coverage is real — proven by mutation, not by reading.
+- **SLICE-ARCH-F4 — closed.** I verified the engine claim in the engine before accepting the rewrite.
+
+**Verification state.** At `0459208`: `pnpm --filter @prisma/cli test` green at 1019, `pnpm --filter @prisma/cli-engine test` green at 234, `pnpm typecheck` green, `pnpm lint` exits 0. The one file I mutated (`packages/cli/src/lib/app/app-provider.ts`) was restored to `HEAD` and the tree is clean.
+
+**SLICE-ARCH-F2, command by command.** `presentation.ts` gains a `completed()` helper (`tone: "ok"`) beside the existing `title()` (`tone: "info"`), and all nine now use it: `service build` ("Built the local service artifact."), `deploy` with no target ("Deployed 2 services."), `promote` ("Promoted dep_1 to production."), `rollback` ("Rolled hello-world back to dep_1."), `remove` ("Removed hello-world and every deployment it owned."), `domain add` ("Added shop.acme.com to hello-world."), `domain remove`, `domain retry`, and `open` ("Opened the live URL for the selected service."). Every one is pinned by a `presentedSummary` assertion on tone and text; the tests that needed it gained `isTty: {stdout: true}`, which is required because the human presentation is only materialized outside json format (`command-context.ts:33-54`, `shared-flags.ts:103-104`) and which cannot turn a run interactive, because interactivity keys off stdin alone (`shared-flags.ts:150-152`). The three that were already right are untouched in substance: `service deploy` and `service domain wait` were refactored into the same helper with the identical block, and `feedback` was not touched. The six remaining `title()` callers are all reads — `show`, `list-deploys`, `show-deploy`, `domain show`, and the two branch exceptions.
+
+**The two branch exceptions are genuine reads.** `service open` keeps `info` only when `result.opened` is false, which is the case where `ctx.openUrl` did not open anything; the text also moved to the past tense ("Resolved the live URL…"), so it no longer reads as in progress either. `domain add` keeps `info` only when `result.existing` is true, which is the API answering that the hostname was already on this service — nothing was added. Both are pinned.
+
+**The `alreadyLive` argument is right and covered.** `promote.ts:74` and `rollback.ts:77` already computed `alreadyLive`, and both already skip the SDK call under `if (!alreadyLive)`, so the old "Promoting a deployment to production." line was claiming an action that provably did not happen. The argument is now threaded to the presentation, which says "dep_2 was already live for hello-world." instead. Promote's already-live case was already tested and gained the summary assertion; rollback had no already-live case at all and gained one, with the warn diagnostic and `events: []` asserted beside it.
+
+**SLICE-ARCH-F1.** `deploy.ts:500-503` is now `throw fromLegacyCliError(projectDirectoryBindingErrorToCliError(bound.error))`, exactly the line the finding prescribed. `setup.ts` is unchanged, so `LocalResolutionPinSerializationError`, `LocalResolutionPinWriteAbortedError` and `LocalResolutionPinGitignoreUpdateAbortedError` still re-throw. `fromLegacyCliError` carries `meta` when it is non-empty (`errors.ts:86`) and turns `fix` into a user-choice action (`:65`), so `pinPath`/`gitignorePath` plus `operation` and the legacy fix advice are all restored, and the two distinct `why` sentences are told apart again. The code is unchanged at `SERVICE.LOCAL_STATE_WRITE_FAILED` and is now in the dispatch-2 mapping table. A new test injects the failure for real — it writes a *file* where `.prisma` belongs — and pins summary, `why`, `meta.pinPath`, `meta.operation` and the rewritten `service deploy --project` action. The one thing the fix did not weigh is SLICE-R2-F1.
+
+**SLICE-ARCH-F3, checked by breaking the code.** `vi.mock("../src/lib/app/app-provider", …)` is gone. The only remaining fake is a `ComputeClient` subclass overriding `deploy` — the compute-SDK upload the dispatch-2 note actually argued for — so `deployApp`'s own request assembly and response mapping run for real, and so do the other eight: `createProject`, `resolveBranch`, `createBranchDatabase`, `deleteBranchDatabase`, `listEnvironmentVariables`, `createEnvironmentVariable`, `updateEnvironmentVariable` and `deleteEnvironmentVariable`, each through a route in `deployRoutes`. The routes are not decorative: `fakeManagementClient` throws on an unrouted request (`v8-service-testkit.ts:116-119`), so every one of those calls provably reaches the wire. Two new tests exist purely to reach the two env-var methods that had no other caller (`PATCH` for an existing branch `DIRECT_URL`, `DELETE` for a stale one). The coverage is real rather than nominal: I replaced `liveDeploymentId: deployed.promoted ? deployed.deploymentId : deployed.previousDeploymentId` with the plain newest-deployment expression (`app-provider.ts:545-547`) and ran the suite — `v8-service-deploy.test.ts:473` fails, `expected 'dep_new' to be 'dep_old'`, and so does the provider's own `app-provider.test.ts:511`. I restored the file from `HEAD`.
+
+**SLICE-ENG-F4.** `MOUNTED_COMMANDS` in `cli.ts:41-75` is now the shipped map and `buildCli` passes it straight through (`:128`), so there is one copy. `v8-bin.test.ts:277-308` asserts `Object.keys(MOUNTED_COMMANDS).sort()` against a hand-written list of all 29 paths with `toEqual`, so a missing mount and an unexpected mount both fail — and because that list is written out by hand it is a second, independent statement of the truth, which is the point. A second new test runs `--help` for every mounted path through the real tree. The testkit derives rather than restates: `mountedCommands(groups)` filters the shipped map, `SERVICE_COMMANDS` is `mountedCommands(["service", "build"])`, and the agent and feedback suites call it too, so the three duplicate maps the finding named are gone.
+
+**SLICE-ENG-F2.** Both streams now attach `kind`, and `service logs` attaches `details` when the record has one. Read against the SDK's own types that is now the whole record: `TerminalRecord` is `{type, kind, code, message, retryable, cursor, details?}` and the port carries every field except `type`, with `message` in `line`; `build logs`'s terminal record has no `details` and the entry says so. Pinned both ways — a terminal error with `details` and one without.
+
+**SLICE-ENG-F3.** `:157` and `:370` now cite ruling 8 and, at `:157`, say plainly that ruling 8 names `--trace` and not `--verbose` — which is the wider-rule problem the finding raised, not just the number. The `agent` examples entry now cites the operator ruling of 2026-08-09 on `HelpSpec.examples`, and that file says exactly what the entry says it says (`engine-interface-draft.ts:787-790`). I re-checked every remaining rule citation in the file: `R-S2c-1` at `:12`, `:186`, `:382`, `:589`, `R-S2c-2` at `:391`, and `R-S2b-6` at `:111` and `:279` all name the rule the entry means.
+
+**SLICE-ARCH-F4, verified in the engine.** `explicitFlagKeys` scans argv for flag names and lines 77-82 mark the base flag on a `--no-<flag>` token; `buildCommandSnapshot` labels each declared flag `"cli"` or `"default"`. The snapshot is built once (`engine.ts:328`) and read in exactly one other place — the `onSettled` hook (`:303-310`) — so it genuinely never reaches `CommandContext`. Combined with the parsed boolean, the three states are distinguishable whichever way the flag's default falls. The rewritten entry says that and asks for an accessor rather than a new flag type. Accurate.
+
+**SLICE-ENG-F1 — I counted the 13 myself.** Every service command reaches `readAuthState` through exactly one path, and there are only three: `deploy.ts:466` calls `requireWorkspace` directly; `show`, `open`, `list-deploys`, `logs`, `promote`, `rollback` and `remove` reach it through `resolveServiceReadState` → `resolveServiceProjectContext:267` (promote, rollback and remove via `resolveServiceReleaseState`, `release.ts:35`); the five `domain` commands reach it through `resolveServiceDomainTarget:651`. That is 8 + 5 = 13. `show-deploy` is the fourth caller and swallows the failure — `requireWorkspace(ctx).then(id, () => null)` at `show-deploy.ts:52-55` — so it degrades to a missing live-deployment hint. `service build` declares no `needs` and reads no auth state; `build logs` declares `needs.credentials` but never touches the auth file, so the credential manager still serves it; `agent *` and `feedback` do neither. A repository-wide grep for `readAuthState` under `src/v8/` returns those four service call sites and the three `auth` commands, and nothing else. 13 is right.
+
+**The two deliberate deviations — both correct.**
+
+- **`LEGACY_CLI_NAME` for the three `deploy-target.ts` strings.** The reasoning holds and I checked the mechanism rather than the argument. Those strings are `nextSteps` on a legacy `CliError` that `fromLegacyCliError` then filters with `step.startsWith("prisma-cli ")` (`errors.ts:72`) before rewriting each survivor through `renameAppCopy` and `toV8CommandLine`. Substituting `CLI_NAME` would make the producer and the filter disagree the moment the binary is renamed, and the filter fails silently — the three actions would simply stop appearing. Keeping the legacy spelling on the input side and letting the rewriter produce `CLI_NAME` on the output side is the right place to draw the line, and it is drawn consistently: the constant is defined once (`errors.ts:34`), used at all five places that produce or match the legacy prefix, and no literal `prisma-cli ` remains anywhere under `src/v8/`. The companion change is the same judgement from the other side — `branch-database.ts:251` is plain advice that no rewriter touches, so it correctly became `CLI_NAME`. Every legacy `nextSteps` producer in `lib/` writes the literal, so nothing else can fall through the filter. One note, not a finding: `LEGACY_CLI_NAME` is a repo-wide fact about legacy copy that now lives in the service group's `errors.ts`; `cli-name.ts` is its natural home when S2d does the naming sweep.
+- **The human-summary divergence bullet belongs.** Standing ruling 4 is a testing rule — it says assertions target the envelope, presented data, events and exit codes, and that a single golden suite pins rendering globally. It does not say user-visible differences from the shipping CLI go unrecorded, and standing ruling 10 says the opposite: divergences are enumerated for operator review, not discovered. This is a real difference on every human-mode run of twelve commands, and the bullet states it accurately — legacy did open each block with a present-progressive title, and the example it quotes is verbatim (`presenters/app.ts:763`, "Removing the selected app."). One bullet in the existing human-output section is the proportionate form; a per-command table would not be.
+
+**Observations, not findings.**
+
+- The new per-command summary assertions pin the exact sentence, not just the tone. They are assertions on presented data, which standing ruling 4 allows, and the tone is the thing the finding was about — but a copy edit to any of those nine lines now breaks a test in a different file. Worth knowing before the next copy pass.
+- `mountedCommands(["agent"])` would return an empty map on a typo'd group name, and `v8-agent.test.ts`'s `needs.credentials` loop would then pass over nothing. Every other test in that file runs a real command through the same map and would fail loudly, so the risk is contained.
 
 ## Orchestrator notes (orchestrator-owned)
 
