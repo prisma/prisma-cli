@@ -1,5 +1,18 @@
 # D3 design — bucket (6) + branch list + git (2)
 
+> **CONSENT SUPERSESSION (orchestrator amendment, 2026-08-10).** This
+> document was drafted before consent became engine-owned. Wherever a
+> section below still shows a per-command `confirm` flag or a
+> `*.CONFIRMATION_REQUIRED` mapper entry, conventions §5 wins — the
+> child doc may add detail, never contradict a rule. Concretely: §3.3
+> declares NO `confirm` flag (the engine injects the shared repeatable
+> `--confirm <value>`), and §2.1 drops `CONFIRMATION_REQUIRED` from the
+> bucket map because the engine's `CLI.CONSENT_REQUIRED` replaces it.
+> The affected lines are struck below at their own sites. D1 shipped
+> with a dead `PROJECT.CONFIRMATION_REQUIRED` row still in its mapper,
+> already recorded as unreachable in the divergence list; that residue
+> is not repeated here and D1 is not reopened for it.
+
 Binding design for dispatch D3. Parent: `conventions.md`; template
 from D1. Grounding fact sheet: `facts/facts-d3-bucket-branch-git.md`
 (verbatim legacy extraction — part of this doc). Binding corrections
@@ -31,7 +44,10 @@ Mount paths `bucket list|create|delete`,
 `v8/git/errors.ts` (GIT.*) per conventions §4. Complete maps:
 
 Bucket: `USAGE_ERROR` domain bucket (2) → `BUCKET.USAGE_ERROR`;
-`CONFIRMATION_REQUIRED` (2) → `BUCKET.CONFIRMATION_REQUIRED`;
+~~`CONFIRMATION_REQUIRED` (2) → `BUCKET.CONFIRMATION_REQUIRED`~~
+(struck by the consent supersession above — the engine's
+`CLI.CONSENT_REQUIRED` replaces it, so the bucket map has no
+`CONFIRMATION_REQUIRED` row);
 `BUCKET_KEY_SECRET_MISSING` (1) → `BUCKET.KEY_SECRET_MISSING`;
 `BUCKET_API_ERROR` / passthrough X (1) → `BUCKET.API_ERROR` /
 `BUCKET.X`. Fixture-only `BUCKET_NOT_FOUND`, `BUCKET_KEY_NOT_FOUND`,
@@ -132,9 +148,13 @@ Common: `needs: { credentials: true }`; data = legacy result minus
 ### 3.3 `bucket delete <bucketId>` — `v8/bucket/delete.ts` (consent)
 
 - help.summary `Delete a bucket and all its access keys`; example
-  `bucket delete bkt_123`; positional `bucketId` (brief
-  `Bucket id`); flag `confirm: flag.string({ brief: "Exact bucket id
-  to confirm deletion", placeholder: "bucket-id" })`.
+  `bucket delete bkt_123 --confirm bkt_123`; positional `bucketId`
+  (brief `Bucket id`). NO `confirm` flag is declared — the engine
+  injects the shared repeatable `--confirm <value>`, so the command
+  declares only the positional. (The struck draft text read: flag
+  `confirm: flag.string({ brief: "Exact bucket id to confirm
+  deletion", placeholder: "bucket-id" })`. Follow `postgres remove`
+  in `v8/postgres/remove.ts` for the shipped shape.)
 - Handler: blank id → `BUCKET.USAGE_ERROR` (`Bucket id required` /
   `Bucket deletion needs a bucket id.` / nextActions from fix +
   `${CLI_NAME} bucket list`); consent per conventions §5 (hold
@@ -292,11 +312,20 @@ Common: `needs: { credentials: true }`; data = legacy result minus
   `readGitOriginRemote` via cwd-scoped temp git config is NOT used —
   mock the exported function via vi.mock on its module);
   no-url usage error; non-GitHub URL; already-connected idempotent
-  success; different-repo conflict; installation-required
-  (non-interactive, meta asserted); not-accessible; poll-then-found
+  success; different-repo conflict; installation-required (meta
+  asserted); not-accessible; poll-then-found
   (events asserted: endpoint → status waiting → status connected;
   fake client scripted across two list calls; interval env set to
   1ms); poll timeout; connection-failed 409 fix text; json; unauth.
+- Test-list amendment (orchestrator, 2026-08-10): because `git
+  connect` declares `needs: { interaction: true }`, every case that
+  reaches the handler must run interactively. The draft's
+  "installation-required (non-interactive, meta asserted)" case could
+  never reach the handler, so it is corrected above to an interactive
+  case. Add exactly one case in its place: a non-interactive run
+  settles the engine's interaction-required error at exit 2 before
+  any API call, proven by the fake client recording zero calls. That
+  case is the test of divergence §4.3.
 
 ### 3.9 `git disconnect` — `v8/git/disconnect.ts`
 
