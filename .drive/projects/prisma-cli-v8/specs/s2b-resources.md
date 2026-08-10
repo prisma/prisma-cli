@@ -125,9 +125,15 @@ deletion (S2d); auto-login reinstatement (ledger Q1); command aliases
       the per-dispatch review rounds and the closure architect and
       principal-engineer passes run, with every finding dispositioned.
 
-Two things this slice records rather than fixes, both for the operator:
+Three things this slice records rather than fixes, all for the operator:
 `project list` reports an empty workspace at exit 0 when the API
 rejects the request, which is inherited from the old shell and reaches
-every command that resolves a project by name; and `git connect`
+every command that resolves a project by name; `git connect`
 declares `needs.interaction`, so non-interactive runs fail before any
-API call even when no wait would have been needed.
+API call even when no wait would have been needed; and the stdout lane
+still carries two human-formatted values that a pipe consumer cannot
+use — a backup size as `2.0 KiB` and a status column that holds
+`isDefault` when the status is null. The decorated-key case that
+prompted the check is fixed; these two are a broader question about
+whether stdout is a machine lane or a mirror of the human table, which
+reaches every group and wants deciding rather than patching.

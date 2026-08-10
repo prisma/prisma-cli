@@ -259,6 +259,18 @@ out of contract.
   exists. stdout carries the bare key; anything needing the source uses
   `--json`, which carries the whole record. Check every list command's
   stdout rows against this, not just the one that was caught.
+  What this rule deliberately does NOT reach, checked and left alone
+  2026-08-11: `postgres backup list` prints a size as `2.0 KiB`, which a
+  consumer cannot turn back into 2048, and `postgres list` puts
+  `isDefault` in the status cell when `status` is null, so that column
+  means different things on different rows. Neither glues two facts into
+  one cell, so neither is what this amendment is about — but both are
+  the same kind of unhelpful to a pipe consumer. Making stdout carry
+  machine-readable values everywhere is a larger decision than this
+  amendment: it reaches sizes, timestamps and status columns across
+  every group, and `--json` already exists as the lossless lane. Left
+  for the operator rather than settled by an implementer's judgement or
+  an orchestrator's at three in the morning.
 - **Cancellation is never remapped (amended 2026-08-11).** A handler
   that wraps a rejected operation in a mapped error must first rethrow
   when `ctx.signal.aborted`, so a cancelled run settles as cancelled
