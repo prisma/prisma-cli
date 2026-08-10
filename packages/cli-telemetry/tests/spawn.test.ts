@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { EngineCommandSnapshot } from "../src/sanitize";
-import { runTelemetry, senderModuleUrl, type RunTelemetryInputs } from "../src/spawn";
+import {
+  type RunTelemetryInputs,
+  runTelemetry,
+  senderModuleUrl,
+} from "../src/spawn";
 import { userConfigPath, writeUserConfig } from "../src/user-config";
 
 const commandInput: EngineCommandSnapshot = {

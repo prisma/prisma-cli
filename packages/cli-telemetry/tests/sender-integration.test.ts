@@ -56,7 +56,10 @@ beforeAll(async () => {
   projectDir = mkdtempSync(join(tmpdir(), "cli-telemetry-sender-int-"));
   writeFileSync(
     join(projectDir, "package.json"),
-    JSON.stringify({ name: "fixture", devDependencies: { typescript: "^5.9.3" } }),
+    JSON.stringify({
+      name: "fixture",
+      devDependencies: { typescript: "^5.9.3" },
+    }),
   );
 });
 
@@ -203,7 +206,9 @@ describe("sender end-to-end via a local mock backend", () => {
   });
 
   it("derives databaseTarget and extensions from a prisma-next.config.* in projectRoot", async () => {
-    const configuredDir = mkdtempSync(join(tmpdir(), "cli-telemetry-sender-cfg-"));
+    const configuredDir = mkdtempSync(
+      join(tmpdir(), "cli-telemetry-sender-cfg-"),
+    );
     try {
       writeFileSync(
         join(configuredDir, "prisma-next.config.mjs"),
@@ -258,14 +263,12 @@ describe("sender end-to-end via a local mock backend", () => {
     expect(result.stderr).toContain("send failed");
   });
 
-  it(
-    "exits 0 when no payload arrives within the idle timeout, and stays silent",
-    { timeout: 10_000 },
-    async () => {
-      const result = await spawnSender({ env: childEnv() });
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toBe("");
-      expect(result.stderr).toBe("");
-    },
-  );
+  it("exits 0 when no payload arrives within the idle timeout, and stays silent", {
+    timeout: 10_000,
+  }, async () => {
+    const result = await spawnSender({ env: childEnv() });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+  });
 });

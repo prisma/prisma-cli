@@ -85,7 +85,10 @@ export function isParentToSenderPayload(
   if (!isStringArray(record["flags"])) return false;
   if (!isNonEmptyString(record["projectRoot"])) return false;
   if (!isNonEmptyString(record["endpoint"])) return false;
-  if ("databaseTarget" in record && typeof record["databaseTarget"] !== "string") {
+  if (
+    "databaseTarget" in record &&
+    typeof record["databaseTarget"] !== "string"
+  ) {
     return false;
   }
   return true;

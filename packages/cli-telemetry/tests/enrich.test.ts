@@ -113,7 +113,9 @@ describe("readTsVersionFromPackageJson", () => {
 
   it("returns null when typescript key is absent", () => {
     expect(
-      readTsVersionFromPackageJson(JSON.stringify({ dependencies: { foo: "1.0" } })),
+      readTsVersionFromPackageJson(
+        JSON.stringify({ dependencies: { foo: "1.0" } }),
+      ),
     ).toBeNull();
   });
 
@@ -188,7 +190,8 @@ describe("buildTelemetryEvent", () => {
 
   it("passes null packageManager when npm_config_user_agent is absent", () => {
     expect(
-      buildTelemetryEvent(basePayload, baseProjectConfig, baseEnv).packageManager,
+      buildTelemetryEvent(basePayload, baseProjectConfig, baseEnv)
+        .packageManager,
     ).toBeNull();
   });
 

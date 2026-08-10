@@ -3,9 +3,9 @@ import { resolveGating } from "../src/gating";
 
 describe("resolveGating", () => {
   it("returns enabled=true when no env override and stored enableTelemetry is true", () => {
-    expect(resolveGating({ env: {}, config: { enableTelemetry: true } })).toEqual(
-      { enabled: true },
-    );
+    expect(
+      resolveGating({ env: {}, config: { enableTelemetry: true } }),
+    ).toEqual({ enabled: true });
   });
 
   it("returns enabled=false when stored enableTelemetry is false", () => {

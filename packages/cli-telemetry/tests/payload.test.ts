@@ -38,7 +38,10 @@ describe("isParentToSenderPayload", () => {
       isParentToSenderPayload({ ...validPayload, databaseTarget: 42 }),
     ).toBe(false);
     expect(
-      isParentToSenderPayload({ ...validPayload, databaseTarget: ["postgres"] }),
+      isParentToSenderPayload({
+        ...validPayload,
+        databaseTarget: ["postgres"],
+      }),
     ).toBe(false);
     // `null` is not a valid override value — the IPC channel uses
     // `undefined` (field omitted) for the "no override" state. The wire-
@@ -72,9 +75,9 @@ describe("isParentToSenderPayload", () => {
   }
 
   it("rejects an empty installationId", () => {
-    expect(isParentToSenderPayload({ ...validPayload, installationId: "" })).toBe(
-      false,
-    );
+    expect(
+      isParentToSenderPayload({ ...validPayload, installationId: "" }),
+    ).toBe(false);
   });
 
   it("rejects an empty endpoint", () => {

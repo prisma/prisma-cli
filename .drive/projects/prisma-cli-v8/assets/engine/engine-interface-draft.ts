@@ -948,8 +948,56 @@ export interface Cli {
   /** Parse, execute, render, return the exit code. Never touches
    *  process globals — it exits only through the runtime's exit proxy
    *  (second-signal force exit) and writes only to the provided
-   *  streams. */
-  run(argv: readonly string[], runtime: Runtime): Promise<number>
+   *  streams. `hooks` is the bin's observation seam (S2a telemetry
+   *  amendment): the engine's internal RunHooks stayed internal, and
+   *  the minimal public surface growth is this optional parameter
+   *  carrying only the settlement observer. */
+  run(argv: readonly string[], runtime: Runtime, hooks?: CliRunHooks): Promise<number>
+}
+
+/**
+ * S2a telemetry amendment. The observation hooks a bin may attach to
+ * a run — deliberately narrower than the engine's internal hook set
+ * (whose other members are test seams reachable only through the
+ * ./testing harness, which also accepts an `onSettled` tap).
+ */
+export interface CliRunHooks {
+  /** Fired exactly once per run, after settlement (exit code final,
+   *  terminal output written). Never fired for --help/--version, and
+   *  never for a run that failed before reaching a mounted command
+   *  (nothing executed, so there is no snapshot). Errors thrown by
+   *  the hook are swallowed — a telemetry bug must not break a
+   *  command. */
+  readonly onSettled?: (summary: RunSummary) => void
+}
+
+/** What onSettled receives. `durationMs` comes from the engine's
+ *  injectable clock (§11), never from wall time directly. */
+export interface RunSummary {
+  readonly commandId: string
+  readonly exitCode: number
+  readonly durationMs: number
+  readonly snapshot: EngineCommandSnapshot
+}
+
+/**
+ * The value-free command snapshot recorded at parse time. NO VALUES,
+ * EVER: command-path segments, flag names with their value source,
+ * and a bare count of positionals. Flag `source` derives from what
+ * the engine knows at parse time: flags explicitly present on argv
+ * are 'cli'; the engine reads no flags from the environment today,
+ * so everything else is 'default' ('env' is reserved for a future
+ * env-sourced flag mechanism).
+ */
+export interface EngineCommandSnapshot {
+  /** Mount-path segments ('telemetry status' → ['telemetry',
+   *  'status']). Never includes the binary name. */
+  readonly commandPath: readonly string[]
+  /** One entry per flag the command accepts (the engine-injected
+   *  shared family first, then the command's own declarations), in
+   *  the user-facing kebab-case spelling. */
+  readonly flags: ReadonlyArray<{ readonly name: string; readonly source: 'cli' | 'env' | 'default' }>
+  readonly positionalCount: number
 }
 
 /** Everything environmental, injected once by the bin (or by a test). */
@@ -1049,6 +1097,10 @@ export interface TestCli {
       readonly abort?: AbortSignal
       /** Live event tap, for asserting mid-session behavior. */
       readonly onEvent?: (event: EngineEvent) => void
+      /** Settlement tap (S2a telemetry amendment): receives the
+       *  RunSummary the engine fires after settlement (once, mounted
+       *  runs only). */
+      readonly onSettled?: (summary: RunSummary) => void
       readonly cwd?: string
       readonly isTty?: { stdin?: boolean; stdout?: boolean; stderr?: boolean }
       readonly env?: Readonly<Record<string, string | undefined>>

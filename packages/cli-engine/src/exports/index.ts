@@ -18,7 +18,7 @@ export {
   type PositionalSpec,
   positional,
 } from "../args";
-export { type Cli, createCli } from "../cli";
+export { type Cli, type CliRunHooks, createCli } from "../cli";
 export {
   type CommandFamily,
   defineCommandFamily,
@@ -69,6 +69,7 @@ export {
   type TreeNode,
   type Ui,
 } from "../presentation";
+export type { EngineCommandSnapshot, RunSummary } from "../run-summary";
 export {
   type HostProcess,
   type InputStream,

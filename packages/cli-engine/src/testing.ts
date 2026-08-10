@@ -4,6 +4,7 @@ import type { EngineEvent, StreamEvent } from "./events";
 import { buildEngine } from "./execution/engine";
 import type { ManagementApiClient } from "./management-api";
 import type { PresentedResult } from "./presentation";
+import type { RunSummary } from "./run-summary";
 import type { Runtime } from "./runtime";
 
 export interface TestCli {
@@ -24,6 +25,9 @@ export interface TestCli {
       readonly abort?: AbortSignal;
       /** Live event tap, for asserting mid-session behavior. */
       readonly onEvent?: (event: EngineEvent) => void;
+      /** Settlement tap: receives the RunSummary the engine fires
+       *  after settlement (once, mounted runs only). */
+      readonly onSettled?: (summary: RunSummary) => void;
       readonly cwd?: string;
       readonly isTty?: { stdin?: boolean; stdout?: boolean; stderr?: boolean };
       readonly env?: Readonly<Record<string, string | undefined>>;
@@ -150,6 +154,7 @@ export function createTestCli(spec: {
         onStreamEvent: (frame) => {
           frames.push(frame);
         },
+        onSettled: opts?.onSettled,
         answers: opts?.answers,
         managementApi:
           spec.managementApi?.client === undefined

@@ -51,7 +51,10 @@ describe("readUserConfig / writeUserConfig", () => {
   it("parses a well-formed config and exposes both known fields", () => {
     writeFileSync(
       userConfigPath(),
-      JSON.stringify({ enableTelemetry: true, installationId: "pre-existing-uuid" }),
+      JSON.stringify({
+        enableTelemetry: true,
+        installationId: "pre-existing-uuid",
+      }),
     );
     const cfg = readUserConfig();
     expect(cfg.enableTelemetry).toBe(true);
@@ -163,7 +166,10 @@ describe("ensureInstallationId", () => {
   });
 
   it("returns the existing id and does not rotate it", () => {
-    writeFileSync(userConfigPath(), JSON.stringify({ installationId: "sticky-id" }));
+    writeFileSync(
+      userConfigPath(),
+      JSON.stringify({ installationId: "sticky-id" }),
+    );
     expect(ensureInstallationId()).toBe("sticky-id");
     expect(readUserConfig().installationId).toBe("sticky-id");
   });

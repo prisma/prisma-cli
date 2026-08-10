@@ -183,7 +183,9 @@ export function parsePackageManager(
  * prefix. Returns `null` on any failure mode — file missing,
  * unreadable, malformed JSON, key absent, not a string.
  */
-export function readTsVersionFromPackageJson(raw: string | null): string | null {
+export function readTsVersionFromPackageJson(
+  raw: string | null,
+): string | null {
   if (raw === null) return null;
   let parsed: Record<string, unknown>;
   try {

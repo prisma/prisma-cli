@@ -76,7 +76,11 @@ export function readUserConfig(): UserConfig {
   try {
     const raw = readFileSync(path, "utf-8");
     const parsed: unknown = JSON.parse(raw);
-    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed)
+    ) {
       return parsed as UserConfig;
     }
     return {};

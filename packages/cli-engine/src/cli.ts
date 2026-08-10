@@ -1,14 +1,32 @@
 import type { CommandFamily, MountedTree } from "./command-family";
 import { buildEngine } from "./execution/engine";
+import type { RunSummary } from "./run-summary";
 import type { Runtime } from "./runtime";
+
+/**
+ * The observation hooks a bin may attach to a run. Deliberately
+ * narrower than the engine's internal hook set (whose other members
+ * are test seams reachable only through the ./testing harness).
+ */
+export interface CliRunHooks {
+  /** Fired exactly once per run, after settlement, for runs that
+   *  reached a mounted command. Never fired for --help/--version.
+   *  Errors thrown by the hook are swallowed. */
+  readonly onSettled?: (summary: RunSummary) => void;
+}
 
 export interface Cli {
   /**
    * Parse, execute, render, return the exit code. Never touches
    * process globals — it exits only through the runtime's exit proxy
    * (second-signal force exit) and writes only to the provided streams.
+   * `hooks` is the bin's observation seam (telemetry).
    */
-  run(argv: readonly string[], runtime: Runtime): Promise<number>;
+  run(
+    argv: readonly string[],
+    runtime: Runtime,
+    hooks?: CliRunHooks,
+  ): Promise<number>;
 }
 
 /**
@@ -28,6 +46,7 @@ export function createCli(spec: {
 }): Cli {
   const engine = buildEngine(spec);
   return {
-    run: (argv, runtime) => engine.execute(argv, runtime, {}),
+    run: (argv, runtime, hooks) =>
+      engine.execute(argv, runtime, { onSettled: hooks?.onSettled }),
   };
 }

@@ -11,9 +11,11 @@ import type { EngineEvent, Severity, StreamEvent } from "../events";
 import type { ManagementApiClient } from "../management-api";
 import type { Format, PresentedResult } from "../presentation";
 import type { CliStructuredError, Result } from "../protocol";
+import type { EngineCommandSnapshot, RunSummary } from "../run-summary";
 import type { InputStream, Runtime } from "../runtime";
 import type { CreateManagementApiSdk } from "./api-client";
 import { makeContext } from "./command-context";
+import { buildCommandSnapshot } from "./command-snapshot";
 import { buildCommandTree, type CommandTreeEntry } from "./command-tree";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import {
@@ -51,6 +53,11 @@ export interface RunHooks {
   readonly onEvent?: (event: EngineEvent) => void;
   readonly onPresented?: (presented: PresentedResult<unknown>) => void;
   readonly onStreamEvent?: (frame: StreamEvent) => void;
+  /** Fired exactly once per run, after settlement, for runs that
+   *  reached a mounted command. Never fired for --help/--version.
+   *  Errors thrown by the hook are swallowed — an observer bug must
+   *  not break a command. */
+  readonly onSettled?: (summary: RunSummary) => void;
   readonly answers?: ReadonlyArray<string | boolean>;
   /** Test seams: an injected `client` becomes ctx.api verbatim; an
    *  injected `createSdk` replaces the SDK factory. */
@@ -85,6 +92,12 @@ export interface RunState {
   /** The stdin iterator a prompt opened, closed when the run settles so
    *  a real process's stdin never keeps the event loop alive. */
   stdinIterator: AsyncIterator<Uint8Array> | undefined;
+  /** The run's raw argv — consulted only to derive which flag NAMES
+   *  were explicitly passed for the settlement snapshot. */
+  argv: readonly string[];
+  /** The value-free snapshot captured when a command mounted;
+   *  undefined for runs that never reached one (help, usage errors). */
+  snapshot: EngineCommandSnapshot | undefined;
 }
 
 export interface Invocation {
@@ -174,7 +187,10 @@ export class EngineImpl implements Engine {
       internalErrorText: undefined,
       stricliStderr: "",
       stdinIterator: undefined,
+      argv,
+      snapshot: undefined,
     };
+    const startedAtMs = this.now().getTime();
     const controller = new AbortController();
     let signalDelivered = false;
     const unsubscribe = runtime.onSignal((signal) => {
@@ -233,10 +249,38 @@ export class EngineImpl implements Engine {
       unsubscribe();
       await state.stdinIterator?.return?.();
     }
-    if (state.settledExitCode !== undefined) {
-      return state.settledExitCode;
+    const exitCode =
+      state.settledExitCode !== undefined
+        ? state.settledExitCode
+        : settleUnhandled(this.spec, invocation, stricliProcess.exitCode);
+    this.fireOnSettled(invocation, exitCode, startedAtMs);
+    return exitCode;
+  }
+
+  /** The onSettled delivery: once per run, after the exit code is
+   *  final, only for runs that mounted a command (--help, --version,
+   *  and pre-mount usage errors leave no snapshot and fire nothing).
+   *  A throwing hook is swallowed — observation must not break runs. */
+  private fireOnSettled(
+    invocation: Invocation,
+    exitCode: number,
+    startedAtMs: number,
+  ): void {
+    const { state, hooks } = invocation;
+    if (state.snapshot === undefined || hooks.onSettled === undefined) {
+      return;
     }
-    return settleUnhandled(this.spec, invocation, stricliProcess.exitCode);
+    const summary: RunSummary = {
+      commandId: state.commandId,
+      exitCode,
+      durationMs: this.now().getTime() - startedAtMs,
+      snapshot: state.snapshot,
+    };
+    try {
+      hooks.onSettled(summary);
+    } catch {
+      // Swallowed by contract: a telemetry bug must not break a command.
+    }
   }
 
   private async executeMounted(
@@ -248,6 +292,12 @@ export class EngineImpl implements Engine {
     const state = invocation.state;
     state.commandId = entry.id;
     state.docsBaseUrl = entry.docsBaseUrl;
+    state.snapshot = buildCommandSnapshot(
+      entry.id,
+      entry.def,
+      state.argv,
+      values,
+    );
     if (entry.def.kind === "server-command") {
       await this.executeServer(invocation, entry, rawFlags);
       return;

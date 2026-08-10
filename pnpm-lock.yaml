@@ -38,9 +38,18 @@ importers:
       '@prisma/management-api-sdk':
         specifier: 1.55.0
         version: 1.55.0
+      '@vercel/detect-agent':
+        specifier: ^1.2.3
+        version: 1.2.4
       better-result:
         specifier: ^2.9.2
         version: 2.9.2
+      c12:
+        specifier: ^3.3.4
+        version: 3.3.4(magicast@0.5.3)
+      ci-info:
+        specifier: ^4.3.1
+        version: 4.4.0
       colorette:
         specifier: ^2.0.20
         version: 2.0.20
@@ -69,6 +78,9 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
     devDependencies:
+      '@repo/cli-telemetry':
+        specifier: workspace:*
+        version: link:../cli-telemetry
       '@repo/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
@@ -1111,6 +1123,10 @@ packages:
   chownr@3.0.0:
     resolution: {integrity: sha512-+IxzY9BZOQd/XuYPRmrvEVjF/nqj5kgT4kEq7VofrDoM1MxoRjEWkrCC3EtLi59TVawxTAn+orJwFQcrqEN1+g==}
     engines: {node: '>=18'}
+
+  ci-info@4.4.0:
+    resolution: {integrity: sha512-77PSwercCZU2Fc4sX94eF8k8Pxte6JAwL4/ICZLFjJLqegs7kCuAsqqj/70NQF6TvDpgFjkubQB2FW2ZZddvQg==}
+    engines: {node: '>=8'}
 
   colorette@2.0.20:
     resolution: {integrity: sha512-IfEDxwoWIjkeXL1eXcDiow4UbKjhLdq6/EuSVR9GMN7KVH3r9gQ83e73hsz1Nd1T3ijd5xv1wcWRYO+D6kCI2w==}
@@ -2462,6 +2478,8 @@ snapshots:
       readdirp: 5.1.1
 
   chownr@3.0.0: {}
+
+  ci-info@4.4.0: {}
 
   colorette@2.0.20: {}
 
