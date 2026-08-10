@@ -289,7 +289,53 @@ Common: `needs: { credentials: true }`; data = legacy result minus
   4. Install resolution: `listScmInstallations` +
      `findRepositoryInInstallations`; on miss,
      `createGitHubInstallIntent` → installUrl.
-  5. Wait: OPERATOR RULING (2026-08-10, corrected) — `git connect`
+  5. **STEP 5 RESOLVED (orchestrator, 2026-08-10, after the operator
+     landed engine commit c463aa1).** The draft below was written
+     before `browserWait` existed and pinned three facts it could not
+     supply. All four points are now settled; where the draft text
+     conflicts, these win.
+     - **Interval: restored.** `BrowserWaitRequest` now takes an
+       optional `interval`, so the handler passes
+       `PRISMA_CLI_GITHUB_INSTALL_POLL_INTERVAL_MS` (default 2000)
+       as `interval` and `PRISMA_CLI_GITHUB_INSTALL_TIMEOUT_MS`
+       (default 120000) as `timeout`, both read from `ctx.env` with
+       the legacy positive-integer parsing (`readPositiveIntegerEnv`
+       semantics: a non-positive or unparseable value falls back to
+       the default). The design's test case asserting a 1ms interval
+       is writable as pinned — `createTestCli` takes a `delay` spy,
+       so assert the value the poll loop asked for, not elapsed time.
+     - **Events: one, not three.** The draft's `endpoint` → `status
+       waiting` → `status connected` sequence was a design error, not
+       an engine gap: legacy prints one wait line before the poll loop
+       and nothing during it (fact sheet §6, "no status re-print
+       during polling"), and has no "connected" line. The helper's
+       single `endpoint` event is exactly the legacy shape. Assert one
+       event. The three-event sequence is struck.
+     - **`opened`: dropped.** `browserWait` does not report whether
+       the browser opened, and it is not worth recovering: both legacy
+       branches existed to make sure the user had the install URL when
+       no browser opened, and the engine now always writes the URL
+       (`rendering.ts:50` in human mode, a frame in json). Use the
+       browser-opened wait sentence, "Waiting for GitHub App
+       installation or repository access approval...", as `message`,
+       and the browser-opened fix text on
+       `GIT.REPO_INSTALLATION_REQUIRED`, "Finish installing the GitHub
+       App in the browser, then rerun prisma-cli git connect." Drop
+       `opened` from both terminal errors' meta, leaving
+       `{ repository, installUrl }`. Divergence entry.
+     - **The install URL is an `open-url` action, not a
+       `run-command`.** `NextAction` now has an `open-url` kind and a
+       `url` field. In the git mapper, a `nextSteps` entry that is a
+       URL becomes `{ kind: "open-url", label: <the URL>, url: <the
+       URL> }`; command strings keep the `run-command` mapping. This
+       affects `GIT.REPO_INSTALLATION_REQUIRED` and
+       `GIT.REPO_NOT_ACCESSIBLE`, whose first next step is the raw
+       installUrl. Divergence entry; it supersedes entry 42, which
+       recorded the defect.
+
+     Draft text follows, superseded at the four points above.
+
+     Wait: OPERATOR RULING (2026-08-10, corrected) — `git connect`
      declares `needs: { interaction: true }` (the EXISTING S2a
      mechanism, execution/needs.ts): non-interactive runs fail
      early, before the handler and any side effects, with the
