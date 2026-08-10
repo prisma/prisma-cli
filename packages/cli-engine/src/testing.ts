@@ -121,6 +121,9 @@ export function createTestCli(spec: {
    *  to assert what was opened, or a thrower to exercise the
    *  could-not-open path. */
   readonly openUrl?: (url: string) => Promise<void> | void;
+  /** Waiting is instant under test whatever this does; pass a spy to
+   *  assert the interval a poll loop asked for. */
+  readonly delay?: (ms: number, signal: AbortSignal) => Promise<void>;
 }): TestCli {
   const managerSeeded =
     spec.credential !== undefined ||
@@ -158,7 +161,12 @@ export function createTestCli(spec: {
     },
     /** Waiting is instant under test: browserWait's polling is driven
      *  by the seeded clock, never by real time. */
-    { now: spec.now, delay: async () => {} },
+    {
+      now: spec.now,
+      delay: async (ms, signal) => {
+        await spec.delay?.(ms, signal);
+      },
+    },
   );
   return {
     credentialManager,

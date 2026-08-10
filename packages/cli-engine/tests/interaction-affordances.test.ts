@@ -293,6 +293,7 @@ describe("prompt.browserWait", () => {
   function waitCommand(
     poll: (signal: AbortSignal) => Promise<boolean>,
     timeout = 60_000,
+    interval?: number,
   ) {
     return promptProbe(async (prompt) => {
       await prompt.browserWait({
@@ -300,10 +301,42 @@ describe("prompt.browserWait", () => {
         message: "Finish signing in",
         poll,
         timeout,
+        ...(interval === undefined ? {} : { interval }),
       });
       return "done";
     });
   }
+
+  test("it polls on the interval the request asks for, and on its own when the request does not", async () => {
+    const intervals: number[] = [];
+    const runWith = async (interval?: number) => {
+      let polls = 0;
+      const cli = createTestCli({
+        commands: {
+          probe: waitCommand(
+            async () => {
+              polls += 1;
+              return polls > 2;
+            },
+            60_000,
+            interval,
+          ),
+        },
+        now: EPOCH,
+        delay: async (ms) => {
+          intervals.push(ms);
+        },
+      });
+      return cli.run(["probe"], INTERACTIVE);
+    };
+
+    expect((await runWith(2_000)).exitCode).toBe(0);
+    expect(intervals).toEqual([2_000, 2_000]);
+
+    intervals.length = 0;
+    expect((await runWith()).exitCode).toBe(0);
+    expect(intervals).toEqual([1_000, 1_000]);
+  });
 
   test("it opens the browser and resolves when polling says so", async () => {
     const opened: string[] = [];

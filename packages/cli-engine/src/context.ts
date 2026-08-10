@@ -125,6 +125,9 @@ export interface BrowserWaitRequest {
   readonly poll: (signal: AbortSignal) => Promise<boolean>;
   /** Milliseconds to keep polling before giving up. */
   readonly timeout: number;
+  /** Milliseconds between polls. Defaults to the engine's own
+   *  interval; a command with its own configurable cadence passes it. */
+  readonly interval?: number;
 }
 
 /**

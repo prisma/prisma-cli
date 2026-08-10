@@ -66,6 +66,32 @@ describe("CliStructuredError.toEnvelope", () => {
     });
   });
 
+  test("an open-url action carries its address through the envelope untouched", () => {
+    const error = new CliStructuredError(
+      "REPO.INSTALLATION_REQUIRED",
+      "Install the GitHub app first",
+      {
+        nextActions: [
+          {
+            kind: "open-url",
+            label: "Install the Prisma GitHub app",
+            url: "https://github.com/apps/prisma/installations/new",
+          },
+        ],
+      },
+    );
+
+    // A URL must never arrive as `command`: that tells a consumer to
+    // execute it.
+    expect(error.toEnvelope().nextActions).toEqual([
+      {
+        kind: "open-url",
+        label: "Install the Prisma GitHub app",
+        url: "https://github.com/apps/prisma/installations/new",
+      },
+    ]);
+  });
+
   test("keeps nextActions as given even when a label repeats why", () => {
     const error = new CliStructuredError(
       "CONFIG.FILE_NOT_FOUND",

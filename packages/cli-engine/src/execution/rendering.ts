@@ -148,7 +148,8 @@ export function writeDiagnostic(
 }
 
 export function renderNextAction(action: NextAction): string {
-  return `→ ${action.label}${action.command === undefined ? "" : `: ${action.command}`}`;
+  const target = action.command ?? action.url;
+  return `→ ${action.label}${target === undefined ? "" : `: ${target}`}`;
 }
 
 /** Populates docsUrl from the owning family's docsBaseUrl (base + code)
