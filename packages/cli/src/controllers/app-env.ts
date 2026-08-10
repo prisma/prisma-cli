@@ -1,6 +1,6 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: API pagination loops are intentionally sequential.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-import { authenticatedManagementApiClient } from "../auth";
+import { authenticatedManagementApiClient } from "../auth/guard";
 import {
   type EnvScope,
   type EnvVarRole,

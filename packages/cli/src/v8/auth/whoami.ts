@@ -9,10 +9,10 @@ import { type NextAction, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import {
   credentialFieldRows,
-  ENVIRONMENT_SESSION_NOTICE,
-} from "./session-card";
+  ENVIRONMENT_CREDENTIAL_NOTICE,
+} from "./credential-card";
 
-const TITLE = "Showing the current authenticated identity.";
+const TITLE = "Showing the active authenticated identity.";
 
 const SIGN_IN: NextAction = {
   kind: "run-command",
@@ -35,14 +35,24 @@ export interface WhoamiResult {
   readonly expiresAt: string | null;
 }
 
+/** whoami answers from the credential's own claims, so the lookup is
+ *  worth a moment and no more. ctx.signal only fires on Ctrl-C, and
+ *  nothing else bounds a request: a host that accepts the connection
+ *  and never answers would otherwise hold the command for minutes. */
+const ENRICHMENT_TIMEOUT_MS = 3_000;
+
 /** Best-effort online enrichment: whoami works offline, so any failure
  *  leaves the identity as whatever the credential's own claims said. */
 async function fetchedIdentity(
   api: ManagementApiClient,
   signal: AbortSignal,
 ): Promise<CredentialIdentity | undefined> {
+  const bounded = AbortSignal.any([
+    signal,
+    AbortSignal.timeout(ENRICHMENT_TIMEOUT_MS),
+  ]);
   try {
-    const { data } = await api.GET("/v1/me", { signal });
+    const { data } = await api.GET("/v1/me", { signal: bounded });
     const user = data?.data?.user;
     if (!user) {
       return undefined;
@@ -58,18 +68,33 @@ async function fetchedIdentity(
   }
 }
 
-/** `/v1/me` wins field by field where it disagrees with the claims;
- *  the claims are the offline fallback. */
+/**
+ * `/v1/me` wins field by field where it disagrees with the claims, and
+ * the claims are the offline fallback — but only while both describe
+ * the same person. The two are read at different moments, so another
+ * process replacing the session in between can leave the claims
+ * describing one user and the lookup another; filling a gap in one from
+ * the other would then invent a person who does not exist. When the two
+ * name different users, the lookup is taken whole.
+ */
 function mergedIdentity(
   claimed: CredentialIdentity | undefined,
   fetched: CredentialIdentity | undefined,
 ): CredentialIdentity | null {
-  const userId = fetched?.userId ?? claimed?.userId;
-  const email = fetched?.email ?? claimed?.email;
-  const name = fetched?.name ?? claimed?.name;
-  return userId === undefined && email === undefined && name === undefined
-    ? null
-    : { userId, email, name };
+  if (fetched === undefined) return claimed ?? null;
+  if (claimed === undefined) return fetched;
+
+  const samePerson =
+    fetched.userId === undefined ||
+    claimed.userId === undefined ||
+    fetched.userId === claimed.userId;
+  if (!samePerson) return fetched;
+
+  return {
+    userId: fetched.userId ?? claimed.userId,
+    email: fetched.email ?? claimed.email,
+    name: fetched.name ?? claimed.name,
+  };
 }
 
 function presentationsFor(spec: {
@@ -87,7 +112,7 @@ function presentationsFor(spec: {
             {
               kind: "summary",
               tone: "info",
-              text: ENVIRONMENT_SESSION_NOTICE,
+              text: ENVIRONMENT_CREDENTIAL_NOTICE,
             } as const,
           ]
         : []),

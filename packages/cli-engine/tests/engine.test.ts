@@ -18,8 +18,13 @@ describe("main export", () => {
       "PRESENTED",
       "PRISMA_CONFIG_VERSION",
       "authServiceError",
+      "claimedExpiresAt",
+      "claimedIdentity",
+      "claimedWorkspaceId",
       "createCli",
       "credentialRejectedError",
+      "credentialWorkspaceId",
+      "credentialWorkspaceMismatchError",
       "credentialsRequiredError",
       "defineCommand",
       "defineCommandFamily",
@@ -32,7 +37,6 @@ describe("main export", () => {
       "loadConfig",
       "noSessionForWorkspaceError",
       "positional",
-      "serviceTokenRejectedError",
     ]);
   });
 

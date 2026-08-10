@@ -531,8 +531,13 @@ export interface CredentialManager {
 /** The SDK's typed client and token-storage contract, re-exported by
  *  the engine so consumers never import @prisma/management-api-sdk
  *  directly. */
-export type ManagementApiClient = import('@prisma/management-api-sdk').ManagementApiClient
-export type TokenStorage = import('@prisma/management-api-sdk').TokenStorage
+import type {
+  ManagementApiClient as SdkClient,
+  TokenStorage as SdkTokenStorage,
+} from '@prisma/management-api-sdk'
+
+export type ManagementApiClient = SdkClient
+export type TokenStorage = SdkTokenStorage
 
 /** SDK client construction config, injected by the bin beside the
  *  manager (§10). All four fields: the SDK's refreshing fetch
@@ -1192,8 +1197,10 @@ export interface RunSummary {
 }
 
 /**
- * The value-free command snapshot recorded at parse time. NO VALUES,
- * EVER: command-path segments, flag names with their value source,
+ * What telemetry records about an invocation, captured when argv is
+ * parsed. It says which command ran and which flags were given, and
+ * never what any of them was set to: the command-path segments, the
+ * flag NAMES with where each value came from,
  * and a bare count of positionals. Flag `source` derives from what
  * the engine knows at parse time: flags explicitly present on argv
  * are 'cli'; the engine reads no flags from the environment today,

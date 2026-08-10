@@ -21,7 +21,7 @@ import {
 } from "@prisma/cli-engine/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { performLogin, storeLegacyCredential } from "../src/auth";
+import { performLogin, storeLegacyCredential } from "../src/auth/operations";
 import { authLoginCommand } from "../src/v8/auth/login";
 import { authLogoutCommand } from "../src/v8/auth/logout";
 import { authWhoamiCommand } from "../src/v8/auth/whoami";
@@ -29,8 +29,8 @@ import { authWorkspaceListCommand } from "../src/v8/auth/workspace-list";
 import { authWorkspaceLogoutCommand } from "../src/v8/auth/workspace-logout";
 import { authWorkspaceUseCommand } from "../src/v8/auth/workspace-use";
 
-vi.mock("../src/auth", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/auth")>()),
+vi.mock("../src/auth/operations", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/auth/operations")>()),
   performLogin: vi.fn(),
   storeLegacyCredential: vi.fn(),
 }));
@@ -172,7 +172,7 @@ describe("auth login", () => {
     expect(result.exitCode).toBe(0);
     expect(resultOf(result)).toEqual({
       workspace: { id: "ws_1", name: null },
-      environmentSessionInForce: false,
+      environmentCredentialInForce: false,
     });
     const state = cli.credentialManager?.state();
     expect(state?.selectedWorkspaceId).toBe("ws_1");
@@ -203,7 +203,7 @@ describe("auth login", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain(
-      "PRISMA_SERVICE_TOKEN supplies the session in force",
+      "PRISMA_SERVICE_TOKEN supplies the credential in force",
     );
     expect(cli.credentialManager?.state().sessions).toHaveLength(1);
   });
@@ -270,7 +270,7 @@ describe("auth logout", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain(
-      "PRISMA_SERVICE_TOKEN supplies the session in force",
+      "PRISMA_SERVICE_TOKEN supplies the credential in force",
     );
     expect(cli.credentialManager?.state()).toEqual({
       sessions: [],
@@ -358,7 +358,7 @@ describe("auth whoami", () => {
     expect(result.stdout).toContain("workspace: ws_env");
     expect(result.stdout).toContain("source: PRISMA_SERVICE_TOKEN");
     expect(result.stderr).toContain(
-      "PRISMA_SERVICE_TOKEN supplies the session in force",
+      "PRISMA_SERVICE_TOKEN supplies the credential in force",
     );
   });
 });
@@ -443,7 +443,7 @@ describe("auth workspace list", () => {
 
     expect(resultOf(result)).toEqual({
       context: {
-        environmentSessionInForce: false,
+        environmentCredentialInForce: false,
         currentWorkspaceId: "ws_1",
       },
       items: [
@@ -458,7 +458,7 @@ describe("auth workspace list", () => {
     });
   });
 
-  it("states that the env session is in force", async () => {
+  it("states that the environment credential is in force", async () => {
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc")],
       selectedWorkspaceId: "ws_1",
@@ -468,7 +468,10 @@ describe("auth workspace list", () => {
     const result = await cli.run(["auth", "workspace", "list", "--json"]);
 
     expect(resultOf(result)).toMatchObject({
-      context: { environmentSessionInForce: true, currentWorkspaceId: "ws_1" },
+      context: {
+        environmentCredentialInForce: true,
+        currentWorkspaceId: "ws_1",
+      },
     });
   });
 
@@ -586,7 +589,7 @@ describe("auth workspace use", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain(
-      "PRISMA_SERVICE_TOKEN supplies the session in force",
+      "PRISMA_SERVICE_TOKEN supplies the credential in force",
     );
     expect(cli.credentialManager?.state().selectedWorkspaceId).toBe("ws_2");
   });
@@ -623,7 +626,7 @@ describe("auth workspace logout", () => {
     expect(result.exitCode).toBe(0);
     expect(resultOf(result)).toEqual({
       workspace: { id: "ws_1", name: "Acme Inc" },
-      wasCurrent: false,
+      wasSelected: false,
     });
     expect(
       cli.credentialManager?.state().sessions.map((s) => s.workspaceId),
@@ -644,7 +647,7 @@ describe("auth workspace logout", () => {
       "--json",
     ]);
 
-    expect(resultOf(result)).toMatchObject({ wasCurrent: true });
+    expect(resultOf(result)).toMatchObject({ wasSelected: true });
     expect(cli.credentialManager?.state()).toEqual({
       sessions: [],
       selectedWorkspaceId: undefined,
@@ -678,7 +681,7 @@ describe("auth workspace logout", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain(
-      "PRISMA_SERVICE_TOKEN supplies the session in force",
+      "PRISMA_SERVICE_TOKEN supplies the credential in force",
     );
     expect(cli.credentialManager?.state().sessions).toEqual([]);
   });
@@ -713,7 +716,7 @@ describe("auth workspace logout", () => {
     expect(result.exitCode).toBe(0);
     expect(resultOf(result)).toEqual({
       workspace: { id: "ws_1", name: "Acme Inc" },
-      wasCurrent: true,
+      wasSelected: true,
     });
     expect(manager.state().sessions).toEqual([]);
   });
@@ -793,6 +796,49 @@ describe("the environment credential carries no refresh token", () => {
     });
     expect(paths).toEqual(["/v1/me"]);
   });
+
+  /** A host that accepts the connection and never answers is the case
+   *  ctx.signal cannot cover — it only fires on Ctrl-C. Without its own
+   *  deadline the enrichment would hold whoami for as long as the
+   *  runtime's own timeouts allow, which on a CI runner behind a
+   *  black-holing proxy is minutes. */
+  it("gives up on an enrichment that never answers and reports the claims", async () => {
+    server = createServer((request) => {
+      paths.push(request.url ?? "");
+      // Accept, then never respond.
+    });
+    await new Promise<void>((resolve) => {
+      server?.listen(0, "127.0.0.1", () => resolve());
+    });
+    const port = (server.address() as AddressInfo).port;
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const cli = createTestCli({
+      commands: COMMANDS,
+      groups: GROUPS,
+      environmentCredential: environmentCredentialFor(
+        tokenFor("ws_env", { sub: "usr_env" }),
+      ),
+      managementApiClientConfig: {
+        clientId: "test-client-id",
+        redirectUri: `${baseUrl}/auth/callback`,
+        apiBaseUrl: baseUrl,
+        authBaseUrl: baseUrl,
+      },
+      now: () => new Date(0),
+    });
+
+    const startedAt = Date.now();
+    const result = await cli.run(["auth", "whoami", "--json"]);
+    const elapsed = Date.now() - startedAt;
+
+    expect(result.exitCode).toBe(0);
+    expect(resultOf(result)).toMatchObject({
+      source: "environment",
+      user: { id: "usr_env" },
+    });
+    expect(paths).toEqual(["/v1/me"]);
+    expect(elapsed).toBeLessThan(10_000);
+  }, 20_000);
 });
 
 describe("a blank service token is never an override", () => {
@@ -812,8 +858,8 @@ describe("a blank service token is never an override", () => {
 
       expect(result.exitCode).toBe(2);
       expect(errorOf(result).code).toBe("AUTH.SERVICE_TOKEN_EMPTY");
-      expect(result.stdout).not.toContain("supplies the session in force");
-      expect(result.stderr).not.toContain("supplies the session in force");
+      expect(result.stdout).not.toContain("supplies the credential in force");
+      expect(result.stderr).not.toContain("supplies the credential in force");
     });
 
     it(`fails auth login with the blank-token error before the browser opens (${name})`, async () => {

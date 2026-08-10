@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { authenticatedManagementApiClient } from "../auth";
+import { authenticatedManagementApiClient } from "../auth/guard";
 import {
   type PrismaCliPackageCommandFormatter,
   resolvePrismaCliPackageCommandFormatterSync,

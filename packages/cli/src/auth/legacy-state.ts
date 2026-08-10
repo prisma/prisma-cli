@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { claimedExpiresAt, claimedWorkspaceId } from "./claims";
+import { claimedExpiresAt, claimedWorkspaceId } from "@prisma/cli-engine";
 import type { CredentialState, StoredSession } from "./state-file";
 import { getAuthContextFilePath } from "./token-storage";
 

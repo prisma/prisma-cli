@@ -87,7 +87,7 @@ describe("v8 golden rendering", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe(
-      "ℹ Clearing the current CLI session.\n" +
+      "ℹ Clearing your stored workspace sessions.\n" +
         "ended: 1\n" +
         "✔ Ended 1 workspace session.\n" +
         "→ Sign in: prisma-cli auth login\n",

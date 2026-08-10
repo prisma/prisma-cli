@@ -20,8 +20,8 @@ export type CredentialsRequiredReason =
 
 /**
  * The single constructor of CLI.CREDENTIALS_REQUIRED. Raised
- * identically by the needs check, ctx.session, and the engine's
- * request path.
+ * identically by the needs check, ctx.activeCredential, and the
+ * engine's request path.
  */
 export function credentialsRequiredError(
   reason: CredentialsRequiredReason = "unauthenticated",
@@ -97,9 +97,34 @@ export function credentialRejectedError(
 }
 
 /**
+ * A credential's workspace_id claim disagrees with the workspace it is
+ * being stored under, or a rotated token would re-scope a session.
+ * Raised by every CredentialManager, so a test sees what production
+ * raises.
+ */
+export function credentialWorkspaceMismatchError(
+  workspaceId: string,
+): CliStructuredError {
+  return new CliStructuredError(
+    "AUTH.CREDENTIAL_WORKSPACE_MISMATCH",
+    "That credential belongs to a different workspace.",
+    {
+      why: `The token's workspace_id claim does not name workspace '${workspaceId}'.`,
+      nextActions: [
+        {
+          kind: "run-command",
+          label: "Sign in again and pick the workspace you want",
+          command: "prisma auth login",
+        },
+      ],
+    },
+  );
+}
+
+/**
  * The env var that supplies a session is set to a blank value. The one
- * structured error for it, raised identically by currentSession(), the
- * needs check, and the engine's request path.
+ * structured error for it, raised identically by activeCredential(),
+ * the needs check, and the engine's request path.
  */
 export function emptyServiceTokenError(spec: {
   readonly envVar: string;
@@ -148,10 +173,14 @@ export function noSessionForWorkspaceError(
 }
 
 /**
+ * Module-private on purpose: `credentialRejectedError` is the one place
+ * wording differs by origin (§11.1), and exporting this would be a
+ * second door into the environment-specific text that bypasses it.
+ *
  * The management API rejected the env-supplied service token (401).
  * There is no refresh for it and nothing stored is cleared.
  */
-export function serviceTokenRejectedError(spec: {
+function serviceTokenRejectedError(spec: {
   readonly envVar: string;
 }): CliStructuredError {
   return new CliStructuredError(

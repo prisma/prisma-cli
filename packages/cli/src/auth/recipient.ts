@@ -1,6 +1,6 @@
 import { createManagementApiSdk } from "@prisma/management-api-sdk";
 
-import { CLIENT_ID, getApiBaseUrl } from "./client";
+import { CLIENT_ID, getApiBaseUrl, UNUSED_REDIRECT_URI } from "./client";
 import { FileTokenStorage, type StoredAuthWorkspace } from "./token-storage";
 
 export interface RecipientWorkspaceSession {
@@ -44,7 +44,7 @@ export async function resolveRecipientWorkspaceSession(
 
   const sdk = createManagementApiSdk({
     clientId: CLIENT_ID,
-    redirectUri: "http://localhost:0/auth/callback",
+    redirectUri: UNUSED_REDIRECT_URI,
     tokenStorage: pinnedStorage,
     apiBaseUrl: getApiBaseUrl(env),
   });

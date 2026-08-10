@@ -234,7 +234,7 @@ describe("real auth mode", () => {
     const { createTempCwd, createTestCommandContext } = await import(
       "./helpers"
     );
-    const { FileTokenStorage } = await import("../src/auth");
+    const { FileTokenStorage } = await import("../src/auth/token-storage");
     const { runAuthWorkspaceList } = await import("../src/controllers/auth");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -307,7 +307,7 @@ describe("real auth mode", () => {
       }),
     }));
 
-    const { FileTokenStorage } = await import("../src/auth");
+    const { FileTokenStorage } = await import("../src/auth/token-storage");
     const { createTempCwd, createTestCommandContext } = await import(
       "./helpers"
     );
@@ -383,7 +383,7 @@ describe("real auth mode", () => {
       }),
     }));
 
-    const { FileTokenStorage } = await import("../src/auth");
+    const { FileTokenStorage } = await import("../src/auth/token-storage");
     const { createTempCwd, createTestCommandContext } = await import(
       "./helpers"
     );
@@ -471,7 +471,7 @@ describe("real auth mode", () => {
       }),
     }));
 
-    const { FileTokenStorage } = await import("../src/auth");
+    const { FileTokenStorage } = await import("../src/auth/token-storage");
     const { createTempCwd, executeCli } = await import("./helpers");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");

@@ -303,7 +303,7 @@ describe("across processes", () => {
     await runWorker("use", WORKSPACE_A);
     expect((await manager.activeCredential())?.workspaceId).toBe(WORKSPACE_B);
 
-    const fromNewProcess = JSON.parse(await runWorker("current")) as {
+    const fromNewProcess = JSON.parse(await runWorker("active")) as {
       workspaceId: string;
     };
     expect(fromNewProcess.workspaceId).toBe(WORKSPACE_A);
@@ -323,7 +323,7 @@ describe("across processes", () => {
     await runWorker("create", WORKSPACE_A, seedAccessToken, "s3cret-refresh");
     const printed = [
       await runWorker("sessions"),
-      await runWorker("current"),
+      await runWorker("active"),
       await runWorker(
         "refresh",
         WORKSPACE_A,

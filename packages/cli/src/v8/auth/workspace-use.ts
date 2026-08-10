@@ -8,9 +8,9 @@ import {
   type StoredSessions,
 } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
-import { environmentSessionInForce } from "../../auth";
+import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
-import { ENVIRONMENT_SESSION_NOTICE } from "./session-card";
+import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
 import { requireSession, sessionLabel } from "./session-ref";
 
 export interface WorkspaceUseResult {
@@ -37,7 +37,7 @@ function noWorkspaceSessionsError(): CliStructuredError {
 function usePresentations(spec: {
   readonly session: Session;
   readonly previous: Session | undefined;
-  readonly environmentSessionInForce: boolean;
+  readonly environmentCredentialInForce: boolean;
 }): Presentations {
   const rows = [
     ...(spec.previous === undefined
@@ -58,12 +58,12 @@ function usePresentations(spec: {
         tone: "ok",
         text: "Current workspace session updated.",
       },
-      ...(spec.environmentSessionInForce
+      ...(spec.environmentCredentialInForce
         ? [
             {
               kind: "summary",
               tone: "info",
-              text: ENVIRONMENT_SESSION_NOTICE,
+              text: ENVIRONMENT_CREDENTIAL_NOTICE,
             } as const,
           ]
         : []),
@@ -127,7 +127,7 @@ export const authWorkspaceUseCommand = defineCommand({
         usePresentations({
           session,
           previous,
-          environmentSessionInForce: environmentSessionInForce(ctx.env),
+          environmentCredentialInForce: environmentCredentialInForce(ctx.env),
         }),
       ),
     );

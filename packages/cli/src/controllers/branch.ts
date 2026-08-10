@@ -1,6 +1,6 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Branch pagination requests must run sequentially.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-import { authenticatedManagementApiClient } from "../auth";
+import { authenticatedManagementApiClient } from "../auth/guard";
 import {
   projectResolutionErrorToCliError,
   resolveProjectTarget,

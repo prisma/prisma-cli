@@ -10,8 +10,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   RecipientSessionInvalidError,
   resolveRecipientWorkspaceSession,
-  WorkspaceSelectionError,
-} from "../src/auth";
+} from "../src/auth/recipient";
+import { WorkspaceSelectionError } from "../src/auth/token-storage";
 
 import { projectCreateCommand } from "../src/v8/project/create";
 import { projectEnvAddCommand } from "../src/v8/project/env-add";
@@ -26,8 +26,8 @@ import { projectShowCommand } from "../src/v8/project/show";
 import { projectTransferCommand } from "../src/v8/project/transfer";
 import { resolveActiveWorkspace } from "../src/v8/resources-shared/workspace";
 
-vi.mock("../src/auth", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/auth")>()),
+vi.mock("../src/auth/recipient", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/auth/recipient")>()),
   resolveRecipientWorkspaceSession: vi.fn(),
 }));
 

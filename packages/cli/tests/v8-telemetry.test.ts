@@ -28,7 +28,9 @@ function makeCli() {
       "telemetry disable": telemetryDisableCommand,
     },
     groups: {
-      telemetry: { brief: "Inspect and change anonymous CLI telemetry" },
+      telemetry: {
+        brief: "Show or change whether the CLI sends anonymous usage data",
+      },
     },
     now: () => new Date(0),
   });

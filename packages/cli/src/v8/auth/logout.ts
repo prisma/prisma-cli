@@ -1,8 +1,8 @@
 import { defineCommand, type Presentations } from "@prisma/cli-engine";
 import { type NextAction, ok } from "@prisma/cli-engine/protocol";
-import { environmentSessionInForce } from "../../auth";
+import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
-import { ENVIRONMENT_SESSION_NOTICE } from "./session-card";
+import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
 
 const SIGN_IN: NextAction = {
   kind: "run-command",
@@ -29,7 +29,7 @@ function presentationsFor(
       {
         kind: "summary",
         tone: "info",
-        text: "Clearing the current CLI session.",
+        text: "Clearing your stored workspace sessions.",
       },
       { kind: "fields", rows },
       { kind: "summary", tone: "ok", text: summary },
@@ -38,7 +38,7 @@ function presentationsFor(
             {
               kind: "summary",
               tone: "info",
-              text: ENVIRONMENT_SESSION_NOTICE,
+              text: ENVIRONMENT_CREDENTIAL_NOTICE,
             } as const,
           ]
         : []),
@@ -64,7 +64,7 @@ export const authLogoutCommand = defineCommand({
     return ok(
       ctx.present(
         { data: result },
-        presentationsFor(result, environmentSessionInForce(ctx.env)),
+        presentationsFor(result, environmentCredentialInForce(ctx.env)),
       ),
     );
   },
