@@ -1,14 +1,16 @@
 /**
  * Where a service command's identity comes from. Every service command
  * resolves its workspace through `requireWorkspace`, and the only
- * sanctioned source for it is the engine's `ctx.activeCredential()`. These tests
- * fail if that identity starts coming from anywhere else: the seeded
- * session names a workspace the Management API fake never reports, so a
- * run that reads its workspace from any other source resolves a
- * different project or prints a different name.
+ * sanctioned source for it is the engine's `ctx.activeCredential()`.
+ * These tests fail if that identity starts coming from anywhere else:
+ * the seeded session names a workspace the Management API fake never
+ * reports, so a run that reads its workspace from any other source
+ * resolves a different project or prints a different name.
  */
+import { mintTestJwt } from "@prisma/cli-engine/testing";
 import { describe, expect, it } from "vitest";
 
+import { serviceTokenWorkspaceId } from "../src/auth/claims";
 import {
   domainRecord,
   makeServiceCli,
@@ -34,6 +36,18 @@ function twoWorkspaceRoutes(overrides: Routes = {}): Routes {
     ...overrides,
   });
 }
+
+/**
+ * A service token neither workspace derivation can place: no
+ * `workspace_id` claim, and a `sub` that is not `workspace:<id>`. The
+ * harness's credential manager derives a workspace from `workspace_id`
+ * alone, while the shipping one also accepts the `sub` form
+ * (`src/auth/claims.ts`), so a token carrying only `sub` would be
+ * refused under test and accepted in production. The test asserts the
+ * shipping derivation places no workspace in this one, so the refusal
+ * it pins is the refusal the product makes.
+ */
+const UNSCOPED_SERVICE_TOKEN = mintTestJwt({ sub: "usr_1" });
 
 function domainRoutes(): Routes {
   return readFlowRoutes({
@@ -157,5 +171,54 @@ describe("prisma-v8 service — the workspace comes from the engine session", ()
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("CLI.CREDENTIALS_REQUIRED");
+  });
+
+  it("acts as the workspace a service token's claims name", async () => {
+    const harness = await makeServiceCli({
+      authenticated: false,
+      environmentToken: mintTestJwt({
+        sub: "usr_1",
+        workspace_id: OTHER_WORKSPACE.id,
+      }),
+      routes: twoWorkspaceRoutes(),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "show", "--project", "other-app", "--service", "hello-world"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({ projectId: "proj_2" });
+  });
+
+  it("refuses a service token whose claims name no workspace", async () => {
+    expect(serviceTokenWorkspaceId(UNSCOPED_SERVICE_TOKEN)).toBeUndefined();
+
+    const harness = await makeServiceCli({
+      authenticated: false,
+      environmentToken: UNSCOPED_SERVICE_TOKEN,
+      routes: twoWorkspaceRoutes(),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "show",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.WORKSPACE_REQUIRED");
   });
 });

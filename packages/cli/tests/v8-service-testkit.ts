@@ -7,7 +7,11 @@ import type {
   MountedTree,
   PresentedResult,
 } from "@prisma/cli-engine";
-import { createTestCli, mintTestJwt } from "@prisma/cli-engine/testing";
+import {
+  createTestCli,
+  mintTestJwt,
+  type SessionRecord,
+} from "@prisma/cli-engine/testing";
 import type { AuthStateResult } from "../src/types/auth";
 import { MOUNTED_COMMANDS } from "../src/v8/cli";
 
@@ -305,6 +309,11 @@ export interface ServiceCliOptions {
    *  WORKSPACE. Omitting `name` seeds a session whose workspace has no
    *  name, which is what a workspace-bound service token produces. */
   sessionWorkspace?: { id: string; name?: string };
+  /** The token PRISMA_SERVICE_TOKEN supplies. Seeding one pins the run
+   *  to that credential ahead of any stored session, as the shipping
+   *  manager does, and the engine exports it into the run's
+   *  environment. Mint it with `mintTestJwt`. */
+  environmentToken?: string;
   /** The browser opener behind ctx.openUrl; pass a spy to assert what
    *  a run opened. */
   openUrl?: (url: string) => Promise<void> | void;
@@ -326,37 +335,43 @@ export async function makeServiceCli(
     PRISMA_CLI_STATE_DIR: stateDir,
   };
   const workspace = options.sessionWorkspace ?? WORKSPACE;
+  const session: SessionRecord | undefined =
+    options.authenticated === false
+      ? undefined
+      : {
+          workspaceId: workspace.id,
+          workspaceName: workspace.name,
+          credential: {
+            token: mintTestJwt({ sub: "usr_1", workspace_id: workspace.id }),
+            refreshToken: undefined,
+            expiresAt: undefined,
+          },
+        };
+  // The credential manager is the shipping path for needs.credentials
+  // and for the workspace every service command resolves through
+  // ctx.activeCredential(). Every seed is written as an ordinary
+  // property rather than spread in: TypeScript's excess-property check
+  // does not reach a spread, so a key the engine renames would be
+  // dropped here in silence and every run would quietly go
+  // unauthenticated.
   const cli = createTestCli({
     commands: SERVICE_COMMANDS,
     groups: SERVICE_GROUPS,
-    // The credential manager is the shipping path for needs.credentials
-    // and for the workspace every service command resolves through
-    // ctx.activeCredential(); an unauthenticated harness seeds no
-    // session.
-    ...(options.authenticated === false
-      ? {}
-      : {
-          sessions: [
-            {
-              workspaceId: workspace.id,
-              workspaceName: workspace.name,
-              credential: {
-                token: mintTestJwt({
-                  sub: "usr_1",
-                  workspace_id: workspace.id,
-                }),
-                refreshToken: undefined,
-                expiresAt: undefined,
-              },
-            },
-          ],
-          selectedWorkspaceId: workspace.id,
-        }),
+    sessions: session === undefined ? undefined : [session],
+    selectedWorkspaceId: session?.workspaceId,
+    environmentCredential:
+      options.environmentToken === undefined
+        ? undefined
+        : {
+            token: options.environmentToken,
+            refreshToken: undefined,
+            expiresAt: undefined,
+          },
     managementApi: {
       client: fakeManagementClient(options.routes ?? readFlowRoutes()),
     },
     now: () => new Date(0),
-    ...(options.openUrl ? { openUrl: options.openUrl } : {}),
+    openUrl: options.openUrl,
   });
   return { cli, cwd, stateDir, env };
 }

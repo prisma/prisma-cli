@@ -112,8 +112,12 @@ or a login whose best-effort name fetch failed — presents as its
 workspace id (`workspace: ws_…`) instead of failing. Legacy asked the
 API for the name on every read and settled `WORKSPACE_REQUIRED` when it
 could not build a workspace at all; v8 prefers the identifier the user
-can still act on. `SERVICE.WORKSPACE_REQUIRED` itself is unchanged and
-still raised when there is no session.
+can still act on. `SERVICE.WORKSPACE_REQUIRED` is still raised when
+there is no credential at all, and it is now also raised when there is
+a credential that names no workspace — see the escalated entry that
+follows this one.
+
+**A credential that names no workspace is now refused instead of silently getting an empty one.** One commit before the merge-down, `ctx.session()` composed an environment credential's session as `workspaceId: serviceTokenWorkspaceId(token) ?? ""` (`src/auth/credential-manager.ts`), so a `PRISMA_SERVICE_TOKEN` whose claims name no workspace handed `requireWorkspace` `{id: "", name: ""}` and the run carried on: it filtered projects by an empty workspace id, found none, and named a blank workspace in the error it eventually produced. `ActiveCredential.workspaceId` is absent rather than empty in that case, `requireWorkspace` tests it, and the run settles `SERVICE.WORKSPACE_REQUIRED` instead. `tests/v8-service-session.test.ts` pins the refusal.
 
 **The tests now seed one credential source.** Every service test used to
 mock `readAuthState` at the module seam while the engine's credential
@@ -125,6 +129,22 @@ the workspace come from it. `tests/v8-service-session.test.ts` pins the
 direction, seeding a session that names a workspace the Management API
 fake never reports for the project, so a run taking its identity from
 anywhere else resolves a different project or prints a different name.
+The refusal above is pinned there too, from a seeded
+`PRISMA_SERVICE_TOKEN` whose claims name no workspace.
+
+### A service token whose workspace only the server knows is now refused (ESCALATED — engine gap)
+
+**What legacy did.** With `PRISMA_SERVICE_TOKEN` set, `readAuthState` handed off to `readServiceTokenAuthState` (`src/auth/operations.ts`), which asked the server first: `readCurrentPrincipalAuthState` read `GET /v1/me`, documented in the Management API types as returning the user, workspace and credential the current token represents. When the server named a workspace, legacy used it and the command ran, whatever the token's own claims said. Only when that call produced nothing did legacy decode the token, and only then — finding no workspace in it — did it return signed-out state, which the old `requireWorkspace` settled as `SERVICE.WORKSPACE_REQUIRED`.
+
+**What v8 does.** `requireWorkspace` reads `ctx.activeCredential()` and nothing else. For an environment credential the workspace id is `serviceTokenWorkspaceId(token)` (`src/auth/claims.ts`): the `workspace_id` claim, or a `sub` of the form `workspace:<id>`. There is no network call, and a credential that names no workspace is refused with `SERVICE.WORKSPACE_REQUIRED` — the same error, from the same builder, that legacy raised on the same input.
+
+**The one case that differs.** A service token that the platform associates with a workspace, but whose JWT carries neither `workspace_id` nor a `sub` of the form `workspace:<id>`, used to work whenever `/v1/me` answered and named that workspace. It is now refused. Every other input behaves as it did: legacy refused the same token when it could not reach `/v1/me`, when the response carried no principal or no credential, and when the principal named no workspace. The claims derivation is otherwise wider than legacy's, which read only the `sub` form, so this is the single direction in which the new path resolves less. The difference arrived with the rev-6 credential model rather than with any command in this slice, but this slice is where it becomes visible: every service command resolves its workspace this way.
+
+**The refusal's advice does not fit this case.** `SERVICE.WORKSPACE_REQUIRED` offers one next action, "Sign in" → `auth login`. Under `PRISMA_SERVICE_TOKEN` that cannot clear it: `createSession` writes the stored session but leaves the process pinned to the environment credential, so the next run resolves the same token and fails the same way until the variable is unset. Legacy's advice had the same hole, so this is not a regression — but the case is now reachable where before it produced an empty workspace. The wording is left to the auth stream, because the condition it fires on is an environment-credential state that stream owns.
+
+**Why this is not fixed here.** Restoring the lookup would mean a service command calling `/v1/me` to complete its own identity. `ctx.activeCredential()` is documented local-only and deliberately never touches the network, and a command reaching around the engine for its own auth state is the exact mistake that produced the defect the entry above records. If identity needs a server round-trip when the claims are insufficient, it belongs in the credential manager, which owns the credential and can do it once for every command — not in one group's `requireWorkspace`.
+
+**Ruling needed, from the operator and the auth stream:** whether the credential manager should complete an environment credential's workspace from the server when its claims carry none, or whether every token the platform issues is required to carry the claim, which closes this case in the token format instead.
 
 ### `service domain remove` consent
 
@@ -255,7 +275,7 @@ The deploy-only rows this table used to carry went with the command; see "`app d
 
 ### `--no-db` cannot be told apart from "not passed" (RETIRED — was an escalated engine gap)
 
-Retired: this was escalated to the operator as an engine gap and became moot when `service deploy` was dropped, because `--db` was a deploy flag and no shipped command declares it. Kept here so the escalation list reads honestly — six engine gaps went to the operator during this slice, three are now retired (this one, the `prompt.text` validator below, and the log-stream token under dispatch 3), and three are still open (the `build logs` exit code under dispatch 3, the `agent` group's help examples under dispatch 4, and the crash-recovery feedback action under dispatch 4). All six are marked where they are written, so the count can be checked against the entries.
+Retired: this was escalated to the operator as an engine gap and became moot when `service deploy` was dropped, because `--db` was a deploy flag and no shipped command declares it. Kept here so the escalation list reads honestly — seven engine gaps went to the operator during this slice, three are now retired (this one, the `prompt.text` validator below, and the log-stream token under dispatch 3), and four are still open: the service token whose workspace only the server knows under dispatch 1, the `build logs` exit code under dispatch 3, and the `agent` group's help examples and the crash-recovery feedback action under dispatch 4. The dispatch 1 gap is the newest: it arrived with the rev-6 credential merge-down, after the drop ruling under dispatch 4 counted the open ones. All seven are marked where they are written, so the count can be checked against the entries.
 
 The engine's boolean flag is two-state with an automatic `--no-<name>`
 negation and a `false` default, so the legacy tri-state (`--db` request /
@@ -414,30 +434,36 @@ either way.
 
 Retired: this was escalated to the operator as an engine gap and became unreachable when `service logs` was shelved, because no shipped command asks for a raw token. It is the gap the shelve waits on, so the description below stays as the statement of what the engine has to grow before the command can be ported — see "`service logs` is shelved" under dispatch 4.
 
-The log stream does not go through the Management API client: it opens
-its own connection and needs the raw access token (legacy built one
+Everything from here to the end of the entry describes the base this slice was written against, before the rev-6 credential merge-down; it is kept as the statement of the ask, not as a description of the tree today.
+
+The log stream did not go through the Management API client: it opened
+its own connection and needed the raw access token (legacy built one
 from `PRISMA_SERVICE_TOKEN` or the token file in
-`createPreviewLogAuthOptions`). On the current base the only accessor
-that reaches a session command at all is `ctx.getCredentials()`, which
-the engine documents as staged for deletion:
+`createPreviewLogAuthOptions`). On that base the only accessor that
+reached a session command at all was `ctx.getCredentials()`, which the
+engine already documented as staged for deletion:
 
-- `ctx.activeCredential()` deliberately omits the token ("The token is
-  INTERNAL", `credential-manager.ts`).
-- `ctx.credentialManager` (whose `tokenStorage()` is marked
-  engine-facing) is exposed only to result commands that declare
+- `ctx.session()` — the accessor that named the workspace, which the
+  rev-6 model later replaced with `ctx.activeCredential()`, never
+  alongside it — deliberately omitted the token. The engine's comment
+  on it read "The token is INTERNAL" at the time; that sentence is gone
+  from `credential-manager.ts` now, and the rule it stated survives as
+  "Carries no token material".
+- `ctx.credentialManager` (whose `tokenStorage()` was marked
+  engine-facing) was exposed only to result commands that declared
   `managesCredentials`.
-- `ctx.getCredentials()` forwards straight to `runtime.getCredentials()`
-  and never consults the credential manager. The shipping bin wires
-  `makeGetCredentials(proc.env)`, which returns `PRISMA_SERVICE_TOKEN`
-  when it is set and otherwise whatever `FileTokenStorage` reads out of
-  the credential file — the same two sources, in the same order, that
-  legacy used.
+- `ctx.getCredentials()` forwarded straight to
+  `runtime.getCredentials()` and never consulted the credential
+  manager. The shipping bin wired `makeGetCredentials(proc.env)`, which
+  returned `PRISMA_SERVICE_TOKEN` when it was set and otherwise
+  whatever `FileTokenStorage` read out of the credential file — the
+  same two sources, in the same order, that legacy used.
 
-v8 asked `ctx.getCredentials()` and, when it resolved nothing, settled with `SERVICE.LOG_STREAM_CREDENTIALS_UNAVAILABLE`; that error builder is deleted with the command. Whether it ever fired was decided by the shape of the credential file rather than by whether the user was signed in, which is the trap this entry existed to record. Today `auth login` writes the legacy `{tokens: […]}` shape through `storeLegacyCredential` and `FileTokenStorage` reads it, so the error was unreachable. Once the auth rework merges down from `bot/s2a-foundations`, `auth login` calls `credentialManager.createSession` instead, `@prisma/credentials-store` reads `data.tokens || []` and finds nothing, and every signed-in user who had not set `PRISMA_SERVICE_TOKEN` would have hit it. The workspace half of the same problem was real for the commands that do ship, and it is fixed — see "The workspace comes from the engine's session, not the credential file" under dispatch 1.
+v8 asked `ctx.getCredentials()` and, when it resolved nothing, settled with `SERVICE.LOG_STREAM_CREDENTIALS_UNAVAILABLE`; that error builder is deleted with the command. Whether it ever fired was decided by the shape of the credential file rather than by whether the user was signed in, which is the trap this entry existed to record. On that base `auth login` wrote the legacy `{tokens: […]}` shape through `storeLegacyCredential` and `FileTokenStorage` read it, so the error was unreachable. Once the auth rework merged down from `bot/s2a-foundations`, `auth login` called `credentialManager.createSession` instead, `@prisma/credentials-store` read `data.tokens || []` and found nothing, and every signed-in user who had not set `PRISMA_SERVICE_TOKEN` would have hit it. The workspace half of the same problem was real for the commands that do ship, and it is fixed — see "The workspace comes from the engine, not the credential file" under dispatch 1.
 
-A second, smaller engine ask retires with this one, and it is why the `service logs` tests were red. Those tests seeded `rawTokenSeed`, which selects `createTestCli`'s manager-less runtime — the only way the harness made `ctx.getCredentials()` resolve a token. A manager-less runtime has no session at all, so once the workspace came from `ctx.session()` every one of those runs settled `SERVICE.WORKSPACE_REQUIRED`. The shipping bin wires a credential manager and `getCredentials` together (`src/v8/runtime.ts`), but `createTestCli` rejects that combination (`packages/cli-engine/src/testing.ts`), so no harness could model the runtime the product assembles. The tests are deleted with the command and the seed is gone from the testkit; whatever transport the engine grows for the ported command will need a harness seam of its own.
+A second, smaller engine ask retires with this one, and it is why the `service logs` tests were red. Those tests seeded `rawTokenSeed`, which selected `createTestCli`'s manager-less runtime — the only way the harness made `ctx.getCredentials()` resolve a token. A manager-less runtime had no session at all, so once the workspace came from `ctx.session()` every one of those runs settled `SERVICE.WORKSPACE_REQUIRED`. The shipping bin wired a credential manager and `getCredentials` together (`src/v8/runtime.ts`), but `createTestCli` rejected that combination (`packages/cli-engine/src/testing.ts`), so no harness could model the runtime the product assembled. The tests are deleted with the command and the seed is gone from the testkit; whatever transport the engine grows for the ported command will need a harness seam of its own.
 
-**Settled by the merge-down.** The paragraph above describes a runtime that no longer exists: the rev-6 credential surface landed on `bot/s2a-foundations` and **deleted `getCredentials` outright**, so there is now no accessor a command could take a token from, and `ctx.session()` is `ctx.activeCredential()`. Shelving the command was therefore the only correct call rather than a cautious one — had it shipped, it would now fail to compile rather than merely fail at runtime. The harness inconsistency retires with the accessor it was about.
+**Settled by the merge-down.** The runtime this whole entry describes no longer exists: the rev-6 credential surface has landed here and **deleted `getCredentials` outright**, so there is now no accessor a command could take a token from, and `ctx.session()` is `ctx.activeCredential()`. Shelving the command was therefore the only correct call rather than a cautious one — had it shipped, it would now fail to compile rather than merely fail at runtime. The harness inconsistency retires with the accessor it was about.
 
 ### Error-code mapping (dispatch 3 additions)
 
@@ -561,7 +587,7 @@ The reasoning is about the shape of the command, not about how the port went. `a
 
 Nobody loses a command today. The legacy commander shell still serves `app deploy` and `app build`, and keeps serving them until S2d deletes the shell. What that deletion replaces them with is a Composer question, not a port question, so unlike `app run` this drop does leave something for S2d to answer.
 
-Two engine gaps escalated during this slice existed only for `app deploy` and are retired with it: the `--db` / `--no-db` three-way flag problem, and the missing validator on `prompt.text`. Both are recorded as retired entries under dispatch 2, so this ruling took the open escalations from six to four (the `service logs` shelve below then took them to three). The consent table under dispatch 2 loses `service deploy`'s production replace and is down to two consent points. The dispatch 1 and dispatch 2 divergence entries that described only these two commands are gone, and the entries that covered several commands now name only the ones that ship.
+Two engine gaps escalated during this slice existed only for `app deploy` and are retired with it: the `--db` / `--no-db` three-way flag problem, and the missing validator on `prompt.text`. Both are recorded as retired entries under dispatch 2, so this ruling took the open escalations from six to four (the `service logs` shelve below then took them to three; the rev-6 credential merge-down later added a seventh gap, open, under dispatch 1). The consent table under dispatch 2 loses `service deploy`'s production replace and is down to two consent points. The dispatch 1 and dispatch 2 divergence entries that described only these two commands are gone, and the entries that covered several commands now name only the ones that ship.
 
 The tap this slice added to legacy code for `service build` is reverted. `executeAppBuild` and `resolveAppBuildStrategy` (`packages/cli/src/lib/app/build.ts`) had gained an optional `io` parameter so the v8 command could stream the bundler's per-line output as engine events; nothing in the legacy shell ever passed it, so the parameter is removed and the file is back to what it was.
 
