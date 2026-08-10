@@ -553,6 +553,7 @@ export async function resolveServiceReadState(
     serviceName?: string;
     projectRef?: string;
     configTarget?: string;
+    branchName?: string;
     commandName: string;
   },
 ): Promise<ServiceReadState> {
@@ -565,6 +566,9 @@ export async function resolveServiceReadState(
   const target = await resolveServiceProjectContext(ctx, options.projectRef, {
     commandName: options.commandName,
     projectDir: compute.projectDir,
+    ...(options.branchName !== undefined
+      ? { branchName: options.branchName }
+      : {}),
   });
   const projectId = target.project.id;
   const stateStore = await openServiceStateStore(ctx);

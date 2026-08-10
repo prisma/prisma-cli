@@ -12,6 +12,9 @@ import { serviceDomainShowCommand } from "../src/v8/service/domain-show";
 import { serviceDomainWaitCommand } from "../src/v8/service/domain-wait";
 import { serviceListDeploysCommand } from "../src/v8/service/list-deploys";
 import { serviceOpenCommand } from "../src/v8/service/open";
+import { servicePromoteCommand } from "../src/v8/service/promote";
+import { serviceRemoveCommand } from "../src/v8/service/remove";
+import { serviceRollbackCommand } from "../src/v8/service/rollback";
 import { serviceShowCommand } from "../src/v8/service/show";
 import { serviceShowDeployCommand } from "../src/v8/service/show-deploy";
 
@@ -220,6 +223,51 @@ export function readFlowRoutes(overrides: Routes = {}): Routes {
   };
 }
 
+/**
+ * Deployment routes the SDK's promote and teardown flows drive, on top
+ * of the read-flow routes: a stopped deployment starts and reaches
+ * "running" on the first poll, so no test waits on a poll interval.
+ */
+export function releaseRoutes(overrides: Routes = {}): Routes {
+  const statuses = new Map([
+    ["dep_1", "stopped"],
+    ["dep_2", "running"],
+  ]);
+  return readFlowRoutes({
+    "GET /v1/deployments/{deploymentId}": (init) => {
+      const id = init.params?.path?.deploymentId as string;
+      const status = statuses.get(id);
+      if (!status) {
+        return { error: { error: { message: "not found" } }, status: 404 };
+      }
+      return {
+        data: {
+          data: {
+            id,
+            status,
+            createdAt: "2026-08-01T00:00:00.000Z",
+            previewDomain: `${id}.prisma.app`,
+          },
+        },
+      };
+    },
+    "POST /v1/deployments/{deploymentId}/start": (init) => {
+      statuses.set(init.params?.path?.deploymentId as string, "running");
+      return { data: { data: {} } };
+    },
+    "POST /v1/deployments/{deploymentId}/stop": (init) => {
+      statuses.set(init.params?.path?.deploymentId as string, "stopped");
+      return { data: { data: {} } };
+    },
+    "DELETE /v1/deployments/{deploymentId}": () => ({ data: { data: {} } }),
+    "POST /v1/apps/{appId}/promote": () => ({
+      data: { data: { appEndpointDomain: "hello.prisma.app" } },
+    }),
+    "DELETE /v1/apps/{appId}": () => ({ data: { data: {} } }),
+    ...overrides,
+  });
+}
+
 export const SERVICE_GROUPS = {
   service: { brief: "Manage services and deployments for a project" },
   "service domain": { brief: "Manage custom domains for a service" },
@@ -231,6 +279,9 @@ export const SERVICE_COMMANDS = {
   "service open": serviceOpenCommand,
   "service list-deploys": serviceListDeploysCommand,
   "service show-deploy": serviceShowDeployCommand,
+  "service promote": servicePromoteCommand,
+  "service rollback": serviceRollbackCommand,
+  "service remove": serviceRemoveCommand,
   "service domain add": serviceDomainAddCommand,
   "service domain show": serviceDomainShowCommand,
   "service domain remove": serviceDomainRemoveCommand,

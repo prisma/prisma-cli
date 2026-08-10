@@ -172,6 +172,97 @@ export function deploymentNotFoundError(
   );
 }
 
+export function deploymentNotFoundForServiceError(
+  deploymentId: string,
+  serviceName: string,
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.DEPLOYMENT_NOT_FOUND",
+    `Deployment "${deploymentId}" not found for service "${serviceName}"`,
+    {
+      why: "The requested deployment does not belong to the resolved service or is no longer available.",
+      nextActions: [
+        runCommandAction(
+          "Choose an available deployment id",
+          "service list-deploys",
+        ),
+      ],
+    },
+  );
+}
+
+/** promote / rollback / remove need a service that already exists. */
+export function releaseTargetRequiredError(
+  command: "promote" | "rollback" | "remove",
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.TARGET_REQUIRED",
+    `Service ${command} requires an existing service`,
+    {
+      why: "The resolved project does not have a service that can be selected for this command.",
+      nextActions: [
+        adviceAction(
+          `Deploy a service first, or rerun ${command} with --service <name> once a service exists.`,
+        ),
+        runCommandAction("Deploy the service", "service deploy"),
+        runCommandAction("List deployments", "service list-deploys"),
+      ],
+    },
+  );
+}
+
+export function noPreviousDeploymentError(): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.NO_PREVIOUS_DEPLOYMENT",
+    "No previous deployment available for rollback",
+    {
+      why: "The selected service does not have an earlier deployment to switch back to.",
+      nextActions: [
+        adviceAction(
+          "Deploy a second version first, or pass --to <deployment-id> for a specific earlier deployment.",
+        ),
+        runCommandAction("Deploy the service", "service deploy"),
+        runCommandAction("List deployments", "service list-deploys"),
+      ],
+    },
+  );
+}
+
+export function removeFailedError(
+  summary: string,
+  cause: unknown,
+): CliStructuredError {
+  return new CliStructuredError("SERVICE.REMOVE_FAILED", summary, {
+    why: cause instanceof Error ? cause.message : String(cause),
+    nextActions: [
+      runCommandAction("Inspect the service", "service show"),
+      runCommandAction("List deployments", "service list-deploys"),
+    ],
+    cause,
+  });
+}
+
+/** A blank `--branch` must never fall back to the inferred (possibly
+ *  production) branch. */
+export function branchValueEmptyError(): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.BRANCH_INVALID",
+    "The --branch value cannot be empty",
+    {
+      why: "service remove scopes the removal to the given branch; an empty --branch would silently fall back to the inferred (possibly production) branch.",
+      nextActions: [
+        adviceAction(
+          "Pass a non-empty branch name, or omit --branch to use the inferred branch.",
+        ),
+        runCommandAction(
+          "Remove on a branch",
+          "service remove --service <name> --branch <branch>",
+        ),
+      ],
+    },
+  );
+}
+
 export function liveUrlUnavailableError(): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.FEATURE_UNAVAILABLE",

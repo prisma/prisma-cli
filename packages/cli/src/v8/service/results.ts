@@ -55,6 +55,22 @@ export interface ServiceBuildResult {
     | "custom";
 }
 
+export interface ServicePromoteResult {
+  projectId: string;
+  service: ServiceSummary;
+  deployment: ServiceDeploymentSummary;
+}
+
+export interface ServiceRollbackResult extends ServicePromoteResult {
+  previousLiveDeploymentId: string | null;
+}
+
+export interface ServiceRemoveResult {
+  projectId: string;
+  service: ServiceSummary;
+  removed: true;
+}
+
 export interface ServiceDomainSummary {
   id: string;
   type: "custom-domain";

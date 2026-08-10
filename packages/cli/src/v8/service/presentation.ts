@@ -13,6 +13,9 @@ import type {
   ServiceDomainWaitResult,
   ServiceListDeploysResult,
   ServiceOpenResult,
+  ServicePromoteResult,
+  ServiceRemoveResult,
+  ServiceRollbackResult,
   ServiceShowDeployResult,
   ServiceShowResult,
 } from "./results";
@@ -214,6 +217,79 @@ export function openPresentations(
         "Show the live deployment",
         `service show-deploy ${liveDeploymentId}`,
       ),
+    ],
+  };
+}
+
+function deploymentNextActions(deploymentId: string): NextAction[] {
+  return [
+    runCommandAction("List deployments", "service list-deploys"),
+    runCommandAction(
+      "Show the deployment",
+      `service show-deploy ${deploymentId}`,
+    ),
+  ];
+}
+
+export function promotePresentations(
+  result: ServicePromoteResult,
+): Presentations {
+  return {
+    human: () => [
+      title("Promoting a deployment to production."),
+      fields([
+        { label: "project", value: result.projectId },
+        { label: "service", value: result.service.name },
+        { label: "deployment", value: result.deployment.id },
+        { label: "status", value: result.deployment.status },
+        ...(result.deployment.url
+          ? [{ label: "url", value: result.deployment.url }]
+          : []),
+      ]),
+    ],
+    next: () => deploymentNextActions(result.deployment.id),
+  };
+}
+
+export function rollbackPresentations(
+  result: ServiceRollbackResult,
+): Presentations {
+  return {
+    human: () => [
+      title("Rolling production back to an earlier deployment."),
+      fields([
+        { label: "project", value: result.projectId },
+        { label: "service", value: result.service.name },
+        { label: "deployment", value: result.deployment.id },
+        { label: "status", value: result.deployment.status },
+        {
+          label: "previous live deployment",
+          value: result.previousLiveDeploymentId ?? "unknown",
+        },
+        ...(result.deployment.url
+          ? [{ label: "url", value: result.deployment.url }]
+          : []),
+      ]),
+    ],
+    next: () => deploymentNextActions(result.deployment.id),
+  };
+}
+
+export function removePresentations(
+  result: ServiceRemoveResult,
+): Presentations {
+  return {
+    human: () => [
+      title("Removing the service and every deployment it owns."),
+      fields([
+        { label: "project", value: result.projectId },
+        { label: "service", value: result.service.name },
+        { label: "removed", value: "yes" },
+      ]),
+    ],
+    next: () => [
+      runCommandAction("Deploy the service", "service deploy"),
+      runCommandAction("List deployments", "service list-deploys"),
     ],
   };
 }

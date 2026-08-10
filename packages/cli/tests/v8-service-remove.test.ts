@@ -1,0 +1,334 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { readAuthState } from "../src/auth";
+import {
+  makeServiceCli,
+  page,
+  releaseRoutes,
+  SIGNED_IN,
+} from "./v8-service-testkit";
+
+vi.mock("../src/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/auth")>()),
+  readAuthState: vi.fn(),
+}));
+
+beforeEach(() => {
+  vi.mocked(readAuthState).mockReset();
+  vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
+});
+
+const INTERACTIVE = { stdin: true, stdout: true, stderr: true };
+
+describe("prisma-v8 service remove", () => {
+  it("removes the selected service once consent is granted", async () => {
+    const harness = await makeServiceCli({ routes: releaseRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "remove",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+      ],
+      {
+        cwd: harness.cwd,
+        env: harness.env,
+        isTty: INTERACTIVE,
+        answers: [true],
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual({
+      projectId: "proj_1",
+      service: { id: "svc_1", name: "hello-world" },
+      removed: true,
+    });
+  });
+
+  it("emits the remove step around the teardown progress and the deleted status", async () => {
+    const harness = await makeServiceCli({ routes: releaseRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "remove",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+      ],
+      {
+        cwd: harness.cwd,
+        env: harness.env,
+        isTty: INTERACTIVE,
+        answers: [true],
+      },
+    );
+
+    expect(result.events[0]).toEqual({ kind: "step-started", step: "remove" });
+    expect(result.events[1]).toEqual({
+      kind: "status",
+      subject: "hello-world",
+      status: "removing",
+    });
+    expect(result.events).toContainEqual({
+      kind: "progress",
+      step: "delete-deployments",
+      completed: 2,
+      total: 2,
+    });
+    expect(result.events).toContainEqual({
+      kind: "status",
+      subject: "hello-world",
+      status: "deleted",
+      from: "removing",
+    });
+    expect(result.events.at(-1)).toEqual({
+      kind: "step-finished",
+      step: "remove",
+      outcome: "ok",
+    });
+  });
+
+  it("clears the selected service and known live deployment from local state", async () => {
+    const harness = await makeServiceCli({ routes: releaseRoutes() });
+
+    await harness.cli.run(
+      ["service", "show", "--project", "acme-app", "--service", "hello-world"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+    await harness.cli.run(
+      [
+        "service",
+        "remove",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+      ],
+      {
+        cwd: harness.cwd,
+        env: harness.env,
+        isTty: INTERACTIVE,
+        answers: [true],
+      },
+    );
+
+    const state = JSON.parse(
+      await readFile(path.join(harness.stateDir, "state.json"), "utf8"),
+    );
+    expect(state.app?.selectedByProject?.proj_1).toBeUndefined();
+    expect(
+      state.app?.knownLiveDeploymentByProject?.proj_1?.svc_1,
+    ).toBeUndefined();
+  });
+
+  it("emits the completed json envelope with commandId service.remove", async () => {
+    const harness = await makeServiceCli({ routes: releaseRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "remove",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--json",
+      ],
+      {
+        cwd: harness.cwd,
+        env: harness.env,
+        isTty: INTERACTIVE,
+        answers: [true],
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || !frame.envelope.ok) {
+      throw new Error("expected a completed envelope");
+    }
+    expect(frame.envelope.commandId).toBe("service.remove");
+    expect(frame.envelope.result).toMatchObject({ removed: true });
+  });
+
+  it("exits 3 when consent is declined", async () => {
+    const harness = await makeServiceCli({ routes: releaseRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "remove",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+      ],
+      {
+        cwd: harness.cwd,
+        env: harness.env,
+        isTty: INTERACTIVE,
+        answers: [false],
+      },
+    );
+
+    expect(result.exitCode).toBe(3);
+    expect(result.events).toEqual([]);
+  });
+
+  it("settles non-interactive runs with the engine consent error", async () => {
+    const harness = await makeServiceCli({ routes: releaseRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "remove",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
+  });
+
+  it("never lets --yes grant the removal", async () => {
+    const harness = await makeServiceCli({ routes: releaseRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "remove",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--yes",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env, isTty: INTERACTIVE },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
+  });
+
+  it("rejects an empty --branch instead of falling back to the inferred branch", async () => {
+    const harness = await makeServiceCli({ routes: releaseRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "remove",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--branch",
+        "",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.BRANCH_INVALID");
+  });
+
+  it("settles a failing teardown as SERVICE.REMOVE_FAILED after a failed step", async () => {
+    const harness = await makeServiceCli({
+      routes: releaseRoutes({
+        "DELETE /v1/apps/{appId}": () => ({
+          error: { error: { message: "boom" } },
+          status: 500,
+        }),
+      }),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "remove",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--json",
+      ],
+      {
+        cwd: harness.cwd,
+        env: harness.env,
+        isTty: INTERACTIVE,
+        answers: [true],
+      },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(result.events.at(-1)).toEqual({
+      kind: "step-finished",
+      step: "remove",
+      outcome: "failed",
+    });
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.REMOVE_FAILED");
+  });
+
+  it("requires an existing service", async () => {
+    const harness = await makeServiceCli({
+      routes: releaseRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "remove", "--project", "acme-app", "--json"],
+      { cwd: harness.cwd, env: harness.env, isTty: INTERACTIVE },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
+  });
+
+  it("fails early with the engine sign-in error when unauthenticated", async () => {
+    const harness = await makeServiceCli({
+      authenticated: false,
+      routes: releaseRoutes(),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "remove", "--project", "acme-app"],
+      { cwd: harness.cwd, env: harness.env, isTty: INTERACTIVE },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("CLI.CREDENTIALS_REQUIRED");
+  });
+});

@@ -15,6 +15,9 @@ import { serviceDomainShowCommand } from "./service/domain-show";
 import { serviceDomainWaitCommand } from "./service/domain-wait";
 import { serviceListDeploysCommand } from "./service/list-deploys";
 import { serviceOpenCommand } from "./service/open";
+import { servicePromoteCommand } from "./service/promote";
+import { serviceRemoveCommand } from "./service/remove";
+import { serviceRollbackCommand } from "./service/rollback";
 import { serviceShowCommand } from "./service/show";
 import { serviceShowDeployCommand } from "./service/show-deploy";
 import { telemetryDisableCommand } from "./telemetry/disable";
@@ -43,6 +46,9 @@ export function buildCli(): Cli {
           serviceOpen: serviceOpenCommand,
           serviceListDeploys: serviceListDeploysCommand,
           serviceShowDeploy: serviceShowDeployCommand,
+          servicePromote: servicePromoteCommand,
+          serviceRollback: serviceRollbackCommand,
+          serviceRemove: serviceRemoveCommand,
           serviceDomainAdd: serviceDomainAddCommand,
           serviceDomainShow: serviceDomainShowCommand,
           serviceDomainRemove: serviceDomainRemoveCommand,
@@ -76,6 +82,9 @@ export function buildCli(): Cli {
       "service open": serviceOpenCommand,
       "service list-deploys": serviceListDeploysCommand,
       "service show-deploy": serviceShowDeployCommand,
+      "service promote": servicePromoteCommand,
+      "service rollback": serviceRollbackCommand,
+      "service remove": serviceRemoveCommand,
       "service domain add": serviceDomainAddCommand,
       "service domain show": serviceDomainShowCommand,
       "service domain remove": serviceDomainRemoveCommand,
