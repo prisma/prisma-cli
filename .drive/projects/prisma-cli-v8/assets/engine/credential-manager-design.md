@@ -42,7 +42,7 @@ R2 Auth state: ONE identity, PLURAL workspace grants, ONE active
    grant. The active-grant cursor is session state (satisfying the
    draft premise: workspace selection is session state, not a
    credential). Toward every engine consumer the view is SCALAR —
-   `session()`/`credential()`/`ctx.api`/`needs.credentials` see only
+   `session()`/`ctx.api`/`needs.credentials` see only
    the active grant. The plurality lives entirely inside the
    manager. No per-workspace login/logout vocabulary anywhere: you
    log in as yourself; you hold, select, and forget GRANTS.
@@ -180,11 +180,6 @@ interface CredentialManager {
    *  auto-promotion of another grant). */
   forgetGrant(ref: string): Promise<void>;
 
-  /** The consumer path. Resolves the credential that authorizes a
-   *  request NOW; refresh happens inside (§6). Invariant:
-   *  credential() === null  ⟺  session() === null. */
-  credential(): Promise<Credential | null>;
-
   /** The authenticated management API client, constructed and owned
    *  by the MANAGER (review blockers: the engine must not build a
    *  half-configured SDK — the real clientId lives with the auth
@@ -218,7 +213,18 @@ session is in force —
 - `rememberWorkspaceName` is EXEMPT: it annotates an existing grant
   and never changes which credential is in force; refusing would
   break enrichment exactly in the CI case where names are cosmetic.
-Reads (`session()`, `grants()`, `credential()`) work normally.
+Reads (`session()`, `grants()`) work normally.
+
+Credential RESOLUTION is internal (ruled at rev-2 adoption —
+architect recommendation: "let `credential()` be internal"; rev 3
+mistakenly restored it to the interface, corrected here). The
+manager resolves the credential that authorizes a request inside
+`apiClient()` and the needs check; no public method returns
+credential material. Internal invariant: resolution yields null ⟺
+`session()` is null. The one known future consumer of raw
+credential material — S2c's compute SDK client — comes back as an
+operator question when that slice reaches it, not as a silent
+re-add.
 
 State effects, at a glance:
 
@@ -252,8 +258,8 @@ Boundaries (review-settled):
   with a one-time warning and never wins over an explicit path).
 - **Error raising is single-sourced**: set-but-blank service token →
   one structured error (the existing AUTH.CONFIG_INVALID content)
-  raised identically from `session()`, `credential()`, and the needs
-  check; unreadable store (EACCES/EPERM) → `CLI.CREDENTIALS_UNREADABLE`;
+  raised identically from `session()`, the needs check, and the
+  internal credential resolution behind `apiClient()`; unreadable store (EACCES/EPERM) → `CLI.CREDENTIALS_UNREADABLE`;
   parse-corrupt store → signed out (self-heals on next login), never
   an exception, never a write.
 
@@ -318,7 +324,8 @@ Boundaries (review-settled):
     whitespace}, asserting the error family and that the auth
     file's bytes are unchanged;
   - forget-active / grants-held-none-active: one shared assertion
-    over `session()`, `credential()`, and the needs check (code,
+    over `session()`, the needs check, and a bare `ctx.api` touch
+    (code,
     why, next action);
   - name persistence across refresh (the named legacy-regression
     test): seed a named grant, script 401 → rotation, assert the
@@ -345,8 +352,9 @@ exit 0. No auto-login (standing Q1 default).
 **Grants held, none active** (migration rows; forget-active): same
 code `CLI.CREDENTIALS_REQUIRED`, distinct why ("you hold grants but
 none is active") and nextAction `auth workspace use` alongside
-sign-in. Single-sourced like the other credential errors: session(),
-credential(), and the needs check produce it identically. NOTHING
+sign-in. Single-sourced like the other credential errors: session(), the
+needs check, and the internal resolution behind ctx.api produce it
+identically. NOTHING
 auto-promotes a grant.
 
 **Refresh.** Driven by the SDK on 401, with the manager as its
