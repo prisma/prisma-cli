@@ -32,8 +32,7 @@
     "test": "pnpm run build && pnpm run typecheck && vitest run"
   },
   "dependencies": {
-    "@vercel/detect-agent": "^1.2.3",
-    "c12": "^3.3.4"
+    "@vercel/detect-agent": "^1.2.3"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",

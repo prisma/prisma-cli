@@ -1,13 +1,15 @@
 import type { UserConfig } from "./user-config";
 
 /**
- * Why telemetry was disabled. Useful for debug-mode logging in the
- * parent; never surfaces to users.
+ * Why telemetry resolved the way it did. Total: every resolution
+ * carries a reason, enabled or not, so status surfaces can project
+ * copy from it without re-deriving the decision.
  */
-export type GatingDisabledReason = "env-override" | "stored-opt-out";
+export type GatingDisabledReason = "ci" | "env-opt-out" | "stored-opt-out";
+export type GatingEnabledReason = "stored-opt-in" | "default-on";
 
 export type GatingResolution =
-  | { readonly enabled: true }
+  | { readonly enabled: true; readonly reason: GatingEnabledReason }
   | { readonly enabled: false; readonly reason: GatingDisabledReason };
 
 export interface GatingInputs {
@@ -20,6 +22,8 @@ export interface GatingInputs {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** Result of `readUserConfig()` — file-missing tolerated as `{}`. */
   readonly config: UserConfig;
+  /** CI detection result from the consumer. CI hard-disables. */
+  readonly inCI: boolean;
 }
 
 /**
@@ -40,32 +44,37 @@ function isTruthyOptOut(raw: string | undefined): boolean {
 
 /**
  * Pure-function resolution of the gating decision. Same input → same
- * output; no I/O. The caller is responsible for reading the env and the
- * user config.
+ * output; no I/O. The caller is responsible for reading the env, the
+ * user config, and the CI signal.
  *
  * Decision order:
- *   1. Env-var override (`PRISMA_NEXT_DISABLE_TELEMETRY` truthy, or
- *      `DO_NOT_TRACK=1`) → disabled. The env check runs first, so an
- *      opt-out env var wins over any stored or unset preference.
- *   2. Stored `enableTelemetry === false` → disabled (`stored-opt-out`).
- *   3. Stored `enableTelemetry === true` → enabled.
- *   4. Stored `enableTelemetry === undefined` (file missing, or field
- *      not set) → ENABLED. This is the opt-out default: absence of an
- *      explicit choice means telemetry is on. This branch carries the
- *      whole opt-out model — do not "fix" it to default-off.
- *
- * Telemetry is disabled only when an env override is active or
- * `enableTelemetry` is explicitly `false`.
+ *   1. CI (`inCI`) → disabled (`ci`). CI environments never emit,
+ *      regardless of any stored consent.
+ *   2. Env-var override (`PRISMA_NEXT_DISABLE_TELEMETRY` truthy, or
+ *      `DO_NOT_TRACK=1`) → disabled (`env-opt-out`), winning over any
+ *      stored or unset preference.
+ *   3. Stored `enableTelemetry === false` → disabled (`stored-opt-out`).
+ *   4. Stored `enableTelemetry === true` → enabled (`stored-opt-in`).
+ *   5. Stored `enableTelemetry === undefined` (file missing, or field
+ *      not set) → ENABLED (`default-on`). This is the opt-out default:
+ *      absence of an explicit choice means telemetry is on. This branch
+ *      carries the whole opt-out model — do not "fix" it to default-off.
  */
 export function resolveGating(inputs: GatingInputs): GatingResolution {
+  if (inputs.inCI) {
+    return { enabled: false, reason: "ci" };
+  }
   if (
     isTruthyOptOut(inputs.env["PRISMA_NEXT_DISABLE_TELEMETRY"]) ||
     inputs.env["DO_NOT_TRACK"] === "1"
   ) {
-    return { enabled: false, reason: "env-override" };
+    return { enabled: false, reason: "env-opt-out" };
   }
   if (inputs.config.enableTelemetry === false) {
     return { enabled: false, reason: "stored-opt-out" };
   }
-  return { enabled: true };
+  if (inputs.config.enableTelemetry === true) {
+    return { enabled: true, reason: "stored-opt-in" };
+  }
+  return { enabled: true, reason: "default-on" };
 }

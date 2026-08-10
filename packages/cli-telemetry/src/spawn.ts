@@ -11,16 +11,12 @@ import { readUserConfig, type UserConfig } from "./user-config";
  * settles. The CLI is responsible for stitching the engine's command
  * snapshot and the project root together; the telemetry module does no
  * I/O of its own except for the user-config read (skipped when
- * `userConfig` is provided). `extensions` is deliberately absent: the
- * detached child loads `prisma-next.config.*` via c12 itself and
- * derives the extension-pack ids from the loaded config — see the
- * rationale on `ParentToSenderPayload` for why c12 lives in the child
- * rather than on the parent's hot path.
+ * `userConfig` is provided).
  *
  * `databaseTarget` is an optional parent-side override forwarded to
  * the child, kept for wire compatibility with the ORM CLI's
- * init-consent flow; normal invocations leave it unset so the child's
- * c12 load supplies the value.
+ * init-consent flow; normal invocations leave it unset and the event
+ * ships `null` (no config-derived value exists in this product).
  */
 export interface RunTelemetryInputs {
   /** The engine's value-free command snapshot — see `EngineCommandSnapshot`. */
@@ -30,9 +26,8 @@ export interface RunTelemetryInputs {
   /** Absolute path of the project root (typically `process.cwd()`). */
   readonly projectRoot: string;
   /**
-   * Optional parent-side override for the c12-derived database target,
-   * forwarded verbatim to the child sender. Wins over the child's
-   * c12-derived value when present; `undefined` means "no override".
+   * Optional parent-side database target forwarded verbatim to the
+   * child sender; `undefined` means "none" and the event ships `null`.
    */
   readonly databaseTarget?: string;
   /**
@@ -75,14 +70,13 @@ export type TelemetryRunOutcome =
 export function runTelemetry(inputs: RunTelemetryInputs): TelemetryRunOutcome {
   const env = inputs.env ?? process.env;
 
-  if (inputs.isCI) {
-    return { spawned: false, reason: "ci" };
-  }
-
   const config = inputs.userConfig ?? readUserConfig();
-  const gating = resolveGating({ env, config });
+  const gating = resolveGating({ env, config, inCI: inputs.isCI });
   if (!gating.enabled) {
-    return { spawned: false, reason: "gated-off" };
+    return {
+      spawned: false,
+      reason: gating.reason === "ci" ? "ci" : "gated-off",
+    };
   }
 
   const sanitised = sanitizeEngineSnapshot(inputs.command);
@@ -115,6 +109,12 @@ export function runTelemetry(inputs: RunTelemetryInputs): TelemetryRunOutcome {
       detached: true,
       stdio: ["pipe", "ignore", "ignore", "ipc"],
     });
+    // fork() reports failures that surface after the synchronous call
+    // (missing sender path, spawn EMFILE, ...) as an async "error"
+    // event. An unhandled "error" would crash the parent and, even
+    // when the parent is already exiting, flip its exit code — so it
+    // is swallowed unconditionally.
+    child.on("error", () => {});
     child.send(payload, (err) => {
       if (err !== null && process.env["PRISMA_NEXT_DEBUG"] === "1") {
         process.stderr.write(

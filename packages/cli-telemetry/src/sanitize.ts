@@ -38,7 +38,7 @@ export interface EngineCommandSnapshot {
  * payload. Two fields only — command name (space-delimited subcommand
  * path) and flag names (in the snapshot's declaration order).
  */
-export interface SanitisedCommand {
+export interface SanitizedCommand {
   readonly command: string;
   readonly flags: readonly string[];
 }
@@ -59,7 +59,7 @@ export interface SanitisedCommand {
  */
 export function sanitizeEngineSnapshot(
   snapshot: EngineCommandSnapshot,
-): SanitisedCommand {
+): SanitizedCommand {
   return {
     command: snapshot.commandPath.join(" "),
     flags: snapshot.flags.flatMap((flag) =>

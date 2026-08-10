@@ -16,7 +16,7 @@ export default defineConfig([
   // @repo/cli-telemetry workspace package lands inside this package's
   // own dist instead of being a published dependency; the sender entry
   // ships the forkable script at dist/v8/sender.js. Published deps
-  // (engine, c12, ci-info, @vercel/detect-agent, …) stay external.
+  // (engine, ci-info, @vercel/detect-agent, …) stay external.
   {
     entry: {
       "v8/cli": "src/v8/bin.ts",

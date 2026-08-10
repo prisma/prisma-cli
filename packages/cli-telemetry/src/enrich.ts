@@ -4,95 +4,15 @@ import { determineAgent } from "@vercel/detect-agent";
 import type { ParentToSenderPayload, TelemetryEvent } from "./payload";
 
 /**
- * Subset of the user's `prisma-next.config.*` the telemetry event
- * surfaces. Loaded inside the detached child via {@link loadProjectConfig}
- * — see the design rationale on {@link ParentToSenderPayload} for why
- * this side runs c12 instead of the parent CLI.
+ * The project-derived slice of the telemetry event. The ORM CLI filled
+ * these by loading `prisma-next.config.*` (via c12) inside the detached
+ * child; that config file does not exist in this product, so the load
+ * was dropped: `databaseTarget` is the parent-side override or `null`,
+ * and `extensions` is always empty. Recorded as an S2a divergence.
  */
 export interface ProjectConfigFields {
   readonly databaseTarget: string | null;
   readonly extensions: readonly string[];
-}
-
-const EMPTY_PROJECT_CONFIG: ProjectConfigFields = {
-  databaseTarget: null,
-  extensions: [],
-};
-
-/**
- * Structural extraction of the two telemetry fields from a raw
- * `prisma-next.config.*` object: `target.targetId` and the
- * `extensions[].id` list. The ORM CLI ran the full canonical
- * `@internal/config` validator here; that package lives in
- * prisma/prisma and is not consumable from this repo, so the same
- * outcome is reproduced structurally — a config whose read fields are
- * not the expected shapes yields the empty result, exactly like a
- * validator rejection did.
- */
-function extractProjectConfig(
-  config: Record<string, unknown>,
-): ProjectConfigFields {
-  const target = config["target"];
-  if (target === null || typeof target !== "object") {
-    return EMPTY_PROJECT_CONFIG;
-  }
-  const targetId = (target as Record<string, unknown>)["targetId"];
-  if (typeof targetId !== "string" || targetId.length === 0) {
-    return EMPTY_PROJECT_CONFIG;
-  }
-  const rawExtensions = config["extensions"] ?? [];
-  if (!Array.isArray(rawExtensions)) {
-    return EMPTY_PROJECT_CONFIG;
-  }
-  const extensions: string[] = [];
-  for (const pack of rawExtensions) {
-    if (pack === null || typeof pack !== "object") {
-      return EMPTY_PROJECT_CONFIG;
-    }
-    const id = (pack as Record<string, unknown>)["id"];
-    if (typeof id !== "string" || id.length === 0) {
-      return EMPTY_PROJECT_CONFIG;
-    }
-    extensions.push(id);
-  }
-  return { databaseTarget: targetId, extensions };
-}
-
-/**
- * Best-effort load of `prisma-next.config.*` from `projectRoot`.
- * Returns `{ databaseTarget: null, extensions: [] }` on any failure
- * mode — missing config file, c12 throws while evaluating user TS, a
- * malformed shape, etc. Telemetry is non-blocking and best-effort; an
- * empty result is the only downside of an unloadable or invalid config.
- *
- * `c12` is imported lazily so the detached sender's cold-start cost is
- * paid only when telemetry actually fires, not on every fork even when
- * the checks short-circuit before reaching this code path.
- */
-export async function loadProjectConfig(
-  projectRoot: string,
-): Promise<ProjectConfigFields> {
-  try {
-    const { loadConfig } = await import("c12");
-    const result = await loadConfig<Record<string, unknown>>({
-      name: "prisma-next",
-      cwd: projectRoot,
-      dotenv: false,
-      rcFile: false,
-      globalRc: false,
-    });
-    const config = result.config ?? null;
-    // c12 returns an empty object when no config file exists in the
-    // search path — distinct from "file existed but parsed to an empty
-    // object". Either way the extraction below would come back empty,
-    // so short-circuit.
-    if (config === null || Object.keys(config).length === 0) {
-      return EMPTY_PROJECT_CONFIG;
-    }
-    return extractProjectConfig(config);
-  } catch {
-    return EMPTY_PROJECT_CONFIG;
-  }
 }
 
 /**
@@ -210,8 +130,8 @@ function pickStringDep(deps: unknown): string | null {
 
 /**
  * Build the full backend event from the parent's payload, the
- * c12-loaded project-config slice, and the child's per-process
- * snapshot. Pure given a `projectConfig` + `EnrichEnvironment`.
+ * project-config slice, and the child's per-process snapshot. Pure
+ * given a `projectConfig` + `EnrichEnvironment`.
  */
 export function buildTelemetryEvent(
   payload: ParentToSenderPayload,
@@ -253,21 +173,20 @@ async function resolveAgentLabel(): Promise<string | null> {
 
 /**
  * Convenience for the sender entry: build the event from the live
- * `process` plus a c12 load of `prisma-next.config.*` from
- * `payload.projectRoot` plus a real project-package.json reader,
- * swallowing any I/O errors in the file read.
+ * `process` plus a real project-package.json reader, swallowing any
+ * I/O errors in the file read.
  *
- * The parent's `payload.databaseTarget` (when present) wins over the
- * c12-derived value; every other invocation leaves it unset and the
- * c12 load supplies the value.
+ * The project-config slice is payload-only: `databaseTarget` is the
+ * parent's override when present (else `null`), and `extensions` is
+ * always empty — there is no `prisma-next.config.*` in this product to
+ * derive them from.
  */
 export async function buildTelemetryEventFromProcess(
   payload: ParentToSenderPayload,
 ): Promise<TelemetryEvent> {
-  const loadedConfig = await loadProjectConfig(payload.projectRoot);
   const projectConfig: ProjectConfigFields = {
-    databaseTarget: payload.databaseTarget ?? loadedConfig.databaseTarget,
-    extensions: loadedConfig.extensions,
+    databaseTarget: payload.databaseTarget ?? null,
+    extensions: [],
   };
   return buildTelemetryEvent(payload, projectConfig, {
     platform: process.platform,

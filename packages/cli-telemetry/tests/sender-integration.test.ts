@@ -205,7 +205,7 @@ describe("sender end-to-end via a local mock backend", () => {
     expect(serialised).not.toMatch(/\/Users\/alice\/secrets/);
   });
 
-  it("derives databaseTarget and extensions from a prisma-next.config.* in projectRoot", async () => {
+  it("never reads a prisma-next.config.* from projectRoot (config load dropped; payload-only fields)", async () => {
     const configuredDir = mkdtempSync(
       join(tmpdir(), "cli-telemetry-sender-cfg-"),
     );
@@ -225,11 +225,20 @@ describe("sender end-to-end via a local mock backend", () => {
         env: childEnv(),
       });
       expect(captured).toHaveLength(1);
-      expect(captured[0]?.body.databaseTarget).toBe("postgres");
-      expect(captured[0]?.body.extensions).toEqual(["pgvector"]);
+      expect(captured[0]?.body.databaseTarget).toBeNull();
+      expect(captured[0]?.body.extensions).toEqual([]);
     } finally {
       rmSync(configuredDir, { recursive: true, force: true });
     }
+  });
+
+  it("passes the payload databaseTarget through to the event", async () => {
+    await spawnSender({
+      payload: buildPayload({ databaseTarget: "postgres" }),
+      env: childEnv(),
+    });
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.body.databaseTarget).toBe("postgres");
   });
 
   it("populates the agent field from the child env", async () => {
