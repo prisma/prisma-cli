@@ -9,6 +9,9 @@ import type {
   Char,
   CommandContext,
   CommandFamily,
+  CredentialManager,
+  GrantSummary,
+  Session,
   CommandHandler,
   CompletedEnvelope,
   ConfigSection,
@@ -388,4 +391,67 @@ export const runtimeShape: Runtime = {
   getCredentials: async () => undefined,
   managementApi: { baseUrl: "https://test.invalid" },
   packageManager: "pnpm",
+};
+
+// —————————————————————————————————————————————————————————————————————
+// The credential manager surface (design rev 4): managesCredentials is
+// a capability — ctx.credentialManager exists exactly when declared;
+// ctx.session exists on every context; the harness seeds a mutable
+// in-memory manager.
+// —————————————————————————————————————————————————————————————————————
+
+export const managedCommand = defineCommand({
+  help: { summary: "Operates on the credential machinery" },
+  managesCredentials: true,
+  handler: async (_args, ctx) => {
+    const manager: CredentialManager = ctx.credentialManager;
+    const session: Session | null = await ctx.session();
+    void manager;
+    void session;
+    return ok(ctx.present({ data: null }, { human: () => [] }));
+  },
+});
+export const managedIsDeclared: true = managedCommand.managesCredentials;
+
+export const unmanagedCommand = defineCommand({
+  help: { summary: "Ordinary command" },
+  handler: async (_args, ctx) => {
+    const session: Session | null = await ctx.session();
+    void session;
+    // @ts-expect-error the capability was not declared, so the context carries no credentialManager
+    void ctx.credentialManager;
+    return ok(ctx.present({ data: null }, { human: () => [] }));
+  },
+});
+export const unmanagedIsUndeclared: false = unmanagedCommand.managesCredentials;
+
+export const grantSummaryHasNoTokenMaterial: "workspace" | "expiresAt" | "active" =
+  undefined as unknown as keyof GrantSummary;
+
+export const seededHarnessSpec: Parameters<typeof createTestCli>[0] = {
+  commands: tree,
+  credential: {
+    token: "jwt",
+    refreshToken: undefined,
+    expiresAt: undefined,
+    method: "user-oauth",
+  },
+  identity: { kind: "user", id: "user-1", email: undefined },
+  grants: [
+    {
+      workspace: { id: "workspace-1", name: "Acme" },
+      credential: {
+        token: "jwt",
+        refreshToken: undefined,
+        expiresAt: undefined,
+        method: "user-oauth",
+      },
+    },
+  ],
+  activeWorkspaceId: "workspace-1",
+};
+
+export const runtimeWithManager: Runtime = {
+  ...runtimeShape,
+  credentialManager: undefined as unknown as CredentialManager,
 };

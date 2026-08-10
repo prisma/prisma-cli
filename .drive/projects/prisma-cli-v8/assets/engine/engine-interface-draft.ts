@@ -17,6 +17,12 @@
  * family-supplied base; committed versions for releases; auth library
  * lives in the CLI repo, distinct from Prisma Cloud. Prior versions
  * preserved as -v1…-v7.ts; reviews in ./reviews/.
+ * Amended 2026-08-10 for the credential-manager design rev 4
+ * (credential-manager-design.md, normative): §4 gains ctx.session and
+ * the CredentialManager entity surface (ctx.getCredentials removal is
+ * STAGED — the engine still carries it until the swap's final stage);
+ * §6 gains the managesCredentials capability; §10 gains
+ * Runtime.credentialManager; §11 gains manager seeding + fixtures.
  *
  * THE MODEL, in one analogy (operator, 2026-08-09): commands settle like
  * promises. A command can COMPLETE — and its completion can be
@@ -367,18 +373,28 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
     presentations: Presentations,
   ) => PresentedResult<T>
 
-  /** Management-API credentials, resolved at call time so long-lived
-   *  sessions survive token refresh. Undefined when unauthenticated.
-   *  Commands with needs.credentials never see undefined — the engine
-   *  fails them early with the sign-in error. */
-  readonly getCredentials: () => Promise<Credentials | undefined>
+  /** The current auth session, or null when signed out — on EVERY
+   *  context. Read-only and local-only: safe to call anywhere; never
+   *  touches the network. Raises the same single-sourced structured
+   *  errors as the needs check for broken-but-not-signed-out states
+   *  (grants held none active; blank env token).
+   *  ctx.getCredentials is DELETED (staged: the engine carries it
+   *  until the swap's final stage) — the context ends with fewer auth
+   *  surfaces than before: `api` + `session`, plus
+   *  `credentialManager` for the commands that declare the §6
+   *  capability. */
+  readonly session: () => Promise<Session | null>
 
-  /** The Management API client. Constructed lazily on first access,
-   *  once per run, with its token source backed by ctx.getCredentials
-   *  so refresh during long runs is picked up per request. A request
-   *  made while getCredentials() resolves undefined throws the
-   *  structured CLI.CREDENTIALS_REQUIRED error (the same constructor
-   *  the needs.credentials check uses). */
+  /** The Management API client: a thin lazy proxy over the credential
+   *  manager's apiClient(), constructed on first method CALL, once
+   *  per run. Request failures pass through the engine-side mapping
+   *  (design §6): refreshTokenInvalid === true → the expired
+   *  CLI.CREDENTIALS_REQUIRED; any other SDK AuthError → a state
+   *  re-read (grant gone → grant-removed CLI.CREDENTIALS_REQUIRED,
+   *  otherwise the transient auth-service error) — state checks,
+   *  never message parsing. A request made while signed out throws
+   *  the structured CLI.CREDENTIALS_REQUIRED error (the same
+   *  constructor the needs.credentials check uses). */
   readonly api: ManagementApiClient
 
   /** The one way to emit while running (§1). */
@@ -412,12 +428,78 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
   readonly requireDependency: (specifier: string) => Promise<Result<void, CliStructuredError>>
 }
 
+/** Superseded by the credential-manager surface below; carried only
+ *  through the staged swap (Runtime.getCredentials fallback), then
+ *  deleted. */
 export interface Credentials {
-  /** Opaque to the engine; shape owned by the Cloud auth
-   *  library (placeholder pending its design). Workspace selection is
-   *  session state, not a credential — it lives with that library, not
-   *  here. */
   readonly token: string
+}
+
+// —— §4b The credential manager (design rev 4 §3/§4, normative) ——
+// One identity, plural workspace grants, one active grant; every
+// consumer surface is scalar. No conditional properties: absent =
+// `T | undefined` with the key required.
+
+export type Identity =
+  | { readonly kind: 'user'; readonly id: string; readonly email: string | undefined }
+  | { readonly kind: 'service'; readonly id: string | undefined; readonly label: string | undefined }
+
+export interface Credential {
+  readonly token: string
+  readonly refreshToken: string | undefined
+  readonly expiresAt: Date | undefined
+  readonly method: 'user-oauth' | 'service-token'
+}
+
+/** A resolved pair — NOT the id-or-name string users type (a ref). */
+export interface Workspace {
+  readonly id: string
+  readonly name: string | undefined
+}
+
+export interface Session {
+  readonly identity: Identity
+  readonly method: 'user-oauth' | 'service-token'
+  readonly origin: 'stored' | 'environment'
+  /** The ACTIVE grant's workspace. */
+  readonly workspace: Workspace
+  readonly expiresAt: Date | undefined
+}
+
+/** User-centric grant listing; structurally NEVER carries credential
+ *  material. `active` is the cursor position. */
+export interface GrantSummary {
+  readonly workspace: Workspace
+  readonly expiresAt: Date | undefined
+  readonly active: boolean
+}
+
+/** Custody, not user interaction: never opens a browser, never
+ *  prompts. Env is a construction input. Credential RESOLUTION is
+ *  internal — it happens inside apiClient() and the needs check; no
+ *  public method returns credential material. Full semantics
+ *  (env-override mutation rules, error single-sourcing, locking) are
+ *  normative in credential-manager-design.md §4/§6/§8. */
+export interface CredentialManager {
+  /** Local-only truth; never touches the network. */
+  session(): Promise<Session | null>
+  /** Login's write: claims-derived; upserts (same identity) or
+   *  replaces all (different identity); sets the cursor. */
+  beginSession(credential: Credential): Promise<Session>
+  /** Logout, whole-identity; refuses under an env-supplied session. */
+  endSession(): Promise<void>
+  /** Held grants as summaries; local-only. */
+  grants(): Promise<readonly GrantSummary[]>
+  /** The sanctioned name-write path; no grant held → no-op. */
+  rememberWorkspaceName(workspaceId: string, name: string): Promise<void>
+  /** Cursor move to a HELD grant; ref = exact id, then
+   *  case-insensitive name; ambiguity/no-match are structured errors. */
+  activateGrant(ref: string): Promise<Session>
+  /** Drop one grant; clears the cursor if it was active. */
+  forgetGrant(ref: string): Promise<void>
+  /** The authenticated client, constructed and owned by the MANAGER;
+   *  cached per workspace id, invalidated by cursor moves. */
+  apiClient(): Promise<ManagementApiClient>
 }
 
 /** The SDK's typed client, re-exported by the engine so consumers
@@ -665,6 +747,7 @@ export interface CommandDefinition<
   TPositionals extends Record<string, PositionalSpec<unknown>> = {},
   TConfig = undefined,
   TCode extends number = never,
+  TManagesCredentials extends boolean = false,
 > {
   readonly kind: 'result-command'
   readonly help: CommandHelp
@@ -680,13 +763,24 @@ export interface CommandDefinition<
    */
   readonly exitCodes: Readonly<Record<TCode, string>>
 
+  /**
+   * A CAPABILITY, not a need (design rev 4 §5): when true,
+   * ctx.credentialManager appears on the context. Declaring it never
+   * fails a run — documentation and testability, not enforcement.
+   * Declared by exactly: auth login, auth logout, auth workspace
+   * list, auth workspace use, auth workspace forget. whoami uses
+   * ctx.session() only; grants() lives ONLY on the manager, never on
+   * the universal context.
+   */
+  readonly managesCredentials: TManagesCredentials
+
   /** The handler function, referenced directly — never a dynamic import
    *  (operator ruling, 2026-08-09: "DO NOT DYNAMICALLY IMPORT HANDLERS").
    *  R9's keep-heavy-work-out-of-startup concern is the handler BODY's
    *  business: a handler that needs heavy dependencies imports them at
    *  execution time, inside itself. A handler defined in another file is
    *  imported statically and annotated CommandHandler<typeof def>. */
-  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode>
+  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode, TManagesCredentials>
 }
 
 export type Handler<
@@ -694,16 +788,36 @@ export type Handler<
   TPositionals extends Record<string, PositionalSpec<unknown>>,
   TConfig,
   TCode extends number = never,
+  TManagesCredentials extends boolean = false,
 > = (
   args: Args<TFlags, TPositionals>,
-  ctx: CommandContext<TConfig, TCode>,
+  ctx: CommandContext<TConfig, TCode> &
+    (TManagesCredentials extends true
+      ? { readonly credentialManager: CredentialManager }
+      : unknown),
 ) => Promise<Result<PresentedResult<unknown>, CliStructuredError>>
 
 /** For impl files: `const run: CommandHandler<typeof migrateCommand> = …` */
-export type CommandHandler<D> = D extends CommandDefinition<infer F, infer P, infer C, infer K>
-  ? Handler<F, P, C, K>
+export type CommandHandler<D> = D extends CommandDefinition<infer F, infer P, infer C, infer K, infer M>
+  ? Handler<F, P, C, K, M>
   : never
 
+/** Two overloads (implementation detail worth documenting: a generic
+ *  TManagesCredentials inference site collapses under contextual
+ *  typing, so the capability is a literal in each overload). */
+export declare function defineCommand<
+  TFlags extends Record<string, FlagSpec<unknown>> = {},
+  TPositionals extends Record<string, PositionalSpec<unknown>> = {},
+  TConfig = undefined,
+  TCode extends number = never,
+>(def: {
+  readonly help: HelpSpec
+  readonly args?: ArgsSpec<TFlags, TPositionals>
+  readonly needs?: NeedsSpec<TConfig>
+  readonly exitCodes?: Readonly<Record<TCode, string>>
+  readonly managesCredentials: true
+  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode, true>
+}): CommandDefinition<TFlags, TPositionals, TConfig, TCode, true>
 export declare function defineCommand<
   TFlags extends Record<string, FlagSpec<unknown>> = {},
   TPositionals extends Record<string, PositionalSpec<unknown>> = {},
@@ -1023,6 +1137,12 @@ export interface Runtime {
   /** Loaded config + file-level diagnostics; the shell builds this via
    *  the unified loader (R10). Tests hand in fixtures. */
   readonly config: LoadedConfig
+  /** The credential manager the bin wires (design rev 4 §5). The
+   *  engine prefers it for the needs check, ctx.session, and ctx.api.
+   *  Optional only during the staged swap; getCredentials below is
+   *  the fallback and is deleted — with the optionality — in the
+   *  swap's final mechanical stage. */
+  readonly credentialManager?: CredentialManager
   readonly getCredentials: () => Promise<Credentials | undefined>
   /** Management API endpoint config; the bin derives baseUrl from env
    *  (getApiBaseUrl). */
@@ -1075,7 +1195,24 @@ export declare function createTestCli(spec: {
   readonly commands: MountedTree
   readonly groups?: Readonly<Record<string, { readonly brief: string }>>
   readonly config?: Readonly<Record<string, unknown>>
+  /** Legacy seed for the staged-swap getCredentials fallback: selects
+   *  a manager-less runtime. Mutually exclusive with the manager
+   *  seeds below; deleted with the swap's final stage. */
   readonly credentials?: Credentials
+  /** Preferred manager seed: beginSession runs its real claims
+   *  derivation on this credential (mint the token with mintTestJwt). */
+  readonly credential?: Credential
+  /** Escape hatch: ctx.session() resolves exactly this. */
+  readonly session?: Session
+  /** Grants-model seeding; identity is seedable independently of
+   *  grants, so a grant whose token disagrees with the recorded
+   *  identity is constructible. */
+  readonly identity?: Identity
+  readonly grants?: ReadonlyArray<{
+    readonly workspace: Workspace
+    readonly credential: Credential
+  }>
+  readonly activeWorkspaceId?: string
   /** baseUrl defaults to "https://test.invalid"; when `client` is
    *  supplied, ctx.api IS that object (the uniform mock seam). */
   readonly managementApi?: {
@@ -1087,7 +1224,34 @@ export declare function createTestCli(spec: {
   readonly now?: () => Date
 }): TestCli
 
+/** Mints an unsigned JWT whose payload is exactly `claims` — the
+ *  harness's claim source (`sub`, `workspace_id`, `exp`, `email`) for
+ *  beginSession derivation, migration, expiry, and identity-guard
+ *  tests. The rest of the design's fixture surface (the injectable
+ *  refresh/token endpoint scripting, legacy-store builder,
+ *  deterministic clock, mutation interleaving hook) lands with the
+ *  real manager implementation, whose behavior it exercises. */
+export declare function mintTestJwt(claims: Readonly<Record<string, unknown>>): string
+
 export interface TestCli {
+  /** The MUTABLE in-memory credential manager backing the runs: the
+   *  full CredentialManager interface plus state(), which reads the
+   *  whole state back after a run — grants with their per-grant
+   *  credentials, identity, and cursor (login/logout tests observe
+   *  state changes). Undefined only when the legacy `credentials`
+   *  seed selected the manager-less fallback runtime. */
+  readonly credentialManager:
+    | (CredentialManager & {
+        state(): {
+          readonly identity: Identity | undefined
+          readonly grants: ReadonlyArray<{
+            readonly workspace: Workspace
+            readonly credential: Credential
+          }>
+          readonly activeWorkspaceId: string | null
+        }
+      })
+    | undefined
   run(
     argv: readonly string[],
     opts?: {

@@ -17,13 +17,16 @@ describe("main export", () => {
     expect(Object.keys(engine).sort()).toEqual([
       "PRESENTED",
       "PRISMA_CONFIG_VERSION",
+      "authServiceError",
       "createCli",
+      "credentialsRequiredError",
       "defineCommand",
       "defineCommandFamily",
       "defineConfig",
       "defineConfigSection",
       "defineServerCommand",
       "defineSessionCommand",
+      "environmentSessionMutationError",
       "flag",
       "loadConfig",
       "positional",
@@ -31,7 +34,11 @@ describe("main export", () => {
   });
 
   test("the ./testing subpath exposes exactly the harness", () => {
-    expect(Object.keys(testing).sort()).toEqual(["createTestCli"]);
+    expect(Object.keys(testing).sort()).toEqual([
+      "TestCredentialManager",
+      "createTestCli",
+      "mintTestJwt",
+    ]);
   });
 });
 

@@ -1,4 +1,5 @@
 import type { Credentials } from "./context";
+import type { CredentialManager } from "./credential-manager";
 import type { Diagnostic } from "./protocol";
 
 /** Minimal structural stream types; no NodeJS.* in the public surface. */
@@ -44,6 +45,13 @@ export interface Runtime {
    * the unified loader. Tests hand in fixtures.
    */
   readonly config: LoadedConfig;
+  /**
+   * The credential manager the bin wires. The engine prefers it for
+   * the needs check, ctx.session, and ctx.api; optional only during
+   * the staged swap — getCredentials below is the fallback and is
+   * deleted with the swap's final stage.
+   */
+  readonly credentialManager?: CredentialManager;
   readonly getCredentials: () => Promise<Credentials | undefined>;
   /** Management API endpoint config; the bin derives baseUrl from env. */
   readonly managementApi: { readonly baseUrl: string };

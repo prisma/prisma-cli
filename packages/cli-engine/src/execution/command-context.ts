@@ -1,4 +1,5 @@
 import type { CommandContext, Credentials } from "../context";
+import type { CredentialManager, Session } from "../credential-manager";
 import type { ManagementApiClient } from "../management-api";
 import {
   PRESENTED,
@@ -54,6 +55,7 @@ function materializePresentation(
 export function makeContext(
   invocation: Invocation,
   config: unknown,
+  managesCredentials: boolean,
 ): CommandContext<unknown, number> {
   const state = invocation.state;
   const ui = makeUi(state.colorEnabled);
@@ -84,9 +86,12 @@ export function makeContext(
     });
   };
   let api: ManagementApiClient | undefined;
-  return {
+  const context: CommandContext<unknown, number> = {
     config,
     present: present as CommandContext<unknown, number>["present"],
+    session: (): Promise<Session | null> =>
+      invocation.runtime.credentialManager?.session() ??
+      Promise.resolve(null),
     getCredentials: (): Promise<Credentials | undefined> =>
       invocation.runtime.getCredentials(),
     get api(): ManagementApiClient {
@@ -110,4 +115,19 @@ export function makeContext(
             ),
           ),
   };
+  if (managesCredentials) {
+    Object.defineProperty(context, "credentialManager", {
+      enumerable: true,
+      get(): CredentialManager {
+        const manager = invocation.runtime.credentialManager;
+        if (manager === undefined) {
+          throw new Error(
+            "@prisma/cli-engine: the command declares managesCredentials but the Runtime supplies no credentialManager",
+          );
+        }
+        return manager;
+      },
+    });
+  }
+  return context;
 }

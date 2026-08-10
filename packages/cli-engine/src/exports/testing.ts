@@ -3,3 +3,10 @@
  * over in-memory streams. Implementation lives in ../testing.ts.
  */
 export { createTestCli, type TestCli } from "../testing";
+export {
+  mintTestJwt,
+  TestCredentialManager,
+  type TestCredentialManagerSeed,
+  type TestCredentialManagerState,
+  type TestGrant,
+} from "../testing-credential-manager";

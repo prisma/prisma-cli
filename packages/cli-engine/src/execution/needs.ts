@@ -3,6 +3,8 @@ import { resolve } from "node:path";
 import type { AnyCommand } from "../commands";
 import type { ConfigSection, SectionValidation } from "../config-section";
 import type { Credentials } from "../context";
+import { credentialsRequiredError } from "../credential-errors";
+import type { CredentialManager } from "../credential-manager";
 import { CliStructuredError, type Diagnostic } from "../protocol";
 import type { Runtime } from "../runtime";
 import type { Invocation } from "./engine";
@@ -100,12 +102,35 @@ function checkDependencies(
   return undefined;
 }
 
+/**
+ * The credentials need, single-sourced from the credential manager
+ * when one is wired: session() is the local-only truth, its structured
+ * errors (grants held none active, blank env token) pass through
+ * verbatim so the needs check, ctx.session, and ctx.api raise
+ * identically. The getCredentials path below is the staged-swap
+ * fallback.
+ */
 async function checkCredentials(
   needs: AnyCommand["needs"],
   invocation: Invocation,
 ): Promise<NeedsOutcome | undefined> {
   if (!needs.credentials) {
     return undefined;
+  }
+  const manager: CredentialManager | undefined =
+    invocation.runtime.credentialManager;
+  if (manager !== undefined) {
+    try {
+      if ((await manager.session()) === null) {
+        return needsErrored(credentialsRequiredError());
+      }
+      return undefined;
+    } catch (cause) {
+      if (CliStructuredError.is(cause)) {
+        return needsErrored(cause);
+      }
+      throw cause;
+    }
   }
   let credentials: Credentials | undefined;
   try {
@@ -134,23 +159,6 @@ async function checkCredentials(
     return needsErrored(credentialsRequiredError());
   }
   return undefined;
-}
-
-/** The single source of the sign-in error: raised by the needs check
- *  and by an unauthenticated ctx.api request. */
-export function credentialsRequiredError(): CliStructuredError {
-  return new CliStructuredError(
-    "CLI.CREDENTIALS_REQUIRED",
-    "You must be signed in to run this command.",
-    {
-      nextActions: [
-        {
-          kind: "user-choice",
-          label: "Sign in, then run the command again.",
-        },
-      ],
-    },
-  );
 }
 
 function checkConfiguration(

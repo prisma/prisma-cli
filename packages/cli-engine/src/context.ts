@@ -1,3 +1,4 @@
+import type { Session } from "./credential-manager";
 import type { EngineEvent } from "./events";
 import type { ManagementApiClient } from "./management-api";
 import type { Outcome, Presentations, PresentedResult } from "./presentation";
@@ -30,18 +31,27 @@ export interface CommandContext<
   ) => PresentedResult<T>;
 
   /**
+   * The current auth session, or null when signed out. Read-only and
+   * local-only — safe to call anywhere; never touches the network.
+   * Throws the same structured errors the needs check raises for
+   * broken-but-not-signed-out states (grants held, none active).
+   */
+  readonly session: () => Promise<Session | null>;
+
+  /**
    * Management-API credentials, resolved at call time. Undefined when
    * unauthenticated; commands with needs.credentials never see
-   * undefined — the engine fails them early.
+   * undefined — the engine fails them early. Staged for deletion:
+   * ctx.session and ctx.api are the surviving auth surfaces.
    */
   readonly getCredentials: () => Promise<Credentials | undefined>;
 
   /**
-   * The Management API client. Constructed lazily on first access, once
-   * per run, with its token source backed by ctx.getCredentials so
-   * refresh during long runs is picked up per request. A request made
-   * while getCredentials() resolves undefined throws the structured
-   * CLI.CREDENTIALS_REQUIRED error.
+   * The Management API client: a thin lazy proxy over the credential
+   * manager's apiClient(), constructed on first method call, once per
+   * run. A request made while signed out throws the structured
+   * CLI.CREDENTIALS_REQUIRED error (the same constructor the
+   * needs.credentials check uses).
    */
   readonly api: ManagementApiClient;
 

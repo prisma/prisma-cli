@@ -52,6 +52,20 @@ export type {
   Credentials,
   PromptSurface,
 } from "../context";
+export {
+  authServiceError,
+  credentialsRequiredError,
+  type CredentialsRequiredReason,
+  environmentSessionMutationError,
+} from "../credential-errors";
+export type {
+  Credential,
+  CredentialManager,
+  GrantSummary,
+  Identity,
+  Session,
+  Workspace,
+} from "../credential-manager";
 export type {
   EngineEvent,
   Severity,

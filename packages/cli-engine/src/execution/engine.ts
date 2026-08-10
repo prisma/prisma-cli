@@ -13,7 +13,6 @@ import type { Format, PresentedResult } from "../presentation";
 import type { CliStructuredError, Result } from "../protocol";
 import type { EngineCommandSnapshot, RunSummary } from "../run-summary";
 import type { InputStream, Runtime } from "../runtime";
-import type { CreateManagementApiSdk } from "./api-client";
 import { makeContext } from "./command-context";
 import { buildCommandSnapshot } from "./command-snapshot";
 import { buildCommandTree, type CommandTreeEntry } from "./command-tree";
@@ -59,11 +58,9 @@ export interface RunHooks {
    *  not break a command. */
   readonly onSettled?: (summary: RunSummary) => void;
   readonly answers?: ReadonlyArray<string | boolean>;
-  /** Test seams: an injected `client` becomes ctx.api verbatim; an
-   *  injected `createSdk` replaces the SDK factory. */
+  /** Test seam: an injected `client` becomes ctx.api verbatim. */
   readonly managementApi?: {
     readonly client?: ManagementApiClient;
-    readonly createSdk?: CreateManagementApiSdk;
   };
 }
 
@@ -323,7 +320,11 @@ export class EngineImpl implements Engine {
       flags: declaredFlags(entry.def, rawFlags),
       positionals: distributePositionals(entry.def, values),
     };
-    const ctx = makeContext(invocation, needsOutcome.config);
+    const ctx = makeContext(
+      invocation,
+      needsOutcome.config,
+      entry.def.kind === "result-command" && entry.def.managesCredentials,
+    );
     if (entry.def.kind === "session-command") {
       try {
         const result = await (handler as ErasedSessionHandler)(args, ctx);
