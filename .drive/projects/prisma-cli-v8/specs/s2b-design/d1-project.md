@@ -274,12 +274,14 @@ as the `summary` block text.
   passthrough); unbound dir → `PROJECT.SETUP_REQUIRED`; json;
   unauth.
 
-### 3.6 `project remove <project>` — `v8/project/remove.ts` (consent — ON HOLD)
+### 3.6 `project remove <project>` — `v8/project/remove.ts` (consent)
 
-> Operator ruling 2026-08-10: held until the engine-owned
-> consent-grant flag mechanism arrives via merge-down (conventions
-> §5). No per-command `confirm` flag is declared. All other pinned
-> content below stands and binds the resumed work.
+> HOLD LIFTED (merge-down 2026-08-10): build per conventions §5 —
+> `ctx.prompt.consent(<pinned why sentence>, { token: project.id })`,
+> no confirm flag declaration, engine `--confirm` grants
+> non-interactively. Ignore this section's references to a declared
+> `confirm` flag and to `PROJECT.CONFIRMATION_REQUIRED` (both
+> superseded by conventions §5).
 
 - help.summary `Remove a Project permanently after exact id
   confirmation`; example
@@ -302,9 +304,11 @@ as the `summary` block text.
   diagnostic asserted); consent matrix; 400 →
   `PROJECT.REMOVE_BLOCKED`; not-found/ambiguous; json; unauth.
 
-### 3.7 `project transfer <project>` — `v8/project/transfer.ts` (consent — ON HOLD)
+### 3.7 `project transfer <project>` — `v8/project/transfer.ts` (consent)
 
-> Held with 3.6 (conventions §5). D1 delivers the other 9 commands.
+> HOLD LIFTED with 3.6 — same conventions §5 mechanism, token =
+> project.id. Completing 3.6 + 3.7 (and their legacy fixture-test
+> deletion) is round-2+ work for this dispatch.
 
 - help.summary `Transfer a Project to another workspace after exact
   id confirmation`; examples per fact sheet §7; positional

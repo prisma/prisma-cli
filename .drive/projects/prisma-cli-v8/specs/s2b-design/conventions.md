@@ -100,16 +100,16 @@ exclusively through `ctx.api`.
 
 Resource commands need the active workspace (project listing filter,
 provider `workspaceId`, plan-limit lookup). `ctx` exposes only
-`getCredentials` (`{token}`) and `api` today; the credential-manager
-rework (in flight on `s2a-foundations`) adds `ctx.session()` carrying
-the workspace. Interim pin, pending ratification: one helper
-`resolveActiveWorkspace(ctx)` in
-`packages/cli/src/v8/resources-shared/workspace.ts` calls the auth
-module's `readAuthState(ctx.env, ctx.signal)` (exactly as v8 whoami
-does) and returns `state.workspace`; missing → the ported
-`AUTH.USAGE_ERROR` "Workspace required". When `ctx.session()` lands
-via merge-down, the helper body swaps to it — one file, no
-handler churn.
+`getCredentials` (`{token}`) and `api` today; RESOLVED at the 2026-08-10 merge-down (session model, engine commit
+9384a95): `ctx.session(): Promise<Session | null>` exists — Session
+`{ workspaceId, workspaceName?, expiresAt?, source, current }`. The
+helper `resolveActiveWorkspace(ctx)` in
+`packages/cli/src/v8/resources-shared/workspace.ts` now calls
+`ctx.session()` and returns the legacy `{ id, name }` workspace shape
+from `workspaceId`/`workspaceName`; a null session behind
+`needs.credentials` is defensive-only → the ported `AUTH.USAGE_ERROR`
+"Workspace required" (copy unchanged). No handler reads the auth
+module.
 
 ## 4. Error mapping (R-S2b-5, pinned)
 
@@ -144,47 +144,46 @@ handler churn.
 - API-passthrough codes (raw API `error.code` in the legacy CliError
   `code` field) map mechanically to `<GROUP>.<RAW_CODE>`.
 
-## 5. Consent (R-S2b-3, pinned)
+## 5. Consent (R-S2b-3, pinned — rewritten at the 2026-08-10 merge-down, engine commit 6bb8452)
 
 Applies to: `project remove`, `project transfer`,
 `postgres restore`, `postgres remove`, `postgres connection rotate`,
 `postgres connection remove`, `bucket delete`. (`bucket key delete`
 has no confirmation today and gains none — divergence review note
-only, not a behavior change.)
+only.) The former holds are LIFTED — all seven commands ship.
 
-- The consent-grant flag is ENGINE-OWNED (operator ruling
-  2026-08-10): commands do NOT declare per-command `confirm` flags —
-  an engine consent-flag mechanism lands on `s2a-foundations`
-  (details arrive with the merge-down) and is expected to preserve
-  the user-facing `--confirm <exact-id>` semantics (must equal the
-  resolved resource id). Until its details land, every consent
-  command in this slice is ON HOLD: D1 ships 9 of 11 commands
-  (remove/transfer held), D2 holds restore/remove/connection
-  rotate/connection remove wiring, D3 holds bucket delete. Handlers
-  keep the exact-id CHECK semantics and copy pinned per command;
-  only the flag's declaration/plumbing waits for the engine
-  mechanism.
-- Interactive invocation WITHOUT the flag: `ctx.prompt.consent(q)`
-  where `q` is the pinned per-command question text (child docs) —
-  question texts are the child docs' drafted wordings, ratified
-  2026-08-10 (OPERATOR DECISION 2; legacy exact-id commands have no
-  prompt today, so the wordings were drafted from the confirmation
-  copy).
-- Consent answered "no" (the prompt returns `false`): the handler
-  returns `notOk(new CliStructuredError("<GROUP>.CONSENT_DECLINED",
-  "Consent declined", { why: "The operation was not confirmed." }))`,
-  exit 2 — matching the legacy interactive-decline precedent (exit
-  2), distinct from prompt CANCELLATION (Ctrl-C/EOF →
-  `CLI.PROMPT_CANCELLED`, exit 3, engine-owned). Ratified 2026-08-10.
-- Non-interactive without the flag: the engine's structural failure
-  `CLI.CONSENT_REQUIRED`, exit 2 (consent is undefaultable; `--yes`
-  never grants it).
-- Prompt cancel (Ctrl-C/EOF): exit 3.
-- `--confirm` present but mismatched: the legacy CONFIRMATION_REQUIRED
-  content mapped to the group's dotted `*.CONFIRMATION_REQUIRED`,
-  exit 2, meta (`expectedConfirm`/`receivedConfirm`) verbatim.
-- Every exit-code change from legacy (1→2, 0-on-cancel→3) is a
-  divergence row (ledger Q5 default).
+- The consent mechanism is ENGINE-OWNED end to end. Commands declare
+  NO confirm flag; the engine injects the shared repeatable
+  `--confirm <value>` flag.
+- Handler call: `await ctx.prompt.consent(question, { token })` where
+  `token` is the EXACT resolved resource id (project.id, database.id,
+  connection id, bucket id — the legacy exact-id semantics) and
+  `question` is the command's pinned legacy confirmation `why`
+  sentence, verbatim (child docs). The previously ratified yes/no
+  question drafts are superseded by the engine's type-to-confirm
+  rendering; the ratified sentences survive as the question text.
+- Semantics (engine-owned, not re-tested per command beyond the
+  matrix): interactive → type-to-confirm (clack re-prompts wrong
+  answers; plain line tier fails structurally on a wrong scripted
+  answer, exit 2); non-interactive and `--yes` → satisfied iff one
+  `--confirm <value>` equals the token exactly (values consumed once
+  per run); otherwise the engine's `CLI.CONSENT_REQUIRED` (exit 2,
+  message names the expected value and the `--confirm <token>`
+  usage); Ctrl-C/EOF → `CLI.PROMPT_CANCELLED`, exit 3.
+- DELETED from the design (unreachable in v8): the per-group
+  `*.CONFIRMATION_REQUIRED` mapper entries, the
+  `*.CONSENT_DECLINED` deny path, and the legacy
+  `meta.expectedConfirm/receivedConfirm` surface — the engine error
+  replaces them all. Divergence entries: legacy per-command
+  `--confirm` flag → shared engine flag (same CLI spelling);
+  CONFIRMATION_REQUIRED → CLI.CONSENT_REQUIRED (meta gone); yes/no
+  never existed for these commands (type-to-confirm is the new
+  interactive surface).
+- Consent test matrix per command: non-interactive `--confirm <id>` →
+  success; non-interactive without → `CLI.CONSENT_REQUIRED` exit 2;
+  interactive scripted answer = the token → success; wrong scripted
+  answer → structural failure exit 2; `--yes` without `--confirm` →
+  `CLI.CONSENT_REQUIRED` exit 2.
 
 ## 6. Secrets (R-S2b-4, pinned)
 

@@ -137,13 +137,10 @@ Common: `needs: { credentials: true }`; data = legacy result minus
   to confirm deletion", placeholder: "bucket-id" })`.
 - Handler: blank id → `BUCKET.USAGE_ERROR` (`Bucket id required` /
   `Bucket deletion needs a bucket id.` / nextActions from fix +
-  `${CLI_NAME} bucket list`); consent per conventions §5 — copy:
-  summary `Confirm bucket deletion`, why `Deleting this bucket
-  permanently removes all objects and access keys.`, rerun action
-  `${CLI_NAME} bucket delete ${id} --confirm ${id}`, meta verbatim;
-  drafted consent question (OPERATOR DECISION 2): `Delete bucket
-  ${id}? This permanently removes all objects and access keys.`;
-  then provider-only → `provider.deleteBucket(id, { signal })`.
+  `${CLI_NAME} bucket list`); consent per conventions §5 (hold
+  lifted): `ctx.prompt.consent("Deleting this bucket permanently
+  removes all objects and access keys.", { token: id })`; then
+  provider-only → `provider.deleteBucket(id, { signal })`.
 - data `{ bucket: { id } }`.
 - human: summary ok `Deleting object-store bucket.`; fields
   `bucket: id`; list `["Bucket and all its access keys were
@@ -255,9 +252,12 @@ Common: `needs: { credentials: true }`; data = legacy result minus
      early, before the handler and any side effects, with the
      engine's interaction-required error (exit 2). Commands and
      helpers never read TTY/CI state. The interactive wait flow
-     ports against the engine's prompt-family **browser-wait**
-     helper (announce + open URL + poll on the injectable clock +
-     timeout) arriving via merge-down — do not hand-roll polling.
+     ports against `ctx.prompt.browserWait` (landed, engine commit
+     6bb8452: `{ url, message, poll(signal), timeout }` — announce +
+     open through the runtime opener + poll on the engine clock;
+     timeout → structured timeout error; Ctrl-C → exit 3;
+     non-interactive → interaction-required with the URL, unreachable
+     here behind needs.interaction) — do not hand-roll polling.
      Binding mapping onto the helper: url =
      installUrl; poll predicate = "the GitHub App installation
      exists" (re-list installations, `findRepositoryInInstallations`
@@ -315,14 +315,14 @@ Common: `needs: { credentials: true }`; data = legacy result minus
 - stdout none; json raw; next none.
 - Tests: success; not-connected; API error; json; unauth.
 
-### 3.8a Dependencies (operator correction 2026-08-10)
+### 3.8a Dependencies — RESOLVED (merge-down 2026-08-10)
 
-No dispatch reordering. `git connect` is not blocked on any engine
-change for its gating (`needs.interaction` exists today); only its
-interactive wait flow binds to the browser-wait helper, and `bucket
-delete`'s consent wiring binds to the engine consent flag — both
-arrive via merge-down (conventions §5, d3 §3.8 step 5). If either
-has not landed when its item comes up, that item alone waits.
+browserWait, ctx.openUrl, and consent tokens are all landed (engine
+commit 6bb8452). Nothing in D3 waits; no reordering. The timeout
+error browserWait raises on poll expiry replaces the handler-side
+timeout branch: catch it and settle the legacy terminal errors
+(`GIT.REPO_NOT_ACCESSIBLE` / `GIT.REPO_INSTALLATION_REQUIRED`) per
+§3.8 step 5.
 
 ## 4. Divergence entries this dispatch adds
 
