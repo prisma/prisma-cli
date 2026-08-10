@@ -35,6 +35,11 @@ export interface EngineCommandSnapshot {
  * engine's injectable clock.
  */
 export interface RunSummary {
+  /** The mounted command's dotted id ('telemetry.status'). Derived
+   *  from the same mount entry as `snapshot.commandPath` — it always
+   *  equals `snapshot.commandPath.join('.')`. Both are kept: consumers
+   *  addressing the command use the id; the snapshot is the value-free
+   *  wire projection. */
   readonly commandId: string;
   readonly exitCode: number;
   readonly durationMs: number;

@@ -2,6 +2,7 @@
  * ctx.api: injected fakes, lazy construction, the unauthenticated
  * throw path, and per-request credential pickup.
  */
+
 import {
   defineCommand,
   type ManagementApiClient,
@@ -9,16 +10,25 @@ import {
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { createTestCli } from "@prisma/cli-engine/testing";
+import { AuthError } from "@prisma/management-api-sdk";
 import { describe, expect, test } from "vitest";
 import type { AnyCommand } from "../src/commands";
 import { buildEngine, type RunHooks } from "../src/execution/engine";
 
 function makeRuntime(overrides?: {
   readonly getCredentials?: Runtime["getCredentials"];
-}): Runtime & { readonly stderrText: () => string } {
+}): Runtime & {
+  readonly stderrText: () => string;
+  readonly stdoutText: () => string;
+} {
   let stderrText = "";
+  let stdoutText = "";
   return {
-    stdout: { write: () => {} },
+    stdout: {
+      write: (text) => {
+        stdoutText += text;
+      },
+    },
     stderr: {
       write: (text) => {
         stderrText += text;
@@ -39,6 +49,7 @@ function makeRuntime(overrides?: {
     managementApi: { baseUrl: "https://test.invalid" },
     packageManager: "unknown",
     stderrText: () => stderrText,
+    stdoutText: () => stdoutText,
   };
 }
 
@@ -121,6 +132,87 @@ describe("ctx.api", () => {
         },
       },
     });
+  });
+
+  test("construction happens on first method call, not on ctx.api property access", async () => {
+    const exitCode = await runEngine(
+      succeed(async (ctx) => {
+        // Touch the property without invoking any request method.
+        void ctx.api;
+      }),
+      makeRuntime(),
+      {
+        managementApi: {
+          createSdk: () => {
+            throw new Error(
+              "the SDK factory ran for a run that never issued a request",
+            );
+          },
+        },
+      },
+    );
+    expect(exitCode).toBe(0);
+  });
+
+  test("an SDK AuthError (401 / refresh unavailable) maps to CLI.CREDENTIALS_REQUIRED, exit 2", async () => {
+    const runtime = makeRuntime({
+      getCredentials: async () => ({ token: "stale-token" }),
+    });
+    const exitCode = await runEngine(
+      succeed(async (ctx) => {
+        const client = ctx.api as unknown as { call: () => Promise<void> };
+        await client.call();
+      }),
+      runtime,
+      {
+        managementApi: {
+          createSdk: () => ({
+            client: {
+              call: async () => {
+                throw new AuthError("401 Unauthorized", true);
+              },
+            } as unknown as ManagementApiClient,
+            getLoginUrl: () => Promise.reject(new Error("unused")),
+            handleCallback: () => Promise.reject(new Error("unused")),
+            logout: () => Promise.reject(new Error("unused")),
+          }),
+        },
+      },
+    );
+    expect(exitCode).toBe(2);
+    // Non-TTY runtime auto-selects json format: the errored envelope
+    // streams to stdout.
+    expect(runtime.stdoutText()).toContain('"code":"CLI.CREDENTIALS_REQUIRED"');
+  });
+
+  test("a cyclic cause chain on a request failure terminates and settles as a bug", async () => {
+    const cyclic = new Error("outer");
+    const inner = new Error("inner", { cause: cyclic });
+    cyclic.cause = inner;
+    const runtime = makeRuntime();
+    const exitCode = await runEngine(
+      succeed(async (ctx) => {
+        const client = ctx.api as unknown as { call: () => Promise<void> };
+        await client.call();
+      }),
+      runtime,
+      {
+        managementApi: {
+          createSdk: () => ({
+            client: {
+              call: async () => {
+                throw cyclic;
+              },
+            } as unknown as ManagementApiClient,
+            getLoginUrl: () => Promise.reject(new Error("unused")),
+            handleCallback: () => Promise.reject(new Error("unused")),
+            logout: () => Promise.reject(new Error("unused")),
+          }),
+        },
+      },
+    );
+    expect(exitCode).toBe(1);
+    expect(runtime.stdoutText()).toContain('"code":"CLI.INTERNAL_ERROR"');
   });
 
   test("constructed once per run; credential refresh is picked up per request", async () => {

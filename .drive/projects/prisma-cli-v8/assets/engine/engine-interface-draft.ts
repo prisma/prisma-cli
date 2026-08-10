@@ -972,7 +972,11 @@ export interface CliRunHooks {
 }
 
 /** What onSettled receives. `durationMs` comes from the engine's
- *  injectable clock (§11), never from wall time directly. */
+ *  injectable clock (§11), never from wall time directly.
+ *  `commandId` is derived from the same mount entry as
+ *  `snapshot.commandPath` and always equals
+ *  `snapshot.commandPath.join('.')`; both fields are kept on purpose
+ *  (id for addressing, snapshot as the value-free wire projection). */
 export interface RunSummary {
   readonly commandId: string
   readonly exitCode: number
