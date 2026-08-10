@@ -12,6 +12,9 @@ import {
 } from "../adapters/git";
 import {
   FileTokenStorage,
+  RecipientSessionInvalidError,
+  requireComputeAuth,
+  resolveRecipientWorkspaceSession,
   SERVICE_TOKEN_ENV_VAR,
   WorkspaceSelectionError,
 } from "../auth";
@@ -20,11 +23,6 @@ import {
   resolvePrismaCliPackageCommandFormatterSync,
 } from "../lib/agent/cli-command";
 import { createAppProvider } from "../lib/app/app-provider";
-import { requireComputeAuth } from "../lib/auth/guard";
-import {
-  RecipientSessionInvalidError,
-  resolveRecipientWorkspaceSession,
-} from "../lib/auth/recipient";
 import { promptForProjectSetupChoice } from "../lib/project/interactive-setup";
 import {
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,

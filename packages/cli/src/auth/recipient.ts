@@ -1,11 +1,7 @@
 import { createManagementApiSdk } from "@prisma/management-api-sdk";
 
-import {
-  CLIENT_ID,
-  FileTokenStorage,
-  getApiBaseUrl,
-  type StoredAuthWorkspace,
-} from "../../auth";
+import { CLIENT_ID, getApiBaseUrl } from "./client";
+import { FileTokenStorage, type StoredAuthWorkspace } from "./token-storage";
 
 export interface RecipientWorkspaceSession {
   workspace: StoredAuthWorkspace;

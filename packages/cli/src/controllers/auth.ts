@@ -1,11 +1,12 @@
 import {
-  listRealAuthWorkspaces,
-  logoutRealAuthWorkspace,
+  listAuthWorkspaces,
+  logoutAuthWorkspace,
   performLogin,
   performLogout,
   readAuthState,
   SERVICE_TOKEN_ENV_VAR,
-  useRealAuthWorkspace,
+  useAuthWorkspace,
+  type WorkspaceOperationContext,
 } from "../auth";
 import { resolvePrismaCliPackageCommand } from "../lib/agent/cli-command";
 import { PRISMA_AGENT_INSTALL_ARGS } from "../lib/agent/constants";
@@ -41,6 +42,12 @@ export interface AuthLoginCommandOptions {
 
 export interface AuthLogoutCommandOptions {
   workspace?: string;
+}
+
+function workspaceOperationContext(
+  context: CommandContext,
+): WorkspaceOperationContext {
+  return { env: context.runtime.env, signal: context.runtime.signal };
 }
 
 function isRealMode(context: CommandContext): boolean {
@@ -120,7 +127,7 @@ export async function runAuthWorkspaceList(
   context: CommandContext,
 ): Promise<CommandSuccess<AuthWorkspaceListResult>> {
   const result = isRealMode(context)
-    ? await listRealAuthWorkspaces(context)
+    ? await listAuthWorkspaces(workspaceOperationContext(context))
     : await createAuthUseCases(
         createCliUseCaseGateways(context),
       ).listWorkspaces();
@@ -143,7 +150,10 @@ export async function runAuthWorkspaceUse(
     : await selectWorkspaceSession(context);
 
   const result = isRealMode(context)
-    ? await useRealAuthWorkspace(context, selectedWorkspaceRef)
+    ? await useAuthWorkspace(
+        workspaceOperationContext(context),
+        selectedWorkspaceRef,
+      )
     : await createAuthUseCases(createCliUseCaseGateways(context)).useWorkspace(
         selectedWorkspaceRef,
       );
@@ -171,7 +181,10 @@ export async function runAuthWorkspaceLogout(
   }
 
   const result = isRealMode(context)
-    ? await logoutRealAuthWorkspace(context, workspaceRef)
+    ? await logoutAuthWorkspace(
+        workspaceOperationContext(context),
+        workspaceRef,
+      )
     : await createAuthUseCases(
         createCliUseCaseGateways(context),
       ).logoutWorkspace(workspaceRef);
@@ -232,7 +245,7 @@ async function selectWorkspaceSession(
   }
 
   const result = realMode
-    ? await listRealAuthWorkspaces(context)
+    ? await listAuthWorkspaces(workspaceOperationContext(context))
     : await createAuthUseCases(
         createCliUseCaseGateways(context),
       ).listWorkspaces();

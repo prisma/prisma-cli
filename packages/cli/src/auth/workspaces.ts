@@ -3,11 +3,6 @@ import {
   type TokenStorage,
   type Tokens,
 } from "@prisma/management-api-sdk";
-import {
-  workspaceAmbiguousError,
-  workspaceNotAuthenticatedError,
-  workspaceSwitchUnavailableError,
-} from "../shell/errors";
 import type {
   AuthWorkspace,
   AuthWorkspaceListResult,
@@ -15,6 +10,11 @@ import type {
   AuthWorkspaceUseResult,
 } from "../types/auth";
 import { CLIENT_ID, getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "./client";
+import {
+  workspaceAmbiguousError,
+  workspaceNotAuthenticatedError,
+  workspaceSwitchUnavailableError,
+} from "./errors";
 import { readAuthState } from "./operations";
 import {
   FileTokenStorage,
@@ -22,23 +22,17 @@ import {
   WorkspaceSelectionError,
 } from "./token-storage";
 
-/** The exact context surface the workspace operations read; both the
- *  legacy shell's CommandContext and a v8 handler's ctx satisfy it. */
+/** The exact context surface the workspace operations read. */
 export interface WorkspaceOperationContext {
-  readonly runtime: {
-    readonly env: NodeJS.ProcessEnv;
-    readonly signal?: AbortSignal;
-  };
+  readonly env: NodeJS.ProcessEnv;
+  readonly signal?: AbortSignal;
 }
 
-export async function listRealAuthWorkspaces(
+export async function listAuthWorkspaces(
   context: WorkspaceOperationContext,
 ): Promise<AuthWorkspaceListResult> {
-  const rawServiceToken = context.runtime.env[SERVICE_TOKEN_ENV_VAR];
-  const storage = new FileTokenStorage(
-    context.runtime.env,
-    context.runtime.signal,
-  );
+  const rawServiceToken = context.env[SERVICE_TOKEN_ENV_VAR];
+  const storage = new FileTokenStorage(context.env, context.signal);
   const localWorkspaces = await hydrateLocalAuthWorkspaces(
     context,
     storage,
@@ -46,10 +40,7 @@ export async function listRealAuthWorkspaces(
   );
 
   if (rawServiceToken !== undefined) {
-    const authState = await readAuthState(
-      context.runtime.env,
-      context.runtime.signal,
-    );
+    const authState = await readAuthState(context.env, context.signal);
     return {
       authSource: authState.authenticated ? "service_token" : "none",
       activeWorkspace: authState.workspace,
@@ -93,18 +84,15 @@ export async function listRealAuthWorkspaces(
   };
 }
 
-export async function useRealAuthWorkspace(
+export async function useAuthWorkspace(
   context: WorkspaceOperationContext,
   workspaceRef: string,
 ): Promise<AuthWorkspaceUseResult> {
-  if (context.runtime.env[SERVICE_TOKEN_ENV_VAR] !== undefined) {
+  if (context.env[SERVICE_TOKEN_ENV_VAR] !== undefined) {
     throw workspaceSwitchUnavailableError();
   }
 
-  const storage = new FileTokenStorage(
-    context.runtime.env,
-    context.runtime.signal,
-  );
+  const storage = new FileTokenStorage(context.env, context.signal);
   await hydrateLocalAuthWorkspaces(
     context,
     storage,
@@ -139,14 +127,11 @@ export async function useRealAuthWorkspace(
   }
 }
 
-export async function logoutRealAuthWorkspace(
+export async function logoutAuthWorkspace(
   context: WorkspaceOperationContext,
   workspaceRef: string,
 ): Promise<AuthWorkspaceLogoutResult> {
-  const storage = new FileTokenStorage(
-    context.runtime.env,
-    context.runtime.signal,
-  );
+  const storage = new FileTokenStorage(context.env, context.signal);
   await hydrateLocalAuthWorkspaces(
     context,
     storage,
@@ -232,7 +217,7 @@ async function rememberResolvedWorkspaceMetadata(
   try {
     await storage.rememberWorkspace(tokens.workspaceId, resolved);
   } catch {
-    context.runtime.signal?.throwIfAborted();
+    context.signal?.throwIfAborted();
   }
 }
 
@@ -248,11 +233,9 @@ async function resolveOAuthWorkspaceMetadata(
   context: WorkspaceOperationContext,
   tokens: Tokens,
 ): Promise<{ id: string; name: string } | null> {
-  const refreshStorage = new FileTokenStorage(
-    context.runtime.env,
-    context.runtime.signal,
-    { activateOnSetTokens: false },
-  );
+  const refreshStorage = new FileTokenStorage(context.env, context.signal, {
+    activateOnSetTokens: false,
+  });
   const tokenStorage = createSingleWorkspaceTokenStorage(
     refreshStorage,
     tokens,
@@ -261,13 +244,13 @@ async function resolveOAuthWorkspaceMetadata(
     clientId: CLIENT_ID,
     redirectUri: "http://localhost:0/auth/callback",
     tokenStorage,
-    apiBaseUrl: getApiBaseUrl(context.runtime.env),
+    apiBaseUrl: getApiBaseUrl(context.env),
   });
 
   try {
     const { data } = await sdk.client.GET("/v1/workspaces/{id}", {
       params: { path: { id: tokens.workspaceId } },
-      signal: context.runtime.signal,
+      signal: context.signal,
     });
     const id = stringOrNull(data?.data?.id) ?? tokens.workspaceId;
     const name = stringOrNull(data?.data?.name) ?? id;
@@ -278,7 +261,7 @@ async function resolveOAuthWorkspaceMetadata(
 
     return { id, name };
   } catch {
-    context.runtime.signal?.throwIfAborted();
+    context.signal?.throwIfAborted();
     return null;
   }
 }

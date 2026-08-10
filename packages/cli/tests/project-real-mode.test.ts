@@ -12,7 +12,7 @@ type ApiMutationMock = Mock<(pathName: string, request?: unknown) => unknown>;
 
 afterEach(() => {
   vi.doUnmock("../src/auth");
-  vi.doUnmock("../src/lib/auth/guard");
+  vi.doUnmock("../src/auth/guard");
   vi.doUnmock("open");
   vi.resetModules();
   vi.restoreAllMocks();
@@ -265,7 +265,7 @@ describe("real project mode", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
 
@@ -332,7 +332,7 @@ describe("real project mode", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth: vi.fn().mockResolvedValue(mockClient()),
     }));
 
@@ -408,7 +408,7 @@ describe("real project mode", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, POST: post })),
@@ -493,7 +493,7 @@ describe("real project mode", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, POST: post })),
@@ -578,7 +578,7 @@ describe("real project mode", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, POST: post })),
@@ -690,7 +690,7 @@ describe("real project mode", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, POST: post })),
@@ -783,7 +783,7 @@ describe("real project mode", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, POST: post })),
@@ -918,7 +918,7 @@ describe("real project mode", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, POST: post })),
@@ -988,7 +988,7 @@ describe("real project mode", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, POST: post })),
@@ -1064,7 +1064,7 @@ describe("real project mode", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, POST: post })),
@@ -1138,7 +1138,7 @@ describe("real project mode", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, DELETE: del })),

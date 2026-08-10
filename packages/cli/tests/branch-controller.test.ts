@@ -7,7 +7,7 @@ import { createTempCwd, createTestCommandContext } from "./helpers";
 
 afterEach(() => {
   vi.doUnmock("../src/auth");
-  vi.doUnmock("../src/lib/auth/guard");
+  vi.doUnmock("../src/auth/guard");
   vi.resetModules();
   vi.restoreAllMocks();
 });
@@ -114,7 +114,7 @@ async function loadController(client: ReturnType<typeof createMockClient>) {
     performLogin: vi.fn(),
     performLogout: vi.fn(),
   }));
-  vi.doMock("../src/lib/auth/guard", () => ({
+  vi.doMock("../src/auth/guard", () => ({
     requireComputeAuth: vi.fn().mockResolvedValue(client),
   }));
 

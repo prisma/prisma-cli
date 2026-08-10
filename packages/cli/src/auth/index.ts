@@ -1,6 +1,12 @@
 export { CLIENT_ID, getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "./client";
 export { makeGetCredentials } from "./credentials";
 export {
+  workspaceAmbiguousError,
+  workspaceNotAuthenticatedError,
+  workspaceSwitchUnavailableError,
+} from "./errors";
+export { requireComputeAuth } from "./guard";
+export {
   EmptyServiceTokenError,
   isEmptyServiceTokenError,
   performLogin,
@@ -8,12 +14,18 @@ export {
   readAuthState,
 } from "./operations";
 export {
+  RecipientSessionInvalidError,
+  type RecipientWorkspaceSession,
+  resolveRecipientWorkspaceSession,
+} from "./recipient";
+export {
   FileTokenStorage,
   type StoredAuthWorkspace,
   WorkspaceSelectionError,
 } from "./token-storage";
 export {
-  listRealAuthWorkspaces,
-  logoutRealAuthWorkspace,
-  useRealAuthWorkspace,
+  listAuthWorkspaces,
+  logoutAuthWorkspace,
+  useAuthWorkspace,
+  type WorkspaceOperationContext,
 } from "./workspaces";

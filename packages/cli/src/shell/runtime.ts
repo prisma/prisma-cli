@@ -1,14 +1,15 @@
-import path from "node:path";
-import { findComputeConfigDir } from "@prisma/compute-sdk/config";
 import type { Command } from "commander";
 import { LocalStateStore } from "../adapters/local-state";
 import { MockApi } from "../adapters/mock-api";
+import { DEFAULT_STATE_DIR_NAME, resolveStateDir } from "../state-dir";
 import type { GlobalFlags } from "./global-flags";
 import { renderHelp } from "./help";
 import type { CliOutput } from "./output";
 import { createShellUi, type ShellUi } from "./ui";
 
-export const DEFAULT_STATE_DIR_NAME = path.join(".prisma", "cli");
+// Moved to src/state-dir.ts (durable home); re-exported so legacy
+// imports stay valid.
+export { DEFAULT_STATE_DIR_NAME, resolveStateDir };
 
 export interface CliRuntime {
   cwd: string;
@@ -87,21 +88,6 @@ export async function createCommandContext(
     runtime,
     ui: createShellUi(runtime, flags),
   };
-}
-
-export async function resolveStateDir(
-  runtime: Pick<CliRuntime, "stateDir" | "env" | "cwd" | "signal">,
-): Promise<string> {
-  const explicitStateDir = runtime.stateDir ?? runtime.env.PRISMA_CLI_STATE_DIR;
-  if (explicitStateDir) {
-    return explicitStateDir;
-  }
-
-  // The compute config marks the project root, so the local state cache lives
-  // next to it instead of fragmenting across invocation directories. This is
-  // location-only discovery; the config itself is not loaded here.
-  const projectDir = await findComputeConfigDir(runtime.cwd, runtime.signal);
-  return path.join(projectDir ?? runtime.cwd, DEFAULT_STATE_DIR_NAME);
 }
 
 export function canPrompt(context: CommandContext): boolean {

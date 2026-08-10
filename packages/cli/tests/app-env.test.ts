@@ -16,7 +16,7 @@ afterEach(() => {
   delete process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID;
 
   vi.doUnmock("../src/auth");
-  vi.doUnmock("../src/lib/auth/guard");
+  vi.doUnmock("../src/auth/guard");
   vi.doUnmock("../src/lib/app/app-provider");
   vi.resetModules();
   vi.restoreAllMocks();
@@ -124,7 +124,7 @@ async function loadControllers(client: MockClient, projectId: string) {
     performLogin: vi.fn(),
     performLogout: vi.fn(),
   }));
-  vi.doMock("../src/lib/auth/guard", () => ({
+  vi.doMock("../src/auth/guard", () => ({
     requireComputeAuth: vi.fn().mockResolvedValue(client),
   }));
 

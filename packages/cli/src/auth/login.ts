@@ -12,7 +12,8 @@ import {
   type TokenStorage,
 } from "@prisma/management-api-sdk";
 import open from "open";
-import { CLIENT_ID, FileTokenStorage, getApiBaseUrl } from "../../auth";
+import { CLIENT_ID, getApiBaseUrl } from "./client";
+import { FileTokenStorage } from "./token-storage";
 
 export class AuthError extends Error {
   constructor(message: string) {
@@ -285,7 +286,10 @@ class LoginState {
 
     this.latestState = state;
     this.latestVerifier = verifier;
-    this.options.onVerificationUrl?.(url);
+    try {
+      // An observer must never break the login flow itself.
+      this.options.onVerificationUrl?.(url);
+    } catch {}
 
     this.options.signal?.throwIfAborted();
     // Browser launch cannot consume AbortSignal; check immediately before and after the boundary.

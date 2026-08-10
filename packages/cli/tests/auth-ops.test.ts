@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 afterEach(() => {
   vi.doUnmock("../src/auth/token-storage");
-  vi.doUnmock("../src/lib/auth/guard");
+  vi.doUnmock("../src/auth/guard");
   vi.resetModules();
   vi.restoreAllMocks();
 });
@@ -75,7 +75,7 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
 
@@ -140,7 +140,7 @@ describe("readAuthState", () => {
       }),
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
 
@@ -210,7 +210,7 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
 
@@ -252,7 +252,7 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
 
@@ -290,7 +290,7 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
 
@@ -358,7 +358,7 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
 
@@ -416,7 +416,7 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
+    vi.doMock("../src/auth/guard", () => ({ requireComputeAuth }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
@@ -449,7 +449,7 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(vi.fn()),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
+    vi.doMock("../src/auth/guard", () => ({ requireComputeAuth }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
@@ -482,7 +482,7 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(vi.fn()),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
+    vi.doMock("../src/auth/guard", () => ({ requireComputeAuth }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
@@ -510,7 +510,7 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(vi.fn()),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
+    vi.doMock("../src/auth/guard", () => ({ requireComputeAuth }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
@@ -545,7 +545,7 @@ describe("readAuthState", () => {
         getTokens: vi.fn(),
       })),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
+    vi.doMock("../src/auth/guard", () => ({ requireComputeAuth }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
@@ -578,7 +578,7 @@ describe("readAuthState", () => {
         getTokens: vi.fn(),
       })),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({ requireComputeAuth }));
+    vi.doMock("../src/auth/guard", () => ({ requireComputeAuth }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
@@ -597,7 +597,7 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth: vi.fn(),
     }));
 
@@ -623,7 +623,7 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth: vi.fn(),
     }));
 

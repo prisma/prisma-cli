@@ -1,4 +1,4 @@
-import { requireComputeAuth } from "../lib/auth/guard";
+import { requireComputeAuth } from "../auth";
 import {
   type BucketProvider,
   createManagementBucketProvider,

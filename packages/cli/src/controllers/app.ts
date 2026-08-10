@@ -21,6 +21,7 @@ import {
   FileTokenStorage,
   getApiBaseUrl,
   readAuthState,
+  requireComputeAuth,
   SERVICE_TOKEN_ENV_VAR,
 } from "../auth";
 import {
@@ -91,7 +92,6 @@ import {
 } from "../lib/app/local-dev";
 import { enforceProductionDeployGate } from "../lib/app/production-deploy-gate";
 import { resolveReadBranch } from "../lib/app/read-branch";
-import { requireComputeAuth } from "../lib/auth/guard";
 import { readLocalGitBranch } from "../lib/git/local-branch";
 import { promptForProjectSetupChoice } from "../lib/project/interactive-setup";
 import {

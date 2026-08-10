@@ -5,6 +5,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { CLI_DOCS_URL } from "./cli-name";
 import { getCliName, getCliVersion } from "./lib/version";
 
 /** The exact runtime surface the update check reads; both the legacy
@@ -16,8 +17,7 @@ export interface UpdateCheckRuntime {
 }
 
 const UPDATE_CHECK_FILE_NAME = "update-check.json";
-const FALLBACK_INSTALL_DOCS_URL =
-  "https://www.prisma.io/docs/orm/tools/prisma-cli";
+const FALLBACK_INSTALL_DOCS_URL = CLI_DOCS_URL;
 const NOTIFICATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const REGISTRY_URL = "https://registry.npmjs.org/@prisma%2fcli";
 const REGISTRY_TIMEOUT_MS = 3_000;

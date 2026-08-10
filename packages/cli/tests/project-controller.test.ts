@@ -8,7 +8,7 @@ const fixturePath = path.resolve("fixtures/mock-api.json");
 
 afterEach(() => {
   vi.doUnmock("../src/auth");
-  vi.doUnmock("../src/lib/auth/guard");
+  vi.doUnmock("../src/auth/guard");
   vi.doUnmock("../src/lib/app/app-provider");
   vi.resetModules();
   vi.restoreAllMocks();
@@ -178,7 +178,7 @@ describe("project controller", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -249,7 +249,7 @@ describe("project controller", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -320,7 +320,7 @@ describe("project controller", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -396,7 +396,7 @@ describe("project controller", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({

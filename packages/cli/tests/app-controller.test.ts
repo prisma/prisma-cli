@@ -41,7 +41,7 @@ afterEach(() => {
   delete process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID;
 
   vi.doUnmock("../src/auth");
-  vi.doUnmock("../src/lib/auth/guard");
+  vi.doUnmock("../src/auth/guard");
   vi.doUnmock("../src/controllers/agent");
   vi.doUnmock("../src/lib/app/app-provider");
   vi.doUnmock("../src/lib/app/branch-database");
@@ -205,7 +205,7 @@ async function setupAgentPromptDeployTest(options: {
       },
     });
 
-  vi.doMock("../src/lib/auth/guard", () => ({
+  vi.doMock("../src/auth/guard", () => ({
     requireComputeAuth,
   }));
   vi.doMock("../src/controllers/agent", () => ({
@@ -286,7 +286,7 @@ describe("app controller", () => {
         }),
       );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -371,7 +371,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -465,7 +465,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -553,7 +553,7 @@ describe("app controller", () => {
     ]);
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -609,7 +609,7 @@ describe("app controller", () => {
     ]);
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -658,7 +658,7 @@ describe("app controller", () => {
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi.fn().mockRejectedValue(new Error("upload exploded"));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -791,7 +791,7 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -882,7 +882,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -983,7 +983,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -1050,7 +1050,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -1124,7 +1124,7 @@ describe("app controller", () => {
     });
     const retryDomain = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
@@ -1220,7 +1220,7 @@ describe("app controller", () => {
       existing: false,
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
@@ -1277,7 +1277,7 @@ describe("app controller", () => {
     const listApps = vi.fn();
     const addDomain = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
@@ -1356,7 +1356,7 @@ describe("app controller", () => {
       existing: false,
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
@@ -1409,7 +1409,7 @@ describe("app controller", () => {
       },
     ]);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
@@ -1473,7 +1473,7 @@ describe("app controller", () => {
       },
     ]);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
@@ -1543,7 +1543,7 @@ describe("app controller", () => {
       },
     ]);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
@@ -1612,7 +1612,7 @@ describe("app controller", () => {
       },
     ]);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
@@ -1679,7 +1679,7 @@ describe("app controller", () => {
     ]);
     const listDomains = vi.fn().mockRejectedValue(new Error("list failed"));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
@@ -1768,7 +1768,7 @@ describe("app controller", () => {
       .fn()
       .mockResolvedValue([createDomain({ status: "provisioning_tls" })]);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
@@ -1836,7 +1836,7 @@ describe("app controller", () => {
       .mockResolvedValue([createDomain({ status: "verifying" })]);
     const showDomain = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
@@ -1949,7 +1949,7 @@ describe("app controller", () => {
         },
       }));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -2089,7 +2089,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -2172,7 +2172,7 @@ describe("app controller", () => {
       .fn()
       .mockResolvedValue(createProjectClient("proj_my_app"));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -2235,7 +2235,7 @@ describe("app controller", () => {
     ]);
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -2324,7 +2324,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -2399,7 +2399,7 @@ describe("app controller", () => {
         },
       );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -2471,7 +2471,7 @@ describe("app controller", () => {
         },
       );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -2574,7 +2574,7 @@ describe("app controller", () => {
       },
     );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -2669,7 +2669,7 @@ describe("app controller", () => {
       },
     );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -2803,7 +2803,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -2877,7 +2877,7 @@ describe("app controller", () => {
         },
       }));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -2944,7 +2944,7 @@ describe("app controller", () => {
     const listApps = vi.fn();
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -3100,7 +3100,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -3178,7 +3178,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -3272,7 +3272,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/controllers/agent", () => ({
@@ -3359,7 +3359,7 @@ describe("app controller", () => {
       nextSteps: [],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/controllers/agent", () => ({
@@ -3488,7 +3488,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -3560,7 +3560,7 @@ describe("app controller", () => {
   it("returns FRAMEWORK_NOT_DETECTED before deploy when framework inference fails", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -3606,7 +3606,7 @@ describe("app controller", () => {
     const listApps = vi.fn();
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -3669,7 +3669,7 @@ describe("app controller", () => {
     const listApps = vi.fn();
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -3725,7 +3725,7 @@ describe("app controller", () => {
     const listApps = vi.fn();
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -3825,7 +3825,7 @@ describe("app controller", () => {
     ]);
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -3950,7 +3950,7 @@ describe("app controller", () => {
         },
       }));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -4023,7 +4023,7 @@ describe("app controller", () => {
         },
       }));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -4085,7 +4085,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -4154,7 +4154,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -4256,7 +4256,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -4351,7 +4351,7 @@ describe("app controller", () => {
         },
       });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -4480,7 +4480,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -4544,7 +4544,7 @@ describe("app controller", () => {
       .fn()
       .mockRejectedValue(new Error("Authentication failed (HTTP 401)"));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -4600,7 +4600,7 @@ describe("app controller", () => {
       .fn()
       .mockRejectedValue(new Error("Internal Server Error (HTTP 503)"));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -4675,7 +4675,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -4758,7 +4758,7 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -4800,7 +4800,7 @@ describe("app controller", () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockRejectedValue(new Error("Resource Not Found"));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -4872,7 +4872,7 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -4925,7 +4925,7 @@ describe("app controller", () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -4986,7 +4986,7 @@ describe("app controller", () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -5068,7 +5068,7 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -5174,7 +5174,7 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -5246,7 +5246,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -5311,7 +5311,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -5370,7 +5370,7 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -5422,7 +5422,7 @@ describe("app controller", () => {
       .fn()
       .mockRejectedValue(new Error("Missing or invalid authorization token"));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -5493,7 +5493,7 @@ describe("app controller", () => {
     vi.doMock("open", () => ({
       default: openUrl,
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -5567,7 +5567,7 @@ describe("app controller", () => {
     vi.doMock("open", () => ({
       default: openUrl,
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -5640,7 +5640,7 @@ describe("app controller", () => {
       deployments: [],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -5709,7 +5709,7 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -5785,7 +5785,7 @@ describe("app controller", () => {
     });
     const promoteDeployment = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -5872,7 +5872,7 @@ describe("app controller", () => {
     });
     const promoteDeployment = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -5942,7 +5942,7 @@ describe("app controller", () => {
     });
     const promoteDeployment = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -6022,7 +6022,7 @@ describe("app controller", () => {
     });
     const promoteDeployment = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -6117,7 +6117,7 @@ describe("app controller", () => {
     });
     const promoteDeployment = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -6213,7 +6213,7 @@ describe("app controller", () => {
     });
     const promoteDeployment = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -6285,7 +6285,7 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -6348,7 +6348,7 @@ describe("app controller", () => {
         },
       }));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -6446,7 +6446,7 @@ describe("app controller", () => {
         },
       );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -6537,7 +6537,7 @@ describe("app controller", () => {
         },
       );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -6607,7 +6607,7 @@ describe("app controller", () => {
     });
     const streamDeploymentLogs = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -6695,7 +6695,7 @@ describe("app controller", () => {
         },
       );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -6766,7 +6766,7 @@ describe("app controller", () => {
       name: "hello-world",
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -6850,7 +6850,7 @@ describe("app controller", () => {
       name: "hello-world",
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -6903,7 +6903,7 @@ describe("app controller", () => {
     const listApps = vi.fn();
     const removeApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -6982,7 +6982,7 @@ describe("app controller", () => {
       name: "hello-world",
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -7054,7 +7054,7 @@ describe("app controller", () => {
     });
     const textPrompt = vi.fn().mockResolvedValue("hello-world");
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/shell/prompt", async () => {
@@ -7123,7 +7123,7 @@ describe("app controller", () => {
     ]);
     const removeApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -7180,7 +7180,7 @@ describe("app controller", () => {
       .fn()
       .mockRejectedValue(new Error("Resource Not Found"));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -7239,7 +7239,7 @@ describe("app controller", () => {
       name: "hello-world",
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -7320,7 +7320,7 @@ describe("app controller", () => {
       promoted: false,
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -7411,7 +7411,7 @@ describe("app controller", () => {
       promoted: false,
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({

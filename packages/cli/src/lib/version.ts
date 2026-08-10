@@ -2,6 +2,7 @@
 import { createRequire } from "node:module";
 import process from "node:process";
 
+import { CLI_NAME } from "../cli-name";
 import { CliError } from "../shell/errors";
 import type { VersionInvocation, VersionResult } from "../types/version";
 
@@ -38,10 +39,10 @@ export function getCliVersion(): string {
 }
 
 // Published bin name is the agreed user-facing identifier for the preview.
-// We hard-code "prisma-cli" because the bin name and the npm package name differ:
-// the npm package is "@prisma/cli", but the binary on PATH is "prisma-cli".
+// The bin name and the npm package name differ: the npm package is
+// "@prisma/cli", but the binary on PATH is CLI_NAME.
 export function getCliName(): string {
-  return "prisma-cli";
+  return CLI_NAME;
 }
 
 export function detectInvocation(

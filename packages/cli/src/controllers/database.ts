@@ -1,10 +1,9 @@
 import { randomBytes } from "node:crypto";
-
+import { requireComputeAuth } from "../auth";
 import {
   type PrismaCliPackageCommandFormatter,
   resolvePrismaCliPackageCommandFormatterSync,
 } from "../lib/agent/cli-command";
-import { requireComputeAuth } from "../lib/auth/guard";
 import {
   createManagementDatabaseProvider,
   type DatabaseProvider,

@@ -38,7 +38,7 @@ afterEach(() => {
   delete process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID;
 
   vi.doUnmock("../src/auth");
-  vi.doUnmock("../src/lib/auth/guard");
+  vi.doUnmock("../src/auth/guard");
   vi.doUnmock("../src/lib/app/app-provider");
   vi.doUnmock("../src/lib/app/branch-database");
   vi.doUnmock("../src/lib/app/branch-database-deploy");
@@ -119,7 +119,7 @@ describe("app deploy branch database setup", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/branch-database", async (importOriginal) => {
@@ -280,7 +280,7 @@ describe("app deploy branch database setup", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/branch-database", async (importOriginal) => {
@@ -421,7 +421,7 @@ describe("app deploy branch database setup", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/branch-database", async (importOriginal) => {
@@ -547,7 +547,7 @@ describe("app deploy branch database setup", () => {
         return [];
       });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -672,7 +672,7 @@ describe("app deploy branch database setup", () => {
         },
       );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -801,7 +801,7 @@ describe("app deploy branch database setup", () => {
         },
       );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -930,7 +930,7 @@ describe("app deploy branch database setup", () => {
         return [];
       });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/branch-database", async (importOriginal) => {
@@ -1069,7 +1069,7 @@ describe("app deploy branch database setup", () => {
         return [];
       });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/branch-database", async (importOriginal) => {
@@ -1192,7 +1192,7 @@ describe("app deploy branch database setup", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/shell/prompt", async () => {
@@ -1289,7 +1289,7 @@ describe("app deploy branch database setup", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -1366,7 +1366,7 @@ describe("app deploy branch database setup", () => {
     const createBranchDatabase = vi.fn();
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -1452,7 +1452,7 @@ describe("app deploy branch database setup", () => {
     const createBranchDatabase = vi.fn();
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
@@ -1541,7 +1541,7 @@ describe("app deploy branch database setup", () => {
       .mockRejectedValue(new Error("env write failed"));
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/branch-database", async (importOriginal) => {
@@ -1732,7 +1732,7 @@ describe("app deploy branch database setup", () => {
     const createBranchDatabase = vi.fn();
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({

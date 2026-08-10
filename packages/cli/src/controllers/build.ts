@@ -1,4 +1,4 @@
-import { requireComputeAuth } from "../lib/auth/guard";
+import { requireComputeAuth } from "../auth";
 import { authRequiredError, CliError } from "../shell/errors";
 import { writeJsonEvent } from "../shell/output";
 import type { CommandContext } from "../shell/runtime";

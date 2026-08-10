@@ -32,7 +32,7 @@ afterEach(() => {
   delete process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID;
 
   vi.doUnmock("../src/auth");
-  vi.doUnmock("../src/lib/auth/guard");
+  vi.doUnmock("../src/auth/guard");
   vi.doUnmock("../src/lib/app/app-provider");
   vi.resetModules();
   vi.restoreAllMocks();
@@ -287,7 +287,7 @@ describe("app env vars", () => {
   it("project env list requires explicit or durable Project binding", async () => {
     const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
 
@@ -359,7 +359,7 @@ describe("app env vars", () => {
     };
     const requireComputeAuth = vi.fn().mockResolvedValue(client);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
 
@@ -498,7 +498,7 @@ describe("app env vars", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
+    vi.doMock("../src/auth/guard", () => ({
       requireComputeAuth,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
