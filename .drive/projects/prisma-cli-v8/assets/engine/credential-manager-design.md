@@ -167,6 +167,27 @@ reason text.
 `PRISMA_SERVICE_TOKEN` with a Console-pointing fix; nothing cleared.
 Set-but-blank keeps its existing typed error.
 
+## 6a. Switching sessions
+
+There is no "switch between" stored sessions — at most one exists.
+
+- **Workspace, same identity**: `prisma auth login` again; re-consent
+  (the consent screen is the picker), the new session replaces the
+  old. With a live auth-service browser session this is
+  consent-only.
+- **To/from a service token**: set/unset `PRISMA_SERVICE_TOKEN` —
+  the env credential wins over the stored session at read time,
+  per-invocation or per-shell, without disturbing the stored
+  session (also the scripts/parallel-terminal override).
+- **Different identity**: log in as the other account; replace. No
+  multi-account registry (a distinct feature, additive later if
+  ever wanted).
+- **Known trade-off**: simultaneous user-auth work in two workspaces
+  in parallel terminals is not served (accepted in the product-case
+  ruling; mitigations: a service token in one terminal, or the
+  future `ActorUser` routing, after which switching never touches
+  credentials).
+
 ## 7. Future direction fit
 
 - OAuth → `ActorUser` routing (platform work, not scheduled): scope
