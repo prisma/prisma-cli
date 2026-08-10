@@ -9,15 +9,22 @@ import {
 
 const TARGET_ARGS = ["--project", "acme-app", "--service", "hello-world"];
 
-function waitRoutes(statusSequence: string[]): Routes {
-  let polls = 0;
+/** `polledDomainIds` collects one entry per `GET /v1/domains/{domainId}`,
+ *  so a test can assert how many times the command polled. */
+function waitRoutes(
+  statusSequence: string[],
+  polledDomainIds: string[] = [],
+): Routes {
   return readFlowRoutes({
     "GET /v1/apps/{appId}/domains": () => ({
       data: { data: [domainRecord({ status: statusSequence[0] })] },
     }),
-    "GET /v1/domains/{domainId}": () => {
-      polls += 1;
-      const status = statusSequence[Math.min(polls, statusSequence.length - 1)];
+    "GET /v1/domains/{domainId}": (init) => {
+      polledDomainIds.push(String(init.params?.path?.domainId));
+      const status =
+        statusSequence[
+          Math.min(polledDomainIds.length, statusSequence.length - 1)
+        ];
       return { data: { data: domainRecord({ status }) } };
     },
   });
@@ -136,9 +143,10 @@ describe("prisma-v8 service domain wait", () => {
     );
   });
 
-  it("polls exactly once with --timeout 0 and settles as a verification timeout", async () => {
+  it("checks the status once with --timeout 0, never re-fetches, and settles as a verification timeout", async () => {
+    const polledDomainIds: string[] = [];
     const harness = await makeServiceCli({
-      routes: waitRoutes(["pending_dns"]),
+      routes: waitRoutes(["pending_dns"], polledDomainIds),
     });
 
     const result = await harness.cli.run(
@@ -164,6 +172,9 @@ describe("prisma-v8 service domain wait", () => {
       "SERVICE.DOMAIN_VERIFICATION_TIMEOUT",
     );
     expect(frame.envelope.error.why).toBe('The domain is still "pending_dns".');
+    // The single check is the record the hostname lookup already
+    // returned, so `--timeout 0` must never reach the status endpoint.
+    expect(polledDomainIds).toEqual([]);
   });
 
   it("rejects an invalid --timeout as SERVICE.TIMEOUT_INVALID", async () => {

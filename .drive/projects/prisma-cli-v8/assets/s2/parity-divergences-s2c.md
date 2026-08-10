@@ -607,6 +607,8 @@ Ten typed next actions across the shipped commands told the user to run `service
 
 The removals: `SERVICE.NO_DEPLOYMENTS`, `SERVICE.TARGET_REQUIRED` and `SERVICE.NO_PREVIOUS_DEPLOYMENT` lose "Deploy the service"; `SERVICE.DOMAIN_TARGET_REQUIRED`, the `PRISMA_SERVICE_ID` selection error and the domain-add 422 lose "Deploy to production"; `service list-deploys`'s own `SERVICE.DEPLOY_FAILED` loses the single action it carried; and the `service show`, `service list-deploys` and `service remove` presentations lose theirs. All ten are pinned by tests asserting the surviving actions exactly.
 
+One of the ten needed a replacement rather than a straight removal. The domain-add 422 carried two legacy next steps in order — deploy to production, then rerun `domain add` — plus the `fix` line "Deploy the app to the production branch, then rerun the domain command." Removing the first step left the second one telling the user to rerun the command that had just failed, and the `fix` line had never been carried across as the advice action this file's preamble says every `fix` becomes. The advice is now carried, worded for the commands v8 has: "Promote a deployment on the service's production branch, then add the domain again."
+
 They can come back pointing at Composer once those commands exist. Nothing about the underlying situation changed — a user with no deployment still has to deploy something — so this is a loss of guidance, not of capability.
 
 ### The crash-recovery feedback action does not port (ESCALATED — engine gap)

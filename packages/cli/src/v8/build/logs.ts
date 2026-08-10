@@ -112,30 +112,39 @@ async function forEachNdjsonRecord<T>(
   const decoder = new TextDecoder();
   let buffer = "";
 
-  for (;;) {
-    // biome-ignore lint/performance/noAwaitInLoops: a stream must be read sequentially, chunk by chunk.
-    const { done, value } = await reader.read();
-    if (value) {
-      buffer += decoder.decode(value, { stream: true });
-    }
-
-    let newlineIndex = buffer.indexOf("\n");
-    while (newlineIndex !== -1) {
-      const line = buffer.slice(0, newlineIndex).trim();
-      buffer = buffer.slice(newlineIndex + 1);
-      if (line) {
-        onRecord(JSON.parse(line) as T);
+  // An abort, a malformed line, or a throwing onRecord all leave the
+  // loop without reaching `done`. Cancelling closes the HTTP body
+  // instead of holding the socket open until garbage collection, which
+  // a long `--follow` run makes observable.
+  try {
+    for (;;) {
+      // biome-ignore lint/performance/noAwaitInLoops: a stream must be read sequentially, chunk by chunk.
+      const { done, value } = await reader.read();
+      if (value) {
+        buffer += decoder.decode(value, { stream: true });
       }
-      newlineIndex = buffer.indexOf("\n");
-    }
 
-    if (done) {
-      const tail = buffer.trim();
-      if (tail) {
-        onRecord(JSON.parse(tail) as T);
+      let newlineIndex = buffer.indexOf("\n");
+      while (newlineIndex !== -1) {
+        const line = buffer.slice(0, newlineIndex).trim();
+        buffer = buffer.slice(newlineIndex + 1);
+        if (line) {
+          onRecord(JSON.parse(line) as T);
+        }
+        newlineIndex = buffer.indexOf("\n");
       }
-      return;
+
+      if (done) {
+        const tail = buffer.trim();
+        if (tail) {
+          onRecord(JSON.parse(tail) as T);
+        }
+        return;
+      }
     }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
   }
 }
 
@@ -234,6 +243,7 @@ export const buildLogsCommand = defineSessionCommand({
 
     const body = data as ReadableStream<Uint8Array> | null | undefined;
     if (!response.ok || !body) {
+      await body?.cancel().catch(() => undefined);
       throw response.status === 404
         ? buildNotFoundError(buildId)
         : buildLogsFailedError(buildId, response.status);

@@ -83,6 +83,30 @@ function logRoutes(
   };
 }
 
+/** A body that never closes and whose first line is not JSON, so the
+ *  read loop leaves through the parse error instead of through `done`. */
+function malformedOpenBody(): {
+  body: ReadableStream<Uint8Array>;
+  cancelled: () => boolean;
+} {
+  let cancelled = false;
+  let sent = false;
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (sent) {
+        return;
+      }
+      sent = true;
+      controller.enqueue(encoder.encode("{ not json }\n"));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  return { body, cancelled: () => cancelled };
+}
+
 function outputs(events: readonly { kind: string }[]) {
   return events
     .filter((event) => event.kind === "output")
@@ -394,6 +418,25 @@ describe("prisma-v8 build logs", () => {
     }
     expect(frame.envelope.error.code).toBe("BUILD.LOGS_FAILED");
     expect(frame.envelope.error.meta).toMatchObject({ status: 503 });
+  });
+
+  it("closes the response body when the read loop leaves on a malformed line", async () => {
+    const { body, cancelled } = malformedOpenBody();
+    const harness = await makeServiceCli({
+      routes: { "GET /v1/builds/{buildId}/logs": () => ({ data: body }) },
+    });
+
+    const result = await harness.cli.run(["build", "logs", "bld_1", "--json"], {
+      cwd: harness.cwd,
+      env: harness.env,
+    });
+
+    expect(result.exitCode).not.toBe(0);
+    // Without the cleanup the reader keeps its lock and the HTTP body
+    // stays open until garbage collection, which a --follow run holds for
+    // as long as it runs.
+    expect(cancelled()).toBe(true);
+    expect(body.locked).toBe(false);
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {

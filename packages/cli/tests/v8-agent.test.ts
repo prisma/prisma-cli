@@ -1,11 +1,10 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createTestCli } from "@prisma/cli-engine/testing";
 import { execa } from "execa";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { mountedCommands } from "./v8-service-testkit";
+import { makeTempCwd, mountedCommands } from "./v8-service-testkit";
 
 vi.mock("execa", () => ({ execa: vi.fn() }));
 
@@ -25,8 +24,25 @@ async function makeCwd(): Promise<{
   cwd: string;
   env: Record<string, string>;
 }> {
-  const cwd = await mkdtemp(path.join(tmpdir(), "v8-agent-"));
+  const cwd = await makeTempCwd("v8-agent-");
   return { cwd, env: { PRISMA_CLI_STATE_DIR: path.join(cwd, ".state") } };
+}
+
+/** Runs `body` with process.platform reporting `platform`, which is the
+ *  only input to the installer's --copy rule. */
+async function withPlatform<T>(
+  platform: NodeJS.Platform,
+  body: () => Promise<T>,
+): Promise<T> {
+  const original = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { ...original, value: platform });
+  try {
+    return await body();
+  } finally {
+    if (original) {
+      Object.defineProperty(process, "platform", original);
+    }
+  }
 }
 
 function skillsListStdout(skills: unknown): { stdout: string; stderr: string } {
@@ -213,6 +229,25 @@ describe("prisma-v8 agent install", () => {
     expect(command).toContain("--agent");
     expect(command).toContain("*");
     expect(command).not.toContain("codex");
+  });
+
+  it("forces --copy on Windows and leaves it off on other platforms", async () => {
+    const { cwd, env } = await makeCwd();
+    const installerCommandOn = async (platform: NodeJS.Platform) =>
+      withPlatform(platform, async () => {
+        const result = await makeCli().run(["agent", "install", "--dry-run"], {
+          cwd,
+          env,
+        });
+        return (result.presented?.data as { skills: { command: string[] } })
+          .skills.command;
+      });
+
+    // Each platform's expectation is written out rather than rebuilt from
+    // process.platform, so inverting the rule fails this test instead of
+    // being mirrored by it.
+    expect(await installerCommandOn("win32")).toContain("--copy");
+    expect(await installerCommandOn("linux")).not.toContain("--copy");
   });
 
   it("uses the detected package manager for the installer", async () => {

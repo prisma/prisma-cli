@@ -172,8 +172,14 @@ describe("prisma-v8 service domain add", () => {
     }
     expect(frame.envelope.error.code).toBe("SERVICE.NO_DEPLOYMENTS");
     // No action suggests `service deploy --branch production`: the binary
-    // does not answer to it.
+    // does not answer to it. The advice carries what the user has to do
+    // first, so the retry action is not the only thing offered.
     expect(frame.envelope.nextActions).toEqual([
+      {
+        kind: "user-choice",
+        label:
+          "Promote a deployment on the service's production branch, then add the domain again.",
+      },
       {
         kind: "run-command",
         label: "Add the domain",
@@ -516,8 +522,8 @@ describe("prisma-v8 service domain retry", () => {
 });
 
 describe("prisma-v8 service domain remove", () => {
-  function removeRoutes(): Routes {
-    const removed: string[] = [];
+  /** `removed` collects the id of every domain the run deleted. */
+  function removeRoutes(removed: string[] = []): Routes {
     return domainRoutes({
       "DELETE /v1/domains/{domainId}": (init) => {
         removed.push(String(init.params?.path?.domainId));
@@ -531,7 +537,8 @@ describe("prisma-v8 service domain remove", () => {
   };
 
   it("removes the domain when --confirm carries the hostname non-interactively", async () => {
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+    const removed: string[] = [];
+    const harness = await makeServiceCli({ routes: removeRoutes(removed) });
 
     const result = await harness.cli.run(
       [
@@ -557,6 +564,7 @@ describe("prisma-v8 service domain remove", () => {
       tone: "ok",
       text: "Removed shop.acme.com from hello-world.",
     });
+    expect(removed).toEqual(["dom_1"]);
   });
 
   it("grants under --yes when --confirm carries the hostname", async () => {

@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type {
@@ -12,6 +12,7 @@ import {
   mintTestJwt,
   type SessionRecord,
 } from "@prisma/cli-engine/testing";
+import { onTestFinished } from "vitest";
 import type { AuthStateResult } from "../src/types/auth";
 import { MOUNTED_COMMANDS } from "../src/v8/cli";
 
@@ -119,7 +120,11 @@ export function fakeManagementClient(routes: Routes): ManagementApiClient {
     calls.push({ method, path, init });
     const handler = routes[`${method} ${path}`];
     if (!handler) {
-      throw new Error(`v8-service-testkit: unrouted request ${method} ${path}`);
+      // Rejected rather than thrown, so an unrouted request fails the way
+      // the real client fails and not one turn earlier.
+      return Promise.reject(
+        new Error(`v8-service-testkit: unrouted request ${method} ${path}`),
+      );
     }
     const result = handler((init ?? {}) as Parameters<RouteHandler>[0]);
     if ("error" in result) {
@@ -319,6 +324,17 @@ export interface ServiceCliOptions {
   openUrl?: (url: string) => Promise<void> | void;
 }
 
+/** A per-test working directory that removes itself when the test ends,
+ *  so a suite run does not leave one directory per test behind in the
+ *  OS temp location. */
+export async function makeTempCwd(prefix: string): Promise<string> {
+  const cwd = await mkdtemp(path.join(tmpdir(), prefix));
+  onTestFinished(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+  return cwd;
+}
+
 export interface ServiceCliHarness {
   cli: ReturnType<typeof createTestCli>;
   cwd: string;
@@ -329,7 +345,7 @@ export interface ServiceCliHarness {
 export async function makeServiceCli(
   options: ServiceCliOptions = {},
 ): Promise<ServiceCliHarness> {
-  const cwd = await mkdtemp(path.join(tmpdir(), "v8-service-"));
+  const cwd = await makeTempCwd("v8-service-");
   const stateDir = path.join(cwd, ".state");
   const env: Record<string, string | undefined> = {
     PRISMA_CLI_STATE_DIR: stateDir,

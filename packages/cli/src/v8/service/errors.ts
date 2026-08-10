@@ -517,6 +517,13 @@ export function domainCommandError(
           why: "The selected production service does not have a promoted version that can receive a custom domain.",
           meta: debugMeta(error),
           nextActions: [
+            // Legacy paired "rerun the domain command" with the fix line
+            // that told the user what to do first. The deploy action went
+            // with the dropped command; without the advice the only thing
+            // left told the user to rerun what had just failed.
+            adviceAction(
+              "Promote a deployment on the service's production branch, then add the domain again.",
+            ),
             runCommandAction(
               "Add the domain",
               `service domain add ${hostname}`,

@@ -47,5 +47,11 @@ Two of D4's closure items diverge from the plan deliberately, both
 recorded in the review ledger: the legacy fixture tests were **not**
 deleted, because the commander shell still serves those commands until
 S2d removes it, and the fixture-deletion decision is with the operator;
-and the PR opens against `s2a-foundations` rather than `main`, without a
-merge-down from it, because that branch's tip is explicitly unverified.
+and the PR opens against `s2a-foundations` rather than `main`, because
+that branch is where the engine and auth foundations this slice builds
+on still live.
+
+That second item was written when the branch carried no merge-down from
+its base. It has since taken three, the last of them `dc44f75`, which is
+how the rev-6 credential surface reached this slice; the merge review
+that followed is recorded in the review ledger.

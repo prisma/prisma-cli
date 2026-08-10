@@ -18,10 +18,7 @@ export const serviceDomainRemoveCommand = defineCommand({
       "service domain remove shop.acme.com --confirm shop.acme.com",
     ],
   },
-  args: {
-    flags: domainTargetArgs().flags,
-    positionals: domainTargetArgs().positionals,
-  },
+  args: domainTargetArgs(),
   needs: { credentials: true },
   handler: async (args, ctx) => {
     const hostname = normalizeDomainHostname(args.positionals.hostname);
