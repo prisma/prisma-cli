@@ -1,6 +1,9 @@
 import { type Cli, createCli, defineCommandFamily } from "@prisma/cli-engine";
 import { CLI_DOCS_URL } from "../cli-name";
 import { getCliVersion } from "../lib/version";
+import { agentInstallCommand } from "./agent/install";
+import { agentStatusCommand } from "./agent/status";
+import { agentUpdateCommand } from "./agent/update";
 import { authLoginCommand } from "./auth/login";
 import { authLogoutCommand } from "./auth/logout";
 import { authWhoamiCommand } from "./auth/whoami";
@@ -8,6 +11,7 @@ import { authWorkspaceListCommand } from "./auth/workspace-list";
 import { authWorkspaceLogoutCommand } from "./auth/workspace-logout";
 import { authWorkspaceUseCommand } from "./auth/workspace-use";
 import { buildLogsCommand } from "./build/logs";
+import { feedbackCommand } from "./feedback";
 import { serviceBuildCommand } from "./service/build";
 import { serviceDeployCommand } from "./service/deploy";
 import { serviceDomainAddCommand } from "./service/domain-add";
@@ -68,6 +72,7 @@ export function buildCli(): Cli {
       service: { brief: "Manage services and deployments for a project" },
       "service domain": { brief: "Manage custom domains for a service" },
       build: { brief: "Inspect builds created by a git push or Console" },
+      agent: { brief: "Install Prisma context for AI coding agents" },
       telemetry: {
         brief: "Inspect and change anonymous CLI telemetry",
         description:
@@ -101,6 +106,11 @@ export function buildCli(): Cli {
       // Platform builds are their own group; `service build` is the local
       // build verb and shares nothing with it.
       "build logs": buildLogsCommand,
+      // Shell-owned local utilities (no command family).
+      "agent install": agentInstallCommand,
+      "agent update": agentUpdateCommand,
+      "agent status": agentStatusCommand,
+      feedback: feedbackCommand,
       // Shell-owned consent surface (no command family).
       "telemetry status": telemetryStatusCommand,
       "telemetry enable": telemetryEnableCommand,
