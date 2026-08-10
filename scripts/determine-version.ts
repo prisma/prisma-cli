@@ -33,7 +33,6 @@ import type { VersionResult } from "./determine-version-utils.ts";
 import {
   assertCanonicalBase,
   composeDevVersion,
-  isReleaseCommitSubject,
 } from "./determine-version-utils.ts";
 
 // `@prisma/cli` has the longest publish history in this repo (it carries
@@ -145,22 +144,14 @@ switch (eventName) {
     // through to the dev path: a transient git error must never silently
     // promote to `latest`.
     const previous = readPreviousRootVersion();
-    const versionChanged =
+    const isReleaseBump =
       previous.available && previous.version !== baseVersion;
-    const isReleaseCommit = isReleaseCommitSubject(
-      process.env.HEAD_COMMIT_SUBJECT ?? "",
-    );
-    if (versionChanged && isReleaseCommit) {
+    if (isReleaseBump) {
       console.log(
         `Previous root version: ${previous.version ?? "(unset)"} → release bump detected.`,
       );
       result = { version: baseVersion, tag: "latest" };
     } else {
-      if (versionChanged) {
-        console.log(
-          "Root version changed without a chore(release) commit — publishing a dev build only. Releases ship exclusively through a merged bump PR.",
-        );
-      }
       result = composeDevVersion(baseVersion, getLatestDevVersion());
     }
     break;

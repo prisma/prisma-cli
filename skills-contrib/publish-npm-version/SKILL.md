@@ -27,16 +27,8 @@ Read [`docs/oss/versioning.md`](../../docs/oss/versioning.md) first. It
 covers the source-of-truth model (root `package.json` `version`), the
 lockstep guarantee (`@prisma/compute` excluded by ruling), the v8 RC
 line, the dist-tag convention, and the release procedure this skill is
-one step of. Two rules specific to this repo:
-
-- **Releases require the commit-subject marker.** The publish workflow
-  ships a release only when the push to `main` both changes the root
-  `version` AND carries a `chore(release): ...` subject. Any other
-  version-changing merge publishes a `dev` build only.
-- **This repo squash-merges.** The subject that lands on `main` is the
-  PR TITLE, not the branch commit's. The PR title below therefore
-  matters mechanically: it must be `chore(release): bump to <version>` or the
-  merge will not publish.
+one step of. One note specific to this
+repo: the lockstep excludes `@prisma/compute` by operator ruling.
 
 ## Pre-flight
 
@@ -87,11 +79,10 @@ succeeds; if not, stop and surface the issue.
 
 7. **Push the branch** to `origin`.
 
-8. **Open the PR** with `gh pr create`. Title (mandatory — the squash
-   commit inherits it and the publish workflow checks it):
+8. **Open the PR** with `gh pr create`. Use the title:
 
    ```text
-   chore(release): bump to <version>
+   Bump to version <version>
    ```
 
    Body: previous → new version; link
