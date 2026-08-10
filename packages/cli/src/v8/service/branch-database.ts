@@ -248,7 +248,7 @@ async function setupBranchDatabase(
       },
       diagnostics: [
         advice(
-          `The new database is empty. Get a connection URL with \`prisma-cli database connection create ${database.id}\`, then apply your schema with ${schemaCommand}.`,
+          `The new database is empty. Get a connection URL with \`prisma-cli postgres connection create ${database.id}\`, then apply your schema with ${schemaCommand}.`,
         ),
       ],
     };

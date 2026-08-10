@@ -786,23 +786,6 @@ export function regionMismatchError(
   );
 }
 
-export function serviceAmbiguousError(
-  targetName: string,
-  candidates: Array<{ id: string; name: string }>,
-): CliStructuredError {
-  return new CliStructuredError(
-    "SERVICE.AMBIGUOUS",
-    "Service resolution is ambiguous",
-    {
-      why: `Multiple services matched "${targetName}".`,
-      meta: { candidates },
-      nextActions: [
-        adviceAction("Pass --service <name> to choose the service explicitly."),
-      ],
-    },
-  );
-}
-
 export function deployServiceEnvMissingError(
   envVarName: string,
   serviceId: string,
@@ -965,8 +948,11 @@ export function serviceDeployFailedError(
                 kind: "edit-file",
                 label: "Add Next.js standalone output",
                 reason:
-                  "Prisma Compute needs Next.js standalone output to build a deployable server artifact.",
+                  'Add output: "standalone" to next.config.*, then rerun deploy. Prisma Compute needs Next.js standalone output to build a deployable server artifact.',
               },
+              adviceAction(
+                'Add output: "standalone" to next.config.*, then rerun deploy.',
+              ),
               runCommandAction("Rerun deploy", "service deploy"),
             ]
           : [
