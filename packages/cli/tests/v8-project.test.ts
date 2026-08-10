@@ -1446,8 +1446,7 @@ describe("prisma-v8 project env add", () => {
         nextActions: [
           {
             kind: "user-choice",
-            label:
-              "Run prisma-cli auth login, or rerun the command in a TTY to sign in interactively.",
+            label: "Run prisma-cli auth login.",
           },
           {
             kind: "run-command",

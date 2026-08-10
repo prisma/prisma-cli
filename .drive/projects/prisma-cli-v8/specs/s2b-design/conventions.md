@@ -136,6 +136,17 @@ module.
   `notOk(mapped)` or rethrow (engine settles `CLI.INTERNAL_ERROR`,
   exit 1). `new CliStructuredError(code, summary, { why, meta,
   nextActions })`; `meta` only when non-empty.
+- Fix-text substitutions (OPERATOR RULING 2026-08-10). Two clauses in
+  legacy `fix` prose describe mechanisms v8 does not have, so every
+  group mapper rewrites them: `--trace` becomes `--log-level verbose`,
+  and the legacy `authRequiredError` offer ", or rerun the command in a
+  TTY to sign in interactively." is deleted, leaving "Run
+  `${CLI_NAME} auth login`." R-S2b-2 removed auto-login, so no v8 run
+  can sign in by being rerun in a terminal, and the sentence sent people
+  to a remedy that no longer exists. The legacy shell keeps the original
+  string — it still auto-logs-in, and `shell/errors.ts` is shared — so
+  the rewrite lives in the v8 mappers, never in legacy source.
+  Divergence entry; both groups that map `AUTH_REQUIRED` test it.
 - nextActions on mapped errors: legacy `fix` → exactly one
   `{ kind: "user-choice", label: fix }`; each legacy `nextSteps`
   command string additionally maps to

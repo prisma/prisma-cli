@@ -553,6 +553,35 @@ describe("prisma-v8 git disconnect", () => {
     });
   });
 
+  it("maps a forbidden delete to GIT.AUTH_REQUIRED without the TTY offer", async () => {
+    const result = await makeCli(
+      gitClient({
+        sourceRepositories: [SOURCE_REPOSITORY],
+        routes: {
+          "DELETE /v1/source-repositories/{id}": () => apiFailure(403, {}),
+        },
+      }),
+    ).run(["git", "disconnect", "--json"], { cwd: await pinnedCwd() });
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "GIT.AUTH_REQUIRED",
+        summary: "Authentication required",
+        why: "This command needs an authenticated session.",
+        nextActions: [
+          { kind: "user-choice", label: "Run prisma-cli auth login." },
+          {
+            kind: "run-command",
+            label: "prisma-cli auth login",
+            command: "prisma-cli auth login",
+          },
+        ],
+      },
+    });
+  });
+
   it("falls back to the log-level fix text on a status with no variant", async () => {
     const result = await makeCli(
       gitClient({

@@ -33,9 +33,16 @@ const PROJECT_CODES: ReadonlySet<string> = new Set([
   "LOCAL_PROJECT_WORKSPACE_MISMATCH",
 ]);
 
-/** `--trace` is gone in v8; the log level replaces it. */
+const STALE_INTERACTIVE_SIGN_IN =
+  ", or rerun the command in a TTY to sign in interactively.";
+
+/** `--trace` is gone in v8; the log level replaces it. Interactive
+ *  sign-in is gone too (R-S2b-2), so the legacy offer to rerun in a TTY
+ *  describes something v8 cannot do; `auth login` is the whole remedy. */
 function portFixText(fix: string): string {
-  return fix.replace("--trace", "--log-level verbose");
+  return fix
+    .replace("--trace", "--log-level verbose")
+    .replace(STALE_INTERACTIVE_SIGN_IN, ".");
 }
 
 function nextActionsFor(error: CliError): NextAction[] {

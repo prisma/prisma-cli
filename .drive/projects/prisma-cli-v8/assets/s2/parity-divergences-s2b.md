@@ -73,7 +73,13 @@ in round 2, once the engine's consent tokens arrived
     so what still reaches `apiCallError` is the permission residue, a
     returned 403, which is not a sign-in problem. The legacy next
     step's `prisma auth login` copy bug normalizes to
-    `prisma-cli auth login`.
+    `prisma-cli auth login`. Its fix text also loses the clause ", or
+    rerun the command in a TTY to sign in interactively." and reads
+    "Run prisma-cli auth login." — auto-login is gone (R-S2b-2), so
+    rerunning in a terminal can no longer sign anyone in and the
+    sentence pointed at a remedy v8 does not have (operator ruling
+    2026-08-10; conventions §4). The legacy shell keeps the original
+    sentence, which is still true there.
 15. **`project rename` name-validation copy** still reads "Project
     create requires a name" — the legacy copy bug ports verbatim
     (recorded, not fixed).
@@ -358,7 +364,9 @@ dropped). On top of them:
     engine settles every real credentials failure itself, so what still
     reaches the git mapper is the permission residue of a returned 403.
     It maps mechanically to `GIT.AUTH_REQUIRED` — D1's class entry 14,
-    same reasoning.
+    same reasoning, including that entry's fix-text change: the offer
+    to rerun in a TTY to sign in interactively is dropped, so the fix
+    reads "Run prisma-cli auth login."
 41. **`PROJECT_AMBIGUOUS`'s hardcoded `app deploy` next step ports
     verbatim** for `bucket list`, `bucket create` and the git commands, as
     it did in D1. A pre-existing quirk, recorded rather than fixed.
