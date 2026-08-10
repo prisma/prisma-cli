@@ -113,18 +113,27 @@ export async function resolveComputeTarget(
   ctx: ServiceContext,
   configTarget: string | undefined,
   commandName: string,
-  options?: { targetOptional?: boolean },
+  options?: {
+    targetOptional?: boolean;
+    /** Already-loaded config (or null for none); skips loading when given. */
+    preloaded?: LoadedComputeConfig | null;
+  },
 ): Promise<{
   config: LoadedComputeConfig | null;
   target: ComputeDeployTarget | null;
 }> {
-  const loaded = await loadComputeConfig(ctx.cwd, ctx.signal);
-  if (loaded.isErr()) {
-    throw fromLegacyCliError(
-      computeConfigErrorToCliError(loaded.error, commandName),
-    );
+  let config: LoadedComputeConfig | null;
+  if (options?.preloaded !== undefined) {
+    config = options.preloaded;
+  } else {
+    const loaded = await loadComputeConfig(ctx.cwd, ctx.signal);
+    if (loaded.isErr()) {
+      throw fromLegacyCliError(
+        computeConfigErrorToCliError(loaded.error, commandName),
+      );
+    }
+    config = loaded.value;
   }
-  const config = loaded.value;
   if (!config) {
     if (configTarget) {
       throw configTargetRequiresConfigError(

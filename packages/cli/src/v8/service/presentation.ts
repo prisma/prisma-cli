@@ -3,7 +3,9 @@ import type { NextAction } from "@prisma/cli-engine/protocol";
 import { runCommandAction } from "./errors";
 import type {
   ServiceBuildResult,
+  ServiceDeployAllResult,
   ServiceDeploymentSummary,
+  ServiceDeployResult,
   ServiceDomainAddResult,
   ServiceDomainRemoveResult,
   ServiceDomainRetryResult,
@@ -217,6 +219,97 @@ export function openPresentations(
         "Show the live deployment",
         `service show-deploy ${liveDeploymentId}`,
       ),
+    ],
+  };
+}
+
+export function deployPresentations(
+  result: ServiceDeployResult,
+): Presentations {
+  const settings = result.deploySettings;
+  return {
+    human: () => [
+      {
+        kind: "summary",
+        tone: "ok",
+        text: result.promoted
+          ? `Deployed ${result.service.name} to ${result.branch.name}.`
+          : `Built ${result.service.name} without promoting it.`,
+      },
+      fields([
+        { label: "project", value: result.project.name },
+        { label: "branch", value: result.branch.name },
+        { label: "service", value: result.service.name },
+        { label: "deployment", value: result.deployment.id },
+        { label: "status", value: result.deployment.status },
+        ...(result.deployment.url
+          ? [{ label: "url", value: result.deployment.url }]
+          : []),
+        { label: "framework", value: settings.framework.name },
+        { label: "http port", value: String(settings.httpPort) },
+        {
+          label: "build command",
+          value: settings.buildCommand.value ?? "none",
+        },
+        { label: "output directory", value: settings.outputDirectory.value },
+        ...(settings.entrypoint
+          ? [{ label: "entrypoint", value: settings.entrypoint }]
+          : []),
+        ...(settings.region
+          ? [{ label: "region", value: settings.region }]
+          : []),
+        ...(result.branchDatabase
+          ? [
+              {
+                label: "branch database",
+                value:
+                  result.branchDatabase.status === "created"
+                    ? `created (${result.branchDatabase.envVars.join(", ")})`
+                    : `skipped (${result.branchDatabase.reason ?? "unchanged"})`,
+              },
+            ]
+          : []),
+        { label: "duration", value: `${result.durationMs}ms` },
+      ]),
+    ],
+    next: () =>
+      result.promoted
+        ? deploymentNextActions(result.deployment.id)
+        : [
+            runCommandAction(
+              "Promote the deployment",
+              `service promote ${result.deployment.id}`,
+            ),
+            runCommandAction(
+              "Show the deployment",
+              `service show-deploy ${result.deployment.id}`,
+            ),
+          ],
+  };
+}
+
+export function deployAllPresentations(
+  result: ServiceDeployAllResult,
+): Presentations {
+  return {
+    human: () => [
+      title(`Deployed ${result.deployments.length} services.`),
+      {
+        kind: "table",
+        columns: ["target", "service", "deployment", "status", "promoted"],
+        rows: result.deployments.map((entry) => [
+          entry.target,
+          entry.result.service.name,
+          entry.result.deployment.id,
+          entry.result.deployment.status,
+          entry.result.promoted ? "yes" : "",
+        ]),
+      },
+    ],
+    // A bare list-deploys follows the remembered selection (the last target
+    // deployed), so the multi-service suggestion names a target.
+    next: () => [
+      runCommandAction("List deployments", "service list-deploys <service>"),
     ],
   };
 }

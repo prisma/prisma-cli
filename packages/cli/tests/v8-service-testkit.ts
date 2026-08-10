@@ -5,6 +5,7 @@ import type { ManagementApiClient } from "@prisma/cli-engine";
 import { createTestCli } from "@prisma/cli-engine/testing";
 import type { AuthStateResult } from "../src/types/auth";
 import { serviceBuildCommand } from "../src/v8/service/build";
+import { serviceDeployCommand } from "../src/v8/service/deploy";
 import { serviceDomainAddCommand } from "../src/v8/service/domain-add";
 import { serviceDomainRemoveCommand } from "../src/v8/service/domain-remove";
 import { serviceDomainRetryCommand } from "../src/v8/service/domain-retry";
@@ -275,6 +276,7 @@ export const SERVICE_GROUPS = {
 
 export const SERVICE_COMMANDS = {
   "service build": serviceBuildCommand,
+  "service deploy": serviceDeployCommand,
   "service show": serviceShowCommand,
   "service open": serviceOpenCommand,
   "service list-deploys": serviceListDeploysCommand,

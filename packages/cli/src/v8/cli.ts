@@ -8,6 +8,7 @@ import { authWorkspaceListCommand } from "./auth/workspace-list";
 import { authWorkspaceLogoutCommand } from "./auth/workspace-logout";
 import { authWorkspaceUseCommand } from "./auth/workspace-use";
 import { serviceBuildCommand } from "./service/build";
+import { serviceDeployCommand } from "./service/deploy";
 import { serviceDomainAddCommand } from "./service/domain-add";
 import { serviceDomainRemoveCommand } from "./service/domain-remove";
 import { serviceDomainRetryCommand } from "./service/domain-retry";
@@ -42,6 +43,7 @@ export function buildCli(): Cli {
       defineCommandFamily({
         commands: {
           serviceBuild: serviceBuildCommand,
+          serviceDeploy: serviceDeployCommand,
           serviceShow: serviceShowCommand,
           serviceOpen: serviceOpenCommand,
           serviceListDeploys: serviceListDeploysCommand,
@@ -78,6 +80,7 @@ export function buildCli(): Cli {
       "auth workspace use": authWorkspaceUseCommand,
       "auth workspace logout": authWorkspaceLogoutCommand,
       "service build": serviceBuildCommand,
+      "service deploy": serviceDeployCommand,
       "service show": serviceShowCommand,
       "service open": serviceOpenCommand,
       "service list-deploys": serviceListDeploysCommand,

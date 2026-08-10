@@ -677,6 +677,381 @@ export function frameworkNotDetectedError(cwd: string): CliStructuredError {
   );
 }
 
+export function deployFrameworkNotDetectedError(
+  serviceDir: string | undefined,
+  supported: { displayNames: string[]; keys: string[] },
+  requestedFramework?: string,
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.FRAMEWORK_NOT_DETECTED",
+    requestedFramework
+      ? `Unsupported framework "${requestedFramework}"`
+      : `Cannot detect a supported framework${serviceDir ? ` in ${serviceDir}` : ""}`,
+    {
+      why: `Supported Beta frameworks: ${supported.displayNames.join(", ")}.`,
+      nextActions: [
+        adviceAction(
+          `Add one of these frameworks as a dependency, pass --framework <${supported.keys.join("|")}>, or pass --entry <path> for a Bun service.`,
+        ),
+        runCommandAction(
+          "Deploy a Next.js service",
+          "service deploy --framework nextjs",
+        ),
+        runCommandAction(
+          "Deploy a Bun service",
+          "service deploy --entry server.ts",
+        ),
+      ],
+    },
+  );
+}
+
+export function deployEntrypointUnsupportedError(
+  displayName: string,
+  buildType: string,
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.ENTRYPOINT_UNSUPPORTED",
+    `Service deploy does not accept --entry with ${displayName}`,
+    {
+      why: `${displayName} services derive their runtime entrypoint from build output.`,
+      nextActions: [
+        adviceAction(
+          "Remove --entry, or use --framework bun when you want to target a Bun entrypoint directly.",
+        ),
+        runCommandAction(
+          "Deploy this framework",
+          `service deploy --framework ${buildType}`,
+        ),
+        runCommandAction(
+          "Deploy a Bun service",
+          "service deploy --framework bun --entry server.ts",
+        ),
+      ],
+    },
+  );
+}
+
+export function httpPortInvalidError(value: string): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.HTTP_PORT_INVALID",
+    `Invalid HTTP port "${value}"`,
+    {
+      why: "HTTP port must be an integer between 1 and 65535.",
+      nextActions: [
+        runCommandAction("Deploy on a port", "service deploy --http-port 3000"),
+      ],
+    },
+  );
+}
+
+export function regionInvalidError(
+  source: string,
+  regions: readonly string[],
+  empty: boolean,
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.REGION_INVALID",
+    "Invalid service region",
+    {
+      why: empty
+        ? `The service region ${source} must be a non-empty region id.`
+        : `The service region ${source} must be one of: ${regions.join(", ")}.`,
+      nextActions: [
+        runCommandAction(
+          "Deploy in a region",
+          "service deploy --region eu-central-1",
+        ),
+      ],
+    },
+  );
+}
+
+export function regionMismatchError(
+  serviceName: string,
+  serviceRegion: string,
+  requestedRegion: string,
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.REGION_MISMATCH",
+    "Service already exists in another region",
+    {
+      why: `The selected service "${serviceName}" is in region "${serviceRegion}", but --region requested "${requestedRegion}".`,
+      nextActions: [
+        adviceAction(
+          "Remove --region to deploy the existing service, or pass --service <new-name> to create a new service in that region.",
+        ),
+      ],
+    },
+  );
+}
+
+export function serviceAmbiguousError(
+  targetName: string,
+  candidates: Array<{ id: string; name: string }>,
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.AMBIGUOUS",
+    "Service resolution is ambiguous",
+    {
+      why: `Multiple services matched "${targetName}".`,
+      meta: { candidates },
+      nextActions: [
+        adviceAction("Pass --service <name> to choose the service explicitly."),
+      ],
+    },
+  );
+}
+
+export function deployServiceEnvMissingError(
+  envVarName: string,
+  serviceId: string,
+  projectId: string,
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.SELECTION_INVALID",
+    "Selected service does not exist in the resolved project",
+    {
+      why: `The service "${serviceId}" from ${envVarName} could not be found in resolved project "${projectId}".`,
+      nextActions: [
+        adviceAction(
+          `Unset ${envVarName}, pass --service <name>, or choose a service from list-deploys.`,
+        ),
+        runCommandAction("List deployments", "service list-deploys"),
+      ],
+    },
+  );
+}
+
+export function projectInputsAmbiguousError(
+  provided: string[],
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.PROJECT_INPUTS_AMBIGUOUS",
+    "Project selection is ambiguous",
+    {
+      why: `${provided.join(", ")} cannot be used together.`,
+      nextActions: [
+        adviceAction("Choose exactly one Project source for this deploy."),
+        runCommandAction(
+          "Deploy into a project",
+          "service deploy --project <id-or-name>",
+        ),
+      ],
+    },
+  );
+}
+
+export function projectSetupRequiredError(
+  candidates: Array<{ id: string; name: string }>,
+  suggestedName: { name: string; source: string },
+): CliStructuredError {
+  const createCommand = `service deploy --create-project ${suggestedName.name}`;
+  return new CliStructuredError(
+    "SERVICE.PROJECT_SETUP_REQUIRED",
+    "Choose a Project before deploying this directory",
+    {
+      why: "This directory is not linked to a Prisma Project, and deploy will not choose or create one implicitly.",
+      meta: {
+        candidates,
+        suggestedProjectName: suggestedName.name,
+        suggestedProjectNameSource: suggestedName.source,
+      },
+      nextActions: [
+        adviceAction(
+          "Choose an existing Project with --project, create one with --create-project, or rerun interactively to pick from the setup list.",
+        ),
+        runCommandAction("List projects", "project list"),
+        runCommandAction(
+          "Deploy into a project",
+          "service deploy --project <id-or-name>",
+        ),
+        runCommandAction("Create a project", createCommand),
+      ],
+    },
+  );
+}
+
+export function projectNameInvalidError(why: string): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.PROJECT_NAME_INVALID",
+    "Project create requires a valid name",
+    {
+      why,
+      nextActions: [
+        runCommandAction(
+          "Create the project explicitly",
+          "service deploy --create-project <name>",
+        ),
+      ],
+    },
+  );
+}
+
+export function localResolutionPinStaleError(
+  pinPath: string,
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.LOCAL_STATE_STALE",
+    "Local project binding is stale",
+    {
+      why: `The target recorded in ${pinPath} is no longer available in the selected workspace.`,
+      meta: { pinPath },
+      nextActions: [
+        adviceAction(`Delete ${pinPath}, then choose a Project explicitly.`),
+        runCommandAction("List projects", "project list"),
+        runCommandAction(
+          "Deploy into a project",
+          "service deploy --project <id-or-name>",
+        ),
+      ],
+    },
+  );
+}
+
+export function prodDeployRequiresFlagError(): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.PROD_DEPLOY_REQUIRES_FLAG",
+    "Production deploy requires --prod",
+    {
+      why: "The resolved Branch is production and this Service already has a production deployment.",
+      nextActions: [
+        runCommandAction("Deploy to production", "service deploy --prod"),
+        {
+          kind: "run-command",
+          label: "Create a preview branch",
+          commands: [
+            "git checkout -b <branch-name>",
+            `${CLI_NAME} service deploy`,
+          ],
+        },
+      ],
+    },
+  );
+}
+
+/**
+ * The deploy failure, phase-aware: a failure between build start and
+ * build completion is a local build failure (with the Next standalone
+ * hint when the message names it); everything later is a deploy failure
+ * carrying the deployment id for log inspection.
+ */
+export function serviceDeployFailedError(
+  cause: unknown,
+  progress: {
+    buildStarted: boolean;
+    buildCompleted: boolean;
+    archiveReady: boolean;
+    uploadCompleted: boolean;
+    deploymentId: string | null;
+    containerLive: boolean;
+    deploymentUrl: string | null;
+  },
+): CliStructuredError {
+  const why = cause instanceof Error ? cause.message : String(cause);
+
+  if (progress.buildStarted && !progress.buildCompleted) {
+    const standaloneOutput =
+      /next\.?js/i.test(why) && /standalone output/i.test(why);
+    return new CliStructuredError(
+      "SERVICE.BUILD_FAILED",
+      "Build failed locally.",
+      {
+        why,
+        meta: { phase: "build" },
+        nextActions: standaloneOutput
+          ? [
+              {
+                kind: "edit-file",
+                label: "Add Next.js standalone output",
+                reason:
+                  "Prisma Compute needs Next.js standalone output to build a deployable server artifact.",
+              },
+              runCommandAction("Rerun deploy", "service deploy"),
+            ]
+          : [
+              adviceAction(
+                "Inspect the build output above, fix the error, and redeploy.",
+              ),
+            ],
+        cause,
+      },
+    );
+  }
+
+  if (!progress.buildStarted) {
+    return deployFailedError("Service deploy failed", cause, [
+      runCommandAction("Deploy the service", "service deploy"),
+    ]);
+  }
+
+  const summary = progress.containerLive
+    ? "The deployment started, but the service is not ready yet."
+    : "Deploy failed after the build completed.";
+  return new CliStructuredError("SERVICE.DEPLOY_FAILED", summary, {
+    why,
+    meta: {
+      phase: progress.containerLive ? "runtime_ready" : "deploy",
+      deploymentId: progress.deploymentId,
+      deploymentUrl: progress.deploymentUrl,
+    },
+    nextActions: progress.deploymentId
+      ? [
+          runCommandAction(
+            "See what happened",
+            `service logs --deployment ${progress.deploymentId}`,
+          ),
+        ]
+      : [adviceAction("Retry the command, or rerun with --log-level verbose.")],
+    cause,
+  });
+}
+
+export function buildSettingsMigrationRequiredError(options: {
+  configFilename: string;
+  buildBlock: string;
+  configPath: string;
+  meta: Record<string, unknown>;
+}): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.BUILD_SETTINGS_MIGRATION_REQUIRED",
+    `${options.configFilename} is no longer supported`,
+    {
+      why: `${options.configFilename} contains custom build settings that differ from the resolved defaults, and the file is no longer read.`,
+      where: { path: options.configPath },
+      meta: options.meta,
+      nextActions: [
+        adviceAction(
+          `Move the settings into prisma.compute.ts as \`${options.buildBlock}\` on this service, then delete ${options.configFilename}.`,
+        ),
+      ],
+    },
+  );
+}
+
+export function branchDatabaseSetupFailedError(
+  summary: string,
+  cause: unknown,
+  branchName: string,
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.BRANCH_DATABASE_SETUP_FAILED",
+    summary,
+    {
+      why: cause instanceof Error ? cause.message : String(cause),
+      meta: { branch: branchName },
+      nextActions: [
+        adviceAction(
+          "Retry the command, or create the database and env vars manually with project env commands.",
+        ),
+      ],
+      cause,
+    },
+  );
+}
+
+export { adviceAction };
+
 export function buildSettingsUnsupportedError(
   displayName: string,
   buildType: string,
