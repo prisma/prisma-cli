@@ -42,8 +42,19 @@ in the v8 tree.
 
 Every errored settlement exits 2 (engine rule; the legacy exit-1
 errors below change as a class). `fix` prose maps to a `user-choice`
-nextAction; command-shaped `nextSteps` map to `run-command`
-nextActions with the renamed `service` spelling.
+nextAction — appended after the legacy typed `nextActions` when an
+error carries both (e.g. `PROJECT_SETUP_REQUIRED`), so no advice is
+lost; command-shaped `nextSteps` map to `run-command` nextActions
+with the renamed `service` spelling.
+
+Rename inside ported error prose: command lines (`prisma-cli app …` →
+`prisma-cli service …`) and the "app target" noun rename;
+prose that names the SDK-owned config entries deliberately keeps
+`app` — `defineComputeConfig({ app })` and
+`ComputeConfigTargetUnknownError`'s "this config defines a single
+app." refer to the `prisma.compute.ts` `app:`/`apps:` keys, which do
+not rename until the compute-sdk coordination lands (decided, not an
+accident of the substitution list).
 
 | Legacy flat code (exit) | v8 dotted code (exit) | Commands |
 | --- | --- | --- |
@@ -160,6 +171,9 @@ until then: interactive runs no longer open the browser.
 - `service list-deploys` json result is the plain
   `{projectId, service, deployments}` record; the legacy
   `items`/`count` list-serializer wrapper does not port.
+- Domain results drop the `branch.id` field (legacy emitted
+  `branch: {id, name, kind}` with `id` always `null` for domain
+  commands; v8 emits `branch: {name, kind}`).
 - Human output: whoami-style summary + field rows (and a table for
   list-deploys) on stderr; these commands write no stdout payload in
   human mode except `service open`, which now prints the URL as its

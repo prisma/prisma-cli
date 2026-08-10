@@ -189,7 +189,10 @@ export function showDeployPresentations(
   };
 }
 
-export function openPresentations(result: ServiceOpenResult): Presentations {
+export function openPresentations(
+  result: ServiceOpenResult,
+  liveDeploymentId: string,
+): Presentations {
   return {
     human: () => [
       title(
@@ -205,7 +208,13 @@ export function openPresentations(result: ServiceOpenResult): Presentations {
       ]),
     ],
     stdout: () => [result.url],
-    next: () => [runCommandAction("Inspect the service", "service show")],
+    next: () => [
+      runCommandAction("Inspect the service", "service show"),
+      runCommandAction(
+        "Show the live deployment",
+        `service show-deploy ${liveDeploymentId}`,
+      ),
+    ],
   };
 }
 

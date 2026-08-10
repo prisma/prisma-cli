@@ -28,28 +28,31 @@ function toEngineNextAction(action: LegacyNextAction): NextAction {
 
 /**
  * The rename surface for copy that flows through legacy error builders:
- * command lines and the noun in prose headings. Deliberately narrow —
- * `prisma.compute.ts` keys stay `app` (SDK-owned).
+ * command lines and the "app target" noun in prose. Deliberately
+ * narrow — `prisma.compute.ts` keys stay `app` (SDK-owned), including
+ * prose that describes the config's `app`/`apps` entries.
  */
 export function renameAppCopy(text: string): string {
   return text
     .replaceAll("prisma-cli app ", `${CLI_NAME} service `)
     .replaceAll("App target", "Service target")
-    .replaceAll(/^Unknown app target/g, "Unknown service target");
+    .replaceAll("app target", "service target");
 }
 
 /**
  * Maps a legacy CliError onto the engine error protocol: the flat code
  * becomes `SERVICE.<code>`, the free-text fix becomes a user-choice
- * action, and nextSteps that are command lines become run-command
- * actions. Copy passes through the rename surface.
+ * action carried alongside any typed legacy actions, and nextSteps that
+ * are command lines become run-command actions. Copy passes through the
+ * rename surface.
  */
 export function fromLegacyCliError(error: CliError): CliStructuredError {
+  const fixAction = error.fix ? [adviceAction(renameAppCopy(error.fix))] : [];
   const nextActions: NextAction[] =
     error.nextActions.length > 0
-      ? error.nextActions.map(toEngineNextAction)
+      ? [...error.nextActions.map(toEngineNextAction), ...fixAction]
       : [
-          ...(error.fix ? [adviceAction(renameAppCopy(error.fix))] : []),
+          ...fixAction,
           ...error.nextSteps
             .filter((step) => step.startsWith("prisma-cli "))
             .map((step) => ({

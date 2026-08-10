@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createTestCli } from "@prisma/cli-engine/testing";
@@ -157,6 +157,41 @@ describe("prisma-v8 service build", () => {
     }
     expect(frame.envelope.error.code).toBe("SERVICE.ENTRYPOINT_UNSUPPORTED");
     expect(executeAppBuild).not.toHaveBeenCalled();
+  });
+
+  it("renames every noun in the multi-target error copy to service", async () => {
+    const cwd = await makeCwd();
+    await writeFile(
+      path.join(cwd, "prisma.compute.json"),
+      JSON.stringify({
+        apps: { web: { framework: "nextjs" }, api: { framework: "hono" } },
+      }),
+    );
+
+    const result = await makeCli().run(["service", "build", "--json"], { cwd });
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe(
+      "SERVICE.COMPUTE_CONFIG_TARGET_REQUIRED",
+    );
+    expect(frame.envelope.error.summary).toBe("Service target required");
+    const serialized = JSON.stringify(frame.envelope.error);
+    expect(serialized).not.toContain("app target");
+    expect(serialized).not.toContain("prisma-cli app ");
+    expect(frame.envelope.error.nextActions).toContainEqual({
+      kind: "user-choice",
+      label:
+        "Pass the service target, for example prisma-cli service build <target>.",
+    });
+    expect(frame.envelope.error.nextActions).toContainEqual({
+      kind: "run-command",
+      label: "Run",
+      command: "prisma-cli service build web",
+    });
   });
 
   it("rejects a named target without a compute config file", async () => {

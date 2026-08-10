@@ -179,7 +179,16 @@ describe("prisma-v8 service domain wait", () => {
     expect(result.exitCode).toBe(0);
     const kinds = result.json.map((frame) => frame.kind);
     expect(kinds.filter((kind) => kind === "status")).toHaveLength(2);
-    expect(kinds[kinds.length - 1]).toBe("result");
+    const last = result.json[result.json.length - 1];
+    if (last?.kind !== "result" || !last.envelope.ok) {
+      throw new Error("expected a completed envelope");
+    }
+    expect(last.envelope.commandId).toBe("service.domain.wait");
+    expect(last.envelope.result).toMatchObject({
+      hostname: "shop.acme.com",
+      status: "active",
+      liveUrl: "https://shop.acme.com",
+    });
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {

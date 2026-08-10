@@ -45,6 +45,18 @@ describe("prisma-v8 service open", () => {
     });
     expect(open).not.toHaveBeenCalled();
     expect(result.stdout).toBe("https://hello.prisma.app\n");
+    expect(result.presented?.presentation.next).toEqual([
+      {
+        kind: "run-command",
+        label: "Inspect the service",
+        command: "prisma-cli service show",
+      },
+      {
+        kind: "run-command",
+        label: "Show the live deployment",
+        command: "prisma-cli service show-deploy dep_2",
+      },
+    ]);
   });
 
   it("settles a project with no services as SERVICE.NO_DEPLOYMENTS", async () => {

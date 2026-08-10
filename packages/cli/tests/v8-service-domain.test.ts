@@ -73,6 +73,33 @@ describe("prisma-v8 service domain add", () => {
     });
   });
 
+  it("emits the completed json envelope with commandId service.domain.add", async () => {
+    const harness = await makeServiceCli({
+      routes: domainRoutes({
+        "POST /v1/apps/{appId}/domains": () => ({
+          data: { data: domainRecord() },
+        }),
+      }),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "domain", "add", "shop.acme.com", ...TARGET_ARGS, "--json"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || !frame.envelope.ok) {
+      throw new Error("expected a completed envelope");
+    }
+    expect(frame.envelope.commandId).toBe("service.domain.add");
+    expect(frame.envelope.result).toMatchObject({
+      ...EXPECTED_TARGET,
+      existing: false,
+      domain: { hostname: "shop.acme.com", serviceId: "svc_1" },
+    });
+  });
+
   it("reports an idempotent re-add as the existing domain", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
@@ -223,6 +250,47 @@ describe("prisma-v8 service domain show", () => {
     });
   });
 
+  it("emits the completed json envelope with commandId service.domain.show", async () => {
+    const harness = await makeServiceCli({
+      routes: domainRoutes({
+        "GET /v1/domains/{domainId}": () => ({
+          data: { data: domainRecord({ status: "active" }) },
+        }),
+      }),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "domain", "show", "shop.acme.com", ...TARGET_ARGS, "--json"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || !frame.envelope.ok) {
+      throw new Error("expected a completed envelope");
+    }
+    expect(frame.envelope.commandId).toBe("service.domain.show");
+    expect(frame.envelope.result).toMatchObject({
+      ...EXPECTED_TARGET,
+      domain: { hostname: "shop.acme.com", status: "active" },
+    });
+  });
+
+  it("fails early with the engine sign-in error when unauthenticated", async () => {
+    const harness = await makeServiceCli({
+      routes: domainRoutes(),
+      authenticated: false,
+    });
+
+    const result = await harness.cli.run(
+      ["service", "domain", "show", "shop.acme.com", ...TARGET_ARGS],
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("CLI.CREDENTIALS_REQUIRED");
+  });
+
   it("settles an unknown hostname as SERVICE.DOMAIN_NOT_FOUND", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
@@ -266,6 +334,50 @@ describe("prisma-v8 service domain retry", () => {
     expect(result.presented?.data).toMatchObject({
       domain: { status: "verifying" },
     });
+  });
+
+  it("emits the completed json envelope with commandId service.domain.retry", async () => {
+    const harness = await makeServiceCli({
+      routes: domainRoutes({
+        "GET /v1/apps/{appId}/domains": () => ({
+          data: { data: [domainRecord({ status: "failed" })] },
+        }),
+        "POST /v1/domains/{domainId}/retry": () => ({
+          data: { data: domainRecord({ status: "verifying" }) },
+        }),
+      }),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "domain", "retry", "shop.acme.com", ...TARGET_ARGS, "--json"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || !frame.envelope.ok) {
+      throw new Error("expected a completed envelope");
+    }
+    expect(frame.envelope.commandId).toBe("service.domain.retry");
+    expect(frame.envelope.result).toMatchObject({
+      ...EXPECTED_TARGET,
+      domain: { hostname: "shop.acme.com", status: "verifying" },
+    });
+  });
+
+  it("fails early with the engine sign-in error when unauthenticated", async () => {
+    const harness = await makeServiceCli({
+      routes: domainRoutes(),
+      authenticated: false,
+    });
+
+    const result = await harness.cli.run(
+      ["service", "domain", "retry", "shop.acme.com", ...TARGET_ARGS],
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("CLI.CREDENTIALS_REQUIRED");
   });
 
   it("maps a retry conflict to SERVICE.DOMAIN_RETRY_NOT_ELIGIBLE", async () => {
@@ -326,6 +438,56 @@ describe("prisma-v8 service domain remove", () => {
       hostname: "shop.acme.com",
       removed: true,
     });
+  });
+
+  it("emits the completed json envelope with commandId service.domain.remove", async () => {
+    // An interactive json run still prompts (the prompt UI writes to
+    // stderr); consent is granted through the scripted answer.
+    const harness = await makeServiceCli({ routes: removeRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "domain",
+        "remove",
+        "shop.acme.com",
+        ...TARGET_ARGS,
+        "--json",
+      ],
+      {
+        cwd: harness.cwd,
+        env: harness.env,
+        ...INTERACTIVE,
+        answers: ["yes"],
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || !frame.envelope.ok) {
+      throw new Error("expected a completed envelope");
+    }
+    expect(frame.envelope.commandId).toBe("service.domain.remove");
+    expect(frame.envelope.result).toMatchObject({
+      ...EXPECTED_TARGET,
+      hostname: "shop.acme.com",
+      removed: true,
+    });
+  });
+
+  it("fails early with the engine sign-in error when unauthenticated", async () => {
+    const harness = await makeServiceCli({
+      routes: removeRoutes(),
+      authenticated: false,
+    });
+
+    const result = await harness.cli.run(
+      ["service", "domain", "remove", "shop.acme.com", ...TARGET_ARGS],
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("CLI.CREDENTIALS_REQUIRED");
   });
 
   it("settles a declined consent as a user cancellation with exit 3", async () => {

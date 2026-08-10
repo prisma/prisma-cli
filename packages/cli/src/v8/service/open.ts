@@ -117,6 +117,11 @@ export const serviceOpenCommand = defineCommand({
       url,
       opened: shouldOpen,
     };
-    return ok(ctx.present({ data: result }, openPresentations(result)));
+    return ok(
+      ctx.present(
+        { data: result },
+        openPresentations(result, liveDeployment.id),
+      ),
+    );
   },
 });
