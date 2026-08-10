@@ -271,6 +271,8 @@ describe("prisma-v8 bucket list", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "bucket.list",
@@ -394,6 +396,8 @@ describe("prisma-v8 bucket create", () => {
       }),
     ).run(["bucket", "create", "--json"], { cwd: await pinnedCwd() });
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "bucket.create",
@@ -410,6 +414,8 @@ describe("prisma-v8 bucket create", () => {
       "bucket",
       "create",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -483,6 +489,8 @@ describe("prisma-v8 bucket delete", () => {
       {},
     );
 
+    expect(result.exitCode).toBe(2);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: { code: "CLI.CONSENT_REQUIRED" },
@@ -547,6 +555,8 @@ describe("prisma-v8 bucket delete", () => {
       {},
     );
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "bucket.delete",
@@ -563,6 +573,8 @@ describe("prisma-v8 bucket delete", () => {
       "--confirm",
       "bkt_1",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -644,6 +656,8 @@ describe("prisma-v8 bucket key list", () => {
       {},
     );
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "bucket.key.list",
@@ -663,6 +677,8 @@ describe("prisma-v8 bucket key list", () => {
       "list",
       "bkt_1",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -810,6 +826,8 @@ describe("prisma-v8 bucket key create", () => {
       }),
     ).run(["bucket", "key", "create", "bkt_1", "--json"], {});
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "bucket.key.create",
@@ -831,6 +849,8 @@ describe("prisma-v8 bucket key create", () => {
       "create",
       "bkt_1",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -915,6 +935,8 @@ describe("prisma-v8 bucket key delete", () => {
       {},
     );
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "bucket.key.delete",
@@ -930,6 +952,8 @@ describe("prisma-v8 bucket key delete", () => {
       "bkt_1",
       "bkey_1",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,

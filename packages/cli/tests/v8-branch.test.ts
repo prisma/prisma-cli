@@ -273,6 +273,8 @@ describe("prisma-v8 branch list", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "branch.list",

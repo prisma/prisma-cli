@@ -258,6 +258,8 @@ describe("prisma-v8 postgres list", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "postgres.list",
@@ -463,6 +465,8 @@ describe("prisma-v8 postgres show", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "postgres.show",
@@ -481,6 +485,8 @@ describe("prisma-v8 postgres show", () => {
       "show",
       "db_1",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -694,6 +700,8 @@ describe("prisma-v8 postgres create", () => {
       cwd: await pinnedCwd(),
     });
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "postgres.create",
@@ -712,6 +720,8 @@ describe("prisma-v8 postgres create", () => {
       "create",
       "my-db",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -831,6 +841,8 @@ describe("prisma-v8 postgres usage", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(2);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
@@ -855,6 +867,8 @@ describe("prisma-v8 postgres usage", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(2);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
@@ -873,6 +887,8 @@ describe("prisma-v8 postgres usage", () => {
         },
       }),
     ).run(["postgres", "usage", "db_1", "--json"], { cwd: await pinnedCwd() });
+
+    expect(result.exitCode).toBe(0);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
@@ -893,6 +909,8 @@ describe("prisma-v8 postgres usage", () => {
       "usage",
       "db_1",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -1048,6 +1066,8 @@ describe("prisma-v8 postgres restore", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(2);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: { code: "CLI.CONSENT_REQUIRED" },
@@ -1151,6 +1171,8 @@ describe("prisma-v8 postgres restore", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(2);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
@@ -1194,6 +1216,8 @@ describe("prisma-v8 postgres restore", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "postgres.restore",
@@ -1221,6 +1245,8 @@ describe("prisma-v8 postgres restore", () => {
       "--confirm",
       "db_1",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -1281,6 +1307,8 @@ describe("prisma-v8 postgres remove", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(2);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: { code: "CLI.CONSENT_REQUIRED" },
@@ -1323,6 +1351,8 @@ describe("prisma-v8 postgres remove", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(2);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: { code: "POSTGRES.NOT_FOUND" },
@@ -1346,6 +1376,8 @@ describe("prisma-v8 postgres remove", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(2);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: { code: "POSTGRES.AMBIGUOUS" },
@@ -1357,6 +1389,8 @@ describe("prisma-v8 postgres remove", () => {
       ["postgres", "remove", "db_1", "--confirm", "db_1", "--json"],
       { cwd: await pinnedCwd() },
     );
+
+    expect(result.exitCode).toBe(0);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
@@ -1378,6 +1412,8 @@ describe("prisma-v8 postgres remove", () => {
       "--confirm",
       "db_1",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -1555,6 +1591,8 @@ describe("prisma-v8 postgres backup list", () => {
       cwd: await pinnedCwd(),
     });
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "postgres.backup.list",
@@ -1578,6 +1616,8 @@ describe("prisma-v8 postgres backup list", () => {
       "list",
       "db_1",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -1656,6 +1696,8 @@ describe("prisma-v8 postgres connection list", () => {
       cwd: await pinnedCwd(),
     });
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "postgres.connection.list",
@@ -1675,6 +1717,8 @@ describe("prisma-v8 postgres connection list", () => {
       "list",
       "db_1",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -1803,6 +1847,8 @@ describe("prisma-v8 postgres connection create", () => {
       cwd: await pinnedCwd(),
     });
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "postgres.connection.create",
@@ -1821,6 +1867,8 @@ describe("prisma-v8 postgres connection create", () => {
       "create",
       "db_1",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -1938,6 +1986,8 @@ describe("prisma-v8 postgres connection rotate", () => {
       ["postgres", "connection", "rotate", "conn_1", "--yes", "--json"],
       { cwd: await pinnedCwd() },
     );
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -2069,6 +2119,8 @@ describe("prisma-v8 postgres connection rotate", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "postgres.connection.rotate",
@@ -2089,6 +2141,8 @@ describe("prisma-v8 postgres connection rotate", () => {
       "--confirm",
       "conn_1",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -2171,6 +2225,8 @@ describe("prisma-v8 postgres connection remove", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(2);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: { code: "CLI.CONSENT_REQUIRED" },
@@ -2221,6 +2277,8 @@ describe("prisma-v8 postgres connection remove", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "postgres.connection.remove",
@@ -2238,6 +2296,8 @@ describe("prisma-v8 postgres connection remove", () => {
       "--confirm",
       "conn_1",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,

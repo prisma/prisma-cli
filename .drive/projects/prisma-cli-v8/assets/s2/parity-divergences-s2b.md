@@ -119,6 +119,28 @@ in round 2, once the engine's consent tokens arrived
     calls `resolveRecipientWorkspaceSession` directly; the
     service-token guard, the recipient error mapping and every copy
     string are unchanged.
+46. **A rejected project listing is reported as an empty workspace —
+    ported defect, unchanged from the old shell.** (Numbered after D3
+    because the sequence is file-wide; found in the closure review and
+    recorded here because `project list` is where it surfaces.)
+    `listRealWorkspaceProjects` (`controllers/project.ts`) destructures
+    only `data` from the SDK response and discards `error` and
+    `response`, so any non-2xx becomes `data === undefined` and then an
+    empty project list. `project list` therefore prints "No projects
+    found." and exits 0 when the API rejects the request, and because
+    `resolveProjectTarget` resolves project names through the same
+    function, every command that resolves a project by name reports
+    "Choose a Project before running this command" or a not-found when
+    the real cause is a rejected request. The behaviour is identical in
+    the legacy shell — this slice changes nothing and inherits it — and
+    the database, branch, bucket, app and env controllers share it.
+    Found during the S2b closure review; pinned by the `project list`
+    case "reports an empty workspace when the projects route rejects
+    the request" so a future change to that function surfaces as a
+    failing test rather than a silent one. Whether to surface the error
+    instead is the operator's decision, not this slice's: the fix is a
+    legacy body change and it would change behaviour for the old shell
+    too.
 
 ### Error code map
 
@@ -289,8 +311,9 @@ GitHub App installation landed first; the wait followed once the operator
 extended the engine (commit c463aa1) with an optional `interval` on
 `BrowserWaitRequest` and an `open-url` kind on `NextAction`, and settled
 the three facts d3 §3.8 had pinned against a helper that could not supply
-them. The four resolutions are recorded as divergences 43 to 45 below and
-in §3.8's STEP 5 RESOLVED block.
+them. The four resolutions are recorded below as divergences 42 to 45 —
+42 is the `open-url` change, 43 to 45 the rest — and in §3.8's STEP 5
+RESOLVED block.
 
 ### Divergences
 
@@ -405,9 +428,16 @@ dropped). On top of them:
     raises `CLI.BROWSER_WAIT_TIMEOUT` when the timeout elapses; the
     handler catches exactly that code and settles the legacy terminal
     error in its place, so the timeout the user sees is unchanged.
-    Cancelling with Ctrl-C during the wait now settles
-    `CLI.PROMPT_CANCELLED`, exit 3, where the legacy loop aborted with
-    the shell's `COMMAND_CANCELED`, exit 130.
+    Cancelling with Ctrl-C splits by timing: while the wait is sleeping
+    between polls — where a user spends almost all of a two-minute wait —
+    it settles `CLI.PROMPT_CANCELLED`, exit 3, where the legacy loop
+    aborted with the shell's `COMMAND_CANCELED`, exit 130. When a poll
+    request is already in flight the abort surfaces from the SDK client
+    instead, and the engine settles `CLI.ABORTED`, exit 130 — the legacy
+    exit code, unchanged. Both paths are tested. The split is accepted
+    rather than smoothed over: reshaping the second into the first would
+    mean catching the engine's own abort settlement inside the handler,
+    and the engine is a hard boundary for this slice (conventions §14).
 
 ### Error code maps
 
@@ -469,8 +499,11 @@ dropped). On top of them:
 
 Kept deliberately: `git-adapter.test.ts` (URL-parsing units for
 `parseGitHubRepositoryUrl`, an operation-layer function v8 calls);
-`branch-controller.test.ts`, `branch-usecases.test.ts`,
-`read-branch.test.ts` and `local-branch.test.ts` (unported, until S2d);
+`branch-controller.test.ts` and `branch-usecases.test.ts` (unit tests for
+the branch helpers, which survive as the operation layer — d3 §5's rule,
+not the unported-group rule: `branch list` is ported and has a
+conformance row); `read-branch.test.ts` and `local-branch.test.ts`
+(unported, until S2d);
 the two pagination-cursor-stall cases in `project-real-mode.test.ts`,
 which cover `listScmInstallations` and `findRepositoryInInstallation`,
 operation-layer functions v8 calls and does not otherwise cover; and the

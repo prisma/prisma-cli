@@ -68,16 +68,25 @@ const API_PROJECTS = [
 
 interface FakeClientSpec {
   projects?: unknown[];
+  get?: (path: string, init: unknown) => unknown;
   post?: (path: string, init: unknown) => unknown;
   patch?: (path: string, init: unknown) => unknown;
   del?: (path: string, init: unknown) => unknown;
 }
 
+function apiFailure(status: number, body?: unknown) {
+  return {
+    error: body ?? { error: { message: "boom" } },
+    response: new Response(null, { status }),
+  };
+}
+
 function fakeClient(spec: FakeClientSpec = {}): ManagementApiClient {
   return {
-    GET: async (_path: string) => ({
-      data: { data: spec.projects ?? API_PROJECTS },
-    }),
+    GET: async (apiPath: string, init: unknown) =>
+      spec.get?.(apiPath, init) ?? {
+        data: { data: spec.projects ?? API_PROJECTS },
+      },
     POST: async (apiPath: string, init: unknown) =>
       spec.post ? spec.post(apiPath, init) : { data: { data: {} } },
     PATCH: async (apiPath: string, init: unknown) =>
@@ -245,6 +254,28 @@ describe("prisma-v8 project list", () => {
       items: ["No projects found."],
     });
     expect(result.presented?.presentation.stdout).toEqual([]);
+  });
+
+  /** A ported defect, not a passing error case. `listRealWorkspaceProjects`
+   *  destructures only `data` from the SDK response, so a rejected request
+   *  becomes an empty project list and a successful run. This pins that
+   *  behaviour so a change to the legacy function shows up here rather than
+   *  passing silently. Recorded as divergence 46 in the D1 section of
+   *  parity-divergences-s2b.md. */
+  it("reports an empty workspace when the projects route rejects the request", async () => {
+    const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
+    const result = await makeCli(
+      fakeClient({
+        get: () => apiFailure(403, { error: { code: "forbidden" } }),
+      }),
+    ).run(["project", "list", "--json"], { cwd });
+
+    expect(result.exitCode).toBe(0);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: true,
+      commandId: "project.list",
+      result: { count: 0, items: [], localBinding: { status: "invalid" } },
+    });
   });
 
   it("serializes the legacy list envelope in json mode", async () => {
@@ -424,6 +455,8 @@ describe("prisma-v8 project show", () => {
       { cwd },
     );
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "project.show",
@@ -572,6 +605,8 @@ describe("prisma-v8 project create", () => {
         post: () => ({ data: { data: { id: "proj_new", name: "my-app" } } }),
       }),
     ).run(["project", "create", "my-app", "--json"], { cwd });
+
+    expect(result.exitCode).toBe(0);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
@@ -739,6 +774,8 @@ describe("prisma-v8 project link", () => {
       { cwd: await tempCwd() },
     );
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "project.link",
@@ -850,6 +887,8 @@ describe("prisma-v8 project rename", () => {
         }),
       }),
     ).run(["project", "rename", "Billing v2", "--json"], { cwd });
+
+    expect(result.exitCode).toBe(0);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
@@ -972,6 +1011,7 @@ interface EnvClientSpec {
   failWriteFor?: string;
   failWriteStatus?: number;
   createdBranch?: BranchRow;
+  failListStatus?: number;
 }
 
 function envClient(spec: EnvClientSpec = {}): ManagementApiClient {
@@ -996,6 +1036,12 @@ function envClient(spec: EnvClientSpec = {}): ManagementApiClient {
               : branches,
             pagination: page,
           },
+        };
+      }
+      if (spec.failListStatus !== undefined) {
+        return {
+          error: { error: { message: "boom" } },
+          response: new Response(null, { status: spec.failListStatus }),
         };
       }
       const query = init?.params?.query ?? {};
@@ -1205,6 +1251,8 @@ describe("prisma-v8 project env add", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(2);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
@@ -1230,6 +1278,8 @@ describe("prisma-v8 project env add", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(2);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
@@ -1253,6 +1303,8 @@ describe("prisma-v8 project env add", () => {
       ],
       { cwd: await pinnedCwd() },
     );
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -1487,6 +1539,8 @@ describe("prisma-v8 project env add", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "project.env.add",
@@ -1573,6 +1627,8 @@ describe("prisma-v8 project env update", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(2);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
@@ -1646,6 +1702,8 @@ describe("prisma-v8 project env update", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "project.env.update",
@@ -1662,6 +1720,8 @@ describe("prisma-v8 project env update", () => {
       "--role",
       "production",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -1810,6 +1870,8 @@ describe("prisma-v8 project env update", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(2);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
@@ -1835,6 +1897,8 @@ describe("prisma-v8 project env update", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(2);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
@@ -1858,6 +1922,8 @@ describe("prisma-v8 project env update", () => {
       ],
       { cwd: await pinnedCwd() },
     );
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -2003,11 +2069,30 @@ describe("prisma-v8 project env list", () => {
     ]);
   });
 
+  it("maps a failed variables listing to PROJECT.ENV_API_ERROR", async () => {
+    const result = await makeCli(envClient({ failListStatus: 500 })).run(
+      ["project", "env", "list", "--role", "production", "--json"],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.ENV_API_ERROR",
+        summary: "Failed to list environment variables",
+        why: "boom",
+      },
+    });
+  });
+
   it("serializes the legacy list envelope in json mode", async () => {
     const result = await makeCli(envClient({ variables: [envRow()] })).run(
       ["project", "env", "list", "--role", "production", "--json"],
       { cwd: await pinnedCwd() },
     );
+
+    expect(result.exitCode).toBe(0);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
@@ -2028,6 +2113,8 @@ describe("prisma-v8 project env list", () => {
       "env",
       "list",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -2210,6 +2297,8 @@ describe("prisma-v8 project env remove", () => {
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(0);
+
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
       commandId: "project.env.remove",
@@ -2230,6 +2319,8 @@ describe("prisma-v8 project env remove", () => {
       "--role",
       "production",
     ]);
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -2295,6 +2386,8 @@ describe("prisma-v8 project env remove", () => {
       ["project", "env", "remove", "STRIPE_KEY", "--json"],
       { cwd: await pinnedCwd() },
     );
+
+    expect(result.exitCode).toBe(2);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
@@ -2489,6 +2582,8 @@ describe("prisma-v8 project remove", () => {
       ["project", "remove", "proj_1", "--confirm", "proj_1", "--json"],
       { cwd: await tempCwd() },
     );
+
+    expect(result.exitCode).toBe(0);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
@@ -2857,6 +2952,8 @@ describe("prisma-v8 project transfer", () => {
       ],
       { cwd: await tempCwd() },
     );
+
+    expect(result.exitCode).toBe(0);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,

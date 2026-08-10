@@ -603,6 +603,40 @@ describe("prisma-v8 git connect", () => {
     });
   });
 
+  it("settles CLI.ABORTED at exit 130 when the interrupt lands mid-request", async () => {
+    const controller = new AbortController();
+    const result = await makeCli(
+      gitClient({
+        installations: [],
+        routes: {
+          ...INSTALL_INTENT_ROUTE,
+          // Ctrl-C during an in-flight poll request: the fetch aborts
+          // rather than the sleep, so the abort leaves the SDK client and
+          // not the engine's own wait loop.
+          "GET /v1/scm-installations": () => {
+            controller.abort();
+            const aborted = new Error("This operation was aborted");
+            aborted.name = "AbortError";
+            throw aborted;
+          },
+        },
+      }),
+      { now: tickingClock() },
+    ).run(["git", "connect", REPO_URL, "--json"], {
+      cwd: await pinnedCwd(),
+      isTty: INTERACTIVE,
+      abort: controller.signal,
+    });
+
+    // Divergence 45: cancelling exits 3 while the wait sleeps and 130
+    // when a request is in flight, which is what the legacy loop did.
+    expect(result.exitCode).toBe(130);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "CLI.ABORTED" },
+    });
+  });
+
   it("maps a 409 on the connect call to the already-linked fix text", async () => {
     const result = await makeCli(
       gitClient({
@@ -638,6 +672,8 @@ describe("prisma-v8 git connect", () => {
       ["git", "connect", REPO_URL, "--json"],
       { cwd: await pinnedCwd(), isTty: INTERACTIVE },
     );
+
+    expect(result.exitCode).toBe(0);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
@@ -853,6 +889,8 @@ describe("prisma-v8 git disconnect", () => {
     const result = await makeCli(
       gitClient({ sourceRepositories: [SOURCE_REPOSITORY] }),
     ).run(["git", "disconnect", "--json"], { cwd: await pinnedCwd() });
+
+    expect(result.exitCode).toBe(0);
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
