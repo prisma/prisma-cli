@@ -7,6 +7,16 @@ import { authWhoamiCommand } from "./auth/whoami";
 import { authWorkspaceListCommand } from "./auth/workspace-list";
 import { authWorkspaceLogoutCommand } from "./auth/workspace-logout";
 import { authWorkspaceUseCommand } from "./auth/workspace-use";
+import { serviceBuildCommand } from "./service/build";
+import { serviceDomainAddCommand } from "./service/domain-add";
+import { serviceDomainRemoveCommand } from "./service/domain-remove";
+import { serviceDomainRetryCommand } from "./service/domain-retry";
+import { serviceDomainShowCommand } from "./service/domain-show";
+import { serviceDomainWaitCommand } from "./service/domain-wait";
+import { serviceListDeploysCommand } from "./service/list-deploys";
+import { serviceOpenCommand } from "./service/open";
+import { serviceShowCommand } from "./service/show";
+import { serviceShowDeployCommand } from "./service/show-deploy";
 import { telemetryDisableCommand } from "./telemetry/disable";
 import { telemetryEnableCommand } from "./telemetry/enable";
 import { telemetryStatusCommand } from "./telemetry/status";
@@ -26,10 +36,26 @@ export function buildCli(): Cli {
           workspaceLogout: authWorkspaceLogoutCommand,
         },
       }),
+      defineCommandFamily({
+        commands: {
+          serviceBuild: serviceBuildCommand,
+          serviceShow: serviceShowCommand,
+          serviceOpen: serviceOpenCommand,
+          serviceListDeploys: serviceListDeploysCommand,
+          serviceShowDeploy: serviceShowDeployCommand,
+          serviceDomainAdd: serviceDomainAddCommand,
+          serviceDomainShow: serviceDomainShowCommand,
+          serviceDomainRemove: serviceDomainRemoveCommand,
+          serviceDomainRetry: serviceDomainRetryCommand,
+          serviceDomainWait: serviceDomainWaitCommand,
+        },
+      }),
     ],
     groups: {
       auth: { brief: "Manage local authentication for the CLI" },
       "auth workspace": { brief: "Manage local workspace sessions" },
+      service: { brief: "Manage services and deployments for a project" },
+      "service domain": { brief: "Manage custom domains for a service" },
       telemetry: {
         brief: "Inspect and change anonymous CLI telemetry",
         description:
@@ -45,6 +71,16 @@ export function buildCli(): Cli {
       "auth workspace list": authWorkspaceListCommand,
       "auth workspace use": authWorkspaceUseCommand,
       "auth workspace logout": authWorkspaceLogoutCommand,
+      "service build": serviceBuildCommand,
+      "service show": serviceShowCommand,
+      "service open": serviceOpenCommand,
+      "service list-deploys": serviceListDeploysCommand,
+      "service show-deploy": serviceShowDeployCommand,
+      "service domain add": serviceDomainAddCommand,
+      "service domain show": serviceDomainShowCommand,
+      "service domain remove": serviceDomainRemoveCommand,
+      "service domain retry": serviceDomainRetryCommand,
+      "service domain wait": serviceDomainWaitCommand,
       // Shell-owned consent surface (no command family).
       "telemetry status": telemetryStatusCommand,
       "telemetry enable": telemetryEnableCommand,

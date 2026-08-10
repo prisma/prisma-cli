@@ -1,0 +1,122 @@
+import { defineCommand, flag, positional } from "@prisma/cli-engine";
+import { ok } from "@prisma/cli-engine/protocol";
+import open from "open";
+import {
+  deployFailedError,
+  liveUrlUnavailableError,
+  noDeploymentsError,
+  runCommandAction,
+} from "./errors";
+import { openPresentations } from "./presentation";
+import type { ServiceOpenResult } from "./results";
+import {
+  applyLiveDeploymentHint,
+  isInteractive,
+  rememberSelectedService,
+  resolveCurrentLiveDeploymentId,
+  resolveServiceReadState,
+  sortDeploymentsNewestFirst,
+  toServiceSummary,
+} from "./target";
+
+export const serviceOpenCommand = defineCommand({
+  help: {
+    summary: "Open the service's live URL",
+    examples: ["service open", "service open --service my-service"],
+  },
+  args: {
+    flags: {
+      service: flag.string({
+        brief: "Service name",
+        placeholder: "name",
+      }),
+      project: flag.string({
+        brief: "Project id or name",
+        placeholder: "id-or-name",
+      }),
+    },
+    positionals: {
+      service: positional.optionalString({
+        brief:
+          "Service target from prisma.compute.ts when the config defines multiple services",
+        placeholder: "service",
+      }),
+    },
+  },
+  needs: { credentials: true },
+  handler: async (args, ctx) => {
+    const state = await resolveServiceReadState(ctx, {
+      serviceName: args.flags.service,
+      projectRef: args.flags.project,
+      configTarget: args.positionals.service,
+      commandName: "service open",
+    });
+
+    if (!state.selected) {
+      throw noDeploymentsError(
+        "No deployments available to open",
+        "The resolved project does not have any deployed service yet.",
+      );
+    }
+
+    const deploymentsResult = await state.provider
+      .listDeployments(state.selected.id, { signal: ctx.signal })
+      .catch((error) => {
+        throw deployFailedError("Failed to resolve service URL", error, [
+          runCommandAction("Inspect the service", "service show"),
+        ]);
+      });
+    const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
+      state.stateStore,
+      state.projectId,
+      deploymentsResult.app,
+      deploymentsResult.deployments,
+    );
+    const deployments = sortDeploymentsNewestFirst(
+      applyLiveDeploymentHint(
+        deploymentsResult.deployments,
+        currentLiveDeploymentId,
+      ),
+    );
+    const liveDeployment = currentLiveDeploymentId
+      ? (deployments.find(
+          (deployment) => deployment.id === currentLiveDeploymentId,
+        ) ?? null)
+      : null;
+
+    await rememberSelectedService(
+      state.stateStore,
+      state.projectId,
+      deploymentsResult.app,
+    );
+
+    if (!liveDeployment) {
+      throw noDeploymentsError(
+        "No deployments available to open",
+        `The selected service "${deploymentsResult.app.name}" does not have any deployments yet.`,
+      );
+    }
+    if (!deploymentsResult.app.liveUrl) {
+      throw liveUrlUnavailableError();
+    }
+
+    const url = deploymentsResult.app.liveUrl;
+    ctx.report({ kind: "endpoint", name: "live-url", url });
+
+    const shouldOpen = isInteractive(ctx);
+    if (shouldOpen) {
+      ctx.signal.throwIfAborted();
+      // The browser launch cannot consume AbortSignal; check around the boundary.
+      await open(url);
+      ctx.signal.throwIfAborted();
+    }
+
+    const result: ServiceOpenResult = {
+      projectId: state.projectId,
+      service: toServiceSummary(deploymentsResult.app),
+      url,
+      opened: shouldOpen,
+    };
+    return ok(ctx.present({ data: result }, openPresentations(result)));
+  },
+});
