@@ -1,11 +1,11 @@
-# Credential manager — design, revision 5 (normative)
+# Credential manager — design, revision 5 (normative, final)
 
-Status: operator-designed session model (2026-08-10), replacing the
-rev-3/4 grants model wholesale. Revisions 1–4 and their review folds
-are in git history; rev 4's REFRESH, MIGRATION, and LOCKING mechanics
-carry forward with vocabulary mapped (grant → session) — those rules
-were always about tokens. NORMATIVE for the implementation, which
-lands on PR #130. A delta review (architect + PE) covers rev4→rev5.
+Status: operator-designed session model (2026-08-10). Rev 5 replaced
+the rev-3/4 grants model; this final text folds the delta review
+(architect + PE) AND the operator's process-pinning concurrency
+ruling, which deletes most of the reviewed locking machinery — §10
+records what was adopted and what that ruling made moot. Revisions
+1–4 are in git history. NORMATIVE for the implementation on PR #130.
 
 ## 1. The reality this models
 
@@ -16,22 +16,27 @@ Validated against pdp-control-plane source (2026-08-10):
   picks the workspace on the consent screen; the CLI CANNOT request
   or pin a workspace — the authorize request carries no workspace
   parameter (`AuthorizeSearchSchema`). The CLI learns which
-  workspace it got by decoding the returned token's `workspace_id`
-  claim. Refresh cannot re-scope.
+  workspace it got by decoding the token's `workspace_id` claim.
+  Refresh cannot re-scope.
+- Refresh tokens are single-use WITH a 10-second reuse grace
+  (`StaticClientOAuthProvider`: rotation marks the token used; one
+  replay within 10s succeeds and issues its own pair; later replays
+  are `invalid_grant`). Rotation does not revoke sibling pairs — 
+  any successfully issued pair remains valid on its own. Racing
+  refreshes are therefore SERVER-ABSORBED: whichever write lands
+  last, the file holds a working pair. Client-side coordination
+  beyond in-process dedup is unnecessary.
 - `PRISMA_SERVICE_TOKEN` supplies a workspace-scoped bearer token
   from the environment. No refresh, never stored.
-- Tokens carry identity claims (`sub`: a user for login tokens, a
-  workspace for service tokens) but the CLI's stored state records
-  and enforces NO identity. Identity surfaces only when `whoami`
-  decodes the current session's claims. A wallet MAY hold sessions
-  created by different accounts; the system does not care (operator
-  ruling — the rev-3/4 one-identity invariant is DROPPED).
+- Tokens carry identity claims (`sub`) but the stored state records
+  and enforces NO identity (operator ruling). A wallet MAY hold
+  sessions created by different accounts; identity surfaces only as
+  a read-time claim decode (`whoami`).
 - Legacy state: a JSON file of `{workspaceId, accessToken,
-  refreshToken}` entries plus a separate context file holding the
-  active workspace id. §7 migrates it.
+  refreshToken}` entries plus a context sidecar holding the active
+  workspace id. §7 migrates it.
 
-There are no grants and no separate credential registry concept.
-The domain is: a set of per-workspace sessions, one current.
+The domain: a set of per-workspace sessions, one current.
 
 ## 2. Entities
 
@@ -44,261 +49,340 @@ interface Credential {
   readonly expiresAt: Date | undefined;
 }
 
-interface Workspace {
-  readonly id: string;
-  readonly name: string | undefined;
-}
-
 /** "Logged-in-edness", scoped to a workspace. Identified to users
  *  by its workspace. The token is INTERNAL: it lives in the stored
- *  record but is structurally absent from this public shape. */
+ *  record, never on this public shape. */
 interface Session {
   readonly workspaceId: string;
-  readonly workspace: Workspace | undefined; // loaded on session create (§4)
+  readonly workspaceName: string | undefined; // fetched once at creation (§3)
   readonly expiresAt: Date | undefined;
   readonly source: "stored" | "environment";
-  readonly active: boolean;
+  readonly current: boolean;
 }
 ```
 
 - Sessions are KEYED BY WORKSPACE ID: at most one session per
   workspace. Logging in to the same workspace again upserts the
-  stored record (same key, new credential). Creating sessions for
-  several workspaces with the same account is fine — one record per
-  workspace, whatever credential is inside.
-- `whoami`'s identity display comes from decoding the CURRENT
-  session's token claims at read time (user id/email for login
-  tokens, workspace for service tokens). Identity is a per-session
-  decoded fact, not system state.
+  record (same key, new credential) — whichever account minted it;
+  the store cannot hold two credentials for one workspace and does
+  not try (accepted, matches legacy). A credential backs at most
+  one session (never store one refresh token under two keys).
+- The marker is called CURRENT everywhere (state field
+  `currentWorkspaceId`, list flag `current`, read
+  `currentSession()`).
 - `source: "environment"` marks the ephemeral session composed from
   `PRISMA_SERVICE_TOKEN` (§6). It never appears in `sessions()`.
+- `whoami` decodes the current session's claims at read time.
 
 ## 3. The CredentialManager interface (the SPI)
 
-Manages sessions. Nothing else.
+Manages sessions: six user-facing operations plus one engine-facing
+accessor (flagged §10; it exposes a capability the SDK consumes,
+never token material to engine code).
 
 ```ts
 interface CredentialManager {
-  /** The session the engine is acting as RIGHT NOW — the one the
-   *  management API authenticates with. Env token wins over the
-   *  stored current (§6). Local-only: decodes claims, never
-   *  touches the network. */
+  /** The session this PROCESS is acting as. Pinned at first read
+   *  (§4): composed from the env token if set, else the file's
+   *  current marker at that moment; later marker changes by other
+   *  processes do not move it. This process's own mutations
+   *  (createSession/useSession/endSession/endAllSessions) DO
+   *  update it. Local-only: never touches the network. */
   currentSession(): Promise<Session | null>;
 
-  /** The available sessions (auth workspace list). Local-only. */
+  /** The available sessions (auth workspace list), read fresh from
+   *  the file. Local-only. Under an env override the file's
+   *  current marker is still shown as `current` and the listing
+   *  command states the env session is what is in force. */
   sessions(): Promise<readonly Session[]>;
 
   /** Login's write. The caller names the workspace that identifies
-   *  the session (for a workspace-bound credential the manager
+   *  the session; for workspace-bound credentials the manager
    *  verifies the workspace_id claim matches and refuses on
-   *  mismatch; for a multi-workspace credential the argument IS
-   *  the choice). Upserts by workspaceId, becomes current. Fetches
-   *  the workspace name via the management API once, best-effort
-   *  (login is already online; failure leaves name undefined —
-   *  never fails the login). */
+   *  mismatch (a future multi-workspace credential makes the
+   *  argument a real choice). Upserts by workspaceId, sets the
+   *  file marker, becomes this process's current. The workspace
+   *  name is fetched best-effort AFTER the write, outside the lock
+   *  (§8), via the injected lookup — failure leaves it undefined,
+   *  never fails login. */
   createSession(credential: Credential, workspaceId: string): Promise<Session>;
 
-  /** Switch the current session. */
+  /** Switch: sets the file's current marker AND this process's
+   *  pinned session. */
   useSession(session: Session): Promise<Session>;
 
   /** Log out of one workspace: remove that session. If it was
-   *  current, there is no current (no auto-promotion). */
+   *  current (file marker or this process's pin), that current is
+   *  cleared (no auto-promotion). */
   endSession(session: Session): Promise<void>;
 
-  /** Log out entirely: remove all sessions and the current marker
-   *  (also reaps legacy files, §7). */
+  /** Log out entirely: remove all sessions and the marker (also
+   *  reaps legacy files, §7). Reports how many it ended. */
   endAllSessions(): Promise<void>;
+
+  /** ENGINE-FACING, not a user operation: the SDK TokenStorage
+   *  view for one workspace's session. The engine forwards it into
+   *  SDK client config and never calls its methods itself. */
+  tokenStorage(workspaceId: string): TokenStorage;
 }
 ```
 
 Interface rules:
-- The manager never talks to the user (no prompts, no browser).
-  The login FLOW lives beside it; `performLogin` returns the minted
-  credential and the command calls `createSession`.
-- The manager resolves NO user input. Commands resolve what the
-  user typed against `sessions()` themselves (exact id, then
-  case-insensitive name; ambiguity is the command's error) and pass
-  the matched `Session`. Manager errors are real state errors only —
-  e.g. the passed session no longer exists (another process ended
-  it) → structured error, nothing guessed.
-- `useSession`/`endSession` identify the target by its
-  `workspaceId` against freshly-read state under the lock (§8) —
-  the Session object is a reference, not a snapshot to trust.
-- Env is a construction input (injected `env`, never `process.env`
-  below the manager). Exactly one env var names the state file; the
-  legacy second variable is a deprecated, warned alias.
+- The manager never talks to the user and never opens a browser.
+  `performLogin` returns the minted credential; the login command
+  calls `createSession`. The login flow's own SDK instance uses a
+  THROWAWAY in-memory TokenStorage (the SDK persists tokens through
+  its storage at callback time; that write must never reach the
+  manager — minting and custody stay separate). The manager's
+  storage is reachable only through `tokenStorage()`.
+- Construction dependencies (injected by the bin): `env` (no
+  library below the manager reads `process.env`; one env var names
+  the state file, the legacy second variable is a warned alias) and
+  `fetchWorkspaceName(credential, workspaceId)` (the manager
+  constructs no API client).
+- The manager resolves NO user input. Commands resolve refs against
+  `sessions()` (exact id, then case-insensitive name; ambiguity is
+  the command's error) and pass the matched Session.
+- `useSession`/`endSession` treat the argument as a WORKSPACE
+  reference: only `workspaceId` is read, re-validated against
+  freshly-read state under the lock. If another process replaced
+  that workspace's session in between, the operation applies to the
+  replacement (the intent — switch to or log out of the workspace —
+  is workspace-keyed). No session for that workspace → structured
+  error. Passing a `source: "environment"` session is a misuse →
+  the same error. `useSession` on the already-current session
+  succeeds and changes nothing.
 - Error single-sourcing: blank/whitespace service token → one
   structured error raised identically from `currentSession()`, the
-  needs check, and the engine's token resolution; unreadable file →
+  needs check, and the engine's request path; unreadable file →
   `CLI.CREDENTIALS_UNREADABLE`; parse-corrupt file → signed out
   (self-heals on next login), never an exception, never a write.
 
 Mutations under an env override (`PRISMA_SERVICE_TOKEN` set):
-`useSession`, `endSession`, `endAllSessions` refuse with one
-structured error family (why names the env var and whether stored
-sessions exist; nextAction is the literal `unset` command).
-`createSession` is ALLOWED with a mandatory one-line notice that the
-env token remains in force until unset. Reads work normally, and
-`auth workspace list` states that the env session is what is in
-force (normative).
+- `useSession`, `endSession` refuse with one structured error
+  family (why names the env var and whether stored sessions exist;
+  nextAction is the literal `unset` command).
+- `endAllSessions` refuses when stored sessions exist and SUCCEEDS
+  AS A NO-OP when there are none (CI teardowns running `prisma
+  auth logout` with only the env token must not fail). Accepted,
+  stated: while the var is set, existing stored state cannot be
+  cleared.
+- `createSession` is ALLOWED with a mandatory one-line notice that
+  the env token remains in force until unset.
+- Reads work normally.
 
-## 4. Engine integration
+## 4. Process pinning and engine integration
 
+**Process pinning (operator ruling).** A CLI process determines its
+session ONCE: env token if set, else the file's current marker at
+first read. That session is the process's identity for its entire
+lifetime — another process switching the marker or replacing
+records does NOT redirect a running process; new processes pick up
+the new marker. The process's own auth mutations are the only thing
+that move its pin. Consequences, normative:
+- ONE stored-session API client per process, built lazily for the
+  pinned session and memoized for the run (no per-access
+  re-resolution, no cache invalidation machinery, no
+  "session-replaced" errors). The SDK's per-client refresh
+  single-flight therefore IS the per-process refresh dedup.
+- Refresh writes are keyed by the pinned session's workspace id
+  ("by session identity"). Cross-process refresh races on the same
+  session need no client-side coordination (§1: server grace +
+  sibling-pair validity make either winner fine). The SDK's
+  compare-and-clear handles the stale-replay case benignly.
+- A process whose pinned session is ended by another process
+  mid-run fails at its next request with the session-ended wording
+  (§6) — the honest outcome; nothing tries to re-pin.
+
+Engine integration:
 - `Runtime.credentialManager: CredentialManager` replaces
-  `Runtime.getCredentials`, staged as before (optional first, then
-  needs/api rework, then `getCredentials` deletion).
+  `Runtime.getCredentials`, staged as before. The bin also injects
+  the CLIENT CONFIG: `{clientId, redirectUri, apiBaseUrl,
+  authBaseUrl}` — all four (the SDK's refreshing fetch requires the
+  full config even though only login paths read redirectUri). The
+  same config feeds `performLogin`. The engine's placeholder
+  constants stay deleted; the construction test seam RETURNS via
+  this injected config (harness points it at a local server).
 - `ctx.session(): Promise<Session | null>` on EVERY context —
-  read-only, local-only (tested: no network I/O). It serves
-  `currentSession()`.
-- `managesCredentials: true` capability puts `ctx.credentialManager`
-  on the context for exactly: `auth login`, `auth logout`,
-  `auth workspace list`, `auth workspace use`,
-  `auth workspace logout`. `whoami` uses `ctx.session()` only.
+  read-only, local-only (tested: no network I/O). Serves
+  `currentSession()` (the pin).
+- `managesCredentials: true` puts `ctx.credentialManager` on the
+  context for exactly: `auth login`, `auth logout`, `auth workspace
+  list`, `auth workspace use`, `auth workspace logout`. `whoami`
+  uses `ctx.session()` only.
 - **The ENGINE constructs and owns the management API client**
-  (`ctx.api`), as it did in S2a. Construction config (real OAuth
-  client id, base URL) is injected by the bin beside the manager —
-  the engine's placeholder constants die. The client is cached per
-  workspace id and rebuilt when the current session changes (a
-  command that switches and then touches `ctx.api` must get a
-  client for the NEW session). Refresh single-flight is per client,
-  which is correct because refresh is per session.
-- **The manager's one internal seam**: it implements the SDK's
-  `TokenStorage` contract (`getTokens` / `setTokens` /
-  `clearTokensIfCurrent` / `withRefreshLock`) so the SDK's 401 →
-  refresh → retry cycle reads and writes the session store under
-  the manager's rules (§6). The storage view handed to a client is
-  bound to THAT client's session's workspace id — bound to the ID,
-  never to a credential snapshot: `getTokens` re-reads the store on
-  every call. This seam is engine↔manager plumbing; it is not part
-  of the user-facing SPI and token material never crosses the
-  public interface.
-- Harness: `createTestCli` seeds `{ sessions?: [...], currentWorkspaceId?,
-  credential? }` over a mutable in-memory manager with full state
-  read-back. Fixture surface and required tests: §5.
+  (`ctx.api`): the pinned session's client, once per process.
+  Stored session → the SDK's refreshing path with
+  `tokenStorage(workspaceId)` in the config. Env session → the
+  SDK's static-token path (`createManagementApiClient({baseUrl,
+  token})`) — no refresh machinery may exist for it; its error
+  mapping happens at the call site (the static path has no error
+  middleware). The auth commands that mutate state don't consume
+  `ctx.api` as the pinned session afterwards (whoami enrichment
+  runs in a fresh process).
+- **The TokenStorage view**: bound to the workspace id, never to a
+  credential snapshot — `getTokens` re-reads the file on every call
+  and returns that workspace's current record. Write rules in §6.
+  All SDK methods including the required `clearTokens` are
+  implemented; the engine forwards the view and never calls it.
+- Error unwrapping: the SDK's error middleware wraps non-SDK errors
+  into `FetchError(cause)`; the engine's mapping walks the cause
+  chain for BOTH `AuthError` and CLI structured errors, so
+  manager-raised errors surface as themselves.
+- Names never refresh (accepted, stated): reads are offline, so a
+  renamed workspace keeps its stored name until the next login to
+  it. `list` renders a nameless session by its id.
+- Harness: `createTestCli` seeds `{sessions?, currentWorkspaceId?,
+  credential?}` over a mutable in-memory manager with full state
+  read-back, plus the client config (local endpoint).
 
 ## 5. Fixtures and required tests
 
-Fixture surface: injectable token endpoint (script 401 → rotated
-pair → retry; `invalid_grant`; 5xx/network-throw), a JWT minter
-(`sub`, `workspace_id`, `exp`, `email` + an undecodable token), a
+Fixture surface: client config injection (all four fields) pointed
+at a local HTTP server scripting 401 → rotated pair → retry,
+`invalid_grant`, 5xx/network-throw; a JWT minter (`sub`,
+`workspace_id`, `exp`, `email` + an undecodable token); a
 legacy-store builder (pointer valid/dangling/null/absent; one/many
-entries; corrupt context; wrong shape), a deterministic clock, an
-interleaving hook (pause between read-under-lock and write), and a
-way for a real second process to hold the lock.
+entries; duplicate entries for one workspace; placeholder names;
+entries without refresh tokens; corrupt context; wrong shape); a
+deterministic clock; a way for a second process to hold the lock.
 
 Required tests:
-- multi-process races (real filesystem): `useSession` vs rotation
-  (final state = the switch + the rotated tokens); `endSession` vs
-  rotation (no resurrection); two refreshers (exactly one exchange);
+- process pinning: marker moved by a second process mid-run → the
+  running process's requests still carry its pinned session's
+  tokens; a NEW process picks up the new marker;
+- pinned session ended by a second process → next request fails
+  with session-ended wording (not the SDK's synthesized message,
+  not the transient error);
+- two refreshers on one session across two processes: both
+  complete, the file ends with a valid pair (server-grace test via
+  the scripted endpoint);
+- refresh rotation: only token fields written; name and marker
+  untouched; `expiresAt` re-derived; rotated pair persisted before
+  the new access token reaches the caller;
+- `endSession` vs in-flight rotation on the same session: the
+  ended session stays gone (rotation must not resurrect it);
+- login flow writes nothing through the manager (throwaway storage
+  observed; manager file untouched until `createSession`);
+- `createSession` holds no lock during the name fetch (a second
+  process completes a mutation while the name request hangs);
+- `createSession` claim/argument mismatch refusal;
+- env session never refreshes (token endpoint not hit on 401);
 - env-override matrix: every mutation × {unset, set, blank,
-  whitespace} — error family asserted, state file bytes unchanged;
+  whitespace} — error family asserted, state-file bytes unchanged;
+  plus `endAllSessions` no-op success with zero stored sessions;
 - end-current / sessions-held-none-current: one shared assertion
-  over `ctx.session()`, the needs check, and a bare `ctx.api` touch;
-- workspace-name persistence across refresh (the legacy regression:
-  rotation must not touch `workspace.name`), with `expiresAt`
-  re-derived;
+  over `ctx.session()`, the needs check, and a bare `ctx.api`
+  touch;
 - reads-never-write probe (filesystem spy: zero writes on every
   read path including migration adoption);
 - token-material leak scan (seed a known secret; assert absent from
   stdout, stderr, debug logs, error meta, envelopes);
-- lock-constant ordering (§8);
-- `createSession` claim/argument mismatch refusal.
+- lock: two concurrent mutations in different processes both land
+  (no lost update); a crashed holder's lock is taken over after
+  the stale threshold.
 
 ## 6. Runtime flows (normative)
 
-**Unauthenticated.** `needs.credentials` → `CLI.CREDENTIALS_REQUIRED`
-(exit 2, sign-in nextAction) before the handler loads; bare
-`ctx.api` touch → same error at request time. `whoami` → "signed
-out", exit 0. No auto-login.
+**Unauthenticated.** `needs.credentials` →
+`CLI.CREDENTIALS_REQUIRED` (exit 2, sign-in nextAction) before the
+handler loads; bare `ctx.api` touch → same error at request time.
+`whoami` → "signed out", exit 0. No auto-login.
 
 **Sessions held, none current** (migration rows; end-current): same
 code, distinct why ("you have workspace sessions but none is
 current") with nextActions `auth workspace use` and login.
 
-**Refresh.** Driven by the SDK on 401 through the manager's
-`TokenStorage` view (§4), under the mandatory lock (§8):
-- `setTokens` (the rotation write — the write that runs on every
-  successful refresh): updates IN PLACE only `token`,
+**Refresh.** Driven by the SDK on 401 through the bound
+TokenStorage view; the exchange itself runs OUTSIDE the file lock
+(§8) — only the resulting write takes it:
+- `setTokens` (the rotation write): updates IN PLACE only `token`,
   `refreshToken`, `expiresAt` (re-derived from claims; the SDK's
-  pair carries no expiry) of its own session record. NEVER creates
-  a session, NEVER moves the current marker, NEVER touches
-  `workspace.name`. If the freshly-read state has no record for
-  that workspace id (another process ended it), refuse and throw —
-  no resurrection. If the new token's `workspace_id` claim
-  disagrees with the bound id, refuse (refresh cannot re-scope).
-- `clearTokensIfCurrent`: remove the session iff its stored
-  credential still exactly matches the pair that failed — "exactly"
-  over the SDK's three compared fields (`workspaceId`,
-  `accessToken`, `refreshToken`) only, so a re-derived expiry can't
-  defeat the match. Clear the current marker only if it names that
-  session. (The SDK comparing ACCESS tokens too is desired: a pair
-  another process already rotated correctly declines to clear.)
-- Preemptive refresh is PROHIBITED (outside the SDK's single-flight
-  it can spend a one-time refresh token and convert an optimization
-  into a false sign-out).
+  pair carries no expiry) of its workspace's record. NEVER creates
+  a record, NEVER moves the marker, NEVER touches the name. If the
+  freshly-read state has no record for that workspace (ended by
+  another process), refuse and throw — no resurrection. If the new
+  token's `workspace_id` claim disagrees with the bound id, refuse
+  (refresh cannot re-scope). If the record's credential changed
+  since the refresh started (a newer login), the write still lands
+  — either pair is valid (§1); last write wins.
+- `clearTokensIfCurrent`: remove the record iff its stored pair
+  still exactly matches the pair that failed — exact over the
+  SDK's three compared fields (`workspaceId`, `accessToken`,
+  `refreshToken`). Clear the marker only if it names that record.
+  This match is what makes a stale replay's `invalid_grant` benign
+  when a newer pair is already stored — do not "simplify" it.
+- `clearTokens` (required by the SDK's TokenStorage type; reached
+  by its internal fallbacks): removes only the bound record — same
+  slice as `clearTokensIfCurrent` without the match. It never
+  means "end all sessions". The engine never calls `sdk.logout()`.
+- `withRefreshLock` is implemented as IN-PROCESS single-flight
+  only (the SDK requires the hook to lock at all; cross-process
+  exchange races are server-absorbed, §1).
+- Preemptive refresh stays PROHIBITED (per-request resolution
+  keeps long runs current; a background refresher adds nothing).
 
 **Refresh failure discrimination.** `AuthError.refreshTokenInvalid`
-is `true` only for HTTP 4xx + body error exactly `invalid_grant` —
-the definitive sign-out trigger:
-- `true` → `CLI.CREDENTIALS_REQUIRED`, expiry wording. The SDK has
-  already cleared; the manager debug-logs endpoint status + error
-  value BEFORE the clear.
-- any other `AuthError` → the manager re-reads its state: session
-  gone → `CLI.CREDENTIALS_REQUIRED` with session-ended wording;
-  otherwise a transient auth-service error. A state check, never
-  message parsing.
-- non-auth failures (network, 5xx) → transient auth-service error;
-  NOTHING cleared.
+is `true` only for HTTP 4xx + body error exactly `invalid_grant`:
+- `true` → the SDK has run compare-and-clear; if the session
+  survived (newer pair stored), the retry proceeds — nothing
+  surfaced. If it cleared, `CLI.CREDENTIALS_REQUIRED`, expiry
+  wording; the manager debug-logs endpoint status + error value
+  BEFORE the clear.
+- any other `AuthError` → the manager re-reads state FOR THE
+  WORKSPACE THE CLIENT IS BOUND TO: record gone →
+  `CLI.CREDENTIALS_REQUIRED`, session-ended wording; otherwise a
+  transient auth-service error. A state check, never message
+  parsing.
+- any non-`AuthError` from the refresh path (e.g. the SDK's
+  undecodable-token plain `Error`) → transient auth-service error;
+  nothing cleared; debug valve records it.
+- non-auth failures (network, 5xx) → transient; NOTHING cleared.
 The SDK version is exact-pinned; a test asserts clearing happens on
 `invalid_grant` and nothing else.
 
-**Service token (env).** Composes as an ephemeral current session
-(`source: "environment"`), never stored, absent from `sessions()`.
-No refresh; 401 → structured error naming the env var; nothing
-cleared. `whoami` notes the override when stored sessions also
-exist. Blank/whitespace → the single blank-token error (§3).
-
-**Lock contention.** A refresh-lock wait timeout is its own
-structured code with a why naming the lock path and a next action.
+**Service token (env).** Composes as the process's pinned session
+(`source: "environment"`), never stored, absent from `sessions()`
+(the file's marked current stays shown; the listing states the
+override). Static-token client, no refresh; 401 → structured error
+naming the env var; nothing cleared. `whoami` notes the override
+when stored sessions exist. Blank/whitespace → the single
+blank-token error.
 
 **Debug valve.** `PRISMA_NEXT_DEBUG` shape: source won, resolved
-state-file path, refresh attempted, endpoint status + error field,
-lock acquire/release/steal with holder ids. Token material NEVER
+state-file path, pin decision, refresh attempted, endpoint status +
+error field, lock acquire/release/takeover. Token material NEVER
 appears in any log, error, meta, or envelope.
 
 ## 6a. The commands
 
-Legacy names return unchanged — the session model makes them honest
+Legacy names, unchanged — the session model makes them honest
 ("log in to a workspace" = create a session for it):
 
-- `auth login` — browser consent flow; the user picks the
-  workspace; `createSession(credential, workspaceId-from-claims)`.
-- `auth logout` — `endAllSessions()`.
+- `auth login` — browser consent; user picks the workspace;
+  `createSession(credential, workspaceId-from-claims)`.
+- `auth logout` — `endAllSessions()`; reports the count ended.
 - `auth whoami` — `ctx.session()` + claims decode; `ctx.api`
   enrichment when online.
-- `auth workspace list` — `sessions()`, current marked.
-- `auth workspace use <ref>` — resolve ref against `sessions()`
+- `auth workspace list` — `sessions()`, current marked, nameless
+  rows rendered by id. Under an env override the listing states
+  the env session is in force.
+- `auth workspace use <ref>` — resolve against `sessions()`
   (command-side), `useSession(match)`.
-- `auth workspace logout <ref>` — resolve, `endSession(match)`.
-  (The rev-3 `workspace forget` rename is DEAD; legacy vocabulary
-  stands. The rev-3/4 grants vocabulary is dead everywhere.)
+- `auth workspace logout <ref>` — resolve, `endSession(match)`;
+  prints the workspace it ended.
 
-**OPEN OPERATOR RULING — `use X` with no session for X.** The
-consent flow cannot target a workspace (§1), so "use acquires X" is
-unimplementable as promised in rev 3/4. Options:
-(a) legacy-parity error: "no session for X — run `prisma auth
-login` and pick X in the browser" (no browser launch from `use`);
-(b) `use X` announces it is opening the browser, runs the generic
-flow, then compares the returned `workspace_id` to X: match →
-create + current; mismatch → create the session it actually got
-(real consent, not wasted), leave the current marker unchanged, and
-say "you logged in to Y, not X". Recommendation: (b). Built to (a)
-until ruled — (a) is a subset of (b), so (b) adds on top without
-rework.
+**RULED (operator, 2026-08-10): `workspace use` SELECTS among your
+sessions; it never creates one.** No session for X → structured
+error: "no session for workspace X — run `prisma auth login` and
+pick X in the browser" (nextAction: the literal `prisma auth
+login`). No browser ever opens from `use`; session creation belongs
+to `auth login` alone. (Matches §1: the consent flow cannot target
+a workspace. Both reviewers independently concurred.)
 
 ## 7. Migration from the legacy store
 
-Governing rule unchanged: **the migration read writes nothing.**
+Governing rule: **the migration read writes nothing.**
 
 | Legacy store state | Rule |
 | --- | --- |
@@ -309,99 +393,138 @@ Governing rule unchanged: **the migration read writes nothing.**
 | No context, multiple entries | All adopted; NO current (no coin flip) |
 | Auth file missing / unparseable / wrong shape | No sessions. Never delete, never rewrite |
 
-The rev-4 mixed-identity rule is DELETED: the wallet is
-identity-blind (operator ruling), so ALL decodable entries adopt
-regardless of `sub`. Entries whose token does not decode to a
-`workspace_id` are ignored (they cannot be keyed).
+Adoption rules (identity-blind — entries from any account adopt):
+- Key and pointer-resolve on the token's `workspace_id` claim (the
+  legacy `credentialWorkspaceId`), not the hydrated display id.
+- Entries whose token does not decode to a `workspace_id` are
+  ignored (unkeyable).
+- Duplicate legacy entries for one workspace: the LAST wins
+  (matches legacy's latest-wins reads).
+- Legacy placeholder names do not adopt: a name equal to
+  "Unknown workspace" or to the workspace id adopts as undefined.
+- Entries without a refresh token adopt (reads until expiry, then
+  fail cleanly).
+- `lastSeenAt` does not carry over; list order is store order.
 
-The adopted view materializes into the new single-file format on
-the first mutation (`createSession` / `useSession` / `endSession` /
-`endAllSessions` / refresh rotation), writing the FULL adopted set.
-After that the legacy files are ignored entirely; until then they
-stay untouched so a still-installed legacy CLI keeps working.
+Materialization: the adopted view is written into the new
+single-file format on the first mutation, writing the FULL adopted
+set. The adoption decision is re-made INSIDE the lock beside the
+mutation's re-read: if a new-format file exists at that point it
+wins outright and no adoption occurs (a naive full-set write could
+resurrect tokens another process already rotated). After
+materialization the legacy files are ignored entirely; until then
+they stay untouched so a still-installed legacy CLI keeps working.
 `endAllSessions` clears everything including legacy files. New
 writes use mode 0600 and tighten looser permissions on first write.
-Names carried by legacy entries adopt onto the sessions.
 
-## 8. Locking and atomicity
+## 8. File, lock, and atomicity
 
-- **One file** holds the whole state, shape normative:
-  `{ version, sessions: [{ workspaceId, name?, token,
-  refreshToken?, expiresAt? }], currentWorkspaceId | null }`. No
-  context sidecar. Every write replaces the whole state.
-- **Writes are atomic**: temp file, fsync, rename; 0600.
+- **One file**, shape normative: `{ version, sessions: [{
+  workspaceId, name?, token, refreshToken?, expiresAt? }],
+  currentWorkspaceId | null }`. No context sidecar. Every write
+  replaces the whole state.
+- **Writes are atomic**: temp file in the same directory, fsync,
+  rename; mode 0600.
 - **Reads never write; reads take no lock** (atomic rename
   guarantees a complete state).
-- **One advisory lock, every mutation** — the four SPI mutations
-  plus refresh's `setTokens`/`clearTokensIfCurrent`.
-  `withRefreshLock` is implemented (mandatory).
-- **Re-entrant per lock file per process** via an owner token
-  SHARED between the manager and the `TokenStorage` view the SDK
-  holds (the SDK calls the token writes from INSIDE
-  `withRefreshLock`; per-instance re-entrancy would deadlock). The
-  legacy `lockSetTokens: false` bypass does not survive — correct
-  re-entrancy makes it unnecessary.
-- **Heartbeated**: holder touches the lock ~5s; pid/hostname/start
-  recorded; steals debug-logged. Constant ordering normative and
-  complete: heartbeat < exchange timeout < stale threshold < wait
-  timeout, stale ≥ 4× heartbeat (legacy had wait 25s < stale 30s —
-  a crashed holder produced contention errors instead of recovery).
-  A test asserts the constants' ordering.
-- **Every mutation re-reads under the lock** and owns only its
-  slice:
+- **One short advisory lock for read-modify-write.** Every
+  mutation acquires it, re-reads, applies its slice, writes,
+  releases. Its ONLY job is lost-update prevention between
+  processes (two mutations touching different records must both
+  land). **No network I/O ever runs under it** — the token
+  exchange happens outside (§6), and `createSession`'s name fetch
+  happens after release, with a second minimal locked write that
+  sets `name` iff the record still exists. Holds are
+  milliseconds, so: no heartbeat, a small fixed stale threshold
+  (crashed-holder takeover), takeovers debug-logged. The rev-4
+  heartbeat/exchange-timeout/steal apparatus existed to survive
+  network calls under the lock; with none, it is deleted.
+- **Slices** (each mutation re-reads under the lock and modifies
+  only):
 
   | Mutation | May modify |
   | --- | --- |
-  | `setTokens` (rotation) | `token`/`refreshToken`/`expiresAt` of its own record |
-  | `clearTokensIfCurrent` | removes its own record; current marker only if it names it |
-  | `useSession` | current marker only |
-  | `endSession` | one record; current marker if it named it |
-  | `createSession` | one record (upsert) + current marker |
+  | `setTokens` (rotation) | token fields of its workspace's record |
+  | `clearTokensIfCurrent` | removes its record (three-field match); marker only if it names it |
+  | `clearTokens` | removes its record; marker only if it names it |
+  | `useSession` | marker only |
+  | `endSession` | one record; marker if it named it |
+  | `createSession` | one record (upsert) + marker |
+  | `createSession` name backfill | `name` of its record |
   | `endAllSessions` | whole state |
 
   No mutation writes state read before lock acquisition.
-- **Rotation durability**: rotated pair persisted (fsync + rename)
-  before the new access token reaches any caller.
+- **Rotation durability**: the rotated pair is persisted (fsync +
+  rename) before the new access token reaches any caller.
 
 ## 9. Change surface on PR #130
 
-Engine (`packages/cli-engine`): rename/reshape pass over the landed
-engine-surface commit (a8ef3fb): the rev-4 entity trinity
-(Session-as-read/Credential/GrantSummary/Identity union + method
-axis) becomes §2's `Session`/`Credential`; the manager interface
-becomes §3's six methods (`apiClient` and `rememberWorkspaceName`
-deleted from the SPI); engine-side client construction returns
-(with injected config); §6 error mapping kept; harness seeding
-reshaped; draft amendments updated.
+Engine (`packages/cli-engine`) — a rename/reshape pass over the
+landed a8ef3fb plus two behavior corrections in `api-client.ts`:
+1. client construction returns to the engine (revert to the
+   pre-a8ef3fb shape, then re-apply the §6 error mapping; config
+   injection replaces the deleted `createSdk` seam). The run-long
+   client memoization STAYS (process pinning makes it correct);
+2. the failure mapping re-reads state for the BOUND workspace, not
+   `currentSession()`.
+Renames/reshapes: entity types per §2 (Identity/GrantSummary/
+method axis deleted; Session is one-of-many with `current`); SPI
+per §3 (`tokenStorage()` added; `apiClient`/`rememberWorkspaceName`
+gone); error wording (sessions-held-none-current etc.); ref
+resolution moves command-side (codes renamed to session
+vocabulary); harness seeding per §4. The `managesCredentials`
+capability and `defineCommand` overloads survive unchanged.
 
 Auth module (`packages/cli/src/auth`): the manager implementation
-(§7 migration, §8 locking, TokenStorage seam, name fetch in
-`createSession`); `performLogin` returns the credential. Legacy
-operations remain for the legacy shell until S2d.
+(§7 migration, §8 file+lock, the TokenStorage views, process
+pinning); `performLogin` returns the credential and uses a
+throwaway storage; `fetchWorkspaceName` injected. Legacy operations
+remain for the legacy shell until S2d.
 
 v8 tree (`packages/cli/src/v8`): auth family onto the manager with
-LEGACY names (`workspace-logout.ts` stays; no forget). `logout
---workspace`: does not return (superseded by `workspace logout`).
+LEGACY names (`workspace-logout.ts` stays; no forget; `logout
+--workspace` still does not return — superseded by `workspace
+logout`). Command-side ref resolution.
 
-Docs: parity-divergences auth sections rewritten AGAIN — now
-smaller (rename class gone; remaining divergences: error-code map,
-exit unifications, whoami shape, env-override mutation refusals,
-orphan-reaping logout); s2a contract §3/§4/acceptance amended; S2
+Docs: parity-divergences auth sections rewritten — remaining
+divergences: error-code map, exit unifications, whoami shape,
+env-override mutation refusals (exact error family and exit code,
+incl. the `auth logout` no-op rule), the list JSON shape when an
+env session is in force, orphan-reaping logout, names no longer
+refreshed on read. Amend s2a contract §3/§4/acceptance and S2
 overview auth rows.
 
 ## 10. Disposition record
 
-Rev 5 (2026-08-10): operator-designed session model replaces the
-grants model. Reversals, all operator-ruled: per-workspace session
-vocabulary is CORRECT (a session per workspace, keyed by workspace
-id) — the rev-2..4 "no per-workspace sessions" stance is dead; the
-one-identity invariant is dropped (wallet is identity-blind, like
-legacy); `workspace forget` rename dead, legacy command names
-return; grants/GrantSummary/Identity-union deleted; `apiClient()`
-and `rememberWorkspaceName` deleted from the SPI (engine constructs
-the client with injected config; workspace names fetched once in
-`createSession`). Carried from rev 4 unchanged: refresh/rotation
-rules, failure discrimination, migration read-writes-nothing,
-locking contract, fixture/test list, env-override split
-(`createSession` allowed with notice). Open: §6a `use X` not-held
-behavior (built to (a), recommendation (b)).
+Rev 5 (2026-08-10): operator-designed session model. Operator
+rulings: per-workspace sessions keyed by workspace id; identity
+rule dropped (wallet identity-blind; reviewer-proposed
+cross-account disclosure rules NOT adopted — "no different to
+today"); legacy command names return; grants vocabulary dead;
+`apiClient()`/`rememberWorkspaceName` off the SPI;
+`createSession(credential, workspaceId)`; `useSession`/`endSession`
+take `Session`; `workspace use` selects only; **process pinning** —
+a process's session is fixed at first read, other processes'
+switches never redirect it, and racing refreshes are accepted
+(server-verified: 10s reuse grace + sibling-pair validity).
+
+Delta review folded where the pinning ruling left it standing:
+throwaway login storage (PE); `clearTokens` bounded to its record
+(PE); name fetch outside the lock via injected
+`fetchWorkspaceName` (architect + PE); env `endAllSessions` no-op
+rule (PE); client config four-field list + env static-token
+construction path + cause-chain unwrapping (PE); non-AuthError
+refresh throw → transient (PE); migration additions: claim keying,
+last-wins duplicates, placeholder names, refresh-token-less
+entries, lock-held adoption decision (architect + PE); bound-
+workspace failure mapping (architect); `Session` flattened to
+`workspaceName` + uniform `current` (architect — VETO-ABLE
+deviation 1); `tokenStorage(workspaceId)` as the seventh
+engine-facing member (architect — VETO-ABLE deviation 2).
+
+Made MOOT by process pinning (not adopted): sessionEpoch binding
+and session-replaced errors; per-access client cache with
+keys/eviction; call-chain-scoped lock re-entrancy (no nested
+locking remains — `withRefreshLock` is in-process single-flight,
+mutations take the short file lock directly); heartbeat/exchange-
+timeout/stale ordering apparatus; cross-account race guards.
