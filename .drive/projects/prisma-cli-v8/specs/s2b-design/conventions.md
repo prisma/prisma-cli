@@ -248,6 +248,23 @@ out of contract.
   the keys). Commands with no legacy serializer present the raw
   result (S1 precedent) — child doc says which.
 - `next`: exact NextAction list per command per state (child doc).
+- **The stdout lane carries data, not decoration (amended 2026-08-11).**
+  "Table data rows go to stdout" means the values, not the cells the
+  human table happens to render. Where a human column glues two facts
+  together for readability, stdout takes the raw one. The case that
+  forced this: `project env list`'s first column is
+  `` `${key} (${source})` ``, and reusing it for stdout made a piped
+  line read `STRIPE_KEY (project)` — a consumer would have to split on
+  `" ("` to recover the key, which defeats the entire reason the lane
+  exists. stdout carries the bare key; anything needing the source uses
+  `--json`, which carries the whole record. Check every list command's
+  stdout rows against this, not just the one that was caught.
+- **Cancellation is never remapped (amended 2026-08-11).** A handler
+  that wraps a rejected operation in a mapped error must first rethrow
+  when `ctx.signal.aborted`, so a cancelled run settles as cancelled
+  rather than as a failure of the thing it was doing. Both wrapping
+  sites — `project create` and `project link`, each around
+  `createProject` — do this.
 - Title lines follow the S1 card convention: a `summary` block whose
   text is the legacy descriptor-derived sentence pinned per command.
 
