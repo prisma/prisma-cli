@@ -16,7 +16,7 @@ import { FileTokenStorage } from "./token-storage";
  *
  * Returns null if not authenticated.
  */
-export async function requireComputeAuth(
+export async function authenticatedManagementApiClient(
   env: NodeJS.ProcessEnv = process.env,
   signal?: AbortSignal,
 ): Promise<ManagementApiClient | null> {

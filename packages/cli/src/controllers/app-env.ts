@@ -1,6 +1,6 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: API pagination loops are intentionally sequential.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-import { requireComputeAuth } from "../auth";
+import { authenticatedManagementApiClient } from "../auth";
 import {
   type EnvScope,
   type EnvVarRole,
@@ -521,7 +521,7 @@ async function requireClientAndProject(
   verboseContext: EnvResolvedContext;
 }> {
   const authState = await requireAuthenticatedAuthState(context);
-  const client = await requireComputeAuth(
+  const client = await authenticatedManagementApiClient(
     context.runtime.env,
     context.runtime.signal,
   );

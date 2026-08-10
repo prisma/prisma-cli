@@ -1,6 +1,6 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Branch pagination requests must run sequentially.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-import { requireComputeAuth } from "../auth";
+import { authenticatedManagementApiClient } from "../auth";
 import {
   projectResolutionErrorToCliError,
   resolveProjectTarget,
@@ -62,7 +62,7 @@ async function listRealBranches(
   context: CommandContext,
 ): Promise<BranchListResult> {
   const authState = await requireAuthenticatedAuthState(context);
-  const client = await requireComputeAuth(
+  const client = await authenticatedManagementApiClient(
     context.runtime.env,
     context.runtime.signal,
   );

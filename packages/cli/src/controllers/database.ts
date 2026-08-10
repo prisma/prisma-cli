@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { requireComputeAuth } from "../auth";
+import { authenticatedManagementApiClient } from "../auth";
 import {
   type PrismaCliPackageCommandFormatter,
   resolvePrismaCliPackageCommandFormatterSync,
@@ -714,7 +714,7 @@ async function requireDatabaseContext(
   }
 
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(
+    const client = await authenticatedManagementApiClient(
       context.runtime.env,
       context.runtime.signal,
     );
@@ -768,7 +768,7 @@ async function requireDatabaseProviderOnly(
   const authState = await requireAuthenticatedAuthState(context);
 
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(
+    const client = await authenticatedManagementApiClient(
       context.runtime.env,
       context.runtime.signal,
     );

@@ -115,7 +115,7 @@ async function loadController(client: ReturnType<typeof createMockClient>) {
     performLogout: vi.fn(),
   }));
   vi.doMock("../src/auth/guard", () => ({
-    requireComputeAuth: vi.fn().mockResolvedValue(client),
+    authenticatedManagementApiClient: vi.fn().mockResolvedValue(client),
   }));
 
   return import("../src/controllers/branch");

@@ -1,7 +1,7 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import type { AuthStateResult } from "../types/auth";
 import { SERVICE_TOKEN_ENV_VAR } from "./client";
-import { requireComputeAuth } from "./guard";
+import { authenticatedManagementApiClient } from "./guard";
 import { login } from "./login";
 import { FileTokenStorage } from "./token-storage";
 
@@ -81,7 +81,7 @@ export async function readAuthState(
   // auth state from the token itself and intentionally skip FileTokenStorage,
   // so behavior is independent of any OAuth session that happens to be stored
   // on the runner. This matches the precedence already documented on
-  // `requireComputeAuth` and keeps `auth whoami` and downstream commands
+  // `authenticatedManagementApiClient` and keeps `auth whoami` and downstream commands
   // (e.g. `app deploy`) reading the same source of truth.
   const rawServiceToken = env[SERVICE_TOKEN_ENV_VAR];
   if (rawServiceToken !== undefined) {
@@ -105,7 +105,7 @@ export async function readAuthState(
     };
   }
 
-  const client = await requireComputeAuth(env, signal);
+  const client = await authenticatedManagementApiClient(env, signal);
   const currentPrincipal = await readCurrentPrincipalAuthState(client, signal);
   if (currentPrincipal) {
     if (currentPrincipal.authenticated && currentPrincipal.workspace) {
@@ -139,7 +139,7 @@ async function readServiceTokenAuthState(
   env: NodeJS.ProcessEnv,
   signal?: AbortSignal,
 ): Promise<AuthStateResult> {
-  const client = await requireComputeAuth(env, signal);
+  const client = await authenticatedManagementApiClient(env, signal);
   const currentPrincipal = await readCurrentPrincipalAuthState(client, signal);
   if (currentPrincipal) {
     return currentPrincipal;
@@ -187,7 +187,7 @@ async function buildAuthState({
   let workspaceId = workspaceIdFromCredential;
   let workspaceName = workspaceIdFromCredential;
 
-  client ??= await requireComputeAuth(env, signal);
+  client ??= await authenticatedManagementApiClient(env, signal);
 
   if (client) {
     try {

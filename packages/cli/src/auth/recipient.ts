@@ -37,7 +37,7 @@ export async function resolveRecipientWorkspaceSession(
   const pinnedStorage = new FileTokenStorage(env, signal, {
     activateOnSetTokens: false,
     // createManagementApiSdk wraps refresh writes in withRefreshLock; see
-    // requireComputeAuth for why setTokens must not re-acquire the lock.
+    // authenticatedManagementApiClient for why setTokens must not re-acquire the lock.
     lockSetTokens: false,
     pinnedWorkspaceId: workspace.credentialWorkspaceId,
   });

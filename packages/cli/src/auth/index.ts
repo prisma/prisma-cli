@@ -5,7 +5,7 @@ export {
   workspaceNotAuthenticatedError,
   workspaceSwitchUnavailableError,
 } from "./errors";
-export { requireComputeAuth } from "./guard";
+export { authenticatedManagementApiClient } from "./guard";
 export {
   EmptyServiceTokenError,
   isEmptyServiceTokenError,

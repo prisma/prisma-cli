@@ -125,7 +125,7 @@ async function loadControllers(client: MockClient, projectId: string) {
     performLogout: vi.fn(),
   }));
   vi.doMock("../src/auth/guard", () => ({
-    requireComputeAuth: vi.fn().mockResolvedValue(client),
+    authenticatedManagementApiClient: vi.fn().mockResolvedValue(client),
   }));
 
   const { createTempCwd, createTestCommandContext } = await import("./helpers");

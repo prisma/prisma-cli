@@ -1,4 +1,4 @@
-import { requireComputeAuth } from "../auth";
+import { authenticatedManagementApiClient } from "../auth";
 import {
   type BucketProvider,
   createManagementBucketProvider,
@@ -272,7 +272,7 @@ async function resolveBucketProvider(
   context: CommandContext,
 ): Promise<BucketProvider> {
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(
+    const client = await authenticatedManagementApiClient(
       context.runtime.env,
       context.runtime.signal,
     );
@@ -296,7 +296,7 @@ async function requireBucketContext(
   }
 
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(
+    const client = await authenticatedManagementApiClient(
       context.runtime.env,
       context.runtime.signal,
     );

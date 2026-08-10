@@ -42,7 +42,7 @@ describe("readAuthState", () => {
       accessToken: encodeJwt({ sub: "user:usr_123" }),
       refreshToken: "refresh-token",
     });
-    const requireComputeAuth = vi.fn().mockResolvedValue({
+    const authenticatedManagementApiClient = vi.fn().mockResolvedValue({
       GET: vi.fn().mockImplementation((pathName: string) => {
         if (pathName === "/v1/me") {
           return {
@@ -76,7 +76,7 @@ describe("readAuthState", () => {
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/auth/guard", () => ({
-      requireComputeAuth,
+      authenticatedManagementApiClient,
     }));
 
     const { readAuthState } = await import("../src/auth/operations");
@@ -111,7 +111,7 @@ describe("readAuthState", () => {
         refreshToken: "refresh-token",
       },
     ]);
-    const requireComputeAuth = vi.fn().mockResolvedValue({
+    const authenticatedManagementApiClient = vi.fn().mockResolvedValue({
       GET: vi.fn().mockImplementation((pathName: string) => {
         if (pathName === "/v1/me") {
           return {
@@ -141,7 +141,7 @@ describe("readAuthState", () => {
     });
 
     vi.doMock("../src/auth/guard", () => ({
-      requireComputeAuth,
+      authenticatedManagementApiClient,
     }));
 
     const { readAuthState } = await import("../src/auth/operations");
@@ -179,7 +179,7 @@ describe("readAuthState", () => {
         "header.eyJzdWIiOiJ1c2VyOmNsaXQ0YnNxMTAwMjBvMDBoNDUzcWo1cTEiLCJlbWFpbCI6Imx1YW5AZXhhbXBsZS5jb20ifQ.signature",
       refreshToken: "refresh-token",
     });
-    const requireComputeAuth = vi.fn().mockResolvedValue({
+    const authenticatedManagementApiClient = vi.fn().mockResolvedValue({
       GET: vi
         .fn()
         .mockImplementation(
@@ -211,7 +211,7 @@ describe("readAuthState", () => {
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/auth/guard", () => ({
-      requireComputeAuth,
+      authenticatedManagementApiClient,
     }));
 
     const { readAuthState } = await import("../src/auth/operations");
@@ -237,7 +237,7 @@ describe("readAuthState", () => {
         "header.eyJzdWIiOiJ1c2VyOmNsaXQ0YnNxMTAwMjBvMDBoNDUzcWo1cTEifQ.signature",
       refreshToken: "refresh-token",
     });
-    const requireComputeAuth = vi.fn().mockResolvedValue({
+    const authenticatedManagementApiClient = vi.fn().mockResolvedValue({
       GET: vi.fn().mockResolvedValue({
         data: {
           data: {
@@ -253,7 +253,7 @@ describe("readAuthState", () => {
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/auth/guard", () => ({
-      requireComputeAuth,
+      authenticatedManagementApiClient,
     }));
 
     const { readAuthState } = await import("../src/auth/operations");
@@ -276,7 +276,7 @@ describe("readAuthState", () => {
       accessToken: encodeJwt({ sub: "user:usr_123" }),
       refreshToken: "refresh-token",
     });
-    const requireComputeAuth = vi.fn().mockResolvedValue({
+    const authenticatedManagementApiClient = vi.fn().mockResolvedValue({
       GET: vi.fn().mockResolvedValue({
         data: {
           data: {
@@ -291,7 +291,7 @@ describe("readAuthState", () => {
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/auth/guard", () => ({
-      requireComputeAuth,
+      authenticatedManagementApiClient,
     }));
 
     const { readAuthState } = await import("../src/auth/operations");
@@ -308,7 +308,7 @@ describe("readAuthState", () => {
 
   it("derives authenticated state from PRISMA_SERVICE_TOKEN without consulting FileTokenStorage", async () => {
     const getTokens = vi.fn();
-    const requireComputeAuth = vi.fn().mockResolvedValue({
+    const authenticatedManagementApiClient = vi.fn().mockResolvedValue({
       GET: vi
         .fn()
         .mockImplementation(
@@ -359,7 +359,7 @@ describe("readAuthState", () => {
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/auth/guard", () => ({
-      requireComputeAuth,
+      authenticatedManagementApiClient,
     }));
 
     const { readAuthState } = await import("../src/auth/operations");
@@ -401,7 +401,7 @@ describe("readAuthState", () => {
       }),
       refreshToken: "refresh-token",
     });
-    const requireComputeAuth = vi.fn().mockResolvedValue({
+    const authenticatedManagementApiClient = vi.fn().mockResolvedValue({
       GET: vi.fn().mockResolvedValue({
         data: {
           data: {
@@ -416,7 +416,7 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
-    vi.doMock("../src/auth/guard", () => ({ requireComputeAuth }));
+    vi.doMock("../src/auth/guard", () => ({ authenticatedManagementApiClient }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
@@ -437,7 +437,7 @@ describe("readAuthState", () => {
     // which made `auth whoami` look fine for a token the API was already
     // rejecting. Now `auth whoami` reports the truth and downstream
     // commands trigger the standard AUTH_REQUIRED flow.
-    const requireComputeAuth = vi.fn().mockResolvedValue({
+    const authenticatedManagementApiClient = vi.fn().mockResolvedValue({
       GET: vi.fn().mockResolvedValue({
         data: undefined,
         error: { message: "Unauthorized" },
@@ -449,7 +449,7 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(vi.fn()),
     }));
-    vi.doMock("../src/auth/guard", () => ({ requireComputeAuth }));
+    vi.doMock("../src/auth/guard", () => ({ authenticatedManagementApiClient }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
@@ -470,7 +470,7 @@ describe("readAuthState", () => {
     // place: the credential is presumably valid but the workspace lookup
     // didn't succeed, so we keep authenticated state and use the
     // workspace id as a placeholder name.
-    const requireComputeAuth = vi.fn().mockResolvedValue({
+    const authenticatedManagementApiClient = vi.fn().mockResolvedValue({
       GET: vi.fn().mockResolvedValue({
         data: undefined,
         error: { message: "Internal Server Error" },
@@ -482,7 +482,7 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(vi.fn()),
     }));
-    vi.doMock("../src/auth/guard", () => ({ requireComputeAuth }));
+    vi.doMock("../src/auth/guard", () => ({ authenticatedManagementApiClient }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
@@ -502,7 +502,7 @@ describe("readAuthState", () => {
   });
 
   it("falls back to the workspace id when the API lookup fails for a service token", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue({
+    const authenticatedManagementApiClient = vi.fn().mockResolvedValue({
       GET: vi.fn().mockRejectedValue(new Error("network down")),
     });
 
@@ -510,7 +510,7 @@ describe("readAuthState", () => {
       ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
       FileTokenStorage: mockFileTokenStorage(vi.fn()),
     }));
-    vi.doMock("../src/auth/guard", () => ({ requireComputeAuth }));
+    vi.doMock("../src/auth/guard", () => ({ authenticatedManagementApiClient }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
@@ -532,7 +532,7 @@ describe("readAuthState", () => {
   it("rejects when cancellation aborts the current principal lookup", async () => {
     const controller = new AbortController();
     const reason = new DOMException("Command canceled", "AbortError");
-    const requireComputeAuth = vi.fn().mockResolvedValue({
+    const authenticatedManagementApiClient = vi.fn().mockResolvedValue({
       GET: vi.fn().mockImplementation(() => {
         controller.abort(reason);
         throw reason;
@@ -545,7 +545,7 @@ describe("readAuthState", () => {
         getTokens: vi.fn(),
       })),
     }));
-    vi.doMock("../src/auth/guard", () => ({ requireComputeAuth }));
+    vi.doMock("../src/auth/guard", () => ({ authenticatedManagementApiClient }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
@@ -561,7 +561,7 @@ describe("readAuthState", () => {
   it("rejects when cancellation aborts the workspace fallback lookup", async () => {
     const controller = new AbortController();
     const reason = new DOMException("Command canceled", "AbortError");
-    const requireComputeAuth = vi.fn().mockResolvedValue({
+    const authenticatedManagementApiClient = vi.fn().mockResolvedValue({
       GET: vi.fn().mockImplementation((pathName: string) => {
         if (pathName === "/v1/me") {
           return { data: { data: null } };
@@ -578,7 +578,7 @@ describe("readAuthState", () => {
         getTokens: vi.fn(),
       })),
     }));
-    vi.doMock("../src/auth/guard", () => ({ requireComputeAuth }));
+    vi.doMock("../src/auth/guard", () => ({ authenticatedManagementApiClient }));
 
     const { readAuthState } = await import("../src/auth/operations");
     const token = encodeJwt({ sub: "workspace:clitq5hfg0000qv0gtg9nv9fy" });
@@ -598,7 +598,7 @@ describe("readAuthState", () => {
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/auth/guard", () => ({
-      requireComputeAuth: vi.fn(),
+      authenticatedManagementApiClient: vi.fn(),
     }));
 
     const { readAuthState } = await import("../src/auth/operations");
@@ -624,7 +624,7 @@ describe("readAuthState", () => {
       FileTokenStorage: mockFileTokenStorage(getTokens),
     }));
     vi.doMock("../src/auth/guard", () => ({
-      requireComputeAuth: vi.fn(),
+      authenticatedManagementApiClient: vi.fn(),
     }));
 
     const { readAuthState } = await import("../src/auth/operations");

@@ -21,7 +21,7 @@ import {
   FileTokenStorage,
   getApiBaseUrl,
   readAuthState,
-  requireComputeAuth,
+  authenticatedManagementApiClient,
   SERVICE_TOKEN_ENV_VAR,
 } from "../auth";
 import {
@@ -3264,7 +3264,7 @@ async function requirePreviewAppProviderWithClient(
   client: ManagementApiClient;
   provider: ReturnType<typeof createAppProvider>;
 }> {
-  const client = await requireComputeAuth(
+  const client = await authenticatedManagementApiClient(
     context.runtime.env,
     context.runtime.signal,
   );
