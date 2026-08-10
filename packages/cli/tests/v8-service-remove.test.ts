@@ -39,7 +39,7 @@ describe("prisma-v8 service remove", () => {
         cwd: harness.cwd,
         env: harness.env,
         isTty: INTERACTIVE,
-        answers: [true],
+        answers: ["hello-world"],
       },
     );
 
@@ -67,7 +67,7 @@ describe("prisma-v8 service remove", () => {
         cwd: harness.cwd,
         env: harness.env,
         isTty: INTERACTIVE,
-        answers: [true],
+        answers: ["hello-world"],
       },
     );
 
@@ -116,7 +116,7 @@ describe("prisma-v8 service remove", () => {
         cwd: harness.cwd,
         env: harness.env,
         isTty: INTERACTIVE,
-        answers: [true],
+        answers: ["hello-world"],
       },
     );
 
@@ -146,7 +146,7 @@ describe("prisma-v8 service remove", () => {
         cwd: harness.cwd,
         env: harness.env,
         isTty: INTERACTIVE,
-        answers: [true],
+        answers: ["hello-world"],
       },
     );
 
@@ -159,7 +159,7 @@ describe("prisma-v8 service remove", () => {
     expect(frame.envelope.result).toMatchObject({ removed: true });
   });
 
-  it("exits 3 when consent is declined", async () => {
+  it("settles a mistyped consent token as the engine mismatch error", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
@@ -175,11 +175,11 @@ describe("prisma-v8 service remove", () => {
         cwd: harness.cwd,
         env: harness.env,
         isTty: INTERACTIVE,
-        answers: [false],
+        answers: ["not-the-service"],
       },
     );
 
-    expect(result.exitCode).toBe(3);
+    expect(result.exitCode).toBe(2);
     expect(result.events).toEqual([]);
   });
 
@@ -207,7 +207,84 @@ describe("prisma-v8 service remove", () => {
     expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
   });
 
-  it("never lets --yes grant the removal", async () => {
+  it("grants non-interactively when --confirm carries the service name", async () => {
+    const harness = await makeServiceCli({ routes: releaseRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "remove",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--confirm",
+        "hello-world",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({ removed: true });
+  });
+
+  it("emits the completed json envelope for a --confirm removal", async () => {
+    const harness = await makeServiceCli({ routes: releaseRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "remove",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--confirm",
+        "hello-world",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || !frame.envelope.ok) {
+      throw new Error("expected a completed envelope");
+    }
+    expect(frame.envelope.commandId).toBe("service.remove");
+    expect(frame.envelope.result).toMatchObject({ removed: true });
+  });
+
+  it("refuses a --confirm value that is not the service name", async () => {
+    const harness = await makeServiceCli({ routes: releaseRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "remove",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--confirm",
+        "some-other-service",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
+    expect(frame.envelope.error.meta).toMatchObject({
+      consentToken: "hello-world",
+    });
+  });
+
+  it("never lets --yes alone grant the removal", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
@@ -282,7 +359,7 @@ describe("prisma-v8 service remove", () => {
         cwd: harness.cwd,
         env: harness.env,
         isTty: INTERACTIVE,
-        answers: [true],
+        answers: ["hello-world"],
       },
     );
 

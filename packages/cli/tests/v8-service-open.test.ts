@@ -1,4 +1,3 @@
-import open from "open";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readAuthState } from "../src/auth";
 import {
@@ -14,17 +13,15 @@ vi.mock("../src/auth", async (importOriginal) => ({
   readAuthState: vi.fn(),
 }));
 
-vi.mock("open", () => ({ default: vi.fn() }));
-
 beforeEach(() => {
   vi.mocked(readAuthState).mockReset();
   vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
-  vi.mocked(open).mockReset();
 });
 
 describe("prisma-v8 service open", () => {
-  it("reports the live URL as an endpoint event without launching a browser", async () => {
-    const harness = await makeServiceCli();
+  it("reports the live URL as an endpoint event and opens nothing when the session is not interactive", async () => {
+    const opener = vi.fn();
+    const harness = await makeServiceCli({ openUrl: opener });
 
     const result = await harness.cli.run(
       ["service", "open", "--project", "acme-app", "--service", "hello-world"],
@@ -43,7 +40,7 @@ describe("prisma-v8 service open", () => {
       name: "live-url",
       url: "https://hello.prisma.app",
     });
-    expect(open).not.toHaveBeenCalled();
+    expect(opener).not.toHaveBeenCalled();
     expect(result.stdout).toBe("https://hello.prisma.app\n");
     expect(result.presented?.presentation.next).toEqual([
       {
@@ -57,6 +54,49 @@ describe("prisma-v8 service open", () => {
         command: "prisma-cli service show-deploy dep_2",
       },
     ]);
+  });
+
+  it("opens the live URL through the engine opener in an interactive session", async () => {
+    const opener = vi.fn();
+    const harness = await makeServiceCli({ openUrl: opener });
+
+    const result = await harness.cli.run(
+      ["service", "open", "--project", "acme-app", "--service", "hello-world"],
+      {
+        cwd: harness.cwd,
+        env: harness.env,
+        isTty: { stdin: true, stdout: true, stderr: true },
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(opener).toHaveBeenCalledWith("https://hello.prisma.app");
+    expect(result.presented?.data).toMatchObject({ opened: true });
+    expect(result.events).toContainEqual({
+      kind: "endpoint",
+      name: "live-url",
+      url: "https://hello.prisma.app",
+    });
+  });
+
+  it("reports opened: false when the opener fails, never an error", async () => {
+    const harness = await makeServiceCli({
+      openUrl: () => {
+        throw new Error("no browser here");
+      },
+    });
+
+    const result = await harness.cli.run(
+      ["service", "open", "--project", "acme-app", "--service", "hello-world"],
+      {
+        cwd: harness.cwd,
+        env: harness.env,
+        isTty: { stdin: true, stdout: true, stderr: true },
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({ opened: false });
   });
 
   it("settles a project with no services as SERVICE.NO_DEPLOYMENTS", async () => {
@@ -140,7 +180,11 @@ describe("prisma-v8 service open", () => {
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {
-    const harness = await makeServiceCli({ authenticated: false });
+    const opener = vi.fn();
+    const harness = await makeServiceCli({
+      authenticated: false,
+      openUrl: opener,
+    });
 
     const result = await harness.cli.run(
       ["service", "open", "--project", "acme-app"],
@@ -149,6 +193,6 @@ describe("prisma-v8 service open", () => {
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("CLI.CREDENTIALS_REQUIRED");
-    expect(open).not.toHaveBeenCalled();
+    expect(opener).not.toHaveBeenCalled();
   });
 });

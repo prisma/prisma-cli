@@ -419,7 +419,7 @@ describe("prisma-v8 service domain remove", () => {
     isTty: { stdin: true, stdout: true, stderr: true },
   };
 
-  it("removes the domain without prompting when --confirm grants consent non-interactively", async () => {
+  it("removes the domain when --confirm carries the hostname non-interactively", async () => {
     const harness = await makeServiceCli({ routes: removeRoutes() });
 
     const result = await harness.cli.run(
@@ -430,6 +430,7 @@ describe("prisma-v8 service domain remove", () => {
         "shop.acme.com",
         ...TARGET_ARGS,
         "--confirm",
+        "shop.acme.com",
       ],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
@@ -442,8 +443,10 @@ describe("prisma-v8 service domain remove", () => {
     });
   });
 
-  it("removes the domain with --confirm interactively without asking", async () => {
-    // No scripted answers: a prompt would fail the run past the script.
+  it("grants under --yes when --confirm carries the hostname", async () => {
+    // --yes alone can never grant; --yes plus the matching token takes the
+    // engine's non-interactive branch and grants without asking, so the run
+    // completes with no scripted answer available.
     const harness = await makeServiceCli({ routes: removeRoutes() });
 
     const result = await harness.cli.run(
@@ -453,7 +456,9 @@ describe("prisma-v8 service domain remove", () => {
         "remove",
         "shop.acme.com",
         ...TARGET_ARGS,
+        "--yes",
         "--confirm",
+        "shop.acme.com",
       ],
       { cwd: harness.cwd, env: harness.env, ...INTERACTIVE, answers: [] },
     );
@@ -473,6 +478,7 @@ describe("prisma-v8 service domain remove", () => {
         "shop.acme.com",
         ...TARGET_ARGS,
         "--confirm",
+        "shop.acme.com",
         "--json",
       ],
       { cwd: harness.cwd, env: harness.env },
@@ -490,7 +496,9 @@ describe("prisma-v8 service domain remove", () => {
     });
   });
 
-  it("emits the completed json envelope for an interactive --confirm removal", async () => {
+  it("still asks interactively when --confirm is present, and takes the typed token", async () => {
+    // The grant is a non-interactive affordance: an interactive session
+    // type-to-confirms regardless of --confirm.
     const harness = await makeServiceCli({ routes: removeRoutes() });
 
     const result = await harness.cli.run(
@@ -501,9 +509,15 @@ describe("prisma-v8 service domain remove", () => {
         "shop.acme.com",
         ...TARGET_ARGS,
         "--confirm",
+        "shop.acme.com",
         "--json",
       ],
-      { cwd: harness.cwd, env: harness.env, ...INTERACTIVE, answers: [] },
+      {
+        cwd: harness.cwd,
+        env: harness.env,
+        ...INTERACTIVE,
+        answers: ["shop.acme.com"],
+      },
     );
 
     expect(result.exitCode).toBe(0);
@@ -524,7 +538,7 @@ describe("prisma-v8 service domain remove", () => {
         cwd: harness.cwd,
         env: harness.env,
         ...INTERACTIVE,
-        answers: ["yes"],
+        answers: ["shop.acme.com"],
       },
     );
 
@@ -554,7 +568,7 @@ describe("prisma-v8 service domain remove", () => {
         cwd: harness.cwd,
         env: harness.env,
         ...INTERACTIVE,
-        answers: ["yes"],
+        answers: ["shop.acme.com"],
       },
     );
 
@@ -586,7 +600,7 @@ describe("prisma-v8 service domain remove", () => {
     expect(result.stderr).toContain("CLI.CREDENTIALS_REQUIRED");
   });
 
-  it("settles a declined consent as a user cancellation with exit 3", async () => {
+  it("settles a mistyped consent token as the engine mismatch error", async () => {
     const harness = await makeServiceCli({ routes: removeRoutes() });
 
     const result = await harness.cli.run(
@@ -599,7 +613,7 @@ describe("prisma-v8 service domain remove", () => {
       },
     );
 
-    expect(result.exitCode).toBe(3);
+    expect(result.exitCode).toBe(2);
   });
 
   it("settles a non-interactive run as the engine consent-required error with exit 2", async () => {
@@ -623,6 +637,35 @@ describe("prisma-v8 service domain remove", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
+  });
+
+  it("refuses a --confirm value that is not the hostname, naming the expected value", async () => {
+    const harness = await makeServiceCli({ routes: removeRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "domain",
+        "remove",
+        "shop.acme.com",
+        ...TARGET_ARGS,
+        "--confirm",
+        "other.example.com",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
+    expect(frame.envelope.error.summary).toContain("--confirm shop.acme.com");
+    expect(frame.envelope.error.meta).toMatchObject({
+      consentToken: "shop.acme.com",
+    });
   });
 
   it("cannot be granted by --yes under the engine consent rules (exit 2)", async () => {

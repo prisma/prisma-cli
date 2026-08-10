@@ -1,6 +1,5 @@
 import { defineCommand, flag, positional } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import open from "open";
 import {
   deployFailedError,
   liveUrlUnavailableError,
@@ -11,7 +10,6 @@ import { openPresentations } from "./presentation";
 import type { ServiceOpenResult } from "./results";
 import {
   applyLiveDeploymentHint,
-  isInteractive,
   rememberSelectedService,
   resolveCurrentLiveDeploymentId,
   resolveServiceReadState,
@@ -101,21 +99,19 @@ export const serviceOpenCommand = defineCommand({
     }
 
     const url = deploymentsResult.app.liveUrl;
-    ctx.report({ kind: "endpoint", name: "live-url", url });
-
-    const shouldOpen = isInteractive(ctx);
-    if (shouldOpen) {
-      ctx.signal.throwIfAborted();
-      // The browser launch cannot consume AbortSignal; check around the boundary.
-      await open(url);
-      ctx.signal.throwIfAborted();
-    }
+    // The engine announces the URL as an endpoint event and opens the
+    // browser when the session is interactive; a run that cannot open one
+    // reports opened: false rather than failing.
+    const { opened } = await ctx.openUrl({
+      url,
+      message: "live-url",
+    });
 
     const result: ServiceOpenResult = {
       projectId: state.projectId,
       service: toServiceSummary(deploymentsResult.app),
       url,
-      opened: shouldOpen,
+      opened,
     };
     return ok(
       ctx.present(

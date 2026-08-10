@@ -277,7 +277,10 @@ async function enforceProductionDeploy(
 
   const granted = await ctx.prompt.consent(
     `Deploy to production and replace the live deployment ${currentLive.id} of "${options.serviceName}"?`,
+    { token: options.serviceName },
   );
+  // A token consent resolves to true or throws; this guard only fires if
+  // that contract ever loosens.
   if (!granted) {
     throw userCancelledError("Production deploy cancelled");
   }
@@ -917,7 +920,7 @@ export const serviceDeployCommand = defineCommand({
     summary: "Create a new deployment for the service",
     examples: [
       "service deploy",
-      "service deploy --prod",
+      "service deploy --prod --confirm my-service",
       "service deploy --branch preview-1 --db",
     ],
   },

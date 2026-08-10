@@ -46,7 +46,7 @@ export const serviceRemoveCommand = defineCommand({
     summary: "Remove the service from the resolved branch",
     examples: [
       "service remove",
-      "service remove --service my-service --branch preview-1",
+      "service remove --service my-service --confirm my-service",
     ],
   },
   args: {
@@ -85,7 +85,12 @@ export const serviceRemoveCommand = defineCommand({
 
     const granted = await ctx.prompt.consent(
       `Remove Service "${state.service.name}" and every deployment it owns?`,
+      { token: state.service.name },
     );
+    // A token consent resolves to true or throws (mismatch, or the
+    // engine's consent-required error), so this guard only fires if that
+    // contract ever loosens — never proceed with a destructive call on a
+    // falsy consent.
     if (!granted) {
       throw userCancelledError("Service removal canceled");
     }

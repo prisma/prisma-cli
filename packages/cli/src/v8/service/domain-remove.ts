@@ -1,4 +1,4 @@
-import { defineCommand, flag } from "@prisma/cli-engine";
+import { defineCommand } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { domainTargetArgs } from "./domain-shared";
 import { domainCommandError, userCancelledError } from "./errors";
@@ -15,16 +15,11 @@ export const serviceDomainRemoveCommand = defineCommand({
     summary: "Detach a custom domain from the service",
     examples: [
       "service domain remove shop.acme.com",
-      "service domain remove shop.acme.com --confirm",
+      "service domain remove shop.acme.com --confirm shop.acme.com",
     ],
   },
   args: {
-    flags: {
-      ...domainTargetArgs().flags,
-      confirm: flag.boolean({
-        brief: "Confirm removal without prompting",
-      }),
-    },
+    flags: domainTargetArgs().flags,
     positionals: domainTargetArgs().positionals,
   },
   needs: { credentials: true },
@@ -45,13 +40,16 @@ export const serviceDomainRemoveCommand = defineCommand({
       ctx.signal,
     );
 
-    if (!args.flags.confirm) {
-      const granted = await ctx.prompt.consent(
-        `Detach ${hostname} from Service "${target.resultTarget.service.name}"?`,
-      );
-      if (!granted) {
-        throw userCancelledError("Custom domain removal canceled");
-      }
+    const granted = await ctx.prompt.consent(
+      `Detach ${hostname} from Service "${target.resultTarget.service.name}"?`,
+      { token: hostname },
+    );
+    // A token consent resolves to true or throws (mismatch, or the
+    // engine's consent-required error), so this guard only fires if that
+    // contract ever loosens — never proceed with a destructive call on a
+    // falsy consent.
+    if (!granted) {
+      throw userCancelledError("Custom domain removal canceled");
     }
 
     await target.provider

@@ -382,7 +382,7 @@ describe("prisma-v8 service deploy", () => {
     });
   });
 
-  it("asks for consent on a second production deploy and proceeds when granted", async () => {
+  it("asks for type-to-confirm consent on a second production deploy and proceeds when granted", async () => {
     installFakeProvider({
       services: [EXISTING_SERVICE],
       deployments: [LIVE_DEPLOYMENT],
@@ -393,14 +393,14 @@ describe("prisma-v8 service deploy", () => {
       cwd: harness.cwd,
       env: harness.env,
       isTty: INTERACTIVE,
-      answers: [true],
+      answers: ["hello-world"],
     });
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({ promoted: true });
   });
 
-  it("exits 3 when the production consent is declined", async () => {
+  it("settles a mistyped production consent token as the engine mismatch error", async () => {
     installFakeProvider({
       services: [EXISTING_SERVICE],
       deployments: [LIVE_DEPLOYMENT],
@@ -411,10 +411,10 @@ describe("prisma-v8 service deploy", () => {
       cwd: harness.cwd,
       env: harness.env,
       isTty: INTERACTIVE,
-      answers: [false],
+      answers: ["not-the-service"],
     });
 
-    expect(result.exitCode).toBe(3);
+    expect(result.exitCode).toBe(2);
   });
 
   it("settles a non-interactive --prod run with the engine consent error", async () => {
@@ -437,7 +437,66 @@ describe("prisma-v8 service deploy", () => {
     expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
   });
 
-  it("never lets --yes grant the production deploy", async () => {
+  it("grants the production deploy non-interactively with --confirm <service>", async () => {
+    installFakeProvider({
+      services: [EXISTING_SERVICE],
+      deployments: [LIVE_DEPLOYMENT],
+    });
+    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
+
+    const result = await harness.cli.run(
+      deployArgs(["--prod", "--confirm", "hello-world"]),
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({ promoted: true });
+  });
+
+  it("refuses a --confirm value that is not the target service name", async () => {
+    installFakeProvider({
+      services: [EXISTING_SERVICE],
+      deployments: [LIVE_DEPLOYMENT],
+    });
+    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
+
+    const result = await harness.cli.run(
+      deployArgs(["--prod", "--confirm", "some-other-service", "--json"]),
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
+    expect(frame.envelope.error.meta).toMatchObject({
+      consentToken: "hello-world",
+    });
+  });
+
+  it("still requires --prod even when --confirm carries the service name", async () => {
+    installFakeProvider({
+      services: [EXISTING_SERVICE],
+      deployments: [LIVE_DEPLOYMENT],
+    });
+    const harness = await makeServiceCli({ routes: PROJECT_ROUTES });
+
+    const result = await harness.cli.run(
+      deployArgs(["--confirm", "hello-world", "--json"]),
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.PROD_DEPLOY_REQUIRES_FLAG");
+  });
+
+  it("never lets --yes alone grant the production deploy", async () => {
     installFakeProvider({
       services: [EXISTING_SERVICE],
       deployments: [LIVE_DEPLOYMENT],
@@ -582,9 +641,15 @@ describe("prisma-v8 service deploy", () => {
     }
     expect(frame.envelope.error.code).toBe("SERVICE.BUILD_FAILED");
     expect(frame.envelope.error.meta).toMatchObject({ phase: "build" });
+    const editAction = frame.envelope.error.nextActions.find(
+      (action) => action.kind === "edit-file",
+    );
+    expect(editAction?.reason).toContain(
+      'Add output: "standalone" to next.config.*',
+    );
     expect(
-      frame.envelope.error.nextActions.some(
-        (action) => action.kind === "edit-file",
+      frame.envelope.error.nextActions.some((action) =>
+        action.label.includes('Add output: "standalone" to next.config.*'),
       ),
     ).toBe(true);
   });

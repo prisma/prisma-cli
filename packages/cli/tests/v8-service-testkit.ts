@@ -2,7 +2,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ManagementApiClient } from "@prisma/cli-engine";
-import { createTestCli } from "@prisma/cli-engine/testing";
+import { createTestCli, mintTestJwt } from "@prisma/cli-engine/testing";
 import type { AuthStateResult } from "../src/types/auth";
 import { serviceBuildCommand } from "../src/v8/service/build";
 import { serviceDeployCommand } from "../src/v8/service/deploy";
@@ -294,6 +294,9 @@ export const SERVICE_COMMANDS = {
 export interface ServiceCliOptions {
   routes?: Routes;
   authenticated?: boolean;
+  /** The browser opener behind ctx.openUrl; pass a spy to assert what
+   *  a run opened. */
+  openUrl?: (url: string) => Promise<void> | void;
 }
 
 export interface ServiceCliHarness {
@@ -314,12 +317,25 @@ export async function makeServiceCli(
   const cli = createTestCli({
     commands: SERVICE_COMMANDS,
     groups: SERVICE_GROUPS,
-    credentials:
-      options.authenticated === false ? undefined : { token: "tok_1" },
+    // The credential manager is the shipping path for needs.credentials;
+    // an unauthenticated harness simply seeds no session.
+    ...(options.authenticated === false
+      ? {}
+      : {
+          credential: {
+            token: mintTestJwt({
+              sub: "usr_1",
+              workspace_id: WORKSPACE.id,
+            }),
+            refreshToken: undefined,
+            expiresAt: undefined,
+          },
+        }),
     managementApi: {
       client: fakeManagementClient(options.routes ?? readFlowRoutes()),
     },
     now: () => new Date(0),
+    ...(options.openUrl ? { openUrl: options.openUrl } : {}),
   });
   return { cli, cwd, stateDir, env };
 }

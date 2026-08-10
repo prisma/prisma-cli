@@ -58,7 +58,7 @@ export const PRISMA_SERVICE_ID_ENV_VAR = "PRISMA_SERVICE_ID";
 
 export type ServiceContext = Pick<
   CommandContext,
-  "api" | "env" | "cwd" | "signal" | "prompt" | "report"
+  "api" | "env" | "cwd" | "signal" | "prompt" | "report" | "openUrl"
 >;
 
 export interface ResolvedServiceProjectContext {
@@ -684,16 +684,4 @@ export async function resolveServiceDomainTarget(
       service: toServiceSummary(selectedService),
     },
   };
-}
-
-/**
- * Reads the engine-resolved interactivity fact when the engine exposes
- * it. The `ctx.interactive` context field is a ruled engine amendment
- * that has not landed yet (S2b decision 3); until it does this returns
- * false, so browser-opening commands report the URL without launching.
- */
-export function isInteractive(ctx: ServiceContext): boolean {
-  return (
-    (ctx as ServiceContext & { interactive?: boolean }).interactive === true
-  );
 }
