@@ -37,7 +37,7 @@ describe("prisma-v8 service open", () => {
     });
     expect(result.events).toContainEqual({
       kind: "endpoint",
-      name: "live-url",
+      name: "Live URL",
       url: "https://hello.prisma.app",
     });
     expect(opener).not.toHaveBeenCalled();
@@ -74,7 +74,7 @@ describe("prisma-v8 service open", () => {
     expect(result.presented?.data).toMatchObject({ opened: true });
     expect(result.events).toContainEqual({
       kind: "endpoint",
-      name: "live-url",
+      name: "Live URL",
       url: "https://hello.prisma.app",
     });
   });
@@ -168,7 +168,7 @@ describe("prisma-v8 service open", () => {
       (frame) => frame.kind === "endpoint",
     );
     expect(endpointFrame).toMatchObject({
-      name: "live-url",
+      name: "Live URL",
       url: "https://hello.prisma.app",
     });
     const last = result.json[result.json.length - 1];

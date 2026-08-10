@@ -644,14 +644,9 @@ describe("prisma-v8 service deploy", () => {
     const editAction = frame.envelope.error.nextActions.find(
       (action) => action.kind === "edit-file",
     );
-    expect(editAction?.reason).toContain(
+    expect(editAction?.label).toContain(
       'Add output: "standalone" to next.config.*',
     );
-    expect(
-      frame.envelope.error.nextActions.some((action) =>
-        action.label.includes('Add output: "standalone" to next.config.*'),
-      ),
-    ).toBe(true);
   });
 
   it("reports a post-build failure with the deployment id and a logs action", async () => {

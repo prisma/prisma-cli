@@ -102,10 +102,10 @@ export const serviceOpenCommand = defineCommand({
     // The engine announces the URL as an endpoint event and opens the
     // browser when the session is interactive; a run that cannot open one
     // reports opened: false rather than failing.
-    const { opened } = await ctx.openUrl({
-      url,
-      message: "live-url",
-    });
+    // The engine renders `message: url` on stderr and carries the same
+    // string as the endpoint event's `name`, so it has to read as a human
+    // label rather than a slug.
+    const { opened } = await ctx.openUrl({ url, message: "Live URL" });
 
     const result: ServiceOpenResult = {
       projectId: state.projectId,
