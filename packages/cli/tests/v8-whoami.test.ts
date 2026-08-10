@@ -8,7 +8,7 @@ import { ok } from "@prisma/cli-engine/protocol";
 import {
   createTestCli,
   mintTestJwt,
-  type TestSessionRecord,
+  type SessionRecord,
 } from "@prisma/cli-engine/testing";
 import { describe, expect, it } from "vitest";
 
@@ -17,7 +17,7 @@ import { authWhoamiCommand } from "../src/v8/auth/whoami";
 const EPOCH = () => new Date(0);
 const T0 = "1970-01-01T00:00:00.000Z";
 
-const SESSION: TestSessionRecord = {
+const SESSION: SessionRecord = {
   workspaceId: "ws_123",
   workspaceName: "Acme Inc",
   credential: {
@@ -55,7 +55,7 @@ const requiresCredentials = defineCommand({
 });
 
 function makeCli(options?: {
-  readonly sessions?: readonly TestSessionRecord[];
+  readonly sessions?: readonly SessionRecord[];
   readonly currentWorkspaceId?: string;
   readonly client?: ManagementApiClient;
 }) {

@@ -38,7 +38,7 @@ describe("main export", () => {
 
   test("the ./testing subpath exposes exactly the harness", () => {
     expect(Object.keys(testing).sort()).toEqual([
-      "TestCredentialManager",
+      "InMemoryCredentialManager",
       "createTestCli",
       "mintTestJwt",
     ]);

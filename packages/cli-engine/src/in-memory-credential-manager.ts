@@ -1,3 +1,12 @@
+/**
+ * A complete CredentialManager whose state lives in memory rather than
+ * in a file. It implements the same session rules as the file-backed
+ * one — pinning, upsert by workspace, the environment-override
+ * refusals, and the TokenStorage write slices — and adds a seed and a
+ * state read-back. Tests are what it is mostly used for, which is why
+ * it ships from the ./testing subpath alongside the JWT minter that
+ * produces tokens to seed it, but nothing about it is a stub.
+ */
 import { Buffer } from "node:buffer";
 import {
   credentialsRequiredError,
@@ -13,17 +22,18 @@ import type { TokenStorage } from "./management-api";
 
 const SERVICE_TOKEN_ENV_VAR = "PRISMA_SERVICE_TOKEN";
 
-/** A stored session with its credential material, as seeded into and
- *  read back from the test credential manager. */
-export interface TestSessionRecord {
+/** A stored session with its credential material — what the manager
+ *  holds, seeded in and read back out. Mirrors the state file's
+ *  records. */
+export interface SessionRecord {
   readonly workspaceId: string;
   readonly workspaceName: string | undefined;
   readonly credential: Credential;
 }
 
-export interface TestCredentialManagerSeed {
+export interface InMemoryCredentialManagerSeed {
   /** Stored sessions, mirroring the state file's records. */
-  readonly sessions?: readonly TestSessionRecord[];
+  readonly sessions?: readonly SessionRecord[];
   /** The file's current marker. */
   readonly currentWorkspaceId?: string;
   /** Convenience seed: runs createSession's real claims derivation.
@@ -35,8 +45,8 @@ export interface TestCredentialManagerSeed {
 }
 
 /** The whole stored state, readable back after a run. */
-export interface TestCredentialManagerState {
-  readonly sessions: readonly TestSessionRecord[];
+export interface InMemoryCredentialManagerState {
+  readonly sessions: readonly SessionRecord[];
   readonly currentWorkspaceId: string | null;
 }
 
@@ -89,13 +99,13 @@ type Pin =
  * own mutations move it. No persistence, no locking — those belong to
  * the real manager and its own tests.
  */
-export class TestCredentialManager implements CredentialManager {
-  private storedSessions: TestSessionRecord[];
+export class InMemoryCredentialManager implements CredentialManager {
+  private storedSessions: SessionRecord[];
   private markedWorkspaceId: string | null;
   private readonly environmentToken: string | undefined;
   private pin: Pin = { kind: "unpinned" };
 
-  constructor(seed: TestCredentialManagerSeed) {
+  constructor(seed: InMemoryCredentialManagerSeed) {
     this.storedSessions = [...(seed.sessions ?? [])];
     this.markedWorkspaceId = seed.currentWorkspaceId ?? null;
     this.environmentToken = seed.environmentToken;
@@ -110,7 +120,7 @@ export class TestCredentialManager implements CredentialManager {
     }
   }
 
-  state(): TestCredentialManagerState {
+  state(): InMemoryCredentialManagerState {
     return {
       sessions: [...this.storedSessions],
       currentWorkspaceId: this.markedWorkspaceId,
@@ -120,7 +130,7 @@ export class TestCredentialManager implements CredentialManager {
   /** Applies a write as ANOTHER process would: the stored state
    *  changes, but this process's pinned session does not move. */
   overwriteStoredState(state: {
-    readonly sessions?: readonly TestSessionRecord[];
+    readonly sessions?: readonly SessionRecord[];
     readonly currentWorkspaceId?: string | null;
   }): void {
     if (state.sessions !== undefined) {
@@ -194,7 +204,7 @@ export class TestCredentialManager implements CredentialManager {
   }
 
   tokenStorage(workspaceId: string): TokenStorage {
-    const boundRecord = (): TestSessionRecord | undefined =>
+    const boundRecord = (): SessionRecord | undefined =>
       this.storedSessions.find((record) => record.workspaceId === workspaceId);
     return {
       getTokens: async () => {
@@ -324,7 +334,7 @@ export class TestCredentialManager implements CredentialManager {
     };
   }
 
-  private asSession(record: TestSessionRecord): Session {
+  private asSession(record: SessionRecord): Session {
     return {
       workspaceId: record.workspaceId,
       workspaceName: record.workspaceName,
@@ -347,7 +357,7 @@ export class TestCredentialManager implements CredentialManager {
     const existing = this.storedSessions.find(
       (stored) => stored.workspaceId === workspaceId,
     );
-    const record: TestSessionRecord = {
+    const record: SessionRecord = {
       workspaceId,
       workspaceName: existing?.workspaceName,
       credential: {
@@ -378,7 +388,7 @@ export class TestCredentialManager implements CredentialManager {
     }
   }
 
-  private validatedWorkspaceReference(session: Session): TestSessionRecord {
+  private validatedWorkspaceReference(session: Session): SessionRecord {
     if (session.source === "environment") {
       throw noSessionForWorkspaceError(session.workspaceId);
     }

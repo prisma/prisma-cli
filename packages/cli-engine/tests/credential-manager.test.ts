@@ -19,9 +19,9 @@ import {
 } from "@prisma/cli-engine/protocol";
 import {
   createTestCli,
+  InMemoryCredentialManager,
   mintTestJwt,
-  TestCredentialManager,
-  type TestSessionRecord,
+  type SessionRecord,
 } from "@prisma/cli-engine/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
@@ -42,7 +42,7 @@ const userCredential = (overrides?: {
 const sessionRecordFor = (
   workspaceId: string,
   opts?: { readonly name?: string },
-): TestSessionRecord => ({
+): SessionRecord => ({
   workspaceId,
   workspaceName: opts?.name,
   credential: {
@@ -311,7 +311,7 @@ const codeOf = (thrown: unknown): string => (thrown as CliStructuredError).code;
 
 describe("session mutations and state read-back", () => {
   test("createSession upserts by workspaceId, preserves a recorded name, and sets the marker", async () => {
-    const manager = new TestCredentialManager({
+    const manager = new InMemoryCredentialManager({
       sessions: [sessionRecordFor("workspace-1", { name: "Acme Prod" })],
       currentWorkspaceId: "workspace-1",
     });
@@ -341,7 +341,7 @@ describe("session mutations and state read-back", () => {
   });
 
   test("createSession refuses a workspaceId argument that disagrees with the workspace_id claim", async () => {
-    const manager = new TestCredentialManager({});
+    const manager = new InMemoryCredentialManager({});
     await expect(
       manager.createSession(
         userCredential({ workspaceId: "workspace-1" }),
@@ -351,7 +351,7 @@ describe("session mutations and state read-back", () => {
   });
 
   test("useSession switches the marker; an unknown workspace and an environment-source argument raise AUTH.NO_SESSION_FOR_WORKSPACE", async () => {
-    const manager = new TestCredentialManager({
+    const manager = new InMemoryCredentialManager({
       sessions: [
         sessionRecordFor("workspace-1"),
         sessionRecordFor("workspace-2"),
@@ -382,7 +382,7 @@ describe("session mutations and state read-back", () => {
   });
 
   test("endSession removes one session and clears the current only when it named it — no auto-promotion", async () => {
-    const manager = new TestCredentialManager({
+    const manager = new InMemoryCredentialManager({
       sessions: [
         sessionRecordFor("workspace-1"),
         sessionRecordFor("workspace-2"),
@@ -401,7 +401,7 @@ describe("session mutations and state read-back", () => {
   });
 
   test("endAllSessions clears every session and the marker", async () => {
-    const manager = new TestCredentialManager({
+    const manager = new InMemoryCredentialManager({
       sessions: [
         sessionRecordFor("workspace-1"),
         sessionRecordFor("workspace-2"),
@@ -424,7 +424,7 @@ describe("mutations under an env-supplied session", () => {
   });
 
   test("useSession and endSession refuse, naming the variable and the unset command; state is untouched", async () => {
-    const manager = new TestCredentialManager({
+    const manager = new InMemoryCredentialManager({
       sessions: [sessionRecordFor("workspace-1")],
       currentWorkspaceId: "workspace-1",
       environmentToken,
@@ -446,7 +446,7 @@ describe("mutations under an env-supplied session", () => {
   });
 
   test("endAllSessions refuses when stored sessions exist and succeeds as a no-op when there are none", async () => {
-    const withStored = new TestCredentialManager({
+    const withStored = new InMemoryCredentialManager({
       sessions: [sessionRecordFor("workspace-1")],
       environmentToken,
     });
@@ -455,12 +455,12 @@ describe("mutations under an env-supplied session", () => {
     );
     expect(withStored.state().sessions).toHaveLength(1);
 
-    const withoutStored = new TestCredentialManager({ environmentToken });
+    const withoutStored = new InMemoryCredentialManager({ environmentToken });
     await expect(withoutStored.endAllSessions()).resolves.toBeUndefined();
   });
 
   test("createSession is allowed; the env token remains in force", async () => {
-    const manager = new TestCredentialManager({ environmentToken });
+    const manager = new InMemoryCredentialManager({ environmentToken });
     await manager.createSession(
       userCredential({ workspaceId: "workspace-1" }),
       "workspace-1",
@@ -475,7 +475,7 @@ describe("mutations under an env-supplied session", () => {
   });
 
   test("sessions() still lists stored sessions with the file's marked current", async () => {
-    const manager = new TestCredentialManager({
+    const manager = new InMemoryCredentialManager({
       sessions: [
         sessionRecordFor("workspace-1"),
         sessionRecordFor("workspace-2"),
@@ -496,7 +496,7 @@ describe("mutations under an env-supplied session", () => {
 
 describe("process pinning", () => {
   test("the marker moved by another process between reads does not re-pin; a new manager picks up the new marker", async () => {
-    const manager = new TestCredentialManager({
+    const manager = new InMemoryCredentialManager({
       sessions: [
         sessionRecordFor("workspace-1"),
         sessionRecordFor("workspace-2"),
@@ -513,7 +513,7 @@ describe("process pinning", () => {
     });
 
     const movedState = manager.state();
-    const newProcess = new TestCredentialManager({
+    const newProcess = new InMemoryCredentialManager({
       sessions: movedState.sessions,
       currentWorkspaceId: movedState.currentWorkspaceId ?? undefined,
     });
@@ -523,7 +523,7 @@ describe("process pinning", () => {
   });
 
   test("this manager's own useSession moves the pin", async () => {
-    const manager = new TestCredentialManager({
+    const manager = new InMemoryCredentialManager({
       sessions: [
         sessionRecordFor("workspace-1"),
         sessionRecordFor("workspace-2"),
@@ -540,7 +540,7 @@ describe("process pinning", () => {
   });
 
   test("a pinned session ended by another process raises the session-ended wording on the next read", async () => {
-    const manager = new TestCredentialManager({
+    const manager = new InMemoryCredentialManager({
       sessions: [sessionRecordFor("workspace-1")],
       currentWorkspaceId: "workspace-1",
     });

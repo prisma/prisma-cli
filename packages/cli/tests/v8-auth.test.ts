@@ -15,7 +15,7 @@ import { ok } from "@prisma/cli-engine/protocol";
 import {
   createTestCli,
   mintTestJwt,
-  type TestSessionRecord,
+  type SessionRecord,
 } from "@prisma/cli-engine/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -68,7 +68,7 @@ function credentialFor(workspaceId: string) {
 function record(
   workspaceId: string,
   workspaceName: string | undefined,
-): TestSessionRecord {
+): SessionRecord {
   return {
     workspaceId,
     workspaceName,
@@ -91,7 +91,7 @@ function apiReturning(body: unknown): ManagementApiClient {
 }
 
 function makeCli(spec?: {
-  readonly sessions?: readonly TestSessionRecord[];
+  readonly sessions?: readonly SessionRecord[];
   readonly currentWorkspaceId?: string;
   readonly environmentToken?: string;
   readonly client?: ManagementApiClient;

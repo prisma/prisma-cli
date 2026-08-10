@@ -3,6 +3,10 @@ import type { Credentials } from "./context";
 import type { Credential } from "./credential-manager";
 import type { EngineEvent, StreamEvent } from "./events";
 import { buildEngine } from "./execution/engine";
+import {
+  InMemoryCredentialManager,
+  type SessionRecord,
+} from "./in-memory-credential-manager";
 import type {
   ManagementApiClient,
   ManagementApiClientConfig,
@@ -10,10 +14,6 @@ import type {
 import type { PresentedResult } from "./presentation";
 import type { RunSummary } from "./run-summary";
 import type { Runtime } from "./runtime";
-import {
-  TestCredentialManager,
-  type TestSessionRecord,
-} from "./testing-credential-manager";
 
 export interface TestCli {
   /**
@@ -23,7 +23,7 @@ export interface TestCli {
    * when the legacy `credentials` seed selected the getCredentials
    * fallback path.
    */
-  readonly credentialManager: TestCredentialManager | undefined;
+  readonly credentialManager: InMemoryCredentialManager | undefined;
   run(
     argv: readonly string[],
     opts?: {
@@ -97,7 +97,7 @@ export function createTestCli(spec: {
    *  derivation on this credential (mint the token with mintTestJwt). */
   readonly credential?: Credential;
   /** Stored sessions, mirroring the state file's records. */
-  readonly sessions?: readonly TestSessionRecord[];
+  readonly sessions?: readonly SessionRecord[];
   /** The file's current marker. */
   readonly currentWorkspaceId?: string;
   /** Composes the ephemeral env session; also exported to each run's
@@ -135,7 +135,7 @@ export function createTestCli(spec: {
   const credentialManager =
     spec.credentials !== undefined
       ? undefined
-      : new TestCredentialManager({
+      : new InMemoryCredentialManager({
           sessions: spec.sessions,
           currentWorkspaceId: spec.currentWorkspaceId,
           credential: spec.credential,

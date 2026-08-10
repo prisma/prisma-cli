@@ -10,7 +10,7 @@
 import {
   createTestCli,
   mintTestJwt,
-  type TestSessionRecord,
+  type SessionRecord,
 } from "@prisma/cli-engine/testing";
 import { describe, expect, it } from "vitest";
 
@@ -18,7 +18,7 @@ import { authLogoutCommand } from "../src/v8/auth/logout";
 import { authWorkspaceListCommand } from "../src/v8/auth/workspace-list";
 import { authWorkspaceLogoutCommand } from "../src/v8/auth/workspace-logout";
 
-function record(workspaceId: string, workspaceName: string): TestSessionRecord {
+function record(workspaceId: string, workspaceName: string): SessionRecord {
   return {
     workspaceId,
     workspaceName,
@@ -30,7 +30,7 @@ function record(workspaceId: string, workspaceName: string): TestSessionRecord {
   };
 }
 
-function makeCli(sessions: readonly TestSessionRecord[], current?: string) {
+function makeCli(sessions: readonly SessionRecord[], current?: string) {
   return createTestCli({
     commands: {
       "auth logout": authLogoutCommand,
