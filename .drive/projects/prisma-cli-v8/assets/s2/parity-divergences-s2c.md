@@ -300,11 +300,15 @@ a `service logs --deployment <id>` action, exactly as legacy did.
   answer is No**, not only when the run could not ask: handlers do not see
   interactivity (the ruled `ctx.interactive` fact has not landed), so
   "declined" and "could not ask" are indistinguishable.
-- **The agent-setup prompt does not port.** Legacy `app deploy` called
-  `maybePromptForAgentSetup` before resolving the Project (an agent-file
-  setup tip, with its own dismissal state). The `agent *` group is a later
-  dispatch; v8 deploy asks nothing about agent setup and emits no warning
-  for it.
+- **The agent-setup prompt does not port — final.** Legacy `app deploy`
+  called `maybePromptForAgentSetup` before resolving the Project (an
+  agent-file setup tip, with its own dismissal state). v8 deploy asks
+  nothing about agent setup and emits no warning for it. D2 recorded this
+  as awaiting a decision; the operator was told and did not object, so the
+  drop is final — the prompt dies with the legacy shell, and `agent
+  install` is how skills get set up. The dismissal timestamp it wrote
+  (`state.json`'s `agent.setupPromptDismissedAt`) is still read and
+  reported by `agent status`.
 - **Deploy-all**: unchanged in behavior (sequential targets, `--create-project`
   binds the first target only, per-service inputs rejected, failures carry
   `meta.deployAll.{failedTarget,completed,notAttempted}`). The legacy
@@ -471,3 +475,139 @@ endpoint event's `name`, so the slug `live-url` became the human phrase
 `Live URL`. The json `endpoint.name` changes with it; endpoint events
 are a v8-only surface (legacy emitted none), so nothing that shipped
 depends on the old spelling.
+
+
+## Dispatch 4 — agent, feedback, closure
+
+No rename applies here: R-S2c-1 covers the `app` group only, so
+`agent install|update|status` and `feedback` keep their legacy
+spellings, flags, positionals and result records. Command ids are
+`agent.install`, `agent.update`, `agent.status` and `feedback`.
+Neither group touches the Management API or declares
+`needs.credentials`, so the Q1 auth class does not apply to them.
+
+### Error-code mapping (flat → dotted)
+
+| Legacy flat code (exit) | v8 dotted code (exit) | Commands |
+| --- | --- | --- |
+| `AGENT_SKILLS_INSTALL_FAILED` (1) | `AGENT.SKILLS_INSTALL_FAILED` (2) | agent install, agent update |
+| `USAGE_ERROR` (2) — empty message | `FEEDBACK.MESSAGE_REQUIRED` (2) | feedback |
+| `USAGE_ERROR` (2) — message over 4000 characters | `FEEDBACK.MESSAGE_TOO_LONG` (2) | feedback |
+| `USAGE_ERROR` (2) — malformed or over-long `--email` | `FEEDBACK.EMAIL_INVALID` (2) | feedback |
+| `FEEDBACK_SEND_FAILED` (1) | `FEEDBACK.SEND_FAILED` (2) | feedback |
+
+The engine validates neither string length nor pattern, so the three
+`FEEDBACK.*` argument checks stay hand-rolled in the handler, with the
+legacy limits, the legacy order, and the same refusal before any
+network call. The one argument failure the engine owns is a missing
+`<message>`, which settles as its own usage error
+(`CLI.INVALID_ARGUMENTS`, exit 2).
+
+`agent status` has no error path at all, in legacy or in v8: a skills
+CLI that cannot be read degrades to a warning (below), never to a
+failed run.
+
+### `feedback` gains the standard json envelope
+
+Legacy registered no `renderJson` serializer for `feedback`, so a
+`--json` run emitted the raw result record. Under the engine every
+command's json output is the standard envelope, so the same record now
+travels inside it as `{ok: true, commandId: "feedback", result: {…},
+exitCode, diagnostics, nextActions}`. The `result` payload is
+unchanged: `{id, email, context: {cliVersion, nodeVersion, platform,
+arch}}`. The submitted payload, the 3-second timeout, the
+`PRISMA_CLI_FEEDBACK_URL` override (read from `ctx.env`) and the
+default endpoint are all unchanged.
+
+### `agent install` / `agent update`
+
+- Legacy's single `nextSteps` line ("Run … to verify the installed
+  Prisma skills.") becomes the `run-command` nextAction "Verify the
+  installed Prisma skills", carrying the same package-manager-aware
+  command string. A `--dry-run` still offers nothing, as legacy did.
+- The install failure keeps the installer's own command line, now as a
+  typed `run-command` nextAction ("Retry the installer directly")
+  instead of a free-text `nextSteps` entry plus the separate fix "Run
+  the command below to retry the installer directly." The legacy
+  `debug` field (the installer's stack) disappears with `--trace`
+  (engine-global divergence).
+- Flags, defaults and the built installer command line are unchanged,
+  including `--copy` forced on Windows, `--all-agents` sending
+  `--agent *`, and the package manager detected from the project.
+- Human output is the engine's summary line plus field rows instead of
+  the legacy rail-drawn block. Neither writes a stdout payload.
+
+### `agent status`
+
+- Legacy's `warnings` array becomes an engine warn diagnostic,
+  `AGENT.SKILLS_LIST_UNAVAILABLE`, with the same sentence (including
+  the project-scope "Falling back to skills-lock.json"). The run still
+  completes with exit 0 and still reports `statusSource` as
+  `skills-lock` or `unavailable`.
+- Legacy's `nextSteps` line ("Run … to install or refresh Prisma
+  skills.") becomes the `run-command` nextAction "Install or refresh
+  Prisma skills" with the same command string, offered on the same
+  condition (no skills installed).
+- The result record is unchanged field for field. Human output is a
+  summary line, field rows and a skills table instead of the legacy
+  rail-drawn block.
+
+### `app run` is dropped (operator ruling, 2026-08-10)
+
+`prisma-cli app run` has no v8 counterpart and is not coming back:
+Composer's commands supersede it. This is a ruled drop, not a
+deferral. There is no `service run` port, no engine mechanism for
+passing a child process's exit code through (which is what ledger Q2
+asked about — the question closes with the drop), and S2d needs no
+legacy carve-out, because deleting the commander shell deletes the
+command with it. Anyone running a local dev server through
+`prisma-cli app run` moves to Composer.
+
+### The crash-recovery feedback action does not port (ESCALATED — engine gap)
+
+Legacy pre-filled a bug report on every unexpected error. The shell
+caught the crash, built `prisma-cli feedback "<command> crashed:
+<first line of the error>"` (`src/shell/output.ts:104`), and shipped
+it twice: as a human next-step line and, under `--json`, as a typed
+`recover` nextAction inside the `UNEXPECTED_ERROR` envelope
+(`src/shell/output.ts:120`, wired at `src/cli.ts:72,86`). The
+inventory records this under `feedback`, and the S2c contract asks the
+v8 shell to keep an equivalent.
+
+It cannot, on the current engine. The engine settles unexpected
+failures itself: `settleBug`
+(`packages/cli-engine/src/execution/settlement.ts`) emits
+`CLI.INTERNAL_ERROR` with `nextActions: []` written into the envelope
+literally, and `settleUnhandled` does the same for framework-level
+failures. The only seam a bin may attach is `CliRunHooks.onSettled`,
+which receives a `RunSummary` of `{commandId, exitCode, durationMs,
+snapshot}` — no error object, no message — and which fires after the
+envelope has already been written. Nothing reachable from the shell
+ever sees the crash.
+
+So a v8 crash is the engine's own `CLI.INTERNAL_ERROR` envelope (exit
+1) with no recovery action: the user is not offered the pre-filled
+report, and an agent gets no `recover` action to run. The command it
+would have pointed at (`feedback`) is ported and works; only the
+automatic pre-fill is gone.
+
+Ruling needed, and the affordance is small. The engine would need an
+internal-error contribution point — for example
+`createCli({onInternalError: (context: {commandId, error}) => readonly
+NextAction[]})`, or the same as a `CliRunHooks` member — called from
+`settleBug` and `settleUnhandled` before the envelope is emitted, with
+the returned actions merged into `nextActions`. The shell would then
+supply exactly the legacy action, in both human and json mode.
+
+No partial version is worth shipping in the meantime. The bin can see
+only the run's exit code, so anything it printed afterwards would be a
+generic hint with no failing-command text, it would arrive after the
+run's terminal output, and it could not reach the json envelope at all
+— which is the surface the legacy action existed for. Wrapping every
+handler body in a catch that rethrows unknown errors as a structured
+one is reachable without an engine change, but it is not the same
+thing: it would have to be repeated in every command, it would change
+the crash's code and exit code (`CLI.INTERNAL_ERROR` exit 1 becomes a
+group error exit 2), and it would still miss every crash outside a
+handler — parsing, the needs checks, prompting, presentation — which
+is where an unexpected failure is most likely.

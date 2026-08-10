@@ -13,13 +13,13 @@ sections marked orchestrator-owned.
 
 | Acceptance criterion | Status |
 | --- | --- |
-| All 24 in-scope commands mounted, green on R-S2b-9 matrix | D1+D2: 14 commands mounted, matrix complete per command |
-| `service` rename complete; no `app` path in v8 | D1+D2 surface: met |
+| All 24 in-scope commands mounted, green on R-S2b-9 matrix | D1–D3: 16 commands mounted (both streams added), matrix complete per command; `build logs` has test coverage for the first time |
+| `service` rename complete; no `app` path in v8 | D1–D3 surface: met |
 | Deploy/promote/rollback/remove event sequences pinned | met — deploy pins the full phase sequence as an ordered array; remove pins first/second/last; promote and rollback bracket the SDK transitions |
-| Divergence file complete | D1+D2 surface: met — one shipped consent mechanism, both engine gaps recorded |
-| Q2 ruled+implemented or parked with legacy intact | parked (Q2 open) |
+| Divergence file complete | D1+D2 surface: met — one shipped consent mechanism, both engine gaps recorded. D3 surface: NOT met — the log-stream credential entry describes a shipping runtime the bin does not assemble (D3-R1-F1), and two real deltas are unrecorded (D3-R1-F2, D3-R1-F3) |
+| Q2 ruled+implemented or parked with legacy intact | ruled: `service run` dropped (orchestrator note, 2026-08-10) |
 | Legacy fixture tests for ported commands deleted | pending (later dispatch — legacy `app` shell still serves deploy/logs/etc.) |
-| Root verification green; PR ≥1k LOC; review loop run | pending (LOC floor already cleared: 4,794 added) |
+| Root verification green; PR ≥1k LOC; review loop run | pending (LOC floor already cleared: 4,794 added in D1+D2, 1,565 more in D3) |
 
 ## Findings log
 
@@ -196,6 +196,189 @@ ambiguous-service path goes to the engine prompt instead
 recorded as a divergence — this builder is the abandoned first approach.
 Commit fb6bc32 swept dead re-exports out of `deploy-target.ts` and missed
 this one.
+
+### D3-R1-F1 — the log-stream credential gap is recorded backwards: the shipping runtime does resolve a token (should-fix)
+
+`.drive/projects/prisma-cli-v8/assets/s2/parity-divergences-s2c.md:416-439`,
+`packages/cli/src/v8/service/errors.ts:231-233`,
+`packages/cli/tests/v8-service-logs.test.ts:427-450`.
+
+The divergence entry says `ctx.getCredentials()` "is the manager-less
+fallback and resolves `undefined` whenever a credential manager is wired
+— which is the shipping runtime", and concludes that `service logs`
+"reports a clear error under the credential manager". The code does
+something else. `ctx.getCredentials()` forwards straight to
+`runtime.getCredentials()` and never looks at the manager
+(`packages/cli-engine/src/execution/command-context.ts:96-97`). The
+shipping runtime wires `getCredentials: makeGetCredentials(proc.env)`
+(`packages/cli/src/v8/runtime.ts:95`), which returns
+`PRISMA_SERVICE_TOKEN` when it is set and otherwise the access token
+`FileTokenStorage` holds (`packages/cli/src/auth/credentials.ts:11-22`)
+— the same two sources, in the same order, that legacy's
+`createPreviewLogAuthOptions` used
+(`packages/cli/src/controllers/app.ts:3284-3306`). `auth login` writes
+the token to exactly that place (`packages/cli/src/v8/auth/login.ts:75`
+→ `storeLegacyCredential` → `FileTokenStorage.setTokens`,
+`packages/cli/src/auth/operations.ts:114-131`), and nothing in the CLI
+calls `credentialManager.createSession`, so a signed-in user's token is
+where `getCredentials` looks for it.
+
+So the shipped command streams under the real runtime, and
+`SERVICE.LOG_STREAM_CREDENTIALS_UNAVAILABLE` is not reachable in
+production today. What makes it fire in the tests is a harness
+constraint rather than the product: `createTestCli` rejects the
+`credentials` seed combined with any credential-manager seed
+(`packages/cli-engine/src/testing.ts:130-134`) and defines
+`getCredentials: async () => spec.credentials` (`:214`), so seeding a
+manager forces `getCredentials` to resolve `undefined` — a runtime
+shape the bin never assembles, because it wires both. The test at
+`:427-450` therefore pins the harness, and its comment ("Under the
+credential manager — the shipping path — ctx.getCredentials() resolves
+nothing") repeats the same wrong fact. The comment on the error builder
+(`errors.ts:231-233`) states the opposite wrong fact: "needs.credentials
+makes this unreachable in practice".
+
+The escalation is still worth putting to the operator — `getCredentials`
+is documented as staged for deletion
+(`packages/cli-engine/src/context.ts:44-48`), the surviving accessors
+expose no token, and a session that lives only in the credential
+manager's own state file would not be found by `FileTokenStorage`. This
+finding asks for none of that to be built. It asks that the three places
+describing today's behavior describe today's behavior, so the operator
+rules on the real situation: the command ships working, on an accessor
+that is scheduled to disappear.
+
+**Orchestrator adjudication (2026-08-10): the finding is half right, and
+the correction it asks for would itself be wrong within one merge-down.
+Measured, not reasoned — both credential surfaces resolve to the same
+file path by default, and the file's shape decides the answer:**
+
+- **On this branch today the reviewer is right.** `auth login` still
+  writes through `storeLegacyCredential`
+  (`packages/cli/src/v8/auth/login.ts:75`), which produces the legacy
+  `{tokens: […]}` shape. `ctx.getCredentials()` reads that shape and
+  returns a token, so `service logs` streams and
+  `SERVICE.LOG_STREAM_CREDENTIALS_UNAVAILABLE` is indeed unreachable.
+- **On `bot/s2a-foundations`, which is our own base and which we merge
+  down next, it is already false.** There `auth login` calls
+  `ctx.credentialManager.createSession`
+  (`bot/s2a-foundations:packages/cli/src/v8/auth/login.ts:132`), which
+  writes `{version, sessions, currentWorkspaceId}`.
+  `@prisma/credentials-store` reads `data.tokens || []`, so that file
+  yields no credential: driving the manager's own API end to end,
+  `ctx.getCredentials()` flips from a token to `undefined` after a
+  single `createSession`, while `credentialManager.currentSession()`
+  still returns a valid session.
+
+**So the breakage is not hypothetical and not avoided — it is scheduled,
+and it arrives with the next merge-down. `service logs` becomes the one
+command that fails for a signed-in user whose other commands all work.
+`PRISMA_SERVICE_TOKEN` users are unaffected either way, because that
+path short-circuits ahead of the file read.**
+
+**Consequences for the fix round: the error builder and its test STAY —
+they are about to become the live path, not dead code. What must change
+is the wording in all three places the finding names, which today claims
+the command is already broken and would tomorrow claim it already works.
+Both are wrong. Each should state the trigger: the shape of the
+credential file, flipped by the first `auth login` run after the auth
+rework lands.**
+
+### D3-R1-F2 — `service logs --deployment <id>` stops honoring the compute-config service (should-fix)
+
+`packages/cli/src/v8/service/logs.ts:191-199` with
+`parity-divergences-s2c.md:443-448`.
+
+`serviceNamed` counts only `--service` and the positional config target.
+Legacy folded the config-selected app name in first — `appName = appName
+?? compute.configAppName` (`packages/cli/src/controllers/app.ts:1583`) —
+and only then chose between the scoped and the global lookup (`:1646`).
+That name is still computed in v8
+(`packages/cli/src/v8/service/target.ts:178-190`), and
+`selectComputeDeployTarget` returns the single target whenever the
+config declares one, so in any directory holding a `prisma.compute.ts`
+the name is present without the user typing anything.
+
+In a normal service directory, `prisma-cli service logs --deployment
+<id>` therefore behaves differently now. Legacy looked the id up inside
+the configured service and refused a deployment belonging to a sibling
+service (`Deployment "…" not found for app "…"`,
+`controllers/app.ts:1669-1673`); v8 resolves the id globally, streams
+the sibling's logs, and rewrites the remembered service selection to
+that sibling (`logs.ts:90`). A config naming a service that no longer
+exists used to fail with "Selected app does not exist in the resolved
+project" (`controllers/app.ts:2961-2972`) and is now ignored.
+
+The divergence entry records the opposite — "Legacy resolved an explicit
+deployment id globally when no app was named, and v8 keeps that."
+Legacy's "named" included the config; v8's does not. Either feed the
+config name into the decision (it cannot reintroduce the picker: an
+explicit name never prompts) or record that the meaning of "named"
+narrowed.
+
+### D3-R1-F3 — the json stream drops record fields legacy published, and `--cursor` loses its only source (should-fix)
+
+`packages/cli/src/v8/build/logs.ts:142-171` and `:202-207`,
+`packages/cli/src/v8/service/logs.ts:210-221`, with
+`parity-divergences-s2c.md:381-389`.
+
+1. **Per-record fields.** Legacy `build logs --json` published each
+   record whole (`data: record`,
+   `packages/cli/src/controllers/build.ts:87-95`), so every framed line
+   carried `cursor`, `level`, `source` and `step`. The port keeps the
+   text, the channel and `step`, and emits nothing at all for a terminal
+   record whose code is `end` (`build/logs.ts:163`), which legacy framed
+   too. `--cursor <cursor>` is documented as "Resume from a cursor a
+   previous run reported" (`build/logs.ts:187-190`) — after this change
+   no successful or partial run reports one, in either format. The only
+   cursor a user can obtain is the one `BUILD.FAILED` carries, so the
+   flag now works only after a failed build. The `output` event has a
+   free-form `data` field, already used here for `step`
+   (`packages/cli-engine/src/events.ts:52-58`), so carrying the cursor
+   is a one-line change.
+2. **The headers are now json frames.** Legacy suppressed both headers
+   under `--json` (`controllers/build.ts:47`,
+   `controllers/app.ts:1609`). v8 reports them as `output` diagnostics,
+   so a json consumer of `build logs` reads one extra frame before the
+   records, and a json consumer of `service logs` reads three.
+
+The divergence file presents the json change as the wrapper-event drop
+plus an envelope-shape change, with "the per-record events survive".
+Neither the dropped fields nor the added header frames are in it. Carry
+the fields through, or record both.
+
+### D3-R1-F4 — `build logs` belongs to no command family (low)
+
+`packages/cli/src/v8/cli.ts:45-63` (the platform family) and `:103`
+(the mount), as committed in 55efe06.
+
+Every other Management-API command is listed in a family. `build logs`
+is mounted straight into the tree, directly above the comment that
+reserves familyless mounting for shell-owned surfaces (`:104`), so a
+reader cannot tell whether the omission is a decision or an oversight.
+Standing ruling 1 makes `CommandFamily` the ownership entity and gives
+each subgroup exactly one owner, and `build logs` is a platform command
+— it calls `/v1/builds/{buildId}/logs` through `ctx.api` — not a local
+utility like `agent` or `telemetry`. Nothing breaks today because the
+platform family declares neither a config section nor a docs base URL,
+and the engine derives each diagnostic's docs link from that base
+(`packages/cli-engine/src/command-family.ts:11-19`); the day a base URL
+is set, this one command silently misses it.
+
+### D3-R1-F5 — the ndjson test helper does not exercise the buffering it claims to (low)
+
+`packages/cli/tests/v8-build-logs.test.ts:34-46`.
+
+The helper's comment says "One chunk per record, plus a split line, so
+the reader's buffering is exercised rather than assumed", but it
+enqueues exactly one complete, newline-terminated chunk per record.
+Nothing splits a record across chunks, so `forEachNdjsonRecord`'s
+partial-line buffer is never used, and nothing omits the final newline,
+so the branch that parses the last record when the stream is `done`
+(`packages/cli/src/v8/build/logs.ts:132-138`) never runs. Those two
+paths are the only reason the reader is hand-written, and this dispatch
+is the first test coverage `build logs` has ever had. Splitting one
+record across two chunks and dropping the last newline covers both.
 
 ## Round notes
 
@@ -518,6 +701,125 @@ service test.
   rather than stating that `--confirm` does not skip an interactive
   prompt. The tests pin it; one clause in the file would make the record
   self-contained.
+
+### Round 1 (dispatch D3 — the log streams) — reviewer
+
+**What was checked.** All 12 files of `a0b0ea6..55efe06` against
+inventory §4's `prisma app logs` and `prisma build logs` entries, read
+beside `controllers/app.ts` (`runAppLogs`,
+`resolveExplicitLogDeployment`, `resolveLiveLogDeployment`,
+`writeLogRecord`, `createPreviewLogAuthOptions`) and
+`controllers/build.ts` (`runBuildLogs`, `writeBuildLogRecord`,
+`forEachNdjsonRecord`); plus the engine's `reporting.ts`,
+`rendering.ts`, `needs.ts`, `command-context.ts` and `testing.ts` for
+the channel, log-level, json and credential semantics, and the shipping
+`v8/runtime.ts` for what the bin actually wires.
+
+**Channel routing is the legacy routing, branch for branch.** `build
+logs` sends a record to `diagnostic` when `record.source === "stderr" ||
+record.level === "error"` and to `data` otherwise — the same predicate
+as `writeBuildLogRecord` (`controllers/build.ts:98-101`) — and the
+engine writes `data` to stdout and everything else to stderr
+(`rendering.ts:33-35`). A terminal record whose code is not `end` goes
+to `diagnostic`, matching legacy's `stderr.write(record.message)`.
+`service logs` sends every log record to `data`, which is what legacy
+did (`writeLogRecord` wrote log text to stdout and dropped terminal
+records in human mode entirely); showing the terminal message is the
+one difference and it is recorded. Newline handling is equivalent:
+legacy wrote the text and appended a newline when one was missing, the
+port strips a single trailing newline and the engine appends one, so
+the bytes match — including a record that ends in a blank line.
+`--quiet` still hides both headers, because diagnostics carry display
+severity `info` while `data` lines carry none, so no log level can ever
+swallow the logs themselves (`reporting.ts:14-22`).
+
+**`skipSelection` does not reach the other read commands.** It is
+optional and absent by default, so `show`, `open`, `list-deploys` and
+`release.ts` (promote / rollback / remove) run the same
+`resolveExistingServiceSelection` call as before
+(`target.ts:602-610`), and the domain commands go through
+`resolveServiceDomainTarget`, which this diff does not touch. The
+`--service` / positional / `--deployment` combinations are right except
+for the config-named case (D3-R1-F2): `--service` with `--deployment`
+scopes the lookup and reproduces `requireDeploymentForApp`;
+`--deployment` alone resolves globally, then checks that the deployment
+has a service and that the service is in the resolved project,
+producing the three `DEPLOYMENT_NOT_FOUND` variants with legacy's three
+summaries; and a named service with no selection settles
+`SERVICE.NO_DEPLOYMENTS`, which is the branch legacy could only reach
+through a usage error.
+
+**The escalated exit-1 interim ships exactly as described.** A terminal
+`error` record is remembered rather than thrown on, every remaining
+record still streams, and only after the stream closes does the handler
+throw `BUILD.FAILED` carrying `record.message` as `why`, `code` and
+`retryable` in `meta`, the cursor in `meta` when there is one, and a
+`build logs <id> --cursor <cursor>` resume action
+(`build/logs.ts:81-104`, `:228-238`). The test asserts the ordering (the
+earlier log line is present in the events), the code, the `why`, the
+meta and the resume action. Nothing in the port reaches for
+`process.exitCode`.
+
+**The token interim is contained; the record around it is not
+(D3-R1-F1).** The command asks `ctx.getCredentials()` and settles a
+structured error when it resolves nothing. It never reads
+`PRISMA_SERVICE_TOKEN`, never constructs `FileTokenStorage`, never
+touches the auth state file. Its only env read is
+`getApiBaseUrl(ctx.env)` for the stream's base URL, which is the value
+legacy passed too and which no context accessor exposes. `rawTokenSeed`
+is confined to one file: 14 uses, all in `v8-service-logs.test.ts`.
+`build logs`, deploy, domain, show, open and the rest still seed
+`credential` and exercise the credential-manager path, and both
+unauthenticated cases deliberately omit the seed, so they still fail
+through the manager. What the seed cannot model is the shipping runtime,
+which wires a manager and a working `getCredentials` at the same time —
+hence the finding, which is about the record, not the code.
+
+**Tests are the right kind, with one hole.** Semantic throughout:
+events compared as an ordered array with their channels, envelopes and
+`commandId`, exit codes, the state file for the selection cache, and the
+captured request query for `--follow` / `--cursor`. R-S2b-9's axes are
+complete for both commands (success, errored, json envelope,
+unauthenticated; no consent point and no picker on either — the picker
+stays proven once, on `service show`). The hole is the ndjson reader
+(D3-R1-F5). The three service-logs error variants are driven through
+route fakes that distinguish the branch-scoped listing from the
+provider's branch-less global scan, which is a faithful model of
+`findAppForDeployment`.
+
+**Observations, not findings.**
+
+- The doc comment "promote / rollback / remove need a service that
+  already exists" now sits above `deploymentDetachedError` rather than
+  `releaseTargetRequiredError` (`errors.ts:194-195`): the two new
+  builders were inserted between the comment and the function it
+  describes.
+- `build logs`'s `BUILD.NOT_FOUND` advice points at `auth workspace use
+  <id-or-name>` where legacy said `auth login`. That is better advice
+  for "switch to the workspace that owns it" and worth keeping.
+- The `service logs` header loses legacy's description line ("Streaming
+  logs for the selected deployment.") along with the block rendering,
+  while `build logs` keeps its single header line. The header change is
+  recorded; that the two commands now differ in shape is not.
+
+**Not findings — for the orchestrator.**
+
+- **The review worktree is not clean.** While this review ran, the
+  worktree gained uncommitted dispatch-4 work:
+  `packages/cli/src/v8/agent/`, `packages/cli/src/v8/feedback.ts`,
+  `tests/v8-agent.test.ts`, `tests/v8-feedback.test.ts`, a modified
+  `packages/cli/src/v8/cli.ts` that mounts them, and a modified
+  `parity-divergences-s2c.md` (a rewritten D2 agent-setup entry plus a
+  new dispatch-4 section). Every line reference in the D3 findings is to
+  the reviewed commit 55efe06; the D2 rewrite inserts four lines above
+  the dispatch-3 section, so those divergence-file numbers now read four
+  lines lower on disk. Nothing in D3's committed diff depends on any of
+  it.
+- The engine knows the Management API base URL
+  (`runtime.managementApi.baseUrl`) and does not expose it on
+  `CommandContext`, so a self-authenticating stream has to rebuild it
+  from `ctx.env`. That belongs in the same conversation as the token
+  accessor, not in a D3 finding.
 
 ## Orchestrator notes (orchestrator-owned)
 
