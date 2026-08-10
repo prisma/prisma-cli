@@ -5,6 +5,7 @@ import {
   composeDevVersion,
   computeNextMinor,
   computeNextReleaseVersion,
+  isReleaseCommitSubject,
   parseVersion,
 } from "./determine-version-utils.ts";
 
@@ -189,5 +190,23 @@ describe("assertCanonicalBase", () => {
     assert.throws(() => assertCanonicalBase("1.02.3"), /not canonical/);
     assert.throws(() => assertCanonicalBase("1.2.03"), /not canonical/);
     assert.throws(() => assertCanonicalBase("8.0.0-rc.01"), /not canonical/);
+  });
+});
+
+describe("isReleaseCommitSubject", () => {
+  it("accepts the bump-PR convention", () => {
+    assert.equal(isReleaseCommitSubject("chore(release): 8.0.0-rc.2"), true);
+  });
+
+  it("rejects every other subject, including version-changing feature merges", () => {
+    assert.equal(
+      isReleaseCommitSubject("feat: adopt lockstep versioning"),
+      false,
+    );
+    assert.equal(isReleaseCommitSubject("chore: release prep"), false);
+    assert.equal(
+      isReleaseCommitSubject(" chore(release): leading space"),
+      false,
+    );
   });
 });

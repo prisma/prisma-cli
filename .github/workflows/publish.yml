@@ -9,7 +9,8 @@ name: Publish to npm
 # Trigger model:
 #   - push to `main` with the root `version` unchanged → publish
 #     `<base>-dev.N` under dist-tag `dev`.
-#   - push to `main` with the root `version` changed   → publish `<base>`
+#   - push to `main` with the root `version` changed BY A
+#     `chore(release): ...` COMMIT (the merged bump PR)  → publish `<base>`
 #     under dist-tag `latest` and create a GitHub Release (marked
 #     pre-release for RC-line versions like `8.0.0-rc.N`). `latest`
 #     tracks the newest release, RC or stable. This is how a merged
@@ -95,6 +96,11 @@ jobs:
           # to detect release bumps. Empty for `workflow_dispatch`, which
           # the script also handles.
           PUSH_BEFORE_SHA: ${{ github.event.before }}
+          # A release additionally requires the merged commit to be a
+          # release-bump commit (`chore(release): ...`) — a version change
+          # arriving through any other PR publishes a dev build only
+          # (operator ruling 2026-08-10).
+          HEAD_COMMIT_SUBJECT: ${{ github.event.head_commit.message }}
         run: node scripts/determine-version.ts
 
       - name: Set package versions

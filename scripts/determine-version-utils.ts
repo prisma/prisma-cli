@@ -112,3 +112,7 @@ export function assertCanonicalBase(base: string): void {
     );
   }
 }
+
+export function isReleaseCommitSubject(subject: string): boolean {
+  return subject.startsWith("chore(release):");
+}
