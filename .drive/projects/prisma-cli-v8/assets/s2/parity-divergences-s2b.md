@@ -196,7 +196,10 @@ used here for project resolution) apply identically. On top of them:
     unreachable, so `POSTGRES.CONFIRMATION_REQUIRED` has no entry in
     the mapper and `meta.expectedConfirm` / `meta.receivedConfirm`
     are gone. `--yes` never grants consent; a wrong typed answer is
-    `CLI.PROMPT_INVALID`, exit 2.
+    `CLI.PROMPT_INVALID`, exit 2; and cancelling the prompt with
+    Ctrl-C or EOF settles `CLI.PROMPT_CANCELLED`, exit 3 — an exit
+    code these commands never produced before, because they had no
+    prompt to cancel.
 24. **Consent prompts are new.** The legacy commands had no
     interactive confirmation at all — only the flag. The prompt's
     question is each command's legacy confirmation `why` sentence,
@@ -221,11 +224,17 @@ used here for project resolution) apply identically. On top of them:
 29. **Fixture-only `DATABASE_CONNECTION_NOT_FOUND`** has no v8
     counterpart: in real mode an unknown connection is an API
     passthrough code on rotate and remove.
-30. **`database-plan-limit.test.ts` deleted.** Every case drove a
-    ported command. The mapped plan-limit error is covered by the v8
-    postgres tests with and without a subscription result; the
-    provider's own enrichment internals (the 3s lookup timeout, the
-    cancel path) are no longer covered by a command-level test.
+30. **`database-plan-limit.test.ts` trimmed to its provider cases.**
+    Seven cases drove the ported `database show` through the legacy
+    shell and are deleted; the mapped plan-limit error is covered by
+    the v8 postgres tests, both with and without a subscription
+    lookup result. The eleven provider unit cases stay, because the
+    provider is the operation layer v8 calls (d2 §5): the plan-limit
+    discriminator, the responses that must not be classified as plan
+    limits, and the 3-second subscription-lookup timeout. The one
+    behavior that goes with the deleted cases is the legacy shell's
+    cancel path (exit 130 with `COMMAND_CANCELED` when the caller
+    aborts during enrichment); in v8 cancellation is engine-owned.
 
 ### Error code map
 
