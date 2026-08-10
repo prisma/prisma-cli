@@ -338,6 +338,70 @@ that is complete, reviewed and green.
 Divergence 11, `project link`'s lost picker metadata, stays flagged for
 the operator as a product call rather than an architectural one.
 
+### Closure loop — principal-engineer pass (2026-08-10)
+
+Full artifact at `../specs/reviews/code-review.md`, local-only scratch
+by the standing rule, so the dispositions are recorded here. Sixteen
+findings, F01 to F16. Acceptance criteria: 4 PASS, 3 WEAK, no FAIL and
+nothing unverified; the only WEAK that was a literal shortfall rather
+than thin evidence was the two commands missing an errored case, now
+closed.
+
+**Fixed (F03, F04, F06, F07, F10, F11, F13, F15, F16)** — commits
+d0d31a6, db1a061, 791be26, plus 9445a5b for F05. Highlights:
+
+- **F07** was the most valuable. The legacy-context adapter cast a
+  three-field object to the legacy `CommandContext`, so a future legacy
+  edit reading a fourth field would compile clean and throw an
+  unhelpful runtime error — worst case inside `project transfer`, after
+  the project had already been moved. Both levels are now Proxies that
+  refuse an unserviceable read and name the field. A new test drives all
+  five call sites through it, proving the refusal rejects nothing
+  today's code reads.
+- **F11** reversed the D3 round-2 disposition. Nothing in this package
+  proved a `sensitive` row reaches the screen masked, so the engine
+  could have regressed with the suite green. The `bucket key create`
+  golden entry now pins the card and the four stdout lines together.
+- **F03** is documented rather than smoothed: cancelling the install
+  wait exits 3 during the sleep and 130 during an in-flight poll. Both
+  are now tested and divergence 45 states both. Reshaping the second
+  would mean second-guessing the engine's own settlement, and 130 on
+  abort is what the legacy loop did.
+
+**F04's `project list` half was re-ruled, because the finding's premise
+was wrong.** It asserted that `listRealWorkspaceProjects` raises on any
+non-2xx. It does not: `const { data } = await client.GET(...)` discards
+`error` and `response`, so a rejected request becomes an empty list.
+The implementer verified this by running it rather than reading it, and
+was right. The case stays but pins what actually happens — exit 0 and
+an empty list — and is named so nobody mistakes it for a passing error
+case. Divergence 46 records the underlying defect, which is wider than
+one command: project-name resolution goes through the same function
+everywhere, so any command resolving a project by name reports "Choose
+a Project" when the API in fact rejected the request. Unchanged legacy
+behaviour, so this slice introduces nothing, but v8 inherits it and the
+operator should decide whether to fix it.
+
+**F01 — not a defect, verified.** All seven destructive commands
+discard the boolean `ctx.prompt.consent` returns, which the finding
+called security-class. With a token the engine returns `true` or
+throws, and the consent matrices assert exit 2 and the error code, so
+an engine that started returning `false` would flip those runs to exit
+0 and turn the tests red. The reliance is already pinned.
+
+**F02 — for the operator.** `git connect` declares `needs.interaction`,
+so every non-interactive run fails before any API call, including runs
+that would need no wait. That was an operator ruling, made when the
+engine had no interaction error of its own; `browserWait` now raises
+one, so the capability loss is avoidable. Not reversed unilaterally.
+
+**Deferred to S2c and S2d (F08, F09, F12, F14)** — the five duplicated
+mappers, the double-cast of `ctx.api`, the restated copy strings and
+the hardcoded binary name. All maintainability, none behavioural, and
+the first is the same concern the architect pass raised: S2c adds four
+more namespaces and is the cheaper place to consolidate with the full
+requirement in view.
+
 ## Round notes
 
 ### D3 round 2 — 2026-08-10
