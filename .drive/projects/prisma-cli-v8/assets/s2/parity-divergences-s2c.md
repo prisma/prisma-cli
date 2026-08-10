@@ -392,6 +392,35 @@ per-record events survive as `output` frames with the engine's own
 envelope shape (`{kind, source, channel, line, commandId, timestamp}`)
 instead of the legacy `{type, command, timestamp, data}` shape.
 
+The record's own fields ride in the event's free-form `data`, so a json
+consumer keeps everything legacy published per record: `build logs`
+carries `cursor`, `level`, `source` and `step`; `service logs` carries
+`byteStart` and `byteEnd`; and a reported terminal record (a `no_logs`
+end, any error terminal) carries `cursor`, `code` and `retryable`.
+
+Two json-surface losses remain, both because the engine owns rendering
+and a handler cannot see the format:
+
+- **The normal terminal record is no longer framed.** Legacy framed
+  every record in json mode, including the terminal `end` that human
+  mode printed nothing for; v8 emits no event for it. What a consumer
+  loses: on a `build logs` run whose build produced no log records at
+  all, `--json` now reports no cursor anywhere, so there is nothing to
+  pass to `--cursor` on the next run. On a run that produced log records
+  the last record's own cursor is the resume point, so nothing is lost
+  there. Carrying it needs an engine event kind that is framed in json
+  and silent in human mode; the only such kind is `remediation`, which
+  carries a `NextAction` and means something else.
+- **The headers are framed too.** Legacy wrote its headers only when
+  neither `--json` nor `--quiet` was set. `--quiet` still hides them in
+  v8 — they are `diagnostic` output, whose display severity is `info`,
+  and `--quiet` is a log-level alias — but `--json` does not, because a
+  handler cannot read the format and must not branch on it. A json
+  consumer therefore reads one extra `output` frame before the
+  `build logs` records ("Streaming logs for build <id>") and three
+  before the `service logs` records (`project:`, `service:`,
+  `deployment:`).
+
 Both commands default to json when stdout is not a TTY (engine
 auto-format), where legacy defaulted to human text unless `--json` was
 passed.
@@ -422,32 +451,60 @@ either way.
 The log stream does not go through the Management API client: it opens
 its own connection and needs the raw access token (legacy built one
 from `PRISMA_SERVICE_TOKEN` or the token file in
-`createPreviewLogAuthOptions`). On the current base no sanctioned
-accessor reaches a session command:
+`createPreviewLogAuthOptions`). On the current base the only accessor
+that reaches a session command at all is `ctx.getCredentials()`, which
+the engine documents as staged for deletion:
 
 - `ctx.session()` deliberately omits the token ("The token is
   INTERNAL", `credential-manager.ts`).
-- `ctx.getCredentials()` is the manager-less fallback and resolves
-  `undefined` whenever a credential manager is wired — which is the
-  shipping runtime.
 - `ctx.credentialManager` (whose `tokenStorage()` is marked
   engine-facing) is exposed only to result commands that declare
   `managesCredentials`.
+- `ctx.getCredentials()` forwards straight to `runtime.getCredentials()`
+  and never consults the credential manager. The shipping bin wires
+  `makeGetCredentials(proc.env)`, which returns `PRISMA_SERVICE_TOKEN`
+  when it is set and otherwise whatever `FileTokenStorage` reads out of
+  the credential file — the same two sources, in the same order, that
+  legacy used.
 
 v8 asks `ctx.getCredentials()` and, when it resolves nothing, settles
 with `SERVICE.LOG_STREAM_CREDENTIALS_UNAVAILABLE` instead of reading the
-token file or the env var itself. So `service logs` streams under the
-fallback runtime and reports a clear error under the credential
-manager. Ruling needed: the engine should expose a token accessor for
+token file or the env var itself.
+
+**Whether that error ever fires is decided by the shape of the
+credential file, and that shape is about to change.** Both credential
+surfaces resolve to the same file by default. Today `auth login` writes
+the legacy `{tokens: […]}` shape through `storeLegacyCredential`,
+`FileTokenStorage` reads it, and `service logs` streams — so the error
+is unreachable and this entry describes a path nobody hits. Once the
+auth rework merges down from `bot/s2a-foundations`, `auth login` calls
+`credentialManager.createSession` instead, which writes
+`{version, sessions, currentWorkspaceId}`; `@prisma/credentials-store`
+reads `data.tokens || []`, finds nothing, and `ctx.getCredentials()`
+resolves `undefined` while `credentialManager.currentSession()` still
+returns a valid session. From the first `auth login` run after that
+lands, `service logs` is the one command that fails for a signed-in user
+whose other commands all work. Anyone who sets `PRISMA_SERVICE_TOKEN` is
+unaffected either way, because that path short-circuits ahead of the
+file read.
+
+Ruling needed: the engine should expose a token accessor for
 self-authenticating streams (or hand the log stream a client the way
-`ctx.api` is handed over).
+`ctx.api` is handed over). One line in `src/v8/service/logs.ts` changes
+when it does.
 
 ### `service logs` behavior
 
-- **`--deployment <id>` no longer needs a service.** Legacy resolved an
-  explicit deployment id globally when no app was named, and v8 keeps
-  that — including skipping the service picker entirely, so
-  `service logs --deployment <id>` works non-interactively. (The naive
+- **`--deployment <id>` needs no service when nothing names one.** Legacy
+  folded the compute-config service name in first
+  (`appName = appName ?? compute.configAppName`) and only then chose
+  between the service-scoped lookup and the global one, so a directory
+  holding a `prisma.compute.ts` always took the scoped path. v8
+  reproduces that: `--service`, the positional config target, and the
+  config's own target all count as naming a service, and only a run that
+  names none resolves the id globally. The global path still skips the
+  service picker entirely, so `service logs --deployment <id>` in a
+  directory with no compute config works non-interactively. (The naive
   port would have prompted, because the shared read flow selects a
   service.)
 - The three `DEPLOYMENT_NOT_FOUND` variants port unchanged in meaning:
@@ -507,17 +564,27 @@ network call. The one argument failure the engine owns is a missing
 CLI that cannot be read degrades to a warning (below), never to a
 failed run.
 
-### `feedback` gains the standard json envelope
+### `feedback`'s json output: the envelope reshape, and nothing command-specific
 
-Legacy registered no `renderJson` serializer for `feedback`, so a
-`--json` run emitted the raw result record. Under the engine every
-command's json output is the standard envelope, so the same record now
-travels inside it as `{ok: true, commandId: "feedback", result: {…},
-exitCode, diagnostics, nextActions}`. The `result` payload is
-unchanged: `{id, email, context: {cliVersion, nodeVersion, platform,
-arch}}`. The submitted payload, the 3-second timeout, the
-`PRISMA_CLI_FEEDBACK_URL` override (read from `ctx.env`) and the
-default endpoint are all unchanged.
+An earlier draft of this entry claimed `feedback` gained a json envelope
+it never had, because it registered no `renderJson` serializer. That was
+wrong, and the correction matters for anyone reading this file to judge
+parity. Legacy's `runCommand` writes a full envelope for every command
+and consults the serializer only for the `result` field —
+`result: presenter.renderJson ? presenter.renderJson(success.result) :
+success.result` (`packages/cli/src/shell/command-runner.ts:110-116`).
+With no serializer, `result` simply carried the raw result object, which
+for this command is what a serializer would have produced anyway.
+
+So `feedback` has no command-specific json divergence. Its `--json`
+output changes exactly as every other ported command's does, through the
+engine-global envelope reshape this file's preamble already covers
+(`{ok, command, result, warnings, nextSteps, nextActions}` becomes
+`{ok, commandId, result, exitCode, diagnostics, nextActions}`). The
+`result` payload itself is unchanged: `{id, email, context: {cliVersion,
+nodeVersion, platform, arch}}`. The submitted payload, the 3-second
+timeout, the `PRISMA_CLI_FEEDBACK_URL` override (read from `ctx.env`)
+and the default endpoint are all unchanged.
 
 ### `agent install` / `agent update`
 
@@ -536,6 +603,21 @@ default endpoint are all unchanged.
   `--agent *`, and the package manager detected from the project.
 - Human output is the engine's summary line plus field rows instead of
   the legacy rail-drawn block. Neither writes a stdout payload.
+- **Help examples lose the package runner, and the command now spells
+  itself two ways.** Legacy rendered the `agent` group's examples
+  through the project's own runner
+  (`resolvePrismaCliPackageCommandSync`), so help read `pnpm dlx
+  @prisma/cli@latest agent install`. Standing ruling 5 forbids the
+  binary name in an example, so the ported examples are bare (`agent
+  install`). The engine has no way to express the old form: examples are
+  static strings resolved at definition time, and the runner is
+  discovered from the filesystem at run time. The visible consequence is
+  that one command now names itself two ways — help says `agent
+  install`, while the same command's own next action still carries the
+  package-runner form `npx -y @prisma/cli@latest agent status`, because
+  next actions are built at run time and keep legacy's string. Worth
+  settling once, group-wide, alongside the same question for every other
+  ported group; nothing here should diverge on its own.
 
 ### `agent status`
 

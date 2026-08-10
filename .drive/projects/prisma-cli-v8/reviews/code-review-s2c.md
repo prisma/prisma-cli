@@ -13,13 +13,13 @@ sections marked orchestrator-owned.
 
 | Acceptance criterion | Status |
 | --- | --- |
-| All 24 in-scope commands mounted, green on R-S2b-9 matrix | D1–D3: 16 commands mounted (both streams added), matrix complete per command; `build logs` has test coverage for the first time |
+| All 24 in-scope commands mounted, green on R-S2b-9 matrix | met — D4 adds `agent install\|update\|status` and `feedback`, matrix complete per command, for 20 mounted in total. That is every in-scope command: the contract's "24" counts the four `service env` commands its own scope note then excludes, and `service run` is ruled dropped |
 | `service` rename complete; no `app` path in v8 | D1–D3 surface: met |
 | Deploy/promote/rollback/remove event sequences pinned | met — deploy pins the full phase sequence as an ordered array; remove pins first/second/last; promote and rollback bracket the SDK transitions |
-| Divergence file complete | D1+D2 surface: met — one shipped consent mechanism, both engine gaps recorded. D3 surface: NOT met — the log-stream credential entry describes a shipping runtime the bin does not assemble (D3-R1-F1), and two real deltas are unrecorded (D3-R1-F2, D3-R1-F3) |
-| Q2 ruled+implemented or parked with legacy intact | ruled: `service run` dropped (orchestrator note, 2026-08-10) |
+| Divergence file complete | D1+D2 surface: met — one shipped consent mechanism, both engine gaps recorded. D3 surface: NOT met — the log-stream credential entry describes a shipping runtime the bin does not assemble (D3-R1-F1), and two real deltas are unrecorded (D3-R1-F2, D3-R1-F3). D4 surface: NOT met — the `feedback` json entry describes a change legacy did not make (D4-R1-F1) and the agent help-example drop is unrecorded (D4-R1-F2); the crash-recovery escalation and the `app run` drop are both recorded and accurate |
+| Q2 ruled+implemented or parked with legacy intact | met — ruled dropped (orchestrator note, 2026-08-10) and recorded as a D4 divergence entry, including that no exit-code passthrough mechanism and no S2d carve-out are needed |
 | Legacy fixture tests for ported commands deleted | pending (later dispatch — legacy `app` shell still serves deploy/logs/etc.) |
-| Root verification green; PR ≥1k LOC; review loop run | pending (LOC floor already cleared: 4,794 added in D1+D2, 1,565 more in D3) |
+| Root verification green; PR ≥1k LOC; review loop run | pending (LOC floor already cleared: 4,794 added in D1+D2, 1,565 more in D3, 1,710 more in D4) |
 
 ## Findings log
 
@@ -379,6 +379,26 @@ so the branch that parses the last record when the stream is `done`
 paths are the only reason the reader is hand-written, and this dispatch
 is the first test coverage `build logs` has ever had. Splitting one
 record across two chunks and dropping the last newline covers both.
+
+### D4-R1-F1 — the `feedback` json divergence describes a change legacy did not make (should-fix)
+
+`.drive/projects/prisma-cli-v8/assets/s2/parity-divergences-s2c.md`, the section "`feedback` gains the standard json envelope" (added in da04dee).
+
+The entry says legacy registered no `renderJson` serializer for `feedback`, "so a `--json` run emitted the raw result record", and that the same record "now travels inside" the standard envelope. Legacy already emitted an envelope. `writeCommandSuccess` (`packages/cli/src/shell/command-runner.ts:110-117`) calls `writeJsonSuccess` for every `--json` run and consults `presenter.renderJson` only to decide what goes in the `result` field; with no serializer, the raw result goes there. `writeJsonSuccess` (`packages/cli/src/shell/output.ts:22-29`) prints `{ok: true, nextActions: [], command, result, warnings, nextSteps}`. The shipped behavior is pinned by the legacy test, which parses `prisma-cli feedback --json` and asserts `{ok: true, command: "feedback", result: {id, email, context}}` (`packages/cli/tests/feedback.test.ts:56-87`).
+
+An operator reading this entry concludes that a json consumer of `feedback` used to read `{id, email, context}` at the top level and must now reach into `.result`. It always had to reach into `.result`. The missing serializer changed nothing on the wire, and the two `agent` commands prove it from the other side: they do have serializers, but both are identity functions (`packages/cli/src/presenters/agent.ts:50-56`), so they shipped the same raw record inside the same envelope. What actually changes for `feedback` is the engine-global envelope reshape — `command` becomes `commandId`, `warnings` becomes `diagnostics`, `nextSteps` becomes typed `nextActions`, plus json framing — which the file's preamble already covers for every command in this slice.
+
+Say what changed instead: the `result` payload is unchanged (the entry already says this, and it is correct), and `feedback`'s json surface differs only in the engine-global ways. Or delete the section and let the preamble carry it.
+
+### D4-R1-F2 — the `agent` group's package-manager-aware help examples do not port, and the drop is unrecorded (low)
+
+`packages/cli/src/v8/agent/install.ts:87-93`, `packages/cli/src/v8/agent/update.ts:6-11`, `packages/cli/src/v8/agent/status.ts:47-50`, against `packages/cli/src/shell/command-meta.ts:22-29` and `:70-113`.
+
+Legacy renders the `agent` group's help examples through `agentCommandExamples`, which formats each one with the project's own package runner (`resolvePrismaCliPackageCommandFormatterSync`). So `agent install --help` shows `pnpm dlx @prisma/cli@latest agent install` in a pnpm project, `bunx @prisma/cli@latest …` in a bun project, and `npx -y @prisma/cli@latest …` otherwise. A legacy test pins it: `packages/cli/tests/agent.test.ts:414-421` asserts the help output contains `$ pnpm dlx @prisma/cli@latest agent install`. The v8 definitions declare bare examples (`"agent install"`, `"agent status --global"`, and so on) and the engine prepends the binary name (`packages/cli-engine/src/execution/stricli-adapter.ts:166-172`), so the same help now reads `prisma-cli agent install`.
+
+`agent` and `init` are the only commands legacy spelled this way, and the reason is specific to them: they are what a user runs before the CLI is on PATH. The port keeps the package-runner spelling everywhere else in the group — `agent install`'s next action is `npx -y @prisma/cli@latest agent status` and `agent status`'s is `npx -y @prisma/cli@latest agent install` (`packages/cli/src/v8/agent/install.ts:78-84`, `status.ts:89-97`, both pinned in `packages/cli/tests/v8-agent.test.ts`). One command is therefore spelled two ways in one product: help says `prisma-cli agent status`, the next action says `npx -y @prisma/cli@latest agent status`.
+
+The engine cannot express the legacy form. `help.examples` is a static `readonly string[]` on the definition (`packages/cli-engine/src/commands.ts:41`), and `resolveExample` either substitutes `{bin}` with the CLI name or prepends it, so no example can carry a package runner and none can vary with the project. The fix is therefore the record, not the code: add the drop to the dispatch-4 divergence section and name the engine constraint, the way the file already does for its other engine gaps. Restoring the behavior would be an engine ask, not a D4 change.
 
 ## Round notes
 
@@ -821,6 +841,39 @@ provider's branch-less global scan, which is a faithful model of
   from `ctx.env`. That belongs in the same conversation as the token
   accessor, not in a D3 finding.
 
+### Round 1 (dispatch D4 — agent, feedback) — reviewer
+
+**What was checked.** All 11 files of `1943501..9f29e58`, and the divergence entries in `9f29e58..da04dee`, against inventory §4's entries for `prisma feedback <message>`, `prisma agent install` / `prisma agent update` and `prisma agent status`. Read beside `controllers/agent.ts`, `controllers/feedback.ts`, `presenters/agent.ts`, `presenters/feedback.ts`, `commands/agent/index.ts`, `commands/feedback/index.ts`, `types/agent.ts`, `types/feedback.ts`, the whole of `lib/agent/**`, and the legacy tests `agent.test.ts` and `feedback.test.ts`. Also read the engine's `args.ts`, `commands.ts`, `command-family.ts`, `command-tree.ts`, `stricli-adapter.ts`, `settlement.ts`, `protocol.ts` and `run-summary.ts` for the parse, help, mounting and crash semantics the entries depend on.
+
+**The child-process seam is a faithful move.** Compared line by line, `v8/agent/skills-cli.ts` reproduces the legacy controller's private code: the same runner resolution through `resolveSkillsPackageRunner`, the same argument order (`<runner> skills@latest add prisma/skills --skill … --agent … [--global] [--copy] --yes`), `--copy` forced on `win32`, `stdin: "ignore"` with no `stdout`/`stderr` option so the installer's output is captured rather than streamed, and the same failure mapping including `exitCode ?? "unknown"`. The abort handling keeps legacy's asymmetry exactly: the install path rethrows only on `isAbortError`, while the list path also rethrows when `ctx.signal.aborted`. `parseSkillsListOutput`, `parseInstalledSkill` and `isPrismaSkillName` are copies down to the JSON-array guard and the string filter on `agents`.
+
+**The shared helpers are reused, not reimplemented, and no legacy file moved.** `constants.ts`, `package-manager.ts`, `cli-command.ts` and `setup-status.ts` are imported from `lib/agent/`; `git log` shows none of them has changed since e9666a6. The diff adds eleven files and modifies only `v8/cli.ts`. Nothing under `packages/cli-engine/**`, `packages/cli/src/auth/**`, `packages/cli/src/v8/auth/**`, the publish machinery or the version fields is touched.
+
+**The `skills-cli` / `skills@latest` reasoning holds.** Both the legacy controller and the port import `SKILLS_CLI_PACKAGE` from `packages/cli/src/lib/agent/constants.ts:3`, so the two CLIs invoke the same package by construction. Following the constant is right and the inventory's wording is the thing that is wrong.
+
+**`agent status` degrades exactly the way legacy degrades.** Same `skillsInstalled` fallback (`skillsList.status === "ok" ? skills.length > 0 : statusScope === "project" && setupStatus.skillsInstalled`), same `statusSource` ladder (`skills-cli`, else `skills-lock` for project scope, else `unavailable`), and the two warning sentences word for word, including "Falling back to skills-lock.json" for project scope and its absence for global scope. Global scope never borrows the project lock. The result record is field-for-field `types/agent.ts`'s `AgentStatusResult`, and the same is true of `AgentInstallResult` and of `feedback`'s `FeedbackResult`. The one structural change is that legacy's `warnings: string[]` becomes an engine `warn` diagnostic, `AGENT.SKILLS_LIST_UNAVAILABLE`; the run still settles 0.
+
+**`agent status`'s missing errored settlement is the right call, not a gap.** Neither legacy nor the port has an `AGENT.*` error code for `status` — a skills CLI that cannot be read is the fallback, not a failure — so there is no errored settlement to pin. What the dispatch pinned instead is the whole of the real failure behavior: the project fallback with its diagnostic and `statusSource: "skills-lock"`, the global case with `statusSource: "unavailable"` and no fallback, and the install next action offered in both.
+
+**`feedback`'s hand-rolled validation matches legacy exactly.** Same limits (4000 characters for the message, 320 for the email, the same `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`), same order (message empty, message too long, then email), same trim-before-check, and the same refusal before any network call — pinned by asserting the loopback server received nothing. Each check has its own dotted `FEEDBACK.*` code at exit 2 per R-S2b-5. The missing-positional case is genuinely left to the engine: `positional.string` is required by default (`packages/cli-engine/src/args.ts:126-128`), so `feedback` with no argument settles `CLI.INVALID_ARGUMENTS`, and that is pinned too. The endpoint override is read from `ctx.env`, never `process.env`. `postFeedback` is a line-for-line move: the same `AbortSignal.any([ctx.signal, AbortSignal.timeout(3_000)])`, the same "is this an abort or a timeout" test on every catch (`if (signal.aborted) throw error`), the same `TimeoutError` name check, and the same treatment of a non-JSON 2xx body as a success.
+
+**Tests are the right kind, and nothing leaves the machine.** `execa` is faked at the module seam with `vi.mock`, and the only other code in these paths that looks like a child process — `resolveSkillsPackageRunner` and `resolvePrismaCliPackageCommand` — is pure filesystem reads, so no test can spawn anything. `feedback` runs against a loopback server on port 0, every test that reaches the network sets `PRISMA_CLI_FEEDBACK_URL`, and the one run that does not set it (`feedback --json` with no message) fails in the parser before any fetch; the unreachable-service case points at `127.0.0.1:9`. No test can contact the production endpoint. The suite is 27 tests in 248 ms, which is consistent with no spawn and no remote call. R-S2b-9's axes are complete per command — success, errored, json envelope — and the unauthenticated axis is pinned twice over, by asserting `needs.credentials === false` on all four definitions and by never seeding a session in any run.
+
+**Mounting outside a command family is right for these four, and `build logs` is still the odd one out.** A `CommandFamily` carries two things: a config section and a docs base URL (`packages/cli-engine/src/command-family.ts:5-20`). `agent *` and `feedback` need neither. They call no Management API, declare no credentials and read no config; they are contributed by the shell itself, not by a platform package, exactly like `telemetry`. Putting them in the platform family would claim an ownership that does not exist and would give them that family's future docs base URL, which is wrong for local utilities. The mount comment says so plainly. This is the opposite case from D3-R1-F4: `build logs` is a platform command that reaches `/v1/builds/{buildId}/logs` through `ctx.api`, so it does have an owner. I would leave these four where they are and move `build logs` into the platform family.
+
+**Observations, not findings.**
+
+- `openStateStore` (`v8/agent/status.ts:21-28`) is the third copy of the same six lines, after `v8/service/target.ts:83-91` and `v8/auth/agent-setup-tip.ts:44-51`. `v8/auth/**` is out of bounds for this dispatch, so consolidating them is S2d work.
+- `feedback.ts` hand-rolls `{kind: "user-choice"}` advice actions where the service group has an `adviceAction` helper (`v8/service/errors.ts:15`). For a single command with no group, inlining is fine.
+- `agent install --dry-run` uses the `info` summary tone where legacy always used the success tone. Human-only, and arguably more honest about a run that installed nothing.
+- `agent status`'s human output moves the skills list below the field rows and renders it as a table; legacy interleaved it right after the "skills:" row. Human rendering is not pinned per command under standing ruling 4.
+
+**Not findings — for the orchestrator.**
+
+- **Three groups now ship with no command family** — `agent`, `telemetry`, and `build logs` per D3-R1-F4. The engine's own comment describes familyless commands as "Harness-mounted commands with no family are unowned" (`packages/cli-engine/src/execution/command-tree.ts`), which reads as though the mode exists for the test harness and the shell is not meant to use it. Standing ruling 1 also gives every subgroup exactly one owner. Either the shell needs a family of its own for its local utilities, or the engine's comment should say that familyless is a supported shell mode. It is one decision for the whole tree and it is above this dispatch.
+- **The D4 commit also rewrites the dispatch-2 agent-setup entry to call the prompt's drop "final", on the grounds that "the operator was told and did not object".** Standing ruling 10 makes divergences an operator-review item, and no ruling to that effect is recorded anywhere in this file, unlike the Q2 drop which is in the orchestrator notes. Worth turning into either an explicit ruling or an explicit "awaiting ratification" note. The entry's factual claim does check out: the dismissal timestamp is still read and reported, through `readPrismaAgentSetupStatus` reading `state.agent.setupPromptDismissedAt` (`packages/cli/src/adapters/local-state.ts:266-269`) and `agent status` returning it as `promptDismissedAt`.
+- **The review worktree is not clean, again.** While this review ran, the dispatch-3 fixer was editing `parity-divergences-s2c.md`, `v8/build/logs.ts`, `v8/cli.ts`, `v8/service/errors.ts`, `v8/service/logs.ts`, `v8/service/target.ts` and the two log-stream tests. Every reference above is to the reviewed commits — 9f29e58 for code and tests, da04dee for the divergence file — not to the working tree.
+
 ## Orchestrator notes (orchestrator-owned)
 
 - 2026-08-10: slice started. Branch cut from bot/s2b-resources @ 01c8183
@@ -840,3 +893,49 @@ provider's branch-less global scan, which is a faithful model of
   no legacy carve-out needed in S2d (the shell deletion takes it).
   D4 records the drop as a divergence entry. The slice's "parked"
   scoreboard row resolves to "ruled: dropped".
+- 2026-08-10, continuation orchestrator picks the slice up after a rate
+  limit. Baseline reproduced green (977 tests) only after `pnpm build` —
+  the engine and telemetry packages must be built before vitest can
+  resolve them. D3's review was run (round 1, NOT SATISFIED, five
+  findings), D4 was implemented and committed at 1004 tests, and D4's
+  review was run (round 1, NOT SATISFIED, two findings, both about the
+  record rather than the code).
+- 2026-08-10: **merge-down from `bot/s2a-foundations` deliberately
+  held.** That branch moved five commits ahead of our base, and its tip
+  (`4b006d1`) says in its own message that no test suite has been run
+  against it and its implementer was halted mid-work. Merging it would
+  make this branch's verification meaningless. Our base `9ffbb01` is
+  still an ancestor of that tip, so the PR against `s2a-foundations`
+  shows only our commits. Merge down once that stream is green; adopt
+  any new test-harness credential seeding shape during the merge.
+- 2026-08-10: **D3-R1-F1 adjudicated against the reviewer's conclusion**
+  — see the block under the finding. The dispute was settled by running
+  the credential surfaces rather than reading them. Both the reviewer
+  and the outgoing orchestrator's brief were each right about a
+  different code state: `service logs` streams on this branch and breaks
+  on the very next merge-down, because `auth login` changes the
+  credential file's shape there. The interim error and its test stay;
+  only the wording changes.
+- 2026-08-10: **the in-scope command count is 20, not 24.** The
+  contract's headline counts the four `service env *` commands that its
+  own scope note then assigns to `project env` in S2b, and `service run`
+  is ruled dropped. Nothing is missing; the headline and the scope note
+  disagree with each other. Worth one correction in the contract at S2d
+  consolidation.
+- 2026-08-10: **the D2 agent-setup prompt entry now reads "final", and
+  its provenance is this ledger, not a recorded ruling.** The outgoing
+  orchestrator's continuation brief records that the operator was told
+  and did not object, and instructs the next dispatch to record it as
+  final unless overruled; D4 did so on that instruction. Flagged to the
+  operator for an explicit yes or no at PR time. (D4's reviewer raised
+  the same point; the entry's factual claim checks out either way.)
+- 2026-08-10: **three groups now ship without a command family**
+  (`agent`, `telemetry`, and `build logs` until D3-R1-F4 is cleared).
+  A family carries only an optional config section and docs base URL,
+  neither of which any family in this CLI sets, so being familyless has
+  no behavioral effect today — but the engine's own comment
+  (`packages/cli-engine/src/execution/command-tree.ts:134-135`) calls
+  familyless commands "unowned", which reads as though the mode is not
+  meant for shell use. One decision for the whole tree, above this
+  slice: either the shell declares a family for local utilities, or the
+  engine states that familyless is supported.
