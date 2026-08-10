@@ -92,7 +92,7 @@ That makes the shape of the slice mostly a rename plus filling holes — a `serv
 
 **Why it still waits for the design work.** Three questions need answers that only S3 can give, and none of them is about whether the resources exist.
 
-1. Does Alchemy hold desired state? If Composer declaratively owns which deployment is live, then an imperative `promote`, `rollback`, `start` or `stop` from the CLI either fights it or is reverted on Composer's next run. This is the sharpest question and it decides whether those five commands should exist at all, be read-only, or carry a warning.
+1. ~~Does Alchemy hold desired state?~~ **Answered (operator, 2026-08-10): yes, and changing the platform directly is overwritten on the next `composer deploy`. Accepted.** So the imperative operations stay, and their effect on a Composer-managed service is understood to be transient. What remains for the design is only whether the CLI says so at the point of use — a service the CLI can tell is Composer-managed could carry a line on `promote`, `rollback`, `start` and `stop` noting the next deploy reconciles it. That depends on question 2: whether the records carry anything identifying a service as Composer-managed.
 2. What do Composer's app and deployment records actually contain? If the Alchemy path populates a different subset of fields than `app deploy` did, `service show` and `service deployment show` are presenting a shape nobody has looked at.
 3. Where does log reading live? `composer log` and a `service deployment logs` would be two ways to read the same thing, and the project spec rules that a subgroup is owned by exactly one command family.
 
