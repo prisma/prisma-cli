@@ -559,6 +559,10 @@ export interface ServiceReadState {
   target: ResolvedServiceProjectContext;
   projectId: string;
   selected: AppRecord | null;
+  /** The service named by `--service`, by the positional config target,
+   *  or by the compute config's own target — undefined when nothing
+   *  named one. A named service never reaches the picker. */
+  namedService: string | undefined;
 }
 
 /** The shared read flow for show / list-deploys / open: config context,
@@ -571,11 +575,11 @@ export async function resolveServiceReadState(
     configTarget?: string;
     branchName?: string;
     commandName: string;
-    /** Resolve the project context without picking a service. Used by
-     *  `service logs --deployment <id>`, which identifies its target by a
-     *  globally unique id and must not prompt for a service it does not
-     *  need. */
-    skipSelection?: boolean;
+    /** When nothing names a service, resolve the project context without
+     *  picking one. Used by `service logs --deployment <id>`: the id is
+     *  globally unique, so an unnamed run must not prompt for a service
+     *  it does not need. */
+    skipSelectionWhenUnnamed?: boolean;
   },
 ): Promise<ServiceReadState> {
   const compute = await resolveComputeManagementContext(
@@ -599,16 +603,18 @@ export async function resolveServiceReadState(
     projectId,
     target.branch.name,
   );
-  const selected = options.skipSelection
-    ? null
-    : await resolveExistingServiceSelection(
-        ctx,
-        stateStore,
-        projectId,
-        services,
-        options.serviceName ?? compute.configServiceName,
-      );
-  return { provider, stateStore, target, projectId, selected };
+  const namedService = options.serviceName ?? compute.configServiceName;
+  const selected =
+    options.skipSelectionWhenUnnamed && namedService === undefined
+      ? null
+      : await resolveExistingServiceSelection(
+          ctx,
+          stateStore,
+          projectId,
+          services,
+          namedService,
+        );
+  return { provider, stateStore, target, projectId, selected, namedService };
 }
 
 export interface ResolvedServiceDomainTarget {

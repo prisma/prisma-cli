@@ -31,14 +31,28 @@ type Record_ =
       cursor: string | null;
     };
 
+/** Chunks that ignore record boundaries: every record is cut in half
+ *  and the last one carries no trailing newline, so each stream drives
+ *  both the reader's partial-line buffer and its end-of-stream tail. */
 function ndjsonStream(records: Record_[]): ReadableStream<Uint8Array> {
+  return chunkedStream(
+    records.flatMap((record, index) => {
+      const line = JSON.stringify(record);
+      const split = Math.floor(line.length / 2);
+      return [
+        line.slice(0, split),
+        line.slice(split) + (index === records.length - 1 ? "" : "\n"),
+      ];
+    }),
+  );
+}
+
+function chunkedStream(chunks: string[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   return new ReadableStream({
     start(controller) {
-      for (const record of records) {
-        // One chunk per record, plus a split line, so the reader's
-        // buffering is exercised rather than assumed.
-        controller.enqueue(encoder.encode(`${JSON.stringify(record)}\n`));
+      for (const chunk of chunks) {
+        controller.enqueue(encoder.encode(chunk));
       }
       controller.close();
     },
@@ -89,6 +103,12 @@ function outputs(events: readonly { kind: string }[]) {
     });
 }
 
+function outputData(events: readonly { kind: string }[]) {
+  return events
+    .filter((event) => event.kind === "output")
+    .map((event) => (event as unknown as { data?: unknown }).data);
+}
+
 describe("prisma-v8 build logs", () => {
   it("streams every log record in order, routed by source and level", async () => {
     const harness = await makeServiceCli({
@@ -113,6 +133,82 @@ describe("prisma-v8 build logs", () => {
       { channel: "diagnostic", line: "warning: peer dep" },
       { channel: "diagnostic", line: "build failed to lint" },
       { channel: "data", line: "runner note" },
+    ]);
+  });
+
+  it("reassembles records split across chunks, with no trailing newline", async () => {
+    const body = [log("first"), log("second"), END]
+      .map((record) => JSON.stringify(record))
+      .join("\n");
+    const harness = await makeServiceCli({
+      routes: {
+        // One chunk per character: every record spans many chunks and the
+        // stream ends mid-line, so the reader's buffer and its
+        // end-of-stream tail both have to work.
+        "GET /v1/builds/{buildId}/logs": () => ({
+          data: chunkedStream([...body]),
+        }),
+      },
+    });
+
+    const result = await harness.cli.run(["build", "logs", "bld_1"], {
+      cwd: harness.cwd,
+      env: harness.env,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(outputs(result.events)).toEqual([
+      { channel: "diagnostic", line: "Streaming logs for build bld_1" },
+      { channel: "data", line: "first" },
+      { channel: "data", line: "second" },
+    ]);
+  });
+
+  it("carries each record's cursor, level, source and step in the event data", async () => {
+    const harness = await makeServiceCli({
+      routes: logRoutes([
+        log("installing", { cursor: "12" }),
+        log("runner note", { source: "runner", step: "prepare", cursor: "13" }),
+        END,
+      ]),
+    });
+
+    const result = await harness.cli.run(["build", "logs", "bld_1"], {
+      cwd: harness.cwd,
+      env: harness.env,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(outputData(result.events)).toEqual([
+      undefined,
+      { cursor: "12", level: "info", source: "stdout" },
+      { cursor: "13", level: "info", source: "runner", step: "prepare" },
+    ]);
+  });
+
+  it("carries a reported terminal record's cursor, code and retryable", async () => {
+    const harness = await makeServiceCli({
+      routes: logRoutes([
+        {
+          type: "terminal",
+          kind: "end",
+          code: "no_logs",
+          message: "This build produced no logs.",
+          retryable: false,
+          cursor: "9",
+        },
+      ]),
+    });
+
+    const result = await harness.cli.run(["build", "logs", "bld_1"], {
+      cwd: harness.cwd,
+      env: harness.env,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(outputData(result.events)).toEqual([
+      undefined,
+      { cursor: "9", code: "no_logs", retryable: false },
     ]);
   });
 

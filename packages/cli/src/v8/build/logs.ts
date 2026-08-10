@@ -152,7 +152,15 @@ function reportRecord(
           ? "diagnostic"
           : "data",
       line: record.text.replace(/\n$/, ""),
-      ...(record.step === undefined ? {} : { data: { step: record.step } }),
+      // The record's own fields, so a json consumer keeps everything
+      // legacy published per record — the cursor above all, because
+      // `--cursor` resumes from one.
+      data: {
+        cursor: record.cursor,
+        level: record.level,
+        source: record.source,
+        ...(record.step === undefined ? {} : { step: record.step }),
+      },
     });
     return;
   }
@@ -166,6 +174,11 @@ function reportRecord(
       source: "build",
       channel: "diagnostic",
       line: record.message,
+      data: {
+        cursor: record.cursor,
+        code: record.code,
+        retryable: record.retryable,
+      },
     });
   }
 }

@@ -228,9 +228,14 @@ export function deploymentOutsideProjectError(
   );
 }
 
-/** The log stream authenticates itself, so it needs the raw token that
- *  ctx.getCredentials resolves. needs.credentials makes this unreachable
- *  in practice; it exists so a future credential change fails loudly. */
+/** The log stream authenticates itself, so it needs the raw token
+ *  ctx.getCredentials resolves. Whether one resolves is decided by the
+ *  shape of the credential file, not by being signed in: today
+ *  `auth login` writes the legacy `{tokens: […]}` shape, which that
+ *  reader understands, so this error is unreachable. Once the auth
+ *  rework merges down, `auth login` writes a credential-manager session
+ *  instead, the reader finds nothing there, and this becomes the live
+ *  path for every signed-in user who has not set PRISMA_SERVICE_TOKEN. */
 export function logStreamCredentialsError(): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.LOG_STREAM_CREDENTIALS_UNAVAILABLE",

@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { StreamRecord } from "@prisma/compute-sdk";
 import { CancelledError, streamLogs } from "@prisma/compute-sdk";
@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { readAuthState } from "../src/auth";
 import {
+  DEPLOYMENTS,
   makeServiceCli,
   page,
   readFlowRoutes,
@@ -57,6 +58,12 @@ function outputs(events: readonly { kind: string }[]) {
       const output = event as unknown as { channel: string; line: string };
       return { channel: output.channel, line: output.line };
     });
+}
+
+function outputData(events: readonly { kind: string }[]) {
+  return events
+    .filter((event) => event.kind === "output")
+    .map((event) => (event as unknown as { data?: unknown }).data);
 }
 
 const TARGET = ["--project", "acme-app", "--service", "hello-world"];
@@ -169,6 +176,163 @@ describe("prisma-v8 service logs", () => {
     expect(outputs(result.events)).toContainEqual({
       channel: "diagnostic",
       line: "deployment: dep_1",
+    });
+    expect(vi.mocked(streamLogs).mock.calls[0]?.[0]).toMatchObject({
+      deploymentId: "dep_1",
+    });
+  });
+
+  it("carries each log record's byte range in the event data", async () => {
+    vi.mocked(streamLogs).mockImplementation(emits([logRecord("hello")]));
+    const harness = await makeServiceCli({ rawTokenSeed: true });
+
+    const result = await harness.cli.run(["service", "logs", ...TARGET], {
+      cwd: harness.cwd,
+      env: harness.env,
+    });
+
+    expect(result.exitCode).toBe(0);
+    // The three header lines carry no data; the log record carries its own.
+    expect(outputData(result.events)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      { byteStart: 0, byteEnd: 5 },
+    ]);
+  });
+
+  it("carries a reported terminal record's cursor, code and retryable", async () => {
+    vi.mocked(streamLogs).mockImplementation(
+      emits([
+        {
+          type: "terminal",
+          kind: "error",
+          code: "stream_lost",
+          message: "The log stream ended unexpectedly.",
+          retryable: true,
+          cursor: "77",
+        },
+      ]),
+    );
+    const harness = await makeServiceCli({ rawTokenSeed: true });
+
+    const result = await harness.cli.run(["service", "logs", ...TARGET], {
+      cwd: harness.cwd,
+      env: harness.env,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(outputData(result.events).at(-1)).toEqual({
+      cursor: "77",
+      code: "stream_lost",
+      retryable: true,
+    });
+  });
+
+  it("scopes --deployment to the service named by the compute config", async () => {
+    vi.mocked(streamLogs).mockImplementation(emits([logRecord("sibling")]));
+    const sibling = { ...SERVICE, id: "svc_2", name: "sidecar" };
+    const siblingDeployment = {
+      id: "dep_9",
+      status: "running",
+      createdAt: "2026-08-03T00:00:00.000Z",
+      previewDomain: "dep9.prisma.app",
+    };
+    const harness = await makeServiceCli({
+      rawTokenSeed: true,
+      routes: readFlowRoutes({
+        "GET /v1/apps": () => ({ data: page([SERVICE, sibling]) }),
+        "GET /v1/apps/{appId}/deployments": (init) => ({
+          data: page(
+            init.params?.path?.appId === "svc_2"
+              ? [siblingDeployment]
+              : DEPLOYMENTS,
+          ),
+        }),
+        "GET /v1/deployments/{deploymentId}": (init) =>
+          init.params?.path?.deploymentId === "dep_9"
+            ? { data: { data: siblingDeployment } }
+            : { error: { error: { message: "not found" } }, status: 404 },
+      }),
+    });
+    // The config is what scopes this run: without it the id resolves
+    // globally and streams the sibling's logs, which is what legacy
+    // refused by folding the config name in before the lookup.
+    await writeFile(
+      path.join(harness.cwd, "prisma.compute.json"),
+      JSON.stringify({ app: { name: "hello-world", framework: "hono" } }),
+    );
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "logs",
+        "--project",
+        "acme-app",
+        "--deployment",
+        "dep_9",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.DEPLOYMENT_NOT_FOUND");
+    expect(frame.envelope.error.summary).toContain(
+      'not found for service "hello-world"',
+    );
+    expect(streamLogs).not.toHaveBeenCalled();
+  });
+
+  it("reports a compute config naming a service the project does not have", async () => {
+    vi.mocked(streamLogs).mockImplementation(emits([logRecord("ignored")]));
+    const harness = await makeServiceCli({ rawTokenSeed: true });
+    await writeFile(
+      path.join(harness.cwd, "prisma.compute.json"),
+      JSON.stringify({ app: { name: "retired", framework: "hono" } }),
+    );
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "logs",
+        "--project",
+        "acme-app",
+        "--deployment",
+        "dep_1",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.SELECTION_INVALID");
+    expect(streamLogs).not.toHaveBeenCalled();
+  });
+
+  it("resolves a bare --deployment globally when no compute config names a service", async () => {
+    vi.mocked(streamLogs).mockImplementation(emits([logRecord("older")]));
+    const harness = await makeServiceCli({ rawTokenSeed: true });
+
+    // No answers are scripted, so reaching the service picker would fail
+    // the run: this is what proves the global lookup never prompts.
+    const result = await harness.cli.run(
+      ["service", "logs", "--project", "acme-app", "--deployment", "dep_1"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(outputs(result.events)).toContainEqual({
+      channel: "diagnostic",
+      line: "service: hello-world",
     });
     expect(vi.mocked(streamLogs).mock.calls[0]?.[0]).toMatchObject({
       deploymentId: "dep_1",
@@ -426,10 +590,12 @@ describe("prisma-v8 service logs", () => {
 
   it("reports the missing raw token when credentials come from the credential manager", async () => {
     // ESCALATED: the log stream authenticates itself and needs a raw
-    // token. Under the credential manager — the shipping path —
-    // ctx.getCredentials() resolves nothing and Session hides the token,
-    // so the command cannot stream. Pinned so the fix is visible when the
-    // engine exposes an accessor. Recorded in the divergence file.
+    // token. Seeding a credential manager and no raw token models the
+    // runtime that arrives with the auth rework: once `auth login`
+    // writes a credential-manager session instead of the legacy
+    // `{tokens: […]}` file, ctx.getCredentials() resolves nothing for a
+    // signed-in user and the command cannot stream. Recorded in the
+    // divergence file.
     vi.mocked(streamLogs).mockImplementation(emits([]));
     const harness = await makeServiceCli();
 

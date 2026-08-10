@@ -28,16 +28,17 @@ interface LogTarget {
   deployment: ServiceDeploymentSummary;
 }
 
-/** `--deployment <id>`: the id is global, so it is resolved directly and
- *  then checked against the resolved project — a deployment that exists
- *  but belongs elsewhere is reported as its own failure. */
+/** `--deployment <id>` inside a named service looks the id up in that
+ *  service and refuses one that belongs to a sibling. With no service
+ *  named, the id is global: it is resolved directly and then checked
+ *  against the resolved project, so a deployment that exists but belongs
+ *  elsewhere is reported as its own failure. */
 async function resolveExplicitDeployment(
   ctx: ServiceContext,
   state: ServiceReadState,
-  serviceName: string | undefined,
   deploymentId: string,
 ): Promise<LogTarget> {
-  if (serviceName) {
+  if (state.namedService !== undefined) {
     if (!state.selected) {
       throw noDeploymentsError(
         "No deployments available to stream logs",
@@ -184,27 +185,16 @@ export const serviceLogsCommand = defineSessionCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    // "A service was named" — by --service or by the config target. It
-    // decides whether an explicit deployment id is looked up within that
-    // service or resolved globally, and a global lookup needs no service
-    // selection at all (so it never prompts for one).
-    const serviceNamed = args.flags.service ?? args.positionals.service;
-    const resolveGlobally = Boolean(args.flags.deployment) && !serviceNamed;
     const state = await resolveServiceReadState(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,
       configTarget: args.positionals.service,
       commandName: "service logs",
-      skipSelection: resolveGlobally,
+      skipSelectionWhenUnnamed: Boolean(args.flags.deployment),
     });
 
     const target = args.flags.deployment
-      ? await resolveExplicitDeployment(
-          ctx,
-          state,
-          serviceNamed,
-          args.flags.deployment,
-        )
+      ? await resolveExplicitDeployment(ctx, state, args.flags.deployment)
       : await resolveLiveDeployment(ctx, state);
 
     for (const line of [
@@ -242,6 +232,9 @@ export const serviceLogsCommand = defineSessionCommand({
             source: "logs",
             channel: "data",
             line: record.text.replace(/\n$/, ""),
+            // The record's own fields, so a json consumer keeps
+            // everything legacy published per record.
+            data: { byteStart: record.byteStart, byteEnd: record.byteEnd },
           });
           return;
         }
@@ -253,6 +246,11 @@ export const serviceLogsCommand = defineSessionCommand({
             source: "logs",
             channel: "diagnostic",
             line: record.message,
+            data: {
+              cursor: record.cursor,
+              code: record.code,
+              retryable: record.retryable,
+            },
           });
         }
       },

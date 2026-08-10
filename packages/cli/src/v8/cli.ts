@@ -63,6 +63,7 @@ export function buildCli(): Cli {
           serviceDomainRemove: serviceDomainRemoveCommand,
           serviceDomainRetry: serviceDomainRetryCommand,
           serviceDomainWait: serviceDomainWaitCommand,
+          buildLogs: buildLogsCommand,
         },
       }),
     ],
