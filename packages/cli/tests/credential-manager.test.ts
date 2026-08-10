@@ -22,6 +22,15 @@ import { FileCredentialManager } from "../src/auth/credential-manager";
 import { readCredentialState } from "../src/auth/state-file";
 import { getAuthContextFilePath } from "../src/auth/token-storage";
 
+/** Windows has no Unix permission bits — `stat` reports 0o666 whatever
+ *  the file was created with — so the mode assertions only mean
+ *  something on a POSIX filesystem. */
+const POSIX_MODES = process.platform !== "win32";
+
+function expectOwnerOnly(mode: number): void {
+  if (POSIX_MODES) expect(mode & 0o777).toBe(0o600);
+}
+
 function escapeForRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -125,7 +134,7 @@ describe("the state file", () => {
       currentWorkspaceId: WORKSPACE_A,
       sessions: [{ workspaceId: WORKSPACE_A, refreshToken: "refresh-1" }],
     });
-    expect((await stat(stateFilePath)).mode & 0o777).toBe(0o600);
+    expectOwnerOnly((await stat(stateFilePath)).mode);
   });
 
   it("tightens permissions looser than 0600", async () => {
@@ -134,7 +143,7 @@ describe("the state file", () => {
     });
     await makeManager().createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
 
-    expect((await stat(stateFilePath)).mode & 0o777).toBe(0o600);
+    expectOwnerOnly((await stat(stateFilePath)).mode);
   });
 
   it("reads never write", async () => {
@@ -292,10 +301,13 @@ describe("the state file", () => {
     const longAgo = new Date(Date.now() - 60_000);
     await utimes(lockPath, longAgo, longAgo);
 
-    // Hold both waiters until each has seen the lock as stale. That is
-    // the interleaving the takeover has to survive: if clearing it is
-    // not atomic, the second waiter deletes the first waiter's fresh
-    // lock and both run their read-modify-write at once.
+    // Two hooks reproduce the worst interleaving deterministically,
+    // rather than leaving it to the scheduler. Windows produced it
+    // naturally and macOS did not, which is exactly the kind of race
+    // that regresses unnoticed on one platform.
+    //
+    // First: hold both waiters until each has seen the lock as stale,
+    // so both believe they may clear it.
     const bothSawItStale = barrierFor(2);
     const realStat = fsPromises.stat.bind(fsPromises);
     const stats = vi
@@ -307,6 +319,45 @@ describe("the state file", () => {
           return result;
         },
       );
+
+    // Second: hold the loser's removal until the winner has created its
+    // fresh lock. The loser is then about to remove a lock that is not
+    // the corpse it examined, which is the case the takeover has to
+    // detect. The winner's create is the signal, so watch for it
+    // directly rather than polling the filesystem.
+    let announceFreshLock: () => void = () => {};
+    const freshLockExists = new Promise<void>((resolve) => {
+      announceFreshLock = resolve;
+    });
+    const realOpen = fsPromises.open.bind(fsPromises);
+    const opens = vi
+      .spyOn(fsPromises, "open")
+      .mockImplementation(
+        async (...args: Parameters<typeof fsPromises.open>) => {
+          const handle = await realOpen(...args);
+          if (String(args[0]).endsWith(".lock")) announceFreshLock();
+          return handle;
+        },
+      );
+
+    let removals = 0;
+    const realRename = fsPromises.rename.bind(fsPromises);
+    const renames = vi
+      .spyOn(fsPromises, "rename")
+      .mockImplementation(async (from, to) => {
+        if (String(to).endsWith(".stale")) {
+          removals += 1;
+          if (removals === 2) {
+            // Bounded: if the winner released before the loser looked,
+            // there is no fresh lock to wait for and no race to force.
+            await Promise.race([
+              freshLockExists,
+              new Promise((resolve) => setTimeout(resolve, 250)),
+            ]);
+          }
+        }
+        return realRename(from, to);
+      });
 
     const debugLines: string[] = [];
     try {
@@ -320,10 +371,15 @@ describe("the state file", () => {
       );
     } finally {
       stats.mockRestore();
+      renames.mockRestore();
+      opens.mockRestore();
     }
 
+    // At most one: if the winner released before the loser looked,
+    // there was no corpse left to clear and zero is also correct. Two
+    // is the defect — both would have entered the critical section.
     const takeovers = debugLines.filter((line) => line.includes("taken over"));
-    expect(takeovers).toHaveLength(1);
+    expect(takeovers.length).toBeLessThanOrEqual(1);
     const state = await readCredentialState(stateFilePath);
     expect(
       [...state.sessions.map((session) => session.workspaceId)].sort(),

@@ -288,9 +288,9 @@ async function takeOverStaleStateLock(
   lockPath: string,
   debug: DebugLog,
 ): Promise<boolean> {
-  const stats = await fs.stat(lockPath).catch(() => null);
-  if (!stats) return true;
-  if (Date.now() - stats.mtimeMs <= LOCK_STALE_MS) return false;
+  const stale = await fs.stat(lockPath).catch(() => null);
+  if (stale === null) return true;
+  if (Date.now() - stale.mtimeMs <= LOCK_STALE_MS) return false;
 
   const takenPath = `${lockPath}.${randomUUID()}.stale`;
   try {
@@ -300,6 +300,22 @@ async function takeOverStaleStateLock(
     // rather than reporting a takeover that did not happen.
     return false;
   }
+
+  // Rename cannot be made conditional, so confirm afterwards that what
+  // we moved aside is the corpse we examined. Two waiters release
+  // together, and the slower one would otherwise rename away the lock
+  // the faster one had just created — both would then believe they
+  // held it and one mutation would be lost.
+  const taken = await fs.stat(takenPath).catch(() => null);
+  if (taken !== null && taken.mtimeMs !== stale.mtimeMs) {
+    // Whoever created this owns it. `link` fails when the path is
+    // occupied, so putting it back can never overwrite a third
+    // process's lock.
+    await fs.link(takenPath, lockPath).catch(() => {});
+    await fs.unlink(takenPath).catch(() => {});
+    return false;
+  }
+
   await fs.unlink(takenPath).catch(() => {});
   debug(`lock taken over from a crashed holder ${lockPath}`);
   return true;
