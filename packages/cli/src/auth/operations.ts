@@ -61,6 +61,7 @@ function workspaceIdFromClaims(claims: Record<string, unknown>): string | null {
 export async function performLogin(
   env: NodeJS.ProcessEnv,
   signal?: AbortSignal,
+  options?: { onVerificationUrl?: (url: string) => void },
 ): Promise<void> {
   await login({
     tokenStorage: new FileTokenStorage(env, signal, {
@@ -68,6 +69,7 @@ export async function performLogin(
     }),
     env,
     signal,
+    onVerificationUrl: options?.onVerificationUrl,
   });
 }
 

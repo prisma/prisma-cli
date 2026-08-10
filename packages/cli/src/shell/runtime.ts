@@ -89,7 +89,9 @@ export async function createCommandContext(
   };
 }
 
-export async function resolveStateDir(runtime: CliRuntime): Promise<string> {
+export async function resolveStateDir(
+  runtime: Pick<CliRuntime, "stateDir" | "env" | "cwd" | "signal">,
+): Promise<string> {
   const explicitStateDir = runtime.stateDir ?? runtime.env.PRISMA_CLI_STATE_DIR;
   if (explicitStateDir) {
     return explicitStateDir;

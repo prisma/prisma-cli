@@ -29,6 +29,9 @@ export interface LoginOptions {
   hostname?: string;
   port?: number;
   openUrl?: (url: string) => Promise<unknown> | unknown;
+  /** Observes the verification URL as soon as it is known, before the
+   *  browser opens. */
+  onVerificationUrl?: (url: string) => void;
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
   input?: Readable;
@@ -59,6 +62,7 @@ export async function login(options: LoginOptions = {}): Promise<void> {
       apiBaseUrl: options.apiBaseUrl,
       authBaseUrl: options.authBaseUrl,
       openUrl: options.openUrl,
+      onVerificationUrl: options.onVerificationUrl,
       env: options.env,
       signal: options.signal,
       output,
@@ -246,6 +250,7 @@ class LoginState {
       apiBaseUrl?: string;
       authBaseUrl?: string;
       openUrl?: (url: string) => Promise<unknown> | unknown;
+      onVerificationUrl?: (url: string) => void;
       env?: NodeJS.ProcessEnv;
       signal?: AbortSignal;
       output?: Writable;
@@ -280,6 +285,7 @@ class LoginState {
 
     this.latestState = state;
     this.latestVerifier = verifier;
+    this.options.onVerificationUrl?.(url);
 
     this.options.signal?.throwIfAborted();
     // Browser launch cannot consume AbortSignal; check immediately before and after the boundary.

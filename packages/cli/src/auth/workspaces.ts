@@ -8,7 +8,6 @@ import {
   workspaceNotAuthenticatedError,
   workspaceSwitchUnavailableError,
 } from "../shell/errors";
-import type { CommandContext } from "../shell/runtime";
 import type {
   AuthWorkspace,
   AuthWorkspaceListResult,
@@ -23,8 +22,17 @@ import {
   WorkspaceSelectionError,
 } from "./token-storage";
 
+/** The exact context surface the workspace operations read; both the
+ *  legacy shell's CommandContext and a v8 handler's ctx satisfy it. */
+export interface WorkspaceOperationContext {
+  readonly runtime: {
+    readonly env: NodeJS.ProcessEnv;
+    readonly signal?: AbortSignal;
+  };
+}
+
 export async function listRealAuthWorkspaces(
-  context: CommandContext,
+  context: WorkspaceOperationContext,
 ): Promise<AuthWorkspaceListResult> {
   const rawServiceToken = context.runtime.env[SERVICE_TOKEN_ENV_VAR];
   const storage = new FileTokenStorage(
@@ -86,7 +94,7 @@ export async function listRealAuthWorkspaces(
 }
 
 export async function useRealAuthWorkspace(
-  context: CommandContext,
+  context: WorkspaceOperationContext,
   workspaceRef: string,
 ): Promise<AuthWorkspaceUseResult> {
   if (context.runtime.env[SERVICE_TOKEN_ENV_VAR] !== undefined) {
@@ -132,7 +140,7 @@ export async function useRealAuthWorkspace(
 }
 
 export async function logoutRealAuthWorkspace(
-  context: CommandContext,
+  context: WorkspaceOperationContext,
   workspaceRef: string,
 ): Promise<AuthWorkspaceLogoutResult> {
   const storage = new FileTokenStorage(
@@ -175,7 +183,7 @@ export async function logoutRealAuthWorkspace(
 }
 
 async function hydrateLocalAuthWorkspaces(
-  context: CommandContext,
+  context: WorkspaceOperationContext,
   storage: FileTokenStorage,
   workspaces: StoredAuthWorkspace[],
 ): Promise<StoredAuthWorkspace[]> {
@@ -216,7 +224,7 @@ async function hydrateLocalAuthWorkspaces(
 }
 
 async function rememberResolvedWorkspaceMetadata(
-  context: CommandContext,
+  context: WorkspaceOperationContext,
   storage: FileTokenStorage,
   tokens: Tokens,
   resolved: { id: string; name: string },
@@ -237,7 +245,7 @@ function needsWorkspaceMetadataHydration(workspace: StoredAuthWorkspace) {
 }
 
 async function resolveOAuthWorkspaceMetadata(
-  context: CommandContext,
+  context: WorkspaceOperationContext,
   tokens: Tokens,
 ): Promise<{ id: string; name: string } | null> {
   const refreshStorage = new FileTokenStorage(

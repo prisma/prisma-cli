@@ -1,6 +1,13 @@
 import { type Cli, createCli, defineCommandFamily } from "@prisma/cli-engine";
 import { getCliVersion } from "../lib/version";
+import { authLoginCommand } from "./auth/login";
+import { authLogoutCommand } from "./auth/logout";
 import { authWhoamiCommand } from "./auth/whoami";
+import {
+  authWorkspaceListCommand,
+  authWorkspaceLogoutCommand,
+  authWorkspaceUseCommand,
+} from "./auth/workspace-commands";
 import {
   telemetryDisableCommand,
   telemetryEnableCommand,
@@ -12,10 +19,20 @@ export function buildCli(): Cli {
     name: "prisma-v8",
     version: getCliVersion(),
     commandFamilies: [
-      defineCommandFamily({ commands: { whoami: authWhoamiCommand } }),
+      defineCommandFamily({
+        commands: {
+          login: authLoginCommand,
+          logout: authLogoutCommand,
+          whoami: authWhoamiCommand,
+          workspaceList: authWorkspaceListCommand,
+          workspaceUse: authWorkspaceUseCommand,
+          workspaceLogout: authWorkspaceLogoutCommand,
+        },
+      }),
     ],
     groups: {
       auth: { brief: "Manage local authentication for the CLI" },
+      "auth workspace": { brief: "Manage local workspace sessions" },
       telemetry: {
         brief: "Inspect and change anonymous CLI telemetry",
         description:
@@ -25,7 +42,12 @@ export function buildCli(): Cli {
       },
     },
     commands: {
+      "auth login": authLoginCommand,
+      "auth logout": authLogoutCommand,
       "auth whoami": authWhoamiCommand,
+      "auth workspace list": authWorkspaceListCommand,
+      "auth workspace use": authWorkspaceUseCommand,
+      "auth workspace logout": authWorkspaceLogoutCommand,
       // Shell-owned consent surface (no command family).
       "telemetry status": telemetryStatusCommand,
       "telemetry enable": telemetryEnableCommand,
