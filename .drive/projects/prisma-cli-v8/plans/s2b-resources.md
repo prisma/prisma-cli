@@ -12,6 +12,10 @@ entries. Includes the R-S2b-6 picker (`project link`) and two consent
 commands. Hands the group-porting pattern (file layout, presentation
 helpers, test matrix template) to every later dispatch — this
 dispatch's structure IS the template; later dispatches copy it.
+Includes a build-time test asserting the command-family maps and the
+shell's mount map cover exactly the same command set (no command
+mounted without a family entry, none declared but unmounted) — part of
+the template every later dispatch inherits.
 
 ### D2 — postgres group (rename included)
 All 11 database→postgres commands incl. backup + connection; three

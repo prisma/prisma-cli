@@ -82,9 +82,11 @@ everything else in `src/auth/` is internal to it. Exports exactly:
 `EmptyServiceTokenError`, `isEmptyServiceTokenError`,
 `SERVICE_TOKEN_ENV_VAR`, `getApiBaseUrl`, `CLIENT_ID`, the workspace
 list/use/logout operations currently in `controllers/auth.ts`'s
-real-mode helpers (`listRealAuthWorkspaces`, `useRealAuthWorkspace`,
-`logoutRealAuthWorkspace` — extracted from the controller into
-`src/auth/workspaces.ts`, controller delegates), and
+real-mode helpers (`listAuthWorkspaces`, `useAuthWorkspace`,
+`logoutAuthWorkspace` — extracted from the controller into
+`src/auth/workspaces.ts`, controller delegates; erratum: the review
+loop dropped the interim `*Real*` spelling — there is no fixture-mode
+counterpart to distinguish from), and
 `makeGetCredentials` (moved from `src/v8/runtime.ts`; the v8 runtime
 imports it from here), plus `WorkspaceSelectionError` and
 `StoredAuthWorkspace` (production consumers exist). The legacy shell
@@ -151,8 +153,10 @@ implementation moves to this repo.
   cli-telemetry` (reference clone: `wip/repos/prisma`). Preserve
   UNCHANGED: the user-config path and format (shared installation id
   with the ORM CLI), gating resolution (consent state, CI detection,
-  env opt-outs), the detached-subprocess sender, endpoint and wire
-  protocol, the sanitizer's value-free discipline.
+  env opt-outs — CI is part of the gating resolution itself, one total
+  resolver returning enabled/disabled with a reason), the
+  detached-subprocess sender, endpoint and wire protocol, the
+  sanitizer's value-free discipline.
 - Replace the Commander snapshot type with the engine shape:
   `EngineCommandSnapshot { commandPath: readonly string[]; flags:
   ReadonlyArray<{ name: string; source: "cli" | "env" | "default" }>;
@@ -165,9 +169,15 @@ implementation moves to this repo.
   swallowed (a telemetry bug must not break a command). Draft §10
   amendment. `durationMs` from the injectable clock.
 - Bin wiring (`src/v8/main.ts`): resolve gating; when enabled, pass an
-  `onSettled` hook that spawns the detached sender — sequencing and
-  spawn semantics copied from the ORM CLI's `preAction`/util wiring
-  (reference: `wip/repos/prisma/.../cli/src/utils/telemetry.ts`).
+  `onSettled` hook that spawns the detached sender. Spawn semantics
+  (fork + IPC + disconnect + unref, every failure swallowed) are
+  copied from the ORM CLI's util wiring (reference:
+  `wip/repos/prisma/.../cli/src/utils/telemetry.ts`); TIMING is
+  onSettled by design — the event fires at settlement, not from a
+  preAction-style pre-run hook — with the first-run disclosure printed
+  pre-run (before the command's output). The consequence (crashed /
+  killed / process.exit runs emit nothing) is recorded in the
+  divergence list.
 - Commands `telemetry status|enable|disable` port from the ORM CLI's
   consent surface as engine result commands, mounted shell-owned (no
   family), group `telemetry`. Copy the ORM's semantics and copy;

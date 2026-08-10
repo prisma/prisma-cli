@@ -46,7 +46,15 @@ commit series): the commander shell (`src/cli.ts` program wiring,
 deletion checklist), all remaining fixture-mode tests, the
 `PRISMA_CLI_MOCK_FIXTURE_PATH` env surface, and `--trace`. Legacy
 presenters/controllers survive ONLY where S2b/S2c handlers still call
-them as operation layers (enumerate survivors in the PR).
+them as operation layers (enumerate survivors in the PR). Known
+survivors as of S2a: `src/state-dir.ts` (relocated out of the shell;
+`shell/runtime.ts` merely re-exports it) and the `CliError` base class
+in `shell/errors.ts` — `src/auth/errors.ts` still constructs CliError
+instances (the auth module's one remaining legacy dependency) and
+`src/v8/auth/errors.ts` maps them to structured errors; when the
+legacy shell dies, either CliError moves to a durable home or the auth
+operations throw structured errors directly and both mapping layers
+go.
 
 R-S2d-5 **Grammar completeness check**: a build-time test asserts the
 mounted tree equals the S2 target grammar exactly (every inventory

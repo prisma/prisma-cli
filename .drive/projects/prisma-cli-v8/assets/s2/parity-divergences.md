@@ -25,7 +25,7 @@ whoami precedent), while `meta` is preserved verbatim.
 
 | Legacy flat code (exit) | v8 dotted code (exit) | Commands |
 | --- | --- | --- |
-| `AUTH_CONFIG_INVALID` (1) | `AUTH.CONFIG_INVALID` (2) | whoami, login, logout |
+| `AUTH_CONFIG_INVALID` (1) | `AUTH.CONFIG_INVALID` (2) | whoami, login, logout, workspace list |
 | `WORKSPACE_SWITCH_UNAVAILABLE` (1) | `AUTH.WORKSPACE_SWITCH_UNAVAILABLE` (2) | workspace use |
 | `WORKSPACE_NOT_AUTHENTICATED` (1) | `AUTH.WORKSPACE_NOT_AUTHENTICATED` (2) | workspace use, workspace logout, logout --workspace |
 | `WORKSPACE_AMBIGUOUS` (2) | `AUTH.WORKSPACE_AMBIGUOUS` (2) | workspace use, workspace logout, logout --workspace |
@@ -128,6 +128,29 @@ No documented 4–99 codes exist in this family.
   `-q` still suppresses although v8's quiet is only a log-level
   alias). Same for `--version`, CI, non-TTY stderr, and
   `NO_UPDATE_NOTIFIER`.
+
+### `auth workspace list` — empty service token
+
+- An empty/blank `PRISMA_SERVICE_TOKEN` now errors as
+  `AUTH.CONFIG_INVALID` (exit 2), matching whoami/login/logout. Legacy
+  let the raw `EmptyServiceTokenError` crash unstructured.
+
+### Telemetry (§6)
+
+- **Config enrichment dropped.** The ORM CLI's detached sender loaded
+  `prisma-next.config.*` via c12 (evaluating arbitrary user TS in the
+  child) to derive the `databaseTarget` and `extensions` event fields.
+  That config file does not exist in this product, so the load was
+  removed: `databaseTarget` ships `null` (unless a parent-side override
+  is supplied on the wire, kept for compatibility) and `extensions`
+  ships `[]`, always. The wire shape is unchanged.
+- **Emission timing.** The ORM CLI emitted from a commander `preAction`
+  hook, before the command body ran. v8 emits at settlement
+  (`onSettled`, by design) with the first-run disclosure printed
+  pre-run, before the command's output. Consequence: a run that
+  crashes, is SIGKILLed, or leaves through `process.exit` before
+  settlement emits NO telemetry event, where the reference emitted one
+  before the command started.
 
 ### Test surface
 
