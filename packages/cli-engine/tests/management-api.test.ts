@@ -433,6 +433,138 @@ describe("the stored-session refresh path", () => {
   });
 });
 
+describe("a refresh that fails without an AuthError", () => {
+  /** The rotated token carries no workspace_id, so the SDK's own
+   *  extraction throws a plain Error from inside the refresh. */
+  const rotationTheSdkCannotDecode = () =>
+    scriptFetch((url) =>
+      url === TOKEN_ENDPOINT
+        ? jsonResponse(200, {
+            access_token: mintTestJwt({ sub: "user-1" }),
+            refresh_token: "refresh-2",
+          })
+        : jsonResponse(401, { message: "unauthorized" }),
+    );
+
+  test("maps to CLI.AUTH_SERVICE_ERROR, not to the raw cause; nothing cleared", async () => {
+    rotationTheSdkCannotDecode();
+    const cli = createTestCli({
+      commands: { toy: callApi },
+      sessions: [sessionSeed("workspace-1", "refresh-1")],
+      currentWorkspaceId: "workspace-1",
+      managementApiClientConfig: CLIENT_CONFIG,
+    });
+    const { exitCode, json } = await cli.run(["toy", "--json"]);
+    expect(exitCode).toBe(2);
+    const result = json.find((frame) => frame.kind === "result");
+    expect(result).toMatchObject({
+      envelope: { ok: false, error: { code: "CLI.AUTH_SERVICE_ERROR" } },
+    });
+    expect(cli.credentialManager?.state().sessions).toHaveLength(1);
+  });
+
+  test("a plain error from outside the refresh path still settles as a bug", async () => {
+    scriptFetch(() => jsonResponse(200, {}));
+    const runtime = makeRuntime({
+      credentialManager: fakeCredentialManager({
+        currentSession: async () => storedSession("workspace-1"),
+        tokenStorage: () => ({
+          getTokens: async () => {
+            throw new Error("something unrelated broke");
+          },
+          setTokens: async () => {},
+          clearTokens: async () => {},
+        }),
+      }),
+    });
+    const exitCode = await runEngine(callApi, runtime);
+    expect(exitCode).toBe(1);
+    expect(runtime.stdoutText()).toContain('"code":"CLI.INTERNAL_ERROR"');
+  });
+});
+
+describe("the engine's debug valve", () => {
+  const refreshRejectedAsInvalidGrant = () =>
+    scriptFetch((url) =>
+      url === TOKEN_ENDPOINT
+        ? jsonResponse(400, {
+            error: "invalid_grant",
+            error_description: "refresh token already used",
+          })
+        : jsonResponse(401, { message: "unauthorized" }),
+    );
+
+  const cliWithDebug = () =>
+    createTestCli({
+      commands: { toy: callApi },
+      sessions: [sessionSeed("workspace-1", "SECRET-REFRESH-TOKEN")],
+      currentWorkspaceId: "workspace-1",
+      managementApiClientConfig: CLIENT_CONFIG,
+    });
+
+  test("PRISMA_NEXT_DEBUG=1 records the refresh attempt and the endpoint's verdict", async () => {
+    refreshRejectedAsInvalidGrant();
+    const { stderr } = await cliWithDebug().run(["toy", "--json"], {
+      env: { PRISMA_NEXT_DEBUG: "1" },
+    });
+    expect(stderr).toContain("refresh attempted for session workspace-1");
+    expect(stderr).toContain("refresh failed: refreshTokenInvalid=true");
+    expect(stderr).toContain("refresh token already used");
+  });
+
+  test("a refresh that throws no AuthError is recorded by type alone", async () => {
+    scriptFetch((url) =>
+      url === TOKEN_ENDPOINT
+        ? jsonResponse(200, {
+            access_token: mintTestJwt({ sub: "user-1" }),
+            refresh_token: "refresh-2",
+          })
+        : jsonResponse(401, { message: "unauthorized" }),
+    );
+    const { stderr } = await cliWithDebug().run(["toy", "--json"], {
+      env: { PRISMA_NEXT_DEBUG: "1" },
+    });
+    expect(stderr).toContain("refresh failed without an AuthError (Error)");
+  });
+
+  test("the valve is silent when it is unset", async () => {
+    refreshRejectedAsInvalidGrant();
+    const { stderr } = await cliWithDebug().run(["toy", "--json"]);
+    expect(stderr).toBe("");
+  });
+
+  test("no token material reaches any refresh-failure path with the valve open", async () => {
+    const failures = [
+      jsonResponse(400, { error: "invalid_grant" }),
+      jsonResponse(500, { message: "boom" }),
+      jsonResponse(200, {
+        access_token: mintTestJwt({ sub: "user-1" }),
+        refresh_token: "SECRET-ROTATED-TOKEN",
+      }),
+    ];
+    for (const failure of failures) {
+      scriptFetch((url) =>
+        url === TOKEN_ENDPOINT
+          ? failure.clone()
+          : jsonResponse(401, { message: "unauthorized" }),
+      );
+      const { stderr, stdout, json } = await cliWithDebug().run(
+        ["toy", "--json"],
+        { env: { PRISMA_NEXT_DEBUG: "1" } },
+      );
+      const everything = stderr + stdout + JSON.stringify(json);
+      expect(stderr).toContain("refresh attempted for session workspace-1");
+      for (const material of [
+        "SECRET-REFRESH-TOKEN",
+        "SECRET-ROTATED-TOKEN",
+        accessTokenFor("workspace-1", "initial"),
+      ]) {
+        expect(everything).not.toContain(material);
+      }
+    }
+  });
+});
+
 describe("the environment-session static path", () => {
   const environmentToken = mintTestJwt({
     sub: "svc-1",

@@ -174,17 +174,19 @@ describe("the state file", () => {
     const realRename = fsPromises.rename.bind(fsPromises);
     const opens = vi
       .spyOn(fsPromises, "open")
-      .mockImplementation(async (...args: Parameters<typeof fsPromises.open>) => {
-        const handle = await realOpen(...args);
-        if (!String(args[0]).endsWith(".tmp")) return handle;
-        order.push(`open ${String(args[0])}`);
-        const sync = handle.sync.bind(handle);
-        handle.sync = async () => {
-          order.push("sync");
-          await sync();
-        };
-        return handle;
-      });
+      .mockImplementation(
+        async (...args: Parameters<typeof fsPromises.open>) => {
+          const handle = await realOpen(...args);
+          if (!String(args[0]).endsWith(".tmp")) return handle;
+          order.push(`open ${String(args[0])}`);
+          const sync = handle.sync.bind(handle);
+          handle.sync = async () => {
+            order.push("sync");
+            await sync();
+          };
+          return handle;
+        },
+      );
     const renames = vi
       .spyOn(fsPromises, "rename")
       .mockImplementation(async (from, to) => {
@@ -386,7 +388,9 @@ describe("mutations under an environment session", () => {
     await expect(manager.useSession(sessionA as never)).resolves.toMatchObject({
       workspaceId: WORKSPACE_A,
     });
-    await expect(manager.endSession(sessionA as never)).resolves.toBeUndefined();
+    await expect(
+      manager.endSession(sessionA as never),
+    ).resolves.toBeUndefined();
     await expect(manager.endAllSessions()).resolves.toBeUndefined();
 
     expect(await readCredentialState(stateFilePath)).toMatchObject({

@@ -79,7 +79,13 @@ export function buildManagementApiClient(
           }
           return result;
         } catch (cause) {
-          throw await mapRequestFailure(invocation, debug, probe, binding, cause);
+          throw await mapRequestFailure(
+            invocation,
+            debug,
+            probe,
+            binding,
+            cause,
+          );
         }
       };
     },
@@ -238,7 +244,9 @@ async function mapRequestFailure(
     }
     // Only the error's type is reported: an arbitrary message can
     // carry fragments of a decoded token payload.
-    debug(`refresh failed without an AuthError (${errorTypeOf(probe.failure)})`);
+    debug(
+      `refresh failed without an AuthError (${errorTypeOf(probe.failure)})`,
+    );
     return authServiceError();
   }
   if (cameFromRefresh) {

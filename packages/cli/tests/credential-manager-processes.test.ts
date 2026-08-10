@@ -31,8 +31,10 @@ const servers: Server[] = [];
 /** Every worker's stderr, for the leak scan. */
 const workerStderr: string[] = [];
 
-function mintToken(workspaceId: string) {
-  return mintTestJwt({ workspace_id: workspaceId });
+/** The minter is a pure function of its claims, so two tokens for one
+ *  workspace need a marker claim to come out as different strings. */
+function mintToken(workspaceId: string, marker = "seed") {
+  return mintTestJwt({ workspace_id: workspaceId, token: marker });
 }
 
 function runWorker(command: string, ...args: string[]): Promise<string> {
@@ -84,6 +86,10 @@ async function startTokenEndpoint(script: {
   readonly seedAccessToken: string;
   readonly seedRefreshToken: string;
   readonly issued: readonly TokenPair[];
+  /** Hold every token request until this many have arrived, so the
+   *  replay really does land inside the grace rather than after the
+   *  first exchange has already been written back. */
+  readonly concurrentRefreshers?: number;
 }): Promise<{
   readonly baseUrl: string;
   readonly exchanges: () => number;
@@ -92,6 +98,15 @@ async function startTokenEndpoint(script: {
     [script.seedRefreshToken, { uses: 0, firstUsedAt: 0 }],
   ]);
   let exchanges = 0;
+
+  const expected = script.concurrentRefreshers ?? 1;
+  const arrived: (() => void)[] = [];
+  const allArrived = (): Promise<void> =>
+    new Promise<void>((resolve) => {
+      arrived.push(resolve);
+      if (arrived.length < expected) return;
+      for (const release of arrived.splice(0, arrived.length)) release();
+    });
 
   const respond = (
     response: ServerResponse,
@@ -130,14 +145,16 @@ async function startTokenEndpoint(script: {
         body += String(chunk);
       });
       request.on("end", () => {
-        const pair = exchange(new URLSearchParams(body).get("refresh_token"));
-        if (pair === null) {
-          respond(response, 400, { error: "invalid_grant" });
-          return;
-        }
-        respond(response, 200, {
-          access_token: pair.accessToken,
-          refresh_token: pair.refreshToken,
+        void allArrived().then(() => {
+          const pair = exchange(new URLSearchParams(body).get("refresh_token"));
+          if (pair === null) {
+            respond(response, 400, { error: "invalid_grant" });
+            return;
+          }
+          respond(response, 200, {
+            access_token: pair.accessToken,
+            refresh_token: pair.refreshToken,
+          });
         });
       });
       return;
@@ -190,13 +207,20 @@ describe("across processes", () => {
   it("leaves a valid pair in the file when two processes really refresh the same session", async () => {
     const seedAccessToken = mintToken(WORKSPACE_A);
     const issued = [
-      { accessToken: mintToken(WORKSPACE_A), refreshToken: "refresh-1" },
-      { accessToken: mintToken(WORKSPACE_A), refreshToken: "refresh-2" },
+      {
+        accessToken: mintToken(WORKSPACE_A, "rotated-1"),
+        refreshToken: "refresh-1",
+      },
+      {
+        accessToken: mintToken(WORKSPACE_A, "rotated-2"),
+        refreshToken: "refresh-2",
+      },
     ];
     const endpoint = await startTokenEndpoint({
       seedAccessToken,
       seedRefreshToken: "refresh-0",
       issued,
+      concurrentRefreshers: 2,
     });
     await runWorker("create", WORKSPACE_A, seedAccessToken, "refresh-0");
 
@@ -288,7 +312,7 @@ describe("across processes", () => {
   it("never leaves token material in a worker's stdout or stderr", async () => {
     const seedAccessToken = mintToken(WORKSPACE_A);
     const rotated = {
-      accessToken: mintToken(WORKSPACE_A),
+      accessToken: mintToken(WORKSPACE_A, "rotated"),
       refreshToken: "s3cret-rotated-refresh",
     };
     const endpoint = await startTokenEndpoint({
