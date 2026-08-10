@@ -172,15 +172,18 @@ export async function writeCredentialState(
 ): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.${randomUUID()}.tmp`;
-  const handle = await fs.open(tempPath, "wx", FILE_MODE);
+  // The temp file holds the whole state, tokens included, so no path
+  // out of here may leave one behind: a write that fails after the
+  // handle is open would otherwise strand a working credential copy
+  // under a name nothing later looks for.
   try {
-    await handle.writeFile(`${JSON.stringify(state, null, 2)}\n`, "utf8");
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-
-  try {
+    const handle = await fs.open(tempPath, "wx", FILE_MODE);
+    try {
+      await handle.writeFile(`${JSON.stringify(state, null, 2)}\n`, "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
     await fs.rename(tempPath, filePath);
   } catch (error) {
     await fs.unlink(tempPath).catch(() => {});
@@ -241,12 +244,16 @@ async function acquireStateLock(
   while (true) {
     if (await tryCreateStateLock(lockPath, lockId)) return lockId;
 
-    if (await takeOverStaleStateLock(lockPath, debug)) continue;
-
+    const tookOver = await takeOverStaleStateLock(lockPath, debug);
+    // The timeout is checked on every pass, including the ones that
+    // took a lock over: a takeover that keeps appearing to succeed
+    // must still end in a timeout rather than spinning.
     if (Date.now() - startedAt >= LOCK_WAIT_TIMEOUT_MS) {
       throw new StateLockTimeoutError(lockPath);
     }
-    await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_MS));
+    if (!tookOver) {
+      await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_MS));
+    }
   }
 }
 
@@ -269,6 +276,14 @@ async function tryCreateStateLock(
   return true;
 }
 
+/**
+ * Clear a crashed holder's lock. Removing it by RENAME is what makes
+ * two waiting processes safe: only one of them can rename a given
+ * path, so only one clears the corpse. Unlinking instead lets the
+ * second process delete the FIRST one's freshly created lock — both
+ * then run their read-modify-write at once and one update is lost,
+ * which is the very thing the lock exists to prevent.
+ */
 async function takeOverStaleStateLock(
   lockPath: string,
   debug: DebugLog,
@@ -277,8 +292,16 @@ async function takeOverStaleStateLock(
   if (!stats) return true;
   if (Date.now() - stats.mtimeMs <= LOCK_STALE_MS) return false;
 
+  const takenPath = `${lockPath}.${randomUUID()}.stale`;
+  try {
+    await fs.rename(lockPath, takenPath);
+  } catch {
+    // Someone else took it over, or it was released — go round again
+    // rather than reporting a takeover that did not happen.
+    return false;
+  }
+  await fs.unlink(takenPath).catch(() => {});
   debug(`lock taken over from a crashed holder ${lockPath}`);
-  await fs.unlink(lockPath).catch(() => {});
   return true;
 }
 

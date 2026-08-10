@@ -3,18 +3,13 @@
  * atomicity, process pinning, the env override rules, the TokenStorage
  * write slices, and the legacy migration.
  */
-
-/**
- * The credential manager over its state file: the file format and its
- * atomicity, process pinning, the env override rules, the TokenStorage
- * write slices, and the legacy migration.
- */
 import nodeFs from "node:fs";
 import fsPromises, {
   mkdtemp,
   readdir,
   readFile,
   stat,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
@@ -30,8 +25,21 @@ function escapeForRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** Releases every caller once `expected` of them are waiting; callers
+ *  after that pass straight through. */
+function barrierFor(expected: number): () => Promise<void> {
+  const waiting: (() => void)[] = [];
+  return () =>
+    new Promise<void>((resolve) => {
+      waiting.push(resolve);
+      if (waiting.length < expected) return;
+      for (const release of waiting.splice(0, waiting.length)) release();
+    });
+}
+
 const WORKSPACE_A = "wksp_a";
 const WORKSPACE_B = "wksp_b";
+const WORKSPACE_C = "wksp_c";
 
 let stateFilePath: string;
 
@@ -225,6 +233,131 @@ describe("the state file", () => {
     expect(
       (await readdir(stateDir)).filter((entry) => entry.endsWith(".tmp")),
     ).toEqual([]);
+  });
+
+  it("leaves no temp file behind when the write fails before the rename", async () => {
+    const realOpen = fsPromises.open.bind(fsPromises);
+    const opens = vi
+      .spyOn(fsPromises, "open")
+      .mockImplementation(
+        async (...args: Parameters<typeof fsPromises.open>) => {
+          const handle = await realOpen(...args);
+          if (!String(args[0]).endsWith(".tmp")) return handle;
+          handle.sync = async () => {
+            throw Object.assign(new Error("no space left on device"), {
+              code: "ENOSPC",
+            });
+          };
+          return handle;
+        },
+      );
+    try {
+      await expect(
+        makeManager().createSession(credentialFor(WORKSPACE_A), WORKSPACE_A),
+      ).rejects.toThrow(/no space left/);
+    } finally {
+      opens.mockRestore();
+    }
+
+    // A stranded temp file holds the whole state, tokens included.
+    expect(
+      (await readdir(path.dirname(stateFilePath))).filter((entry) =>
+        entry.endsWith(".tmp"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("lets only one of two waiting mutations clear the same crashed holder's lock", async () => {
+    await makeManager().createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
+    const lockPath = `${stateFilePath}.lock`;
+    await writeFile(lockPath, "crashed-holder", "utf8");
+    const longAgo = new Date(Date.now() - 60_000);
+    await utimes(lockPath, longAgo, longAgo);
+
+    // Hold both waiters until each has seen the lock as stale. That is
+    // the interleaving the takeover has to survive: if clearing it is
+    // not atomic, the second waiter deletes the first waiter's fresh
+    // lock and both run their read-modify-write at once.
+    const bothSawItStale = barrierFor(2);
+    const realStat = fsPromises.stat.bind(fsPromises);
+    const stats = vi
+      .spyOn(fsPromises, "stat")
+      .mockImplementation(
+        async (...args: Parameters<typeof fsPromises.stat>) => {
+          const result = await realStat(...args);
+          if (String(args[0]).endsWith(".lock")) await bothSawItStale();
+          return result;
+        },
+      );
+
+    const debugLines: string[] = [];
+    try {
+      await Promise.all(
+        [WORKSPACE_B, WORKSPACE_C].map((workspaceId) =>
+          makeManager({
+            env: { PRISMA_NEXT_DEBUG: "1" },
+            debugWrite: (text) => debugLines.push(text),
+          }).createSession(credentialFor(workspaceId), workspaceId),
+        ),
+      );
+    } finally {
+      stats.mockRestore();
+    }
+
+    const takeovers = debugLines.filter((line) => line.includes("taken over"));
+    expect(takeovers).toHaveLength(1);
+    const state = await readCredentialState(stateFilePath);
+    expect(
+      [...state.sessions.map((session) => session.workspaceId)].sort(),
+    ).toEqual([WORKSPACE_A, WORKSPACE_B, WORKSPACE_C]);
+  });
+
+  it("times out instead of spinning when a stale lock cannot be cleared at all", async () => {
+    const lockPath = `${stateFilePath}.lock`;
+    await writeFile(lockPath, "crashed-holder", "utf8");
+    const longAgo = new Date(Date.now() - 60_000);
+    await utimes(lockPath, longAgo, longAgo);
+
+    // A stale lock in a directory the process cannot write to: every
+    // attempt to clear it fails. The acquisition loop must still reach
+    // its timeout rather than retrying flat out forever.
+    let attempts = 0;
+    const renames = vi
+      .spyOn(fsPromises, "rename")
+      .mockImplementation(async (from) => {
+        if (!String(from).endsWith(".lock")) throw new Error("unexpected");
+        attempts += 1;
+        throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+      });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const mutation = makeManager().createSession(
+        credentialFor(WORKSPACE_A),
+        WORKSPACE_A,
+      );
+      const settled = expect(mutation).rejects.toMatchObject({
+        code: "CLI.CREDENTIALS_LOCKED",
+      });
+      await vi.advanceTimersByTimeAsync(11_000);
+      await settled;
+    } finally {
+      vi.useRealTimers();
+      renames.mockRestore();
+    }
+
+    // Retries are paced by the sleep, not run flat out.
+    expect(attempts).toBeLessThan(2_000);
+  });
+
+  it("reaps a temp file a dead write left behind when the user logs out", async () => {
+    const manager = makeManager();
+    await manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
+    const orphan = `${stateFilePath}.abandoned.tmp`;
+    await writeFile(orphan, await readFile(stateFilePath, "utf8"), "utf8");
+
+    await manager.endAllSessions();
+
+    await expect(stat(orphan)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("treats a corrupt file as signed out and never rewrites it", async () => {

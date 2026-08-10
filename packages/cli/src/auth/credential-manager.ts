@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import path from "node:path";
 import type {
   Credential,
   CredentialManager,
@@ -231,11 +232,13 @@ export class FileCredentialManager implements CredentialManager {
         });
       }
       await this.#reapLegacyContextFile();
+      await this.#reapOrphanedWrites();
       return;
     }
 
     await this.#mutate(() => ({ state: EMPTY_STATE, result: undefined }));
     await this.#reapLegacyContextFile();
+    await this.#reapOrphanedWrites();
     this.#pin = { kind: "marker", workspaceId: null };
   }
 
@@ -346,6 +349,22 @@ export class FileCredentialManager implements CredentialManager {
    *  sessions to clear but may still have the sidecar. */
   async #reapLegacyContextFile(): Promise<void> {
     await fs.unlink(getAuthContextFilePath(this.#filePath)).catch(() => {});
+  }
+
+  /** A write that died between creating its temp file and renaming it
+   *  leaves a full copy of the state, tokens and all. Someone running
+   *  `auth logout` to revoke local access must not be left holding a
+   *  working refresh token in an orphan. Writes take the lock and last
+   *  milliseconds, so anything still here is one. */
+  async #reapOrphanedWrites(): Promise<void> {
+    const directory = path.dirname(this.#filePath);
+    const prefix = `${path.basename(this.#filePath)}.`;
+    const entries = await fs.readdir(directory).catch(() => []);
+    await Promise.all(
+      entries
+        .filter((entry) => entry.startsWith(prefix) && entry.endsWith(".tmp"))
+        .map((entry) => fs.unlink(path.join(directory, entry)).catch(() => {})),
+    );
   }
 
   #environmentSession(): Session {
