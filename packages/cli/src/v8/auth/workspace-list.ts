@@ -1,122 +1,93 @@
 /** The `auth workspace list` command. */
-import { defineCommand, type Presentations } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
-import { isEmptyServiceTokenError, listAuthWorkspaces } from "../../auth";
-import type { AuthWorkspaceListResult } from "../../types/auth";
-import { authConfigInvalidError } from "./errors";
 import {
-  LOGIN_NEXT_ACTION,
-  operationContext,
-  rethrowMapped,
-} from "./workspace-shared";
+  defineCommand,
+  type Presentations,
+  type Session,
+} from "@prisma/cli-engine";
+import { type NextAction, ok } from "@prisma/cli-engine/protocol";
+import { SERVICE_TOKEN_ENV_VAR } from "../../auth";
+import { CLI_NAME } from "../../cli-name";
+import { ENVIRONMENT_SESSION_NOTICE } from "./session-card";
+import { sessionLabel } from "./session-ref";
 
-function authSourceLabel(
-  source: AuthWorkspaceListResult["authSource"],
-): string {
-  if (source === "oauth") {
-    return "local OAuth";
-  }
-  if (source === "service_token") {
-    return "PRISMA_SERVICE_TOKEN";
-  }
-  return "none";
+const LOGIN_NEXT_ACTION: NextAction = {
+  kind: "run-command",
+  label: "Sign in",
+  command: `${CLI_NAME} auth login`,
+};
+
+export interface WorkspaceListResult {
+  readonly sessions: readonly Session[];
+  readonly environmentSessionInForce: boolean;
 }
 
-function workspaceSourceLabel(source: "oauth" | "service_token"): string {
-  return source === "service_token" ? "service token" : "OAuth";
-}
-
-export function serializeAuthWorkspaceList(result: AuthWorkspaceListResult) {
+export function serializeWorkspaceList(result: WorkspaceListResult) {
   return {
     context: {
-      authSource: result.authSource,
-      activeWorkspaceId: result.activeWorkspace?.id ?? null,
-      activeWorkspaceName: result.activeWorkspace?.name ?? null,
+      environmentSessionInForce: result.environmentSessionInForce,
+      currentWorkspaceId:
+        result.sessions.find((session) => session.current)?.workspaceId ?? null,
     },
-    items: result.workspaces.map((workspace) => ({
-      id: workspace.id,
-      name: workspace.name,
-      status: workspace.active ? "active" : null,
-      source: workspace.source,
-      switchable: workspace.switchable,
-      credentialWorkspaceId: workspace.credentialWorkspaceId,
-      lastSeenAt: workspace.lastSeenAt,
+    items: result.sessions.map((session) => ({
+      workspaceId: session.workspaceId,
+      workspaceName: session.workspaceName ?? null,
+      current: session.current,
+      expiresAt: session.expiresAt?.toISOString() ?? null,
     })),
-    count: result.workspaces.length,
+    count: result.sessions.length,
   };
 }
 
-/** The legacy table's column rule: the source column appears only when
- *  the listed workspaces mix sources. */
-function workspaceTableRows(result: AuthWorkspaceListResult): {
-  columns: readonly string[];
-  rows: ReadonlyArray<readonly string[]>;
-} {
-  const hasMixedSources =
-    new Set(result.workspaces.map((workspace) => workspace.source)).size > 1;
-  const columns = hasMixedSources
-    ? ["name", "id", "source", "status"]
-    : ["name", "id", "status"];
-  const rows = result.workspaces.map((workspace) => {
-    const status = workspace.active ? "active" : "";
-    return hasMixedSources
-      ? [
-          workspace.name,
-          workspace.id,
-          workspaceSourceLabel(workspace.source),
-          status,
-        ]
-      : [workspace.name, workspace.id, status];
-  });
-  return { columns, rows };
-}
-
-function listPresentations(result: AuthWorkspaceListResult): Presentations {
-  const table = workspaceTableRows(result);
+function listPresentations(result: WorkspaceListResult): Presentations {
+  const columns = ["name", "id", "status"];
+  const rows = result.sessions.map((session) => [
+    sessionLabel(session),
+    session.workspaceId,
+    session.current ? "current" : "",
+  ]);
   return {
     human: () => [
       {
         kind: "summary",
         tone: "info",
-        text: "Listing authenticated workspaces on this machine.",
+        text: "Listing your workspace sessions on this machine.",
       },
-      {
-        kind: "fields",
-        rows: [
-          { label: "auth source", value: authSourceLabel(result.authSource) },
-        ],
-      },
-      ...(result.workspaces.length === 0
+      ...(result.environmentSessionInForce
         ? [
             {
               kind: "summary",
               tone: "info",
-              text: "No local OAuth workspaces found.",
+              text: ENVIRONMENT_SESSION_NOTICE,
             } as const,
           ]
-        : [{ kind: "table", ...table } as const]),
+        : []),
+      ...(result.sessions.length === 0
+        ? [
+            {
+              kind: "summary",
+              tone: "info",
+              text: "No workspace sessions found.",
+            } as const,
+          ]
+        : [{ kind: "table", columns, rows } as const]),
     ],
-    stdout: () => table.rows.map((row) => row.join("  ").trimEnd()),
-    json: () => serializeAuthWorkspaceList(result),
-    next: () => (result.workspaces.length === 0 ? [LOGIN_NEXT_ACTION] : []),
+    stdout: () => rows.map((row) => row.join("  ").trimEnd()),
+    json: () => serializeWorkspaceList(result),
+    next: () => (result.sessions.length === 0 ? [LOGIN_NEXT_ACTION] : []),
   };
 }
 
 export const authWorkspaceListCommand = defineCommand({
+  managesCredentials: true,
   help: {
-    summary: "List locally authenticated workspaces",
+    summary: "List your workspace sessions",
     examples: ["auth workspace list", "auth workspace list --json"],
   },
   handler: async (_args, ctx) => {
-    let result: AuthWorkspaceListResult;
-    try {
-      result = await listAuthWorkspaces(operationContext(ctx));
-    } catch (error) {
-      if (isEmptyServiceTokenError(error)) {
-        return notOk(authConfigInvalidError(error.message));
-      }
-      rethrowMapped(error);
-    }
+    const result: WorkspaceListResult = {
+      sessions: await ctx.credentialManager.sessions(),
+      environmentSessionInForce: ctx.env[SERVICE_TOKEN_ENV_VAR] !== undefined,
+    };
     return ok(ctx.present({ data: result }, listPresentations(result)));
   },
 });

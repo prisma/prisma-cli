@@ -1,3 +1,4 @@
+export { claimedWorkspaceId, decodeClaims } from "./claims";
 export {
   CLIENT_ID,
   DEFAULT_REDIRECT_URI,

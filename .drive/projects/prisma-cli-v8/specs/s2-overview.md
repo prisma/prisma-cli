@@ -7,7 +7,7 @@ the port PRs; infrastructure PRs may be smaller where inherently so):
 
 | PR | Contract | Content |
 | --- | --- | --- |
-| S2a | `s2a-foundations.md` | Engine publishable + production dep; `ctx.api`; auth module extraction; `auth *` family; update check; telemetry package move + wiring; clack prompt renderer |
+| S2a | `s2a-foundations.md` | Engine publishable + production dep; `ctx.api`; auth module extraction; the credential manager + the `auth *` family on it; update check; telemetry package move + wiring; clack prompt renderer |
 | S2b | `s2b-resources.md` | `project *`, `postgres *` (database), `bucket *` (incl. keys), `branch list` |
 | S2c | `s2c-services.md` | `service *` (renamed from `app`, incl. env + domain subgroups), `build *`, `git *`, `agent *`, `feedback` |
 | S2d | `s2d-init-and-retirement.md` | `init` wizard; commander-shell deletion; fixture-mode machinery deletion; final parity review |
@@ -32,7 +32,8 @@ All operator-ruled; none are open to implementer judgment.
    undefined` or a natural empty).
 4. **Testing**: semantic-first. Commands are tested through
    `createTestCli` (`@prisma/cli-engine/testing`) with the management
-   API faked at `ctx.api` and auth stubbed at the auth-module seam.
+   API faked at `ctx.api` and sessions seeded into the harness's
+   in-memory credential manager (state read back after the run).
    Assertions target the envelope, presented data, events, and exit
    codes — NOT output bytes. A single small golden suite per output
    surface pins human rendering and channel discipline globally.
@@ -42,7 +43,10 @@ All operator-ruled; none are open to implementer judgment.
    `CommandContext` (operator: no extension mechanisms — this is
    Prisma's engine). Spec in S2a.
 6. **Auth**: an internal module (`packages/cli/src/auth/`), not a
-   workspace package. Spec in S2a.
+   workspace package, holding the credential manager behind the
+   engine's `CredentialManager` SPI. Sessions are per-workspace, one
+   current; the `auth *` commands keep their legacy names. Spec in
+   S2a, design in `../assets/engine/credential-manager-design.md`.
 7. **Telemetry is essential**: this CLI reports exactly the way the
    ORM CLI does today; the `@internal/cli-telemetry` implementation
    moves to this repo (prisma/prisma retires it with its CLI at S5).

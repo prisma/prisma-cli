@@ -1,10 +1,18 @@
-import { defineCommand, type Presentations } from "@prisma/cli-engine";
-import { type NextAction, notOk, ok } from "@prisma/cli-engine/protocol";
-import { isEmptyServiceTokenError, readAuthState } from "../../auth";
+import {
+  type CommandContext,
+  defineCommand,
+  type ManagementApiClient,
+  type Presentations,
+  type Session,
+} from "@prisma/cli-engine";
+import { type NextAction, ok } from "@prisma/cli-engine/protocol";
+import { decodeClaims, SERVICE_TOKEN_ENV_VAR } from "../../auth";
 import { CLI_NAME } from "../../cli-name";
-import type { AuthStateResult } from "../../types/auth";
-import { authConfigInvalidError } from "./errors";
-import { authStateFieldRows } from "./state-card";
+import {
+  ENVIRONMENT_SESSION_NOTICE,
+  type SessionIdentity,
+  sessionFieldRows,
+} from "./session-card";
 
 const TITLE = "Showing the current authenticated identity.";
 
@@ -14,15 +22,91 @@ const SIGN_IN: NextAction = {
   command: `${CLI_NAME} auth login`,
 };
 
-function presentationsFor(state: AuthStateResult): Presentations {
-  const rows = authStateFieldRows(state);
+export interface WhoamiResult {
+  readonly authenticated: boolean;
+  readonly workspace: {
+    readonly id: string;
+    readonly name: string | null;
+  } | null;
+  readonly user: SessionIdentity | null;
+  readonly source: "stored" | "environment" | null;
+  readonly expiresAt: string | null;
+}
+
+function claimedIdentity(token: string): SessionIdentity | null {
+  const claims = decodeClaims(token);
+  if (claims === undefined) {
+    return null;
+  }
+  const read = (key: string): string | null =>
+    typeof claims[key] === "string" ? (claims[key] as string) : null;
+  const identity = {
+    id: read("sub"),
+    email: read("email"),
+    name: read("name"),
+  };
+  return identity.id === null && identity.email === null ? null : identity;
+}
+
+/** Best-effort online enrichment: whoami works offline, so any failure
+ *  leaves the identity as whatever the session itself could supply. */
+async function enrichedIdentity(
+  api: ManagementApiClient,
+  signal: AbortSignal,
+): Promise<SessionIdentity | null> {
+  try {
+    const { data } = await api.GET("/v1/me", { signal });
+    const user = data?.data?.user;
+    if (!user) {
+      return null;
+    }
+    return {
+      id: user.id ?? null,
+      email: user.email ?? null,
+      name: user.name ?? null,
+    };
+  } catch {
+    signal.throwIfAborted();
+    return null;
+  }
+}
+
+async function identityFor(
+  session: Session,
+  ctx: CommandContext<undefined, never>,
+): Promise<SessionIdentity | null> {
+  const enriched = await enrichedIdentity(ctx.api, ctx.signal);
+  if (enriched !== null) {
+    return enriched;
+  }
+  const envToken = ctx.env[SERVICE_TOKEN_ENV_VAR];
+  return session.source === "environment" && envToken !== undefined
+    ? claimedIdentity(envToken)
+    : null;
+}
+
+function presentationsFor(spec: {
+  readonly session: Session | null;
+  readonly identity: SessionIdentity | null;
+}): Presentations {
+  const rows = sessionFieldRows(spec);
+  const environmentSession = spec.session?.source === "environment";
   return {
     human: () => [
       { kind: "summary", tone: "info", text: TITLE },
       { kind: "fields", rows },
+      ...(environmentSession
+        ? [
+            {
+              kind: "summary",
+              tone: "info",
+              text: ENVIRONMENT_SESSION_NOTICE,
+            } as const,
+          ]
+        : []),
     ],
     stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
-    next: () => (state.authenticated ? [] : [SIGN_IN]),
+    next: () => (spec.session === null ? [SIGN_IN] : []),
   };
 }
 
@@ -32,16 +116,20 @@ export const authWhoamiCommand = defineCommand({
     examples: ["auth whoami", "auth whoami --json"],
   },
   handler: async (_args, ctx) => {
-    let state: AuthStateResult;
-    try {
-      state = await readAuthState(ctx.env, ctx.signal);
-    } catch (error) {
-      if (isEmptyServiceTokenError(error)) {
-        return notOk(authConfigInvalidError(error.message));
-      }
-      throw error;
-    }
-
-    return ok(ctx.present({ data: state }, presentationsFor(state)));
+    const session = await ctx.session();
+    const identity = session === null ? null : await identityFor(session, ctx);
+    const result: WhoamiResult = {
+      authenticated: session !== null,
+      workspace:
+        session === null
+          ? null
+          : { id: session.workspaceId, name: session.workspaceName ?? null },
+      user: identity,
+      source: session?.source ?? null,
+      expiresAt: session?.expiresAt?.toISOString() ?? null,
+    };
+    return ok(
+      ctx.present({ data: result }, presentationsFor({ session, identity })),
+    );
   },
 });
