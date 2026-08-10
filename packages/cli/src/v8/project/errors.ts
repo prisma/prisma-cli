@@ -2,8 +2,10 @@
  * Mapping from the project controllers' legacy CliError shapes to the
  * v8 protocol's dotted PROJECT.* structured errors, following
  * `v8/auth/errors.ts`. Unmapped codes fall through to
- * `PROJECT.<RAW_CODE>` (the API-passthrough rule); `AUTH_REQUIRED`
- * returns null so credential failures settle through the engine.
+ * `PROJECT.<RAW_CODE>` (the API-passthrough rule), including the
+ * legacy `AUTH_REQUIRED`: the engine settles every real credentials
+ * failure itself, so what reaches this mapper is the permission
+ * residue (a returned 403), which is not a sign-in problem.
  */
 
 import type { NextAction } from "@prisma/cli-engine/protocol";
@@ -41,6 +43,7 @@ const PROJECT_CODE_MAP: Readonly<Record<string, `${string}.${string}`>> = {
 };
 
 const PACKAGE_RUNNER_PREFIX = /^\S+(?: -y)? @prisma\/cli@\S+ /;
+const COMMENT_PREFIX = /^#\s*/;
 
 /** Legacy command strings are `prisma-cli …`, except one `prisma auth
  *  login` copy bug and the package-runner formatter's output. */
@@ -59,15 +62,35 @@ function portFixText(fix: string): string {
   return fix.replace("--trace", "--log-level verbose");
 }
 
+/** A `#`-comment line in the legacy nextSteps is not an action: it
+ *  explains the command that follows it, so it becomes that action's
+ *  `reason`. */
+function runCommandActions(nextSteps: readonly string[]): NextAction[] {
+  const actions: NextAction[] = [];
+  let reason: string | undefined;
+  for (const step of nextSteps) {
+    if (step.startsWith("#")) {
+      reason = step.replace(COMMENT_PREFIX, "");
+      continue;
+    }
+    const command = portCommandString(step);
+    actions.push({
+      kind: "run-command",
+      label: command,
+      command,
+      ...(reason === undefined ? {} : { reason }),
+    });
+    reason = undefined;
+  }
+  return actions;
+}
+
 function nextActionsFor(error: CliError): NextAction[] {
   return [
     ...(error.fix
       ? [{ kind: "user-choice" as const, label: portFixText(error.fix) }]
       : []),
-    ...error.nextSteps.map((step) => {
-      const command = portCommandString(step);
-      return { kind: "run-command" as const, label: command, command };
-    }),
+    ...runCommandActions(error.nextSteps),
   ];
 }
 
@@ -75,9 +98,6 @@ export function mapProjectOperationError(
   error: unknown,
 ): CliStructuredError | null {
   if (!(error instanceof CliError)) {
-    return null;
-  }
-  if (error.code === "AUTH_REQUIRED") {
     return null;
   }
   const code = PROJECT_CODE_MAP[error.code] ?? `PROJECT.${error.code}`;
