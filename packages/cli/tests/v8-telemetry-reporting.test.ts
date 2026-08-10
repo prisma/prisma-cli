@@ -42,21 +42,32 @@ function makeProc(env: Record<string, string | undefined> = {}) {
   return proc;
 }
 
+// The config path resolves from XDG_CONFIG_HOME on POSIX and APPDATA on
+// win32, so both must point at the temp dir for the tests to be hermetic
+// on every platform.
+const CONFIG_ENV_VARS = ["XDG_CONFIG_HOME", "APPDATA"] as const;
+
 let xdgRoot: string;
-let originalXdg: string | undefined;
+let originalConfigEnv: Record<string, string | undefined>;
 
 beforeEach(() => {
   xdgRoot = mkdtempSync(join(tmpdir(), "v8-telemetry-wiring-"));
-  originalXdg = process.env["XDG_CONFIG_HOME"];
-  process.env["XDG_CONFIG_HOME"] = xdgRoot;
+  originalConfigEnv = {};
+  for (const name of CONFIG_ENV_VARS) {
+    originalConfigEnv[name] = process.env[name];
+    process.env[name] = xdgRoot;
+  }
   mkdirSync(dirname(userConfigPath()), { recursive: true });
 });
 
 afterEach(() => {
-  if (originalXdg === undefined) {
-    delete process.env["XDG_CONFIG_HOME"];
-  } else {
-    process.env["XDG_CONFIG_HOME"] = originalXdg;
+  for (const name of CONFIG_ENV_VARS) {
+    const original = originalConfigEnv[name];
+    if (original === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = original;
+    }
   }
   rmSync(xdgRoot, { recursive: true, force: true });
 });
