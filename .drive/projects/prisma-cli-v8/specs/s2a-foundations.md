@@ -215,16 +215,16 @@ cherry-pick):
 
 - [ ] Operator has published `@prisma/cli-engine@0.1.0` (metadata PR
       landed first; publish is the operator's single action).
-- [ ] `ctx.api` on the context with the harness `client` override;
+- [x] `ctx.api` on the context with the harness `client` override;
       draft amended; refresh-pickup test green.
-- [ ] Auth module extracted; legacy shell green against it; v8 runtime
+- [x] Auth module extracted; legacy shell green against it; v8 runtime
       consumes `makeGetCredentials` from it.
-- [ ] All six `auth *` commands on the engine with semantic tests;
+- [x] All six `auth *` commands on the engine with semantic tests;
       fixture-only flags gone; divergence list updated.
-- [ ] Update check ported to both shells; sequencing matches legacy.
-- [ ] Telemetry: package ported, hook amendment landed, bin wired,
+- [x] Update check ported to both shells; sequencing matches legacy.
+- [x] Telemetry: package ported, hook amendment landed, bin wired,
       consent commands mounted, sanitizer value-free by test.
-- [ ] Clack renderer landed per spike; all prompt tests green
+- [x] Clack renderer landed per spike; all prompt tests green
       including the clack-path fixture suite.
-- [ ] Root verification: engine + cli suites, typecheck, lint exit 0.
+- [x] Root verification: engine + cli suites, typecheck, lint exit 0.
 - [ ] PR ≥1k LOC (expected: well above), divergence list reviewed.
