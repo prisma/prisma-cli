@@ -11,7 +11,6 @@ import {
   ComputeConfigTargetRequiredError,
   type ComputeDeployTarget,
   computeConfigErrorToCliError,
-  computeTargetAppDir,
   inferComputeTargetFromCwd,
   type LoadedComputeConfig,
   loadComputeConfig,
@@ -52,8 +51,8 @@ import type {
   ServiceSummary,
 } from "./results";
 
-export const PRISMA_PROJECT_ID_ENV_VAR = "PRISMA_PROJECT_ID";
-export const PRISMA_SERVICE_ID_ENV_VAR = "PRISMA_SERVICE_ID";
+const PRISMA_PROJECT_ID_ENV_VAR = "PRISMA_PROJECT_ID";
+const PRISMA_SERVICE_ID_ENV_VAR = "PRISMA_SERVICE_ID";
 
 export type ServiceContext = Pick<
   CommandContext,
@@ -107,7 +106,7 @@ export async function requireWorkspace(
   };
 }
 
-export function readServiceEnvOverride(
+function readServiceEnvOverride(
   ctx: ServiceContext,
   name: string,
 ): string | undefined {
@@ -123,31 +122,24 @@ function legacyResolutionContext(ctx: ServiceContext): LegacyCommandContext {
   } as unknown as LegacyCommandContext;
 }
 
-export async function resolveComputeTarget(
+async function resolveComputeTarget(
   ctx: ServiceContext,
   configTarget: string | undefined,
   commandName: string,
   options?: {
     targetOptional?: boolean;
-    /** Already-loaded config (or null for none); skips loading when given. */
-    preloaded?: LoadedComputeConfig | null;
   },
 ): Promise<{
   config: LoadedComputeConfig | null;
   target: ComputeDeployTarget | null;
 }> {
-  let config: LoadedComputeConfig | null;
-  if (options?.preloaded !== undefined) {
-    config = options.preloaded;
-  } else {
-    const loaded = await loadComputeConfig(ctx.cwd, ctx.signal);
-    if (loaded.isErr()) {
-      throw fromLegacyCliError(
-        computeConfigErrorToCliError(loaded.error, commandName),
-      );
-    }
-    config = loaded.value;
+  const loaded = await loadComputeConfig(ctx.cwd, ctx.signal);
+  if (loaded.isErr()) {
+    throw fromLegacyCliError(
+      computeConfigErrorToCliError(loaded.error, commandName),
+    );
   }
+  const config = loaded.value;
   if (!config) {
     if (configTarget) {
       throw configTargetRequiresConfigError(
@@ -194,19 +186,6 @@ export async function resolveComputeManagementContext(
     projectDir: compute.config?.configDir ?? ctx.cwd,
     configServiceName: compute.target?.name ?? compute.target?.key ?? undefined,
   };
-}
-
-export function computeTargetDirectory(
-  ctx: ServiceContext,
-  compute: {
-    config: LoadedComputeConfig | null;
-    target: ComputeDeployTarget | null;
-  },
-): string {
-  if (!compute.config || !compute.target) {
-    return ctx.cwd;
-  }
-  return computeTargetAppDir(compute.config, compute.target);
 }
 
 interface ResolvedReadBranchRequest {

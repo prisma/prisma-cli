@@ -7,7 +7,7 @@ engine-global divergences (json framing, channel discipline, `--quiet`
 as a log-level alias, dropped `--trace`, shared flag family, errored
 settlements exit 2) apply to every command here and are not repeated.
 
-## Dispatch 1 — service group core (build, show, open, list-deploys, show-deploy, domain add/show/remove/retry/wait)
+## Dispatch 1 — service group core (show, open, list-deploys, show-deploy, domain add/show/remove/retry/wait)
 
 ### The rename (R-S2c-1), one entry per command
 
@@ -17,7 +17,6 @@ in the v8 tree.
 
 | Legacy invocation | v8 invocation | Also renamed on this command |
 | --- | --- | --- |
-| `prisma-cli app build [app]` | `prisma-cli service build [service]` | positional `[app]` → `[service]`; error copy "App build/app" → "Service build/service" |
 | `prisma-cli app show [app]` | `prisma-cli service show [service]` | `--app <name>` → `--service <name>`; result field `app` → `service` |
 | `prisma-cli app open [app]` | `prisma-cli service open [service]` | `--app` → `--service`; result field `app` → `service` |
 | `prisma-cli app list-deploys [app]` | `prisma-cli service list-deploys [service]` | `--app` → `--service`; result field `app` → `service` |
@@ -58,14 +57,8 @@ accident of the substitution list).
 
 | Legacy flat code (exit) | v8 dotted code (exit) | Commands |
 | --- | --- | --- |
-| `BUILD_FAILED` (1) | `SERVICE.BUILD_FAILED` (2) | build |
-| `FRAMEWORK_NOT_DETECTED` (2) | `SERVICE.FRAMEWORK_NOT_DETECTED` (2) | build |
-| `BUILD_SETTINGS_UNSUPPORTED` (2) | `SERVICE.BUILD_SETTINGS_UNSUPPORTED` (2) | build |
-| `USAGE_ERROR` (2) — ambiguous auto detection | `SERVICE.BUILD_DETECTION_AMBIGUOUS` (2) | build |
-| `USAGE_ERROR` (2) — `--entry` with a non-entrypoint build type | `SERVICE.ENTRYPOINT_UNSUPPORTED` (2) | build |
-| `USAGE_ERROR` (2) — named target without a config | `SERVICE.COMPUTE_CONFIG_TARGET_UNKNOWN` (2) | build, show, open, list-deploys, domain * |
-| `COMPUTE_CONFIG_INVALID` (2) | `SERVICE.COMPUTE_CONFIG_INVALID` (2) | build, show, open, list-deploys, domain * |
-| `COMPUTE_CONFIG_TARGET_REQUIRED` (2) | `SERVICE.COMPUTE_CONFIG_TARGET_REQUIRED` (2) | build |
+| `USAGE_ERROR` (2) — named target without a config | `SERVICE.COMPUTE_CONFIG_TARGET_UNKNOWN` (2) | show, open, list-deploys, domain * |
+| `COMPUTE_CONFIG_INVALID` (2) | `SERVICE.COMPUTE_CONFIG_INVALID` (2) | show, open, list-deploys, domain * |
 | `COMPUTE_CONFIG_TARGET_UNKNOWN` (2) | `SERVICE.COMPUTE_CONFIG_TARGET_UNKNOWN` (2) | all with `[service]` |
 | `USAGE_ERROR` (2) — unknown `--app`/saved selection | `SERVICE.SELECTION_INVALID` (2) | show, open, list-deploys, domain * |
 | `USAGE_ERROR` (2) — "App selection required in non-interactive mode" | engine `CLI.PROMPT_REQUIRED` (2) | show, open, list-deploys, domain * (see picker entry) |
@@ -106,8 +99,8 @@ fixed and what is left.
 
 ### `service domain remove` consent
 
-Recorded with the group's other consent points in "Consent" under
-dispatch 2 below — one table, one mechanism, for all three.
+Recorded with the group's other consent point in "Consent" under
+dispatch 2 below — one table, one mechanism, for both.
 
 ### Interactive service picker
 
@@ -127,20 +120,6 @@ browser when the session is interactive. Differences from legacy: a
 (legacy suppressed it because json implied non-interactive), a failed
 open reports `opened: false` instead of raising, and the URL is also
 printed as the stdout payload line (legacy printed nothing on stdout).
-
-### `service build`
-
-- Gains engine progress events: `step-started`/`step-finished` around
-  the build, an `artifact` event for the output directory, and
-  per-line `output` events tapped from the SDK build runner
-  (`BuildCommandIo.onOutput`, wired through a new optional `io`
-  parameter on `executeAppBuild`/`resolveAppBuildStrategy`; legacy
-  callers unaffected). Legacy printed no live build output.
-- `--build-type` values are engine-enum-validated at parse time
-  (usage error exit 2, engine copy) instead of the legacy
-  commander/controller split.
-- Legacy `nextSteps: ["prisma-cli app deploy"]` becomes the
-  `run-command` nextAction `prisma-cli service deploy`.
 
 ### `service domain wait`
 
@@ -187,18 +166,17 @@ Legacy app commands refused to run in fixture mode
 fixture mode, so the refusal path does not port (fixture machinery
 dies in S2d).
 
-## Dispatch 2 — deploy, promote, rollback, remove
+## Dispatch 2 — promote, rollback, remove
 
 ### The rename (R-S2c-1), one entry per command
 
 | Legacy invocation | v8 invocation | Also renamed on this command |
 | --- | --- | --- |
-| `prisma-cli app deploy [app]` | `prisma-cli service deploy [service]` | `--app <name>` → `--service <name>`; `PRISMA_APP_ID` → `PRISMA_SERVICE_ID`; result field `app` → `service`; deploy-all rejection message names `--service` |
 | `prisma-cli app promote <deployment> [app]` | `prisma-cli service promote <deployment> [service]` | `--app` → `--service`; result field `app` → `service`; error copy "App promote requires an existing app" → "Service promote requires an existing service" |
 | `prisma-cli app rollback [app]` | `prisma-cli service rollback [service]` | same, plus "…requires an existing service" |
 | `prisma-cli app remove [app]` | `prisma-cli service remove [service]` | same, plus the confirmation question "…app removal" → `Remove Service "<name>" and every deployment it owns?` |
 
-Command ids follow: `app.deploy` → `service.deploy`, etc.
+Command ids follow: `app.promote` → `service.promote`, etc.
 
 ### Consent (Q5 class; operator-ruled 2026-08-10, shipped)
 
@@ -214,10 +192,11 @@ takes the same non-interactive branch.
 | Command | Legacy grant | v8 grant | Token |
 | --- | --- | --- | --- |
 | `service remove` | typed app name on a TTY; `-y/--yes` skipped it; non-interactive without `--yes` → `CONFIRMATION_REQUIRED` (exit 1) | type the service name interactively, or `--confirm <service>` | the service name |
-| `service deploy` (production replace) | `--prod` plus `--yes` or an interactive yes/no confirm; cancel exited **0** | type the service name interactively, or `--confirm <service>`; `--prod` is still required first | the target service name |
 | `service domain remove` | `-y/--yes` skipped the yes/no confirm | type the hostname interactively, or `--confirm <hostname>` | the hostname |
 
-Transitions, identical on all three:
+The slice had a third consent point, `service deploy`'s production replace, until deploy was dropped (see "`app deploy` and `app build` are dropped" under dispatch 4). The mechanism below is unchanged by its removal.
+
+Transitions, identical on both:
 
 - **Granted** interactively by typing the token, non-interactively by
   `--confirm <token>`. `--confirm` never SKIPS an interactive prompt: an
@@ -230,118 +209,62 @@ Transitions, identical on all three:
 - **Wrong or missing `--confirm` value non-interactively** (including
   under `--yes`): `CLI.CONSENT_REQUIRED`, exit 2, naming the expected
   value and carrying it as `meta.consentToken`. Legacy's
-  `CONFIRMATION_REQUIRED` exited 1, and the production-deploy cancel
-  exited **0** (ledger Q5).
+  `CONFIRMATION_REQUIRED` exited 1 (ledger Q5).
 
 ### Error-code mapping (dispatch 2 additions)
 
 | Legacy flat code (exit) | v8 dotted code (exit) | Commands |
 | --- | --- | --- |
-| `DEPLOY_FAILED` (1) | `SERVICE.DEPLOY_FAILED` (2) | deploy, promote, rollback |
-| `BUILD_FAILED` (1) | `SERVICE.BUILD_FAILED` (2) | deploy (build phase) |
+| `DEPLOY_FAILED` (1) | `SERVICE.DEPLOY_FAILED` (2) | promote, rollback |
 | `REMOVE_FAILED` (1) | `SERVICE.REMOVE_FAILED` (2) | remove |
 | `NO_PREVIOUS_DEPLOYMENT` (1) | `SERVICE.NO_PREVIOUS_DEPLOYMENT` (2) | rollback |
 | `DEPLOYMENT_NOT_FOUND` (1) | `SERVICE.DEPLOYMENT_NOT_FOUND` (2) | promote, rollback |
-| `PROD_DEPLOY_REQUIRES_FLAG` (2) | `SERVICE.PROD_DEPLOY_REQUIRES_FLAG` (2) | deploy |
-| `PROJECT_SETUP_REQUIRED` (1) | `SERVICE.PROJECT_SETUP_REQUIRED` (2) | deploy |
-| `LOCAL_STATE_STALE` (1) | `SERVICE.LOCAL_STATE_STALE` (2) | deploy |
-| `LOCAL_STATE_WRITE_FAILED` (1) | `SERVICE.LOCAL_STATE_WRITE_FAILED` (2) | deploy — the local Project binding could not be written |
-| `BRANCH_DATABASE_SETUP_FAILED` (1) | `SERVICE.BRANCH_DATABASE_SETUP_FAILED` (2) | deploy `--db` |
-| `BUILD_SETTINGS_MIGRATION_REQUIRED` (2) | `SERVICE.BUILD_SETTINGS_MIGRATION_REQUIRED` (2) | deploy |
-| `FRAMEWORK_NOT_DETECTED` (2) | `SERVICE.FRAMEWORK_NOT_DETECTED` (2) | deploy |
-| `USAGE_ERROR` (2) — `--entry` with a non-entrypoint framework | `SERVICE.ENTRYPOINT_UNSUPPORTED` (2) | deploy |
-| `USAGE_ERROR` (2) — invalid `--http-port` | `SERVICE.HTTP_PORT_INVALID` (2) | deploy |
-| `USAGE_ERROR` (2) — invalid/unknown `--region` | `SERVICE.REGION_INVALID` (2) | deploy |
-| `USAGE_ERROR` (2) — `--region` differs from the existing app's region | `SERVICE.REGION_MISMATCH` (2) | deploy |
-| `USAGE_ERROR` (2) — `--project`/`--create-project`/`PRISMA_PROJECT_ID` together | `SERVICE.PROJECT_INPUTS_AMBIGUOUS` (2) | deploy |
-| `USAGE_ERROR` (2) — per-app inputs in deploy-all | `SERVICE.DEPLOY_ALL_INPUTS_REJECTED` (2) | deploy |
 | `USAGE_ERROR` (2) — "App promote/rollback/remove requires an existing app" | `SERVICE.TARGET_REQUIRED` (2) | promote, rollback, remove |
 | `USAGE_ERROR` (2) — empty `--branch` | `SERVICE.BRANCH_INVALID` (2) | remove |
-| *(no legacy error — the prompt re-asked)* | `SERVICE.PROJECT_NAME_INVALID` (2) | deploy — see the prompt-validator gap below |
-| `APP_AMBIGUOUS` (2) | engine `CLI.PROMPT_REQUIRED` (2) | deploy — see the picker entry below |
-| `PROJECT_CREATE_FAILED` (1) | `SERVICE.PROJECT_CREATE_FAILED` (2) | deploy `--create-project` |
 
-`SERVICE.PROJECT_SETUP_REQUIRED` still carries the candidate list and the
-suggested project name in `meta`, and `SERVICE.DEPLOY_FAILED` after the
-build carries `meta.phase` / `meta.deploymentId` / `meta.deploymentUrl` with
-a `service logs --deployment <id>` action, exactly as legacy did.
+The deploy-only rows this table used to carry went with the command; see "`app deploy` and `app build` are dropped" under dispatch 4. Two of those codes survive because a read command still raises them, and they keep their dispatch 1 rows: `SERVICE.PROJECT_SETUP_REQUIRED`, which still carries the candidate list and the suggested project name in `meta` exactly as legacy did, and `SERVICE.LOCAL_STATE_STALE`.
 
-### `service deploy`
+### `--no-db` cannot be told apart from "not passed" (RETIRED — was an escalated engine gap)
 
-- **Progressive stderr rendering becomes events.** Legacy wrote a setup
-  block, a build-settings block, a project-linked line, per-phase progress
-  lines and a database progress line to stderr. v8 emits `step-started` /
-  `step-finished` per phase (`build`, `archive`, `upload`, `deploy`,
-  `promote`, and `branch-database` for `--db`), `status` events for the
-  deployment's own transitions, `endpoint` events for the deployment and
-  live URLs, and `message` events for the setup/link/first-production lines.
-  The resolved build settings are no longer printed mid-run; they are rows
-  of the result presentation and fields of the json result
-  (`deploySettings`, unchanged in shape).
-- **Ambiguous service name.** Legacy prompted on a TTY and errored with
-  `APP_AMBIGUOUS` (candidates in `meta`) otherwise. v8 prompts through the
-  engine, so a non-interactive run settles with the structural
-  `CLI.PROMPT_REQUIRED` and the candidate list is no longer carried
-  (same rule as D1's service picker, R-S2b-6).
-- **Unlinked directory.** Legacy prompted only when `canPrompt && !--yes`
-  and otherwise raised `PROJECT_SETUP_REQUIRED`. v8 always offers the engine
-  prompt; when the prompt cannot be operated the run settles with
-  `SERVICE.PROJECT_SETUP_REQUIRED` (candidates + suggested name preserved),
-  so the agent-facing error is unchanged even though the interactive gate
-  moved into the engine.
-- **`--no-db` cannot be told apart from "not passed" (engine gap).** The
-  engine's boolean flag is two-state with an automatic `--no-<name>`
-  negation and a `false` default, so the legacy tri-state (`--db` request /
-  `--no-db` opt out / absent = prompt when a database signal is found) is
-  not expressible. v8 ships `--db` as the explicit request; both absent and
-  `--no-db` take the signal-driven prompt path, whose default answer is No
-  (so a non-interactive `--no-db` still skips setup). The legacy
-  "passing both → USAGE_ERROR" check disappears with the flag pair, and so
-  does "Database setup requires --yes in non-interactive mode" — `--db`
-  is itself the explicit request. Flagged for the operator, and the ask is
-  smaller than a new flag type: the engine already computes the missing
-  fact at parse time and sends it somewhere else. `explicitFlagKeys`
-  (`packages/cli-engine/src/execution/command-snapshot.ts`) scans argv for
-  which flag names appear and deliberately marks the base flag when it sees
-  a `--no-<flag>` token; `buildCommandSnapshot` then labels every declared
-  flag `source: "cli"` or `source: "default"`. Together with the parsed
-  boolean the handler already receives, that settles all three states:
-  `default` means absent, `cli` with `true` means `--db`, `cli` with
-  `false` means `--no-db`. The snapshot goes only to
-  `RunHooks.onSettled`, after the run, for telemetry; it never reaches
-  `CommandContext`. So what parity needs is an accessor that hands the
-  handler a fact the engine already holds — not a declarable tri-state
-  boolean with its own negation rules.
-- **A mistyped Project name at the first-deploy setup prompt now fails
-  the run (engine gap).** Legacy passed a `validate` function to the
-  clack text prompt (`lib/project/interactive-setup.ts`), so an invalid
-  Project name was re-asked in place and the deploy continued. The
-  engine's `prompt.text` takes only `placeholder` and `default` — there
-  is no validator and no re-ask — so v8 validates the answer afterwards
-  and settles the whole command with `SERVICE.PROJECT_NAME_INVALID`
-  (exit 2). A user who typos during first-deploy setup loses the run and
-  reruns deploy. Flagged for the operator alongside the `--db` gap: the
-  engine needs a prompt validator (or a re-ask affordance) before this
-  is parity.
-- **The `--db` prompt's suppression advice is now emitted whenever the
-  answer is No**, not only when the run could not ask: handlers do not see
-  interactivity (the ruled `ctx.interactive` fact has not landed), so
-  "declined" and "could not ask" are indistinguishable.
-- **The agent-setup prompt does not port — final.** Legacy `app deploy`
-  called `maybePromptForAgentSetup` before resolving the Project (an
-  agent-file setup tip, with its own dismissal state). v8 deploy asks
-  nothing about agent setup and emits no warning for it. D2 recorded this
-  as awaiting a decision; the operator was told and did not object, so the
-  drop is final — the prompt dies with the legacy shell, and `agent
-  install` is how skills get set up. The dismissal timestamp it wrote
-  (`state.json`'s `agent.setupPromptDismissedAt`) is still read and
-  reported by `agent status`.
-- **Deploy-all**: unchanged in behavior (sequential targets, `--create-project`
-  binds the first target only, per-service inputs rejected, failures carry
-  `meta.deployAll.{failedTarget,completed,notAttempted}`). The legacy
-  `── target (1/2) ──` stderr header becomes a `step-started`/`step-finished`
-  pair whose `id` is the target key and whose `data` carries index/total.
-- **Fixture-mode refusal** does not port (as recorded for D1).
+Retired: this was escalated to the operator as an engine gap and became moot when `service deploy` was dropped, because `--db` was a deploy flag and no shipped command declares it. Kept here so the escalation list reads honestly — six engine gaps went to the operator during this slice, two are retired here, and four are still open.
+
+The engine's boolean flag is two-state with an automatic `--no-<name>`
+negation and a `false` default, so the legacy tri-state (`--db` request /
+`--no-db` opt out / absent = prompt when a database signal is found) was
+not expressible. v8 deploy shipped `--db` as the explicit request; both
+absent and `--no-db` took the signal-driven prompt path, whose default
+answer is No (so a non-interactive `--no-db` still skipped setup). The
+legacy "passing both → USAGE_ERROR" check disappeared with the flag pair,
+and so did "Database setup requires --yes in non-interactive mode" —
+`--db` was itself the explicit request. The ask was smaller than a new
+flag type: the engine already computes the missing fact at parse time and
+sends it somewhere else. `explicitFlagKeys`
+(`packages/cli-engine/src/execution/command-snapshot.ts`) scans argv for
+which flag names appear and deliberately marks the base flag when it sees
+a `--no-<flag>` token; `buildCommandSnapshot` then labels every declared
+flag `source: "cli"` or `source: "default"`. Together with the parsed
+boolean the handler already receives, that settles all three states:
+`default` means absent, `cli` with `true` means `--db`, `cli` with
+`false` means `--no-db`. The snapshot goes only to `RunHooks.onSettled`,
+after the run, for telemetry; it never reaches `CommandContext`. So what
+parity needed was an accessor that hands the handler a fact the engine
+already holds — not a declarable tri-state boolean with its own negation
+rules. Any future command that wants a three-way boolean will hit this
+again.
+
+### `prompt.text` has no validator and no re-ask (RETIRED — was an escalated engine gap)
+
+Retired: this was escalated to the operator as an engine gap and became moot when `service deploy` was dropped, because the first-deploy Project setup prompt was the only place in the slice that needed a validated text answer. No shipped command calls `prompt.text` with a value it must validate.
+
+Legacy passed a `validate` function to the clack text prompt
+(`lib/project/interactive-setup.ts`), so an invalid Project name was
+re-asked in place and the deploy continued. The engine's `prompt.text`
+takes only `placeholder` and `default` — no validator, no re-ask — so v8
+deploy validated the answer afterwards and settled the whole command with
+`SERVICE.PROJECT_NAME_INVALID` (exit 2). A user who typo'd during
+first-deploy setup lost the run and reran deploy. The ask was a prompt
+validator, or a re-ask affordance, on `prompt.text`; the next command that
+takes a constrained text answer will need it.
 
 ### `service promote` / `service rollback`
 
@@ -373,14 +296,11 @@ a `service logs --deployment <id>` action, exactly as legacy did.
 
 ### Result shape changes (dispatch 2)
 
-- `verboseContext` is dropped on all four commands (S2 ruling 8, as recorded
+- `verboseContext` is dropped on all three commands (S2 ruling 8, as recorded
   for D1).
-- Result field `app` → `service` on every result; the deploy result's
-  `deploySettings`, `branchDatabase`, `localPin`, `promoted` and `durationMs`
-  fields keep their legacy shapes.
-- Legacy `warnings` (deploy's agent-setup/legacy-build-settings/database
-  advice, promote's already-live note, remove's cleanup failures) become
-  engine diagnostics on the completed envelope.
+- Result field `app` → `service` on every result.
+- Legacy `warnings` (promote's already-live note, remove's cleanup failures)
+  become engine diagnostics on the completed envelope.
 
 
 ## Dispatch 3 — the log streams (`service logs`, `build logs`)
@@ -520,7 +440,10 @@ file read.
 
 **This entry used to say the merge-down broke 13 of this slice's 20
 commands and that the fix belonged to the auth stream. The count was
-right; the blame was not, and the misplaced part was ours.**
+right; the blame was not, and the misplaced part was ours.** That count
+describes the slice as it stood before `service deploy` and
+`service build` were dropped, when it had 20 commands; it is history, and
+the list below is the historical one.
 `requireWorkspace` (`src/v8/service/target.ts`) called `readAuthState`,
 which builds a `FileTokenStorage` and asks it for tokens
 (`src/auth/operations.ts`) — the same call `ctx.getCredentials()`
@@ -535,12 +458,13 @@ reader understands both the new `{version, sessions,
 currentWorkspaceId}` shape and the legacy `{tokens: […]}` one
 (`src/auth/state-file.ts` adopts the legacy store on read).
 
-**`requireWorkspace` now reads `ctx.session()`, which fixes 12 of the
-13.** `deploy`, `show`, `open`, `list-deploys`, `promote`, `rollback`,
-`remove` and all five `domain` commands resolve their workspace after
-the merge-down exactly as they do before it. `show-deploy` was never
-affected: it is the one caller that swallows a workspace failure and
-degrades to a missing live-deployment hint. `service build`,
+**`requireWorkspace` now reads `ctx.session()`. Of the 13 that broke, 12
+still ship, and the fix repairs 11 of those.** `show`, `open`,
+`list-deploys`, `promote`, `rollback`, `remove` and all five `domain`
+commands resolve their workspace after the merge-down exactly as they do
+before it. The thirteenth, `deploy`, is no longer a v8 command at all.
+`show-deploy` was never affected: it is the one caller that swallows a
+workspace failure and degrades to a missing live-deployment hint.
 `build logs`, the three `agent` commands and `feedback` read no auth
 state at all.
 
@@ -751,6 +675,18 @@ asked about — the question closes with the drop), and S2d needs no
 legacy carve-out, because deleting the commander shell deletes the
 command with it. Anyone running a local dev server through
 `prisma-cli app run` moves to Composer.
+
+### `app deploy` and `app build` are dropped (operator ruling, 2026-08-10)
+
+`prisma-cli app deploy` and `prisma-cli app build` have no v8 counterpart. Composer supersedes both. Like `app run`, this is a ruled drop and not a deferral: neither command will be ported as it stands, so there is no `service deploy` and no `service build`, and the slice ships 18 commands rather than 20.
+
+The reasoning is about the shape of the command, not about how the port went. `app deploy` conflates two different jobs — compiling the service on the developer's machine, and uploading the resulting tarball to the platform — and that shape is wrong. Future commands are to work directly with platform Compute resources instead of shipping a locally built archive. `app build` is the local-compiling half of the same job, so it goes with it.
+
+Nobody loses a command today. The legacy commander shell still serves `app deploy` and `app build`, and keeps serving them until S2d deletes the shell. What that deletion replaces them with is a Composer question, not a port question, so unlike `app run` this drop does leave something for S2d to answer.
+
+Two engine gaps escalated during this slice existed only for `app deploy` and are retired with it: the `--db` / `--no-db` three-way flag problem, and the missing validator on `prompt.text`. Both are recorded as retired entries under dispatch 2, so the escalation list goes from six to four. The consent table under dispatch 2 loses `service deploy`'s production replace and is down to two consent points. The dispatch 1 and dispatch 2 divergence entries that described only these two commands are gone, and the entries that covered several commands now name only the ones that ship.
+
+The tap this slice added to legacy code for `service build` is reverted. `executeAppBuild` and `resolveAppBuildStrategy` (`packages/cli/src/lib/app/build.ts`) had gained an optional `io` parameter so the v8 command could stream the bundler's per-line output as engine events; nothing in the legacy shell ever passed it, so the parameter is removed and the file is back to what it was.
 
 ### The crash-recovery feedback action does not port (ESCALATED — engine gap)
 

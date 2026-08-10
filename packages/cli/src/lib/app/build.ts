@@ -3,7 +3,6 @@ import path from "node:path";
 
 import {
   type BuildArtifact,
-  type BuildCommandIo,
   type BuildStrategy,
   type BuildType,
   normalizeArtifactSymlinks,
@@ -108,7 +107,6 @@ export async function executeAppBuild(options: {
   buildType?: AppBuildType;
   signal?: AbortSignal;
   buildSettings?: AppBuildSettings;
-  io?: BuildCommandIo;
 }): Promise<{
   artifact: BuildArtifact;
   buildType: ResolvedAppBuildType;
@@ -119,7 +117,6 @@ export async function executeAppBuild(options: {
     buildType: options.buildType ?? "auto",
     signal: options.signal,
     buildSettings: options.buildSettings,
-    io: options.io,
   });
   const artifact = await strategy.execute(options.signal);
 
@@ -145,7 +142,6 @@ export async function resolveAppBuildStrategy(options: {
   buildType: AppBuildType;
   signal?: AbortSignal;
   buildSettings?: AppBuildSettings;
-  io?: BuildCommandIo;
 }): Promise<{
   strategy: BuildStrategy;
   buildType: ResolvedAppBuildType;
@@ -168,7 +164,6 @@ export async function resolveAppBuildStrategy(options: {
     entrypoint: options.entrypoint,
     buildSettings: options.buildSettings,
     signal: options.signal,
-    io: options.io,
   });
 }
 

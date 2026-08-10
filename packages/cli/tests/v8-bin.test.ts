@@ -287,8 +287,6 @@ describe("buildCli", () => {
       "auth workspace use",
       "build logs",
       "feedback",
-      "service build",
-      "service deploy",
       "service domain add",
       "service domain remove",
       "service domain retry",

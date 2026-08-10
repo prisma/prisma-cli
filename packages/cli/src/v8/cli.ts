@@ -17,8 +17,6 @@ import { authWorkspaceLogoutCommand } from "./auth/workspace-logout";
 import { authWorkspaceUseCommand } from "./auth/workspace-use";
 import { buildLogsCommand } from "./build/logs";
 import { feedbackCommand } from "./feedback";
-import { serviceBuildCommand } from "./service/build";
-import { serviceDeployCommand } from "./service/deploy";
 import { serviceDomainAddCommand } from "./service/domain-add";
 import { serviceDomainRemoveCommand } from "./service/domain-remove";
 import { serviceDomainRetryCommand } from "./service/domain-retry";
@@ -45,8 +43,6 @@ export const MOUNTED_COMMANDS = {
   "auth workspace list": authWorkspaceListCommand,
   "auth workspace use": authWorkspaceUseCommand,
   "auth workspace logout": authWorkspaceLogoutCommand,
-  "service build": serviceBuildCommand,
-  "service deploy": serviceDeployCommand,
   "service show": serviceShowCommand,
   "service open": serviceOpenCommand,
   "service list-deploys": serviceListDeploysCommand,
@@ -60,8 +56,6 @@ export const MOUNTED_COMMANDS = {
   "service domain remove": serviceDomainRemoveCommand,
   "service domain retry": serviceDomainRetryCommand,
   "service domain wait": serviceDomainWaitCommand,
-  // Platform builds are their own group; `service build` is the local
-  // build verb and shares nothing with it.
   "build logs": buildLogsCommand,
   // Shell-owned local utilities (no command family).
   "agent install": agentInstallCommand,
@@ -91,8 +85,6 @@ export function buildCli(): Cli {
       }),
       defineCommandFamily({
         commands: {
-          serviceBuild: serviceBuildCommand,
-          serviceDeploy: serviceDeployCommand,
           serviceShow: serviceShowCommand,
           serviceOpen: serviceOpenCommand,
           serviceListDeploys: serviceListDeploysCommand,
