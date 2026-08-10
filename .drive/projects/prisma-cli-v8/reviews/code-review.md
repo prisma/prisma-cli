@@ -294,6 +294,50 @@ The six closure items, dispositioned:
    `--no-file-parallelism` and fails roughly two runs in three under
    normal parallelism, always that one case, always at about 5005ms.
 
+### Closure loop — architect pass (2026-08-10)
+
+Full artifact at `../specs/reviews/system-design-review.md`, which is
+local-only scratch by the standing rule and never committed, so its
+substance is summarised here.
+
+Verdict: architecturally sound, ship it. The dependency direction is
+right for a migration — the new layer calls the old one and never the
+reverse — the declared no-touch boundary holds exactly, the error
+namespaces are meaningful discriminators, the `postgres` rename is a
+genuine vocabulary fix, and `needs.interaction` on `git connect` alone
+is the correct distinction. Ten concerns, all about naming and
+repetition rather than shape.
+
+**One was live and is fixed.** Three v8-authored command strings were
+written with the legacy `database` group name and relied on the
+mapper's regex to rewrite them into `postgres`
+(`postgres/create.ts:45`, `connection-remove.ts:35`, and both
+occurrences in `restore.ts:94`). The rendered output was correct, so no
+test caught it, but R-S2b-1 says no `database` path survives in v8 code
+and these were `database` paths in v8 code — the rewrite was masking a
+contract violation. They now name `postgres` directly through
+`CLI_NAME`. Behaviour is unchanged; a grep for a legacy command path
+under `src/v8/` now returns only the regex constant itself, which
+legitimately needs the old name to match legacy-authored strings.
+
+**The rest are follow-ups, not defects in this slice.** The mapper
+factory (concern 1) and the shared project-resolution module (concern
+2) are real, but S2c adds four more namespaces and is the cheaper place
+to do both with the full requirement in view; the drift concern 1
+points at is not itself a defect, since `#`-comment steps exist only in
+the project env file helper and cannot reach the three mappers that
+omit the handling. Concern 4 (the new tree importing its error base
+from `src/shell/`, which S2d deletes) belongs to S2d and should be
+scheduled there. Concerns 3's structural half, and 5 through 10 —
+"context" meaning three things, the twice-named commands,
+`resources-shared/`, the unenforced no-`database` invariant, `v8/`
+naming an era, the 43 newly exported legacy symbols — are recorded for
+the S2c and S2d planning rather than actioned mid-flight in a slice
+that is complete, reviewed and green.
+
+Divergence 11, `project link`'s lost picker metadata, stays flagged for
+the operator as a product call rather than an architectural one.
+
 ## Round notes
 
 ### D3 round 2 — 2026-08-10

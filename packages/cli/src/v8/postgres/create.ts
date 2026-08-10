@@ -1,6 +1,7 @@
 /** The `postgres create` command. */
 import { defineCommand, flag, positional } from "@prisma/cli-engine";
 import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { CLI_NAME } from "../../cli-name";
 import { ensureProjectId } from "../../controllers/database";
 import { usageError } from "../../shell/errors";
 import type { DatabaseCreateResult } from "../../types/database";
@@ -42,7 +43,7 @@ export const postgresCreateCommand = defineCommand({
           "Database name required",
           "Database create needs a non-empty name.",
           "Pass a database name.",
-          ["prisma-cli database create <name>"],
+          [`${CLI_NAME} postgres create <name>`],
           "database",
         );
       }

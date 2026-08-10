@@ -91,10 +91,10 @@ export const postgresRestoreCommand = defineCommand({
         throw usageError(
           "Backup id required",
           "Database restore needs the backup to restore from.",
-          `Pass --backup <backup-id> from ${legacyCommandFormatter(["database", "backup", "list", "<database>"])}.`,
+          `Pass --backup <backup-id> from ${legacyCommandFormatter(["postgres", "backup", "list", "<database>"])}.`,
           [
             legacyCommandFormatter([
-              "database",
+              "postgres",
               "backup",
               "list",
               "<database>",

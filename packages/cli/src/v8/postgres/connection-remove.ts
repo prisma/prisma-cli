@@ -1,6 +1,7 @@
 /** The `postgres connection remove` command. */
 import { type Block, defineCommand, positional } from "@prisma/cli-engine";
 import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { CLI_NAME } from "../../cli-name";
 import { usageError } from "../../shell/errors";
 import type { DatabaseConnectionRemoveResult } from "../../types/database";
 import { resolvePostgresProviderOnly } from "./context";
@@ -32,7 +33,7 @@ export const postgresConnectionRemoveCommand = defineCommand({
           "Database connection removal needs a connection id.",
           "Pass the connection id to remove.",
           [
-            "prisma-cli database connection remove <connection-id> --confirm <connection-id>",
+            `${CLI_NAME} postgres connection remove <connection-id> --confirm <connection-id>`,
           ],
           "database",
         );
