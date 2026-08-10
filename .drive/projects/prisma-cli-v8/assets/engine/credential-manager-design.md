@@ -137,8 +137,9 @@ Interface rules:
   manager — minting and custody stay separate). The manager's
   storage is reachable only through `tokenStorage()`.
 - Construction dependencies (injected by the bin): `env` (no
-  library below the manager reads `process.env`; one env var names
-  the state file, the legacy second variable is a warned alias) and
+  library below the manager reads `process.env`; `PRISMA_AUTH_FILE`
+  names the state file, `PRISMA_COMPUTE_AUTH_FILE` is the warned
+  deprecated alias) and
   `fetchWorkspaceName(credential, workspaceId)` (the manager
   constructs no API client).
 - The manager resolves NO user input. Commands resolve refs against
@@ -334,7 +335,9 @@ is `true` only for HTTP 4xx + body error exactly `invalid_grant`:
 - `true` → the SDK has run compare-and-clear; if the session
   survived (newer pair stored), the retry proceeds — nothing
   surfaced. If it cleared, `CLI.CREDENTIALS_REQUIRED`, expiry
-  wording; the manager debug-logs endpoint status + error value
+  wording; the ENGINE's mapping debug-logs endpoint status +
+  error value (the SDK hands the manager no status — the manager
+  debug-logs the clear attempt itself)
   BEFORE the clear.
 - any other `AuthError` → the manager re-reads state FOR THE
   WORKSPACE THE CLIENT IS BOUND TO: record gone →
@@ -420,13 +423,21 @@ Adoption rules (identity-blind — entries from any account adopt):
 Materialization: the adopted view is written into the new
 single-file format on the first mutation, writing the FULL adopted
 set. The adoption decision is re-made INSIDE the lock beside the
-mutation's re-read: if a new-format file exists at that point it
+mutation's re-read: if a new-format state exists at that point it
 wins outright and no adoption occurs (a naive full-set write could
-resurrect tokens another process already rotated). After
-materialization the legacy files are ignored entirely; until then
-they stay untouched so a still-installed legacy CLI keeps working.
-`endAllSessions` clears everything including legacy files. New
-writes use mode 0600 and tighten looser permissions on first write.
+resurrect tokens another process already rotated). The new format
+lives at the SAME PATH as the legacy auth file (ruled 2026-08-10:
+one file, one world), so the first v8 mutation rewrites it in the
+new shape and a still-installed legacy CLI reads signed-out from
+then on — a loud, `prisma auth login`-fixable state, preferred over
+two silently diverging auth worlds. Until that first mutation the
+file stays untouched and the legacy CLI keeps working. The context
+sidecar is reaped by `endAllSessions`, which clears everything.
+New writes use mode 0600 and tighten looser permissions on first
+write. Env naming (ruled with the implementation):
+`PRISMA_AUTH_FILE` names the state file; `PRISMA_COMPUTE_AUTH_FILE`
+is the warned deprecated alias (`PRISMA_PLATFORM_AUTH_FILE` never
+existed in the repo).
 
 ## 8. File, lock, and atomicity
 
