@@ -41,12 +41,14 @@ export function listWorkspaceProjects(
 }
 
 /** Explicit `--project`, else the `.prisma/local.json` pin, else the
- *  setup-required error. */
+ *  setup-required error. An absent `commandName` makes that error read
+ *  "this command" and drops its retry step — `branch list`'s legacy
+ *  behavior. */
 export async function resolvePinnedProject(
   ctx: ProjectCommandContext,
   workspace: AuthWorkspace,
   explicitProject: string | undefined,
-  commandName: string,
+  commandName: string | undefined,
 ): Promise<ResolvedProjectTarget> {
   const target = await resolveProjectTarget({
     context: legacyOperationContext(ctx),

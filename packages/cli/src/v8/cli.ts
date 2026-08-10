@@ -13,6 +13,15 @@ import { authWhoamiCommand } from "./auth/whoami";
 import { authWorkspaceListCommand } from "./auth/workspace-list";
 import { authWorkspaceLogoutCommand } from "./auth/workspace-logout";
 import { authWorkspaceUseCommand } from "./auth/workspace-use";
+import { branchListCommand } from "./branch/list";
+import { bucketCreateCommand } from "./bucket/create";
+import { bucketDeleteCommand } from "./bucket/delete";
+import { bucketKeyCreateCommand } from "./bucket/key-create";
+import { bucketKeyDeleteCommand } from "./bucket/key-delete";
+import { bucketKeyListCommand } from "./bucket/key-list";
+import { bucketListCommand } from "./bucket/list";
+import { gitConnectCommand } from "./git/connect";
+import { gitDisconnectCommand } from "./git/disconnect";
 import { postgresBackupListCommand } from "./postgres/backup-list";
 import { postgresConnectionCreateCommand } from "./postgres/connection-create";
 import { postgresConnectionListCommand } from "./postgres/connection-list";
@@ -69,6 +78,15 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     postgresConnectionCreate: postgresConnectionCreateCommand,
     postgresConnectionRotate: postgresConnectionRotateCommand,
     postgresConnectionRemove: postgresConnectionRemoveCommand,
+    bucketList: bucketListCommand,
+    bucketCreate: bucketCreateCommand,
+    bucketDelete: bucketDeleteCommand,
+    bucketKeyList: bucketKeyListCommand,
+    bucketKeyCreate: bucketKeyCreateCommand,
+    bucketKeyDelete: bucketKeyDeleteCommand,
+    branchList: branchListCommand,
+    gitConnect: gitConnectCommand,
+    gitDisconnect: gitDisconnectCommand,
   },
 });
 
@@ -85,6 +103,10 @@ export const cliGroups: Readonly<
   "postgres connection": {
     brief: "Manage one-time-view database connection strings",
   },
+  bucket: { brief: "Manage object-store buckets for a project" },
+  "bucket key": { brief: "Manage access keys for an object-store bucket" },
+  branch: { brief: "View your Platform branches" },
+  git: { brief: "Manage Git repository connections for a project" },
   "auth workspace": { brief: "Manage local workspace sessions" },
   telemetry: {
     brief: "Inspect and change anonymous CLI telemetry",
@@ -124,6 +146,15 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "postgres connection create": postgresConnectionCreateCommand,
   "postgres connection rotate": postgresConnectionRotateCommand,
   "postgres connection remove": postgresConnectionRemoveCommand,
+  "bucket list": bucketListCommand,
+  "bucket create": bucketCreateCommand,
+  "bucket delete": bucketDeleteCommand,
+  "bucket key list": bucketKeyListCommand,
+  "bucket key create": bucketKeyCreateCommand,
+  "bucket key delete": bucketKeyDeleteCommand,
+  "branch list": branchListCommand,
+  "git connect": gitConnectCommand,
+  "git disconnect": gitDisconnectCommand,
   // Shell-owned consent surface (no command family).
   "telemetry status": telemetryStatusCommand,
   "telemetry enable": telemetryEnableCommand,

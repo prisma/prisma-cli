@@ -1527,7 +1527,7 @@ interface InstallationRepositoryLookup {
   inspectableInstallationCount: number;
 }
 
-interface SourceRepositoryApiError {
+export interface SourceRepositoryApiError {
   error?: {
     code?: string;
     message?: string;
@@ -1541,7 +1541,7 @@ interface SourceRepositoryApiResult<T> {
   response?: Response;
 }
 
-interface SourceRepositoryApiClient {
+export interface SourceRepositoryApiClient {
   POST(
     path: "/v1/source-repositories",
     options: {
@@ -1733,7 +1733,7 @@ async function resolveInstalledRepository(
   throw repoInstallationRequiredError(repository, installUrl, opened);
 }
 
-async function findRepositoryInInstallations(
+export async function findRepositoryInInstallations(
   api: SourceRepositoryApiClient,
   installations: ScmInstallationResponse[],
   repository: GitHubRepositoryReference,
@@ -1879,7 +1879,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-async function listScmInstallations(
+export async function listScmInstallations(
   api: SourceRepositoryApiClient,
   workspaceId: string,
   signal: AbortSignal,
@@ -2032,7 +2032,7 @@ function isUnavailableScmInstallationError(error: unknown): boolean {
   return error.meta.status === 404 || error.meta.status === 422;
 }
 
-async function createGitHubInstallIntent(
+export async function createGitHubInstallIntent(
   api: SourceRepositoryApiClient,
   workspaceId: string,
   signal: AbortSignal,
@@ -2079,7 +2079,7 @@ async function openInstallUrlIfInteractive(
   }
 }
 
-async function readFirstSourceRepository(
+export async function readFirstSourceRepository(
   api: SourceRepositoryApiClient,
   projectId: string,
   signal: AbortSignal,
@@ -2130,7 +2130,7 @@ function createPendingRepositoryConnection(
   };
 }
 
-function toRepositoryConnection(
+export function toRepositoryConnection(
   record: SourceRepositoryResponse,
 ): GitRepositoryConnection {
   const [owner = "", name = ""] = record.repoFullName.split("/");
@@ -2162,7 +2162,7 @@ function toRepositoryConnection(
   };
 }
 
-function unsupportedRepositoryProviderError(): CliError {
+export function unsupportedRepositoryProviderError(): CliError {
   return new CliError({
     code: "REPO_PROVIDER_UNSUPPORTED",
     domain: "project",
@@ -2174,7 +2174,7 @@ function unsupportedRepositoryProviderError(): CliError {
   });
 }
 
-function repoNotConnectedError(): CliError {
+export function repoNotConnectedError(): CliError {
   return new CliError({
     code: "REPO_NOT_CONNECTED",
     domain: "project",
@@ -2230,7 +2230,9 @@ function repoNotAccessibleError(
   });
 }
 
-function repoAlreadyConnectedError(repositoryFullName: string): CliError {
+export function repoAlreadyConnectedError(
+  repositoryFullName: string,
+): CliError {
   return new CliError({
     code: "REPO_ALREADY_CONNECTED",
     domain: "project",
@@ -2245,11 +2247,11 @@ function repoAlreadyConnectedError(repositoryFullName: string): CliError {
   });
 }
 
-function repositoryFullNamesMatch(left: string, right: string): boolean {
+export function repositoryFullNamesMatch(left: string, right: string): boolean {
   return left.toLowerCase() === right.toLowerCase();
 }
 
-function repoConnectionApiError(
+export function repoConnectionApiError(
   summary: string,
   response: Response | undefined,
   error: SourceRepositoryApiError | undefined,

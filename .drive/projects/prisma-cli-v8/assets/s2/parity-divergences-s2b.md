@@ -271,3 +271,164 @@ used here for project resolution) apply identically. On top of them:
 | `postgres connection create` | `database connection create` | R-S2b-1, 2, 4, 5, 9, 10; d2 §3.9 | 1, 2, 5, 6, 7, 9, 18, 21, 22, 27, 28 |
 | `postgres connection rotate` | `database connection rotate` | R-S2b-1, 2, 3, 4, 5, 9, 10; d2 §3.10 | 1, 2, 5, 6, 7, 9, 21, 22, 23, 24, 27, 29 |
 | `postgres connection remove` | `database connection remove` | R-S2b-1, 2, 3, 5, 9, 10; d2 §3.11 | 1, 2, 5, 6, 7, 9, 21, 22, 23, 24, 29 |
+
+## D3 — the `bucket`, `branch` and `git` groups
+
+Delivered: `bucket list|create|delete`, `bucket key list|create|delete`,
+`branch list`, `git connect` (partial) and `git disconnect`.
+
+**`git connect` is incomplete.** Steps 1 to 4 and step 6 of d3 §3.8 are
+built; step 5, the wait for the GitHub App installation, is not. Three
+facts §3.8 pins cannot be supplied by the landed `ctx.prompt.browserWait`
+and are with the operator: the poll interval (`BrowserWaitRequest` has no
+interval field — the engine polls on a private 1000 ms constant), the
+poll event sequence (`announceUrl` emits one `endpoint` event and no
+`status` events, and the handler is forbidden from emitting its own), and
+whether the browser opened (`browserWait` discards the `{ opened }` it
+gets from `announceUrl`, so the handler cannot read it — `opened` both
+fills `meta.opened` and selects `REPO_INSTALLATION_REQUIRED`'s fix text).
+Until they are decided, a `git connect` run that finds no installation
+throws from a marked hole in `v8/git/connect.ts` and settles
+`CLI.INTERNAL_ERROR`; nothing was invented in its place. The four legacy
+cases covering that path stay in `project-real-mode.test.ts`.
+
+### Divergences
+
+D1's class entries 1 (exit codes), 2 (auto-login dropped), 5 (nextActions
+from fix and nextSteps), 6 (package-runner strings dropped), 7 (`--trace`
+→ `--log-level verbose`), 9 (engine blocks replace the legacy rail
+rendering) and 18 (the shell-context adapter, used here for project
+resolution) apply identically, as do D2's 26 (list data rows go to
+stdout), 27 (pre-result progress lines dropped) and 28 (`verboseContext`
+dropped). On top of them:
+
+31. **Error-code maps** (see below), including the mechanical passthrough
+    of raw API codes as `BUCKET.<code>`, `BRANCH.<code>` and
+    `GIT.<code>`.
+32. **`bucket delete` gains a consent prompt.** The legacy command had a
+    `--confirm <bucket-id>` flag and no prompt at all. In v8 the flag is
+    the engine's shared repeatable `--confirm`, with the same CLI
+    spelling and the same exact-bucket-id value; interactively the user
+    types the bucket id. The question is the legacy confirmation `why`
+    sentence verbatim: "Deleting this bucket permanently removes all
+    objects and access keys." The legacy `CONFIRMATION_REQUIRED` error is
+    unreachable, so the bucket mapper has no entry for it and
+    `meta.expectedConfirm` / `meta.receivedConfirm` are gone. `--yes`
+    never grants consent; a wrong typed answer is `CLI.PROMPT_INVALID`,
+    exit 2; cancelling with Ctrl-C or EOF settles `CLI.PROMPT_CANCELLED`,
+    exit 3 — an exit code this command never produced before.
+33. **`bucket key delete` still has no confirmation.** The legacy
+    inconsistency ports unchanged: deleting a bucket needs consent,
+    revoking one of its keys does not. Recorded for review, not fixed.
+34. **Fixture-only errors die with the fixture machinery.**
+    `BUCKET_NOT_FOUND`, `BUCKET_KEY_NOT_FOUND` and the bucket domain's
+    `BRANCH_NOT_FOUND` were raised only by the fixture provider. In real
+    mode the Management API's own code passes through as
+    `BUCKET.<code>`, so none of the three has a v8 counterpart.
+35. **`bucket key create --role` invalid values.** The engine's enum
+    parse failure replaces commander's choices error. The controller's
+    own defaulting is unchanged: any value that is not exactly `read`,
+    the omitted flag included, is `read_write`.
+36. **`bucket key create` credentials are a masked field block.** The
+    four stdout lines are unchanged and exact —
+    `S3_ENDPOINT=`, `S3_ACCESS_KEY_ID=`, `S3_SECRET_ACCESS_KEY=`,
+    `S3_BUCKET=`, in that order — and the json `result` still carries the
+    secrets. The human card gains the same four values as field rows,
+    with `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` masked
+    (`sensitive: true`); the legacy human output named no values at all.
+37. **`branch list` keeps its resolution quirk.** It declares no
+    `--project` flag and passes no command name to the resolver, so an
+    unbound directory still reads "…and this command will not choose
+    one…" and still lacks the retry-with-`--project` next step. The
+    fixture-mode branch of the legacy controller — which returned
+    `projectName: "not resolved"` and an empty list instead of erroring —
+    has no v8 counterpart.
+38. **`git connect` declares `needs.interaction`.** Every non-interactive
+    run now fails early with the engine's `CLI.INTERACTION_REQUIRED`
+    (exit 2), before any API call. That removes two legacy behaviors: a
+    non-interactive run that succeeded because the repository was already
+    reachable, and the immediate `REPO_INSTALLATION_REQUIRED` /
+    `REPO_NOT_ACCESSIBLE` errors carrying `installUrl` in `meta`.
+39. **`git connect` and `git disconnect` keep their raw json result.**
+    Neither had a serializer, so `--json` still emits
+    `{ workspace, project, resolution, repositoryConnection }` —
+    resolution object included, unlike the bucket and branch results,
+    which strip or reshape. Unchanged; recorded for review.
+40. **The legacy 401/403 → `AUTH_REQUIRED` mapping does not port.** The
+    engine settles every real credentials failure itself, so what still
+    reaches the git mapper is the permission residue of a returned 403.
+    It maps mechanically to `GIT.AUTH_REQUIRED` — D1's class entry 14,
+    same reasoning.
+41. **`PROJECT_AMBIGUOUS`'s hardcoded `app deploy` next step ports
+    verbatim** for `bucket list`, `bucket create` and the git commands, as
+    it did in D1. A pre-existing quirk, recorded rather than fixed.
+42. **Install-URL next steps become run-command actions.** The legacy
+    `REPO_INSTALLATION_REQUIRED` and `REPO_NOT_ACCESSIBLE` errors put the
+    raw install URL first in `nextSteps`, so the mechanical mapping turns
+    a URL into a `run-command` action whose command is that URL. Recorded
+    for review; it is what conventions §4 pins. (Reachable only once
+    `git connect` step 5 lands.)
+
+### Error code maps
+
+| legacy code | v8 code |
+| --- | --- |
+| `USAGE_ERROR` (bucket domain) | `BUCKET.USAGE_ERROR` |
+| `BUCKET_KEY_SECRET_MISSING` | `BUCKET.KEY_SECRET_MISSING` |
+| `BUCKET_API_ERROR` | `BUCKET.API_ERROR` |
+| raw API `error.code` X (bucket) | `BUCKET.X` |
+| `CONFIRMATION_REQUIRED` (bucket) | unreachable — the engine's `CLI.CONSENT_REQUIRED` replaces it |
+| `BUCKET_NOT_FOUND` / `BUCKET_KEY_NOT_FOUND` / `BRANCH_NOT_FOUND` (fixture only) | unreachable in v8 |
+| `BRANCH_API_ERROR` | `BRANCH.API_ERROR` |
+| raw API `error.code` X (branch) | `BRANCH.X` |
+| `USAGE_ERROR` (project domain, raised by git) | `GIT.USAGE_ERROR` |
+| `REPO_PROVIDER_UNSUPPORTED` | `GIT.REPO_PROVIDER_UNSUPPORTED` |
+| `REPO_ALREADY_CONNECTED` | `GIT.REPO_ALREADY_CONNECTED` |
+| `REPO_INSTALLATION_REQUIRED` | `GIT.REPO_INSTALLATION_REQUIRED` |
+| `REPO_NOT_ACCESSIBLE` | `GIT.REPO_NOT_ACCESSIBLE` |
+| `REPO_NOT_CONNECTED` | `GIT.REPO_NOT_CONNECTED` |
+| `REPO_CONNECTION_FAILED` | `GIT.REPO_CONNECTION_FAILED` |
+| `AUTH_REQUIRED` (403 residue, git) | `GIT.AUTH_REQUIRED` |
+| raw API `error.code` X (git) | `GIT.X` |
+| `USAGE_ERROR` "Workspace required" (auth domain) | `AUTH.USAGE_ERROR` |
+| `PROJECT_NOT_FOUND` / `PROJECT_AMBIGUOUS` / `PROJECT_SETUP_REQUIRED` / `LOCAL_STATE_STALE` / `LOCAL_PROJECT_WORKSPACE_MISMATCH` | the project group's codes, mapped by the single source in `v8/project/errors.ts` |
+
+### Conformance rows
+
+| command | inventory entry | rules applied | divergences |
+| --- | --- | --- | --- |
+| `bucket list` | `bucket list` | R-S2b-2, 5, 9, 10; d3 §3.1 | 1, 2, 5, 6, 7, 9, 18, 26, 28, 31, 41 |
+| `bucket create` | `bucket create` | R-S2b-2, 5, 9, 10; d3 §3.2 | 1, 2, 5, 6, 7, 9, 18, 27, 28, 31, 34, 41 |
+| `bucket delete` | `bucket delete` | R-S2b-2, 3, 5, 9, 10; d3 §3.3 | 1, 2, 5, 6, 7, 9, 31, 32, 34 |
+| `bucket key list` | `bucket key list` | R-S2b-2, 5, 9, 10; d3 §3.4 | 1, 2, 5, 6, 7, 9, 26, 31, 34 |
+| `bucket key create` | `bucket key create` | R-S2b-2, 4, 5, 9, 10; d3 §3.5 | 1, 2, 5, 6, 7, 9, 27, 31, 34, 35, 36 |
+| `bucket key delete` | `bucket key delete` | R-S2b-2, 5, 9, 10; d3 §3.6 | 1, 2, 5, 6, 7, 9, 31, 33, 34 |
+| `branch list` | `branch list` | R-S2b-2, 5, 9, 10; d3 §3.7 | 1, 2, 5, 6, 7, 9, 18, 26, 28, 31, 37 |
+| `git connect` (partial) | `git connect` | R-S2b-2, 5, 7, 9, 10; d3 §3.8 | 1, 2, 5, 6, 7, 9, 18, 31, 38, 39, 40, 41, 42 |
+| `git disconnect` | `git disconnect` | R-S2b-2, 5, 9, 10; d3 §3.9 | 1, 2, 5, 6, 7, 9, 18, 31, 39, 40, 41 |
+
+### Legacy tests deleted
+
+- `bucket.test.ts` and `branch.test.ts` in full. Every case in both
+  drove one of the seven ported bucket and branch commands through the
+  legacy shell, help cases included, and neither file held a provider or
+  adapter unit test. There is no bucket-provider unit test anywhere, so
+  nothing survived them to keep.
+- `project.test.ts`: the six git connect and git disconnect fixture
+  cases. The project and env help cases stay — they belong to D1 and
+  still pass, and one of them also asserts the legacy shell's git help,
+  which lives until the shell is deleted in S2d.
+- `project-real-mode.test.ts`: three cases — connecting through an
+  installed GitHub App, the already-connected-same-repository
+  short-circuit, and disconnecting through the source-repositories API.
+  All three are covered by `v8-git.test.ts`.
+
+Kept deliberately: `git-adapter.test.ts` (URL-parsing units for
+`parseGitHubRepositoryUrl`, an operation-layer function v8 calls);
+`branch-controller.test.ts`, `branch-usecases.test.ts`,
+`read-branch.test.ts` and `local-branch.test.ts` (unported, until S2d);
+the two pagination-cursor-stall cases in `project-real-mode.test.ts`,
+which cover `listScmInstallations` and `findRepositoryInInstallation`,
+operation-layer functions v8 calls and does not otherwise cover; and the
+four `project-real-mode.test.ts` cases covering the GitHub App install
+and wait path, because `git connect` step 5 is not ported yet.

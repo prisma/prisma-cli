@@ -29,7 +29,7 @@ function isRealMode(context: CommandContext): boolean {
   );
 }
 
-interface RawBranchRecord {
+export interface RawBranchRecord {
   id: string;
   gitName: string;
   role: BranchRole;
@@ -104,7 +104,7 @@ async function listRealBranches(
   };
 }
 
-function sortBranches(branches: BranchSummary[]): BranchSummary[] {
+export function sortBranches(branches: BranchSummary[]): BranchSummary[] {
   return branches.slice().sort((left, right) => {
     const leftRank = branchOrder(left);
     const rightRank = branchOrder(right);
@@ -121,7 +121,7 @@ function branchOrder(branch: BranchSummary): number {
   return branch.role === "production" ? 0 : 1;
 }
 
-async function listBranches(
+export async function listBranches(
   client: ManagementApiClient,
   projectId: string,
   signal: AbortSignal,
@@ -158,7 +158,7 @@ async function listBranches(
   return collected;
 }
 
-function toBranchSummary(branch: RawBranchRecord): BranchSummary {
+export function toBranchSummary(branch: RawBranchRecord): BranchSummary {
   return {
     id: branch.id,
     name: branch.gitName,
