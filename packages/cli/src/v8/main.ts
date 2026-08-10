@@ -2,7 +2,7 @@ import type { Cli, CliRunHooks } from "@prisma/cli-engine";
 import { maybeWriteCachedUpdateNotification } from "../update-check";
 import { buildCli } from "./cli";
 import { assembleRuntime, type HostProcess } from "./runtime";
-import { resolveTelemetryHooks } from "./telemetry/wiring";
+import { resolveTelemetryHooks } from "./telemetry/reporting";
 
 /** The bin body: build, run, return the exit code. Signal policy lives
  *  in the engine; the bin only forwards signals and provides

@@ -16,7 +16,7 @@ import {
   resolvePrismaAgentSetupCwd,
   shouldOfferPrismaAgentSetup,
 } from "../../lib/agent/setup-status";
-import { resolveStateDir } from "../../shell/runtime";
+import { resolveStateDir } from "../../state-dir";
 
 export interface AgentSetupTipContext {
   readonly cwd: string;

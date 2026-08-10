@@ -9,7 +9,7 @@ import {
 } from "@repo/cli-telemetry";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resolveTelemetryHooks } from "../src/v8/telemetry/wiring";
+import { resolveTelemetryHooks } from "../src/v8/telemetry/reporting";
 
 const V4_UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -133,7 +133,28 @@ describe("resolveTelemetryHooks — the attached hook", () => {
     expect(proc.stderrText).toBe("");
   });
 
-  it("discloses on stderr and mints the shared installation id on the first enabled run", () => {
+  it("discloses on stderr at resolve time — pre-run, before any command output", () => {
+    const proc = makeProc();
+    resolveTelemetryHooks(proc, {
+      inCI: false,
+      fire: vi.fn(),
+      senderPath: "/sender/path.js",
+    });
+
+    // The notice printed without any settlement having happened.
+    expect(proc.stderrText).toContain(
+      "Prisma collects anonymous CLI usage data, enabled by default.",
+    );
+    expect(proc.stderrText).toContain(
+      "https://www.prisma.io/docs/orm/tools/prisma-cli",
+    );
+    expect(proc.stderrText).toContain('"prisma-cli telemetry disable"');
+    expect(proc.stderrText).toContain(userConfigPath());
+    // Nothing minted yet: disclosure is print-only.
+    expect(readUserConfig().installationId).toBeUndefined();
+  });
+
+  it("mints the shared installation id at the first settlement", () => {
     const fire = vi.fn().mockReturnValue({ spawned: true });
     const proc = makeProc();
     const hooks = resolveTelemetryHooks(proc, {
@@ -144,16 +165,32 @@ describe("resolveTelemetryHooks — the attached hook", () => {
 
     hooks?.onSettled?.(makeSummary());
 
-    expect(proc.stderrText).toContain(
-      "Prisma collects anonymous CLI usage data, enabled by default.",
-    );
-    expect(proc.stderrText).toContain(userConfigPath());
     const stored = readUserConfig();
     expect(stored.installationId).toMatch(V4_UUID);
     // The mint records no consent the user never gave.
     expect(stored.enableTelemetry).toBeUndefined();
     const inputs = fire.mock.calls[0]?.[0] as RunTelemetryInputs;
     expect(inputs.userConfig?.installationId).toBe(stored.installationId);
+  });
+
+  it("never mints on a telemetry-family settlement (status must keep reporting 'not stored')", () => {
+    const fire = vi.fn();
+    const proc = makeProc();
+    const hooks = resolveTelemetryHooks(proc, { inCI: false, fire });
+
+    hooks?.onSettled?.(
+      makeSummary({
+        commandId: "telemetry.status",
+        snapshot: {
+          commandPath: ["telemetry", "status"],
+          flags: [],
+          positionalCount: 0,
+        },
+      }),
+    );
+
+    expect(fire).not.toHaveBeenCalled();
+    expect(readUserConfig().installationId).toBeUndefined();
   });
 
   it("never fires for the telemetry command family itself", () => {

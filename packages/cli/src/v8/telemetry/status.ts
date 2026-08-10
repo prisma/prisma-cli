@@ -1,20 +1,21 @@
+/**
+ * The `telemetry status` command and its status resolution. Ported
+ * from the ORM CLI's consent surface: a pure read (never sends, never
+ * mints, never writes).
+ */
+import { defineCommand, type Presentations } from "@prisma/cli-engine";
+import { ok } from "@prisma/cli-engine/protocol";
 import {
+  type GatingDisabledReason,
+  type GatingEnabledReason,
   readUserConfig,
   resolveGating,
   userConfigPath,
 } from "@repo/cli-telemetry";
+import { isCI } from "./is-ci";
 
-/**
- * Why telemetry resolves the way it does, in the order the shell's
- * hook wiring evaluates: CI hard-disables first, then the env
- * opt-outs, then the stored `enableTelemetry`, then the opt-out default.
- */
-export type TelemetryStatusReason =
-  | "ci"
-  | "env-opt-out"
-  | "stored-opt-out"
-  | "stored-opt-in"
-  | "default-on";
+/** The gating resolver's total reason union, surfaced verbatim. */
+export type TelemetryStatusReason = GatingDisabledReason | GatingEnabledReason;
 
 export interface TelemetryStatus {
   readonly enabled: boolean;
@@ -24,11 +25,11 @@ export interface TelemetryStatus {
 }
 
 /**
- * Resolves the same decision the runtime wiring uses (CI check +
- * `resolveGating`) and projects it into a user-facing status. Pure
- * read: never mints, never writes. The `installationId` value itself
- * is never surfaced — only its presence — so `status` discloses
- * nothing identifying.
+ * Resolves the same decision the runtime wiring uses (`resolveGating`,
+ * CI included) and projects it into a user-facing status. Pure read:
+ * never mints, never writes. The `installationId` value itself is
+ * never surfaced — only its presence — so `status` discloses nothing
+ * identifying.
  */
 export function resolveTelemetryStatus(inputs: {
   readonly env: Readonly<Record<string, string | undefined>>;
@@ -39,23 +40,20 @@ export function resolveTelemetryStatus(inputs: {
   const installationIdStored =
     typeof config.installationId === "string" &&
     config.installationId.length > 0;
-
-  if (inputs.inCI) {
-    return { enabled: false, reason: "ci", configPath, installationIdStored };
-  }
-
-  const gating = resolveGating({ env: inputs.env, config });
-  if (!gating.enabled) {
-    const reason: TelemetryStatusReason =
-      gating.reason === "env-override" ? "env-opt-out" : "stored-opt-out";
-    return { enabled: false, reason, configPath, installationIdStored };
-  }
-
-  const reason: TelemetryStatusReason =
-    config.enableTelemetry === true ? "stored-opt-in" : "default-on";
-  return { enabled: true, reason, configPath, installationIdStored };
+  const gating = resolveGating({
+    env: inputs.env,
+    config,
+    inCI: inputs.inCI,
+  });
+  return {
+    enabled: gating.enabled,
+    reason: gating.reason,
+    configPath,
+    installationIdStored,
+  };
 }
 
+/** Projection of the gating reasons to user-facing copy. */
 const REASON_EXPLANATION: Record<TelemetryStatusReason, string> = {
   ci: "CI environment detected — telemetry is hard-disabled.",
   "env-opt-out":
@@ -76,3 +74,39 @@ export function formatTelemetryStatusLines(status: TelemetryStatus): string[] {
     `Installation ID: ${status.installationIdStored ? "stored" : "not stored"}`,
   ];
 }
+
+function statusPresentations(status: TelemetryStatus): Presentations {
+  return {
+    human: () => [
+      { kind: "summary", tone: "info", text: statusSummaryLine(status) },
+      {
+        kind: "fields",
+        rows: [
+          { label: "Config file", value: status.configPath },
+          {
+            label: "Installation ID",
+            value: status.installationIdStored ? "stored" : "not stored",
+          },
+        ],
+      },
+    ],
+    stdout: () => formatTelemetryStatusLines(status),
+    json: () => status,
+  };
+}
+
+export const telemetryStatusCommand = defineCommand({
+  help: {
+    summary: "Show whether anonymous CLI telemetry is enabled and why",
+    description:
+      "Reports whether telemetry is currently enabled or disabled and the reason\n" +
+      "(default-on, stored opt-out, environment opt-out, or CI), the path to your\n" +
+      "user-level config file, and whether an installation ID has been stored.\n" +
+      "Read-only: never sends an event, never mints an ID, never writes anything.",
+    examples: ["telemetry status", "telemetry status --json"],
+  },
+  handler: async (_args, ctx) => {
+    const status = resolveTelemetryStatus({ env: ctx.env, inCI: isCI() });
+    return ok(ctx.present({ data: status }, statusPresentations(status)));
+  },
+});

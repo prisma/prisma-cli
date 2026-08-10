@@ -5,6 +5,7 @@ import {
   performLogin,
   readAuthState,
 } from "../../auth";
+import { CLI_NAME } from "../../cli-name";
 import type { AuthStateResult } from "../../types/auth";
 import { resolveAgentSetupTipCommand } from "./agent-setup-tip";
 import { authConfigInvalidError } from "./errors";
@@ -18,12 +19,12 @@ function nextActionsFor(state: AuthStateResult): readonly NextAction[] {
     {
       kind: "run-command",
       label: "Show the signed-in identity",
-      command: "prisma-cli auth whoami",
+      command: `${CLI_NAME} auth whoami`,
     },
     {
       kind: "run-command",
       label: "List projects",
-      command: "prisma-cli project list",
+      command: `${CLI_NAME} project list`,
     },
     ...(state.agentSetupTip
       ? [

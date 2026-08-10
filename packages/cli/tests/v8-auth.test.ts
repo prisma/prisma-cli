@@ -6,12 +6,13 @@ import { createTestCli } from "@prisma/cli-engine/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  listRealAuthWorkspaces,
-  logoutRealAuthWorkspace,
+  EmptyServiceTokenError,
+  listAuthWorkspaces,
+  logoutAuthWorkspace,
   performLogin,
   performLogout,
   readAuthState,
-  useRealAuthWorkspace,
+  useAuthWorkspace,
 } from "../src/auth";
 import {
   workspaceAmbiguousError,
@@ -24,20 +25,18 @@ import type {
 import { authLoginCommand } from "../src/v8/auth/login";
 import { authLogoutCommand } from "../src/v8/auth/logout";
 import { authWhoamiCommand } from "../src/v8/auth/whoami";
-import {
-  authWorkspaceListCommand,
-  authWorkspaceLogoutCommand,
-  authWorkspaceUseCommand,
-} from "../src/v8/auth/workspace-commands";
+import { authWorkspaceListCommand } from "../src/v8/auth/workspace-list";
+import { authWorkspaceLogoutCommand } from "../src/v8/auth/workspace-logout";
+import { authWorkspaceUseCommand } from "../src/v8/auth/workspace-use";
 
 vi.mock("../src/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/auth")>()),
   performLogin: vi.fn(),
   performLogout: vi.fn(),
   readAuthState: vi.fn(),
-  listRealAuthWorkspaces: vi.fn(),
-  useRealAuthWorkspace: vi.fn(),
-  logoutRealAuthWorkspace: vi.fn(),
+  listAuthWorkspaces: vi.fn(),
+  useAuthWorkspace: vi.fn(),
+  logoutAuthWorkspace: vi.fn(),
 }));
 
 const SIGNED_OUT: AuthStateResult = {
@@ -146,9 +145,9 @@ beforeEach(() => {
   vi.mocked(performLogin).mockReset();
   vi.mocked(performLogout).mockReset();
   vi.mocked(readAuthState).mockReset();
-  vi.mocked(listRealAuthWorkspaces).mockReset();
-  vi.mocked(useRealAuthWorkspace).mockReset();
-  vi.mocked(logoutRealAuthWorkspace).mockReset();
+  vi.mocked(listAuthWorkspaces).mockReset();
+  vi.mocked(useAuthWorkspace).mockReset();
+  vi.mocked(logoutAuthWorkspace).mockReset();
 });
 
 describe("prisma-v8 auth login", () => {
@@ -181,9 +180,11 @@ describe("prisma-v8 auth login", () => {
         outcome: "ok",
       },
     ]);
-    expect(result.stdout).toBe(
-      "status: signed in\nuser: bob@example.com\nworkspace: Acme Inc\n",
-    );
+    expect(result.presented?.presentation.stdout).toEqual([
+      "status: signed in",
+      "user: bob@example.com",
+      "workspace: Acme Inc",
+    ]);
     expect(result.stderr).toContain(
       "ℹ Starting an authenticated CLI session.\n",
     );
@@ -237,6 +238,78 @@ describe("prisma-v8 auth login", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).not.toContain("Install Prisma skills");
+  });
+
+  it("suppresses the agent-setup tip when Prisma skills are already installed", async () => {
+    vi.mocked(performLogin).mockResolvedValue(undefined);
+    vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
+    const cwd = await emptyTempCwd();
+    await writeFile(path.join(cwd, "package.json"), "{}\n", "utf8");
+    await writeFile(
+      path.join(cwd, "skills-lock.json"),
+      JSON.stringify({ sources: ["prisma/skills"] }),
+      "utf8",
+    );
+
+    const result = await makeCli().run(["auth", "login"], {
+      isTty: { stdout: true },
+      cwd,
+      env: { PRISMA_CLI_STATE_DIR: path.join(cwd, ".state") },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toContain("Install Prisma skills");
+    expect(
+      result.presented?.presentation.next.some(
+        (action) => action.label === "Install Prisma skills for this project",
+      ),
+    ).toBe(false);
+  });
+
+  it("carries the agent-setup tip in the json envelope (result field + nextAction)", async () => {
+    vi.mocked(performLogin).mockResolvedValue(undefined);
+    vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
+    const cwd = await emptyTempCwd();
+    await writeFile(path.join(cwd, "package.json"), "{}\n", "utf8");
+
+    const result = await makeCli().run(["auth", "login", "--json"], {
+      cwd,
+      env: { PRISMA_CLI_STATE_DIR: path.join(cwd, ".state") },
+    });
+
+    expect(result.exitCode).toBe(0);
+    const frame = resultFrame(result.json);
+    if (!frame.envelope.ok) {
+      throw new Error("expected a completed envelope");
+    }
+    expect(frame.envelope.result).toMatchObject({
+      agentSetupTip: { command: expect.stringContaining("agent install") },
+    });
+    expect(frame.envelope.nextActions.at(-1)).toMatchObject({
+      kind: "run-command",
+      label: "Install Prisma skills for this project",
+      command: expect.stringContaining("agent install"),
+    });
+  });
+
+  it("maps an empty PRISMA_SERVICE_TOKEN to AUTH.CONFIG_INVALID, exit 2", async () => {
+    vi.mocked(performLogin).mockResolvedValue(undefined);
+    vi.mocked(readAuthState).mockRejectedValue(new EmptyServiceTokenError());
+
+    const result = await makeCli().run(["auth", "login", "--json"], {
+      cwd: await emptyTempCwd(),
+    });
+
+    expect(result.exitCode).toBe(2);
+    const frame = resultFrame(result.json);
+    expect(frame.envelope).toMatchObject({
+      ok: false,
+      commandId: "auth.login",
+      error: {
+        code: "AUTH.CONFIG_INVALID",
+        summary: "Authentication configuration is invalid",
+      },
+    });
   });
 
   it("streams the flow events and the raw auth state envelope in json mode", async () => {
@@ -314,13 +387,36 @@ describe("prisma-v8 auth logout", () => {
 
     expect(result.exitCode).toBe(0);
     expect(vi.mocked(performLogout)).toHaveBeenCalledTimes(1);
-    expect(result.stderr).toBe(
-      "ℹ Clearing the current CLI session.\n" +
-        "session: local CLI state\n" +
-        "✔ Session removed from local CLI state.\n" +
-        "→ Sign in: prisma-cli auth login\n",
-    );
-    expect(result.stdout).toBe("status: signed out\n");
+    expect(result.stderr).toContain("Clearing the current CLI session.");
+    expect(result.stderr).toContain("Session removed from local CLI state.");
+    expect(result.presented?.presentation.next).toEqual([
+      {
+        kind: "run-command",
+        label: "Sign in",
+        command: "prisma-cli auth login",
+      },
+    ]);
+    expect(result.presented?.presentation.stdout).toEqual([
+      "status: signed out",
+    ]);
+  });
+
+  it("maps an empty PRISMA_SERVICE_TOKEN to AUTH.CONFIG_INVALID, exit 2", async () => {
+    vi.mocked(performLogout).mockResolvedValue(undefined);
+    vi.mocked(readAuthState).mockRejectedValue(new EmptyServiceTokenError());
+
+    const result = await makeCli().run(["auth", "logout", "--json"]);
+
+    expect(result.exitCode).toBe(2);
+    const frame = resultFrame(result.json);
+    expect(frame.envelope).toMatchObject({
+      ok: false,
+      commandId: "auth.logout",
+      error: {
+        code: "AUTH.CONFIG_INVALID",
+        summary: "Authentication configuration is invalid",
+      },
+    });
   });
 
   it("carries the post-logout auth state as the json envelope result", async () => {
@@ -339,7 +435,7 @@ describe("prisma-v8 auth logout", () => {
   });
 
   it("--workspace runs the shared workspace-logout operation with its presentation", async () => {
-    vi.mocked(logoutRealAuthWorkspace).mockResolvedValue({
+    vi.mocked(logoutAuthWorkspace).mockResolvedValue({
       workspace: { id: "ws_2", name: "Globex" },
       wasActive: false,
       activeWorkspace: { id: "ws_1", name: "Acme Inc" },
@@ -352,21 +448,29 @@ describe("prisma-v8 auth logout", () => {
 
     expect(result.exitCode).toBe(0);
     expect(vi.mocked(performLogout)).not.toHaveBeenCalled();
-    expect(vi.mocked(logoutRealAuthWorkspace)).toHaveBeenCalledWith(
+    expect(vi.mocked(logoutAuthWorkspace)).toHaveBeenCalledWith(
       expect.anything(),
       "Globex",
     );
-    expect(result.stderr).toBe(
-      "ℹ Removing a local OAuth workspace session.\n" +
-        "workspace: Globex\n" +
-        "active: Acme Inc\n" +
-        "✔ Removed workspace session.\n" +
-        "→ List authenticated workspaces: prisma-cli auth workspace list\n",
+    expect(result.stderr).toContain(
+      "Removing a local OAuth workspace session.",
     );
+    expect(result.stderr).toContain("Removed workspace session.");
+    expect(result.presented?.presentation.stdout).toEqual([
+      "workspace: Globex",
+      "active: Acme Inc",
+    ]);
+    expect(result.presented?.presentation.next).toEqual([
+      {
+        kind: "run-command",
+        label: "List authenticated workspaces",
+        command: "prisma-cli auth workspace list",
+      },
+    ]);
   });
 
   it("--workspace reports the mounted command id auth.logout in json mode", async () => {
-    vi.mocked(logoutRealAuthWorkspace).mockResolvedValue({
+    vi.mocked(logoutAuthWorkspace).mockResolvedValue({
       workspace: { id: "ws_2", name: "Globex" },
       wasActive: false,
       activeWorkspace: null,
@@ -389,7 +493,7 @@ describe("prisma-v8 auth logout", () => {
   });
 
   it("--workspace maps a missing workspace to AUTH.WORKSPACE_NOT_AUTHENTICATED, exit 2", async () => {
-    vi.mocked(logoutRealAuthWorkspace).mockRejectedValue(
+    vi.mocked(logoutAuthWorkspace).mockRejectedValue(
       workspaceNotAuthenticatedError("nope"),
     );
 
@@ -418,40 +522,53 @@ describe("prisma-v8 auth logout", () => {
 
 describe("prisma-v8 auth workspace list", () => {
   it("renders the workspace table without the source column for a single source", async () => {
-    vi.mocked(listRealAuthWorkspaces).mockResolvedValue(TWO_OAUTH_WORKSPACES);
+    vi.mocked(listAuthWorkspaces).mockResolvedValue(TWO_OAUTH_WORKSPACES);
 
     const result = await makeCli().run(["auth", "workspace", "list"], {
       isTty: { stdout: true },
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toBe(
-      "ℹ Listing authenticated workspaces on this machine.\n" +
-        "auth source: local OAuth\n" +
-        "name  id  status\n" +
-        "Acme Inc  ws_1  active\n" +
-        "Globex  ws_2  \n",
+    const table = result.presented?.presentation.human.find(
+      (block) => block.kind === "table",
     );
-    expect(result.stdout).toBe("Acme Inc  ws_1  active\nGlobex  ws_2\n");
+    expect(table).toEqual({
+      kind: "table",
+      columns: ["name", "id", "status"],
+      rows: [
+        ["Acme Inc", "ws_1", "active"],
+        ["Globex", "ws_2", ""],
+      ],
+    });
+    expect(result.presented?.presentation.stdout).toEqual([
+      "Acme Inc  ws_1  active",
+      "Globex  ws_2",
+    ]);
   });
 
   it("adds the source column only when sources are mixed", async () => {
-    vi.mocked(listRealAuthWorkspaces).mockResolvedValue(MIXED_SOURCES);
+    vi.mocked(listAuthWorkspaces).mockResolvedValue(MIXED_SOURCES);
 
     const result = await makeCli().run(["auth", "workspace", "list"], {
       isTty: { stdout: true },
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain("name  id  source  status\n");
-    expect(result.stderr).toContain(
-      "Token WS  ws_tok  service token  active\n",
+    const table = result.presented?.presentation.human.find(
+      (block) => block.kind === "table",
     );
-    expect(result.stderr).toContain("Acme Inc  ws_1  OAuth  \n");
+    expect(table).toEqual({
+      kind: "table",
+      columns: ["name", "id", "source", "status"],
+      rows: [
+        ["Token WS", "ws_tok", "service token", "active"],
+        ["Acme Inc", "ws_1", "OAuth", ""],
+      ],
+    });
   });
 
   it("serializes the ported list shape in json mode", async () => {
-    vi.mocked(listRealAuthWorkspaces).mockResolvedValue(TWO_OAUTH_WORKSPACES);
+    vi.mocked(listAuthWorkspaces).mockResolvedValue(TWO_OAUTH_WORKSPACES);
 
     const result = await makeCli().run(["auth", "workspace", "list", "--json"]);
 
@@ -490,8 +607,27 @@ describe("prisma-v8 auth workspace list", () => {
     });
   });
 
+  it("maps an empty PRISMA_SERVICE_TOKEN to AUTH.CONFIG_INVALID, exit 2 (parity with whoami/login/logout)", async () => {
+    vi.mocked(listAuthWorkspaces).mockRejectedValue(
+      new EmptyServiceTokenError(),
+    );
+
+    const result = await makeCli().run(["auth", "workspace", "list", "--json"]);
+
+    expect(result.exitCode).toBe(2);
+    const frame = resultFrame(result.json);
+    expect(frame.envelope).toMatchObject({
+      ok: false,
+      commandId: "auth.workspace.list",
+      error: {
+        code: "AUTH.CONFIG_INVALID",
+        summary: "Authentication configuration is invalid",
+      },
+    });
+  });
+
   it("shows the empty state with the sign-in follow-up while signed out", async () => {
-    vi.mocked(listRealAuthWorkspaces).mockResolvedValue(EMPTY_LIST);
+    vi.mocked(listAuthWorkspaces).mockResolvedValue(EMPTY_LIST);
 
     const result = await makeCli().run(["auth", "workspace", "list"], {
       isTty: { stdout: true },
@@ -506,7 +642,7 @@ describe("prisma-v8 auth workspace list", () => {
 
 describe("prisma-v8 auth workspace use", () => {
   it("switches by explicit ref and renders the mutation card", async () => {
-    vi.mocked(useRealAuthWorkspace).mockResolvedValue({
+    vi.mocked(useAuthWorkspace).mockResolvedValue({
       previousWorkspace: { id: "ws_1", name: "Acme Inc" },
       workspace: { id: "ws_2", name: "Globex" },
     });
@@ -516,23 +652,25 @@ describe("prisma-v8 auth workspace use", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(vi.mocked(useRealAuthWorkspace)).toHaveBeenCalledWith(
+    expect(vi.mocked(useAuthWorkspace)).toHaveBeenCalledWith(
       expect.anything(),
       "ws_2",
     );
-    expect(result.stderr).toBe(
-      "ℹ Switching the local CLI workspace.\n" +
-        "previous: Acme Inc\n" +
-        "workspace: Globex\n" +
-        "✔ Local OAuth workspace selection updated.\n" +
-        "→ Show the signed-in identity: prisma-cli auth whoami\n" +
-        "→ List projects: prisma-cli project list\n",
-    );
-    expect(result.stdout).toBe("previous: Acme Inc\nworkspace: Globex\n");
+    expect(result.stderr).toContain("Switching the local CLI workspace.");
+    expect(result.stderr).toContain("Local OAuth workspace selection updated.");
+    expect(result.presented?.presentation.stdout).toEqual([
+      "previous: Acme Inc",
+      "workspace: Globex",
+    ]);
+    expect(
+      result.presented?.presentation.next.map((action) =>
+        action.kind === "run-command" ? action.command : action.label,
+      ),
+    ).toEqual(["prisma-cli auth whoami", "prisma-cli project list"]);
   });
 
   it("carries the raw use result in the json envelope", async () => {
-    vi.mocked(useRealAuthWorkspace).mockResolvedValue({
+    vi.mocked(useAuthWorkspace).mockResolvedValue({
       previousWorkspace: null,
       workspace: { id: "ws_2", name: "Globex" },
     });
@@ -558,7 +696,7 @@ describe("prisma-v8 auth workspace use", () => {
   });
 
   it("maps an ambiguous name to AUTH.WORKSPACE_AMBIGUOUS with the match list, exit 2", async () => {
-    vi.mocked(useRealAuthWorkspace).mockRejectedValue(
+    vi.mocked(useAuthWorkspace).mockRejectedValue(
       workspaceAmbiguousError("Acme Inc", [
         { id: "ws_1", name: "Acme Inc", credentialWorkspaceId: "cred_1" },
         { id: "ws_9", name: "Acme Inc", credentialWorkspaceId: "cred_9" },
@@ -609,11 +747,11 @@ describe("prisma-v8 auth workspace use", () => {
     expect(result.stderr).toContain(
       "✖ [AUTH.WORKSPACE_SWITCH_UNAVAILABLE] Workspace switching is unavailable\n",
     );
-    expect(vi.mocked(listRealAuthWorkspaces)).not.toHaveBeenCalled();
+    expect(vi.mocked(listAuthWorkspaces)).not.toHaveBeenCalled();
   });
 
   it("fails with AUTH.USAGE_ERROR when no switchable workspaces exist", async () => {
-    vi.mocked(listRealAuthWorkspaces).mockResolvedValue(EMPTY_LIST);
+    vi.mocked(listAuthWorkspaces).mockResolvedValue(EMPTY_LIST);
 
     const result = await makeCli().run(["auth", "workspace", "use"], {
       isTty: { stdout: true },
@@ -626,11 +764,11 @@ describe("prisma-v8 auth workspace use", () => {
   });
 
   it("auto-selects the only switchable workspace without prompting", async () => {
-    vi.mocked(listRealAuthWorkspaces).mockResolvedValue({
+    vi.mocked(listAuthWorkspaces).mockResolvedValue({
       ...TWO_OAUTH_WORKSPACES,
       workspaces: [TWO_OAUTH_WORKSPACES.workspaces[0]],
     });
-    vi.mocked(useRealAuthWorkspace).mockResolvedValue({
+    vi.mocked(useAuthWorkspace).mockResolvedValue({
       previousWorkspace: null,
       workspace: { id: "ws_1", name: "Acme Inc" },
     });
@@ -640,15 +778,15 @@ describe("prisma-v8 auth workspace use", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(vi.mocked(useRealAuthWorkspace)).toHaveBeenCalledWith(
+    expect(vi.mocked(useAuthWorkspace)).toHaveBeenCalledWith(
       expect.anything(),
       "ws_1",
     );
   });
 
   it("prompts a select over the workspaces and switches to the answer", async () => {
-    vi.mocked(listRealAuthWorkspaces).mockResolvedValue(TWO_OAUTH_WORKSPACES);
-    vi.mocked(useRealAuthWorkspace).mockResolvedValue({
+    vi.mocked(listAuthWorkspaces).mockResolvedValue(TWO_OAUTH_WORKSPACES);
+    vi.mocked(useAuthWorkspace).mockResolvedValue({
       previousWorkspace: { id: "ws_1", name: "Acme Inc" },
       workspace: { id: "ws_2", name: "Globex" },
     });
@@ -659,14 +797,14 @@ describe("prisma-v8 auth workspace use", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(vi.mocked(useRealAuthWorkspace)).toHaveBeenCalledWith(
+    expect(vi.mocked(useAuthWorkspace)).toHaveBeenCalledWith(
       expect.anything(),
       "ws_2",
     );
   });
 
   it("fails an invalid select answer with CLI.PROMPT_INVALID, exit 2", async () => {
-    vi.mocked(listRealAuthWorkspaces).mockResolvedValue(TWO_OAUTH_WORKSPACES);
+    vi.mocked(listAuthWorkspaces).mockResolvedValue(TWO_OAUTH_WORKSPACES);
 
     const result = await makeCli().run(["auth", "workspace", "use"], {
       isTty: { stdout: true, stdin: true },
@@ -675,11 +813,11 @@ describe("prisma-v8 auth workspace use", () => {
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("[CLI.PROMPT_INVALID]");
-    expect(vi.mocked(useRealAuthWorkspace)).not.toHaveBeenCalled();
+    expect(vi.mocked(useAuthWorkspace)).not.toHaveBeenCalled();
   });
 
   it("fails non-interactively with the engine's structural prompt error, exit 2", async () => {
-    vi.mocked(listRealAuthWorkspaces).mockResolvedValue(TWO_OAUTH_WORKSPACES);
+    vi.mocked(listAuthWorkspaces).mockResolvedValue(TWO_OAUTH_WORKSPACES);
 
     const result = await makeCli().run(["auth", "workspace", "use"], {
       isTty: { stdout: true, stdin: false },
@@ -687,13 +825,13 @@ describe("prisma-v8 auth workspace use", () => {
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("[CLI.PROMPT_REQUIRED]");
-    expect(vi.mocked(useRealAuthWorkspace)).not.toHaveBeenCalled();
+    expect(vi.mocked(useAuthWorkspace)).not.toHaveBeenCalled();
   });
 });
 
 describe("prisma-v8 auth workspace logout", () => {
   it("removes a non-active session and keeps the active workspace", async () => {
-    vi.mocked(logoutRealAuthWorkspace).mockResolvedValue({
+    vi.mocked(logoutAuthWorkspace).mockResolvedValue({
       workspace: { id: "ws_2", name: "Globex" },
       wasActive: false,
       activeWorkspace: { id: "ws_1", name: "Acme Inc" },
@@ -705,18 +843,25 @@ describe("prisma-v8 auth workspace logout", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toBe(
-      "ℹ Removing a local OAuth workspace session.\n" +
-        "workspace: Globex\n" +
-        "active: Acme Inc\n" +
-        "✔ Removed workspace session.\n" +
-        "→ List authenticated workspaces: prisma-cli auth workspace list\n",
+    expect(result.stderr).toContain(
+      "Removing a local OAuth workspace session.",
     );
-    expect(result.stdout).toBe("workspace: Globex\nactive: Acme Inc\n");
+    expect(result.stderr).toContain("Removed workspace session.");
+    expect(result.presented?.presentation.stdout).toEqual([
+      "workspace: Globex",
+      "active: Acme Inc",
+    ]);
+    expect(result.presented?.presentation.next).toEqual([
+      {
+        kind: "run-command",
+        label: "List authenticated workspaces",
+        command: "prisma-cli auth workspace list",
+      },
+    ]);
   });
 
   it("reports the was-active removal with no auto-fallthrough and the use follow-up", async () => {
-    vi.mocked(logoutRealAuthWorkspace).mockResolvedValue({
+    vi.mocked(logoutAuthWorkspace).mockResolvedValue({
       workspace: { id: "ws_1", name: "Acme Inc" },
       wasActive: true,
       activeWorkspace: null,
@@ -738,7 +883,7 @@ describe("prisma-v8 auth workspace logout", () => {
   });
 
   it("carries the raw logout result in the json envelope", async () => {
-    vi.mocked(logoutRealAuthWorkspace).mockResolvedValue({
+    vi.mocked(logoutAuthWorkspace).mockResolvedValue({
       workspace: { id: "ws_2", name: "Globex" },
       wasActive: false,
       activeWorkspace: { id: "ws_1", name: "Acme Inc" },
@@ -766,7 +911,7 @@ describe("prisma-v8 auth workspace logout", () => {
   });
 
   it("maps an ambiguous name to AUTH.WORKSPACE_AMBIGUOUS, exit 2", async () => {
-    vi.mocked(logoutRealAuthWorkspace).mockRejectedValue(
+    vi.mocked(logoutAuthWorkspace).mockRejectedValue(
       workspaceAmbiguousError("Acme Inc", [
         { id: "ws_1", name: "Acme Inc", credentialWorkspaceId: "cred_1" },
         { id: "ws_9", name: "Acme Inc", credentialWorkspaceId: "cred_9" },
@@ -793,6 +938,6 @@ describe("prisma-v8 auth workspace logout", () => {
     expect(result.stderr).toContain(
       "✖ [AUTH.USAGE_ERROR] Workspace required\n",
     );
-    expect(vi.mocked(logoutRealAuthWorkspace)).not.toHaveBeenCalled();
+    expect(vi.mocked(logoutAuthWorkspace)).not.toHaveBeenCalled();
   });
 });

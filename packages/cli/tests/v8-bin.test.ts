@@ -36,7 +36,10 @@ function makeProcess(overrides?: {
   const exitedWith: number[] = [];
   const proc = {
     argv: overrides?.argv ?? ["node", "bin.js"],
-    env: overrides?.env ?? {},
+    // Telemetry env opt-out so main()'s gating resolution stays inert
+    // (no first-run notice on stderr, no dependence on the developer's
+    // real user config).
+    env: { PRISMA_NEXT_DISABLE_TELEMETRY: "1", ...overrides?.env },
     cwd: () => "/tmp/v8-bin-test-cwd",
     listeners,
     exitedWith,

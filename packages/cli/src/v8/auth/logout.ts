@@ -5,15 +5,16 @@ import {
   performLogout,
   readAuthState,
 } from "../../auth";
+import { CLI_NAME } from "../../cli-name";
 import type { AuthStateResult } from "../../types/auth";
 import { authConfigInvalidError } from "./errors";
+import { runWorkspaceLogout } from "./run-workspace-logout";
 import { authStateFieldRows } from "./state-card";
-import { runWorkspaceLogout } from "./workspace-commands";
 
 const SIGN_IN: NextAction = {
   kind: "run-command",
   label: "Sign in",
-  command: "prisma-cli auth login",
+  command: `${CLI_NAME} auth login`,
 };
 
 function presentationsFor(state: AuthStateResult): Presentations {

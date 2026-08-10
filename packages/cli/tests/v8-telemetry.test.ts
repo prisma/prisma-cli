@@ -10,12 +10,10 @@ import { dirname, join } from "node:path";
 import { createTestCli } from "@prisma/cli-engine/testing";
 import { readUserConfig, userConfigPath } from "@repo/cli-telemetry";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  telemetryDisableCommand,
-  telemetryEnableCommand,
-  telemetryStatusCommand,
-} from "../src/v8/telemetry/commands";
+import { telemetryDisableCommand } from "../src/v8/telemetry/disable";
+import { telemetryEnableCommand } from "../src/v8/telemetry/enable";
 import { isCI } from "../src/v8/telemetry/is-ci";
+import { telemetryStatusCommand } from "../src/v8/telemetry/status";
 
 vi.mock("../src/v8/telemetry/is-ci", () => ({ isCI: vi.fn(() => false) }));
 

@@ -25,7 +25,9 @@ function makeProcess(overrides: {
 }): HostProcess & { stdoutText: string; stderrText: string } {
   const proc = {
     argv: overrides.argv ?? ["node", "bin.js", "auth", "whoami"],
-    env: overrides.env ?? {},
+    // Keep main()'s telemetry gating inert — these tests pin the
+    // update-check wiring only.
+    env: { PRISMA_NEXT_DISABLE_TELEMETRY: "1", ...overrides.env },
     cwd: () => "/tmp/v8-update-check-cwd",
     stdoutText: "",
     stderrText: "",
@@ -95,6 +97,41 @@ describe("v8 main update-check wiring", () => {
       `Update available: prisma-cli ${getCliVersion()} -> ${nextMajorVersion()}`,
     );
     expect(proc.stdoutText).toBe("");
+  });
+
+  it("writes the notice before the command dispatches (ordering, not just presence)", async () => {
+    const updateCheckDir = await makeUpdateCheckDir();
+    await seedStaleUpdate(updateCheckDir);
+    const proc = makeProcess({ env: updateCheckEnv(updateCheckDir) });
+
+    const exitCode = await main(proc, () => ({
+      run: async () => {
+        proc.stderr.write("COMMAND-DISPATCH-MARKER\n");
+        return 0;
+      },
+    }));
+
+    expect(exitCode).toBe(0);
+    const noticeAt = proc.stderrText.indexOf("Update available");
+    const dispatchAt = proc.stderrText.indexOf("COMMAND-DISPATCH-MARKER");
+    expect(noticeAt).toBeGreaterThanOrEqual(0);
+    expect(dispatchAt).toBeGreaterThan(noticeAt);
+  });
+
+  it("still notifies under the v8 spelling --format json (literal-argv quirk, copied from legacy)", async () => {
+    const updateCheckDir = await makeUpdateCheckDir();
+    await seedStaleUpdate(updateCheckDir);
+    const proc = makeProcess({
+      argv: ["node", "bin.js", "auth", "whoami", "--format", "json"],
+      env: updateCheckEnv(updateCheckDir),
+    });
+
+    await main(proc, stubCli);
+
+    // The suppression check matches the literal tokens --json/--quiet/-q
+    // only; the v8 spelling `--format json` is NOT suppressed. Recorded
+    // in the S2a parity divergence list.
+    expect(proc.stderrText).toContain("Update available");
   });
 
   it("stays silent inside the notification interval", async () => {

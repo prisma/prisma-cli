@@ -1,6 +1,7 @@
 import { defineCommand, type Presentations } from "@prisma/cli-engine";
 import { type NextAction, notOk, ok } from "@prisma/cli-engine/protocol";
 import { isEmptyServiceTokenError, readAuthState } from "../../auth";
+import { CLI_NAME } from "../../cli-name";
 import type { AuthStateResult } from "../../types/auth";
 import { authConfigInvalidError } from "./errors";
 import { authStateFieldRows } from "./state-card";
@@ -10,7 +11,7 @@ const TITLE = "Showing the current authenticated identity.";
 const SIGN_IN: NextAction = {
   kind: "run-command",
   label: "Sign in",
-  command: "prisma-cli auth login",
+  command: `${CLI_NAME} auth login`,
 };
 
 function presentationsFor(state: AuthStateResult): Presentations {
