@@ -304,6 +304,45 @@ out of contract.
   commands ported in the SAME dispatch are deleted, per child doc's
   explicit file/case list; files keep unported-command cases.
 
+### 10a. Closure amendments (orchestrator, 2026-08-10)
+
+Four additions the closure review pass required. Each is an amendment
+because §10 otherwise forbids adding cases the child docs do not name.
+
+1. **An errored case for `project list` and `project env list`.**
+   R-S2b-9 requires one per command and d1 §3.1 and §3.10 omitted it;
+   the contract outranks the child doc, so the omission is the error.
+   These are the only two commands whose error mapper no test reaches,
+   and a mapper returning null where it should map is a defect this
+   slice has already shipped once and had to fix. `project list` drives
+   a 403 and asserts `PROJECT.AUTH_REQUIRED` at exit 2; `project env
+   list` drives a 500 and asserts `PROJECT.ENV_API_ERROR` at exit 2.
+2. **A golden-rendering entry for a masked secret card.** §10 asks for
+   one representative per new output surface class, and the masked
+   secret is one — no child doc named it, so none was added. Without it
+   nothing in this package proves `sensitive: true` reaches the screen
+   as `********`; the engine could regress and the suite would stay
+   green. `bucket key create` is the representative: assert the exact
+   stderr card including the mask and the exact four stdout lines.
+   Note what the mask is and is not — the card masks while stdout
+   prints the same secret in the clear a line later, because that is
+   how the caller receives it. It is a scroll-back and screen-share
+   courtesy, not containment.
+3. **The mount-coverage test asserts a literal command list.** Its
+   three existing assertions compare the two maps only to each other,
+   so deleting a command from both leaves it green and it would pass on
+   a five-command CLI. It gains a fourth assertion comparing the sorted
+   mount paths to a literal sorted array — the only one that can catch
+   a deletion or a misspelling, and the test S2c and S2d will lean on.
+4. **The legacy-context adapter reports its own limits.** `v8/project/
+   context.ts` casts a three-field object to the legacy `CommandContext`.
+   The cast is accepted for this slice and the structural fix stays with
+   S2d, but a future legacy edit reading a fourth field currently
+   compiles clean and throws an unhelpful runtime error — worst case
+   inside `project transfer`, after the project has already moved. The
+   adapter therefore refuses unknown reads with a message naming the
+   key, proven by a test driving all five call sites.
+
 ## 11. Divergences (R-S2b-1/2/3/5/8 + standing ruling 10, pinned)
 
 New file `.drive/projects/prisma-cli-v8/assets/s2/parity-divergences-s2b.md`
