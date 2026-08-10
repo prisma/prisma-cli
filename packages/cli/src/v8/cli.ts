@@ -13,6 +13,11 @@ import { authWhoamiCommand } from "./auth/whoami";
 import { authWorkspaceListCommand } from "./auth/workspace-list";
 import { authWorkspaceLogoutCommand } from "./auth/workspace-logout";
 import { authWorkspaceUseCommand } from "./auth/workspace-use";
+import { projectCreateCommand } from "./project/create";
+import { projectLinkCommand } from "./project/link";
+import { projectListCommand } from "./project/list";
+import { projectRenameCommand } from "./project/rename";
+import { projectShowCommand } from "./project/show";
 import { telemetryDisableCommand } from "./telemetry/disable";
 import { telemetryEnableCommand } from "./telemetry/enable";
 import { telemetryStatusCommand } from "./telemetry/status";
@@ -25,6 +30,11 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     workspaceList: authWorkspaceListCommand,
     workspaceUse: authWorkspaceUseCommand,
     workspaceLogout: authWorkspaceLogoutCommand,
+    projectList: projectListCommand,
+    projectShow: projectShowCommand,
+    projectCreate: projectCreateCommand,
+    projectLink: projectLinkCommand,
+    projectRename: projectRenameCommand,
   },
 });
 
@@ -32,6 +42,10 @@ export const cliGroups: Readonly<
   Record<string, { brief: string; description?: string }>
 > = {
   auth: { brief: "Manage local authentication for the CLI" },
+  project: { brief: "Manage and inspect your Prisma projects" },
+  "project env": {
+    brief: "Manage environment variables for the active project",
+  },
   "auth workspace": { brief: "Manage local workspace sessions" },
   telemetry: {
     brief: "Inspect and change anonymous CLI telemetry",
@@ -49,6 +63,11 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "auth workspace list": authWorkspaceListCommand,
   "auth workspace use": authWorkspaceUseCommand,
   "auth workspace logout": authWorkspaceLogoutCommand,
+  "project list": projectListCommand,
+  "project show": projectShowCommand,
+  "project create": projectCreateCommand,
+  "project link": projectLinkCommand,
+  "project rename": projectRenameCommand,
   // Shell-owned consent surface (no command family).
   "telemetry status": telemetryStatusCommand,
   "telemetry enable": telemetryEnableCommand,
