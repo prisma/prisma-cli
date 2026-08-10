@@ -40,11 +40,24 @@ consolidates the contract.**
 | D4 round 1 | F1, F2 | closed in `f7b3635`; independently verified closed by the slice review |
 | Slice review | ENG-F1–F4, ARCH-F1–F4 | closed in `ed7151e` + `0459208`; **independently verified closed** by the round-2 verification pass, which re-counted the affected commands itself and proved the new deploy coverage by mutating `app-provider.ts` and watching the suite fail. ENG-F1 was record-only here: the code fix belongs to the S2a stream (see the merge-down note) |
 | Slice review round 2 | R2-F1 | closed in `6458ad9` — a cancellation regression the ARCH-F1 fix introduced. Recorded as deliberately untested; see the finding. **Moot since: it was in `service deploy`, which the operator then dropped** |
-| Final review (post-removal) | FINAL-F1, F2, F3 | F3 (the stale scoreboard) closed by the orchestrator above. F1 and F2 dispatched — F1 restores coverage of `renameAppCopy`, `fromLegacyCliError` and the compute-config path, which the three deleted test suites took with them although all three still run on the surviving commands |
+| Final review (post-removal) | FINAL-F1, F2, F3 | closed in `6d80563`. F1 restored coverage of `renameAppCopy`, `fromLegacyCliError` and the compute-config path, which the three deleted suites took with them although all three still run on the surviving commands; each mechanism was verified by breaking it and watching the right tests fail. F3 (the stale scoreboard) was closed by the orchestrator |
+| Merge review (rev-6 credential surface) | MERGE-F1–F5 | closed in `528f925`. F1 is recorded rather than fixed, by orchestrator ruling — see below. F2's test pins the refusal against the product's own claim derivation, so the harness cannot drift from the product silently. F3 removed the spread that let the rev-6 seed rename be ignored by 104 tests instead of failing once |
 
-**All findings raised in this slice are closed.** The one open item is not
-a finding against this branch: the credential reader that breaks 13 of
-these commands on merge-down belongs to the S2a stream.
+**All findings raised in this slice are closed.** Two items remain open,
+and neither is a finding against this branch:
+
+- **The merge-down credential defect belonged to the S2a stream**, and is
+  now moot for us — `requireWorkspace` reads the engine instead of the
+  legacy file reader, so the format change cannot reach these commands.
+  It still affects anything else calling `readAuthState`.
+- **Identity has no server fallback** (MERGE-F1). The shipping CLI asked
+  `/v1/me` first and used the workspace the server named; the engine's
+  credential accessor is local-only by design, so a service token the
+  platform can place but whose claims cannot is refused. Fixing it inside
+  a command would repeat the mistake that caused the defect above, so it
+  is recorded as an engine question with a ruling request. **This is the
+  one open item that needs an answer before the slice is finished
+  business.**
 
 ## Findings log
 
@@ -1394,3 +1407,33 @@ One loose end, too small to file. `listServices` (`target.ts:304`) lost its last
   meant for shell use. One decision for the whole tree, above this
   slice: either the shell declares a family for local utilities, or the
   engine states that familyless is supported.
+- 2026-08-10, **operator rulings that reshaped the slice from 20
+  commands to 17.** `service deploy` and `service build` are **dropped**
+  — deploy conflated local compiling with uploading a tarball, Composer
+  supersedes both, and commands are to work directly with platform
+  Compute resources. Not a deferral. `service logs` is **shelved**,
+  which is different: it returns once the engine can open an
+  authenticated socket (design in
+  `../assets/engine/websocket-transport-design.md`, folded into the
+  base's own S8 slice). `service run` was already ruled dropped. The ten
+  next actions that pointed at `service deploy` are removed rather than
+  left dangling, with the follow-up to repoint them at Composer parked
+  in the project plan. The fixture-test deviation is **approved**: the
+  commander shell and its tests are deleted together in S2d.
+- 2026-08-10: **the branch is merged onto `bot/s2a-foundations`** at the
+  operator's instruction, and all CI checks pass. The base had landed
+  the rev-6 credential surface, which deleted `getCredentials` and
+  renamed `ctx.session()` to `ctx.activeCredential()`. Two things worth
+  carrying forward. The rename of the harness seed
+  `currentWorkspaceId` → `selectedWorkspaceId` was **silently ignored**
+  rather than rejected, so the first merge produced 104 failing tests
+  with no clue why; the testkit no longer passes seeds through a spread,
+  so the same rename now fails typecheck at the line that made it. And
+  the base's own S8, "Service primitives", collided with the WebSocket
+  slice added here — theirs is the real one and already asks where log
+  reading belongs, so the socket design folds into it as a fourth
+  question rather than competing with it.
+- 2026-08-10: **the engine gap count is seven raised, three retired,
+  four open**, and the divergence file carries exactly that many marked
+  headings so the count can be checked rather than trusted. The three
+  retired ones died with the commands that needed them.
