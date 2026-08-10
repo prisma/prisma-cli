@@ -331,7 +331,10 @@ Common: `needs: { credentials: true }`; data = legacy result minus
        affects `GIT.REPO_INSTALLATION_REQUIRED` and
        `GIT.REPO_NOT_ACCESSIBLE`, whose first next step is the raw
        installUrl. Divergence entry; it supersedes entry 42, which
-       recorded the defect.
+       recorded the defect. **A `nextSteps` entry counts as a URL when
+       it starts with `https://` or `http://`** (pinned 2026-08-10):
+       the test is total, and no legacy command string in this slice
+       begins with a scheme, so nothing else can match it.
 
      Draft text follows, superseded at the four points above.
 
@@ -459,6 +462,21 @@ Delete fixture-mode cases covering these 9 commands from
 remains). git connect/disconnect fixture cases live in
 `project.test.ts` / `project-real-mode.test.ts` — delete only the
 git-command cases; `git-adapter.test.ts` (URL parsing units) stays.
+
+Amendment (orchestrator, 2026-08-10, once step 5 landed): D3 kept four
+`project-real-mode.test.ts` cases because `git connect`'s wait was
+unported. Three now have v8 equivalents and are deleted — "creates an
+install intent when the workspace has no GitHub App installation",
+"waits for GitHub App installation in interactive mode and connects
+after approval", and "returns REPO_NOT_ACCESSIBLE when the GitHub App
+cannot see the repository". The fourth stays: "creates an install
+intent when the stored GitHub App installation is unavailable" drives
+a stored installation answering 422 and being skipped inside
+`findRepositoryInInstallations`, a helper v8 calls and does not
+otherwise exercise. Same rule as the D2 provider unit tests — a
+command-level case for a ported command goes, a unit test for a
+surviving helper stays. The two pagination cursor-stall guards stay
+for the same reason.
 `branch-controller.test.ts` / `branch-usecases.test.ts` /
 `read-branch.test.ts` / `local-branch.test.ts` stay until S2d.
 
