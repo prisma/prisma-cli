@@ -1,6 +1,6 @@
 import { defineCommand, flag, positional } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { deployFailedError, runCommandAction } from "./errors";
+import { deployFailedError } from "./errors";
 import { listDeploysPresentations } from "./presentation";
 import type { ServiceListDeploysResult } from "./results";
 import {
@@ -62,9 +62,11 @@ export const serviceListDeploysCommand = defineCommand({
     const deploymentsResult = await state.provider
       .listDeployments(state.selected.id, { signal: ctx.signal })
       .catch((error) => {
-        throw deployFailedError("Failed to list service deployments", error, [
-          runCommandAction("Deploy the service", "service deploy"),
-        ]);
+        throw deployFailedError(
+          "Failed to list service deployments",
+          error,
+          [],
+        );
       });
     const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
       state.stateStore,

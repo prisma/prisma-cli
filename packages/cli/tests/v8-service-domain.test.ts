@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   domainRecord,
   makeServiceCli,
+  page,
   presentedSummary,
   type Routes,
   readFlowRoutes,
@@ -149,6 +150,38 @@ describe("prisma-v8 service domain add", () => {
     });
   });
 
+  it("maps a 422 without a live production deployment to SERVICE.NO_DEPLOYMENTS", async () => {
+    const harness = await makeServiceCli({
+      routes: domainRoutes({
+        "POST /v1/apps/{appId}/domains": () => ({
+          error: { error: { message: "no promoted deployment" } },
+          status: 422,
+        }),
+      }),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "domain", "add", "shop.acme.com", ...TARGET_ARGS, "--json"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.NO_DEPLOYMENTS");
+    // No action suggests `service deploy --branch production`: the binary
+    // does not answer to it.
+    expect(frame.envelope.nextActions).toEqual([
+      {
+        kind: "run-command",
+        label: "Add the domain",
+        command: "prisma-cli service domain add shop.acme.com",
+      },
+    ]);
+  });
+
   it("rejects invalid hostnames as SERVICE.DOMAIN_HOSTNAME_INVALID", async () => {
     const harness = await makeServiceCli({ routes: domainRoutes() });
 
@@ -209,6 +242,73 @@ describe("prisma-v8 service domain add", () => {
     );
 
     expect(result.exitCode).toBe(0);
+  });
+
+  it("rejects a PRISMA_SERVICE_ID the project does not have as SERVICE.SELECTION_INVALID", async () => {
+    const harness = await makeServiceCli({ routes: domainRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "domain",
+        "add",
+        "shop.acme.com",
+        "--project",
+        "acme-app",
+        "--json",
+      ],
+      {
+        cwd: harness.cwd,
+        env: { ...harness.env, PRISMA_SERVICE_ID: "svc_missing" },
+      },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.SELECTION_INVALID");
+    expect(frame.envelope.nextActions).toEqual([
+      {
+        kind: "user-choice",
+        label:
+          "Unset PRISMA_SERVICE_ID, pass --service <name>, or deploy the service on the production branch.",
+      },
+    ]);
+  });
+
+  it("requires an existing service on the production branch", async () => {
+    const harness = await makeServiceCli({
+      routes: domainRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "domain",
+        "add",
+        "shop.acme.com",
+        "--project",
+        "acme-app",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.DOMAIN_TARGET_REQUIRED");
+    expect(frame.envelope.nextActions).toEqual([
+      {
+        kind: "run-command",
+        label: "Inspect the service",
+        command: "prisma-cli service show",
+      },
+    ]);
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {

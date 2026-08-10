@@ -23,7 +23,6 @@ import { serviceDomainRetryCommand } from "./service/domain-retry";
 import { serviceDomainShowCommand } from "./service/domain-show";
 import { serviceDomainWaitCommand } from "./service/domain-wait";
 import { serviceListDeploysCommand } from "./service/list-deploys";
-import { serviceLogsCommand } from "./service/logs";
 import { serviceOpenCommand } from "./service/open";
 import { servicePromoteCommand } from "./service/promote";
 import { serviceRemoveCommand } from "./service/remove";
@@ -47,7 +46,6 @@ export const MOUNTED_COMMANDS = {
   "service open": serviceOpenCommand,
   "service list-deploys": serviceListDeploysCommand,
   "service show-deploy": serviceShowDeployCommand,
-  "service logs": serviceLogsCommand,
   "service promote": servicePromoteCommand,
   "service rollback": serviceRollbackCommand,
   "service remove": serviceRemoveCommand,
@@ -89,7 +87,6 @@ export function buildCli(): Cli {
           serviceOpen: serviceOpenCommand,
           serviceListDeploys: serviceListDeploysCommand,
           serviceShowDeploy: serviceShowDeployCommand,
-          serviceLogs: serviceLogsCommand,
           servicePromote: servicePromoteCommand,
           serviceRollback: serviceRollbackCommand,
           serviceRemove: serviceRemoveCommand,

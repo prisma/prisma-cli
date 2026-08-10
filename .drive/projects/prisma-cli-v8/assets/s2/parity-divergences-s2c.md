@@ -94,8 +94,36 @@ unauthenticated runs with the engine's `CLI.CREDENTIALS_REQUIRED`
 The workspace those commands then act in comes from the engine's
 session (`ctx.session()`), which is the only sanctioned identity
 surface a handler has; no v8 command reads the credential file itself.
-The `service logs` entry under dispatch 3 records what moving to it
-fixed and what is left.
+The entry below records what moving to it fixed.
+
+### The workspace comes from the engine's session, not the credential file
+
+`requireWorkspace` (`src/v8/service/target.ts`) used to call `readAuthState`, which builds a `FileTokenStorage` and asks it for tokens (`src/auth/operations.ts`). That legacy reader and the engine's credential manager resolve to the same file by default, and that file's shape is about to change. Today `auth login` writes the legacy `{tokens: […]}` shape through `storeLegacyCredential` and `FileTokenStorage` reads it. Once the auth rework merges down from `bot/s2a-foundations`, `auth login` calls `credentialManager.createSession` instead, which writes `{version, sessions, currentWorkspaceId}`; `@prisma/credentials-store` reads `data.tokens || []`, finds nothing, and the legacy reader reports nobody signed in while `credentialManager.currentSession()` still returns a valid session.
+
+**This entry used to say the merge-down broke 13 of this slice's 20 commands and that the fix belonged to the auth stream. The count was right; the blame was not, and the misplaced part was ours.** That count describes the slice as it stood before `service deploy` and `service build` were dropped and before `service logs` was shelved, when it had 20 commands; it is history, and so is the list. With no tokens `readAuthState` returned `{authenticated: false}` and the command settled `SERVICE.WORKSPACE_REQUIRED`, so a credential file the legacy reader cannot parse made `deploy`, `show`, `open`, `list-deploys`, `logs`, `promote`, `rollback`, `remove` and all five `domain` commands unusable. But no v8 command should have been reading auth state that way at all. The engine hands a handler its identity through `ctx.session()`, answered by the credential manager, whose reader understands both the new `{version, sessions, currentWorkspaceId}` shape and the legacy `{tokens: […]}` one (`src/auth/state-file.ts` adopts the legacy store on read).
+
+**`requireWorkspace` now reads `ctx.session()`. Of the 13 that broke, 11 still ship, and the fix repairs all 11.** `show`, `open`, `list-deploys`, `promote`, `rollback`, `remove` and all five `domain` commands resolve their workspace after the merge-down exactly as they do before it. The other two are gone from the slice: `deploy` is no longer a v8 command at all, and `logs` is shelved — both under dispatch 4. `show-deploy` was never affected: it is the one caller that swallows a workspace failure and degrades to a missing live-deployment hint. `build logs`, the three `agent` commands and `feedback` read no auth state at all.
+
+**A workspace with no name now shows its id.** `Session.workspaceName`
+is optional where the old `AuthWorkspace.name` was required, so a
+session the manager could not name — a workspace-bound service token,
+or a login whose best-effort name fetch failed — presents as its
+workspace id (`workspace: ws_…`) instead of failing. Legacy asked the
+API for the name on every read and settled `WORKSPACE_REQUIRED` when it
+could not build a workspace at all; v8 prefers the identifier the user
+can still act on. `SERVICE.WORKSPACE_REQUIRED` itself is unchanged and
+still raised when there is no session.
+
+**The tests now seed one credential source.** Every service test used to
+mock `readAuthState` at the module seam while the engine's credential
+check was seeded through the credential manager, so the harness had two
+credential seams where production has one file — which is why nothing in
+the suite could see any of this. Those mocks are gone: the harness seeds
+a session on the credential manager and both the credentials check and
+the workspace come from it. `tests/v8-service-session.test.ts` pins the
+direction, seeding a session that names a workspace the Management API
+fake never reports for the project, so a run taking its identity from
+anywhere else resolves a different project or prints a different name.
 
 ### `service domain remove` consent
 
@@ -226,7 +254,7 @@ The deploy-only rows this table used to carry went with the command; see "`app d
 
 ### `--no-db` cannot be told apart from "not passed" (RETIRED — was an escalated engine gap)
 
-Retired: this was escalated to the operator as an engine gap and became moot when `service deploy` was dropped, because `--db` was a deploy flag and no shipped command declares it. Kept here so the escalation list reads honestly — six engine gaps went to the operator during this slice, two are retired here, and four are still open.
+Retired: this was escalated to the operator as an engine gap and became moot when `service deploy` was dropped, because `--db` was a deploy flag and no shipped command declares it. Kept here so the escalation list reads honestly — six engine gaps went to the operator during this slice, three are now retired (this one, the `prompt.text` validator below, and the log-stream token under dispatch 3), and three are still open.
 
 The engine's boolean flag is two-state with an automatic `--no-<name>`
 negation and a `false` default, so the legacy tri-state (`--db` request /
@@ -303,52 +331,37 @@ takes a constrained text answer will need it.
   become engine diagnostics on the completed envelope.
 
 
-## Dispatch 3 — the log streams (`service logs`, `build logs`)
+## Dispatch 3 — the log stream (`build logs`)
 
-### The rename (R-S2c-1)
-
-| Legacy invocation | v8 invocation | Also renamed on this command |
-| --- | --- | --- |
-| `prisma-cli app logs [app]` | `prisma-cli service logs [service]` | `--app <name>` → `--service <name>`; command id `app.logs` → `service.logs`; header row "app" → "service" |
+### The rename (R-S2c-1) does not reach this command
 
 `build logs <buildId>` keeps its spelling; its command id is `build.logs`
 and its errors move into the `BUILD.*` namespace.
 
+This dispatch also ported `app logs` as `service logs`. That command is shelved and does not ship — see "`service logs` is shelved" under dispatch 4 — so the entries describing it are gone from this file, and the entries it shared with `build logs` now describe `build logs` alone.
+
 ### Records become engine events (R-S2c-2)
 
-Both commands are session commands. Every record becomes an `output`
-event, and the channel decides where human mode writes it:
-
-- `service logs`: log text is `data` (stdout, as legacy). The header —
-  legacy's `renderCommandHeader` block — is three `diagnostic` lines
-  (`project:`, `service:`, `deployment:`) rather than a rendered block,
-  and terminal records other than the normal `end` are `diagnostic`
-  (legacy dropped them in human mode entirely).
-- `build logs`: a record is `diagnostic` when its source is `stderr` or
-  its level is `error`, `data` otherwise — the legacy routing exactly.
-  A terminal record whose code is not `end` (e.g. `no_logs`) is a
-  `diagnostic` line, as legacy did.
+`build logs` is a session command. Every record becomes an `output`
+event, and the channel decides where human mode writes it: a record is
+`diagnostic` when its source is `stderr` or its level is `error`, `data`
+otherwise — the legacy routing exactly. A terminal record whose code is
+not `end` (e.g. `no_logs`) is a `diagnostic` line, as legacy did.
 
 Json mode: the engine frames one event per record and terminates with
 exactly one result frame. Legacy `build logs` set
 `emitJsonSuccessEvent: false` so its json stream had NO wrapper event;
 that opt-out does not port — the engine's framing is uniform, so a
-completed `build logs` now ends with a result frame. Legacy
-`service logs` emitted a per-record json event plus the wrapper; the
-per-record events survive as `output` frames with the engine's own
-envelope shape (`{kind, source, channel, line, commandId, timestamp}`)
-instead of the legacy `{type, command, timestamp, data}` shape.
+completed `build logs` now ends with a result frame. Each record's own
+frame is an `output` frame with the engine's envelope shape
+(`{kind, source, channel, line, commandId, timestamp}`) instead of the
+legacy `{type, command, timestamp, data}` shape.
 
 The record's own fields ride in the event's free-form `data`, so a json
-consumer keeps everything legacy published per record: `build logs`
-carries `cursor`, `level`, `source` and `step`; `service logs` carries
-`byteStart` and `byteEnd`; and a reported terminal record (a `no_logs`
-end, any error terminal) carries `kind`, `cursor`, `code` and
-`retryable`, plus `details` on `service logs`, which is the only stream
-whose terminal records have that field. `kind` matters most on
-`service logs`: a terminal error there is one diagnostic frame and the
-run still settles 0, so `kind: "error"` is the only thing telling a
-consumer the stream ended in failure rather than normally.
+consumer keeps everything legacy published per record: `cursor`,
+`level`, `source` and `step` on a log record, and `kind`, `cursor`,
+`code` and `retryable` on a reported terminal record (a `no_logs` end,
+any error terminal).
 
 Two json-surface losses remain, both because the engine owns rendering
 and a handler cannot see the format:
@@ -363,17 +376,15 @@ and a handler cannot see the format:
   there. Carrying it needs an engine event kind that is framed in json
   and silent in human mode; the only such kind is `remediation`, which
   carries a `NextAction` and means something else.
-- **The headers are framed too.** Legacy wrote its headers only when
-  neither `--json` nor `--quiet` was set. `--quiet` still hides them in
-  v8 — they are `diagnostic` output, whose display severity is `info`,
+- **The header is framed too.** Legacy wrote its header only when
+  neither `--json` nor `--quiet` was set. `--quiet` still hides it in
+  v8 — it is `diagnostic` output, whose display severity is `info`,
   and `--quiet` is a log-level alias — but `--json` does not, because a
   handler cannot read the format and must not branch on it. A json
-  consumer therefore reads one extra `output` frame before the
-  `build logs` records ("Streaming logs for build <id>") and three
-  before the `service logs` records (`project:`, `service:`,
-  `deployment:`).
+  consumer therefore reads one extra `output` frame before the records
+  ("Streaming logs for build <id>").
 
-Both commands default to json when stdout is not a TTY (engine
+`build logs` defaults to json when stdout is not a TTY (engine
 auto-format), where legacy defaulted to human text unless `--json` was
 passed.
 
@@ -398,7 +409,9 @@ a documented exit 1), or `build logs` becomes a result command with a
 documented code in 4–99. One line in `src/v8/build/logs.ts` changes
 either way.
 
-### `service logs`: the log stream has no sanctioned token (ESCALATED — engine gap)
+### `service logs`: the log stream has no sanctioned token (RETIRED — was an escalated engine gap)
+
+Retired: this was escalated to the operator as an engine gap and became unreachable when `service logs` was shelved, because no shipped command asks for a raw token. It is the gap the shelve waits on, so the description below stays as the statement of what the engine has to grow before the command can be ported — see "`service logs` is shelved" under dispatch 4.
 
 The log stream does not go through the Management API client: it opens
 its own connection and needs the raw access token (legacy built one
@@ -419,135 +432,14 @@ the engine documents as staged for deletion:
   the credential file — the same two sources, in the same order, that
   legacy used.
 
-v8 asks `ctx.getCredentials()` and, when it resolves nothing, settles
-with `SERVICE.LOG_STREAM_CREDENTIALS_UNAVAILABLE` instead of reading the
-token file or the env var itself.
+v8 asked `ctx.getCredentials()` and, when it resolved nothing, settled with `SERVICE.LOG_STREAM_CREDENTIALS_UNAVAILABLE`; that error builder is deleted with the command. Whether it ever fired was decided by the shape of the credential file rather than by whether the user was signed in, which is the trap this entry existed to record. Today `auth login` writes the legacy `{tokens: […]}` shape through `storeLegacyCredential` and `FileTokenStorage` reads it, so the error was unreachable. Once the auth rework merges down from `bot/s2a-foundations`, `auth login` calls `credentialManager.createSession` instead, `@prisma/credentials-store` reads `data.tokens || []` and finds nothing, and every signed-in user who had not set `PRISMA_SERVICE_TOKEN` would have hit it. The workspace half of the same problem was real for the commands that do ship, and it is fixed — see "The workspace comes from the engine's session, not the credential file" under dispatch 1.
 
-**Whether that error ever fires is decided by the shape of the
-credential file, and that shape is about to change.** Both credential
-surfaces resolve to the same file by default. Today `auth login` writes
-the legacy `{tokens: […]}` shape through `storeLegacyCredential`,
-`FileTokenStorage` reads it, and `service logs` streams — so the error
-is unreachable and this entry describes a path nobody hits. Once the
-auth rework merges down from `bot/s2a-foundations`, `auth login` calls
-`credentialManager.createSession` instead, which writes
-`{version, sessions, currentWorkspaceId}`; `@prisma/credentials-store`
-reads `data.tokens || []`, finds nothing, and `ctx.getCredentials()`
-resolves `undefined` while `credentialManager.currentSession()` still
-returns a valid session. Anyone who sets `PRISMA_SERVICE_TOKEN` is
-unaffected either way, because that path short-circuits ahead of the
-file read.
-
-**This entry used to say the merge-down broke 13 of this slice's 20
-commands and that the fix belonged to the auth stream. The count was
-right; the blame was not, and the misplaced part was ours.** That count
-describes the slice as it stood before `service deploy` and
-`service build` were dropped, when it had 20 commands; it is history, and
-the list below is the historical one.
-`requireWorkspace` (`src/v8/service/target.ts`) called `readAuthState`,
-which builds a `FileTokenStorage` and asks it for tokens
-(`src/auth/operations.ts`) — the same call `ctx.getCredentials()`
-makes. With no tokens it returned `{authenticated: false}` and the
-command settled `SERVICE.WORKSPACE_REQUIRED`, so a credential file the
-legacy reader cannot parse made `deploy`, `show`, `open`,
-`list-deploys`, `logs`, `promote`, `rollback`, `remove` and all five
-`domain` commands unusable. But no v8 command should have been reading
-auth state that way at all. The engine hands a handler its identity
-through `ctx.session()`, answered by the credential manager, whose
-reader understands both the new `{version, sessions,
-currentWorkspaceId}` shape and the legacy `{tokens: […]}` one
-(`src/auth/state-file.ts` adopts the legacy store on read).
-
-**`requireWorkspace` now reads `ctx.session()`. Of the 13 that broke, 12
-still ship, and the fix repairs 11 of those.** `show`, `open`,
-`list-deploys`, `promote`, `rollback`, `remove` and all five `domain`
-commands resolve their workspace after the merge-down exactly as they do
-before it. The thirteenth, `deploy`, is no longer a v8 command at all.
-`show-deploy` was never affected: it is the one caller that swallows a
-workspace failure and degrades to a missing live-deployment hint.
-`build logs`, the three `agent` commands and `feedback` read no auth
-state at all.
-
-**What is left is `service logs`, and only its token.** It resolves its
-workspace correctly now, then still asks `ctx.getCredentials()` for the
-raw token the stream needs, and that accessor still reads the credential
-file through `FileTokenStorage`. After the merge-down it becomes the one
-command in this slice that fails for a signed-in user whose other
-commands all work, and it fails at
-`SERVICE.LOG_STREAM_CREDENTIALS_UNAVAILABLE` rather than at
-`WORKSPACE_REQUIRED`. Anyone who sets `PRISMA_SERVICE_TOKEN` is
-unaffected, because that path short-circuits ahead of the file read.
-
-**A workspace with no name now shows its id.** `Session.workspaceName`
-is optional where the old `AuthWorkspace.name` was required, so a
-session the manager could not name — a workspace-bound service token,
-or a login whose best-effort name fetch failed — presents as its
-workspace id (`workspace: ws_…`) instead of failing. Legacy asked the
-API for the name on every read and settled `WORKSPACE_REQUIRED` when it
-could not build a workspace at all; v8 prefers the identifier the user
-can still act on. `SERVICE.WORKSPACE_REQUIRED` itself is unchanged and
-still raised when there is no session.
-
-**The tests now seed one credential source.** Every service test used to
-mock `readAuthState` at the module seam while the engine's credential
-check was seeded through the credential manager, so the harness had two
-credential seams where production has one file — which is why nothing in
-the suite could see any of this. Those mocks are gone: the harness seeds
-a session on the credential manager and both the credentials check and
-the workspace come from it. `tests/v8-service-session.test.ts` pins the
-direction, seeding a session that names a workspace the Management API
-fake never reports for the project, so a run taking its identity from
-anywhere else resolves a different project or prints a different name.
-
-Ruling still needed, on the token only. The engine should expose a token
-accessor for self-authenticating streams (or hand the log stream a
-client the way `ctx.api` is handed over) — one line in
-`src/v8/service/logs.ts` changes when it does.
-
-**Second, smaller engine ask, and it is why the `service logs` tests are
-currently red.** Those tests seed `rawTokenSeed`, which selects
-`createTestCli`'s manager-less runtime — the only way the harness makes
-`ctx.getCredentials()` resolve a token. A manager-less runtime has no
-session at all, so with the workspace now coming from `ctx.session()`
-every one of those runs settles `SERVICE.WORKSPACE_REQUIRED`. The
-shipping bin wires a credential manager and `getCredentials` together
-(`src/v8/runtime.ts`), but `createTestCli` rejects that combination
-(`packages/cli-engine/src/testing.ts`) and defines `getCredentials` as
-the seeded value, so no harness can model the runtime the product
-actually assembles. The smallest fix is to let the harness's
-`getCredentials` honour a seeded `environmentToken`, mirroring the
-shipping `makeGetCredentials`, which returns `PRISMA_SERVICE_TOKEN`
-first; the log-stream tests would then seed one token and get both
-halves. Held pending that ruling rather than worked around.
-
-### `service logs` behavior
-
-- **`--deployment <id>` needs no service when nothing names one.** Legacy
-  folded the compute-config service name in first
-  (`appName = appName ?? compute.configAppName`) and only then chose
-  between the service-scoped lookup and the global one, so a directory
-  holding a `prisma.compute.ts` always took the scoped path. v8
-  reproduces that: `--service`, the positional config target, and the
-  config's own target all count as naming a service, and only a run that
-  names none resolves the id globally. The global path still skips the
-  service picker entirely, so `service logs --deployment <id>` in a
-  directory with no compute config works non-interactively. (The naive
-  port would have prompted, because the shared read flow selects a
-  service.)
-- The three `DEPLOYMENT_NOT_FOUND` variants port unchanged in meaning:
-  unknown id, a deployment with no service, and a deployment outside the
-  resolved project — all `SERVICE.DEPLOYMENT_NOT_FOUND` (exit 2; legacy
-  exit 1), distinguished by their summaries.
-- A cancelled stream (Ctrl-C) is a clean shutdown, exit 0, as legacy.
+A second, smaller engine ask retires with this one, and it is why the `service logs` tests were red. Those tests seeded `rawTokenSeed`, which selects `createTestCli`'s manager-less runtime — the only way the harness made `ctx.getCredentials()` resolve a token. A manager-less runtime has no session at all, so once the workspace came from `ctx.session()` every one of those runs settled `SERVICE.WORKSPACE_REQUIRED`. The shipping bin wires a credential manager and `getCredentials` together (`src/v8/runtime.ts`), but `createTestCli` rejects that combination (`packages/cli-engine/src/testing.ts`), so no harness could model the runtime the product assembles. The tests are deleted with the command and the seed is gone from the testkit; whatever transport the engine grows for the ported command will need a harness seam of its own.
 
 ### Error-code mapping (dispatch 3 additions)
 
 | Legacy flat code (exit) | v8 dotted code (exit) | Commands |
 | --- | --- | --- |
-| `DEPLOYMENT_NOT_FOUND` (1) — three variants | `SERVICE.DEPLOYMENT_NOT_FOUND` (2) | service logs |
-| `NO_DEPLOYMENTS` (1) | `SERVICE.NO_DEPLOYMENTS` (2) | service logs |
-| `DEPLOY_FAILED` (1) | `SERVICE.DEPLOY_FAILED` (2) | service logs (stream failure) |
-| *(none — legacy read the token itself)* | `SERVICE.LOG_STREAM_CREDENTIALS_UNAVAILABLE` (2) | service logs (see the gap above) |
 | `BUILD_NOT_FOUND` (1) | `BUILD.NOT_FOUND` (2) | build logs |
 | `BUILD_LOGS_FAILED` (1) | `BUILD.LOGS_FAILED` (2) | build logs |
 | *(exit code 1, no error)* | `BUILD.FAILED` (2) | build logs (see the gap above) |
@@ -678,15 +570,33 @@ command with it. Anyone running a local dev server through
 
 ### `app deploy` and `app build` are dropped (operator ruling, 2026-08-10)
 
-`prisma-cli app deploy` and `prisma-cli app build` have no v8 counterpart. Composer supersedes both. Like `app run`, this is a ruled drop and not a deferral: neither command will be ported as it stands, so there is no `service deploy` and no `service build`, and the slice ships 18 commands rather than 20.
+`prisma-cli app deploy` and `prisma-cli app build` have no v8 counterpart. Composer supersedes both. Like `app run`, this is a ruled drop and not a deferral: neither command will be ported as it stands, so there is no `service deploy` and no `service build`, and this ruling took the slice from 20 commands to 18. (The `service logs` shelve below then took it to 17, which is what ships.)
 
 The reasoning is about the shape of the command, not about how the port went. `app deploy` conflates two different jobs — compiling the service on the developer's machine, and uploading the resulting tarball to the platform — and that shape is wrong. Future commands are to work directly with platform Compute resources instead of shipping a locally built archive. `app build` is the local-compiling half of the same job, so it goes with it.
 
 Nobody loses a command today. The legacy commander shell still serves `app deploy` and `app build`, and keeps serving them until S2d deletes the shell. What that deletion replaces them with is a Composer question, not a port question, so unlike `app run` this drop does leave something for S2d to answer.
 
-Two engine gaps escalated during this slice existed only for `app deploy` and are retired with it: the `--db` / `--no-db` three-way flag problem, and the missing validator on `prompt.text`. Both are recorded as retired entries under dispatch 2, so the escalation list goes from six to four. The consent table under dispatch 2 loses `service deploy`'s production replace and is down to two consent points. The dispatch 1 and dispatch 2 divergence entries that described only these two commands are gone, and the entries that covered several commands now name only the ones that ship.
+Two engine gaps escalated during this slice existed only for `app deploy` and are retired with it: the `--db` / `--no-db` three-way flag problem, and the missing validator on `prompt.text`. Both are recorded as retired entries under dispatch 2, so this ruling took the open escalations from six to four (the `service logs` shelve below then took them to three). The consent table under dispatch 2 loses `service deploy`'s production replace and is down to two consent points. The dispatch 1 and dispatch 2 divergence entries that described only these two commands are gone, and the entries that covered several commands now name only the ones that ship.
 
 The tap this slice added to legacy code for `service build` is reverted. `executeAppBuild` and `resolveAppBuildStrategy` (`packages/cli/src/lib/app/build.ts`) had gained an optional `io` parameter so the v8 command could stream the bundler's per-line output as engine events; nothing in the legacy shell ever passed it, so the parameter is removed and the file is back to what it was.
+
+### `service logs` is shelved (operator ruling, 2026-08-10)
+
+`prisma-cli service logs` does not ship in this slice. This is a shelve, not a drop: unlike `app deploy`, the command is coming back in the shape it has, as soon as the engine can carry the connection it needs. Nothing about the command is wrong; the engine cannot yet transport it. The slice ships 17 commands.
+
+The reason is the transport. The log endpoint (`/v1/deployments/{deploymentId}/logs`) is an HTTP request that upgrades to a **WebSocket**, so the compute SDK opens its own socket and sets an `Authorization` header on the upgrade. The engine's API client is HTTP-only and cannot open or authenticate a socket, which is why the ported command reached for a raw token through `ctx.getCredentials()` — and the ruled credential design says commands never receive credentials. Porting it correctly therefore waits on the engine owning authenticated WebSocket transport. The operator has ruled that engine work into a later slice, and the orchestrator is writing its design now; when it lands, the command returns as it stands, with its handler asking the engine for a stream instead of asking for a token.
+
+Two facts about the endpoint belong in the record, because whatever the engine grows has to serve them. The endpoint is marked **experimental** in the Management API specification, so its shape is not yet a stable contract. And the stream ends after ten minutes: continuing means reconnecting with the cursor the stream last reported, so a long tail is a sequence of connections, not one.
+
+What went with the command: `src/v8/service/logs.ts` and `tests/v8-service-logs.test.ts`; its mount in `src/v8/cli.ts`; the `SERVICE.LOG_STREAM_CREDENTIALS_UNAVAILABLE` error builder and the two `SERVICE.DEPLOYMENT_NOT_FOUND` variants only it raised (a deployment with no service, and a deployment outside the resolved project); `getCredentials` on the service commands' `ServiceContext`, which no shipped command now needs; and the read flow's `skipSelectionWhenUnnamed` / `namedService` pair, which existed only so a bare `--deployment <id>` could skip the service picker. The escalated log-stream token gap is retired with it (dispatch 3), and so is the smaller harness ask that kept its tests red. The legacy `prisma-cli app logs` still ships and still streams, until S2d deletes the commander shell.
+
+### Surviving commands no longer suggest a follow-up command
+
+Ten typed next actions across the shipped commands told the user to run `service deploy`, which the binary has not answered to since `app deploy` was dropped. They are removed. The errors and results keep their explanation and lose the action, so an empty `nextActions` array is now a normal outcome — `service show` on a project with nothing deployed, `service list-deploys` with an empty listing, and a failed deployment listing all offer nothing to run.
+
+The removals: `SERVICE.NO_DEPLOYMENTS`, `SERVICE.TARGET_REQUIRED` and `SERVICE.NO_PREVIOUS_DEPLOYMENT` lose "Deploy the service"; `SERVICE.DOMAIN_TARGET_REQUIRED`, the `PRISMA_SERVICE_ID` selection error and the domain-add 422 lose "Deploy to production"; `service list-deploys`'s own `SERVICE.DEPLOY_FAILED` loses the single action it carried; and the `service show`, `service list-deploys` and `service remove` presentations lose theirs. All ten are pinned by tests asserting the surviving actions exactly.
+
+They can come back pointing at Composer once those commands exist. Nothing about the underlying situation changed — a user with no deployment still has to deploy something — so this is a loss of guidance, not of capability.
 
 ### The crash-recovery feedback action does not port (ESCALATED — engine gap)
 

@@ -93,8 +93,6 @@ export function showPresentations(result: ServiceShowResult): Presentations {
         `service show-deploy ${inspectable.id}`,
       ),
     );
-  } else {
-    next.push(runCommandAction("Deploy the service", "service deploy"));
   }
   return {
     human: () => [
@@ -155,7 +153,7 @@ export function listDeploysPresentations(
               `service show-deploy ${newest.id}`,
             ),
           ]
-        : [runCommandAction("Deploy the service", "service deploy")];
+        : [];
     },
   };
 }
@@ -289,10 +287,7 @@ export function removePresentations(
         { label: "removed", value: "yes" },
       ]),
     ],
-    next: () => [
-      runCommandAction("Deploy the service", "service deploy"),
-      runCommandAction("List deployments", "service list-deploys"),
-    ],
+    next: () => [runCommandAction("List deployments", "service list-deploys")],
   };
 }
 

@@ -43,6 +43,15 @@ describe("prisma-v8 service remove", () => {
       tone: "ok",
       text: "Removed hello-world and every deployment it owned.",
     });
+    // A removal used to offer `service deploy`; the binary has no such
+    // command, so listing deployments is all that is left to suggest.
+    expect(result.presented?.presentation.next).toEqual([
+      {
+        kind: "run-command",
+        label: "List deployments",
+        command: "prisma-cli service list-deploys",
+      },
+    ]);
   });
 
   it("emits the remove step around the teardown progress and the deleted status", async () => {
@@ -386,6 +395,18 @@ describe("prisma-v8 service remove", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
+    expect(frame.envelope.nextActions).toEqual([
+      {
+        kind: "user-choice",
+        label:
+          "Deploy a service first, or rerun remove with --service <name> once a service exists.",
+      },
+      {
+        kind: "run-command",
+        label: "List deployments",
+        command: "prisma-cli service list-deploys",
+      },
+    ]);
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {

@@ -114,6 +114,14 @@ describe("prisma-v8 service open", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("SERVICE.NO_DEPLOYMENTS");
+    // No action suggests `service deploy`: the binary does not answer to it.
+    expect(frame.envelope.nextActions).toEqual([
+      {
+        kind: "run-command",
+        label: "Inspect the service",
+        command: "prisma-cli service show",
+      },
+    ]);
   });
 
   it("settles a service without a live URL as SERVICE.FEATURE_UNAVAILABLE", async () => {

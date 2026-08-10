@@ -308,21 +308,6 @@ export interface ServiceCliOptions {
   /** The browser opener behind ctx.openUrl; pass a spy to assert what
    *  a run opened. */
   openUrl?: (url: string) => Promise<void> | void;
-  /**
-   * Seeds the engine's manager-less `credentials` fallback instead of the
-   * credential manager, so ctx.getCredentials() resolves a raw token.
-   * ESCALATED: the log stream authenticates itself and needs that token,
-   * and the credential manager exposes none to a session command — see
-   * the divergence file. Only the log-stream tests use this.
-   *
-   * BROKEN, and blocked on the engine: a manager-less runtime has no
-   * session, so every service command now fails at
-   * SERVICE.WORKSPACE_REQUIRED. The shipping bin wires a credential
-   * manager AND getCredentials together, but createTestCli rejects that
-   * combination, so no harness can model it. The log-stream tests stay
-   * red until the harness can seed both.
-   */
-  rawTokenSeed?: boolean;
 }
 
 export interface ServiceCliHarness {
@@ -347,27 +332,25 @@ export async function makeServiceCli(
     // The credential manager is the shipping path for needs.credentials
     // and for the workspace every service command resolves through
     // ctx.session(); an unauthenticated harness simply seeds no session.
-    ...(options.rawTokenSeed
-      ? { credentials: { token: "tok_1" } }
-      : options.authenticated === false
-        ? {}
-        : {
-            sessions: [
-              {
-                workspaceId: workspace.id,
-                workspaceName: workspace.name,
-                credential: {
-                  token: mintTestJwt({
-                    sub: "usr_1",
-                    workspace_id: workspace.id,
-                  }),
-                  refreshToken: undefined,
-                  expiresAt: undefined,
-                },
+    ...(options.authenticated === false
+      ? {}
+      : {
+          sessions: [
+            {
+              workspaceId: workspace.id,
+              workspaceName: workspace.name,
+              credential: {
+                token: mintTestJwt({
+                  sub: "usr_1",
+                  workspace_id: workspace.id,
+                }),
+                refreshToken: undefined,
+                expiresAt: undefined,
               },
-            ],
-            currentWorkspaceId: workspace.id,
-          }),
+            },
+          ],
+          currentWorkspaceId: workspace.id,
+        }),
     managementApi: {
       client: fakeManagementClient(options.routes ?? readFlowRoutes()),
     },

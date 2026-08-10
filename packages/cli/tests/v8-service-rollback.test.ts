@@ -185,6 +185,19 @@ describe("prisma-v8 service rollback", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("SERVICE.NO_PREVIOUS_DEPLOYMENT");
+    // The advice stays; the `service deploy` action is gone with the command.
+    expect(frame.envelope.nextActions).toEqual([
+      {
+        kind: "user-choice",
+        label:
+          "Deploy a second version first, or pass --to <deployment-id> for a specific earlier deployment.",
+      },
+      {
+        kind: "run-command",
+        label: "List deployments",
+        command: "prisma-cli service list-deploys",
+      },
+    ]);
   });
 
   it("settles a failing promote call as SERVICE.DEPLOY_FAILED after a failed step", async () => {

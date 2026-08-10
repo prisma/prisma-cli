@@ -84,6 +84,8 @@ describe("prisma-v8 service show", () => {
       liveUrl: null,
       recentDeployments: [],
     });
+    // Nothing to inspect and no `service deploy` to offer, so no actions.
+    expect(result.presented?.presentation.next).toEqual([]);
   });
 
   it("emits the completed json envelope with commandId service.show", async () => {

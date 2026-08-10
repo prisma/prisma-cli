@@ -293,7 +293,6 @@ describe("buildCli", () => {
       "service domain show",
       "service domain wait",
       "service list-deploys",
-      "service logs",
       "service open",
       "service promote",
       "service remove",

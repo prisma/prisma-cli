@@ -159,10 +159,7 @@ export function noDeploymentsError(
 ): CliStructuredError {
   return new CliStructuredError("SERVICE.NO_DEPLOYMENTS", summary, {
     why,
-    nextActions: [
-      runCommandAction("Deploy the service", "service deploy"),
-      runCommandAction("Inspect the service", "service show"),
-    ],
+    nextActions: [runCommandAction("Inspect the service", "service show")],
   });
 }
 
@@ -204,61 +201,6 @@ export function deploymentNotFoundForServiceError(
 }
 
 /** promote / rollback / remove need a service that already exists. */
-export function deploymentDetachedError(
-  deploymentId: string,
-): CliStructuredError {
-  return new CliStructuredError(
-    "SERVICE.DEPLOYMENT_NOT_FOUND",
-    `Deployment "${deploymentId}" is not attached to a service`,
-    {
-      why: "The requested deployment could be found, but its service could not be resolved.",
-      nextActions: [
-        runCommandAction(
-          "Choose an available deployment id",
-          "service list-deploys",
-        ),
-      ],
-    },
-  );
-}
-
-export function deploymentOutsideProjectError(
-  deploymentId: string,
-): CliStructuredError {
-  return new CliStructuredError(
-    "SERVICE.DEPLOYMENT_NOT_FOUND",
-    `Deployment "${deploymentId}" not found in the resolved project`,
-    {
-      why: "The requested deployment does not belong to a service in the resolved project.",
-      nextActions: [
-        adviceAction(
-          "Pass --project <id-or-name> for the project that owns it, or choose a deployment from this project.",
-        ),
-        runCommandAction("List deployments", "service list-deploys"),
-      ],
-    },
-  );
-}
-
-/** The log stream authenticates itself, so it needs the raw token
- *  ctx.getCredentials resolves. Whether one resolves is decided by the
- *  shape of the credential file, not by being signed in: today
- *  `auth login` writes the legacy `{tokens: […]}` shape, which that
- *  reader understands, so this error is unreachable. Once the auth
- *  rework merges down, `auth login` writes a credential-manager session
- *  instead, the reader finds nothing there, and this becomes the live
- *  path for every signed-in user who has not set PRISMA_SERVICE_TOKEN. */
-export function logStreamCredentialsError(): CliStructuredError {
-  return new CliStructuredError(
-    "SERVICE.LOG_STREAM_CREDENTIALS_UNAVAILABLE",
-    "No credentials are available for the log stream",
-    {
-      why: "Log streaming authenticates directly against the log endpoint and could not resolve a token for this session.",
-      nextActions: [runCommandAction("Sign in", "auth login")],
-    },
-  );
-}
-
 export function releaseTargetRequiredError(
   command: "promote" | "rollback" | "remove",
 ): CliStructuredError {
@@ -271,7 +213,6 @@ export function releaseTargetRequiredError(
         adviceAction(
           `Deploy a service first, or rerun ${command} with --service <name> once a service exists.`,
         ),
-        runCommandAction("Deploy the service", "service deploy"),
         runCommandAction("List deployments", "service list-deploys"),
       ],
     },
@@ -288,7 +229,6 @@ export function noPreviousDeploymentError(): CliStructuredError {
         adviceAction(
           "Deploy a second version first, or pass --to <deployment-id> for a specific earlier deployment.",
         ),
-        runCommandAction("Deploy the service", "service deploy"),
         runCommandAction("List deployments", "service list-deploys"),
       ],
     },
@@ -405,13 +345,7 @@ export function domainTargetRequiredError(): CliStructuredError {
     "Custom domain requires an existing service on the production branch",
     {
       why: "The resolved production branch does not have a service that can receive a custom domain.",
-      nextActions: [
-        runCommandAction(
-          "Deploy to production first",
-          "service deploy --branch production",
-        ),
-        runCommandAction("Inspect the service", "service show"),
-      ],
+      nextActions: [runCommandAction("Inspect the service", "service show")],
     },
   );
 }
@@ -429,10 +363,6 @@ export function selectedServiceMissingError(
       nextActions: [
         adviceAction(
           `Unset ${envVarName}, pass --service <name>, or deploy the service on the production branch.`,
-        ),
-        runCommandAction(
-          "Deploy to production",
-          "service deploy --branch production",
         ),
       ],
     },
@@ -587,10 +517,6 @@ export function domainCommandError(
           why: "The selected production service does not have a promoted version that can receive a custom domain.",
           meta: debugMeta(error),
           nextActions: [
-            runCommandAction(
-              "Deploy to production",
-              "service deploy --branch production",
-            ),
             runCommandAction(
               "Add the domain",
               `service domain add ${hostname}`,

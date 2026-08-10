@@ -5,7 +5,7 @@ import { CLI_NAME } from "../../cli-name";
 
 /**
  * One line of `GET /v1/builds/{buildId}/logs` (the `BuildLogNdjsonLine`
- * schema). Build logs are a separate system from `service logs`: this
+ * schema). Build logs are a separate system from deployment logs: this
  * stream is keyed by Build.id (a git-push / Console build), not a
  * deployment id.
  */

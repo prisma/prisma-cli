@@ -57,6 +57,9 @@ describe("prisma-v8 service list-deploys", () => {
       service: null,
       deployments: [],
     });
+    // An empty listing offers no action: `service deploy` is not a command
+    // this binary answers to.
+    expect(result.presented?.presentation.next).toEqual([]);
   });
 
   it("emits the completed json envelope with commandId service.list-deploys", async () => {
@@ -119,6 +122,7 @@ describe("prisma-v8 service list-deploys", () => {
     expect(frame.envelope.error.summary).toBe(
       "Failed to list service deployments",
     );
+    expect(frame.envelope.nextActions).toEqual([]);
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {
