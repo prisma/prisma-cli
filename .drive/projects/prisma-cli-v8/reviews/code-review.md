@@ -18,6 +18,7 @@ Slice: s2b-resources (contract `../specs/s2b-resources.md`, plan
 | D1 | 2 | SATISFIED | 2026-08-10 |
 | D2 | 1 | SATISFIED | 2026-08-10 |
 | D3 | 1 | SATISFIED (git connect step 5 excluded) | 2026-08-10 |
+| D3 | 2 | SATISFIED | 2026-08-10 |
 
 ## Findings log
 
@@ -224,7 +225,267 @@ untested in both groups that map it; and the five near-identical
 group mappers have drifted on whether they handle `#`-comment next
 steps.
 
+### D3 round 2
+
+One should-fix finding. `git connect` step 5 matches all four points of
+the STEP 5 RESOLVED block and the rest of §3.8, and I found no defect in
+it.
+
+**D3-R2-01 — should-fix — `packages/cli/tests/v8-git.test.ts:526-568`**
+Divergence 45 states a behavior change with no test behind it:
+"Cancelling with Ctrl-C during the wait now settles
+`CLI.PROMPT_CANCELLED`, exit 3, where the legacy loop aborted with the
+shell's `COMMAND_CANCELED`, exit 130." I traced the claim through the
+engine and it is correct — `waitFor` resolves rather than rejects on
+abort (`packages/cli-engine/src/execution/engine.ts:128-143`), so an
+abort during the sleep falls through to the top-of-loop check at
+`packages/cli-engine/src/execution/prompts.ts:419-421`, which throws
+`CLI.PROMPT_CANCELLED`, and `settlement.ts:97` gives that code exit 3 —
+but nothing in the suite proves it, and nothing proves the handler's
+narrow catch lets it past. This is the only exit-code change in the
+slice with zero coverage. The test is cheap: `createTestCli().run()
+` already accepts an `abort` signal (`packages/cli-engine/src/testing.ts:41`,
+`:247-253`) and the `delay` spy the two new timeout tests already use
+receives the run signal, so a spy that aborts on its first call drives
+the cancel deterministically, next to the timeout case at
+`tests/v8-git.test.ts:526`. Assert `CLI.PROMPT_CANCELLED` and exit 3.
+This is the same shape as D2-R1-03, where asserting an unproven claim
+turned out to expose a test route that never matched.
+
+### D3 round 2 — dispositions (orchestrator, 2026-08-10)
+
+**D3-R2-01 — FIXED.** `tests/v8-git.test.ts` gains a case that aborts
+during the sleep between polls and asserts `CLI.PROMPT_CANCELLED` at
+exit 3. The claim in divergence 45 was true, but it was true by
+reading the engine; it is now true by running it.
+
+The six closure items, dispositioned:
+
+1. **Contract count — FIXED.** `s2b-resources.md` said 30 in its
+   heading and acceptance box while enumerating 31. There are 31
+   commands and 31 are mounted, so both numbers now read 31.
+2. **No golden representative for a masked secret row — NOT ADDED,
+   deliberately.** The masking itself is engine-owned and
+   engine-tested: `rendering.ts:82` renders a `sensitive` row as
+   `********`, proven by `cli-engine/tests/execution.test.ts:662`. Our
+   side asserts that the right rows carry `sensitive: true`, per
+   command. So R-S2b-4 is proven at both ends, and a golden entry
+   would only add byte-level proof of the composition. Conventions §10
+   says to extend the golden file by exactly the entries the child
+   docs name and nothing else, and no child doc names one, so adding
+   it is out of contract without an amendment. Recorded for the
+   closure loop to overrule if it disagrees.
+3. **Mapper `#`-comment drift — NOT A DEFECT.** `#`-comment next steps
+   exist only in `app-env-file.ts`, which is project env. Nothing
+   reachable from bucket, branch or git can produce one, so the three
+   mappers that omit the handling are correctly scoped; adding it
+   would be dead code.
+4. **`run-command` actions carrying literal placeholders** — with the
+   operator, together with a related rendering defect found by running
+   the built CLI: where a mapped error's next step is a bare command
+   string, label and command are identical and the engine prints both,
+   so the action renders as `→ X: X`. The fix is one line in
+   `renderNextAction`, which is engine territory.
+5. **`PROJECT_AMBIGUOUS` pointing at `app deploy`** — left as ported.
+   It is a pre-existing quirk, recorded as a divergence, and S2c
+   resolves it by porting that command.
+6. **The credential-manager flake** — the auth stream's, reported to
+   the operator with a diagnosis: it passes every run under
+   `--no-file-parallelism` and fails roughly two runs in three under
+   normal parallelism, always that one case, always at about 5005ms.
+
 ## Round notes
+
+### D3 round 2 — 2026-08-10
+
+Step 5 is right. `resolveInstalledRepository`
+(`packages/cli/src/v8/git/connect.ts:51-120`) reproduces the legacy
+function's shape — one inspection, then the install intent, then the
+wait — and hands the loop to `ctx.prompt.browserWait`. There is no
+hand-rolled polling: no loop, no sleep, no clock read in the handler. The
+handler emits no events, and the poll-then-found test asserts
+`result.events` equals exactly one `endpoint` event carrying the legacy
+wait sentence and the install URL, which proves both that the helper's
+single event is the whole event surface and that the handler adds none.
+
+All four resolved points are honored. The interval and timeout are read
+from `ctx.env` through the legacy `readPositiveIntegerEnv` with the
+legacy constants, all three imported rather than restated, so the
+"non-positive or unparseable falls back to the default" semantics port by
+construction; the poll-then-found test asserts the loop asked for 1 ms
+under the env var and the timeout test asserts it asked for 2000 with no
+env var, so both the passthrough and the fallback are proven. `opened` is
+gone: both terminal errors assert `meta` with `toEqual`, so the key's
+absence is proven rather than assumed, the wait message is the
+browser-opened sentence verbatim, and `REPO_INSTALLATION_REQUIRED` takes
+the browser-opened fix text. The install URL becomes an `open-url`
+action in both terminal errors, with the sibling command still a
+`run-command`.
+
+Copy is verbatim against the fact sheet's git connect section. Both
+terminal errors keep their legacy summary and why, including the
+interpolated repository full name; `REPO_INSTALLATION_REQUIRED`'s fix is
+the opened-branch string and `REPO_NOT_ACCESSIBLE`'s is its single
+unconditional string; the second next step is
+`prisma-cli git connect ${repository.url}` with the `https://github.com/
+owner/name` form `parseGitHubRepositoryUrl` builds. Every string still
+comes from the legacy constructors —
+`installWaitFailedError` calls `repoNotAccessibleError` or
+`repoInstallationRequiredError` and reads their fields, rather than
+retyping any of it.
+
+On `inspectableInstallationCount`: it cannot be stale, and it cannot be
+zero when it should not be. The engine's loop order is poll, then
+deadline check, then delay
+(`packages/cli-engine/src/execution/prompts.ts:419-433`), so `poll` always
+runs at least once before `CLI.BROWSER_WAIT_TIMEOUT` can be raised, and
+the count the terminal error sees is always the most recent inspection's.
+That is the same guarantee legacy had for the same reason — its
+`while (Date.now() <= deadline)` loop always ran once, and it also
+initialized the counter to 0 and only set it inside the loop
+(`packages/cli/src/controllers/project.ts:1778-1827`). The handler
+discards the pre-wait inspection's count, which is correct: legacy used
+that one only in its non-interactive branch, which `needs.interaction`
+removes. Both directions are covered by real tests rather than argument —
+the installation-required case has zero installations and lands on
+`REPO_INSTALLATION_REQUIRED`, the not-accessible case has one inspectable
+installation that does not expose the repository and lands on
+`REPO_NOT_ACCESSIBLE`, and both reach their terminal error through a real
+timeout driven by the ticking clock.
+
+The timeout is properly distinguished from cancellation. The catch
+narrows on `CliStructuredError.is(error) && error.code ===
+"CLI.BROWSER_WAIT_TIMEOUT"` and rethrows everything else, and
+`mapGitOperationError` returns null for anything that is not a legacy
+`CliError`, so a `CLI.PROMPT_CANCELLED` passes through the handler
+untouched and settles at exit 3. Nothing swallows it. One residual worth
+knowing: if the abort lands while a poll's HTTP request is in flight, the
+request rejects with an abort error and the engine settles `CLI.ABORTED`
+at 130 instead — a real race, but it is exactly what legacy always did,
+and the sleep is where a user spends essentially all of the wait, so
+divergence 45's sentence describes the normal case correctly. Finding
+D3-R2-01 asks for the test that pins it.
+
+The four new test cases are all genuinely non-vacuous, including the one
+you asked about. Poll-then-found scripts the repository listing to answer
+empty twice and then hit, and asserts `repositoryListCalls` is exactly 3 —
+one pre-wait inspection, one failed poll, one succeeding poll — so the
+loop demonstrably iterated. It asserts `intervals` equals `[1]`, which
+would fail with `[1000]` if the handler passed no interval and the engine
+fell back to its own constant, so the env var reaching `browserWait` as
+`interval` is proven rather than assumed. And it asserts the POST body,
+so the found match demonstrably drives the connect. The timeout case
+bounds the poll count between 1 and 20 against a 5000 ms env timeout with
+a clock that advances a second per read; the 120000 ms default would
+produce roughly 120 polls and fail the upper bound, so the env timeout is
+proven to be the one in force.
+
+On your fourth question — whether `startsWith("https://") ||
+startsWith("http://")` is safe against every value that can reach it. It
+is safe as pinned, with one named residual. I enumerated every
+`nextSteps` value that can reach `nextStepAction`
+(`packages/cli/src/v8/git/errors.ts:56-62`): the no-url usage error,
+`REPO_PROVIDER_UNSUPPORTED`, `REPO_ALREADY_CONNECTED`,
+`REPO_NOT_CONNECTED`, `REPO_CONNECTION_FAILED`, the 403 `AUTH_REQUIRED`
+residue, and the two wait errors. Every one of those strings except the
+install URL begins with `prisma-cli `, so there are no false positives,
+and the project-resolution codes never reach this function at all because
+they are delegated to D1's mapper first. The test being `startsWith`
+rather than `includes` is what makes
+`prisma-cli git connect https://github.com/owner/name` stay a command,
+which is the case that would have broken a looser test. The residual is a
+false negative on one value: `installUrl` is whatever the Management API
+returns from the install-intent call, so a scheme-less or otherwise
+malformed value would be classified as a command and become a
+`run-command` action carrying that string. That is the old entry-42
+defect, narrowed from "always" to "only when the API misbehaves", and the
+failure direction is the safe one — a suspect value degrades to a
+command label rather than being handed to a URL opener. If you want the
+residual closed, the clean way is not a smarter URL test but for
+`installWaitFailedError` to build its two actions itself, since it is the
+only site where a non-command next step exists; that is a D4 question,
+not a D3 defect.
+
+Everything else checks out. The six legacy edits in
+`controllers/project.ts` are `export` keywords only with no body change
+(`GITHUB_INSTALL_POLL_INTERVAL_MS`, `GITHUB_INSTALL_POLL_TIMEOUT_MS`,
+`InstalledRepositoryMatch`, `readPositiveIntegerEnv`,
+`repoInstallationRequiredError`, `repoNotAccessibleError`), and all six
+are required by the pinned flow. The three deleted
+`project-real-mode.test.ts` cases are exactly the three §5's amendment
+names; the 422-skip case and both pagination-cursor guards are kept, as
+the amendment requires. Divergence entry 42 is restated as the `open-url`
+mapping, 43 to 45 are added and accurate — I checked 45's cancellation
+sentence against the engine and it holds — the `git connect` conformance
+row drops "(partial)" and gains 43, 44 and 45, and the deleted and kept
+lists match the files.
+
+I also confirmed the two fixes that landed between rounds. D3-R1-01 is
+fixed: all five mappers now apply both substitutions, and
+`tests/v8-git.test.ts:786` plus the bucket and branch equivalents assert
+the `--log-level verbose` text. The D4 observation about the stale "rerun
+the command in a TTY to sign in interactively" offer is fixed too — every
+mapper strips it, and `tests/v8-git.test.ts:757` asserts
+`GIT.AUTH_REQUIRED` now reads "Run prisma-cli auth login." on its own.
+
+Not checked, deliberately: the verification suite (you are running it);
+the `credential-manager.test.ts` parallel-load flake, which is the auth
+stream's and not ours; rendered human bytes; and the engine's own
+`browserWait` and `waitFor` implementations beyond reading them to answer
+your questions about cancellation and the poll ordering — they are
+S2a's, landed by the operator in c463aa1, and outside this slice's
+boundary.
+
+### Slice readiness — S2b as a whole
+
+I consider S2b ready for the closure review loop. All 31 commands are
+built, mounted and tested; every finding I raised across the three
+dispatches is fixed and verified; and nothing outstanding is a defect.
+The one open item, D3-R2-01, is a missing test for a behavior I verified
+by reading the engine, so it does not block closure — it should land, but
+it can land inside the closure loop.
+
+Boundaries hold across the whole slice, not just per round. The merge
+base with `s2a-foundations` is c463aa1, and the full diff from there
+touches nothing under `packages/cli-engine/`,
+`packages/cli/src/v8/auth/`, `packages/cli/src/auth/` or `.github/` —
+the two engine changes S2b needed were made by the operator on the base
+branch and merged down, which is exactly the shape conventions §14 asks
+for. `v8/cli.ts` mounts 40 commands: 31 for this slice, 6 auth from S2a
+and 3 shell-owned telemetry, and `v8-mount-coverage.test.ts` checks both
+directions by object identity.
+
+Six things the closure loop should carry, none of them blockers:
+
+1. **The contract's command count is off by one.** `s2b-resources.md`
+   heads its list "Commands in scope (30)" and its acceptance box reads
+   "All 30 commands mounted", but the list enumerates 31 and 31 are
+   mounted (11 project, 11 postgres, 6 bucket, 1 branch, 2 git).
+   Reconcile the number so the acceptance criterion reads true.
+2. **No golden-rendering representative for a masked secret row.** Four
+   commands now emit `sensitive: true` field rows and the engine renders
+   them as `********`, but `v8-golden-rendering.test.ts` still has only
+   its three original entries. No child doc named one, so nothing is out
+   of contract; it is a real coverage hole in a slice whose headline
+   requirement is R-S2b-4.
+3. **Five near-identical error mappers.** Project, postgres, bucket,
+   branch and git each carry their own `portFixText` and next-action
+   builder. The three D3 ones lack the `#`-comment-to-`reason` handling
+   D1 and D2 have — unreachable for their own codes today, but a trap for
+   whoever adds an error next. A single shared helper is the obvious D4
+   consolidation.
+4. **`run-command` actions that are not runnable as-is.** The `open-url`
+   kind fixed the URL case. Several next steps are still command
+   templates with literal placeholders — `prisma-cli bucket key list
+   <bucketId>`, `prisma-cli project link <id-or-name>`, `prisma-cli git
+   connect git@github.com:owner/repo.git` — which fail if a consumer runs
+   them verbatim. Same underlying question as entry 42: what does
+   `run-command` promise?
+5. **`PROJECT_AMBIGUOUS` still points at `app deploy`,** an unported
+   command, from every group that can raise it. Recorded as divergence 41
+   and deliberately not fixed; it resolves itself when S2c lands.
+6. **The `credential-manager.test.ts` flake** is with the operator and is
+   not this slice's.
 
 ### D3 round 1 — 2026-08-10
 

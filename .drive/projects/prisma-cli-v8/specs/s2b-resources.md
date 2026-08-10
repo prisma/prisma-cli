@@ -79,7 +79,7 @@ operations, only re-homes invocation behind `ctx.api`-built clients
 where the operation takes an SDK/client argument (inventory's "API
 surface" column names it).
 
-## Commands in scope (30)
+## Commands in scope (31)
 
 `project list|show|create|link|rename|remove|transfer`,
 `project env add|update|list|remove`, `git connect|disconnect`,
@@ -101,7 +101,7 @@ deletion (S2d); auto-login reinstatement (ledger Q1); command aliases
 
 ## Acceptance
 
-- [ ] All 30 commands mounted in the v8 bin under groups
+- [ ] All 31 commands mounted in the v8 bin under groups
       `project`, `git`, `branch`, `postgres`, `bucket` (+ declared
       subgroup help), passing R-S2b-9's test matrix.
 - [ ] `postgres` rename complete; no `database` path survives in v8.

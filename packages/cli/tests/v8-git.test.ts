@@ -567,6 +567,42 @@ describe("prisma-v8 git connect", () => {
     expect(new Set(intervals)).toEqual(new Set([2000]));
   });
 
+  it("settles CLI.PROMPT_CANCELLED at exit 3 when the wait is interrupted", async () => {
+    const controller = new AbortController();
+    const result = await makeCli(
+      gitClient({
+        installations: [],
+        routes: {
+          ...INSTALL_INTENT_ROUTE,
+          "GET /v1/scm-installations": () => ({
+            data: {
+              data: [],
+              pagination: { hasMore: false, nextCursor: null },
+            },
+          }),
+        },
+      }),
+      {
+        now: tickingClock(),
+        // Ctrl-C lands while the loop is sleeping between polls, which is
+        // where the user spends the wait.
+        delay: async () => {
+          controller.abort();
+        },
+      },
+    ).run(["git", "connect", REPO_URL, "--json"], {
+      cwd: await pinnedCwd(),
+      isTty: INTERACTIVE,
+      abort: controller.signal,
+    });
+
+    expect(result.exitCode).toBe(3);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "CLI.PROMPT_CANCELLED" },
+    });
+  });
+
   it("maps a 409 on the connect call to the already-linked fix text", async () => {
     const result = await makeCli(
       gitClient({
