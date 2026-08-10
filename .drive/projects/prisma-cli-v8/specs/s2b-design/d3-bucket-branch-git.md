@@ -249,13 +249,16 @@ Common: `needs: { credentials: true }`; data = legacy result minus
   4. Install resolution: `listScmInstallations` +
      `findRepositoryInInstallations`; on miss,
      `createGitHubInstallIntent` → installUrl.
-  5. Wait: OPERATOR RULING (2026-08-10) — commands and their helpers
-     NEVER read TTY/CI state, and no `ctx.isInteractive` field
-     exists. The engine is gaining a prompt-family **browser-wait**
-     interaction (announce + open URL + poll predicate + timeout)
-     and an `openUrl` effect, landing on `s2a-foundations`; this
-     command ports against browser-wait once it arrives via
-     merge-down. Binding mapping onto the primitive: url =
+  5. Wait: OPERATOR RULING (2026-08-10, corrected) — `git connect`
+     declares `needs: { interaction: true }` (the EXISTING S2a
+     mechanism, execution/needs.ts): non-interactive runs fail
+     early, before the handler and any side effects, with the
+     engine's interaction-required error (exit 2). Commands and
+     helpers never read TTY/CI state. The interactive wait flow
+     ports against the engine's prompt-family **browser-wait**
+     helper (announce + open URL + poll on the injectable clock +
+     timeout) arriving via merge-down — do not hand-roll polling.
+     Binding mapping onto the helper: url =
      installUrl; poll predicate = "the GitHub App installation
      exists" (re-list installations, `findRepositoryInInstallations`
      match); interval/timeout from
@@ -266,14 +269,15 @@ Common: `needs: { credentials: true }`; data = legacy result minus
      timeout → the legacy terminal errors
      (`GIT.REPO_NOT_ACCESSIBLE` when inspectableInstallationCount >
      0, else `GIT.REPO_INSTALLATION_REQUIRED`; meta `{repository,
-     installUrl, opened}`); non-interactive → the engine's
-     structured interaction-required error, exit 2 (replaces the
-     legacy immediate REPO_* errors on the non-interactive path —
-     divergence entry, installUrl meta no longer reaches
-     non-interactive callers). Announce/open/poll events and
-     rendering are the PRIMITIVE'S — the handler emits no endpoint/
-     status events of its own. Exact call surface: bind to the
-     landed primitive's API at merge-down; any mismatch with this
+     installUrl, opened}`). Non-interactive runs never reach the
+     handler at all (needs.interaction) — divergence entry: legacy
+     non-interactive `git connect` succeeded when the repo was
+     already reachable and errored with installUrl meta otherwise;
+     v8 fails every non-interactive run early with the engine's
+     interaction-required error (exit 2). Announce/open/poll events
+     and rendering are the HELPER'S — the handler emits no
+     endpoint/status events of its own. Exact call surface: bind to
+     the landed helper's API at merge-down; any mismatch with this
      mapping is a STOP, not an adaptation.
   6. `ctx.api.POST("/v1/source-repositories", { body: { projectId,
      provider: "github", providerRepositoryId, installationId },
@@ -311,13 +315,14 @@ Common: `needs: { credentials: true }`; data = legacy result minus
 - stdout none; json raw; next none.
 - Tests: success; not-connected; API error; json; unauth.
 
-### 3.8a Dispatch ordering (operator ruling 2026-08-10)
+### 3.8a Dependencies (operator correction 2026-08-10)
 
-D3 runs bucket (3.1-3.6) then branch (3.7) FIRST; `git connect` /
-`git disconnect` come LAST, and the git work starts only after the
-browser-wait + openUrl engine primitives arrive from
-`s2a-foundations` via merge-down. Bucket and branch have no
-dependency on them.
+No dispatch reordering. `git connect` is not blocked on any engine
+change for its gating (`needs.interaction` exists today); only its
+interactive wait flow binds to the browser-wait helper, and `bucket
+delete`'s consent wiring binds to the engine consent flag — both
+arrive via merge-down (conventions §5, d3 §3.8 step 5). If either
+has not landed when its item comes up, that item alone waits.
 
 ## 4. Divergence entries this dispatch adds
 
@@ -327,11 +332,13 @@ D2 classes 2/3/4/7/8/9/10/11 apply, plus:
 2. Fixture-only BUCKET_NOT_FOUND / BUCKET_KEY_NOT_FOUND /
    BRANCH_NOT_FOUND die; real-mode API codes pass through as
    `BUCKET.<code>`.
-3. git connect: the wait flow moves onto the engine's browser-wait
-   primitive (its announce/open/poll surface replaces the legacy
-   stderr wait line); non-interactive wait-path invocations now get
-   the engine's interaction-required error (exit 2) instead of the
-   legacy immediate REPO_* errors with installUrl meta.
+3. git connect: declares needs.interaction — ALL non-interactive
+   runs fail early with the engine's interaction-required error
+   (exit 2), including the legacy non-interactive success case
+   (repo already reachable) and the legacy immediate REPO_* errors
+   with installUrl meta; the interactive wait flow moves onto the
+   engine's browser-wait helper (its announce/open/poll surface
+   replaces the legacy stderr wait line).
 4. git connect/disconnect keep their serializer-less raw json result
    (resolution object included) — unchanged, recorded for review
    since other groups strip it.

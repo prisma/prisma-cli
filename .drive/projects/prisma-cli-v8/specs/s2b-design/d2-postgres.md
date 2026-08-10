@@ -103,7 +103,11 @@ in `v8/postgres/resolve.ts` reproduces it EXACTLY:
 
 ### 2.3 Exact-id confirmation + consent
 
-Per conventions §5. The v8 consent helper
+Per conventions §5 — NOTE (operator ruling 2026-08-10): the
+consent-grant flag is engine-owned; no per-command `confirm` flag
+declarations. The four consent commands' wiring holds until the
+engine mechanism arrives via merge-down; check/copy semantics below
+stand. The v8 consent helper
 `v8/postgres/consent.ts::requirePostgresConfirmation` reproduces
 `requireExactConfirmation` (database.ts:976) semantics: pass iff
 `confirm === id` (strict). On flag mismatch/absence in

@@ -4,8 +4,12 @@ Status: BINDING (grounded in the `facts/` extraction sheets;
 nothing here is implementer judgment). Operator rulings 2026-08-10:
 DECISION 1 ratified (readAuthState helper until ctx.session());
 DECISION 2 ratified (drafted consent questions; deny → exit 2);
-DECISION 3 ruled (browser-wait engine primitive; no TTY/CI reads in
-commands or helpers, ever). Child documents: `d1-project.md`, `d2-postgres.md`,
+DECISION 3 ruled, corrected 2026-08-10: interactivity gating is the
+EXISTING `needs: { interaction: true }` (S2a, execution/needs.ts) —
+declare it, no engine change needed; the browser-wait helper +
+openUrl effect arrive as mechanics via merge-down; consent-grant
+flags are engine-owned (see §5). No TTY/CI reads in commands or
+helpers, ever. Child documents: `d1-project.md`, `d2-postgres.md`,
 `d3-bucket-branch-git.md` — one per dispatch, each pinning its
 commands exhaustively. Precedence: slice contract
 `../s2b-resources.md` (R-S2b-1..10) > this file > child docs; a child
@@ -148,8 +152,18 @@ Applies to: `project remove`, `project transfer`,
 has no confirmation today and gains none — divergence review note
 only, not a behavior change.)
 
-- The current `--confirm <exact-id>` flag is kept with identical
-  value semantics (must equal the resolved resource id).
+- The consent-grant flag is ENGINE-OWNED (operator ruling
+  2026-08-10): commands do NOT declare per-command `confirm` flags —
+  an engine consent-flag mechanism lands on `s2a-foundations`
+  (details arrive with the merge-down) and is expected to preserve
+  the user-facing `--confirm <exact-id>` semantics (must equal the
+  resolved resource id). Until its details land, every consent
+  command in this slice is ON HOLD: D1 ships 9 of 11 commands
+  (remove/transfer held), D2 holds restore/remove/connection
+  rotate/connection remove wiring, D3 holds bucket delete. Handlers
+  keep the exact-id CHECK semantics and copy pinned per command;
+  only the flag's declaration/plumbing waits for the engine
+  mechanism.
 - Interactive invocation WITHOUT the flag: `ctx.prompt.consent(q)`
   where `q` is the pinned per-command question text (child docs) —
   question texts are the child docs' drafted wordings, ratified
