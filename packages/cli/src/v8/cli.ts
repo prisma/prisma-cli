@@ -14,6 +14,10 @@ import { authWorkspaceListCommand } from "./auth/workspace-list";
 import { authWorkspaceLogoutCommand } from "./auth/workspace-logout";
 import { authWorkspaceUseCommand } from "./auth/workspace-use";
 import { projectCreateCommand } from "./project/create";
+import { projectEnvAddCommand } from "./project/env-add";
+import { projectEnvListCommand } from "./project/env-list";
+import { projectEnvRemoveCommand } from "./project/env-remove";
+import { projectEnvUpdateCommand } from "./project/env-update";
 import { projectLinkCommand } from "./project/link";
 import { projectListCommand } from "./project/list";
 import { projectRenameCommand } from "./project/rename";
@@ -35,6 +39,10 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     projectCreate: projectCreateCommand,
     projectLink: projectLinkCommand,
     projectRename: projectRenameCommand,
+    projectEnvAdd: projectEnvAddCommand,
+    projectEnvUpdate: projectEnvUpdateCommand,
+    projectEnvList: projectEnvListCommand,
+    projectEnvRemove: projectEnvRemoveCommand,
   },
 });
 
@@ -68,6 +76,10 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "project create": projectCreateCommand,
   "project link": projectLinkCommand,
   "project rename": projectRenameCommand,
+  "project env add": projectEnvAddCommand,
+  "project env update": projectEnvUpdateCommand,
+  "project env list": projectEnvListCommand,
+  "project env remove": projectEnvRemoveCommand,
   // Shell-owned consent surface (no command family).
   "telemetry status": telemetryStatusCommand,
   "telemetry enable": telemetryEnableCommand,

@@ -8,6 +8,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readAuthState } from "../src/auth";
 import type { AuthStateResult } from "../src/types/auth";
 import { projectCreateCommand } from "../src/v8/project/create";
+import { projectEnvAddCommand } from "../src/v8/project/env-add";
+import { projectEnvListCommand } from "../src/v8/project/env-list";
+import { projectEnvRemoveCommand } from "../src/v8/project/env-remove";
+import { projectEnvUpdateCommand } from "../src/v8/project/env-update";
 import { projectLinkCommand } from "../src/v8/project/link";
 import { projectListCommand } from "../src/v8/project/list";
 import { projectRenameCommand } from "../src/v8/project/rename";
@@ -76,8 +80,17 @@ function makeCli(client: ManagementApiClient, signedIn = true) {
       "project create": projectCreateCommand,
       "project link": projectLinkCommand,
       "project rename": projectRenameCommand,
+      "project env add": projectEnvAddCommand,
+      "project env update": projectEnvUpdateCommand,
+      "project env list": projectEnvListCommand,
+      "project env remove": projectEnvRemoveCommand,
     },
-    groups: { project: { brief: "Manage and inspect your Prisma projects" } },
+    groups: {
+      project: { brief: "Manage and inspect your Prisma projects" },
+      "project env": {
+        brief: "Manage environment variables for the active project",
+      },
+    },
     ...(signedIn ? { credentials: { token: "tok_1" } } : {}),
     managementApi: { client },
     now: () => new Date(0),
@@ -864,6 +877,857 @@ describe("prisma-v8 project workspace requirement", () => {
         summary: "Workspace required",
         why: "This command needs an active workspace, but the authenticated session does not have one.",
       },
+    });
+  });
+});
+
+interface EnvRow {
+  id: string;
+  key: string;
+  branchId: string | null;
+  class: "production" | "preview";
+  isManagedBySystem: boolean;
+  updatedAt: string;
+}
+
+interface BranchRow {
+  id: string;
+  gitName: string;
+  role: "production" | "preview";
+  isDefault: boolean;
+}
+
+function envRow(overrides: Partial<EnvRow> = {}): EnvRow {
+  return {
+    id: "env_1",
+    key: "STRIPE_KEY",
+    branchId: null,
+    class: "production",
+    isManagedBySystem: false,
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+interface EnvClientSpec {
+  variables?: EnvRow[];
+  branches?: BranchRow[];
+  writes?: unknown[];
+  failWriteFor?: string;
+  createdBranch?: BranchRow;
+}
+
+function envClient(spec: EnvClientSpec = {}): ManagementApiClient {
+  const variables = spec.variables ?? [];
+  const branches = spec.branches ?? [];
+  const page = { hasMore: false, nextCursor: null };
+
+  return {
+    GET: async (
+      apiPath: string,
+      init?: { params?: { query?: Record<string, string> } },
+    ) => {
+      if (apiPath === "/v1/projects") {
+        return { data: { data: API_PROJECTS } };
+      }
+      if (apiPath === "/v1/projects/{projectId}/branches") {
+        const gitName = init?.params?.query?.gitName;
+        return {
+          data: {
+            data: gitName
+              ? branches.filter((branch) => branch.gitName === gitName)
+              : branches,
+            pagination: page,
+          },
+        };
+      }
+      const query = init?.params?.query ?? {};
+      const matched = variables.filter(
+        (row) =>
+          row.class === query.class &&
+          (query.key === undefined || row.key === query.key) &&
+          (query.branchId === undefined || row.branchId === query.branchId),
+      );
+      return { data: { data: matched, pagination: page } };
+    },
+    POST: async (apiPath: string, init: { body?: Record<string, unknown> }) => {
+      if (apiPath === "/v1/projects/{projectId}/branches") {
+        return { data: { data: spec.createdBranch } };
+      }
+      spec.writes?.push(init.body);
+      const key = init.body?.key as string;
+      if (spec.failWriteFor === key) {
+        return {
+          error: { error: { message: "boom" } },
+          response: new Response(null, { status: 500 }),
+        };
+      }
+      return {
+        data: {
+          data: envRow({
+            id: `env_${key}`,
+            key,
+            class:
+              (init.body?.class as "production" | "preview") ?? "production",
+            branchId: (init.body?.branchId as string) ?? null,
+          }),
+        },
+      };
+    },
+    PATCH: async (
+      _apiPath: string,
+      init: {
+        params?: { path?: { envVarId?: string } };
+        body?: Record<string, unknown>;
+      },
+    ) => {
+      spec.writes?.push({
+        envVarId: init.params?.path?.envVarId,
+        ...init.body,
+      });
+      const existing = variables.find(
+        (row) => row.id === init.params?.path?.envVarId,
+      );
+      return { data: { data: existing ?? envRow() } };
+    },
+    DELETE: async (
+      _apiPath: string,
+      init: { params?: { path?: { envVarId?: string } } },
+    ) => {
+      spec.writes?.push({ deleted: init.params?.path?.envVarId });
+      return { data: { data: {} } };
+    },
+  } as unknown as ManagementApiClient;
+}
+
+async function pinnedCwd() {
+  return await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
+}
+
+describe("prisma-v8 project env add", () => {
+  it("creates a variable in the role scope", async () => {
+    const writes: unknown[] = [];
+    const result = await makeCli(envClient({ writes })).run(
+      ["project", "env", "add", "STRIPE_KEY=sk_test", "--role", "production"],
+      { cwd: await pinnedCwd(), isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(writes).toEqual([
+      {
+        projectId: "proj_1",
+        class: "production",
+        key: "STRIPE_KEY",
+        value: "sk_test",
+      },
+    ]);
+    expect(result.presented?.data).toMatchObject({
+      projectId: "proj_1",
+      scope: { kind: "role", role: "production" },
+      variable: { key: "STRIPE_KEY", source: "production" },
+    });
+    expect(blocks(result.presented)[0]).toEqual({
+      kind: "summary",
+      tone: "info",
+      text: "Setting a new environment variable.",
+    });
+  });
+
+  it("creates the branch on demand and warns that preview has no default", async () => {
+    const writes: unknown[] = [];
+    const result = await makeCli(
+      envClient({
+        writes,
+        branches: [
+          {
+            id: "br_main",
+            gitName: "main",
+            role: "production",
+            isDefault: true,
+          },
+        ],
+        createdBranch: {
+          id: "br_feature",
+          gitName: "feature/foo",
+          role: "preview",
+          isDefault: false,
+        },
+      }),
+    ).run(
+      [
+        "project",
+        "env",
+        "add",
+        "DATABASE_URL=postgres://x",
+        "--branch",
+        "feature/foo",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(writes).toEqual([
+      {
+        projectId: "proj_1",
+        class: "preview",
+        branchId: "br_feature",
+        key: "DATABASE_URL",
+        value: "postgres://x",
+      },
+    ]);
+    expect(result.presented?.diagnostics).toEqual([
+      {
+        code: "PROJECT.ENV_PREVIEW_DEFAULT_MISSING",
+        severity: "warn",
+        summary:
+          'Variable "DATABASE_URL" does not exist in preview. It will only exist on branch:feature/foo.',
+        nextActions: [],
+      },
+    ]);
+  });
+
+  it("refuses to create the first branch from project env", async () => {
+    const result = await makeCli(envClient({ branches: [] })).run(
+      [
+        "project",
+        "env",
+        "add",
+        "KEY=value",
+        "--branch",
+        "feature/foo",
+        "--json",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.ENV_BRANCH_CREATE_REQUIRES_DEFAULT_BRANCH",
+        summary: 'Cannot create branch "feature/foo" from project env',
+      },
+    });
+  });
+
+  it("rejects both scope flags", async () => {
+    const result = await makeCli(envClient()).run(
+      [
+        "project",
+        "env",
+        "add",
+        "KEY=value",
+        "--role",
+        "preview",
+        "--branch",
+        "feature/foo",
+        "--json",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.USAGE_ERROR",
+        summary: "prisma-cli project env add accepts either --role or --branch",
+      },
+    });
+  });
+
+  it("requires an explicit scope", async () => {
+    const result = await makeCli(envClient()).run(
+      ["project", "env", "add", "KEY=value", "--json"],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.USAGE_ERROR",
+        summary: "prisma-cli project env add requires --role or --branch",
+      },
+    });
+  });
+
+  it("rejects both input sources", async () => {
+    const result = await makeCli(envClient()).run(
+      [
+        "project",
+        "env",
+        "add",
+        "KEY=value",
+        "--file",
+        ".env",
+        "--role",
+        "preview",
+        "--json",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.USAGE_ERROR",
+        summary:
+          "prisma-cli project env add accepts either KEY=VALUE or --file",
+      },
+    });
+  });
+
+  it("rejects an assignment without a separator", async () => {
+    const result = await makeCli(envClient()).run(
+      [
+        "project",
+        "env",
+        "add",
+        "not-an-assignment",
+        "--role",
+        "preview",
+        "--json",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.USAGE_ERROR",
+        summary: "KEY=VALUE argument is missing the = separator",
+      },
+    });
+  });
+
+  it("reads a bare KEY from the environment", async () => {
+    const writes: unknown[] = [];
+    const result = await makeCli(envClient({ writes })).run(
+      ["project", "env", "add", "API_URL", "--role", "preview"],
+      { cwd: await pinnedCwd(), env: { API_URL: "https://api.example" } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(writes).toEqual([
+      {
+        projectId: "proj_1",
+        class: "preview",
+        key: "API_URL",
+        value: "https://api.example",
+      },
+    ]);
+  });
+
+  it("rejects a key that already exists in the scope", async () => {
+    const result = await makeCli(envClient({ variables: [envRow()] })).run(
+      [
+        "project",
+        "env",
+        "add",
+        "STRIPE_KEY=sk_test",
+        "--role",
+        "production",
+        "--json",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.ENV_VARIABLE_ALREADY_EXISTS",
+        summary: 'Variable "STRIPE_KEY" already exists in production',
+        nextActions: [
+          {
+            kind: "user-choice",
+            label:
+              "Use `prisma-cli project env update` to change an existing variable's value.",
+          },
+          {
+            kind: "run-command",
+            command:
+              "prisma-cli project env update STRIPE_KEY=<new-value> --role production",
+          },
+        ],
+      },
+    });
+  });
+
+  it("imports every assignment in a dotenv file", async () => {
+    const cwd = await pinnedCwd();
+    await writeFile(path.join(cwd, ".env"), "A=1\nB=2\n", "utf8");
+    const writes: unknown[] = [];
+    const result = await makeCli(envClient({ writes })).run(
+      ["project", "env", "add", "--file", ".env", "--role", "preview"],
+      { cwd, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(writes).toHaveLength(2);
+    expect(result.presented?.data).toMatchObject({
+      file: { path: ".env", count: 2 },
+      variables: [{ key: "A" }, { key: "B" }],
+    });
+    expect(
+      blocks(result.presented).find((block) => block.kind === "table"),
+    ).toMatchObject({ columns: ["variable", "id", "status"] });
+  });
+
+  it("reports the keys written before a file import failed", async () => {
+    const cwd = await pinnedCwd();
+    await writeFile(path.join(cwd, ".env"), "A=1\nB=2\n", "utf8");
+    const result = await makeCli(envClient({ failWriteFor: "B" })).run(
+      [
+        "project",
+        "env",
+        "add",
+        "--file",
+        ".env",
+        "--role",
+        "preview",
+        "--json",
+      ],
+      { cwd },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.ENV_FILE_APPLY_FAILED",
+        summary: 'Failed to add "B" from ".env"',
+        meta: { file: ".env", failedKey: "B", writtenKeys: ["A"] },
+      },
+    });
+  });
+
+  it("returns the stripped result in json mode", async () => {
+    const result = await makeCli(envClient()).run(
+      [
+        "project",
+        "env",
+        "add",
+        "STRIPE_KEY=sk_test",
+        "--role",
+        "production",
+        "--json",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: true,
+      commandId: "project.env.add",
+      result: {
+        projectId: "proj_1",
+        scope: { kind: "role", role: "production" },
+        variable: { key: "STRIPE_KEY", isManagedBySystem: false },
+      },
+    });
+  });
+
+  it("requires credentials", async () => {
+    const result = await makeCli(envClient(), false).run([
+      "project",
+      "env",
+      "add",
+      "STRIPE_KEY=sk_test",
+      "--role",
+      "production",
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "CLI.CREDENTIALS_REQUIRED" },
+    });
+  });
+});
+
+describe("prisma-v8 project env update", () => {
+  it("replaces the value of an existing variable", async () => {
+    const writes: unknown[] = [];
+    const result = await makeCli(
+      envClient({ writes, variables: [envRow()] }),
+    ).run(
+      ["project", "env", "update", "STRIPE_KEY=sk_new", "--role", "production"],
+      { cwd: await pinnedCwd(), isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(writes).toEqual([{ envVarId: "env_1", value: "sk_new" }]);
+    expect(blocks(result.presented)[0]).toEqual({
+      kind: "summary",
+      tone: "info",
+      text: "Replacing the environment variable's value.",
+    });
+  });
+
+  it("reports a missing variable", async () => {
+    const result = await makeCli(envClient()).run(
+      [
+        "project",
+        "env",
+        "update",
+        "STRIPE_KEY=sk_new",
+        "--role",
+        "production",
+        "--json",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.ENV_VARIABLE_NOT_FOUND",
+        summary: 'Variable "STRIPE_KEY" not found in production',
+      },
+    });
+  });
+
+  it("does not create a missing branch", async () => {
+    const result = await makeCli(envClient({ branches: [] })).run(
+      [
+        "project",
+        "env",
+        "update",
+        "KEY=value",
+        "--branch",
+        "feature/foo",
+        "--json",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.ENV_BRANCH_NOT_FOUND",
+        summary: 'Branch "feature/foo" not found',
+      },
+    });
+  });
+
+  it("reports the file keys that do not exist yet", async () => {
+    const cwd = await pinnedCwd();
+    await writeFile(path.join(cwd, ".env"), "A=1\nB=2\n", "utf8");
+    const result = await makeCli(envClient()).run(
+      [
+        "project",
+        "env",
+        "update",
+        "--file",
+        ".env",
+        "--role",
+        "preview",
+        "--json",
+      ],
+      { cwd },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.ENV_VARIABLE_NOT_FOUND",
+        summary: "2 environment variable(s) not found in preview",
+        meta: { keys: ["A", "B"] },
+      },
+    });
+  });
+
+  it("returns the stripped result in json mode", async () => {
+    const result = await makeCli(envClient({ variables: [envRow()] })).run(
+      [
+        "project",
+        "env",
+        "update",
+        "STRIPE_KEY=sk_new",
+        "--role",
+        "production",
+        "--json",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: true,
+      commandId: "project.env.update",
+      result: { projectId: "proj_1", variable: { key: "STRIPE_KEY" } },
+    });
+  });
+
+  it("requires credentials", async () => {
+    const result = await makeCli(envClient(), false).run([
+      "project",
+      "env",
+      "update",
+      "STRIPE_KEY=sk_new",
+      "--role",
+      "production",
+    ]);
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "CLI.CREDENTIALS_REQUIRED" },
+    });
+  });
+});
+
+describe("prisma-v8 project env list", () => {
+  it("lists the variables of an explicit role scope", async () => {
+    const result = await makeCli(
+      envClient({
+        variables: [
+          envRow(),
+          envRow({ id: "env_2", key: "API_URL", isManagedBySystem: true }),
+        ],
+      }),
+    ).run(["project", "env", "list", "--role", "production"], {
+      cwd: await pinnedCwd(),
+      isTty: { stdout: true },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(
+      blocks(result.presented).find((block) => block.kind === "table"),
+    ).toEqual({
+      kind: "table",
+      columns: ["variable", "id", "status"],
+      rows: [
+        ["STRIPE_KEY (production)", "env_1", ""],
+        ["API_URL (production)", "env_2", "default"],
+      ],
+    });
+    expect(result.presented?.presentation.stdout).toEqual([
+      "STRIPE_KEY (production)\tenv_1\t",
+      "API_URL (production)\tenv_2\tdefault",
+    ]);
+  });
+
+  it("falls back to the overview scope outside a git repository", async () => {
+    const result = await makeCli(
+      envClient({
+        variables: [
+          envRow(),
+          envRow({ id: "env_2", key: "API_URL", class: "preview" }),
+        ],
+      }),
+    ).run(["project", "env", "list"], {
+      cwd: await pinnedCwd(),
+      isTty: { stdout: true },
+    });
+
+    expect(result.presented?.data).toMatchObject({
+      scope: { kind: "overview" },
+      target: { source: "overview", envMap: "overview" },
+    });
+    expect(
+      blocks(result.presented).find((block) => block.kind === "fields"),
+    ).toEqual({
+      kind: "fields",
+      rows: [{ label: "target", value: "overview" }],
+    });
+  });
+
+  it("labels a local git branch that the platform does not know yet", async () => {
+    const cwd = await pinnedCwd();
+    await mkdir(path.join(cwd, ".git"), { recursive: true });
+    await writeFile(
+      path.join(cwd, ".git", "HEAD"),
+      "ref: refs/heads/feature/foo\n",
+      "utf8",
+    );
+    const result = await makeCli(envClient({ branches: [] })).run(
+      ["project", "env", "list"],
+      { cwd, isTty: { stdout: true } },
+    );
+
+    expect(result.presented?.data).toMatchObject({
+      target: {
+        source: "local-git",
+        branchName: "feature/foo",
+        branchExists: false,
+        envMap: "preview",
+      },
+    });
+    expect(
+      blocks(result.presented).find((block) => block.kind === "fields"),
+    ).toEqual({
+      kind: "fields",
+      rows: [
+        {
+          label: "target",
+          value: "branch:feature/foo -> preview (not created yet)",
+        },
+      ],
+    });
+    expect(result.presented?.presentation.next).toEqual([
+      {
+        kind: "run-command",
+        label: "prisma-cli project env add KEY=value --branch feature/foo",
+        command: "prisma-cli project env add KEY=value --branch feature/foo",
+      },
+    ]);
+  });
+
+  it("suggests adding a variable when the scope is empty", async () => {
+    const result = await makeCli(envClient()).run(
+      ["project", "env", "list", "--role", "preview"],
+      { cwd: await pinnedCwd(), isTty: { stdout: true } },
+    );
+
+    expect(blocks(result.presented)).toContainEqual({
+      kind: "list",
+      items: ["No environment variables defined in this scope."],
+    });
+    expect(result.presented?.presentation.next).toEqual([
+      {
+        kind: "run-command",
+        label: "prisma-cli project env add KEY=value --role preview",
+        command: "prisma-cli project env add KEY=value --role preview",
+      },
+    ]);
+  });
+
+  it("serializes the legacy list envelope in json mode", async () => {
+    const result = await makeCli(envClient({ variables: [envRow()] })).run(
+      ["project", "env", "list", "--role", "production", "--json"],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: true,
+      commandId: "project.env.list",
+      result: {
+        projectId: "proj_1",
+        scope: { kind: "role", role: "production" },
+        context: { target: "production" },
+        items: [{ name: "STRIPE_KEY (production)", id: "env_1", status: null }],
+        count: 1,
+      },
+    });
+  });
+
+  it("requires credentials", async () => {
+    const result = await makeCli(envClient(), false).run([
+      "project",
+      "env",
+      "list",
+    ]);
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "CLI.CREDENTIALS_REQUIRED" },
+    });
+  });
+});
+
+describe("prisma-v8 project env remove", () => {
+  it("removes the variable from the scope", async () => {
+    const writes: unknown[] = [];
+    const result = await makeCli(
+      envClient({ writes, variables: [envRow()] }),
+    ).run(["project", "env", "remove", "STRIPE_KEY", "--role", "production"], {
+      cwd: await pinnedCwd(),
+      isTty: { stdout: true },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(writes).toEqual([{ deleted: "env_1" }]);
+    expect(blocks(result.presented)).toEqual([
+      {
+        kind: "summary",
+        tone: "info",
+        text: "Removing the environment variable from the scope.",
+      },
+      {
+        kind: "fields",
+        rows: [
+          { label: "project", value: "proj_1" },
+          { label: "scope", value: "production" },
+          { label: "key", value: "STRIPE_KEY" },
+        ],
+      },
+    ]);
+  });
+
+  it("reports a key that is not in the scope", async () => {
+    const result = await makeCli(envClient()).run(
+      [
+        "project",
+        "env",
+        "remove",
+        "STRIPE_KEY",
+        "--role",
+        "production",
+        "--json",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.ENV_VARIABLE_NOT_FOUND",
+        summary: 'Variable "STRIPE_KEY" not found in production',
+        nextActions: [
+          {
+            kind: "user-choice",
+            label:
+              "Run prisma-cli project env list with the same scope to see the available variables.",
+          },
+          {
+            kind: "run-command",
+            command: "prisma-cli project env list --role production",
+          },
+        ],
+      },
+    });
+  });
+
+  it("returns the stripped result in json mode", async () => {
+    const result = await makeCli(envClient({ variables: [envRow()] })).run(
+      [
+        "project",
+        "env",
+        "remove",
+        "STRIPE_KEY",
+        "--role",
+        "production",
+        "--json",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: true,
+      commandId: "project.env.remove",
+      result: {
+        projectId: "proj_1",
+        scope: { kind: "role", role: "production" },
+        key: "STRIPE_KEY",
+      },
+    });
+  });
+
+  it("requires credentials", async () => {
+    const result = await makeCli(envClient(), false).run([
+      "project",
+      "env",
+      "remove",
+      "STRIPE_KEY",
+      "--role",
+      "production",
+    ]);
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "CLI.CREDENTIALS_REQUIRED" },
     });
   });
 });
