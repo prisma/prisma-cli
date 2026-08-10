@@ -1,6 +1,6 @@
 /** Presentation helpers shared by the `project *` commands. */
 import type { Presentations } from "@prisma/cli-engine";
-import type { NextAction } from "@prisma/cli-engine/protocol";
+import type { Diagnostic, NextAction } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import { serializeProjectSetup } from "../../presenters/project";
 import type { NextAction as LegacyNextAction } from "../../shell/next-actions";
@@ -12,6 +12,18 @@ export const DEPLOY_NEXT_ACTION: NextAction = {
   label: `${CLI_NAME} app deploy`,
   command: `${CLI_NAME} app deploy`,
 };
+
+/** The legacy local-pin warnings of `project remove` / `project
+ *  transfer`: the operation succeeded, so they are warn diagnostics
+ *  under the pinned local-state code, never errors. */
+export function localPinDiagnostics(warnings: readonly string[]): Diagnostic[] {
+  return warnings.map((warning) => ({
+    code: "PROJECT.LOCAL_STATE_WRITE_FAILED" as const,
+    severity: "warn" as const,
+    summary: warning,
+    nextActions: [],
+  }));
+}
 
 /** The legacy NextAction shape minus its `journey` field, which the v8
  *  protocol does not carry. */

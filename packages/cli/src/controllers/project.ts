@@ -981,7 +981,7 @@ function requireProjectExactConfirmation(options: {
   });
 }
 
-function transferRecipientRequiredError(
+export function transferRecipientRequiredError(
   formatCommand: PrismaCliPackageCommandFormatter,
 ): CliError {
   return new CliError({
@@ -1006,7 +1006,7 @@ function transferRecipientRequiredError(
   });
 }
 
-function transferRecipientUnavailableError(
+export function transferRecipientUnavailableError(
   formatCommand: PrismaCliPackageCommandFormatter,
 ): CliError {
   return new CliError({
@@ -1030,7 +1030,7 @@ function transferRecipientUnavailableError(
   });
 }
 
-async function cleanupLocalPinForProject(
+export async function cleanupLocalPinForProject(
   context: CommandContext,
   projectId: string,
   hooks: { onError: (message: string) => void },
@@ -1060,7 +1060,7 @@ async function cleanupLocalPinForProject(
   }
 }
 
-async function rewriteOrClearLocalPinForProject(
+export async function rewriteOrClearLocalPinForProject(
   context: CommandContext,
   projectId: string,
   recipientWorkspaceId: string | null,

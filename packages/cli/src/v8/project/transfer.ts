@@ -1,0 +1,280 @@
+/** The `project transfer` command. */
+import {
+  type Block,
+  defineCommand,
+  flag,
+  type Presentations,
+  positional,
+} from "@prisma/cli-engine";
+import type { Diagnostic } from "@prisma/cli-engine/protocol";
+import { notOk, ok } from "@prisma/cli-engine/protocol";
+import {
+  RecipientSessionInvalidError,
+  resolveRecipientWorkspaceSession,
+  SERVICE_TOKEN_ENV_VAR,
+  WorkspaceSelectionError,
+} from "../../auth";
+import { CLI_NAME } from "../../cli-name";
+import {
+  rewriteOrClearLocalPinForProject,
+  transferRecipientRequiredError,
+  transferRecipientUnavailableError,
+} from "../../controllers/project";
+import type { PrismaCliPackageCommandFormatter } from "../../lib/agent/cli-command";
+import { createManagementProjectProvider } from "../../lib/project/provider";
+import {
+  formatCommandArgument,
+  resolveProjectForSetup,
+  toProjectSummary,
+} from "../../lib/project/setup";
+import {
+  usageError,
+  workspaceAmbiguousError,
+  workspaceNotAuthenticatedError,
+} from "../../shell/errors";
+import type { ProjectTransferResult } from "../../types/project";
+import { resolveActiveWorkspace } from "../resources-shared/workspace";
+import {
+  legacyOperationContext,
+  listWorkspaceProjects,
+  type ProjectCommandContext,
+} from "./context";
+import { mapProjectOperationError } from "./errors";
+import { localPinDiagnostics } from "./presentation";
+
+const CONSENT_QUESTION =
+  "Transferring moves the project to another workspace and this workspace loses access, so it requires the exact project id.";
+
+/** v8 command strings are `${CLI_NAME} …`; the legacy package-runner
+ *  formatter does not port. */
+const formatCommand: PrismaCliPackageCommandFormatter = (args) =>
+  [CLI_NAME, ...args].join(" ");
+
+interface TransferRecipient {
+  readonly accessToken: string;
+  readonly workspaceId: string | null;
+  readonly workspaceName: string | null;
+  readonly source: "workspace-session" | "recipient-token";
+}
+
+function recipientSourceError(workspaceRef: string, error: unknown): never {
+  if (error instanceof WorkspaceSelectionError) {
+    if (error.reason === "ambiguous") {
+      throw workspaceAmbiguousError(
+        error.workspaceRef ?? workspaceRef,
+        error.matches.map((match) => ({
+          id: match.id,
+          name: match.name,
+          credentialWorkspaceId: match.credentialWorkspaceId,
+        })),
+      );
+    }
+    throw workspaceNotAuthenticatedError(error.workspaceRef ?? workspaceRef);
+  }
+  if (error instanceof RecipientSessionInvalidError) {
+    throw workspaceNotAuthenticatedError(error.workspaceRef);
+  }
+  throw error;
+}
+
+async function resolveRecipient(
+  ctx: ProjectCommandContext,
+  options: { toWorkspace?: string; recipientToken?: string },
+): Promise<TransferRecipient> {
+  const recipientToken = options.recipientToken?.trim();
+  if (recipientToken) {
+    return {
+      accessToken: recipientToken,
+      workspaceId: null,
+      workspaceName: null,
+      source: "recipient-token",
+    };
+  }
+
+  const workspaceRef = options.toWorkspace?.trim();
+  if (!workspaceRef) {
+    throw transferRecipientRequiredError(formatCommand);
+  }
+
+  if (ctx.env[SERVICE_TOKEN_ENV_VAR] !== undefined) {
+    throw transferRecipientUnavailableError(formatCommand);
+  }
+
+  try {
+    const session = await resolveRecipientWorkspaceSession(
+      workspaceRef,
+      ctx.env,
+      ctx.signal,
+    );
+    return {
+      accessToken: session.accessToken,
+      workspaceId: session.workspace.id,
+      workspaceName: session.workspace.name,
+      source: "workspace-session",
+    };
+  } catch (error) {
+    recipientSourceError(workspaceRef, error);
+  }
+}
+
+function transferPresentations(
+  result: ProjectTransferResult,
+  toWorkspace: string | undefined,
+): Presentations {
+  return {
+    human: (): Block[] => [
+      { kind: "summary", tone: "ok", text: "Transferring project." },
+      {
+        kind: "fields",
+        rows: [
+          { label: "workspace", value: result.workspace.name },
+          { label: "project", value: result.project.name },
+          { label: "id", value: result.project.id },
+          {
+            label: "recipient",
+            value:
+              result.recipient.workspaceName ??
+              result.recipient.workspaceId ??
+              "workspace of the provided recipient token",
+          },
+        ],
+      },
+      {
+        kind: "list",
+        items: [
+          "The project now belongs to the recipient workspace; this workspace no longer has access.",
+          ...(result.localPin.action === "rewritten"
+            ? [
+                "This directory's local project binding now points at the recipient workspace.",
+              ]
+            : []),
+          ...(result.localPin.action === "cleared"
+            ? ["This directory's local project binding was cleared."]
+            : []),
+        ],
+      },
+    ],
+    next: () =>
+      toWorkspace
+        ? [
+            {
+              kind: "run-command",
+              label: `${CLI_NAME} auth workspace use ${formatCommandArgument(toWorkspace)}`,
+              command: `${CLI_NAME} auth workspace use ${formatCommandArgument(toWorkspace)}`,
+            },
+          ]
+        : [],
+  };
+}
+
+export const projectTransferCommand = defineCommand({
+  args: {
+    positionals: {
+      project: positional.string({
+        brief: "Project id or name",
+        placeholder: "id-or-name",
+      }),
+    },
+    flags: {
+      toWorkspace: flag.string({
+        brief: "Locally authenticated workspace to receive the project",
+        placeholder: "id-or-name",
+      }),
+      recipientToken: flag.string({
+        brief: "Access token for the receiving workspace",
+        placeholder: "token",
+      }),
+    },
+  },
+  help: {
+    summary:
+      "Transfer a Project to another workspace after exact id confirmation",
+    examples: [
+      'project transfer proj_123 --to-workspace "Prisma Labs" --confirm proj_123',
+      "project transfer proj_123 --recipient-token <token> --confirm proj_123",
+    ],
+  },
+  needs: { credentials: true },
+  handler: async (args, ctx) => {
+    try {
+      const workspace = await resolveActiveWorkspace(ctx);
+      const { toWorkspace, recipientToken } = args.flags;
+
+      if (toWorkspace && recipientToken) {
+        throw usageError(
+          "Choose one transfer recipient source",
+          "--to-workspace and --recipient-token are mutually exclusive.",
+          "Pass either --to-workspace <id-or-name> or --recipient-token <token>.",
+          [
+            formatCommand([
+              "project",
+              "transfer",
+              "<project>",
+              "--to-workspace",
+              "<id-or-name>",
+              "--confirm",
+              "<project-id>",
+            ]),
+          ],
+          "project",
+        );
+      }
+      if (!toWorkspace?.trim() && !recipientToken?.trim()) {
+        throw transferRecipientRequiredError(formatCommand);
+      }
+
+      const projects = await listWorkspaceProjects(ctx, workspace);
+      const project = toProjectSummary(
+        resolveProjectForSetup(
+          args.positionals.project.trim(),
+          projects,
+          workspace,
+        ),
+      );
+
+      await ctx.prompt.consent(CONSENT_QUESTION, { token: project.id });
+
+      const recipient = await resolveRecipient(ctx, {
+        toWorkspace,
+        recipientToken,
+      });
+      await createManagementProjectProvider(ctx.api).transferProject({
+        projectId: project.id,
+        recipientAccessToken: recipient.accessToken,
+        signal: ctx.signal,
+      });
+
+      const warnings: string[] = [];
+      const action = await rewriteOrClearLocalPinForProject(
+        legacyOperationContext(ctx),
+        project.id,
+        recipient.workspaceId,
+        { onError: (message) => warnings.push(message) },
+      );
+
+      const result: ProjectTransferResult = {
+        workspace,
+        project,
+        recipient: {
+          workspaceId: recipient.workspaceId,
+          workspaceName: recipient.workspaceName,
+          source: recipient.source,
+        },
+        localPin: { action },
+      };
+      const diagnostics: Diagnostic[] = localPinDiagnostics(warnings);
+      return ok(
+        ctx.present(
+          { data: result, diagnostics },
+          transferPresentations(result, toWorkspace),
+        ),
+      );
+    } catch (error) {
+      const mapped = mapProjectOperationError(error);
+      if (mapped) {
+        return notOk(mapped);
+      }
+      throw error;
+    }
+  },
+});

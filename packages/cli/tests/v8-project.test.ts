@@ -1,10 +1,17 @@
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { ManagementApiClient, StreamEvent } from "@prisma/cli-engine";
 import type { CliStructuredError } from "@prisma/cli-engine/protocol";
 import { createTestCli, mintTestJwt } from "@prisma/cli-engine/testing";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  RecipientSessionInvalidError,
+  resolveRecipientWorkspaceSession,
+  WorkspaceSelectionError,
+} from "../src/auth";
 
 import { projectCreateCommand } from "../src/v8/project/create";
 import { projectEnvAddCommand } from "../src/v8/project/env-add";
@@ -13,9 +20,20 @@ import { projectEnvRemoveCommand } from "../src/v8/project/env-remove";
 import { projectEnvUpdateCommand } from "../src/v8/project/env-update";
 import { projectLinkCommand } from "../src/v8/project/link";
 import { projectListCommand } from "../src/v8/project/list";
+import { projectRemoveCommand } from "../src/v8/project/remove";
 import { projectRenameCommand } from "../src/v8/project/rename";
 import { projectShowCommand } from "../src/v8/project/show";
+import { projectTransferCommand } from "../src/v8/project/transfer";
 import { resolveActiveWorkspace } from "../src/v8/resources-shared/workspace";
+
+vi.mock("../src/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/auth")>()),
+  resolveRecipientWorkspaceSession: vi.fn(),
+}));
+
+beforeEach(() => {
+  vi.mocked(resolveRecipientWorkspaceSession).mockReset();
+});
 
 const ACME_SESSION = {
   workspaceId: "ws_1",
@@ -52,6 +70,7 @@ interface FakeClientSpec {
   projects?: unknown[];
   post?: (path: string, init: unknown) => unknown;
   patch?: (path: string, init: unknown) => unknown;
+  del?: (path: string, init: unknown) => unknown;
 }
 
 function fakeClient(spec: FakeClientSpec = {}): ManagementApiClient {
@@ -63,7 +82,8 @@ function fakeClient(spec: FakeClientSpec = {}): ManagementApiClient {
       spec.post ? spec.post(apiPath, init) : { data: { data: {} } },
     PATCH: async (apiPath: string, init: unknown) =>
       spec.patch ? spec.patch(apiPath, init) : { data: { data: {} } },
-    DELETE: async () => ({ data: { data: {} } }),
+    DELETE: async (apiPath: string, init: unknown) =>
+      spec.del ? spec.del(apiPath, init) : { data: { data: {} } },
   } as unknown as ManagementApiClient;
 }
 
@@ -75,6 +95,8 @@ function makeCli(client: ManagementApiClient, signedIn = true) {
       "project create": projectCreateCommand,
       "project link": projectLinkCommand,
       "project rename": projectRenameCommand,
+      "project remove": projectRemoveCommand,
+      "project transfer": projectTransferCommand,
       "project env add": projectEnvAddCommand,
       "project env update": projectEnvUpdateCommand,
       "project env list": projectEnvListCommand,
@@ -2266,6 +2288,583 @@ describe("prisma-v8 project env remove", () => {
         code: "PROJECT.USAGE_ERROR",
         summary: "prisma-cli project env remove requires --role or --branch",
       },
+    });
+  });
+});
+
+describe("prisma-v8 project remove", () => {
+  it("removes the project and clears a pin that points at it", async () => {
+    const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
+    const result = await makeCli(fakeClient()).run(
+      ["project", "remove", "proj_1", "--confirm", "proj_1"],
+      { cwd, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({
+      project: { id: "proj_1", name: "Billing" },
+      localPin: { cleared: true },
+    });
+    expect(blocks(result.presented)).toEqual([
+      { kind: "summary", tone: "ok", text: "Removing project." },
+      {
+        kind: "fields",
+        rows: [
+          { label: "workspace", value: "Acme Inc" },
+          { label: "project", value: "Billing" },
+          { label: "id", value: "proj_1" },
+        ],
+      },
+      {
+        kind: "list",
+        items: [
+          "The project, its databases, and its apps were removed.",
+          "This directory's local project binding was cleared.",
+        ],
+      },
+    ]);
+    expect(existsSync(path.join(cwd, ".prisma", "local.json"))).toBe(false);
+  });
+
+  it("warns when the pin it should clear cannot be deleted", async () => {
+    const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
+    await chmod(path.join(cwd, ".prisma"), 0o555);
+    try {
+      const result = await makeCli(fakeClient()).run(
+        ["project", "remove", "proj_1", "--confirm", "proj_1"],
+        { cwd },
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.presented?.data).toMatchObject({
+        localPin: { cleared: false },
+      });
+      expect(result.presented?.diagnostics).toEqual([
+        {
+          code: "PROJECT.LOCAL_STATE_WRITE_FAILED",
+          severity: "warn",
+          summary:
+            "The local pin .prisma/local.json points at the removed project but could not be deleted.",
+          nextActions: [],
+        },
+      ]);
+    } finally {
+      await chmod(path.join(cwd, ".prisma"), 0o755);
+    }
+  });
+
+  it("refuses to remove without consent in a non-interactive run", async () => {
+    const result = await makeCli(fakeClient()).run(
+      ["project", "remove", "proj_1", "--json"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "CLI.CONSENT_REQUIRED" },
+    });
+  });
+
+  it("refuses to remove when --yes stands in for consent", async () => {
+    const result = await makeCli(fakeClient()).run(
+      ["project", "remove", "proj_1", "--yes", "--json"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "CLI.CONSENT_REQUIRED" },
+    });
+  });
+
+  it("removes the project when the typed answer is the project id", async () => {
+    const result = await makeCli(fakeClient()).run(
+      ["project", "remove", "proj_1"],
+      {
+        cwd: await tempCwd(),
+        answers: ["proj_1"],
+        isTty: { stdin: true, stdout: true },
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({ project: { id: "proj_1" } });
+  });
+
+  it("fails when the typed answer is not the project id", async () => {
+    const result = await makeCli(fakeClient()).run(
+      ["project", "remove", "proj_1", "--json"],
+      {
+        cwd: await tempCwd(),
+        answers: ["nope"],
+        isTty: { stdin: true, stdout: true },
+      },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "CLI.PROMPT_INVALID" },
+    });
+  });
+
+  it("maps a blocked removal to PROJECT.REMOVE_BLOCKED", async () => {
+    const result = await makeCli(
+      fakeClient({
+        del: () => ({
+          error: { error: { message: "Project still has deployments." } },
+          response: new Response(null, { status: 400 }),
+        }),
+      }),
+    ).run(["project", "remove", "proj_1", "--confirm", "proj_1", "--json"], {
+      cwd: await tempCwd(),
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.REMOVE_BLOCKED",
+        summary: "Project cannot be removed yet",
+        why: "Project still has deployments.",
+      },
+    });
+  });
+
+  it("maps an unknown positional to PROJECT.NOT_FOUND", async () => {
+    const result = await makeCli(fakeClient()).run(
+      ["project", "remove", "nope", "--confirm", "nope", "--json"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "PROJECT.NOT_FOUND" },
+    });
+  });
+
+  it("maps an ambiguous positional to PROJECT.AMBIGUOUS", async () => {
+    const duplicates = [
+      { ...API_PROJECTS[0], id: "proj_a", name: "Billing" },
+      { ...API_PROJECTS[0], id: "proj_b", name: "Billing" },
+    ];
+    const result = await makeCli(fakeClient({ projects: duplicates })).run(
+      ["project", "remove", "Billing", "--confirm", "Billing", "--json"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "PROJECT.AMBIGUOUS" },
+    });
+  });
+
+  it("returns the remove result unchanged in json mode", async () => {
+    const result = await makeCli(fakeClient()).run(
+      ["project", "remove", "proj_1", "--confirm", "proj_1", "--json"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: true,
+      commandId: "project.remove",
+      result: {
+        workspace: { id: "ws_1", name: "Acme Inc" },
+        project: { id: "proj_1", name: "Billing" },
+        localPin: { cleared: false },
+      },
+      nextActions: [],
+    });
+  });
+
+  it("requires credentials", async () => {
+    const result = await makeCli(fakeClient(), false).run([
+      "project",
+      "remove",
+      "proj_1",
+      "--confirm",
+      "proj_1",
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "CLI.CREDENTIALS_REQUIRED" },
+    });
+  });
+});
+
+describe("prisma-v8 project transfer", () => {
+  it("transfers to a locally authenticated workspace and rewrites the pin", async () => {
+    vi.mocked(resolveRecipientWorkspaceSession).mockResolvedValue({
+      workspace: { id: "ws_2", name: "Prisma Labs" },
+      accessToken: "recipient-token",
+    } as never);
+    const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
+    const posts: unknown[] = [];
+    const result = await makeCli(
+      fakeClient({
+        post: (apiPath, init) => {
+          posts.push({ apiPath, init });
+          return { data: { data: {} } };
+        },
+      }),
+    ).run(
+      [
+        "project",
+        "transfer",
+        "proj_1",
+        "--to-workspace",
+        "Prisma Labs",
+        "--confirm",
+        "proj_1",
+      ],
+      { cwd, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(posts).toMatchObject([
+      {
+        apiPath: "/v1/projects/{id}/transfer",
+        init: { body: { recipientAccessToken: "recipient-token" } },
+      },
+    ]);
+    expect(result.presented?.data).toMatchObject({
+      recipient: {
+        workspaceId: "ws_2",
+        workspaceName: "Prisma Labs",
+        source: "workspace-session",
+      },
+      localPin: { action: "rewritten" },
+    });
+    expect(
+      JSON.parse(
+        await readFile(path.join(cwd, ".prisma", "local.json"), "utf8"),
+      ),
+    ).toEqual({ workspaceId: "ws_2", projectId: "proj_1" });
+    expect(result.presented?.presentation.next).toEqual([
+      {
+        kind: "run-command",
+        label: "prisma-cli auth workspace use 'Prisma Labs'",
+        command: "prisma-cli auth workspace use 'Prisma Labs'",
+      },
+    ]);
+  });
+
+  it("transfers with a recipient token and clears the pin", async () => {
+    const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
+    const result = await makeCli(fakeClient()).run(
+      [
+        "project",
+        "transfer",
+        "proj_1",
+        "--recipient-token",
+        "tok_recipient",
+        "--confirm",
+        "proj_1",
+      ],
+      { cwd },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({
+      recipient: {
+        workspaceId: null,
+        workspaceName: null,
+        source: "recipient-token",
+      },
+      localPin: { action: "cleared" },
+    });
+    expect(existsSync(path.join(cwd, ".prisma", "local.json"))).toBe(false);
+    expect(result.presented?.presentation.next).toEqual([]);
+  });
+
+  it("rejects both recipient sources", async () => {
+    const result = await makeCli(fakeClient()).run(
+      [
+        "project",
+        "transfer",
+        "proj_1",
+        "--to-workspace",
+        "Prisma Labs",
+        "--recipient-token",
+        "tok",
+        "--confirm",
+        "proj_1",
+        "--json",
+      ],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.USAGE_ERROR",
+        summary: "Choose one transfer recipient source",
+        why: "--to-workspace and --recipient-token are mutually exclusive.",
+        nextActions: [
+          {
+            kind: "user-choice",
+            label:
+              "Pass either --to-workspace <id-or-name> or --recipient-token <token>.",
+          },
+          {
+            kind: "run-command",
+            command:
+              "prisma-cli project transfer <project> --to-workspace <id-or-name> --confirm <project-id>",
+          },
+        ],
+      },
+    });
+  });
+
+  it("requires a recipient source", async () => {
+    const result = await makeCli(fakeClient()).run(
+      ["project", "transfer", "proj_1", "--confirm", "proj_1", "--json"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.TRANSFER_RECIPIENT_REQUIRED",
+        summary: "Transfer recipient required",
+        why: "Project transfer needs the receiving workspace.",
+      },
+    });
+  });
+
+  it("refuses --to-workspace under a service token", async () => {
+    const result = await makeCli(fakeClient()).run(
+      [
+        "project",
+        "transfer",
+        "proj_1",
+        "--to-workspace",
+        "Prisma Labs",
+        "--confirm",
+        "proj_1",
+        "--json",
+      ],
+      { cwd: await tempCwd(), env: { PRISMA_SERVICE_TOKEN: "tok" } },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.TRANSFER_RECIPIENT_UNAVAILABLE",
+        summary: "Local workspace sessions are unavailable",
+      },
+    });
+  });
+
+  it("maps an ambiguous recipient workspace to AUTH.WORKSPACE_AMBIGUOUS", async () => {
+    vi.mocked(resolveRecipientWorkspaceSession).mockRejectedValue(
+      new WorkspaceSelectionError("ambiguous", "Labs", [
+        { id: "ws_2", name: "Labs", credentialWorkspaceId: "cred_2" },
+        { id: "ws_3", name: "Labs", credentialWorkspaceId: "cred_3" },
+      ] as never),
+    );
+    const result = await makeCli(fakeClient()).run(
+      [
+        "project",
+        "transfer",
+        "proj_1",
+        "--to-workspace",
+        "Labs",
+        "--confirm",
+        "proj_1",
+        "--json",
+      ],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "AUTH.WORKSPACE_AMBIGUOUS",
+        summary: "Workspace name is ambiguous",
+      },
+    });
+  });
+
+  it("maps an unauthenticated recipient workspace to AUTH.WORKSPACE_NOT_AUTHENTICATED", async () => {
+    vi.mocked(resolveRecipientWorkspaceSession).mockRejectedValue(
+      new RecipientSessionInvalidError({ workspaceRef: "Labs" } as never),
+    );
+    const result = await makeCli(fakeClient()).run(
+      [
+        "project",
+        "transfer",
+        "proj_1",
+        "--to-workspace",
+        "Labs",
+        "--confirm",
+        "proj_1",
+        "--json",
+      ],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "AUTH.WORKSPACE_NOT_AUTHENTICATED",
+        summary: "Workspace is not authenticated",
+      },
+    });
+  });
+
+  it("refuses to transfer without consent in a non-interactive run", async () => {
+    const result = await makeCli(fakeClient()).run(
+      ["project", "transfer", "proj_1", "--recipient-token", "tok", "--json"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "CLI.CONSENT_REQUIRED" },
+    });
+  });
+
+  it("refuses to transfer when --yes stands in for consent", async () => {
+    const result = await makeCli(fakeClient()).run(
+      [
+        "project",
+        "transfer",
+        "proj_1",
+        "--recipient-token",
+        "tok",
+        "--yes",
+        "--json",
+      ],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "CLI.CONSENT_REQUIRED" },
+    });
+  });
+
+  it("transfers when the typed answer is the project id", async () => {
+    const result = await makeCli(fakeClient()).run(
+      ["project", "transfer", "proj_1", "--recipient-token", "tok"],
+      {
+        cwd: await tempCwd(),
+        answers: ["proj_1"],
+        isTty: { stdin: true, stdout: true },
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({ project: { id: "proj_1" } });
+  });
+
+  it("fails when the typed answer is not the project id", async () => {
+    const result = await makeCli(fakeClient()).run(
+      ["project", "transfer", "proj_1", "--recipient-token", "tok", "--json"],
+      {
+        cwd: await tempCwd(),
+        answers: ["nope"],
+        isTty: { stdin: true, stdout: true },
+      },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "CLI.PROMPT_INVALID" },
+    });
+  });
+
+  it("maps a rejected transfer to PROJECT.TRANSFER_REJECTED", async () => {
+    const result = await makeCli(
+      fakeClient({
+        post: () => ({
+          error: { error: { message: "The recipient token is invalid." } },
+          response: new Response(null, { status: 400 }),
+        }),
+      }),
+    ).run(
+      [
+        "project",
+        "transfer",
+        "proj_1",
+        "--recipient-token",
+        "tok",
+        "--confirm",
+        "proj_1",
+        "--json",
+      ],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.TRANSFER_REJECTED",
+        summary: "Project transfer was rejected",
+        why: "The recipient token is invalid.",
+      },
+    });
+  });
+
+  it("returns the transfer result unchanged in json mode", async () => {
+    const result = await makeCli(fakeClient()).run(
+      [
+        "project",
+        "transfer",
+        "proj_1",
+        "--recipient-token",
+        "tok",
+        "--confirm",
+        "proj_1",
+        "--json",
+      ],
+      { cwd: await tempCwd() },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: true,
+      commandId: "project.transfer",
+      result: {
+        workspace: { id: "ws_1" },
+        project: { id: "proj_1" },
+        recipient: { source: "recipient-token" },
+        localPin: { action: "none" },
+      },
+      nextActions: [],
+    });
+  });
+
+  it("requires credentials", async () => {
+    const result = await makeCli(fakeClient(), false).run([
+      "project",
+      "transfer",
+      "proj_1",
+      "--recipient-token",
+      "tok",
+      "--confirm",
+      "proj_1",
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "CLI.CREDENTIALS_REQUIRED" },
     });
   });
 });

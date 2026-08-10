@@ -20,8 +20,10 @@ import { projectEnvRemoveCommand } from "./project/env-remove";
 import { projectEnvUpdateCommand } from "./project/env-update";
 import { projectLinkCommand } from "./project/link";
 import { projectListCommand } from "./project/list";
+import { projectRemoveCommand } from "./project/remove";
 import { projectRenameCommand } from "./project/rename";
 import { projectShowCommand } from "./project/show";
+import { projectTransferCommand } from "./project/transfer";
 import { telemetryDisableCommand } from "./telemetry/disable";
 import { telemetryEnableCommand } from "./telemetry/enable";
 import { telemetryStatusCommand } from "./telemetry/status";
@@ -39,6 +41,8 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     projectCreate: projectCreateCommand,
     projectLink: projectLinkCommand,
     projectRename: projectRenameCommand,
+    projectRemove: projectRemoveCommand,
+    projectTransfer: projectTransferCommand,
     projectEnvAdd: projectEnvAddCommand,
     projectEnvUpdate: projectEnvUpdateCommand,
     projectEnvList: projectEnvListCommand,
@@ -76,6 +80,8 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "project create": projectCreateCommand,
   "project link": projectLinkCommand,
   "project rename": projectRenameCommand,
+  "project remove": projectRemoveCommand,
+  "project transfer": projectTransferCommand,
   "project env add": projectEnvAddCommand,
   "project env update": projectEnvUpdateCommand,
   "project env list": projectEnvListCommand,
