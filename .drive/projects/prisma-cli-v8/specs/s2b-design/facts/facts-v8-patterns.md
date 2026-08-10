@@ -1,6 +1,7 @@
 # v8 CLI port — extracted patterns (branch s2b-resources-work)
 
-All paths relative to worktree root `/Users/will/Projects/prisma/prisma-cli/.claude/worktrees/prisma-cli-v8-onboarding-30e694`.
+All paths relative to the repository root, on branch
+`claude/prisma-cli-v8-onboarding-30e694`.
 
 ---
 

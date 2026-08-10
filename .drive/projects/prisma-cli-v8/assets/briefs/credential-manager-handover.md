@@ -7,9 +7,9 @@ document wins.
 
 ## 1. Where you are
 
-Repo `prisma/prisma-cli`, worktree
-`/Users/will/Projects/prisma/prisma-cli/.claude/worktrees/prisma-cli-s1-d6-013cea`,
-branch `s2a-foundations` (= PR #130, open, base `main`). This branch
+Repo `prisma/prisma-cli`, worktree checked out from branch
+`claude/prisma-cli-s1-d6-013cea`, working branch `s2a-foundations`
+(= PR #130, open, base `main`). This branch
 carries slice S2a of the v8 CLI port PLUS a full rework of the auth
 family onto a new component, the **credential manager**. The rework
 is functionally complete and reviewed; what remains is exactly:

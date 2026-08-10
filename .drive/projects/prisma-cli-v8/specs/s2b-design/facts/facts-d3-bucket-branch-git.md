@@ -1,6 +1,7 @@
 # Verbatim facts: bucket / bucket key / branch list / git connect|disconnect
 
-All paths relative to `/Users/will/Projects/prisma/prisma-cli/.claude/worktrees/prisma-cli-v8-onboarding-30e694/packages/cli/src` unless absolute. Extracted from code on branch `claude/prisma-cli-v8-onboarding-30e694` (worktree labeled s2b-resources-work). Grounded against `.drive/projects/prisma-cli-v8/assets/s2/command-inventory.md` (§1 rows 44–46, 59–64; per-command sections at lines 441–463 and 524–547).
+All paths relative to `packages/cli/src` unless they start with `.drive/`
+or `packages/`, which are relative to the repository root. Extracted from code on branch `claude/prisma-cli-v8-onboarding-30e694` (worktree labeled s2b-resources-work). Grounded against `.drive/projects/prisma-cli-v8/assets/s2/command-inventory.md` (§1 rows 44–46, 59–64; per-command sections at lines 441–463 and 524–547).
 
 ---
 

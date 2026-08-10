@@ -1,7 +1,8 @@
 # Facts: `database` group (11 commands) — legacy commander CLI, verbatim extraction
 
-All paths are absolute in the worktree
-`/Users/will/Projects/prisma/prisma-cli/.claude/worktrees/prisma-cli-v8-onboarding-30e694` (abbreviated below as `<wt>`). Key files:
+All paths are relative to the repository root (written below as `<wt>`,
+the checkout of branch `claude/prisma-cli-v8-onboarding-30e694`). Key
+files:
 
 - Registration: `<wt>/packages/cli/src/commands/database/index.ts`
 - Controllers: `<wt>/packages/cli/src/controllers/database.ts`

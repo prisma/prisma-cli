@@ -1,8 +1,9 @@
 # D1 verbatim facts — `project` + `project env` commands (legacy commander CLI)
 
-Extracted from code on branch `claude/prisma-cli-v8-onboarding-30e694` worktree
-`/Users/will/Projects/prisma/prisma-cli/.claude/worktrees/prisma-cli-v8-onboarding-30e694`.
-All paths below are relative to `packages/cli/src/` unless absolute. Line numbers are from that worktree.
+Extracted from code on branch `claude/prisma-cli-v8-onboarding-30e694`.
+All paths below are relative to `packages/cli/src/` unless absolute, and to
+the repository root when they start with `.drive/` or `packages/`. Line
+numbers are from that branch.
 Cross-checked against `.drive/projects/prisma-cli-v8/assets/s2/command-inventory.md`; discrepancies flagged inline and at the end.
 
 ---
