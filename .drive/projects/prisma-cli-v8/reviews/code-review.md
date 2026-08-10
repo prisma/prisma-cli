@@ -16,6 +16,7 @@ Slice: s2b-resources (contract `../specs/s2b-resources.md`, plan
 | --- | --- | --- | --- |
 | D1 | 1 | ANOTHER ROUND NEEDED | 2026-08-10 |
 | D1 | 2 | SATISFIED | 2026-08-10 |
+| D2 | 1 | SATISFIED | 2026-08-10 |
 
 ## Findings log
 
@@ -99,7 +100,206 @@ gone).
   both flags and neither; `env list` gains both known-branch local-git
   cases (preview overrides and the production branch).
 
+### D2 round 1
+
+No must-fix findings. The three below are cheap and should land before
+the PR, but none of them changes behavior in normal operation.
+
+**D2-R1-01 — should-fix — `packages/cli/src/v8/postgres/restore.ts:52-55`**
+The success nextAction is built from `result.database.id`, which is the
+database summary the restore API call returned. Legacy builds it from
+the resolved target database's id
+(`packages/cli/src/controllers/database.ts:471-549`, the `nextSteps`
+entry), and d2-postgres.md §3.5 pins `${CLI_NAME} postgres show
+${database.id}` where `database` is the target resolved in that
+section's step 2. The two ids are the same whenever the API echoes the
+target back, so this is not a behavior change today; it only differs if
+a restore response omits or changes the id, in which case v8 prints a
+broken command and legacy prints a correct one. Use the resolved target
+database's id.
+
+**D2-R1-02 — should-fix — `packages/cli/tests/v8-postgres.test.ts:277-298`**
+Nothing in the test file asserts the `--trace` → `--log-level verbose`
+substitution, which conventions §0 pins and divergence entry 8 records.
+The substitution runs in `portFixText`
+(`packages/cli/src/v8/postgres/errors.ts:56-59`) and fires on the most
+common API-error path: the generic passthrough branch defaults `fix` to
+"Re-run with --trace …" whenever the API response carries no `hint`
+(`packages/cli/src/lib/database/provider.ts:851-864`). This test already
+drives exactly that path but asserts only `code`, `summary` and `why`.
+Add the `nextActions` assertion here.
+
+**D2-R1-03 — should-fix — `packages/cli/tests/v8-postgres.test.ts:319-330`**
+The plan-limit test that returns a successful subscription lookup
+asserts neither the enriched `meta` fields (`planName`, `usageBlocked`,
+`upgradeUrl`) nor the nextAction's `reason`. That reason is the whole
+substance of divergence 25: d2-postgres.md §2.4 pins it as
+`` Upgrade at ${upgradeUrl}${planName ? ` (current plan: ${planName})` : ""}. ``,
+and it is what replaces PR #127's dropped `humanLines` rendering. Only
+the no-subscription variant's reason is asserted, at
+`tests/v8-postgres.test.ts:653-666`. Assert the with-URL reason and the
+three enriched meta keys.
+
+### D2 round 1 — dispositions (orchestrator, 2026-08-10)
+
+All three fixed. No second D2 review round: the verdict was already
+SATISFIED and none of the three was a must-fix.
+
+- **D2-R1-01 — FIXED.** `restorePresentations` now takes the resolved
+  target database id and builds the success nextAction from it, which is
+  what d2-postgres.md §3.5 pins. No test distinguishes the two ids,
+  because the restore response fixture echoes the target back and adding
+  a case that diverges them would be a new case, which conventions §10
+  forbids without a plan amendment. Flagging it here rather than
+  silently adding one.
+- **D2-R1-02 — FIXED.** The API-passthrough test now asserts the
+  `nextActions`, which proves the `--trace` → `--log-level verbose`
+  substitution end to end: the provider's default fix text is the only
+  place it fires.
+- **D2-R1-03 — FIXED, and it exposed a real coverage gap.** Asserting
+  the enriched fields failed, because both plan-limit tests registered
+  their subscription route as
+  `GET /v1/workspaces/{workspaceId}/subscription` while the provider
+  requests `/v1/workspaces/{id}/subscription`. The route never matched,
+  so the lookup always came back empty and both tests were exercising
+  the same unenriched fallback. The enriched branch of d2 §2.4 — the
+  `Upgrade at <url> (current plan: <name>)` reason that replaces PR
+  #127's dropped rendering, and the `planName` / `usageBlocked` /
+  `upgradeUrl` meta — had no coverage at all. Both route keys are
+  corrected, so the enrichment case now enriches and the
+  no-result case now genuinely fails its lookup.
+
 ## Round notes
+
+### D2 round 1 — 2026-08-10
+
+The port is faithful and I found no must-fix defect. All eleven command
+files match their d2-postgres.md §3.x section on args, flags, briefs,
+examples, `needs: { credentials: true }`, handler step order, the pinned
+provider calls, block sequence, field labels, stdout lines, json
+serializer and next actions. Spot-checked copy is verbatim against the
+fact sheet, including the not-found scope suffix, the ambiguous
+`meta.matches` shape, both connection-string-missing variants, the
+backup-limit and usage-date usage errors, and the restore detail lines.
+`formatBackupSize` and `formatStatus` in
+`v8/postgres/presentation.ts` are line-for-line reproductions of the
+legacy presenter's private helpers. Every command reuses the legacy
+operation layer rather than reimplementing it: `resolveDatabase`,
+`sortDatabases`, `ensureProjectId`, `parseUsageDate`,
+`parseBackupLimit` and `defaultConnectionName` are imported from the
+controller, and the provider is built from `ctx.api`.
+
+Consent is engine-owned exactly as conventions §5 requires. No `confirm`
+flag is declared anywhere under `packages/cli/src/v8/` (grep-verified —
+the only `--confirm` occurrences are help examples and legacy nextStep
+strings). All four consent commands call
+`ctx.prompt.consent(<question>, { token: <exact id> })` at the position
+the legacy exact-id check sat: `restore` and `remove` after resolving
+the database, `connection rotate` and `connection remove` before any API
+call. Each question is the section's pinned confirmation `why` sentence,
+verbatim, and each token is the exact resolved resource id. All four
+five-case matrices are complete and non-vacuous: non-interactive
+`--confirm <id>` succeeds and drives the real API call (the tests assert
+the restore body, the database DELETE, the rotate response and the
+connection DELETE), the same run without `--confirm` and the same run
+with `--yes` both settle `CLI.CONSENT_REQUIRED` exit 2, the typed id
+succeeds, and a wrong typed answer settles `CLI.PROMPT_INVALID` exit 2.
+
+Secrets follow R-S2b-4 on all three commands. `postgres create`,
+`postgres connection create` and `postgres connection rotate` share
+`secretBlocks`, which puts the URL on stdout as the single bare line,
+masks it in the human card through a `sensitive: true` field row, and
+leaves it untouched in the json result (the engine falls back to
+`data` when a command declares no `json` presentation —
+`packages/cli-engine/src/execution/settlement.ts:65-68`). In json mode
+the engine materializes no stdout at all, so the secret appears only in
+the envelope, which is the legacy behavior.
+
+The rename is complete. No `database` command path, id, help string or
+example survives in v8 code or tests (grep-verified). What remains is
+the resource noun: field labels, positional placeholders, the legacy
+`domain: "database"` argument to `usageError` (which the mapper drops),
+and the `["database", …]` argument arrays handed to the legacy command
+formatter. Those last ones become `prisma-cli database …` strings that
+`portCommandReferences`
+(`packages/cli/src/v8/postgres/errors.ts:45-49`) rewrites to
+`prisma-cli postgres …`; eleven tests assert the rewritten strings, so
+the substitution is proven rather than assumed. The same helper strips
+the package-runner prefix the provider's fallback formatter produces,
+which is why d2 §2.1's "do not pass `formatCommand`" instruction works.
+
+Error mapping matches conventions §4 and d2 §2.5. Every reachable legacy
+code is present, none is invented, the mechanical `POSTGRES.<RAW_CODE>`
+fallback covers API passthrough, plan-limit is intercepted before the
+table, and the five project-resolution codes are delegated to
+`v8/project/errors.ts` as the single source. The mapper deliberately
+has no `CONFIRMATION_REQUIRED` entry: d2 §2.5's table still lists one,
+but conventions §5 deletes it as unreachable, and conventions outrank
+the child doc. The implementation and the divergence list both follow
+conventions, which is the correct resolution of that conflict. The
+"Workspace required" case never reaches the mapper either, because
+`resolveActiveWorkspace` throws a `CliStructuredError` carrying
+`AUTH.USAGE_ERROR` directly and the engine settles a thrown structured
+error as errored, exit 2
+(`packages/cli-engine/src/execution/settlement.ts:123-130`).
+
+Test-case completeness holds. I walked every §3.x "Tests:" line against
+the file and found no dropped case: list has all seven, show all six,
+create all seven, usage all six, restore all ten including the source
+variant, remove all six, backup list all seven with the three `--limit`
+values, connection list all five, connection create all five, rotate all
+seven, connection remove all five. Conventions §10's "no cases added,
+none dropped" is met.
+
+Legacy test deletions are correct. `database.test.ts` keeps only the
+shell help case, which exercises the legacy command tree rather than any
+ported command, and every deleted case drove one of the eleven ported
+commands. `database-plan-limit.test.ts` keeps exactly the eleven
+provider unit cases (three `it` blocks plus two `it.each` tables of three
+and five), which d2 §5 requires because the provider is the operation
+layer v8 calls; the seven deleted cases drove `database show` through
+the legacy shell. Divergence entry 30 records the one behavior that goes
+with them, the legacy shell's cancel path.
+
+Boundaries hold. Twenty-three files changed in the range and none is
+under `packages/cli/src/v8/auth/`, `packages/cli/src/auth/`,
+`packages/cli-engine/` or `.github/workflows/`. The only legacy source
+edit is `packages/cli/src/controllers/database.ts`: six `export` keyword
+additions (`parseUsageDate`, `parseBackupLimit`, `resolveDatabase`,
+`ensureProjectId`, `sortDatabases`, `defaultConnectionName`) with no
+body change, all six named by d2 §2.2, §3.1, §3.3, §3.4, §3.7 and §3.9.
+Note for the PR description, per conventions §0.4's D1 precedent: these
+six exports belong in the "legacy edits" list.
+
+The divergence list is thorough. Entries 21–30 cover all twelve items d2
+§4 asks for (the four that are class-shared with D1 are cited as such
+rather than duplicated), the error-code map carries every row of §2.5,
+and all eleven conformance rows are present. The per-row divergence
+lists are accurate down to detail — `connection rotate` and
+`connection remove` correctly omit 18 and 28 because they resolve no
+project and never carried `verboseContext`, and `create` correctly omits
+26 because its stdout payload is legacy behavior rather than the new
+list-rows convention.
+
+Two smaller observations, neither worth a finding. First,
+`portPostgresCommand`'s fallback that prefixes `${CLI_NAME} ` runs after
+the group rewrite, so a nextStep string with no prefix at all would keep
+the word `database`; I traced every legacy nextSteps value this group
+can raise and all of them are prefixed, either hard-coded or
+formatter-built, so the branch is unreachable. Second, the mapper ports
+command references inside `fix` but not inside `why`, which d2 §0 words
+broadly enough to cover both; again, no reachable `why` in this group
+contains a command reference, and D1's mapper behaves the same way.
+
+Not checked, deliberately: the verification suite (the orchestrator's
+run on the current tip is trusted), rendered human bytes, the
+`v8-golden-rendering.test.ts` surface (d2 names no new entries, so
+conventions §10 asks for no change — but the masked-secret row has no
+golden representative anywhere yet, which is worth a design decision at
+D4), anything under D1, and anything under D3. The D3 edit to
+`v8/project/context.ts`'s `resolvePinnedProject` signature landed in the
+worktree during this review; it is outside my range and does not affect
+the postgres callers, which always pass a command name.
 
 ### D1 round 2 — 2026-08-10
 

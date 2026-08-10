@@ -26,6 +26,7 @@ const CONSENT_QUESTION =
 function restorePresentations(
   result: DatabaseRestoreResult,
   sourceDatabaseId: string | null,
+  targetDatabaseId: string,
 ): Presentations {
   const rows: FieldRow[] = [
     { label: "project", value: result.projectName },
@@ -50,8 +51,8 @@ function restorePresentations(
     next: () => [
       {
         kind: "run-command",
-        label: `${CLI_NAME} postgres show ${result.database.id}`,
-        command: `${CLI_NAME} postgres show ${result.database.id}`,
+        label: `${CLI_NAME} postgres show ${targetDatabaseId}`,
+        command: `${CLI_NAME} postgres show ${targetDatabaseId}`,
       },
     ],
   };
@@ -144,6 +145,7 @@ export const postgresRestoreCommand = defineCommand({
           restorePresentations(
             result,
             sourceDatabase.id === database.id ? null : sourceDatabase.id,
+            database.id,
           ),
         ),
       );

@@ -293,6 +293,13 @@ describe("prisma-v8 postgres list", () => {
         code: "POSTGRES.internalError",
         summary: "Failed to list databases",
         why: "Backend exploded.",
+        nextActions: [
+          {
+            kind: "user-choice",
+            label:
+              "Re-run with --log-level verbose for the underlying API response details.",
+          },
+        ],
       },
     });
   });
@@ -302,7 +309,7 @@ describe("prisma-v8 postgres list", () => {
       postgresClient({
         routes: {
           "GET /v1/databases": () => apiFailure(402, PLAN_LIMIT_BODY),
-          "GET /v1/workspaces/{workspaceId}/subscription": () => ({
+          "GET /v1/workspaces/{id}/subscription": () => ({
             data: {
               data: {
                 planName: "Starter",
@@ -322,9 +329,20 @@ describe("prisma-v8 postgres list", () => {
         code: "POSTGRES.PLAN_LIMIT_REACHED",
         summary: "Workspace plan limit reached",
         why: "Database operations are blocked because this workspace has used the operations included in its plan. This is a workspace plan limit, not a Prisma outage.",
-        meta: { workspaceId: "ws_1", blockedFeature: null },
+        meta: {
+          workspaceId: "ws_1",
+          blockedFeature: null,
+          planName: "Starter",
+          usageBlocked: true,
+          upgradeUrl: "https://console.prisma.io/upgrade",
+        },
         nextActions: [
-          { kind: "user-choice", label: "Upgrade the workspace plan" },
+          {
+            kind: "user-choice",
+            label: "Upgrade the workspace plan",
+            reason:
+              "Upgrade at https://console.prisma.io/upgrade (current plan: Starter).",
+          },
         ],
       },
     });
@@ -641,8 +659,7 @@ describe("prisma-v8 postgres create", () => {
       postgresClient({
         routes: {
           "POST /v1/databases": () => apiFailure(402, PLAN_LIMIT_BODY),
-          "GET /v1/workspaces/{workspaceId}/subscription": () =>
-            apiFailure(500),
+          "GET /v1/workspaces/{id}/subscription": () => apiFailure(500),
         },
       }),
     ).run(["postgres", "create", "my-db", "--json"], {
