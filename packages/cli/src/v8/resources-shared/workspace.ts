@@ -28,12 +28,12 @@ export function workspaceRequiredError(): CliStructuredError {
 export async function resolveActiveWorkspace(
   ctx: CommandContext<undefined, never>,
 ): Promise<AuthWorkspace> {
-  const session = await ctx.session();
-  if (session === null) {
+  const credential = await ctx.activeCredential();
+  if (credential?.workspaceId === undefined) {
     throw workspaceRequiredError();
   }
   return {
-    id: session.workspaceId,
-    name: session.workspaceName ?? session.workspaceId,
+    id: credential.workspaceId,
+    name: credential.workspaceName ?? credential.workspaceId,
   };
 }

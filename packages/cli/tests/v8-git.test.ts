@@ -186,7 +186,7 @@ function makeCli(client: ManagementApiClient, options: CliOptions = {}) {
     ...(signedIn
       ? {
           sessions: [ACME_SESSION],
-          currentWorkspaceId: ACME_SESSION.workspaceId,
+          selectedWorkspaceId: ACME_SESSION.workspaceId,
         }
       : {}),
     managementApi: { client },

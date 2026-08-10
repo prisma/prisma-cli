@@ -104,14 +104,26 @@ provider `workspaceId`, plan-limit lookup). `ctx` exposes only
 9384a95): `ctx.session(): Promise<Session | null>` exists — Session
 `{ workspaceId, workspaceName?, expiresAt?, source, current }`. The
 helper `resolveActiveWorkspace(ctx)` in
-`packages/cli/src/v8/resources-shared/workspace.ts` now calls
-`ctx.session()` and returns the legacy `{ id, name }` workspace shape
-from `workspaceId`/`workspaceName` — `name` falls back to the
-workspace id when the session carries no name (name is a required
-string reaching human output; pinned 2026-08-10); a null session behind
-`needs.credentials` is defensive-only → the ported `AUTH.USAGE_ERROR`
-"Workspace required" (copy unchanged). No handler reads the auth
-module.
+`packages/cli/src/v8/resources-shared/workspace.ts` returns the legacy
+`{ id, name }` workspace shape from `workspaceId`/`workspaceName` —
+`name` falls back to the workspace id when nothing names it (name is a
+required string reaching human output; pinned 2026-08-10); having no
+workspace behind `needs.credentials` is defensive-only → the ported
+`AUTH.USAGE_ERROR` "Workspace required" (copy unchanged). No handler
+reads the auth module.
+
+**Amended 2026-08-10 (rev-6 credential model, auth-stream commit
+96e5628).** `ctx.session()` no longer exists. Its replacement is
+`ctx.activeCredential(): Promise<ActiveCredential | null>`, and
+`workspaceId` on it is `string | undefined` rather than required — a
+credential whose claims name no workspace now reports none instead of
+manufacturing an empty id. So the helper reads `ctx.activeCredential()`
+and raises the same "Workspace required" error in two cases rather than
+one: a null credential, and a credential carrying no `workspaceId`. The
+second is exactly what that error's `why` already describes — "the
+authenticated session does not have one" — so the copy is unchanged and
+this is not a divergence. The `workspaceName ?? workspaceId` fallback
+is unchanged.
 
 ## 4. Error mapping (R-S2b-5, pinned)
 

@@ -111,7 +111,7 @@ function makeCli(client: ManagementApiClient, signedIn = true) {
     ...(signedIn
       ? {
           sessions: [ACME_SESSION],
-          currentWorkspaceId: ACME_SESSION.workspaceId,
+          selectedWorkspaceId: ACME_SESSION.workspaceId,
         }
       : {}),
     managementApi: { client },
@@ -879,26 +879,41 @@ describe("prisma-v8 project rename", () => {
 });
 
 describe("prisma-v8 project workspace requirement", () => {
-  it("names the workspace of the engine's pinned session", async () => {
+  it("names the workspace of the engine's pinned credential", async () => {
     const workspace = await resolveActiveWorkspace({
-      session: async () => ({
+      activeCredential: async () => ({
         workspaceId: "ws_1",
         workspaceName: "Acme Inc",
-        expiresAt: undefined,
-        source: "stored" as const,
-        current: true,
       }),
     } as never);
 
     expect(workspace).toEqual({ id: "ws_1", name: "Acme Inc" });
   });
 
-  // needs.credentials already fails a signed-out run, so a null session
-  // only reaches the helper defensively.
-  it("reports the ported workspace-required usage error without a session", async () => {
+  it("falls back to the workspace id when nothing names the workspace", async () => {
+    const workspace = await resolveActiveWorkspace({
+      activeCredential: async () => ({
+        workspaceId: "ws_1",
+        workspaceName: undefined,
+      }),
+    } as never);
+
+    expect(workspace).toEqual({ id: "ws_1", name: "ws_1" });
+  });
+
+  // needs.credentials already fails a signed-out run, so a null
+  // credential only reaches the helper defensively. Under the rev-6
+  // model a credential can also name no workspace at all, which is the
+  // same failure: the run is authenticated but has no workspace.
+  it.each([
+    ["no credential", null],
+    ["a credential naming no workspace", { workspaceId: undefined }],
+  ])("reports the ported workspace-required usage error with %s", async (_name, credential) => {
     let error: CliStructuredError | undefined;
     try {
-      await resolveActiveWorkspace({ session: async () => null } as never);
+      await resolveActiveWorkspace({
+        activeCredential: async () => credential,
+      } as never);
     } catch (thrown) {
       error = thrown as CliStructuredError;
     }

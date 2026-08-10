@@ -163,7 +163,7 @@ function makeCli(client: ManagementApiClient, signedIn = true) {
     ...(signedIn
       ? {
           sessions: [ACME_SESSION],
-          currentWorkspaceId: ACME_SESSION.workspaceId,
+          selectedWorkspaceId: ACME_SESSION.workspaceId,
         }
       : {}),
     managementApi: { client },

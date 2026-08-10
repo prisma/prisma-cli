@@ -70,8 +70,9 @@ export async function resolvePostgresContext(
 export async function resolvePostgresProviderOnly(
   ctx: PostgresCommandContext,
 ): Promise<DatabaseProvider> {
-  const session = await ctx.session();
+  const credential = await ctx.activeCredential();
+  const workspaceId = credential?.workspaceId;
   return createManagementDatabaseProvider(ctx.api, {
-    ...(session === null ? {} : { workspaceId: session.workspaceId }),
+    ...(workspaceId === undefined ? {} : { workspaceId }),
   });
 }
