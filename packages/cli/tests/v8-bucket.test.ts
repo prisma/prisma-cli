@@ -376,6 +376,13 @@ describe("prisma-v8 bucket create", () => {
         code: "BUCKET.internalError",
         summary: "Failed to create bucket",
         why: "Backend exploded.",
+        nextActions: [
+          {
+            kind: "user-choice",
+            label:
+              "Re-run with --log-level verbose for the underlying API response details.",
+          },
+        ],
       },
     });
   });

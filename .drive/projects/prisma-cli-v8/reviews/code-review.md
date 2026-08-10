@@ -17,6 +17,7 @@ Slice: s2b-resources (contract `../specs/s2b-resources.md`, plan
 | D1 | 1 | ANOTHER ROUND NEEDED | 2026-08-10 |
 | D1 | 2 | SATISFIED | 2026-08-10 |
 | D2 | 1 | SATISFIED | 2026-08-10 |
+| D3 | 1 | SATISFIED (git connect step 5 excluded) | 2026-08-10 |
 
 ## Findings log
 
@@ -169,7 +170,220 @@ SATISFIED and none of the three was a must-fix.
   corrected, so the enrichment case now enriches and the
   no-result case now genuinely fails its lookup.
 
+### D3 round 1
+
+One should-fix finding. Nothing else in the dispatch departs from the
+contract, the conventions or the design. `git connect` step 5 (the
+browser wait) is excluded from this round by the coordinator and is not
+counted against the dispatch.
+
+**D3-R1-01 — should-fix — `packages/cli/src/v8/bucket/errors.ts:31`,
+`packages/cli/src/v8/branch/errors.ts:30`,
+`packages/cli/src/v8/git/errors.ts:38`**
+Each of the three new mappers carries its own copy of `portFixText`, and
+no test in `v8-bucket.test.ts`, `v8-branch.test.ts` or `v8-git.test.ts`
+asserts the `--trace` → `--log-level verbose` substitution those copies
+perform. Conventions §0 pins it and D1's class entry 7 records it. The
+substitution is reachable on the ordinary API-failure path in all three
+groups, because `bucketApiError`
+(`packages/cli/src/lib/bucket/provider.ts:290-309`), `branchApiError`
+(`packages/cli/src/controllers/branch.ts:178-197`) and
+`repoConnectionFixForStatus`'s default arm
+(`packages/cli/src/controllers/project.ts:2283-2297`) all fall back to
+"Re-run with --trace …" when the API supplies no `hint`. Three tests
+already drive that exact path but assert only `code`, `summary` and
+`why`: `tests/v8-bucket.test.ts:360-381`, `tests/v8-branch.test.ts:220-241`
+and the `BUCKET.notFound` cases at `tests/v8-bucket.test.ts:520-535` and
+`:885-903`. Add the `nextActions` assertion to at least the bucket and
+branch cases. This is the same gap as D2-R1-02, where asserting the
+untested field turned out to expose a test route that never matched.
+
+### D3 round 1 — dispositions (orchestrator, 2026-08-10)
+
+**D3-R1-01 — FIXED in all three groups.** Unlike D2-R1-02, the
+assertions passed first time, so there was no hidden defect underneath
+this one.
+
+- `bucket` and `branch` needed no new cases: the existing
+  passthrough tests already drive the default fix text, so they now
+  assert the single `user-choice` action carrying the substituted
+  string.
+- `git` needed one new case, because `repoConnectionFixForStatus` has
+  four arms and every existing test hit a status-specific one (409 on
+  connect, 422 on disconnect). The default arm — the group's only
+  place where the substitution fires — was unreachable from the
+  enumerated case list. Rather than add a case silently, d3 §3.9's
+  test list is amended to require both arms, and the new case drives
+  a 500 through `git disconnect`.
+
+Two items the reviewer raised for D4 are carried into the closure
+dispatch and are not D3 defects: divergence 40's `GIT.AUTH_REQUIRED`
+retains the stale "rerun the command in a TTY to sign in
+interactively" fix text, which reads wrong under R-S2b-2 and is
+untested in both groups that map it; and the five near-identical
+group mappers have drifted on whether they handle `#`-comment next
+steps.
+
 ## Round notes
+
+### D3 round 1 — 2026-08-10
+
+The port is faithful and I found no must-fix defect. All nine command
+files match their d3 §3.x section on args, flags, positional
+placeholders, briefs, examples, `needs`, handler step order, the pinned
+operation calls, block sequence, field labels, stdout lines, json shape
+and next actions. Both orchestrator amendment blocks are honored: `bucket
+delete` declares no `confirm` flag and the bucket mapper has no
+`CONFIRMATION_REQUIRED` row; the positional placeholders are `bucket-id`,
+`key-id` and `git-url`; `bucket key create`'s field rows carry the four
+environment-variable names with the two secrets masked; the git
+`--project` placeholder is `id-or-name`; and the divergence entries are
+numbered 31 to 42. The §3.8 test-list amendment is honored too — every
+`git connect` case that reaches the handler runs with a TTY, and the new
+non-interactive case proves the run settles `CLI.INTERACTION_REQUIRED` at
+exit 2 with the fake client recording zero calls.
+
+Copy is verbatim against the fact sheet everywhere I checked, and I
+checked every string the nine commands can emit. Spot-checks that matter:
+`bucket create`'s summary keeps its trailing period and its
+`formatBucketTarget` branch suffix; `bucket key create`'s four stdout
+lines are byte-exact and in the pinned order; the three bucket usage
+errors keep their distinct `why` sentences ("Bucket deletion needs a
+bucket id.", "Bucket key listing needs a bucket id.", "Bucket key
+creation needs a bucket id.") and their distinct `fix` texts; `bucket key
+delete`'s combined "Bucket id and key id required" error keeps its
+`<bucketId>` placeholder next step; and every git error — the no-url
+usage error, `REPO_PROVIDER_UNSUPPORTED`, `REPO_ALREADY_CONNECTED`,
+`REPO_NOT_CONNECTED` and both status-specific `REPO_CONNECTION_FAILED`
+fix texts — is asserted verbatim in the tests.
+
+The operation layer is reused rather than reimplemented, and more
+thoroughly than in D1. `branch list`'s handler is `listRealBranches`
+line for line minus the auth guard and `verboseContext`, including
+`sortBranches(branches.map(toBranchSummary))` in that order. The git
+commands import not just the flow functions §2.2 names but also the error
+constructors (`repoAlreadyConnectedError`, `repoConnectionApiError`,
+`repoNotConnectedError`, `unsupportedRepositoryProviderError`), the
+comparison helper `repositoryFullNamesMatch` and the presenter helper
+`formatGitConnectionDetail`, so no legacy copy is retyped anywhere.
+`git/context.ts`'s `ctx.api as unknown as SourceRepositoryApiClient` is
+not an invention either: `runGitConnect` does the identical double cast
+at `packages/cli/src/controllers/project.ts:1136`.
+
+Consent on `bucket delete` follows conventions §5. No `confirm` flag is
+declared anywhere under `packages/cli/src/v8/` (grep-verified across all
+30 commands), the handler calls
+`ctx.prompt.consent("Deleting this bucket permanently removes all
+objects and access keys.", { token: bucketId })` at the position the
+legacy exact-id check sat, and the question is that legacy `why`
+sentence verbatim. The matrix is complete and non-vacuous, and it is the
+first in the slice to add the sixth case §3.3 enumerates:
+non-interactive `--confirm` succeeds and drives a real DELETE (asserted),
+without `--confirm` and under `--yes` the run settles
+`CLI.CONSENT_REQUIRED` exit 2, the typed bucket id succeeds, a wrong
+typed answer settles `CLI.PROMPT_INVALID` exit 2, and an EOF settles
+`CLI.PROMPT_CANCELLED` exit 3.
+
+Secrets on `bucket key create` follow R-S2b-4. The four `S3_*=` lines are
+the stdout payload in the pinned order, `S3_ACCESS_KEY_ID` and
+`S3_SECRET_ACCESS_KEY` are masked in the human card through
+`sensitive: true`, `S3_ENDPOINT` and `S3_BUCKET` are plain, and the json
+result carries all four values unchanged. All three are asserted.
+
+Error mapping matches conventions §4 and d3 §2.1. Every code the three
+maps list is present, none is invented, the mechanical
+`BUCKET.<code>` / `BRANCH.<code>` / `GIT.<code>` fallback covers API
+passthrough, all three mappers delegate the five project-resolution codes
+to `v8/project/errors.ts` as the single source, and the workspace-required
+error is thrown as an `AUTH.USAGE_ERROR` structured error that the engine
+settles directly. The three new mappers omit the `#`-comment-to-`reason`
+handling that D1 and D2 carry; that handling came from a project-specific
+amendment about env-file next steps, conventions §4 does not require it,
+and no bucket, branch or git error produces a comment line, so the omission
+is a consistency gap rather than a defect. Worth folding into whatever
+D4 does about the five near-identical mapper copies.
+
+On your first question — the `commandName` widening in
+`packages/cli/src/v8/project/context.ts:47-58` does not change any D1
+behavior. `ResolveProjectOptions.commandName` was already optional
+(`packages/cli/src/lib/project/resolution.ts:149`), the function body is
+otherwise untouched and still forwards the value straight into
+`resolveProjectTarget`, and all four D1 call sites (`env-shared.ts:79`,
+`rename.ts:72`, `env-list.ts:97`, plus D2's and D3's own) still pass a
+string, so the resolver receives exactly what it received before. The
+widening is purely permissive at the type level. No D1 or D2 test file
+changed in this range, and `branch list`'s test asserts the resulting
+"this command" why-text verbatim, which is the legacy quirk the widening
+exists to preserve.
+
+On your second question — no, I do not see the URL-as-command problem
+anywhere else in D3. I enumerated every `nextSteps` value the nine
+commands can reach: the bucket controller and provider produce only
+`prisma-cli …` command strings or empty arrays, `branchApiError` produces
+an empty array, and the five reachable git errors produce
+`prisma-cli git connect …`, `prisma-cli git disconnect`,
+`prisma-cli project show` and the usage error's example command. The only
+two URL entries in the whole group are the ones you already raised, both
+in `packages/cli/src/controllers/project.ts:2208` and `:2229`, and both
+sit behind the unwritten wait. There is a milder relative worth naming:
+several next steps are command templates with literal placeholders —
+`prisma-cli bucket key list <bucketId>`,
+`prisma-cli git connect git@github.com:owner/repo.git`, and the shared
+`prisma-cli project link <id-or-name>` — so they become `run-command`
+actions that fail if run verbatim. That is a pre-existing legacy shape
+that D1 already ships and the design says to port unchanged, so it is not
+a D3 defect, but it belongs in the same operator conversation as
+divergence 42: the question is whether `run-command` should mean
+"runnable as-is".
+
+The divergence section is the most thorough in the file. Entries 31 to 42
+cover all six items d3 §4 asks for plus the six the design asks to be
+recorded as review notes; the shared D1 and D2 class entries are cited
+rather than duplicated; three error-code maps are complete; nine
+conformance rows are present and their per-row divergence lists are
+accurate (`bucket delete` and the key commands correctly omit 18 and 28
+because they resolve no project and never carried `verboseContext`;
+`bucket create` omits 26 because it writes nothing to stdout). The
+`git connect` incompleteness is stated plainly at the top of the section
+with the three unsupplied facts named, which is the right place for it.
+
+Legacy deletions match the section's claims exactly. `bucket.test.ts` and
+`branch.test.ts` are gone in full; `project.test.ts` lost its six git
+fixture cases and kept its two help cases; `project-real-mode.test.ts`
+lost the three cases `v8-git.test.ts` now covers and kept the four
+install-and-wait cases, the two pagination-cursor cases and the two
+project-resolution cases. `git-adapter.test.ts` and the four branch unit
+files are still present.
+
+Boundaries hold. Twenty-nine files changed and none is under
+`packages/cli/src/v8/auth/`, `packages/cli/src/auth/`,
+`packages/cli-engine/` or `.github/workflows/`. Legacy source edits are
+fourteen `export` keyword additions across `controllers/branch.ts` (4),
+`controllers/project.ts` (9) and `presenters/project.ts` (1), all with
+unchanged bodies — `repoAlreadyConnectedError`'s signature only rewrapped
+across lines for the added keyword. Every one is named by d3 §2.2 or used
+by a pinned flow step. For the PR description's legacy-edits list, those
+fourteen join D1's ten and D2's six.
+
+Two observations for D4, neither a D3 finding. First, divergence 40's
+`GIT.AUTH_REQUIRED` keeps the legacy fix text "Run prisma-cli auth login,
+or rerun the command in a TTY to sign in interactively." — the TTY half
+of that sentence is stale under R-S2b-2, which drops auto-login. D1
+ratified this exact outcome for `PROJECT.AUTH_REQUIRED` and D3 follows it
+deliberately, so reopening it here would contradict a settled decision,
+but the copy is misleading and D4 should decide whether to amend it in
+both groups at once. It also has no test in either group. Second, the
+`bucket key create --role` enum rejection (divergence 35) has no test;
+§3.5 does not enumerate one, so nothing is missing from the plan.
+
+Not checked, deliberately: the verification suite (your independent run
+on this tip is trusted); rendered human bytes; `git connect` step 5 and
+its marked hole at `packages/cli/src/v8/git/connect.ts:138-153`,
+including the four §3.8 test cases that belong to it
+(installation-required, not-accessible, poll-then-found, poll timeout) —
+those four are the only enumerated cases missing from D3, they are all
+wait-path cases, and they must land with the wait round; anything under
+D1 or D2 beyond the `commandName` widening you asked about.
 
 ### D2 round 1 — 2026-08-10
 

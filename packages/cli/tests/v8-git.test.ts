@@ -553,6 +553,36 @@ describe("prisma-v8 git disconnect", () => {
     });
   });
 
+  it("falls back to the log-level fix text on a status with no variant", async () => {
+    const result = await makeCli(
+      gitClient({
+        sourceRepositories: [SOURCE_REPOSITORY],
+        routes: {
+          "DELETE /v1/source-repositories/{id}": () =>
+            apiFailure(500, { error: { message: "Backend exploded." } }),
+        },
+      }),
+    ).run(["git", "disconnect", "--json"], { cwd: await pinnedCwd() });
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "GIT.REPO_CONNECTION_FAILED",
+        why: "Backend exploded.",
+        meta: { status: 500 },
+        nextActions: [
+          {
+            kind: "user-choice",
+            label:
+              "Re-run with --log-level verbose for the underlying API response details.",
+          },
+          { kind: "run-command", command: "prisma-cli project show" },
+        ],
+      },
+    });
+  });
+
   it("returns the removed connection in json mode", async () => {
     const result = await makeCli(
       gitClient({ sourceRepositories: [SOURCE_REPOSITORY] }),

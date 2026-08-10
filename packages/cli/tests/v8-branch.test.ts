@@ -236,6 +236,13 @@ describe("prisma-v8 branch list", () => {
         code: "BRANCH.internalError",
         summary: "Failed to list branches",
         why: "Backend exploded.",
+        nextActions: [
+          {
+            kind: "user-choice",
+            label:
+              "Re-run with --log-level verbose for the underlying API response details.",
+          },
+        ],
       },
     });
   });

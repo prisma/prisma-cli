@@ -366,6 +366,14 @@ Common: `needs: { credentials: true }`; data = legacy result minus
   automation is no longer active for this project."]`.
 - stdout none; json raw; next none.
 - Tests: success; not-connected; API error; json; unauth.
+- Test-list amendment (orchestrator, 2026-08-10, from review finding
+  D3-R1-01): the single "API error" case becomes two, because
+  `repoConnectionFixForStatus` has two arms and one case can only reach
+  one of them. Keep the 422 case asserting its status-specific fix text,
+  and add a case with a status that has no variant (500), which reaches
+  the default arm — the only place in the git group where the `--trace`
+  to `--log-level verbose` substitution of conventions §0 fires. Without
+  it that substitution is untested here.
 
 ### 3.8a Dependencies — RESOLVED (merge-down 2026-08-10)
 
