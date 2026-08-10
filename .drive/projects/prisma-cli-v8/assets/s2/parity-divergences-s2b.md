@@ -164,3 +164,101 @@ and prompt errors replace them.
 | `project env remove` | `project env remove` | R-S2b-2, 5, 8, 9, 10; d1 §3.11 | 1, 2, 3, 4, 5, 9, 10, 13, 14, 18 |
 | `project remove` | `project remove` | R-S2b-2, 3, 5, 9, 10; d1 §3.6 | 1, 2, 3, 5, 9, 16, 18, 19 |
 | `project transfer` | `project transfer` | R-S2b-2, 3, 5, 9, 10; d1 §3.7 | 1, 2, 3, 5, 9, 16, 18, 19, 20 |
+
+## D2 — the `postgres` group
+
+Delivered: all 11 commands —
+`postgres list|show|create|usage|restore|remove`,
+`postgres backup list`, and
+`postgres connection list|create|rotate|remove`.
+
+### Divergences
+
+D1's class entries 1 (exit codes), 2 (auto-login dropped), 5
+(nextActions from fix and nextSteps), 6 (package-runner strings
+dropped), 7 (`--trace` → `--log-level verbose`), 9 (engine blocks
+replace the legacy rail rendering) and 18 (the shell-context adapter,
+used here for project resolution) apply identically. On top of them:
+
+21. **Rename** (R-S2b-1). The group, its subgroups, every command
+    path and id (`postgres.connection.rotate`), every help string and
+    example, and every command reference inside `why`, `fix` and
+    nextAction text move from `database` to `postgres`. No alias
+    survives. The resource noun "database" in prose is unchanged —
+    the resource is a Prisma Postgres database.
+22. **Error-code map** (see below), including the mechanical
+    passthrough of raw API codes as `POSTGRES.<code>`.
+23. **Consent is engine-owned** for `restore`, `remove`,
+    `connection rotate` and `connection remove`: no `--confirm` flag
+    is declared, the engine injects the shared one with the same
+    spelling and the same exact-id value, and interactively the user
+    types that id. The legacy `CONFIRMATION_REQUIRED` error is
+    unreachable, so `POSTGRES.CONFIRMATION_REQUIRED` has no entry in
+    the mapper and `meta.expectedConfirm` / `meta.receivedConfirm`
+    are gone. `--yes` never grants consent; a wrong typed answer is
+    `CLI.PROMPT_INVALID`, exit 2.
+24. **Consent prompts are new.** The legacy commands had no
+    interactive confirmation at all — only the flag. The prompt's
+    question is each command's legacy confirmation `why` sentence,
+    verbatim.
+25. **Plan-limit rendering.** PR #127's `humanLines` full-page
+    override does not port. The error keeps its summary, why and meta
+    verbatim and carries exactly one `user-choice` nextAction whose
+    reason is the upgrade URL and plan name when the best-effort
+    subscription lookup returned them, and the Console guidance
+    otherwise.
+26. **List commands write their data rows to stdout** in human mode
+    (`postgres list`, `postgres backup list`, `postgres connection
+    list`); legacy human mode wrote nothing to stdout. `show` and
+    `usage` mirror their field rows the same way.
+27. **Pre-result progress lines dropped.** `Creating database...`,
+    `Creating connection...` and `Rotating connection...` have no v8
+    counterpart: these are sync commands with no events.
+28. **`verboseContext` dropped** from every result, and with it the
+    `--verbose` "Resolved context" and metadata blocks. The json
+    envelope is unchanged, since the legacy serializers already
+    stripped it.
+29. **Fixture-only `DATABASE_CONNECTION_NOT_FOUND`** has no v8
+    counterpart: in real mode an unknown connection is an API
+    passthrough code on rotate and remove.
+30. **`database-plan-limit.test.ts` deleted.** Every case drove a
+    ported command. The mapped plan-limit error is covered by the v8
+    postgres tests with and without a subscription result; the
+    provider's own enrichment internals (the 3s lookup timeout, the
+    cancel path) are no longer covered by a command-level test.
+
+### Error code map
+
+| legacy code | v8 code |
+| --- | --- |
+| `USAGE_ERROR` (database domain) | `POSTGRES.USAGE_ERROR` |
+| `USAGE_ERROR` "Workspace required" (auth domain) | `AUTH.USAGE_ERROR` |
+| `DATABASE_NOT_FOUND` | `POSTGRES.NOT_FOUND` |
+| `DATABASE_AMBIGUOUS` | `POSTGRES.AMBIGUOUS` |
+| `DATABASE_CONNECTION_MISSING` | `POSTGRES.CONNECTION_MISSING` |
+| `DATABASE_CONNECTION_STRING_MISSING` | `POSTGRES.CONNECTION_STRING_MISSING` |
+| `DATABASE_BACKUPS_UNSUPPORTED` | `POSTGRES.BACKUPS_UNSUPPORTED` |
+| `DATABASE_RESTORE_CONFLICT` | `POSTGRES.RESTORE_CONFLICT` |
+| `DATABASE_BACKUP_NOT_FOUND` | `POSTGRES.BACKUP_NOT_FOUND` |
+| `DATABASE_API_ERROR` | `POSTGRES.API_ERROR` |
+| `PLAN_LIMIT_REACHED` | `POSTGRES.PLAN_LIMIT_REACHED` |
+| raw API `error.code` X | `POSTGRES.X` |
+| `PROJECT_NOT_FOUND` / `PROJECT_AMBIGUOUS` / `PROJECT_SETUP_REQUIRED` / `LOCAL_STATE_STALE` / `LOCAL_PROJECT_WORKSPACE_MISMATCH` | the project group's codes, mapped by the single source in `v8/project/errors.ts` |
+| `CONFIRMATION_REQUIRED` | unreachable — the engine's `CLI.CONSENT_REQUIRED` replaces it |
+| `AUTH_REQUIRED` / `AUTH_CONFIG_INVALID` | unreachable behind `needs.credentials` |
+
+### Conformance rows
+
+| command | inventory entry | rules applied | divergences |
+| --- | --- | --- | --- |
+| `postgres list` | `database list` | R-S2b-1, 2, 5, 9, 10; d2 §3.1 | 1, 2, 5, 6, 7, 9, 18, 21, 22, 25, 26, 28 |
+| `postgres show` | `database show` | R-S2b-1, 2, 5, 9, 10; d2 §3.2 | 1, 2, 5, 6, 7, 9, 18, 21, 22, 26, 28 |
+| `postgres create` | `database create` | R-S2b-1, 2, 4, 5, 9, 10; d2 §3.3 | 1, 2, 5, 6, 7, 9, 18, 21, 22, 25, 27, 28 |
+| `postgres usage` | `database usage` | R-S2b-1, 2, 5, 9, 10; d2 §3.4 | 1, 2, 5, 6, 7, 9, 18, 21, 22, 26, 28 |
+| `postgres restore` | `database restore` | R-S2b-1, 2, 3, 5, 9, 10; d2 §3.5 | 1, 2, 5, 6, 7, 9, 18, 21, 22, 23, 24, 28 |
+| `postgres remove` | `database remove` | R-S2b-1, 2, 3, 5, 9, 10; d2 §3.6 | 1, 2, 5, 6, 7, 9, 18, 21, 22, 23, 24, 28 |
+| `postgres backup list` | `database backup list` | R-S2b-1, 2, 5, 9, 10; d2 §3.7 | 1, 2, 5, 6, 7, 9, 18, 21, 22, 26, 28 |
+| `postgres connection list` | `database connection list` | R-S2b-1, 2, 5, 9, 10; d2 §3.8 | 1, 2, 5, 6, 7, 9, 18, 21, 22, 26, 28 |
+| `postgres connection create` | `database connection create` | R-S2b-1, 2, 4, 5, 9, 10; d2 §3.9 | 1, 2, 5, 6, 7, 9, 18, 21, 22, 27, 28 |
+| `postgres connection rotate` | `database connection rotate` | R-S2b-1, 2, 3, 4, 5, 9, 10; d2 §3.10 | 1, 2, 5, 6, 7, 9, 21, 22, 23, 24, 27, 29 |
+| `postgres connection remove` | `database connection remove` | R-S2b-1, 2, 3, 5, 9, 10; d2 §3.11 | 1, 2, 5, 6, 7, 9, 21, 22, 23, 24, 29 |

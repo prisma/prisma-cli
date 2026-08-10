@@ -15,6 +15,7 @@ Slice: s2b-resources (contract `../specs/s2b-resources.md`, plan
 | Dispatch | Round | Verdict | Date |
 | --- | --- | --- | --- |
 | D1 | 1 | ANOTHER ROUND NEEDED | 2026-08-10 |
+| D1 | 2 | SATISFIED | 2026-08-10 |
 
 ## Findings log
 
@@ -65,7 +66,94 @@ does not know yet" variant; the branch-known-to-the-platform variant
 (the production/preview target computation, fact sheet §10) is untested.
 Add them, or get d1-project.md's env case list amended.
 
+### D1 round 2 — dispositions
+
+Round-2 commits: 9063f7a, b7269f8, 9b37f1c, cfbc7fe (the branch was
+rebased onto the updated s2a-foundations, so the round-1 hashes are
+gone).
+
+- **D1-R1-01 — FIXED.** `packages/cli/src/v8/project/errors.ts` drops
+  the `AUTH_REQUIRED` early return entirely, so the code falls through
+  the mechanical `PROJECT.<RAW_CODE>` rule to `PROJECT.AUTH_REQUIRED`
+  with the legacy summary, why and next steps — the final §2.1 pin, not
+  the interim hand-built engine error. The doc comment now states why
+  (the engine settles every real credentials failure; what reaches the
+  mapper is 403 permission residue).
+  `tests/v8-project.test.ts:1423` drives a 403 env write and asserts the
+  code, summary, why and both nextActions verbatim.
+- **D1-R1-02 — FIXED.** `errors.ts` gains `runCommandActions`: a
+  `#`-comment step sets `reason` on the next run-command action and is
+  never an action itself. `tests/v8-project.test.ts:1372` asserts the
+  full three-action list for the split-file duplicate-keys error,
+  including both `reason` strings.
+- **D1-R1-03 — FIXED.** Divergence entries 14, 16 and 17 are restated
+  to the amended pins (mechanical `PROJECT.AUTH_REQUIRED`; the ratified
+  `PROJECT.ENV_PREVIEW_DEFAULT_MISSING` plus the local-pin warn reuse;
+  comment lines as reasons), 18/19/20 are added (shell-context adapter,
+  engine-owned consent, transfer recipient resolution), and the
+  conformance table carries all 11 commands.
+- **D1-R1-04 — FIXED.** The enumerated env cases are restored:
+  `env update` gains branch-scope success, file-mode success, file
+  apply-failure, both-flags, neither, both input sources, bad
+  assignment and the bare-KEY fallback; `env remove` gains branch scope,
+  both flags and neither; `env list` gains both known-branch local-git
+  cases (preview overrides and the production branch).
+
 ## Round notes
+
+### D1 round 2 — 2026-08-10
+
+All four round-1 findings are fixed as the amended design specifies, and
+the two new commands conform.
+
+Consent is engine-owned exactly as conventions §5 requires: no `confirm`
+flag is declared anywhere under `packages/cli/src/v8/` (grep-verified),
+both handlers call
+`ctx.prompt.consent(<question>, { token: project.id })` after resolving
+the project positional, and each question is the pinned legacy
+confirmation `why` sentence verbatim. Both consent matrices are complete
+and non-vacuous — non-interactive `--confirm <id>` succeeds and drives a
+real API call, without it and under `--yes` the run settles
+`CLI.CONSENT_REQUIRED` exit 2, the typed project id succeeds, and a
+wrong typed answer settles `CLI.PROMPT_INVALID` exit 2.
+
+`project remove` and `project transfer` otherwise follow §3.6/§3.7:
+positional-only resolution, the pinned provider calls, the legacy pin
+cleanup and rewrite/clear helpers, the mutual-exclusion and
+recipient-required ordering, the service-token guard, blocks and field
+labels verbatim, json falling back to the unchanged result, and the
+`auth workspace use <value>` next action only under `--to-workspace`.
+Pin-cleanup failures surface as `warn` diagnostics under
+`PROJECT.LOCAL_STATE_WRITE_FAILED`, the post-round-2 pin. The recipient
+error mapping is reproduced command-side because the legacy mapper is
+private, but it calls the same legacy error constructors, so the copy is
+identical.
+
+The session adaptation is clean. `resolveActiveWorkspace` now calls
+`ctx.session()` and reshapes it to `{ id, name }` with the pinned
+`workspaceName ?? workspaceId` fallback; the auth-module import is gone
+from `resources-shared/workspace.ts`, and the only remaining
+`src/auth` import in v8 project code is `transfer.ts` pulling the
+recipient machinery, which §2.3 pins explicitly. The test harness seeds
+`sessions` + `currentWorkspaceId` and mocks only
+`resolveRecipientWorkspaceSession`.
+
+The four new legacy exports (`transferRecipientRequiredError`,
+`transferRecipientUnavailableError`, `cleanupLocalPinForProject`,
+`rewriteOrClearLocalPinForProject`) are export-keyword-only additions
+with no body changes, and all four are named by §3.6/§3.7.
+
+Boundaries hold on the round-2 diff: ten files changed, none under
+`packages/cli/src/v8/auth/`, `packages/cli/src/auth/`,
+`packages/cli-engine/` or `.github/workflows/`. Deleting
+`project-mutations.test.ts` outright is correct — it held only
+`project remove` and `project transfer` cases, both now ported, which is
+§5's "whole files if nothing else remains".
+
+Not checked, deliberately: the verification gate (the implementer's run
+is trusted; the pre-existing `pnpm lint` failure inside
+`packages/cli-engine` at the rebase base is excluded by the
+coordinator), rendered human bytes, and anything under d2/d3.
 
 ### D1 round 1 — 2026-08-10
 
