@@ -1,10 +1,13 @@
-# Credential manager — design, revision 2 (normative)
+# Credential manager — design, revision 3 (normative)
 
-Status: operator-adopted (2026-08-10) after pre-implementation design
-review (architect + principal engineer, both accept-with-changes; all
-recommendations adopted). NORMATIVE for the implementation, which
-lands on PR #130 (operator ruling: "we fix it on 130"). Amends the v8
-draft as part of that implementation. Revision 1 is in git history.
+Status: operator-adopted (2026-08-10). Revision 2 folded in the
+pre-implementation design review (architect + principal engineer);
+revision 3 adopts the GRANTS model by operator ruling: user-facing
+workspace functionality is kept — "We have a credential manager now
+literally to support managing multiple credentials for access to
+different workspaces." NORMATIVE for the implementation, which lands
+on PR #130. A delta re-review (both reviewers) covers rev2→rev3.
+Prior revisions are in git history.
 
 ## 1. Why this exists
 
@@ -27,12 +30,22 @@ OAuth tokens today; the platform is not changing now).
 
 R1 The engine models the machinery as the **credential manager**
    (user-centric surface over what is a dumb store today).
-R2 Auth state is a SCALAR: at most one session. Login replaces.
-   No registry, no cursor, no per-entry lifecycle.
-R3 Tree: `auth login`, `auth logout`, `auth whoami` only. The
-   `auth workspace` subgroup and `auth logout --workspace` are
-   dropped from the v8 tree. Switching workspace = `prisma auth
-   login` (re-consent; the consent screen is the picker today).
+R2 Auth state: ONE identity, PLURAL workspace grants, ONE active
+   grant. The active-grant cursor is session state (satisfying the
+   draft premise: workspace selection is session state, not a
+   credential). Toward every engine consumer the view is SCALAR —
+   `session()`/`credential()`/`ctx.api`/`needs.credentials` see only
+   the active grant. The plurality lives entirely inside the
+   manager. No per-workspace login/logout vocabulary anywhere: you
+   log in as yourself; you hold, select, and forget GRANTS.
+R3 Tree: `auth login`, `auth logout`, `auth whoami`,
+   `auth workspace list` (your held grants), `auth workspace use`
+   (activate a held grant, or acquire one via the consent flow when
+   not held), `auth workspace forget <ref>` (drop one grant —
+   replaces the legacy `auth workspace logout`; nothing is a
+   per-workspace "logout"). `auth logout --workspace` does not
+   return (superseded by `forget`). Divergence entries accompany
+   every rename/semantic change.
 R4 Migration from the legacy store per the decision table in §7.
 R5 The fix lands on PR #130 (the shipped registry port is reworked,
    not merged as-is).
@@ -64,10 +77,21 @@ interface Session {
   readonly identity: Identity;
   readonly method: "user-oauth" | "service-token";
   readonly origin: "stored" | "environment";
-  readonly workspace: Workspace;
+  readonly workspace: Workspace;      // the ACTIVE grant's workspace
   readonly expiresAt: Date | undefined;
 }
+
+interface GrantSummary {              // user-centric listing; NEVER
+  readonly workspace: Workspace;      // carries credential material
+  readonly expiresAt: Date | undefined;
+  readonly active: boolean;
+}
 ```
+
+A GRANT is the pairing of a workspace with the credential the user's
+consent minted for it. The manager stores grants internally
+(credential material included); everything it EXPOSES about the set
+is `GrantSummary` — token material structurally cannot leave.
 
 Notes (review-settled):
 - `Session.origin` is the field that justifies the Session/Credential
@@ -99,20 +123,33 @@ interface CredentialManager {
    *  for surfacing the override (§6). */
   session(): Promise<Session | null>;
 
-  /** Login's write. The manager derives identity, workspace, and
-   *  expiry from the credential's claims — single-argument by review
-   *  ruling, so the stored session can never disagree with its
-   *  token. Replaces any prior session (the scalar invariant lives
-   *  in the begin/end verbs). */
+  /** Login's write. Derives identity, workspace, and expiry from
+   *  the credential's claims (single-argument by review ruling).
+   *  UPSERTS the grant for that workspace and makes it ACTIVE (your
+   *  newest consent is what you meant to use). Other grants are
+   *  untouched. */
   beginSession(credential: Credential): Promise<Session>;
 
-  /** Logout. Local (does not revoke server-side; other processes'
-   *  in-memory access tokens stay valid until expiry — user-facing
-   *  text says so). Clears the ENTIRE stored state (reaps legacy
-   *  orphan entries, §7). Rejects with a structured error when the
-   *  active session is env-supplied; the error's why states whether
-   *  a stored session also exists underneath. */
+  /** Logout, whole-identity. Local (does not revoke server-side;
+   *  other processes' in-memory access tokens stay valid until
+   *  expiry — user-facing text says so). Clears ALL grants and the
+   *  cursor (also reaps legacy orphan entries, §7). Rejects with a
+   *  structured error when the active session is env-supplied; the
+   *  error's why states whether stored grants also exist. */
   endSession(): Promise<void>;
+
+  /** The held grants, as summaries (no credential material). */
+  grants(): Promise<readonly GrantSummary[]>;
+
+  /** Move the cursor to a HELD grant (id or case-insensitive name).
+   *  Structured error when no grant matches — the COMMAND catches it
+   *  and runs the consent flow, then beginSession (the manager never
+   *  interacts with the user). Ambiguity is a structured error. */
+  activateGrant(ref: string): Promise<Session>;
+
+  /** Drop one grant. If it was active, the cursor clears (no
+   *  auto-promotion of another grant). Env sessions unaffected. */
+  forgetGrant(ref: string): Promise<void>;
 
   /** The consumer path. Resolves the credential that authorizes a
    *  request NOW; refresh happens inside (§6). Invariant:
@@ -201,11 +238,13 @@ constructor) at request time. `whoami` → completes "signed out",
 exit 0. No auto-login (standing Q1 default).
 
 **Refresh.** Driven by the SDK on 401, with the manager as its
-`TokenStorage` — under the mandatory lock (§8). The manager MUST
-implement `withRefreshLock` (the SDK silently skips locking without
-it) and `clearTokensIfCurrent` (compare-and-clear; without it the
-SDK's invalid-grant path wipes state a concurrent process just
-wrote). Preemptive refresh is PROHIBITED (a second refresher outside
+`TokenStorage` — the storage view the SDK sees is the ACTIVE GRANT
+only, under the mandatory lock (§8). The manager MUST implement
+`withRefreshLock` (the SDK silently skips locking without it) and
+`clearTokensIfCurrent` scoped to compare-and-clear THE ACTIVE GRANT
+ENTRY (an invalid_grant on the active grant removes that grant and
+clears the cursor; other grants are untouched — the blast radius of
+a definitive refresh failure is one workspace, not the identity). Preemptive refresh is PROHIBITED (a second refresher outside
 the SDK's single-flight can spend a rotated refresh token and
 convert an optimization into a false sign-out). Per-request token
 resolution keeps long runs current.
@@ -269,24 +308,27 @@ mutated only by `beginSession`, `endSession`, and refresh.
 
 | Legacy store state | Rule |
 | --- | --- |
-| Context file exists, pointer targets an existing entry | Adopt that entry as the session |
-| Context exists, pointer dangles | Signed out. No fallback, no write |
-| Context exists, `activeWorkspaceId: null` | Signed out (legacy's explicit signed-out state) |
-| No context, exactly one entry | Adopt it |
-| No context, multiple entries | Signed out; why explains a legacy multi-workspace store was found and login replaces it |
-| Auth file missing / unparseable / wrong shape | Signed out. Never delete, never rewrite |
+| Context file exists, pointer targets an existing entry | All entries adopted as grants; that one is active |
+| Context exists, pointer dangles | All entries adopted as grants; NO active grant (commands needing credentials fail with a why suggesting `auth workspace use` or login) |
+| Context exists, `activeWorkspaceId: null` | Grants adopted; no active (legacy's explicit signed-out-of-active state preserved) |
+| No context, exactly one entry | Adopted as the single grant, active |
+| No context, multiple entries | All adopted as grants; NO active (no coin-flip; the user activates or logs in) |
+| Auth file missing / unparseable / wrong shape | No grants. Never delete, never rewrite |
 
-Ignored legacy entries stay on disk (deleting on read could destroy
-a session the still-installed legacy CLI uses); `endSession` clears
-the entire file, reaping them — first `prisma auth logout` removes
-the orphaned refresh tokens. Divergence-list entry. New writes use
-mode 0600 and tighten looser existing permissions on first write.
+The migration read writes nothing; the adopted view is materialized
+into the NEW single-file format only on the first mutation
+(beginSession / activateGrant / forgetGrant / endSession / refresh
+rotation). Until then the legacy files stay untouched, so a
+still-installed legacy CLI keeps working. `endSession` clears
+everything including legacy files. New writes use mode 0600 and
+tighten looser existing permissions on first write.
 
 ## 8. Locking and atomicity contract
 
-- **One file** holds the whole credential state (credential + session
-  metadata). No context sidecar — the split-brain class dies by
-  construction.
+- **One file** holds the whole credential state (the grants array +
+  the active cursor + metadata). No context sidecar — the
+  split-brain class dies by construction. Every write replaces the
+  whole state, so grants and cursor can never disagree.
 - **One env var** names the auth file, resolved from injected env
   (§4); the legacy second variable is a warned, deprecated alias.
 - **Writes are atomic**: temp file in the same directory, fsync,
@@ -332,12 +374,17 @@ credential; the workspace OPERATIONS (`listAuthWorkspaces`,
 `switchAuthWorkspace`, `logoutAuthWorkspace`) REMAIN — the legacy
 shell consumes them until S2d; only their v8 exposure goes.
 
-v8 tree (`packages/cli/src/v8`): delete `auth/workspace-list.ts`,
-`workspace-use.ts`, `workspace-logout.ts`, `workspace-shared.ts`,
-`run-workspace-logout.ts`, and `logout.ts`'s `--workspace` flag;
-rework `login`/`logout` on `ctx.credentialManager` and `whoami` on
-`ctx.session()` + `ctx.api` enrichment; runtime wiring supplies the
-manager.
+v8 tree (`packages/cli/src/v8`): REWORK (not delete) the workspace
+commands onto the manager: `workspace-list.ts` presents `grants()`
+(help text says held grants, not memberships); `workspace-use.ts`
+tries `activateGrant(ref)` and on grant-not-held runs the consent
+flow then `beginSession`; `workspace-logout.ts` becomes
+`workspace-forget.ts` (`auth workspace forget`, `forgetGrant`);
+`logout.ts` drops `--workspace` (superseded). `login`/`logout` move
+onto `ctx.credentialManager`; `whoami` onto `ctx.session()` +
+`ctx.api` enrichment (and may show held-grant count). Runtime wiring
+supplies the manager. The legacy operations in `src/auth` still
+serve the legacy shell until S2d.
 
 Docs: rewrite (not append) the auth sections of
 `assets/s2/parity-divergences.md` (dropped subgroup; whoami json
@@ -348,10 +395,18 @@ exports, erratum note); S2 overview auth rows.
 
 ## 10. Review disposition record
 
-Both reviews accept-with-changes; all recommendations adopted
+Rev 2: both reviews accept-with-changes; all recommendations adopted
 (operator, 2026-08-10). Open ends resolved: begin/end verbs kept;
 `ctx.credentialManager` kept as the context key with `changesSession`
 as the declaration; `session()` on every context (local-only);
 identity carries claim fields only; `beginSession(credential)`
 single-argument; locking per §8. Naming: provenance field `origin`;
 entity name Session kept with the principal-correspondence note.
+
+Rev 3 (grants model, operator-ruled): user-facing workspace
+functionality kept; plurality contained in the manager; engine
+consumer view stays scalar; vocabulary shifts from per-workspace
+sessions to grants (list / use / forget). The product-team framing
+updates accordingly: functionality kept, ontology fixed, the
+multi-entry consistency surface now properly owned by one modeled
+component. Delta re-review pending.
