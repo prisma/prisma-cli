@@ -154,7 +154,9 @@ printed as the stdout payload line (legacy printed nothing on stdout).
 
 - `verboseContext` (the `--verbose` "Local context" block and json
   field) is dropped — `--verbose` is a log-level alias in v8 and is
-  not otherwise retained (S2 ruling 7).
+  not otherwise retained. S2 ruling 8 drops `--trace` because log
+  levels cover it; the same reasoning covers `--verbose`, which that
+  ruling does not name.
 - `service list-deploys` json result is the plain
   `{projectId, service, deployments}` record; the legacy
   `items`/`count` list-serializer wrapper does not port.
@@ -165,6 +167,12 @@ printed as the stdout payload line (legacy printed nothing on stdout).
   list-deploys) on stderr; these commands write no stdout payload in
   human mode except `service open`, which now prints the URL as its
   stdout payload line (pipe-clean; legacy printed nothing on stdout).
+  Legacy opened every block with a present-progressive title ("Removing
+  the selected app."). In v8 that summary line is the only success
+  signal the engine prints, so a command that changed something ends on
+  a past-tense `ok` line instead ("Removed hello-world and every
+  deployment it owned."), and only the commands that merely report keep
+  the informational heading.
 
 ### Fixture mode
 
@@ -231,6 +239,7 @@ Transitions, identical on all three:
 | `PROD_DEPLOY_REQUIRES_FLAG` (2) | `SERVICE.PROD_DEPLOY_REQUIRES_FLAG` (2) | deploy |
 | `PROJECT_SETUP_REQUIRED` (1) | `SERVICE.PROJECT_SETUP_REQUIRED` (2) | deploy |
 | `LOCAL_STATE_STALE` (1) | `SERVICE.LOCAL_STATE_STALE` (2) | deploy |
+| `LOCAL_STATE_WRITE_FAILED` (1) | `SERVICE.LOCAL_STATE_WRITE_FAILED` (2) | deploy — the local Project binding could not be written |
 | `BRANCH_DATABASE_SETUP_FAILED` (1) | `SERVICE.BRANCH_DATABASE_SETUP_FAILED` (2) | deploy `--db` |
 | `BUILD_SETTINGS_MIGRATION_REQUIRED` (2) | `SERVICE.BUILD_SETTINGS_MIGRATION_REQUIRED` (2) | deploy |
 | `FRAMEWORK_NOT_DETECTED` (2) | `SERVICE.FRAMEWORK_NOT_DETECTED` (2) | deploy |
@@ -283,8 +292,20 @@ a `service logs --deployment <id>` action, exactly as legacy did.
   (so a non-interactive `--no-db` still skips setup). The legacy
   "passing both → USAGE_ERROR" check disappears with the flag pair, and so
   does "Database setup requires --yes in non-interactive mode" — `--db`
-  is itself the explicit request. Flagged for the operator: the engine needs
-  a declarable tri-state (or non-negatable) boolean before this is parity.
+  is itself the explicit request. Flagged for the operator, and the ask is
+  smaller than a new flag type: the engine already computes the missing
+  fact at parse time and sends it somewhere else. `explicitFlagKeys`
+  (`packages/cli-engine/src/execution/command-snapshot.ts`) scans argv for
+  which flag names appear and deliberately marks the base flag when it sees
+  a `--no-<flag>` token; `buildCommandSnapshot` then labels every declared
+  flag `source: "cli"` or `source: "default"`. Together with the parsed
+  boolean the handler already receives, that settles all three states:
+  `default` means absent, `cli` with `true` means `--db`, `cli` with
+  `false` means `--no-db`. The snapshot goes only to
+  `RunHooks.onSettled`, after the run, for telemetry; it never reaches
+  `CommandContext`. So what parity needs is an accessor that hands the
+  handler a fact the engine already holds — not a declarable tri-state
+  boolean with its own negation rules.
 - **A mistyped Project name at the first-deploy setup prompt now fails
   the run (engine gap).** Legacy passed a `validate` function to the
   clack text prompt (`lib/project/interactive-setup.ts`), so an invalid
@@ -346,7 +367,7 @@ a `service logs --deployment <id>` action, exactly as legacy did.
 
 ### Result shape changes (dispatch 2)
 
-- `verboseContext` is dropped on all four commands (S2 ruling 7, as recorded
+- `verboseContext` is dropped on all four commands (S2 ruling 8, as recorded
   for D1).
 - Result field `app` → `service` on every result; the deploy result's
   `deploySettings`, `branchDatabase`, `localPin`, `promoted` and `durationMs`
@@ -396,7 +417,12 @@ The record's own fields ride in the event's free-form `data`, so a json
 consumer keeps everything legacy published per record: `build logs`
 carries `cursor`, `level`, `source` and `step`; `service logs` carries
 `byteStart` and `byteEnd`; and a reported terminal record (a `no_logs`
-end, any error terminal) carries `cursor`, `code` and `retryable`.
+end, any error terminal) carries `kind`, `cursor`, `code` and
+`retryable`, plus `details` on `service logs`, which is the only stream
+whose terminal records have that field. `kind` matters most on
+`service logs`: a terminal error there is one diagnostic frame and the
+run still settles 0, so `kind: "error"` is the only thing telling a
+consumer the stream ended in failure rather than normally.
 
 Two json-surface losses remain, both because the engine owns rendering
 and a handler cannot see the format:
@@ -482,16 +508,40 @@ auth rework merges down from `bot/s2a-foundations`, `auth login` calls
 `{version, sessions, currentWorkspaceId}`; `@prisma/credentials-store`
 reads `data.tokens || []`, finds nothing, and `ctx.getCredentials()`
 resolves `undefined` while `credentialManager.currentSession()` still
-returns a valid session. From the first `auth login` run after that
-lands, `service logs` is the one command that fails for a signed-in user
-whose other commands all work. Anyone who sets `PRISMA_SERVICE_TOKEN` is
+returns a valid session. Anyone who sets `PRISMA_SERVICE_TOKEN` is
 unaffected either way, because that path short-circuits ahead of the
 file read.
 
-Ruling needed: the engine should expose a token accessor for
-self-authenticating streams (or hand the log stream a client the way
-`ctx.api` is handed over). One line in `src/v8/service/logs.ts` changes
-when it does.
+**That merge-down breaks 13 of this slice's 20 commands, not just
+`service logs`.** The same file, read the same way, also decides whether
+a workspace resolves: `requireWorkspace`
+(`src/v8/service/target.ts`) calls `readAuthState`, which builds a
+`FileTokenStorage` and asks it for tokens
+(`src/auth/operations.ts`) — the same call `ctx.getCredentials()`
+makes. With no tokens it returns `{authenticated: false}` and the
+command settles `SERVICE.WORKSPACE_REQUIRED`. `readAuthState` is
+untouched on `bot/s2a-foundations`, so after the merge-down a signed-in
+user without `PRISMA_SERVICE_TOKEN` fails on `deploy`, `show`, `open`,
+`list-deploys`, `logs`, `promote`, `rollback`, `remove` and all five
+`domain` commands. `service logs` fails at `WORKSPACE_REQUIRED` before
+it ever reaches the credential error this entry is about. Only
+`show-deploy` survives among the commands that ask, because it treats a
+workspace failure as "no remembered project" and continues; `service
+build`, `build logs`, the three `agent` commands and `feedback` never
+read auth state.
+
+No test in this slice can see it: every service test replaces
+`readAuthState` at the module seam and seeds the engine's credential
+manager separately, so the harness has two credential seams where
+production has one file.
+
+Ruling needed, and it is now two things. The engine should expose a
+token accessor for self-authenticating streams (or hand the log stream a
+client the way `ctx.api` is handed over) — one line in
+`src/v8/service/logs.ts` changes when it does. And the credential
+*reader* has to learn the new file shape before the auth rework merges
+down; that correction belongs in `readAuthState`, which this slice does
+not own.
 
 ### `service logs` behavior
 
@@ -606,9 +656,13 @@ and the default endpoint are all unchanged.
 - **Help examples lose the package runner, and the command now spells
   itself two ways.** Legacy rendered the `agent` group's examples
   through the project's own runner
-  (`resolvePrismaCliPackageCommandSync`), so help read `pnpm dlx
-  @prisma/cli@latest agent install`. Standing ruling 5 forbids the
-  binary name in an example, so the ported examples are bare (`agent
+  (`resolvePrismaCliPackageCommandFormatterSync`), so help read `pnpm
+  dlx @prisma/cli@latest agent install`. The operator ruling of
+  2026-08-09 on the engine interface says examples are written without
+  the binary name — the engine substitutes `{bin}`, or prepends the CLI
+  name to an example that carries none
+  (`assets/engine/engine-interface-draft.ts`, `HelpSpec.examples`) — so
+  the ported examples are bare (`agent
   install`). The engine has no way to express the old form: examples are
   static strings resolved at definition time, and the runner is
   discovered from the filesystem at run time. The visible consequence is
