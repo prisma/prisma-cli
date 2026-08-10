@@ -64,64 +64,78 @@ describe("adopting the legacy store", () => {
       workspaces: { [WORKSPACE_B]: { name: "Bravo" } },
     });
 
-    const sessions = await makeManager().sessions();
-    expect(sessions.map((session) => session.workspaceId)).toEqual([
+    const stored = await makeManager().sessions();
+    expect(stored.sessions.map((session) => session.workspaceId)).toEqual([
       WORKSPACE_A,
       WORKSPACE_B,
     ]);
-    expect(sessions.find((session) => session.current)?.workspaceId).toBe(
-      WORKSPACE_B,
-    );
-    expect(sessions[1].workspaceName).toBe("Bravo");
+    expect(stored.selectedWorkspaceId).toBe(WORKSPACE_B);
+    expect(stored.sessions[1].workspaceName).toBe("Bravo");
   });
 
-  it("adopts with no current session when the pointer dangles", async () => {
+  it("adopts with nothing selected when the pointer dangles", async () => {
     await writeLegacyStore([legacyEntry(WORKSPACE_A)]);
     await writeLegacyContext({
       activeWorkspaceId: "wksp_gone",
       workspaces: {},
     });
 
-    const sessions = await makeManager().sessions();
-    expect(sessions).toHaveLength(1);
-    expect(sessions.every((session) => !session.current)).toBe(true);
+    const stored = await makeManager().sessions();
+    expect(stored.sessions).toHaveLength(1);
+    expect(stored.selectedWorkspaceId).toBeUndefined();
   });
 
-  it("adopts with no current session when the pointer is null", async () => {
+  it("adopts with nothing selected when the pointer is null", async () => {
     await writeLegacyStore([legacyEntry(WORKSPACE_A)]);
     await writeLegacyContext({ activeWorkspaceId: null, workspaces: {} });
 
     expect(
-      (await makeManager().sessions()).every((session) => !session.current),
-    ).toBe(true);
+      (await makeManager().sessions()).selectedWorkspaceId,
+    ).toBeUndefined();
   });
 
-  it("makes the only entry current when there is no context file", async () => {
+  it("selects the only entry when there is no context file", async () => {
     await writeLegacyStore([legacyEntry(WORKSPACE_A)]);
 
-    const sessions = await makeManager().sessions();
-    expect(sessions[0].current).toBe(true);
+    expect((await makeManager().sessions()).selectedWorkspaceId).toBe(
+      WORKSPACE_A,
+    );
   });
 
-  it("picks no current session when several entries have no context file", async () => {
+  it("selects nothing when several entries have no context file", async () => {
     await writeLegacyStore([
       legacyEntry(WORKSPACE_A),
       legacyEntry(WORKSPACE_B),
     ]);
 
     expect(
-      (await makeManager().sessions()).every((session) => !session.current),
-    ).toBe(true);
+      (await makeManager().sessions()).selectedWorkspaceId,
+    ).toBeUndefined();
   });
 
   it("adopts nothing from a missing, unparseable, or wrong-shaped file", async () => {
-    expect(await makeManager().sessions()).toEqual([]);
+    const nothing = { sessions: [], selectedWorkspaceId: undefined };
+    expect(await makeManager().sessions()).toEqual(nothing);
 
     await writeFile(authFilePath, "not json at all", "utf8");
-    expect(await makeManager().sessions()).toEqual([]);
+    expect(await makeManager().sessions()).toEqual(nothing);
 
     await writeFile(authFilePath, JSON.stringify({ nope: true }), "utf8");
-    expect(await makeManager().sessions()).toEqual([]);
+    expect(await makeManager().sessions()).toEqual(nothing);
+  });
+
+  /** Design §11.10, test 4: §7 adopts entries with no refresh token, and
+   *  the engine tells "could never have been renewed" from a token set
+   *  with no refresh token. This is where that state comes from. */
+  it("hands the engine a token set with no refresh token for an adopted entry", async () => {
+    await writeLegacyStore([legacyEntry(WORKSPACE_A)]);
+    const manager = makeManager();
+
+    await manager.activeCredential();
+    const tokens = await (await manager.activeCredentialStorage()).getTokens();
+
+    expect(tokens).toMatchObject({ workspaceId: WORKSPACE_A });
+    expect(tokens?.refreshToken).toBeUndefined();
   });
 
   it("keys on the workspace_id claim, keeps the last duplicate, and ignores undecodable entries", async () => {
@@ -182,13 +196,10 @@ describe("adopting the legacy store", () => {
     const legacyBytes = await readFile(authFilePath, "utf8");
 
     const manager = makeManager();
-    await manager.currentSession();
+    await manager.activeCredential();
     expect(await readFile(authFilePath, "utf8")).toBe(legacyBytes);
 
-    const sessionB = (await manager.sessions()).find(
-      (session) => session.workspaceId === WORKSPACE_B,
-    );
-    await manager.useSession(sessionB as never);
+    await manager.selectSession(WORKSPACE_B);
 
     const state = await readCredentialState(authFilePath);
     expect(state.sessions.map((session) => session.workspaceId)).toEqual([

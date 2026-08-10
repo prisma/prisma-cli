@@ -411,7 +411,7 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
       }
       return raw;
     },
-    browserWait: async ({ url, message, poll, timeout }) => {
+    browserWait: async ({ url, message, poll, timeout, interval }) => {
       if (!state.interactive) {
         throw browserWaitUnavailable(message, url);
       }
@@ -428,7 +428,7 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
           throw browserWaitTimedOut(message, url, timeout);
         }
         await invocation.delay(
-          BROWSER_WAIT_POLL_INTERVAL_MS,
+          interval ?? BROWSER_WAIT_POLL_INTERVAL_MS,
           invocation.signal,
         );
       }

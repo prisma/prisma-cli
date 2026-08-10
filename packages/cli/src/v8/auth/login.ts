@@ -1,21 +1,53 @@
-import { defineCommand, type Presentations } from "@prisma/cli-engine";
-import { type NextAction, notOk, ok } from "@prisma/cli-engine/protocol";
 import {
-  isEmptyServiceTokenError,
+  defineCommand,
+  type Presentations,
+  type Session,
+} from "@prisma/cli-engine";
+import {
+  CliStructuredError,
+  type NextAction,
+  ok,
+} from "@prisma/cli-engine/protocol";
+import {
+  claimedWorkspaceId,
+  environmentSessionInForce,
   performLogin,
-  readAuthState,
-  storeLegacyCredential,
 } from "../../auth";
 import { CLI_NAME } from "../../cli-name";
-import type { AuthStateResult } from "../../types/auth";
 import { resolveAgentSetupTipCommand } from "./agent-setup-tip";
-import { authConfigInvalidError } from "./errors";
-import { authStateFieldRows } from "./state-card";
+import { ENVIRONMENT_SESSION_NOTICE } from "./session-card";
+import { sessionLabel } from "./session-ref";
 
 const TITLE = "Starting an authenticated CLI session.";
 const LOGIN_STEP = "Sign in via your browser";
 
-function nextActionsFor(state: AuthStateResult): readonly NextAction[] {
+export interface LoginResult {
+  readonly workspace: { readonly id: string; readonly name: string | null };
+  readonly environmentSessionInForce: boolean;
+}
+
+/** The minted credential names no workspace, so no session can be
+ *  keyed by one. */
+function loginWorkspaceUnknownError(): CliStructuredError {
+  return new CliStructuredError(
+    "AUTH.LOGIN_WORKSPACE_UNKNOWN",
+    "Sign-in produced a credential that names no workspace.",
+    {
+      why: "A workspace session is keyed by the credential's workspace_id claim, and this credential carries none.",
+      nextActions: [
+        {
+          kind: "run-command",
+          label: "Sign in again and pick a workspace in the browser",
+          command: `${CLI_NAME} auth login`,
+        },
+      ],
+    },
+  );
+}
+
+function nextActionsFor(
+  agentSetupTipCommand: string | null,
+): readonly NextAction[] {
   return [
     {
       kind: "run-command",
@@ -27,52 +59,80 @@ function nextActionsFor(state: AuthStateResult): readonly NextAction[] {
       label: "List projects",
       command: `${CLI_NAME} project list`,
     },
-    ...(state.agentSetupTip
-      ? [
+    ...(agentSetupTipCommand === null
+      ? []
+      : [
           {
             kind: "run-command",
             label: "Install Prisma skills for this project",
-            command: state.agentSetupTip.command,
+            command: agentSetupTipCommand,
           } as const,
-        ]
-      : []),
+        ]),
   ];
 }
 
-function presentationsFor(state: AuthStateResult): Presentations {
-  const rows = authStateFieldRows(state);
+function presentationsFor(spec: {
+  readonly session: Session;
+  readonly environmentSessionInForce: boolean;
+  readonly agentSetupTipCommand: string | null;
+}): Presentations {
+  const rows = [
+    { label: "status", value: "signed in" },
+    { label: "workspace", value: sessionLabel(spec.session) },
+  ];
   return {
     human: () => [
       { kind: "summary", tone: "info", text: TITLE },
       { kind: "fields", rows },
-      ...(state.agentSetupTip
+      ...(spec.environmentSessionInForce
         ? [
             {
               kind: "summary",
               tone: "info",
-              text: `Install Prisma skills for this project with ${state.agentSetupTip.command}.`,
+              text: ENVIRONMENT_SESSION_NOTICE,
             } as const,
           ]
         : []),
+      ...(spec.agentSetupTipCommand === null
+        ? []
+        : [
+            {
+              kind: "summary",
+              tone: "info",
+              text: `Install Prisma skills for this project with ${spec.agentSetupTipCommand}.`,
+            } as const,
+          ]),
     ],
     stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
-    next: () => nextActionsFor(state),
+    next: () => nextActionsFor(spec.agentSetupTipCommand),
   };
 }
 
 export const authLoginCommand = defineCommand({
+  managesCredentials: true,
   help: {
     summary: "Log in to your Prisma platform account",
     examples: ["auth login"],
   },
   handler: async (_args, ctx) => {
+    // A blank service token is the single blank-token error, raised
+    // before the browser opens rather than after a credential is minted.
+    const environmentSession = environmentSessionInForce(ctx.env);
     ctx.report({ kind: "step-started", step: LOGIN_STEP });
+    let session: Session;
     try {
       const credential = await performLogin(ctx.env, ctx.signal, {
         onVerificationUrl: (url) =>
           ctx.report({ kind: "endpoint", name: "verification", url }),
       });
-      await storeLegacyCredential(ctx.env, credential, ctx.signal);
+      const workspaceId = claimedWorkspaceId(credential.token);
+      if (workspaceId === undefined) {
+        throw loginWorkspaceUnknownError();
+      }
+      session = await ctx.credentialManager.createSession(
+        credential,
+        workspaceId,
+      );
     } catch (error) {
       ctx.report({
         kind: "step-finished",
@@ -83,21 +143,23 @@ export const authLoginCommand = defineCommand({
     }
     ctx.report({ kind: "step-finished", step: LOGIN_STEP, outcome: "ok" });
 
-    let state: AuthStateResult;
-    try {
-      state = await readAuthState(ctx.env, ctx.signal);
-    } catch (error) {
-      if (isEmptyServiceTokenError(error)) {
-        return notOk(authConfigInvalidError(error.message));
-      }
-      throw error;
-    }
-
     const agentSetupTipCommand = await resolveAgentSetupTipCommand(ctx);
-    if (agentSetupTipCommand) {
-      state = { ...state, agentSetupTip: { command: agentSetupTipCommand } };
-    }
-
-    return ok(ctx.present({ data: state }, presentationsFor(state)));
+    const result: LoginResult = {
+      workspace: {
+        id: session.workspaceId,
+        name: session.workspaceName ?? null,
+      },
+      environmentSessionInForce: environmentSession,
+    };
+    return ok(
+      ctx.present(
+        { data: result },
+        presentationsFor({
+          session,
+          environmentSessionInForce: environmentSession,
+          agentSetupTipCommand,
+        }),
+      ),
+    );
   },
 });

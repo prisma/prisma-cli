@@ -19,6 +19,7 @@ describe("main export", () => {
       "PRISMA_CONFIG_VERSION",
       "authServiceError",
       "createCli",
+      "credentialRejectedError",
       "credentialsRequiredError",
       "defineCommand",
       "defineCommandFamily",
@@ -27,7 +28,6 @@ describe("main export", () => {
       "defineServerCommand",
       "defineSessionCommand",
       "emptyServiceTokenError",
-      "environmentSessionMutationError",
       "flag",
       "loadConfig",
       "noSessionForWorkspaceError",
@@ -38,7 +38,7 @@ describe("main export", () => {
 
   test("the ./testing subpath exposes exactly the harness", () => {
     expect(Object.keys(testing).sort()).toEqual([
-      "TestCredentialManager",
+      "InMemoryCredentialManager",
       "createTestCli",
       "mintTestJwt",
     ]);

@@ -331,7 +331,8 @@ export async function makeServiceCli(
     groups: SERVICE_GROUPS,
     // The credential manager is the shipping path for needs.credentials
     // and for the workspace every service command resolves through
-    // ctx.session(); an unauthenticated harness simply seeds no session.
+    // ctx.activeCredential(); an unauthenticated harness seeds no
+    // session.
     ...(options.authenticated === false
       ? {}
       : {
@@ -349,7 +350,7 @@ export async function makeServiceCli(
               },
             },
           ],
-          currentWorkspaceId: workspace.id,
+          selectedWorkspaceId: workspace.id,
         }),
     managementApi: {
       client: fakeManagementClient(options.routes ?? readFlowRoutes()),

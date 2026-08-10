@@ -1,16 +1,16 @@
 /**
- * The credential-manager engine surface (design rev 5, the session
- * model): ctx.session on every context serving the process pin, the
- * managesCredentials capability, the manager-backed needs check with
- * its single-sourced errors, session mutations with state read-back,
- * process-pinning semantics, harness seeding, and the
+ * The credential-manager engine surface (design rev 6, the active
+ * credential): ctx.activeCredential on every context serving the
+ * process pin, the managesCredentials capability, the manager-backed
+ * needs check with its single-sourced errors, session mutations with
+ * state read-back, process pinning, harness seeding, and the
  * no-token-material guarantees.
  */
 
 import {
+  type ActiveCredential,
   type Credential,
   defineCommand,
-  type Session,
 } from "@prisma/cli-engine";
 import {
   type CliStructuredError,
@@ -19,9 +19,9 @@ import {
 } from "@prisma/cli-engine/protocol";
 import {
   createTestCli,
+  InMemoryCredentialManager,
   mintTestJwt,
-  TestCredentialManager,
-  type TestSessionRecord,
+  type SessionRecord,
 } from "@prisma/cli-engine/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
@@ -42,7 +42,7 @@ const userCredential = (overrides?: {
 const sessionRecordFor = (
   workspaceId: string,
   opts?: { readonly name?: string },
-): TestSessionRecord => ({
+): SessionRecord => ({
   workspaceId,
   workspaceName: opts?.name,
   credential: {
@@ -52,37 +52,38 @@ const sessionRecordFor = (
   },
 });
 
-const storedSessionRef = (workspaceId: string): Session => ({
-  workspaceId,
-  workspaceName: undefined,
+const environmentCredentialFor = (claims: {
+  readonly sub?: string;
+  readonly workspace_id?: string;
+}): Credential => ({
+  token: mintTestJwt(claims),
+  refreshToken: undefined,
   expiresAt: undefined,
-  source: "stored",
-  current: false,
 });
 
-const sessionReader = () => {
-  let seen: Session | null | undefined;
+const credentialReader = () => {
+  let seen: ActiveCredential | null | undefined;
   const command = defineCommand({
-    help: { summary: "Reads the session" },
+    help: { summary: "Reads the active credential" },
     handler: async (_args, ctx) => {
-      seen = await ctx.session();
+      seen = await ctx.activeCredential();
       return ok(ctx.present({ data: seen }, { human: () => [] }));
     },
   });
   return { command, seen: () => seen };
 };
 
-describe("ctx.session", () => {
+describe("ctx.activeCredential", () => {
   test("resolves null on every context when signed out; the command still completes", async () => {
-    const reader = sessionReader();
+    const reader = credentialReader();
     const cli = createTestCli({ commands: { toy: reader.command } });
     const { exitCode } = await cli.run(["toy"]);
     expect(exitCode).toBe(0);
     expect(reader.seen()).toBeNull();
   });
 
-  test("a seeded credential runs real createSession derivation: workspace and expiry come from the token's claims", async () => {
-    const reader = sessionReader();
+  test("a seeded credential runs real createSession derivation: workspace, expiry and identity come from the token's claims", async () => {
+    const reader = credentialReader();
     const cli = createTestCli({
       commands: { toy: reader.command },
       credential: userCredential({
@@ -96,36 +97,35 @@ describe("ctx.session", () => {
       workspaceId: "workspace-9",
       workspaceName: undefined,
       expiresAt: new Date(1_900_000_000 * 1000),
-      source: "stored",
-      current: true,
+      identity: { userId: "user-1", email: undefined },
+      origin: { source: "stored" },
     });
   });
 
-  test("seeded sessions with a current marker serve the marked session", async () => {
-    const reader = sessionReader();
+  test("seeded sessions with a selection serve the selected session", async () => {
+    const reader = credentialReader();
     const cli = createTestCli({
       commands: { toy: reader.command },
       sessions: [
         sessionRecordFor("workspace-1", { name: "Acme Prod" }),
         sessionRecordFor("workspace-2"),
       ],
-      currentWorkspaceId: "workspace-1",
+      selectedWorkspaceId: "workspace-1",
     });
     const { exitCode } = await cli.run(["toy"]);
     expect(exitCode).toBe(0);
     expect(reader.seen()).toMatchObject({
       workspaceId: "workspace-1",
       workspaceName: "Acme Prod",
-      source: "stored",
-      current: true,
+      origin: { source: "stored" },
     });
   });
 
-  test("a seeded environment token composes the env session", async () => {
-    const reader = sessionReader();
+  test("a seeded environment credential resolves with the environment origin", async () => {
+    const reader = credentialReader();
     const cli = createTestCli({
       commands: { toy: reader.command },
-      environmentToken: mintTestJwt({
+      environmentCredential: environmentCredentialFor({
         sub: "svc-1",
         workspace_id: "workspace-env",
       }),
@@ -136,9 +136,32 @@ describe("ctx.session", () => {
       workspaceId: "workspace-env",
       workspaceName: undefined,
       expiresAt: undefined,
-      source: "environment",
-      current: true,
+      identity: { userId: "svc-1", email: undefined },
+      origin: { source: "environment" },
     });
+  });
+
+  /** Design §11.10, test 7. */
+  test("a claimless environment token reports workspaceId undefined, and the JSON renders no empty string and no 'undefined'", async () => {
+    const reader = credentialReader();
+    const cli = createTestCli({
+      commands: { toy: reader.command },
+      environmentCredential: environmentCredentialFor({ sub: "svc-1" }),
+    });
+    const { exitCode, stdout } = await cli.run(["toy", "--json"]);
+    expect(exitCode).toBe(0);
+    expect(reader.seen()).toEqual({
+      workspaceId: undefined,
+      workspaceName: undefined,
+      expiresAt: undefined,
+      identity: { userId: "svc-1", email: undefined },
+      origin: { source: "environment" },
+    });
+    expect(reader.seen()?.workspaceId).not.toBe("");
+    expect(stdout).toContain('"source":"environment"');
+    expect(stdout).not.toContain("workspaceId");
+    expect(stdout).not.toContain("undefined");
+    expect(stdout).not.toContain('""');
   });
 
   afterEach(() => {
@@ -147,10 +170,10 @@ describe("ctx.session", () => {
 
   test("performs no network I/O", async () => {
     const fetchSpy = vi.fn(() => {
-      throw new Error("ctx.session() touched the network");
+      throw new Error("ctx.activeCredential() touched the network");
     });
     vi.stubGlobal("fetch", fetchSpy);
-    const reader = sessionReader();
+    const reader = credentialReader();
     const cli = createTestCli({
       commands: { toy: reader.command },
       credential: userCredential(),
@@ -218,7 +241,7 @@ describe("the manager-backed needs check", () => {
     });
   });
 
-  test("sessions held, none current: the identical single-sourced error from the needs check, ctx.session, and a bare ctx.api touch", async () => {
+  test("sessions held, none selected: the identical single-sourced error from the needs check, ctx.activeCredential, and a bare ctx.api touch", async () => {
     const seeds = {
       sessions: [
         sessionRecordFor("workspace-1"),
@@ -241,7 +264,7 @@ describe("the manager-backed needs check", () => {
 
     const caughtBy = (
       body: (ctx: {
-        readonly session: () => Promise<Session | null>;
+        readonly activeCredential: () => Promise<ActiveCredential | null>;
         readonly api: {
           GET: (path: string, opts: unknown) => Promise<unknown>;
         };
@@ -271,9 +294,9 @@ describe("the manager-backed needs check", () => {
         : undefined;
     };
 
-    const fromSession = await runCaught(
+    const fromActiveCredential = await runCaught(
       caughtBy(async (ctx) => {
-        await ctx.session();
+        await ctx.activeCredential();
       }),
     );
     const fromApiTouch = await runCaught(
@@ -293,7 +316,7 @@ describe("the manager-backed needs check", () => {
         { kind: "user-choice" },
       ],
     });
-    expect(fromSession).toEqual(fromNeedsCheck);
+    expect(fromActiveCredential).toEqual(fromNeedsCheck);
     expect(fromApiTouch).toEqual(fromNeedsCheck);
   });
 
@@ -310,10 +333,10 @@ describe("the manager-backed needs check", () => {
 const codeOf = (thrown: unknown): string => (thrown as CliStructuredError).code;
 
 describe("session mutations and state read-back", () => {
-  test("createSession upserts by workspaceId, preserves a recorded name, and sets the marker", async () => {
-    const manager = new TestCredentialManager({
+  test("createSession upserts by workspaceId, preserves a recorded name, and selects it", async () => {
+    const manager = new InMemoryCredentialManager({
       sessions: [sessionRecordFor("workspace-1", { name: "Acme Prod" })],
-      currentWorkspaceId: "workspace-1",
+      selectedWorkspaceId: "workspace-1",
     });
     await manager.createSession(
       userCredential({ workspaceId: "workspace-2" }),
@@ -333,15 +356,15 @@ describe("session mutations and state read-back", () => {
       ["workspace-2", undefined],
       ["workspace-1", "Acme Prod"],
     ]);
-    expect(state.currentWorkspaceId).toBe("workspace-1");
-    expect(await manager.currentSession()).toMatchObject({
+    expect(state.selectedWorkspaceId).toBe("workspace-1");
+    expect(await manager.activeCredential()).toMatchObject({
       workspaceId: "workspace-1",
-      current: true,
+      origin: { source: "stored" },
     });
   });
 
   test("createSession refuses a workspaceId argument that disagrees with the workspace_id claim", async () => {
-    const manager = new TestCredentialManager({});
+    const manager = new InMemoryCredentialManager({});
     await expect(
       manager.createSession(
         userCredential({ workspaceId: "workspace-1" }),
@@ -350,117 +373,147 @@ describe("session mutations and state read-back", () => {
     ).rejects.toThrow(/disagrees with the credential's workspace_id claim/);
   });
 
-  test("useSession switches the marker; an unknown workspace and an environment-source argument raise AUTH.NO_SESSION_FOR_WORKSPACE", async () => {
-    const manager = new TestCredentialManager({
+  test("selectSession switches the selection and refuses a workspace with no session", async () => {
+    const manager = new InMemoryCredentialManager({
       sessions: [
         sessionRecordFor("workspace-1"),
         sessionRecordFor("workspace-2"),
       ],
-      currentWorkspaceId: "workspace-1",
+      selectedWorkspaceId: "workspace-1",
     });
-    const switched = await manager.useSession(storedSessionRef("workspace-2"));
-    expect(switched).toMatchObject({
+    const selected = await manager.selectSession("workspace-2");
+    expect(selected).toEqual({
       workspaceId: "workspace-2",
-      current: true,
+      workspaceName: undefined,
+      expiresAt: undefined,
     });
-    expect(manager.state().currentWorkspaceId).toBe("workspace-2");
+    expect(manager.state().selectedWorkspaceId).toBe("workspace-2");
+    expect((await manager.sessions()).selectedWorkspaceId).toBe("workspace-2");
 
     await expect(
-      manager.useSession(storedSessionRef("workspace-9")).catch(codeOf),
+      manager.selectSession("workspace-9").catch(codeOf),
     ).resolves.toBe("AUTH.NO_SESSION_FOR_WORKSPACE");
-    await expect(
-      manager
-        .useSession({
-          ...storedSessionRef("workspace-2"),
-          source: "environment",
-        })
-        .catch(codeOf),
-    ).resolves.toBe("AUTH.NO_SESSION_FOR_WORKSPACE");
-
-    const unchanged = await manager.useSession(storedSessionRef("workspace-2"));
-    expect(unchanged).toMatchObject({ workspaceId: "workspace-2" });
   });
 
-  test("endSession removes one session and clears the current only when it named it — no auto-promotion", async () => {
-    const manager = new TestCredentialManager({
+  test("endSession removes one session and clears the selection only when it named it — no auto-promotion", async () => {
+    const manager = new InMemoryCredentialManager({
       sessions: [
         sessionRecordFor("workspace-1"),
         sessionRecordFor("workspace-2"),
       ],
-      currentWorkspaceId: "workspace-1",
+      selectedWorkspaceId: "workspace-1",
     });
-    await manager.endSession(storedSessionRef("workspace-1"));
+    await manager.endSession("workspace-1");
     const state = manager.state();
     expect(state.sessions.map((record) => record.workspaceId)).toEqual([
       "workspace-2",
     ]);
-    expect(state.currentWorkspaceId).toBeNull();
-    await expect(manager.currentSession().catch(codeOf)).resolves.toBe(
+    expect(state.selectedWorkspaceId).toBeUndefined();
+    await expect(manager.activeCredential().catch(codeOf)).resolves.toBe(
       "CLI.CREDENTIALS_REQUIRED",
     );
   });
 
-  test("endAllSessions clears every session and the marker", async () => {
-    const manager = new TestCredentialManager({
+  test("endSession on a workspace with no session succeeds and writes nothing", async () => {
+    const manager = new InMemoryCredentialManager({
+      sessions: [sessionRecordFor("workspace-1")],
+      selectedWorkspaceId: "workspace-1",
+    });
+    const before = manager.state();
+    await expect(manager.endSession("workspace-9")).resolves.toBeUndefined();
+    expect(manager.state()).toEqual(before);
+  });
+
+  test("endAllSessions clears every session and the selection", async () => {
+    const manager = new InMemoryCredentialManager({
       sessions: [
         sessionRecordFor("workspace-1"),
         sessionRecordFor("workspace-2"),
       ],
-      currentWorkspaceId: "workspace-1",
+      selectedWorkspaceId: "workspace-1",
     });
     await manager.endAllSessions();
     expect(manager.state()).toEqual({
       sessions: [],
-      currentWorkspaceId: null,
+      selectedWorkspaceId: undefined,
     });
-    expect(await manager.currentSession()).toBeNull();
+    expect(await manager.activeCredential()).toBeNull();
+  });
+
+  test("sessions() never reports a selection that names no stored session", async () => {
+    const manager = new InMemoryCredentialManager({
+      sessions: [sessionRecordFor("workspace-1")],
+      selectedWorkspaceId: "workspace-gone",
+    });
+    expect(await manager.sessions()).toEqual({
+      sessions: [
+        {
+          workspaceId: "workspace-1",
+          workspaceName: undefined,
+          expiresAt: undefined,
+        },
+      ],
+      selectedWorkspaceId: undefined,
+    });
   });
 });
 
-describe("mutations under an env-supplied session", () => {
-  const environmentToken = mintTestJwt({
+describe("mutations while an environment credential is in force", () => {
+  const environmentCredential = environmentCredentialFor({
     sub: "svc-1",
     workspace_id: "workspace-env",
   });
 
-  test("useSession and endSession refuse, naming the variable and the unset command; state is untouched", async () => {
-    const manager = new TestCredentialManager({
-      sessions: [sessionRecordFor("workspace-1")],
-      currentWorkspaceId: "workspace-1",
-      environmentToken,
+  const managerWithStoredSessions = () =>
+    new InMemoryCredentialManager({
+      sessions: [
+        sessionRecordFor("workspace-1"),
+        sessionRecordFor("workspace-2"),
+      ],
+      selectedWorkspaceId: "workspace-1",
+      environmentCredential,
     });
-    for (const mutate of [
-      () => manager.useSession(storedSessionRef("workspace-1")),
-      () => manager.endSession(storedSessionRef("workspace-1")),
-    ]) {
-      const thrown = (await mutate().catch(
-        (cause: unknown) => cause,
-      )) as CliStructuredError;
-      expect(thrown.code).toBe("AUTH.ENV_SESSION_IN_FORCE");
-      expect(thrown.nextActions).toMatchObject([
-        { kind: "run-command", command: "unset PRISMA_SERVICE_TOKEN" },
-      ]);
-    }
-    expect(manager.state().sessions).toHaveLength(1);
-    expect(manager.state().currentWorkspaceId).toBe("workspace-1");
+
+  test("selectSession succeeds and changes the stored selection; the environment credential stays in force", async () => {
+    const manager = managerWithStoredSessions();
+    await manager.selectSession("workspace-2");
+    expect(manager.state().selectedWorkspaceId).toBe("workspace-2");
+    expect(await manager.activeCredential()).toMatchObject({
+      workspaceId: "workspace-env",
+      origin: { source: "environment" },
+    });
   });
 
-  test("endAllSessions refuses when stored sessions exist and succeeds as a no-op when there are none", async () => {
-    const withStored = new TestCredentialManager({
-      sessions: [sessionRecordFor("workspace-1")],
-      environmentToken,
+  test("endSession succeeds and removes the stored session; the environment credential stays in force", async () => {
+    const manager = managerWithStoredSessions();
+    await manager.endSession("workspace-1");
+    expect(
+      manager.state().sessions.map((record) => record.workspaceId),
+    ).toEqual(["workspace-2"]);
+    expect(await manager.activeCredential()).toMatchObject({
+      origin: { source: "environment" },
     });
-    await expect(withStored.endAllSessions().catch(codeOf)).resolves.toBe(
-      "AUTH.ENV_SESSION_IN_FORCE",
-    );
-    expect(withStored.state().sessions).toHaveLength(1);
+  });
 
-    const withoutStored = new TestCredentialManager({ environmentToken });
+  test("endAllSessions simply clears the store, with or without stored sessions", async () => {
+    const withStored = managerWithStoredSessions();
+    await withStored.endAllSessions();
+    expect(withStored.state()).toEqual({
+      sessions: [],
+      selectedWorkspaceId: undefined,
+    });
+    expect(await withStored.activeCredential()).toMatchObject({
+      origin: { source: "environment" },
+    });
+
+    const withoutStored = new InMemoryCredentialManager({
+      environmentCredential,
+    });
     await expect(withoutStored.endAllSessions()).resolves.toBeUndefined();
   });
 
-  test("createSession is allowed; the env token remains in force", async () => {
-    const manager = new TestCredentialManager({ environmentToken });
+  test("createSession is allowed; the environment credential remains in force", async () => {
+    const manager = new InMemoryCredentialManager({ environmentCredential });
     await manager.createSession(
       userCredential({ workspaceId: "workspace-1" }),
       "workspace-1",
@@ -468,88 +521,89 @@ describe("mutations under an env-supplied session", () => {
     expect(
       manager.state().sessions.map((record) => record.workspaceId),
     ).toEqual(["workspace-1"]);
-    expect(await manager.currentSession()).toMatchObject({
-      source: "environment",
+    expect(await manager.activeCredential()).toMatchObject({
+      origin: { source: "environment" },
       workspaceId: "workspace-env",
     });
   });
 
-  test("sessions() still lists stored sessions with the file's marked current", async () => {
-    const manager = new TestCredentialManager({
+  test("sessions() still lists the stored sessions and the stored selection", async () => {
+    const manager = new InMemoryCredentialManager({
       sessions: [
         sessionRecordFor("workspace-1"),
         sessionRecordFor("workspace-2"),
       ],
-      currentWorkspaceId: "workspace-2",
-      environmentToken,
+      selectedWorkspaceId: "workspace-2",
+      environmentCredential,
     });
-    const listed = await manager.sessions();
-    expect(
-      listed.map((session) => [session.workspaceId, session.current]),
-    ).toEqual([
-      ["workspace-1", false],
-      ["workspace-2", true],
+    const stored = await manager.sessions();
+    expect(stored.sessions.map((session) => session.workspaceId)).toEqual([
+      "workspace-1",
+      "workspace-2",
     ]);
-    expect(listed.every((session) => session.source === "stored")).toBe(true);
+    expect(stored.selectedWorkspaceId).toBe("workspace-2");
   });
 });
 
 describe("process pinning", () => {
-  test("the marker moved by another process between reads does not re-pin; a new manager picks up the new marker", async () => {
-    const manager = new TestCredentialManager({
+  test("the selection moved by another process between reads does not re-pin; a new manager picks up the new selection", async () => {
+    const manager = new InMemoryCredentialManager({
       sessions: [
         sessionRecordFor("workspace-1"),
         sessionRecordFor("workspace-2"),
       ],
-      currentWorkspaceId: "workspace-1",
+      selectedWorkspaceId: "workspace-1",
     });
-    expect(await manager.currentSession()).toMatchObject({
+    expect(await manager.activeCredential()).toMatchObject({
       workspaceId: "workspace-1",
     });
 
-    manager.overwriteStoredState({ currentWorkspaceId: "workspace-2" });
-    expect(await manager.currentSession()).toMatchObject({
+    manager.overwriteStoredState({ selectedWorkspaceId: "workspace-2" });
+    expect(await manager.activeCredential()).toMatchObject({
       workspaceId: "workspace-1",
     });
 
     const movedState = manager.state();
-    const newProcess = new TestCredentialManager({
+    const newProcess = new InMemoryCredentialManager({
       sessions: movedState.sessions,
-      currentWorkspaceId: movedState.currentWorkspaceId ?? undefined,
+      selectedWorkspaceId: movedState.selectedWorkspaceId,
     });
-    expect(await newProcess.currentSession()).toMatchObject({
+    expect(await newProcess.activeCredential()).toMatchObject({
       workspaceId: "workspace-2",
     });
   });
 
-  test("this manager's own useSession moves the pin", async () => {
-    const manager = new TestCredentialManager({
+  test("this manager's own selectSession moves the pin", async () => {
+    const manager = new InMemoryCredentialManager({
       sessions: [
         sessionRecordFor("workspace-1"),
         sessionRecordFor("workspace-2"),
       ],
-      currentWorkspaceId: "workspace-1",
+      selectedWorkspaceId: "workspace-1",
     });
-    expect(await manager.currentSession()).toMatchObject({
+    expect(await manager.activeCredential()).toMatchObject({
       workspaceId: "workspace-1",
     });
-    await manager.useSession(storedSessionRef("workspace-2"));
-    expect(await manager.currentSession()).toMatchObject({
+    await manager.selectSession("workspace-2");
+    expect(await manager.activeCredential()).toMatchObject({
       workspaceId: "workspace-2",
     });
   });
 
   test("a pinned session ended by another process raises the session-ended wording on the next read", async () => {
-    const manager = new TestCredentialManager({
+    const manager = new InMemoryCredentialManager({
       sessions: [sessionRecordFor("workspace-1")],
-      currentWorkspaceId: "workspace-1",
+      selectedWorkspaceId: "workspace-1",
     });
-    expect(await manager.currentSession()).toMatchObject({
+    expect(await manager.activeCredential()).toMatchObject({
       workspaceId: "workspace-1",
     });
-    manager.overwriteStoredState({ sessions: [], currentWorkspaceId: null });
+    manager.overwriteStoredState({
+      sessions: [],
+      selectedWorkspaceId: undefined,
+    });
     const thrown = (await manager
-      .currentSession()
+      .activeCredential()
       .catch((cause: unknown) => cause)) as CliStructuredError;
     expect(thrown.code).toBe("CLI.CREDENTIALS_REQUIRED");
     expect(thrown.message).toContain("has ended");
@@ -557,7 +611,7 @@ describe("process pinning", () => {
 });
 
 describe("token material never leaves", () => {
-  test("sessions() and the session expose no seeded token through any output channel", async () => {
+  test("sessions() and the active credential expose no seeded token through any output channel", async () => {
     const secret = mintTestJwt({
       sub: "user-1",
       workspace_id: "workspace-1",
@@ -567,10 +621,10 @@ describe("token material never leaves", () => {
       help: { summary: "Lists sessions" },
       managesCredentials: true,
       handler: async (_args, ctx) => {
-        const sessions = await ctx.credentialManager.sessions();
-        const session = await ctx.session();
+        const stored = await ctx.credentialManager.sessions();
+        const active = await ctx.activeCredential();
         return ok(
-          ctx.present({ data: { sessions, session } }, { human: () => [] }),
+          ctx.present({ data: { stored, active } }, { human: () => [] }),
         );
       },
     });
@@ -587,7 +641,7 @@ describe("token material never leaves", () => {
           },
         },
       ],
-      currentWorkspaceId: "workspace-1",
+      selectedWorkspaceId: "workspace-1",
     });
     const { exitCode, stdout, stderr, json } = await cli.run(["toy", "--json"]);
     expect(exitCode).toBe(0);
@@ -599,13 +653,54 @@ describe("token material never leaves", () => {
 });
 
 describe("harness seed validation", () => {
-  test("the legacy credentials seed cannot be combined with manager seeds", () => {
-    expect(() =>
-      createTestCli({
-        commands: {},
-        credentials: { token: "legacy" },
-        credential: userCredential(),
+  test("a `credential` seed whose token names no workspace is refused: createSession is workspace-keyed", () => {
+    expect(
+      () =>
+        new InMemoryCredentialManager({
+          credential: {
+            token: mintTestJwt({ sub: "user-1" }),
+            refreshToken: undefined,
+            expiresAt: undefined,
+          },
+        }),
+    ).toThrow(/must be a JWT with `workspace_id`/);
+  });
+
+  test("activeCredentialStorage before the credential resolves is a harness misuse", async () => {
+    const manager = new InMemoryCredentialManager({
+      sessions: [sessionRecordFor("workspace-1")],
+      selectedWorkspaceId: "workspace-1",
+    });
+    await expect(manager.activeCredentialStorage()).rejects.toThrow(
+      /only valid once activeCredential\(\) has returned non-null/,
+    );
+  });
+
+  test("a rotation write onto a session another process ended refuses with the same structured error the real manager raises", async () => {
+    const manager = new InMemoryCredentialManager({
+      sessions: [
+        {
+          workspaceId: "workspace-1",
+          workspaceName: undefined,
+          credential: {
+            token: mintTestJwt({ workspace_id: "workspace-1" }),
+            refreshToken: "refresh-1",
+            expiresAt: undefined,
+          },
+        },
+      ],
+      selectedWorkspaceId: "workspace-1",
+    });
+    await manager.activeCredential();
+    const storage = await manager.activeCredentialStorage();
+    manager.overwriteStoredState({ sessions: [] });
+
+    await expect(
+      storage.setTokens({
+        workspaceId: "workspace-1",
+        accessToken: mintTestJwt({ workspace_id: "workspace-1" }),
+        refreshToken: "refresh-2",
       }),
-    ).toThrow(/legacy `credentials` seed/);
+    ).rejects.toMatchObject({ code: "CLI.CREDENTIALS_REQUIRED" });
   });
 });

@@ -91,20 +91,21 @@ The service group's legacy commands never auto-logged-in
 unauthenticated runs with the engine's `CLI.CREDENTIALS_REQUIRED`
 (exit 2) instead of the legacy `AUTH_REQUIRED` (exit 1).
 
-The workspace those commands then act in comes from the engine's
-session (`ctx.session()`), which is the only sanctioned identity
-surface a handler has; no v8 command reads the credential file itself.
-The entry below records what moving to it fixed.
+The workspace those commands then act in comes from the credential the
+engine is authenticating with (`ctx.activeCredential()`), which is the
+only sanctioned identity surface a handler has; no v8 command reads the
+credential file itself. The entry below records what moving to it
+fixed.
 
-### The workspace comes from the engine's session, not the credential file
+### The workspace comes from the engine, not the credential file
 
 `requireWorkspace` (`src/v8/service/target.ts`) used to call `readAuthState`, which builds a `FileTokenStorage` and asks it for tokens (`src/auth/operations.ts`). That legacy reader and the engine's credential manager resolve to the same file by default, and that file's shape is about to change. Today `auth login` writes the legacy `{tokens: […]}` shape through `storeLegacyCredential` and `FileTokenStorage` reads it. Once the auth rework merges down from `bot/s2a-foundations`, `auth login` calls `credentialManager.createSession` instead, which writes `{version, sessions, currentWorkspaceId}`; `@prisma/credentials-store` reads `data.tokens || []`, finds nothing, and the legacy reader reports nobody signed in while `credentialManager.currentSession()` still returns a valid session.
 
-**This entry used to say the merge-down broke 13 of this slice's 20 commands and that the fix belonged to the auth stream. The count was right; the blame was not, and the misplaced part was ours.** That count describes the slice as it stood before `service deploy` and `service build` were dropped and before `service logs` was shelved, when it had 20 commands; it is history, and so is the list. With no tokens `readAuthState` returned `{authenticated: false}` and the command settled `SERVICE.WORKSPACE_REQUIRED`, so a credential file the legacy reader cannot parse made `deploy`, `show`, `open`, `list-deploys`, `logs`, `promote`, `rollback`, `remove` and all five `domain` commands unusable. But no v8 command should have been reading auth state that way at all. The engine hands a handler its identity through `ctx.session()`, answered by the credential manager, whose reader understands both the new `{version, sessions, currentWorkspaceId}` shape and the legacy `{tokens: […]}` one (`src/auth/state-file.ts` adopts the legacy store on read).
+**This entry used to say the merge-down broke 13 of this slice's 20 commands and that the fix belonged to the auth stream. The count was right; the blame was not, and the misplaced part was ours.** That count describes the slice as it stood before `service deploy` and `service build` were dropped and before `service logs` was shelved, when it had 20 commands; it is history, and so is the list. With no tokens `readAuthState` returned `{authenticated: false}` and the command settled `SERVICE.WORKSPACE_REQUIRED`, so a credential file the legacy reader cannot parse made `deploy`, `show`, `open`, `list-deploys`, `logs`, `promote`, `rollback`, `remove` and all five `domain` commands unusable. But no v8 command should have been reading auth state that way at all. The engine hands a handler its identity through the credential manager, whose reader understands both the new `{version, sessions, currentWorkspaceId}` shape and the legacy `{tokens: […]}` one (`src/auth/state-file.ts` adopts the legacy store on read).
 
-**`requireWorkspace` now reads `ctx.session()`. Of the 13 that broke, 11 still ship, and the fix repairs all 11.** `show`, `open`, `list-deploys`, `promote`, `rollback`, `remove` and all five `domain` commands resolve their workspace after the merge-down exactly as they do before it. The other two are gone from the slice: `deploy` is no longer a v8 command at all, and `logs` is shelved — both under dispatch 4. `show-deploy` was never affected: it is the one caller that swallows a workspace failure and degrades to a missing live-deployment hint. `build logs`, the three `agent` commands and `feedback` read no auth state at all.
+**`requireWorkspace` now reads `ctx.activeCredential()`. Of the 13 that broke, 11 still ship, and the fix repairs all 11.** `show`, `open`, `list-deploys`, `promote`, `rollback`, `remove` and all five `domain` commands resolve their workspace after the merge-down exactly as they do before it. The other two are gone from the slice: `deploy` is no longer a v8 command at all, and `logs` is shelved — both under dispatch 4. `show-deploy` was never affected: it is the one caller that swallows a workspace failure and degrades to a missing live-deployment hint. `build logs`, the three `agent` commands and `feedback` read no auth state at all.
 
-**A workspace with no name now shows its id.** `Session.workspaceName`
+**A workspace with no name now shows its id.** `ActiveCredential.workspaceName`
 is optional where the old `AuthWorkspace.name` was required, so a
 session the manager could not name — a workspace-bound service token,
 or a login whose best-effort name fetch failed — presents as its
@@ -420,7 +421,7 @@ from `PRISMA_SERVICE_TOKEN` or the token file in
 that reaches a session command at all is `ctx.getCredentials()`, which
 the engine documents as staged for deletion:
 
-- `ctx.session()` deliberately omits the token ("The token is
+- `ctx.activeCredential()` deliberately omits the token ("The token is
   INTERNAL", `credential-manager.ts`).
 - `ctx.credentialManager` (whose `tokenStorage()` is marked
   engine-facing) is exposed only to result commands that declare
@@ -435,6 +436,8 @@ the engine documents as staged for deletion:
 v8 asked `ctx.getCredentials()` and, when it resolved nothing, settled with `SERVICE.LOG_STREAM_CREDENTIALS_UNAVAILABLE`; that error builder is deleted with the command. Whether it ever fired was decided by the shape of the credential file rather than by whether the user was signed in, which is the trap this entry existed to record. Today `auth login` writes the legacy `{tokens: […]}` shape through `storeLegacyCredential` and `FileTokenStorage` reads it, so the error was unreachable. Once the auth rework merges down from `bot/s2a-foundations`, `auth login` calls `credentialManager.createSession` instead, `@prisma/credentials-store` reads `data.tokens || []` and finds nothing, and every signed-in user who had not set `PRISMA_SERVICE_TOKEN` would have hit it. The workspace half of the same problem was real for the commands that do ship, and it is fixed — see "The workspace comes from the engine's session, not the credential file" under dispatch 1.
 
 A second, smaller engine ask retires with this one, and it is why the `service logs` tests were red. Those tests seeded `rawTokenSeed`, which selects `createTestCli`'s manager-less runtime — the only way the harness made `ctx.getCredentials()` resolve a token. A manager-less runtime has no session at all, so once the workspace came from `ctx.session()` every one of those runs settled `SERVICE.WORKSPACE_REQUIRED`. The shipping bin wires a credential manager and `getCredentials` together (`src/v8/runtime.ts`), but `createTestCli` rejects that combination (`packages/cli-engine/src/testing.ts`), so no harness could model the runtime the product assembles. The tests are deleted with the command and the seed is gone from the testkit; whatever transport the engine grows for the ported command will need a harness seam of its own.
+
+**Settled by the merge-down.** The paragraph above describes a runtime that no longer exists: the rev-6 credential surface landed on `bot/s2a-foundations` and **deleted `getCredentials` outright**, so there is now no accessor a command could take a token from, and `ctx.session()` is `ctx.activeCredential()`. Shelving the command was therefore the only correct call rather than a cautious one — had it shipped, it would now fail to compile rather than merely fail at runtime. The harness inconsistency retires with the accessor it was about.
 
 ### Error-code mapping (dispatch 3 additions)
 

@@ -99,6 +99,21 @@ targets, which must name the module the code under test imports) are
 the permitted exception. The `Credentials` shape stays the engine's
 `{ token: string }` — S2a does not redesign it.
 
+**Erratum (2026-08-10, post-review).** The credential-manager rework
+landed in this PR after the contract was reviewed, so the module's
+public face grew accordingly. `src/auth/index.ts` additionally exports
+`FileCredentialManager` + `FetchWorkspaceName` and `fetchWorkspaceName`
+(the manager and its injected name lookup), `resolveStateFilePath` /
+`STATE_FILE_ENV_VAR` / `DEPRECATED_STATE_FILE_ENV_VAR`,
+`claimedWorkspaceId` and `decodeClaims` (the claim decoders the login
+command keys sessions by), `authenticatedManagementApiClient`,
+`DEFAULT_REDIRECT_URI` / `getAuthBaseUrl`, the recipient-session
+helpers, and `storeLegacyCredential` (which now serves the LEGACY shell
+only). `performLogin` returns the minted `Credential` instead of
+writing it anywhere; custody belongs to the manager. The engine's
+`Credentials` shape survives only on the staged-swap fallback path —
+`ctx.session()` and `ctx.api` are the surviving auth surfaces.
+
 ## 4. `auth *` family port
 
 Mounted in the v8 bin under the existing `auth` group. All commands
@@ -106,26 +121,41 @@ are result commands in the platform command family. Fixture-mode-only
 surface does not port (fixture machinery dies in S2d): `auth login`
 loses `--provider`, `--user`, `--workspace` (mock-selection flags).
 
-| Command | Args | needs | Behavior |
-| --- | --- | --- | --- |
-| `auth login` | none | none | Real OAuth flow via `performLogin` (browser open + poll), then `readAuthState`; events: `step-started/finished` for the flow, `endpoint` for the verification URL; presented like whoami's card plus the agent-setup tip line when `resolveAgentSetupTipCommand` fires (port that helper's real-mode path); nextActions: `auth whoami`, `project list`, the tip command when present |
-| `auth logout` | flag `--workspace <ref>` (optional) | none | Without the flag: `performLogout` + `readAuthState`, card matching current logout copy, nextAction `auth login`. With the flag: the workspace-logout operation (same semantics as `auth workspace logout <ref>`, same presentation, same command — call the shared operation directly; the current shell's internal re-dispatch hack does not port) |
-| `auth whoami` | none | none | Already ported (S1) — moves from `src/v8/auth/whoami.ts` handler calling `readAuthState` directly to the auth module import; otherwise untouched |
-| `auth workspace list` | none | none | `listRealAuthWorkspaces`; table Block (name, id, status; source column only when mixed — port the exact column rules from `presenters/auth.ts`); json serializer ports `serializeAuthWorkspaceList` |
-| `auth workspace use [workspace]` | optional positional | none | Resolves by id or case-insensitive name; ambiguous → `AUTH.WORKSPACE_AMBIGUOUS` errored (map the current error's content to nextActions form); absent positional + interactive → `prompt.select` over workspaces (clack path); absent + non-interactive → structural prompt failure (engine default) |
-| `auth workspace logout <workspace>` | required positional | none | Port current semantics incl. was-active handling |
+| Command | Args | needs | Capability | Behavior |
+| --- | --- | --- | --- | --- |
+| `auth login` | none | none | `managesCredentials` | `performLogin` returns the minted credential; the command calls `createSession(credential, workspaceIdFromClaims)`. Events: `step-started/finished` for the flow, `endpoint` for the verification URL. Card + the agent-setup tip line when `resolveAgentSetupTipCommand` fires; nextActions `auth whoami`, `project list`, the tip command. Under an env override it SUCCEEDS and prints the mandatory one-line notice that `PRISMA_SERVICE_TOKEN` stays in force until unset |
+| `auth logout` | none | none | `managesCredentials` | `sessions()` for the count, then `endAllSessions()`; reports how many it ended. `--workspace` does not exist. Under an env override: refuses when stored sessions exist, succeeds as a no-op when there are none |
+| `auth whoami` | none | none | none | `ctx.session()` only (no manager on the context) + `ctx.api` enrichment when online; signed out exits 0 |
+| `auth workspace list` | none | none | `managesCredentials` | `sessions()`, the current one marked, a nameless session rendered by its id; states when the env session is in force; json serializer included |
+| `auth workspace use [workspace]` | optional positional | none | `managesCredentials` | Command-side ref resolution against `sessions()` (exact id, then case-insensitive name; several matches → `AUTH.WORKSPACE_AMBIGUOUS` listing them), then `useSession(match)`. **Selects only** — a ref it holds no session for is `AUTH.NO_SESSION_FOR_WORKSPACE` telling the user to run `prisma auth login` and pick that workspace in the browser; no browser ever opens from `use`. Absent positional + interactive → `prompt.select` over the sessions; absent + non-interactive → the engine's structural prompt failure |
+| `auth workspace logout <workspace>` | required positional | none | `managesCredentials` | Same resolution, then `endSession(match)`; prints the workspace it ended |
 
-Error mapping: the current shell's flat codes port to dotted
-`AUTH.*` codes, enumerated in the divergence list (pattern set by S1:
-`AUTH_CONFIG_INVALID` → `AUTH.CONFIG_INVALID`, exit 1 → 2 for errored
-paths). No documented 4–99 codes in this family.
+The manager resolves no user input: every ref is resolved
+command-side, in one shared module in the v8 auth family
+(`src/v8/auth/session-ref.ts`), and the matched `Session` is what
+reaches the manager.
 
-Tests: semantic, per ruling — auth module stubbed at
-`src/auth/index.ts` seam (vi.mock), `ctx.api` fake where workspaces
-call the SDK; every command × (success, errored, json, unauth where
-meaningful); prompt path for `workspace use` via scripted answers.
-Delete `packages/cli/tests/auth.test.ts` fixture-mode cases that cover
-ported commands; keep the file's untouched-shell cases until S2d.
+Error mapping: the current shell's flat codes port to dotted codes in
+the SESSION vocabulary, enumerated in the divergence list. No
+documented 4–99 codes in this family.
+
+Tests: semantic, per ruling — the harness's in-memory credential
+manager seeded with `{sessions, currentWorkspaceId, credential,
+environmentToken}`, with manager state read back after each run;
+`ctx.api` faked where a command enriches; every command × (success,
+errored, json, env-override where meaningful); prompt path for
+`workspace use` via scripted answers. Delete
+`packages/cli/tests/auth.test.ts` fixture-mode cases that cover ported
+commands; keep the file's untouched-shell cases until S2d.
+
+**Erratum (2026-08-10, post-review).** The auth family was reworked
+onto the credential manager after this section was reviewed: the table
+above is the final state. The reviewed version had the commands calling
+the legacy `readAuthState` / `listAuthWorkspaces` / `switchAuthWorkspace`
+/ `logoutAuthWorkspace` operations and gave `auth logout` a
+`--workspace <ref>` flag. Those operations now serve the legacy shell
+alone, and `logout --workspace` is gone — `auth workspace logout <ref>`
+is the one way to end a single session.
 
 ## 5. Update check port
 
@@ -232,8 +262,9 @@ cherry-pick):
       draft amended; refresh-pickup test green.
 - [x] Auth module extracted; legacy shell green against it; v8 runtime
       consumes `makeGetCredentials` from it.
-- [x] All six `auth *` commands on the engine with semantic tests;
-      fixture-only flags gone; divergence list updated.
+- [x] All six `auth *` commands on the engine, over the credential
+      manager, with semantic tests; fixture-only flags gone;
+      `logout --workspace` gone; divergence list updated.
 - [x] Update check ported to both shells; sequencing matches legacy.
 - [x] Telemetry: package ported, hook amendment landed, bin wired,
       consent commands mounted, sanitizer value-free by test.

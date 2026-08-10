@@ -50,7 +50,6 @@ export {
 export type {
   BrowserWaitRequest,
   CommandContext,
-  Credentials,
   OpenUrlOutcome,
   OpenUrlRequest,
   PromptSurface,
@@ -58,16 +57,20 @@ export type {
 export {
   authServiceError,
   type CredentialsRequiredReason,
+  credentialRejectedError,
   credentialsRequiredError,
   emptyServiceTokenError,
-  environmentSessionMutationError,
   noSessionForWorkspaceError,
   serviceTokenRejectedError,
 } from "../credential-errors";
 export type {
+  ActiveCredential,
   Credential,
+  CredentialIdentity,
   CredentialManager,
+  CredentialOrigin,
   Session,
+  StoredSessions,
 } from "../credential-manager";
 export type {
   EngineEvent,

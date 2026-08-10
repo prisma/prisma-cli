@@ -1,3 +1,4 @@
+export { claimedWorkspaceId, decodeClaims } from "./claims";
 export {
   CLIENT_ID,
   DEFAULT_REDIRECT_URI,
@@ -9,7 +10,6 @@ export {
   type FetchWorkspaceName,
   FileCredentialManager,
 } from "./credential-manager";
-export { makeGetCredentials } from "./credentials";
 export {
   workspaceAmbiguousError,
   workspaceNotAuthenticatedError,
@@ -29,6 +29,10 @@ export {
   type RecipientWorkspaceSession,
   resolveRecipientWorkspaceSession,
 } from "./recipient";
+export {
+  environmentServiceToken,
+  environmentSessionInForce,
+} from "./service-token";
 export {
   DEPRECATED_STATE_FILE_ENV_VAR,
   resolveStateFilePath,

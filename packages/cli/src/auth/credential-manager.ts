@@ -1,23 +1,25 @@
 import fs from "node:fs/promises";
+import path from "node:path";
 import type {
+  ActiveCredential,
   Credential,
   CredentialManager,
   Session,
+  StoredSessions,
   TokenStorage,
 } from "@prisma/cli-engine";
 import {
   credentialsRequiredError,
-  emptyServiceTokenError,
-  environmentSessionMutationError,
   noSessionForWorkspaceError,
 } from "@prisma/cli-engine";
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import {
   claimedExpiresAt,
+  claimedIdentity,
   claimedWorkspaceId,
   serviceTokenWorkspaceId,
 } from "./claims";
-import { SERVICE_TOKEN_ENV_VAR } from "./client";
+import { environmentServiceToken } from "./service-token";
 import {
   type CredentialState,
   type DebugLog,
@@ -30,6 +32,15 @@ import {
   writeCredentialState,
 } from "./state-file";
 import { getAuthContextFilePath } from "./token-storage";
+
+type Tokens = NonNullable<Awaited<ReturnType<TokenStorage["getTokens"]>>>;
+
+type RefreshLock = <T>(fn: () => Promise<T>) => Promise<T>;
+
+/** The SDK's Tokens requires a workspace id, so an environment
+ *  credential whose claims name no workspace is given this instead. It
+ *  never leaves the manager, and it is never the empty string. */
+const NO_WORKSPACE_CLAIMED = "(no workspace)";
 
 /** Looks the workspace's name up with the credential that was just
  *  minted. Best-effort: the manager treats any failure as "no name". */
@@ -44,10 +55,16 @@ export interface FileCredentialManagerOptions {
   readonly debugWrite?: (text: string) => void;
 }
 
+/** Which credential this process acts as, decided at the first
+ *  activeCredential() read. The decision is what is pinned; the
+ *  material behind it is re-read on every call. */
 type Pin =
-  | { readonly kind: "unpinned" }
+  | { readonly kind: "unresolved" }
   | { readonly kind: "environment" }
-  | { readonly kind: "marker"; readonly workspaceId: string | null };
+  | { readonly kind: "session"; readonly workspaceId: string }
+  | { readonly kind: "none" };
+
+type ResolvedPin = Exclude<Pin, { readonly kind: "unresolved" }>;
 
 function credentialWorkspaceMismatchError(
   workspaceId: string,
@@ -69,17 +86,47 @@ function credentialWorkspaceMismatchError(
 }
 
 /**
+ * The memory-backed storage, for a credential with no home record: a
+ * free function closing over one local variable. It is never given the
+ * state file's path, so no method of it — clearTokens included — can
+ * reach the stored sessions, and an environment credential whose
+ * workspace matches a stored session cannot delete that session.
+ */
+function memoryBackedStorage(
+  credential: Credential,
+  withRefreshLock: RefreshLock,
+): TokenStorage {
+  let tokens: Tokens | null = {
+    workspaceId:
+      serviceTokenWorkspaceId(credential.token) ?? NO_WORKSPACE_CLAIMED,
+    accessToken: credential.token,
+    refreshToken: credential.refreshToken,
+  };
+  return {
+    getTokens: async () => tokens,
+    setTokens: async (rotated) => {
+      tokens = rotated;
+    },
+    clearTokens: async () => {
+      tokens = null;
+    },
+    withRefreshLock,
+  };
+}
+
+/**
  * The credential manager over one state file. Sessions are keyed by
- * workspace id; the current session is pinned once per process; every
- * mutation takes a short file lock, re-reads, applies its slice, and
- * writes atomically. Reads never write and take no lock.
+ * workspace id; which credential this process acts as is pinned once;
+ * every mutation takes a short file lock, re-reads, applies its slice,
+ * and writes atomically. Reads never write and take no lock.
  */
 export class FileCredentialManager implements CredentialManager {
   readonly #env: Readonly<Record<string, string | undefined>>;
   readonly #filePath: string;
   readonly #debug: DebugLog;
   readonly #fetchWorkspaceName: FetchWorkspaceName | undefined;
-  #pin: Pin = { kind: "unpinned" };
+  #pin: Pin = { kind: "unresolved" };
+  #activeStorage: TokenStorage | undefined;
   #refreshLock: Promise<unknown> = Promise.resolve();
 
   constructor(options: FileCredentialManagerOptions) {
@@ -94,48 +141,41 @@ export class FileCredentialManager implements CredentialManager {
     return this.#filePath;
   }
 
-  async currentSession(): Promise<Session | null> {
-    const environmentToken = this.#environmentToken();
-    if (this.#pin.kind === "unpinned") {
-      if (environmentToken !== undefined) {
-        this.#pin = { kind: "environment" };
-        this.#debug("pinned to the environment session");
-      } else {
-        const state = await readCredentialState(this.#filePath);
-        this.#pin = { kind: "marker", workspaceId: resolvedMarker(state) };
-        this.#debug(`pinned to session ${this.#pin.workspaceId ?? "(none)"}`);
-      }
-    }
+  async activeCredential(): Promise<ActiveCredential | null> {
+    const pin = await this.#resolvePin();
 
-    if (this.#pin.kind === "environment") {
-      return this.#environmentSession();
+    if (pin.kind === "environment") {
+      return environmentCredential(this.#requireEnvironmentToken());
     }
-    const pinnedWorkspaceId = this.#pin.workspaceId;
     const state = await readCredentialState(this.#filePath);
-    if (pinnedWorkspaceId === null) {
+    if (pin.kind === "none") {
       if (state.sessions.length > 0) {
-        throw credentialsRequiredError("sessions-held-none-current");
+        throw credentialsRequiredError("sessions-held-none-selected");
       }
       return null;
     }
     const record = state.sessions.find(
-      (session) => session.workspaceId === pinnedWorkspaceId,
+      (session) => session.workspaceId === pin.workspaceId,
     );
     if (record === undefined) {
       throw credentialsRequiredError("session-ended");
     }
-    return toSession(record, state);
+    return storedCredential(record);
   }
 
-  async sessions(): Promise<readonly Session[]> {
+  async sessions(): Promise<StoredSessions> {
     const state = await readCredentialState(this.#filePath);
-    return state.sessions.map((record) => toSession(record, state));
+    return {
+      sessions: state.sessions.map((record) => toSession(record)),
+      selectedWorkspaceId: resolvedMarker(state) ?? undefined,
+    };
   }
 
   async createSession(
     credential: Credential,
     workspaceId: string,
   ): Promise<Session> {
+    const environmentInForce = this.#environmentToken() !== undefined;
     const claimed = claimedWorkspaceId(credential.token);
     if (claimed !== undefined && claimed !== workspaceId) {
       throw credentialWorkspaceMismatchError(workspaceId);
@@ -164,11 +204,11 @@ export class FileCredentialManager implements CredentialManager {
         ],
         currentWorkspaceId: workspaceId,
       };
-      return { state: next, result: toSession(record, next) };
+      return { state: next, result: toSession(record) };
     });
 
-    if (this.#pin.kind !== "environment") {
-      this.#pin = { kind: "marker", workspaceId };
+    if (!environmentInForce) {
+      this.#pin = { kind: "session", workspaceId };
     }
 
     const name = await this.#lookUpWorkspaceName(credential, workspaceId);
@@ -186,13 +226,12 @@ export class FileCredentialManager implements CredentialManager {
           session.workspaceId === workspaceId ? named : session,
         ),
       };
-      return { state: next, result: toSession(named, next) };
+      return { state: next, result: toSession(named) };
     });
   }
 
-  async useSession(session: Session): Promise<Session> {
-    await this.#refuseUnderEnvironmentSession();
-    const workspaceId = referencedWorkspaceId(session);
+  async selectSession(workspaceId: string): Promise<Session> {
+    const environmentInForce = this.#environmentToken() !== undefined;
 
     const selected = await this.#mutate((state) => {
       const record = requireRecord(state, workspaceId);
@@ -200,42 +239,79 @@ export class FileCredentialManager implements CredentialManager {
         ...state,
         currentWorkspaceId: workspaceId,
       };
-      return { state: next, result: toSession(record, next) };
+      return { state: next, result: toSession(record) };
     });
-    this.#pin = { kind: "marker", workspaceId };
+    if (!environmentInForce) {
+      this.#pin = { kind: "session", workspaceId };
+    }
     return selected;
   }
 
-  async endSession(session: Session): Promise<void> {
-    await this.#refuseUnderEnvironmentSession();
-    const workspaceId = referencedWorkspaceId(session);
+  /** Idempotent (§11.8): a workspace with no session is already in the
+   *  state this asks for, so the slice writes nothing and succeeds. */
+  async endSession(workspaceId: string): Promise<void> {
+    this.#refuseBlankEnvironmentToken();
 
-    await this.#mutate((state) => {
-      requireRecord(state, workspaceId);
-      return { state: withoutRecord(state, workspaceId), result: undefined };
-    });
+    await this.#mutate((state) =>
+      state.sessions.some((session) => session.workspaceId === workspaceId)
+        ? { state: withoutRecord(state, workspaceId), result: undefined }
+        : { result: undefined },
+    );
 
-    if (this.#pin.kind === "marker" && this.#pin.workspaceId === workspaceId) {
-      this.#pin = { kind: "marker", workspaceId: null };
+    if (this.#pin.kind === "session" && this.#pin.workspaceId === workspaceId) {
+      this.#pin = { kind: "none" };
     }
   }
 
   async endAllSessions(): Promise<void> {
-    if (this.#environmentToken() !== undefined) {
-      const stored = await readCredentialState(this.#filePath);
-      if (stored.sessions.length === 0) return;
-      throw environmentSessionMutationError({
-        envVar: SERVICE_TOKEN_ENV_VAR,
-        storedSessionsExist: true,
-      });
-    }
+    const environmentInForce = this.#environmentToken() !== undefined;
 
-    await this.#mutate(() => ({ state: EMPTY_STATE, result: undefined }));
-    await fs.unlink(getAuthContextFilePath(this.#filePath)).catch(() => {});
-    this.#pin = { kind: "marker", workspaceId: null };
+    await this.#mutate((state) =>
+      state.sessions.length === 0 && state.currentWorkspaceId === null
+        ? { result: undefined }
+        : { state: EMPTY_STATE, result: undefined },
+    );
+    await this.#reapLegacyContextFile();
+    await this.#reapOrphanedWrites();
+    if (!environmentInForce) {
+      this.#pin = { kind: "none" };
+    }
   }
 
-  tokenStorage(workspaceId: string): TokenStorage {
+  async activeCredentialStorage(): Promise<TokenStorage> {
+    this.#activeStorage ??= this.#buildActiveStorage();
+    return this.#activeStorage;
+  }
+
+  /** §11.2: which storage is chosen once, when the pin resolves. Each
+   *  has exactly one source of truth — the file, or process memory. */
+  #buildActiveStorage(): TokenStorage {
+    const pin = this.#pin;
+    if (pin.kind === "environment") {
+      return memoryBackedStorage(
+        {
+          token: this.#requireEnvironmentToken(),
+          refreshToken: undefined,
+          expiresAt: undefined,
+        },
+        (fn) => this.#withRefreshLock(fn),
+      );
+    }
+    if (pin.kind === "session") {
+      return this.#fileBackedStorage(pin.workspaceId);
+    }
+    throw new Error(
+      "@prisma/cli: activeCredentialStorage() is only valid once activeCredential() has returned non-null",
+    );
+  }
+
+  /**
+   * The file-backed storage, for a credential with a home record.
+   * getTokens re-reads the file on EVERY call with no memory layer in
+   * front: that is what lets this process see a pair another process
+   * already rotated to, skip the exchange, and retry.
+   */
+  #fileBackedStorage(workspaceId: string): TokenStorage {
     return {
       getTokens: async () => {
         const state = await readCredentialState(this.#filePath);
@@ -315,47 +391,81 @@ export class FileCredentialManager implements CredentialManager {
         });
       },
 
-      withRefreshLock: <T>(fn: () => Promise<T>): Promise<T> => {
-        const run = this.#refreshLock.then(fn, fn);
-        this.#refreshLock = run.then(
-          () => undefined,
-          () => undefined,
-        );
-        return run;
-      },
+      withRefreshLock: (fn) => this.#withRefreshLock(fn),
     };
   }
 
-  #environmentToken(): string | undefined {
-    const raw = this.#env[SERVICE_TOKEN_ENV_VAR];
-    if (raw === undefined) return undefined;
-    if (raw.trim().length === 0) {
-      throw emptyServiceTokenError({ envVar: SERVICE_TOKEN_ENV_VAR });
-    }
-    return raw.trim();
+  #withRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.#refreshLock.then(fn, fn);
+    this.#refreshLock = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 
-  #environmentSession(): Session {
+  async #resolvePin(): Promise<ResolvedPin> {
+    const pinned = this.#pin;
+    if (pinned.kind !== "unresolved") return pinned;
+
+    if (this.#environmentToken() !== undefined) {
+      this.#debug("pinned to the environment credential");
+      return this.#pinTo({ kind: "environment" });
+    }
+    const state = await readCredentialState(this.#filePath);
+    const selected = resolvedMarker(state);
+    this.#debug(`pinned to session ${selected ?? "(none)"}`);
+    return this.#pinTo(
+      selected === null
+        ? { kind: "none" }
+        : { kind: "session", workspaceId: selected },
+    );
+  }
+
+  #pinTo(pin: ResolvedPin): ResolvedPin {
+    this.#pin = pin;
+    return pin;
+  }
+
+  #environmentToken(): string | undefined {
+    return environmentServiceToken(this.#env);
+  }
+
+  #requireEnvironmentToken(): string {
     const token = this.#environmentToken();
     if (token === undefined) {
       throw credentialsRequiredError();
     }
-    return {
-      workspaceId: serviceTokenWorkspaceId(token) ?? "",
-      workspaceName: undefined,
-      expiresAt: claimedExpiresAt(token),
-      source: "environment",
-      current: true,
-    };
+    return token;
   }
 
-  async #refuseUnderEnvironmentSession(): Promise<void> {
-    if (this.#environmentToken() === undefined) return;
-    const state = await readCredentialState(this.#filePath);
-    throw environmentSessionMutationError({
-      envVar: SERVICE_TOKEN_ENV_VAR,
-      storedSessionsExist: state.sessions.length > 0,
-    });
+  /** A blank env token is an error state everywhere the environment
+   *  credential would be consulted, including the mutations that no
+   *  longer care whether a valid one is set. */
+  #refuseBlankEnvironmentToken(): void {
+    this.#environmentToken();
+  }
+
+  /** endAllSessions clears everything, including the legacy context
+   *  sidecar, which survives a store that was already empty. */
+  async #reapLegacyContextFile(): Promise<void> {
+    await fs.unlink(getAuthContextFilePath(this.#filePath)).catch(() => {});
+  }
+
+  /** A write that died between creating its temp file and renaming it
+   *  leaves a full copy of the state, tokens and all. Someone running
+   *  `auth logout` to revoke local access must not be left holding a
+   *  working refresh token in an orphan. Writes take the lock and last
+   *  milliseconds, so anything still here is one. */
+  async #reapOrphanedWrites(): Promise<void> {
+    const directory = path.dirname(this.#filePath);
+    const prefix = `${path.basename(this.#filePath)}.`;
+    const entries = await fs.readdir(directory).catch(() => []);
+    await Promise.all(
+      entries
+        .filter((entry) => entry.startsWith(prefix) && entry.endsWith(".tmp"))
+        .map((entry) => fs.unlink(path.join(directory, entry)).catch(() => {})),
+    );
   }
 
   async #lookUpWorkspaceName(
@@ -388,13 +498,6 @@ export class FileCredentialManager implements CredentialManager {
       return applied.result;
     });
   }
-}
-
-function referencedWorkspaceId(session: Session): string {
-  if (session.source === "environment") {
-    throw noSessionForWorkspaceError(session.workspaceId);
-  }
-  return session.workspaceId;
 }
 
 function requireRecord(
@@ -434,8 +537,8 @@ function expiresAtSlice(
   return expiresAt === undefined ? {} : { expiresAt: expiresAt.toISOString() };
 }
 
-/** The marker a first read pins: a marker naming no record pins as
- *  none. */
+/** The selection the manager will admit to: one that names a stored
+ *  session, or none. A dangling selection never escapes. */
 function resolvedMarker(state: CredentialState): string | null {
   const marked = state.currentWorkspaceId;
   if (
@@ -447,13 +550,34 @@ function resolvedMarker(state: CredentialState): string | null {
   return null;
 }
 
-function toSession(record: StoredSession, state: CredentialState): Session {
+function toSession(record: StoredSession): Session {
   return {
     workspaceId: record.workspaceId,
     workspaceName: record.name,
     expiresAt:
       record.expiresAt === undefined ? undefined : new Date(record.expiresAt),
-    source: "stored",
-    current: state.currentWorkspaceId === record.workspaceId,
+  };
+}
+
+function storedCredential(record: StoredSession): ActiveCredential {
+  return {
+    workspaceId: record.workspaceId,
+    workspaceName: record.name,
+    expiresAt:
+      record.expiresAt === undefined ? undefined : new Date(record.expiresAt),
+    identity: claimedIdentity(record.token),
+    origin: { source: "stored" },
+  };
+}
+
+/** An environment token whose claims name no workspace reports no
+ *  workspace id — never the empty string. */
+function environmentCredential(token: string): ActiveCredential {
+  return {
+    workspaceId: serviceTokenWorkspaceId(token),
+    workspaceName: undefined,
+    expiresAt: claimedExpiresAt(token),
+    identity: claimedIdentity(token),
+    origin: { source: "environment" },
   };
 }

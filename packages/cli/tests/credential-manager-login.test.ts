@@ -53,11 +53,11 @@ describe("performLogin", () => {
     expect(await readFile(stateFilePath, "utf8").catch(() => null)).toBeNull();
 
     const manager = new FileCredentialManager({ env });
-    expect(await manager.sessions()).toEqual([]);
+    expect((await manager.sessions()).sessions).toEqual([]);
 
     await manager.createSession(credential, WORKSPACE_A);
     expect(
-      (await manager.sessions()).map((session) => session.workspaceId),
+      (await manager.sessions()).sessions.map((session) => session.workspaceId),
     ).toEqual([WORKSPACE_A]);
   });
 

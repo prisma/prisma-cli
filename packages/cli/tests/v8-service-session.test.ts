@@ -1,7 +1,7 @@
 /**
  * Where a service command's identity comes from. Every service command
  * resolves its workspace through `requireWorkspace`, and the only
- * sanctioned source for it is the engine's `ctx.session()`. These tests
+ * sanctioned source for it is the engine's `ctx.activeCredential()`. These tests
  * fail if that identity starts coming from anywhere else: the seeded
  * session names a workspace the Management API fake never reports, so a
  * run that reads its workspace from any other source resolves a

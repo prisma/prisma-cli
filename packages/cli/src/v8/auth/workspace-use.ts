@@ -1,44 +1,72 @@
-/** The `auth workspace use` command. */
+/** The `auth workspace use` command: it SELECTS among the sessions you
+ *  have — it never creates one, and never opens a browser. */
 import {
-  type CommandContext,
   defineCommand,
   type Presentations,
   positional,
+  type Session,
+  type StoredSessions,
 } from "@prisma/cli-engine";
-import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
-import {
-  listAuthWorkspaces,
-  SERVICE_TOKEN_ENV_VAR,
-  switchAuthWorkspace,
-} from "../../auth";
+import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
+import { environmentSessionInForce } from "../../auth";
 import { CLI_NAME } from "../../cli-name";
-import type {
-  AuthWorkspaceListResult,
-  AuthWorkspaceUseResult,
-} from "../../types/auth";
-import { mapAuthOperationError } from "./errors";
-import { operationContext, rethrowMapped } from "./workspace-shared";
+import { ENVIRONMENT_SESSION_NOTICE } from "./session-card";
+import { requireSession, sessionLabel } from "./session-ref";
 
-function usePresentations(result: AuthWorkspaceUseResult): Presentations {
+export interface WorkspaceUseResult {
+  readonly workspace: { readonly id: string; readonly name: string | null };
+  readonly previousWorkspaceId: string | null;
+}
+
+function noWorkspaceSessionsError(): CliStructuredError {
+  return new CliStructuredError(
+    "AUTH.NO_WORKSPACE_SESSIONS",
+    "You have no workspace sessions to select from.",
+    {
+      nextActions: [
+        {
+          kind: "run-command",
+          label: "Sign in and pick a workspace in the browser",
+          command: `${CLI_NAME} auth login`,
+        },
+      ],
+    },
+  );
+}
+
+function usePresentations(spec: {
+  readonly session: Session;
+  readonly previous: Session | undefined;
+  readonly environmentSessionInForce: boolean;
+}): Presentations {
   const rows = [
-    ...(result.previousWorkspace
-      ? [{ label: "previous", value: result.previousWorkspace.name }]
-      : []),
-    { label: "workspace", value: result.workspace.name },
+    ...(spec.previous === undefined
+      ? []
+      : [{ label: "previous", value: sessionLabel(spec.previous) }]),
+    { label: "workspace", value: sessionLabel(spec.session) },
   ];
   return {
     human: () => [
       {
         kind: "summary",
         tone: "info",
-        text: "Switching the local CLI workspace.",
+        text: "Switching the current workspace session.",
       },
       { kind: "fields", rows },
       {
         kind: "summary",
         tone: "ok",
-        text: "Local OAuth workspace selection updated.",
+        text: "Current workspace session updated.",
       },
+      ...(spec.environmentSessionInForce
+        ? [
+            {
+              kind: "summary",
+              tone: "info",
+              text: ENVIRONMENT_SESSION_NOTICE,
+            } as const,
+          ]
+        : []),
     ],
     stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
     next: () => [
@@ -56,100 +84,74 @@ function usePresentations(result: AuthWorkspaceUseResult): Presentations {
   };
 }
 
-function noWorkspacesError(): CliStructuredError {
-  return new CliStructuredError(
-    "AUTH.USAGE_ERROR",
-    "No authenticated workspaces",
-    {
-      why: "There are no local OAuth workspace sessions to select.",
-      nextActions: [
-        {
-          kind: "user-choice",
-          label: `Run ${CLI_NAME} auth login and authorize a workspace.`,
-        },
-      ],
-    },
-  );
-}
-
-function serviceTokenSwitchError(): CliStructuredError {
-  return new CliStructuredError(
-    "AUTH.WORKSPACE_SWITCH_UNAVAILABLE",
-    "Workspace switching is unavailable",
-    {
-      why: "PRISMA_SERVICE_TOKEN is set, so authenticated commands use that token instead of local OAuth workspaces.",
-      nextActions: [
-        {
-          kind: "user-choice",
-          label:
-            "Unset PRISMA_SERVICE_TOKEN to switch between local OAuth workspaces, or use a token for the workspace you want.",
-        },
-      ],
-    },
-  );
-}
-
-async function selectWorkspaceRef(
-  ctx: CommandContext<undefined, never>,
-): Promise<string> {
-  if (ctx.env[SERVICE_TOKEN_ENV_VAR] !== undefined) {
-    throw serviceTokenSwitchError();
-  }
-
-  let listed: AuthWorkspaceListResult;
-  try {
-    listed = await listAuthWorkspaces(operationContext(ctx));
-  } catch (error) {
-    rethrowMapped(error);
-  }
-  const workspaces = listed.workspaces.filter(
-    (workspace) => workspace.switchable,
-  );
-
-  if (workspaces.length === 0) {
-    throw noWorkspacesError();
-  }
-
-  if (workspaces.length === 1) {
-    return workspaces[0].id;
-  }
-
-  return await ctx.prompt.select(
-    "Select a workspace",
-    workspaces.map((workspace) => ({
-      value: workspace.id,
-      label: `${workspace.name} (${workspace.id})${workspace.active ? " active" : ""}`,
-    })),
-  );
-}
-
 export const authWorkspaceUseCommand = defineCommand({
+  managesCredentials: true,
   args: {
     positionals: {
       workspace: positional.optionalString({
-        brief: "Workspace id or exact name",
+        brief: "Workspace id or name",
         placeholder: "id-or-name",
       }),
     },
   },
   help: {
-    summary: "Switch the local CLI workspace",
+    summary: "Make one of your workspace sessions current",
     examples: ["auth workspace use", "auth workspace use my-workspace"],
   },
   handler: async (args, ctx) => {
-    const trimmed = args.positionals.workspace?.trim();
-    const workspaceRef = trimmed ? trimmed : await selectWorkspaceRef(ctx);
-
-    let result: AuthWorkspaceUseResult;
-    try {
-      result = await switchAuthWorkspace(operationContext(ctx), workspaceRef);
-    } catch (error) {
-      const mapped = mapAuthOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
+    const stored = await ctx.credentialManager.sessions();
+    if (stored.sessions.length === 0) {
+      throw noWorkspaceSessionsError();
     }
-    return ok(ctx.present({ data: result }, usePresentations(result)));
+    const ref = args.positionals.workspace?.trim();
+    const chosen = ref
+      ? requireSession(stored.sessions, ref)
+      : await promptForSession(stored, ctx.prompt.select);
+    const previous = stored.sessions.find(
+      (session) => session.workspaceId === stored.selectedWorkspaceId,
+    );
+
+    const session = await ctx.credentialManager.selectSession(
+      chosen.workspaceId,
+    );
+    const result: WorkspaceUseResult = {
+      workspace: {
+        id: session.workspaceId,
+        name: session.workspaceName ?? null,
+      },
+      previousWorkspaceId: previous?.workspaceId ?? null,
+    };
+    return ok(
+      ctx.present(
+        { data: result },
+        usePresentations({
+          session,
+          previous,
+          environmentSessionInForce: environmentSessionInForce(ctx.env),
+        }),
+      ),
+    );
   },
 });
+
+async function promptForSession(
+  stored: StoredSessions,
+  select: <T extends string>(
+    question: string,
+    options: ReadonlyArray<{ value: T; label: string }>,
+  ) => Promise<T>,
+): Promise<Session> {
+  if (stored.sessions.length === 1) {
+    return stored.sessions[0];
+  }
+  const workspaceId = await select(
+    "Select a workspace",
+    stored.sessions.map((session) => ({
+      value: session.workspaceId,
+      label: `${sessionLabel(session)} (${session.workspaceId})${
+        session.workspaceId === stored.selectedWorkspaceId ? " current" : ""
+      }`,
+    })),
+  );
+  return requireSession(stored.sessions, workspaceId);
+}

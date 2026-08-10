@@ -1,10 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import {
-  CLIENT_ID,
-  DEFAULT_REDIRECT_URI,
-  makeGetCredentials,
-} from "../src/auth";
+import { CLIENT_ID, DEFAULT_REDIRECT_URI } from "../src/auth";
 import { buildCli, MOUNTED_COMMANDS } from "../src/v8/cli";
 import { main } from "../src/v8/main";
 import {
@@ -13,18 +9,6 @@ import {
   type HostProcess,
   makeOnSignal,
 } from "../src/v8/runtime";
-
-vi.mock("../src/auth/token-storage", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/auth/token-storage")>()),
-  FileTokenStorage: class {
-    getTokens() {
-      return Promise.resolve({
-        accessToken: "stored_token",
-        workspaceId: "ws_1",
-      });
-    }
-  },
-}));
 
 function makeProcess(overrides?: {
   argv?: string[];
@@ -137,32 +121,6 @@ describe("makeOnSignal", () => {
     fire(proc, "SIGTERM");
 
     expect(seen).toEqual([]);
-  });
-});
-
-describe("makeGetCredentials", () => {
-  it("prefers a non-empty PRISMA_SERVICE_TOKEN over stored tokens", async () => {
-    const getCredentials = makeGetCredentials({
-      PRISMA_SERVICE_TOKEN: " svc_token ",
-    } as NodeJS.ProcessEnv);
-
-    expect(await getCredentials()).toEqual({ token: "svc_token" });
-  });
-
-  it("reads the stored token when no service token is set", async () => {
-    const getCredentials = makeGetCredentials({} as NodeJS.ProcessEnv);
-
-    expect(await getCredentials()).toEqual({ token: "stored_token" });
-  });
-
-  it("fails when PRISMA_SERVICE_TOKEN is set but blank instead of falling back to stored tokens", async () => {
-    const getCredentials = makeGetCredentials({
-      PRISMA_SERVICE_TOKEN: "  ",
-    } as NodeJS.ProcessEnv);
-
-    await expect(getCredentials()).rejects.toThrow(
-      "PRISMA_SERVICE_TOKEN is set but empty",
-    );
   });
 });
 

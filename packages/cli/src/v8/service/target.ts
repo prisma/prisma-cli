@@ -56,7 +56,14 @@ const PRISMA_SERVICE_ID_ENV_VAR = "PRISMA_SERVICE_ID";
 
 export type ServiceContext = Pick<
   CommandContext,
-  "api" | "env" | "cwd" | "signal" | "prompt" | "report" | "openUrl" | "session"
+  | "api"
+  | "env"
+  | "cwd"
+  | "signal"
+  | "prompt"
+  | "report"
+  | "openUrl"
+  | "activeCredential"
 >;
 
 export interface ResolvedServiceProjectContext {
@@ -81,20 +88,23 @@ export async function openServiceStateStore(
   return new LocalStateStore(stateDir, ctx.signal);
 }
 
-/** The workspace the run is acting as, from the engine's session. A
- *  session whose workspace has no name shows its id instead: the id is
- *  the only other identifier the user can act on, and every display of
- *  this name needs a non-empty string. */
+/** The workspace the run is acting as, from the credential the engine
+ *  is authenticating with. A workspace with no name shows its id
+ *  instead: the id is the only other identifier the user can act on,
+ *  and every display of this name needs a non-empty string. A
+ *  credential that names no workspace at all — an environment token
+ *  whose claims carry none — cannot scope these commands, so it is the
+ *  same failure as having no credential. */
 export async function requireWorkspace(
   ctx: ServiceContext,
 ): Promise<AuthWorkspace> {
-  const session = await ctx.session();
-  if (!session) {
+  const credential = await ctx.activeCredential();
+  if (!credential?.workspaceId) {
     throw workspaceRequiredError();
   }
   return {
-    id: session.workspaceId,
-    name: session.workspaceName ?? session.workspaceId,
+    id: credential.workspaceId,
+    name: credential.workspaceName ?? credential.workspaceId,
   };
 }
 

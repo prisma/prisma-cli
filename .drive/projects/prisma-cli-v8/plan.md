@@ -80,6 +80,27 @@ Repo: prisma-cli. The small three-check tool — import purity,
 validator no-throw on hostile input, published-tarball verification —
 wired into both products' publish CI as S3/S5 land.
 
+### S8 — Service primitives (design first; after S3, before S7)
+
+Repo: prisma-cli. Give the platform's service resources an atomic CLI surface, replacing what S2c ported for continuity.
+
+**Why this slice exists.** The legacy `app` group fused three concerns — building an artifact, wiring a GitHub repo, and deploying — into single commands, most visibly `app deploy`, which builds, creates a project, creates branches, sets environment variables, optionally provisions a database, and deploys. Composer replaces the building and deploying. What the CLI should own is managing the remote resource, and today it cannot: there is no `service list` and no `service create` despite `GET`/`POST /v1/apps`, no deployment start or stop despite `POST /v1/deployments/{id}/start|stop`, and no deployment delete. A service can currently only be born as a side effect of deploying to it. S2c ported the surviving commands under their legacy names so the commander shell could die in S2d; that port is continuity, not endorsement of the shape.
+
+**The resource model is already right; the CLI hides it.** `/v1/apps` supports list and create, `/v1/apps/{id}` get and delete, `/v1/apps/{id}/deployments` list and create, `/v1/deployments/{id}` get and delete, and `/v1/deployments/{id}/start|stop|logs`. Composer deploys through Alchemy rather than driving that sequence itself, but Alchemy's providers call the same management API, so Composer's services and deployments are ordinary resources under these endpoints. The seam the API already draws is the one to build on: **Composer produces deployments; the CLI manages them.** Promote, rollback, start, stop, delete and logs are resource management, not build concerns — `POST /v1/deployments/{id}/start` says the artifact must be uploaded before it is called, which is the separation stated in the API itself.
+
+That makes the shape of the slice mostly a rename plus filling holes — a `service deployment` subgroup absorbing `list-deploys`, `show-deploy`, `logs`, `promote` and `rollback`, plus the five operations that have no command at all. The expensive parts (engine, auth, presenters, error model, the `service` rename) are done.
+
+**Why it still waits for the design work.** Three questions need answers that only S3 can give, and none of them is about whether the resources exist.
+
+1. ~~Does Alchemy hold desired state?~~ **Answered (operator, 2026-08-10): yes, and changing the platform directly is overwritten on the next `composer deploy`. Accepted.** So the imperative operations stay, and their effect on a Composer-managed service is understood to be transient. What remains for the design is only whether the CLI says so at the point of use — a service the CLI can tell is Composer-managed could carry a line on `promote`, `rollback`, `start` and `stop` noting the next deploy reconciles it. That depends on question 2: whether the records carry anything identifying a service as Composer-managed.
+2. What do Composer's app and deployment records actually contain? If the Alchemy path populates a different subset of fields than `app deploy` did, `service show` and `service deployment show` are presenting a shape nobody has looked at.
+3. Where does log reading live? `composer log` and a `service deployment logs` would be two ways to read the same thing, and the project spec rules that a subgroup is owned by exactly one command family.
+4. **If log reading lands here, what opens the socket?** Added during S2c, which shelved `service logs` rather than ship it. Deployment logs are the one endpoint in the list that upgrades to a **WebSocket**, and the engine's client is HTTP-only, so the port had been taking a raw token and letting the compute SDK build the URL and set the `Authorization` header itself. The rev-6 credential model rules that out — credentials never reach commands, and `getCredentials` is now deleted — so the command cannot come back until the engine can open an authenticated socket. The design for that, written at the operator's instruction, is `assets/engine/websocket-transport-design.md`: the engine opens the socket and hands back a decoded record stream, with reconnection across the ten-minute cutoff owned by the engine rather than reimplemented per command. **Read its §7 before building anything** — if deployment logs can be served over plain HTTP the way `build logs` already is, the transport work disappears and the command becomes a copy of `build logs`. The shelved handler is reviewed, green, and in the `s2c-services` history, so restoring it is small once the transport question is answered.
+
+One standing caveat: every endpoint above is marked experimental and subject to change without notice. Designing a stable CLI surface over an unstable API is how the next bastardization gets built, so the design has to say what it is willing to depend on.
+
+**Ordering.** After S3, because Composer's contract is the input. Before S7, because S7 mounts the full grammar tree behind a build-time completeness check and this slice changes that tree.
+
 ### S7 — Release pipeline + rc1
 
 Repo: prisma-cli. The `prisma` binary package assembled: full grammar
@@ -88,42 +109,15 @@ release automation, pinned product versions, and the pipeline emitting
 a publishable `prisma@8.0.0-rc1` artifact from a tagged commit. Ends
 when the operator can publish with one action (project DoD).
 
-### S8 — Engine-owned WebSocket transport, and `service logs`
-
-Repo: prisma-cli. Design:
-`assets/engine/websocket-transport-design.md` (operator-instructed,
-written during S2c).
-
-The engine gains an authenticated socket transport beside `ctx.api`,
-and `service logs` is restored on it. Deployment logs stream from an
-endpoint that upgrades to a WebSocket, which the engine's HTTP client
-cannot open; the shelved port worked around that by taking a raw token
-through `ctx.getCredentials()` and letting the compute SDK build the URL
-and set the header itself. Credential-manager rev 6 rules that out —
-credentials never reach commands — so the command was shelved in S2c
-rather than shipped in a shape the design forbids.
-
-The engine opens the socket and hands the command a decoded record
-stream: no URL, no header, no token command-side, and reconnection
-across the endpoint's ten-minute cutoff owned by the engine rather than
-reimplemented per command. The handler itself already exists, reviewed
-and green, in the `s2c-services` history — restoring it should be small.
-
-**Answer §7's second open question before scheduling this.** If
-deployment logs can be served over plain HTTP the way `build logs`
-already is, the whole slice collapses into a copy of `build logs` and
-should not be built. The endpoint is also marked experimental in the
-Management API specification, so its contract should be pinned first.
-
 ## Dependency graph
 
 ```text
 S1 ──► S2 ──► S3 ──► S5 ──► S7
-        │      ▲      ▲
-        └──────┘ (published engine exists after S2's engine hardening)
-S4 (prisma/prisma) ────────► S5
+        │      ▲      ▲             ▲
+        └──────┘      │             │
+S4 (prisma/prisma) ───┴──► S5       │
 S6 (after S1) ─────────────► wired in during S3/S5
-S8 (after S2c; gated on the transport question) ──► restores service logs
+S3 ──► S8 (design first) ───────────┘
 ```
 
 ## Follow-ups parked on other work

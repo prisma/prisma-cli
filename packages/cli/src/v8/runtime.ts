@@ -13,7 +13,6 @@ import {
   fetchWorkspaceName,
   getApiBaseUrl,
   getAuthBaseUrl,
-  makeGetCredentials,
   resolveStateFilePath,
   STATE_FILE_ENV_VAR,
 } from "../auth";
@@ -92,7 +91,6 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
     exit: (code) => proc.exit(code),
     onSignal: makeOnSignal(proc),
     config: await loadConfig(proc.cwd()),
-    getCredentials: makeGetCredentials(proc.env),
     credentialManager: new FileCredentialManager({
       env: proc.env,
       fetchWorkspaceName: fetchWorkspaceName(apiBaseUrl),
