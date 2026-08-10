@@ -72,7 +72,7 @@ async function run(): Promise<unknown> {
       const { response } = await sdk.client.GET("/v1/workspaces", {});
       return { status: response.status };
     }
-    case "current":
+    case "active":
       return makeManager().activeCredential();
     case "sessions":
       return makeManager().sessions();

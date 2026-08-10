@@ -9,10 +9,10 @@ import { type NextAction, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import {
   credentialFieldRows,
-  ENVIRONMENT_SESSION_NOTICE,
-} from "./session-card";
+  ENVIRONMENT_CREDENTIAL_NOTICE,
+} from "./credential-card";
 
-const TITLE = "Showing the current authenticated identity.";
+const TITLE = "Showing the active authenticated identity.";
 
 const SIGN_IN: NextAction = {
   kind: "run-command",
@@ -97,7 +97,7 @@ function presentationsFor(spec: {
             {
               kind: "summary",
               tone: "info",
-              text: ENVIRONMENT_SESSION_NOTICE,
+              text: ENVIRONMENT_CREDENTIAL_NOTICE,
             } as const,
           ]
         : []),

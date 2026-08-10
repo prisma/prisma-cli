@@ -172,7 +172,7 @@ describe("auth login", () => {
     expect(result.exitCode).toBe(0);
     expect(resultOf(result)).toEqual({
       workspace: { id: "ws_1", name: null },
-      environmentSessionInForce: false,
+      environmentCredentialInForce: false,
     });
     const state = cli.credentialManager?.state();
     expect(state?.selectedWorkspaceId).toBe("ws_1");
@@ -203,7 +203,7 @@ describe("auth login", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain(
-      "PRISMA_SERVICE_TOKEN supplies the session in force",
+      "PRISMA_SERVICE_TOKEN supplies the credential in force",
     );
     expect(cli.credentialManager?.state().sessions).toHaveLength(1);
   });
@@ -270,7 +270,7 @@ describe("auth logout", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain(
-      "PRISMA_SERVICE_TOKEN supplies the session in force",
+      "PRISMA_SERVICE_TOKEN supplies the credential in force",
     );
     expect(cli.credentialManager?.state()).toEqual({
       sessions: [],
@@ -358,7 +358,7 @@ describe("auth whoami", () => {
     expect(result.stdout).toContain("workspace: ws_env");
     expect(result.stdout).toContain("source: PRISMA_SERVICE_TOKEN");
     expect(result.stderr).toContain(
-      "PRISMA_SERVICE_TOKEN supplies the session in force",
+      "PRISMA_SERVICE_TOKEN supplies the credential in force",
     );
   });
 });
@@ -443,7 +443,7 @@ describe("auth workspace list", () => {
 
     expect(resultOf(result)).toEqual({
       context: {
-        environmentSessionInForce: false,
+        environmentCredentialInForce: false,
         currentWorkspaceId: "ws_1",
       },
       items: [
@@ -458,7 +458,7 @@ describe("auth workspace list", () => {
     });
   });
 
-  it("states that the env session is in force", async () => {
+  it("states that the environment credential is in force", async () => {
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc")],
       selectedWorkspaceId: "ws_1",
@@ -468,7 +468,10 @@ describe("auth workspace list", () => {
     const result = await cli.run(["auth", "workspace", "list", "--json"]);
 
     expect(resultOf(result)).toMatchObject({
-      context: { environmentSessionInForce: true, currentWorkspaceId: "ws_1" },
+      context: {
+        environmentCredentialInForce: true,
+        currentWorkspaceId: "ws_1",
+      },
     });
   });
 
@@ -586,7 +589,7 @@ describe("auth workspace use", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain(
-      "PRISMA_SERVICE_TOKEN supplies the session in force",
+      "PRISMA_SERVICE_TOKEN supplies the credential in force",
     );
     expect(cli.credentialManager?.state().selectedWorkspaceId).toBe("ws_2");
   });
@@ -623,7 +626,7 @@ describe("auth workspace logout", () => {
     expect(result.exitCode).toBe(0);
     expect(resultOf(result)).toEqual({
       workspace: { id: "ws_1", name: "Acme Inc" },
-      wasCurrent: false,
+      wasSelected: false,
     });
     expect(
       cli.credentialManager?.state().sessions.map((s) => s.workspaceId),
@@ -644,7 +647,7 @@ describe("auth workspace logout", () => {
       "--json",
     ]);
 
-    expect(resultOf(result)).toMatchObject({ wasCurrent: true });
+    expect(resultOf(result)).toMatchObject({ wasSelected: true });
     expect(cli.credentialManager?.state()).toEqual({
       sessions: [],
       selectedWorkspaceId: undefined,
@@ -678,7 +681,7 @@ describe("auth workspace logout", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain(
-      "PRISMA_SERVICE_TOKEN supplies the session in force",
+      "PRISMA_SERVICE_TOKEN supplies the credential in force",
     );
     expect(cli.credentialManager?.state().sessions).toEqual([]);
   });
@@ -713,7 +716,7 @@ describe("auth workspace logout", () => {
     expect(result.exitCode).toBe(0);
     expect(resultOf(result)).toEqual({
       workspace: { id: "ws_1", name: "Acme Inc" },
-      wasCurrent: true,
+      wasSelected: true,
     });
     expect(manager.state().sessions).toEqual([]);
   });
@@ -855,8 +858,8 @@ describe("a blank service token is never an override", () => {
 
       expect(result.exitCode).toBe(2);
       expect(errorOf(result).code).toBe("AUTH.SERVICE_TOKEN_EMPTY");
-      expect(result.stdout).not.toContain("supplies the session in force");
-      expect(result.stderr).not.toContain("supplies the session in force");
+      expect(result.stdout).not.toContain("supplies the credential in force");
+      expect(result.stderr).not.toContain("supplies the credential in force");
     });
 
     it(`fails auth login with the blank-token error before the browser opens (${name})`, async () => {

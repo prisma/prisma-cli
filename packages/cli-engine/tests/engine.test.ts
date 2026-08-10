@@ -37,7 +37,6 @@ describe("main export", () => {
       "loadConfig",
       "noSessionForWorkspaceError",
       "positional",
-      "serviceTokenRejectedError",
     ]);
   });
 

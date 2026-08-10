@@ -30,8 +30,8 @@ export {
   resolveRecipientWorkspaceSession,
 } from "./recipient";
 export {
+  environmentCredentialInForce,
   environmentServiceToken,
-  environmentSessionInForce,
 } from "./service-token";
 export {
   DEPRECATED_STATE_FILE_ENV_VAR,

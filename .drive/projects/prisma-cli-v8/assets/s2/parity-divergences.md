@@ -46,14 +46,15 @@ The legacy result was `AuthStateResult` (`authenticated`/`provider`/`user`/`work
 
 ```json
 { "authenticated": true, "workspace": { "id": "…", "name": "…" },
-  "user": { "userId": "…", "email": "…" },
+  "user": { "id": "…", "email": "…", "name": "…" },
   "source": "stored", "expiresAt": null }
 ```
 
 - **`provider` has NO successor.** Nothing in the model records which identity provider minted a credential, so the field is gone rather than renamed.
 - `credential` is gone: the type/id/name of the credential is not a user-facing concept here.
 - `source` is new (`"stored"` | `"environment"`) and comes from the credential's origin; `expiresAt` is the credential's expiry.
-- **`user.name` has no successor, and `user.id` is now `user.userId`.** There is one identity type for both the claimed and the fetched identity (design §11.6), and it carries a user id and an email only. The human card's `user` row therefore shows the email, or is omitted when there is none.
+- `user` keeps `id`, `email` and `name`. There is one identity type for both the claimed and the fetched identity (design §11.6); a token's claims carry an id and an email, and only the online lookup supplies a name, so `name` is null offline. The human card's `user` row shows the email, or is omitted when there is none.
+- **A service token reports no user at all.** Its subject names a workspace rather than a person, so `user` is null and the workspace is read from that subject. Reporting `workspace:<id>` as a user id was a defect.
 - Identity display: the credential manager decodes the credential's own claims, and `/v1/me` is a best-effort online enrichment that wins field by field where it disagrees. whoami does not branch on the origin — it attempts the enrichment for an environment credential too, and falls back to the claims when the request fails. **This restores legacy behaviour that rev 5 had dropped:** a stored session offline now shows the claim-derived user again, where rev 5 showed the workspace and no user.
 - **A credential nothing names renders no workspace at all.** An environment token whose claims carry no workspace reports `"workspace": null` and omits the workspace row from the human card. It is never an empty string and never the literal `undefined` — rev 5 wrote `workspaceId: ""` in that case.
 - Signed out still exits 0.
@@ -70,11 +71,15 @@ The variable supplies the credential this process authenticates as. It is not a 
 | `auth login` | **succeeds** — a new session is stored and selected |
 | every read (`whoami`, `workspace list`) | works normally |
 
-Each of the four mutations prints the same one-line notice in human output: the environment token remains in force until the variable is unset. The notice is human-only; no json result gained a field for it, and `auth workspace list`'s `context.environmentSessionInForce` remains the machine-readable signal.
+Each of the four mutations prints the same one-line notice in human output: the environment credential remains in force until the variable is unset. The notice itself is human-only. Two json results carry the fact as a field — `auth workspace list`'s `context.environmentCredentialInForce` and `auth login`'s `environmentCredentialInForce` — and those are the machine-readable signal.
 
 This is the second change here. Legacy refused workspace switching with `WORKSPACE_SWITCH_UNAVAILABLE` and let `auth logout` clear stored state. Rev 5 of the design refused `workspace use`, `workspace logout` and `auth logout` with `AUTH.ENV_SESSION_IN_FORCE`, carving out an empty store so CI teardowns would not fail. **`AUTH.ENV_SESSION_IN_FORCE` no longer exists**, and neither does the carve-out. The net effect against legacy is that workspace switching now works while the variable is set, where legacy refused it.
 
 A blank or whitespace-only `PRISMA_SERVICE_TOKEN` is unchanged: it is never an override, and every command — mutations included — fails with `AUTH.SERVICE_TOKEN_EMPTY`.
+
+### `auth workspace logout` — json shape
+
+The result is `{ workspace: { id, name }, wasSelected }`. `wasSelected` says whether the session that was removed had been the selected one; when it was, nothing is promoted in its place and the next actions offer `auth workspace list` and `auth workspace use`.
 
 ### Ending a session is idempotent
 
@@ -83,7 +88,7 @@ A blank or whitespace-only `PRISMA_SERVICE_TOKEN` is unchanged: it is never an o
 ### `auth workspace list`
 
 - Rows are the sessions the manager holds: `name`, `id`, `status`, where status is `current` (legacy: `active`). The legacy `source` column and the `auth source` line are gone — the environment credential never appears as a row.
-- While `PRISMA_SERVICE_TOKEN` is set the listing STATES that the environment credential is in force; the stored selection is still shown as current. The json context carries `environmentSessionInForce: true` alongside `currentWorkspaceId`, which keeps naming the stored selection, not the environment credential's workspace. Both json field names keep the word "current" deliberately: they are an output contract, where the code says "selected" (design §11.1).
+- While `PRISMA_SERVICE_TOKEN` is set the listing STATES that the environment credential is in force; the stored selection is still shown as current. The json context carries `environmentCredentialInForce: true` alongside `currentWorkspaceId`, which keeps naming the stored selection, not the environment credential's workspace. `currentWorkspaceId` and the per-item `current` keep the word "current" deliberately: they are an output contract, where the code says "selected" (design §11.1). `environmentCredentialInForce` was renamed from `environmentSessionInForce` — the thing it describes is not a session, which is the whole point of §11.
 - The json shape is new (`context`/`items`/`count` with
   `workspaceId`/`workspaceName`/`current`/`expiresAt`); the legacy
   fields `credentialWorkspaceId`, `switchable`, `lastSeenAt` and
@@ -144,9 +149,7 @@ on every `whoami`/`list` and wrote them back. Accepted and stated.
 - The interactive paste-fallback prompt and instruction prose inside
   `performLogin` still write to the process's own stdin/stderr;
   unchanged from legacy.
-- The json result is `{ workspace: { id, name },
-  environmentSessionInForce }` — the workspace the session was created
-  for, not an auth-state snapshot.
+- The json result is `{ workspace: { id, name }, environmentCredentialInForce }` — the workspace the session was created for, not an auth-state snapshot.
 - Agent-setup tip: legacy suppressed it under `--json`, `--quiet`, CI
   (unless `--interactive`), and non-TTY stderr. In v8 CI suppression is
   kept (`ctx.env.CI`); the tip LINE renders only in the human

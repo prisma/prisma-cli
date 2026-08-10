@@ -95,7 +95,7 @@ describe("prisma-v8 auth whoami", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("status: signed out\n");
     expect(result.stderr).toBe(
-      "ℹ Showing the current authenticated identity.\n" +
+      "ℹ Showing the active authenticated identity.\n" +
         "status: signed out\n" +
         "→ Sign in: prisma-cli auth login\n",
     );
@@ -111,7 +111,7 @@ describe("prisma-v8 auth whoami", () => {
       "status: signed in\nuser: bob@example.com\nworkspace: Acme Inc\n",
     );
     expect(result.stderr).toBe(
-      "ℹ Showing the current authenticated identity.\n" +
+      "ℹ Showing the active authenticated identity.\n" +
         "status: signed in\n" +
         "user: bob@example.com\n" +
         "workspace: Acme Inc\n",
@@ -257,7 +257,7 @@ describe("prisma-v8 auth whoami", () => {
       "status: signed in\nuser: bob@example.com\nworkspace: Acme Inc\n",
     );
     expect(result.stderr).toBe(
-      "ℹ Showing the current authenticated identity.\n" +
+      "ℹ Showing the active authenticated identity.\n" +
         "status: signed in\n" +
         "user: bob@example.com\n" +
         "workspace: Acme Inc\n",
@@ -279,7 +279,7 @@ describe("needs.credentials early failure", () => {
     );
   });
 
-  it("runs the handler when a session is current", async () => {
+  it("runs the handler when a session is selected", async () => {
     const result = await signedInCli().run(["auth", "locked"], {
       isTty: { stdout: true },
     });

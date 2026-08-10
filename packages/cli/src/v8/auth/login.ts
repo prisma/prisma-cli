@@ -10,12 +10,12 @@ import {
 } from "@prisma/cli-engine/protocol";
 import {
   claimedWorkspaceId,
-  environmentSessionInForce,
+  environmentCredentialInForce,
   performLogin,
 } from "../../auth";
 import { CLI_NAME } from "../../cli-name";
 import { resolveAgentSetupTipCommand } from "./agent-setup-tip";
-import { ENVIRONMENT_SESSION_NOTICE } from "./session-card";
+import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
 import { sessionLabel } from "./session-ref";
 
 const TITLE = "Starting an authenticated CLI session.";
@@ -23,7 +23,7 @@ const LOGIN_STEP = "Sign in via your browser";
 
 export interface LoginResult {
   readonly workspace: { readonly id: string; readonly name: string | null };
-  readonly environmentSessionInForce: boolean;
+  readonly environmentCredentialInForce: boolean;
 }
 
 /** The minted credential names no workspace, so no session can be
@@ -73,7 +73,7 @@ function nextActionsFor(
 
 function presentationsFor(spec: {
   readonly session: Session;
-  readonly environmentSessionInForce: boolean;
+  readonly environmentCredentialInForce: boolean;
   readonly agentSetupTipCommand: string | null;
 }): Presentations {
   const rows = [
@@ -84,12 +84,12 @@ function presentationsFor(spec: {
     human: () => [
       { kind: "summary", tone: "info", text: TITLE },
       { kind: "fields", rows },
-      ...(spec.environmentSessionInForce
+      ...(spec.environmentCredentialInForce
         ? [
             {
               kind: "summary",
               tone: "info",
-              text: ENVIRONMENT_SESSION_NOTICE,
+              text: ENVIRONMENT_CREDENTIAL_NOTICE,
             } as const,
           ]
         : []),
@@ -117,7 +117,7 @@ export const authLoginCommand = defineCommand({
   handler: async (_args, ctx) => {
     // A blank service token is the single blank-token error, raised
     // before the browser opens rather than after a credential is minted.
-    const environmentSession = environmentSessionInForce(ctx.env);
+    const environmentSession = environmentCredentialInForce(ctx.env);
     ctx.report({ kind: "step-started", step: LOGIN_STEP });
     let session: Session;
     try {
@@ -149,14 +149,14 @@ export const authLoginCommand = defineCommand({
         id: session.workspaceId,
         name: session.workspaceName ?? null,
       },
-      environmentSessionInForce: environmentSession,
+      environmentCredentialInForce: environmentSession,
     };
     return ok(
       ctx.present(
         { data: result },
         presentationsFor({
           session,
-          environmentSessionInForce: environmentSession,
+          environmentCredentialInForce: environmentSession,
           agentSetupTipCommand,
         }),
       ),

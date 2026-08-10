@@ -6,7 +6,7 @@ export interface FieldRow {
   readonly value: string;
 }
 
-export const ENVIRONMENT_SESSION_NOTICE = `${SERVICE_TOKEN_ENV_VAR} supplies the session in force; unset it to use your stored workspace sessions.`;
+export const ENVIRONMENT_CREDENTIAL_NOTICE = `${SERVICE_TOKEN_ENV_VAR} supplies the credential in force; unset it to use your stored workspace sessions.`;
 
 /** The card rows for the active credential, or the signed-out row when
  *  there is none. A credential nothing names — an environment token

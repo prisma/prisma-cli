@@ -19,7 +19,7 @@ export function environmentServiceToken(
 }
 
 /** Whether the env session overrides the stored ones. Blank raises. */
-export function environmentSessionInForce(
+export function environmentCredentialInForce(
   env: Readonly<Record<string, string | undefined>>,
 ): boolean {
   return environmentServiceToken(env) !== undefined;

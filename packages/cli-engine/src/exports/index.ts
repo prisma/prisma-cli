@@ -62,7 +62,6 @@ export {
   credentialWorkspaceMismatchError,
   emptyServiceTokenError,
   noSessionForWorkspaceError,
-  serviceTokenRejectedError,
 } from "../credential-errors";
 export type {
   ActiveCredential,

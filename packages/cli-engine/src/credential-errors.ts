@@ -173,10 +173,14 @@ export function noSessionForWorkspaceError(
 }
 
 /**
+ * Module-private on purpose: `credentialRejectedError` is the one place
+ * wording differs by origin (§11.1), and exporting this would be a
+ * second door into the environment-specific text that bypasses it.
+ *
  * The management API rejected the env-supplied service token (401).
  * There is no refresh for it and nothing stored is cleared.
  */
-export function serviceTokenRejectedError(spec: {
+function serviceTokenRejectedError(spec: {
   readonly envVar: string;
 }): CliStructuredError {
   return new CliStructuredError(
