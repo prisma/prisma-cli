@@ -31,6 +31,10 @@ export {
   resolveRecipientWorkspaceSession,
 } from "./recipient";
 export {
+  environmentServiceToken,
+  environmentSessionInForce,
+} from "./service-token";
+export {
   DEPRECATED_STATE_FILE_ENV_VAR,
   resolveStateFilePath,
   STATE_FILE_ENV_VAR,

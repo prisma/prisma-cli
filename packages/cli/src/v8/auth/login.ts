@@ -10,8 +10,8 @@ import {
 } from "@prisma/cli-engine/protocol";
 import {
   claimedWorkspaceId,
+  environmentSessionInForce,
   performLogin,
-  SERVICE_TOKEN_ENV_VAR,
 } from "../../auth";
 import { CLI_NAME } from "../../cli-name";
 import { resolveAgentSetupTipCommand } from "./agent-setup-tip";
@@ -115,6 +115,9 @@ export const authLoginCommand = defineCommand({
     examples: ["auth login"],
   },
   handler: async (_args, ctx) => {
+    // A blank service token is the single blank-token error, raised
+    // before the browser opens rather than after a credential is minted.
+    const environmentSession = environmentSessionInForce(ctx.env);
     ctx.report({ kind: "step-started", step: LOGIN_STEP });
     let session: Session;
     try {
@@ -140,22 +143,20 @@ export const authLoginCommand = defineCommand({
     }
     ctx.report({ kind: "step-finished", step: LOGIN_STEP, outcome: "ok" });
 
-    const environmentSessionInForce =
-      ctx.env[SERVICE_TOKEN_ENV_VAR] !== undefined;
     const agentSetupTipCommand = await resolveAgentSetupTipCommand(ctx);
     const result: LoginResult = {
       workspace: {
         id: session.workspaceId,
         name: session.workspaceName ?? null,
       },
-      environmentSessionInForce,
+      environmentSessionInForce: environmentSession,
     };
     return ok(
       ctx.present(
         { data: result },
         presentationsFor({
           session,
-          environmentSessionInForce,
+          environmentSessionInForce: environmentSession,
           agentSetupTipCommand,
         }),
       ),

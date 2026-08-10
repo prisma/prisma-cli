@@ -9,8 +9,10 @@
  * atomicity, process pinning, the env override rules, the TokenStorage
  * write slices, and the legacy migration.
  */
+import nodeFs from "node:fs";
 import fsPromises, {
   mkdtemp,
+  readdir,
   readFile,
   stat,
   writeFile,
@@ -22,6 +24,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FileCredentialManager } from "../src/auth/credential-manager";
 import { readCredentialState } from "../src/auth/state-file";
+import { getAuthContextFilePath } from "../src/auth/token-storage";
+
+function escapeForRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 const WORKSPACE_A = "wksp_a";
 const WORKSPACE_B = "wksp_b";
@@ -120,7 +127,16 @@ describe("the state file", () => {
       }),
     );
 
-    const writes = vi.spyOn(fsPromises, "writeFile");
+    const spies = [
+      vi.spyOn(fsPromises, "writeFile"),
+      vi.spyOn(fsPromises, "unlink"),
+      vi.spyOn(fsPromises, "rm"),
+      vi.spyOn(nodeFs, "writeFileSync"),
+      vi.spyOn(nodeFs, "appendFileSync"),
+      vi.spyOn(nodeFs, "truncateSync"),
+      vi.spyOn(nodeFs, "writeSync"),
+      vi.spyOn(nodeFs, "unlinkSync"),
+    ];
     const renames = vi.spyOn(fsPromises, "rename");
     const opens = vi.spyOn(fsPromises, "open");
     try {
@@ -135,17 +151,71 @@ describe("the state file", () => {
       await adopting.currentSession();
       await adopting.sessions();
 
-      expect(writes).not.toHaveBeenCalled();
+      for (const spy of spies) {
+        expect(spy).not.toHaveBeenCalled();
+      }
       expect(renames).not.toHaveBeenCalled();
       expect(opens).not.toHaveBeenCalled();
 
       await manager.endAllSessions();
       expect(renames).toHaveBeenCalled();
     } finally {
-      writes.mockRestore();
+      for (const spy of spies) {
+        spy.mockRestore();
+      }
       renames.mockRestore();
       opens.mockRestore();
     }
+  });
+
+  it("writes through a same-directory temp file that is synced before the rename", async () => {
+    const order: string[] = [];
+    const realOpen = fsPromises.open.bind(fsPromises);
+    const realRename = fsPromises.rename.bind(fsPromises);
+    const opens = vi
+      .spyOn(fsPromises, "open")
+      .mockImplementation(async (...args: Parameters<typeof fsPromises.open>) => {
+        const handle = await realOpen(...args);
+        if (!String(args[0]).endsWith(".tmp")) return handle;
+        order.push(`open ${String(args[0])}`);
+        const sync = handle.sync.bind(handle);
+        handle.sync = async () => {
+          order.push("sync");
+          await sync();
+        };
+        return handle;
+      });
+    const renames = vi
+      .spyOn(fsPromises, "rename")
+      .mockImplementation(async (from, to) => {
+        order.push(`rename ${String(from)} -> ${String(to)}`);
+        await realRename(from, to);
+      });
+    try {
+      await makeManager().createSession(
+        credentialFor(WORKSPACE_A),
+        WORKSPACE_A,
+      );
+    } finally {
+      opens.mockRestore();
+      renames.mockRestore();
+    }
+
+    const stateDir = path.dirname(stateFilePath);
+    expect(order).toEqual([
+      expect.stringMatching(
+        new RegExp(`^open ${escapeForRegExp(stateFilePath)}\\..+\\.tmp$`),
+      ),
+      "sync",
+      expect.stringMatching(
+        new RegExp(
+          `^rename ${escapeForRegExp(stateFilePath)}\\..+\\.tmp -> ${escapeForRegExp(stateFilePath)}$`,
+        ),
+      ),
+    ]);
+    expect(
+      (await readdir(stateDir)).filter((entry) => entry.endsWith(".tmp")),
+    ).toEqual([]);
   });
 
   it("treats a corrupt file as signed out and never rewrites it", async () => {
@@ -236,35 +306,94 @@ describe("process pinning", () => {
 });
 
 describe("mutations under an environment session", () => {
-  const environments = {
-    set: mintToken(WORKSPACE_B),
-    blank: "",
-    whitespace: "   ",
+  /** §5's matrix: every mutation × {unset, set, blank, whitespace}. */
+  const refusals = {
+    set: {
+      token: () => mintToken(WORKSPACE_B),
+      code: "AUTH.ENV_SESSION_IN_FORCE",
+      createSessionRefused: false,
+    },
+    blank: {
+      token: () => "",
+      code: "AUTH.SERVICE_TOKEN_EMPTY",
+      createSessionRefused: true,
+    },
+    whitespace: {
+      token: () => "   ",
+      code: "AUTH.SERVICE_TOKEN_EMPTY",
+      createSessionRefused: true,
+    },
   } as const;
 
-  for (const [name, token] of Object.entries(environments)) {
+  for (const [name, spec] of Object.entries(refusals)) {
     it(`refuses useSession, endSession and endAllSessions with the env token ${name}`, async () => {
       await seedTwoSessions();
       const stored = await makeManager().sessions();
       const before = await readRawState();
-      const manager = makeManager({ env: { PRISMA_SERVICE_TOKEN: token } });
-      const expectedCode =
-        name === "set"
-          ? "AUTH.ENV_SESSION_IN_FORCE"
-          : "AUTH.SERVICE_TOKEN_EMPTY";
+      const manager = makeManager({
+        env: { PRISMA_SERVICE_TOKEN: spec.token() },
+      });
 
       await expect(
         manager.useSession(stored[0] as never),
-      ).rejects.toMatchObject({ code: expectedCode });
+      ).rejects.toMatchObject({ code: spec.code });
       await expect(
         manager.endSession(stored[0] as never),
-      ).rejects.toMatchObject({ code: expectedCode });
+      ).rejects.toMatchObject({ code: spec.code });
       await expect(manager.endAllSessions()).rejects.toMatchObject({
-        code: expectedCode,
+        code: spec.code,
       });
       expect(await readRawState()).toBe(before);
     });
+
+    it(`handles createSession with the env token ${name}`, async () => {
+      await seedTwoSessions();
+      const before = await readRawState();
+      const manager = makeManager({
+        env: { PRISMA_SERVICE_TOKEN: spec.token() },
+      });
+      const created = manager.createSession(
+        credentialFor(WORKSPACE_A, "refresh-env"),
+        WORKSPACE_A,
+      );
+
+      if (spec.createSessionRefused) {
+        await expect(created).rejects.toMatchObject({ code: spec.code });
+        expect(await readRawState()).toBe(before);
+        return;
+      }
+
+      await expect(created).resolves.toMatchObject({
+        workspaceId: WORKSPACE_A,
+      });
+      expect(await readRawState()).not.toBe(before);
+    });
   }
+
+  it("lets every mutation through with the env token unset", async () => {
+    await seedTwoSessions();
+    const manager = makeManager();
+    const sessionA = (await manager.sessions()).find(
+      (session) => session.workspaceId === WORKSPACE_A,
+    );
+
+    await expect(
+      manager.createSession(
+        credentialFor(WORKSPACE_A, "refresh-unset"),
+        WORKSPACE_A,
+      ),
+    ).resolves.toMatchObject({ workspaceId: WORKSPACE_A });
+    await expect(manager.useSession(sessionA as never)).resolves.toMatchObject({
+      workspaceId: WORKSPACE_A,
+    });
+    await expect(manager.endSession(sessionA as never)).resolves.toBeUndefined();
+    await expect(manager.endAllSessions()).resolves.toBeUndefined();
+
+    expect(await readCredentialState(stateFilePath)).toMatchObject({
+      sessions: [],
+      currentWorkspaceId: null,
+    });
+  });
 
   it("succeeds as a no-op when endAllSessions runs with no stored sessions", async () => {
     const manager = makeManager({
@@ -272,6 +401,22 @@ describe("mutations under an environment session", () => {
     });
     await expect(manager.endAllSessions()).resolves.toBeUndefined();
     expect(await readRawState()).toBeNull();
+  });
+
+  it("still reaps the legacy context sidecar on the no-op", async () => {
+    const sidecarPath = getAuthContextFilePath(stateFilePath);
+    await writeFile(
+      sidecarPath,
+      JSON.stringify({ activeWorkspaceId: WORKSPACE_A }),
+      "utf8",
+    );
+    const manager = makeManager({
+      env: { PRISMA_SERVICE_TOKEN: mintToken(WORKSPACE_B) },
+    });
+
+    await expect(manager.endAllSessions()).resolves.toBeUndefined();
+
+    await expect(stat(sidecarPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("allows createSession while the env token is in force and leaves the pin on the env session", async () => {
@@ -531,8 +676,9 @@ describe("the TokenStorage view", () => {
 });
 
 describe("token material never leaks", () => {
-  it("keeps the secret out of debug output and errors", async () => {
+  it("keeps the secret out of the debug lines of every write path and out of errors", async () => {
     const secret = "s3cret-refresh-token";
+    const rotatedSecret = "s3cret-rotated-refresh-token";
     const debugLines: string[] = [];
     const manager = makeManager({
       env: { PRISMA_NEXT_DEBUG: "1" },
@@ -546,12 +692,74 @@ describe("token material never leaks", () => {
     await manager.createSession(credential, WORKSPACE_A);
     await manager.currentSession();
 
-    const mismatch = await manager
-      .createSession(credential, WORKSPACE_B)
-      .catch((error: unknown) => error);
+    const rotated = mintToken(WORKSPACE_A, { exp: 2_000_000_000 });
+    const storage = manager.tokenStorage(WORKSPACE_A);
+    await storage.setTokens({
+      workspaceId: WORKSPACE_A,
+      accessToken: rotated,
+      refreshToken: rotatedSecret,
+    });
+    await storage.clearTokensIfCurrent?.({
+      workspaceId: WORKSPACE_A,
+      accessToken: rotated,
+      refreshToken: rotatedSecret,
+    });
+    await manager.tokenStorage(WORKSPACE_B).clearTokens();
 
-    const rendered = `${debugLines.join("")}${JSON.stringify(mismatch, Object.getOwnPropertyNames(mismatch))}`;
-    expect(rendered).not.toContain(secret);
-    expect(rendered).not.toContain(credential.token);
+    const errors = [
+      await manager
+        .createSession(credential, WORKSPACE_B)
+        .catch((error: unknown) => error),
+      await storage
+        .setTokens({
+          workspaceId: WORKSPACE_A,
+          accessToken: rotated,
+          refreshToken: rotatedSecret,
+        })
+        .catch((error: unknown) => error),
+    ];
+
+    const rendered = [
+      debugLines.join(""),
+      ...errors.map((error) =>
+        JSON.stringify(error, Object.getOwnPropertyNames(error)),
+      ),
+    ].join("");
+    for (const material of [secret, rotatedSecret, credential.token, rotated]) {
+      expect(rendered).not.toContain(material);
+    }
+    expect(debugLines.join("")).toContain(`rotation write for session`);
+    expect(debugLines.join("")).toContain(`clearing session`);
+  });
+});
+
+describe("rotation durability", () => {
+  it("has the rotated pair on disk by the time setTokens resolves", async () => {
+    const manager = makeManager();
+    await manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
+    const rotated = mintToken(WORKSPACE_A, { exp: 2_000_000_000 });
+
+    let renamedBeforeResolve = false;
+    const realRename = fsPromises.rename.bind(fsPromises);
+    const renames = vi
+      .spyOn(fsPromises, "rename")
+      .mockImplementation(async (from, to) => {
+        await realRename(from, to);
+        renamedBeforeResolve = true;
+      });
+    try {
+      await manager.tokenStorage(WORKSPACE_A).setTokens({
+        workspaceId: WORKSPACE_A,
+        accessToken: rotated,
+        refreshToken: "refresh-2",
+      });
+    } finally {
+      renames.mockRestore();
+    }
+
+    expect(renamedBeforeResolve).toBe(true);
+    expect(JSON.parse((await readRawState()) ?? "")).toMatchObject({
+      sessions: [{ workspaceId: WORKSPACE_A, token: rotated }],
+    });
   });
 });

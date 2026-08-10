@@ -1,11 +1,13 @@
 import {
   authServiceError,
   credentialsRequiredError,
+  emptyServiceTokenError,
   serviceTokenRejectedError,
 } from "../credential-errors";
 import type { CredentialManager, Session } from "../credential-manager";
-import type { ManagementApiClient } from "../management-api";
+import type { ManagementApiClient, TokenStorage } from "../management-api";
 import { CliStructuredError } from "../protocol";
+import { type DebugLog, makeDebugLog } from "./debug";
 import type { Invocation } from "./engine";
 
 const SERVICE_TOKEN_ENV_VAR = "PRISMA_SERVICE_TOKEN";
@@ -13,6 +15,13 @@ const SERVICE_TOKEN_ENV_VAR = "PRISMA_SERVICE_TOKEN";
 type ClientBinding =
   | { readonly source: "stored"; readonly workspaceId: string }
   | { readonly source: "environment" };
+
+/** What the last refresh attempt threw, if it threw. The mapping below
+ *  identifies a failure as coming from the refresh path by finding this
+ *  exact error in the cause chain of the request failure. */
+interface RefreshProbe {
+  failure: unknown;
+}
 
 /**
  * ctx.api: the ENGINE constructs and owns the management API client —
@@ -30,13 +39,17 @@ type ClientBinding =
 export function buildManagementApiClient(
   invocation: Invocation,
 ): ManagementApiClient {
+  const debug = makeDebugLog(invocation.runtime);
+  const probe: RefreshProbe = { failure: undefined };
   let binding: ClientBinding | undefined;
   let clientPromise: Promise<ManagementApiClient> | undefined;
   const resolveClient = (): Promise<ManagementApiClient> => {
-    clientPromise ??= constructClient(invocation).then((constructed) => {
-      binding = constructed.binding;
-      return constructed.client;
-    });
+    clientPromise ??= constructClient(invocation, debug, probe).then(
+      (constructed) => {
+        binding = constructed.binding;
+        return constructed.client;
+      },
+    );
     return clientPromise;
   };
 
@@ -66,14 +79,18 @@ export function buildManagementApiClient(
           }
           return result;
         } catch (cause) {
-          throw await mapRequestFailure(invocation, binding, cause);
+          throw await mapRequestFailure(invocation, debug, probe, binding, cause);
         }
       };
     },
   });
 }
 
-async function constructClient(invocation: Invocation): Promise<{
+async function constructClient(
+  invocation: Invocation,
+  debug: DebugLog,
+  probe: RefreshProbe,
+): Promise<{
   readonly client: ManagementApiClient;
   readonly binding: ClientBinding;
 }> {
@@ -93,8 +110,11 @@ async function constructClient(invocation: Invocation): Promise<{
   }
   if (session.source === "environment") {
     const token = invocation.runtime.env[SERVICE_TOKEN_ENV_VAR];
-    if (token === undefined || token.trim() === "") {
+    if (token === undefined) {
       throw credentialsRequiredError();
+    }
+    if (token.trim() === "") {
+      throw emptyServiceTokenError({ envVar: SERVICE_TOKEN_ENV_VAR });
     }
     const { createManagementApiClient } = await import(
       "@prisma/management-api-sdk"
@@ -113,11 +133,58 @@ async function constructClient(invocation: Invocation): Promise<{
     redirectUri: config.redirectUri,
     apiBaseUrl: config.apiBaseUrl,
     authBaseUrl: config.authBaseUrl,
-    tokenStorage: manager.tokenStorage(session.workspaceId),
+    tokenStorage: observedTokenStorage(
+      manager.tokenStorage(session.workspaceId),
+      session.workspaceId,
+      debug,
+      probe,
+    ),
   });
   return {
     client: sdk.client,
     binding: { source: "stored", workspaceId: session.workspaceId },
+  };
+}
+
+/**
+ * The manager's view, with the refresh path observed. The SDK enters
+ * withRefreshLock only from its refresh routine, so it marks both the
+ * debug valve's "refresh attempted" line and the boundary whose throws
+ * count as refresh-path failures.
+ */
+function observedTokenStorage(
+  storage: TokenStorage,
+  workspaceId: string,
+  debug: DebugLog,
+  probe: RefreshProbe,
+): TokenStorage {
+  const observedRefresh = async <T>(fn: () => Promise<T>): Promise<T> => {
+    debug(`refresh attempted for session ${workspaceId}`);
+    try {
+      return await fn();
+    } catch (failure) {
+      probe.failure = failure;
+      throw failure;
+    }
+  };
+  return {
+    getTokens: () => storage.getTokens(),
+    setTokens: (tokens) => storage.setTokens(tokens),
+    clearTokens: () => storage.clearTokens(),
+    ...(storage.clearTokensIfCurrent === undefined
+      ? {}
+      : {
+          clearTokensIfCurrent: (tokens) =>
+            (
+              storage.clearTokensIfCurrent as NonNullable<
+                TokenStorage["clearTokensIfCurrent"]
+              >
+            )(tokens),
+        }),
+    withRefreshLock: (fn) =>
+      storage.withRefreshLock === undefined
+        ? observedRefresh(fn)
+        : storage.withRefreshLock(() => observedRefresh(fn)),
   };
 }
 
@@ -147,10 +214,15 @@ function responseWas401(result: unknown): boolean {
  * a re-read of the manager's state for the workspace the client is
  * BOUND to — that session gone means the session-ended
  * CLI.CREDENTIALS_REQUIRED, otherwise the failure was the auth
- * service's and nothing was cleared.
+ * service's and nothing was cleared. A failure that came out of the
+ * refresh path without being an AuthError (the SDK throws a plain
+ * Error when a rotated token will not decode) is transient too:
+ * nothing was cleared, and signing in again is not the fix.
  */
 async function mapRequestFailure(
   invocation: Invocation,
+  debug: DebugLog,
+  probe: RefreshProbe,
   binding: ClientBinding | undefined,
   cause: unknown,
 ): Promise<unknown> {
@@ -158,9 +230,23 @@ async function mapRequestFailure(
   if (structured !== undefined) {
     return structured;
   }
+  const cameFromRefresh = refreshPathFailed(probe, cause);
   const authError = sdkAuthErrorInCauseChain(cause);
   if (authError === undefined) {
-    return cause;
+    if (!cameFromRefresh) {
+      return cause;
+    }
+    // Only the error's type is reported: an arbitrary message can
+    // carry fragments of a decoded token payload.
+    debug(`refresh failed without an AuthError (${errorTypeOf(probe.failure)})`);
+    return authServiceError();
+  }
+  if (cameFromRefresh) {
+    debug(
+      `refresh failed: refreshTokenInvalid=${String(
+        authError.refreshTokenInvalid === true,
+      )} error=${authError.message}`,
+    );
   }
   if (authError.refreshTokenInvalid === true) {
     return credentialsRequiredError("expired");
@@ -226,11 +312,26 @@ function structuredCause(error: unknown): CliStructuredError | undefined {
  *  module to load. */
 function sdkAuthErrorInCauseChain(
   error: unknown,
-): { readonly refreshTokenInvalid: unknown } | undefined {
+): (Error & { readonly refreshTokenInvalid: unknown }) | undefined {
   for (const current of causeChain(error)) {
     if (current.name === "AuthError") {
       return current as Error & { readonly refreshTokenInvalid: unknown };
     }
   }
   return undefined;
+}
+
+/** The request failure carries the refresh attempt's own throw, so the
+ *  failure arose in the refresh path rather than in the request. */
+function refreshPathFailed(probe: RefreshProbe, cause: unknown): boolean {
+  if (probe.failure === undefined) return false;
+  if (cause === probe.failure) return true;
+  for (const current of causeChain(cause)) {
+    if (current === probe.failure) return true;
+  }
+  return false;
+}
+
+function errorTypeOf(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error;
 }

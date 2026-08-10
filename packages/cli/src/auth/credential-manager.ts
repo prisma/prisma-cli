@@ -7,7 +7,6 @@ import type {
 } from "@prisma/cli-engine";
 import {
   credentialsRequiredError,
-  emptyServiceTokenError,
   environmentSessionMutationError,
   noSessionForWorkspaceError,
 } from "@prisma/cli-engine";
@@ -18,6 +17,7 @@ import {
   serviceTokenWorkspaceId,
 } from "./claims";
 import { SERVICE_TOKEN_ENV_VAR } from "./client";
+import { environmentServiceToken } from "./service-token";
 import {
   type CredentialState,
   type DebugLog,
@@ -136,6 +136,7 @@ export class FileCredentialManager implements CredentialManager {
     credential: Credential,
     workspaceId: string,
   ): Promise<Session> {
+    this.#refuseBlankEnvironmentToken();
     const claimed = claimedWorkspaceId(credential.token);
     if (claimed !== undefined && claimed !== workspaceId) {
       throw credentialWorkspaceMismatchError(workspaceId);
@@ -223,15 +224,18 @@ export class FileCredentialManager implements CredentialManager {
   async endAllSessions(): Promise<void> {
     if (this.#environmentToken() !== undefined) {
       const stored = await readCredentialState(this.#filePath);
-      if (stored.sessions.length === 0) return;
-      throw environmentSessionMutationError({
-        envVar: SERVICE_TOKEN_ENV_VAR,
-        storedSessionsExist: true,
-      });
+      if (stored.sessions.length > 0) {
+        throw environmentSessionMutationError({
+          envVar: SERVICE_TOKEN_ENV_VAR,
+          storedSessionsExist: true,
+        });
+      }
+      await this.#reapLegacyContextFile();
+      return;
     }
 
     await this.#mutate(() => ({ state: EMPTY_STATE, result: undefined }));
-    await fs.unlink(getAuthContextFilePath(this.#filePath)).catch(() => {});
+    await this.#reapLegacyContextFile();
     this.#pin = { kind: "marker", workspaceId: null };
   }
 
@@ -327,12 +331,21 @@ export class FileCredentialManager implements CredentialManager {
   }
 
   #environmentToken(): string | undefined {
-    const raw = this.#env[SERVICE_TOKEN_ENV_VAR];
-    if (raw === undefined) return undefined;
-    if (raw.trim().length === 0) {
-      throw emptyServiceTokenError({ envVar: SERVICE_TOKEN_ENV_VAR });
-    }
-    return raw.trim();
+    return environmentServiceToken(this.#env);
+  }
+
+  /** A blank env token is an error state everywhere the env session
+   *  would be consulted — including createSession, which the override
+   *  otherwise allows. */
+  #refuseBlankEnvironmentToken(): void {
+    this.#environmentToken();
+  }
+
+  /** endAllSessions clears everything, including the legacy context
+   *  sidecar — also on the env-override no-op, which has no stored
+   *  sessions to clear but may still have the sidecar. */
+  async #reapLegacyContextFile(): Promise<void> {
+    await fs.unlink(getAuthContextFilePath(this.#filePath)).catch(() => {});
   }
 
   #environmentSession(): Session {

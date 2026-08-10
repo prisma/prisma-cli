@@ -679,7 +679,15 @@ describe("the env session never refreshes", () => {
     }
   });
 
-  it("does not reach the token endpoint when the API answers 401", async () => {
+  const touchesApi = defineCommand({
+    help: { summary: "Issues one management API request" },
+    handler: async (_args, ctx) => {
+      await ctx.api.GET("/v1/me", {});
+      return ok(ctx.present({ data: null }, { human: () => [] }));
+    },
+  });
+
+  async function cliAgainstA401Server() {
     server = createServer((request, response) => {
       paths.push(request.url ?? "");
       response.writeHead(401, { "content-type": "application/json" });
@@ -691,8 +699,8 @@ describe("the env session never refreshes", () => {
     const port = (server.address() as AddressInfo).port;
     const baseUrl = `http://127.0.0.1:${port}`;
 
-    const cli = createTestCli({
-      commands: COMMANDS,
+    return createTestCli({
+      commands: { ...COMMANDS, probe: touchesApi },
       groups: GROUPS,
       environmentToken: tokenFor("ws_env", { sub: "usr_env" }),
       managementApiClientConfig: {
@@ -703,13 +711,67 @@ describe("the env session never refreshes", () => {
       },
       now: () => new Date(0),
     });
+  }
+
+  it("does not reach the token endpoint when the API answers 401", async () => {
+    const cli = await cliAgainstA401Server();
+
+    const result = await cli.run(["probe", "--json"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(errorOf(result).code).toBe("AUTH.SERVICE_TOKEN_REJECTED");
+    expect(paths).toEqual(["/v1/me"]);
+  });
+
+  it("gives whoami the env token's own claims without any request", async () => {
+    const cli = await cliAgainstA401Server();
 
     const result = await cli.run(["auth", "whoami", "--json"]);
 
     expect(result.exitCode).toBe(0);
-    expect(paths).toContain("/v1/me");
-    expect(paths.some((path) => path.includes("token"))).toBe(false);
+    expect(resultOf(result)).toMatchObject({
+      source: "environment",
+      user: { id: "usr_env" },
+    });
+    expect(paths).toEqual([]);
   });
+});
+
+describe("a blank service token is never an override", () => {
+  for (const [name, token] of [
+    ["blank", ""],
+    ["whitespace", "   "],
+  ] as const) {
+    it(`fails auth workspace list with the blank-token error (${name})`, async () => {
+      const cli = makeCli({
+        sessions: [record("ws_1", "Acme Inc")],
+        currentWorkspaceId: "ws_1",
+      });
+
+      const result = await cli.run(["auth", "workspace", "list", "--json"], {
+        env: { PRISMA_SERVICE_TOKEN: token },
+      });
+
+      expect(result.exitCode).toBe(2);
+      expect(errorOf(result).code).toBe("AUTH.SERVICE_TOKEN_EMPTY");
+      expect(result.stdout).not.toContain("supplies the session in force");
+      expect(result.stderr).not.toContain("supplies the session in force");
+    });
+
+    it(`fails auth login with the blank-token error before the browser opens (${name})`, async () => {
+      vi.mocked(performLogin).mockResolvedValue(credentialFor("ws_1"));
+      const cli = makeCli();
+
+      const result = await cli.run(["auth", "login", "--json"], {
+        env: { PRISMA_SERVICE_TOKEN: token },
+      });
+
+      expect(result.exitCode).toBe(2);
+      expect(errorOf(result).code).toBe("AUTH.SERVICE_TOKEN_EMPTY");
+      expect(vi.mocked(performLogin)).not.toHaveBeenCalled();
+      expect(cli.credentialManager?.state().sessions).toEqual([]);
+    });
+  }
 });
 
 describe("session shapes the commands hand back", () => {

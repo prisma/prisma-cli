@@ -6,7 +6,7 @@ import {
   type Session,
 } from "@prisma/cli-engine";
 import { type NextAction, ok } from "@prisma/cli-engine/protocol";
-import { decodeClaims, SERVICE_TOKEN_ENV_VAR } from "../../auth";
+import { decodeClaims, environmentServiceToken } from "../../auth";
 import { CLI_NAME } from "../../cli-name";
 import {
   ENVIRONMENT_SESSION_NOTICE,
@@ -71,18 +71,18 @@ async function enrichedIdentity(
   }
 }
 
+/** An env session's identity is the env token's own claims — decoded
+ *  locally, never fetched. `/v1/me` is the stored-session path, whose
+ *  token whoami cannot reach. */
 async function identityFor(
   session: Session,
   ctx: CommandContext<undefined, never>,
 ): Promise<SessionIdentity | null> {
-  const enriched = await enrichedIdentity(ctx.api, ctx.signal);
-  if (enriched !== null) {
-    return enriched;
+  if (session.source === "environment") {
+    const envToken = environmentServiceToken(ctx.env);
+    return envToken === undefined ? null : claimedIdentity(envToken);
   }
-  const envToken = ctx.env[SERVICE_TOKEN_ENV_VAR];
-  return session.source === "environment" && envToken !== undefined
-    ? claimedIdentity(envToken)
-    : null;
+  return enrichedIdentity(ctx.api, ctx.signal);
 }
 
 function presentationsFor(spec: {

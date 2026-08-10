@@ -5,7 +5,7 @@ import {
   type Session,
 } from "@prisma/cli-engine";
 import { type NextAction, ok } from "@prisma/cli-engine/protocol";
-import { SERVICE_TOKEN_ENV_VAR } from "../../auth";
+import { environmentSessionInForce } from "../../auth";
 import { CLI_NAME } from "../../cli-name";
 import { ENVIRONMENT_SESSION_NOTICE } from "./session-card";
 import { sessionLabel } from "./session-ref";
@@ -86,7 +86,7 @@ export const authWorkspaceListCommand = defineCommand({
   handler: async (_args, ctx) => {
     const result: WorkspaceListResult = {
       sessions: await ctx.credentialManager.sessions(),
-      environmentSessionInForce: ctx.env[SERVICE_TOKEN_ENV_VAR] !== undefined,
+      environmentSessionInForce: environmentSessionInForce(ctx.env),
     };
     return ok(ctx.present({ data: result }, listPresentations(result)));
   },

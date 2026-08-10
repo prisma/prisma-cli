@@ -49,6 +49,24 @@ async function run(): Promise<unknown> {
         .setTokens({ workspaceId, accessToken, refreshToken });
       return null;
     }
+    /** A REAL refresh: the SDK's refreshing client over the manager's
+     *  TokenStorage view, against the scripted token endpoint. The
+     *  first request answers 401, which drives the exchange. */
+    case "refresh": {
+      const [workspaceId, apiBaseUrl, authBaseUrl] = args;
+      const { createManagementApiSdk } = await import(
+        "@prisma/management-api-sdk"
+      );
+      const sdk = createManagementApiSdk({
+        clientId: "test-client-id",
+        redirectUri: `${apiBaseUrl}/auth/callback`,
+        apiBaseUrl,
+        authBaseUrl,
+        tokenStorage: makeManager().tokenStorage(workspaceId),
+      });
+      const { response } = await sdk.client.GET("/v1/workspaces", {});
+      return { status: response.status };
+    }
     case "current":
       return makeManager().currentSession();
     case "sessions":
