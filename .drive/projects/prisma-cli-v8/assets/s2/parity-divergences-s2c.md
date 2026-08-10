@@ -206,7 +206,9 @@ takes the same non-interactive branch.
 Transitions, identical on all three:
 
 - **Granted** interactively by typing the token, non-interactively by
-  `--confirm <token>`.
+  `--confirm <token>`. `--confirm` never SKIPS an interactive prompt: an
+  interactive session always type-to-confirms, whether or not the flag
+  was passed. It is a non-interactive affordance only.
 - **Wrong token typed interactively**: the engine's structural consent
   mismatch, exit 2. Legacy re-asked a bad yes/no answer and treated an
   explicit "no" as a cancellation, so what used to be a decline is now a
@@ -348,3 +350,124 @@ a `service logs --deployment <id>` action, exactly as legacy did.
 - Legacy `warnings` (deploy's agent-setup/legacy-build-settings/database
   advice, promote's already-live note, remove's cleanup failures) become
   engine diagnostics on the completed envelope.
+
+
+## Dispatch 3 — the log streams (`service logs`, `build logs`)
+
+### The rename (R-S2c-1)
+
+| Legacy invocation | v8 invocation | Also renamed on this command |
+| --- | --- | --- |
+| `prisma-cli app logs [app]` | `prisma-cli service logs [service]` | `--app <name>` → `--service <name>`; command id `app.logs` → `service.logs`; header row "app" → "service" |
+
+`build logs <buildId>` keeps its spelling; its command id is `build.logs`
+and its errors move into the `BUILD.*` namespace.
+
+### Records become engine events (R-S2c-2)
+
+Both commands are session commands. Every record becomes an `output`
+event, and the channel decides where human mode writes it:
+
+- `service logs`: log text is `data` (stdout, as legacy). The header —
+  legacy's `renderCommandHeader` block — is three `diagnostic` lines
+  (`project:`, `service:`, `deployment:`) rather than a rendered block,
+  and terminal records other than the normal `end` are `diagnostic`
+  (legacy dropped them in human mode entirely).
+- `build logs`: a record is `diagnostic` when its source is `stderr` or
+  its level is `error`, `data` otherwise — the legacy routing exactly.
+  A terminal record whose code is not `end` (e.g. `no_logs`) is a
+  `diagnostic` line, as legacy did.
+
+Json mode: the engine frames one event per record and terminates with
+exactly one result frame. Legacy `build logs` set
+`emitJsonSuccessEvent: false` so its json stream had NO wrapper event;
+that opt-out does not port — the engine's framing is uniform, so a
+completed `build logs` now ends with a result frame. Legacy
+`service logs` emitted a per-record json event plus the wrapper; the
+per-record events survive as `output` frames with the engine's own
+envelope shape (`{kind, source, channel, line, commandId, timestamp}`)
+instead of the legacy `{type, command, timestamp, data}` shape.
+
+Both commands default to json when stdout is not a TTY (engine
+auto-format), where legacy defaulted to human text unless `--json` was
+passed.
+
+### `build logs`: a failed build cannot exit 1 (ESCALATED — engine gap)
+
+Legacy set `process.exitCode = 1` on a terminal `error` record and let
+the stream close normally: the logs printed, and the CLI reported the
+build's failure through the exit code. The engine has no equivalent —
+a session command returns `Result<void>` and carries no exit-code set,
+and documented exit codes are constrained to 4–99
+(`packages/cli-engine/src/execution/command-tree.ts` validateExitCodes),
+so exit 1 is reachable only through the engine's own internal-error
+path. v8 therefore streams every record and then settles the run as an
+errored envelope, `BUILD.FAILED` (exit 2), carrying the terminal
+record's message, code, retryable flag and cursor, plus a
+`build logs <id> --cursor <cursor>` resume action.
+
+The failure is still reported and still non-zero, but the code changes
+1 → 2 and the settlement is an error rather than a clean close. Ruling
+needed: either the engine grows a stream termination status (or allows
+a documented exit 1), or `build logs` becomes a result command with a
+documented code in 4–99. One line in `src/v8/build/logs.ts` changes
+either way.
+
+### `service logs`: the log stream has no sanctioned token (ESCALATED — engine gap)
+
+The log stream does not go through the Management API client: it opens
+its own connection and needs the raw access token (legacy built one
+from `PRISMA_SERVICE_TOKEN` or the token file in
+`createPreviewLogAuthOptions`). On the current base no sanctioned
+accessor reaches a session command:
+
+- `ctx.session()` deliberately omits the token ("The token is
+  INTERNAL", `credential-manager.ts`).
+- `ctx.getCredentials()` is the manager-less fallback and resolves
+  `undefined` whenever a credential manager is wired — which is the
+  shipping runtime.
+- `ctx.credentialManager` (whose `tokenStorage()` is marked
+  engine-facing) is exposed only to result commands that declare
+  `managesCredentials`.
+
+v8 asks `ctx.getCredentials()` and, when it resolves nothing, settles
+with `SERVICE.LOG_STREAM_CREDENTIALS_UNAVAILABLE` instead of reading the
+token file or the env var itself. So `service logs` streams under the
+fallback runtime and reports a clear error under the credential
+manager. Ruling needed: the engine should expose a token accessor for
+self-authenticating streams (or hand the log stream a client the way
+`ctx.api` is handed over).
+
+### `service logs` behavior
+
+- **`--deployment <id>` no longer needs a service.** Legacy resolved an
+  explicit deployment id globally when no app was named, and v8 keeps
+  that — including skipping the service picker entirely, so
+  `service logs --deployment <id>` works non-interactively. (The naive
+  port would have prompted, because the shared read flow selects a
+  service.)
+- The three `DEPLOYMENT_NOT_FOUND` variants port unchanged in meaning:
+  unknown id, a deployment with no service, and a deployment outside the
+  resolved project — all `SERVICE.DEPLOYMENT_NOT_FOUND` (exit 2; legacy
+  exit 1), distinguished by their summaries.
+- A cancelled stream (Ctrl-C) is a clean shutdown, exit 0, as legacy.
+
+### Error-code mapping (dispatch 3 additions)
+
+| Legacy flat code (exit) | v8 dotted code (exit) | Commands |
+| --- | --- | --- |
+| `DEPLOYMENT_NOT_FOUND` (1) — three variants | `SERVICE.DEPLOYMENT_NOT_FOUND` (2) | service logs |
+| `NO_DEPLOYMENTS` (1) | `SERVICE.NO_DEPLOYMENTS` (2) | service logs |
+| `DEPLOY_FAILED` (1) | `SERVICE.DEPLOY_FAILED` (2) | service logs (stream failure) |
+| *(none — legacy read the token itself)* | `SERVICE.LOG_STREAM_CREDENTIALS_UNAVAILABLE` (2) | service logs (see the gap above) |
+| `BUILD_NOT_FOUND` (1) | `BUILD.NOT_FOUND` (2) | build logs |
+| `BUILD_LOGS_FAILED` (1) | `BUILD.LOGS_FAILED` (2) | build logs |
+| *(exit code 1, no error)* | `BUILD.FAILED` (2) | build logs (see the gap above) |
+
+### `service open`'s announced URL
+
+`ctx.openUrl` carries one string that is both the human label and the
+endpoint event's `name`, so the slug `live-url` became the human phrase
+`Live URL`. The json `endpoint.name` changes with it; endpoint events
+are a v8-only surface (legacy emitted none), so nothing that shipped
+depends on the old spelling.
