@@ -84,7 +84,7 @@ export async function listAuthWorkspaces(
   };
 }
 
-export async function useAuthWorkspace(
+export async function switchAuthWorkspace(
   context: WorkspaceOperationContext,
   workspaceRef: string,
 ): Promise<AuthWorkspaceUseResult> {

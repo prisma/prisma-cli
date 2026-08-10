@@ -26,6 +26,6 @@ export {
 export {
   listAuthWorkspaces,
   logoutAuthWorkspace,
-  useAuthWorkspace,
+  switchAuthWorkspace,
   type WorkspaceOperationContext,
 } from "./workspaces";

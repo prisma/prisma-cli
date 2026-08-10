@@ -85,7 +85,7 @@ everything else in `src/auth/` is internal to it. Exports exactly:
 `EmptyServiceTokenError`, `isEmptyServiceTokenError`,
 `SERVICE_TOKEN_ENV_VAR`, `getApiBaseUrl`, `CLIENT_ID`, the workspace
 list/use/logout operations currently in `controllers/auth.ts`'s
-real-mode helpers (`listAuthWorkspaces`, `useAuthWorkspace`,
+real-mode helpers (`listAuthWorkspaces`, `switchAuthWorkspace`,
 `logoutAuthWorkspace` — extracted from the controller into
 `src/auth/workspaces.ts`, controller delegates; erratum: the review
 loop dropped the interim `*Real*` spelling — there is no fixture-mode

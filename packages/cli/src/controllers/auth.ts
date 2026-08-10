@@ -5,7 +5,7 @@ import {
   performLogout,
   readAuthState,
   SERVICE_TOKEN_ENV_VAR,
-  useAuthWorkspace,
+  switchAuthWorkspace,
   type WorkspaceOperationContext,
 } from "../auth";
 import { resolvePrismaCliPackageCommand } from "../lib/agent/cli-command";
@@ -150,7 +150,7 @@ export async function runAuthWorkspaceUse(
     : await selectWorkspaceSession(context);
 
   const result = isRealMode(context)
-    ? await useAuthWorkspace(
+    ? await switchAuthWorkspace(
         workspaceOperationContext(context),
         selectedWorkspaceRef,
       )

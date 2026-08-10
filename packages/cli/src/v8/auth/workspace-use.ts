@@ -9,7 +9,7 @@ import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
 import {
   listAuthWorkspaces,
   SERVICE_TOKEN_ENV_VAR,
-  useAuthWorkspace,
+  switchAuthWorkspace,
 } from "../../auth";
 import { CLI_NAME } from "../../cli-name";
 import type {
@@ -142,7 +142,7 @@ export const authWorkspaceUseCommand = defineCommand({
 
     let result: AuthWorkspaceUseResult;
     try {
-      result = await useAuthWorkspace(operationContext(ctx), workspaceRef);
+      result = await switchAuthWorkspace(operationContext(ctx), workspaceRef);
     } catch (error) {
       const mapped = mapAuthOperationError(error);
       if (mapped) {

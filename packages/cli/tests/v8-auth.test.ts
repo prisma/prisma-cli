@@ -12,7 +12,7 @@ import {
   performLogin,
   performLogout,
   readAuthState,
-  useAuthWorkspace,
+  switchAuthWorkspace,
 } from "../src/auth";
 import {
   workspaceAmbiguousError,
@@ -35,7 +35,7 @@ vi.mock("../src/auth", async (importOriginal) => ({
   performLogout: vi.fn(),
   readAuthState: vi.fn(),
   listAuthWorkspaces: vi.fn(),
-  useAuthWorkspace: vi.fn(),
+  switchAuthWorkspace: vi.fn(),
   logoutAuthWorkspace: vi.fn(),
 }));
 
@@ -146,7 +146,7 @@ beforeEach(() => {
   vi.mocked(performLogout).mockReset();
   vi.mocked(readAuthState).mockReset();
   vi.mocked(listAuthWorkspaces).mockReset();
-  vi.mocked(useAuthWorkspace).mockReset();
+  vi.mocked(switchAuthWorkspace).mockReset();
   vi.mocked(logoutAuthWorkspace).mockReset();
 });
 
@@ -642,7 +642,7 @@ describe("prisma-v8 auth workspace list", () => {
 
 describe("prisma-v8 auth workspace use", () => {
   it("switches by explicit ref and renders the mutation card", async () => {
-    vi.mocked(useAuthWorkspace).mockResolvedValue({
+    vi.mocked(switchAuthWorkspace).mockResolvedValue({
       previousWorkspace: { id: "ws_1", name: "Acme Inc" },
       workspace: { id: "ws_2", name: "Globex" },
     });
@@ -652,7 +652,7 @@ describe("prisma-v8 auth workspace use", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(vi.mocked(useAuthWorkspace)).toHaveBeenCalledWith(
+    expect(vi.mocked(switchAuthWorkspace)).toHaveBeenCalledWith(
       expect.anything(),
       "ws_2",
     );
@@ -670,7 +670,7 @@ describe("prisma-v8 auth workspace use", () => {
   });
 
   it("carries the raw use result in the json envelope", async () => {
-    vi.mocked(useAuthWorkspace).mockResolvedValue({
+    vi.mocked(switchAuthWorkspace).mockResolvedValue({
       previousWorkspace: null,
       workspace: { id: "ws_2", name: "Globex" },
     });
@@ -696,7 +696,7 @@ describe("prisma-v8 auth workspace use", () => {
   });
 
   it("maps an ambiguous name to AUTH.WORKSPACE_AMBIGUOUS with the match list, exit 2", async () => {
-    vi.mocked(useAuthWorkspace).mockRejectedValue(
+    vi.mocked(switchAuthWorkspace).mockRejectedValue(
       workspaceAmbiguousError("Acme Inc", [
         { id: "ws_1", name: "Acme Inc", credentialWorkspaceId: "cred_1" },
         { id: "ws_9", name: "Acme Inc", credentialWorkspaceId: "cred_9" },
@@ -768,7 +768,7 @@ describe("prisma-v8 auth workspace use", () => {
       ...TWO_OAUTH_WORKSPACES,
       workspaces: [TWO_OAUTH_WORKSPACES.workspaces[0]],
     });
-    vi.mocked(useAuthWorkspace).mockResolvedValue({
+    vi.mocked(switchAuthWorkspace).mockResolvedValue({
       previousWorkspace: null,
       workspace: { id: "ws_1", name: "Acme Inc" },
     });
@@ -778,7 +778,7 @@ describe("prisma-v8 auth workspace use", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(vi.mocked(useAuthWorkspace)).toHaveBeenCalledWith(
+    expect(vi.mocked(switchAuthWorkspace)).toHaveBeenCalledWith(
       expect.anything(),
       "ws_1",
     );
@@ -786,7 +786,7 @@ describe("prisma-v8 auth workspace use", () => {
 
   it("prompts a select over the workspaces and switches to the answer", async () => {
     vi.mocked(listAuthWorkspaces).mockResolvedValue(TWO_OAUTH_WORKSPACES);
-    vi.mocked(useAuthWorkspace).mockResolvedValue({
+    vi.mocked(switchAuthWorkspace).mockResolvedValue({
       previousWorkspace: { id: "ws_1", name: "Acme Inc" },
       workspace: { id: "ws_2", name: "Globex" },
     });
@@ -797,7 +797,7 @@ describe("prisma-v8 auth workspace use", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(vi.mocked(useAuthWorkspace)).toHaveBeenCalledWith(
+    expect(vi.mocked(switchAuthWorkspace)).toHaveBeenCalledWith(
       expect.anything(),
       "ws_2",
     );
@@ -813,7 +813,7 @@ describe("prisma-v8 auth workspace use", () => {
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("[CLI.PROMPT_INVALID]");
-    expect(vi.mocked(useAuthWorkspace)).not.toHaveBeenCalled();
+    expect(vi.mocked(switchAuthWorkspace)).not.toHaveBeenCalled();
   });
 
   it("fails non-interactively with the engine's structural prompt error, exit 2", async () => {
@@ -825,7 +825,7 @@ describe("prisma-v8 auth workspace use", () => {
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("[CLI.PROMPT_REQUIRED]");
-    expect(vi.mocked(useAuthWorkspace)).not.toHaveBeenCalled();
+    expect(vi.mocked(switchAuthWorkspace)).not.toHaveBeenCalled();
   });
 });
 
