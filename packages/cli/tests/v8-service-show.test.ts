@@ -2,24 +2,12 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { readAuthState } from "../src/auth";
 import {
   makeServiceCli,
   page,
   readFlowRoutes,
   SERVICE,
-  SIGNED_IN,
 } from "./v8-service-testkit";
-
-vi.mock("../src/auth", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/auth")>()),
-  readAuthState: vi.fn(),
-}));
-
-beforeEach(() => {
-  vi.mocked(readAuthState).mockReset();
-  vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
-});
 
 describe("prisma-v8 service show", () => {
   it("presents the selected service with live deployment, url, and recent deployments", async () => {

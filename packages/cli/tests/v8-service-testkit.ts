@@ -301,6 +301,10 @@ export const SERVICE_COMMANDS = mountedCommands(["service", "build"]);
 export interface ServiceCliOptions {
   routes?: Routes;
   authenticated?: boolean;
+  /** The workspace the seeded session is signed in to; defaults to
+   *  WORKSPACE. Omitting `name` seeds a session whose workspace has no
+   *  name, which is what a workspace-bound service token produces. */
+  sessionWorkspace?: { id: string; name?: string };
   /** The browser opener behind ctx.openUrl; pass a spy to assert what
    *  a run opened. */
   openUrl?: (url: string) => Promise<void> | void;
@@ -310,6 +314,13 @@ export interface ServiceCliOptions {
    * ESCALATED: the log stream authenticates itself and needs that token,
    * and the credential manager exposes none to a session command — see
    * the divergence file. Only the log-stream tests use this.
+   *
+   * BROKEN, and blocked on the engine: a manager-less runtime has no
+   * session, so every service command now fails at
+   * SERVICE.WORKSPACE_REQUIRED. The shipping bin wires a credential
+   * manager AND getCredentials together, but createTestCli rejects that
+   * combination, so no harness can model it. The log-stream tests stay
+   * red until the harness can seed both.
    */
   rawTokenSeed?: boolean;
 }
@@ -329,24 +340,33 @@ export async function makeServiceCli(
   const env: Record<string, string | undefined> = {
     PRISMA_CLI_STATE_DIR: stateDir,
   };
+  const workspace = options.sessionWorkspace ?? WORKSPACE;
   const cli = createTestCli({
     commands: SERVICE_COMMANDS,
     groups: SERVICE_GROUPS,
-    // The credential manager is the shipping path for needs.credentials;
-    // an unauthenticated harness simply seeds no session.
+    // The credential manager is the shipping path for needs.credentials
+    // and for the workspace every service command resolves through
+    // ctx.session(); an unauthenticated harness simply seeds no session.
     ...(options.rawTokenSeed
       ? { credentials: { token: "tok_1" } }
       : options.authenticated === false
         ? {}
         : {
-            credential: {
-              token: mintTestJwt({
-                sub: "usr_1",
-                workspace_id: WORKSPACE.id,
-              }),
-              refreshToken: undefined,
-              expiresAt: undefined,
-            },
+            sessions: [
+              {
+                workspaceId: workspace.id,
+                workspaceName: workspace.name,
+                credential: {
+                  token: mintTestJwt({
+                    sub: "usr_1",
+                    workspace_id: workspace.id,
+                  }),
+                  refreshToken: undefined,
+                  expiresAt: undefined,
+                },
+              },
+            ],
+            currentWorkspaceId: workspace.id,
           }),
     managementApi: {
       client: fakeManagementClient(options.routes ?? readFlowRoutes()),

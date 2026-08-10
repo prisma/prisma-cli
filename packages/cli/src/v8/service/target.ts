@@ -1,6 +1,5 @@
 import type { CommandContext } from "@prisma/cli-engine";
 import { LocalStateStore } from "../../adapters/local-state";
-import { readAuthState } from "../../auth";
 import {
   type AppProvider,
   type AppRecord,
@@ -65,6 +64,7 @@ export type ServiceContext = Pick<
   | "prompt"
   | "report"
   | "openUrl"
+  | "session"
   | "getCredentials"
 >;
 
@@ -90,14 +90,21 @@ export async function openServiceStateStore(
   return new LocalStateStore(stateDir, ctx.signal);
 }
 
+/** The workspace the run is acting as, from the engine's session. A
+ *  session whose workspace has no name shows its id instead: the id is
+ *  the only other identifier the user can act on, and every display of
+ *  this name needs a non-empty string. */
 export async function requireWorkspace(
   ctx: ServiceContext,
 ): Promise<AuthWorkspace> {
-  const state = await readAuthState(ctx.env, ctx.signal);
-  if (!state.workspace) {
+  const session = await ctx.session();
+  if (!session) {
     throw workspaceRequiredError();
   }
-  return state.workspace;
+  return {
+    id: session.workspaceId,
+    name: session.workspaceName ?? session.workspaceId,
+  };
 }
 
 export function readServiceEnvOverride(

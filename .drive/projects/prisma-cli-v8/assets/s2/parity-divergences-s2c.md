@@ -98,6 +98,12 @@ The service group's legacy commands never auto-logged-in
 unauthenticated runs with the engine's `CLI.CREDENTIALS_REQUIRED`
 (exit 2) instead of the legacy `AUTH_REQUIRED` (exit 1).
 
+The workspace those commands then act in comes from the engine's
+session (`ctx.session()`), which is the only sanctioned identity
+surface a handler has; no v8 command reads the credential file itself.
+The `service logs` entry under dispatch 3 records what moving to it
+fixed and what is left.
+
 ### `service domain remove` consent
 
 Recorded with the group's other consent points in "Consent" under
@@ -512,36 +518,83 @@ returns a valid session. Anyone who sets `PRISMA_SERVICE_TOKEN` is
 unaffected either way, because that path short-circuits ahead of the
 file read.
 
-**That merge-down breaks 13 of this slice's 20 commands, not just
-`service logs`.** The same file, read the same way, also decides whether
-a workspace resolves: `requireWorkspace`
-(`src/v8/service/target.ts`) calls `readAuthState`, which builds a
-`FileTokenStorage` and asks it for tokens
+**This entry used to say the merge-down broke 13 of this slice's 20
+commands and that the fix belonged to the auth stream. The count was
+right; the blame was not, and the misplaced part was ours.**
+`requireWorkspace` (`src/v8/service/target.ts`) called `readAuthState`,
+which builds a `FileTokenStorage` and asks it for tokens
 (`src/auth/operations.ts`) — the same call `ctx.getCredentials()`
-makes. With no tokens it returns `{authenticated: false}` and the
-command settles `SERVICE.WORKSPACE_REQUIRED`. `readAuthState` is
-untouched on `bot/s2a-foundations`, so after the merge-down a signed-in
-user without `PRISMA_SERVICE_TOKEN` fails on `deploy`, `show`, `open`,
+makes. With no tokens it returned `{authenticated: false}` and the
+command settled `SERVICE.WORKSPACE_REQUIRED`, so a credential file the
+legacy reader cannot parse made `deploy`, `show`, `open`,
 `list-deploys`, `logs`, `promote`, `rollback`, `remove` and all five
-`domain` commands. `service logs` fails at `WORKSPACE_REQUIRED` before
-it ever reaches the credential error this entry is about. Only
-`show-deploy` survives among the commands that ask, because it treats a
-workspace failure as "no remembered project" and continues; `service
-build`, `build logs`, the three `agent` commands and `feedback` never
-read auth state.
+`domain` commands unusable. But no v8 command should have been reading
+auth state that way at all. The engine hands a handler its identity
+through `ctx.session()`, answered by the credential manager, whose
+reader understands both the new `{version, sessions,
+currentWorkspaceId}` shape and the legacy `{tokens: […]}` one
+(`src/auth/state-file.ts` adopts the legacy store on read).
 
-No test in this slice can see it: every service test replaces
-`readAuthState` at the module seam and seeds the engine's credential
-manager separately, so the harness has two credential seams where
-production has one file.
+**`requireWorkspace` now reads `ctx.session()`, which fixes 12 of the
+13.** `deploy`, `show`, `open`, `list-deploys`, `promote`, `rollback`,
+`remove` and all five `domain` commands resolve their workspace after
+the merge-down exactly as they do before it. `show-deploy` was never
+affected: it is the one caller that swallows a workspace failure and
+degrades to a missing live-deployment hint. `service build`,
+`build logs`, the three `agent` commands and `feedback` read no auth
+state at all.
 
-Ruling needed, and it is now two things. The engine should expose a
-token accessor for self-authenticating streams (or hand the log stream a
+**What is left is `service logs`, and only its token.** It resolves its
+workspace correctly now, then still asks `ctx.getCredentials()` for the
+raw token the stream needs, and that accessor still reads the credential
+file through `FileTokenStorage`. After the merge-down it becomes the one
+command in this slice that fails for a signed-in user whose other
+commands all work, and it fails at
+`SERVICE.LOG_STREAM_CREDENTIALS_UNAVAILABLE` rather than at
+`WORKSPACE_REQUIRED`. Anyone who sets `PRISMA_SERVICE_TOKEN` is
+unaffected, because that path short-circuits ahead of the file read.
+
+**A workspace with no name now shows its id.** `Session.workspaceName`
+is optional where the old `AuthWorkspace.name` was required, so a
+session the manager could not name — a workspace-bound service token,
+or a login whose best-effort name fetch failed — presents as its
+workspace id (`workspace: ws_…`) instead of failing. Legacy asked the
+API for the name on every read and settled `WORKSPACE_REQUIRED` when it
+could not build a workspace at all; v8 prefers the identifier the user
+can still act on. `SERVICE.WORKSPACE_REQUIRED` itself is unchanged and
+still raised when there is no session.
+
+**The tests now seed one credential source.** Every service test used to
+mock `readAuthState` at the module seam while the engine's credential
+check was seeded through the credential manager, so the harness had two
+credential seams where production has one file — which is why nothing in
+the suite could see any of this. Those mocks are gone: the harness seeds
+a session on the credential manager and both the credentials check and
+the workspace come from it. `tests/v8-service-session.test.ts` pins the
+direction, seeding a session that names a workspace the Management API
+fake never reports for the project, so a run taking its identity from
+anywhere else resolves a different project or prints a different name.
+
+Ruling still needed, on the token only. The engine should expose a token
+accessor for self-authenticating streams (or hand the log stream a
 client the way `ctx.api` is handed over) — one line in
-`src/v8/service/logs.ts` changes when it does. And the credential
-*reader* has to learn the new file shape before the auth rework merges
-down; that correction belongs in `readAuthState`, which this slice does
-not own.
+`src/v8/service/logs.ts` changes when it does.
+
+**Second, smaller engine ask, and it is why the `service logs` tests are
+currently red.** Those tests seed `rawTokenSeed`, which selects
+`createTestCli`'s manager-less runtime — the only way the harness makes
+`ctx.getCredentials()` resolve a token. A manager-less runtime has no
+session at all, so with the workspace now coming from `ctx.session()`
+every one of those runs settles `SERVICE.WORKSPACE_REQUIRED`. The
+shipping bin wires a credential manager and `getCredentials` together
+(`src/v8/runtime.ts`), but `createTestCli` rejects that combination
+(`packages/cli-engine/src/testing.ts`) and defines `getCredentials` as
+the seeded value, so no harness can model the runtime the product
+actually assembles. The smallest fix is to let the harness's
+`getCredentials` honour a seeded `environmentToken`, mirroring the
+shipping `makeGetCredentials`, which returns `PRISMA_SERVICE_TOKEN`
+first; the log-stream tests would then seed one token and get both
+halves. Held pending that ruling rather than worked around.
 
 ### `service logs` behavior
 

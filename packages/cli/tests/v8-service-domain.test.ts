@@ -1,24 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { readAuthState } from "../src/auth";
 import {
   domainRecord,
   makeServiceCli,
   presentedSummary,
   type Routes,
   readFlowRoutes,
-  SIGNED_IN,
 } from "./v8-service-testkit";
-
-vi.mock("../src/auth", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/auth")>()),
-  readAuthState: vi.fn(),
-}));
-
-beforeEach(() => {
-  vi.mocked(readAuthState).mockReset();
-  vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
-});
 
 const EXPECTED_TARGET = {
   workspace: { id: "ws_1", name: "Acme Inc" },

@@ -1,23 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { readAuthState } from "../src/auth";
 import {
   makeServiceCli,
   page,
   presentedSummary,
   readFlowRoutes,
   SERVICE_DETAIL,
-  SIGNED_IN,
 } from "./v8-service-testkit";
-
-vi.mock("../src/auth", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/auth")>()),
-  readAuthState: vi.fn(),
-}));
-
-beforeEach(() => {
-  vi.mocked(readAuthState).mockReset();
-  vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
-});
 
 describe("prisma-v8 service open", () => {
   it("reports the live URL as an endpoint event and opens nothing when the session is not interactive", async () => {

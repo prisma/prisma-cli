@@ -1,24 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { readAuthState } from "../src/auth";
 import {
   DEPLOYMENTS,
   makeServiceCli,
   page,
   presentedSummary,
   releaseRoutes,
-  SIGNED_IN,
 } from "./v8-service-testkit";
-
-vi.mock("../src/auth", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/auth")>()),
-  readAuthState: vi.fn(),
-}));
-
-beforeEach(() => {
-  vi.mocked(readAuthState).mockReset();
-  vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
-});
 
 describe("prisma-v8 service rollback", () => {
   it("rolls back to the deployment before the live one by default", async () => {

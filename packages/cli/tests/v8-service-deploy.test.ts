@@ -9,7 +9,6 @@ import type {
 import { Result } from "better-result";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { readAuthState } from "../src/auth";
 import {
   makeServiceCli,
   PROJECT,
@@ -18,13 +17,7 @@ import {
   type RawDeployment,
   type RawService,
   type Routes,
-  SIGNED_IN,
 } from "./v8-service-testkit";
-
-vi.mock("../src/auth", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/auth")>()),
-  readAuthState: vi.fn(),
-}));
 
 const deployFake = vi.hoisted(() => ({
   run: null as
@@ -339,8 +332,6 @@ function deployArgs(extra: string[] = []): string[] {
 }
 
 beforeEach(() => {
-  vi.mocked(readAuthState).mockReset();
-  vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
   deployFake.run = null;
 });
 
