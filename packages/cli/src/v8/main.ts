@@ -1,4 +1,5 @@
 import type { Cli, CliRunHooks } from "@prisma/cli-engine";
+import { maybeWriteCachedUpdateNotification } from "../update-check";
 import { buildCli } from "./cli";
 import { assembleRuntime, type HostProcess } from "./runtime";
 import { resolveTelemetryHooks } from "./telemetry/wiring";
@@ -23,6 +24,14 @@ export async function main(
     );
     return 1;
   }
+  // Legacy sequencing: the cached update notification (and its detached
+  // refresh spawn) runs before the command dispatches, so the notice
+  // precedes all command output on stderr.
+  await maybeWriteCachedUpdateNotification({
+    env: proc.env,
+    argv: proc.argv.slice(2),
+    stderr: proc.stderr,
+  });
   const runtime = await assembleRuntime(proc);
   let hooks: CliRunHooks | undefined;
   try {

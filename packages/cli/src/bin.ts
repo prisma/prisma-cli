@@ -2,7 +2,7 @@
 import process from "node:process";
 
 import { runCli } from "./cli";
-import { runUpdateDiscoveryWorker } from "./shell/update-check";
+import { runUpdateDiscoveryWorker } from "./update-check";
 
 if (process.env.PRISMA_CLI_RUN_UPDATE_CHECK_WORKER === "1") {
   await runUpdateDiscoveryWorker();

@@ -5,8 +5,15 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { getCliName, getCliVersion } from "../lib/version";
-import type { CliRuntime } from "./runtime";
+import { getCliName, getCliVersion } from "./lib/version";
+
+/** The exact runtime surface the update check reads; both the legacy
+ *  shell's CliRuntime and the v8 bin's host process satisfy it. */
+export interface UpdateCheckRuntime {
+  readonly env: NodeJS.ProcessEnv;
+  readonly argv: readonly string[];
+  readonly stderr: { readonly isTTY?: boolean; write(text: string): unknown };
+}
 
 const UPDATE_CHECK_FILE_NAME = "update-check.json";
 const FALLBACK_INSTALL_DOCS_URL =
@@ -62,7 +69,7 @@ export class UpdateCheckStore {
 }
 
 export async function maybeWriteCachedUpdateNotification(
-  runtime: CliRuntime,
+  runtime: UpdateCheckRuntime,
 ): Promise<void> {
   if (!canRunUpdateCheck(runtime)) {
     return;
@@ -156,7 +163,7 @@ export async function runUpdateDiscoveryWorker(
   });
 }
 
-function canRunUpdateCheck(runtime: CliRuntime): boolean {
+function canRunUpdateCheck(runtime: UpdateCheckRuntime): boolean {
   if (runtime.env.NO_UPDATE_NOTIFIER !== undefined) {
     return false;
   }
@@ -196,7 +203,7 @@ function shouldNotify(state: UpdateCheckState): boolean {
 }
 
 async function scheduleRemoteDiscovery(
-  runtime: CliRuntime,
+  runtime: UpdateCheckRuntime,
   store: UpdateCheckStore,
   state: UpdateCheckState | null,
   cacheDir: string,
@@ -316,7 +323,7 @@ function docsInstruction(): UpdateInstruction {
   return { type: "docs", value: FALLBACK_INSTALL_DOCS_URL };
 }
 
-function resolveUpdateCheckCacheDir(runtime: CliRuntime): string {
+function resolveUpdateCheckCacheDir(runtime: UpdateCheckRuntime): string {
   const configured = runtime.env.PRISMA_CLI_UPDATE_CHECK_DIR;
   if (configured?.trim()) {
     return path.resolve(configured);
