@@ -13,6 +13,17 @@ import { authWhoamiCommand } from "./auth/whoami";
 import { authWorkspaceListCommand } from "./auth/workspace-list";
 import { authWorkspaceLogoutCommand } from "./auth/workspace-logout";
 import { authWorkspaceUseCommand } from "./auth/workspace-use";
+import { postgresBackupListCommand } from "./postgres/backup-list";
+import { postgresConnectionCreateCommand } from "./postgres/connection-create";
+import { postgresConnectionListCommand } from "./postgres/connection-list";
+import { postgresConnectionRemoveCommand } from "./postgres/connection-remove";
+import { postgresConnectionRotateCommand } from "./postgres/connection-rotate";
+import { postgresCreateCommand } from "./postgres/create";
+import { postgresListCommand } from "./postgres/list";
+import { postgresRemoveCommand } from "./postgres/remove";
+import { postgresRestoreCommand } from "./postgres/restore";
+import { postgresShowCommand } from "./postgres/show";
+import { postgresUsageCommand } from "./postgres/usage";
 import { projectCreateCommand } from "./project/create";
 import { projectEnvAddCommand } from "./project/env-add";
 import { projectEnvListCommand } from "./project/env-list";
@@ -47,6 +58,17 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     projectEnvUpdate: projectEnvUpdateCommand,
     projectEnvList: projectEnvListCommand,
     projectEnvRemove: projectEnvRemoveCommand,
+    postgresList: postgresListCommand,
+    postgresShow: postgresShowCommand,
+    postgresCreate: postgresCreateCommand,
+    postgresUsage: postgresUsageCommand,
+    postgresRestore: postgresRestoreCommand,
+    postgresRemove: postgresRemoveCommand,
+    postgresBackupList: postgresBackupListCommand,
+    postgresConnectionList: postgresConnectionListCommand,
+    postgresConnectionCreate: postgresConnectionCreateCommand,
+    postgresConnectionRotate: postgresConnectionRotateCommand,
+    postgresConnectionRemove: postgresConnectionRemoveCommand,
   },
 });
 
@@ -57,6 +79,11 @@ export const cliGroups: Readonly<
   project: { brief: "Manage and inspect your Prisma projects" },
   "project env": {
     brief: "Manage environment variables for the active project",
+  },
+  postgres: { brief: "Manage Prisma Postgres databases for a project" },
+  "postgres backup": { brief: "Inspect platform-created database backups" },
+  "postgres connection": {
+    brief: "Manage one-time-view database connection strings",
   },
   "auth workspace": { brief: "Manage local workspace sessions" },
   telemetry: {
@@ -86,6 +113,17 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "project env update": projectEnvUpdateCommand,
   "project env list": projectEnvListCommand,
   "project env remove": projectEnvRemoveCommand,
+  "postgres list": postgresListCommand,
+  "postgres show": postgresShowCommand,
+  "postgres create": postgresCreateCommand,
+  "postgres usage": postgresUsageCommand,
+  "postgres restore": postgresRestoreCommand,
+  "postgres remove": postgresRemoveCommand,
+  "postgres backup list": postgresBackupListCommand,
+  "postgres connection list": postgresConnectionListCommand,
+  "postgres connection create": postgresConnectionCreateCommand,
+  "postgres connection rotate": postgresConnectionRotateCommand,
+  "postgres connection remove": postgresConnectionRemoveCommand,
   // Shell-owned consent surface (no command family).
   "telemetry status": telemetryStatusCommand,
   "telemetry enable": telemetryEnableCommand,

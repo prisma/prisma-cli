@@ -613,7 +613,7 @@ export async function runDatabaseConnectionRotate(
 const USAGE_DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const USAGE_DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}T/;
 
-function parseUsageDate(
+export function parseUsageDate(
   value: string | undefined,
   flagName: string,
   dayBoundary: "start" | "end",
@@ -671,7 +671,7 @@ function isValidCalendarDate(datePart: string): boolean {
   );
 }
 
-function parseBackupLimit(
+export function parseBackupLimit(
   value: string | undefined,
   formatCommand: PrismaCliPackageCommandFormatter,
 ): number | undefined {
@@ -909,7 +909,7 @@ function createFixtureDatabaseProvider(
   };
 }
 
-async function resolveDatabase(
+export async function resolveDatabase(
   provider: DatabaseProvider,
   target: ResolvedProjectTarget,
   databaseRef: string,
@@ -952,14 +952,14 @@ async function resolveDatabase(
   return ensureProjectId(shown ?? selected, target.project.id);
 }
 
-function ensureProjectId(
+export function ensureProjectId(
   database: DatabaseSummary,
   projectId: string,
 ): DatabaseSummary {
   return database.projectId ? database : { ...database, projectId };
 }
 
-function sortDatabases(databases: DatabaseSummary[]): DatabaseSummary[] {
+export function sortDatabases(databases: DatabaseSummary[]): DatabaseSummary[] {
   return databases.slice().sort((left, right) => {
     const branchOrder = (left.branchName ?? "").localeCompare(
       right.branchName ?? "",
@@ -1006,7 +1006,7 @@ function requireExactConfirmation(options: {
   });
 }
 
-function defaultConnectionName(): string {
+export function defaultConnectionName(): string {
   const timestamp = new Date()
     .toISOString()
     .replace(/[-:.TZ]/g, "")
