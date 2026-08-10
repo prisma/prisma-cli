@@ -12,6 +12,7 @@ export const RESERVED_FLAG_NAMES: ReadonlySet<string> = new Set([
   "verbose",
   "quiet",
   "yes",
+  "confirm",
   "interactive",
   "color",
   "help",
@@ -59,6 +60,15 @@ export const SHARED_FLAG_PARAMETERS = {
     default: false,
     brief: "Accept prompt defaults without asking",
   },
+  confirm: {
+    kind: "parsed",
+    parse: (input: string) => input,
+    placeholder: "value",
+    variadic: true,
+    optional: true,
+    brief:
+      "Grant a consent prompt non-interactively by typing its token (repeatable)",
+  },
   interactive: {
     kind: "boolean",
     optional: true,
@@ -82,6 +92,7 @@ export interface SharedFlags {
   readonly verbose?: boolean;
   readonly quiet?: boolean;
   readonly yes?: boolean;
+  readonly confirm?: readonly string[];
   readonly interactive?: boolean;
   readonly color?: boolean;
 }
@@ -123,6 +134,7 @@ export function applySharedFlags(
 ): void {
   state.format = shared.format ?? resolveAutoFormat(shared, runtime);
   state.yes = shared.yes === true;
+  state.confirmValues = [...(shared.confirm ?? [])];
   state.interactive = shared.interactive ?? defaultInteractive(runtime);
   state.logLevel = resolveLogLevel(shared);
   state.colorEnabled =

@@ -25,6 +25,11 @@
  * §6 gains the managesCredentials capability; §10 gains
  * Runtime.credentialManager and the injected client config; §11 gains
  * manager seeding + fixtures.
+ * Amended 2026-08-10 for the ENGINE INTERACTION AFFORDANCES (operator
+ * rulings): consent tokens with the shared --confirm flag (§4a),
+ * ctx.openUrl (§4), and prompt.browserWait (§4a). All three are
+ * engine-owned so command code never reads TTY or CI state and never
+ * invents its own consent-skipping flag.
  *
  * THE MODEL, in one analogy (operator, 2026-08-09): commands settle like
  * promises. A command can COMPLETE — and its completion can be
@@ -98,7 +103,8 @@
  * pipe-clean. json mode is unchanged: the frame stream owns stdout.
  * The engine injects the shared flag family on every non-server
  * command: --format/--json, --log-level/-v/--verbose, -q/--quiet,
- * -y/--yes, --interactive/--no-interactive, --color/--no-color.
+ * -y/--yes, --confirm <value> (repeatable), --interactive/--no-interactive,
+ * --color/--no-color.
  * Commands cannot declare flags with those names. Declared flag keys are
  * camelCase and transliterate to --kebab-case.
  *
@@ -412,6 +418,22 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
   /** Interactive input (§4a). */
   readonly prompt: PromptSurface
 
+  /** Shows the user a URL and, interactively, opens it in their
+   *  browser through the runtime's injected opener. The announcement
+   *  is one `endpoint` event (§1): a stderr line in human mode, a
+   *  frame in json mode, so the URL always reaches both a person and
+   *  a machine consumer. A non-interactive run opens nothing and
+   *  reports `{opened: false}` — the URL in the announcement is how it
+   *  gets done by hand. NEVER an error: a host with no browser is not
+   *  a failed command. To then WAIT for the user to finish in that
+   *  browser, use prompt.browserWait (§4a). */
+  readonly openUrl: (request: {
+    readonly url: string
+    /** The announcement label — what the URL is for, in the user's
+     *  terms ("Finish signing in"). */
+    readonly message: string
+  }) => Promise<{ readonly opened: boolean }>
+
   /** Fires on Ctrl-C/SIGTERM (engine-owned; a second signal
    *  force-exits through the runtime's exit proxy). Session commands
    *  run until it fires; everything else aborts in-flight work with
@@ -548,8 +570,32 @@ export interface ManagementApiClientConfig {
  * Runtime.stdin.setRawMode present, no scripted answers — render
  * through @clack/prompts, loaded by dynamic import only on that path.
  * Both tiers write prompt UI to stderr and share the same structural
- * rules: --yes resolution and structural failures are decided before
- * the tier branch. Clack's cancel symbol (including the \x03 byte
+ * rules: --yes resolution, `--confirm` matching, and structural
+ * failures are decided before the tier branch.
+ *
+ * CONSENT TOKENS AND --confirm (operator ruling, 2026-08-10). A
+ * consent may declare a `token`: the natural noun of the action being
+ * consented to — an app name, a hostname — not a yes/no word. The
+ * token changes both halves of the prompt.
+ *   Interactively it becomes TYPE-TO-CONFIRM: the user must type the
+ *   token exactly. On the clack tier a wrong answer re-prompts (the
+ *   only exits are the exact token and Ctrl-C); on the plain line
+ *   tier — scripted answers, piped stdin — a wrong answer cannot be
+ *   corrected, so it fails structurally (exit 2).
+ *   Non-interactively (and under --yes, which is the same skip
+ *   condition) the consent is satisfied iff one of the run's
+ *   `--confirm <value>` values matches the token EXACTLY. Each value
+ *   is consumed once per run, so two consents on one token need two
+ *   --confirms. Otherwise the existing structural consent error
+ *   (CLI.CONSENT_REQUIRED, exit 2), whose message now names the
+ *   expected value and the literal `--confirm <token>` usage.
+ *   A consent WITHOUT a token keeps today's yes/no rendering and stays
+ *   non-interactively unsatisfiable — its error says the command
+ *   should declare a token (the old "pass the command's explicit
+ *   consent flag" wording described the abandoned per-command-flag
+ *   doctrine: commands do not invent consent flags any more).
+ * --yes is unchanged by all of this: it accepts declared defaults and
+ * never grants consent, with or without a token. Clack's cancel symbol (including the \x03 byte
  * path) maps to the same CLI.PROMPT_CANCELLED exit-3 settlement.
  * Clack's spinner/log helpers are forbidden (process-global handlers);
  * progress remains engine events.
@@ -565,11 +611,15 @@ export interface PromptSurface {
   /**
    * A question requiring EXPLICIT consent — never inferable, not
    * necessarily destructive. Structurally undefaultable: no default
-   * parameter exists, so --yes, Enter-through, and non-interactive
-   * contexts can never satisfy it; the command documents the explicit
-   * flag that grants consent non-interactively.
+   * parameter exists, so --yes and Enter-through can never satisfy it.
+   * `token` is the natural noun of the action; supplying one makes the
+   * interactive prompt type-to-confirm and makes `--confirm <token>`
+   * the one non-interactive way to grant it (§4a header).
    */
-  readonly consent: (question: string) => Promise<boolean>
+  readonly consent: (
+    question: string,
+    opts?: { readonly token?: string },
+  ) => Promise<boolean>
   /**
    * On the clack tier, Enter picks the HIGHLIGHTED option — the
    * declared default when present, else the first option — so moving
@@ -585,6 +635,32 @@ export interface PromptSurface {
     question: string,
     opts?: { readonly placeholder?: string; readonly default?: string },
   ) => Promise<string>
+  /**
+   * Sends the user to a URL and waits for them to finish there. It
+   * announces the URL (the same one-line `endpoint` announcement
+   * ctx.openUrl makes), opens the browser through the runtime's
+   * injected opener, then calls `poll` on the ENGINE's injectable
+   * clock at the engine's declared interval until it returns true.
+   * Settles three ways: resolved (poll true); the structured timeout
+   * error when `timeout` elapses first; the standard prompt-cancel
+   * exit-3 settlement on Ctrl-C.
+   *
+   * Non-interactively it throws the structured interaction-required
+   * error (exit 2) WITHOUT opening or polling anything, carrying the
+   * URL so the user can finish by hand. A command that can do nothing
+   * at all without an interactive terminal should say so declaratively
+   * with `needs.interaction` (§6) and fail before it starts, rather
+   * than reaching this error mid-run.
+   */
+  readonly browserWait: (request: {
+    readonly url: string
+    readonly message: string
+    /** Has the user finished? Receives ctx.signal, so a polling
+     *  request aborts with the command. */
+    readonly poll: (signal: AbortSignal) => Promise<boolean>
+    /** Milliseconds to keep polling before giving up. */
+    readonly timeout: number
+  }) => Promise<void>
 }
 
 // ————————————————————————————————————————————————————————————————————————
@@ -1166,6 +1242,12 @@ export interface Runtime {
    *  wired; optional only during the staged swap. */
   readonly managementApiClientConfig?: ManagementApiClientConfig
   readonly getCredentials: () => Promise<Credentials | undefined>
+  /** Opens a URL in the user's browser — the login flow's opener,
+   *  wired by the bin so the engine never depends on it. Called only
+   *  for interactive sessions; a throw means "did not open" and never
+   *  fails a command; absent means this host cannot open a browser,
+   *  and the URL is announced instead. */
+  readonly openUrl?: (url: string) => Promise<void> | void
   /** Management API endpoint config; the bin derives baseUrl from env
    *  (getApiBaseUrl). */
   readonly managementApi: { readonly baseUrl: string }
@@ -1246,8 +1328,15 @@ export declare function createTestCli(spec: {
     readonly client?: ManagementApiClient
   }
   readonly packageManager?: 'npm' | 'pnpm' | 'yarn' | 'bun' | 'unknown'
-  /** Fixed clock for deterministic stream timestamps. */
+  /** Fixed clock for deterministic stream timestamps; a clock that
+   *  advances also drives prompt.browserWait's timeout, whose waiting
+   *  is instant under the harness. */
   readonly now?: () => Date
+  /** The browser opener behind ctx.openUrl and prompt.browserWait.
+   *  Defaults to one that succeeds without doing anything — a real
+   *  browser is never a test dependency; pass a spy to assert what was
+   *  opened, or a thrower for the could-not-open path. */
+  readonly openUrl?: (url: string) => Promise<void> | void
 }): TestCli
 
 /** Mints an unsigned JWT whose payload is exactly `claims` — the

@@ -48,14 +48,17 @@ export {
   type SectionValidation,
 } from "../config-section";
 export type {
+  BrowserWaitRequest,
   CommandContext,
   Credentials,
+  OpenUrlOutcome,
+  OpenUrlRequest,
   PromptSurface,
 } from "../context";
 export {
   authServiceError,
-  credentialsRequiredError,
   type CredentialsRequiredReason,
+  credentialsRequiredError,
   environmentSessionMutationError,
   noSessionForWorkspaceError,
   serviceTokenRejectedError,

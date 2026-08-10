@@ -52,6 +52,9 @@ export interface ClackRenderer {
   ): Promise<boolean | symbol>;
   /** Starts on No: Enter-through returns false; only explicit Yes grants. */
   consent(question: string): Promise<boolean | symbol>;
+  /** Type-to-confirm: anything but the token re-prompts, so the only
+   *  ways out are the exact token and cancelling. */
+  confirmToken(question: string, token: string): Promise<string | symbol>;
   select<T extends string>(
     question: string,
     options: ReadonlyArray<{ value: T; label: string }>,
@@ -87,6 +90,17 @@ export async function makeClackRenderer(
         output,
         message: question,
         initialValue: false,
+      }),
+    confirmToken: (question, token) =>
+      clack.text({
+        input,
+        output,
+        message: `${question} Type ${token} to confirm.`,
+        placeholder: token,
+        validate: (value) =>
+          value === token
+            ? undefined
+            : `Type ${token} exactly, or press Ctrl-C.`,
       }),
     select: <T extends string>(
       question: string,

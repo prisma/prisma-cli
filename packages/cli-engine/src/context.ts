@@ -63,6 +63,17 @@ export interface CommandContext<
   readonly prompt: PromptSurface;
 
   /**
+   * Shows the user a URL and, in an interactive session, opens it in
+   * their browser. Always announces the URL on the commentary channel
+   * (an `endpoint` event: a stderr line in human mode, a frame in json
+   * mode), so a non-interactive run — which never opens anything — can
+   * still be completed by hand. Never fails: a browser that could not
+   * be opened reports `opened: false`. To wait for the user to finish
+   * something in that browser, use prompt.browserWait.
+   */
+  readonly openUrl: (request: OpenUrlRequest) => Promise<OpenUrlOutcome>;
+
+  /**
    * Fires on Ctrl-C/SIGTERM (engine-owned; a second signal force-exits
    * through the runtime's exit proxy). Session commands run until it
    * fires.
@@ -89,6 +100,33 @@ export interface CommandContext<
   ) => Promise<Result<void, CliStructuredError>>;
 }
 
+export interface OpenUrlRequest {
+  readonly url: string;
+  /** The announcement label — what the URL is for, in the user's
+   *  terms ("Finish signing in"). */
+  readonly message: string;
+}
+
+export interface OpenUrlOutcome {
+  /** False whenever the browser was not launched: a non-interactive
+   *  session, a host with no opener wired, or an opener that failed. */
+  readonly opened: boolean;
+}
+
+export interface BrowserWaitRequest {
+  readonly url: string;
+  /** The announcement label — what the user is being sent to do. */
+  readonly message: string;
+  /**
+   * Asks whether the user has finished. The engine calls it on its own
+   * interval and passes ctx.signal, so a poll that makes a request can
+   * abort with the command.
+   */
+  readonly poll: (signal: AbortSignal) => Promise<boolean>;
+  /** Milliseconds to keep polling before giving up. */
+  readonly timeout: number;
+}
+
 /**
  * Prompts. Every prompt resolves to its answered value directly.
  * Failures THROW engine-internal structured errors the engine catches
@@ -111,10 +149,21 @@ export interface PromptSurface {
   ) => Promise<boolean>;
   /**
    * A question requiring explicit consent — never inferable.
-   * Structurally undefaultable: no default parameter exists, so --yes,
-   * Enter-through, and non-interactive contexts can never satisfy it.
+   * Structurally undefaultable: no default parameter exists, so --yes
+   * and Enter-through can never satisfy it.
+   *
+   * `token` is the natural noun of what is being consented to — an app
+   * name, a hostname. Supplying one changes both halves of the prompt:
+   * interactively the user must type the token exactly instead of
+   * answering yes/no, and non-interactively the consent is granted by
+   * `--confirm <token>` on the command line (one `--confirm` value per
+   * consent). Without a token there is no non-interactive way to
+   * consent at all.
    */
-  readonly consent: (question: string) => Promise<boolean>;
+  readonly consent: (
+    question: string,
+    opts?: { readonly token?: string },
+  ) => Promise<boolean>;
   readonly select: <T extends string>(
     question: string,
     options: ReadonlyArray<{ value: T; label: string }>,
@@ -124,4 +173,18 @@ export interface PromptSurface {
     question: string,
     opts?: { readonly placeholder?: string; readonly default?: string },
   ) => Promise<string>;
+  /**
+   * Sends the user to a URL and waits for them to finish there:
+   * announces the URL, opens the browser, then polls until `poll`
+   * returns true. Resolves when it does; throws the structured timeout
+   * error when `timeout` elapses first, and the usual prompt-cancelled
+   * error (exit 3) on Ctrl-C.
+   *
+   * Non-interactively it throws the interaction-required error before
+   * opening or polling anything, with the URL in the message so the
+   * user can finish by hand. A command that cannot do anything useful
+   * without an interactive terminal should declare `needs.interaction`
+   * instead and fail before it starts.
+   */
+  readonly browserWait: (request: BrowserWaitRequest) => Promise<void>;
 }

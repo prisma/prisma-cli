@@ -79,6 +79,7 @@ describe("RunHooks.onSettled", () => {
       { name: "verbose", source: "default" },
       { name: "quiet", source: "default" },
       { name: "yes", source: "default" },
+      { name: "confirm", source: "default" },
       { name: "interactive", source: "default" },
       { name: "color", source: "default" },
       { name: "dry-run", source: "cli" },

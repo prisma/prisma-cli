@@ -11,6 +11,7 @@ import { type Diagnostic, notOk, okVoid } from "../protocol";
 import { buildManagementApiClient } from "./api-client";
 import type { Invocation, RunState } from "./engine";
 import { dependencyResolvable, missingDependencyError } from "./needs";
+import { announceUrl } from "./open-url";
 import { makePromptSurface } from "./prompts";
 import { reportEvent } from "./reporting";
 
@@ -102,6 +103,7 @@ export function makeContext(
     },
     report: (event) => reportEvent(invocation, event),
     prompt: makePromptSurface(invocation),
+    openUrl: (request) => announceUrl(invocation, request),
     signal: invocation.signal,
     cwd: invocation.runtime.cwd,
     env: invocation.runtime.env,

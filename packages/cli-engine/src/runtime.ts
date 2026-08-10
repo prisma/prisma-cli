@@ -60,6 +60,14 @@ export interface Runtime {
    */
   readonly managementApiClientConfig?: ManagementApiClientConfig;
   readonly getCredentials: () => Promise<Credentials | undefined>;
+  /**
+   * Opens a URL in the user's browser, wired by the bin (the login
+   * flow's opener). The engine calls it only for interactive sessions,
+   * treats a throw as "did not open", and never fails a command over
+   * it. Absent means this host cannot open a browser: the engine
+   * announces the URL instead.
+   */
+  readonly openUrl?: (url: string) => Promise<void> | void;
   /** Management API endpoint config; the bin derives baseUrl from env. */
   readonly managementApi: { readonly baseUrl: string };
   /**

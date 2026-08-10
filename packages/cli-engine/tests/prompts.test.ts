@@ -246,7 +246,7 @@ describe("consent", () => {
         {
           kind: "user-choice",
           label:
-            "Run the command interactively, or pass the command's explicit consent flag if it documents one.",
+            "Run the command interactively. Consent can only be granted outside an interactive terminal when the command declares a consent token.",
         },
       ],
     });

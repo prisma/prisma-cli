@@ -79,6 +79,10 @@ export interface RunState {
   format: Format;
   logLevel: Severity;
   yes: boolean;
+  /** The run's unconsumed `--confirm` values. A consent prompt with a
+   *  token removes the value it matched, so one `--confirm` grants one
+   *  consent. */
+  confirmValues: string[];
   interactive: boolean;
   colorEnabled: boolean;
   resolved: boolean;
@@ -101,6 +105,10 @@ export interface Invocation {
   readonly runtime: Runtime;
   readonly hooks: RunHooks;
   readonly now: () => Date;
+  /** Waits, or returns early when the signal fires. The engine's only
+   *  timer, injectable so waiting paths (prompt.browserWait) run
+   *  instantly under test. */
+  readonly delay: (ms: number, signal: AbortSignal) => Promise<void>;
   readonly state: RunState;
   /** The engine-owned abort signal behind ctx.signal, fed by the
    *  runtime's signal subscription. */
@@ -109,9 +117,29 @@ export interface Invocation {
 
 export function buildEngine(
   spec: EngineSpec,
-  options?: { readonly now?: () => Date },
+  options?: {
+    readonly now?: () => Date;
+    readonly delay?: (ms: number, signal: AbortSignal) => Promise<void>;
+  },
 ): Engine {
-  return new EngineImpl(spec, options?.now);
+  return new EngineImpl(spec, options?.now, options?.delay);
+}
+
+/** Resolves on the timer OR on the signal, whichever comes first — the
+ *  caller decides what an abort means, and no timer outlives the run. */
+function waitFor(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    const finish = (): void => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    signal.addEventListener("abort", finish, { once: true });
+  });
 }
 
 type ErasedHandler = (
@@ -150,10 +178,16 @@ export class EngineImpl implements Engine {
   private readonly spec: EngineSpec;
   private readonly root: StricliRouteMap<EngineRunContext>;
   private readonly now: () => Date;
+  private readonly delay: (ms: number, signal: AbortSignal) => Promise<void>;
 
-  constructor(spec: EngineSpec, now: () => Date = () => new Date()) {
+  constructor(
+    spec: EngineSpec,
+    now: () => Date = () => new Date(),
+    delay: (ms: number, signal: AbortSignal) => Promise<void> = waitFor,
+  ) {
     this.spec = spec;
     this.now = now;
+    this.delay = delay;
     this.root = buildRoutes(
       spec,
       buildCommandTree(spec),
@@ -176,6 +210,7 @@ export class EngineImpl implements Engine {
       format,
       logLevel: "info",
       yes: false,
+      confirmValues: [],
       interactive: defaultInteractive(runtime),
       colorEnabled: false,
       resolved: false,
@@ -202,6 +237,7 @@ export class EngineImpl implements Engine {
       runtime,
       hooks: { ...hooks },
       now: this.now,
+      delay: this.delay,
       state,
       signal: controller.signal,
     };

@@ -117,7 +117,8 @@ interface CredentialManager {
   endSession(session: Session): Promise<void>;
 
   /** Log out entirely: remove all sessions and the marker (also
-   *  reaps legacy files, §7). Reports how many it ended. */
+   *  reaps legacy files, §7). Returns nothing: the COMMAND reports
+   *  how many it ended, by calling `sessions()` before this. */
   endAllSessions(): Promise<void>;
 
   /** ENGINE-FACING, not a user operation: the SDK TokenStorage
@@ -215,7 +216,10 @@ Engine integration:
   Stored session → the SDK's refreshing path with
   `tokenStorage(workspaceId)` in the config. Env session → the
   SDK's static-token path (`createManagementApiClient({baseUrl,
-  token})`) — no refresh machinery may exist for it; its error
+  token})`), where the ENGINE reads `PRISMA_SERVICE_TOKEN` from the
+  injected `Runtime.env` for that token — the manager never exposes
+  token material — so nothing has to hand a credential back out of
+  the manager; no refresh machinery may exist for it; its error
   mapping happens at the call site (the static path has no error
   middleware). The auth commands that mutate state don't consume
   `ctx.api` as the pinned session afterwards (whoami enrichment
@@ -233,8 +237,11 @@ Engine integration:
   renamed workspace keeps its stored name until the next login to
   it. `list` renders a nameless session by its id.
 - Harness: `createTestCli` seeds `{sessions?, currentWorkspaceId?,
-  credential?}` over a mutable in-memory manager with full state
-  read-back, plus the client config (local endpoint).
+  credential?, environmentToken?}` over a mutable in-memory manager
+  with full state read-back, plus the client config (local
+  endpoint). `environmentToken` composes the env session and is
+  exported to each run's env as `PRISMA_SERVICE_TOKEN`, which is
+  where the engine reads it.
 
 ## 5. Fixtures and required tests
 
@@ -344,7 +351,10 @@ The SDK version is exact-pinned; a test asserts clearing happens on
 **Service token (env).** Composes as the process's pinned session
 (`source: "environment"`), never stored, absent from `sessions()`
 (the file's marked current stays shown; the listing states the
-override). Static-token client, no refresh; 401 → structured error
+override). The ENGINE builds that session's client by reading
+`PRISMA_SERVICE_TOKEN` from the injected `Runtime.env` itself: the
+manager composes the session but never hands out the token.
+Static-token client, no refresh; 401 → structured error
 naming the env var; nothing cleared. `whoami` notes the override
 when stored sessions exist. Blank/whitespace → the single
 blank-token error.
@@ -361,7 +371,8 @@ Legacy names, unchanged — the session model makes them honest
 
 - `auth login` — browser consent; user picks the workspace;
   `createSession(credential, workspaceId-from-claims)`.
-- `auth logout` — `endAllSessions()`; reports the count ended.
+- `auth logout` — `sessions()` for the count, then
+  `endAllSessions()`; the command reports the count it ended.
 - `auth whoami` — `ctx.session()` + claims decode; `ctx.api`
   enrichment when online.
 - `auth workspace list` — `sessions()`, current marked, nameless

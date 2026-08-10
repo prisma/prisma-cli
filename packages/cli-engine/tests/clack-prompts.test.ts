@@ -17,6 +17,7 @@ import { describe, expect, test } from "vitest";
 const DOWN = "\x1b[B";
 const ENTER = "\r";
 const CTRL_C = "\x03";
+const BACKSPACE = "\x7f";
 
 function keystrokeStdin(keys: readonly string[]) {
   let cursor = 0;
@@ -214,6 +215,47 @@ describe("the clack tier resolves prompt values", () => {
 
     expect(result.exitCode).toBe(0);
     expect(answerIn(result.plainStderr)).toBe("true");
+  });
+
+  test("consent with a token: typing it exactly grants", async () => {
+    const result = await runInteractive(
+      (prompt) => prompt.consent("Delete it?", { token: "prod-db" }),
+      [..."prod-db", ENTER],
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(answerIn(result.plainStderr)).toBe("true");
+    expect(result.plainStderr).toContain("Type prod-db to confirm.");
+  });
+
+  test("consent with a token: a wrong answer re-prompts instead of failing", async () => {
+    const result = await runInteractive(
+      (prompt) => prompt.consent("Delete it?", { token: "prod-db" }),
+      // The rejected text stays in the field, so the retry erases it first.
+      [
+        ..."nope",
+        ENTER,
+        BACKSPACE,
+        BACKSPACE,
+        BACKSPACE,
+        BACKSPACE,
+        ..."prod-db",
+        ENTER,
+      ],
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(answerIn(result.plainStderr)).toBe("true");
+    expect(result.plainStderr).toContain("Type prod-db exactly");
+  });
+
+  test("consent with a token: Ctrl-C cancels, exit 3", async () => {
+    const result = await runInteractive(
+      (prompt) => prompt.consent("Delete it?", { token: "prod-db" }),
+      [..."nope", ENTER, CTRL_C],
+    );
+
+    expect(result.exitCode).toBe(3);
   });
 
   test("a multi-step wizard reuses the one renderer and stdin iterator", async () => {

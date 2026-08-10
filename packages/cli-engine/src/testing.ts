@@ -113,8 +113,14 @@ export function createTestCli(spec: {
     readonly client?: ManagementApiClient;
   };
   readonly packageManager?: "npm" | "pnpm" | "yarn" | "bun" | "unknown";
-  /** Fixed clock for deterministic stream timestamps. */
+  /** Fixed clock for deterministic stream timestamps; a clock that
+   *  advances also drives prompt.browserWait's timeout. */
   readonly now?: () => Date;
+  /** The browser opener behind ctx.openUrl and prompt.browserWait.
+   *  Defaults to one that succeeds without doing anything; pass a spy
+   *  to assert what was opened, or a thrower to exercise the
+   *  could-not-open path. */
+  readonly openUrl?: (url: string) => Promise<void> | void;
 }): TestCli {
   const managerSeeded =
     spec.credential !== undefined ||
@@ -150,7 +156,9 @@ export function createTestCli(spec: {
       groups: spec.groups ?? {},
       commands: spec.commands,
     },
-    { now: spec.now },
+    /** Waiting is instant under test: browserWait's polling is driven
+     *  by the seeded clock, never by real time. */
+    { now: spec.now, delay: async () => {} },
   );
   return {
     credentialManager,
@@ -204,6 +212,7 @@ export function createTestCli(spec: {
         credentialManager,
         managementApiClientConfig,
         getCredentials: async () => spec.credentials,
+        openUrl: spec.openUrl ?? ((): void => {}),
         managementApi: {
           baseUrl: spec.managementApi?.baseUrl ?? "https://test.invalid",
         },
