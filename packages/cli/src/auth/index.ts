@@ -1,4 +1,14 @@
-export { CLIENT_ID, getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "./client";
+export {
+  CLIENT_ID,
+  DEFAULT_REDIRECT_URI,
+  getApiBaseUrl,
+  getAuthBaseUrl,
+  SERVICE_TOKEN_ENV_VAR,
+} from "./client";
+export {
+  type FetchWorkspaceName,
+  FileCredentialManager,
+} from "./credential-manager";
 export { makeGetCredentials } from "./credentials";
 export {
   workspaceAmbiguousError,
@@ -12,6 +22,7 @@ export {
   performLogin,
   performLogout,
   readAuthState,
+  storeLegacyCredential,
 } from "./operations";
 export {
   RecipientSessionInvalidError,
@@ -19,10 +30,16 @@ export {
   resolveRecipientWorkspaceSession,
 } from "./recipient";
 export {
+  DEPRECATED_STATE_FILE_ENV_VAR,
+  resolveStateFilePath,
+  STATE_FILE_ENV_VAR,
+} from "./state-file";
+export {
   FileTokenStorage,
   type StoredAuthWorkspace,
   WorkspaceSelectionError,
 } from "./token-storage";
+export { fetchWorkspaceName } from "./workspace-name";
 export {
   listAuthWorkspaces,
   logoutAuthWorkspace,

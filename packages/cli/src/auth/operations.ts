@@ -1,8 +1,14 @@
-import type { ManagementApiClient } from "@prisma/management-api-sdk";
+import type { Credential } from "@prisma/cli-engine";
+import type {
+  ManagementApiClient,
+  TokenStorage,
+  Tokens,
+} from "@prisma/management-api-sdk";
 import type { AuthStateResult } from "../types/auth";
+import { claimedExpiresAt, claimedWorkspaceId } from "./claims";
 import { SERVICE_TOKEN_ENV_VAR } from "./client";
 import { authenticatedManagementApiClient } from "./guard";
-import { login } from "./login";
+import { AuthError, login } from "./login";
 import { FileTokenStorage } from "./token-storage";
 
 const WORKSPACE_SUB_PREFIX = "workspace:";
@@ -58,18 +64,69 @@ function workspaceIdFromClaims(claims: Record<string, unknown>): string | null {
   return id.length > 0 ? id : null;
 }
 
+/** Holds the tokens the SDK writes at callback time and nothing else:
+ *  minting and custody stay separate, so a login never writes through
+ *  the credential manager. */
+class ThrowawayTokenStorage implements TokenStorage {
+  tokens: Tokens | null = null;
+
+  async getTokens(): Promise<Tokens | null> {
+    return this.tokens;
+  }
+
+  async setTokens(tokens: Tokens): Promise<void> {
+    this.tokens = tokens;
+  }
+
+  async clearTokens(): Promise<void> {
+    this.tokens = null;
+  }
+}
+
+/** Runs the browser consent flow and RETURNS the minted credential.
+ *  Storing it is the caller's job. */
 export async function performLogin(
   env: NodeJS.ProcessEnv,
   signal?: AbortSignal,
   options?: { onVerificationUrl?: (url: string) => void },
-): Promise<void> {
+): Promise<Credential> {
+  const tokenStorage = new ThrowawayTokenStorage();
   await login({
-    tokenStorage: new FileTokenStorage(env, signal, {
-      activateOnSetTokens: true,
-    }),
+    tokenStorage,
     env,
     signal,
     onVerificationUrl: options?.onVerificationUrl,
+  });
+
+  const tokens = tokenStorage.tokens;
+  if (!tokens) {
+    throw new AuthError("Sign-in finished without producing a credential.");
+  }
+  return {
+    token: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    expiresAt: claimedExpiresAt(tokens.accessToken),
+  };
+}
+
+/** Writes a minted credential into the legacy store, which the legacy
+ *  shell still reads. Dies with the legacy shell. */
+export async function storeLegacyCredential(
+  env: NodeJS.ProcessEnv,
+  credential: Credential,
+  signal?: AbortSignal,
+): Promise<void> {
+  const workspaceId = claimedWorkspaceId(credential.token);
+  if (workspaceId === undefined) return;
+
+  await new FileTokenStorage(env, signal, {
+    activateOnSetTokens: true,
+  }).setTokens({
+    workspaceId,
+    accessToken: credential.token,
+    ...(credential.refreshToken === undefined
+      ? {}
+      : { refreshToken: credential.refreshToken }),
   });
 }
 

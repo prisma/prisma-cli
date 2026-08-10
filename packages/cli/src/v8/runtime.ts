@@ -4,7 +4,19 @@ import {
   loadConfig,
   type Runtime,
 } from "@prisma/cli-engine";
-import { getApiBaseUrl, makeGetCredentials } from "../auth";
+import open from "open";
+import {
+  CLIENT_ID,
+  DEFAULT_REDIRECT_URI,
+  DEPRECATED_STATE_FILE_ENV_VAR,
+  FileCredentialManager,
+  fetchWorkspaceName,
+  getApiBaseUrl,
+  getAuthBaseUrl,
+  makeGetCredentials,
+  resolveStateFilePath,
+  STATE_FILE_ENV_VAR,
+} from "../auth";
 
 export type SignalProcess = Pick<HostProcess, "on" | "off" | "exit">;
 
@@ -37,6 +49,15 @@ export function detectPackageManager(
   return "unknown";
 }
 
+/** PRISMA_COMPUTE_AUTH_FILE still names the credentials file, but
+ *  PRISMA_AUTH_FILE is the supported name. Warned once per process. */
+function warnOnDeprecatedStateFileEnvVar(proc: HostProcess): void {
+  if (!resolveStateFilePath(proc.env).fromDeprecatedEnvVar) return;
+  proc.stderr.write(
+    `${DEPRECATED_STATE_FILE_ENV_VAR} is deprecated; use ${STATE_FILE_ENV_VAR} instead.\n`,
+  );
+}
+
 export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
   const stdin: InputStream = {
     setRawMode:
@@ -47,6 +68,8 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
         : undefined,
     [Symbol.asyncIterator]: () => proc.stdin[Symbol.asyncIterator](),
   };
+  warnOnDeprecatedStateFileEnvVar(proc);
+  const apiBaseUrl = getApiBaseUrl(proc.env);
   return {
     stdout: {
       write: (text) => {
@@ -70,7 +93,20 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
     onSignal: makeOnSignal(proc),
     config: await loadConfig(proc.cwd()),
     getCredentials: makeGetCredentials(proc.env),
-    managementApi: { baseUrl: getApiBaseUrl(proc.env) },
+    credentialManager: new FileCredentialManager({
+      env: proc.env,
+      fetchWorkspaceName: fetchWorkspaceName(apiBaseUrl),
+    }),
+    managementApiClientConfig: {
+      clientId: CLIENT_ID,
+      redirectUri: DEFAULT_REDIRECT_URI,
+      apiBaseUrl,
+      authBaseUrl: getAuthBaseUrl(proc.env),
+    },
+    openUrl: async (url) => {
+      await open(url);
+    },
+    managementApi: { baseUrl: apiBaseUrl },
     packageManager: detectPackageManager(proc.env),
   };
 }

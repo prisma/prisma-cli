@@ -108,6 +108,34 @@ export function environmentSessionMutationError(spec: {
 }
 
 /**
+ * The env var that supplies a session is set to a blank value. The one
+ * structured error for it, raised identically by currentSession(), the
+ * needs check, and the engine's request path.
+ */
+export function emptyServiceTokenError(spec: {
+  readonly envVar: string;
+}): CliStructuredError {
+  return new CliStructuredError(
+    "AUTH.SERVICE_TOKEN_EMPTY",
+    `${spec.envVar} is set but empty.`,
+    {
+      why: `A blank token authenticates nothing, and ${spec.envVar} overrides your stored workspace sessions while it is set.`,
+      nextActions: [
+        {
+          kind: "run-command",
+          label: `Unset ${spec.envVar}`,
+          command: `unset ${spec.envVar}`,
+        },
+        {
+          kind: "user-choice",
+          label: `Or set ${spec.envVar} to a valid service token.`,
+        },
+      ],
+    },
+  );
+}
+
+/**
  * No session exists for the named workspace. Sessions are created by
  * `prisma auth login` alone — `workspace use` selects among the ones
  * you have.

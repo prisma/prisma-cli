@@ -10,13 +10,13 @@
 
 import {
   type CredentialManager,
+  credentialsRequiredError,
   defineCommand,
   type ManagementApiClient,
   type ManagementApiClientConfig,
   type Runtime,
   type Session,
   type TokenStorage,
-  credentialsRequiredError,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { createTestCli, mintTestJwt } from "@prisma/cli-engine/testing";

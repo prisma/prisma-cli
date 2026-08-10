@@ -26,6 +26,7 @@ describe("main export", () => {
       "defineConfigSection",
       "defineServerCommand",
       "defineSessionCommand",
+      "emptyServiceTokenError",
       "environmentSessionMutationError",
       "flag",
       "loadConfig",

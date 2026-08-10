@@ -3,11 +3,23 @@ import path from "node:path";
 
 export const CLIENT_ID = "cmm3lndn701oo0uefvxzo0ivw";
 export const DEFAULT_API_BASE_URL = "https://api.prisma.io";
+export const DEFAULT_AUTH_BASE_URL = "https://auth.prisma.io";
 export const SERVICE_TOKEN_ENV_VAR = "PRISMA_SERVICE_TOKEN";
 export const AUTH_FILE_ENV_VAR = "PRISMA_COMPUTE_AUTH_FILE";
 
+/**
+ * The redirect the OAuth client is registered with. `performLogin`
+ * replaces it with its own ephemeral callback server's port; the
+ * refreshing client never reads it.
+ */
+export const DEFAULT_REDIRECT_URI = "http://localhost/auth/callback";
+
 export function getApiBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
   return env.PRISMA_MANAGEMENT_API_URL?.trim() || DEFAULT_API_BASE_URL;
+}
+
+export function getAuthBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  return env.PRISMA_AUTH_BASE_URL?.trim() || DEFAULT_AUTH_BASE_URL;
 }
 
 export function getAuthFilePath(env: NodeJS.ProcessEnv = process.env): string {
@@ -16,6 +28,12 @@ export function getAuthFilePath(env: NodeJS.ProcessEnv = process.env): string {
     return path.resolve(configured);
   }
 
+  return defaultAuthFilePath(env);
+}
+
+export function defaultAuthFilePath(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): string {
   if (process.platform === "darwin") {
     return path.join(
       os.homedir(),

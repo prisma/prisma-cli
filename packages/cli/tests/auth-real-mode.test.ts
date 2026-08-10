@@ -21,7 +21,11 @@ afterEach(() => {
 
 describe("real auth mode", () => {
   it("uses real auth operations when fixture mode is not enabled", async () => {
-    const performLogin = vi.fn().mockResolvedValue(undefined);
+    const performLogin = vi.fn().mockResolvedValue({
+      token: "real-mode-access-token",
+      refreshToken: undefined,
+      expiresAt: undefined,
+    });
     const readAuthState = vi.fn().mockResolvedValue({
       authenticated: true,
       provider: null,
@@ -77,7 +81,11 @@ describe("real auth mode", () => {
   });
 
   it("stays in mock mode when fixture mode is enabled", async () => {
-    const performLogin = vi.fn().mockResolvedValue(undefined);
+    const performLogin = vi.fn().mockResolvedValue({
+      token: "real-mode-access-token",
+      refreshToken: undefined,
+      expiresAt: undefined,
+    });
     const readAuthState = vi.fn().mockResolvedValue(null);
     const performLogout = vi.fn().mockResolvedValue(undefined);
 

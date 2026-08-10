@@ -9,11 +9,10 @@ import type {
   Char,
   CommandContext,
   CommandFamily,
-  CredentialManager,
-  Session,
   CommandHandler,
   CompletedEnvelope,
   ConfigSection,
+  CredentialManager,
   EngineEvent,
   ErroredEnvelope,
   FlagSpec,
@@ -24,6 +23,7 @@ import type {
   PresentedResult,
   Runtime,
   SectionValidation,
+  Session,
   StreamEvent,
 } from "@prisma/cli-engine";
 import {

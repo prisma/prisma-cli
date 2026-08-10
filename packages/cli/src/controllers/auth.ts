@@ -5,6 +5,7 @@ import {
   performLogout,
   readAuthState,
   SERVICE_TOKEN_ENV_VAR,
+  storeLegacyCredential,
   switchAuthWorkspace,
   type WorkspaceOperationContext,
 } from "../auth";
@@ -64,7 +65,15 @@ export async function runAuthLogin(
   let result: AuthStateResult;
 
   if (isRealMode(context)) {
-    await performLogin(context.runtime.env, context.runtime.signal);
+    const credential = await performLogin(
+      context.runtime.env,
+      context.runtime.signal,
+    );
+    await storeLegacyCredential(
+      context.runtime.env,
+      credential,
+      context.runtime.signal,
+    );
     result = await readAuthState(context.runtime.env, context.runtime.signal);
   } else {
     const useCases = createAuthUseCases(createCliUseCaseGateways(context));
@@ -218,7 +227,15 @@ export async function requireAuthenticatedAuthState(
       throw authRequiredError();
     }
 
-    await performLogin(context.runtime.env, context.runtime.signal);
+    const credential = await performLogin(
+      context.runtime.env,
+      context.runtime.signal,
+    );
+    await storeLegacyCredential(
+      context.runtime.env,
+      credential,
+      context.runtime.signal,
+    );
     return readAuthState(context.runtime.env, context.runtime.signal);
   }
 

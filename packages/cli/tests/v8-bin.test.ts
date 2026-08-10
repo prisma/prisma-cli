@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { makeGetCredentials } from "../src/auth";
+import {
+  CLIENT_ID,
+  DEFAULT_REDIRECT_URI,
+  makeGetCredentials,
+} from "../src/auth";
 import { buildCli } from "../src/v8/cli";
 import { main } from "../src/v8/main";
 import {
@@ -180,6 +184,36 @@ describe("assembleRuntime", () => {
     runtime.stderr.write("err");
     expect(proc.stdoutText).toBe("out");
     expect(proc.stderrText).toBe("err");
+  });
+
+  it("wires the credential manager, the SDK client config, and the browser opener", async () => {
+    const proc = makeProcess({
+      env: {
+        PRISMA_AUTH_FILE: "/tmp/v8-bin-test-auth.json",
+        PRISMA_MANAGEMENT_API_URL: "https://api.example.test",
+      },
+    });
+    const runtime = await assembleRuntime(proc);
+
+    expect(runtime.credentialManager).toBeDefined();
+    expect(runtime.managementApiClientConfig).toEqual({
+      clientId: CLIENT_ID,
+      redirectUri: DEFAULT_REDIRECT_URI,
+      apiBaseUrl: "https://api.example.test",
+      authBaseUrl: "https://auth.prisma.io",
+    });
+    expect(typeof runtime.openUrl).toBe("function");
+    expect(proc.stderrText).toBe("");
+  });
+
+  it("warns once when the credentials file is named by the deprecated variable", async () => {
+    const proc = makeProcess({
+      env: { PRISMA_COMPUTE_AUTH_FILE: "/tmp/v8-bin-test-legacy-auth.json" },
+    });
+    await assembleRuntime(proc);
+
+    expect(proc.stderrText).toContain("PRISMA_COMPUTE_AUTH_FILE is deprecated");
+    expect(proc.stderrText).toContain("PRISMA_AUTH_FILE");
   });
 
   it("derives managementApi.baseUrl from PRISMA_MANAGEMENT_API_URL", async () => {

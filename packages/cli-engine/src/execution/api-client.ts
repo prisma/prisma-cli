@@ -107,9 +107,7 @@ async function constructClient(invocation: Invocation): Promise<{
       binding: { source: "environment" },
     };
   }
-  const { createManagementApiSdk } = await import(
-    "@prisma/management-api-sdk"
-  );
+  const { createManagementApiSdk } = await import("@prisma/management-api-sdk");
   const sdk = createManagementApiSdk({
     clientId: config.clientId,
     redirectUri: config.redirectUri,

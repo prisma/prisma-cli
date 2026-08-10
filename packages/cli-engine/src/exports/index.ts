@@ -59,6 +59,7 @@ export {
   authServiceError,
   type CredentialsRequiredReason,
   credentialsRequiredError,
+  emptyServiceTokenError,
   environmentSessionMutationError,
   noSessionForWorkspaceError,
   serviceTokenRejectedError,

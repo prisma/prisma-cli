@@ -150,6 +150,12 @@ beforeEach(() => {
   vi.mocked(logoutAuthWorkspace).mockReset();
 });
 
+const MINTED_CREDENTIAL = {
+  token: "minted-access-token",
+  refreshToken: "minted-refresh-token",
+  expiresAt: undefined,
+};
+
 describe("prisma-v8 auth login", () => {
   it("runs the browser flow, emits step and endpoint events, and renders the signed-in card", async () => {
     vi.mocked(performLogin).mockImplementation(
@@ -157,6 +163,7 @@ describe("prisma-v8 auth login", () => {
         options?.onVerificationUrl?.(
           "https://auth.prisma.io/activate?code=XYZ",
         );
+        return MINTED_CREDENTIAL;
       },
     );
     vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
@@ -199,7 +206,7 @@ describe("prisma-v8 auth login", () => {
   });
 
   it("appends the agent-setup tip line and next action from a project directory", async () => {
-    vi.mocked(performLogin).mockResolvedValue(undefined);
+    vi.mocked(performLogin).mockResolvedValue(MINTED_CREDENTIAL);
     vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
     const cwd = await emptyTempCwd();
     await writeFile(path.join(cwd, "package.json"), "{}\n", "utf8");
@@ -225,7 +232,7 @@ describe("prisma-v8 auth login", () => {
   });
 
   it("suppresses the agent-setup tip in CI", async () => {
-    vi.mocked(performLogin).mockResolvedValue(undefined);
+    vi.mocked(performLogin).mockResolvedValue(MINTED_CREDENTIAL);
     vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
     const cwd = await emptyTempCwd();
     await writeFile(path.join(cwd, "package.json"), "{}\n", "utf8");
@@ -241,7 +248,7 @@ describe("prisma-v8 auth login", () => {
   });
 
   it("suppresses the agent-setup tip when Prisma skills are already installed", async () => {
-    vi.mocked(performLogin).mockResolvedValue(undefined);
+    vi.mocked(performLogin).mockResolvedValue(MINTED_CREDENTIAL);
     vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
     const cwd = await emptyTempCwd();
     await writeFile(path.join(cwd, "package.json"), "{}\n", "utf8");
@@ -267,7 +274,7 @@ describe("prisma-v8 auth login", () => {
   });
 
   it("carries the agent-setup tip in the json envelope (result field + nextAction)", async () => {
-    vi.mocked(performLogin).mockResolvedValue(undefined);
+    vi.mocked(performLogin).mockResolvedValue(MINTED_CREDENTIAL);
     vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
     const cwd = await emptyTempCwd();
     await writeFile(path.join(cwd, "package.json"), "{}\n", "utf8");
@@ -293,7 +300,7 @@ describe("prisma-v8 auth login", () => {
   });
 
   it("maps an empty PRISMA_SERVICE_TOKEN to AUTH.CONFIG_INVALID, exit 2", async () => {
-    vi.mocked(performLogin).mockResolvedValue(undefined);
+    vi.mocked(performLogin).mockResolvedValue(MINTED_CREDENTIAL);
     vi.mocked(readAuthState).mockRejectedValue(new EmptyServiceTokenError());
 
     const result = await makeCli().run(["auth", "login", "--json"], {
@@ -318,6 +325,7 @@ describe("prisma-v8 auth login", () => {
         options?.onVerificationUrl?.(
           "https://auth.prisma.io/activate?code=XYZ",
         );
+        return MINTED_CREDENTIAL;
       },
     );
     vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);

@@ -48,9 +48,7 @@ export function mintTestJwt(claims: Readonly<Record<string, unknown>>): string {
   return `${encode({ alg: "none", typ: "JWT" })}.${encode(claims)}.test-signature`;
 }
 
-function decodeJwtClaims(
-  token: string,
-): Record<string, unknown> | undefined {
+function decodeJwtClaims(token: string): Record<string, unknown> | undefined {
   const parts = token.split(".");
   if (parts.length < 2) {
     return undefined;

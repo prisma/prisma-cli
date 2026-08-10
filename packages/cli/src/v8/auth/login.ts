@@ -4,6 +4,7 @@ import {
   isEmptyServiceTokenError,
   performLogin,
   readAuthState,
+  storeLegacyCredential,
 } from "../../auth";
 import { CLI_NAME } from "../../cli-name";
 import type { AuthStateResult } from "../../types/auth";
@@ -67,10 +68,11 @@ export const authLoginCommand = defineCommand({
   handler: async (_args, ctx) => {
     ctx.report({ kind: "step-started", step: LOGIN_STEP });
     try {
-      await performLogin(ctx.env, ctx.signal, {
+      const credential = await performLogin(ctx.env, ctx.signal, {
         onVerificationUrl: (url) =>
           ctx.report({ kind: "endpoint", name: "verification", url }),
       });
+      await storeLegacyCredential(ctx.env, credential, ctx.signal);
     } catch (error) {
       ctx.report({
         kind: "step-finished",

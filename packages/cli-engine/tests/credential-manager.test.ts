@@ -220,7 +220,10 @@ describe("the manager-backed needs check", () => {
 
   test("sessions held, none current: the identical single-sourced error from the needs check, ctx.session, and a bare ctx.api touch", async () => {
     const seeds = {
-      sessions: [sessionRecordFor("workspace-1"), sessionRecordFor("workspace-2")],
+      sessions: [
+        sessionRecordFor("workspace-1"),
+        sessionRecordFor("workspace-2"),
+      ],
     };
 
     const fromNeedsCheck = await (async () => {
@@ -239,16 +242,16 @@ describe("the manager-backed needs check", () => {
     const caughtBy = (
       body: (ctx: {
         readonly session: () => Promise<Session | null>;
-        readonly api: { GET: (path: string, opts: unknown) => Promise<unknown> };
+        readonly api: {
+          GET: (path: string, opts: unknown) => Promise<unknown>;
+        };
       }) => Promise<void>,
     ) =>
       defineCommand({
         help: { summary: "Catches the structured error" },
         handler: async (_args, ctx) => {
           try {
-            await body(
-              ctx as unknown as Parameters<typeof body>[0],
-            );
+            await body(ctx as unknown as Parameters<typeof body>[0]);
           } catch (cause) {
             return notOk(cause as CliStructuredError);
           }
@@ -304,8 +307,7 @@ describe("the manager-backed needs check", () => {
   });
 });
 
-const codeOf = (thrown: unknown): string =>
-  (thrown as CliStructuredError).code;
+const codeOf = (thrown: unknown): string => (thrown as CliStructuredError).code;
 
 describe("session mutations and state read-back", () => {
   test("createSession upserts by workspaceId, preserves a recorded name, and sets the marker", async () => {
@@ -350,11 +352,17 @@ describe("session mutations and state read-back", () => {
 
   test("useSession switches the marker; an unknown workspace and an environment-source argument raise AUTH.NO_SESSION_FOR_WORKSPACE", async () => {
     const manager = new TestCredentialManager({
-      sessions: [sessionRecordFor("workspace-1"), sessionRecordFor("workspace-2")],
+      sessions: [
+        sessionRecordFor("workspace-1"),
+        sessionRecordFor("workspace-2"),
+      ],
       currentWorkspaceId: "workspace-1",
     });
     const switched = await manager.useSession(storedSessionRef("workspace-2"));
-    expect(switched).toMatchObject({ workspaceId: "workspace-2", current: true });
+    expect(switched).toMatchObject({
+      workspaceId: "workspace-2",
+      current: true,
+    });
     expect(manager.state().currentWorkspaceId).toBe("workspace-2");
 
     await expect(
@@ -375,7 +383,10 @@ describe("session mutations and state read-back", () => {
 
   test("endSession removes one session and clears the current only when it named it — no auto-promotion", async () => {
     const manager = new TestCredentialManager({
-      sessions: [sessionRecordFor("workspace-1"), sessionRecordFor("workspace-2")],
+      sessions: [
+        sessionRecordFor("workspace-1"),
+        sessionRecordFor("workspace-2"),
+      ],
       currentWorkspaceId: "workspace-1",
     });
     await manager.endSession(storedSessionRef("workspace-1"));
@@ -391,7 +402,10 @@ describe("session mutations and state read-back", () => {
 
   test("endAllSessions clears every session and the marker", async () => {
     const manager = new TestCredentialManager({
-      sessions: [sessionRecordFor("workspace-1"), sessionRecordFor("workspace-2")],
+      sessions: [
+        sessionRecordFor("workspace-1"),
+        sessionRecordFor("workspace-2"),
+      ],
       currentWorkspaceId: "workspace-1",
     });
     await manager.endAllSessions();
@@ -451,9 +465,9 @@ describe("mutations under an env-supplied session", () => {
       userCredential({ workspaceId: "workspace-1" }),
       "workspace-1",
     );
-    expect(manager.state().sessions.map((record) => record.workspaceId)).toEqual(
-      ["workspace-1"],
-    );
+    expect(
+      manager.state().sessions.map((record) => record.workspaceId),
+    ).toEqual(["workspace-1"]);
     expect(await manager.currentSession()).toMatchObject({
       source: "environment",
       workspaceId: "workspace-env",
@@ -462,7 +476,10 @@ describe("mutations under an env-supplied session", () => {
 
   test("sessions() still lists stored sessions with the file's marked current", async () => {
     const manager = new TestCredentialManager({
-      sessions: [sessionRecordFor("workspace-1"), sessionRecordFor("workspace-2")],
+      sessions: [
+        sessionRecordFor("workspace-1"),
+        sessionRecordFor("workspace-2"),
+      ],
       currentWorkspaceId: "workspace-2",
       environmentToken,
     });
@@ -480,7 +497,10 @@ describe("mutations under an env-supplied session", () => {
 describe("process pinning", () => {
   test("the marker moved by another process between reads does not re-pin; a new manager picks up the new marker", async () => {
     const manager = new TestCredentialManager({
-      sessions: [sessionRecordFor("workspace-1"), sessionRecordFor("workspace-2")],
+      sessions: [
+        sessionRecordFor("workspace-1"),
+        sessionRecordFor("workspace-2"),
+      ],
       currentWorkspaceId: "workspace-1",
     });
     expect(await manager.currentSession()).toMatchObject({
@@ -504,7 +524,10 @@ describe("process pinning", () => {
 
   test("this manager's own useSession moves the pin", async () => {
     const manager = new TestCredentialManager({
-      sessions: [sessionRecordFor("workspace-1"), sessionRecordFor("workspace-2")],
+      sessions: [
+        sessionRecordFor("workspace-1"),
+        sessionRecordFor("workspace-2"),
+      ],
       currentWorkspaceId: "workspace-1",
     });
     expect(await manager.currentSession()).toMatchObject({
