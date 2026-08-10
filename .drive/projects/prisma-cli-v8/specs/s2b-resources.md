@@ -101,13 +101,33 @@ deletion (S2d); auto-login reinstatement (ledger Q1); command aliases
 
 ## Acceptance
 
-- [ ] All 31 commands mounted in the v8 bin under groups
+- [x] All 31 commands mounted in the v8 bin under groups
       `project`, `git`, `branch`, `postgres`, `bucket` (+ declared
-      subgroup help), passing R-S2b-9's test matrix.
-- [ ] `postgres` rename complete; no `database` path survives in v8.
-- [ ] Consent matrix proven for every destructive command.
-- [ ] Secrets pipe-clean and masked per R-S2b-4.
-- [ ] Divergence list updated with every R-S2b-1/2/3/5/8 delta.
-- [ ] Legacy fixture tests for ported commands deleted; legacy shell
-      still green for unported groups.
-- [ ] Root verification green; PR ≥1k LOC; review loop run.
+      subgroup help), passing R-S2b-9's test matrix. The mount-coverage
+      test now asserts the literal path list, so a missing command
+      fails it.
+- [x] `postgres` rename complete; no `database` path survives in v8.
+      The three v8 strings that named the old group and left the error
+      mapper's regex to rewrite them were found by the closure pass and
+      now name `postgres` directly.
+- [x] Consent matrix proven for every destructive command — all seven,
+      each matrix non-vacuous, with the success case driving a real
+      API call.
+- [x] Secrets pipe-clean and masked per R-S2b-4. The golden entry added
+      at closure is what joins our `sensitive` flag to the engine's
+      `********`; before it, neither end proved the other.
+- [x] Divergence list updated, 46 entries and a conformance row for
+      every command.
+- [x] Legacy fixture tests for ported commands deleted, unit tests for
+      helpers and providers the new commands still call kept; legacy
+      shell still green for unported groups.
+- [x] Root verification green; PR #133 at roughly +17,700 lines; both
+      the per-dispatch review rounds and the closure architect and
+      principal-engineer passes run, with every finding dispositioned.
+
+Two things this slice records rather than fixes, both for the operator:
+`project list` reports an empty workspace at exit 0 when the API
+rejects the request, which is inherited from the old shell and reaches
+every command that resolves a project by name; and `git connect`
+declares `needs.interaction`, so non-interactive runs fail before any
+API call even when no wait would have been needed.

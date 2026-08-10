@@ -1,5 +1,17 @@
 # S2b mid-slice handover — resume dispatch D2
 
+> **SUPERSEDED 2026-08-11. Do not follow the resume sequence below.**
+> The slice is finished: all 31 commands are built, mounted, tested and
+> recorded, every dispatch review round and the closure architect and
+> principal-engineer passes are closed, and the branch is merged up to
+> `s2a-foundations` with CI green. The work is PR #133. This file is
+> kept as the record of where the slice stood when it changed hands
+> mid-D2, and of the rulings in force at that point — several of which
+> were later amended. For the current state read, in this order: the
+> divergence record `../s2/parity-divergences-s2b.md`, the review
+> artifact `../../reviews/code-review.md`, and the amendment blocks in
+> `../../specs/s2b-design/conventions.md` and `d3-bucket-branch-git.md`.
+
 Written 2026-08-10 by the outgoing orchestrating agent, halted by the
 operator (rate limit). Successor: you are the orchestrator for Drive
 slice s2b-resources under /drive-process. The operator is Will.
