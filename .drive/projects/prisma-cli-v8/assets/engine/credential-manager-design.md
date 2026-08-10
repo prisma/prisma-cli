@@ -1,217 +1,357 @@
-# Credential manager — design (for review)
+# Credential manager — design, revision 2 (normative)
 
-Status: operator-approved direction (2026-08-10), pre-implementation
-design review pending (architect + principal engineer). Amends the v8
-draft on acceptance. Author: orchestrator, from the operator design
-discussion of 2026-08-10.
+Status: operator-adopted (2026-08-10) after pre-implementation design
+review (architect + principal engineer, both accept-with-changes; all
+recommendations adopted). NORMATIVE for the implementation, which
+lands on PR #130 (operator ruling: "we fix it on 130"). Amends the v8
+draft as part of that implementation. Revision 1 is in git history.
 
 ## 1. Why this exists
 
-The engine gives commands two auth surfaces: `ctx.api` (consume the
+The engine gave commands two auth surfaces — `ctx.api` (consume the
 management API) and `ctx.getCredentials` (read the resolved
-credential). Neither models the thing auth commands operate ON — the
-credential machinery itself. The S2a auth-family port exposed the gap:
-every auth command imported around the engine to reach the credential
-store, and the ported surface reproduced the legacy CLI's
-per-workspace credential registry, which contradicts the settled
-premise (draft: "Workspace selection is session state, not a
-credential").
+credential) — and no modeled surface for the thing auth commands
+operate ON: the credential machinery. The S2a auth-family port
+therefore imported around the engine and reproduced the legacy
+per-workspace credential registry, contradicting the settled premise
+(draft: "Workspace selection is session state, not a credential").
+Evidence trail (operator-reviewed): the 17-tool survey (no precedent
+for a same-identity workspace-scoped credential registry; the
+universal model is one identity + workspace as context), and
+control-plane validation (user OAuth tokens are workspace-bound at
+consent; refresh cannot re-scope; the platform's multi-workspace
+authorization primitive `ActorUser` exists and serves Console but not
+OAuth tokens today; the platform is not changing now).
 
-Evidence trail behind the direction (operator-reviewed in full):
+## 2. Ruled outcomes
 
-- A 17-tool survey of developer CLIs found no precedent for a
-  registry of same-identity workspace-scoped credentials with
-  per-workspace login/logout; the universal model is one identity +
-  workspace as context; where scoped access tokens are required they
-  are minted invisibly from one root credential (Azure/MSAL, AWS SSO).
-- Control-plane validation (pdp-control-plane): user OAuth tokens are
-  workspace-bound at consent time (`workspace_id` claim; authz checks
-  the claim); refresh cannot re-scope; the multi-workspace
-  authorization primitive (`ActorUser`) exists and serves Console, but
-  OAuth-issued user tokens do not use it today. Service tokens are
-  narrower still.
-- Operator constraints: the platform's auth systems are not changing
-  now; the settled engine design (one credential) is not changing;
-  the registry surface is dropped.
-
-## 2. Ruled outcomes this design implements
-
-R1 The engine models the credential machinery as a first-class
-   surface named the **credential manager** (operator: "rather than
-   credential store, let's call this thing a manager… the surface we
-   present over it ought to be a bit more user-centric").
-R2 The auth state is a SCALAR: at most one session. Login replaces;
-   there is no registry, no cursor, no per-entry lifecycle.
-R3 The command tree: `auth login`, `auth logout`, `auth whoami`.
-   The `auth workspace` subgroup (`list`/`use`/`logout`) and
-   `auth logout --workspace` are dropped. Switching workspace =
-   `prisma auth login` (re-consent; the consent screen is the
-   workspace picker today). Divergence-list entries accompany.
-R4 Migration: an existing multi-entry legacy store is adopted by its
-   ACTIVE entry only; other entries are ignored (re-login reachable).
+R1 The engine models the machinery as the **credential manager**
+   (user-centric surface over what is a dumb store today).
+R2 Auth state is a SCALAR: at most one session. Login replaces.
+   No registry, no cursor, no per-entry lifecycle.
+R3 Tree: `auth login`, `auth logout`, `auth whoami` only. The
+   `auth workspace` subgroup and `auth logout --workspace` are
+   dropped from the v8 tree. Switching workspace = `prisma auth
+   login` (re-consent; the consent screen is the picker today).
+R4 Migration from the legacy store per the decision table in §7.
+R5 The fix lands on PR #130 (the shipped registry port is reworked,
+   not merged as-is).
 
 ## 3. Entities
 
-**Identity** — who is authenticated. `{ kind: "user"; id: string;
-email?: string }` | `{ kind: "service"; label?: string }`. Derived
-from credential claims/provenance; never independently stored.
+No conditional properties (standing ruling): absent = `T | undefined`,
+required key. All claim-derivable fields are derived by the manager,
+never caller-supplied.
 
-**Credential** — the proof: token material + mechanics.
-`{ token: string; refreshToken?: string; expiresAt?: Date;
-method: "oauth" | "service-token" }`. Machine-facing; `ctx.api` fuel.
-(The engine's current `Credentials { token }` consumer shape is the
-projection of this that request-signing needs.)
+```ts
+type Identity =
+  | { readonly kind: "user"; readonly id: string; readonly email: string | undefined }
+  | { readonly kind: "service"; readonly id: string | undefined; readonly label: string | undefined };
 
-**Session** — the user-centric composite and the manager's primary
-read model: `{ identity: Identity; method: "oauth" | "service-token";
-scope: Scope; expiresAt?: Date }`. At most one. Mostly derivable from
-the credential today; kept distinct because (a) commands speak
-meaning, not material; (b) provenance is session truth the token does
-not carry (env-supplied sessions have no stored credential and refuse
-`endSession`); (c) the future multi-workspace scope adds selection
-state no token encodes.
+interface Credential {
+  readonly token: string;
+  readonly refreshToken: string | undefined;
+  readonly expiresAt: Date | undefined;
+  readonly method: "user-oauth" | "service-token";
+}
 
-**Scope** — what the session reaches:
-`{ workspaces: readonly WorkspaceRef[] }` where `WorkspaceRef =
-{ id: string; name?: string }`. Today exactly one element (the
-consent-time claim). When OAuth tokens route onto the platform's
-`ActorUser` primitive, the set grows — data change, not shape change.
+interface Workspace {           // resolved pair; NOT the id-or-name
+  readonly id: string;          // string users type (that concept is
+  readonly name: string | undefined; // called a ref elsewhere)
+}
+
+interface Session {
+  readonly identity: Identity;
+  readonly method: "user-oauth" | "service-token";
+  readonly origin: "stored" | "environment";
+  readonly workspace: Workspace;
+  readonly expiresAt: Date | undefined;
+}
+```
+
+Notes (review-settled):
+- `Session.origin` is the field that justifies the Session/Credential
+  split: it drives `endSession`'s refusal and lets `whoami` explain an
+  env override. `method` is a different axis (how authenticated) from
+  `identity.kind` (who) — perfectly correlated today, genuinely
+  distinct, will diverge (e.g. a personal access token).
+- There is no `Scope` entity (dissolved in review: the one-element
+  array served neither timeline, and the word collides with OAuth's
+  `scope` claim). Future `ActorUser` routing adds
+  `reachable: readonly Workspace[]` beside `workspace` — additive.
+- `Session` corresponds closely to the platform's own "principal"
+  (`/v1/me`: credential + user + workspace). The user-centric name
+  Session is deliberate (operator ruling); this note is the bridge
+  for readers of both codebases.
+- Identity/workspace/expiry are decoded from JWT claims by the
+  manager (claims only — see §4 boundaries). `name` on Workspace is
+  `undefined` unless an explicit write recorded it; there is no
+  read-path caching.
 
 ## 4. The CredentialManager interface
 
 ```ts
 interface CredentialManager {
-  /** The user-centric truth. Composes environment + stored
-   *  credentials; an env service token wins over a stored OAuth
-   *  credential (today's precedence, preserved). */
+  /** User-centric truth. Local-only: composes env + stored state,
+   *  decodes claims, NEVER touches the network. An env service token
+   *  wins over a stored credential; when both exist, the Session is
+   *  the env one (origin: "environment") and whoami is responsible
+   *  for surfacing the override (§6). */
   session(): Promise<Session | null>;
 
-  /** Login's write. begin/end verbs carry the scalar invariant:
-   *  beginning a session REPLACES any prior one. */
-  beginSession(credential: Credential, identity: Identity, scope: Scope): Promise<Session>;
+  /** Login's write. The manager derives identity, workspace, and
+   *  expiry from the credential's claims — single-argument by review
+   *  ruling, so the stored session can never disagree with its
+   *  token. Replaces any prior session (the scalar invariant lives
+   *  in the begin/end verbs). */
+  beginSession(credential: Credential): Promise<Session>;
 
-  /** Logout. Rejects with a structured error when the active session
-   *  is env-supplied (fix: names the env var to unset). */
+  /** Logout. Local (does not revoke server-side; other processes'
+   *  in-memory access tokens stay valid until expiry — user-facing
+   *  text says so). Clears the ENTIRE stored state (reaps legacy
+   *  orphan entries, §7). Rejects with a structured error when the
+   *  active session is env-supplied; the error's why states whether
+   *  a stored session also exists underneath. */
   endSession(): Promise<void>;
 
-  /** The consumer path (absorbs Runtime.getCredentials). Resolves
-   *  the credential that authorizes a request NOW: returns the
-   *  session's credential, refreshing internally when expired.
-   *  FUTURE SLOT: scope-targeted resolution (mint/exchange) lands
-   *  here as an additive parameter. */
+  /** The consumer path. Resolves the credential that authorizes a
+   *  request NOW; refresh happens inside (§6). Invariant:
+   *  credential() === null  ⟺  session() === null. */
   credential(): Promise<Credential | null>;
+
+  /** The authenticated management API client, constructed and owned
+   *  by the MANAGER (review blockers: the engine must not build a
+   *  half-configured SDK — the real clientId lives with the auth
+   *  module — and no SDK type may appear on this interface beyond
+   *  the engine's existing ManagementApiClient alias). One client,
+   *  one in-process refresh single-flight. */
+  apiClient(): Promise<ManagementApiClient>;
 }
 ```
 
-Custody boundary: the manager never CREATES credentials. Sources are
-(1) the login flow (auth-module machinery: browser, consent, SDK code
-exchange → the token service mints; the command hands the result to
-`beginSession`); (2) refresh (the SDK's refresh exchange with the
-manager as its token storage; rotation persisted internally, invisible
-above); (3) the environment (`PRISMA_SERVICE_TOKEN`, composed at read
-time, never stored); (4, future) scope-targeted exchange inside
-`credential()`.
+Boundaries (review-settled):
+- **Custody, not user interaction**: the manager never opens a
+  browser, never prompts, never talks to the user. (It DOES mint in
+  the narrow senses of refresh and future exchange — the earlier
+  "never creates" phrasing was wrong.) The login FLOW lives beside
+  it: `performLogin` changes shape to RETURN the minted credential
+  (today it persists internally and returns void); the login command
+  hands that credential to `beginSession`.
+- **Claims only, never network**: `session()` on every command's
+  context (see §5) must be safe to call anywhere; enrichment (user
+  display name, workspace name) is `whoami`'s job through `ctx.api`.
+- **Env is a construction input**: the manager receives `env` at
+  construction (like today's `makeGetCredentials(env)`); no library
+  below it may read `process.env` (this retires the
+  `PRISMA_PLATFORM_AUTH_FILE`-vs-`PRISMA_COMPUTE_AUTH_FILE`
+  split-brain: exactly one variable names the auth file, resolved
+  from the injected env; the other is accepted as a deprecated alias
+  with a one-time warning and never wins over an explicit path).
+- **Error raising is single-sourced**: set-but-blank service token →
+  one structured error (the existing AUTH.CONFIG_INVALID content)
+  raised identically from `session()`, `credential()`, and the needs
+  check; unreadable store (EACCES/EPERM) → `CLI.CREDENTIALS_UNREADABLE`;
+  parse-corrupt store → signed out (self-heals on next login), never
+  an exception, never a write.
 
 ## 5. Engine integration
 
-- `Runtime.getCredentials` is REPLACED by `Runtime.credentialManager:
-  CredentialManager` (the bin wires the auth module's implementation
-  over the existing on-disk store; the engine derives everything it
-  previously derived from `getCredentials` via
-  `manager.credential()`):
-  - the `needs.credentials` early check;
-  - `ctx.getCredentials` (kept, as the read-only consumer view);
-  - `ctx.api`'s per-request token source (which restores refresh to
-    the v8 path — the current implementation passes no refresh token
-    and treats 401 as terminal).
-- Write access is DECLARED: `needs: { credentialManager: true }` puts
-  the full manager on the context (`ctx.credentialManager`) for
-  `auth login` / `auth logout` only. All other commands keep the
-  read-only surfaces.
-- `session()` is also exposed read-only on every context
-  (recommendation; open end §8.3) so `whoami` needs no write
-  declaration.
-- Harness: `createTestCli({ session?: Session; credential?:
-  Credential })` seeds an in-memory manager; `login`/`logout` become
-  engine-testable; `whoami` tests seed sessions instead of mocking
-  module internals.
-- Draft amendments on acceptance: §4 (context surfaces), §6
-  (`needs.credentialManager`), §10 (`Runtime.credentialManager`
-  replacing `getCredentials`), §11 (harness seeding).
+- `Runtime.credentialManager: CredentialManager` REPLACES
+  `Runtime.getCredentials`, staged (review ruling — not atomic):
+  1. add `credentialManager` optional; engine prefers it, falls back;
+     bin wires the real manager; harness gains seeding;
+  2. move the needs check + `ctx.api` onto the manager; rework the
+     auth family;
+  3. delete `getCredentials` and fix remaining Runtime literals in
+     one mechanical commit.
+- `ctx.session(): Promise<Session | null>` appears on EVERY context
+  (read-only, local-only — tested to perform no network I/O).
+- `ctx.getCredentials` is DELETED (no handler consumes it; the
+  context ends with fewer auth surfaces than before: `api` +
+  `session`).
+- Write access is a CAPABILITY, not a need (a declaration never
+  fails a run): `changesSession: true` on the command definition puts
+  `ctx.credentialManager` on the context. `auth login`/`auth logout`
+  only. The doc is honest that this is documentation + testability,
+  not enforcement.
+- `ctx.api` becomes a thin lazy proxy over `manager.apiClient()`
+  plus the engine-side error mapping (§6). The engine's placeholder
+  OAuth constants and its SDK construction are deleted.
+- Harness: `createTestCli({ credential?: Credential; session?: Session })`
+  seeds a MUTABLE in-memory manager readable back by tests (login/
+  logout tests observe state changes). Prefer seeding `credential`
+  and letting real derivation run; `session` is the escape hatch.
+  Additional fixture surface (review-required): an injectable
+  refresh/token endpoint so tests script 401 → rotated pair → retry
+  (asserting rotated-refresh persistence), `invalid_grant`
+  (asserting clear + expiry wording), 500/network-throw (asserting
+  credential UNTOUCHED and error is NOT credentials-required), plus
+  one real-filesystem two-process lock test (spawn two node
+  processes, both refresh, exactly one token exchange survives).
+- Draft amendments land with the implementation: §4 (context:
+  session, api; getCredentials gone), §6 (`changesSession`), §10
+  (`Runtime.credentialManager`), §11 (harness seeding + fixtures).
 
-## 6. Runtime flows (normative behaviors)
+## 6. Runtime flows (normative)
 
 **Unauthenticated.** `needs.credentials` → engine fails early with
-`CLI.CREDENTIALS_REQUIRED` (exit 2, sign-in nextAction), handler never
-loads. Bare `ctx.api` touch → the same structured error thrown at
-request time (single constructor). `whoami` → completes, "signed
-out", exit 0. No auto-login anywhere (standing Q1 default).
+`CLI.CREDENTIALS_REQUIRED` (exit 2, sign-in nextAction), handler
+never loads. Bare `ctx.api` touch → the same error (single
+constructor) at request time. `whoami` → completes "signed out",
+exit 0. No auto-login (standing Q1 default).
 
-**Access token expired, refresh alive.** `ctx.api` request → 401 →
-SDK refresh with the manager as token storage, under the existing
-file lock (concurrent CLI processes: one refresher wins, the loser
-re-reads); rotated pair persisted including the rotated refresh
-token; request retried. Consumers never notice; per-request token
-resolution keeps long runs current. The manager MAY refresh
-preemptively off the `exp` claim.
+**Refresh.** Driven by the SDK on 401, with the manager as its
+`TokenStorage` — under the mandatory lock (§8). The manager MUST
+implement `withRefreshLock` (the SDK silently skips locking without
+it) and `clearTokensIfCurrent` (compare-and-clear; without it the
+SDK's invalid-grant path wipes state a concurrent process just
+wrote). Preemptive refresh is PROHIBITED (a second refresher outside
+the SDK's single-flight can spend a rotated refresh token and
+convert an optimization into a false sign-out). Per-request token
+resolution keeps long runs current.
 
-**Refresh dead (true session expiry).** Transient failures (network,
-5xx): surface the API error; do NOT touch the stored credential.
-Definitive rejection (`invalid_grant` / `AuthError.refreshTokenInvalid`):
-the manager clears the dead credential (self-cleaning; no stale-state
-resurrection) and the command settles `CLI.CREDENTIALS_REQUIRED` with
-the `why` phrased as expiry. Same code as unauthenticated; different
-reason text.
+**Refresh failure discrimination.** The SDK's
+`AuthError.refreshTokenInvalid` is `true` ONLY for HTTP 4xx with
+body error exactly `invalid_grant` — the reliable definitive
+trigger. Engine-side mapping (replaces today's map-every-AuthError):
+- `refreshTokenInvalid === true` → `CLI.CREDENTIALS_REQUIRED`,
+  expiry wording ("your session has expired — sign in again"). The
+  SDK has already cleared (compare-and-clear); the manager logs the
+  token-endpoint status + error value at debug level BEFORE the
+  clear so support can distinguish real expiry from a server bug.
+- No credential at all → `CLI.CREDENTIALS_REQUIRED`, unauthenticated
+  wording — raised by the manager's own structured error, not the
+  SDK's synthesized message.
+- Any other auth failure (network, 5xx, other 4xx) → a transient
+  auth-service error, surfaced as such. NOT credentials-required.
+  NOTHING cleared.
+The sign-out decision is thereby the SDK's policy; the SDK version
+is exact-pinned and a test asserts clearing happens on
+`invalid_grant` and on nothing else.
 
-**Service token.** No refresh path. 401 → structured error naming
+**Service token (env).** No refresh. 401 → structured error naming
 `PRISMA_SERVICE_TOKEN` with a Console-pointing fix; nothing cleared.
-Set-but-blank keeps its existing typed error.
+Unset → fall through to stored; set-but-blank or whitespace → the
+single blank-token error (§4). `session()` reports the env session
+(origin "environment"); when a stored session ALSO exists, `whoami`
+surfaces a one-line note that the env var is overriding it.
+
+**Lock contention.** A refresh-lock wait timeout is NOT an engine
+bug: it gets its own structured code, a why naming the lock path
+("another prisma process may be refreshing"), and a next action.
+
+**Debug valve.** Same shape as the telemetry sender's
+(`PRISMA_NEXT_DEBUG`): prints source won (env/stored), resolved auth
+file path, refresh attempted, token-endpoint status + error field,
+lock acquire/release/steal with holder ids. Token material (access,
+refresh, JWTs, even truncated) NEVER appears in any log, error
+message, meta, or envelope — the session read model structurally
+cannot carry it.
 
 ## 6a. Switching sessions
 
-There is no "switch between" stored sessions — at most one exists.
+No "switch between" — at most one session exists. Workspace, same
+identity: `prisma auth login` (re-consent; consent-only with a live
+auth-service browser session). To/from service token: set/unset the
+env var (wins at read time; also the scripts/parallel-terminal
+override). Different identity: log in as the other account. Known
+trade-off (accepted in the product-case ruling): simultaneous
+user-auth work in two workspaces in parallel terminals is not
+served; mitigations are a service token in one terminal, or the
+future ActorUser routing (after which switching never touches
+credentials and `auth workspace use` may return as a pure context
+command — additive).
 
-- **Workspace, same identity**: `prisma auth login` again; re-consent
-  (the consent screen is the picker), the new session replaces the
-  old. With a live auth-service browser session this is
-  consent-only.
-- **To/from a service token**: set/unset `PRISMA_SERVICE_TOKEN` —
-  the env credential wins over the stored session at read time,
-  per-invocation or per-shell, without disturbing the stored
-  session (also the scripts/parallel-terminal override).
-- **Different identity**: log in as the other account; replace. No
-  multi-account registry (a distinct feature, additive later if
-  ever wanted).
-- **Known trade-off**: simultaneous user-auth work in two workspaces
-  in parallel terminals is not served (accepted in the product-case
-  ruling; mitigations: a service token in one terminal, or the
-  future `ActorUser` routing, after which switching never touches
-  credentials).
+## 7. Migration from the legacy store (R4)
 
-## 7. Future direction fit
+Governing rule: **the migration read writes nothing.** The store is
+mutated only by `beginSession`, `endSession`, and refresh.
 
-- OAuth → `ActorUser` routing (platform work, not scheduled): scope
-  becomes multi-element; `auth workspace use` may RETURN as a pure
-  context command writing session state; additive tree change.
-- Token narrowing/minting: `credential()` gains a scope argument;
-  exchange happens inside the manager; nothing above changes.
-- New auth methods: new `Identity.kind` / `Credential.method` values.
+| Legacy store state | Rule |
+| --- | --- |
+| Context file exists, pointer targets an existing entry | Adopt that entry as the session |
+| Context exists, pointer dangles | Signed out. No fallback, no write |
+| Context exists, `activeWorkspaceId: null` | Signed out (legacy's explicit signed-out state) |
+| No context, exactly one entry | Adopt it |
+| No context, multiple entries | Signed out; why explains a legacy multi-workspace store was found and login replaces it |
+| Auth file missing / unparseable / wrong shape | Signed out. Never delete, never rewrite |
 
-## 8. Open ends for the design review
+Ignored legacy entries stay on disk (deleting on read could destroy
+a session the still-installed legacy CLI uses); `endSession` clears
+the entire file, reaping them — first `prisma auth logout` removes
+the orphaned refresh tokens. Divergence-list entry. New writes use
+mode 0600 and tighten looser existing permissions on first write.
 
-1. Verbs: `beginSession`/`endSession` (invariant-carrying) vs plainer
-   `replace`/`clear`. Author recommends begin/end.
-2. Context key: `ctx.credentialManager` (honest, long) — better name
-   welcome; `ctx.auth` rejected as vague.
-3. `session()` on the read-only context for every command (author
-   recommends yes — see §5).
-4. `Identity` display fields (email) from claims vs minimal identity
-   + API enrichment in `whoami`. Author recommends carrying claim
-   fields (offline `whoami` stays useful).
-5. Whether `beginSession` takes (credential, identity, scope) as
-   separate arguments or a single `NewSession` object; the login flow
-   derives identity and scope from the credential's claims — should
-   the MANAGER do that derivation instead (guaranteeing consistency)?
-6. Locking/atomicity contract for the store files under the manager
-   (the legacy machinery's split-brain env vars and read-path writes
-   must not survive the reimplementation).
+## 8. Locking and atomicity contract
+
+- **One file** holds the whole credential state (credential + session
+  metadata). No context sidecar — the split-brain class dies by
+  construction.
+- **One env var** names the auth file, resolved from injected env
+  (§4); the legacy second variable is a warned, deprecated alias.
+- **Writes are atomic**: temp file in the same directory, fsync,
+  rename; mode 0600; whole-state replacement only.
+- **Reads never write** (migration adoption is a pure read; the
+  legacy read-path-write bug class must not recur). Self-cleaning on
+  `invalid_grant` is a STATE TRANSITION (a write path), permitted;
+  opportunistic caching writes on reads are not.
+- **Reads take no lock** (safe via atomic rename: old or new
+  complete state, never partial).
+- **One advisory lock, every mutation**: `beginSession`,
+  `endSession`, refresh all serialize on the same lock file.
+  `withRefreshLock` is implemented (mandatory), so the SDK's refresh
+  runs under it.
+- **Re-entrant within a process** via a held owner token (a nested
+  acquire is a no-op). No per-call-site "don't lock" flags — the
+  legacy `lockSetTokens: false` mechanism does not survive.
+- **Heartbeated**: holder touches the lock every ~5s; stale
+  threshold ≥ 4× heartbeat; the token-exchange HTTP call carries a
+  hard timeout below the stale threshold (a live refresh can never
+  look stale); lock file records pid/hostname/start; steals are
+  debug-logged with both identities.
+- **Every mutation re-reads under the lock**; refresh compares
+  against the credential that failed (the SDK does this given the
+  lock); `clearTokensIfCurrent` clears only on exact match.
+- **Rotation durability**: the rotated pair is persisted (fsync +
+  rename) before the new access token is handed to any caller. The
+  unclosable client-side window (process killed between server
+  rotation and rename) is accepted; recovery is `prisma auth login`.
+
+## 9. Change surface on PR #130 (checklist)
+
+Engine (`packages/cli-engine`): Runtime staged swap (§5);
+`ctx.session`; delete `ctx.getCredentials`; `changesSession`
+capability; api-client.ts reduced to lazy proxy + §6 error mapping
+(delete SDK construction + placeholder constants); draft amendments
+(§4/§6/§10/§11); harness seeding + fixture surface; type-tests.
+
+Auth module (`packages/cli/src/auth`): the manager implementation
+(persistence per §8, migration per §7, SDK construction with the
+real CLIENT_ID, refresh integration); `performLogin` returns the
+credential; the workspace OPERATIONS (`listAuthWorkspaces`,
+`switchAuthWorkspace`, `logoutAuthWorkspace`) REMAIN — the legacy
+shell consumes them until S2d; only their v8 exposure goes.
+
+v8 tree (`packages/cli/src/v8`): delete `auth/workspace-list.ts`,
+`workspace-use.ts`, `workspace-logout.ts`, `workspace-shared.ts`,
+`run-workspace-logout.ts`, and `logout.ts`'s `--workspace` flag;
+rework `login`/`logout` on `ctx.credentialManager` and `whoami` on
+`ctx.session()` + `ctx.api` enrichment; runtime wiring supplies the
+manager.
+
+Docs: rewrite (not append) the auth sections of
+`assets/s2/parity-divergences.md` (dropped subgroup; whoami json
+shape change — the legacy `provider` field has no successor;
+orphan-reaping logout; error-code notes); amend
+`specs/s2a-foundations.md` §3/§4/acceptance (three commands, manager
+exports, erratum note); S2 overview auth rows.
+
+## 10. Review disposition record
+
+Both reviews accept-with-changes; all recommendations adopted
+(operator, 2026-08-10). Open ends resolved: begin/end verbs kept;
+`ctx.credentialManager` kept as the context key with `changesSession`
+as the declaration; `session()` on every context (local-only);
+identity carries claim fields only; `beginSession(credential)`
+single-argument; locking per §8. Naming: provenance field `origin`;
+entity name Session kept with the principal-correspondence note.
