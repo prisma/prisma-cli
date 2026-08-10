@@ -185,6 +185,19 @@ the string, §0-substituted); `meta` verbatim.
 
 ## 3. Per-command design
 
+CONSENT SUPERSESSION (merge-down 2026-08-10): in sections 3.5, 3.6,
+3.10, 3.11 below, IGNORE any `confirm: flag.string(...)` declaration
+and any drafted yes/no "consent question ... pending ratification"
+text — both predate the engine consent-token mechanism. The binding
+form is conventions §5: no flag declaration; at the legacy check's
+position call `ctx.prompt.consent(<the section's pinned confirmation
+why sentence>, { token: <the section's exact id> })`; the engine's
+shared `--confirm` grants non-interactively; the consent test matrix
+is conventions §5's. The sections' summaries/why sentences/rerun
+nextActions/meta notes remain the copy source, except
+`meta.expectedConfirm/receivedConfirm` (engine-owned error now; no
+such meta).
+
 Common to all 11: `needs: { credentials: true }`; command family =
 platform; no events; diagnostics always empty; no documented 4–99
 exit codes (`exitCodes` omitted). Result `data` = the legacy result
