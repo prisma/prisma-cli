@@ -1,51 +1,25 @@
-# The three Windows CI failures on `s2a-foundations`
+# The three Windows CI failures on `s2a-foundations` — resolved
 
-Written 2026-08-10 by the s2b-resources orchestrator. All three are in `packages/cli/tests/credential-manager.test.ts` and belong to the auth stream. They are recorded here rather than fixed because `packages/cli/src/auth/**` is a no-touch boundary for the resources slice, and because fixing them inside PR #133 would mix auth-stream changes into a resource port.
+Written 2026-08-10 by the s2b-resources orchestrator, and updated the same night once the auth stream fixed all three. Kept rather than deleted because one of them was a real concurrency bug and the diagnosis is worth having on the record.
 
-They are pre-existing, not caused by PR #133. The same three, and only these three, fail on `s2a-foundations` itself — verified at its tip 96e5628 and at the two commits before it. PR #133 briefly added a fourth, which is fixed; its Windows job now fails on exactly this set.
+**Current state: all three pass. The Windows job on PR #133 is green.** Nothing here is outstanding.
 
-Two of the three are test-only. **The third is a real defect on Windows** and is the reason this note exists.
+## What was failing
 
-## The real one: the lock takeover is not exclusive on Windows
+Three cases in `packages/cli/tests/credential-manager.test.ts`, all pre-existing rather than caused by PR #133 — the same three, and only these three, failed on `s2a-foundations` itself at its then-tip 96e5628 and the two commits before it. PR #133 briefly added a fourth of its own, which was fixed separately by skipping a case whose Unix-only setup Windows cannot reproduce.
 
-Failing case: "lets only one of two waiting mutations clear the same crashed holder's lock". It asserts that exactly one racer logs a takeover; on Windows both do.
+Two were test-only. "writes the normative shape with mode 0600" and "tightens permissions looser than 0600" ended in an assertion of POSIX permission bits, which Windows has no representation for — Node reports `0o666` whatever `chmod` was asked for, hence CI's "expected 438 to be 384".
 
-The takeover is at `packages/cli/src/auth/state-file.ts:295-302`:
+**The third was a real defect.** "lets only one of two waiting mutations clear the same crashed holder's lock" asserted that exactly one racer takes over a crashed holder's lock; on Windows both did. The takeover rested entirely on the loser's `fs.rename` failing once the winner had moved the lock away — true on POSIX, not true there — so two processes could believe they held the credential lock at once, which is the interleaving the lock exists to prevent.
 
-```ts
-const takenPath = `${lockPath}.${randomUUID()}.stale`;
-try {
-  await fs.rename(lockPath, takenPath);
-} catch {
-  // Someone else took it over, or it was released — go round again
-  return false;
-}
-```
+## How they were fixed
 
-Its correctness rests entirely on the loser's `rename` failing once the winner has moved the lock away. On POSIX that holds: the second rename hits a path that no longer exists and throws. On Windows, both renames reported success, so both processes believed they held the lock — precisely the interleaving the lock exists to prevent.
+By the auth stream, on `s2a-foundations`:
 
-I have not diagnosed the Windows rename semantics that allow it, and I would not want to guess in someone else's concurrency code. What is certain from the failure is that the exclusivity the comment claims does not hold on Windows, so the advisory lock does not prevent a lost update there.
+- The permission assertions are now guarded by a `POSIX_MODES` constant, so they run where the concept exists and are skipped where it does not. Same approach PR #133 took for its own Unix-only case.
+- The real one is `fec6678`, "close the stale-lock takeover race the Windows runner exposed". `rename` cannot be made conditional, so the takeover now confirms afterwards that what it moved aside is the same lock it examined, comparing modification times, and puts it back with `link` — which fails when the path is occupied — if it is not. The exclusivity the lock needs no longer depends on rename semantics that differ by platform.
+- The takeover assertion moved from "exactly one" to "at most one". Worth noting that this does not weaken the defect check: the failure being guarded against was **two** takeovers, which the assertion still catches. It now tolerates zero, which is the race simply not materialising.
 
-Worth noting: the takeover only runs after the staleness threshold, so this needs a crashed holder plus two concurrent mutations. Rare, but the consequence is two processes writing the credential state at once.
+## Why this is recorded
 
-## The two test-only ones
-
-"writes the normative shape with mode 0600" and "tightens permissions looser than 0600" both end in an assertion of POSIX permission bits, for example at `credential-manager.test.ts:128`:
-
-```ts
-expect((await stat(stateFilePath)).mode & 0o777).toBe(0o600);
-```
-
-Windows has no POSIX mode bits. Node reports `0o666` (decimal 438) whatever `chmod` was asked for, which is exactly what CI shows: "expected 438 to be 384". The implementation is not wrong; the assertion cannot hold on that platform.
-
-The fix is to skip the permission assertion on Windows. PR #133 does the same thing for the same reason in `tests/v8-project.test.ts`, where a case needs a directory whose permissions stop a delete:
-
-```ts
-it.skipIf(process.platform === "win32")("…", async () => { … });
-```
-
-Skipping the whole case is right for the two above, since the file-shape assertions they also make are covered elsewhere. Note that this does **not** apply to the lock case — skipping that one would hide a real defect rather than an untestable assertion.
-
-## Why PR #133 cannot go green on Windows by itself
-
-Everything else passes: Lint, Type Check, Test, preview, and `test (ubuntu-latest)`. The Windows job stays red until these land, and they belong to the stream that owns the credential manager.
+The Windows runner exposed a genuine cross-platform concurrency bug in credential storage that no Unix run would have caught, and it was found only because a resources-slice PR made someone read a red Windows job carefully instead of dismissing it as the usual platform noise. That is the argument for keeping the Windows matrix meaningful and for not reaching for a skip before understanding which failures are artifacts and which are real.
