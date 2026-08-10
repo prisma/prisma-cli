@@ -434,15 +434,20 @@ identically, plus:
 3. `PROJECT_AMBIGUOUS` legacy exit 1 → 2.
 4. Env `--role` invalid values: engine enum error replaces
    commander choices error.
-5. 401/403 env API failures: `CLI.CREDENTIALS_REQUIRED` replaces
-   legacy `AUTH_REQUIRED` mapping; `prisma auth login` copy bug does
-   not port.
+5. Legacy `AUTH_REQUIRED` residue from `apiCallError` (403/permission
+   class) maps mechanically to `PROJECT.AUTH_REQUIRED`, exit 2 (§2.1
+   final pin); real credential failures are engine-settled. The
+   `prisma auth login` copy bug does not port.
 6. NextAction `journey` fields dropped.
 7. Rename's "Project create requires a name" copy bug ports
    verbatim (recorded, not fixed).
 8. Warn-diagnostic code for the env preview-default warning is
    `PROJECT.ENV_PREVIEW_DEFAULT_MISSING` (pinned 2026-08-10 after D1
    round 1; operator ratifies via the divergence list).
+9a. The remove/transfer local-pin cleanup warnings carry the
+   already-pinned `PROJECT.LOCAL_STATE_WRITE_FAILED` code at `warn`
+   severity (no new code invented; pinned 2026-08-10 after D1 round
+   2; operator ratifies via the divergence list).
 9. Legacy resolution/env functions taking the shell CommandContext
    are called through the `v8/project/context.ts` runtime-slice
    adapter (cwd/env/signal only, read-surface verified) — accepted

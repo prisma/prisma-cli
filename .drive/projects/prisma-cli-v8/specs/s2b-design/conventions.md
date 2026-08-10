@@ -106,7 +106,9 @@ provider `workspaceId`, plan-limit lookup). `ctx` exposes only
 helper `resolveActiveWorkspace(ctx)` in
 `packages/cli/src/v8/resources-shared/workspace.ts` now calls
 `ctx.session()` and returns the legacy `{ id, name }` workspace shape
-from `workspaceId`/`workspaceName`; a null session behind
+from `workspaceId`/`workspaceName` — `name` falls back to the
+workspace id when the session carries no name (name is a required
+string reaching human output; pinned 2026-08-10); a null session behind
 `needs.credentials` is defensive-only → the ported `AUTH.USAGE_ERROR`
 "Workspace required" (copy unchanged). No handler reads the auth
 module.
