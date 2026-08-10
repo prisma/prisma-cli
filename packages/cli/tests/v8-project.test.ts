@@ -2,11 +2,10 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { ManagementApiClient, StreamEvent } from "@prisma/cli-engine";
-import { createTestCli } from "@prisma/cli-engine/testing";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { CliStructuredError } from "@prisma/cli-engine/protocol";
+import { createTestCli, mintTestJwt } from "@prisma/cli-engine/testing";
+import { describe, expect, it } from "vitest";
 
-import { readAuthState } from "../src/auth";
-import type { AuthStateResult } from "../src/types/auth";
 import { projectCreateCommand } from "../src/v8/project/create";
 import { projectEnvAddCommand } from "../src/v8/project/env-add";
 import { projectEnvListCommand } from "../src/v8/project/env-list";
@@ -16,21 +15,17 @@ import { projectLinkCommand } from "../src/v8/project/link";
 import { projectListCommand } from "../src/v8/project/list";
 import { projectRenameCommand } from "../src/v8/project/rename";
 import { projectShowCommand } from "../src/v8/project/show";
+import { resolveActiveWorkspace } from "../src/v8/resources-shared/workspace";
 
-vi.mock("../src/auth", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/auth")>()),
-  readAuthState: vi.fn(),
-}));
-
-const SIGNED_IN: AuthStateResult = {
-  authenticated: true,
-  provider: null,
-  user: { id: "usr_1", email: "bob@example.com", name: "Bob" },
-  workspace: { id: "ws_1", name: "Acme Inc" },
-  credential: { type: "oauth", id: null, name: null },
+const ACME_SESSION = {
+  workspaceId: "ws_1",
+  workspaceName: "Acme Inc",
+  credential: {
+    token: mintTestJwt({ sub: "usr_1", workspace_id: "ws_1" }),
+    refreshToken: undefined,
+    expiresAt: undefined,
+  },
 };
-
-const NO_WORKSPACE: AuthStateResult = { ...SIGNED_IN, workspace: null };
 
 const API_PROJECTS = [
   {
@@ -91,7 +86,12 @@ function makeCli(client: ManagementApiClient, signedIn = true) {
         brief: "Manage environment variables for the active project",
       },
     },
-    ...(signedIn ? { credentials: { token: "tok_1" } } : {}),
+    ...(signedIn
+      ? {
+          sessions: [ACME_SESSION],
+          currentWorkspaceId: ACME_SESSION.workspaceId,
+        }
+      : {}),
     managementApi: { client },
     now: () => new Date(0),
   });
@@ -124,11 +124,6 @@ function blocks(presented: unknown) {
     | undefined;
   return value?.presentation.human ?? [];
 }
-
-beforeEach(() => {
-  vi.mocked(readAuthState).mockReset();
-  vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
-});
 
 describe("prisma-v8 project list", () => {
   it("lists the workspace projects and reports the linked binding", async () => {
@@ -862,21 +857,45 @@ describe("prisma-v8 project rename", () => {
 });
 
 describe("prisma-v8 project workspace requirement", () => {
-  it("reports the ported workspace-required usage error", async () => {
-    vi.mocked(readAuthState).mockResolvedValue(NO_WORKSPACE);
-    const result = await makeCli(fakeClient()).run(
-      ["project", "list", "--json"],
-      { cwd: await tempCwd() },
-    );
+  it("names the workspace of the engine's pinned session", async () => {
+    const workspace = await resolveActiveWorkspace({
+      session: async () => ({
+        workspaceId: "ws_1",
+        workspaceName: "Acme Inc",
+        expiresAt: undefined,
+        source: "stored" as const,
+        current: true,
+      }),
+    } as never);
 
-    expect(result.exitCode).toBe(2);
-    expect(resultFrame(result.json).envelope).toMatchObject({
-      ok: false,
-      error: {
-        code: "AUTH.USAGE_ERROR",
-        summary: "Workspace required",
-        why: "This command needs an active workspace, but the authenticated session does not have one.",
-      },
+    expect(workspace).toEqual({ id: "ws_1", name: "Acme Inc" });
+  });
+
+  // needs.credentials already fails a signed-out run, so a null session
+  // only reaches the helper defensively.
+  it("reports the ported workspace-required usage error without a session", async () => {
+    let error: CliStructuredError | undefined;
+    try {
+      await resolveActiveWorkspace({ session: async () => null } as never);
+    } catch (thrown) {
+      error = thrown as CliStructuredError;
+    }
+
+    expect(error?.toEnvelope()).toMatchObject({
+      code: "AUTH.USAGE_ERROR",
+      summary: "Workspace required",
+      why: "This command needs an active workspace, but the authenticated session does not have one.",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label: "Run prisma-cli auth login and choose a workspace.",
+        },
+        {
+          kind: "run-command",
+          label: "prisma-cli auth login",
+          command: "prisma-cli auth login",
+        },
+      ],
     });
   });
 });

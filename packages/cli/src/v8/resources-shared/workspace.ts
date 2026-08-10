@@ -1,11 +1,10 @@
 /**
- * The active workspace for resource commands. `ctx` carries credentials
- * but not the workspace they belong to; until `ctx.session()` lands this
- * helper is the single place that reads it from the auth module.
+ * The active workspace for resource commands: the engine's pinned
+ * session, reshaped into the legacy `{ id, name }` workspace the
+ * operation layer takes.
  */
 import type { CommandContext } from "@prisma/cli-engine";
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
-import { readAuthState } from "../../auth";
 import { CLI_NAME } from "../../cli-name";
 import type { AuthWorkspace } from "../../types/auth";
 
@@ -29,9 +28,12 @@ export function workspaceRequiredError(): CliStructuredError {
 export async function resolveActiveWorkspace(
   ctx: CommandContext<undefined, never>,
 ): Promise<AuthWorkspace> {
-  const state = await readAuthState(ctx.env, ctx.signal);
-  if (!state.workspace) {
+  const session = await ctx.session();
+  if (session === null) {
     throw workspaceRequiredError();
   }
-  return state.workspace;
+  return {
+    id: session.workspaceId,
+    name: session.workspaceName ?? session.workspaceId,
+  };
 }
