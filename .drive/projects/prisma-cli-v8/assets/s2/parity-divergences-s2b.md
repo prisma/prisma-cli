@@ -6,11 +6,11 @@ file never duplicates it.
 
 ## D1 — the `project` group
 
-Delivered: `project list|show|create|link|rename`,
-`project env add|update|list|remove` (9 of 11). `project remove` and
-`project transfer` are held for the engine-owned consent-grant flag
-(conventions §5, d1-project.md §3.6/§3.7), so their divergences are
-not recorded yet.
+Delivered: all 11 commands — `project
+list|show|create|link|rename|remove|transfer` and
+`project env add|update|list|remove`. `remove` and `transfer` landed
+in round 2, once the engine's consent tokens arrived
+(conventions §5).
 
 ### Class divergences
 
@@ -64,24 +64,55 @@ not recorded yet.
 13. **`--role` invalid values.** The engine's enum parse failure
     replaces commander's `Allowed choices are production, preview.`
     message.
-14. **401/403 on env API calls.** The legacy `apiCallError` mapped
-    them to `AUTH_REQUIRED` with a `prisma auth login` next step (a
-    copy bug — every other string says `prisma-cli`). In v8 the code
-    is not mapped: SDK auth failures propagate through `ctx.api` and
-    the engine settles `CLI.CREDENTIALS_REQUIRED`. The copy bug does
-    not port.
+14. **The legacy `AUTH_REQUIRED` code maps mechanically to
+    `PROJECT.AUTH_REQUIRED`** (summary, why and next steps verbatim,
+    exit 2 instead of 1). The engine owns every real credentials
+    failure — an expired stored session settles
+    `CLI.CREDENTIALS_REQUIRED` and a rejected env token settles
+    `AUTH.SERVICE_TOKEN_REJECTED`, both before a handler sees them —
+    so what still reaches `apiCallError` is the permission residue, a
+    returned 403, which is not a sign-in problem. The legacy next
+    step's `prisma auth login` copy bug normalizes to
+    `prisma-cli auth login`.
 15. **`project rename` name-validation copy** still reads "Project
     create requires a name" — the legacy copy bug ports verbatim
     (recorded, not fixed).
 16. **Preview-default warning becomes a diagnostic.** The legacy
     `warnings` string on `project env add` (branch scope, key absent
-    from preview) becomes a `warn` diagnostic. Its code
-    `PROJECT.ENV_PREVIEW_DEFAULT_MISSING` is **not pinned by the
-    design** — it needs operator confirmation.
-17. **Env file-mode nextSteps.** The legacy `splitFileNextSteps`
-    comment lines (`# existing keys: …`) become `run-command` actions
-    whose label and command are the comment string, because §4 maps
-    every nextSteps entry uniformly.
+    from preview) becomes a `warn` diagnostic under the code
+    `PROJECT.ENV_PREVIEW_DEFAULT_MISSING` (d1-project.md §4.8; the
+    operator ratifies it through this list). The local-pin warnings
+    of `project remove` and `project transfer` become `warn`
+    diagnostics the same way, under the already-pinned
+    `PROJECT.LOCAL_STATE_WRITE_FAILED`.
+17. **Env file-mode nextSteps.** A `#`-comment line in the legacy
+    `splitFileNextSteps` output is not an action of its own: it
+    becomes the `reason` of the run-command action it introduces, so
+    `# existing keys: "A"` explains the `project env update --file
+    …existing` step rather than standing beside it.
+18. **Legacy shell-context adapter.** The pinned resolution and env
+    functions (`resolveProjectTarget`, `inspectProjectBinding`,
+    `resolveEnvWriteInput`, `runEnvAddFile`, `runEnvUpdateFile`,
+    `cleanupLocalPinForProject`, `rewriteOrClearLocalPinForProject`)
+    take the legacy shell `CommandContext` but read only
+    `runtime.cwd`, `runtime.env` and `runtime.signal`. v8 calls them
+    through the runtime-slice adapter in `v8/project/context.ts`
+    (d1-project.md §4.9) — accepted for this slice; the signature
+    cleanup belongs to S2d, when the legacy shell dies.
+19. **Consent is engine-owned** (conventions §5). `project remove`
+    and `project transfer` declare no `--confirm` flag; the engine
+    injects the shared repeatable one, with the same CLI spelling and
+    the same exact-project-id value. Interactively the user types the
+    project id (there was no prompt at all before). The legacy
+    `CONFIRMATION_REQUIRED` error is gone: a missing or wrong grant is
+    the engine's `CLI.CONSENT_REQUIRED` (exit 2, was exit 2) or
+    `CLI.PROMPT_INVALID`, and its `meta.expectedConfirm` /
+    `meta.receivedConfirm` do not survive. `--yes` never grants
+    consent.
+20. **Transfer's recipient resolution** drops the fixture branch and
+    calls `resolveRecipientWorkspaceSession` directly; the
+    service-token guard, the recipient error mapping and every copy
+    string are unchanged.
 
 ### Error code map
 
@@ -105,29 +136,31 @@ not recorded yet.
 | `ENV_FILE_APPLY_FAILED` | `PROJECT.ENV_FILE_APPLY_FAILED` |
 | `ENV_API_ERROR` | `PROJECT.ENV_API_ERROR` |
 | `PROJECT_API_ERROR` | `PROJECT.API_ERROR` |
+| `PROJECT_REMOVE_BLOCKED` | `PROJECT.REMOVE_BLOCKED` |
+| `PROJECT_TRANSFER_REJECTED` | `PROJECT.TRANSFER_REJECTED` |
+| `TRANSFER_RECIPIENT_REQUIRED` | `PROJECT.TRANSFER_RECIPIENT_REQUIRED` |
+| `TRANSFER_RECIPIENT_UNAVAILABLE` | `PROJECT.TRANSFER_RECIPIENT_UNAVAILABLE` |
+| `WORKSPACE_AMBIGUOUS` / `WORKSPACE_NOT_AUTHENTICATED` | `AUTH.WORKSPACE_AMBIGUOUS` / `AUTH.WORKSPACE_NOT_AUTHENTICATED` |
+| `AUTH_REQUIRED` | `PROJECT.AUTH_REQUIRED` |
 | raw API `error.code` X | `PROJECT.X` |
-| `AUTH_REQUIRED` | not mapped — the engine settles `CLI.CREDENTIALS_REQUIRED` |
 | `FEATURE_UNAVAILABLE` (fixture only) | unreachable in v8 |
 
-The held commands' codes (`PROJECT.REMOVE_BLOCKED`,
-`PROJECT.TRANSFER_REJECTED`, `PROJECT.TRANSFER_RECIPIENT_REQUIRED`,
-`PROJECT.TRANSFER_RECIPIENT_UNAVAILABLE`,
-`PROJECT.CONFIRMATION_REQUIRED`, `PROJECT.LINK_TARGET_REQUIRED`,
-`AUTH.WORKSPACE_NOT_AUTHENTICATED`, `AUTH.WORKSPACE_AMBIGUOUS`) are
-already in the mapper but no delivered command reaches them.
+`PROJECT.CONFIRMATION_REQUIRED` and `PROJECT.LINK_TARGET_REQUIRED`
+remain in the mapper table but are unreachable: the engine's consent
+and prompt errors replace them.
 
 ### Conformance rows
 
 | command | inventory entry | rules applied | divergences |
 | --- | --- | --- | --- |
 | `project list` | `project list` | R-S2b-2, 5, 9, 10; d1 §3.1 | 1, 2, 3, 5, 6, 8, 9 |
-| `project show` | `project show` | R-S2b-2, 5, 9, 10; d1 §3.2 | 1, 2, 3, 5, 9, 12 |
+| `project show` | `project show` | R-S2b-2, 5, 9, 10; d1 §3.2 | 1, 2, 3, 5, 9, 12, 18 |
 | `project create` | `project create` | R-S2b-2, 5, 9, 10; d1 §3.3 | 1, 2, 3, 5, 9 |
 | `project link` | `project link` | R-S2b-2, 5, 6, 9, 10; d1 §3.4 | 1, 2, 3, 5, 9, 11, 12 |
-| `project rename` | `project rename` | R-S2b-2, 5, 9, 10; d1 §3.5 | 1, 2, 3, 5, 9, 15 |
-| `project env add` | `project env add` | R-S2b-2, 5, 9, 10; d1 §3.8 | 1, 2, 3, 4, 5, 9, 13, 14, 16, 17 |
-| `project env update` | `project env update` | R-S2b-2, 5, 9, 10; d1 §3.9 | 1, 2, 3, 4, 5, 9, 13, 14, 17 |
-| `project env list` | `project env list` | R-S2b-2, 5, 9, 10; d1 §3.10 | 1, 2, 3, 4, 5, 8, 9, 13, 14 |
-| `project env remove` | `project env remove` | R-S2b-2, 5, 8, 9, 10; d1 §3.11 | 1, 2, 3, 4, 5, 9, 10, 13, 14 |
-| `project remove` | `project remove` | held (conventions §5) | not yet ported |
-| `project transfer` | `project transfer` | held (conventions §5) | not yet ported |
+| `project rename` | `project rename` | R-S2b-2, 5, 9, 10; d1 §3.5 | 1, 2, 3, 5, 9, 15, 18 |
+| `project env add` | `project env add` | R-S2b-2, 5, 9, 10; d1 §3.8 | 1, 2, 3, 4, 5, 9, 13, 14, 16, 17, 18 |
+| `project env update` | `project env update` | R-S2b-2, 5, 9, 10; d1 §3.9 | 1, 2, 3, 4, 5, 9, 13, 14, 17, 18 |
+| `project env list` | `project env list` | R-S2b-2, 5, 9, 10; d1 §3.10 | 1, 2, 3, 4, 5, 8, 9, 13, 14, 18 |
+| `project env remove` | `project env remove` | R-S2b-2, 5, 8, 9, 10; d1 §3.11 | 1, 2, 3, 4, 5, 9, 10, 13, 14, 18 |
+| `project remove` | `project remove` | R-S2b-2, 3, 5, 9, 10; d1 §3.6 | 1, 2, 3, 5, 9, 16, 18, 19 |
+| `project transfer` | `project transfer` | R-S2b-2, 3, 5, 9, 10; d1 §3.7 | 1, 2, 3, 5, 9, 16, 18, 19, 20 |
