@@ -276,7 +276,7 @@ export function releaseRoutes(overrides: Routes = {}): Routes {
   });
 }
 
-export const SERVICE_GROUPS = {
+const SERVICE_GROUPS = {
   service: { brief: "Manage services and deployments for a project" },
   "service domain": { brief: "Manage custom domains for a service" },
   build: { brief: "Inspect builds created by a git push or Console" },
@@ -296,7 +296,7 @@ export function mountedCommands(groups: readonly string[]): MountedTree {
   );
 }
 
-export const SERVICE_COMMANDS = mountedCommands(["service", "build"]);
+const SERVICE_COMMANDS = mountedCommands(["service", "build"]);
 
 export interface ServiceCliOptions {
   routes?: Routes;

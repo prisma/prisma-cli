@@ -254,7 +254,7 @@ The deploy-only rows this table used to carry went with the command; see "`app d
 
 ### `--no-db` cannot be told apart from "not passed" (RETIRED — was an escalated engine gap)
 
-Retired: this was escalated to the operator as an engine gap and became moot when `service deploy` was dropped, because `--db` was a deploy flag and no shipped command declares it. Kept here so the escalation list reads honestly — six engine gaps went to the operator during this slice, three are now retired (this one, the `prompt.text` validator below, and the log-stream token under dispatch 3), and three are still open.
+Retired: this was escalated to the operator as an engine gap and became moot when `service deploy` was dropped, because `--db` was a deploy flag and no shipped command declares it. Kept here so the escalation list reads honestly — six engine gaps went to the operator during this slice, three are now retired (this one, the `prompt.text` validator below, and the log-stream token under dispatch 3), and three are still open (the `build logs` exit code under dispatch 3, the `agent` group's help examples under dispatch 4, and the crash-recovery feedback action under dispatch 4). All six are marked where they are written, so the count can be checked against the entries.
 
 The engine's boolean flag is two-state with an automatic `--no-<name>`
 negation and a `false` default, so the legacy tri-state (`--db` request /
@@ -522,25 +522,7 @@ and the default endpoint are all unchanged.
   `--agent *`, and the package manager detected from the project.
 - Human output is the engine's summary line plus field rows instead of
   the legacy rail-drawn block. Neither writes a stdout payload.
-- **Help examples lose the package runner, and the command now spells
-  itself two ways.** Legacy rendered the `agent` group's examples
-  through the project's own runner
-  (`resolvePrismaCliPackageCommandFormatterSync`), so help read `pnpm
-  dlx @prisma/cli@latest agent install`. The operator ruling of
-  2026-08-09 on the engine interface says examples are written without
-  the binary name — the engine substitutes `{bin}`, or prepends the CLI
-  name to an example that carries none
-  (`assets/engine/engine-interface-draft.ts`, `HelpSpec.examples`) — so
-  the ported examples are bare (`agent
-  install`). The engine has no way to express the old form: examples are
-  static strings resolved at definition time, and the runner is
-  discovered from the filesystem at run time. The visible consequence is
-  that one command now names itself two ways — help says `agent
-  install`, while the same command's own next action still carries the
-  package-runner form `npx -y @prisma/cli@latest agent status`, because
-  next actions are built at run time and keep legacy's string. Worth
-  settling once, group-wide, alongside the same question for every other
-  ported group; nothing here should diverge on its own.
+- **Help examples lose the package runner, and the command now spells itself two ways (ESCALATED — engine gap).** Legacy rendered the `agent` group's examples through the project's own runner (`resolvePrismaCliPackageCommandFormatterSync`), so help read `pnpm dlx @prisma/cli@latest agent install`. The operator ruling of 2026-08-09 on the engine interface says examples are written without the binary name — the engine substitutes `{bin}`, or prepends the CLI name to an example that carries none (`assets/engine/engine-interface-draft.ts`, `HelpSpec.examples`) — so the ported examples are bare (`agent install`). The engine has no way to express the old form: examples are static strings resolved at definition time, and the runner is discovered from the filesystem at run time. The visible consequence is that one command now names itself two ways — help says `agent install`, while the same command's own next action still carries the package-runner form `npx -y @prisma/cli@latest agent status`, because next actions are built at run time and keep legacy's string. Worth settling once, group-wide, alongside the same question for every other ported group; nothing here should diverge on its own.
 
 ### `agent status`
 

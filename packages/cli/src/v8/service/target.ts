@@ -301,7 +301,7 @@ function isMissingProjectError(error: unknown): boolean {
   return error instanceof Error && error.message === "Resource Not Found";
 }
 
-export async function listServices(
+async function listServices(
   ctx: ServiceContext,
   provider: AppProvider,
   projectId: string,

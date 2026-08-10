@@ -97,6 +97,45 @@ describe("prisma-v8 service domain wait", () => {
     );
   });
 
+  it("spells the failure guidance as a service command, not an app one", async () => {
+    const harness = await makeServiceCli({
+      routes: readFlowRoutes({
+        "GET /v1/apps/{appId}/domains": () => ({
+          data: { data: [domainRecord({ status: "verifying" })] },
+        }),
+        "GET /v1/domains/{domainId}": () => ({
+          data: {
+            data: domainRecord({
+              status: "failed",
+              failureCategory: "dns",
+              failureReason: "CNAME record not found",
+            }),
+          },
+        }),
+      }),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "domain", "wait", "shop.acme.com", ...TARGET_ARGS, "--json"],
+      { cwd: harness.cwd, env: waitEnv(harness.env) },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    // The legacy guidance builder writes "prisma-cli app domain retry".
+    expect(frame.envelope.error.nextActions).toContainEqual({
+      kind: "user-choice",
+      label:
+        "Add CNAME shop.acme.com -> edge.prisma.build, then run prisma-cli service domain retry shop.acme.com.",
+    });
+    expect(JSON.stringify(frame.envelope.error)).not.toContain(
+      "prisma-cli app ",
+    );
+  });
+
   it("polls exactly once with --timeout 0 and settles as a verification timeout", async () => {
     const harness = await makeServiceCli({
       routes: waitRoutes(["pending_dns"]),
