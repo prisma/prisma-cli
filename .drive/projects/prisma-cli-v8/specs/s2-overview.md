@@ -92,6 +92,22 @@ can overrule before the affected dispatch runs.
   engine rules make these 2 (structural) and 3 (cancel). Built to
   engine rules; ratify.
 
+Added during the S2a review loop (2026-08-10, built to the stated
+defaults):
+
+- **Q6 — telemetry docs URL.** The first-run disclosure and telemetry
+  help need this CLI's real telemetry docs page; interim: the existing
+  prisma.io CLI docs URL. Supply the final URL.
+- **Q7 — telemetry config enrichment dropped.** The ORM sender
+  evaluates `prisma-next.config.*` (c12, arbitrary TS in a detached
+  child) for two wire fields; dead in this product, so the port drops
+  the load — `databaseTarget` null, `extensions` empty. Ratify, or
+  rule a `prisma.config.ts`-based replacement (interacts with Q4).
+- **Q8 — disclosure timing.** Events fire at settlement (`onSettled`,
+  per contract); the first-run privacy disclosure prints pre-run so
+  users learn before output, but crashed/killed runs emit nothing
+  (the ORM's preAction timing emitted before the command). Ratify.
+
 ## Definition of done (whole slice)
 
 - Every platform command runs on the engine; the commander shell and
