@@ -35,14 +35,24 @@ export interface WhoamiResult {
   readonly expiresAt: string | null;
 }
 
+/** whoami answers from the credential's own claims, so the lookup is
+ *  worth a moment and no more. ctx.signal only fires on Ctrl-C, and
+ *  nothing else bounds a request: a host that accepts the connection
+ *  and never answers would otherwise hold the command for minutes. */
+const ENRICHMENT_TIMEOUT_MS = 3_000;
+
 /** Best-effort online enrichment: whoami works offline, so any failure
  *  leaves the identity as whatever the credential's own claims said. */
 async function fetchedIdentity(
   api: ManagementApiClient,
   signal: AbortSignal,
 ): Promise<CredentialIdentity | undefined> {
+  const bounded = AbortSignal.any([
+    signal,
+    AbortSignal.timeout(ENRICHMENT_TIMEOUT_MS),
+  ]);
   try {
-    const { data } = await api.GET("/v1/me", { signal });
+    const { data } = await api.GET("/v1/me", { signal: bounded });
     const user = data?.data?.user;
     if (!user) {
       return undefined;

@@ -793,6 +793,49 @@ describe("the environment credential carries no refresh token", () => {
     });
     expect(paths).toEqual(["/v1/me"]);
   });
+
+  /** A host that accepts the connection and never answers is the case
+   *  ctx.signal cannot cover — it only fires on Ctrl-C. Without its own
+   *  deadline the enrichment would hold whoami for as long as the
+   *  runtime's own timeouts allow, which on a CI runner behind a
+   *  black-holing proxy is minutes. */
+  it("gives up on an enrichment that never answers and reports the claims", async () => {
+    server = createServer((request) => {
+      paths.push(request.url ?? "");
+      // Accept, then never respond.
+    });
+    await new Promise<void>((resolve) => {
+      server?.listen(0, "127.0.0.1", () => resolve());
+    });
+    const port = (server.address() as AddressInfo).port;
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const cli = createTestCli({
+      commands: COMMANDS,
+      groups: GROUPS,
+      environmentCredential: environmentCredentialFor(
+        tokenFor("ws_env", { sub: "usr_env" }),
+      ),
+      managementApiClientConfig: {
+        clientId: "test-client-id",
+        redirectUri: `${baseUrl}/auth/callback`,
+        apiBaseUrl: baseUrl,
+        authBaseUrl: baseUrl,
+      },
+      now: () => new Date(0),
+    });
+
+    const startedAt = Date.now();
+    const result = await cli.run(["auth", "whoami", "--json"]);
+    const elapsed = Date.now() - startedAt;
+
+    expect(result.exitCode).toBe(0);
+    expect(resultOf(result)).toMatchObject({
+      source: "environment",
+      user: { id: "usr_env" },
+    });
+    expect(paths).toEqual(["/v1/me"]);
+    expect(elapsed).toBeLessThan(10_000);
+  }, 20_000);
 });
 
 describe("a blank service token is never an override", () => {
