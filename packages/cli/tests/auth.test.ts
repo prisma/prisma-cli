@@ -3,7 +3,7 @@ import path from "node:path";
 import stripAnsi from "strip-ansi";
 import { describe, expect, it } from "vitest";
 
-import { FileTokenStorage } from "../src/auth";
+import { FileTokenStorage } from "../src/auth/token-storage";
 import { createTempCwd, executeCli } from "./helpers";
 
 const fixturePath = path.resolve("fixtures/mock-api.json");

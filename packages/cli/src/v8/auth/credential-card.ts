@@ -1,5 +1,5 @@
 import type { ActiveCredential, CredentialIdentity } from "@prisma/cli-engine";
-import { SERVICE_TOKEN_ENV_VAR } from "../../auth";
+import { SERVICE_TOKEN_ENV_VAR } from "../../auth/client";
 
 export interface FieldRow {
   readonly label: string;

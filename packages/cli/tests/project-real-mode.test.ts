@@ -11,7 +11,7 @@ type ApiGetMock = Mock<
 type ApiMutationMock = Mock<(pathName: string, request?: unknown) => unknown>;
 
 afterEach(() => {
-  vi.doUnmock("../src/auth");
+  vi.doUnmock("../src/auth/operations");
   vi.doUnmock("../src/auth/guard");
   vi.doUnmock("open");
   vi.resetModules();
@@ -261,8 +261,8 @@ describe("real project mode", () => {
       .fn()
       .mockResolvedValue(mockClient());
 
-    vi.doMock("../src/auth", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("../src/auth")>()),
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState,
       performLogin: vi.fn(),
       performLogout: vi.fn(),
@@ -328,8 +328,8 @@ describe("real project mode", () => {
   });
 
   it("resolves an explicit project in real mode", async () => {
-    vi.doMock("../src/auth", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("../src/auth")>()),
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
@@ -404,8 +404,8 @@ describe("real project mode", () => {
       throw new Error(`Unexpected path ${pathName}`);
     });
 
-    vi.doMock("../src/auth", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("../src/auth")>()),
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
@@ -489,8 +489,8 @@ describe("real project mode", () => {
     });
     const post = vi.fn();
 
-    vi.doMock("../src/auth", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("../src/auth")>()),
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
@@ -574,8 +574,8 @@ describe("real project mode", () => {
       throw new Error(`Unexpected path ${pathName}`);
     });
 
-    vi.doMock("../src/auth", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("../src/auth")>()),
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
@@ -686,8 +686,8 @@ describe("real project mode", () => {
       throw new Error(`Unexpected path ${pathName}`);
     });
 
-    vi.doMock("../src/auth", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("../src/auth")>()),
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
@@ -779,8 +779,8 @@ describe("real project mode", () => {
       throw new Error(`Unexpected path ${pathName}`);
     });
 
-    vi.doMock("../src/auth", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("../src/auth")>()),
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
@@ -914,8 +914,8 @@ describe("real project mode", () => {
       throw new Error(`Unexpected path ${pathName}`);
     });
 
-    vi.doMock("../src/auth", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("../src/auth")>()),
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
@@ -984,8 +984,8 @@ describe("real project mode", () => {
     });
     const post = vi.fn();
 
-    vi.doMock("../src/auth", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("../src/auth")>()),
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
@@ -1060,8 +1060,8 @@ describe("real project mode", () => {
     });
     const post = vi.fn();
 
-    vi.doMock("../src/auth", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("../src/auth")>()),
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
@@ -1134,8 +1134,8 @@ describe("real project mode", () => {
       throw new Error(`Unexpected path ${pathName}`);
     });
 
-    vi.doMock("../src/auth", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("../src/auth")>()),
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),

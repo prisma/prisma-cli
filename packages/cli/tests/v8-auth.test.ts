@@ -21,7 +21,7 @@ import {
 } from "@prisma/cli-engine/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { performLogin, storeLegacyCredential } from "../src/auth";
+import { performLogin, storeLegacyCredential } from "../src/auth/operations";
 import { authLoginCommand } from "../src/v8/auth/login";
 import { authLogoutCommand } from "../src/v8/auth/logout";
 import { authWhoamiCommand } from "../src/v8/auth/whoami";
@@ -29,8 +29,8 @@ import { authWorkspaceListCommand } from "../src/v8/auth/workspace-list";
 import { authWorkspaceLogoutCommand } from "../src/v8/auth/workspace-logout";
 import { authWorkspaceUseCommand } from "../src/v8/auth/workspace-use";
 
-vi.mock("../src/auth", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/auth")>()),
+vi.mock("../src/auth/operations", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/auth/operations")>()),
   performLogin: vi.fn(),
   storeLegacyCredential: vi.fn(),
 }));

@@ -5,7 +5,7 @@ import {
   positional,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { environmentCredentialInForce } from "../../auth";
+import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
 import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
 import { requireSession, sessionLabel } from "./session-ref";

@@ -1,4 +1,5 @@
 import {
+  claimedWorkspaceId,
   defineCommand,
   type Presentations,
   type Session,
@@ -8,11 +9,8 @@ import {
   type NextAction,
   ok,
 } from "@prisma/cli-engine/protocol";
-import {
-  claimedWorkspaceId,
-  environmentCredentialInForce,
-  performLogin,
-} from "../../auth";
+import { performLogin } from "../../auth/operations";
+import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
 import { resolveAgentSetupTipCommand } from "./agent-setup-tip";
 import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";

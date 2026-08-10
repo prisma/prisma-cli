@@ -9,17 +9,15 @@ import type {
   TokenStorage,
 } from "@prisma/cli-engine";
 import {
+  claimedExpiresAt,
+  claimedIdentity,
+  claimedWorkspaceId,
   credentialsRequiredError,
+  credentialWorkspaceId,
   credentialWorkspaceMismatchError,
   noSessionForWorkspaceError,
 } from "@prisma/cli-engine";
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
-import {
-  claimedExpiresAt,
-  claimedIdentity,
-  claimedWorkspaceId,
-  serviceTokenWorkspaceId,
-} from "./claims";
 import { environmentServiceToken } from "./service-token";
 import {
   type CredentialState,
@@ -80,7 +78,7 @@ function memoryBackedStorage(
 ): TokenStorage {
   let tokens: Tokens | null = {
     workspaceId:
-      serviceTokenWorkspaceId(credential.token) ?? NO_WORKSPACE_CLAIMED,
+      credentialWorkspaceId(credential.token) ?? NO_WORKSPACE_CLAIMED,
     accessToken: credential.token,
     refreshToken: credential.refreshToken,
   };
@@ -571,7 +569,7 @@ function storedCredential(record: StoredSession): ActiveCredential {
  *  workspace id — never the empty string. */
 function environmentCredential(token: string): ActiveCredential {
   return {
-    workspaceId: serviceTokenWorkspaceId(token),
+    workspaceId: credentialWorkspaceId(token),
     workspaceName: undefined,
     expiresAt: claimedExpiresAt(token),
     identity: claimedIdentity(token),

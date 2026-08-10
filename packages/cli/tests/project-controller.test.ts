@@ -7,7 +7,7 @@ import { createTempCwd, createTestCommandContext } from "./helpers";
 const fixturePath = path.resolve("fixtures/mock-api.json");
 
 afterEach(() => {
-  vi.doUnmock("../src/auth");
+  vi.doUnmock("../src/auth/operations");
   vi.doUnmock("../src/auth/guard");
   vi.doUnmock("../src/lib/app/app-provider");
   vi.resetModules();
@@ -164,8 +164,8 @@ describe("project controller", () => {
       name: "New Dashboard",
     });
 
-    vi.doMock("../src/auth", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("../src/auth")>()),
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: vi.fn().mockResolvedValue({
         authenticated: true,
         provider: null,
@@ -237,8 +237,8 @@ describe("project controller", () => {
       defaultRegion: "us-east-1",
     });
 
-    vi.doMock("../src/auth", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("../src/auth")>()),
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: vi.fn().mockResolvedValue({
         authenticated: true,
         provider: null,
@@ -308,8 +308,8 @@ describe("project controller", () => {
       name: "Interactive Project",
     });
 
-    vi.doMock("../src/auth", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("../src/auth")>()),
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: vi.fn().mockResolvedValue({
         authenticated: true,
         provider: null,
@@ -386,8 +386,8 @@ describe("project controller", () => {
       .fn()
       .mockRejectedValue(new Error("Internal Server Error (HTTP 503)"));
 
-    vi.doMock("../src/auth", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("../src/auth")>()),
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: vi.fn().mockResolvedValue({
         authenticated: true,
         provider: null,
