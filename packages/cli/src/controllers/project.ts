@@ -93,8 +93,8 @@ export interface GitDisconnectOptions {
   project?: string;
 }
 
-const GITHUB_INSTALL_POLL_INTERVAL_MS = 2_000;
-const GITHUB_INSTALL_POLL_TIMEOUT_MS = 120_000;
+export const GITHUB_INSTALL_POLL_INTERVAL_MS = 2_000;
+export const GITHUB_INSTALL_POLL_TIMEOUT_MS = 120_000;
 
 function isRealMode(context: CommandContext): boolean {
   return (
@@ -1517,7 +1517,7 @@ interface ScmRepositoryResponse {
   isPrivate: boolean;
 }
 
-interface InstalledRepositoryMatch {
+export interface InstalledRepositoryMatch {
   installation: ScmInstallationResponse;
   repository: ScmRepositoryResponse;
 }
@@ -1826,7 +1826,7 @@ async function waitForInstalledRepository(
   return { match: null, inspectableInstallationCount };
 }
 
-function readPositiveIntegerEnv(
+export function readPositiveIntegerEnv(
   value: string | undefined,
   fallback: number,
 ): number {
@@ -2186,7 +2186,7 @@ export function repoNotConnectedError(): CliError {
   });
 }
 
-function repoInstallationRequiredError(
+export function repoInstallationRequiredError(
   repository: GitHubRepositoryReference,
   installUrl: string,
   opened: boolean,
@@ -2209,7 +2209,7 @@ function repoInstallationRequiredError(
   });
 }
 
-function repoNotAccessibleError(
+export function repoNotAccessibleError(
   repository: GitHubRepositoryReference,
   installUrl: string,
   opened: boolean,

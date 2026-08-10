@@ -281,22 +281,16 @@ used here for project resolution) apply identically. On top of them:
 ## D3 — the `bucket`, `branch` and `git` groups
 
 Delivered: `bucket list|create|delete`, `bucket key list|create|delete`,
-`branch list`, `git connect` (partial) and `git disconnect`.
+`branch list`, `git connect` and `git disconnect` — all nine commands,
+`git connect` included.
 
-**`git connect` is incomplete.** Steps 1 to 4 and step 6 of d3 §3.8 are
-built; step 5, the wait for the GitHub App installation, is not. Three
-facts §3.8 pins cannot be supplied by the landed `ctx.prompt.browserWait`
-and are with the operator: the poll interval (`BrowserWaitRequest` has no
-interval field — the engine polls on a private 1000 ms constant), the
-poll event sequence (`announceUrl` emits one `endpoint` event and no
-`status` events, and the handler is forbidden from emitting its own), and
-whether the browser opened (`browserWait` discards the `{ opened }` it
-gets from `announceUrl`, so the handler cannot read it — `opened` both
-fills `meta.opened` and selects `REPO_INSTALLATION_REQUIRED`'s fix text).
-Until they are decided, a `git connect` run that finds no installation
-throws from a marked hole in `v8/git/connect.ts` and settles
-`CLI.INTERNAL_ERROR`; nothing was invented in its place. The four legacy
-cases covering that path stay in `project-real-mode.test.ts`.
+`git connect` shipped in two parts. Everything but the wait for the
+GitHub App installation landed first; the wait followed once the operator
+extended the engine (commit c463aa1) with an optional `interval` on
+`BrowserWaitRequest` and an `open-url` kind on `NextAction`, and settled
+the three facts d3 §3.8 had pinned against a helper that could not supply
+them. The four resolutions are recorded as divergences 43 to 45 below and
+in §3.8's STEP 5 RESOLVED block.
 
 ### Divergences
 
@@ -370,12 +364,50 @@ dropped). On top of them:
 41. **`PROJECT_AMBIGUOUS`'s hardcoded `app deploy` next step ports
     verbatim** for `bucket list`, `bucket create` and the git commands, as
     it did in D1. A pre-existing quirk, recorded rather than fixed.
-42. **Install-URL next steps become run-command actions.** The legacy
+42. **Install-URL next steps become `open-url` actions.** The legacy
     `REPO_INSTALLATION_REQUIRED` and `REPO_NOT_ACCESSIBLE` errors put the
-    raw install URL first in `nextSteps`, so the mechanical mapping turns
-    a URL into a `run-command` action whose command is that URL. Recorded
-    for review; it is what conventions §4 pins. (Reachable only once
-    `git connect` step 5 lands.)
+    raw install URL first in `nextSteps`, beside real commands.
+    Conventions §4's mechanical mapping would turn it into a
+    `run-command` whose command is a URL, which tells a consumer to
+    execute it. `NextAction` now has an `open-url` kind and a `url`
+    field, so the git mapper sends a `nextSteps` entry that is a URL to
+    `{ kind: "open-url", label: <the URL>, url: <the URL> }` and leaves
+    command strings on the `run-command` mapping. The URL text is
+    unchanged.
+43. **The install wait moves onto the engine's browser-wait helper.**
+    The legacy handler opened the browser itself, wrote one wait line to
+    stderr and ran its own poll loop. `ctx.prompt.browserWait` now owns
+    all three: it emits one `endpoint` event carrying the wait sentence
+    and the install URL — which is what the single legacy stderr line
+    was — opens the browser, and polls on the engine clock. The handler
+    supplies only the URL, the message, the cadence and the question
+    being polled, and emits no events of its own. The poll question is
+    unchanged: re-list the workspace's GitHub App installations and look
+    for the repository in them.
+44. **`opened` is dropped from the wait's terminal errors.**
+    `browserWait` does not report whether the browser actually opened.
+    Both legacy branches existed to make sure the user still had the
+    install URL when no browser opened, and the engine now always writes
+    the URL, so the distinction has no work left to do.
+    `GIT.REPO_INSTALLATION_REQUIRED` therefore always carries the
+    browser-opened fix text, "Finish installing the GitHub App in the
+    browser, then rerun prisma-cli git connect.", and both terminal
+    errors carry `meta: { repository, installUrl }` — the `opened` key
+    is gone. Which of the two errors is raised is unchanged:
+    `GIT.REPO_NOT_ACCESSIBLE` when at least one installation could be
+    inspected, `GIT.REPO_INSTALLATION_REQUIRED` otherwise.
+45. **The poll cadence is unchanged but now belongs to the engine.**
+    `PRISMA_CLI_GITHUB_INSTALL_POLL_INTERVAL_MS` (default 2000) and
+    `PRISMA_CLI_GITHUB_INSTALL_TIMEOUT_MS` (default 120000) are still
+    read from the environment with the legacy positive-integer parsing —
+    a non-positive or unparseable value falls back to the default — and
+    are passed to `browserWait` as `interval` and `timeout`. The engine
+    raises `CLI.BROWSER_WAIT_TIMEOUT` when the timeout elapses; the
+    handler catches exactly that code and settles the legacy terminal
+    error in its place, so the timeout the user sees is unchanged.
+    Cancelling with Ctrl-C during the wait now settles
+    `CLI.PROMPT_CANCELLED`, exit 3, where the legacy loop aborted with
+    the shell's `COMMAND_CANCELED`, exit 130.
 
 ### Error code maps
 
@@ -412,7 +444,7 @@ dropped). On top of them:
 | `bucket key create` | `bucket key create` | R-S2b-2, 4, 5, 9, 10; d3 §3.5 | 1, 2, 5, 6, 7, 9, 27, 31, 34, 35, 36 |
 | `bucket key delete` | `bucket key delete` | R-S2b-2, 5, 9, 10; d3 §3.6 | 1, 2, 5, 6, 7, 9, 31, 33, 34 |
 | `branch list` | `branch list` | R-S2b-2, 5, 9, 10; d3 §3.7 | 1, 2, 5, 6, 7, 9, 18, 26, 28, 31, 37 |
-| `git connect` (partial) | `git connect` | R-S2b-2, 5, 7, 9, 10; d3 §3.8 | 1, 2, 5, 6, 7, 9, 18, 31, 38, 39, 40, 41, 42 |
+| `git connect` | `git connect` | R-S2b-2, 5, 7, 9, 10; d3 §3.8 | 1, 2, 5, 6, 7, 9, 18, 31, 38, 39, 40, 41, 42, 43, 44, 45 |
 | `git disconnect` | `git disconnect` | R-S2b-2, 5, 9, 10; d3 §3.9 | 1, 2, 5, 6, 7, 9, 18, 31, 39, 40, 41 |
 
 ### Legacy tests deleted
@@ -439,4 +471,11 @@ the two pagination-cursor-stall cases in `project-real-mode.test.ts`,
 which cover `listScmInstallations` and `findRepositoryInInstallation`,
 operation-layer functions v8 calls and does not otherwise cover; and the
 four `project-real-mode.test.ts` cases covering the GitHub App install
-and wait path, because `git connect` step 5 is not ported yet.
+and wait path. Those four were first kept because `git connect` step 5
+was unported. Step 5 has since landed, and three of the four now have v8
+equivalents in `v8-git.test.ts`. They are still here because the legacy
+shell keeps its own `git connect` until S2d, and because one of them —
+the stored installation that answers 404 or 422 and is skipped — covers
+`findRepositoryInInstallations`, an operation-layer function v8 calls and
+does not otherwise exercise. **Flagged for the operator:** deleting the
+other three is defensible now and was not in this dispatch's scope.

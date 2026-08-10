@@ -5,7 +5,8 @@ import {
   type Presentations,
   positional,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
+import type { GitHubRepositoryReference } from "../../adapters/git";
 import {
   parseGitHubRepositoryUrl,
   readGitOriginRemote,
@@ -13,19 +14,110 @@ import {
 import {
   createGitHubInstallIntent,
   findRepositoryInInstallations,
+  GITHUB_INSTALL_POLL_INTERVAL_MS,
+  GITHUB_INSTALL_POLL_TIMEOUT_MS,
+  type InstalledRepositoryMatch,
   listScmInstallations,
   readFirstSourceRepository,
+  readPositiveIntegerEnv,
   repoAlreadyConnectedError,
   repoConnectionApiError,
   repositoryFullNamesMatch,
+  type SourceRepositoryApiClient,
   toRepositoryConnection,
   unsupportedRepositoryProviderError,
 } from "../../controllers/project";
 import { formatGitConnectionDetail } from "../../presenters/project";
 import { usageError } from "../../shell/errors";
 import type { ProjectRepositoryConnectionResult } from "../../types/project";
-import { projectFlag, resolveGitContext } from "./context";
-import { mapGitOperationError } from "./errors";
+import {
+  type GitCommandContext,
+  projectFlag,
+  resolveGitContext,
+} from "./context";
+import { installWaitFailedError, mapGitOperationError } from "./errors";
+
+/** The legacy wait line, printed once before the poll loop. */
+const WAIT_MESSAGE =
+  "Waiting for GitHub App installation or repository access approval...";
+
+/**
+ * The legacy `resolveInstalledRepository`: find the repository in the
+ * workspace's GitHub App installations, and when it is not there yet,
+ * send the user to an install intent and wait for them to finish. The
+ * engine owns the announcement, the browser and the polling clock; this
+ * only supplies the address, the cadence and the question being polled.
+ */
+async function resolveInstalledRepository(
+  ctx: GitCommandContext,
+  api: SourceRepositoryApiClient,
+  workspaceId: string,
+  repository: GitHubRepositoryReference,
+): Promise<InstalledRepositoryMatch> {
+  const inspect = async (signal: AbortSignal) =>
+    findRepositoryInInstallations(
+      api,
+      await listScmInstallations(api, workspaceId, signal),
+      repository,
+      signal,
+    );
+
+  const first = await inspect(ctx.signal);
+  if (first.match) {
+    return first.match;
+  }
+
+  const installUrl = await createGitHubInstallIntent(
+    api,
+    workspaceId,
+    ctx.signal,
+  );
+
+  let match: InstalledRepositoryMatch | null = null;
+  let inspectableInstallationCount = 0;
+
+  try {
+    await ctx.prompt.browserWait({
+      url: installUrl,
+      message: WAIT_MESSAGE,
+      timeout: readPositiveIntegerEnv(
+        ctx.env.PRISMA_CLI_GITHUB_INSTALL_TIMEOUT_MS,
+        GITHUB_INSTALL_POLL_TIMEOUT_MS,
+      ),
+      interval: readPositiveIntegerEnv(
+        ctx.env.PRISMA_CLI_GITHUB_INSTALL_POLL_INTERVAL_MS,
+        GITHUB_INSTALL_POLL_INTERVAL_MS,
+      ),
+      poll: async (signal) => {
+        const lookup = await inspect(signal);
+        match = lookup.match;
+        inspectableInstallationCount = lookup.inspectableInstallationCount;
+        return lookup.match !== null;
+      },
+    });
+  } catch (error) {
+    if (
+      CliStructuredError.is(error) &&
+      error.code === "CLI.BROWSER_WAIT_TIMEOUT"
+    ) {
+      throw installWaitFailedError(
+        repository,
+        installUrl,
+        inspectableInstallationCount,
+      );
+    }
+    throw error;
+  }
+
+  if (match === null) {
+    throw installWaitFailedError(
+      repository,
+      installUrl,
+      inspectableInstallationCount,
+    );
+  }
+  return match;
+}
 
 function connectPresentations(
   result: ProjectRepositoryConnectionResult,
@@ -124,34 +216,12 @@ export const gitConnectCommand = defineCommand({
         );
       }
 
-      const installations = await listScmInstallations(
+      const installed = await resolveInstalledRepository(
+        ctx,
         api,
         target.workspace.id,
-        ctx.signal,
-      );
-      const lookup = await findRepositoryInInstallations(
-        api,
-        installations,
         repository,
-        ctx.signal,
       );
-      if (!lookup.match) {
-        const installUrl = await createGitHubInstallIntent(
-          api,
-          target.workspace.id,
-          ctx.signal,
-        );
-        // TODO(s2b-D3 step 5): the browser wait is unwritten. Three
-        // facts d3-bucket-branch-git.md §3.8 pins cannot be supplied by
-        // the landed ctx.prompt.browserWait — the poll interval, the
-        // poll event sequence, and whether the browser opened (which
-        // selects REPO_INSTALLATION_REQUIRED's fix text and fills
-        // meta.opened). They are with the operator; nothing is invented
-        // here in the meantime.
-        throw new Error(
-          `git connect cannot yet wait for the GitHub App installation at ${installUrl}: the browser-wait mapping is pending an operator decision.`,
-        );
-      }
 
       const { data, error, response } = await api.POST(
         "/v1/source-repositories",
@@ -159,8 +229,8 @@ export const gitConnectCommand = defineCommand({
           body: {
             projectId: target.project.id,
             provider: "github",
-            providerRepositoryId: lookup.match.repository.id,
-            installationId: lookup.match.installation.id,
+            providerRepositoryId: installed.repository.id,
+            installationId: installed.installation.id,
           },
           signal: ctx.signal,
         },

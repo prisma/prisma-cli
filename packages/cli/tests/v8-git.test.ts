@@ -71,6 +71,8 @@ const SCM_REPOSITORY = {
   isPrivate: false,
 };
 
+const INSTALL_URL = "https://github.com/apps/prisma/installations/new";
+
 interface Call {
   readonly method: string;
   readonly path: string;
@@ -89,6 +91,14 @@ interface GitClientSpec {
   readonly calls?: Call[];
   readonly routes?: Readonly<Record<string, Responder>>;
 }
+
+/** The generic fake answers unmatched POSTs with an empty object, so
+ *  the install-intent call needs its own route. */
+const INSTALL_INTENT_ROUTE = {
+  "POST /v1/scm-installations/install-intents": () => ({
+    data: { data: { installUrl: INSTALL_URL } },
+  }),
+};
 
 function apiFailure(status: number, body?: unknown) {
   return {
@@ -147,7 +157,24 @@ function gitClient(spec: GitClientSpec = {}): ManagementApiClient {
   } as unknown as ManagementApiClient;
 }
 
-function makeCli(client: ManagementApiClient, signedIn = true) {
+/** A clock that moves a second every time it is read — what makes the
+ *  install wait's timeout reachable without real waiting. */
+function tickingClock(stepMs = 1000): () => Date {
+  let reads = 0;
+  return () => {
+    reads += 1;
+    return new Date(reads * stepMs);
+  };
+}
+
+interface CliOptions {
+  readonly signedIn?: boolean;
+  readonly now?: () => Date;
+  readonly delay?: (ms: number, signal: AbortSignal) => Promise<void>;
+}
+
+function makeCli(client: ManagementApiClient, options: CliOptions = {}) {
+  const signedIn = options.signedIn ?? true;
   return createTestCli({
     commands: {
       "git connect": gitConnectCommand,
@@ -163,7 +190,8 @@ function makeCli(client: ManagementApiClient, signedIn = true) {
         }
       : {}),
     managementApi: { client },
-    now: () => new Date(0),
+    now: options.now ?? (() => new Date(0)),
+    ...(options.delay === undefined ? {} : { delay: options.delay }),
   });
 }
 
@@ -189,6 +217,14 @@ function resultFrame(frames: ReadonlyArray<{ kind: string }>) {
     throw new Error("expected a terminal result frame");
   }
   return frame as Extract<StreamEvent, { kind: "result" }>;
+}
+
+function errorOf(frames: ReadonlyArray<{ kind: string }>) {
+  const { envelope } = resultFrame(frames);
+  if (envelope.ok) {
+    throw new Error("expected an errored envelope");
+  }
+  return envelope.error;
 }
 
 function blocks(presented: unknown) {
@@ -366,6 +402,171 @@ describe("prisma-v8 git connect", () => {
     });
   });
 
+  it("gives up with GIT.REPO_INSTALLATION_REQUIRED when no installation appears", async () => {
+    const result = await makeCli(
+      gitClient({ installations: [], routes: { ...INSTALL_INTENT_ROUTE } }),
+      { now: tickingClock() },
+    ).run(["git", "connect", REPO_URL, "--json"], {
+      cwd: await pinnedCwd(),
+      isTty: INTERACTIVE,
+      env: { PRISMA_CLI_GITHUB_INSTALL_TIMEOUT_MS: "5000" },
+    });
+
+    expect(result.exitCode).toBe(2);
+    const error = errorOf(result.json);
+    expect(error).toMatchObject({
+      code: "GIT.REPO_INSTALLATION_REQUIRED",
+      summary: "GitHub App installation required",
+      why: "The selected workspace does not have a GitHub App installation that can be used to link prisma/prisma-cli.",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label:
+            "Finish installing the GitHub App in the browser, then rerun prisma-cli git connect.",
+        },
+        { kind: "open-url", label: INSTALL_URL, url: INSTALL_URL },
+        {
+          kind: "run-command",
+          command:
+            "prisma-cli git connect https://github.com/prisma/prisma-cli",
+        },
+      ],
+    });
+    expect(error.meta).toEqual({
+      repository: "prisma/prisma-cli",
+      installUrl: INSTALL_URL,
+    });
+  });
+
+  it("gives up with GIT.REPO_NOT_ACCESSIBLE when an installation cannot see the repository", async () => {
+    const result = await makeCli(
+      gitClient({ repositories: [], routes: { ...INSTALL_INTENT_ROUTE } }),
+      { now: tickingClock() },
+    ).run(["git", "connect", REPO_URL, "--json"], {
+      cwd: await pinnedCwd(),
+      isTty: INTERACTIVE,
+      env: { PRISMA_CLI_GITHUB_INSTALL_TIMEOUT_MS: "5000" },
+    });
+
+    expect(result.exitCode).toBe(2);
+    const error = errorOf(result.json);
+    expect(error).toMatchObject({
+      code: "GIT.REPO_NOT_ACCESSIBLE",
+      summary: "GitHub repository is not accessible",
+      why: "The GitHub App installations connected to this workspace do not expose prisma/prisma-cli.",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label:
+            "Open the GitHub App installation URL, grant access to this repository, then rerun prisma-cli git connect.",
+        },
+        { kind: "open-url", label: INSTALL_URL, url: INSTALL_URL },
+        {
+          kind: "run-command",
+          command:
+            "prisma-cli git connect https://github.com/prisma/prisma-cli",
+        },
+      ],
+    });
+    expect(error.meta).toEqual({
+      repository: "prisma/prisma-cli",
+      installUrl: INSTALL_URL,
+    });
+  });
+
+  it("announces the install URL once and connects when the poll finds the repository", async () => {
+    const calls: Call[] = [];
+    const intervals: number[] = [];
+    let repositoryListCalls = 0;
+    const result = await makeCli(
+      gitClient({
+        calls,
+        routes: {
+          ...INSTALL_INTENT_ROUTE,
+          "GET /v1/scm-installations/{installationId}/repositories": () => {
+            repositoryListCalls += 1;
+            return {
+              data: {
+                data: repositoryListCalls > 2 ? [SCM_REPOSITORY] : [],
+                pagination: { hasMore: false, nextCursor: null },
+              },
+            };
+          },
+        },
+      }),
+      {
+        delay: async (ms) => {
+          intervals.push(ms);
+        },
+      },
+    ).run(["git", "connect", REPO_URL], {
+      cwd: await pinnedCwd(),
+      isTty: INTERACTIVE,
+      env: { PRISMA_CLI_GITHUB_INSTALL_POLL_INTERVAL_MS: "1" },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.events).toEqual([
+      {
+        kind: "endpoint",
+        name: "Waiting for GitHub App installation or repository access approval...",
+        url: INSTALL_URL,
+      },
+    ]);
+    expect(intervals).toEqual([1]);
+    expect(repositoryListCalls).toBe(3);
+    expect(
+      calls.find(
+        (call) =>
+          call.method === "POST" && call.path === "/v1/source-repositories",
+      )?.init.body,
+    ).toMatchObject({ providerRepositoryId: 42, installationId: "scm_1" });
+  });
+
+  it("stops polling at the configured timeout", async () => {
+    let polls = 0;
+    const intervals: number[] = [];
+    const result = await makeCli(
+      gitClient({
+        installations: [],
+        routes: {
+          ...INSTALL_INTENT_ROUTE,
+          "GET /v1/scm-installations": () => {
+            polls += 1;
+            return {
+              data: {
+                data: [],
+                pagination: { hasMore: false, nextCursor: null },
+              },
+            };
+          },
+        },
+      }),
+      {
+        now: tickingClock(),
+        delay: async (ms) => {
+          intervals.push(ms);
+        },
+      },
+    ).run(["git", "connect", REPO_URL, "--json"], {
+      cwd: await pinnedCwd(),
+      isTty: INTERACTIVE,
+      env: { PRISMA_CLI_GITHUB_INSTALL_TIMEOUT_MS: "5000" },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "GIT.REPO_INSTALLATION_REQUIRED" },
+    });
+    // One pre-wait inspection plus a bounded number of polls: the loop
+    // gave up on the 5s env timeout, not the 120s default.
+    expect(polls).toBeGreaterThan(1);
+    expect(polls).toBeLessThan(20);
+    // No interval env var, so the loop asks for the legacy default.
+    expect(new Set(intervals)).toEqual(new Set([2000]));
+  });
+
   it("maps a 409 on the connect call to the already-linked fix text", async () => {
     const result = await makeCli(
       gitClient({
@@ -444,7 +645,7 @@ describe("prisma-v8 git connect", () => {
   });
 
   it("requires credentials", async () => {
-    const result = await makeCli(gitClient(), false).run(
+    const result = await makeCli(gitClient(), { signedIn: false }).run(
       ["git", "connect", REPO_URL, "--json"],
       { cwd: await pinnedCwd(), isTty: INTERACTIVE },
     );
@@ -633,7 +834,7 @@ describe("prisma-v8 git disconnect", () => {
   });
 
   it("requires credentials", async () => {
-    const result = await makeCli(gitClient(), false).run(
+    const result = await makeCli(gitClient(), { signedIn: false }).run(
       ["git", "disconnect"],
       { cwd: await pinnedCwd() },
     );

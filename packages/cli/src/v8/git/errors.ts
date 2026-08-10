@@ -10,6 +10,11 @@
 
 import type { NextAction } from "@prisma/cli-engine/protocol";
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
+import type { GitHubRepositoryReference } from "../../adapters/git";
+import {
+  repoInstallationRequiredError,
+  repoNotAccessibleError,
+} from "../../controllers/project";
 import { CliError } from "../../shell/errors";
 import { mapProjectOperationError, portCommandString } from "../project/errors";
 
@@ -45,16 +50,57 @@ function portFixText(fix: string): string {
     .replace(STALE_INTERACTIVE_SIGN_IN, ".");
 }
 
+/** The install-required and not-accessible errors put the raw install
+ *  URL in their nextSteps beside real commands. A URL is not a command,
+ *  so it becomes an `open-url` action. */
+function nextStepAction(step: string): NextAction {
+  if (step.startsWith("https://") || step.startsWith("http://")) {
+    return { kind: "open-url", label: step, url: step };
+  }
+  const command = portCommandString(step);
+  return { kind: "run-command", label: command, command };
+}
+
 function nextActionsFor(error: CliError): NextAction[] {
   return [
     ...(error.fix
       ? [{ kind: "user-choice" as const, label: portFixText(error.fix) }]
       : []),
-    ...error.nextSteps.map((step) => {
-      const command = portCommandString(step);
-      return { kind: "run-command" as const, label: command, command };
-    }),
+    ...error.nextSteps.map(nextStepAction),
   ];
+}
+
+/** The legacy errors branch their fix text on whether a browser was
+ *  opened. The engine's browser wait always shows the URL, so the
+ *  opened branch is the one that describes what v8 does. */
+const BROWSER_OPENED = true;
+
+/**
+ * The install wait's two terminal outcomes. The legacy constructors own
+ * every copy string; the design drops `opened` from the meta they build
+ * (`browserWait` does not report it and the URL is always shown), so
+ * the structured error is assembled from their fields with the meta
+ * d3 §3.8 pins.
+ */
+export function installWaitFailedError(
+  repository: GitHubRepositoryReference,
+  installUrl: string,
+  inspectableInstallationCount: number,
+): CliStructuredError {
+  const legacy =
+    inspectableInstallationCount > 0
+      ? repoNotAccessibleError(repository, installUrl, BROWSER_OPENED)
+      : repoInstallationRequiredError(repository, installUrl, BROWSER_OPENED);
+
+  return new CliStructuredError(
+    GIT_CODE_MAP[legacy.code] as `${string}.${string}`,
+    legacy.summary,
+    {
+      why: legacy.why ?? undefined,
+      meta: { repository: repository.fullName, installUrl },
+      nextActions: nextActionsFor(legacy),
+    },
+  );
 }
 
 export function mapGitOperationError(
