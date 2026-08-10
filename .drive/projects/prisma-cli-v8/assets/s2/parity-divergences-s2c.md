@@ -100,6 +100,13 @@ unauthenticated runs with the engine's `CLI.CREDENTIALS_REQUIRED`
 
 ### `service domain remove` consent (Q5 class; operator-ruled 2026-08-10)
 
+**SUPERSEDED by the dispatch-2 consent section below.** The ruled end state
+is the global engine-resolved `--confirm <token>` grant (token = the
+hostname), not the command-declared boolean `--confirm` this section
+describes; the boolean is what D1 shipped and it migrates off when the
+engine consent mechanism reaches this branch. The rest of this section
+(prompt text, decline/non-interactive transitions) still holds.
+
 The consent flag changes: legacy `-y/--yes` granted the removal; in
 v8 `--yes` NEVER grants consent (engine rule, pinned by the engine's
 own test), and the documented explicit grant is the new
@@ -187,3 +194,156 @@ Legacy app commands refused to run in fixture mode
 (`FEATURE_UNAVAILABLE` via `ensurePreviewAppMode`). The v8 tree has no
 fixture mode, so the refusal path does not port (fixture machinery
 dies in S2d).
+
+## Dispatch 2 — deploy, promote, rollback, remove
+
+### The rename (R-S2c-1), one entry per command
+
+| Legacy invocation | v8 invocation | Also renamed on this command |
+| --- | --- | --- |
+| `prisma-cli app deploy [app]` | `prisma-cli service deploy [service]` | `--app <name>` → `--service <name>`; `PRISMA_APP_ID` → `PRISMA_SERVICE_ID`; result field `app` → `service`; deploy-all rejection message names `--service` |
+| `prisma-cli app promote <deployment> [app]` | `prisma-cli service promote <deployment> [service]` | `--app` → `--service`; result field `app` → `service`; error copy "App promote requires an existing app" → "Service promote requires an existing service" |
+| `prisma-cli app rollback [app]` | `prisma-cli service rollback [service]` | same, plus "…requires an existing service" |
+| `prisma-cli app remove [app]` | `prisma-cli service remove [service]` | same, plus the confirmation question "…app removal" → `Remove Service "<name>" and every deployment it owns?` |
+
+Command ids follow: `app.deploy` → `service.deploy`, etc.
+
+### Consent (Q5 class; operator-ruled 2026-08-10)
+
+Consent is engine-owned: each consent point declares a token, interactive
+rendering is type-to-confirm, and the global engine-resolved
+`--confirm <value>` grants non-interactively when the value matches the
+token. `--yes` never grants consent anywhere.
+
+| Command | Legacy grant | v8 grant (ruled) | Token |
+| --- | --- | --- | --- |
+| `service remove` | typed app name on a TTY; `-y/--yes` skipped it; non-interactive without `--yes` → `CONFIRMATION_REQUIRED` (exit 1) | `prompt.consent` (type-to-confirm) or global `--confirm <token>` | the service name |
+| `service deploy` (production replace) | `--prod` plus `--yes` or an interactive confirm; cancel exited **0** | `prompt.consent` or global `--confirm <token>`; `--prod` is still required first | the target service name |
+| `service domain remove` | `-y/--yes` | global `--confirm <token>` — **supersedes** D1's boolean `--confirm` entry above | the hostname |
+
+Transitions in all three: declining interactively is a user cancellation
+(exit 3; legacy exited 2 for domain remove, 1 for app remove, and **0** for
+the production deploy cancel — ledger Q5); consent required but not granted
+non-interactively is the engine's `CLI.CONSENT_REQUIRED` (exit 2; legacy
+`CONFIRMATION_REQUIRED` exited 1).
+
+### Error-code mapping (dispatch 2 additions)
+
+| Legacy flat code (exit) | v8 dotted code (exit) | Commands |
+| --- | --- | --- |
+| `DEPLOY_FAILED` (1) | `SERVICE.DEPLOY_FAILED` (2) | deploy, promote, rollback |
+| `BUILD_FAILED` (1) | `SERVICE.BUILD_FAILED` (2) | deploy (build phase) |
+| `REMOVE_FAILED` (1) | `SERVICE.REMOVE_FAILED` (2) | remove |
+| `NO_PREVIOUS_DEPLOYMENT` (1) | `SERVICE.NO_PREVIOUS_DEPLOYMENT` (2) | rollback |
+| `DEPLOYMENT_NOT_FOUND` (1) | `SERVICE.DEPLOYMENT_NOT_FOUND` (2) | promote, rollback |
+| `PROD_DEPLOY_REQUIRES_FLAG` (2) | `SERVICE.PROD_DEPLOY_REQUIRES_FLAG` (2) | deploy |
+| `PROJECT_SETUP_REQUIRED` (1) | `SERVICE.PROJECT_SETUP_REQUIRED` (2) | deploy |
+| `LOCAL_STATE_STALE` (1) | `SERVICE.LOCAL_STATE_STALE` (2) | deploy |
+| `BRANCH_DATABASE_SETUP_FAILED` (1) | `SERVICE.BRANCH_DATABASE_SETUP_FAILED` (2) | deploy `--db` |
+| `BUILD_SETTINGS_MIGRATION_REQUIRED` (2) | `SERVICE.BUILD_SETTINGS_MIGRATION_REQUIRED` (2) | deploy |
+| `FRAMEWORK_NOT_DETECTED` (2) | `SERVICE.FRAMEWORK_NOT_DETECTED` (2) | deploy |
+| `USAGE_ERROR` (2) — `--entry` with a non-entrypoint framework | `SERVICE.ENTRYPOINT_UNSUPPORTED` (2) | deploy |
+| `USAGE_ERROR` (2) — invalid `--http-port` | `SERVICE.HTTP_PORT_INVALID` (2) | deploy |
+| `USAGE_ERROR` (2) — invalid/unknown `--region` | `SERVICE.REGION_INVALID` (2) | deploy |
+| `USAGE_ERROR` (2) — `--region` differs from the existing app's region | `SERVICE.REGION_MISMATCH` (2) | deploy |
+| `USAGE_ERROR` (2) — `--project`/`--create-project`/`PRISMA_PROJECT_ID` together | `SERVICE.PROJECT_INPUTS_AMBIGUOUS` (2) | deploy |
+| `USAGE_ERROR` (2) — per-app inputs in deploy-all | `SERVICE.DEPLOY_ALL_INPUTS_REJECTED` (2) | deploy |
+| `USAGE_ERROR` (2) — "App promote/rollback/remove requires an existing app" | `SERVICE.TARGET_REQUIRED` (2) | promote, rollback, remove |
+| `USAGE_ERROR` (2) — empty `--branch` | `SERVICE.BRANCH_INVALID` (2) | remove |
+| `USAGE_ERROR` (2) — invalid Project name at the setup prompt | `SERVICE.PROJECT_NAME_INVALID` (2) | deploy |
+| `APP_AMBIGUOUS` (2) | engine `CLI.PROMPT_REQUIRED` (2) | deploy — see the picker entry below |
+| `PROJECT_CREATE_FAILED` (1) | `SERVICE.PROJECT_CREATE_FAILED` (2) | deploy `--create-project` |
+
+`SERVICE.PROJECT_SETUP_REQUIRED` still carries the candidate list and the
+suggested project name in `meta`, and `SERVICE.DEPLOY_FAILED` after the
+build carries `meta.phase` / `meta.deploymentId` / `meta.deploymentUrl` with
+a `service logs --deployment <id>` action, exactly as legacy did.
+
+### `service deploy`
+
+- **Progressive stderr rendering becomes events.** Legacy wrote a setup
+  block, a build-settings block, a project-linked line, per-phase progress
+  lines and a database progress line to stderr. v8 emits `step-started` /
+  `step-finished` per phase (`build`, `archive`, `upload`, `deploy`,
+  `promote`, and `branch-database` for `--db`), `status` events for the
+  deployment's own transitions, `endpoint` events for the deployment and
+  live URLs, and `message` events for the setup/link/first-production lines.
+  The resolved build settings are no longer printed mid-run; they are rows
+  of the result presentation and fields of the json result
+  (`deploySettings`, unchanged in shape).
+- **Ambiguous service name.** Legacy prompted on a TTY and errored with
+  `APP_AMBIGUOUS` (candidates in `meta`) otherwise. v8 prompts through the
+  engine, so a non-interactive run settles with the structural
+  `CLI.PROMPT_REQUIRED` and the candidate list is no longer carried
+  (same rule as D1's service picker, R-S2b-6).
+- **Unlinked directory.** Legacy prompted only when `canPrompt && !--yes`
+  and otherwise raised `PROJECT_SETUP_REQUIRED`. v8 always offers the engine
+  prompt; when the prompt cannot be operated the run settles with
+  `SERVICE.PROJECT_SETUP_REQUIRED` (candidates + suggested name preserved),
+  so the agent-facing error is unchanged even though the interactive gate
+  moved into the engine.
+- **`--no-db` cannot be told apart from "not passed" (engine gap).** The
+  engine's boolean flag is two-state with an automatic `--no-<name>`
+  negation and a `false` default, so the legacy tri-state (`--db` request /
+  `--no-db` opt out / absent = prompt when a database signal is found) is
+  not expressible. v8 ships `--db` as the explicit request; both absent and
+  `--no-db` take the signal-driven prompt path, whose default answer is No
+  (so a non-interactive `--no-db` still skips setup). The legacy
+  "passing both → USAGE_ERROR" check disappears with the flag pair, and so
+  does "Database setup requires --yes in non-interactive mode" — `--db`
+  is itself the explicit request. Flagged for the operator: the engine needs
+  a declarable tri-state (or non-negatable) boolean before this is parity.
+- **The `--db` prompt's suppression advice is now emitted whenever the
+  answer is No**, not only when the run could not ask: handlers do not see
+  interactivity (the ruled `ctx.interactive` fact has not landed), so
+  "declined" and "could not ask" are indistinguishable.
+- **The agent-setup prompt does not port.** Legacy `app deploy` called
+  `maybePromptForAgentSetup` before resolving the Project (an agent-file
+  setup tip, with its own dismissal state). The `agent *` group is a later
+  dispatch; v8 deploy asks nothing about agent setup and emits no warning
+  for it.
+- **Deploy-all**: unchanged in behavior (sequential targets, `--create-project`
+  binds the first target only, per-service inputs rejected, failures carry
+  `meta.deployAll.{failedTarget,completed,notAttempted}`). The legacy
+  `── target (1/2) ──` stderr header becomes a `step-started`/`step-finished`
+  pair whose `id` is the target key and whose `data` carries index/total.
+- **Fixture-mode refusal** does not port (as recorded for D1).
+
+### `service promote` / `service rollback`
+
+- The already-live short-circuit is unchanged, but the legacy `warnings`
+  array becomes an engine warn diagnostic
+  (`SERVICE.DEPLOYMENT_ALREADY_LIVE`), and no promote call or step events
+  are emitted in that case.
+- The SDK's promote progress lines become `status` events for the target
+  deployment (`starting` → `start-requested` → the SDK's own status values →
+  `running` → `promoting` → `promoted`) plus an `endpoint` event for the
+  promoted URL, bracketed by a `promote` / `rollback` step.
+- **`service rollback` still has no confirmation** — production-affecting
+  and unconfirmed, ported as-is for parity. Flagged for the operator: with
+  consent becoming engine-owned, rollback is the obvious next consent point
+  (token = the target deployment id), but adding one is a product decision,
+  not a port decision.
+
+### `service remove`
+
+- The SDK's internal teardown polling becomes `progress` events
+  (`stop-deployments`, `delete-deployments`, each with completed/total) and
+  a `status` event (`removing` → `deleted`), bracketed by a `remove` step.
+  This required an additive `progress` pass-through on the operation layer's
+  `removeApp` (`packages/cli/src/lib/app/app-provider.ts`); legacy callers
+  are unaffected.
+- Local state cleanup failures become warn diagnostics
+  (`SERVICE.LOCAL_STATE_CLEANUP_FAILED`) instead of the legacy `warnings`
+  array; the removal still succeeds.
+
+### Result shape changes (dispatch 2)
+
+- `verboseContext` is dropped on all four commands (S2 ruling 7, as recorded
+  for D1).
+- Result field `app` → `service` on every result; the deploy result's
+  `deploySettings`, `branchDatabase`, `localPin`, `promoted` and `durationMs`
+  fields keep their legacy shapes.
+- Legacy `warnings` (deploy's agent-setup/legacy-build-settings/database
+  advice, promote's already-live note, remove's cleanup failures) become
+  engine diagnostics on the completed envelope.
