@@ -97,6 +97,31 @@ export function credentialRejectedError(
 }
 
 /**
+ * A credential's workspace_id claim disagrees with the workspace it is
+ * being stored under, or a rotated token would re-scope a session.
+ * Raised by every CredentialManager, so a test sees what production
+ * raises.
+ */
+export function credentialWorkspaceMismatchError(
+  workspaceId: string,
+): CliStructuredError {
+  return new CliStructuredError(
+    "AUTH.CREDENTIAL_WORKSPACE_MISMATCH",
+    "That credential belongs to a different workspace.",
+    {
+      why: `The token's workspace_id claim does not name workspace '${workspaceId}'.`,
+      nextActions: [
+        {
+          kind: "run-command",
+          label: "Sign in again and pick the workspace you want",
+          command: "prisma auth login",
+        },
+      ],
+    },
+  );
+}
+
+/**
  * The env var that supplies a session is set to a blank value. The one
  * structured error for it, raised identically by currentSession(), the
  * needs check, and the engine's request path.

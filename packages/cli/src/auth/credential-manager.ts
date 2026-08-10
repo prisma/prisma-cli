@@ -10,6 +10,7 @@ import type {
 } from "@prisma/cli-engine";
 import {
   credentialsRequiredError,
+  credentialWorkspaceMismatchError,
   noSessionForWorkspaceError,
 } from "@prisma/cli-engine";
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
@@ -65,25 +66,6 @@ type Pin =
   | { readonly kind: "none" };
 
 type ResolvedPin = Exclude<Pin, { readonly kind: "unresolved" }>;
-
-function credentialWorkspaceMismatchError(
-  workspaceId: string,
-): CliStructuredError {
-  return new CliStructuredError(
-    "AUTH.CREDENTIAL_WORKSPACE_MISMATCH",
-    "That credential belongs to a different workspace.",
-    {
-      why: `The token's workspace_id claim does not name workspace '${workspaceId}'.`,
-      nextActions: [
-        {
-          kind: "run-command",
-          label: "Sign in again and pick the workspace you want",
-          command: "prisma auth login",
-        },
-      ],
-    },
-  );
-}
 
 /**
  * The memory-backed storage, for a credential with no home record: a

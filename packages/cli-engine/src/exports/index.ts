@@ -59,6 +59,7 @@ export {
   type CredentialsRequiredReason,
   credentialRejectedError,
   credentialsRequiredError,
+  credentialWorkspaceMismatchError,
   emptyServiceTokenError,
   noSessionForWorkspaceError,
   serviceTokenRejectedError,

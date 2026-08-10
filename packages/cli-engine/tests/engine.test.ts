@@ -24,6 +24,7 @@ describe("main export", () => {
       "createCli",
       "credentialRejectedError",
       "credentialWorkspaceId",
+      "credentialWorkspaceMismatchError",
       "credentialsRequiredError",
       "defineCommand",
       "defineCommandFamily",

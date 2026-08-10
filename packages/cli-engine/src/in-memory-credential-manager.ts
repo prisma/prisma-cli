@@ -1,15 +1,22 @@
 /**
  * A complete CredentialManager whose state lives in memory rather than
  * in a file. It implements the same rules as the file-backed one — the
- * pinned decision, upsert by workspace, idempotent removal, and the two
- * token storages — and adds a seed and a state read-back. Tests are
- * what it is mostly used for, which is why it ships from the ./testing
- * subpath alongside the JWT minter that produces tokens to seed it, but
- * nothing about it is a stub.
+ * pinned decision, upsert by workspace, idempotent removal, in-process
+ * single-flight refresh, and the two token storages — and adds a seed
+ * and a state read-back. Tests are what it is mostly used for, which is
+ * why it ships from the ./testing subpath alongside the JWT minter that
+ * produces tokens to seed it, but nothing about it is a stub.
+ *
+ * One rule it cannot carry: the blank-PRISMA_SERVICE_TOKEN refusal
+ * belongs to the file-backed manager, which reads the variable. This
+ * one is handed a credential, so a blank value has no representation
+ * here. That rule is covered end to end through the real environment
+ * in the CLI's own tests.
  */
 import { Buffer } from "node:buffer";
 import {
   credentialsRequiredError,
+  credentialWorkspaceMismatchError,
   noSessionForWorkspaceError,
 } from "./credential-errors";
 import type {
@@ -107,7 +114,10 @@ function environmentActiveCredential(credential: Credential): ActiveCredential {
  * credential whose workspace matches a stored session therefore cannot
  * delete that session.
  */
-function memoryBackedStorage(credential: Credential): TokenStorage {
+function memoryBackedStorage(
+  credential: Credential,
+  singleFlight: <T>(fn: () => Promise<T>) => Promise<T>,
+): TokenStorage {
   let tokens: Tokens | null = {
     workspaceId:
       credentialWorkspaceId(credential.token) ?? NO_WORKSPACE_CLAIMED,
@@ -122,7 +132,7 @@ function memoryBackedStorage(credential: Credential): TokenStorage {
     clearTokens: async () => {
       tokens = null;
     },
-    withRefreshLock: (fn) => fn(),
+    withRefreshLock: (fn) => singleFlight(fn),
   };
 }
 
@@ -143,6 +153,10 @@ type Pin =
  * own tests.
  */
 export class InMemoryCredentialManager implements CredentialManager {
+  /** §6 requires the refresh hook to serialise within a process. The
+   *  file-backed manager runs this same queue; a harness that let two
+   *  refreshes through would pass a test production would fail. */
+  #refreshLock: Promise<unknown> = Promise.resolve();
   private storedSessions: SessionRecord[];
   private selection: string | undefined;
   private readonly environmentCredential: Credential | undefined;
@@ -162,6 +176,15 @@ export class InMemoryCredentialManager implements CredentialManager {
       }
       this.applyCreateSession(seed.credential, workspaceId);
     }
+  }
+
+  #singleFlight<T>(fn: () => Promise<T>): Promise<T> {
+    const queued = this.#refreshLock.then(fn, fn);
+    this.#refreshLock = queued.then(
+      () => undefined,
+      () => undefined,
+    );
+    return queued;
   }
 
   state(): InMemoryCredentialManagerState {
@@ -244,7 +267,9 @@ export class InMemoryCredentialManager implements CredentialManager {
   private buildActiveStorage(): TokenStorage {
     const pin = this.pin;
     if (pin.kind === "environment") {
-      return memoryBackedStorage(this.requireEnvironmentCredential());
+      return memoryBackedStorage(this.requireEnvironmentCredential(), (fn) =>
+        this.#singleFlight(fn),
+      );
     }
     if (pin.kind === "session") {
       return this.storedSessionStorage(pin.workspaceId);
@@ -281,9 +306,7 @@ export class InMemoryCredentialManager implements CredentialManager {
         }
         const claimed = claimedWorkspaceId(tokens.accessToken);
         if (claimed !== undefined && claimed !== workspaceId) {
-          throw new Error(
-            "@prisma/cli-engine/testing: a refreshed token's workspace_id claim disagrees with the pinned workspace — refresh cannot re-scope",
-          );
+          throw credentialWorkspaceMismatchError(workspaceId);
         }
         this.storedSessions = this.storedSessions.map((stored) =>
           stored.workspaceId === workspaceId
@@ -313,7 +336,7 @@ export class InMemoryCredentialManager implements CredentialManager {
         }
         this.removeRecord(workspaceId);
       },
-      withRefreshLock: (fn) => fn(),
+      withRefreshLock: (fn) => this.#singleFlight(fn),
     };
   }
 
@@ -387,9 +410,7 @@ export class InMemoryCredentialManager implements CredentialManager {
   ): Session {
     const claimed = claimedWorkspaceId(credential.token);
     if (claimed !== undefined && claimed !== workspaceId) {
-      throw new Error(
-        "@prisma/cli-engine/testing: createSession's workspaceId argument disagrees with the credential's workspace_id claim",
-      );
+      throw credentialWorkspaceMismatchError(workspaceId);
     }
     const existing = this.storedSessions.find(
       (stored) => stored.workspaceId === workspaceId,

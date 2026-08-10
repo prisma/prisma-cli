@@ -370,7 +370,9 @@ describe("session mutations and state read-back", () => {
         userCredential({ workspaceId: "workspace-1" }),
         "workspace-2",
       ),
-    ).rejects.toThrow(/disagrees with the credential's workspace_id claim/);
+      // The same structured error the file-backed manager raises, so a
+      // test of this refusal sees what production does.
+    ).rejects.toMatchObject({ code: "AUTH.CREDENTIAL_WORKSPACE_MISMATCH" });
   });
 
   test("selectSession switches the selection and refuses a workspace with no session", async () => {
