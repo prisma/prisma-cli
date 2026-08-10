@@ -376,8 +376,11 @@ Legacy names, unchanged — the session model makes them honest
   `createSession(credential, workspaceId-from-claims)`.
 - `auth logout` — `sessions()` for the count, then
   `endAllSessions()`; the command reports the count it ended.
-- `auth whoami` — `ctx.session()` + claims decode; `ctx.api`
-  enrichment when online.
+- `auth whoami` — `ctx.session()`; identity for an ENV session
+  comes from decoding the env token (read from `ctx.env`); a stored
+  session's token is unreachable by construction (Session carries
+  none, whoami has no manager), so its identity comes from `/v1/me`
+  when online and offline whoami shows the workspace with no user.
 - `auth workspace list` — `sessions()`, current marked, nameless
   rows rendered by id. Under an env override the listing states
   the env session is in force.
