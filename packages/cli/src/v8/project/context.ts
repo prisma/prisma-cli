@@ -25,12 +25,38 @@ import type { ProjectSetupResult, ProjectSummary } from "../../types/project";
 
 export type ProjectCommandContext = CommandContext<undefined, never>;
 
+/**
+ * The legacy shell's `CommandContext` has many more fields than the
+ * three v8 supplies, and the cast that makes the adapter compile also
+ * hides the day a legacy edit starts reading a fourth. Left alone that
+ * surfaces as `Cannot read properties of undefined`, worst case inside
+ * `project transfer` after the project has already moved. Refusing the
+ * read here names the missing field at the moment it is read instead.
+ * Symbols pass through: they are how the language probes an object, not
+ * how the legacy code reads a field.
+ */
+function refuseUnknownReads<T extends object>(fields: T, prefix: string): T {
+  return new Proxy(fields, {
+    get(target, key) {
+      if (typeof key !== "string" || key in target) {
+        return Reflect.get(target, key);
+      }
+      throw new Error(
+        "the v8 legacy-context adapter provides only runtime.cwd, " +
+          `runtime.env and runtime.signal; ${prefix}${key} was read`,
+      );
+    },
+  });
+}
+
 export function legacyOperationContext(
   ctx: ProjectCommandContext,
 ): LegacyCommandContext {
-  return {
-    runtime: { cwd: ctx.cwd, env: ctx.env, signal: ctx.signal },
-  } as unknown as LegacyCommandContext;
+  const runtime = refuseUnknownReads(
+    { cwd: ctx.cwd, env: ctx.env, signal: ctx.signal },
+    "runtime.",
+  );
+  return refuseUnknownReads({ runtime }, "") as unknown as LegacyCommandContext;
 }
 
 export function listWorkspaceProjects(
