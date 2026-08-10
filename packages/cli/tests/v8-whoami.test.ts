@@ -199,6 +199,35 @@ describe("prisma-v8 auth whoami", () => {
     expect(json.stdout).not.toContain("undefined");
   });
 
+  /** A real service token's subject is its workspace, not a person.
+   *  Reporting `workspace:ws_1` as the user's id would put a workspace
+   *  in the user field of a machine-readable contract. */
+  it("reads a service token's workspace subject as a workspace, not a user", async () => {
+    const cli = makeCli({
+      environmentCredential: {
+        token: mintTestJwt({ sub: "workspace:ws_svc" }),
+        refreshToken: undefined,
+        expiresAt: undefined,
+      },
+    });
+
+    const json = await cli.run(["auth", "whoami", "--json"]);
+    const frame = json.json[0];
+    if (frame.kind !== "result") {
+      throw new Error("expected a result frame");
+    }
+    expect(frame.envelope).toMatchObject({
+      ok: true,
+      result: {
+        authenticated: true,
+        workspace: { id: "ws_svc" },
+        user: null,
+        source: "environment",
+      },
+    });
+    expect(json.stdout).not.toContain("workspace:ws_svc");
+  });
+
   it("falls back to the stored credential's own claims when /v1/me is unreachable", async () => {
     const result = await makeCli({
       sessions: [SESSION],

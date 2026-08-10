@@ -21,6 +21,12 @@ import type {
   StoredSessions,
 } from "./credential-manager";
 import type { TokenStorage } from "./management-api";
+import {
+  claimedExpiresAt,
+  claimedIdentity,
+  claimedWorkspaceId,
+  credentialWorkspaceId,
+} from "./token-claims";
 
 type Tokens = NonNullable<Awaited<ReturnType<TokenStorage["getTokens"]>>>;
 
@@ -66,43 +72,6 @@ export function mintTestJwt(claims: Readonly<Record<string, unknown>>): string {
   return `${encode({ alg: "none", typ: "JWT" })}.${encode(claims)}.test-signature`;
 }
 
-function decodeJwtClaims(token: string): Record<string, unknown> | undefined {
-  const parts = token.split(".");
-  if (parts.length < 2) {
-    return undefined;
-  }
-  try {
-    const parsed: unknown = JSON.parse(
-      Buffer.from(parts[1], "base64url").toString("utf8"),
-    );
-    return typeof parsed === "object" && parsed !== null
-      ? (parsed as Record<string, unknown>)
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function claimedWorkspaceId(token: string): string | undefined {
-  const claims = decodeJwtClaims(token);
-  const workspaceId = claims?.workspace_id;
-  return typeof workspaceId === "string" ? workspaceId : undefined;
-}
-
-function claimedExpiresAt(token: string): Date | undefined {
-  const exp = decodeJwtClaims(token)?.exp;
-  return typeof exp === "number" ? new Date(exp * 1000) : undefined;
-}
-
-function claimedIdentity(token: string): CredentialIdentity | undefined {
-  const claims = decodeJwtClaims(token);
-  const userId = typeof claims?.sub === "string" ? claims.sub : undefined;
-  const email = typeof claims?.email === "string" ? claims.email : undefined;
-  return userId === undefined && email === undefined
-    ? undefined
-    : { userId, email, name: undefined };
-}
-
 function asSession(record: SessionRecord): Session {
   return {
     workspaceId: record.workspaceId,
@@ -123,7 +92,7 @@ function storedActiveCredential(record: SessionRecord): ActiveCredential {
 
 function environmentActiveCredential(credential: Credential): ActiveCredential {
   return {
-    workspaceId: claimedWorkspaceId(credential.token),
+    workspaceId: credentialWorkspaceId(credential.token),
     workspaceName: undefined,
     expiresAt: claimedExpiresAt(credential.token) ?? credential.expiresAt,
     identity: claimedIdentity(credential.token),
@@ -140,7 +109,8 @@ function environmentActiveCredential(credential: Credential): ActiveCredential {
  */
 function memoryBackedStorage(credential: Credential): TokenStorage {
   let tokens: Tokens | null = {
-    workspaceId: claimedWorkspaceId(credential.token) ?? NO_WORKSPACE_CLAIMED,
+    workspaceId:
+      credentialWorkspaceId(credential.token) ?? NO_WORKSPACE_CLAIMED,
     accessToken: credential.token,
     refreshToken: credential.refreshToken,
   };

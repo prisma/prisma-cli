@@ -102,3 +102,9 @@ export {
   PRISMA_CONFIG_VERSION,
   type Runtime,
 } from "../runtime";
+export {
+  claimedExpiresAt,
+  claimedIdentity,
+  claimedWorkspaceId,
+  credentialWorkspaceId,
+} from "../token-claims";
