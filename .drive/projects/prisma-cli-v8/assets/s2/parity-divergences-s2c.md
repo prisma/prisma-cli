@@ -98,31 +98,10 @@ The service group's legacy commands never auto-logged-in
 unauthenticated runs with the engine's `CLI.CREDENTIALS_REQUIRED`
 (exit 2) instead of the legacy `AUTH_REQUIRED` (exit 1).
 
-### `service domain remove` consent (Q5 class; operator-ruled 2026-08-10)
+### `service domain remove` consent
 
-**SUPERSEDED by the dispatch-2 consent section below.** The ruled end state
-is the global engine-resolved `--confirm <token>` grant (token = the
-hostname), not the command-declared boolean `--confirm` this section
-describes; the boolean is what D1 shipped and it migrates off when the
-engine consent mechanism reaches this branch. The rest of this section
-(prompt text, decline/non-interactive transitions) still holds.
-
-The consent flag changes: legacy `-y/--yes` granted the removal; in
-v8 `--yes` NEVER grants consent (engine rule, pinned by the engine's
-own test), and the documented explicit grant is the new
-command-declared `--confirm` boolean flag — the engine consent system
-used as designed (prompt.consent plus a command-declared consent
-flag).
-
-- `--confirm` present: no prompt, consent granted, removal proceeds
-  (interactive or not).
-- Absent, interactive: `prompt.consent` with the renamed question
-  text; decline → v8 user cancellation (exit 3; legacy `USAGE_ERROR`
-  "Custom domain removal canceled" exited 2).
-- Absent, non-interactive (or with `--yes`): engine
-  `CLI.CONSENT_REQUIRED` (exit 2; legacy `CONFIRMATION_REQUIRED`
-  exited 1), whose hint points at the command's explicit consent
-  flag.
+Recorded with the group's other consent points in "Consent" under
+dispatch 2 below — one table, one mechanism, for all three.
 
 ### Interactive service picker
 
@@ -132,17 +111,16 @@ non-interactively. In v8 the engine prompt settles those runs with the
 structural `CLI.PROMPT_REQUIRED` error (R-S2b-6); a stale saved
 selection falls through to the picker in both modes.
 
-### `service open` browser launch (BLOCKED partial)
+### `service open` browser launch
 
 The legacy command opened the live URL whenever prompting was allowed
-(TTY + not CI + not `--json`). The ruled v8 mechanism is the
-engine-supplied interactivity fact `ctx.interactive` (S2b operator
-decision 3); that engine amendment has not landed, so D1 ships the
-command reporting the URL (endpoint event + `opened: false` + URL as
-the stdout payload line) WITHOUT ever launching the browser. The
-handler reads the future `ctx.interactive` field defensively and picks
-the behavior up automatically once the amendment lands. Divergence
-until then: interactive runs no longer open the browser.
+(TTY + not CI + not `--json`). v8 hands the URL to the engine's
+`ctx.openUrl`, which announces it as an `endpoint` event and opens the
+browser when the session is interactive. Differences from legacy: a
+`--json` run in an interactive terminal now DOES open the browser
+(legacy suppressed it because json implied non-interactive), a failed
+open reports `opened: false` instead of raising, and the URL is also
+printed as the stdout payload line (legacy printed nothing on stdout).
 
 ### `service build`
 
@@ -208,24 +186,36 @@ dies in S2d).
 
 Command ids follow: `app.deploy` → `service.deploy`, etc.
 
-### Consent (Q5 class; operator-ruled 2026-08-10)
+### Consent (Q5 class; operator-ruled 2026-08-10, shipped)
 
-Consent is engine-owned: each consent point declares a token, interactive
-rendering is type-to-confirm, and the global engine-resolved
-`--confirm <value>` grants non-interactively when the value matches the
-token. `--yes` never grants consent anywhere.
+Consent is engine-owned and this is what ships: each consent point
+declares a token — the natural noun of the action — so an interactive
+session type-to-confirms it, and the engine's global repeatable
+`--confirm <value>` grants it non-interactively when a supplied value
+matches the token exactly (each value consumed once per run). No command
+declares a consent flag of its own. `--yes` alone never grants consent;
+`--yes` together with a matching `--confirm <token>` does, because it
+takes the same non-interactive branch.
 
-| Command | Legacy grant | v8 grant (ruled) | Token |
+| Command | Legacy grant | v8 grant | Token |
 | --- | --- | --- | --- |
-| `service remove` | typed app name on a TTY; `-y/--yes` skipped it; non-interactive without `--yes` → `CONFIRMATION_REQUIRED` (exit 1) | `prompt.consent` (type-to-confirm) or global `--confirm <token>` | the service name |
-| `service deploy` (production replace) | `--prod` plus `--yes` or an interactive confirm; cancel exited **0** | `prompt.consent` or global `--confirm <token>`; `--prod` is still required first | the target service name |
-| `service domain remove` | `-y/--yes` | global `--confirm <token>` — **supersedes** D1's boolean `--confirm` entry above | the hostname |
+| `service remove` | typed app name on a TTY; `-y/--yes` skipped it; non-interactive without `--yes` → `CONFIRMATION_REQUIRED` (exit 1) | type the service name interactively, or `--confirm <service>` | the service name |
+| `service deploy` (production replace) | `--prod` plus `--yes` or an interactive yes/no confirm; cancel exited **0** | type the service name interactively, or `--confirm <service>`; `--prod` is still required first | the target service name |
+| `service domain remove` | `-y/--yes` skipped the yes/no confirm | type the hostname interactively, or `--confirm <hostname>` | the hostname |
 
-Transitions in all three: declining interactively is a user cancellation
-(exit 3; legacy exited 2 for domain remove, 1 for app remove, and **0** for
-the production deploy cancel — ledger Q5); consent required but not granted
-non-interactively is the engine's `CLI.CONSENT_REQUIRED` (exit 2; legacy
-`CONFIRMATION_REQUIRED` exited 1).
+Transitions, identical on all three:
+
+- **Granted** interactively by typing the token, non-interactively by
+  `--confirm <token>`.
+- **Wrong token typed interactively**: the engine's structural consent
+  mismatch, exit 2. Legacy re-asked a bad yes/no answer and treated an
+  explicit "no" as a cancellation, so what used to be a decline is now a
+  mismatch — there is no longer a "no" to give.
+- **Wrong or missing `--confirm` value non-interactively** (including
+  under `--yes`): `CLI.CONSENT_REQUIRED`, exit 2, naming the expected
+  value and carrying it as `meta.consentToken`. Legacy's
+  `CONFIRMATION_REQUIRED` exited 1, and the production-deploy cancel
+  exited **0** (ledger Q5).
 
 ### Error-code mapping (dispatch 2 additions)
 
@@ -250,7 +240,7 @@ non-interactively is the engine's `CLI.CONSENT_REQUIRED` (exit 2; legacy
 | `USAGE_ERROR` (2) — per-app inputs in deploy-all | `SERVICE.DEPLOY_ALL_INPUTS_REJECTED` (2) | deploy |
 | `USAGE_ERROR` (2) — "App promote/rollback/remove requires an existing app" | `SERVICE.TARGET_REQUIRED` (2) | promote, rollback, remove |
 | `USAGE_ERROR` (2) — empty `--branch` | `SERVICE.BRANCH_INVALID` (2) | remove |
-| `USAGE_ERROR` (2) — invalid Project name at the setup prompt | `SERVICE.PROJECT_NAME_INVALID` (2) | deploy |
+| *(no legacy error — the prompt re-asked)* | `SERVICE.PROJECT_NAME_INVALID` (2) | deploy — see the prompt-validator gap below |
 | `APP_AMBIGUOUS` (2) | engine `CLI.PROMPT_REQUIRED` (2) | deploy — see the picker entry below |
 | `PROJECT_CREATE_FAILED` (1) | `SERVICE.PROJECT_CREATE_FAILED` (2) | deploy `--create-project` |
 
@@ -293,6 +283,17 @@ a `service logs --deployment <id>` action, exactly as legacy did.
   does "Database setup requires --yes in non-interactive mode" — `--db`
   is itself the explicit request. Flagged for the operator: the engine needs
   a declarable tri-state (or non-negatable) boolean before this is parity.
+- **A mistyped Project name at the first-deploy setup prompt now fails
+  the run (engine gap).** Legacy passed a `validate` function to the
+  clack text prompt (`lib/project/interactive-setup.ts`), so an invalid
+  Project name was re-asked in place and the deploy continued. The
+  engine's `prompt.text` takes only `placeholder` and `default` — there
+  is no validator and no re-ask — so v8 validates the answer afterwards
+  and settles the whole command with `SERVICE.PROJECT_NAME_INVALID`
+  (exit 2). A user who typos during first-deploy setup loses the run and
+  reruns deploy. Flagged for the operator alongside the `--db` gap: the
+  engine needs a prompt validator (or a re-ask affordance) before this
+  is parity.
 - **The `--db` prompt's suppression advice is now emitted whenever the
   answer is No**, not only when the run could not ask: handlers do not see
   interactivity (the ruled `ctx.interactive` fact has not landed), so
