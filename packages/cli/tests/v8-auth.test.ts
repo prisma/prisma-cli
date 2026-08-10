@@ -7,6 +7,8 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
+  type ActiveCredential,
+  type Credential,
   defineCommand,
   type ManagementApiClient,
   type Session,
@@ -90,9 +92,16 @@ function apiReturning(body: unknown): ManagementApiClient {
   } as unknown as ManagementApiClient;
 }
 
+/** The environment credential PRISMA_SERVICE_TOKEN supplies. One
+ *  environment variable carries one bearer string, so it has no refresh
+ *  token. */
+function environmentCredentialFor(token: string): Credential {
+  return { token, refreshToken: undefined, expiresAt: undefined };
+}
+
 function makeCli(spec?: {
   readonly sessions?: readonly SessionRecord[];
-  readonly currentWorkspaceId?: string;
+  readonly selectedWorkspaceId?: string;
   readonly environmentToken?: string;
   readonly client?: ManagementApiClient;
   readonly openUrl?: (url: string) => void;
@@ -101,8 +110,11 @@ function makeCli(spec?: {
     commands: COMMANDS,
     groups: GROUPS,
     sessions: spec?.sessions ?? [],
-    currentWorkspaceId: spec?.currentWorkspaceId,
-    environmentToken: spec?.environmentToken,
+    selectedWorkspaceId: spec?.selectedWorkspaceId,
+    environmentCredential:
+      spec?.environmentToken === undefined
+        ? undefined
+        : environmentCredentialFor(spec.environmentToken),
     managementApi: { client: spec?.client ?? OFFLINE_API },
     openUrl: spec?.openUrl,
     now: () => new Date(0),
@@ -163,7 +175,7 @@ describe("auth login", () => {
       environmentSessionInForce: false,
     });
     const state = cli.credentialManager?.state();
-    expect(state?.currentWorkspaceId).toBe("ws_1");
+    expect(state?.selectedWorkspaceId).toBe("ws_1");
     expect(state?.sessions.map((session) => session.workspaceId)).toEqual([
       "ws_1",
     ]);
@@ -221,7 +233,7 @@ describe("auth logout", () => {
   it("ends every session and reports the count it ended", async () => {
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc"), record("ws_2", "Globex")],
-      currentWorkspaceId: "ws_1",
+      selectedWorkspaceId: "ws_1",
     });
 
     const result = await cli.run(["auth", "logout", "--json"]);
@@ -233,7 +245,7 @@ describe("auth logout", () => {
     });
     expect(cli.credentialManager?.state()).toEqual({
       sessions: [],
-      currentWorkspaceId: null,
+      selectedWorkspaceId: undefined,
     });
   });
 
@@ -244,18 +256,26 @@ describe("auth logout", () => {
     expect(resultOf(result)).toEqual({ endedCount: 0, workspaceIds: [] });
   });
 
-  it("refuses under an env override while stored sessions exist, changing nothing", async () => {
+  /** Design §11.7 and §11.10 test 8. */
+  it("clears the store under an env override and says the env token stays in force", async () => {
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc")],
-      currentWorkspaceId: "ws_1",
+      selectedWorkspaceId: "ws_1",
       environmentToken: tokenFor("ws_env"),
     });
 
-    const result = await cli.run(["auth", "logout", "--json"]);
+    const result = await cli.run(["auth", "logout"], {
+      isTty: { stdout: true },
+    });
 
-    expect(result.exitCode).toBe(2);
-    expect(errorOf(result).code).toBe("AUTH.ENV_SESSION_IN_FORCE");
-    expect(cli.credentialManager?.state().sessions).toHaveLength(1);
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain(
+      "PRISMA_SERVICE_TOKEN supplies the session in force",
+    );
+    expect(cli.credentialManager?.state()).toEqual({
+      sessions: [],
+      selectedWorkspaceId: undefined,
+    });
   });
 
   it("succeeds as a no-op under an env override with no stored sessions", async () => {
@@ -285,10 +305,10 @@ describe("auth whoami", () => {
     });
   });
 
-  it("reports the pinned session offline, with no identity to show", async () => {
+  it("falls back offline to the identity the credential's own claims carry", async () => {
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc")],
-      currentWorkspaceId: "ws_1",
+      selectedWorkspaceId: "ws_1",
     });
 
     const result = await cli.run(["auth", "whoami", "--json"]);
@@ -297,18 +317,18 @@ describe("auth whoami", () => {
     expect(resultOf(result)).toMatchObject({
       authenticated: true,
       workspace: { id: "ws_1", name: "Acme Inc" },
-      user: null,
+      user: { id: "usr_456", email: "bob@example.com" },
       source: "stored",
     });
   });
 
-  it("enriches the identity from the management API when online", async () => {
+  it("lets the management API win over the claims where they disagree", async () => {
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc")],
-      currentWorkspaceId: "ws_1",
+      selectedWorkspaceId: "ws_1",
       client: apiReturning({
         data: {
-          user: { id: "usr_456", email: "bob@example.com", name: "Bob" },
+          user: { id: "usr_456", email: "renamed@example.com", name: "Bob" },
         },
       }),
     });
@@ -316,14 +336,14 @@ describe("auth whoami", () => {
     const result = await cli.run(["auth", "whoami", "--json"]);
 
     expect(resultOf(result)).toMatchObject({
-      user: { id: "usr_456", email: "bob@example.com", name: "Bob" },
+      user: { id: "usr_456", email: "renamed@example.com" },
     });
   });
 
   it("notes the env override and reads its identity from the token's claims", async () => {
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc")],
-      currentWorkspaceId: "ws_1",
+      selectedWorkspaceId: "ws_1",
       environmentToken: tokenFor("ws_env", {
         sub: "usr_env",
         email: "ci@example.com",
@@ -343,7 +363,7 @@ describe("auth whoami", () => {
   });
 });
 
-describe("sessions held with none current", () => {
+describe("sessions held with none selected", () => {
   const needsCredentials = defineCommand({
     help: { summary: "Requires a signed-in session" },
     needs: { credentials: true },
@@ -369,7 +389,7 @@ describe("sessions held with none current", () => {
     },
   });
 
-  it("raises one identical error from ctx.session, the needs check, and a bare ctx.api touch", async () => {
+  it("raises one identical error from ctx.activeCredential, the needs check, and a bare ctx.api touch", async () => {
     const cli = createTestCli({
       commands: {
         "auth whoami": authWhoamiCommand,
@@ -402,7 +422,7 @@ describe("auth workspace list", () => {
   it("lists the sessions with the current one marked, nameless rows by id", async () => {
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc"), record("ws_2", undefined)],
-      currentWorkspaceId: "ws_2",
+      selectedWorkspaceId: "ws_2",
     });
 
     const result = await cli.run(["auth", "workspace", "list"], {
@@ -416,7 +436,7 @@ describe("auth workspace list", () => {
   it("serializes the sessions and the current marker for json", async () => {
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc")],
-      currentWorkspaceId: "ws_1",
+      selectedWorkspaceId: "ws_1",
     });
 
     const result = await cli.run(["auth", "workspace", "list", "--json"]);
@@ -441,7 +461,7 @@ describe("auth workspace list", () => {
   it("states that the env session is in force", async () => {
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc")],
-      currentWorkspaceId: "ws_1",
+      selectedWorkspaceId: "ws_1",
       environmentToken: tokenFor("ws_env"),
     });
 
@@ -470,7 +490,7 @@ describe("auth workspace use", () => {
   const twoSessions = [record("ws_1", "Acme Inc"), record("ws_2", "Globex")];
 
   it("selects by workspace id", async () => {
-    const cli = makeCli({ sessions: twoSessions, currentWorkspaceId: "ws_1" });
+    const cli = makeCli({ sessions: twoSessions, selectedWorkspaceId: "ws_1" });
 
     const result = await cli.run([
       "auth",
@@ -485,11 +505,11 @@ describe("auth workspace use", () => {
       workspace: { id: "ws_2", name: "Globex" },
       previousWorkspaceId: "ws_1",
     });
-    expect(cli.credentialManager?.state().currentWorkspaceId).toBe("ws_2");
+    expect(cli.credentialManager?.state().selectedWorkspaceId).toBe("ws_2");
   });
 
   it("selects by workspace name, case-insensitively", async () => {
-    const cli = makeCli({ sessions: twoSessions, currentWorkspaceId: "ws_1" });
+    const cli = makeCli({ sessions: twoSessions, selectedWorkspaceId: "ws_1" });
 
     const result = await cli.run([
       "auth",
@@ -500,13 +520,13 @@ describe("auth workspace use", () => {
     ]);
 
     expect(result.exitCode).toBe(0);
-    expect(cli.credentialManager?.state().currentWorkspaceId).toBe("ws_2");
+    expect(cli.credentialManager?.state().selectedWorkspaceId).toBe("ws_2");
   });
 
   it("refuses an ambiguous name, listing the workspaces that matched", async () => {
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc"), record("ws_9", "Acme Inc")],
-      currentWorkspaceId: "ws_1",
+      selectedWorkspaceId: "ws_1",
     });
 
     const result = await cli.run([
@@ -522,7 +542,7 @@ describe("auth workspace use", () => {
       code: "AUTH.WORKSPACE_AMBIGUOUS",
       meta: { workspaceIds: ["ws_1", "ws_9"] },
     });
-    expect(cli.credentialManager?.state().currentWorkspaceId).toBe("ws_1");
+    expect(cli.credentialManager?.state().selectedWorkspaceId).toBe("ws_1");
   });
 
   it("never opens a browser for a workspace it has no session for", async () => {
@@ -552,24 +572,23 @@ describe("auth workspace use", () => {
     expect(openUrl).not.toHaveBeenCalled();
   });
 
-  it("refuses to switch under an env override", async () => {
+  /** Design §11.7 and §11.10 test 8. */
+  it("switches under an env override and says the env token stays in force", async () => {
     const cli = makeCli({
       sessions: twoSessions,
-      currentWorkspaceId: "ws_1",
+      selectedWorkspaceId: "ws_1",
       environmentToken: tokenFor("ws_env"),
     });
 
-    const result = await cli.run([
-      "auth",
-      "workspace",
-      "use",
-      "ws_2",
-      "--json",
-    ]);
+    const result = await cli.run(["auth", "workspace", "use", "ws_2"], {
+      isTty: { stdout: true },
+    });
 
-    expect(result.exitCode).toBe(2);
-    expect(errorOf(result).code).toBe("AUTH.ENV_SESSION_IN_FORCE");
-    expect(cli.credentialManager?.state().currentWorkspaceId).toBe("ws_1");
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain(
+      "PRISMA_SERVICE_TOKEN supplies the session in force",
+    );
+    expect(cli.credentialManager?.state().selectedWorkspaceId).toBe("ws_2");
   });
 
   it("reports having nothing to select when no sessions are held", async () => {
@@ -590,7 +609,7 @@ describe("auth workspace logout", () => {
   it("ends the named session and prints the workspace it ended", async () => {
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc"), record("ws_2", "Globex")],
-      currentWorkspaceId: "ws_2",
+      selectedWorkspaceId: "ws_2",
     });
 
     const result = await cli.run([
@@ -614,7 +633,7 @@ describe("auth workspace logout", () => {
   it("clears the current marker when the ended session was current", async () => {
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc")],
-      currentWorkspaceId: "ws_1",
+      selectedWorkspaceId: "ws_1",
     });
 
     const result = await cli.run([
@@ -628,7 +647,7 @@ describe("auth workspace logout", () => {
     expect(resultOf(result)).toMatchObject({ wasCurrent: true });
     expect(cli.credentialManager?.state()).toEqual({
       sessions: [],
-      currentWorkspaceId: null,
+      selectedWorkspaceId: undefined,
     });
   });
 
@@ -645,11 +664,42 @@ describe("auth workspace logout", () => {
     expect(errorOf(result).code).toBe("AUTH.NO_SESSION_FOR_WORKSPACE");
   });
 
-  it("refuses under an env override", async () => {
+  /** Design §11.7 and §11.10 test 8. */
+  it("ends the session under an env override and says the env token stays in force", async () => {
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc")],
-      currentWorkspaceId: "ws_1",
+      selectedWorkspaceId: "ws_1",
       environmentToken: tokenFor("ws_env"),
+    });
+
+    const result = await cli.run(["auth", "workspace", "logout", "ws_1"], {
+      isTty: { stdout: true },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain(
+      "PRISMA_SERVICE_TOKEN supplies the session in force",
+    );
+    expect(cli.credentialManager?.state().sessions).toEqual([]);
+  });
+
+  /** Design §11.10, test 6: the ref resolves, then another process
+   *  removes the session before the write lands. Removal is idempotent,
+   *  so the command still exits 0 rather than saying something untrue. */
+  it("exits 0 when another process removed the session mid-command", async () => {
+    const cli = makeCli({
+      sessions: [record("ws_1", "Acme Inc")],
+      selectedWorkspaceId: "ws_1",
+    });
+    const manager = cli.credentialManager;
+    const readSessions = manager.sessions.bind(manager);
+    vi.spyOn(manager, "sessions").mockImplementation(async () => {
+      const stored = await readSessions();
+      manager.overwriteStoredState({
+        sessions: [],
+        selectedWorkspaceId: undefined,
+      });
+      return stored;
     });
 
     const result = await cli.run([
@@ -660,13 +710,16 @@ describe("auth workspace logout", () => {
       "--json",
     ]);
 
-    expect(result.exitCode).toBe(2);
-    expect(errorOf(result).code).toBe("AUTH.ENV_SESSION_IN_FORCE");
-    expect(cli.credentialManager?.state().sessions).toHaveLength(1);
+    expect(result.exitCode).toBe(0);
+    expect(resultOf(result)).toEqual({
+      workspace: { id: "ws_1", name: "Acme Inc" },
+      wasCurrent: true,
+    });
+    expect(manager.state().sessions).toEqual([]);
   });
 });
 
-describe("the env session never refreshes", () => {
+describe("the environment credential carries no refresh token", () => {
   let server: Server | undefined;
   const paths: string[] = [];
 
@@ -702,7 +755,9 @@ describe("the env session never refreshes", () => {
     return createTestCli({
       commands: { ...COMMANDS, probe: touchesApi },
       groups: GROUPS,
-      environmentToken: tokenFor("ws_env", { sub: "usr_env" }),
+      environmentCredential: environmentCredentialFor(
+        tokenFor("ws_env", { sub: "usr_env" }),
+      ),
       managementApiClientConfig: {
         clientId: "test-client-id",
         redirectUri: `${baseUrl}/auth/callback`,
@@ -723,7 +778,10 @@ describe("the env session never refreshes", () => {
     expect(paths).toEqual(["/v1/me"]);
   });
 
-  it("gives whoami the env token's own claims without any request", async () => {
+  /** §11.6: whoami does not branch on origin — it attempts the same
+   *  online enrichment for an environment credential, and falls back to
+   *  the token's own claims when the request fails. */
+  it("falls back to the env token's own claims when the enrichment is rejected", async () => {
     const cli = await cliAgainstA401Server();
 
     const result = await cli.run(["auth", "whoami", "--json"]);
@@ -731,9 +789,9 @@ describe("the env session never refreshes", () => {
     expect(result.exitCode).toBe(0);
     expect(resultOf(result)).toMatchObject({
       source: "environment",
-      user: { id: "usr_env" },
+      user: { id: "usr_env", email: null },
     });
-    expect(paths).toEqual([]);
+    expect(paths).toEqual(["/v1/me"]);
   });
 });
 
@@ -745,7 +803,7 @@ describe("a blank service token is never an override", () => {
     it(`fails auth workspace list with the blank-token error (${name})`, async () => {
       const cli = makeCli({
         sessions: [record("ws_1", "Acme Inc")],
-        currentWorkspaceId: "ws_1",
+        selectedWorkspaceId: "ws_1",
       });
 
       const result = await cli.run(["auth", "workspace", "list", "--json"], {
@@ -774,12 +832,12 @@ describe("a blank service token is never an override", () => {
   }
 });
 
-describe("session shapes the commands hand back", () => {
+describe("the shapes the commands hand back", () => {
   it("never lets token material reach the output", async () => {
     const secret = "refresh_ws_1";
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc")],
-      currentWorkspaceId: "ws_1",
+      selectedWorkspaceId: "ws_1",
     });
 
     const runs = [
@@ -793,14 +851,24 @@ describe("session shapes the commands hand back", () => {
     }
   });
 
-  it("exposes no token on the Session shape the commands see", () => {
+  it("exposes no token on the shapes the commands see", () => {
     const session: Session = {
       workspaceId: "ws_1",
       workspaceName: "Acme Inc",
       expiresAt: undefined,
-      source: "stored",
-      current: true,
+    };
+    const active: ActiveCredential = {
+      workspaceId: "ws_1",
+      workspaceName: "Acme Inc",
+      expiresAt: undefined,
+      identity: {
+        userId: "usr_456",
+        email: "bob@example.com",
+        name: undefined,
+      },
+      origin: { source: "stored" },
     };
     expect(Object.keys(session)).not.toContain("token");
+    expect(Object.keys(active)).not.toContain("token");
   });
 });

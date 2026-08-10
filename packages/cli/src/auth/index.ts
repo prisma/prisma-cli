@@ -10,7 +10,6 @@ export {
   type FetchWorkspaceName,
   FileCredentialManager,
 } from "./credential-manager";
-export { makeGetCredentials } from "./credentials";
 export {
   workspaceAmbiguousError,
   workspaceNotAuthenticatedError,

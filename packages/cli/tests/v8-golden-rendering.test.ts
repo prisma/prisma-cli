@@ -42,7 +42,7 @@ function makeCli(sessions: readonly SessionRecord[], current?: string) {
       "auth workspace": { brief: "Manage local workspace sessions" },
     },
     sessions,
-    currentWorkspaceId: current,
+    selectedWorkspaceId: current,
     now: () => new Date(0),
   });
 }

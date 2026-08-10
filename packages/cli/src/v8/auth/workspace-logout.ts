@@ -5,7 +5,9 @@ import {
   positional,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
+import { environmentSessionInForce } from "../../auth";
 import { CLI_NAME } from "../../cli-name";
+import { ENVIRONMENT_SESSION_NOTICE } from "./session-card";
 import { requireSession, sessionLabel } from "./session-ref";
 
 export interface WorkspaceLogoutResult {
@@ -16,6 +18,7 @@ export interface WorkspaceLogoutResult {
 function logoutPresentations(spec: {
   readonly label: string;
   readonly wasCurrent: boolean;
+  readonly environmentSessionInForce: boolean;
 }): Presentations {
   const rows = [{ label: "workspace", value: spec.label }];
   return {
@@ -33,6 +36,15 @@ function logoutPresentations(spec: {
           ? "Ended the current workspace session; no replacement was selected."
           : "Ended the workspace session.",
       },
+      ...(spec.environmentSessionInForce
+        ? [
+            {
+              kind: "summary",
+              tone: "info",
+              text: ENVIRONMENT_SESSION_NOTICE,
+            } as const,
+          ]
+        : []),
     ],
     stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
     next: () => [
@@ -69,22 +81,24 @@ export const authWorkspaceLogoutCommand = defineCommand({
     examples: ["auth workspace logout my-workspace"],
   },
   handler: async (args, ctx) => {
-    const sessions = await ctx.credentialManager.sessions();
-    const session = requireSession(sessions, args.positionals.workspace);
-    await ctx.credentialManager.endSession(session);
+    const stored = await ctx.credentialManager.sessions();
+    const session = requireSession(stored.sessions, args.positionals.workspace);
+    const wasCurrent = session.workspaceId === stored.selectedWorkspaceId;
+    await ctx.credentialManager.endSession(session.workspaceId);
     const result: WorkspaceLogoutResult = {
       workspace: {
         id: session.workspaceId,
         name: session.workspaceName ?? null,
       },
-      wasCurrent: session.current,
+      wasCurrent,
     };
     return ok(
       ctx.present(
         { data: result },
         logoutPresentations({
           label: sessionLabel(session),
-          wasCurrent: session.current,
+          wasCurrent,
+          environmentSessionInForce: environmentSessionInForce(ctx.env),
         }),
       ),
     );

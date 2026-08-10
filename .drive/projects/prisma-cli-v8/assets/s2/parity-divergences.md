@@ -15,10 +15,7 @@ ported command and are not repeated per command below.
 
 ## S2a — auth family + update check (this PR)
 
-The auth family is implemented ON the credential manager (the session
-model: a set of per-workspace sessions, one current). The COMMAND NAMES
-are the legacy ones and do not change — there is no rename class in
-this list. What follows is what a user can still observe as different.
+The auth family is implemented ON the credential manager, whose normative design is [`../engine/credential-manager-design.md`](../engine/credential-manager-design.md). Read §11 there for the model this section describes: a set of stored per-workspace sessions plus one selection, and — separately — the credential this process authenticates as, which may come from `PRISMA_SERVICE_TOKEN` and is not a session. The COMMAND NAMES are the legacy ones and do not change — there is no rename class in this list. What follows is what a user can still observe as different.
 
 ### Error-code mapping (flat → dotted, session vocabulary)
 
@@ -28,83 +25,65 @@ nextAction; `meta` is preserved.
 
 | Legacy flat code (exit) | v8 code (exit) | Raised by |
 | --- | --- | --- |
-| `AUTH_CONFIG_INVALID` (1) — blank `PRISMA_SERVICE_TOKEN` | `AUTH.SERVICE_TOKEN_EMPTY` (2) | every command, single-sourced from `currentSession()` |
+| `AUTH_CONFIG_INVALID` (1) — blank `PRISMA_SERVICE_TOKEN` | `AUTH.SERVICE_TOKEN_EMPTY` (2) | every command, single-sourced from `activeCredential()` |
 | `WORKSPACE_NOT_AUTHENTICATED` (1) | `AUTH.NO_SESSION_FOR_WORKSPACE` (2) | `workspace use`, `workspace logout` |
 | `WORKSPACE_AMBIGUOUS` (2) | `AUTH.WORKSPACE_AMBIGUOUS` (2) | `workspace use`, `workspace logout` |
-| `WORKSPACE_SWITCH_UNAVAILABLE` (1) | `AUTH.ENV_SESSION_IN_FORCE` (2) | `workspace use`, `workspace logout`, `logout` |
+| `WORKSPACE_SWITCH_UNAVAILABLE` (1) | **no successor** | nothing — the mutations it guarded now succeed (see below) |
 | `USAGE_ERROR` (2) — "No authenticated workspaces" | `AUTH.NO_WORKSPACE_SESSIONS` (2) | `workspace use` |
 | `USAGE_ERROR` (2) — "Workspace required" (blank ref) | `AUTH.NO_SESSION_FOR_WORKSPACE` (2) | `workspace logout` — a blank/whitespace ref matches no session rather than being its own usage error |
 | (none — legacy could not happen) | `AUTH.LOGIN_WORKSPACE_UNKNOWN` (2) | `login`, when the minted credential carries no `workspace_id` claim |
-| (none) | `CLI.CREDENTIALS_REQUIRED` (2) | the engine, for signed-out and sessions-held-none-current |
+| (none) | `CLI.CREDENTIALS_REQUIRED` (2) | the engine, for signed-out and sessions-held-none-selected |
 
 No documented 4–99 codes exist in this family.
 
 ### Exit unifications
 
-Legacy exit 1 for `AUTH_CONFIG_INVALID`, `WORKSPACE_NOT_AUTHENTICATED`
-and `WORKSPACE_SWITCH_UNAVAILABLE` becomes exit 2 (could-not-complete)
-in v8. A failed login (browser launch, callback, token exchange) was an
-unstructured crash at exit 1 in legacy and still settles at exit 1, now
-as a structured `CLI.INTERNAL_ERROR`.
+Legacy exit 1 for `AUTH_CONFIG_INVALID` and `WORKSPACE_NOT_AUTHENTICATED` becomes exit 2 (could-not-complete) in v8. A failed login (browser launch, callback, token exchange) was an unstructured crash at exit 1 in legacy and still settles at exit 1, now as a structured `CLI.INTERNAL_ERROR`.
 
 ### `auth whoami` — json shape
 
-The legacy result was `AuthStateResult`
-(`authenticated`/`provider`/`user`/`workspace`/`credential`). The v8
-result is the session:
+The legacy result was `AuthStateResult` (`authenticated`/`provider`/`user`/`workspace`/`credential`). The v8 result describes the active credential:
 
 ```json
 { "authenticated": true, "workspace": { "id": "…", "name": "…" },
-  "user": { "id": "…", "email": "…", "name": "…" },
+  "user": { "userId": "…", "email": "…" },
   "source": "stored", "expiresAt": null }
 ```
 
-- **`provider` has NO successor.** Nothing in the session model records
-  which identity provider minted a credential, and the stored state
-  records no identity at all, so the field is gone rather than renamed.
-- `credential` is gone: the type/id/name of the credential is not a
-  user-facing concept in the session model.
-- `source` is new (`"stored"` | `"environment"`), and `expiresAt` is
-  the session's expiry.
-- Identity display: for an environment session it is decoded from the
-  token's own claims; for a stored session it comes from `/v1/me` when
-  online. Offline, a stored session shows its workspace and no user —
-  legacy showed the claim-derived user in that case. (The Session shape
-  carries no token by design, so the command cannot decode a stored
-  credential's claims itself.)
+- **`provider` has NO successor.** Nothing in the model records which identity provider minted a credential, so the field is gone rather than renamed.
+- `credential` is gone: the type/id/name of the credential is not a user-facing concept here.
+- `source` is new (`"stored"` | `"environment"`) and comes from the credential's origin; `expiresAt` is the credential's expiry.
+- **`user.name` has no successor, and `user.id` is now `user.userId`.** There is one identity type for both the claimed and the fetched identity (design §11.6), and it carries a user id and an email only. The human card's `user` row therefore shows the email, or is omitted when there is none.
+- Identity display: the credential manager decodes the credential's own claims, and `/v1/me` is a best-effort online enrichment that wins field by field where it disagrees. whoami does not branch on the origin — it attempts the enrichment for an environment credential too, and falls back to the claims when the request fails. **This restores legacy behaviour that rev 5 had dropped:** a stored session offline now shows the claim-derived user again, where rev 5 showed the workspace and no user.
+- **A credential nothing names renders no workspace at all.** An environment token whose claims carry no workspace reports `"workspace": null` and omits the workspace row from the human card. It is never an empty string and never the literal `undefined` — rev 5 wrote `workspaceId: ""` in that case.
 - Signed out still exits 0.
 
-### Env-override mutation refusals (`PRISMA_SERVICE_TOKEN` set)
+### Mutations while `PRISMA_SERVICE_TOKEN` is set
 
-One error family, `AUTH.ENV_SESSION_IN_FORCE`, exit 2, whose `why`
-names the variable and states whether stored sessions exist, with the
-literal `unset PRISMA_SERVICE_TOKEN` as its nextAction:
+The variable supplies the credential this process authenticates as. It is not a session, so it does not occupy a slot that a stored session could be moved into or out of, and commands that change stored state are free to run. Design §11.7 rules that all of them succeed:
 
-| Command | Behavior under the override |
+| Command | Behavior while the variable is set |
 | --- | --- |
-| `auth workspace use` | refuses — `AUTH.ENV_SESSION_IN_FORCE`, exit 2 |
-| `auth workspace logout` | refuses — same error, exit 2 |
-| `auth logout`, stored sessions exist | refuses — same error, exit 2; nothing is cleared |
-| `auth logout`, no stored sessions | **succeeds as a no-op**, exit 0, `endedCount: 0` (CI teardowns must not fail) |
-| `auth login` | **succeeds**, and prints the mandatory one-line notice that the env token remains in force until unset |
+| `auth workspace use` | **succeeds** — the stored selection moves; this process keeps authenticating as the environment credential |
+| `auth workspace logout` | **succeeds** — the named session is removed |
+| `auth logout` | **succeeds** — the store is cleared, whether or not it held sessions |
+| `auth login` | **succeeds** — a new session is stored and selected |
 | every read (`whoami`, `workspace list`) | works normally |
 
-Legacy refused workspace switching with `WORKSPACE_SWITCH_UNAVAILABLE`
-and let `auth logout` clear stored state even while the variable was
-set. Stated consequence: while the variable is set, existing stored
-state cannot be cleared.
+Each of the four mutations prints the same one-line notice in human output: the environment token remains in force until the variable is unset. The notice is human-only; no json result gained a field for it, and `auth workspace list`'s `context.environmentSessionInForce` remains the machine-readable signal.
+
+This is the second change here. Legacy refused workspace switching with `WORKSPACE_SWITCH_UNAVAILABLE` and let `auth logout` clear stored state. Rev 5 of the design refused `workspace use`, `workspace logout` and `auth logout` with `AUTH.ENV_SESSION_IN_FORCE`, carving out an empty store so CI teardowns would not fail. **`AUTH.ENV_SESSION_IN_FORCE` no longer exists**, and neither does the carve-out. The net effect against legacy is that workspace switching now works while the variable is set, where legacy refused it.
+
+A blank or whitespace-only `PRISMA_SERVICE_TOKEN` is unchanged: it is never an override, and every command — mutations included — fails with `AUTH.SERVICE_TOKEN_EMPTY`.
+
+### Ending a session is idempotent
+
+`auth workspace logout <ref>` resolves the ref against the sessions you hold, so a workspace you never had is still `AUTH.NO_SESSION_FOR_WORKSPACE`, exit 2. What changed is the race: if another `prisma` process removes that session between the resolution and the write, the command now exits 0 rather than exit 2 with a message that is no longer true. The postcondition — no session for that workspace — holds either way. Selecting is not idempotent and still refuses a workspace with no session.
 
 ### `auth workspace list`
 
-- Rows are the sessions the manager holds: `name`, `id`, `status`,
-  where status is `current` (legacy: `active`). The legacy `source`
-  column and the `auth source` line are gone — the environment session
-  never appears as a row.
-- Under an env override the listing STATES that the env session is in
-  force; the file's own current marker is still shown as current. The
-  json context carries `environmentSessionInForce: true` alongside
-  `currentWorkspaceId`, which keeps naming the stored marker, not the
-  env session's workspace.
+- Rows are the sessions the manager holds: `name`, `id`, `status`, where status is `current` (legacy: `active`). The legacy `source` column and the `auth source` line are gone — the environment credential never appears as a row.
+- While `PRISMA_SERVICE_TOKEN` is set the listing STATES that the environment credential is in force; the stored selection is still shown as current. The json context carries `environmentSessionInForce: true` alongside `currentWorkspaceId`, which keeps naming the stored selection, not the environment credential's workspace. Both json field names keep the word "current" deliberately: they are an output contract, where the code says "selected" (design §11.1).
 - The json shape is new (`context`/`items`/`count` with
   `workspaceId`/`workspaceName`/`current`/`expiresAt`); the legacy
   fields `credentialWorkspaceId`, `switchable`, `lastSeenAt` and
@@ -212,10 +191,5 @@ on every `whoami`/`list` and wrote them back. Accepted and stated.
 
 ### Test surface
 
-- `tests/auth.test.ts` fixture-mode cases covering the six ported
-  commands are deleted; the file keeps its real-mode storage cases and
-  the legacy-shell presentation cases (help text, TTY header) until
-  S2d. The v8 side is pinned semantically in `tests/v8-auth.test.ts`
-  (over the harness's in-memory credential manager, with manager state
-  read-back) and `tests/v8-update-check.test.ts`; the byte pins live in
-  `tests/v8-golden-rendering.test.ts` and `tests/v8-whoami.test.ts`.
+- `tests/auth.test.ts` fixture-mode cases covering the six ported commands are deleted; the file keeps its real-mode storage cases and the legacy-shell presentation cases (help text, TTY header) until S2d. The v8 side is pinned semantically in `tests/v8-auth.test.ts` (over the harness's in-memory credential manager, with manager state read-back) and `tests/v8-update-check.test.ts`; the byte pins live in `tests/v8-golden-rendering.test.ts` and `tests/v8-whoami.test.ts`.
+- `Runtime.getCredentials` and its `makeGetCredentials` builder are gone. The engine asks the credential manager for the active credential and its token storage instead, so the bin no longer supplies a second, parallel way to read a token.

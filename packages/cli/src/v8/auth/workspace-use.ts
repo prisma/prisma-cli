@@ -5,9 +5,12 @@ import {
   type Presentations,
   positional,
   type Session,
+  type StoredSessions,
 } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
+import { environmentSessionInForce } from "../../auth";
 import { CLI_NAME } from "../../cli-name";
+import { ENVIRONMENT_SESSION_NOTICE } from "./session-card";
 import { requireSession, sessionLabel } from "./session-ref";
 
 export interface WorkspaceUseResult {
@@ -34,6 +37,7 @@ function noWorkspaceSessionsError(): CliStructuredError {
 function usePresentations(spec: {
   readonly session: Session;
   readonly previous: Session | undefined;
+  readonly environmentSessionInForce: boolean;
 }): Presentations {
   const rows = [
     ...(spec.previous === undefined
@@ -54,6 +58,15 @@ function usePresentations(spec: {
         tone: "ok",
         text: "Current workspace session updated.",
       },
+      ...(spec.environmentSessionInForce
+        ? [
+            {
+              kind: "summary",
+              tone: "info",
+              text: ENVIRONMENT_SESSION_NOTICE,
+            } as const,
+          ]
+        : []),
     ],
     stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
     next: () => [
@@ -86,17 +99,21 @@ export const authWorkspaceUseCommand = defineCommand({
     examples: ["auth workspace use", "auth workspace use my-workspace"],
   },
   handler: async (args, ctx) => {
-    const sessions = await ctx.credentialManager.sessions();
-    if (sessions.length === 0) {
+    const stored = await ctx.credentialManager.sessions();
+    if (stored.sessions.length === 0) {
       throw noWorkspaceSessionsError();
     }
     const ref = args.positionals.workspace?.trim();
     const chosen = ref
-      ? requireSession(sessions, ref)
-      : await selectSession(sessions, ctx.prompt.select);
-    const previous = sessions.find((session) => session.current);
+      ? requireSession(stored.sessions, ref)
+      : await promptForSession(stored, ctx.prompt.select);
+    const previous = stored.sessions.find(
+      (session) => session.workspaceId === stored.selectedWorkspaceId,
+    );
 
-    const session = await ctx.credentialManager.useSession(chosen);
+    const session = await ctx.credentialManager.selectSession(
+      chosen.workspaceId,
+    );
     const result: WorkspaceUseResult = {
       workspace: {
         id: session.workspaceId,
@@ -105,27 +122,36 @@ export const authWorkspaceUseCommand = defineCommand({
       previousWorkspaceId: previous?.workspaceId ?? null,
     };
     return ok(
-      ctx.present({ data: result }, usePresentations({ session, previous })),
+      ctx.present(
+        { data: result },
+        usePresentations({
+          session,
+          previous,
+          environmentSessionInForce: environmentSessionInForce(ctx.env),
+        }),
+      ),
     );
   },
 });
 
-async function selectSession(
-  sessions: readonly Session[],
+async function promptForSession(
+  stored: StoredSessions,
   select: <T extends string>(
     question: string,
     options: ReadonlyArray<{ value: T; label: string }>,
   ) => Promise<T>,
 ): Promise<Session> {
-  if (sessions.length === 1) {
-    return sessions[0];
+  if (stored.sessions.length === 1) {
+    return stored.sessions[0];
   }
   const workspaceId = await select(
     "Select a workspace",
-    sessions.map((session) => ({
+    stored.sessions.map((session) => ({
       value: session.workspaceId,
-      label: `${sessionLabel(session)} (${session.workspaceId})${session.current ? " current" : ""}`,
+      label: `${sessionLabel(session)} (${session.workspaceId})${
+        session.workspaceId === stored.selectedWorkspaceId ? " current" : ""
+      }`,
     })),
   );
-  return requireSession(sessions, workspaceId);
+  return requireSession(stored.sessions, workspaceId);
 }

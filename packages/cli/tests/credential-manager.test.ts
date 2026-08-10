@@ -1,7 +1,7 @@
 /**
  * The credential manager over its state file: the file format and its
- * atomicity, process pinning, the env override rules, the TokenStorage
- * write slices, and the legacy migration.
+ * atomicity, process pinning, idempotent removal, what an environment
+ * credential can and cannot reach, and the two token storages.
  */
 import nodeFs from "node:fs";
 import fsPromises, {
@@ -14,6 +14,7 @@ import fsPromises, {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { TokenStorage } from "@prisma/cli-engine";
 import { mintTestJwt } from "@prisma/cli-engine/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -91,6 +92,15 @@ async function readRawState(): Promise<string | null> {
   return readFile(stateFilePath, "utf8").catch(() => null);
 }
 
+/** The engine's order: resolve the active credential, then ask for the
+ *  storage behind it. */
+async function storageFor(
+  manager: FileCredentialManager,
+): Promise<TokenStorage> {
+  await manager.activeCredential();
+  return manager.activeCredentialStorage();
+}
+
 async function seedTwoSessions(): Promise<void> {
   const manager = makeManager();
   await manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
@@ -163,14 +173,14 @@ describe("the state file", () => {
     const opens = vi.spyOn(fsPromises, "open");
     try {
       const manager = makeManager();
-      await manager.currentSession();
+      await manager.activeCredential();
       await manager.sessions();
-      await manager.tokenStorage(WORKSPACE_A).getTokens();
+      await (await manager.activeCredentialStorage()).getTokens();
 
       const adopting = new FileCredentialManager({
         env: { PRISMA_AUTH_FILE: legacyPath },
       });
-      await adopting.currentSession();
+      await adopting.activeCredential();
       await adopting.sessions();
 
       for (const spy of spies) {
@@ -373,34 +383,28 @@ describe("the state file", () => {
     const before = await readRawState();
 
     const manager = makeManager();
-    expect(await manager.currentSession()).toBeNull();
-    expect(await manager.sessions()).toEqual([]);
+    expect(await manager.activeCredential()).toBeNull();
+    expect(await manager.sessions()).toEqual({
+      sessions: [],
+      selectedWorkspaceId: undefined,
+    });
     expect(await readRawState()).toBe(before);
   });
 });
 
 describe("process pinning", () => {
-  it("pins the current session at the first read and keeps it when another process moves the marker", async () => {
+  it("pins the credential at the first read and keeps it when another process moves the selection", async () => {
     await seedTwoSessions();
     const manager = makeManager();
-    await makeManager().useSession(
-      (await manager.sessions()).find(
-        (session) => session.workspaceId === WORKSPACE_A,
-      ) as never,
-    );
+    await makeManager().selectSession(WORKSPACE_A);
 
-    const pinned = await manager.currentSession();
+    const pinned = await manager.activeCredential();
     expect(pinned?.workspaceId).toBe(WORKSPACE_A);
 
-    const otherProcess = makeManager();
-    await otherProcess.useSession(
-      (await otherProcess.sessions()).find(
-        (session) => session.workspaceId === WORKSPACE_B,
-      ) as never,
-    );
+    await makeManager().selectSession(WORKSPACE_B);
 
-    expect((await manager.currentSession())?.workspaceId).toBe(WORKSPACE_A);
-    expect((await makeManager().currentSession())?.workspaceId).toBe(
+    expect((await manager.activeCredential())?.workspaceId).toBe(WORKSPACE_A);
+    expect((await makeManager().activeCredential())?.workspaceId).toBe(
       WORKSPACE_B,
     );
   });
@@ -408,124 +412,182 @@ describe("process pinning", () => {
   it("moves the pin on this process's own mutations", async () => {
     await seedTwoSessions();
     const manager = makeManager();
-    expect((await manager.currentSession())?.workspaceId).toBe(WORKSPACE_B);
+    expect((await manager.activeCredential())?.workspaceId).toBe(WORKSPACE_B);
 
-    const sessionA = (await manager.sessions()).find(
-      (session) => session.workspaceId === WORKSPACE_A,
-    );
-    await manager.useSession(sessionA as never);
-    expect((await manager.currentSession())?.workspaceId).toBe(WORKSPACE_A);
+    await manager.selectSession(WORKSPACE_A);
+    expect((await manager.activeCredential())?.workspaceId).toBe(WORKSPACE_A);
 
-    await manager.endSession(sessionA as never);
-    await expect(manager.currentSession()).rejects.toMatchObject({
+    await manager.endSession(WORKSPACE_A);
+    await expect(manager.activeCredential()).rejects.toMatchObject({
       code: "CLI.CREDENTIALS_REQUIRED",
     });
+  });
+
+  it("reads the material through the file, so another process's replacement is visible", async () => {
+    await seedTwoSessions();
+    const manager = makeManager();
+    expect((await manager.activeCredential())?.expiresAt).toBeUndefined();
+
+    await makeManager().createSession(
+      {
+        token: mintToken(WORKSPACE_B, { exp: 2_000_000_000 }),
+        refreshToken: "refresh-2",
+        expiresAt: undefined,
+      },
+      WORKSPACE_B,
+    );
+
+    expect((await manager.activeCredential())?.expiresAt).toEqual(
+      new Date(2_000_000_000 * 1000),
+    );
   });
 
   it("fails with the session-ended error when another process ends the pinned session", async () => {
     await seedTwoSessions();
     const manager = makeManager();
-    await manager.currentSession();
+    await manager.activeCredential();
 
-    const otherProcess = makeManager();
-    await otherProcess.endSession(
-      (await otherProcess.sessions()).find(
-        (session) => session.workspaceId === WORKSPACE_B,
-      ) as never,
-    );
+    await makeManager().endSession(WORKSPACE_B);
 
-    await expect(manager.currentSession()).rejects.toMatchObject({
+    await expect(manager.activeCredential()).rejects.toMatchObject({
       code: "CLI.CREDENTIALS_REQUIRED",
       message: "The workspace session this command was using has ended.",
     });
   });
 
-  it("reports sessions held but none current", async () => {
+  it("reports sessions held but none selected", async () => {
     await seedTwoSessions();
-    const manager = makeManager();
-    const sessions = await manager.sessions();
-    await manager.endSession(
-      sessions.find((session) => session.workspaceId === WORKSPACE_B) as never,
-    );
+    await makeManager().endSession(WORKSPACE_B);
 
-    await expect(makeManager().currentSession()).rejects.toMatchObject({
+    await expect(makeManager().activeCredential()).rejects.toMatchObject({
       code: "CLI.CREDENTIALS_REQUIRED",
       why: "You have workspace sessions but none is current.",
     });
   });
 });
 
-describe("mutations under an environment session", () => {
-  /** §5's matrix: every mutation × {unset, set, blank, whitespace}. */
-  const refusals = {
-    set: {
-      token: () => mintToken(WORKSPACE_B),
-      code: "AUTH.ENV_SESSION_IN_FORCE",
-      createSessionRefused: false,
-    },
-    blank: {
-      token: () => "",
-      code: "AUTH.SERVICE_TOKEN_EMPTY",
-      createSessionRefused: true,
-    },
-    whitespace: {
-      token: () => "   ",
-      code: "AUTH.SERVICE_TOKEN_EMPTY",
-      createSessionRefused: true,
-    },
-  } as const;
+describe("removal is idempotent", () => {
+  /** Design §11.10, test 6. The rename is the last step of every write,
+   *  so watching it says "wrote nothing" rather than "wrote the same
+   *  bytes"; ending a session that exists is the positive control. */
+  it("succeeds and writes nothing when the workspace has no session", async () => {
+    await seedTwoSessions();
+    const before = await readRawState();
+    const manager = makeManager();
+    const renames = vi.spyOn(fsPromises, "rename");
 
-  for (const [name, spec] of Object.entries(refusals)) {
-    it(`refuses useSession, endSession and endAllSessions with the env token ${name}`, async () => {
-      await seedTwoSessions();
-      const stored = await makeManager().sessions();
-      const before = await readRawState();
-      const manager = makeManager({
-        env: { PRISMA_SERVICE_TOKEN: spec.token() },
-      });
+    try {
+      await expect(manager.endSession(WORKSPACE_C)).resolves.toBeUndefined();
+      expect(renames).not.toHaveBeenCalled();
 
-      await expect(
-        manager.useSession(stored[0] as never),
-      ).rejects.toMatchObject({ code: spec.code });
-      await expect(
-        manager.endSession(stored[0] as never),
-      ).rejects.toMatchObject({ code: spec.code });
-      await expect(manager.endAllSessions()).rejects.toMatchObject({
-        code: spec.code,
-      });
-      expect(await readRawState()).toBe(before);
+      await manager.endSession(WORKSPACE_A);
+      expect(renames).toHaveBeenCalled();
+    } finally {
+      renames.mockRestore();
+    }
+
+    expect(before).not.toBeNull();
+    expect(await readRawState()).not.toBe(before);
+  });
+
+  it("succeeds when another process removed the session first", async () => {
+    await seedTwoSessions();
+    const manager = makeManager();
+    await makeManager().endSession(WORKSPACE_A);
+
+    await expect(manager.endSession(WORKSPACE_A)).resolves.toBeUndefined();
+
+    expect(
+      (await readCredentialState(stateFilePath)).sessions.map(
+        (session) => session.workspaceId,
+      ),
+    ).toEqual([WORKSPACE_B]);
+  });
+
+  it("still refuses to select a workspace with no session", async () => {
+    await seedTwoSessions();
+
+    await expect(
+      makeManager().selectSession(WORKSPACE_C),
+    ).rejects.toMatchObject({ code: "AUTH.NO_SESSION_FOR_WORKSPACE" });
+  });
+});
+
+describe("mutations while an environment credential is in force", () => {
+  /** Design §11.7 and §11.10 test 8: the refusals are gone. Selecting or
+   *  ending a stored session changes stored state; this process keeps
+   *  authenticating as the environment credential either way. */
+  it("lets every mutation through and leaves the pin on the environment credential", async () => {
+    await seedTwoSessions();
+    const manager = makeManager({
+      env: { PRISMA_SERVICE_TOKEN: mintToken(WORKSPACE_C) },
     });
+    expect((await manager.activeCredential())?.origin.source).toBe(
+      "environment",
+    );
 
-    it(`handles createSession with the env token ${name}`, async () => {
-      await seedTwoSessions();
-      const before = await readRawState();
-      const manager = makeManager({
-        env: { PRISMA_SERVICE_TOKEN: spec.token() },
-      });
-      const created = manager.createSession(
+    await expect(
+      manager.createSession(
         credentialFor(WORKSPACE_A, "refresh-env"),
         WORKSPACE_A,
+      ),
+    ).resolves.toMatchObject({ workspaceId: WORKSPACE_A });
+    await expect(manager.selectSession(WORKSPACE_B)).resolves.toMatchObject({
+      workspaceId: WORKSPACE_B,
+    });
+    await expect(manager.endSession(WORKSPACE_B)).resolves.toBeUndefined();
+    await expect(manager.endAllSessions()).resolves.toBeUndefined();
+
+    expect(await readCredentialState(stateFilePath)).toMatchObject({
+      sessions: [],
+      currentWorkspaceId: null,
+    });
+    expect((await manager.activeCredential())?.origin.source).toBe(
+      "environment",
+    );
+    expect((await manager.activeCredential())?.workspaceId).toBe(WORKSPACE_C);
+  });
+
+  it("moves the stored selection without moving the pin", async () => {
+    await seedTwoSessions();
+    const manager = makeManager({
+      env: { PRISMA_SERVICE_TOKEN: mintToken(WORKSPACE_C) },
+    });
+    await manager.activeCredential();
+
+    await manager.selectSession(WORKSPACE_A);
+
+    expect((await manager.sessions()).selectedWorkspaceId).toBe(WORKSPACE_A);
+    expect((await manager.activeCredential())?.workspaceId).toBe(WORKSPACE_C);
+  });
+
+  for (const [name, token] of [
+    ["blank", ""],
+    ["whitespace", "   "],
+  ] as const) {
+    it(`refuses every mutation with the env token ${name}, changing nothing`, async () => {
+      await seedTwoSessions();
+      const before = await readRawState();
+      const manager = makeManager({ env: { PRISMA_SERVICE_TOKEN: token } });
+      const blank = { code: "AUTH.SERVICE_TOKEN_EMPTY" };
+
+      await expect(
+        manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A),
+      ).rejects.toMatchObject(blank);
+      await expect(manager.selectSession(WORKSPACE_A)).rejects.toMatchObject(
+        blank,
       );
-
-      if (spec.createSessionRefused) {
-        await expect(created).rejects.toMatchObject({ code: spec.code });
-        expect(await readRawState()).toBe(before);
-        return;
-      }
-
-      await expect(created).resolves.toMatchObject({
-        workspaceId: WORKSPACE_A,
-      });
-      expect(await readRawState()).not.toBe(before);
+      await expect(manager.endSession(WORKSPACE_A)).rejects.toMatchObject(
+        blank,
+      );
+      await expect(manager.endAllSessions()).rejects.toMatchObject(blank);
+      expect(await readRawState()).toBe(before);
     });
   }
 
   it("lets every mutation through with the env token unset", async () => {
     await seedTwoSessions();
     const manager = makeManager();
-    const sessionA = (await manager.sessions()).find(
-      (session) => session.workspaceId === WORKSPACE_A,
-    );
 
     await expect(
       manager.createSession(
@@ -533,12 +595,10 @@ describe("mutations under an environment session", () => {
         WORKSPACE_A,
       ),
     ).resolves.toMatchObject({ workspaceId: WORKSPACE_A });
-    await expect(manager.useSession(sessionA as never)).resolves.toMatchObject({
+    await expect(manager.selectSession(WORKSPACE_A)).resolves.toMatchObject({
       workspaceId: WORKSPACE_A,
     });
-    await expect(
-      manager.endSession(sessionA as never),
-    ).resolves.toBeUndefined();
+    await expect(manager.endSession(WORKSPACE_A)).resolves.toBeUndefined();
     await expect(manager.endAllSessions()).resolves.toBeUndefined();
 
     expect(await readCredentialState(stateFilePath)).toMatchObject({
@@ -547,7 +607,7 @@ describe("mutations under an environment session", () => {
     });
   });
 
-  it("succeeds as a no-op when endAllSessions runs with no stored sessions", async () => {
+  it("writes no state file when endAllSessions has nothing to clear", async () => {
     const manager = makeManager({
       env: { PRISMA_SERVICE_TOKEN: mintToken(WORKSPACE_B) },
     });
@@ -555,7 +615,7 @@ describe("mutations under an environment session", () => {
     expect(await readRawState()).toBeNull();
   });
 
-  it("still reaps the legacy context sidecar on the no-op", async () => {
+  it("still reaps the legacy context sidecar when there is nothing to clear", async () => {
     const sidecarPath = getAuthContextFilePath(stateFilePath);
     await writeFile(
       sidecarPath,
@@ -571,24 +631,98 @@ describe("mutations under an environment session", () => {
     await expect(stat(sidecarPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("allows createSession while the env token is in force and leaves the pin on the env session", async () => {
-    const manager = makeManager({
-      env: { PRISMA_SERVICE_TOKEN: mintToken(WORKSPACE_B) },
-    });
-    expect((await manager.currentSession())?.source).toBe("environment");
-
-    await manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
-
-    expect((await manager.currentSession())?.source).toBe("environment");
-    const state = await readCredentialState(stateFilePath);
-    expect(state.currentWorkspaceId).toBe(WORKSPACE_A);
-  });
-
-  it("raises the blank-token error from currentSession", async () => {
+  it("raises the blank-token error from activeCredential", async () => {
     const manager = makeManager({ env: { PRISMA_SERVICE_TOKEN: "  " } });
-    await expect(manager.currentSession()).rejects.toMatchObject({
+    await expect(manager.activeCredential()).rejects.toMatchObject({
       code: "AUTH.SERVICE_TOKEN_EMPTY",
     });
+  });
+});
+
+describe("the environment credential", () => {
+  /** Design §11.10, test 7: nothing manufactures an empty workspace id. */
+  it("reports no workspace id when the token's claims name none", async () => {
+    const manager = makeManager({
+      env: { PRISMA_SERVICE_TOKEN: mintTestJwt({ sub: "usr_1" }) },
+    });
+
+    const active = await manager.activeCredential();
+
+    expect(active).toMatchObject({
+      workspaceName: undefined,
+      identity: { userId: "usr_1" },
+      origin: { source: "environment" },
+    });
+    expect(active?.workspaceId).toBeUndefined();
+  });
+
+  it("reports the workspace a service token's sub names", async () => {
+    const manager = makeManager({
+      env: {
+        PRISMA_SERVICE_TOKEN: mintTestJwt({ sub: `workspace:${WORKSPACE_B}` }),
+      },
+    });
+
+    expect((await manager.activeCredential())?.workspaceId).toBe(WORKSPACE_B);
+  });
+
+  /** Design §11.2 and §11.10 tests 2 and 3: the memory-backed storage
+   *  closes over a local variable and is never given the file path, so
+   *  no method of it can reach the stored sessions. */
+  it("rotates in memory and leaves the state file byte-unchanged", async () => {
+    await seedTwoSessions();
+    const before = await readRawState();
+    const manager = makeManager({
+      env: { PRISMA_SERVICE_TOKEN: mintToken(WORKSPACE_A) },
+    });
+
+    const storage = await storageFor(manager);
+    expect(await storage.getTokens()).toMatchObject({
+      workspaceId: WORKSPACE_A,
+      accessToken: mintToken(WORKSPACE_A),
+      refreshToken: undefined,
+    });
+
+    const rotated = mintToken(WORKSPACE_A, { exp: 2_000_000_000 });
+    await storage.setTokens({
+      workspaceId: WORKSPACE_A,
+      accessToken: rotated,
+      refreshToken: "rotated-refresh",
+    });
+
+    expect(await storage.getTokens()).toMatchObject({
+      accessToken: rotated,
+      refreshToken: "rotated-refresh",
+    });
+    expect(await readRawState()).toBe(before);
+  });
+
+  it("cannot delete the stored session its workspace matches", async () => {
+    await seedTwoSessions();
+    const before = await readRawState();
+    const manager = makeManager({
+      env: { PRISMA_SERVICE_TOKEN: mintToken(WORKSPACE_A) },
+    });
+
+    const storage = await storageFor(manager);
+    await storage.clearTokens();
+
+    expect(storage.clearTokensIfCurrent).toBeUndefined();
+    expect(await storage.getTokens()).toBeNull();
+    expect(await readRawState()).toBe(before);
+    expect(
+      (await manager.sessions()).sessions.map((session) => session.workspaceId),
+    ).toEqual([WORKSPACE_A, WORKSPACE_B]);
+  });
+
+  it("keys the token set by a fixed constant when the claims name no workspace", async () => {
+    const manager = makeManager({
+      env: { PRISMA_SERVICE_TOKEN: mintTestJwt({ sub: "usr_1" }) },
+    });
+
+    const tokens = await (await storageFor(manager)).getTokens();
+
+    expect(tokens?.workspaceId).toBe("(no workspace)");
   });
 });
 
@@ -663,12 +797,7 @@ describe("createSession", () => {
     });
 
     await fetchStarted;
-    const otherProcess = makeManager();
-    await otherProcess.endSession(
-      (await otherProcess.sessions()).find(
-        (session) => session.workspaceId === WORKSPACE_A,
-      ) as never,
-    );
+    await makeManager().endSession(WORKSPACE_A);
     releaseFetch();
 
     await vi.waitFor(async () => {
@@ -698,7 +827,7 @@ describe("createSession", () => {
   });
 });
 
-describe("the TokenStorage view", () => {
+describe("the file-backed TokenStorage", () => {
   it("writes only the token fields on rotation and re-derives the expiry", async () => {
     const manager = makeManager({
       fetchWorkspaceName: async () => "Workspace A",
@@ -707,7 +836,7 @@ describe("the TokenStorage view", () => {
     await makeManager().createSession(credentialFor(WORKSPACE_B), WORKSPACE_B);
 
     const rotated = mintToken(WORKSPACE_A, { exp: 2_000_000_000 });
-    await manager.tokenStorage(WORKSPACE_A).setTokens({
+    await (await storageFor(manager)).setTokens({
       workspaceId: WORKSPACE_A,
       accessToken: rotated,
       refreshToken: "refresh-2",
@@ -729,16 +858,12 @@ describe("the TokenStorage view", () => {
   it("refuses to resurrect a session ended during the rotation", async () => {
     const manager = makeManager();
     await manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
+    const storage = await storageFor(manager);
 
-    const otherProcess = makeManager();
-    await otherProcess.endSession(
-      (await otherProcess.sessions()).find(
-        (session) => session.workspaceId === WORKSPACE_A,
-      ) as never,
-    );
+    await makeManager().endSession(WORKSPACE_A);
 
     await expect(
-      manager.tokenStorage(WORKSPACE_A).setTokens({
+      storage.setTokens({
         workspaceId: WORKSPACE_A,
         accessToken: mintToken(WORKSPACE_A),
         refreshToken: "refresh-2",
@@ -752,7 +877,7 @@ describe("the TokenStorage view", () => {
     await manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
 
     await expect(
-      manager.tokenStorage(WORKSPACE_A).setTokens({
+      (await storageFor(manager)).setTokens({
         workspaceId: WORKSPACE_A,
         accessToken: mintToken(WORKSPACE_B),
         refreshToken: "refresh-2",
@@ -764,7 +889,7 @@ describe("the TokenStorage view", () => {
     const manager = makeManager();
     const credential = credentialFor(WORKSPACE_A);
     await manager.createSession(credential, WORKSPACE_A);
-    const storage = manager.tokenStorage(WORKSPACE_A);
+    const storage = await storageFor(manager);
 
     const stale = {
       workspaceId: WORKSPACE_A,
@@ -785,9 +910,12 @@ describe("the TokenStorage view", () => {
     expect(state.currentWorkspaceId).toBeNull();
   });
 
-  it("clearTokens removes only the bound record", async () => {
-    await seedTwoSessions();
-    await makeManager().tokenStorage(WORKSPACE_A).clearTokens();
+  it("clearTokens removes only the pinned record", async () => {
+    const manager = makeManager();
+    await manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
+    await makeManager().createSession(credentialFor(WORKSPACE_B), WORKSPACE_B);
+
+    await (await storageFor(manager)).clearTokens();
 
     const state = await readCredentialState(stateFilePath);
     expect(state.sessions.map((session) => session.workspaceId)).toEqual([
@@ -798,7 +926,8 @@ describe("the TokenStorage view", () => {
 
   it("serializes refreshes in this process", async () => {
     const manager = makeManager();
-    const storage = manager.tokenStorage(WORKSPACE_A);
+    await manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
+    const storage = await storageFor(manager);
     const order: string[] = [];
     const first = storage.withRefreshLock?.(async () => {
       order.push("first-start");
@@ -816,7 +945,7 @@ describe("the TokenStorage view", () => {
   it("re-reads the file on every getTokens", async () => {
     const manager = makeManager();
     await manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
-    const storage = manager.tokenStorage(WORKSPACE_A);
+    const storage = await storageFor(manager);
     expect((await storage.getTokens())?.refreshToken).toBe("refresh-1");
 
     await makeManager().createSession(
@@ -842,10 +971,9 @@ describe("token material never leaks", () => {
       expiresAt: undefined,
     };
     await manager.createSession(credential, WORKSPACE_A);
-    await manager.currentSession();
+    const storage = await storageFor(manager);
 
     const rotated = mintToken(WORKSPACE_A, { exp: 2_000_000_000 });
-    const storage = manager.tokenStorage(WORKSPACE_A);
     await storage.setTokens({
       workspaceId: WORKSPACE_A,
       accessToken: rotated,
@@ -856,7 +984,20 @@ describe("token material never leaks", () => {
       accessToken: rotated,
       refreshToken: rotatedSecret,
     });
-    await manager.tokenStorage(WORKSPACE_B).clearTokens();
+
+    const secondProcess = makeManager({
+      env: { PRISMA_NEXT_DEBUG: "1" },
+      debugWrite: (text) => debugLines.push(text),
+    });
+    await secondProcess.createSession(
+      {
+        token: mintToken(WORKSPACE_B),
+        refreshToken: secret,
+        expiresAt: undefined,
+      },
+      WORKSPACE_B,
+    );
+    await (await storageFor(secondProcess)).clearTokens();
 
     const errors = [
       await manager
@@ -889,6 +1030,7 @@ describe("rotation durability", () => {
   it("has the rotated pair on disk by the time setTokens resolves", async () => {
     const manager = makeManager();
     await manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
+    const storage = await storageFor(manager);
     const rotated = mintToken(WORKSPACE_A, { exp: 2_000_000_000 });
 
     let renamedBeforeResolve = false;
@@ -900,7 +1042,7 @@ describe("rotation durability", () => {
         renamedBeforeResolve = true;
       });
     try {
-      await manager.tokenStorage(WORKSPACE_A).setTokens({
+      await storage.setTokens({
         workspaceId: WORKSPACE_A,
         accessToken: rotated,
         refreshToken: "refresh-2",

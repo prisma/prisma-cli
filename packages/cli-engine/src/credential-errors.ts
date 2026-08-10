@@ -97,32 +97,6 @@ export function credentialRejectedError(
 }
 
 /**
- * A mutation refused while an env-supplied session is in force: state
- * the user cannot observe as their session is never changed.
- */
-export function environmentSessionMutationError(spec: {
-  readonly envVar: string;
-  readonly storedSessionsExist: boolean;
-}): CliStructuredError {
-  return new CliStructuredError(
-    "AUTH.ENV_SESSION_IN_FORCE",
-    `The current session comes from ${spec.envVar}, which this command cannot change.`,
-    {
-      why: spec.storedSessionsExist
-        ? `${spec.envVar} overrides your stored workspace sessions; unsetting it restores them.`
-        : `${spec.envVar} supplies the only session; there is no stored state to change.`,
-      nextActions: [
-        {
-          kind: "run-command",
-          label: `Unset ${spec.envVar}`,
-          command: `unset ${spec.envVar}`,
-        },
-      ],
-    },
-  );
-}
-
-/**
  * The env var that supplies a session is set to a blank value. The one
  * structured error for it, raised identically by currentSession(), the
  * needs check, and the engine's request path.

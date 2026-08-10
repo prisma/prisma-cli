@@ -56,7 +56,12 @@ const requiresCredentials = defineCommand({
 
 function makeCli(options?: {
   readonly sessions?: readonly SessionRecord[];
-  readonly currentWorkspaceId?: string;
+  readonly selectedWorkspaceId?: string;
+  readonly environmentCredential?: {
+    readonly token: string;
+    readonly refreshToken: string | undefined;
+    readonly expiresAt: Date | undefined;
+  };
   readonly client?: ManagementApiClient;
 }) {
   return createTestCli({
@@ -66,7 +71,8 @@ function makeCli(options?: {
     },
     groups: { auth: { brief: "Manage local authentication for the CLI" } },
     sessions: options?.sessions ?? [],
-    currentWorkspaceId: options?.currentWorkspaceId,
+    selectedWorkspaceId: options?.selectedWorkspaceId,
+    environmentCredential: options?.environmentCredential,
     managementApi: { client: options?.client ?? OFFLINE_API },
     now: EPOCH,
   });
@@ -75,7 +81,7 @@ function makeCli(options?: {
 function signedInCli() {
   return makeCli({
     sessions: [SESSION],
-    currentWorkspaceId: "ws_123",
+    selectedWorkspaceId: "ws_123",
     client: IDENTIFIED_API,
   });
 }
@@ -149,6 +155,66 @@ describe("prisma-v8 auth whoami", () => {
       exitCode: 0,
       diagnostics: [],
       nextActions: [],
+    });
+  });
+
+  /** Design §11.10, test 7: an environment token whose claims name no
+   *  workspace has no workspace row and a null JSON workspace — never
+   *  an empty string and never the literal "undefined". */
+  it("omits the workspace entirely for a claimless environment token", async () => {
+    const cli = makeCli({
+      environmentCredential: {
+        token: mintTestJwt({ sub: "usr_env" }),
+        refreshToken: undefined,
+        expiresAt: undefined,
+      },
+    });
+
+    const human = await cli.run(["auth", "whoami"], {
+      isTty: { stdout: true },
+    });
+
+    expect(human.exitCode).toBe(0);
+    expect(human.stdout).toBe(
+      "status: signed in\nsource: PRISMA_SERVICE_TOKEN\n",
+    );
+    expect(human.stderr).not.toContain("workspace:");
+    expect(human.stderr).not.toContain("undefined");
+
+    const json = await cli.run(["auth", "whoami", "--json"]);
+    const frame = json.json[0];
+    if (frame.kind !== "result") {
+      throw new Error("expected a result frame");
+    }
+    expect(frame.envelope).toMatchObject({
+      ok: true,
+      result: {
+        authenticated: true,
+        workspace: null,
+        user: { id: "usr_env", email: null, name: null },
+        source: "environment",
+      },
+    });
+    expect(json.stdout).not.toContain('""');
+    expect(json.stdout).not.toContain("undefined");
+  });
+
+  it("falls back to the stored credential's own claims when /v1/me is unreachable", async () => {
+    const result = await makeCli({
+      sessions: [SESSION],
+      selectedWorkspaceId: "ws_123",
+    }).run(["auth", "whoami", "--json"]);
+
+    expect(result.exitCode).toBe(0);
+    const frame = result.json[0];
+    if (frame.kind !== "result") {
+      throw new Error("expected a result frame");
+    }
+    expect(frame.envelope).toMatchObject({
+      result: {
+        user: { id: "usr_456", email: null, name: null },
+        source: "stored",
+      },
     });
   });
 

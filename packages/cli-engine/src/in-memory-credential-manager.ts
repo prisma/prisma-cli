@@ -100,7 +100,7 @@ function claimedIdentity(token: string): CredentialIdentity | undefined {
   const email = typeof claims?.email === "string" ? claims.email : undefined;
   return userId === undefined && email === undefined
     ? undefined
-    : { userId, email };
+    : { userId, email, name: undefined };
 }
 
 function asSession(record: SessionRecord): Session {

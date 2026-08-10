@@ -18,6 +18,7 @@ const LOGIN_NEXT_ACTION: NextAction = {
 
 export interface WorkspaceListResult {
   readonly sessions: readonly Session[];
+  readonly selectedWorkspaceId: string | undefined;
   readonly environmentSessionInForce: boolean;
 }
 
@@ -25,13 +26,12 @@ export function serializeWorkspaceList(result: WorkspaceListResult) {
   return {
     context: {
       environmentSessionInForce: result.environmentSessionInForce,
-      currentWorkspaceId:
-        result.sessions.find((session) => session.current)?.workspaceId ?? null,
+      currentWorkspaceId: result.selectedWorkspaceId ?? null,
     },
     items: result.sessions.map((session) => ({
       workspaceId: session.workspaceId,
       workspaceName: session.workspaceName ?? null,
-      current: session.current,
+      current: session.workspaceId === result.selectedWorkspaceId,
       expiresAt: session.expiresAt?.toISOString() ?? null,
     })),
     count: result.sessions.length,
@@ -43,7 +43,7 @@ function listPresentations(result: WorkspaceListResult): Presentations {
   const rows = result.sessions.map((session) => [
     sessionLabel(session),
     session.workspaceId,
-    session.current ? "current" : "",
+    session.workspaceId === result.selectedWorkspaceId ? "current" : "",
   ]);
   return {
     human: () => [
@@ -84,8 +84,10 @@ export const authWorkspaceListCommand = defineCommand({
     examples: ["auth workspace list", "auth workspace list --json"],
   },
   handler: async (_args, ctx) => {
+    const stored = await ctx.credentialManager.sessions();
     const result: WorkspaceListResult = {
-      sessions: await ctx.credentialManager.sessions(),
+      sessions: stored.sessions,
+      selectedWorkspaceId: stored.selectedWorkspaceId,
       environmentSessionInForce: environmentSessionInForce(ctx.env),
     };
     return ok(ctx.present({ data: result }, listPresentations(result)));

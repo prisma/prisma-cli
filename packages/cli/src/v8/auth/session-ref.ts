@@ -1,7 +1,10 @@
 /**
  * Command-side resolution of a user-typed workspace reference against
  * the sessions the credential manager holds. The manager resolves no
- * user input: the commands match the ref and pass the matched Session.
+ * user input: the commands match the ref and pass the matched session's
+ * workspace id. This is also where a workspace the user never had is
+ * caught, which is why removal being idempotent still leaves a mistyped
+ * ref with a useful error.
  */
 import { noSessionForWorkspaceError, type Session } from "@prisma/cli-engine";
 import { CliStructuredError } from "@prisma/cli-engine/protocol";

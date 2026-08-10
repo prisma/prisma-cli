@@ -1,17 +1,15 @@
 import {
-  type CommandContext,
+  type ActiveCredential,
+  type CredentialIdentity,
   defineCommand,
   type ManagementApiClient,
   type Presentations,
-  type Session,
 } from "@prisma/cli-engine";
 import { type NextAction, ok } from "@prisma/cli-engine/protocol";
-import { decodeClaims, environmentServiceToken } from "../../auth";
 import { CLI_NAME } from "../../cli-name";
 import {
+  credentialFieldRows,
   ENVIRONMENT_SESSION_NOTICE,
-  type SessionIdentity,
-  sessionFieldRows,
 } from "./session-card";
 
 const TITLE = "Showing the current authenticated identity.";
@@ -28,74 +26,63 @@ export interface WhoamiResult {
     readonly id: string;
     readonly name: string | null;
   } | null;
-  readonly user: SessionIdentity | null;
+  readonly user: {
+    readonly id: string | null;
+    readonly email: string | null;
+    readonly name: string | null;
+  } | null;
   readonly source: "stored" | "environment" | null;
   readonly expiresAt: string | null;
 }
 
-function claimedIdentity(token: string): SessionIdentity | null {
-  const claims = decodeClaims(token);
-  if (claims === undefined) {
-    return null;
-  }
-  const read = (key: string): string | null =>
-    typeof claims[key] === "string" ? (claims[key] as string) : null;
-  const identity = {
-    id: read("sub"),
-    email: read("email"),
-    name: read("name"),
-  };
-  return identity.id === null && identity.email === null ? null : identity;
-}
-
 /** Best-effort online enrichment: whoami works offline, so any failure
- *  leaves the identity as whatever the session itself could supply. */
-async function enrichedIdentity(
+ *  leaves the identity as whatever the credential's own claims said. */
+async function fetchedIdentity(
   api: ManagementApiClient,
   signal: AbortSignal,
-): Promise<SessionIdentity | null> {
+): Promise<CredentialIdentity | undefined> {
   try {
     const { data } = await api.GET("/v1/me", { signal });
     const user = data?.data?.user;
     if (!user) {
-      return null;
+      return undefined;
     }
     return {
-      id: user.id ?? null,
-      email: user.email ?? null,
-      name: user.name ?? null,
+      userId: user.id ?? undefined,
+      email: user.email ?? undefined,
+      name: user.name ?? undefined,
     };
   } catch {
     signal.throwIfAborted();
-    return null;
+    return undefined;
   }
 }
 
-/** An env session's identity is the env token's own claims — decoded
- *  locally, never fetched. `/v1/me` is the stored-session path, whose
- *  token whoami cannot reach. */
-async function identityFor(
-  session: Session,
-  ctx: CommandContext<undefined, never>,
-): Promise<SessionIdentity | null> {
-  if (session.source === "environment") {
-    const envToken = environmentServiceToken(ctx.env);
-    return envToken === undefined ? null : claimedIdentity(envToken);
-  }
-  return enrichedIdentity(ctx.api, ctx.signal);
+/** `/v1/me` wins field by field where it disagrees with the claims;
+ *  the claims are the offline fallback. */
+function mergedIdentity(
+  claimed: CredentialIdentity | undefined,
+  fetched: CredentialIdentity | undefined,
+): CredentialIdentity | null {
+  const userId = fetched?.userId ?? claimed?.userId;
+  const email = fetched?.email ?? claimed?.email;
+  const name = fetched?.name ?? claimed?.name;
+  return userId === undefined && email === undefined && name === undefined
+    ? null
+    : { userId, email, name };
 }
 
 function presentationsFor(spec: {
-  readonly session: Session | null;
-  readonly identity: SessionIdentity | null;
+  readonly credential: ActiveCredential | null;
+  readonly identity: CredentialIdentity | null;
 }): Presentations {
-  const rows = sessionFieldRows(spec);
-  const environmentSession = spec.session?.source === "environment";
+  const rows = credentialFieldRows(spec);
+  const fromEnvironment = spec.credential?.origin.source === "environment";
   return {
     human: () => [
       { kind: "summary", tone: "info", text: TITLE },
       { kind: "fields", rows },
-      ...(environmentSession
+      ...(fromEnvironment
         ? [
             {
               kind: "summary",
@@ -106,7 +93,7 @@ function presentationsFor(spec: {
         : []),
     ],
     stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
-    next: () => (spec.session === null ? [SIGN_IN] : []),
+    next: () => (spec.credential === null ? [SIGN_IN] : []),
   };
 }
 
@@ -116,20 +103,36 @@ export const authWhoamiCommand = defineCommand({
     examples: ["auth whoami", "auth whoami --json"],
   },
   handler: async (_args, ctx) => {
-    const session = await ctx.session();
-    const identity = session === null ? null : await identityFor(session, ctx);
+    const credential = await ctx.activeCredential();
+    const identity =
+      credential === null
+        ? null
+        : mergedIdentity(
+            credential.identity,
+            await fetchedIdentity(ctx.api, ctx.signal),
+          );
     const result: WhoamiResult = {
-      authenticated: session !== null,
+      authenticated: credential !== null,
       workspace:
-        session === null
+        credential === null || credential.workspaceId === undefined
           ? null
-          : { id: session.workspaceId, name: session.workspaceName ?? null },
-      user: identity,
-      source: session?.source ?? null,
-      expiresAt: session?.expiresAt?.toISOString() ?? null,
+          : {
+              id: credential.workspaceId,
+              name: credential.workspaceName ?? null,
+            },
+      user:
+        identity === null
+          ? null
+          : {
+              id: identity.userId ?? null,
+              email: identity.email ?? null,
+              name: identity.name ?? null,
+            },
+      source: credential?.origin.source ?? null,
+      expiresAt: credential?.expiresAt?.toISOString() ?? null,
     };
     return ok(
-      ctx.present({ data: result }, presentationsFor({ session, identity })),
+      ctx.present({ data: result }, presentationsFor({ credential, identity })),
     );
   },
 });

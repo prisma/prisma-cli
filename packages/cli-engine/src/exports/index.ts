@@ -60,7 +60,6 @@ export {
   credentialRejectedError,
   credentialsRequiredError,
   emptyServiceTokenError,
-  environmentSessionMutationError,
   noSessionForWorkspaceError,
   serviceTokenRejectedError,
 } from "../credential-errors";

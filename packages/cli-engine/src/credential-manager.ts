@@ -40,6 +40,9 @@ export interface StoredSessions {
 export interface CredentialIdentity {
   readonly userId: string | undefined;
   readonly email: string | undefined;
+  /** Only an online lookup supplies this; a token's claims do not
+   *  carry it. */
+  readonly name: string | undefined;
 }
 
 /**

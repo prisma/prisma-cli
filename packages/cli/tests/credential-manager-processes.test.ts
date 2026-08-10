@@ -298,10 +298,10 @@ describe("across processes", () => {
     await runWorker("create", WORKSPACE_B, mintToken(WORKSPACE_B), "refresh-b");
 
     const manager = makeManager();
-    expect((await manager.currentSession())?.workspaceId).toBe(WORKSPACE_B);
+    expect((await manager.activeCredential())?.workspaceId).toBe(WORKSPACE_B);
 
     await runWorker("use", WORKSPACE_A);
-    expect((await manager.currentSession())?.workspaceId).toBe(WORKSPACE_B);
+    expect((await manager.activeCredential())?.workspaceId).toBe(WORKSPACE_B);
 
     const fromNewProcess = JSON.parse(await runWorker("current")) as {
       workspaceId: string;

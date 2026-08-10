@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import type { CredentialIdentity } from "@prisma/cli-engine";
 
 const WORKSPACE_SUB_PREFIX = "workspace:";
 
@@ -44,4 +45,15 @@ export function serviceTokenWorkspaceId(token: string): string | undefined {
 export function claimedExpiresAt(token: string): Date | undefined {
   const exp = decodeClaims(token)?.exp;
   return typeof exp === "number" ? new Date(exp * 1000) : undefined;
+}
+
+/** Who a credential belongs to, from its own claims. The manager
+ *  decodes it so no command ever holds a token to decode. */
+export function claimedIdentity(token: string): CredentialIdentity | undefined {
+  const claims = decodeClaims(token);
+  const userId = typeof claims?.sub === "string" ? claims.sub : undefined;
+  const email = typeof claims?.email === "string" ? claims.email : undefined;
+  return userId === undefined && email === undefined
+    ? undefined
+    : { userId, email, name: undefined };
 }
