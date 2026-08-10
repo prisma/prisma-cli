@@ -31,7 +31,7 @@ export function buildCli(): Cli {
       auth: { brief: "Manage local authentication for the CLI" },
       "auth workspace": { brief: "Manage local workspace sessions" },
       telemetry: {
-        brief: "Inspect and change anonymous CLI telemetry",
+        brief: "Show or change whether the CLI sends anonymous usage data",
         description:
           "Show telemetry status, or enable / disable anonymous CLI usage data.\n" +
           `Telemetry is on by default (opt-out); see ${CLI_DOCS_URL}\n` +

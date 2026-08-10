@@ -14,6 +14,13 @@ export const AUTH_FILE_ENV_VAR = "PRISMA_COMPUTE_AUTH_FILE";
  */
 export const DEFAULT_REDIRECT_URI = "http://localhost/auth/callback";
 
+/**
+ * The SDK's config demands a redirect URI even for a client that only
+ * ever makes API calls with tokens it already has. Port 0 is the
+ * honest value: no browser is ever sent here, and nothing listens.
+ */
+export const UNUSED_REDIRECT_URI = "http://localhost:0/auth/callback";
+
 export function getApiBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
   return env.PRISMA_MANAGEMENT_API_URL?.trim() || DEFAULT_API_BASE_URL;
 }
