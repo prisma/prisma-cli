@@ -88,6 +88,33 @@ release automation, pinned product versions, and the pipeline emitting
 a publishable `prisma@8.0.0-rc1` artifact from a tagged commit. Ends
 when the operator can publish with one action (project DoD).
 
+### S8 — Engine-owned WebSocket transport, and `service logs`
+
+Repo: prisma-cli. Design:
+`assets/engine/websocket-transport-design.md` (operator-instructed,
+written during S2c).
+
+The engine gains an authenticated socket transport beside `ctx.api`,
+and `service logs` is restored on it. Deployment logs stream from an
+endpoint that upgrades to a WebSocket, which the engine's HTTP client
+cannot open; the shelved port worked around that by taking a raw token
+through `ctx.getCredentials()` and letting the compute SDK build the URL
+and set the header itself. Credential-manager rev 6 rules that out —
+credentials never reach commands — so the command was shelved in S2c
+rather than shipped in a shape the design forbids.
+
+The engine opens the socket and hands the command a decoded record
+stream: no URL, no header, no token command-side, and reconnection
+across the endpoint's ten-minute cutoff owned by the engine rather than
+reimplemented per command. The handler itself already exists, reviewed
+and green, in the `s2c-services` history — restoring it should be small.
+
+**Answer §7's second open question before scheduling this.** If
+deployment logs can be served over plain HTTP the way `build logs`
+already is, the whole slice collapses into a copy of `build logs` and
+should not be built. The endpoint is also marked experimental in the
+Management API specification, so its contract should be pinned first.
+
 ## Dependency graph
 
 ```text
@@ -96,7 +123,27 @@ S1 ──► S2 ──► S3 ──► S5 ──► S7
         └──────┘ (published engine exists after S2's engine hardening)
 S4 (prisma/prisma) ────────► S5
 S6 (after S1) ─────────────► wired in during S3/S5
+S8 (after S2c; gated on the transport question) ──► restores service logs
 ```
+
+## Follow-ups parked on other work
+
+Recorded so they are not lost between slices.
+
+- **Restore the "what to run next" hints that pointed at `service
+  deploy`.** S2c dropped `service deploy` and `service build` (operator
+  ruling: they conflated local compiling with uploading a tarball, and
+  Composer supersedes them). Ten typed next actions in the surviving
+  service commands suggested running `service deploy`, and were removed
+  rather than left pointing at a command the binary no longer answers
+  to — `show`, `list-deploys`, `open`, `promote`, `rollback`, `remove`
+  and the domain commands now explain a failure without offering a
+  follow-up command. **Once Composer's deploy commands exist, add them
+  back pointing there** (operator instruction, 2026-08-10). The removal
+  is recorded in `assets/s2/parity-divergences-s2c.md`.
+- **`service logs` returns in S8**, once the engine can open an
+  authenticated socket. Shelved, not rejected — unlike `service deploy`,
+  which is not coming back in that shape.
 
 ## Coverage ledger (what proves what)
 
@@ -104,7 +151,7 @@ S6 (after S1) ─────────────► wired in during S3/S5
 | --- | --- |
 | Sync commands, presenters, envelopes, exit codes | S1, S2 |
 | Prompts (defaults, consent, wizard) | S2 (init) |
-| Poll + status events; output streams | S2 (domain wait; app/build logs) |
+| Poll + status events; output streams | S2 (domain wait; `build logs` — `service logs` moved to S8) |
 | Auth via context, refresh under long runs | S2, S3 (deploy) |
 | Config sections, command families, validator absence | S3, S5 |
 | Session commands, signal lifetime | S3 (dev, log) |
