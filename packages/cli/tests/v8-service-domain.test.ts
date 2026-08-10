@@ -419,6 +419,102 @@ describe("prisma-v8 service domain remove", () => {
     isTty: { stdin: true, stdout: true, stderr: true },
   };
 
+  it("removes the domain without prompting when --confirm grants consent non-interactively", async () => {
+    const harness = await makeServiceCli({ routes: removeRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "domain",
+        "remove",
+        "shop.acme.com",
+        ...TARGET_ARGS,
+        "--confirm",
+      ],
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({
+      ...EXPECTED_TARGET,
+      hostname: "shop.acme.com",
+      removed: true,
+    });
+  });
+
+  it("removes the domain with --confirm interactively without asking", async () => {
+    // No scripted answers: a prompt would fail the run past the script.
+    const harness = await makeServiceCli({ routes: removeRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "domain",
+        "remove",
+        "shop.acme.com",
+        ...TARGET_ARGS,
+        "--confirm",
+      ],
+      { cwd: harness.cwd, env: harness.env, ...INTERACTIVE, answers: [] },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({ removed: true });
+  });
+
+  it("emits the completed json envelope for a non-interactive --confirm removal", async () => {
+    const harness = await makeServiceCli({ routes: removeRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "domain",
+        "remove",
+        "shop.acme.com",
+        ...TARGET_ARGS,
+        "--confirm",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || !frame.envelope.ok) {
+      throw new Error("expected a completed envelope");
+    }
+    expect(frame.envelope.commandId).toBe("service.domain.remove");
+    expect(frame.envelope.result).toMatchObject({
+      hostname: "shop.acme.com",
+      removed: true,
+    });
+  });
+
+  it("emits the completed json envelope for an interactive --confirm removal", async () => {
+    const harness = await makeServiceCli({ routes: removeRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "domain",
+        "remove",
+        "shop.acme.com",
+        ...TARGET_ARGS,
+        "--confirm",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env, ...INTERACTIVE, answers: [] },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || !frame.envelope.ok) {
+      throw new Error("expected a completed envelope");
+    }
+    expect(frame.envelope.commandId).toBe("service.domain.remove");
+    expect(frame.envelope.result).toMatchObject({ removed: true });
+  });
+
   it("removes the domain after interactive consent", async () => {
     const harness = await makeServiceCli({ routes: removeRoutes() });
 

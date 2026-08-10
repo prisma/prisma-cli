@@ -98,22 +98,24 @@ The service group's legacy commands never auto-logged-in
 unauthenticated runs with the engine's `CLI.CREDENTIALS_REQUIRED`
 (exit 2) instead of the legacy `AUTH_REQUIRED` (exit 1).
 
-### `service domain remove` consent (Q5 class + OPEN QUESTION)
+### `service domain remove` consent (Q5 class; operator-ruled 2026-08-10)
 
-- Interactive decline: legacy `USAGE_ERROR` "Custom domain removal
-  canceled" (exit 2) → v8 user cancellation (exit 3).
-- Non-interactive without a grant: legacy `CONFIRMATION_REQUIRED`
-  (exit 1) → engine `CLI.CONSENT_REQUIRED` (exit 2).
-- **`--yes` no longer grants the removal.** Legacy skipped the
-  confirmation under `-y/--yes`. The engine rules consent structurally
-  ungrantable by `--yes` (pinned engine test: "--yes can never grant
-  consent"), reserves the `yes` flag name, and hides shared-flag
-  values from handlers, so R-S2b-3's "keep the current confirmation
-  flag" cannot be built for this command without an engine amendment.
-  Built to the engine rule; as of D1 the command is interactive-only.
-  RAISED TO THE OPERATOR as a contradiction between R-S2b-3 and the
-  engine's consent semantics (affects `service remove`, `service
-  deploy --prod`, and S2b's `--yes`-consent commands identically).
+The consent flag changes: legacy `-y/--yes` granted the removal; in
+v8 `--yes` NEVER grants consent (engine rule, pinned by the engine's
+own test), and the documented explicit grant is the new
+command-declared `--confirm` boolean flag — the engine consent system
+used as designed (prompt.consent plus a command-declared consent
+flag).
+
+- `--confirm` present: no prompt, consent granted, removal proceeds
+  (interactive or not).
+- Absent, interactive: `prompt.consent` with the renamed question
+  text; decline → v8 user cancellation (exit 3; legacy `USAGE_ERROR`
+  "Custom domain removal canceled" exited 2).
+- Absent, non-interactive (or with `--yes`): engine
+  `CLI.CONSENT_REQUIRED` (exit 2; legacy `CONFIRMATION_REQUIRED`
+  exited 1), whose hint points at the command's explicit consent
+  flag.
 
 ### Interactive service picker
 
