@@ -90,7 +90,7 @@ export function makeContext(
     config,
     present: present as CommandContext<unknown, number>["present"],
     session: (): Promise<Session | null> =>
-      invocation.runtime.credentialManager?.session() ??
+      invocation.runtime.credentialManager?.currentSession() ??
       Promise.resolve(null),
     getCredentials: (): Promise<Credentials | undefined> =>
       invocation.runtime.getCredentials(),

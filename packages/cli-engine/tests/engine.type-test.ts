@@ -10,7 +10,6 @@ import type {
   CommandContext,
   CommandFamily,
   CredentialManager,
-  GrantSummary,
   Session,
   CommandHandler,
   CompletedEnvelope,
@@ -394,10 +393,10 @@ export const runtimeShape: Runtime = {
 };
 
 // —————————————————————————————————————————————————————————————————————
-// The credential manager surface (design rev 4): managesCredentials is
-// a capability — ctx.credentialManager exists exactly when declared;
-// ctx.session exists on every context; the harness seeds a mutable
-// in-memory manager.
+// The credential manager surface (design rev 5, the session model):
+// managesCredentials is a capability — ctx.credentialManager exists
+// exactly when declared; ctx.session exists on every context; the
+// harness seeds a mutable in-memory manager.
 // —————————————————————————————————————————————————————————————————————
 
 export const managedCommand = defineCommand({
@@ -425,8 +424,12 @@ export const unmanagedCommand = defineCommand({
 });
 export const unmanagedIsUndeclared: false = unmanagedCommand.managesCredentials;
 
-export const grantSummaryHasNoTokenMaterial: "workspace" | "expiresAt" | "active" =
-  undefined as unknown as keyof GrantSummary;
+export const sessionHasNoTokenMaterial:
+  | "workspaceId"
+  | "workspaceName"
+  | "expiresAt"
+  | "source"
+  | "current" = undefined as unknown as keyof Session;
 
 export const seededHarnessSpec: Parameters<typeof createTestCli>[0] = {
   commands: tree,
@@ -434,24 +437,35 @@ export const seededHarnessSpec: Parameters<typeof createTestCli>[0] = {
     token: "jwt",
     refreshToken: undefined,
     expiresAt: undefined,
-    method: "user-oauth",
   },
-  identity: { kind: "user", id: "user-1", email: undefined },
-  grants: [
+  sessions: [
     {
-      workspace: { id: "workspace-1", name: "Acme" },
+      workspaceId: "workspace-1",
+      workspaceName: "Acme",
       credential: {
         token: "jwt",
         refreshToken: undefined,
         expiresAt: undefined,
-        method: "user-oauth",
       },
     },
   ],
-  activeWorkspaceId: "workspace-1",
+  currentWorkspaceId: "workspace-1",
+  environmentToken: "jwt",
+  managementApiClientConfig: {
+    clientId: "client",
+    redirectUri: "https://test.invalid/cb",
+    apiBaseUrl: "https://api.test.invalid",
+    authBaseUrl: "https://auth.test.invalid",
+  },
 };
 
 export const runtimeWithManager: Runtime = {
   ...runtimeShape,
   credentialManager: undefined as unknown as CredentialManager,
+  managementApiClientConfig: {
+    clientId: "client",
+    redirectUri: "https://test.invalid/cb",
+    apiBaseUrl: "https://api.test.invalid",
+    authBaseUrl: "https://auth.test.invalid",
+  },
 };

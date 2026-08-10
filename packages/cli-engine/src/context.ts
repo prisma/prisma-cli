@@ -31,10 +31,11 @@ export interface CommandContext<
   ) => PresentedResult<T>;
 
   /**
-   * The current auth session, or null when signed out. Read-only and
+   * The session this process is acting as (the manager's
+   * currentSession() pin), or null when signed out. Read-only and
    * local-only — safe to call anywhere; never touches the network.
    * Throws the same structured errors the needs check raises for
-   * broken-but-not-signed-out states (grants held, none active).
+   * broken-but-not-signed-out states (sessions held, none current).
    */
   readonly session: () => Promise<Session | null>;
 
@@ -47,8 +48,8 @@ export interface CommandContext<
   readonly getCredentials: () => Promise<Credentials | undefined>;
 
   /**
-   * The Management API client: a thin lazy proxy over the credential
-   * manager's apiClient(), constructed on first method call, once per
+   * The Management API client, constructed and owned by the ENGINE:
+   * the pinned session's client, built on first method call, once per
    * run. A request made while signed out throws the structured
    * CLI.CREDENTIALS_REQUIRED error (the same constructor the
    * needs.credentials check uses).

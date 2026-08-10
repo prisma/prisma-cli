@@ -2,53 +2,46 @@ import { Buffer } from "node:buffer";
 import {
   credentialsRequiredError,
   environmentSessionMutationError,
+  noSessionForWorkspaceError,
 } from "./credential-errors";
 import type {
   Credential,
   CredentialManager,
-  GrantSummary,
-  Identity,
   Session,
-  Workspace,
 } from "./credential-manager";
-import type { ManagementApiClient } from "./management-api";
-import { CliStructuredError } from "./protocol";
+import type { TokenStorage } from "./management-api";
 
 const SERVICE_TOKEN_ENV_VAR = "PRISMA_SERVICE_TOKEN";
 
-/** A held grant with its credential material, as seeded into and read
- *  back from the test credential manager. */
-export interface TestGrant {
-  readonly workspace: Workspace;
+/** A stored session with its credential material, as seeded into and
+ *  read back from the test credential manager. */
+export interface TestSessionRecord {
+  readonly workspaceId: string;
+  readonly workspaceName: string | undefined;
   readonly credential: Credential;
 }
 
 export interface TestCredentialManagerSeed {
-  /** Preferred seed: runs beginSession's real claims derivation. The
-   *  token must be a JWT (use mintTestJwt). */
+  /** Stored sessions, mirroring the state file's records. */
+  readonly sessions?: readonly TestSessionRecord[];
+  /** The file's current marker. */
+  readonly currentWorkspaceId?: string;
+  /** Convenience seed: runs createSession's real claims derivation.
+   *  The token must be a JWT with `workspace_id` (use mintTestJwt). */
   readonly credential?: Credential;
-  /** Escape hatch: session() returns exactly this. origin
-   *  "environment" seeds an env-override session; origin "stored"
-   *  materializes one active grant with a synthesized credential. */
-  readonly session?: Session;
-  /** Grants-model seeding. `identity` is seedable independently of
-   *  `grants`, so a grant whose token disagrees with the recorded
-   *  identity is constructible. */
-  readonly identity?: Identity;
-  readonly grants?: readonly TestGrant[];
-  readonly activeWorkspaceId?: string;
+  /** Composes the ephemeral env session (PRISMA_SERVICE_TOKEN). The
+   *  token must be a JWT with `workspace_id` (use mintTestJwt). */
+  readonly environmentToken?: string;
 }
 
-/** The whole manager state, readable back after a run. */
+/** The whole stored state, readable back after a run. */
 export interface TestCredentialManagerState {
-  readonly identity: Identity | undefined;
-  readonly grants: readonly TestGrant[];
-  readonly activeWorkspaceId: string | null;
+  readonly sessions: readonly TestSessionRecord[];
+  readonly currentWorkspaceId: string | null;
 }
 
 /** Mints an unsigned JWT whose payload is exactly `claims` — the
- *  harness's claim source for beginSession derivation (`sub`,
- *  `workspace_id`, `exp`, `email`). */
+ *  harness's claim source (`sub`, `workspace_id`, `exp`, `email`). */
 export function mintTestJwt(claims: Readonly<Record<string, unknown>>): string {
   const encode = (value: unknown): string =>
     Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -74,300 +67,328 @@ function decodeJwtClaims(
   }
 }
 
-function stringClaim(
-  claims: Record<string, unknown>,
-  key: string,
-): string | undefined {
-  const value = claims[key];
-  return typeof value === "string" ? value : undefined;
+function claimedWorkspaceId(token: string): string | undefined {
+  const claims = decodeJwtClaims(token);
+  const workspaceId = claims?.workspace_id;
+  return typeof workspaceId === "string" ? workspaceId : undefined;
 }
 
-interface DerivedClaims {
-  readonly identity: Identity;
-  readonly workspaceId: string;
-  readonly expiresAt: Date | undefined;
+function claimedExpiresAt(token: string): Date | undefined {
+  const exp = decodeJwtClaims(token)?.exp;
+  return typeof exp === "number" ? new Date(exp * 1000) : undefined;
 }
 
-function deriveFromClaims(credential: Credential): DerivedClaims {
-  const claims = decodeJwtClaims(credential.token);
-  const sub = claims === undefined ? undefined : stringClaim(claims, "sub");
-  const workspaceId =
-    claims === undefined ? undefined : stringClaim(claims, "workspace_id");
-  if (claims === undefined || sub === undefined || workspaceId === undefined) {
-    throw new Error(
-      "@prisma/cli-engine/testing: beginSession derives identity and workspace from the credential's claims — the token must be a JWT with `sub` and `workspace_id` (use mintTestJwt)",
-    );
-  }
-  const exp = claims.exp;
-  const expiresAt = typeof exp === "number" ? new Date(exp * 1000) : undefined;
-  const identity: Identity =
-    credential.method === "service-token"
-      ? { kind: "service", id: sub, label: undefined }
-      : { kind: "user", id: sub, email: stringClaim(claims, "email") };
-  return { identity, workspaceId, expiresAt };
-}
-
-function identityFromGrants(
-  grants: readonly TestGrant[],
-): Identity | undefined {
-  for (const grant of grants) {
-    const claims = decodeJwtClaims(grant.credential.token);
-    const sub = claims === undefined ? undefined : stringClaim(claims, "sub");
-    if (sub !== undefined) {
-      return grant.credential.method === "service-token"
-        ? { kind: "service", id: sub, label: undefined }
-        : {
-            kind: "user",
-            id: sub,
-            email: claims === undefined ? undefined : stringClaim(claims, "email"),
-          };
-    }
-  }
-  return undefined;
-}
+type Pin =
+  | { readonly kind: "unpinned" }
+  | { readonly kind: "environment" }
+  | { readonly kind: "marker"; readonly workspaceId: string | null };
 
 /**
  * The harness's mutable in-memory CredentialManager: the same
- * interface commands see, with the whole state readable back after a
- * run. No persistence, no locking — those belong to the real manager
- * and its own tests.
+ * interface commands see, with the whole stored state readable back
+ * after a run, and the design's process-pinning semantics —
+ * currentSession() is fixed at its first read; only this manager's
+ * own mutations move it. No persistence, no locking — those belong to
+ * the real manager and its own tests.
  */
 export class TestCredentialManager implements CredentialManager {
-  private identity: Identity | undefined;
-  private heldGrants: TestGrant[];
-  private activeWorkspaceId: string | null;
-  private environmentSession: Session | undefined;
-  private readonly client: ManagementApiClient | undefined;
+  private storedSessions: TestSessionRecord[];
+  private markedWorkspaceId: string | null;
+  private readonly environmentToken: string | undefined;
+  private pin: Pin = { kind: "unpinned" };
 
-  constructor(
-    seed: TestCredentialManagerSeed,
-    client?: ManagementApiClient,
-  ) {
-    this.client = client;
-    this.heldGrants = [...(seed.grants ?? [])];
-    this.identity = seed.identity ?? identityFromGrants(this.heldGrants);
-    this.activeWorkspaceId = seed.activeWorkspaceId ?? null;
-    this.environmentSession =
-      seed.session?.origin === "environment" ? seed.session : undefined;
-    if (seed.session !== undefined && seed.session.origin === "stored") {
-      this.materializeStoredSession(seed.session);
-    }
+  constructor(seed: TestCredentialManagerSeed) {
+    this.storedSessions = [...(seed.sessions ?? [])];
+    this.markedWorkspaceId = seed.currentWorkspaceId ?? null;
+    this.environmentToken = seed.environmentToken;
     if (seed.credential !== undefined) {
-      this.applyBeginSession(seed.credential);
+      const workspaceId = claimedWorkspaceId(seed.credential.token);
+      if (workspaceId === undefined) {
+        throw new Error(
+          "@prisma/cli-engine/testing: the `credential` seed runs createSession's claims derivation — the token must be a JWT with `workspace_id` (use mintTestJwt)",
+        );
+      }
+      this.applyCreateSession(seed.credential, workspaceId);
     }
   }
 
   state(): TestCredentialManagerState {
     return {
-      identity: this.identity,
-      grants: [...this.heldGrants],
-      activeWorkspaceId: this.activeWorkspaceId,
+      sessions: [...this.storedSessions],
+      currentWorkspaceId: this.markedWorkspaceId,
     };
   }
 
-  async session(): Promise<Session | null> {
-    if (this.environmentSession !== undefined) {
-      return this.environmentSession;
+  /** Applies a write as ANOTHER process would: the stored state
+   *  changes, but this process's pinned session does not move. */
+  overwriteStoredState(state: {
+    readonly sessions?: readonly TestSessionRecord[];
+    readonly currentWorkspaceId?: string | null;
+  }): void {
+    if (state.sessions !== undefined) {
+      this.storedSessions = [...state.sessions];
     }
-    return this.storedSession();
+    if (state.currentWorkspaceId !== undefined) {
+      this.markedWorkspaceId = state.currentWorkspaceId;
+    }
   }
 
-  async beginSession(credential: Credential): Promise<Session> {
-    return this.applyBeginSession(credential);
+  async currentSession(): Promise<Session | null> {
+    if (this.pin.kind === "unpinned") {
+      this.pin =
+        this.environmentToken !== undefined
+          ? { kind: "environment" }
+          : { kind: "marker", workspaceId: this.resolvedMarker() };
+      return this.pinnedSession(true);
+    }
+    return this.pinnedSession(false);
   }
 
-  async endSession(): Promise<void> {
+  async sessions(): Promise<readonly Session[]> {
+    return this.storedSessions.map((record) => this.asSession(record));
+  }
+
+  async createSession(
+    credential: Credential,
+    workspaceId: string,
+  ): Promise<Session> {
+    return this.applyCreateSession(credential, workspaceId);
+  }
+
+  async useSession(session: Session): Promise<Session> {
     this.refuseUnderEnvironmentSession();
-    this.identity = undefined;
-    this.heldGrants = [];
-    this.activeWorkspaceId = null;
+    const record = this.validatedWorkspaceReference(session);
+    this.markedWorkspaceId = record.workspaceId;
+    this.pin = { kind: "marker", workspaceId: record.workspaceId };
+    return this.asSession(record);
   }
 
-  async grants(): Promise<readonly GrantSummary[]> {
-    return this.heldGrants.map((grant) => ({
-      workspace: grant.workspace,
-      expiresAt: grant.credential.expiresAt,
-      active: grant.workspace.id === this.activeWorkspaceId,
-    }));
-  }
-
-  async rememberWorkspaceName(workspaceId: string, name: string): Promise<void> {
-    this.heldGrants = this.heldGrants.map((grant) =>
-      grant.workspace.id === workspaceId
-        ? { ...grant, workspace: { id: workspaceId, name } }
-        : grant,
+  async endSession(session: Session): Promise<void> {
+    this.refuseUnderEnvironmentSession();
+    const record = this.validatedWorkspaceReference(session);
+    this.storedSessions = this.storedSessions.filter(
+      (stored) => stored.workspaceId !== record.workspaceId,
     );
-  }
-
-  async activateGrant(ref: string): Promise<Session> {
-    this.refuseUnderEnvironmentSession();
-    this.activeWorkspaceId = this.resolveRef(ref).workspace.id;
-    const session = this.storedSession();
-    if (session === null) {
-      throw credentialsRequiredError("grants-held-none-active");
+    if (this.markedWorkspaceId === record.workspaceId) {
+      this.markedWorkspaceId = null;
     }
-    return session;
-  }
-
-  async forgetGrant(ref: string): Promise<void> {
-    this.refuseUnderEnvironmentSession();
-    const grant = this.resolveRef(ref);
-    this.heldGrants = this.heldGrants.filter((held) => held !== grant);
-    if (this.activeWorkspaceId === grant.workspace.id) {
-      this.activeWorkspaceId = null;
+    if (
+      this.pin.kind === "marker" &&
+      this.pin.workspaceId === record.workspaceId
+    ) {
+      this.pin = { kind: "marker", workspaceId: null };
     }
   }
 
-  /** Credential resolution is internal per the interface ruling: only
-   *  apiClient() consumes it. */
-  private resolveCredential(): Credential | null {
-    if (this.environmentSession !== undefined) {
-      return {
-        token: "test-environment-token",
-        refreshToken: undefined,
-        expiresAt: this.environmentSession.expiresAt,
-        method: this.environmentSession.method,
-      };
+  async endAllSessions(): Promise<void> {
+    if (this.environmentToken !== undefined) {
+      if (this.storedSessions.length === 0) {
+        return;
+      }
+      throw environmentSessionMutationError({
+        envVar: SERVICE_TOKEN_ENV_VAR,
+        storedSessionsExist: true,
+      });
     }
-    const session = this.storedSession();
-    if (session === null) {
+    this.storedSessions = [];
+    this.markedWorkspaceId = null;
+    this.pin = { kind: "marker", workspaceId: null };
+  }
+
+  tokenStorage(workspaceId: string): TokenStorage {
+    const boundRecord = (): TestSessionRecord | undefined =>
+      this.storedSessions.find((record) => record.workspaceId === workspaceId);
+    return {
+      getTokens: async () => {
+        const record = boundRecord();
+        if (record === undefined) {
+          return null;
+        }
+        return {
+          workspaceId,
+          accessToken: record.credential.token,
+          refreshToken: record.credential.refreshToken,
+        };
+      },
+      setTokens: async (tokens) => {
+        const record = boundRecord();
+        if (record === undefined) {
+          throw new Error(
+            "@prisma/cli-engine/testing: the session this rotation belongs to has ended — a refresh write must not resurrect it",
+          );
+        }
+        const claimed = claimedWorkspaceId(tokens.accessToken);
+        if (claimed !== undefined && claimed !== workspaceId) {
+          throw new Error(
+            "@prisma/cli-engine/testing: a refreshed token's workspace_id claim disagrees with the bound workspace — refresh cannot re-scope",
+          );
+        }
+        this.storedSessions = this.storedSessions.map((stored) =>
+          stored.workspaceId === workspaceId
+            ? {
+                ...stored,
+                credential: {
+                  token: tokens.accessToken,
+                  refreshToken: tokens.refreshToken,
+                  expiresAt: claimedExpiresAt(tokens.accessToken),
+                },
+              }
+            : stored,
+        );
+      },
+      clearTokens: async () => {
+        this.removeRecordAndMarker(workspaceId);
+      },
+      clearTokensIfCurrent: async (tokens) => {
+        const record = boundRecord();
+        if (
+          record === undefined ||
+          tokens.workspaceId !== workspaceId ||
+          tokens.accessToken !== record.credential.token ||
+          tokens.refreshToken !== record.credential.refreshToken
+        ) {
+          return;
+        }
+        this.removeRecordAndMarker(workspaceId);
+      },
+      withRefreshLock: (fn) => fn(),
+    };
+  }
+
+  private removeRecordAndMarker(workspaceId: string): void {
+    this.storedSessions = this.storedSessions.filter(
+      (stored) => stored.workspaceId !== workspaceId,
+    );
+    if (this.markedWorkspaceId === workspaceId) {
+      this.markedWorkspaceId = null;
+    }
+  }
+
+  /** The marker the first read pins: a marker naming no record (the
+   *  migration none-current case) pins as none. */
+  private resolvedMarker(): string | null {
+    if (
+      this.markedWorkspaceId !== null &&
+      this.storedSessions.some(
+        (record) => record.workspaceId === this.markedWorkspaceId,
+      )
+    ) {
+      return this.markedWorkspaceId;
+    }
+    return null;
+  }
+
+  private pinnedSession(justPinned: boolean): Session | null {
+    if (this.pin.kind === "environment") {
+      return this.environmentSession();
+    }
+    if (this.pin.kind === "unpinned" || this.pin.workspaceId === null) {
+      if (this.storedSessions.length > 0) {
+        throw credentialsRequiredError("sessions-held-none-current");
+      }
       return null;
     }
-    const active = this.heldGrants.find(
-      (grant) => grant.workspace.id === this.activeWorkspaceId,
+    const pinnedWorkspaceId = this.pin.workspaceId;
+    const record = this.storedSessions.find(
+      (stored) => stored.workspaceId === pinnedWorkspaceId,
     );
-    return active === undefined ? null : active.credential;
+    if (record === undefined) {
+      if (justPinned) {
+        throw new Error(
+          "@prisma/cli-engine/testing: the pin resolved to a workspace with no record",
+        );
+      }
+      throw credentialsRequiredError("session-ended");
+    }
+    return this.asSession(record);
   }
 
-  async apiClient(): Promise<ManagementApiClient> {
-    if (this.resolveCredential() === null) {
-      throw credentialsRequiredError();
-    }
-    if (this.client === undefined) {
+  private environmentSession(): Session {
+    const token = this.environmentToken;
+    if (token === undefined) {
       throw new Error(
-        "@prisma/cli-engine/testing: supply managementApi.client to createTestCli before using apiClient()",
+        "@prisma/cli-engine/testing: no environment token is seeded",
       );
     }
-    return this.client;
-  }
-
-  /** Shared throw semantics with session(): null when signed out; the
-   *  structured grants-held-none-active error when grants are held but
-   *  no cursor names one. */
-  private storedSession(): Session | null {
-    if (this.identity === undefined || this.heldGrants.length === 0) {
-      return null;
-    }
-    const active = this.heldGrants.find(
-      (grant) => grant.workspace.id === this.activeWorkspaceId,
-    );
-    if (active === undefined) {
-      throw credentialsRequiredError("grants-held-none-active");
+    const workspaceId = claimedWorkspaceId(token);
+    if (workspaceId === undefined) {
+      throw new Error(
+        "@prisma/cli-engine/testing: the `environmentToken` seed must be a JWT with `workspace_id` (use mintTestJwt)",
+      );
     }
     return {
-      identity: this.identity,
-      method: active.credential.method,
-      origin: "stored",
-      workspace: active.workspace,
-      expiresAt: active.credential.expiresAt,
+      workspaceId,
+      workspaceName: undefined,
+      expiresAt: claimedExpiresAt(token),
+      source: "environment",
+      current: true,
     };
   }
 
-  private materializeStoredSession(session: Session): void {
-    this.identity = session.identity;
-    this.heldGrants = [
-      {
-        workspace: session.workspace,
-        credential: {
-          token: "test-session-token",
-          refreshToken: undefined,
-          expiresAt: session.expiresAt,
-          method: session.method,
-        },
-      },
-    ];
-    this.activeWorkspaceId = session.workspace.id;
+  private asSession(record: TestSessionRecord): Session {
+    return {
+      workspaceId: record.workspaceId,
+      workspaceName: record.workspaceName,
+      expiresAt: record.credential.expiresAt,
+      source: "stored",
+      current: record.workspaceId === this.markedWorkspaceId,
+    };
   }
 
-  private applyBeginSession(credential: Credential): Session {
-    const derived = deriveFromClaims(credential);
-    const sameIdentity =
-      this.identity !== undefined && this.identity.id === derived.identity.id;
-    if (!sameIdentity) {
-      this.heldGrants = [];
+  private applyCreateSession(
+    credential: Credential,
+    workspaceId: string,
+  ): Session {
+    const claimed = claimedWorkspaceId(credential.token);
+    if (claimed !== undefined && claimed !== workspaceId) {
+      throw new Error(
+        "@prisma/cli-engine/testing: createSession's workspaceId argument disagrees with the credential's workspace_id claim",
+      );
     }
-    this.identity = derived.identity;
-    const existing = this.heldGrants.find(
-      (grant) => grant.workspace.id === derived.workspaceId,
+    const existing = this.storedSessions.find(
+      (stored) => stored.workspaceId === workspaceId,
     );
-    const stored: TestGrant = {
-      workspace: { id: derived.workspaceId, name: existing?.workspace.name },
+    const record: TestSessionRecord = {
+      workspaceId,
+      workspaceName: existing?.workspaceName,
       credential: {
         token: credential.token,
         refreshToken: credential.refreshToken,
-        expiresAt: derived.expiresAt,
-        method: credential.method,
+        expiresAt: claimedExpiresAt(credential.token) ?? credential.expiresAt,
       },
     };
-    this.heldGrants = [
-      ...this.heldGrants.filter((grant) => grant.workspace.id !== derived.workspaceId),
-      stored,
+    this.storedSessions = [
+      ...this.storedSessions.filter(
+        (stored) => stored.workspaceId !== workspaceId,
+      ),
+      record,
     ];
-    this.activeWorkspaceId = derived.workspaceId;
-    return {
-      identity: derived.identity,
-      method: credential.method,
-      origin: "stored",
-      workspace: stored.workspace,
-      expiresAt: derived.expiresAt,
-    };
+    this.markedWorkspaceId = workspaceId;
+    if (this.environmentToken === undefined) {
+      this.pin = { kind: "marker", workspaceId };
+    }
+    return this.asSession(record);
   }
 
   private refuseUnderEnvironmentSession(): void {
-    if (this.environmentSession !== undefined) {
+    if (this.environmentToken !== undefined) {
       throw environmentSessionMutationError({
         envVar: SERVICE_TOKEN_ENV_VAR,
-        storedGrantsExist: this.heldGrants.length > 0,
+        storedSessionsExist: this.storedSessions.length > 0,
       });
     }
   }
 
-  private resolveRef(ref: string): TestGrant {
-    const byId = this.heldGrants.find((grant) => grant.workspace.id === ref);
-    if (byId !== undefined) {
-      return byId;
+  private validatedWorkspaceReference(session: Session): TestSessionRecord {
+    if (session.source === "environment") {
+      throw noSessionForWorkspaceError(session.workspaceId);
     }
-    const byName = this.heldGrants.filter(
-      (grant) => grant.workspace.name?.toLowerCase() === ref.toLowerCase(),
+    const record = this.storedSessions.find(
+      (stored) => stored.workspaceId === session.workspaceId,
     );
-    if (byName.length > 1) {
-      throw new CliStructuredError(
-        "AUTH.WORKSPACE_REF_AMBIGUOUS",
-        `'${ref}' names more than one held workspace grant.`,
-        {
-          nextActions: [
-            {
-              kind: "user-choice",
-              label: "Refer to the workspace by its id instead.",
-            },
-          ],
-        },
-      );
+    if (record === undefined) {
+      throw noSessionForWorkspaceError(session.workspaceId);
     }
-    if (byName.length === 0) {
-      throw new CliStructuredError(
-        "AUTH.GRANT_NOT_HELD",
-        `You hold no workspace grant matching '${ref}'.`,
-        {
-          nextActions: [
-            {
-              kind: "user-choice",
-              label: "Sign in to that workspace to acquire a grant for it.",
-            },
-          ],
-        },
-      );
-    }
-    return byName[0];
+    return record;
   }
 }

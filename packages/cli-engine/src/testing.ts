@@ -1,27 +1,27 @@
 import type { CommandFamily, MountedTree } from "./command-family";
 import type { Credentials } from "./context";
-import type {
-  Credential,
-  Identity,
-  Session,
-} from "./credential-manager";
+import type { Credential } from "./credential-manager";
 import type { EngineEvent, StreamEvent } from "./events";
 import { buildEngine } from "./execution/engine";
-import type { ManagementApiClient } from "./management-api";
+import type {
+  ManagementApiClient,
+  ManagementApiClientConfig,
+} from "./management-api";
 import type { PresentedResult } from "./presentation";
 import type { RunSummary } from "./run-summary";
 import type { Runtime } from "./runtime";
 import {
   TestCredentialManager,
-  type TestGrant,
+  type TestSessionRecord,
 } from "./testing-credential-manager";
 
 export interface TestCli {
   /**
    * The mutable in-memory credential manager backing the runs — the
-   * whole state (grants, per-grant credentials, cursor) is readable
-   * back after a run via state(). Undefined only when the legacy
-   * `credentials` seed selected the getCredentials fallback path.
+   * whole stored state (sessions with their credentials, the current
+   * marker) is readable back after a run via state(). Undefined only
+   * when the legacy `credentials` seed selected the getCredentials
+   * fallback path.
    */
   readonly credentialManager: TestCredentialManager | undefined;
   run(
@@ -93,16 +93,19 @@ export function createTestCli(spec: {
    * seeds below; deleted with the swap's final stage.
    */
   readonly credentials?: Credentials;
-  /** Preferred manager seed: beginSession runs its real claims
+  /** Convenience manager seed: createSession runs its real claims
    *  derivation on this credential (mint the token with mintTestJwt). */
   readonly credential?: Credential;
-  /** Escape hatch: ctx.session() resolves exactly this. */
-  readonly session?: Session;
-  /** Grants-model seeding; identity is independent of grants so
-   *  mismatched states are constructible. */
-  readonly identity?: Identity;
-  readonly grants?: readonly TestGrant[];
-  readonly activeWorkspaceId?: string;
+  /** Stored sessions, mirroring the state file's records. */
+  readonly sessions?: readonly TestSessionRecord[];
+  /** The file's current marker. */
+  readonly currentWorkspaceId?: string;
+  /** Composes the ephemeral env session; also exported to each run's
+   *  env as PRISMA_SERVICE_TOKEN (overridable per run). */
+  readonly environmentToken?: string;
+  /** The SDK client construction config; defaults point every
+   *  endpoint at test.invalid hosts. */
+  readonly managementApiClientConfig?: ManagementApiClientConfig;
   /** baseUrl defaults to "https://test.invalid"; when `client` is
    *  supplied, ctx.api IS that object. */
   readonly managementApi?: {
@@ -115,10 +118,9 @@ export function createTestCli(spec: {
 }): TestCli {
   const managerSeeded =
     spec.credential !== undefined ||
-    spec.session !== undefined ||
-    spec.identity !== undefined ||
-    spec.grants !== undefined ||
-    spec.activeWorkspaceId !== undefined;
+    spec.sessions !== undefined ||
+    spec.currentWorkspaceId !== undefined ||
+    spec.environmentToken !== undefined;
   if (spec.credentials !== undefined && managerSeeded) {
     throw new Error(
       "@prisma/cli-engine/testing: the legacy `credentials` seed selects the manager-less fallback runtime and cannot be combined with credential-manager seeds",
@@ -127,16 +129,19 @@ export function createTestCli(spec: {
   const credentialManager =
     spec.credentials !== undefined
       ? undefined
-      : new TestCredentialManager(
-          {
-            credential: spec.credential,
-            session: spec.session,
-            identity: spec.identity,
-            grants: spec.grants,
-            activeWorkspaceId: spec.activeWorkspaceId,
-          },
-          spec.managementApi?.client,
-        );
+      : new TestCredentialManager({
+          sessions: spec.sessions,
+          currentWorkspaceId: spec.currentWorkspaceId,
+          credential: spec.credential,
+          environmentToken: spec.environmentToken,
+        });
+  const managementApiClientConfig: ManagementApiClientConfig =
+    spec.managementApiClientConfig ?? {
+      clientId: "test-client-id",
+      redirectUri: "https://test.invalid/auth/callback",
+      apiBaseUrl: spec.managementApi?.baseUrl ?? "https://test.invalid",
+      authBaseUrl: "https://auth.test.invalid",
+    };
   const engine = buildEngine(
     {
       name: "prisma-test",
@@ -175,7 +180,10 @@ export function createTestCli(spec: {
         },
         stdin: inputStreamFromString(opts?.stdin ?? ""),
         cwd: opts?.cwd ?? "/",
-        env: opts?.env ?? {},
+        env:
+          spec.environmentToken === undefined
+            ? (opts?.env ?? {})
+            : { PRISMA_SERVICE_TOKEN: spec.environmentToken, ...opts?.env },
         isTty: {
           stdin: opts?.isTty?.stdin ?? false,
           stdout: opts?.isTty?.stdout ?? false,
@@ -194,6 +202,7 @@ export function createTestCli(spec: {
         },
         config: { sections: spec.config ?? {}, diagnostics: [] },
         credentialManager,
+        managementApiClientConfig,
         getCredentials: async () => spec.credentials,
         managementApi: {
           baseUrl: spec.managementApi?.baseUrl ?? "https://test.invalid",

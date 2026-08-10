@@ -17,12 +17,14 @@
  * family-supplied base; committed versions for releases; auth library
  * lives in the CLI repo, distinct from Prisma Cloud. Prior versions
  * preserved as -v1…-v7.ts; reviews in ./reviews/.
- * Amended 2026-08-10 for the credential-manager design rev 4
- * (credential-manager-design.md, normative): §4 gains ctx.session and
- * the CredentialManager entity surface (ctx.getCredentials removal is
+ * Amended 2026-08-10 for the credential-manager design rev 5 — the
+ * SESSION MODEL (credential-manager-design.md, normative; rev 5
+ * replaced rev 4's grants model): §4 gains ctx.session and the
+ * CredentialManager entity surface (ctx.getCredentials removal is
  * STAGED — the engine still carries it until the swap's final stage);
  * §6 gains the managesCredentials capability; §10 gains
- * Runtime.credentialManager; §11 gains manager seeding + fixtures.
+ * Runtime.credentialManager and the injected client config; §11 gains
+ * manager seeding + fixtures.
  *
  * THE MODEL, in one analogy (operator, 2026-08-09): commands settle like
  * promises. A command can COMPLETE — and its completion can be
@@ -373,11 +375,12 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
     presentations: Presentations,
   ) => PresentedResult<T>
 
-  /** The current auth session, or null when signed out — on EVERY
+  /** The session this process is acting as (the manager's
+   *  currentSession() pin), or null when signed out — on EVERY
    *  context. Read-only and local-only: safe to call anywhere; never
    *  touches the network. Raises the same single-sourced structured
    *  errors as the needs check for broken-but-not-signed-out states
-   *  (grants held none active; blank env token).
+   *  (sessions held none current; blank env token).
    *  ctx.getCredentials is DELETED (staged: the engine carries it
    *  until the swap's final stage) — the context ends with fewer auth
    *  surfaces than before: `api` + `session`, plus
@@ -385,16 +388,22 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
    *  capability. */
   readonly session: () => Promise<Session | null>
 
-  /** The Management API client: a thin lazy proxy over the credential
-   *  manager's apiClient(), constructed on first method CALL, once
-   *  per run. Request failures pass through the engine-side mapping
-   *  (design §6): refreshTokenInvalid === true → the expired
+  /** The Management API client, constructed and owned by the ENGINE:
+   *  the pinned session's client, built from the injected client
+   *  config on first method CALL, once per run (process pinning makes
+   *  the memoization correct). A stored session gets the SDK's
+   *  refreshing path over manager.tokenStorage(workspaceId); an env
+   *  session gets the SDK's static-token path with its error mapping
+   *  at the call site. Request failures pass through the engine-side
+   *  mapping (design §6): refreshTokenInvalid === true → the expired
    *  CLI.CREDENTIALS_REQUIRED; any other SDK AuthError → a state
-   *  re-read (grant gone → grant-removed CLI.CREDENTIALS_REQUIRED,
-   *  otherwise the transient auth-service error) — state checks,
-   *  never message parsing. A request made while signed out throws
-   *  the structured CLI.CREDENTIALS_REQUIRED error (the same
-   *  constructor the needs.credentials check uses). */
+   *  re-read for the workspace the client is BOUND to (session gone →
+   *  session-ended CLI.CREDENTIALS_REQUIRED, otherwise the transient
+   *  auth-service error) — state checks, never message parsing; the
+   *  cause chain is walked for both AuthError and CLI structured
+   *  errors. A request made while signed out throws the structured
+   *  CLI.CREDENTIALS_REQUIRED error (the same constructor the
+   *  needs.credentials check uses). */
   readonly api: ManagementApiClient
 
   /** The one way to emit while running (§1). */
@@ -435,76 +444,84 @@ export interface Credentials {
   readonly token: string
 }
 
-// —— §4b The credential manager (design rev 4 §3/§4, normative) ——
-// One identity, plural workspace grants, one active grant; every
-// consumer surface is scalar. No conditional properties: absent =
-// `T | undefined` with the key required.
+// —— §4b The credential manager (design rev 5 §2/§3, normative) ——
+// A set of per-workspace sessions, one current. Sessions are keyed
+// by workspace id: at most one session per workspace. No conditional
+// properties: absent = `T | undefined` with the key required.
 
-export type Identity =
-  | { readonly kind: 'user'; readonly id: string; readonly email: string | undefined }
-  | { readonly kind: 'service'; readonly id: string | undefined; readonly label: string | undefined }
-
+/** The proof material. Only ever seen by the login flow (which mints
+ *  it) and createSession (which stores it). */
 export interface Credential {
   readonly token: string
   readonly refreshToken: string | undefined
   readonly expiresAt: Date | undefined
-  readonly method: 'user-oauth' | 'service-token'
 }
 
-/** A resolved pair — NOT the id-or-name string users type (a ref). */
-export interface Workspace {
-  readonly id: string
-  readonly name: string | undefined
-}
-
+/** "Logged-in-edness", scoped to a workspace. Identified to users by
+ *  its workspace. The token is INTERNAL: it lives in the stored
+ *  record, never on this public shape. `source: "environment"` marks
+ *  the ephemeral session composed from PRISMA_SERVICE_TOKEN; it never
+ *  appears in sessions(). */
 export interface Session {
-  readonly identity: Identity
-  readonly method: 'user-oauth' | 'service-token'
-  readonly origin: 'stored' | 'environment'
-  /** The ACTIVE grant's workspace. */
-  readonly workspace: Workspace
+  readonly workspaceId: string
+  readonly workspaceName: string | undefined
   readonly expiresAt: Date | undefined
+  readonly source: 'stored' | 'environment'
+  readonly current: boolean
 }
 
-/** User-centric grant listing; structurally NEVER carries credential
- *  material. `active` is the cursor position. */
-export interface GrantSummary {
-  readonly workspace: Workspace
-  readonly expiresAt: Date | undefined
-  readonly active: boolean
-}
-
-/** Custody, not user interaction: never opens a browser, never
- *  prompts. Env is a construction input. Credential RESOLUTION is
- *  internal — it happens inside apiClient() and the needs check; no
- *  public method returns credential material. Full semantics
- *  (env-override mutation rules, error single-sourcing, locking) are
- *  normative in credential-manager-design.md §4/§6/§8. */
+/** Manages sessions: six user-facing operations plus one
+ *  engine-facing accessor. Custody, not user interaction: never opens
+ *  a browser, never prompts. Env is a construction input. The manager
+ *  resolves NO user input: commands resolve refs against sessions()
+ *  and pass the matched Session. Full semantics (process pinning,
+ *  env-override mutation rules, error single-sourcing, locking) are
+ *  normative in credential-manager-design.md §3/§4/§6/§8. */
 export interface CredentialManager {
-  /** Local-only truth; never touches the network. */
-  session(): Promise<Session | null>
-  /** Login's write: claims-derived; upserts (same identity) or
-   *  replaces all (different identity); sets the cursor. */
-  beginSession(credential: Credential): Promise<Session>
-  /** Logout, whole-identity; refuses under an env-supplied session. */
-  endSession(): Promise<void>
-  /** Held grants as summaries; local-only. */
-  grants(): Promise<readonly GrantSummary[]>
-  /** The sanctioned name-write path; no grant held → no-op. */
-  rememberWorkspaceName(workspaceId: string, name: string): Promise<void>
-  /** Cursor move to a HELD grant; ref = exact id, then
-   *  case-insensitive name; ambiguity/no-match are structured errors. */
-  activateGrant(ref: string): Promise<Session>
-  /** Drop one grant; clears the cursor if it was active. */
-  forgetGrant(ref: string): Promise<void>
-  /** The authenticated client, constructed and owned by the MANAGER;
-   *  cached per workspace id, invalidated by cursor moves. */
-  apiClient(): Promise<ManagementApiClient>
+  /** The session this PROCESS is acting as: pinned at first read (env
+   *  token if set, else the file's current marker at that moment);
+   *  other processes' marker moves never redirect it, this process's
+   *  own mutations do. Local-only. */
+  currentSession(): Promise<Session | null>
+  /** The available sessions, read fresh from the file. Local-only.
+   *  Under an env override the file's marker is still shown as
+   *  `current`. */
+  sessions(): Promise<readonly Session[]>
+  /** Login's write: verifies the workspace_id claim matches, upserts
+   *  by workspaceId, sets the marker and this process's pin. The name
+   *  is fetched best-effort after the write. */
+  createSession(credential: Credential, workspaceId: string): Promise<Session>
+  /** Switch: sets the file's marker AND this process's pin. The
+   *  argument is a workspace reference — only workspaceId is read,
+   *  re-validated against freshly-read state. */
+  useSession(session: Session): Promise<Session>
+  /** Log out of one workspace. If it was current (marker or pin),
+   *  that current is cleared — no auto-promotion. */
+  endSession(session: Session): Promise<void>
+  /** Log out entirely: remove all sessions and the marker. */
+  endAllSessions(): Promise<void>
+  /** ENGINE-FACING, not a user operation: the SDK TokenStorage view
+   *  for one workspace's session. The engine forwards it into SDK
+   *  client config and never calls its methods itself. */
+  tokenStorage(workspaceId: string): TokenStorage
 }
 
-/** The SDK's typed client, re-exported by the engine so consumers
- *  never import @prisma/management-api-sdk directly. */
+/** The SDK's typed client and token-storage contract, re-exported by
+ *  the engine so consumers never import @prisma/management-api-sdk
+ *  directly. */
 export type ManagementApiClient = import('@prisma/management-api-sdk').ManagementApiClient
+export type TokenStorage = import('@prisma/management-api-sdk').TokenStorage
+
+/** SDK client construction config, injected by the bin beside the
+ *  manager (§10). All four fields: the SDK's refreshing fetch
+ *  requires the full config even though only login paths read
+ *  redirectUri. */
+export interface ManagementApiClientConfig {
+  readonly clientId: string
+  readonly redirectUri: string
+  readonly apiBaseUrl: string
+  readonly authBaseUrl: string
+}
 
 /**
  * §4a Prompts (operator ruling, 2026-08-09: prompts return their answer
@@ -764,13 +781,13 @@ export interface CommandDefinition<
   readonly exitCodes: Readonly<Record<TCode, string>>
 
   /**
-   * A CAPABILITY, not a need (design rev 4 §5): when true,
+   * A CAPABILITY, not a need (design rev 5 §4): when true,
    * ctx.credentialManager appears on the context. Declaring it never
    * fails a run — documentation and testability, not enforcement.
    * Declared by exactly: auth login, auth logout, auth workspace
-   * list, auth workspace use, auth workspace forget. whoami uses
-   * ctx.session() only; grants() lives ONLY on the manager, never on
-   * the universal context.
+   * list, auth workspace use, auth workspace logout. whoami uses
+   * ctx.session() only; sessions() lives ONLY on the manager, never
+   * on the universal context.
    */
   readonly managesCredentials: TManagesCredentials
 
@@ -1137,12 +1154,17 @@ export interface Runtime {
   /** Loaded config + file-level diagnostics; the shell builds this via
    *  the unified loader (R10). Tests hand in fixtures. */
   readonly config: LoadedConfig
-  /** The credential manager the bin wires (design rev 4 §5). The
+  /** The credential manager the bin wires (design rev 5 §4). The
    *  engine prefers it for the needs check, ctx.session, and ctx.api.
    *  Optional only during the staged swap; getCredentials below is
    *  the fallback and is deleted — with the optionality — in the
    *  swap's final mechanical stage. */
   readonly credentialManager?: CredentialManager
+  /** SDK client construction config the bin injects beside the
+   *  manager; the engine builds ctx.api from it (the same config
+   *  feeds performLogin). Required whenever a credentialManager is
+   *  wired; optional only during the staged swap. */
+  readonly managementApiClientConfig?: ManagementApiClientConfig
   readonly getCredentials: () => Promise<Credentials | undefined>
   /** Management API endpoint config; the bin derives baseUrl from env
    *  (getApiBaseUrl). */
@@ -1199,20 +1221,24 @@ export declare function createTestCli(spec: {
    *  a manager-less runtime. Mutually exclusive with the manager
    *  seeds below; deleted with the swap's final stage. */
   readonly credentials?: Credentials
-  /** Preferred manager seed: beginSession runs its real claims
+  /** Convenience manager seed: createSession runs its real claims
    *  derivation on this credential (mint the token with mintTestJwt). */
   readonly credential?: Credential
-  /** Escape hatch: ctx.session() resolves exactly this. */
-  readonly session?: Session
-  /** Grants-model seeding; identity is seedable independently of
-   *  grants, so a grant whose token disagrees with the recorded
-   *  identity is constructible. */
-  readonly identity?: Identity
-  readonly grants?: ReadonlyArray<{
-    readonly workspace: Workspace
+  /** Session-model seeding: stored sessions mirroring the state
+   *  file's records, and the file's current marker. */
+  readonly sessions?: ReadonlyArray<{
+    readonly workspaceId: string
+    readonly workspaceName: string | undefined
     readonly credential: Credential
   }>
-  readonly activeWorkspaceId?: string
+  readonly currentWorkspaceId?: string
+  /** Composes the ephemeral env session; also exported to each run's
+   *  env as PRISMA_SERVICE_TOKEN. */
+  readonly environmentToken?: string
+  /** The SDK client construction config; defaults point every
+   *  endpoint at test.invalid hosts (the design's local-endpoint
+   *  fixture surface). */
+  readonly managementApiClientConfig?: ManagementApiClientConfig
   /** baseUrl defaults to "https://test.invalid"; when `client` is
    *  supplied, ctx.api IS that object (the uniform mock seam). */
   readonly managementApi?: {
@@ -1226,30 +1252,40 @@ export declare function createTestCli(spec: {
 
 /** Mints an unsigned JWT whose payload is exactly `claims` — the
  *  harness's claim source (`sub`, `workspace_id`, `exp`, `email`) for
- *  beginSession derivation, migration, expiry, and identity-guard
- *  tests. The rest of the design's fixture surface (the injectable
- *  refresh/token endpoint scripting, legacy-store builder,
- *  deterministic clock, mutation interleaving hook) lands with the
- *  real manager implementation, whose behavior it exercises. */
+ *  createSession derivation, migration, and expiry tests. The rest of
+ *  the design's fixture surface (the token-endpoint scripting,
+ *  legacy-store builder, deterministic clock, second-process lock
+ *  holder) lands with the real manager implementation, whose behavior
+ *  it exercises. */
 export declare function mintTestJwt(claims: Readonly<Record<string, unknown>>): string
 
 export interface TestCli {
   /** The MUTABLE in-memory credential manager backing the runs: the
-   *  full CredentialManager interface plus state(), which reads the
-   *  whole state back after a run — grants with their per-grant
-   *  credentials, identity, and cursor (login/logout tests observe
-   *  state changes). Undefined only when the legacy `credentials`
-   *  seed selected the manager-less fallback runtime. */
+   *  full CredentialManager interface — with the design's
+   *  process-pinning semantics (currentSession fixed at first read;
+   *  its own mutations move it) — plus state(), which reads the whole
+   *  stored state back after a run, and overwriteStoredState(), which
+   *  applies a write as ANOTHER process would (never moves the pin).
+   *  Undefined only when the legacy `credentials` seed selected the
+   *  manager-less fallback runtime. */
   readonly credentialManager:
     | (CredentialManager & {
         state(): {
-          readonly identity: Identity | undefined
-          readonly grants: ReadonlyArray<{
-            readonly workspace: Workspace
+          readonly sessions: ReadonlyArray<{
+            readonly workspaceId: string
+            readonly workspaceName: string | undefined
             readonly credential: Credential
           }>
-          readonly activeWorkspaceId: string | null
+          readonly currentWorkspaceId: string | null
         }
+        overwriteStoredState(state: {
+          readonly sessions?: ReadonlyArray<{
+            readonly workspaceId: string
+            readonly workspaceName: string | undefined
+            readonly credential: Credential
+          }>
+          readonly currentWorkspaceId?: string | null
+        }): void
       })
     | undefined
   run(

@@ -5,23 +5,22 @@ const signInAction: NextAction = {
   label: "Sign in, then run the command again.",
 };
 
-const activateGrantAction: NextAction = {
+const useSessionAction: NextAction = {
   kind: "run-command",
-  label: "Activate one of your held workspace grants",
+  label: "Make one of your workspace sessions current",
   command: "prisma auth workspace use",
 };
 
 export type CredentialsRequiredReason =
   | "unauthenticated"
   | "expired"
-  | "grant-removed"
-  | "grants-held-none-active";
+  | "session-ended"
+  | "sessions-held-none-current";
 
 /**
- * The single constructor of CLI.CREDENTIALS_REQUIRED. Raised by the
- * needs check, by an unauthenticated ctx.api request, and by the
- * credential manager's session()/credential() in the
- * grants-held-none-active state — identically from all of them.
+ * The single constructor of CLI.CREDENTIALS_REQUIRED. Raised
+ * identically by the needs check, ctx.session, and the engine's
+ * request path.
  */
 export function credentialsRequiredError(
   reason: CredentialsRequiredReason = "unauthenticated",
@@ -39,22 +38,22 @@ export function credentialsRequiredError(
         "Your session has expired — sign in again.",
         { nextActions: [signInAction] },
       );
-    case "grant-removed":
+    case "session-ended":
       return new CliStructuredError(
         "CLI.CREDENTIALS_REQUIRED",
-        "The workspace grant this command was using is no longer held.",
+        "The workspace session this command was using has ended.",
         {
-          why: "It was removed while the command was running (for example by another prisma process).",
-          nextActions: [activateGrantAction, signInAction],
+          why: "It was ended while the command was running (for example by another prisma process).",
+          nextActions: [useSessionAction, signInAction],
         },
       );
-    case "grants-held-none-active":
+    case "sessions-held-none-current":
       return new CliStructuredError(
         "CLI.CREDENTIALS_REQUIRED",
-        "No workspace is active.",
+        "No workspace session is current.",
         {
-          why: "You hold workspace grants, but none is active.",
-          nextActions: [activateGrantAction, signInAction],
+          why: "You have workspace sessions but none is current.",
+          nextActions: [useSessionAction, signInAction],
         },
       );
   }
@@ -88,20 +87,64 @@ export function authServiceError(): CliStructuredError {
  */
 export function environmentSessionMutationError(spec: {
   readonly envVar: string;
-  readonly storedGrantsExist: boolean;
+  readonly storedSessionsExist: boolean;
 }): CliStructuredError {
   return new CliStructuredError(
     "AUTH.ENV_SESSION_IN_FORCE",
     `The current session comes from ${spec.envVar}, which this command cannot change.`,
     {
-      why: spec.storedGrantsExist
-        ? `${spec.envVar} overrides your stored workspace grants; unsetting it restores them.`
+      why: spec.storedSessionsExist
+        ? `${spec.envVar} overrides your stored workspace sessions; unsetting it restores them.`
         : `${spec.envVar} supplies the only session; there is no stored state to change.`,
       nextActions: [
         {
           kind: "run-command",
           label: `Unset ${spec.envVar}`,
           command: `unset ${spec.envVar}`,
+        },
+      ],
+    },
+  );
+}
+
+/**
+ * No session exists for the named workspace. Sessions are created by
+ * `prisma auth login` alone — `workspace use` selects among the ones
+ * you have.
+ */
+export function noSessionForWorkspaceError(
+  workspaceRef: string,
+): CliStructuredError {
+  return new CliStructuredError(
+    "AUTH.NO_SESSION_FOR_WORKSPACE",
+    `You have no session for workspace '${workspaceRef}'.`,
+    {
+      nextActions: [
+        {
+          kind: "run-command",
+          label: `Sign in and pick '${workspaceRef}' in the browser`,
+          command: "prisma auth login",
+        },
+      ],
+    },
+  );
+}
+
+/**
+ * The management API rejected the env-supplied service token (401).
+ * There is no refresh for it and nothing stored is cleared.
+ */
+export function serviceTokenRejectedError(spec: {
+  readonly envVar: string;
+}): CliStructuredError {
+  return new CliStructuredError(
+    "AUTH.SERVICE_TOKEN_REJECTED",
+    `The management API rejected the service token from ${spec.envVar}.`,
+    {
+      nextActions: [
+        {
+          kind: "user-choice",
+          label: `Replace ${spec.envVar} with a valid service token, or unset it to use your stored sessions.`,
         },
       ],
     },

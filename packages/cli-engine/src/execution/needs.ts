@@ -104,11 +104,11 @@ function checkDependencies(
 
 /**
  * The credentials need, single-sourced from the credential manager
- * when one is wired: session() is the local-only truth, its structured
- * errors (grants held none active, blank env token) pass through
- * verbatim so the needs check, ctx.session, and ctx.api raise
- * identically. The getCredentials path below is the staged-swap
- * fallback.
+ * when one is wired: currentSession() is the local-only truth (the
+ * process pin), its structured errors (sessions held none current,
+ * blank env token) pass through verbatim so the needs check,
+ * ctx.session, and ctx.api raise identically. The getCredentials path
+ * below is the staged-swap fallback.
  */
 async function checkCredentials(
   needs: AnyCommand["needs"],
@@ -121,7 +121,7 @@ async function checkCredentials(
     invocation.runtime.credentialManager;
   if (manager !== undefined) {
     try {
-      if ((await manager.session()) === null) {
+      if ((await manager.currentSession()) === null) {
         return needsErrored(credentialsRequiredError());
       }
       return undefined;

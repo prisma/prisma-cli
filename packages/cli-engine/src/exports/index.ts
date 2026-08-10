@@ -57,14 +57,13 @@ export {
   credentialsRequiredError,
   type CredentialsRequiredReason,
   environmentSessionMutationError,
+  noSessionForWorkspaceError,
+  serviceTokenRejectedError,
 } from "../credential-errors";
 export type {
   Credential,
   CredentialManager,
-  GrantSummary,
-  Identity,
   Session,
-  Workspace,
 } from "../credential-manager";
 export type {
   EngineEvent,
@@ -72,7 +71,11 @@ export type {
   StreamEvent,
   StreamMeta,
 } from "../events";
-export type { ManagementApiClient } from "../management-api";
+export type {
+  ManagementApiClient,
+  ManagementApiClientConfig,
+  TokenStorage,
+} from "../management-api";
 export {
   type Block,
   type Format,

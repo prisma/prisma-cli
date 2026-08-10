@@ -8,5 +8,5 @@ export {
   TestCredentialManager,
   type TestCredentialManagerSeed,
   type TestCredentialManagerState,
-  type TestGrant,
+  type TestSessionRecord,
 } from "../testing-credential-manager";

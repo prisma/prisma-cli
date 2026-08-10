@@ -29,7 +29,9 @@ describe("main export", () => {
       "environmentSessionMutationError",
       "flag",
       "loadConfig",
+      "noSessionForWorkspaceError",
       "positional",
+      "serviceTokenRejectedError",
     ]);
   });
 

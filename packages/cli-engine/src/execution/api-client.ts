@@ -1,27 +1,42 @@
 import {
   authServiceError,
   credentialsRequiredError,
+  serviceTokenRejectedError,
 } from "../credential-errors";
-import type { Session } from "../credential-manager";
+import type { CredentialManager, Session } from "../credential-manager";
 import type { ManagementApiClient } from "../management-api";
 import { CliStructuredError } from "../protocol";
 import type { Invocation } from "./engine";
 
+const SERVICE_TOKEN_ENV_VAR = "PRISMA_SERVICE_TOKEN";
+
+type ClientBinding =
+  | { readonly source: "stored"; readonly workspaceId: string }
+  | { readonly source: "environment" };
+
 /**
- * ctx.api: a thin lazy proxy over the credential manager's
- * apiClient(). Nothing resolves until the first method CALL, so a run
- * that never issues a request never touches the manager. Every request
- * failure passes through the engine-side error mapping below; the
- * returned client is a Proxy whose method wrappers await the lazy
- * resolution before applying the call — every client method is async,
- * so the deferral is invisible to callers.
+ * ctx.api: the ENGINE constructs and owns the management API client —
+ * the pinned session's client, once per run (process pinning makes
+ * the memoization correct). Nothing resolves until the first method
+ * CALL, so a run that never issues a request never pays for — or
+ * depends on — the SDK module load. A stored session gets the SDK's
+ * refreshing path over the manager's TokenStorage view; an env
+ * session gets the SDK's static-token path with its error mapping at
+ * the call site. Every request failure passes through the engine-side
+ * mapping below. The returned client is a Proxy whose method wrappers
+ * await the lazy construction before applying the call — every client
+ * method is async, so the deferral is invisible to callers.
  */
 export function buildManagementApiClient(
   invocation: Invocation,
 ): ManagementApiClient {
+  let binding: ClientBinding | undefined;
   let clientPromise: Promise<ManagementApiClient> | undefined;
   const resolveClient = (): Promise<ManagementApiClient> => {
-    clientPromise ??= resolveManagerClient(invocation);
+    clientPromise ??= constructClient(invocation).then((constructed) => {
+      binding = constructed.binding;
+      return constructed.client;
+    });
     return clientPromise;
   };
 
@@ -32,47 +47,113 @@ export function buildManagementApiClient(
       if (typeof property === "symbol" || property === "then") {
         return undefined;
       }
-      return (...args: unknown[]): Promise<unknown> =>
-        resolveClient()
-          .then((client) => {
-            const value: unknown = Reflect.get(client, property);
-            if (typeof value !== "function") {
-              throw new TypeError(
-                `@prisma/cli-engine: ctx.api.${property} is not a function`,
-              );
-            }
-            return Reflect.apply(value, client, args) as Promise<unknown>;
-          })
-          .catch(async (cause: unknown) => {
-            throw await mapRequestFailure(invocation, cause);
-          });
+      return async (...args: unknown[]): Promise<unknown> => {
+        try {
+          const client = await resolveClient();
+          const value: unknown = Reflect.get(client, property);
+          if (typeof value !== "function") {
+            throw new TypeError(
+              `@prisma/cli-engine: ctx.api.${property} is not a function`,
+            );
+          }
+          const result: unknown = await (Reflect.apply(
+            value,
+            client,
+            args,
+          ) as Promise<unknown>);
+          if (binding?.source === "environment" && responseWas401(result)) {
+            throw serviceTokenRejectedError({ envVar: SERVICE_TOKEN_ENV_VAR });
+          }
+          return result;
+        } catch (cause) {
+          throw await mapRequestFailure(invocation, binding, cause);
+        }
+      };
     },
   });
 }
 
-async function resolveManagerClient(
-  invocation: Invocation,
-): Promise<ManagementApiClient> {
+async function constructClient(invocation: Invocation): Promise<{
+  readonly client: ManagementApiClient;
+  readonly binding: ClientBinding;
+}> {
   const manager = invocation.runtime.credentialManager;
   if (manager === undefined) {
     throw credentialsRequiredError();
   }
-  return manager.apiClient();
+  const session = await manager.currentSession();
+  if (session === null) {
+    throw credentialsRequiredError();
+  }
+  const config = invocation.runtime.managementApiClientConfig;
+  if (config === undefined) {
+    throw new Error(
+      "@prisma/cli-engine: ctx.api requires Runtime.managementApiClientConfig when a credentialManager is wired",
+    );
+  }
+  if (session.source === "environment") {
+    const token = invocation.runtime.env[SERVICE_TOKEN_ENV_VAR];
+    if (token === undefined || token.trim() === "") {
+      throw credentialsRequiredError();
+    }
+    const { createManagementApiClient } = await import(
+      "@prisma/management-api-sdk"
+    );
+    return {
+      client: createManagementApiClient({
+        baseUrl: config.apiBaseUrl,
+        token,
+      }),
+      binding: { source: "environment" },
+    };
+  }
+  const { createManagementApiSdk } = await import(
+    "@prisma/management-api-sdk"
+  );
+  const sdk = createManagementApiSdk({
+    clientId: config.clientId,
+    redirectUri: config.redirectUri,
+    apiBaseUrl: config.apiBaseUrl,
+    authBaseUrl: config.authBaseUrl,
+    tokenStorage: manager.tokenStorage(session.workspaceId),
+  });
+  return {
+    client: sdk.client,
+    binding: { source: "stored", workspaceId: session.workspaceId },
+  };
+}
+
+/** The static-token path has no error middleware, so a 401 arrives as
+ *  a resolved openapi-fetch result; the call site inspects it. */
+function responseWas401(result: unknown): boolean {
+  if (typeof result !== "object" || result === null) {
+    return false;
+  }
+  const response = (result as { readonly response?: unknown }).response;
+  return (
+    typeof response === "object" &&
+    response !== null &&
+    (response as { readonly status?: unknown }).status === 401
+  );
 }
 
 /**
  * The engine-side request-failure mapping. A structured error raised
- * inside the pipeline is rethrown unwrapped so it settles as itself.
- * An SDK AuthError is discriminated by STATE, never by message
- * parsing: refreshTokenInvalid === true (the SDK's definitive
+ * inside the pipeline (the SDK wraps non-SDK errors into
+ * FetchError(cause), so the cause chain is walked for BOTH AuthError
+ * and CLI structured errors) is rethrown unwrapped so it settles as
+ * itself. An SDK AuthError is discriminated by STATE, never by
+ * message parsing: refreshTokenInvalid === true (the SDK's definitive
  * invalid_grant signal, already cleared by compare-and-clear) maps to
- * the expired CLI.CREDENTIALS_REQUIRED; any other AuthError triggers a
- * re-read of the manager's state — the bound grant gone means the
- * grant-removed CLI.CREDENTIALS_REQUIRED, otherwise the failure was
- * the auth service's and nothing was cleared.
+ * the expired CLI.CREDENTIALS_REQUIRED; any other AuthError triggers
+ * a re-read of the manager's state for the workspace the client is
+ * BOUND to — that session gone means the session-ended
+ * CLI.CREDENTIALS_REQUIRED, otherwise the failure was the auth
+ * service's and nothing was cleared.
  */
 async function mapRequestFailure(
   invocation: Invocation,
+  binding: ClientBinding | undefined,
   cause: unknown,
 ): Promise<unknown> {
   const structured = structuredCause(cause);
@@ -87,17 +168,28 @@ async function mapRequestFailure(
     return credentialsRequiredError("expired");
   }
   const manager = invocation.runtime.credentialManager;
-  if (manager === undefined) {
-    return credentialsRequiredError();
+  if (manager === undefined || binding?.source !== "stored") {
+    return authServiceError();
   }
-  let session: Session | null;
+  return mapStoredSessionAuthFailure(manager, binding.workspaceId, cause);
+}
+
+async function mapStoredSessionAuthFailure(
+  manager: CredentialManager,
+  boundWorkspaceId: string,
+  cause: unknown,
+): Promise<unknown> {
+  let sessions: readonly Session[];
   try {
-    session = await manager.session();
+    sessions = await manager.sessions();
   } catch (stateCause) {
     return CliStructuredError.is(stateCause) ? stateCause : cause;
   }
-  if (session === null) {
-    return credentialsRequiredError("grant-removed");
+  const boundSessionGone = !sessions.some(
+    (session) => session.workspaceId === boundWorkspaceId,
+  );
+  if (boundSessionGone) {
+    return credentialsRequiredError("session-ended");
   }
   return authServiceError();
 }

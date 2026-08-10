@@ -1,5 +1,6 @@
 import type { Credentials } from "./context";
 import type { CredentialManager } from "./credential-manager";
+import type { ManagementApiClientConfig } from "./management-api";
 import type { Diagnostic } from "./protocol";
 
 /** Minimal structural stream types; no NodeJS.* in the public surface. */
@@ -52,6 +53,12 @@ export interface Runtime {
    * deleted with the swap's final stage.
    */
   readonly credentialManager?: CredentialManager;
+  /**
+   * SDK client construction config the bin injects beside the
+   * manager; the engine builds ctx.api from it. Required whenever a
+   * credentialManager is wired; optional only during the staged swap.
+   */
+  readonly managementApiClientConfig?: ManagementApiClientConfig;
   readonly getCredentials: () => Promise<Credentials | undefined>;
   /** Management API endpoint config; the bin derives baseUrl from env. */
   readonly managementApi: { readonly baseUrl: string };
