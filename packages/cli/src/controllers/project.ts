@@ -103,7 +103,7 @@ function isRealMode(context: CommandContext): boolean {
   );
 }
 
-async function readProjectListLocalBinding(
+export async function readProjectListLocalBinding(
   cwd: string,
   workspace: AuthWorkspace,
   projects: Array<Pick<ProjectCandidate, "id">>,
