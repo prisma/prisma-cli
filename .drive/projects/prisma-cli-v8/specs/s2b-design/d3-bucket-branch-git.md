@@ -248,37 +248,33 @@ Common: `needs: { credentials: true }`; data = legacy result minus
      `GIT.REPO_ALREADY_CONNECTED`.
   4. Install resolution: `listScmInstallations` +
      `findRepositoryInInstallations`; on miss,
-     `createGitHubInstallIntent` → `ctx.report({ kind: "endpoint",
-     name: "github-install", url: installUrl })`; browser open +
-     wait run only when interactive, decided by the ENGINE-SUPPLIED
-     interactivity fact (OPERATOR DECISION 3, ruled 2026-08-10:
-     process-global TTY/CI detection inside ported code is
-     FORBIDDEN; the S2a `performLogin` internal-detection pattern is
-     not a precedent to extend). The v8 handler reads
-     `ctx.interactive: boolean` — a new engine context field
-     mirroring the engine's existing interactivity resolution (TTY
-     stdin outside CI, overridden by
-     `--interactive`/`--no-interactive`) — and passes it into the
-     re-homed operation function as a plain parameter. This requires
-     the engine amendment below; D3's git dispatch BLOCKS until it
-     lands. Non-interactive: immediate terminal error exactly as
-     legacy (`GIT.REPO_NOT_ACCESSIBLE` when
-     inspectableInstallationCount > 0, else
-     `GIT.REPO_INSTALLATION_REQUIRED`; meta
-     `{repository, installUrl, opened}`).
-  5. Interactive wait: `ctx.report({ kind: "status", subject:
-     "github-app-installation", status: "waiting" })` once when the
-     wait begins (replaces the legacy stderr wait line — the
-     `message`-event rendering carries it in human mode; exact text:
-     the legacy wait line ports as a `message` info event with the
-     verbatim copy incl. the URL-on-own-line variant when
-     opened=false); poll loop verbatim (env
-     `PRISMA_CLI_GITHUB_INSTALL_POLL_INTERVAL_MS` default 2000 /
-     `PRISMA_CLI_GITHUB_INSTALL_TIMEOUT_MS` default 120000, from
-     ctx.env, abort-aware sleep on ctx.signal); on match →
-     `ctx.report({ kind: "status", subject:
-     "github-app-installation", status: "connected", from:
-     "waiting" })`; on timeout → terminal errors as step 4.
+     `createGitHubInstallIntent` → installUrl.
+  5. Wait: OPERATOR RULING (2026-08-10) — commands and their helpers
+     NEVER read TTY/CI state, and no `ctx.isInteractive` field
+     exists. The engine is gaining a prompt-family **browser-wait**
+     interaction (announce + open URL + poll predicate + timeout)
+     and an `openUrl` effect, landing on `s2a-foundations`; this
+     command ports against browser-wait once it arrives via
+     merge-down. Binding mapping onto the primitive: url =
+     installUrl; poll predicate = "the GitHub App installation
+     exists" (re-list installations, `findRepositoryInInstallations`
+     match); interval/timeout from
+     `PRISMA_CLI_GITHUB_INSTALL_POLL_INTERVAL_MS` (default 2000) /
+     `PRISMA_CLI_GITHUB_INSTALL_TIMEOUT_MS` (default 120000) read
+     from ctx.env; announcement copy = the legacy wait line
+     verbatim. Outcomes: predicate satisfied → proceed to step 6;
+     timeout → the legacy terminal errors
+     (`GIT.REPO_NOT_ACCESSIBLE` when inspectableInstallationCount >
+     0, else `GIT.REPO_INSTALLATION_REQUIRED`; meta `{repository,
+     installUrl, opened}`); non-interactive → the engine's
+     structured interaction-required error, exit 2 (replaces the
+     legacy immediate REPO_* errors on the non-interactive path —
+     divergence entry, installUrl meta no longer reaches
+     non-interactive callers). Announce/open/poll events and
+     rendering are the PRIMITIVE'S — the handler emits no endpoint/
+     status events of its own. Exact call surface: bind to the
+     landed primitive's API at merge-down; any mismatch with this
+     mapping is a STOP, not an adaptation.
   6. `ctx.api.POST("/v1/source-repositories", { body: { projectId,
      provider: "github", providerRepositoryId, installationId },
      signal })`; error → `GIT.REPO_CONNECTION_FAILED` family.
@@ -315,18 +311,13 @@ Common: `needs: { credentials: true }`; data = legacy result minus
 - stdout none; json raw; next none.
 - Tests: success; not-connected; API error; json; unauth.
 
-### 3.8a Required engine amendment (out of this slice's hands)
+### 3.8a Dispatch ordering (operator ruling 2026-08-10)
 
-`CommandContext` gains `readonly interactive: boolean`, resolved by
-the engine from the same inputs that drive prompt rendering (TTY
-stdin, CI, `--interactive`/`--no-interactive`; format never decides
-interactivity). Draft amendment §4; harness: `createTestCli`'s
-existing `isTty`/`env` inputs drive it, no new spec field. This
-slice must NOT touch `packages/cli-engine/**` (handover boundary),
-so the amendment lands via the engine-owning stream on
-`s2a-foundations` (or an operator-authorized exception); the git
-dispatch waits for it via merge-down. Bucket and branch commands do
-not depend on it.
+D3 runs bucket (3.1-3.6) then branch (3.7) FIRST; `git connect` /
+`git disconnect` come LAST, and the git work starts only after the
+browser-wait + openUrl engine primitives arrive from
+`s2a-foundations` via merge-down. Bucket and branch have no
+dependency on them.
 
 ## 4. Divergence entries this dispatch adds
 
@@ -336,9 +327,11 @@ D2 classes 2/3/4/7/8/9/10/11 apply, plus:
 2. Fixture-only BUCKET_NOT_FOUND / BUCKET_KEY_NOT_FOUND /
    BRANCH_NOT_FOUND die; real-mode API codes pass through as
    `BUCKET.<code>`.
-3. git connect: legacy stderr wait line + silent poll → engine
-   events (endpoint + status + message); json mode now streams them
-   (legacy `--json` printed nothing until the terminal envelope).
+3. git connect: the wait flow moves onto the engine's browser-wait
+   primitive (its announce/open/poll surface replaces the legacy
+   stderr wait line); non-interactive wait-path invocations now get
+   the engine's interaction-required error (exit 2) instead of the
+   legacy immediate REPO_* errors with installUrl meta.
 4. git connect/disconnect keep their serializer-less raw json result
    (resolution object included) — unchanged, recorded for review
    since other groups strip it.

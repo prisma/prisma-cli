@@ -1,8 +1,11 @@
 # S2b design — conventions binding every dispatch
 
 Status: BINDING (grounded in the `facts/` extraction sheets;
-nothing here is implementer judgment; the two OPERATOR DECISION
-markers and the child docs' DECISION 3 await ratification). Child documents: `d1-project.md`, `d2-postgres.md`,
+nothing here is implementer judgment). Operator rulings 2026-08-10:
+DECISION 1 ratified (readAuthState helper until ctx.session());
+DECISION 2 ratified (drafted consent questions; deny → exit 2);
+DECISION 3 ruled (browser-wait engine primitive; no TTY/CI reads in
+commands or helpers, ever). Child documents: `d1-project.md`, `d2-postgres.md`,
 `d3-bucket-branch-git.md` — one per dispatch, each pinning its
 commands exhaustively. Precedence: slice contract
 `../s2b-resources.md` (R-S2b-1..10) > this file > child docs; a child
@@ -89,7 +92,7 @@ early failure (`CLI.CREDENTIALS_REQUIRED`, exit 2) is the only
 unauthenticated behavior. Handlers touch the management API
 exclusively through `ctx.api`.
 
-### 3a. Workspace source (OPERATOR DECISION 1 — pending)
+### 3a. Workspace source (OPERATOR DECISION 1 — ratified 2026-08-10)
 
 Resource commands need the active workspace (project listing filter,
 provider `workspaceId`, plan-limit lookup). `ctx` exposes only
@@ -149,16 +152,16 @@ only, not a behavior change.)
   value semantics (must equal the resolved resource id).
 - Interactive invocation WITHOUT the flag: `ctx.prompt.consent(q)`
   where `q` is the pinned per-command question text (child docs) —
-  question texts are drafted from the legacy confirmation copy and
-  await ratification (OPERATOR DECISION 2; legacy exact-id commands
-  have no prompt today, so no "current question text" exists).
+  question texts are the child docs' drafted wordings, ratified
+  2026-08-10 (OPERATOR DECISION 2; legacy exact-id commands have no
+  prompt today, so the wordings were drafted from the confirmation
+  copy).
 - Consent answered "no" (the prompt returns `false`): the handler
   returns `notOk(new CliStructuredError("<GROUP>.CONSENT_DECLINED",
   "Consent declined", { why: "The operation was not confirmed." }))`,
   exit 2 — matching the legacy interactive-decline precedent (exit
   2), distinct from prompt CANCELLATION (Ctrl-C/EOF →
-  `CLI.PROMPT_CANCELLED`, exit 3, engine-owned). Part of OPERATOR
-  DECISION 2.
+  `CLI.PROMPT_CANCELLED`, exit 3, engine-owned). Ratified 2026-08-10.
 - Non-interactive without the flag: the engine's structural failure
   `CLI.CONSENT_REQUIRED`, exit 2 (consent is undefaultable; `--yes`
   never grants it).
@@ -213,11 +216,11 @@ out of contract.
 ## 9. Events (pinned)
 
 - Sync commands: no events.
-- `git connect` (R-S2b-7): `endpoint` event (name `github-install`,
-  the install URL) when the browser hand-off starts; `status` events
-  subject `github-app-installation` (`waiting` → `connected`) plus
-  the ported wait-line `message` event, per d3-bucket-branch-git.md
-  §3.8; poll interval/timeout from the existing env vars via ctx.env.
+- `git connect` (R-S2b-7): waits through the engine's browser-wait
+  prompt-family primitive (operator ruling 2026-08-10; landing on
+  s2a-foundations) — the primitive owns announce/open/poll events;
+  the handler emits none. Mapping pinned in d3-bucket-branch-git.md
+  §3.8. Commands and helpers NEVER read TTY/CI state.
 
 ## 10. Tests (R-S2b-9, pinned)
 
