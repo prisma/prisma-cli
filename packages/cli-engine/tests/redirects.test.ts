@@ -296,6 +296,29 @@ describe("retired verbs", () => {
     );
   });
 
+  test("every family's redirects are consulted", async () => {
+    const cli = createTestCli({
+      commandFamilies: [
+        defineCommandFamily({ commands: { status }, redirects: [APPLY] }),
+        defineCommandFamily({
+          commands: {},
+          redirects: [{ from: "introspect", replacement: "db pull" }],
+        }),
+      ],
+      commands: { "migration status": status },
+      groups: MIGRATION_GROUP,
+      now: EPOCH,
+    });
+
+    const first = await cli.run(["migration", "apply", "--json"]);
+    expect(erroredEnvelope(first.json).error.code).toBe("CLI.COMMAND_MOVED");
+
+    const second = await cli.run(["introspect", "--json"]);
+    expect(erroredEnvelope(second.json).nextActions[0].command).toBe(
+      "prisma-test db pull",
+    );
+  });
+
   test("a redirect under a live group fires", async () => {
     const cli = createTestCli({
       commandFamilies: [
