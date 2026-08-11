@@ -339,3 +339,7 @@ Both are recorded in `assets/s2/parity-divergences.md` as part of the slice.
   decision — and recorded so the next person to touch `cli.ts` can weigh it.
 - **The `prisma-next` directory name and `PRISMA_NEXT_DISABLE_TELEMETRY`**
   outlive the product name they came from. Ecosystem cutover.
+- **`Runtime.isCI` is a required field on a published interface.** Every host
+  that constructs a `Runtime` must add it. Correct — a host that forgot an
+  optional one would silently report from CI — but it needs a release note at
+  `8.0.0-rc.1`.
