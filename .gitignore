@@ -31,3 +31,8 @@ npm-debug.log*
 
 # Turborepo cache
 .turbo/
+
+# Review artifacts — never committed
+.drive/projects/prisma-cli-v8/reviews/
+.drive/projects/prisma-cli-v8/specs/reviews/
+wip/

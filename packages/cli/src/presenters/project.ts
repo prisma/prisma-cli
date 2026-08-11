@@ -383,7 +383,7 @@ function formatLocalRepoPath(cwd: string, env: NodeJS.ProcessEnv): string {
   return shortenHomePath(cwd, env);
 }
 
-function formatGitConnectionDetail(
+export function formatGitConnectionDetail(
   status: GitRepositoryConnection["status"],
 ): string {
   switch (status) {
