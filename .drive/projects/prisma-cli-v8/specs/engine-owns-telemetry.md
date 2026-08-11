@@ -343,6 +343,12 @@ Both are recorded in `assets/s2/parity-divergences.md` as part of the slice.
   that constructs a `Runtime` must add it. Correct — a host that forgot an
   optional one would silently report from CI — but it needs a release note at
   `8.0.0-rc.1`.
+- **A CLI that declares telemetry without mounting the commands prints an
+  opt-out instruction naming a command it does not have.** §2.1 lets the two
+  halves mount independently on purpose, and the notice always names the
+  environment variables and the config file as well, so a working opt-out
+  survives — but the friendliest one it offers would not run. No consumer is
+  in that state today: the platform shell mounts both.
 - **An unwritable config directory makes `telemetry enable|disable` fail as
   `CLI.INTERNAL_ERROR`.** Identical to the platform shell's current behaviour
   and better than the ORM's, so §1.1 rule 1 says leave it here. But a consent
