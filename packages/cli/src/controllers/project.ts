@@ -34,6 +34,7 @@ import {
 } from "../lib/project/local-pin";
 import {
   createManagementProjectProvider,
+  projectApiError,
   type ProjectProvider,
   projectRemoveBlockedError,
   projectRenameFailedError,
@@ -1442,9 +1443,19 @@ export async function listRealWorkspaceProjects(
   workspace: AuthWorkspace,
   signal?: AbortSignal,
 ): Promise<ProjectCandidate[]> {
-  const { data } = await client.GET("/v1/projects", { signal });
+  const { data, error, response } = await client.GET("/v1/projects", {
+    signal,
+  });
+  // Without this the caller cannot tell a rejected request from a
+  // workspace with no projects: both arrived as an empty list, so
+  // `project list` reported "No projects found." and exited 0 while the
+  // API was refusing it. Every command that resolves a project by name
+  // reads through here too.
+  if (error || !data) {
+    throw projectApiError("Failed to list projects", response, error);
+  }
   return sortProjects(
-    (data?.data ?? [])
+    (data.data ?? [])
       .filter((project) => project.workspace.id === workspace.id)
       .map((project) => ({
         id: project.id,

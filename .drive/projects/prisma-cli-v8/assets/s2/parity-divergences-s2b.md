@@ -119,28 +119,28 @@ in round 2, once the engine's consent tokens arrived
     calls `resolveRecipientWorkspaceSession` directly; the
     service-token guard, the recipient error mapping and every copy
     string are unchanged.
-46. **A rejected project listing is reported as an empty workspace —
-    ported defect, unchanged from the old shell.** (Numbered after D3
-    because the sequence is file-wide; found in the closure review and
-    recorded here because `project list` is where it surfaces.)
-    `listRealWorkspaceProjects` (`controllers/project.ts`) destructures
-    only `data` from the SDK response and discards `error` and
-    `response`, so any non-2xx becomes `data === undefined` and then an
-    empty project list. `project list` therefore prints "No projects
-    found." and exits 0 when the API rejects the request, and because
+46. **A rejected project listing now fails instead of looking like an
+    empty workspace.** (Numbered after D3 because the sequence is
+    file-wide.) `listRealWorkspaceProjects` (`controllers/project.ts`)
+    read only `data` from the SDK response and discarded `error` and
+    `response`, so any non-2xx became `data === undefined` and then an
+    empty list. `project list` printed "No projects found." and exited
+    0 while the API was refusing the request, and because
     `resolveProjectTarget` resolves project names through the same
-    function, every command that resolves a project by name reports
+    function, every command that resolves a project by name reported
     "Choose a Project before running this command" or a not-found when
-    the real cause is a rejected request. The behaviour is identical in
-    the legacy shell — this slice changes nothing and inherits it — and
-    the database, branch, bucket, app and env controllers share it.
-    Found during the S2b closure review; pinned by the `project list`
-    case "reports an empty workspace when the projects route rejects
-    the request" so a future change to that function surfaces as a
-    failing test rather than a silent one. Whether to surface the error
-    instead is the operator's decision, not this slice's: the fix is a
-    legacy body change and it would change behaviour for the old shell
-    too.
+    the real cause was a rejected request.
+
+    Operator ruling 2026-08-11: fixed rather than recorded. The
+    function now raises `projectApiError`, which the v8 mapper carries
+    to `PROJECT.API_ERROR` at exit 2, and the `project list` case
+    "surfaces a rejected projects request instead of an empty list"
+    proves it. This is a legacy body change and therefore a divergence
+    in the other direction: the old shell reported success on a
+    rejected listing, and both shells now report the failure. Reporting
+    a refusal as a success was not a behaviour anyone chose, and the
+    database, branch, bucket, app and env controllers all read through
+    the same function, so the fix reaches them too.
 
 ### Error code map
 

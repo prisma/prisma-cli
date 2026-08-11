@@ -256,13 +256,13 @@ describe("prisma-v8 project list", () => {
     expect(result.presented?.presentation.stdout).toEqual([]);
   });
 
-  /** A ported defect, not a passing error case. `listRealWorkspaceProjects`
-   *  destructures only `data` from the SDK response, so a rejected request
-   *  becomes an empty project list and a successful run. This pins that
-   *  behaviour so a change to the legacy function shows up here rather than
-   *  passing silently. Recorded as divergence 46 in the D1 section of
-   *  parity-divergences-s2b.md. */
-  it("reports an empty workspace when the projects route rejects the request", async () => {
+  /** A rejected request must not look like an empty workspace.
+   *  `listRealWorkspaceProjects` used to read only `data` from the SDK
+   *  response, so a refusal became an empty list and a successful run —
+   *  `project list` printed "No projects found." and exited 0 while the
+   *  API was turning it down. Every command that resolves a project by
+   *  name reads through that function too. */
+  it("surfaces a rejected projects request instead of an empty list", async () => {
     const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
     const result = await makeCli(
       fakeClient({
@@ -270,11 +270,10 @@ describe("prisma-v8 project list", () => {
       }),
     ).run(["project", "list", "--json"], { cwd });
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(2);
     expect(resultFrame(result.json).envelope).toMatchObject({
-      ok: true,
-      commandId: "project.list",
-      result: { count: 0, items: [], localBinding: { status: "invalid" } },
+      ok: false,
+      error: { code: "PROJECT.forbidden", summary: "Failed to list projects" },
     });
   });
 

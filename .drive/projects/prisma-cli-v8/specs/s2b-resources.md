@@ -125,10 +125,12 @@ deletion (S2d); auto-login reinstatement (ledger Q1); command aliases
       the per-dispatch review rounds and the closure architect and
       principal-engineer passes run, with every finding dispositioned.
 
-Three things this slice records rather than fixes, all for the operator:
-`project list` reports an empty workspace at exit 0 when the API
-rejects the request, which is inherited from the old shell and reaches
-every command that resolves a project by name; `git connect`
+Two things this slice records rather than fixes, both for the operator.
+A third — `project list` reporting an empty workspace at exit 0 when the
+API rejected the request — was recorded first and then fixed on the
+operator's ruling of 2026-08-11, because reporting a refusal as a
+success is not a behaviour anyone chose; see divergence 46. The two
+that remain: `git connect`
 declares `needs.interaction`, so non-interactive runs fail before any
 API call even when no wait would have been needed; and the stdout lane
 still carries two human-formatted values that a pipe consumer cannot
