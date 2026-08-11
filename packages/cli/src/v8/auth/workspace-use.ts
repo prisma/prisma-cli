@@ -35,6 +35,7 @@ function noWorkspaceSessionsError(): CliStructuredError {
 }
 
 function usePresentations(spec: {
+  readonly result: WorkspaceUseResult;
   readonly session: Session;
   readonly previous: Session | undefined;
   readonly environmentCredentialInForce: boolean;
@@ -69,6 +70,7 @@ function usePresentations(spec: {
         : []),
     ],
     stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
+    json: () => spec.result,
     next: () => [
       {
         kind: "run-command",
@@ -125,6 +127,7 @@ export const authWorkspaceUseCommand = defineCommand({
       ctx.present(
         { data: result },
         usePresentations({
+          result,
           session,
           previous,
           environmentCredentialInForce: environmentCredentialInForce(ctx.env),

@@ -18,6 +18,9 @@ function deletePresentations(result: BucketKeyDeleteResult): Presentations {
       { kind: "fields", rows: [{ label: "key", value: result.key.id }] },
       { kind: "list", items: ["The access key was revoked and removed."] },
     ],
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
   };
 }
 

@@ -63,6 +63,7 @@ function listPresentations(result: DatabaseListResult): Presentations {
     ],
     stdout: () => stdoutRows.map((row) => row.join("\t")),
     json: () => serializeDatabaseList(result),
+    next: () => [],
   };
 }
 

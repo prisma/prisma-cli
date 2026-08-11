@@ -64,6 +64,7 @@ export function setupPresentations(result: ProjectSetupResult): Presentations {
         text: `Saved ${result.localPin.path}`,
       },
     ],
+    stdout: () => [],
     json: () => serializeProjectSetup(result),
     next: () => [DEPLOY_NEXT_ACTION],
   };

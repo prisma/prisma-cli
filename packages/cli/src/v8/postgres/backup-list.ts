@@ -58,6 +58,7 @@ function backupListPresentations(
     ],
     stdout: () => stdoutRows.map((row) => row.join("\t")),
     json: () => serializeDatabaseBackupList(result),
+    next: () => [],
   };
 }
 

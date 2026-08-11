@@ -39,6 +39,9 @@ function removePresentations(result: EnvRmResult): Presentations {
         ],
       },
     ],
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
   };
 }
 

@@ -32,6 +32,7 @@ function listPresentations(result: BucketKeyListResult): Presentations {
     ],
     stdout: () => rows.map((row) => row.join("\t")),
     json: () => serializeBucketKeyList(result),
+    next: () => [],
   };
 }
 

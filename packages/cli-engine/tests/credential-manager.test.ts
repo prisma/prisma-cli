@@ -67,7 +67,17 @@ const credentialReader = () => {
     help: { summary: "Reads the active credential" },
     handler: async (_args, ctx) => {
       seen = await ctx.activeCredential();
-      return ok(ctx.present({ data: seen }, { human: () => [] }));
+      return ok(
+        ctx.present(
+          { data: seen },
+          {
+            human: () => [],
+            stdout: () => [],
+            json: () => seen,
+            next: () => [],
+          },
+        ),
+      );
     },
   });
   return { command, seen: () => seen };
@@ -193,7 +203,17 @@ describe("the managesCredentials capability", () => {
       managesCredentials: true,
       handler: async (_args, ctx) => {
         sameInstance = ctx.credentialManager === cli.credentialManager;
-        return ok(ctx.present({ data: null }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createTestCli({ commands: { toy } });
@@ -208,7 +228,17 @@ describe("the managesCredentials capability", () => {
       help: { summary: "Does not manage credentials" },
       handler: async (_args, ctx) => {
         present = "credentialManager" in ctx;
-        return ok(ctx.present({ data: null }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createTestCli({ commands: { toy } });
@@ -222,7 +252,12 @@ const needsCredentials = defineCommand({
   help: { summary: "Needs credentials" },
   needs: { credentials: true },
   handler: async (_args, ctx) =>
-    ok(ctx.present({ data: null }, { human: () => [] })),
+    ok(
+      ctx.present(
+        { data: null },
+        { human: () => [], stdout: () => [], json: () => null, next: () => [] },
+      ),
+    ),
 });
 
 describe("the manager-backed needs check", () => {
@@ -278,7 +313,17 @@ describe("the manager-backed needs check", () => {
           } catch (cause) {
             return notOk(cause as CliStructuredError);
           }
-          return ok(ctx.present({ data: null }, { human: () => [] }));
+          return ok(
+            ctx.present(
+              { data: null },
+              {
+                human: () => [],
+                stdout: () => [],
+                json: () => null,
+                next: () => [],
+              },
+            ),
+          );
         },
       });
 
@@ -626,7 +671,15 @@ describe("token material never leaves", () => {
         const stored = await ctx.credentialManager.sessions();
         const active = await ctx.activeCredential();
         return ok(
-          ctx.present({ data: { stored, active } }, { human: () => [] }),
+          ctx.present(
+            { data: { stored, active } },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => ({ stored, active }),
+              next: () => [],
+            },
+          ),
         );
       },
     });

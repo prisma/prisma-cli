@@ -88,6 +88,7 @@ function showPresentations(
     ],
     stdout: () =>
       stdoutFieldRows(result, cwd).map((row) => `${row.label}: ${row.value}`),
+    json: () => result,
     next: () =>
       result.project === null
         ? toNextActions(

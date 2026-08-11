@@ -182,6 +182,9 @@ function showCommand(
             human: () => [
               { kind: "summary", tone: "ok", text: ctx.config.greeting },
             ],
+            stdout: () => [],
+            json: () => ctx.config,
+            next: () => [],
           },
         ),
       );
@@ -350,7 +353,17 @@ describe("needs.config", () => {
     const plain = defineCommand({
       help: { summary: "No needs at all" },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createCli({
       name: "t",

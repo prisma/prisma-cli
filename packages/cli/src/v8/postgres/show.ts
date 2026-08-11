@@ -54,6 +54,8 @@ function showPresentations(result: DatabaseShowResult): Presentations {
     ],
     stdout: () =>
       stdoutFieldRows(result).map((row) => `${row.label}: ${row.value}`),
+    json: () => result,
+    next: () => [],
   };
 }
 

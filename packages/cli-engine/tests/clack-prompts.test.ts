@@ -62,6 +62,9 @@ function promptCli(run: (prompt: PromptSurface) => Promise<unknown>) {
                 text: `answer=${JSON.stringify(answer)}`,
               },
             ],
+            stdout: () => [],
+            json: () => ({ answer }),
+            next: () => [],
           },
         ),
       );

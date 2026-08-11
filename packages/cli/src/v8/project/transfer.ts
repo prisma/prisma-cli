@@ -154,6 +154,8 @@ function transferPresentations(
         ],
       },
     ],
+    stdout: () => [],
+    json: () => result,
     next: () =>
       toWorkspace
         ? [

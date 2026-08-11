@@ -71,6 +71,8 @@ export const postgresConnectionCreateCommand = defineCommand({
                 result.connectionString,
               ),
             stdout: () => [result.connectionString],
+            json: () => result,
+            next: () => [],
           },
         ),
       );

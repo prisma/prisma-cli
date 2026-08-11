@@ -131,7 +131,12 @@ const diagnostic: Diagnostic = {
   nextActions: [],
 };
 
-const presentations: Presentations = { human: () => [] };
+const presentations: Presentations = {
+  human: () => [],
+  stdout: () => [],
+  json: () => null,
+  next: () => [],
+};
 
 export const runCheck: CommandHandler<typeof checkCommand> = async (
   args,
@@ -407,7 +412,12 @@ export const managedCommand = defineCommand({
     const active: ActiveCredential | null = await ctx.activeCredential();
     void manager;
     void active;
-    return ok(ctx.present({ data: null }, { human: () => [] }));
+    return ok(
+      ctx.present(
+        { data: null },
+        { human: () => [], stdout: () => [], json: () => null, next: () => [] },
+      ),
+    );
   },
 });
 export const managedIsDeclared: true = managedCommand.managesCredentials;
@@ -419,7 +429,12 @@ export const unmanagedCommand = defineCommand({
     void active;
     // @ts-expect-error the capability was not declared, so the context carries no credentialManager
     void ctx.credentialManager;
-    return ok(ctx.present({ data: null }, { human: () => [] }));
+    return ok(
+      ctx.present(
+        { data: null },
+        { human: () => [], stdout: () => [], json: () => null, next: () => [] },
+      ),
+    );
   },
 });
 export const unmanagedIsUndeclared: false = unmanagedCommand.managesCredentials;

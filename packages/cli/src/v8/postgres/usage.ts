@@ -69,6 +69,8 @@ function usagePresentations(result: DatabaseUsageResult): Presentations {
     ],
     stdout: () =>
       stdoutFieldRows(result).map((row) => `${row.label}: ${row.value}`),
+    json: () => result,
+    next: () => [],
   };
 }
 

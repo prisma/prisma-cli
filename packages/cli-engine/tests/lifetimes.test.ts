@@ -238,7 +238,17 @@ describe("the engine owns the double-signal policy", () => {
     const quick = defineCommand({
       help: { summary: "Completes immediately" },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createCli({
       name: "t",
@@ -294,6 +304,9 @@ describe("optional dependencies", () => {
             { data: { resolvable: probe.ok } },
             {
               human: (): readonly Block[] => [],
+              stdout: () => [],
+              json: () => ({ resolvable: probe.ok }),
+              next: () => [],
             },
           ),
         );
@@ -313,7 +326,17 @@ describe("optional dependencies", () => {
       help: { summary: "Probes a dependency" },
       needs: { dependencies: ["typescript"] },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: (): readonly Block[] => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: (): readonly Block[] => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createTestCli({ commands: { command }, now: EPOCH });
     const result = await cli.run(["command", "--json"], { cwd: "." });
@@ -371,7 +394,17 @@ describe("optional dependencies", () => {
       needs: { dependencies: [MISSING] },
       handler: async (_args, ctx) => {
         ran = true;
-        return ok(ctx.present({ data: null }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createTestCli({
@@ -405,7 +438,17 @@ describe("optional dependencies", () => {
       help: { summary: "Needs installed dependencies" },
       needs: { dependencies: ["typescript", "vitest"] },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: (): readonly Block[] => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: (): readonly Block[] => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createTestCli({ commands: { command }, now: EPOCH });
     const result = await cli.run(["command", "--json"], {

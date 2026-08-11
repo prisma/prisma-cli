@@ -16,6 +16,7 @@ export interface WorkspaceLogoutResult {
 }
 
 function logoutPresentations(spec: {
+  readonly result: WorkspaceLogoutResult;
   readonly label: string;
   readonly wasSelected: boolean;
   readonly environmentCredentialInForce: boolean;
@@ -47,6 +48,7 @@ function logoutPresentations(spec: {
         : []),
     ],
     stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
+    json: () => spec.result,
     next: () => [
       {
         kind: "run-command",
@@ -96,6 +98,7 @@ export const authWorkspaceLogoutCommand = defineCommand({
       ctx.present(
         { data: result },
         logoutPresentations({
+          result,
           label: sessionLabel(session),
           wasSelected,
           environmentCredentialInForce: environmentCredentialInForce(ctx.env),

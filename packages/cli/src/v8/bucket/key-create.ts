@@ -56,6 +56,8 @@ function createPresentations(result: BucketKeyCreateResult): Presentations {
       `S3_SECRET_ACCESS_KEY=${result.secretAccessKey}`,
       `S3_BUCKET=${result.bucketName}`,
     ],
+    json: () => result,
+    next: () => [],
   };
 }
 

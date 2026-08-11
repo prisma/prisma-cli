@@ -44,6 +44,9 @@ function removePresentations(result: ProjectRemoveResult): Presentations {
         ],
       },
     ],
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
   };
 }
 

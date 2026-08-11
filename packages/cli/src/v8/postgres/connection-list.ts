@@ -61,6 +61,7 @@ function listPresentations(
     ],
     stdout: () => stdoutRows.map((row) => row.join("\t")),
     json: () => serializeDatabaseConnectionList(result),
+    next: () => [],
   };
 }
 

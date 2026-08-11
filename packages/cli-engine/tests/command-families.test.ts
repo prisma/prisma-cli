@@ -29,7 +29,17 @@ function configCommand<T>(section: ConfigSection<T>) {
     help: { summary: "Reads a config section" },
     needs: { config: section },
     handler: async (_args, ctx) =>
-      ok(ctx.present({ data: ctx.config }, { human: () => [] })),
+      ok(
+        ctx.present(
+          { data: ctx.config },
+          {
+            human: () => [],
+            stdout: () => [],
+            json: () => ctx.config,
+            next: () => [],
+          },
+        ),
+      ),
   });
 }
 
@@ -104,7 +114,12 @@ describe("docs-URL derivation", () => {
               },
             ],
           },
-          { human: () => [] },
+          {
+            human: () => [],
+            stdout: () => [],
+            json: () => null,
+            next: () => [],
+          },
         ),
       ),
   });

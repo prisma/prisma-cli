@@ -92,6 +92,7 @@ function statusPresentations(status: TelemetryStatus): Presentations {
     ],
     stdout: () => formatTelemetryStatusLines(status),
     json: () => status,
+    next: () => [],
   };
 }
 

@@ -142,6 +142,9 @@ function connectPresentations(
       },
       { kind: "list", items: [formatGitConnectionDetail(connection.status)] },
     ],
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
   };
 }
 

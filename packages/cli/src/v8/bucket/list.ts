@@ -40,6 +40,7 @@ function listPresentations(result: BucketListResult): Presentations {
     ],
     stdout: () => stdoutRows.map((row) => row.join("\t")),
     json: () => serializeBucketList(result),
+    next: () => [],
   };
 }
 

@@ -35,6 +35,9 @@ function renamePresentations(result: ProjectRenameResult): Presentations {
         ],
       },
     ],
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
   };
 }
 

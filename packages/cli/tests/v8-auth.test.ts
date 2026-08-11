@@ -371,7 +371,12 @@ describe("sessions held with none selected", () => {
       ok(
         ctx.present(
           { data: null },
-          { human: () => [{ kind: "summary", tone: "ok", text: "ran" }] },
+          {
+            human: () => [{ kind: "summary", tone: "ok", text: "ran" }],
+            stdout: () => [],
+            json: () => null,
+            next: () => [],
+          },
         ),
       ),
   });
@@ -383,7 +388,12 @@ describe("sessions held with none selected", () => {
       return ok(
         ctx.present(
           { data: null },
-          { human: () => [{ kind: "summary", tone: "ok", text: "ran" }] },
+          {
+            human: () => [{ kind: "summary", tone: "ok", text: "ran" }],
+            stdout: () => [],
+            json: () => null,
+            next: () => [],
+          },
         ),
       );
     },
@@ -739,7 +749,17 @@ describe("the environment credential carries no refresh token", () => {
     help: { summary: "Issues one management API request" },
     handler: async (_args, ctx) => {
       await ctx.api.GET("/v1/me", {});
-      return ok(ctx.present({ data: null }, { human: () => [] }));
+      return ok(
+        ctx.present(
+          { data: null },
+          {
+            human: () => [],
+            stdout: () => [],
+            json: () => null,
+            next: () => [],
+          },
+        ),
+      );
     },
   });
 

@@ -24,6 +24,9 @@ function deletePresentations(result: BucketDeleteResult): Presentations {
         items: ["Bucket and all its access keys were removed."],
       },
     ],
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
   };
 }
 

@@ -41,6 +41,8 @@ function listPresentations(result: BranchListResult): Presentations {
           ]),
     ],
     stdout: () => rows.map((row) => row.join("\t")),
+    json: () => result,
+    next: () => [],
   };
 }
 

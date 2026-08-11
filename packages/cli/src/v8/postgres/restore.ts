@@ -48,6 +48,8 @@ function restorePresentations(
         ],
       },
     ],
+    stdout: () => [],
+    json: () => result,
     next: () => [
       {
         kind: "run-command",

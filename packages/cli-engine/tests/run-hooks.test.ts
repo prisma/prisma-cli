@@ -28,7 +28,12 @@ const deploy = defineCommand({
     ok(
       ctx.present(
         { data: null },
-        { human: () => [{ kind: "summary", tone: "ok", text: "deployed" }] },
+        {
+          human: () => [{ kind: "summary", tone: "ok", text: "deployed" }],
+          stdout: () => [],
+          json: () => null,
+          next: () => [],
+        },
       ),
     ),
 });

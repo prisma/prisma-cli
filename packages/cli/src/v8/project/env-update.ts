@@ -50,6 +50,9 @@ function singlePresentations(result: EnvUpdateResult): Presentations {
         ),
       },
     ],
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
   };
 }
 
@@ -122,6 +125,7 @@ export const projectEnvUpdateCommand = defineCommand({
           ctx.present(
             { data: result },
             fileWritePresentations({
+              result,
               title: "Replacing environment variable values from file.",
               emptyMessage: "No environment variables updated.",
               scope: result.scope,

@@ -43,6 +43,9 @@ function disconnectPresentations(
         ],
       },
     ],
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
   };
 }
 

@@ -72,6 +72,7 @@ const noisy = defineCommand({
             { kind: "summary", tone: "ok", text: "done" },
           ],
           stdout: () => ["done"],
+          json: () => ({ done: true }),
           next: () => [{ kind: "done", label: "Nothing else" }],
         },
       ),
@@ -114,6 +115,8 @@ describe("human rendering", () => {
             { data: null },
             {
               human: () => [],
+              stdout: () => [],
+              json: () => null,
               next: () => [
                 {
                   kind: "open-url",
@@ -150,6 +153,8 @@ describe("human rendering", () => {
             { data: null },
             {
               human: () => [],
+              stdout: () => [],
+              json: () => null,
               next: () => [
                 {
                   kind: "run-command",

@@ -68,7 +68,9 @@ export const postgresConnectionRemoveCommand = defineCommand({
                 ],
               },
             ],
+            stdout: () => [],
             json: () => ({ connection: result.connection }),
+            next: () => [],
           },
         ),
       );

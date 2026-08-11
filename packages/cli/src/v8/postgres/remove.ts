@@ -35,6 +35,9 @@ function removePresentations(result: DatabaseRemoveResult): Presentations {
         items: ["Database and its connection metadata were removed."],
       },
     ],
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
   };
 }
 

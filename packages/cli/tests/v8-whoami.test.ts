@@ -48,7 +48,12 @@ const requiresCredentials = defineCommand({
     ok(
       ctx.present(
         { data: null },
-        { human: () => [{ kind: "summary", tone: "ok", text: "ran" }] },
+        {
+          human: () => [{ kind: "summary", tone: "ok", text: "ran" }],
+          stdout: () => [],
+          json: () => null,
+          next: () => [],
+        },
       ),
     ),
   needs: { credentials: true },

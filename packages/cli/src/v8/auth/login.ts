@@ -70,6 +70,7 @@ function nextActionsFor(
 }
 
 function presentationsFor(spec: {
+  readonly result: LoginResult;
   readonly session: Session;
   readonly environmentCredentialInForce: boolean;
   readonly agentSetupTipCommand: string | null;
@@ -102,6 +103,7 @@ function presentationsFor(spec: {
           ]),
     ],
     stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
+    json: () => spec.result,
     next: () => nextActionsFor(spec.agentSetupTipCommand),
   };
 }
@@ -153,6 +155,7 @@ export const authLoginCommand = defineCommand({
       ctx.present(
         { data: result },
         presentationsFor({
+          result,
           session,
           environmentCredentialInForce: environmentSession,
           agentSetupTipCommand,

@@ -98,6 +98,7 @@ function mergedIdentity(
 }
 
 function presentationsFor(spec: {
+  readonly result: WhoamiResult;
   readonly credential: ActiveCredential | null;
   readonly identity: CredentialIdentity | null;
 }): Presentations {
@@ -118,6 +119,7 @@ function presentationsFor(spec: {
         : []),
     ],
     stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
+    json: () => spec.result,
     next: () => (spec.credential === null ? [SIGN_IN] : []),
   };
 }
@@ -157,7 +159,10 @@ export const authWhoamiCommand = defineCommand({
       expiresAt: credential?.expiresAt?.toISOString() ?? null,
     };
     return ok(
-      ctx.present({ data: result }, presentationsFor({ credential, identity })),
+      ctx.present(
+        { data: result },
+        presentationsFor({ result, credential, identity }),
+      ),
     );
   },
 });

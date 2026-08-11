@@ -37,6 +37,9 @@ function promptCommand(run: (prompt: PromptSurface) => Promise<unknown>) {
             human: (): readonly Block[] => [
               { kind: "summary", tone: "ok", text: `answer=${answer}` },
             ],
+            stdout: () => [],
+            json: () => ({ answer }),
+            next: () => [],
           },
         ),
       );

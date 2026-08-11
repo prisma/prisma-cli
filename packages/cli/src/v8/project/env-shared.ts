@@ -8,8 +8,10 @@ import { type EnvScope, resolveEnvScope } from "../../lib/app/env-config";
 import { scopeLabel } from "../../presenters/app-env";
 import { usageError } from "../../shell/errors";
 import type {
+  EnvFileWriteResult,
   EnvResolvedContext,
   EnvScopeDescriptor,
+  EnvSingleWriteResult,
   EnvVariableMetadata,
 } from "../../types/app-env";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
@@ -139,6 +141,7 @@ export function variableFieldRows(
 }
 
 export function fileWritePresentations(input: {
+  readonly result: EnvSingleWriteResult | EnvFileWriteResult;
   readonly title: string;
   readonly emptyMessage: string;
   readonly scope: EnvScopeDescriptor;
@@ -168,6 +171,9 @@ export function fileWritePresentations(input: {
             },
           ]),
     ],
+    stdout: () => [],
+    json: () => input.result,
+    next: () => [],
   };
 }
 

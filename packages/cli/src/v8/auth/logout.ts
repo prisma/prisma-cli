@@ -44,6 +44,7 @@ function presentationsFor(
         : []),
     ],
     stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
+    json: () => result,
     next: () => [SIGN_IN],
   };
 }

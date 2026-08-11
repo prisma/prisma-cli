@@ -44,15 +44,15 @@ function materializePresentation(
     return {
       human: [],
       stdout: [],
-      json: presentations.json?.(),
-      next: presentations.next?.() ?? [],
+      json: presentations.json(),
+      next: presentations.next(),
     };
   }
   return {
     human: presentations.human(ui),
-    stdout: presentations.stdout?.() ?? [],
+    stdout: presentations.stdout(),
     json: undefined,
-    next: presentations.next?.() ?? [],
+    next: presentations.next(),
   };
 }
 

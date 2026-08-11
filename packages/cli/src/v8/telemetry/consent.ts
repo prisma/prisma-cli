@@ -11,5 +11,6 @@ export function consentPresentations(
     human: () => [{ kind: "summary", tone: "ok", text: line }],
     stdout: () => [line],
     json: () => json,
+    next: () => [],
   };
 }

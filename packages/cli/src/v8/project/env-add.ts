@@ -51,6 +51,9 @@ function singlePresentations(result: EnvAddResult): Presentations {
         ),
       },
     ],
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
   };
 }
 
@@ -128,6 +131,7 @@ export const projectEnvAddCommand = defineCommand({
               diagnostics: previewDefaultDiagnostics(written.warnings),
             },
             fileWritePresentations({
+              result,
               title: "Setting new environment variables from file.",
               emptyMessage: "No environment variables imported.",
               scope: result.scope,
