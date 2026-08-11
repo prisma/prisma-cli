@@ -15,9 +15,9 @@ import { readUserConfig, userConfigPath, writeUserConfig } from "./user-config";
  * to read or write. Unreachable in production — `runtime.env` is
  * `process.env`, where `HOME` (or `USERPROFILE`) is always set.
  */
-function storeUnavailableError(): CliStructuredError {
+function preferenceUnavailableError(): CliStructuredError {
   return new CliStructuredError(
-    "CLI.USER_CONFIG_UNRESOLVED",
+    "CLI.TELEMETRY_PREFERENCE_UNAVAILABLE",
     "Cannot tell where your telemetry preference is stored.",
     {
       why: "The environment sets none of XDG_CONFIG_HOME, HOME, APPDATA or USERPROFILE, so the user-level config directory cannot be resolved.",
@@ -125,7 +125,7 @@ export const telemetryStatusCommand = defineCommand({
   handler: async (_args, ctx) => {
     const configPath = userConfigPath(ctx.env);
     if (configPath === undefined) {
-      return notOk(storeUnavailableError());
+      return notOk(preferenceUnavailableError());
     }
     const status = resolveTelemetryStatus({
       env: ctx.env,
@@ -147,7 +147,7 @@ export const telemetryEnableCommand = defineCommand({
   handler: async (_args, ctx) => {
     const configPath = userConfigPath(ctx.env);
     if (configPath === undefined) {
-      return notOk(storeUnavailableError());
+      return notOk(preferenceUnavailableError());
     }
     writeUserConfig(ctx.env, { enableTelemetry: true });
     const decision = { enableTelemetry: true, configPath };
@@ -174,7 +174,7 @@ export const telemetryDisableCommand = defineCommand({
   handler: async (_args, ctx) => {
     const configPath = userConfigPath(ctx.env);
     if (configPath === undefined) {
-      return notOk(storeUnavailableError());
+      return notOk(preferenceUnavailableError());
     }
     writeUserConfig(ctx.env, { enableTelemetry: false });
     const decision = { enableTelemetry: false, configPath };

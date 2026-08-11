@@ -265,7 +265,7 @@ describe("an env that names no config directory", () => {
 
       expect(result.exitCode, argv.join(" ")).toBe(2);
       expect(JSON.stringify(result.json), argv.join(" ")).toContain(
-        "CLI.USER_CONFIG_UNRESOLVED",
+        "CLI.TELEMETRY_PREFERENCE_UNAVAILABLE",
       );
     }
   });
