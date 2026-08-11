@@ -87,10 +87,7 @@ can overrule before the affected dispatch runs.
   list alongside `service build` and `service deploy`.
 - **Q3 — `project env remove`'s `rm` alias** (the only alias in the
   tree) does not port. Ratify the drop or rule alias support.
-- **Q4 — config evaluation in the shipped bin.** The S1 loader
-  requires a TS-capable runtime; the S2d bin cutover cannot. Choose
-  the evaluation strategy (e.g. jiti, esbuild-register, or "TS-capable
-  runtimes only" documented). Blocks S2d's R-S2d-3 only.
+- **Q4 — reading the config file from the shipped binary. RULED (operator, 2026-08-11): copy prisma/prisma and prisma/composer, which both use `c12`.** Our loader does a plain dynamic `import()` of `prisma.config.ts`, which only works under a TypeScript-capable runtime; the shipped binary runs on ordinary Node. Both reference repositories solved this already and identically, so there is nothing to design. `c12` is a dependency, imported dynamically at the call site, invoked as `loadConfig({ name, cwd, configFile? })`. See `packages/1-framework/3-tooling/config-loader/src/load.ts` in prisma/prisma, and the `cli` and `composer` packages in prisma/composer. One ordinary `dependencies` entry is the whole contract: `c12` evaluates TypeScript through `jiti`, which `c12@3.3.4` depends on directly, so installing `c12` installs the part that makes it work on plain Node. `c12`'s only peer dependency is `magicast`, and that one is optional.
 - **Q5 — exit-code unification.** R-S2b-3 changes user-visible codes:
   legacy consent failures split 1/2 and prod-deploy cancel exits 0;
   engine rules make these 2 (structural) and 3 (cancel). Built to
@@ -106,7 +103,8 @@ defaults):
   evaluates `prisma-next.config.*` (c12, arbitrary TS in a detached
   child) for two wire fields; dead in this product, so the port drops
   the load — `databaseTarget` null, `extensions` empty. Ratify, or
-  rule a `prisma.config.ts`-based replacement (interacts with Q4).
+  rule a `prisma.config.ts`-based replacement (interacts with the
+  config-loading ruling above).
 - **Q8 — disclosure timing.** Events fire at settlement (`onSettled`,
   per contract); the first-run privacy disclosure prints pre-run so
   users learn before output, but crashed/killed runs emit nothing

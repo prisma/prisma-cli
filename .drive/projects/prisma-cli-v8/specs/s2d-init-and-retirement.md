@@ -26,17 +26,7 @@ exists; the `version` COMMAND ports as a result command presenting
 the inventory's current fields (version, node, platform) with a json
 serializer. Trivial but user-visible; test matrix applies.
 
-R-S2d-3 **The bin cutover**: `packages/cli/package.json` `bin`
-(`prisma-cli`) points at the v8 entry; the tsdown build bundles the
-v8 tree; the `prisma-v8` working name and root script are deleted.
-The config-loader plain-Node constraint (S1 deferral) must be
-resolved HERE: the shipped bin cannot require tsx. Resolution is
-pinned: the loader gains the jiti-style evaluation the S3 plan
-expected — STOP: that is not pinned anywhere. Morning-questions
-ledger Q4 records the decision needed (config evaluation strategy for
-the published bin: jiti, esbuild-register, or native TS supported
-runtimes only). DO NOT start D-dispatches for R-S2d-3 until Q4 is
-ruled; everything else in S2d can proceed.
+R-S2d-3 **The bin cutover**: `packages/cli/package.json` `bin` (`prisma-cli`) points at the v8 entry; the tsdown build bundles the v8 tree; the `prisma-v8` working name and root script are deleted. The config-loader plain-Node constraint is resolved: RULED (operator, 2026-08-11) to copy prisma/prisma and prisma/composer, which both load the config with `c12` — a dependency, dynamically imported, called as `loadConfig({ name, cwd, configFile? })`. `c12@3.3.4` depends on `jiti` directly, so an ordinary `dependencies` entry is all that has to be declared; its only peer dependency is `magicast`, which is optional. Nothing to design; port their shape. This no longer blocks any part of the slice.
 
 R-S2d-4 **Deletions** (after all ports green; single dedicated
 commit series): the commander shell (`src/cli.ts` program wiring,
@@ -75,7 +65,8 @@ reinstatement (Q1 unless ruled meanwhile).
 
 - [ ] `init` wizard green on the full prompt matrix (interactive,
       `--yes`, non-interactive, cancel) with byte-asserted templates.
-- [ ] Bin cutover complete per Q4's ruling; `prisma-cli` runs the
+- [ ] Bin cutover complete, config loaded through `c12` as the
+      reference repositories do; `prisma-cli` runs the
       engine shell from a packed tarball on plain Node.
 - [ ] Commander shell + fixture machinery deleted per R-S2d-4's
       checklist; survivor list enumerated.

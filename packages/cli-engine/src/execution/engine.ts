@@ -33,6 +33,8 @@ import {
 import {
   applySharedFlags,
   defaultInteractive,
+  emptyConfigAssignment,
+  emptyConfigAssignmentError,
   explicitFormat,
   type SharedFlags,
   sniffFormat,
@@ -95,6 +97,8 @@ export interface RunState {
   confirmValues: string[];
   interactive: boolean;
   colorEnabled: boolean;
+  /** The file `--config` named, if the run named one. */
+  configPath: string | undefined;
   resolved: boolean;
   settledExitCode: number | undefined;
   usageErrorText: string | undefined;
@@ -138,6 +142,9 @@ export interface Invocation {
   /** The engine-owned abort signal behind ctx.signal, fed by the
    *  runtime's signal subscription. */
   readonly signal: AbortSignal;
+  /** Every config section name the mounted command families declare —
+   *  the closed set of top-level keys prisma.config.ts may contain. */
+  readonly configSections: readonly string[];
   /** The engine's whole signal policy, reachable so ctx.spawn can
    *  replay recorded signals through exactly the delivered path. */
   readonly deliverSignal: (signal: "SIGINT" | "SIGTERM") => void;
@@ -209,6 +216,7 @@ export class EngineImpl implements Engine {
   private readonly root: StricliRouteMap<EngineRunContext>;
   private readonly now: () => Date;
   private readonly delay: (ms: number, signal: AbortSignal) => Promise<void>;
+  private readonly configSections: readonly string[];
 
   constructor(
     spec: EngineSpec,
@@ -218,6 +226,7 @@ export class EngineImpl implements Engine {
     this.spec = spec;
     this.now = now;
     this.delay = delay;
+    this.configSections = declaredConfigSections(spec);
     this.root = buildRoutes(
       spec,
       buildCommandTree(spec),
@@ -243,6 +252,7 @@ export class EngineImpl implements Engine {
       confirmValues: [],
       interactive: defaultInteractive(runtime),
       colorEnabled: false,
+      configPath: undefined,
       resolved: false,
       settledExitCode: undefined,
       usageErrorText: undefined,
@@ -282,11 +292,17 @@ export class EngineImpl implements Engine {
       delay: this.delay,
       state,
       signal: controller.signal,
+      configSections: this.configSections,
       deliverSignal,
     };
     if (versionRequested(argv)) {
       unsubscribe();
       return settleVersion(this.spec, invocation);
+    }
+    if (emptyConfigAssignment(argv)) {
+      unsubscribe();
+      settleErrored(invocation, emptyConfigAssignmentError());
+      return 2;
     }
     const stricliProcess = {
       /** stricli writes only help text here. In json mode stdout carries
@@ -555,6 +571,25 @@ export class EngineImpl implements Engine {
       settleThrown(invocation, cause);
     }
   }
+}
+
+/** The closed set of config section names. Every mounted command
+ *  contributes the section it needs, whether it reaches the tree
+ *  through a command family or on its own — the shell mounts its own
+ *  commands with no family, and a section the CLI cannot name is a
+ *  section its own command could never read. Every other top-level key
+ *  in prisma.config.ts is reported by the config needs check. */
+function declaredConfigSections(spec: EngineSpec): readonly string[] {
+  return [
+    ...new Set(
+      [
+        ...spec.commandFamilies.map(
+          (commandFamily) => commandFamily.configSection?.name,
+        ),
+        ...Object.values(spec.commands).map((def) => def.needs.config?.name),
+      ].filter((name): name is string => name !== undefined),
+    ),
+  ];
 }
 
 /** A command that may hand the terminal to a child cannot frame its

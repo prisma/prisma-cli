@@ -217,6 +217,17 @@ describe("construction validation", () => {
     );
   });
 
+  test("a 'config' flag fails construction (--config is a shared flag)", () => {
+    const offender = defineCommand({
+      help: { summary: "Offender" },
+      args: { flags: { config: flag.string({ brief: "mine" }) } },
+      handler: null as never,
+    });
+    expect(() => createTestCli({ commands: { offender } })).toThrow(
+      "reserved flag 'config'",
+    );
+  });
+
   test("a 'version' flag fails construction (--version is intercepted globally)", () => {
     const offender = defineCommand({
       help: { summary: "Offender" },

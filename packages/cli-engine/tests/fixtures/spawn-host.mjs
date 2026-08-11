@@ -101,7 +101,11 @@ const runtime = {
       process.off("SIGTERM", onSigterm);
     };
   },
-  config: { sections: {}, diagnostics: [] },
+  loadConfig: async () => ({
+    path: "prisma.config.ts",
+    sections: {},
+    diagnostics: [],
+  }),
   managementApi: { baseUrl: "https://test.invalid" },
   packageManager: "unknown",
   spawn: spawnChild,

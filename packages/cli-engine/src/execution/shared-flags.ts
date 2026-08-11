@@ -1,5 +1,6 @@
 import type { Severity } from "../events";
 import type { Format } from "../presentation";
+import { CliStructuredError } from "../protocol";
 import type { Runtime } from "../runtime";
 import type { RunState } from "./engine";
 
@@ -15,6 +16,7 @@ export const RESERVED_FLAG_NAMES: ReadonlySet<string> = new Set([
   "confirm",
   "interactive",
   "color",
+  "config",
   "help",
   "helpAll",
   "version",
@@ -81,7 +83,69 @@ export const SHARED_FLAG_PARAMETERS = {
     withNegated: true,
     brief: "Force ANSI color on or off",
   },
+  config: {
+    kind: "parsed",
+    parse: parseConfigPath,
+    placeholder: "path",
+    optional: true,
+    brief: "Read this config file instead of ./prisma.config.ts",
+  },
 } as const;
+
+/** Rejects `--config ""`, which a shell produces from
+ *  `--config "$UNSET_VAR"`. prisma/prisma treats the empty value as a
+ *  usage error rather than letting it reach the loader as an empty
+ *  path, and so does this: the parser turns the throw into the run's
+ *  usage error. */
+function parseConfigPath(input: string): string {
+  if (input === "") {
+    throw new Error("--config needs a path, and was given an empty value");
+  }
+  return input;
+}
+
+/**
+ * The one malformed `--config` shape the parser cannot see. stricli
+ * matches a flag-with-value against `/^--([a-z][a-z-.\d_]+)=(.+)$/`,
+ * which needs at least one character after the `=`, so the bare token
+ * `--config=` is not a flag to it at all and falls through to the
+ * command's positional arguments. prisma/prisma rejects that shape as a
+ * usage error (a user who wrote `--config=` meant to name a file), so
+ * the engine checks for the exact token before handing argv over.
+ *
+ * This runs before parsing, so it cannot tell a flag from data: the
+ * scan rejects `--config=` wherever it appears ahead of a bare `--`,
+ * including as another flag's value or a positional. prisma/prisma's
+ * scan does the same and does not stop at `--`; the token is an odd
+ * one to need as data, and `--` remains the way to pass it.
+ */
+export function emptyConfigAssignment(argv: readonly string[]): boolean {
+  for (const argument of argv) {
+    if (argument === "--") {
+      return false;
+    }
+    if (argument === "--config=") {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function emptyConfigAssignmentError(): CliStructuredError {
+  return new CliStructuredError(
+    "CLI.INVALID_ARGUMENTS",
+    "--config needs a path, and was given an empty value",
+    {
+      why: "`--config=` binds the flag to an empty value.",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label: "Pass a config path: --config <path> or --config=<path>.",
+        },
+      ],
+    },
+  );
+}
 
 export const SHARED_ALIASES = { v: "verbose", q: "quiet", y: "yes" } as const;
 
@@ -95,6 +159,7 @@ export interface SharedFlags {
   readonly confirm?: readonly string[];
   readonly interactive?: boolean;
   readonly color?: boolean;
+  readonly config?: string;
 }
 
 /** The pre-parse format decision: json framing must be in effect before
@@ -140,6 +205,7 @@ export function applySharedFlags(
   state.colorEnabled =
     shared.color ??
     (runtime.isTty.stdout && runtime.env.NO_COLOR === undefined);
+  state.configPath = shared.config;
 }
 
 /** Interactive iff TTY stdin outside CI; --interactive and
