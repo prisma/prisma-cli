@@ -107,7 +107,6 @@ function isRealMode(context: CommandContext): boolean {
 
 export async function readProjectListLocalBinding(
   cwd: string,
-  workspace: AuthWorkspace,
   projects: Array<Pick<ProjectCandidate, "id">>,
   signal: AbortSignal,
 ): Promise<ProjectListResult["localBinding"]> {
@@ -118,8 +117,12 @@ export async function readProjectListLocalBinding(
 
   const pin = pinResult.value;
   if (pin.kind === "present") {
-    return pin.pin.workspaceId === workspace.id &&
-      projects.some((project) => project.id === pin.pin.projectId)
+    // Membership in `projects` is the whole test. That list is what the
+    // API returned for this credential, so a pinned project found in it
+    // is by definition one this credential can use; comparing the pin's
+    // workspace id as well only added a second way to answer "invalid"
+    // for a directory that was linked perfectly well.
+    return projects.some((project) => project.id === pin.pin.projectId)
       ? { status: "linked" }
       : { status: "invalid" };
   }
@@ -160,15 +163,10 @@ export async function runProjectList(
       throw authRequiredError();
     }
     const projects = sortProjects(
-      await listRealWorkspaceProjects(
-        client,
-        workspace,
-        context.runtime.signal,
-      ),
+      await listRealWorkspaceProjects(client, context.runtime.signal),
     );
     const localBinding = await readProjectListLocalBinding(
       context.runtime.cwd,
-      workspace,
       projects,
       context.runtime.signal,
     );
@@ -193,7 +191,6 @@ export async function runProjectList(
   const result = await projectUseCases.list(authState);
   const localBinding = await readProjectListLocalBinding(
     context.runtime.cwd,
-    workspace,
     result.projects,
     context.runtime.signal,
   );
@@ -359,11 +356,7 @@ export async function runProjectLink(
       throw authRequiredError();
     }
     provider = createAppProvider(client);
-    projects = await listRealWorkspaceProjects(
-      client,
-      workspace,
-      context.runtime.signal,
-    );
+    projects = await listRealWorkspaceProjects(client, context.runtime.signal);
   } else {
     projects = listFixtureWorkspaceProjects(context, workspace);
   }
@@ -848,11 +841,7 @@ async function requireProjectMutationContext(
     const client = await requireProjectClient(context);
     return {
       provider: createManagementProjectProvider(client),
-      projects: await listRealWorkspaceProjects(
-        client,
-        workspace,
-        context.runtime.signal,
-      ),
+      projects: await listRealWorkspaceProjects(client, context.runtime.signal),
     };
   }
 
@@ -872,7 +861,7 @@ async function requireProjectCommandContext(
   const client = realMode ? await requireProjectClient(context) : null;
   const listProjects = async () =>
     client
-      ? listRealWorkspaceProjects(client, workspace, context.runtime.signal)
+      ? listRealWorkspaceProjects(client, context.runtime.signal)
       : listFixtureWorkspaceProjects(context, workspace);
 
   const targetResult = await resolveProjectTarget({
@@ -1364,7 +1353,7 @@ async function resolveProjectShowInRealMode(
     workspace,
     explicitProject,
     listProjects: () =>
-      listRealWorkspaceProjects(client, workspace, context.runtime.signal),
+      listRealWorkspaceProjects(client, context.runtime.signal),
     commandName: "project show",
   });
   if (result.isErr()) {
@@ -1392,7 +1381,7 @@ async function resolveRequiredProjectInRealMode(
     workspace,
     explicitProject,
     listProjects: () =>
-      listRealWorkspaceProjects(client, workspace, context.runtime.signal),
+      listRealWorkspaceProjects(client, context.runtime.signal),
     commandName,
   });
   if (result.isErr()) {
@@ -1438,9 +1427,11 @@ async function resolveRequiredProjectInFixtureMode(
   return result.value;
 }
 
+/** The projects the API returns for the active credential, sorted.
+ *  Takes no workspace: the credential names one, and the API answers
+ *  within it. */
 export async function listRealWorkspaceProjects(
   client: ManagementApiClient,
-  workspace: AuthWorkspace,
   signal?: AbortSignal,
 ): Promise<ProjectCandidate[]> {
   const { data, error, response } = await client.GET("/v1/projects", {
@@ -1454,27 +1445,33 @@ export async function listRealWorkspaceProjects(
   if (error || !data) {
     throw projectApiError("Failed to list projects", response, error);
   }
+  // No workspace filter: the credential is issued for one workspace and
+  // the API answers within it, so this returns what the API returned.
+  // The filter that used to be here could only ever remove something it
+  // should not have — which it did, discarding every project whenever
+  // the credential's bare workspace id met the API's `wksp_`-prefixed
+  // one. Were the API ever to return another workspace's project, that
+  // would be a server-side scoping fault, and hiding it here would turn
+  // it into "you have no projects".
   return sortProjects(
-    (data.data ?? [])
-      .filter((project) => project.workspace.id === workspace.id)
-      .map((project) => ({
-        id: project.id,
-        name: project.name,
-        ...("url" in project && typeof project.url === "string"
-          ? { url: project.url }
-          : {}),
-        ...("defaultRegion" in project
-          ? { defaultRegion: project.defaultRegion }
-          : {}),
-        slug:
-          "slug" in project && typeof project.slug === "string"
-            ? project.slug
-            : null,
-        workspace: {
-          id: project.workspace.id,
-          name: project.workspace.name,
-        },
-      })),
+    (data.data ?? []).map((project) => ({
+      id: project.id,
+      name: project.name,
+      ...("url" in project && typeof project.url === "string"
+        ? { url: project.url }
+        : {}),
+      ...("defaultRegion" in project
+        ? { defaultRegion: project.defaultRegion }
+        : {}),
+      slug:
+        "slug" in project && typeof project.slug === "string"
+          ? project.slug
+          : null,
+      workspace: {
+        id: project.workspace.id,
+        name: project.workspace.name,
+      },
+    })),
   );
 }
 

@@ -538,7 +538,7 @@ async function requireClientAndProject(
     workspace,
     explicitProject,
     listProjects: () =>
-      listRealWorkspaceProjects(client, workspace, context.runtime.signal),
+      listRealWorkspaceProjects(client, context.runtime.signal),
     commandName,
   });
   if (targetResult.isErr()) {

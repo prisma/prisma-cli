@@ -45,6 +45,10 @@ const ACME_SESSION = {
   },
 };
 
+/** What `/v1/projects` returns for a credential: the projects of the one
+ *  workspace that credential names. It does not return other
+ *  workspaces' projects, and a fixture that pretends otherwise invites
+ *  client-side filtering to handle a case the API never produces. */
 const API_PROJECTS = [
   {
     id: "proj_1",
@@ -57,12 +61,6 @@ const API_PROJECTS = [
     name: "Storefront",
     defaultRegion: null,
     workspace: { id: "ws_1", name: "Acme Inc" },
-  },
-  {
-    id: "proj_9",
-    name: "Other workspace",
-    defaultRegion: null,
-    workspace: { id: "ws_other", name: "Globex" },
   },
 ];
 
@@ -229,8 +227,8 @@ describe("prisma-v8 project list", () => {
     ]);
   });
 
-  it("reports an invalid binding when the pin names another workspace", async () => {
-    const cwd = await tempCwd({ workspaceId: "ws_other", projectId: "proj_1" });
+  it("reports an invalid binding when the pinned project is not one the API returned", async () => {
+    const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_gone" });
     const result = await makeCli(fakeClient()).run(["project", "list"], {
       cwd,
     });
@@ -241,6 +239,22 @@ describe("prisma-v8 project list", () => {
     expect(result.presented?.presentation.next?.[0]?.reason).toBe(
       "This directory has an invalid local Project binding. Ask the user which Prisma Project to link before running Project-scoped commands.",
     );
+  });
+
+  /** The pin records whichever workspace-id form the CLI held when it
+   *  was written — v7 wrote the API's `wksp_`-prefixed id, v8 writes the
+   *  credential's bare one. Neither may turn a working link into an
+   *  invalid one, so the binding is judged only by whether the pinned
+   *  project is among those the API returned. */
+  it("stays linked when the pin records the workspace id in another form", async () => {
+    const cwd = await tempCwd({ workspaceId: "wksp_1", projectId: "proj_1" });
+    const result = await makeCli(fakeClient()).run(["project", "list"], {
+      cwd,
+    });
+
+    expect(result.presented?.data).toMatchObject({
+      localBinding: { status: "linked" },
+    });
   });
 
   it("renders an empty-state list block when the workspace has no projects", async () => {

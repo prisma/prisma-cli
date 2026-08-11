@@ -727,7 +727,7 @@ async function requireDatabaseContext(
       workspace,
       explicitProject: flags.projectRef,
       listProjects: () =>
-        listRealWorkspaceProjects(client, workspace, context.runtime.signal),
+        listRealWorkspaceProjects(client, context.runtime.signal),
       commandName,
     });
     if (targetResult.isErr()) {
