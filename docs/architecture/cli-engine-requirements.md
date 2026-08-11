@@ -219,12 +219,15 @@ installs the dependencies it just wrote into `package.json`. A command
 declares that it installs packages, and the work goes through the engine's
 package operations, whose terms are what keep the two apart. The manager
 is the one the user's project already uses, detected rather than imposed.
-The exact command line is announced before it runs, and the manager's own
-output is shown while it runs, so nothing happens the user cannot see. A
-failure comes back as a structured error carrying that same command line,
-so the user can run it themselves. And the engine composes the command but
-never spawns it: execution belongs to the shell, so the engine holds no
-process-spawning machinery of its own.
+The command line is announced before it runs, and the manager's own output
+is shown while it runs, so nothing happens the user cannot see — with any
+credentials in either stripped out, because being visible to the user must
+not mean being visible in a log or a `--json` stream. A failure comes back
+as a structured error whose remedy carries the command in full, secrets
+included, because a command offered for the user to run has to actually
+run. And the engine composes the command but never spawns it: execution
+belongs to the shell, so the engine holds no process-spawning machinery of
+its own.
 
 **Why:** a previous incarnation of the Prisma CLI installed command
 submodules on demand into a hidden `node_modules` in the working directory.
