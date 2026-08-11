@@ -1,3 +1,4 @@
+import { kebabCase } from "../args";
 import type { CommandRedirect } from "../command-family";
 import type {
   AnyCommand,
@@ -249,10 +250,6 @@ export function settleVersion(
     timestamp: invocation.now().toISOString(),
   });
   return 0;
-}
-
-function kebabCase(key: string): string {
-  return key.replace(/[A-Z]/g, (upper) => `-${upper.toLowerCase()}`);
 }
 
 /** What the user typed that no longer exists: a retired path, or a

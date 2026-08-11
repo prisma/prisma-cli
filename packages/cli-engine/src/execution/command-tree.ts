@@ -1,4 +1,9 @@
-import { flagRuntime, type PositionalSpec, positionalRuntime } from "../args";
+import {
+  camelCase,
+  flagRuntime,
+  type PositionalSpec,
+  positionalRuntime,
+} from "../args";
 import type { CommandFamily, CommandRedirect } from "../command-family";
 import type { AnyCommand } from "../commands";
 import type { EngineSpec } from "./engine";
@@ -213,12 +218,6 @@ export interface RedirectTable {
 
 function flagRedirectKey(commandPath: string, flag: string): string {
   return `${commandPath} --${flag}`;
-}
-
-function camelCase(raw: string): string {
-  return raw.replace(/-([a-zA-Z0-9])/g, (_, char: string) =>
-    char.toUpperCase(),
-  );
 }
 
 /** Where a path sits in the mounted tree; a group is a path some
