@@ -102,6 +102,13 @@ export interface CommandContext<
   readonly env: Readonly<Record<string, string | undefined>>;
 
   /**
+   * True when this process runs in CI, from Runtime.isCI. Handlers
+   * detect CI no more than they detect a TTY — a command that skips a
+   * prompt or a spinner reads this.
+   */
+  readonly isCI: boolean;
+
+  /**
    * Conditional optional-dependency need. Resolves when the
    * optional peer dependency is importable from the user's project;
    * otherwise returns the engine's structured missing-dependency error
