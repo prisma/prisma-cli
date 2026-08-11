@@ -13,7 +13,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, parse } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
@@ -90,20 +90,32 @@ describe("resolvePackageManager", () => {
     expect(await resolvePackageManager({ cwd: dir, env: {} })).toBe("bun");
   });
 
+  // The detector walks parents with no project boundary, so a temp
+  // directory answers for whatever lockfile sits above it on the
+  // machine running this. The filesystem root has no parent to walk and
+  // the walk stops one level below it, so it holds nothing at all.
   test("the invoking manager's user agent is used when the directory has no project", async () => {
     expect(
-      await resolvePackageManager({ cwd: dir, env: invokedBy("pnpm") }),
+      await resolvePackageManager({
+        cwd: parse(dir).root,
+        env: invokedBy("pnpm"),
+      }),
     ).toBe("pnpm");
   });
 
   test("an unrecognized user agent is ignored", async () => {
     expect(
-      await resolvePackageManager({ cwd: dir, env: invokedBy("vlt") }),
+      await resolvePackageManager({
+        cwd: parse(dir).root,
+        env: invokedBy("vlt"),
+      }),
     ).toBe("npm");
   });
 
   test("npm is the answer when nothing matches", async () => {
-    expect(await resolvePackageManager({ cwd: dir, env: {} })).toBe("npm");
+    expect(await resolvePackageManager({ cwd: parse(dir).root, env: {} })).toBe(
+      "npm",
+    );
   });
 });
 

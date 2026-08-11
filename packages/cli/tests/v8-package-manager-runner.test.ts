@@ -10,7 +10,10 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runPackageManager } from "../src/v8/package-manager-runner";
+import {
+  runPackageManager,
+  STDERR_TAIL_BYTES,
+} from "../src/v8/package-manager-runner";
 
 const NODE = process.execPath;
 
@@ -26,11 +29,12 @@ function collect(): { chunks: Chunk[]; onOutput: (...chunk: Chunk) => void } {
   };
 }
 
+function textsOn(chunks: readonly Chunk[], channel: Chunk[0]): string[] {
+  return chunks.filter(([seen]) => seen === channel).map(([, text]) => text);
+}
+
 function joined(chunks: readonly Chunk[], channel: Chunk[0]): string {
-  return chunks
-    .filter(([seen]) => seen === channel)
-    .map(([, text]) => text)
-    .join("");
+  return textsOn(chunks, channel).join("");
 }
 
 describe("runPackageManager", () => {
@@ -59,7 +63,12 @@ describe("runPackageManager", () => {
     expect(joined(chunks, "data")).toBe(dir);
   });
 
-  it("streams stdout and stderr in the order the child writes them", async () => {
+  // stdout and stderr are independent pipes, so which one the event
+  // loop reads first when both hold data is not something the runner
+  // decides. What it does decide is that each channel arrives in the
+  // order its own writes happened, in pieces rather than one final
+  // buffer, and that only stderr is kept.
+  it("streams each channel as the child writes it, in its own order", async () => {
     const { chunks, onOutput } = collect();
 
     const result = await runPackageManager({
@@ -80,11 +89,8 @@ describe("runPackageManager", () => {
       onOutput,
     });
 
-    expect(chunks).toEqual([
-      ["data", "resolving\n"],
-      ["diagnostic", "WARN peer\n"],
-      ["data", "done\n"],
-    ]);
+    expect(textsOn(chunks, "data")).toEqual(["resolving\n", "done\n"]);
+    expect(textsOn(chunks, "diagnostic")).toEqual(["WARN peer\n"]);
     expect(result).toEqual({ exitCode: 3, stderr: "WARN peer\n" });
   });
 
@@ -109,7 +115,7 @@ describe("runPackageManager", () => {
     });
   });
 
-  it("keeps the last 64 KiB of stderr while streaming all of it", async () => {
+  it("keeps the last STDERR_TAIL_BYTES of stderr while streaming all of it", async () => {
     const { chunks, onOutput } = collect();
 
     const result = await runPackageManager({
@@ -125,8 +131,13 @@ describe("runPackageManager", () => {
     });
 
     expect(result.exitCode).toBe(1);
-    expect(Buffer.byteLength(result.stderr)).toBeGreaterThan(64 * 1024 - 4);
-    expect(Buffer.byteLength(result.stderr)).toBeLessThanOrEqual(64 * 1024);
+    // Advancing to a line boundary costs the one "x\n" the cut landed in.
+    expect(Buffer.byteLength(result.stderr)).toBeLessThanOrEqual(
+      STDERR_TAIL_BYTES,
+    );
+    expect(Buffer.byteLength(result.stderr)).toBeGreaterThanOrEqual(
+      STDERR_TAIL_BYTES - "x\n".length,
+    );
     expect(result.stderr.endsWith("TAIL")).toBe(true);
     expect(result.stderr).not.toContain("HEAD");
     expect(joined(chunks, "diagnostic")).toHaveLength(100 * 1024 + 8);
@@ -157,7 +168,7 @@ describe("runPackageManager", () => {
     // must never hand over is a line beginning "ci:s3cret@host/…".
     const url = "https://ci:s3cret@registry.acme.dev/prisma";
     const exposed = url.slice("https://".length);
-    const trailerBytes = 64 * 1024 - exposed.length - 1;
+    const trailerBytes = STDERR_TAIL_BYTES - exposed.length - 1;
     const trailer = "npm ERR! detail\n".repeat(4200).slice(0, trailerBytes);
 
     const result = await runPackageManager({

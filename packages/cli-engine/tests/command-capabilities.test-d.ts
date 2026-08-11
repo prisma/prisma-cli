@@ -18,7 +18,9 @@ import {
   type CommandHandler,
   type CredentialManager,
   defineCommand,
+  type FlagSpec,
   type PackageOperations,
+  type PositionalSpec,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { expectTypeOf, test } from "vitest";
@@ -181,6 +183,36 @@ test("a flag that is not a literal infers boolean and loses its surface", () => 
 
   expectTypeOf(def.installsPackages).toEqualTypeOf<boolean>();
   expectTypeOf<ContextOf<typeof def>>().not.toHaveProperty("packages");
+});
+
+/**
+ * The unsoundness spec §2.1 names, pinned rather than fixed. Writing the
+ * type arguments out defeats the cast in defineCommand's body: the
+ * definition's type says `true` while the value it froze is `false`, so
+ * the handler is offered a `ctx.packages` the runtime never builds.
+ * Inference from the object literal — every other call in the codebase —
+ * cannot reach this state.
+ */
+test("an explicit type argument can claim a capability the declaration omits", () => {
+  const def = defineCommand<
+    Record<never, FlagSpec<unknown>>,
+    Record<never, PositionalSpec<unknown>>,
+    undefined,
+    never,
+    false,
+    true
+  >({
+    help: { summary: "Claims installsPackages without declaring it" },
+    handler: async (_args, ctx) => {
+      expectTypeOf(ctx.packages).toEqualTypeOf<PackageOperations>();
+      return ok(ctx.present({ data: null }, { human: () => [] }));
+    },
+  });
+
+  expectTypeOf(def.installsPackages).toEqualTypeOf<true>();
+  expectTypeOf<ContextOf<typeof def>>()
+    .toHaveProperty("packages")
+    .toEqualTypeOf<PackageOperations>();
 });
 
 test("the capability generics leave the exit-code catalogue alone", () => {

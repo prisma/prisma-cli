@@ -126,19 +126,29 @@ const init = defineCommand({
   },
 });
 
-/** The same two installs, fired without awaiting the first. */
+/**
+ * The same two installs, fired without awaiting the first. Which one the
+ * interlock refuses is its contract, not an accident of how the results
+ * are read: the first call takes the claim and runs, and the second is
+ * the caller bug.
+ */
 const race = defineCommand({
   help: { summary: "Installs both dependency sets at once" },
   installsPackages: true,
   handler: async (_args, ctx) => {
-    const [, tooling] = await Promise.allSettled([
+    const [dependencies, tooling] = await Promise.allSettled([
       ctx.packages.install({ packages: RUNTIME_PACKAGES }),
       ctx.packages.install({ packages: TOOLING_PACKAGES, dev: true }),
     ]);
-    if (tooling.status === "rejected") {
-      throw tooling.reason;
+    if (dependencies.status === "rejected") {
+      throw new Error(
+        `the interlock refused the first install: ${String(dependencies.reason)}`,
+      );
     }
-    return ok(ctx.present({ data: null }, { human: () => [] }));
+    if (tooling.status !== "rejected") {
+      throw new Error("the interlock let the second install through");
+    }
+    throw tooling.reason;
   },
 });
 

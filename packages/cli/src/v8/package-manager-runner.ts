@@ -2,7 +2,9 @@ import type { Readable } from "node:stream";
 import type { PackageManagerRunner } from "@prisma/cli-engine";
 import { execa } from "execa";
 
-const STDERR_TAIL_BYTES = 64 * 1024;
+/** How much of a manager's stderr the failure carries, per the seam's
+ *  contract. */
+export const STDERR_TAIL_BYTES = 64 * 1024;
 
 /** A missing executable or a signal kill leaves the child with no exit
  *  code of its own; the run still failed, and the engine reports it. */
