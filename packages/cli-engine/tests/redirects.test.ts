@@ -6,6 +6,7 @@
 import {
   defineCommand,
   defineCommandFamily,
+  defineServerCommand,
   type ErroredEnvelope,
   flag,
   type RedirectSpec,
@@ -501,6 +502,31 @@ describe("retired flags", () => {
     expect(erroredEnvelope(result.json).error.code).toBe(
       "CLI.INVALID_ARGUMENTS",
     );
+  });
+
+  test("a redirect on a server command never frames onto stdout", async () => {
+    const lsp = defineServerCommand({
+      help: { summary: "Speak the language server protocol" },
+      handler: async () => 0,
+    });
+    const cli = createTestCli({
+      commandFamilies: [
+        defineCommandFamily({
+          commands: { lsp },
+          redirects: [{ from: "lsp", flag: "stdio", replacement: "lsp" }],
+        }),
+      ],
+      commands: { lsp },
+      now: EPOCH,
+    });
+
+    const result = await cli.run(["lsp", "--stdio"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.json).toEqual([]);
+    expect(result.stderr).toContain("CLI.COMMAND_MOVED");
+    expect(result.stderr).toContain("prisma-test lsp");
   });
 
   test("human mode renders the replacement on stderr", async () => {

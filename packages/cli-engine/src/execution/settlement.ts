@@ -262,13 +262,19 @@ function retiredInvocation(redirect: CommandRedirect): string {
 }
 
 /** A retired invocation the redirect table claims: the run names its
- *  replacement instead of failing as an unknown command or flag. */
+ *  replacement instead of failing as an unknown command or flag. A
+ *  retired flag can name a server command, whose stdout belongs to a
+ *  foreign client — so this settlement renders to stderr for the same
+ *  reason settleUnhandled does. */
 export function settleCommandMoved(
   spec: EngineSpec,
   invocation: Invocation,
   redirect: CommandRedirect,
   commandId: string,
 ): number {
+  if (spec.commands[redirect.from]?.kind === "server-command") {
+    invocation.state.format = "human";
+  }
   const useReplacement: NextAction = {
     kind: "run-command",
     label: "Use the replacement",
