@@ -144,6 +144,30 @@ export interface TestCli {
   }>;
 }
 
+function runEnv(
+  environmentCredential: Credential | undefined,
+  env: Readonly<Record<string, string | undefined>> | undefined,
+): Readonly<Record<string, string | undefined>> {
+  if (environmentCredential === undefined) {
+    return env ?? {};
+  }
+  return { PRISMA_SERVICE_TOKEN: environmentCredential.token, ...env };
+}
+
+function relaySignalOnAbort(
+  abort: AbortSignal | undefined,
+  deliver: (reason: unknown) => void,
+): void {
+  if (abort === undefined) {
+    return;
+  }
+  if (abort.aborted) {
+    deliver(abort.reason);
+    return;
+  }
+  abort.addEventListener("abort", () => deliver(abort.reason), { once: true });
+}
+
 function inputStreamFromString(text: string) {
   const bytes = new TextEncoder().encode(text);
   return {
@@ -220,13 +244,27 @@ export function createTestCli(spec: {
     credential: spec.credential,
     environmentCredential: spec.environmentCredential,
   });
+  const managementApiBaseUrl =
+    spec.managementApi?.baseUrl ?? "https://test.invalid";
   const managementApiClientConfig: ManagementApiClientConfig =
     spec.managementApiClientConfig ?? {
       clientId: "test-client-id",
       redirectUri: "https://test.invalid/auth/callback",
-      apiBaseUrl: spec.managementApi?.baseUrl ?? "https://test.invalid",
+      apiBaseUrl: managementApiBaseUrl,
       authBaseUrl: "https://auth.test.invalid",
     };
+  const loadConfig: Runtime["loadConfig"] =
+    spec.loadConfig ??
+    (async (configPath) => ({
+      path: configPath ?? CONFIG_FILE_NAME,
+      sections: spec.config ?? {},
+      diagnostics: [],
+    }));
+  const spawnChild: SpawnChild =
+    spec.spawn ??
+    scriptedSpawn(spec.spawnScript ?? (() => ({ exitCode: 0, signal: null })));
+  const openUrl = spec.openUrl ?? ((): void => {});
+  const packageManager = spec.packageManager ?? "unknown";
   const engine = buildEngine(
     {
       name: "prisma-test",
@@ -273,13 +311,7 @@ export function createTestCli(spec: {
         },
         stdin: inputStreamFromString(opts?.stdin ?? ""),
         cwd: opts?.cwd ?? "/",
-        env:
-          spec.environmentCredential === undefined
-            ? (opts?.env ?? {})
-            : {
-                PRISMA_SERVICE_TOKEN: spec.environmentCredential.token,
-                ...opts?.env,
-              },
+        env: runEnv(spec.environmentCredential, opts?.env),
         isTty: {
           stdin: opts?.isTty?.stdin ?? false,
           stdout: opts?.isTty?.stdout ?? false,
@@ -296,27 +328,13 @@ export function createTestCli(spec: {
             signalListeners.delete(cb);
           };
         },
-        loadConfig:
-          spec.loadConfig ??
-          (async (configPath) => ({
-            path: configPath ?? CONFIG_FILE_NAME,
-            sections: spec.config ?? {},
-            diagnostics: [],
-          })),
+        loadConfig,
         credentialManager,
         managementApiClientConfig,
-        spawn: recordingSpawn(
-          spec.spawn ??
-            scriptedSpawn(
-              spec.spawnScript ?? (() => ({ exitCode: 0, signal: null })),
-            ),
-          spawns,
-        ),
-        openUrl: spec.openUrl ?? ((): void => {}),
-        managementApi: {
-          baseUrl: spec.managementApi?.baseUrl ?? "https://test.invalid",
-        },
-        packageManager: spec.packageManager ?? "unknown",
+        spawn: recordingSpawn(spawnChild, spawns),
+        openUrl,
+        managementApi: { baseUrl: managementApiBaseUrl },
+        packageManager,
       };
       const running = engine.execute(argv, runtime, {
         onEvent: (event) => {
@@ -336,16 +354,7 @@ export function createTestCli(spec: {
             ? undefined
             : { client: spec.managementApi.client },
       });
-      const abort = opts?.abort;
-      if (abort !== undefined) {
-        if (abort.aborted) {
-          deliverSignal(abort.reason);
-        } else {
-          abort.addEventListener("abort", () => deliverSignal(abort.reason), {
-            once: true,
-          });
-        }
-      }
+      relaySignalOnAbort(opts?.abort, deliverSignal);
       const exitCode = await running;
       return {
         exitCode,

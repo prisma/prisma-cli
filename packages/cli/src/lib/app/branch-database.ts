@@ -173,16 +173,7 @@ async function scanDirectory(
     return;
   }
 
-  let entries: Dirent[];
-  try {
-    entries = await readdir(directory, { withFileTypes: true });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return;
-    }
-    throw error;
-  }
-  entries.sort((left, right) => left.name.localeCompare(right.name));
+  const entries = await readSortedDirectoryEntries(directory);
 
   for (const entry of entries) {
     signal.throwIfAborted();
@@ -191,11 +182,9 @@ async function scanDirectory(
     }
 
     const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      if (!SKIPPED_DIRECTORIES.has(entry.name)) {
-        // biome-ignore lint/performance/noAwaitInLoops: the whole scan shares one MAX_SCAN_FILES budget and stops the moment it runs out, so subtrees have to be walked one after another in sorted order for the scan to stop at the same place every time.
-        await scanDirectory(cwd, entryPath, depth + 1, state, signal);
-      }
+    if (isScannableDirectory(entry)) {
+      // biome-ignore lint/performance/noAwaitInLoops: the whole scan shares one MAX_SCAN_FILES budget and stops the moment it runs out, so subtrees have to be walked one after another in sorted order for the scan to stop at the same place every time.
+      await scanDirectory(cwd, entryPath, depth + 1, state, signal);
       continue;
     }
 
@@ -204,14 +193,7 @@ async function scanDirectory(
     }
 
     state.filesVisited += 1;
-
-    if (entry.name === "schema.prisma") {
-      state.schemaCandidates.push(entryPath);
-    }
-
-    if (isPrismaNextConfigFile(entry.name)) {
-      state.prismaNextConfigCandidates.push(entryPath);
-    }
+    recordSchemaCandidates(entry.name, entryPath, state);
 
     if (
       state.databaseUrlReferences.length < MAX_DATABASE_URL_REFERENCE_FILES &&
@@ -222,6 +204,40 @@ async function scanDirectory(
         path.relative(cwd, entryPath) || entry.name,
       );
     }
+  }
+}
+
+async function readSortedDirectoryEntries(
+  directory: string,
+): Promise<Dirent[]> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+
+  return entries.sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function isScannableDirectory(entry: Dirent): boolean {
+  return entry.isDirectory() && !SKIPPED_DIRECTORIES.has(entry.name);
+}
+
+function recordSchemaCandidates(
+  fileName: string,
+  filePath: string,
+  state: ScanState,
+): void {
+  if (fileName === "schema.prisma") {
+    state.schemaCandidates.push(filePath);
+  }
+
+  if (isPrismaNextConfigFile(fileName)) {
+    state.prismaNextConfigCandidates.push(filePath);
   }
 }
 

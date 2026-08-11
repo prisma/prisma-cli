@@ -128,14 +128,34 @@ async function readServiceError(
     : "";
 }
 
-async function postFeedback(
+function isTimeout(error: unknown): boolean {
+  return error instanceof Error && error.name === "TimeoutError";
+}
+
+function unreachableDetail(error: unknown): string {
+  if (isTimeout(error)) {
+    return TIMEOUT_DETAIL;
+  }
+  const cause =
+    error instanceof Error && error.cause instanceof Error
+      ? ` (${error.cause.message})`
+      : "";
+  return `The feedback service could not be reached${cause}.`;
+}
+
+function unreadableBodyDetail(error: unknown): string {
+  return isTimeout(error)
+    ? TIMEOUT_DETAIL
+    : "The feedback service response could not be read.";
+}
+
+async function sendFeedback(
   endpoint: string,
   body: Record<string, unknown>,
   signal: AbortSignal,
-): Promise<string | null> {
-  let response: Response;
+): Promise<Response> {
   try {
-    response = await fetch(endpoint, {
+    return await fetch(endpoint, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -151,19 +171,14 @@ async function postFeedback(
     if (signal.aborted) {
       throw error;
     }
-    throw sendFailedError(
-      error instanceof Error && error.name === "TimeoutError"
-        ? TIMEOUT_DETAIL
-        : `The feedback service could not be reached${error instanceof Error && error.cause instanceof Error ? ` (${error.cause.message})` : ""}.`,
-    );
+    throw sendFailedError(unreachableDetail(error));
   }
+}
 
-  if (!response.ok) {
-    throw sendFailedError(
-      `The feedback service responded with HTTP ${response.status}${await readServiceError(response, signal)}.`,
-    );
-  }
-
+async function readSubmissionId(
+  response: Response,
+  signal: AbortSignal,
+): Promise<string | null> {
   // The body read runs under the same abort signal as the request, so a
   // stalled response or a user cancellation here must not be mistaken for a
   // fully received non-JSON body.
@@ -175,16 +190,28 @@ async function postFeedback(
       throw error;
     }
     if (!(error instanceof SyntaxError)) {
-      throw sendFailedError(
-        error instanceof Error && error.name === "TimeoutError"
-          ? TIMEOUT_DETAIL
-          : "The feedback service response could not be read.",
-      );
+      throw sendFailedError(unreadableBodyDetail(error));
     }
     // The body arrived but was not JSON; the submission itself succeeded.
     payload = null;
   }
   return typeof payload?.id === "string" ? payload.id : null;
+}
+
+async function postFeedback(
+  endpoint: string,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const response = await sendFeedback(endpoint, body, signal);
+
+  if (!response.ok) {
+    throw sendFailedError(
+      `The feedback service responded with HTTP ${response.status}${await readServiceError(response, signal)}.`,
+    );
+  }
+
+  return readSubmissionId(response, signal);
 }
 
 export const feedbackCommand = defineCommand({

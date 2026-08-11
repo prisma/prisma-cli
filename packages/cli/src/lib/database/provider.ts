@@ -803,52 +803,7 @@ async function databaseApiError(options: {
   signal?: AbortSignal;
 }): Promise<CliError> {
   if (isPlanLimitApiError(options.error)) {
-    const subscription = options.workspaceId
-      ? await readWorkspaceSubscription(
-          options.client,
-          options.workspaceId,
-          options.signal,
-        )
-      : null;
-    const workspaceLine = options.workspaceId
-      ? `Workspace: ${options.workspaceId}`
-      : "Workspace: unavailable";
-    const planName = subscription?.planName || null;
-    const usageBlocked = subscription?.usageBlocked ?? null;
-    const upgradeUrl = subscription?.upgradeUrl || null;
-    const recoveryLines = [
-      ...(planName ? [`Current plan: ${planName}`] : []),
-      upgradeUrl
-        ? `Upgrade: ${upgradeUrl}`
-        : "Upgrade: Open Prisma Console and upgrade the affected workspace plan.",
-    ];
-
-    return new CliError({
-      code: "PLAN_LIMIT_REACHED",
-      domain: "database",
-      summary: "Workspace plan limit reached",
-      why: "Database operations are blocked because this workspace has used the operations included in its plan. This is a workspace plan limit, not a Prisma outage.",
-      fix: upgradeUrl
-        ? `Upgrade the workspace plan at ${upgradeUrl}.`
-        : "Open Prisma Console and upgrade the affected workspace plan.",
-      meta: {
-        workspaceId: options.workspaceId ?? null,
-        blockedFeature: null,
-        planName,
-        usageBlocked,
-        upgradeUrl,
-      },
-      exitCode: 1,
-      nextSteps: [],
-      humanLines: [
-        "Workspace plan limit reached [PLAN_LIMIT_REACHED]",
-        "",
-        "Database operations are blocked because this workspace has used the operations included in its plan. This is a workspace plan limit, not a Prisma outage.",
-        "",
-        workspaceLine,
-        ...recoveryLines,
-      ],
-    });
+    return planLimitReachedError(options);
   }
 
   const status = options.response?.status ?? 0;
@@ -864,6 +819,59 @@ async function databaseApiError(options: {
       "Re-run with --trace for the underlying API response details.",
     exitCode: 1,
     nextSteps: [],
+  });
+}
+
+async function planLimitReachedError(options: {
+  client: ManagementApiClient;
+  workspaceId?: string;
+  signal?: AbortSignal;
+}): Promise<CliError> {
+  const subscription = options.workspaceId
+    ? await readWorkspaceSubscription(
+        options.client,
+        options.workspaceId,
+        options.signal,
+      )
+    : null;
+  const workspaceLine = options.workspaceId
+    ? `Workspace: ${options.workspaceId}`
+    : "Workspace: unavailable";
+  const planName = subscription?.planName || null;
+  const usageBlocked = subscription?.usageBlocked ?? null;
+  const upgradeUrl = subscription?.upgradeUrl || null;
+  const recoveryLines = [
+    ...(planName ? [`Current plan: ${planName}`] : []),
+    upgradeUrl
+      ? `Upgrade: ${upgradeUrl}`
+      : "Upgrade: Open Prisma Console and upgrade the affected workspace plan.",
+  ];
+
+  return new CliError({
+    code: "PLAN_LIMIT_REACHED",
+    domain: "database",
+    summary: "Workspace plan limit reached",
+    why: "Database operations are blocked because this workspace has used the operations included in its plan. This is a workspace plan limit, not a Prisma outage.",
+    fix: upgradeUrl
+      ? `Upgrade the workspace plan at ${upgradeUrl}.`
+      : "Open Prisma Console and upgrade the affected workspace plan.",
+    meta: {
+      workspaceId: options.workspaceId ?? null,
+      blockedFeature: null,
+      planName,
+      usageBlocked,
+      upgradeUrl,
+    },
+    exitCode: 1,
+    nextSteps: [],
+    humanLines: [
+      "Workspace plan limit reached [PLAN_LIMIT_REACHED]",
+      "",
+      "Database operations are blocked because this workspace has used the operations included in its plan. This is a workspace plan limit, not a Prisma outage.",
+      "",
+      workspaceLine,
+      ...recoveryLines,
+    ],
   });
 }
 

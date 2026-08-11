@@ -19,7 +19,9 @@
     "rules": {
       "recommended": true,
       "complexity": {
-        "noExcessiveCognitiveComplexity": "on",
+        // "on" would take this rule's own default severity, info, which
+        // --error-on-warnings does not promote. Pinned so CI fails on it.
+        "noExcessiveCognitiveComplexity": "error",
         "noForEach": "on",
         "noImplicitCoercions": "on",
         // Defaults to info via "recommended", which --error-on-warnings does
