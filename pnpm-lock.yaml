@@ -111,6 +111,9 @@ importers:
       colorette:
         specifier: ^2.0.20
         version: 2.0.20
+      package-manager-detector:
+        specifier: 1.8.0
+        version: 1.8.0
       string-width:
         specifier: ^8.2.1
         version: 8.2.1
@@ -1413,6 +1416,9 @@ packages:
   os-paths@7.4.0:
     resolution: {integrity: sha512-Ux1J4NUqC6tZayBqLN1kUlDAEvLiQlli/53sSddU4IN+h+3xxnv2HmRSMpVSvr1hvJzotfMs3ERvETGK+f4OwA==}
     engines: {node: '>= 4.0'}
+
+  package-manager-detector@1.8.0:
+    resolution: {integrity: sha512-yQA4H19AmPEoMUeavPMDIe1higySl/gH/yaQrkT/s07Qp+7pp2hYz30N3z2l5BkjVkF9Ow6o0wjJamm2y7Sn0A==}
 
   parse-ms@4.0.0:
     resolution: {integrity: sha512-TXfryirbmq34y8QBwgqCVLi+8oA3oWx2eAnSn62ITyEhEYaWRlVZ2DvMM9eZbMs/RfxPu/PK/aBLyGj4IrqMHw==}
@@ -2759,6 +2765,8 @@ snapshots:
   os-paths@7.4.0:
     optionalDependencies:
       fsevents: 2.3.3
+
+  package-manager-detector@1.8.0: {}
 
   parse-ms@4.0.0: {}
 

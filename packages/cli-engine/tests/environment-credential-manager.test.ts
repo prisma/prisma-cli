@@ -186,7 +186,6 @@ describe("wired as a Runtime's manager", () => {
         };
       },
       managementApi: { baseUrl: "https://test.invalid" },
-      packageManager: "unknown",
     };
   }
 

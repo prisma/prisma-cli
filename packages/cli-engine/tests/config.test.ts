@@ -866,7 +866,6 @@ describe("needs.config", { timeout: 60_000 }, () => {
         return loadConfig(cwd, configPath);
       },
       managementApi: { baseUrl: "https://test.invalid" },
-      packageManager: "unknown",
     };
     return { runtime, stdout: () => stdoutText };
   }

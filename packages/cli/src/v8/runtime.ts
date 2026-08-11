@@ -21,6 +21,7 @@ import {
   STATE_FILE_ENV_VAR,
 } from "../auth/state-file";
 import { fetchWorkspaceName } from "../auth/workspace-name";
+import { runPackageManager } from "./package-manager-runner";
 import { spawnChild } from "./spawn";
 
 export type SignalProcess = Pick<HostProcess, "on" | "off" | "exit">;
@@ -40,18 +41,6 @@ export function makeOnSignal(proc: SignalProcess): Runtime["onSignal"] {
       proc.off("SIGTERM", onTerm);
     };
   };
-}
-
-export function detectPackageManager(
-  env: NodeJS.ProcessEnv,
-): Runtime["packageManager"] {
-  const userAgent = env.npm_config_user_agent ?? "";
-  for (const name of ["pnpm", "yarn", "bun", "npm"] as const) {
-    if (userAgent.startsWith(name)) {
-      return name;
-    }
-  }
-  return "unknown";
 }
 
 /**
@@ -137,6 +126,6 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       await open(url);
     },
     managementApi: { baseUrl: apiBaseUrl },
-    packageManager: detectPackageManager(proc.env),
+    runPackageManager,
   };
 }

@@ -116,7 +116,6 @@ function makeRuntime(overrides?: {
     credentialManager: overrides?.credentialManager,
     managementApiClientConfig: CLIENT_CONFIG,
     managementApi: { baseUrl: "https://test.invalid" },
-    packageManager: "unknown",
     stderrText: () => stderrText,
     stdoutText: () => stdoutText,
   };

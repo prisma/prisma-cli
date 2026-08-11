@@ -3,6 +3,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
+    typecheck: {
+      enabled: true,
+      include: ["tests/**/*.test-d.ts"],
+    },
     // No telemetry guard here, and none would do anything: the engine
     // reads process.env nowhere, and createTestCli seeds runtime.env
     // from opts.env ?? {}, so no variable set here reaches the gating

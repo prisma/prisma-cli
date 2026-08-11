@@ -1253,7 +1253,6 @@ function controllableRuntime() {
       diagnostics: [],
     }),
     managementApi: { baseUrl: "https://test.invalid" },
-    packageManager: "unknown",
   };
   return {
     runtime,

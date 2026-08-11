@@ -111,7 +111,6 @@ async function runInteractive(
       diagnostics: [],
     }),
     managementApi: { baseUrl: "https://test.invalid" },
-    packageManager: "unknown",
   };
   const exitCode = await promptCli(run).run(["probe"], runtime);
   // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI stripping

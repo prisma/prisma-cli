@@ -9,7 +9,6 @@ import { buildCli } from "../src/v8/cli";
 import { main } from "../src/v8/main";
 import {
   assembleRuntime,
-  detectPackageManager,
   type HostProcess,
   makeOnSignal,
 } from "../src/v8/runtime";
@@ -108,24 +107,6 @@ function fire(
   }
 }
 
-describe("detectPackageManager", () => {
-  it.each([
-    ["pnpm/9.0.0 npm/? node/v22", "pnpm"],
-    ["yarn/4.0.0 npm/? node/v22", "yarn"],
-    ["bun/1.1.0 npm/? node/v22", "bun"],
-    ["npm/10.0.0 node/v22", "npm"],
-    ["deno/2.0.0", "unknown"],
-  ])("maps user agent %s to %s", (userAgent, expected) => {
-    expect(detectPackageManager({ npm_config_user_agent: userAgent })).toBe(
-      expected,
-    );
-  });
-
-  it("is unknown when no user agent is set", () => {
-    expect(detectPackageManager({})).toBe("unknown");
-  });
-});
-
 describe("makeOnSignal", () => {
   it("forwards process signals to the subscriber, applying no policy of its own", () => {
     const proc = makeProcess();
@@ -163,7 +144,7 @@ describe("assembleRuntime", () => {
 
     expect(runtime.cwd).toBe("/tmp/v8-bin-test-cwd");
     expect(runtime.isTty).toEqual({ stdin: true, stdout: true, stderr: false });
-    expect(runtime.packageManager).toBe("pnpm");
+    expect(runtime.packageManager).toBeUndefined();
     expect(runtime.managementApi).toEqual({ baseUrl: "https://api.prisma.io" });
     // resolve, not join: the loader makes the path absolute, and on
     // Windows that puts a drive on this cwd.
@@ -212,6 +193,22 @@ describe("assembleRuntime", () => {
     });
     expect(typeof runtime.openUrl).toBe("function");
     expect(proc.stderrText).toBe("");
+  });
+
+  it("wires a package-manager runner that really spawns", async () => {
+    const runtime = await assembleRuntime(makeProcess());
+
+    const chunks: string[] = [];
+    const result = await runtime.runPackageManager?.({
+      file: process.execPath,
+      args: ["-e", `process.stdout.write("ran")`],
+      cwd: process.cwd(),
+      signal: new AbortController().signal,
+      onOutput: (_channel, chunk) => chunks.push(chunk),
+    });
+
+    expect(result).toEqual({ exitCode: 0, stderr: "" });
+    expect(chunks.join("")).toBe("ran");
   });
 
   it("warns once when the credentials file is named by the deprecated variable", async () => {

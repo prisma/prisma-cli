@@ -109,10 +109,35 @@ release automation, pinned product versions, and the pipeline emitting
 a publishable `prisma@8.0.0-rc1` artifact from a tagged commit. Ends
 when the operator can publish with one action (project DoD).
 
+### S9 — The error-code catalogue (last)
+
+Repo: prisma-cli. The engine raises its `CLI.*` codes from sixteen-plus
+construction sites and catalogues them nowhere;
+`docs/product/error-conventions.md` catalogues the LEGACY flat code
+space (`BUILD_FAILED` and friends), which dies with the commander
+shell. ADR 0003 requires a new error code to update that document, so
+today every new engine code either updates the wrong catalogue or
+silently skips the rule.
+
+This slice writes the real one: every `CLI.*` code the shipped engine
+raises, with its meaning, its exit code, and its `meta` shape; the
+legacy flat catalogue is replaced, not appended to; ADR 0003's rule is
+re-pointed at the new document. Products' own namespaces (`AUTH.*`,
+`PROJECT.*`, `POSTGRES.*`, and the ORM/Composer families) are listed by
+namespace owner, not enumerated here — each family documents its own.
+
+**Ordering.** Last, deliberately. Ruled by the operator (2026-08-11)
+while triaging the package-manager capability, whose spec asked for
+"documented wherever the engine catalogues its own codes" and found no
+such place. Cataloguing before the ports land would document a code
+space still being written; cataloguing before the old CLI is retired
+would document two competing spaces at once. So: after S5 (ports done),
+after S2d (commander shell deleted), after S7 if it slips.
+
 ## Dependency graph
 
 ```text
-S1 ──► S2 ──► S3 ──► S5 ──► S7
+S1 ──► S2 ──► S3 ──► S5 ──► S7 ──► S9
         │      ▲      ▲             ▲
         └──────┘      │             │
 S4 (prisma/prisma) ───┴──► S5       │
@@ -154,6 +179,7 @@ Recorded so they are not lost between slices.
 | Diagnostics model, catalogued exit codes | S5 |
 | Server command (stdio) | S5 (lsp) |
 | Grammar tree completeness | S7 |
+| Engine error-code catalogue | S9 |
 
 ## Out of plan (per spec non-goals)
 

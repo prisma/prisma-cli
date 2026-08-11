@@ -5,6 +5,7 @@ import type {
   CredentialManager,
 } from "../credential-manager";
 import type { ManagementApiClient } from "../management-api";
+import { resolvePackageManager } from "../package-manager";
 import {
   PRESENTED,
   type Presentations,
@@ -18,6 +19,7 @@ import { constructionError } from "./command-tree";
 import type { Invocation, RunState } from "./engine";
 import { dependencyResolvable, missingDependencyError } from "./needs";
 import { announceUrl } from "./open-url";
+import { makePackageOperations } from "./package-operations";
 import { makePaint } from "./palette";
 import { makePromptSurface } from "./prompts";
 import { reportEvent } from "./reporting";
@@ -72,11 +74,18 @@ function materializePresentation(
   };
 }
 
+/** The capability flags the command declared: each one adds a surface
+ *  to the context and nothing else. */
+export interface CommandCapabilities {
+  readonly managesCredentials: boolean;
+  readonly installsPackages: boolean;
+}
+
 export function makeContext(
   invocation: Invocation,
   def: AnyCommand,
   config: unknown,
-  managesCredentials: boolean,
+  capabilities: CommandCapabilities,
 ): CommandContext<unknown, number> {
   const state = invocation.state;
   const ui = makeUi(state.colorEnabled, invocation.runtime.stderr);
@@ -133,17 +142,19 @@ export function makeContext(
     cwd: invocation.runtime.cwd,
     env: invocation.runtime.env,
     isCI: invocation.runtime.isCI,
-    requireDependency: async (specifier) =>
-      dependencyResolvable(specifier, invocation.runtime.cwd)
-        ? okVoid()
-        : notOk(
-            missingDependencyError(
-              specifier,
-              invocation.runtime.packageManager,
-            ),
-          ),
+    requireDependency: async (specifier) => {
+      if (dependencyResolvable(specifier, invocation.runtime.cwd)) {
+        return okVoid();
+      }
+      const manager = await resolvePackageManager({
+        cwd: invocation.runtime.cwd,
+        env: invocation.runtime.env,
+        host: invocation.runtime.packageManager,
+      });
+      return notOk(missingDependencyError(specifier, manager));
+    },
   };
-  if (managesCredentials) {
+  if (capabilities.managesCredentials) {
     Object.defineProperty(context, "credentialManager", {
       enumerable: true,
       get(): CredentialManager {
@@ -155,6 +166,15 @@ export function makeContext(
         }
         return manager;
       },
+    });
+  }
+  if (capabilities.installsPackages) {
+    // Unlike credentials, a Runtime with no runner is not an error
+    // here: the operation is offered, and reports the structured
+    // failure when it is called.
+    Object.defineProperty(context, "packages", {
+      enumerable: true,
+      value: makePackageOperations(invocation),
     });
   }
   return context;

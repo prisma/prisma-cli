@@ -11,6 +11,7 @@ import type {
   ManagementApiClient,
   ManagementApiClientConfig,
 } from "./management-api";
+import type { PackageManagerId, PackageManagerRunner } from "./package-manager";
 import type { PresentedResult } from "./presentation";
 import type { RunSummary } from "./run-summary";
 import type { Runtime } from "./runtime";
@@ -231,7 +232,14 @@ export function createTestCli(spec: {
     readonly baseUrl?: string;
     readonly client?: ManagementApiClient;
   };
-  readonly packageManager?: "npm" | "pnpm" | "yarn" | "bun" | "unknown";
+  /** Overrides detection, the same way a host's Runtime does; absent
+   *  means the engine detects from the run's cwd. */
+  readonly packageManager?: PackageManagerId;
+  /** The scripted stand-in for the shipped bin's spawner: assert the
+   *  composed file/args/cwd, script exit codes and stderr, drive
+   *  onOutput. Absent means this host has no runner, which is the
+   *  failure every package operation then takes. */
+  readonly packageManagerRunner?: PackageManagerRunner;
   /** Fixed clock for deterministic stream timestamps; a clock that
    *  advances also drives prompt.browserWait's timeout. */
   readonly now?: () => Date;
@@ -287,7 +295,6 @@ export function createTestCli(spec: {
     spec.spawn ??
     scriptedSpawn(spec.spawnScript ?? (() => ({ exitCode: 0, signal: null })));
   const openUrl = spec.openUrl ?? ((): void => {});
-  const packageManager = spec.packageManager ?? "unknown";
   const engine = buildEngine(
     {
       name: "prisma-test",
@@ -368,7 +375,8 @@ export function createTestCli(spec: {
               },
         openUrl,
         managementApi: { baseUrl: managementApiBaseUrl },
-        packageManager,
+        packageManager: spec.packageManager,
+        runPackageManager: spec.packageManagerRunner,
       };
       const running = engine.execute(argv, runtime, {
         onEvent: (event) => {

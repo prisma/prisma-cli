@@ -1,5 +1,6 @@
 import type { CredentialManager } from "./credential-manager";
 import type { ManagementApiClientConfig } from "./management-api";
+import type { PackageManagerId, PackageManagerRunner } from "./package-manager";
 import type { Diagnostic } from "./protocol";
 import type { SpawnChild } from "./spawn";
 import type { TelemetryPayload } from "./telemetry/payload";
@@ -104,10 +105,19 @@ export interface Runtime {
   /** Management API endpoint config; the bin derives baseUrl from env. */
   readonly managementApi: { readonly baseUrl: string };
   /**
-   * Used by the ENGINE to phrase install commands (handlers never do —
-   * see needs.dependencies and ctx.requireDependency).
+   * A host that knows its user's package manager better than detection
+   * does. Absent — the normal case — means the engine detects it from
+   * the project at cwd.
    */
-  readonly packageManager: "npm" | "pnpm" | "yarn" | "bun" | "unknown";
+  readonly packageManager?: PackageManagerId;
+  /**
+   * Spawns the package manager the engine composed. The engine never
+   * imports child_process; this is the only way a manager runs. It is
+   * optional so a harness can exercise the no-runner path — every
+   * shipped host wires it, and a host without it can run no package
+   * operation at all.
+   */
+  readonly runPackageManager?: PackageManagerRunner;
 }
 
 /**

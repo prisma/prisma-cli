@@ -27,7 +27,7 @@ import {
   reportCommandStart,
   type TelemetryDeclaration,
 } from "../telemetry/report";
-import { makeContext } from "./command-context";
+import { type CommandCapabilities, makeContext } from "./command-context";
 import { buildCommandSnapshot } from "./command-snapshot";
 import {
   buildCommandTree,
@@ -155,6 +155,11 @@ export interface RunState {
    *  prompt's first await, so an unawaited prompt still blocks
    *  ctx.spawn from handing the same terminal to a child. */
   activePrompts: number;
+  /** Set while a ctx.packages operation is in flight. It serializes the
+   *  operations against each other, and blocks ctx.spawn: a child
+   *  writing the terminal directly while the manager's output is being
+   *  streamed leaves the two in no defined order. */
+  packageOperationRunning: boolean;
   /** The signal the engine delivered to this run, if one reached it.
    *  The engine's own record of how the run ended: a run a signal
    *  terminated settles 128 + that signal's number whatever its handler
@@ -306,6 +311,7 @@ export class EngineImpl implements Engine {
       delegatedTerminal: undefined,
       lastChild: undefined,
       activePrompts: 0,
+      packageOperationRunning: false,
       deliveredSignal: undefined,
       pendingForceExit: undefined,
       spawnCredential: undefined,
@@ -611,7 +617,7 @@ export class EngineImpl implements Engine {
       invocation,
       entry.def,
       needsOutcome.config,
-      entry.def.kind === "result-command" && entry.def.managesCredentials,
+      declaredCapabilities(entry.def),
     );
     if (entry.def.kind === "session-command") {
       await this.settleHandlerOutcome<undefined>(
@@ -761,6 +767,16 @@ function jsonUnsupportedError(commandId: string): CliStructuredError {
       ],
     },
   );
+}
+
+function declaredCapabilities(def: AnyCommand): CommandCapabilities {
+  if (def.kind !== "result-command") {
+    return { managesCredentials: false, installsPackages: false };
+  }
+  return {
+    managesCredentials: def.managesCredentials,
+    installsPackages: def.installsPackages,
+  };
 }
 
 function declaredFlags(

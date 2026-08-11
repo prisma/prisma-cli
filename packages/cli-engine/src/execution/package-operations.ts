@@ -1,0 +1,253 @@
+import {
+  installCommand,
+  type PackageManagerCommand,
+  type PackageManagerId,
+  type PackageManagerRunResult,
+  type PackageOperations,
+  resolvePackageManager,
+  runCommand,
+} from "../package-manager";
+import { packageManagerFailedError } from "../package-manager-errors";
+import {
+  type CliStructuredError,
+  notOk,
+  okVoid,
+  type Result,
+} from "../protocol";
+import { constructionError } from "./command-tree";
+import type { Invocation } from "./engine";
+import { redactSecrets } from "./redaction";
+import { reportEvent } from "./reporting";
+
+/** What the seam reports for a child that never ran, and what a host
+ *  with no runner at all reports for the same reason. */
+const NO_CHILD_EXIT_CODE = 1;
+
+type Operation =
+  | {
+      readonly form: "install";
+      readonly packages: readonly string[];
+      readonly dev: boolean;
+    }
+  | {
+      readonly form: "run";
+      readonly package: string;
+      readonly args: readonly string[];
+    };
+
+interface Placement {
+  readonly cwd?: string;
+  readonly manager?: PackageManagerId;
+}
+
+function spell(
+  operation: Operation,
+  manager: PackageManagerId,
+): PackageManagerCommand {
+  return operation.form === "install"
+    ? installCommand(manager, {
+        packages: operation.packages,
+        dev: operation.dev,
+      })
+    : runCommand(manager, { package: operation.package, args: operation.args });
+}
+
+function failed(
+  operation: Operation,
+  command: PackageManagerCommand,
+  outcome: {
+    readonly manager: PackageManagerId;
+    readonly exitCode: number;
+    readonly stderrTail: string;
+    readonly reason?: "runner-unavailable";
+  },
+): CliStructuredError {
+  const spelling = redactSecrets(command.line);
+  return packageManagerFailedError(
+    operation.form === "install"
+      ? { ...outcome, command: spelling, form: "install" }
+      : {
+          ...outcome,
+          command: spelling,
+          form: "run",
+          package: operation.package,
+        },
+  );
+}
+
+/** Cancellation throws rather than resolving a failure, so an aborted
+ *  operation settles the way Ctrl-C settles everywhere else. Asked again
+ *  after detection: that await is long enough for the signal to fire,
+ *  and an operation nothing spawned must announce nothing. */
+function stopIfCancelled(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw signal.reason;
+  }
+}
+
+/** The seam hands over chunks as the child writes them; an `output`
+ *  event carries one line, so a line split across two chunks waits for
+ *  its second half. */
+function lineAssembler(emit: (line: string) => void): {
+  readonly push: (chunk: string) => void;
+  readonly flush: () => void;
+} {
+  let pending = "";
+  const emitLine = (line: string): void => {
+    emit(redactSecrets(line.endsWith("\r") ? line.slice(0, -1) : line));
+  };
+  return {
+    push: (chunk) => {
+      const lines = (pending + chunk).split("\n");
+      pending = lines.pop() ?? "";
+      for (const line of lines) {
+        emitLine(line);
+      }
+    },
+    flush: () => {
+      if (pending !== "") {
+        emitLine(pending);
+        pending = "";
+      }
+    },
+  };
+}
+
+function outputChannels(
+  invocation: Invocation,
+  manager: PackageManagerId,
+): {
+  readonly push: (channel: "data" | "diagnostic", chunk: string) => void;
+  readonly flush: () => void;
+} {
+  const assemble = (channel: "data" | "diagnostic") =>
+    lineAssembler((line) => {
+      reportEvent(invocation, {
+        kind: "output",
+        source: manager,
+        channel,
+        line,
+      });
+    });
+  const channels = {
+    data: assemble("data"),
+    diagnostic: assemble("diagnostic"),
+  };
+  return {
+    push: (channel, chunk) => {
+      channels[channel].push(chunk);
+    },
+    flush: () => {
+      channels.data.flush();
+      channels.diagnostic.flush();
+    },
+  };
+}
+
+async function execute(
+  invocation: Invocation,
+  operation: Operation,
+  placement: Placement,
+): Promise<Result<void, CliStructuredError>> {
+  const { runtime, signal } = invocation;
+  stopIfCancelled(signal);
+  const cwd = placement.cwd ?? runtime.cwd;
+  const manager = await resolvePackageManager({
+    cwd,
+    env: runtime.env,
+    override: placement.manager,
+    host: runtime.packageManager,
+  });
+  stopIfCancelled(signal);
+  const command = spell(operation, manager);
+  const runner = runtime.runPackageManager;
+  if (runner === undefined) {
+    return notOk(
+      failed(operation, command, {
+        manager,
+        exitCode: NO_CHILD_EXIT_CODE,
+        stderrTail: "",
+        reason: "runner-unavailable",
+      }),
+    );
+  }
+  const output = outputChannels(invocation, manager);
+  const step = redactSecrets(command.line);
+  reportEvent(invocation, { kind: "step-started", step });
+  let result: PackageManagerRunResult;
+  try {
+    result = await runner({
+      file: command.file,
+      args: command.args,
+      cwd,
+      signal,
+      onOutput: output.push,
+    });
+  } finally {
+    output.flush();
+  }
+  // A cancelled operation ran, so its step closes before the abort
+  // travels: a consumer pairing step events never sees an open one.
+  reportEvent(invocation, {
+    kind: "step-finished",
+    step,
+    outcome: signal.aborted || result.exitCode !== 0 ? "failed" : "ok",
+  });
+  stopIfCancelled(signal);
+  if (result.exitCode === 0) {
+    return okVoid();
+  }
+  return notOk(
+    failed(operation, command, {
+      manager,
+      exitCode: result.exitCode,
+      stderrTail: redactSecrets(result.stderr),
+    }),
+  );
+}
+
+export function makePackageOperations(
+  invocation: Invocation,
+): PackageOperations {
+  const state = invocation.state;
+  // The claim is taken before the first await, so a second operation
+  // fired without awaiting the first still hits it.
+  const perform = async (
+    operation: Operation,
+    placement: Placement,
+  ): Promise<Result<void, CliStructuredError>> => {
+    if (state.delegatedTerminal !== undefined) {
+      throw constructionError(
+        `command '${state.commandId}' called ctx.packages while a child owned the terminal`,
+      );
+    }
+    if (state.packageOperationRunning) {
+      throw constructionError(
+        "ctx.packages runs one operation at a time, so two package managers can never write one project at once",
+      );
+    }
+    state.packageOperationRunning = true;
+    try {
+      return await execute(invocation, operation, placement);
+    } finally {
+      state.packageOperationRunning = false;
+    }
+  };
+
+  return {
+    install: (request) =>
+      perform(
+        {
+          form: "install",
+          packages: request.packages,
+          dev: request.dev ?? false,
+        },
+        request,
+      ),
+    run: (request) =>
+      perform(
+        { form: "run", package: request.package, args: request.args },
+        request,
+      ),
+  };
+}
