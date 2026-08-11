@@ -447,6 +447,10 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
    *  via ctx.env, never process.env (R4). */
   readonly env: Readonly<Record<string, string | undefined>>
 
+  /** What this process runs on, from Runtime.host. Handlers read the
+   *  runtime version, platform and arch here — never from `process`. */
+  readonly host: Host
+
   /**
    * R13, the conditional form (evidence: composer needs @prisma/dev only
    * when the config declares postgres resources — unconditional needs
@@ -1270,6 +1274,8 @@ export interface Runtime {
   /** Used by the ENGINE to phrase install commands (handlers never
    *  do — see needs.dependencies and ctx.requireDependency). */
   readonly packageManager: 'npm' | 'pnpm' | 'yarn' | 'bun' | 'unknown'
+  /** What this process runs on; commands read it via ctx.host. */
+  readonly host: Host
 }
 
 /** The minimal process surface a bin adapts a Runtime from — Node's
@@ -1344,6 +1350,7 @@ export declare function createTestCli(spec: {
     readonly client?: ManagementApiClient
   }
   readonly packageManager?: 'npm' | 'pnpm' | 'yarn' | 'bun' | 'unknown'
+  readonly host?: Host
   /** Fixed clock for deterministic stream timestamps; a clock that
    *  advances also drives prompt.browserWait's timeout, whose waiting
    *  is instant under the harness. */
@@ -1427,4 +1434,15 @@ export interface TestCli {
      *  presented. */
     readonly presented: PresentedResult<unknown> | undefined
   }>
+}
+
+/**
+ * What this process runs on. Deliberately not node-shaped: products are
+ * runtime-agnostic (R4), so the runtime names itself rather than the
+ * field naming it.
+ */
+export interface Host {
+  readonly runtime: { readonly name: string; readonly version: string }
+  readonly platform: string
+  readonly arch: string
 }

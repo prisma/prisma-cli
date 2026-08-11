@@ -105,6 +105,11 @@ async function runInteractive(
     config: { sections: {}, diagnostics: [] },
     managementApi: { baseUrl: "https://test.invalid" },
     packageManager: "unknown",
+    host: {
+      runtime: { name: "node", version: "v22.12.0" },
+      platform: "linux",
+      arch: "x64",
+    },
   };
   const exitCode = await promptCli(run).run(["probe"], runtime);
   // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI stripping

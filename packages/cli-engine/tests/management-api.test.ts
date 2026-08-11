@@ -111,6 +111,11 @@ function makeRuntime(overrides?: {
     managementApiClientConfig: CLIENT_CONFIG,
     managementApi: { baseUrl: "https://test.invalid" },
     packageManager: "unknown",
+    host: {
+      runtime: { name: "node", version: "v22.12.0" },
+      platform: "linux",
+      arch: "x64",
+    },
     stderrText: () => stderrText,
     stdoutText: () => stdoutText,
   };

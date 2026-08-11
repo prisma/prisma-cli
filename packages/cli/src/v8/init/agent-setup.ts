@@ -35,6 +35,7 @@ import type { InitStepContext } from "./types";
 async function skillsInstallCommand(
   cwd: string,
   signal: AbortSignal,
+  platform: string,
 ): Promise<string[]> {
   return [
     ...(await resolveSkillsPackageRunner({ cwd, signal })),
@@ -44,7 +45,7 @@ async function skillsInstallCommand(
     "--skill",
     PRISMA_COMPUTE_AGENT_SKILL,
     ...DEFAULT_PRISMA_AGENT_TARGETS.flatMap((agent) => ["--agent", agent]),
-    ...(process.platform === "win32" ? ["--copy"] : []),
+    ...(platform === "win32" ? ["--copy"] : []),
     "--yes",
   ];
 }
@@ -80,7 +81,11 @@ export async function maybeOfferAgentSetup(
     return;
   }
 
-  const command = await skillsInstallCommand(ctx.cwd, ctx.signal);
+  const command = await skillsInstallCommand(
+    ctx.cwd,
+    ctx.signal,
+    ctx.host.platform,
+  );
   try {
     const [executable, ...args] = command;
     await execa(executable as string, args, {

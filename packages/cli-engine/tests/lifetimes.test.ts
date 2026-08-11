@@ -186,6 +186,11 @@ describe("the engine owns the double-signal policy", () => {
       config: { sections: {}, diagnostics: [] },
       managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
+      host: {
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
+      },
     };
     return {
       runtime,
@@ -336,6 +341,11 @@ describe("optional dependencies", () => {
       commands: { command },
       managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "pnpm",
+      host: {
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
+      },
       now: EPOCH,
     });
     const result = await cli.run(["command", "--json"], {
@@ -378,6 +388,11 @@ describe("optional dependencies", () => {
       commands: { command },
       managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "npm",
+      host: {
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
+      },
       now: EPOCH,
     });
     const result = await cli.run(["command", "--json"], {

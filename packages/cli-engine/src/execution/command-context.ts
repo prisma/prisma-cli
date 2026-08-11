@@ -108,6 +108,7 @@ export function makeContext(
     signal: invocation.signal,
     cwd: invocation.runtime.cwd,
     env: invocation.runtime.env,
+    host: invocation.runtime.host,
     requireDependency: async (specifier) =>
       dependencyResolvable(specifier, invocation.runtime.cwd)
         ? okVoid()

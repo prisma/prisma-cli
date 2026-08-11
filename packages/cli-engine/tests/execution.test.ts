@@ -570,6 +570,11 @@ describe("needs preconditions", () => {
           : undefined,
       managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
+      host: {
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
+      },
     };
     const exitCode = await cli.run(["demanding", "--format", "human"], runtime);
     return { exitCode, stderr: stderrText };
@@ -734,6 +739,11 @@ describe("report() after the handler resolved", () => {
       config: { sections: {}, diagnostics: [] },
       managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
+      host: {
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
+      },
     };
     const exitCode = await cli.run(["leaky", "--format", "human"], runtime);
 
@@ -794,6 +804,11 @@ describe("credentials that cannot be read", () => {
       } as unknown as Runtime["credentialManager"],
       managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
+      host: {
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
+      },
     };
     const exitCode = await cli.run(["locked"], runtime);
 
@@ -933,6 +948,46 @@ describe("parse and route failures", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({ bang: true });
+  });
+});
+
+describe("ctx.host", () => {
+  const reporting = defineCommand({
+    help: { summary: "Report the host" },
+    handler: async (_args, ctx) =>
+      ok(ctx.present({ data: ctx.host }, { human: () => [] })),
+  });
+
+  test("a command reads the runtime, platform and arch from the context", async () => {
+    const result = await createTestCli({
+      commands: { reporting },
+      now: EPOCH,
+      host: {
+        runtime: { name: "bun", version: "1.2.3" },
+        platform: "win32",
+        arch: "arm64",
+      },
+    }).run(["reporting", "--json"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual({
+      runtime: { name: "bun", version: "1.2.3" },
+      platform: "win32",
+      arch: "arm64",
+    });
+  });
+
+  test("the harness supplies a fixed host, so a payload asserts the same everywhere", async () => {
+    const result = await createTestCli({
+      commands: { reporting },
+      now: EPOCH,
+    }).run(["reporting", "--json"]);
+
+    expect(result.presented?.data).toEqual({
+      runtime: { name: "node", version: "v22.12.0" },
+      platform: "linux",
+      arch: "x64",
+    });
   });
 });
 

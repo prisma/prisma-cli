@@ -95,6 +95,7 @@ export {
 } from "../presentation";
 export type { EngineCommandSnapshot, RunSummary } from "../run-summary";
 export {
+  type Host,
   type HostProcess,
   type InputStream,
   type LoadedConfig,

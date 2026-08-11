@@ -5,6 +5,7 @@ import { buildCli } from "../src/v8/cli";
 import { main } from "../src/v8/main";
 import {
   assembleRuntime,
+  describeHost,
   detectPackageManager,
   type HostProcess,
   makeOnSignal,
@@ -24,6 +25,10 @@ function makeProcess(overrides?: {
   const exitedWith: number[] = [];
   const proc = {
     argv: overrides?.argv ?? ["node", "bin.js"],
+    version: "v22.12.0",
+    versions: { node: "22.12.0" },
+    platform: "linux",
+    arch: "x64",
     // Telemetry env opt-out so main()'s gating resolution stays inert
     // (no first-run notice on stderr, no dependence on the developer's
     // real user config).
@@ -94,6 +99,40 @@ describe("detectPackageManager", () => {
 
   it("is unknown when no user agent is set", () => {
     expect(detectPackageManager({})).toBe("unknown");
+  });
+});
+
+describe("describeHost", () => {
+  const base = {
+    version: "v22.12.0",
+    platform: "darwin",
+    arch: "arm64",
+  } as const;
+
+  it("names node when nothing else announces itself", () => {
+    expect(
+      describeHost({ ...base, versions: { node: "22.12.0" } } as never),
+    ).toEqual({
+      runtime: { name: "node", version: "22.12.0" },
+      platform: "darwin",
+      arch: "arm64",
+    });
+  });
+
+  it.each(["bun", "deno"])("names %s when it announces itself", (name) => {
+    expect(
+      describeHost({
+        ...base,
+        versions: { node: "22.12.0", [name]: "1.2.3" },
+      } as never).runtime,
+    ).toEqual({ name, version: "1.2.3" });
+  });
+
+  it("falls back to process.version when the runtime reports no version", () => {
+    expect(describeHost({ ...base, versions: {} } as never).runtime).toEqual({
+      name: "node",
+      version: "v22.12.0",
+    });
   });
 });
 

@@ -30,6 +30,10 @@ function makeProcess(overrides: {
     // update-check wiring only.
     env: { PRISMA_NEXT_DISABLE_TELEMETRY: "1", ...overrides.env },
     cwd: () => "/tmp/v8-update-check-cwd",
+    version: "v22.12.0",
+    versions: { node: "22.12.0" },
+    platform: "linux",
+    arch: "x64",
     stdoutText: "",
     stderrText: "",
     stdout: {

@@ -495,6 +495,11 @@ describe("stdin cleanup", () => {
       config: { sections: {}, diagnostics: [] },
       managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
+      host: {
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
+      },
     };
 
     const exitCode = await cli.run(["probe"], runtime);

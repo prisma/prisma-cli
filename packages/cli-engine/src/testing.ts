@@ -12,7 +12,7 @@ import type {
 } from "./management-api";
 import type { PresentedResult } from "./presentation";
 import type { RunSummary } from "./run-summary";
-import type { Runtime } from "./runtime";
+import type { Host, Runtime } from "./runtime";
 
 export interface TestCli {
   /**
@@ -105,6 +105,9 @@ export function createTestCli(spec: {
     readonly client?: ManagementApiClient;
   };
   readonly packageManager?: "npm" | "pnpm" | "yarn" | "bun" | "unknown";
+  /** What the run reports itself as running on; defaults to a fixed
+   *  host so a bug-report payload asserts the same on every machine. */
+  readonly host?: Host;
   /** Fixed clock for deterministic stream timestamps; a clock that
    *  advances also drives prompt.browserWait's timeout. */
   readonly now?: () => Date;
@@ -206,6 +209,11 @@ export function createTestCli(spec: {
           baseUrl: spec.managementApi?.baseUrl ?? "https://test.invalid",
         },
         packageManager: spec.packageManager ?? "unknown",
+        host: spec.host ?? {
+          runtime: { name: "node", version: "v22.12.0" },
+          platform: "linux",
+          arch: "x64",
+        },
       };
       const running = engine.execute(argv, runtime, {
         onEvent: (event) => {

@@ -38,6 +38,19 @@ export function makeOnSignal(proc: SignalProcess): Runtime["onSignal"] {
   };
 }
 
+/** Bun and Deno both announce themselves in process.versions; nothing
+ *  else does, so an absent marker means Node. */
+export function describeHost(proc: HostProcess): Runtime["host"] {
+  const name =
+    (["bun", "deno"] as const).find((candidate) => proc.versions[candidate]) ??
+    "node";
+  return {
+    runtime: { name, version: proc.versions[name] ?? proc.version },
+    platform: proc.platform,
+    arch: proc.arch,
+  };
+}
+
 export function detectPackageManager(
   env: NodeJS.ProcessEnv,
 ): Runtime["packageManager"] {
@@ -108,5 +121,6 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
     },
     managementApi: { baseUrl: apiBaseUrl },
     packageManager: detectPackageManager(proc.env),
+    host: describeHost(proc),
   };
 }

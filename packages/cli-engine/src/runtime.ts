@@ -73,6 +73,23 @@ export interface Runtime {
    * see needs.dependencies and ctx.requireDependency).
    */
   readonly packageManager: "npm" | "pnpm" | "yarn" | "bun" | "unknown";
+  /** What this process is running on. The bin reads it once; commands
+   *  take it from ctx.host rather than from process. */
+  readonly host: Host;
+}
+
+/**
+ * The facts a command may legitimately need about the machine it runs
+ * on: what to put in a bug report, and the rare genuine behavioural
+ * difference (symlinks need a privilege on Windows).
+ *
+ * Deliberately not node-shaped. Products are runtime-agnostic (R4), so
+ * the runtime names itself rather than the field naming it.
+ */
+export interface Host {
+  readonly runtime: { readonly name: string; readonly version: string };
+  readonly platform: string;
+  readonly arch: string;
 }
 
 /**
@@ -83,6 +100,10 @@ export interface Runtime {
 export interface HostProcess {
   readonly argv: readonly string[];
   readonly env: Readonly<Record<string, string | undefined>>;
+  readonly version: string;
+  readonly versions: Readonly<Record<string, string | undefined>>;
+  readonly platform: string;
+  readonly arch: string;
   cwd(): string;
   readonly stdout: { write(text: string): unknown; isTTY?: boolean };
   readonly stderr: { write(text: string): unknown; isTTY?: boolean };

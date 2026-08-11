@@ -360,6 +360,11 @@ export const createTestCliSpec: Parameters<typeof createTestCli>[0] = {
   config: { check: { strict: true } },
   managementApi: { baseUrl: "https://test.invalid" },
   packageManager: "pnpm",
+  host: {
+    runtime: { name: "node", version: "v22.12.0" },
+    platform: "linux",
+    arch: "x64",
+  },
   now: () => new Date(0),
 };
 
@@ -437,6 +442,11 @@ export const runtimeShape: Runtime = {
   config: loadedConfig,
   managementApi: { baseUrl: "https://test.invalid" },
   packageManager: "pnpm",
+  host: {
+    runtime: { name: "node", version: "v22.12.0" },
+    platform: "linux",
+    arch: "x64",
+  },
 };
 
 // —————————————————————————————————————————————————————————————————————
