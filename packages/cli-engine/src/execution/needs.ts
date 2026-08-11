@@ -4,8 +4,12 @@ import type { AnyCommand } from "../commands";
 import type { ConfigSection, SectionValidation } from "../config-section";
 import { credentialsRequiredError } from "../credential-errors";
 import type { CredentialManager } from "../credential-manager";
+import {
+  installCommand,
+  type PackageManagerId,
+  resolvePackageManager,
+} from "../package-manager";
 import { CliStructuredError, type Diagnostic } from "../protocol";
-import type { Runtime } from "../runtime";
 import type { Invocation } from "./engine";
 import { withDocsUrl, writeDiagnostic } from "./rendering";
 import { SEVERITY_RANK } from "./reporting";
@@ -51,7 +55,7 @@ export async function checkNeeds(
   const needs = def.needs;
   const failure =
     checkInteraction(needs, invocation) ??
-    checkDependencies(needs, invocation) ??
+    (await checkDependencies(needs, invocation)) ??
     (await checkCredentials(needs, invocation));
   if (failure !== undefined) {
     return failure;
@@ -87,18 +91,22 @@ function checkInteraction(
   );
 }
 
-function checkDependencies(
+async function checkDependencies(
   needs: AnyCommand["needs"],
   invocation: Invocation,
-): NeedsOutcome | undefined {
-  for (const specifier of needs.dependencies) {
-    if (!dependencyResolvable(specifier, invocation.runtime.cwd)) {
-      return needsErrored(
-        missingDependencyError(specifier, invocation.runtime.packageManager),
-      );
-    }
+): Promise<NeedsOutcome | undefined> {
+  const runtime = invocation.runtime;
+  const missing = needs.dependencies.find(
+    (specifier) => !dependencyResolvable(specifier, runtime.cwd),
+  );
+  if (missing === undefined) {
+    return undefined;
   }
-  return undefined;
+  const manager = await resolvePackageManager({
+    cwd: runtime.cwd,
+    host: runtime.packageManager,
+  });
+  return needsErrored(missingDependencyError(missing, manager));
 }
 
 /**
@@ -218,50 +226,24 @@ export function dependencyResolvable(specifier: string, cwd: string): boolean {
   }
 }
 
-function installCommand(
-  packageManager: Runtime["packageManager"],
-  specifier: string,
-): string | undefined {
-  switch (packageManager) {
-    case "npm":
-      return `npm install ${specifier}`;
-    case "pnpm":
-      return `pnpm add ${specifier}`;
-    case "yarn":
-      return `yarn add ${specifier}`;
-    case "bun":
-      return `bun add ${specifier}`;
-    case "unknown":
-      return undefined;
-  }
-}
-
 /** Optional peer dependencies: the engine probes and phrases. */
 export function missingDependencyError(
   specifier: string,
-  packageManager: Runtime["packageManager"],
+  manager: PackageManagerId,
 ): CliStructuredError {
-  const install = installCommand(packageManager, specifier);
+  const install = installCommand(manager, { packages: [specifier] }).line;
   return new CliStructuredError(
     "CLI.MISSING_DEPENDENCY",
     `This command requires the optional dependency '${specifier}', which is not installed in this project.`,
     {
       nextActions: [
-        install === undefined
-          ? {
-              kind: "user-choice",
-              label: `Install '${specifier}' with your package manager, then run the command again.`,
-            }
-          : {
-              kind: "run-command",
-              label: `Install '${specifier}'`,
-              command: install,
-            },
+        {
+          kind: "run-command",
+          label: `Install '${specifier}'`,
+          command: install,
+        },
       ],
-      meta: {
-        specifier,
-        ...(install === undefined ? {} : { installCommand: install }),
-      },
+      meta: { specifier, installCommand: install },
     },
   );
 }

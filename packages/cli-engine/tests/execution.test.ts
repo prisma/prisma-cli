@@ -569,7 +569,6 @@ describe("needs preconditions", () => {
             })
           : undefined,
       managementApi: { baseUrl: "https://test.invalid" },
-      packageManager: "unknown",
     };
     const exitCode = await cli.run(["demanding", "--format", "human"], runtime);
     return { exitCode, stderr: stderrText };
@@ -733,7 +732,6 @@ describe("report() after the handler resolved", () => {
       onSignal: () => () => {},
       config: { sections: {}, diagnostics: [] },
       managementApi: { baseUrl: "https://test.invalid" },
-      packageManager: "unknown",
     };
     const exitCode = await cli.run(["leaky", "--format", "human"], runtime);
 
@@ -793,7 +791,6 @@ describe("credentials that cannot be read", () => {
         },
       } as unknown as Runtime["credentialManager"],
       managementApi: { baseUrl: "https://test.invalid" },
-      packageManager: "unknown",
     };
     const exitCode = await cli.run(["locked"], runtime);
 

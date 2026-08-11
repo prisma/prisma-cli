@@ -1,5 +1,6 @@
 import type { CredentialManager } from "./credential-manager";
 import type { ManagementApiClientConfig } from "./management-api";
+import type { PackageManagerId } from "./package-manager";
 import type { Diagnostic } from "./protocol";
 
 /** Minimal structural stream types; no NodeJS.* in the public surface. */
@@ -69,10 +70,11 @@ export interface Runtime {
   /** Management API endpoint config; the bin derives baseUrl from env. */
   readonly managementApi: { readonly baseUrl: string };
   /**
-   * Used by the ENGINE to phrase install commands (handlers never do —
-   * see needs.dependencies and ctx.requireDependency).
+   * A host that knows its user's package manager better than detection
+   * does. Absent — the normal case — means the engine detects it from
+   * the project at cwd.
    */
-  readonly packageManager: "npm" | "pnpm" | "yarn" | "bun" | "unknown";
+  readonly packageManager?: PackageManagerId;
 }
 
 /**

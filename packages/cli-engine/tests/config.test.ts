@@ -341,7 +341,6 @@ describe("needs.config", () => {
       onSignal: () => () => {},
       config,
       managementApi: { baseUrl: "https://test.invalid" },
-      packageManager: "unknown",
     };
     return { runtime, stdout: () => stdoutText };
   }

@@ -5,7 +5,6 @@ import { buildCli } from "../src/v8/cli";
 import { main } from "../src/v8/main";
 import {
   assembleRuntime,
-  detectPackageManager,
   type HostProcess,
   makeOnSignal,
 } from "../src/v8/runtime";
@@ -79,24 +78,6 @@ function fire(
   }
 }
 
-describe("detectPackageManager", () => {
-  it.each([
-    ["pnpm/9.0.0 npm/? node/v22", "pnpm"],
-    ["yarn/4.0.0 npm/? node/v22", "yarn"],
-    ["bun/1.1.0 npm/? node/v22", "bun"],
-    ["npm/10.0.0 node/v22", "npm"],
-    ["deno/2.0.0", "unknown"],
-  ])("maps user agent %s to %s", (userAgent, expected) => {
-    expect(detectPackageManager({ npm_config_user_agent: userAgent })).toBe(
-      expected,
-    );
-  });
-
-  it("is unknown when no user agent is set", () => {
-    expect(detectPackageManager({})).toBe("unknown");
-  });
-});
-
 describe("makeOnSignal", () => {
   it("forwards process signals to the subscriber, applying no policy of its own", () => {
     const proc = makeProcess();
@@ -134,7 +115,7 @@ describe("assembleRuntime", () => {
 
     expect(runtime.cwd).toBe("/tmp/v8-bin-test-cwd");
     expect(runtime.isTty).toEqual({ stdin: true, stdout: true, stderr: false });
-    expect(runtime.packageManager).toBe("pnpm");
+    expect(runtime.packageManager).toBeUndefined();
     expect(runtime.config).toEqual({ sections: {}, diagnostics: [] });
     expect(runtime.managementApi).toEqual({ baseUrl: "https://api.prisma.io" });
 

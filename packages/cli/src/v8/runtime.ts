@@ -38,18 +38,6 @@ export function makeOnSignal(proc: SignalProcess): Runtime["onSignal"] {
   };
 }
 
-export function detectPackageManager(
-  env: NodeJS.ProcessEnv,
-): Runtime["packageManager"] {
-  const userAgent = env.npm_config_user_agent ?? "";
-  for (const name of ["pnpm", "yarn", "bun", "npm"] as const) {
-    if (userAgent.startsWith(name)) {
-      return name;
-    }
-  }
-  return "unknown";
-}
-
 /** PRISMA_COMPUTE_AUTH_FILE still names the credentials file, but
  *  PRISMA_AUTH_FILE is the supported name. Warned once per process. */
 function warnOnDeprecatedStateFileEnvVar(proc: HostProcess): void {
@@ -107,6 +95,5 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       await open(url);
     },
     managementApi: { baseUrl: apiBaseUrl },
-    packageManager: detectPackageManager(proc.env),
   };
 }

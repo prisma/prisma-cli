@@ -494,7 +494,6 @@ describe("stdin cleanup", () => {
       onSignal: () => () => {},
       config: { sections: {}, diagnostics: [] },
       managementApi: { baseUrl: "https://test.invalid" },
-      packageManager: "unknown",
     };
 
     const exitCode = await cli.run(["probe"], runtime);

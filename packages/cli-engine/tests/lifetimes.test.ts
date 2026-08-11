@@ -185,7 +185,6 @@ describe("the engine owns the double-signal policy", () => {
       },
       config: { sections: {}, diagnostics: [] },
       managementApi: { baseUrl: "https://test.invalid" },
-      packageManager: "unknown",
     };
     return {
       runtime,

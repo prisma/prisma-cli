@@ -4,6 +4,7 @@ import type {
   CredentialManager,
 } from "../credential-manager";
 import type { ManagementApiClient } from "../management-api";
+import { resolvePackageManager } from "../package-manager";
 import {
   PRESENTED,
   type Presentations,
@@ -108,15 +109,16 @@ export function makeContext(
     signal: invocation.signal,
     cwd: invocation.runtime.cwd,
     env: invocation.runtime.env,
-    requireDependency: async (specifier) =>
-      dependencyResolvable(specifier, invocation.runtime.cwd)
-        ? okVoid()
-        : notOk(
-            missingDependencyError(
-              specifier,
-              invocation.runtime.packageManager,
-            ),
-          ),
+    requireDependency: async (specifier) => {
+      if (dependencyResolvable(specifier, invocation.runtime.cwd)) {
+        return okVoid();
+      }
+      const manager = await resolvePackageManager({
+        cwd: invocation.runtime.cwd,
+        host: invocation.runtime.packageManager,
+      });
+      return notOk(missingDependencyError(specifier, manager));
+    },
   };
   if (managesCredentials) {
     Object.defineProperty(context, "credentialManager", {

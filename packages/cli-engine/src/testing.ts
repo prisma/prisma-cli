@@ -10,6 +10,7 @@ import type {
   ManagementApiClient,
   ManagementApiClientConfig,
 } from "./management-api";
+import type { PackageManagerId } from "./package-manager";
 import type { PresentedResult } from "./presentation";
 import type { RunSummary } from "./run-summary";
 import type { Runtime } from "./runtime";
@@ -104,7 +105,9 @@ export function createTestCli(spec: {
     readonly baseUrl?: string;
     readonly client?: ManagementApiClient;
   };
-  readonly packageManager?: "npm" | "pnpm" | "yarn" | "bun" | "unknown";
+  /** Overrides detection, the same way a host's Runtime does; absent
+   *  means the engine detects from the run's cwd. */
+  readonly packageManager?: PackageManagerId;
   /** Fixed clock for deterministic stream timestamps; a clock that
    *  advances also drives prompt.browserWait's timeout. */
   readonly now?: () => Date;
@@ -205,7 +208,7 @@ export function createTestCli(spec: {
         managementApi: {
           baseUrl: spec.managementApi?.baseUrl ?? "https://test.invalid",
         },
-        packageManager: spec.packageManager ?? "unknown",
+        packageManager: spec.packageManager,
       };
       const running = engine.execute(argv, runtime, {
         onEvent: (event) => {
