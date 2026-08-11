@@ -110,6 +110,17 @@ Two cases the return type has to answer even though no child produced them, sett
 7. **Serialization.** Concurrent `ctx.packages.*` calls are NOT permitted (operator ruling, 2026-08-11) — two package managers writing one project's lockfile corrupt it. A second call made while one is in flight is caller error, not a race the engine papers over: the engine rejects it as a bug (`CLI.INTERNAL_ERROR`, exit 1), the same treatment any other contract violation gets.
 8. **Progress output.** The package manager's own stdout/stderr reaches the user as `output` events (`source: <manager>`, `channel: 'data' | 'diagnostic'`) while the operation runs, so a slow install is not silence under a static step label. This is why the seam takes an `onOutput` callback (§2.3) rather than only returning a final buffer: the seam's shape is a published cross-repo contract, and adding streaming to it after the ORM and Composer compile against it would cost a coordinated release across three repos. Rendering policy is the engine's under R5 — commands hand the operation over and say nothing about how it is displayed.
 
+### 3a. Details settled during implementation
+
+Answers to questions the sections above left open. Recorded so they are contract, not folklore.
+
+- **Redaction covers the streamed output too**, both channels, not only the captured stderr tail. §3.4's wording named stderr, but the `--json` event stream is precisely where a token must not land, and a manager prints to stdout at least as readily. Test-pinned.
+- **The engine assembles lines from chunks.** The seam delivers whatever the pipe gives it; the `output` event's field is a line. The engine holds a partial line across chunks, flushes any remainder when the child exits, and strips a trailing `\r`.
+- **The engine does not re-bound the stderr tail.** The 64 KiB bound is the seam's contract and the adapter enforces it in bytes; re-bounding in the engine would apply a different unit to the same value for no gain.
+- **Runner-unavailable still fills the whole `meta` shape** — `exitCode: 1` (the same sentinel §2.3 sets for a child that never ran) and `stderrTail: ''` — so no consumer has to branch on whether a field is present.
+- **An operation that never ran emits no step events.** §3.3 says one pair per operation; a call that failed because there is no runner never became one, and announcing `step-started` for a command nothing spawned would tell the user we tried.
+- **Summaries are sentences** and end with a period, matching every other engine summary; the fragments quoted in §3.5 are the wording, not the punctuation.
+
 ## 4. What the engine explicitly does NOT do
 
 - No version resolution, no lockfile awareness, no workspace/catalog logic.
