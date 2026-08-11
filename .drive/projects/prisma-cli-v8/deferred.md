@@ -50,6 +50,25 @@ Nothing here is tracked outside this file.
   handler is installed — the same ordering the engine's own
   `tests/fixtures/child.mjs` `trap-term` fixture already uses.
 
+## Owned by whoever converts a family's renderers
+
+- **The rail is not restored on any card yet.** The engine-colour slice
+  gives `fields` an opt-in `rail` and restores alignment and the accent
+  colour to all 36 sites at once, but which cards want the dim `│` rail
+  is a per-command judgement. The legacy shapes are
+  `renderCommandHeader` (rail) and `renderFieldRows` (no rail) in
+  `packages/cli/src/shell/ui.ts`.
+- **No presenter binds `ui`.** All 54 platform presenters are
+  `human: () => [...]`, so spans, `ui.tone`, `ui.width` and `drawing`
+  have no callers until each family converts. The engine colours only
+  what it draws itself until then.
+- **Glyph mode is not adopted.** The ORM decides between unicode and
+  ASCII box-drawing from TTY plus a UTF-8 locale
+  (`prisma/prisma`, `packages/1-framework/3-tooling/cli/src/utils/
+  glyph-mode.ts`). The engine emits `✔ ✖ ⚠ ℹ` unconditionally today and
+  will emit `├─ └─ │` the same way. Adopting the ORM's detection is the
+  established fix if a non-UTF-8 terminal ever reports mojibake.
+
 ## Upstream, not ours to land
 
 - **alchemy-run/node-utils#6** (scope exit hooks to owned locks) is
