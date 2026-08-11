@@ -310,6 +310,11 @@ function addFlagRedirect(
   redirect: CommandRedirect,
   flag: string,
 ): void {
+  if (!CAMEL_CASE.test(flag)) {
+    throw constructionError(
+      `redirect for flag '${flag}' on '${redirect.from}' must name the flag in camelCase (it transliterates to --kebab-case on the CLI)`,
+    );
+  }
   const def = spec.commands[redirect.from];
   if (def === undefined) {
     throw constructionError(
