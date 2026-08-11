@@ -96,6 +96,7 @@ describe("section names the config file reserves", () => {
 
   test.each([
     "extends",
+    "__proto__",
     "$env",
     "$meta",
     "$prismaConfig",

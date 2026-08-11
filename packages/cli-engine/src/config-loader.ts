@@ -42,9 +42,13 @@ const MARKER_KEY = "$prismaConfig";
  * the file format has no layering of its own, `extends` is the name it
  * would want if it gained some, and a section called `extends` would
  * disappear the moment anything switched merging back on.
+ *
+ * `__proto__` is reserved for the reason `$meta` is: c12 merges layers
+ * with defu, which drops the key rather than let a config file reach an
+ * object's prototype, so a section by that name could never be read.
  */
 export function reservedConfigSectionName(name: string): boolean {
-  return name === "extends" || name.startsWith("$");
+  return name === "extends" || name === "__proto__" || name.startsWith("$");
 }
 
 /**
@@ -133,13 +137,15 @@ function missingNamedFileDiagnostic(path: string): Diagnostic {
  * unrecognised key is a typo or a leftover, and staying silent would
  * mean quietly ignoring settings the user wrote.
  *
- * One key cannot be reported this way: `$meta`. c12 reads it as layer
- * metadata and deletes it from the config object before returning,
- * whatever options this loader passes, so it never reaches this check.
- * On a config built by defineConfig — which freezes what it returns —
- * that delete throws, and the file is refused as unreadable instead.
- * Either way the user never gets the unknown-key message, which is why
- * buildCommandTree refuses to let a section claim the name.
+ * Two keys cannot be reported this way, both because c12 removes them
+ * before the loader is handed the object. `$meta` it reads as layer
+ * metadata and deletes, whatever options this loader passes; on a
+ * config built by defineConfig — which freezes what it returns — that
+ * delete throws and the file is refused as unreadable instead.
+ * `__proto__` is dropped by defu while merging layers, which refuses to
+ * let a config file reach an object's prototype. Either way the user
+ * never gets the unknown-key message, which is why buildCommandTree
+ * refuses to let a section claim either name.
  */
 function unknownSectionDiagnostic(
   path: string,
@@ -258,16 +264,16 @@ async function evaluateConfigFile(path: string): Promise<unknown> {
   return result.config;
 }
 
+/** Built with fromEntries rather than assigned key by key: assigning a
+ *  key named `__proto__` runs Object.prototype's setter instead of
+ *  creating an own property, so that one key would disappear from
+ *  Object.keys and never be reported as unrecognised. */
 function sectionsOf(
   exported: Record<string, unknown>,
 ): Record<string, unknown> {
-  const sections: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(exported)) {
-    if (key !== MARKER_KEY) {
-      sections[key] = value;
-    }
-  }
-  return sections;
+  return Object.fromEntries(
+    Object.entries(exported).filter(([key]) => key !== MARKER_KEY),
+  );
 }
 
 function unknownSections(

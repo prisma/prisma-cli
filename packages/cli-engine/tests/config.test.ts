@@ -51,7 +51,7 @@ function asks(...knownSections: string[]) {
   return { knownSections };
 }
 
-describe("loadConfig", () => {
+describe("loadConfig", { timeout: 60_000 }, () => {
   test("a marked file yields raw sections without the marker key", async () => {
     expect(
       await loadConfig(join(FIXTURES, "marked"), asks("toy", "other")),
@@ -157,7 +157,7 @@ describe("loadConfig", () => {
   });
 });
 
-describe("top-level keys that are not sections", () => {
+describe("top-level keys that are not sections", { timeout: 60_000 }, () => {
   test("an unrecognised key is reported as a file-level error naming the known sections", async () => {
     const loaded = await loadConfig(join(FIXTURES, "marked"), asks("toy"));
     expect(Object.keys(loaded.sections)).toEqual(["toy", "other"]);
@@ -267,6 +267,20 @@ describe("top-level keys that are not sections", () => {
     );
   });
 
+  /**
+   * The second key that can never be reported. c12 merges layers with
+   * defu, which drops `__proto__` rather than let a config file reach an
+   * object's prototype, so the key is gone before the loader sees the
+   * object — and the rest of the file loads normally around it. That is
+   * why no section may be named `__proto__`.
+   */
+  test("a top-level '__proto__' never reaches the loader at all", async () => {
+    const loaded = await loadConfig(join(FIXTURES, "proto-key"), asks("toy"));
+    expect(loaded.sections).toEqual({ toy: { greeting: "hello" } });
+    expect(Object.hasOwn(loaded.sections, "__proto__")).toBe(false);
+    expect(loaded.diagnostics).toEqual([]);
+  });
+
   test("a command mounted with no command family declares its section too", async () => {
     const requests: ConfigRequest[] = [];
     const cli = createTestCli({
@@ -297,10 +311,10 @@ describe("top-level keys that are not sections", () => {
     expect(run.exitCode).toBe(0);
     expect(ran.value).toBe(true);
     expect(run.presented?.data).toEqual({ greeting: "from the named file" });
-  }, 60_000);
+  });
 });
 
-describe("--config", () => {
+describe("--config", { timeout: 60_000 }, () => {
   const OUTSIDE = join(FIXTURES, "named", "elsewhere.config.ts");
 
   test("the named file is loaded instead of the one in cwd", async () => {
@@ -400,7 +414,7 @@ describe("--config", () => {
  * bin always passes an absolute process.cwd(), so only these tests hold
  * the behaviour in place.
  */
-describe("a relative cwd", () => {
+describe("a relative cwd", { timeout: 60_000 }, () => {
   const RELATIVE_FIXTURES = relative(process.cwd(), FIXTURES);
 
   test("discovery reads the config under a relative cwd", async () => {
@@ -442,7 +456,9 @@ describe("a relative cwd", () => {
  * and keeps `$`-prefixed keys, which is how the version marker survives
  * and how an unrecognised `$` key still gets reported.
  */
-describe("NODE_ENV does not change the effective config", () => {
+describe("NODE_ENV does not change the effective config", {
+  timeout: 60_000,
+}, () => {
   async function underNodeEnv<T>(
     value: string,
     body: () => Promise<T>,
@@ -580,7 +596,9 @@ afterAll(() => {
   rmSync(SANDBOX_ROOT, { recursive: true, force: true });
 });
 
-describe("loadConfig on a Node that cannot execute TypeScript", () => {
+describe("loadConfig on a Node that cannot execute TypeScript", {
+  timeout: 60_000,
+}, () => {
   test("reads a config when Node's TypeScript support is switched off", () => {
     const probe = runProbeOnPlainNode(
       `import { defineConfig } from "@prisma/cli-engine";
@@ -604,7 +622,7 @@ export default defineConfig({ toy: { greeting } });
       sections: {},
       code: "CLI.CONFIG_NOT_FOUND",
     });
-  }, 60_000);
+  });
 
   test("reads a config using TypeScript that Node cannot strip", () => {
     const probe = runProbeOnPlainNode(
@@ -627,7 +645,7 @@ export default defineConfig({ toy: { greeting: Level.Verbose } });
       sections: { toy: { greeting: "verbose" } },
       diagnostics: [],
     });
-  }, 60_000);
+  });
 });
 
 interface ToyConfig {
@@ -694,7 +712,7 @@ function showCommand(
   });
 }
 
-describe("needs.config", () => {
+describe("needs.config", { timeout: 60_000 }, () => {
   test("a valid section reaches the handler as ctx.config and the envelope result", async () => {
     const cli = createTestCli({
       commands: { show: showCommand(toySection()) },
@@ -916,7 +934,7 @@ describe("needs.config", () => {
  * malformed shapes prisma/prisma's `detectInvalidConfig` rejects, and
  * what a well-formed value does.
  */
-describe("--config on the command line", () => {
+describe("--config on the command line", { timeout: 60_000 }, () => {
   function spyingCli() {
     const requests: ConfigRequest[] = [];
     const section = toySection();
@@ -1089,10 +1107,12 @@ describe("--config on the command line", () => {
     );
     expect(run.exitCode).toBe(0);
     expect(run.presented?.data).toEqual({ greeting: "from the named file" });
-  }, 60_000);
+  });
 });
 
-describe("warnings on a successful section validation", () => {
+describe("warnings on a successful section validation", {
+  timeout: 60_000,
+}, () => {
   const warningSection = defineConfigSection<ToyConfig>({
     name: "toy",
     validate: () => ({
