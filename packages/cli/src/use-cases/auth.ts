@@ -1,9 +1,8 @@
 import {
-  authRequiredError,
-  usageError,
   workspaceAmbiguousError,
   workspaceNotAuthenticatedError,
-} from "../shell/errors";
+} from "../auth/errors";
+import { authRequiredError, usageError } from "../shell/errors";
 import type {
   AuthProviderId,
   AuthStateResult,

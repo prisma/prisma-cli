@@ -56,6 +56,7 @@ function fakeCredentialManager(
     endSession: unusedManagerMethod("endSession"),
     endAllSessions: unusedManagerMethod("endAllSessions"),
     activeCredentialStorage: unusedManagerMethod("activeCredentialStorage"),
+    activeAccessToken: unusedManagerMethod("activeAccessToken"),
     ...overrides,
   };
 }

@@ -88,6 +88,14 @@ function validateExitCodes(path: string, def: AnyCommand): void {
   }
 }
 
+function validateSpawnDeclarations(path: string, def: AnyCommand): void {
+  if (def.needs.credentials === "child" && !def.maySpawn) {
+    throw constructionError(
+      `command '${path}' needs credentials for a child without declaring maySpawn (there is nothing to hand credentials to)`,
+    );
+  }
+}
+
 export interface CommandTreeEntry {
   readonly def: AnyCommand;
   readonly id: string;
@@ -190,6 +198,7 @@ export function buildCommandTree(spec: EngineSpec): CommandTreeNode {
     validateFlags(path, def);
     validatePositionals(path, def);
     validateExitCodes(path, def);
+    validateSpawnDeclarations(path, def);
     validateSectionOwnership(spec, path, def);
     const segments = path.split(" ");
     for (let depth = 1; depth < segments.length; depth += 1) {

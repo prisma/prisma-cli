@@ -14,7 +14,8 @@ import { UpdateCheckStore } from "../src/update-check";
 import { main } from "../src/v8/main";
 import type { HostProcess } from "../src/v8/runtime";
 
-vi.mock("node:child_process", () => ({
+vi.mock("node:child_process", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:child_process")>()),
   spawn: vi.fn(() => ({ unref: vi.fn() })),
 }));
 

@@ -1,4 +1,3 @@
-import path from "node:path";
 import stringWidth from "string-width";
 import { shortenHomePath } from "../lib/fs/home-path";
 import { renderMutate, renderShow, serializeList } from "../output/patterns";
@@ -384,7 +383,7 @@ function formatLocalRepoPath(cwd: string, env: NodeJS.ProcessEnv): string {
   return shortenHomePath(cwd, env);
 }
 
-function formatGitConnectionDetail(
+export function formatGitConnectionDetail(
   status: GitRepositoryConnection["status"],
 ): string {
   switch (status) {

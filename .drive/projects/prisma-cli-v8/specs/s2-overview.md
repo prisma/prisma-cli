@@ -79,12 +79,12 @@ can overrule before the affected dispatch runs.
   fails early instead. Default built to: sign-in structured error +
   `auth login` nextAction (consistent, agent-friendly). Ratify or
   reinstate auto-login as an engine feature.
-- **Q2 — `service run` child-exit passthrough.** The legacy command
-  passes the dev server's exit code through; session commands have no
-  exit-code channel; the same exception is already ruled for
-  Composer's S3. Decide: build the passthrough mechanism in S2c, or
-  defer `service run` to ride S3's mechanism (S2d then keeps a minimal
-  legacy path for it).
+- **Q2 — `service run`. RULED (operator, 2026-08-11): dropped.** It does
+  not port, and the engine does not grow a child-exit-code passthrough
+  for it. The command started a local dev server and passed its exit
+  code through, which is Composer's `dev`. Nothing of the commander
+  shell survives S2d on its account, and the removal joins the divergence
+  list alongside `service build` and `service deploy`.
 - **Q3 — `project env remove`'s `rm` alias** (the only alias in the
   tree) does not port. Ratify the drop or rule alias support.
 - **Q4 — config evaluation in the shipped bin.** The S1 loader

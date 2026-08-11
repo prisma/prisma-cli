@@ -11,10 +11,12 @@ import {
   type Diagnostic,
   type NextAction,
 } from "../protocol";
+import type { ChildStatusSettlement } from "../spawn";
 import type { EngineSpec, Invocation } from "./engine";
 import {
   firstLine,
   renderCompletedHuman,
+  renderNextAction,
   withDocsUrl,
   writeDiagnostic,
 } from "./rendering";
@@ -151,6 +153,46 @@ function settleAborted(invocation: Invocation): void {
     diagnostics: [],
     nextActions: [],
   });
+}
+
+/**
+ * Settle an exit code the engine did not author, verbatim, with no
+ * envelope and no presentation: something other than this CLI's code
+ * space produced it. The two callers are the child-status settlement
+ * and the server-command handoff.
+ */
+export function settleVerbatimExitCode(
+  invocation: Invocation,
+  exitCode: number,
+): void {
+  invocation.state.settledExitCode = exitCode;
+}
+
+/**
+ * The child owned the terminal, so its status becomes the run's
+ * verbatim. This is the one path on which a session command settles
+ * non-zero without erroring, and the one path on which a result
+ * command settles a code it never documented: neither is the handler's
+ * own conclusion, it is the child's. Only a command that hands the
+ * terminal to another program may settle this way — reachable from a
+ * non-declaring handler it would also end a json stream without its
+ * terminal result frame.
+ */
+export function settleChildStatus(
+  invocation: Invocation,
+  def: AnyCommand,
+  settlement: ChildStatusSettlement,
+): void {
+  if (!def.maySpawn) {
+    throw new Error(
+      `@prisma/cli-engine: command '${invocation.state.commandId}' returned exitWithChildStatus without declaring maySpawn — only a command that hands the terminal to another program may settle with that program's status`,
+    );
+  }
+  // Only human format is reachable here: maySpawn forces it.
+  for (const action of settlement.nextActions) {
+    invocation.runtime.stderr.write(`${renderNextAction(action)}\n`);
+  }
+  settleVerbatimExitCode(invocation, settlement.exitCode);
 }
 
 /** A session command that returned ok — including after the signal
