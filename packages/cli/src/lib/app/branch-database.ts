@@ -193,6 +193,7 @@ async function scanDirectory(
     const entryPath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
       if (!SKIPPED_DIRECTORIES.has(entry.name)) {
+        // biome-ignore lint/performance/noAwaitInLoops: the whole scan shares one MAX_SCAN_FILES budget and stops the moment it runs out, so subtrees have to be walked one after another in sorted order for the scan to stop at the same place every time.
         await scanDirectory(cwd, entryPath, depth + 1, state, signal);
       }
       continue;
@@ -232,6 +233,7 @@ async function selectPrismaOrmSchema(
   const sorted = sortByPreferredRelativePath(cwd, candidates, "schema.prisma");
 
   for (const schemaPath of sorted) {
+    // biome-ignore lint/performance/noAwaitInLoops: the candidates are in preference order and the first usable one wins, so reading past it would open files the caller never needed.
     const target = await classifyPrismaOrmSchemaTarget(schemaPath, signal);
     if (target === "postgresql" || target === "unknown") {
       const hasMigrations = await hasMigrationsDirectory(

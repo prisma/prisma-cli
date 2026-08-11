@@ -2888,11 +2888,13 @@ describe("app controller", () => {
     if (packageJson) {
       await writePackageJson(cwd, packageJson);
     }
-    for (const [fileName, content] of Object.entries(files ?? {})) {
-      const filePath = path.join(cwd, fileName);
-      await mkdir(path.dirname(filePath), { recursive: true });
-      await writeFile(filePath, content);
-    }
+    await Promise.all(
+      Object.entries(files ?? {}).map(async ([fileName, content]) => {
+        const filePath = path.join(cwd, fileName);
+        await mkdir(path.dirname(filePath), { recursive: true });
+        await writeFile(filePath, content);
+      }),
+    );
     const stateDir = path.join(cwd, ".state");
     const { context } = await createTestCommandContext({
       cwd,

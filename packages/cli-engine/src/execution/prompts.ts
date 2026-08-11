@@ -71,6 +71,7 @@ function makeLineReader(
         }
         return undefined;
       }
+      // biome-ignore lint/performance/noAwaitInLoops: stdin is pulled one chunk at a time until a newline turns up; asking for the next chunk before the current one has been appended to the buffer would reorder the user's input.
       const next = await iterator.next();
       if (next.done === true) {
         done = true;
@@ -432,6 +433,7 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
         if (invocation.signal.aborted) {
           throw promptCancelled(message);
         }
+        // biome-ignore lint/performance/noAwaitInLoops: polling waits for the browser to finish; each poll must observe the state left by the one before it, and the delay below is what keeps the request rate down.
         if (await poll(invocation.signal)) {
           return;
         }

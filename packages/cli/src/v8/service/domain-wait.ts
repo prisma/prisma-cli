@@ -153,6 +153,7 @@ export const serviceDomainWaitCommand = defineCommand({
         throw domainVerificationTimeoutError(hostname, current.status);
       }
 
+      // biome-ignore lint/performance/noAwaitInLoops: this polls one domain until it settles, reporting each status change in the order it happened; the sleep between reads keeps the management API request rate down.
       await sleep(
         Math.min(interval, Math.max(deadline - Date.now(), 0)),
         ctx.signal,

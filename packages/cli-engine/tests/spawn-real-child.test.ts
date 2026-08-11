@@ -66,6 +66,7 @@ async function waitForFile(path: string, timeoutMs = 10_000): Promise<void> {
     if (Date.now() > deadline) {
       throw new Error(`timed out waiting for ${path}`);
     }
+    // biome-ignore lint/performance/noAwaitInLoops: this waits for another process to create the file, so the loop has to pause between checks rather than issue them all at once.
     await new Promise((resolve) => setTimeout(resolve, 15));
   }
 }
@@ -111,14 +112,16 @@ describe.skipIf(process.platform === "win32")(
   "ctx.spawn, real child",
   () => {
     test("the child's exit status passes through verbatim", async () => {
-      for (const code of [0, 1, 2, 3]) {
-        const cli = createTestCli({
-          commands: { converge: childCommand("exit", String(code)) },
-          spawn: realSpawn,
-        });
+      await Promise.all(
+        [0, 1, 2, 3].map(async (code) => {
+          const cli = createTestCli({
+            commands: { converge: childCommand("exit", String(code)) },
+            spawn: realSpawn,
+          });
 
-        expect((await cli.run(["converge"])).exitCode).toBe(code);
-      }
+          expect((await cli.run(["converge"])).exitCode).toBe(code);
+        }),
+      );
     });
 
     test("a missing program is the structured CLI.SPAWN_FAILED error", async () => {

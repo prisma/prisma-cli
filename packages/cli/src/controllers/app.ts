@@ -1567,6 +1567,7 @@ export async function runAppDomainWait(
       });
     }
 
+    // biome-ignore lint/performance/noAwaitInLoops: this polls one domain until it settles or the deadline passes; the sleep between reads is what keeps the CLI from hammering the management API.
     await sleep(
       Math.min(pollIntervalMs, Math.max(deadline - Date.now(), 0)),
       context.runtime.signal,

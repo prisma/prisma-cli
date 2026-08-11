@@ -34,7 +34,9 @@
         "useDisposables": "on"
       },
       "performance": {
-        "noAwaitInLoops": "on",
+        // "on" would take this rule's own default severity, info, which
+        // --error-on-warnings does not promote. Pinned so CI fails on it.
+        "noAwaitInLoops": "error",
         "noBarrelFile": "on",
         "useTopLevelRegex": "on"
       },

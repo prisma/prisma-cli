@@ -26,6 +26,7 @@ export async function resolveReadBranch(
   let cursor: string | undefined;
 
   do {
+    // biome-ignore lint/performance/noAwaitInLoops: each page is fetched with the cursor the previous page returned, so the requests cannot be issued until the one before them has answered.
     const result = await client.GET("/v1/projects/{projectId}/branches", {
       params: { path: { projectId: options.projectId }, query: { cursor } },
       signal: options.signal,
