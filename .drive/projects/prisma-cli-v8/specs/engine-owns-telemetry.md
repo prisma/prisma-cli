@@ -91,6 +91,13 @@ Omitting `telemetry` means the CLI reports nothing: the engine reads no
 config, prints no disclosure, mints no id, and calls no seam. There is no
 default endpoint and no way to report without declaring the block.
 
+A host that declares the block but wires no `spawnTelemetry` (§2.5) is the
+same case and takes the same path. Both halves are required before anything
+happens, and the check comes first, before the config read. A CLI that
+cannot deliver an event must not tell the user it collects data, and must
+not mint an installation id it has no use for — the disclosure is a promise
+about what the binary does, not about what it declares.
+
 ### 2.2 What the engine does, and when
 
 Immediately after `state.snapshot` is assigned in `executeMounted`
@@ -184,8 +191,10 @@ interface Runtime {
 }
 ```
 
-The engine composes and hands over; the bin forks. The engine imports no
-`node:child_process` and performs no network I/O for telemetry. `isCI` is a
+The engine composes and hands over; the bin forks. An absent seam is not an
+error, and per §2.1 it suppresses the whole sequence rather than only the
+delivery. The engine imports no `node:child_process` and performs no network
+I/O for telemetry. `isCI` is a
 Runtime field rather than an engine-side `ci-info` import because the engine
 never reads process globals — the same rule that keeps TTY detection on the
 Runtime.
