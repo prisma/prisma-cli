@@ -1,8 +1,7 @@
 /**
- * The styling surface: what each Tone renders as byte for byte, how the
- * engine decides whether to colour at all, and how much room it tells a
- * command it has. No block renders differently yet — this pins the
- * machinery the block renderers will be written against.
+ * The styling surface: what each Tone renders as byte for byte, what a
+ * Ui hands a command, and how the engine decides whether to colour at
+ * all. What the block renderers do with all of it is blocks.test.ts.
  */
 import { defineCommand, type Tone } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
@@ -113,6 +112,10 @@ describe("rendering Text", () => {
   });
 });
 
+/** A handler describes its text and never emits escape sequences; the
+ *  engine is what turns the tone into bytes. */
+const HEADING_SPAN = { text: "H", tone: "heading" } as const;
+
 const styled = defineCommand({
   help: { summary: "Report what the styling surface resolved to" },
   handler: async (_args, ctx) =>
@@ -121,7 +124,7 @@ const styled = defineCommand({
         { data: {} },
         {
           human: (ui) => [
-            { kind: "summary", status: "ok", text: ui.tone("heading", "H") },
+            { kind: "summary", status: "ok", text: [HEADING_SPAN] },
             { kind: "list", items: [`width=${ui.width}`] },
           ],
         },
