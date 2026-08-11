@@ -12,7 +12,9 @@ type tests are part of it.
 
 **Outcome.** One engine-internal module resolves a concrete `PackageManagerId`
 from a directory and spells every command line the engine will ever run, for
-all five managers and both forms. `Runtime.packageManager` is gone;
+all five managers and both forms. `Runtime.packageManager` stops being the
+source of truth and survives only as an optional host override, which
+`resolvePackageManager` takes as its `host` argument;
 `missingDependencyError` reads the new table; `'unknown'` is out of the
 codebase.
 
@@ -23,11 +25,12 @@ per spec §3.1: explicit override, then optional `Runtime.packageManager`, then
 matches the ORM's table exactly, including npm's `add` alias and deno's `npm:`
 prefixes.
 
-Deleting `Runtime.packageManager` touches its two call sites
-(`execution/needs.ts`, `execution/command-context.ts`), the harness literal in
-`src/testing.ts`, the `Runtime` literal in `tests/engine.type-test.ts`, and the
-bin's `assembleRuntime` in `packages/cli/src/v8/runtime.ts` — whose
-`detectPackageManager` helper dies with it.
+Demoting `Runtime.packageManager` to an override touches its two former call
+sites (`execution/needs.ts`, `execution/command-context.ts`), which read the
+detected manager instead; the harness seed in `src/testing.ts`, which becomes
+that override unchanged; the `Runtime` literal in `tests/engine.type-test.ts`;
+and the bin's `assembleRuntime` in `packages/cli/src/v8/runtime.ts`, which
+stops populating the field — its `detectPackageManager` helper dies with it.
 
 **Builds on.** Nothing.
 **Hands to.** D2: a detection function and a spelling table, unit-tested per
