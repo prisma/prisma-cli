@@ -44,10 +44,13 @@ export interface Runtime {
   /**
    * Reads prisma.config.ts, on demand. The engine calls it only when
    * the command it is about to run declares a config section, so a run
-   * that needs no config never touches the file. The bin wires the real
-   * disk loader; tests hand in fixtures.
+   * that needs no config never touches the file. `configPath` is the
+   * file `--config` named: the loader resolves it against the runtime's
+   * cwd and reports its absence. Absent means look for prisma.config.ts
+   * in cwd, where absence is not an error. The bin wires the real disk
+   * loader; tests hand in fixtures.
    */
-  readonly loadConfig: (request: ConfigRequest) => Promise<LoadedConfig>;
+  readonly loadConfig: (configPath?: string) => Promise<LoadedConfig>;
   /**
    * The credential manager the bin wires. It is the only source of
    * the needs check, ctx.activeCredential, and ctx.api; absent means
@@ -107,26 +110,20 @@ export interface HostProcess {
   exit(code: number): never;
 }
 
-/** What the engine asks the loader for. */
-export interface ConfigRequest {
-  /**
-   * The file named by `--config`. The loader resolves it against the
-   * runtime's cwd and reports its absence. Absent means: look for
-   * prisma.config.ts in cwd, where absence is not an error.
-   */
-  readonly configPath?: string;
-  /**
-   * Every section name the mounted command families declare — the
-   * closed set of top-level keys the file may contain. Any other
-   * top-level key is reported.
-   */
-  readonly knownSections: readonly string[];
-}
-
 export interface LoadedConfig {
   /**
+   * The file this config came from, absolute: the one `--config` named,
+   * or prisma.config.ts in cwd. A loader that found no file still names
+   * the file it looked for — with no file there are no sections, and
+   * the engine reads the path only to name the file when it reports a
+   * top-level key that is not one of the CLI's sections.
+   */
+  readonly path: string;
+  /**
    * Raw section values by name; validation happens per command via its
-   * command family's section token.
+   * command family's section token. The engine, not the loader, checks
+   * these names against the sections the CLI declares, so the closed
+   * set holds whatever loader a host wires.
    */
   readonly sections: Readonly<Record<string, unknown>>;
   /**

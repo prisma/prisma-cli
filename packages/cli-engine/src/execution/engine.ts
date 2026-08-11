@@ -578,7 +578,7 @@ export class EngineImpl implements Engine {
  *  through a command family or on its own — the shell mounts its own
  *  commands with no family, and a section the CLI cannot name is a
  *  section its own command could never read. Every other top-level key
- *  in prisma.config.ts is reported by the loader. */
+ *  in prisma.config.ts is reported by the config needs check. */
 function declaredConfigSections(spec: EngineSpec): readonly string[] {
   return [
     ...new Set(

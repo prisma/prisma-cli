@@ -12,7 +12,6 @@ import type {
   CommandFamily,
   CommandHandler,
   CompletedEnvelope,
-  ConfigRequest,
   ConfigSection,
   CredentialManager,
   EngineEvent,
@@ -372,6 +371,7 @@ export const invalidMessage: EngineEvent = {
 // —————————————————————————————————————————————————————————————————————
 
 export const loadedConfig: LoadedConfig = {
+  path: "/project/prisma.config.ts",
   sections: { check: { strict: true } },
   diagnostics: [{ section: null, diagnostic }],
 };
@@ -387,9 +387,9 @@ export const runtimeShape: Runtime = {
     throw new Error(String(code));
   },
   onSignal: () => () => {},
-  loadConfig: async (request: ConfigRequest) =>
-    request.knownSections.length === 0
-      ? { sections: {}, diagnostics: [] }
+  loadConfig: async (configPath?: string) =>
+    configPath === undefined
+      ? { path: "/project/prisma.config.ts", sections: {}, diagnostics: [] }
       : loadedConfig,
   managementApi: { baseUrl: "https://test.invalid" },
   packageManager: "pnpm",

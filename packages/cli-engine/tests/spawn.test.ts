@@ -1058,7 +1058,11 @@ function controllableRuntime() {
         subscribers.delete(cb);
       };
     },
-    loadConfig: async () => ({ sections: {}, diagnostics: [] }),
+    loadConfig: async () => ({
+      path: "/prisma.config.ts",
+      sections: {},
+      diagnostics: [],
+    }),
     managementApi: { baseUrl: "https://test.invalid" },
     packageManager: "unknown",
   };

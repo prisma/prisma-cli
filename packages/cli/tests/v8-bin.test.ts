@@ -150,7 +150,8 @@ describe("assembleRuntime", () => {
     expect(runtime.isTty).toEqual({ stdin: true, stdout: true, stderr: false });
     expect(runtime.packageManager).toBe("pnpm");
     expect(runtime.managementApi).toEqual({ baseUrl: "https://api.prisma.io" });
-    expect(await runtime.loadConfig({ knownSections: [] })).toEqual({
+    expect(await runtime.loadConfig()).toEqual({
+      path: join("/tmp/v8-bin-test-cwd", "prisma.config.ts"),
       sections: {},
       diagnostics: [],
     });
@@ -194,19 +195,14 @@ describe("assembleRuntime", () => {
   it("reads the file --config named, and reports its absence rather than returning an empty config", async () => {
     const runtime = await assembleRuntime(makeProcess());
 
-    const found = await runtime.loadConfig({
-      configPath: NAMED_CONFIG_PATH,
-      knownSections: ["toy"],
-    });
+    const found = await runtime.loadConfig(NAMED_CONFIG_PATH);
     expect(found).toEqual({
+      path: NAMED_CONFIG_PATH,
       sections: { toy: { greeting: "from the named file" } },
       diagnostics: [],
     });
 
-    const missing = await runtime.loadConfig({
-      configPath: `${NAMED_CONFIG_PATH}.gone`,
-      knownSections: ["toy"],
-    });
+    const missing = await runtime.loadConfig(`${NAMED_CONFIG_PATH}.gone`);
     expect(missing.sections).toEqual({});
     expect(missing.diagnostics[0]?.diagnostic.code).toBe(
       "CLI.CONFIG_NOT_FOUND",
@@ -295,9 +291,9 @@ describe("buildCli", () => {
       run: (runArgv, runtime, hooks) => {
         const counting: Runtime = {
           ...runtime,
-          loadConfig: (request) => {
+          loadConfig: (configPath) => {
             reads += 1;
-            return runtime.loadConfig(request);
+            return runtime.loadConfig(configPath);
           },
         };
         return real.run(runArgv, counting, hooks);

@@ -189,26 +189,68 @@ function nearExpiryFailure(
   return needsErrored(credentialsRequiredError("expiring-soon"));
 }
 
+/**
+ * A top-level key in the config file that is not one of the sections
+ * the mounted commands and command families declare. The set is closed,
+ * so an unrecognised key is a typo or a leftover, and staying silent
+ * would mean quietly ignoring settings the user wrote.
+ *
+ * The check is the engine's rather than the loader's because the loader
+ * is a Runtime member a host supplies: a check on the far side of that
+ * seam holds only for as long as every host writes one.
+ */
+function unknownSectionDiagnostic(
+  path: string,
+  key: string,
+  configSections: readonly string[],
+): Diagnostic {
+  return {
+    code: "CLI.CONFIG_UNKNOWN_SECTION",
+    severity: "error",
+    summary: `${path} has a top-level key '${key}', which is not a config section this CLI recognises.`,
+    why: `The sections this CLI recognises are: ${[...configSections].sort().join(", ")}.`,
+    nextActions: [
+      {
+        kind: "user-choice",
+        label:
+          "Remove the key, or rename it to one of the recognised section names.",
+      },
+    ],
+    where: { path },
+  };
+}
+
+function unknownSections(
+  loaded: LoadedConfig,
+  configSections: readonly string[],
+): readonly Diagnostic[] {
+  const declared = new Set(configSections);
+  return Object.keys(loaded.sections)
+    .filter((key) => !declared.has(key))
+    .map((key) => unknownSectionDiagnostic(loaded.path, key, configSections));
+}
+
 /** The config file is read HERE and nowhere else, so a command with no
  *  needs.config never touches it. The file `--config` named travels on
  *  the run state; the closed set of section names comes from the
- *  mounted command families. */
+ *  mounted command families, and every key outside it is reported here
+ *  whatever the loader did or did not check. */
 async function checkConfiguration(
   section: ConfigSection<unknown>,
   invocation: Invocation,
 ): Promise<NeedsOutcome> {
   const configPath = invocation.state.configPath;
-  const loaded = await invocation.runtime.loadConfig({
-    ...(configPath === undefined ? {} : { configPath }),
-    knownSections: invocation.configSections,
-  });
-  const fileLevel = loaded.diagnostics.filter(
-    (entry) => entry.section === null,
-  );
+  const loaded = await invocation.runtime.loadConfig(configPath);
+  const fileLevel = [
+    ...loaded.diagnostics
+      .filter((entry) => entry.section === null)
+      .map((entry) => entry.diagnostic),
+    ...unknownSections(loaded, invocation.configSections),
+  ];
   if (fileLevel.length > 0) {
     return needsErrored(
-      structuredErrorFromDiagnostic(fileLevel[0].diagnostic),
-      fileLevel.slice(1).map((entry) => entry.diagnostic),
+      structuredErrorFromDiagnostic(fileLevel[0]),
+      fileLevel.slice(1),
     );
   }
   return validateConfigSection(

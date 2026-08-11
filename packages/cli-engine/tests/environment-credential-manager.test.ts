@@ -163,7 +163,11 @@ describe("wired as a Runtime's manager", () => {
         throw new Error(`runtime.exit(${code})`);
       },
       onSignal: () => () => {},
-      loadConfig: async () => ({ sections: {}, diagnostics: [] }),
+      loadConfig: async () => ({
+        path: "/prisma.config.ts",
+        sections: {},
+        diagnostics: [],
+      }),
       credentialManager: new EnvironmentCredentialManager({ env }),
       managementApiClientConfig: {
         clientId: "test",

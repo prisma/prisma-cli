@@ -1,4 +1,5 @@
 import type { CommandFamily, MountedTree } from "./command-family";
+import { CONFIG_FILE_NAME } from "./config-loader";
 import type { Credential } from "./credential-manager";
 import type { EngineEvent, StreamEvent } from "./events";
 import { buildEngine } from "./execution/engine";
@@ -166,7 +167,9 @@ export function createTestCli(spec: {
   readonly commands: MountedTree;
   readonly groups?: Readonly<Record<string, { readonly brief: string }>>;
   /** Seeds the sections the config file would have held. The engine
-   *  asks for them only when the command declares a config section. */
+   *  asks for them only when the command declares a config section, and
+   *  checks them as it would a real file's: a section name no mounted
+   *  command declares fails the run. */
   readonly config?: Readonly<Record<string, unknown>>;
   /** Replaces the loader outright — to assert what --config asked for,
    *  to return file-level diagnostics, or to prove a run never reads
@@ -295,7 +298,11 @@ export function createTestCli(spec: {
         },
         loadConfig:
           spec.loadConfig ??
-          (async () => ({ sections: spec.config ?? {}, diagnostics: [] })),
+          (async (configPath) => ({
+            path: configPath ?? CONFIG_FILE_NAME,
+            sections: spec.config ?? {},
+            diagnostics: [],
+          })),
         credentialManager,
         managementApiClientConfig,
         spawn: recordingSpawn(

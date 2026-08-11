@@ -4,8 +4,14 @@
  * cwd only, no walking up), evaluate it, check the defineConfig version
  * marker, and produce LoadedConfig.
  *
+ * Which section names a CLI recognises is not this module's business:
+ * it hands back every top-level key the file had, and the engine — not
+ * a Runtime member a host can replace — checks them against the
+ * sections the mounted commands declare.
+ *
  * Absence of an undiscovered file is not an error: section validators
- * own absence, so no prisma.config.ts in cwd is an empty LoadedConfig.
+ * own absence, so no prisma.config.ts in cwd yields no sections and no
+ * diagnostics.
  * Absence of a file the user NAMED with --config is an error — they
  * said which file to read and it was not there. An evaluated file
  * WITHOUT the marker (a classic Prisma 7 config, which uses the same
@@ -21,7 +27,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Diagnostic } from "./protocol";
-import type { ConfigRequest, LoadedConfig } from "./runtime";
+import type { LoadedConfig } from "./runtime";
 import { PRISMA_CONFIG_VERSION } from "./runtime";
 
 export const CONFIG_FILE_NAME = "prisma.config.ts";
@@ -72,8 +78,8 @@ function hasVersionMarker(value: unknown): value is Record<string, unknown> {
   );
 }
 
-function fileLevelConfig(diagnostic: Diagnostic): LoadedConfig {
-  return { sections: {}, diagnostics: [{ section: null, diagnostic }] };
+function fileLevelConfig(path: string, diagnostic: Diagnostic): LoadedConfig {
+  return { path, sections: {}, diagnostics: [{ section: null, diagnostic }] };
 }
 
 function missingMarkerDiagnostic(path: string): Diagnostic {
@@ -125,46 +131,6 @@ function missingNamedFileDiagnostic(path: string): Diagnostic {
         kind: "user-choice",
         label:
           "Correct the path passed to --config, or drop the flag to use the prisma.config.ts in the current directory.",
-      },
-    ],
-    where: { path },
-  };
-}
-
-/**
- * A top-level key that is not one of the CLI's section names. The set
- * of sections is closed — every command family declares its own — so an
- * unrecognised key is a typo or a leftover, and staying silent would
- * mean quietly ignoring settings the user wrote.
- *
- * Two keys cannot be reported this way, both because c12 removes them
- * before the loader is handed the object. `$meta` it reads as layer
- * metadata and deletes, whatever options this loader passes; on a
- * config built by defineConfig — which freezes what it returns — that
- * delete throws and the file is refused as unreadable instead.
- * `__proto__` is dropped by defu while merging layers, which refuses to
- * let a config file reach an object's prototype. Either way the user
- * never gets the unknown-key message, which is why buildCommandTree
- * refuses to let a section claim either name.
- */
-function unknownSectionDiagnostic(
-  path: string,
-  key: string,
-  knownSections: readonly string[],
-): Diagnostic {
-  return {
-    code: "CLI.CONFIG_UNKNOWN_SECTION",
-    severity: "error",
-    summary: `${path} has a top-level key '${key}', which is not a config section this CLI recognises.`,
-    why:
-      knownSections.length === 0
-        ? "This CLI declares no config sections at all, so no top-level key in the file means anything to it."
-        : `The sections this CLI recognises are: ${[...knownSections].sort().join(", ")}.`,
-    nextActions: [
-      {
-        kind: "user-choice",
-        label:
-          "Remove the key, or rename it to one of the recognised section names.",
       },
     ],
     where: { path },
@@ -276,23 +242,9 @@ function sectionsOf(
   );
 }
 
-function unknownSections(
-  path: string,
-  sections: Record<string, unknown>,
-  knownSections: readonly string[],
-): LoadedConfig["diagnostics"] {
-  const known = new Set(knownSections);
-  return Object.keys(sections)
-    .filter((key) => !known.has(key))
-    .map((key) => ({
-      section: null,
-      diagnostic: unknownSectionDiagnostic(path, key, knownSections),
-    }));
-}
-
 /**
- * The path the request asks for, always absolute: the file named by
- * --config, resolved against cwd, or prisma.config.ts in cwd.
+ * The file to read, always absolute: the one --config named, resolved
+ * against cwd, or prisma.config.ts in cwd.
  *
  * Absolute is not cosmetic, and it is one more thing than either
  * reference repository does — both are handed an absolute path before
@@ -303,11 +255,11 @@ function unknownSections(
  * absolute, and makes the loaded-file comparison compare like with
  * like.
  */
-function requestedPath(cwd: string, request: ConfigRequest): string {
+function fileToRead(cwd: string, configPath: string | undefined): string {
   const root = resolve(cwd);
-  return request.configPath === undefined
+  return configPath === undefined
     ? join(root, CONFIG_FILE_NAME)
-    : resolve(root, request.configPath);
+    : resolve(root, configPath);
 }
 
 /**
@@ -316,30 +268,26 @@ function requestedPath(cwd: string, request: ConfigRequest): string {
  */
 export async function loadConfig(
   cwd: string,
-  request: ConfigRequest,
+  configPath?: string,
 ): Promise<LoadedConfig> {
-  const path = requestedPath(cwd, request);
+  const path = fileToRead(cwd, configPath);
   if (!existsSync(path)) {
-    return request.configPath === undefined
-      ? { sections: {}, diagnostics: [] }
-      : fileLevelConfig(missingNamedFileDiagnostic(path));
+    return configPath === undefined
+      ? { path, sections: {}, diagnostics: [] }
+      : fileLevelConfig(path, missingNamedFileDiagnostic(path));
   }
   let exported: unknown;
   try {
     exported = await evaluateConfigFile(path);
   } catch (cause) {
-    return fileLevelConfig(unreadableDiagnostic(path, cause));
+    return fileLevelConfig(path, unreadableDiagnostic(path, cause));
   }
   if (!hasVersionMarker(exported)) {
-    return fileLevelConfig(missingMarkerDiagnostic(path));
+    return fileLevelConfig(path, missingMarkerDiagnostic(path));
   }
   const version = exported[MARKER_KEY] as number;
   if (version !== PRISMA_CONFIG_VERSION) {
-    return fileLevelConfig(unsupportedVersionDiagnostic(path, version));
+    return fileLevelConfig(path, unsupportedVersionDiagnostic(path, version));
   }
-  const sections = sectionsOf(exported);
-  return {
-    sections,
-    diagnostics: unknownSections(path, sections, request.knownSections),
-  };
+  return { path, sections: sectionsOf(exported), diagnostics: [] };
 }

@@ -1,15 +1,14 @@
 /**
- * D5: the minimal config loader behind Runtime.config — cwd-only
- * discovery, defineConfig marker semantics with the pinned Prisma 7
- * fail-early diagnostic, and needs.config validation wired end to end
- * through the harness.
+ * The config loader behind Runtime.loadConfig — cwd-only discovery,
+ * defineConfig marker semantics with the pinned Prisma 7 fail-early
+ * diagnostic, the engine's closed set of section names, and
+ * needs.config validation wired end to end through the harness.
  */
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  type ConfigRequest,
   type ConfigSection,
   createCli,
   defineCommand,
@@ -44,41 +43,37 @@ describe("defineConfig", () => {
   });
 });
 
-/** What the engine asks the loader for: the closed set of section
- *  names the mounted command families declare, plus the file --config
- *  named when a run named one. */
-function asks(...knownSections: string[]) {
-  return { knownSections };
-}
-
 describe("loadConfig", { timeout: 60_000 }, () => {
-  test("a marked file yields raw sections without the marker key", async () => {
-    expect(
-      await loadConfig(join(FIXTURES, "marked"), asks("toy", "other")),
-    ).toEqual({
+  test("a marked file yields raw sections without the marker key, and names the file it read", async () => {
+    expect(await loadConfig(join(FIXTURES, "marked"))).toEqual({
+      path: join(FIXTURES, "marked", "prisma.config.ts"),
       sections: { toy: { greeting: "hello" }, other: { level: 2 } },
       diagnostics: [],
     });
   });
 
-  test("no file at all yields an empty LoadedConfig — validators own absence", async () => {
-    expect(await loadConfig(FIXTURES, asks("toy"))).toEqual({
+  /** With no file there are no sections, so nothing ever asks which
+   *  file they came from; the path still names the one that was looked
+   *  for rather than going absent. */
+  test("no file at all yields no sections and no error — validators own absence", async () => {
+    expect(await loadConfig(FIXTURES)).toEqual({
+      path: join(FIXTURES, "prisma.config.ts"),
       sections: {},
       diagnostics: [],
     });
   });
 
   test("discovery is cwd-only: a config in the parent directory is not found", async () => {
-    expect(
-      await loadConfig(join(FIXTURES, "marked", "nested"), asks("toy")),
-    ).toEqual({
+    expect(await loadConfig(join(FIXTURES, "marked", "nested"))).toEqual({
+      path: join(FIXTURES, "marked", "nested", "prisma.config.ts"),
       sections: {},
       diagnostics: [],
     });
   });
 
   test("an evaluated file without the marker fails early with the pinned Prisma 7 diagnostic", async () => {
-    expect(await loadConfig(join(FIXTURES, "unmarked"), asks("toy"))).toEqual({
+    expect(await loadConfig(join(FIXTURES, "unmarked"))).toEqual({
+      path: join(FIXTURES, "unmarked", "prisma.config.ts"),
       sections: {},
       diagnostics: [
         {
@@ -103,9 +98,8 @@ describe("loadConfig", { timeout: 60_000 }, () => {
   });
 
   test("a marker version other than the supported one fails with a file-level diagnostic", async () => {
-    expect(
-      await loadConfig(join(FIXTURES, "wrong-version"), asks("toy")),
-    ).toEqual({
+    expect(await loadConfig(join(FIXTURES, "wrong-version"))).toEqual({
+      path: join(FIXTURES, "wrong-version", "prisma.config.ts"),
       sections: {},
       diagnostics: [
         {
@@ -131,10 +125,7 @@ describe("loadConfig", { timeout: 60_000 }, () => {
   });
 
   test("a section value keeps its types — arrays and Dates survive the loader", async () => {
-    const loaded = await loadConfig(
-      join(FIXTURES, "passthrough"),
-      asks("values"),
-    );
+    const loaded = await loadConfig(join(FIXTURES, "passthrough"));
     expect(loaded.diagnostics).toEqual([]);
     expect(Object.keys(loaded.sections)).toEqual(["values"]);
     const values = loaded.sections.values as {
@@ -146,7 +137,7 @@ describe("loadConfig", { timeout: 60_000 }, () => {
   });
 
   test("a file that throws while evaluating yields a file-level diagnostic", async () => {
-    const loaded = await loadConfig(join(FIXTURES, "unreadable"), asks("toy"));
+    const loaded = await loadConfig(join(FIXTURES, "unreadable"));
     expect(loaded.sections).toEqual({});
     expect(loaded.diagnostics).toHaveLength(1);
     expect(loaded.diagnostics[0].section).toBeNull();
@@ -158,39 +149,10 @@ describe("loadConfig", { timeout: 60_000 }, () => {
 });
 
 describe("top-level keys that are not sections", { timeout: 60_000 }, () => {
-  test("an unrecognised key is reported as a file-level error naming the known sections", async () => {
-    const loaded = await loadConfig(join(FIXTURES, "marked"), asks("toy"));
-    expect(Object.keys(loaded.sections)).toEqual(["toy", "other"]);
-    expect(loaded.diagnostics).toEqual([
-      {
-        section: null,
-        diagnostic: {
-          code: "CLI.CONFIG_UNKNOWN_SECTION",
-          severity: "error",
-          summary: `${join(FIXTURES, "marked", "prisma.config.ts")} has a top-level key 'other', which is not a config section this CLI recognises.`,
-          why: "The sections this CLI recognises are: toy.",
-          nextActions: [
-            {
-              kind: "user-choice",
-              label:
-                "Remove the key, or rename it to one of the recognised section names.",
-            },
-          ],
-          where: { path: join(FIXTURES, "marked", "prisma.config.ts") },
-        },
-      },
-    ]);
-  });
-
-  test("a CLI with no sections at all says so rather than listing nothing", async () => {
-    const loaded = await loadConfig(join(FIXTURES, "marked"), asks());
-    expect(loaded.diagnostics).toHaveLength(2);
-    expect(loaded.diagnostics[0].diagnostic.why).toBe(
-      "This CLI declares no config sections at all, so no top-level key in the file means anything to it.",
-    );
-  });
-
-  test("the engine takes the known set from the mounted command families, and an unknown key fails the run before the handler", async () => {
+  /** The check is the engine's, not the loader's: loadConfig hands back
+   *  every top-level key the file had, and the run fails on the ones no
+   *  mounted command or command family declared. */
+  test("an unrecognised key fails the run before the handler, naming the recognised sections", async () => {
     const ran = { value: false };
     const section = toySection();
     const show = showCommand(section, ran);
@@ -199,13 +161,52 @@ describe("top-level keys that are not sections", { timeout: 60_000 }, () => {
         defineCommandFamily({ configSection: section, commands: { show } }),
       ],
       commands: { show },
-      loadConfig: (request) => loadConfig(join(FIXTURES, "marked"), request),
+      loadConfig: (configPath) =>
+        loadConfig(join(FIXTURES, "marked"), configPath),
+    });
+    const run = await cli.run(["show", "--json"]);
+    expect(run.exitCode).toBe(2);
+    expect(ran.value).toBe(false);
+    const frame = run.json[0];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error(`expected an errored result frame, got ${run.stderr}`);
+    }
+    const path = join(FIXTURES, "marked", "prisma.config.ts");
+    expect(frame.envelope.error).toEqual({
+      code: "CLI.CONFIG_UNKNOWN_SECTION",
+      severity: "error",
+      summary: `${path} has a top-level key 'other', which is not a config section this CLI recognises.`,
+      why: "The sections this CLI recognises are: toy.",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label:
+            "Remove the key, or rename it to one of the recognised section names.",
+        },
+      ],
+      where: { path },
+    });
+  });
+
+  /** The reason the check moved out of the loader: the loader is a
+   *  Runtime member each host supplies, and this one checks nothing at
+   *  all. Move the check back into the loader and this test fails. */
+  test("a loader that checks nothing does not reopen the closed set", async () => {
+    const ran = { value: false };
+    const cli = createTestCli({
+      commands: { show: showCommand(toySection(), ran) },
+      loadConfig: async () => ({
+        path: "/host/picked/this.config.ts",
+        sections: { toy: { greeting: "hi" }, telemtry: { enabled: true } },
+        diagnostics: [],
+      }),
     });
     const run = await cli.run(["show"], { isTty: { stdout: true } });
     expect(run.exitCode).toBe(2);
     expect(ran.value).toBe(false);
     expect(run.stderr).toContain("CLI.CONFIG_UNKNOWN_SECTION");
-    expect(run.stderr).toContain("'other'");
+    expect(run.stderr).toContain("'telemtry'");
+    expect(run.stderr).toContain("/host/picked/this.config.ts");
     expect(run.stderr).toContain("recognises are: toy");
   });
 
@@ -214,50 +215,39 @@ describe("top-level keys that are not sections", { timeout: 60_000 }, () => {
    * read it as an instruction to merge another file in — pulling
    * sections out of a file that was never checked for the version
    * marker, and over the network for a value beginning `http://` or
-   * `gh:` — so the loader passes `extend: false` and the key reaches
-   * the report like any other. The fixture's value is a string because
-   * that is the form c12 acts on.
+   * `gh:` — so the loader passes `extend: false` and the key comes back
+   * with the others, for the engine to report like any other
+   * unrecognised name. The fixture's value is a string because that is
+   * the form c12 acts on.
    */
-  test("a top-level 'extends' is reported as an unknown section rather than obeyed", async () => {
-    const loaded = await loadConfig(
-      join(FIXTURES, "extends-key"),
-      asks("values"),
-    );
+  test("a top-level 'extends' is data, not an instruction to merge another file", async () => {
+    const loaded = await loadConfig(join(FIXTURES, "extends-key"));
     expect(loaded.sections).toEqual({
       extends: "./base.config.ts",
       values: { list: [1, 2] },
     });
-    expect(loaded.diagnostics).toHaveLength(1);
-    expect(loaded.diagnostics[0].diagnostic.code).toBe(
-      "CLI.CONFIG_UNKNOWN_SECTION",
-    );
-    expect(loaded.diagnostics[0].diagnostic.summary).toContain("'extends'");
+    expect(loaded.diagnostics).toEqual([]);
   });
 
   /** The same key with a URL value. Left to c12 this downloads a
    *  tarball, unpacks it under node_modules and evaluates what was in
    *  it; here it is data like any other string. */
   test("an 'extends' value that names a URL is not fetched", async () => {
-    const loaded = await loadConfig(
-      join(FIXTURES, "extends-remote"),
-      asks("values"),
-    );
+    const loaded = await loadConfig(join(FIXTURES, "extends-remote"));
     expect(loaded.sections.extends).toBe("http://127.0.0.1:1/evil.tar.gz");
-    expect(loaded.diagnostics.map(({ diagnostic }) => diagnostic.code)).toEqual(
-      ["CLI.CONFIG_UNKNOWN_SECTION"],
-    );
+    expect(loaded.diagnostics).toEqual([]);
   });
 
   /**
    * The one key the report cannot cover. c12 takes `$meta` as layer
    * metadata and deletes it from the config object whatever else it is
-   * told, so it never reaches the unknown-key check. defineConfig
-   * freezes what it returns, so that delete throws and the whole file
-   * is refused — a worse message than the unknown-key one, and the
-   * reason no section may be named `$meta`.
+   * told, so it never reaches the engine's unknown-key check.
+   * defineConfig freezes what it returns, so that delete throws and the
+   * whole file is refused — a worse message than the unknown-key one,
+   * and the reason no section may be named `$meta`.
    */
   test("a top-level '$meta' can never be reported as an unknown section", async () => {
-    const loaded = await loadConfig(join(FIXTURES, "meta-key"), asks("toy"));
+    const loaded = await loadConfig(join(FIXTURES, "meta-key"));
     expect(loaded.sections).toEqual({});
     expect(loaded.diagnostics.map(({ diagnostic }) => diagnostic.code)).toEqual(
       ["CLI.CONFIG_UNREADABLE"],
@@ -275,24 +265,24 @@ describe("top-level keys that are not sections", { timeout: 60_000 }, () => {
    * why no section may be named `__proto__`.
    */
   test("a top-level '__proto__' never reaches the loader at all", async () => {
-    const loaded = await loadConfig(join(FIXTURES, "proto-key"), asks("toy"));
+    const loaded = await loadConfig(join(FIXTURES, "proto-key"));
     expect(loaded.sections).toEqual({ toy: { greeting: "hello" } });
     expect(Object.hasOwn(loaded.sections, "__proto__")).toBe(false);
     expect(loaded.diagnostics).toEqual([]);
   });
 
   test("a command mounted with no command family declares its section too", async () => {
-    const requests: ConfigRequest[] = [];
     const cli = createTestCli({
       commands: { show: showCommand(toySection()) },
-      loadConfig: async (request) => {
-        requests.push(request);
-        return { sections: { toy: { greeting: "hi" } }, diagnostics: [] };
-      },
+      loadConfig: async () => ({
+        path: "/host/picked/this.config.ts",
+        sections: { toy: { greeting: "hi" } },
+        diagnostics: [],
+      }),
     });
     const run = await cli.run(["show"], { isTty: { stdout: true } });
     expect(run.exitCode).toBe(0);
-    expect(requests).toEqual([{ knownSections: ["toy"] }]);
+    expect(run.presented?.data).toEqual({ greeting: "hi" });
   });
 
   /** The shell mounts its own commands with no command family, so this
@@ -301,7 +291,7 @@ describe("top-level keys that are not sections", { timeout: 60_000 }, () => {
     const ran = { value: false };
     const cli = createTestCli({
       commands: { show: showCommand(toySection(), ran) },
-      loadConfig: (request) => loadConfig(FIXTURES, request),
+      loadConfig: (configPath) => loadConfig(FIXTURES, configPath),
     });
     const run = await cli.run(
       ["show", "--config", join(FIXTURES, "named", "elsewhere.config.ts")],
@@ -318,21 +308,20 @@ describe("--config", { timeout: 60_000 }, () => {
   const OUTSIDE = join(FIXTURES, "named", "elsewhere.config.ts");
 
   test("the named file is loaded instead of the one in cwd", async () => {
-    const loaded = await loadConfig(join(FIXTURES, "marked"), {
-      configPath: OUTSIDE,
-      knownSections: ["toy"],
-    });
+    const loaded = await loadConfig(join(FIXTURES, "marked"), OUTSIDE);
     expect(loaded).toEqual({
+      path: OUTSIDE,
       sections: { toy: { greeting: "from the named file" } },
       diagnostics: [],
     });
   });
 
   test("a relative path is resolved against cwd", async () => {
-    const loaded = await loadConfig(FIXTURES, {
-      configPath: join("named", "elsewhere.config.ts"),
-      knownSections: ["toy"],
-    });
+    const loaded = await loadConfig(
+      FIXTURES,
+      join("named", "elsewhere.config.ts"),
+    );
+    expect(loaded.path).toBe(OUTSIDE);
     expect(loaded.sections).toEqual({
       toy: { greeting: "from the named file" },
     });
@@ -340,10 +329,7 @@ describe("--config", { timeout: 60_000 }, () => {
 
   test("a named file that does not exist is an error, not an empty config", async () => {
     const missing = join(FIXTURES, "named", "nope.config.ts");
-    const loaded = await loadConfig(FIXTURES, {
-      configPath: missing,
-      knownSections: ["toy"],
-    });
+    const loaded = await loadConfig(FIXTURES, missing);
     expect(loaded.sections).toEqual({});
     expect(loaded.diagnostics).toEqual([
       {
@@ -367,7 +353,8 @@ describe("--config", { timeout: 60_000 }, () => {
   });
 
   test("without the flag, a missing prisma.config.ts stays an empty config", async () => {
-    expect(await loadConfig(join(FIXTURES, "named"), asks("toy"))).toEqual({
+    expect(await loadConfig(join(FIXTURES, "named"))).toEqual({
+      path: join(FIXTURES, "named", "prisma.config.ts"),
       sections: {},
       diagnostics: [],
     });
@@ -378,10 +365,7 @@ describe("--config", { timeout: 60_000 }, () => {
    *  not prisma.config.ts. */
   test("a diagnostic about the named file names that file, not prisma.config.ts", async () => {
     const legacy = join(FIXTURES, "named", "legacy.config.ts");
-    const loaded = await loadConfig(FIXTURES, {
-      configPath: legacy,
-      knownSections: ["toy"],
-    });
+    const loaded = await loadConfig(FIXTURES, legacy);
     expect(loaded.diagnostics).toHaveLength(1);
     const { diagnostic } = loaded.diagnostics[0];
     expect(diagnostic.code).toBe("CLI.CONFIG_MISSING_MARKER");
@@ -392,7 +376,8 @@ describe("--config", { timeout: 60_000 }, () => {
   test("an invalid section names the file --config asked for", async () => {
     const cli = createTestCli({
       commands: { show: showCommand(toySection()) },
-      loadConfig: async () => ({
+      loadConfig: async (configPath) => ({
+        path: configPath ?? "prisma.config.ts",
         sections: { toy: { greeting: 5 } },
         diagnostics: [],
       }),
@@ -418,10 +403,7 @@ describe("a relative cwd", { timeout: 60_000 }, () => {
   const RELATIVE_FIXTURES = relative(process.cwd(), FIXTURES);
 
   test("discovery reads the config under a relative cwd", async () => {
-    const loaded = await loadConfig(
-      join(RELATIVE_FIXTURES, "marked"),
-      asks("toy", "other"),
-    );
+    const loaded = await loadConfig(join(RELATIVE_FIXTURES, "marked"));
     expect(loaded.sections).toEqual({
       toy: { greeting: "hello" },
       other: { level: 2 },
@@ -429,20 +411,18 @@ describe("a relative cwd", { timeout: 60_000 }, () => {
   });
 
   test("a relative --config value resolves against a relative cwd", async () => {
-    const loaded = await loadConfig(RELATIVE_FIXTURES, {
-      configPath: join("named", "elsewhere.config.ts"),
-      knownSections: ["toy"],
-    });
+    const loaded = await loadConfig(
+      RELATIVE_FIXTURES,
+      join("named", "elsewhere.config.ts"),
+    );
     expect(loaded.sections).toEqual({
       toy: { greeting: "from the named file" },
     });
   });
 
   test("the path a diagnostic reports is absolute even so", async () => {
-    const loaded = await loadConfig(
-      join(RELATIVE_FIXTURES, "unmarked"),
-      asks("toy"),
-    );
+    const loaded = await loadConfig(join(RELATIVE_FIXTURES, "unmarked"));
+    expect(loaded.path).toBe(join(FIXTURES, "unmarked", "prisma.config.ts"));
     expect(loaded.diagnostics[0]?.diagnostic.where).toEqual({
       path: join(FIXTURES, "unmarked", "prisma.config.ts"),
     });
@@ -478,26 +458,29 @@ describe("NODE_ENV does not change the effective config", {
 
   test("a $<NODE_ENV> block does not overlay a section value", async () => {
     const loaded = await underNodeEnv("production", () =>
-      loadConfig(join(FIXTURES, "env-overlay"), asks("toy")),
+      loadConfig(join(FIXTURES, "env-overlay")),
     );
     expect(loaded.sections.toy).toEqual({ greeting: "plain" });
   });
 
   test("a $env block does not overlay a section value", async () => {
     const loaded = await underNodeEnv("production", () =>
-      loadConfig(join(FIXTURES, "env-block"), asks("toy")),
+      loadConfig(join(FIXTURES, "env-block")),
     );
     expect(loaded.sections.toy).toEqual({ greeting: "plain" });
   });
 
-  test("the $prismaConfig marker survives, and the unused $ block is reported as an unknown section", async () => {
+  /** An empty diagnostics list is the marker being accepted; the unused
+   *  `$production` block surviving as a section is what lets the engine
+   *  report it rather than let it vanish. */
+  test("the $prismaConfig marker survives, and the unused $ block reaches the engine as a section", async () => {
     const loaded = await underNodeEnv("production", () =>
-      loadConfig(join(FIXTURES, "env-overlay"), asks("toy")),
+      loadConfig(join(FIXTURES, "env-overlay")),
     );
-    expect(loaded.diagnostics.map(({ diagnostic }) => diagnostic.code)).toEqual(
-      ["CLI.CONFIG_UNKNOWN_SECTION"],
-    );
-    expect(loaded.diagnostics[0].diagnostic.summary).toContain("'$production'");
+    expect(loaded.diagnostics).toEqual([]);
+    expect(loaded.sections.$production).toEqual({
+      toy: { greeting: "overlaid by $production" },
+    });
   });
 });
 
@@ -523,10 +506,9 @@ try {
   directImportError = error.code ?? error.message;
 }
 
-const asks = { knownSections: ["toy"] };
-const loaded = await loadConfig(cwd, asks);
-const named = await loadConfig(cwd, { ...asks, configPath: namedPath });
-const missing = await loadConfig(cwd, { ...asks, configPath: namedPath + ".gone" });
+const loaded = await loadConfig(cwd);
+const named = await loadConfig(cwd, namedPath);
+const missing = await loadConfig(cwd, namedPath + ".gone");
 process.stdout.write("__PROBE__" + JSON.stringify({
   directImportError,
   loaded,
@@ -550,10 +532,12 @@ export default defineConfig({ toy: { greeting } });
 interface ProbeResult {
   readonly directImportError: string | null;
   readonly loaded: {
+    readonly path: unknown;
     readonly sections: unknown;
     readonly diagnostics: unknown;
   };
   readonly named: {
+    readonly path: unknown;
     readonly sections: unknown;
     readonly diagnostics: unknown;
   };
@@ -563,7 +547,12 @@ interface ProbeResult {
   };
 }
 
-function runProbeOnPlainNode(config: string, nodeArgs: string[]): ProbeResult {
+/** The paths come back with the result: the sandbox is made here, and
+ *  the assertions name the files it made. */
+function runProbeOnPlainNode(
+  config: string,
+  nodeArgs: string[],
+): ProbeResult & { readonly configPath: string; readonly namedPath: string } {
   mkdirSync(SANDBOX_ROOT, { recursive: true });
   const root = mkdtempSync(join(SANDBOX_ROOT, "plain-node-"));
   const cwd = join(root, "project");
@@ -589,7 +578,11 @@ function runProbeOnPlainNode(config: string, nodeArgs: string[]): ProbeResult {
   if (marker === -1) {
     throw new Error(`probe printed no result:\n${run.stdout}\n${run.stderr}`);
   }
-  return JSON.parse(run.stdout.slice(marker + "__PROBE__".length));
+  return {
+    ...JSON.parse(run.stdout.slice(marker + "__PROBE__".length)),
+    configPath,
+    namedPath,
+  };
 }
 
 afterAll(() => {
@@ -611,10 +604,12 @@ export default defineConfig({ toy: { greeting } });
     );
     expect(probe.directImportError).toBe("ERR_UNKNOWN_FILE_EXTENSION");
     expect(probe.loaded).toEqual({
+      path: probe.configPath,
       sections: { toy: { greeting: "hello from plain node" } },
       diagnostics: [],
     });
     expect(probe.named).toEqual({
+      path: probe.namedPath,
       sections: { toy: { greeting: "from the file --config named" } },
       diagnostics: [],
     });
@@ -642,6 +637,7 @@ export default defineConfig({ toy: { greeting: Level.Verbose } });
     // the direct import fails where loadConfig, below, succeeds.
     expect(probe.directImportError).toEqual(expect.any(String));
     expect(probe.loaded).toEqual({
+      path: probe.configPath,
       sections: { toy: { greeting: "verbose" } },
       diagnostics: [],
     });
@@ -862,11 +858,11 @@ describe("needs.config", { timeout: 60_000 }, () => {
         throw new Error(`runtime.exit(${code})`);
       },
       onSignal: () => () => {},
-      loadConfig: (request): Promise<LoadedConfig> => {
+      loadConfig: (configPath): Promise<LoadedConfig> => {
         if (reads !== undefined) {
           reads.value += 1;
         }
-        return loadConfig(cwd, request);
+        return loadConfig(cwd, configPath);
       },
       managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
@@ -917,14 +913,17 @@ describe("needs.config", { timeout: 60_000 }, () => {
   });
 
   test("loadConfig output feeds the engine: disk to ctx.config end to end", async () => {
-    const loaded = await loadConfig(join(FIXTURES, "marked"), asks("toy"));
+    const loaded = await loadConfig(
+      FIXTURES,
+      join(FIXTURES, "named", "elsewhere.config.ts"),
+    );
     const cli = createTestCli({
       commands: { show: showCommand(toySection()) },
       config: loaded.sections,
     });
     const run = await cli.run(["show"], { isTty: { stdout: true } });
     expect(run.exitCode).toBe(0);
-    expect(run.presented?.data).toEqual({ greeting: "hello" });
+    expect(run.presented?.data).toEqual({ greeting: "from the named file" });
   });
 });
 
@@ -936,7 +935,7 @@ describe("needs.config", { timeout: 60_000 }, () => {
  */
 describe("--config on the command line", { timeout: 60_000 }, () => {
   function spyingCli() {
-    const requests: ConfigRequest[] = [];
+    const asked: (string | undefined)[] = [];
     const section = toySection();
     const show = showCommand(section);
     const cli = createTestCli({
@@ -944,41 +943,41 @@ describe("--config on the command line", { timeout: 60_000 }, () => {
         defineCommandFamily({ configSection: section, commands: { show } }),
       ],
       commands: { show },
-      loadConfig: async (request) => {
-        requests.push(request);
-        return { sections: { toy: { greeting: "hi" } }, diagnostics: [] };
+      loadConfig: async (configPath) => {
+        asked.push(configPath);
+        return {
+          path: configPath ?? "prisma.config.ts",
+          sections: { toy: { greeting: "hi" } },
+          diagnostics: [],
+        };
       },
     });
-    return { cli, requests };
+    return { cli, asked };
   }
 
-  test("--config <path> reaches the loader with the closed section set", async () => {
-    const { cli, requests } = spyingCli();
+  test("--config <path> reaches the loader", async () => {
+    const { cli, asked } = spyingCli();
     const run = await cli.run(["show", "--config", "/somewhere/other.ts"]);
     expect(run.exitCode).toBe(0);
-    expect(requests).toEqual([
-      { configPath: "/somewhere/other.ts", knownSections: ["toy"] },
-    ]);
+    expect(asked).toEqual(["/somewhere/other.ts"]);
   });
 
   test("without the flag the loader is asked for no particular file", async () => {
-    const { cli, requests } = spyingCli();
+    const { cli, asked } = spyingCli();
     const run = await cli.run(["show"]);
     expect(run.exitCode).toBe(0);
-    expect(requests).toEqual([{ knownSections: ["toy"] }]);
+    expect(asked).toEqual([undefined]);
   });
 
   test("--config=<path> works too, and its value may start with '-'", async () => {
-    const { cli, requests } = spyingCli();
+    const { cli, asked } = spyingCli();
     const run = await cli.run(["show", "--config=-weird.ts"]);
     expect(run.exitCode).toBe(0);
-    expect(requests).toEqual([
-      { configPath: "-weird.ts", knownSections: ["toy"] },
-    ]);
+    expect(asked).toEqual(["-weird.ts"]);
   });
 
   async function usageFailure(argv: readonly string[]) {
-    const { cli, requests } = spyingCli();
+    const { cli, asked } = spyingCli();
     const run = await cli.run(argv);
     const frame = run.json[0];
     if (frame?.kind !== "result" || frame.envelope.ok) {
@@ -988,7 +987,7 @@ describe("--config on the command line", { timeout: 60_000 }, () => {
       exitCode: run.exitCode,
       code: frame.envelope.error.code,
       summary: frame.envelope.error.summary,
-      requests,
+      asked,
     };
   }
 
@@ -997,14 +996,14 @@ describe("--config on the command line", { timeout: 60_000 }, () => {
     expect(failure.exitCode).toBe(2);
     expect(failure.code).toBe("CLI.INVALID_ARGUMENTS");
     expect(failure.summary).toContain("--config");
-    expect(failure.requests).toEqual([]);
+    expect(failure.asked).toEqual([]);
   });
 
   test("--config followed by another flag is a usage error", async () => {
     const failure = await usageFailure(["show", "--config", "--json"]);
     expect(failure.exitCode).toBe(2);
     expect(failure.code).toBe("CLI.INVALID_ARGUMENTS");
-    expect(failure.requests).toEqual([]);
+    expect(failure.asked).toEqual([]);
   });
 
   test("--config '' — what a shell makes of an unset variable — is a usage error", async () => {
@@ -1012,7 +1011,7 @@ describe("--config on the command line", { timeout: 60_000 }, () => {
     expect(failure.exitCode).toBe(2);
     expect(failure.code).toBe("CLI.INVALID_ARGUMENTS");
     expect(failure.summary).toContain("--config needs a path");
-    expect(failure.requests).toEqual([]);
+    expect(failure.asked).toEqual([]);
   });
 
   test("--config= is a usage error, though the parser cannot see it as a flag", async () => {
@@ -1022,7 +1021,7 @@ describe("--config on the command line", { timeout: 60_000 }, () => {
     expect(failure.summary).toBe(
       "--config needs a path, and was given an empty value",
     );
-    expect(failure.requests).toEqual([]);
+    expect(failure.asked).toEqual([]);
   });
 
   /** The scan runs before parsing, so it cannot tell a flag from data.
