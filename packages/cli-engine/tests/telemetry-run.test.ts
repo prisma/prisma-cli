@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
   defineCommand,
+  defineServerCommand,
   flag,
   positional,
   type TelemetryPayload,
@@ -84,6 +85,47 @@ const telemetryStatus = defineCommand({
     ),
 });
 
+/** Fails its needs check against the harness's empty credential store,
+ *  so the handler never runs. */
+const signedOut = defineCommand({
+  help: { summary: "Show the signed-in user" },
+  needs: { credentials: true },
+  handler: async (_args, ctx) => {
+    order.push("handler");
+    return ok(
+      ctx.present(
+        { data: null },
+        { human: () => [{ kind: "summary", tone: "ok", text: "signed in" }] },
+      ),
+    );
+  },
+});
+
+/** Refused before its handler when the run asks for --json. */
+const spawning = defineCommand({
+  help: { summary: "May hand the terminal to a child" },
+  maySpawn: true,
+  handler: async (_args, ctx) => {
+    order.push("handler");
+    return ok(
+      ctx.present(
+        { data: null },
+        { human: () => [{ kind: "summary", tone: "ok", text: "spawned" }] },
+      ),
+    );
+  },
+});
+
+/** Taken by the server-command branch, which sits between the snapshot
+ *  and everything else. */
+const lsp = defineServerCommand({
+  help: { summary: "Speaks a foreign protocol over stdio" },
+  handler: async () => {
+    order.push("handler");
+    return 0;
+  },
+});
+
 function makeCli(options?: {
   readonly declared?: boolean;
   readonly telemetrySpawner?: ((payload: TelemetryPayload) => void) | null;
@@ -93,6 +135,9 @@ function makeCli(options?: {
     commands: {
       "app deploy": deploy,
       "app fail": failing,
+      "app whoami": signedOut,
+      "app spawner": spawning,
+      lsp,
       "telemetry status": telemetryStatus,
     },
     groups: {
@@ -152,6 +197,40 @@ describe("the engine reports at command start", () => {
 
     expect(result.exitCode).toBe(0);
     expect(order).toEqual(["telemetry", "handler"]);
+  });
+
+  it("reports a run that fails its needs check, whose handler never runs", async () => {
+    const result = await run(makeCli(), ["app", "whoami"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(order).toEqual([]);
+    expect(result.telemetry.map((payload) => payload.command)).toEqual([
+      "app whoami",
+    ]);
+  });
+
+  it("reports a run refused before its handler for asking --json of a spawning command", async () => {
+    const result = await run(makeCli(), ["app", "spawner", "--json"]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(order).toEqual([]);
+    expect(result.telemetry.map((payload) => payload.command)).toEqual([
+      "app spawner",
+    ]);
+  });
+
+  it("reports a server command, before its branch hands over stdio", async () => {
+    const cli = makeCli({
+      telemetrySpawner: () => {
+        order.push("telemetry");
+      },
+    });
+
+    const result = await run(cli, ["lsp"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(order).toEqual(["telemetry", "handler"]);
+    expect(result.telemetry.map((payload) => payload.command)).toEqual(["lsp"]);
   });
 
   it("reports a failing run too — the event does not wait for an outcome", async () => {

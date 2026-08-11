@@ -50,6 +50,8 @@ function makeHost(overrides?: {
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly isCI?: boolean;
   readonly spawnTelemetry?: ((payload: TelemetryPayload) => void) | null;
+  /** A host whose stderr is gone — a closed pipe, a full disk. */
+  readonly stderrThrows?: boolean;
 }): TelemetryHost {
   const spawner = overrides?.spawnTelemetry;
   return {
@@ -57,6 +59,9 @@ function makeHost(overrides?: {
     cwd: "/projects/acme",
     stderr: {
       write: (text) => {
+        if (overrides?.stderrThrows === true) {
+          throw new Error("stderr is closed");
+        }
         stderrText += text;
       },
     },
@@ -236,6 +241,15 @@ describe("reportCommandStart", () => {
         }),
       ),
     ).not.toThrow();
+  });
+
+  it("mints and reports even when the disclosure cannot be written", () => {
+    report(makeHost({ stderrThrows: true }));
+
+    expect(payloads.map((payload) => payload.command)).toEqual(["app deploy"]);
+    expect(readUserConfig(isolatedEnv()).installationId).toEqual(
+      expect.any(String),
+    );
   });
 
   it("does nothing at all when the host wires no seam — a CLI that cannot deliver must not disclose or mint", () => {
