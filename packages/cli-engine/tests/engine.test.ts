@@ -36,6 +36,7 @@ describe("main export", () => {
       "flag",
       "loadConfig",
       "noSessionForWorkspaceError",
+      "packageManagerFailedError",
       "positional",
     ]);
   });

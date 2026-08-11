@@ -29,6 +29,11 @@ type Operation =
       readonly args: readonly string[];
     };
 
+interface Placement {
+  readonly cwd?: string;
+  readonly manager?: PackageManagerId;
+}
+
 type OperationResult = Result<{ readonly command: string }, CliStructuredError>;
 
 function spell(
@@ -53,15 +58,15 @@ function failed(
     readonly reason?: "runner-unavailable";
   },
 ): CliStructuredError {
-  const both = {
+  const spelt = {
     ...outcome,
     command: redactSecrets(command.line),
     runnableCommand: command.line,
   };
   return packageManagerFailedError(
     operation.form === "install"
-      ? { ...both, form: "install" }
-      : { ...both, form: "run", package: operation.package },
+      ? { ...spelt, form: "install" }
+      : { ...spelt, form: "run", package: operation.package },
   );
 }
 
@@ -93,93 +98,118 @@ function lineAssembler(emit: (line: string) => void): {
   };
 }
 
+function outputChannels(
+  invocation: Invocation,
+  manager: PackageManagerId,
+): {
+  readonly push: (channel: "data" | "diagnostic", chunk: string) => void;
+  readonly flush: () => void;
+} {
+  const assemble = (channel: "data" | "diagnostic") =>
+    lineAssembler((line) => {
+      reportEvent(invocation, {
+        kind: "output",
+        source: manager,
+        channel,
+        line,
+      });
+    });
+  const channels = {
+    data: assemble("data"),
+    diagnostic: assemble("diagnostic"),
+  };
+  return {
+    push: (channel, chunk) => {
+      channels[channel].push(chunk);
+    },
+    flush: () => {
+      channels.data.flush();
+      channels.diagnostic.flush();
+    },
+  };
+}
+
+async function execute(
+  invocation: Invocation,
+  operation: Operation,
+  placement: Placement,
+): Promise<OperationResult> {
+  const { runtime, signal } = invocation;
+  const cwd = placement.cwd ?? runtime.cwd;
+  const manager = await resolvePackageManager({
+    cwd,
+    env: runtime.env,
+    override: placement.manager,
+    host: runtime.packageManager,
+  });
+  const command = spell(operation, manager);
+  const runner = runtime.runPackageManager;
+  if (runner === undefined) {
+    return notOk(
+      failed(operation, command, {
+        manager,
+        exitCode: NO_CHILD_EXIT_CODE,
+        stderrTail: "",
+        reason: "runner-unavailable",
+      }),
+    );
+  }
+  const output = outputChannels(invocation, manager);
+  const step = redactSecrets(command.line);
+  reportEvent(invocation, { kind: "step-started", step });
+  let result: PackageManagerRunResult;
+  try {
+    result = await runner({
+      file: command.file,
+      args: command.args,
+      cwd,
+      signal,
+      onOutput: output.push,
+    });
+  } finally {
+    output.flush();
+  }
+  if (signal.aborted) {
+    throw signal.reason;
+  }
+  reportEvent(invocation, {
+    kind: "step-finished",
+    step,
+    outcome: result.exitCode === 0 ? "ok" : "failed",
+  });
+  if (result.exitCode === 0) {
+    return ok({ command: command.line });
+  }
+  return notOk(
+    failed(operation, command, {
+      manager,
+      exitCode: result.exitCode,
+      stderrTail: redactSecrets(result.stderr),
+    }),
+  );
+}
+
 export function makePackageOperations(
   invocation: Invocation,
 ): PackageOperations {
   let running = false;
-
+  /** The claim is taken before the first await, so a caller that fires
+   *  a second operation without awaiting the first still hits it. */
   const perform = async (
     operation: Operation,
-    request: {
-      readonly cwd?: string;
-      readonly manager?: PackageManagerId;
-    },
+    placement: Placement,
   ): Promise<OperationResult> => {
     if (running) {
       throw new Error(
         "@prisma/cli-engine: ctx.packages runs one operation at a time, so two package managers can never write one project at once",
       );
     }
-    const { runtime, signal } = invocation;
-    const cwd = request.cwd ?? runtime.cwd;
-    const manager = await resolvePackageManager({
-      cwd,
-      env: runtime.env,
-      override: request.manager,
-      host: runtime.packageManager,
-    });
-    const command = spell(operation, manager);
-    const runner = runtime.runPackageManager;
-    if (runner === undefined) {
-      return notOk(
-        failed(operation, command, {
-          manager,
-          exitCode: NO_CHILD_EXIT_CODE,
-          stderrTail: "",
-          reason: "runner-unavailable",
-        }),
-      );
-    }
-    const assembler = (channel: "data" | "diagnostic") =>
-      lineAssembler((line) => {
-        reportEvent(invocation, {
-          kind: "output",
-          source: manager,
-          channel,
-          line,
-        });
-      });
-    const output = {
-      data: assembler("data"),
-      diagnostic: assembler("diagnostic"),
-    };
-    const step = redactSecrets(command.line);
     running = true;
-    reportEvent(invocation, { kind: "step-started", step });
-    let result: PackageManagerRunResult;
     try {
-      result = await runner({
-        file: command.file,
-        args: command.args,
-        cwd,
-        signal,
-        onOutput: (channel, chunk) => {
-          output[channel].push(chunk);
-        },
-      });
+      return await execute(invocation, operation, placement);
     } finally {
       running = false;
-      output.data.flush();
-      output.diagnostic.flush();
     }
-    if (signal.aborted) {
-      throw signal.reason;
-    }
-    reportEvent(invocation, {
-      kind: "step-finished",
-      step,
-      outcome: result.exitCode === 0 ? "ok" : "failed",
-    });
-    if (result.exitCode === 0) {
-      return ok({ command: command.line });
-    }
-    return notOk(
-      failed(operation, command, {
-        manager,
-        exitCode: result.exitCode,
-        stderrTail: redactSecrets(result.stderr),
-      }),
-    );
   };
 
   return {
