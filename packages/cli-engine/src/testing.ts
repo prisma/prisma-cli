@@ -1,4 +1,5 @@
 import type { CommandFamily, MountedTree } from "./command-family";
+import { CONFIG_FILE_NAME } from "./config-loader";
 import type { Credential } from "./credential-manager";
 import type { EngineEvent, StreamEvent } from "./events";
 import { buildEngine } from "./execution/engine";
@@ -14,6 +15,86 @@ import type { PackageManagerId, PackageManagerRunner } from "./package-manager";
 import type { PresentedResult } from "./presentation";
 import type { RunSummary } from "./run-summary";
 import type { Runtime } from "./runtime";
+import type { ChildResult, SpawnChild, SpawnRequest } from "./spawn";
+
+/**
+ * What a scripted fake child does. `nextKill` resolves with each signal
+ * the engine delivers, so a script can model a child that ignores
+ * SIGTERM and only dies on SIGKILL.
+ */
+export type ScriptedChildProgram = (
+  request: SpawnRequest,
+  child: { readonly nextKill: () => Promise<"SIGTERM" | "SIGKILL"> },
+) => ChildResult | Promise<ChildResult>;
+
+/** One ctx.spawn call, as the harness saw it. */
+export interface SpawnRecord {
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly cwd: string;
+  /** Environment KEYS only. Values are never recorded: a fixture file
+   *  must not be able to carry token material. */
+  readonly envKeys: readonly string[];
+  /** The signals the engine delivered to the child, in order. */
+  readonly kills: readonly ("SIGTERM" | "SIGKILL")[];
+}
+
+interface MutableSpawnRecord extends SpawnRecord {
+  readonly kills: ("SIGTERM" | "SIGKILL")[];
+}
+
+function scriptedSpawn(program: ScriptedChildProgram): SpawnChild {
+  return (request) => {
+    const delivered: ("SIGTERM" | "SIGKILL")[] = [];
+    const waiting: Array<(signal: "SIGTERM" | "SIGKILL") => void> = [];
+    return {
+      ended: (async () =>
+        program(request, {
+          nextKill: async () => {
+            const queued = delivered.shift();
+            return (
+              queued ??
+              (await new Promise<"SIGTERM" | "SIGKILL">((resolve) => {
+                waiting.push(resolve);
+              }))
+            );
+          },
+        }))(),
+      kill: (signal) => {
+        const waiter = waiting.shift();
+        if (waiter === undefined) {
+          delivered.push(signal);
+          return;
+        }
+        waiter(signal);
+      },
+    };
+  };
+}
+
+function recordingSpawn(
+  adapter: SpawnChild,
+  spawns: MutableSpawnRecord[],
+): SpawnChild {
+  return (request) => {
+    const record: MutableSpawnRecord = {
+      command: request.command,
+      args: [...request.args],
+      cwd: request.cwd,
+      envKeys: Object.keys(request.env),
+      kills: [],
+    };
+    spawns.push(record);
+    const child = adapter(request);
+    return {
+      ended: child.ended,
+      kill: (signal) => {
+        record.kills.push(signal);
+        child.kill(signal);
+      },
+    };
+  };
+}
 
 export interface TestCli {
   /**
@@ -59,6 +140,8 @@ export interface TestCli {
      * without byte-scraping; undefined when the run never presented.
      */
     readonly presented: PresentedResult<unknown> | undefined;
+    /** Every ctx.spawn the run made, in order. */
+    readonly spawns: readonly SpawnRecord[];
   }>;
 }
 
@@ -84,7 +167,15 @@ export function createTestCli(spec: {
   readonly commandFamilies?: readonly CommandFamily[];
   readonly commands: MountedTree;
   readonly groups?: Readonly<Record<string, { readonly brief: string }>>;
+  /** Seeds the sections the config file would have held. The engine
+   *  asks for them only when the command declares a config section, and
+   *  checks them as it would a real file's: a section name no mounted
+   *  command declares fails the run. */
   readonly config?: Readonly<Record<string, unknown>>;
+  /** Replaces the loader outright — to assert what --config asked for,
+   *  to return file-level diagnostics, or to prove a run never reads
+   *  the config at all. Wins over `config` when both are given. */
+  readonly loadConfig?: Runtime["loadConfig"];
   /** Convenience manager seed: createSession runs its real claims
    *  derivation on this credential (mint the token with mintTestJwt). */
   readonly credential?: Credential;
@@ -124,6 +215,12 @@ export function createTestCli(spec: {
   /** Waiting is instant under test whatever this does; pass a spy to
    *  assert the interval a poll loop asked for. */
   readonly delay?: (ms: number, signal: AbortSignal) => Promise<void>;
+  /** The spawn adapter behind ctx.spawn. Defaults to the scripted fake;
+   *  the real-child tests pass a node:child_process adapter, which is
+   *  how the engine package itself never imports one. */
+  readonly spawn?: SpawnChild;
+  /** Scripts the built-in fake child. Defaults to one that exits 0. */
+  readonly spawnScript?: ScriptedChildProgram;
 }): TestCli {
   const credentialManager = new InMemoryCredentialManager({
     sessions: spec.sessions,
@@ -163,6 +260,7 @@ export function createTestCli(spec: {
       const frames: StreamEvent[] = [];
       const events: EngineEvent[] = [];
       let presented: PresentedResult<unknown> | undefined;
+      const spawns: MutableSpawnRecord[] = [];
       const signalListeners = new Set<(signal: "SIGINT" | "SIGTERM") => void>();
       const deliverSignal = (reason: unknown): void => {
         const signal = reason === "SIGTERM" ? "SIGTERM" : "SIGINT";
@@ -206,9 +304,22 @@ export function createTestCli(spec: {
             signalListeners.delete(cb);
           };
         },
-        config: { sections: spec.config ?? {}, diagnostics: [] },
+        loadConfig:
+          spec.loadConfig ??
+          (async (configPath) => ({
+            path: configPath ?? CONFIG_FILE_NAME,
+            sections: spec.config ?? {},
+            diagnostics: [],
+          })),
         credentialManager,
         managementApiClientConfig,
+        spawn: recordingSpawn(
+          spec.spawn ??
+            scriptedSpawn(
+              spec.spawnScript ?? (() => ({ exitCode: 0, signal: null })),
+            ),
+          spawns,
+        ),
         openUrl: spec.openUrl ?? ((): void => {}),
         managementApi: {
           baseUrl: spec.managementApi?.baseUrl ?? "https://test.invalid",
@@ -252,6 +363,7 @@ export function createTestCli(spec: {
         json: frames,
         events,
         presented,
+        spawns,
       };
     },
   };

@@ -9,37 +9,33 @@
  * event:
  *
  * - `push`              → if the root `version` changed in this push,
- *                          `<base>` (no suffix), dist-tag `latest`. This
- *                          is how a merged `chore(release): ...` PR
- *                          ships a release automatically — on the RC
- *                          line `latest` tracks the newest `8.0.0-rc.N`.
- *                         Otherwise, `<base>-dev.N`, dist-tag `dev`
- *                          (N is the next available build number,
- *                          discovered by querying npm).
+ *                          `<base>`, dist-tag `latest`. This is how a
+ *                          merged `chore(release): ...` PR ships a
+ *                          release automatically — on the RC line
+ *                          `latest` tracks the newest `8.0.0-rc.N`.
+ *                          Otherwise there is nothing to publish: the
+ *                          committed version is already on the registry.
+ *                          `publish` is written as `false` and the
+ *                          workflow skips the remaining steps.
  * - `workflow_dispatch` → `<base>` (no suffix), dist-tag from
  *                          `INPUT_DIST_TAG` (defaults to `latest`).
  *                          Useful as a manual escape hatch (re-publish
  *                          after a transient failure, cut a beta).
  *
- * Outputs `version` and `tag` to `$GITHUB_OUTPUT` for downstream
- * workflow steps to consume.
+ * Outputs `publish`, `version` and `tag` to `$GITHUB_OUTPUT` for
+ * downstream workflow steps to consume.
+ *
+ * This script never rewrites a manifest. The version it reports is the
+ * one committed at this ref, always — which is the whole point of
+ * keeping the version in `package.json` (docs/oss/versioning.md).
  */
 
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { VersionResult } from "./determine-version-utils.ts";
-import {
-  assertCanonicalBase,
-  composeDevVersion,
-} from "./determine-version-utils.ts";
-
-// `@prisma/cli` has the longest publish history in this repo (it carries
-// the 3.x-era dev builds), so its `dev` dist-tag is the high-water mark
-// for the build counter. Counting from a younger package would re-issue a
-// `<base>-dev.N` that npm already holds and fail the publish.
-const PACKAGE_NAME = process.argv[2] ?? "@prisma/cli";
+import { assertCanonicalBase } from "./determine-version-utils.ts";
 
 const ALL_ZERO_SHA_PATTERN = /^0+$/;
 
@@ -58,21 +54,6 @@ function readRootVersion(): string {
     );
   }
   return parsed.version;
-}
-
-function run(command: string): string | undefined {
-  try {
-    return execSync(command, {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
-  } catch {
-    return undefined;
-  }
-}
-
-function getLatestDevVersion(): string | undefined {
-  return run(`npm view "${PACKAGE_NAME}" dist-tags.dev`);
 }
 
 type PreviousVersionLookup =
@@ -107,12 +88,16 @@ function readPreviousRootVersion(): PreviousVersionLookup {
   }
 }
 
-function writeGitHubOutput(result: VersionResult): void {
+function writeGitHubOutput(
+  result: VersionResult | undefined,
+  publish: boolean,
+): void {
   const outputFile = process.env.GITHUB_OUTPUT;
-  if (outputFile) {
-    appendFileSync(outputFile, `version<<EOF\n${result.version}\nEOF\n`);
-    appendFileSync(outputFile, `tag<<EOF\n${result.tag}\nEOF\n`);
-  }
+  if (!outputFile) return;
+  appendFileSync(outputFile, `publish<<EOF\n${String(publish)}\nEOF\n`);
+  if (result === undefined) return;
+  appendFileSync(outputFile, `version<<EOF\n${result.version}\nEOF\n`);
+  appendFileSync(outputFile, `tag<<EOF\n${result.tag}\nEOF\n`);
 }
 
 const eventName = process.env.GITHUB_EVENT_NAME;
@@ -124,7 +109,7 @@ assertCanonicalBase(baseVersion);
 console.log(`Event:                 ${eventName}`);
 console.log(`Base version (root):   ${baseVersion}`);
 
-let result: VersionResult;
+let result: VersionResult | undefined;
 
 switch (eventName) {
   case "workflow_dispatch":
@@ -134,15 +119,14 @@ switch (eventName) {
     break;
 
   case "push": {
-    // If the root `version` differs from what main was pointing at before
-    // this push, the push contains a release bump — cut a release
-    // automatically under `latest` (which tracks the newest release,
-    // RC or stable, for every package this repo's publish workflow
-    // ships). Otherwise, produce the usual `<base>-dev.N` tarball.
+    // A push publishes exactly when it changes the committed version.
+    // Every other push has nothing to ship: the version at this ref is
+    // already on the registry, and inventing a different one would mean
+    // publishing something no commit describes.
     //
-    // `available: false` (shallow clone, missing SHA) deliberately falls
-    // through to the dev path: a transient git error must never silently
-    // promote to `latest`.
+    // `available: false` (shallow clone, missing SHA) deliberately means
+    // "do not publish": a transient git error must never promote to
+    // `latest`, and skipping is recoverable by dispatching the workflow.
     const previous = readPreviousRootVersion();
     const isReleaseBump =
       previous.available && previous.version !== baseVersion;
@@ -152,7 +136,12 @@ switch (eventName) {
       );
       result = { version: baseVersion, tag: "latest" };
     } else {
-      result = composeDevVersion(baseVersion, getLatestDevVersion());
+      console.log(
+        previous.available
+          ? "Root version unchanged by this push — nothing to publish."
+          : "Could not read the previous root version — not publishing.",
+      );
+      result = undefined;
     }
     break;
   }
@@ -161,6 +150,10 @@ switch (eventName) {
     throw new Error(`don't know how to handle event ${eventName}`);
 }
 
-console.log(`Resolved version:      ${result.version}`);
-console.log(`Resolved dist-tag:     ${result.tag}`);
-writeGitHubOutput(result);
+if (result === undefined) {
+  writeGitHubOutput(undefined, false);
+} else {
+  console.log(`Resolved version:      ${result.version}`);
+  console.log(`Resolved dist-tag:     ${result.tag}`);
+  writeGitHubOutput(result, true);
+}

@@ -1,6 +1,8 @@
 import { flagRuntime, type PositionalSpec, positionalRuntime } from "../args";
 import type { CommandFamily } from "../command-family";
 import type { AnyCommand } from "../commands";
+import { reservedConfigSectionName } from "../config-loader";
+import type { ConfigSection } from "../config-section";
 import type { EngineSpec } from "./engine";
 import { RESERVED_ALIASES, RESERVED_FLAG_NAMES } from "./shared-flags";
 
@@ -83,6 +85,14 @@ function validateExitCodes(path: string, def: AnyCommand): void {
   }
 }
 
+function validateSpawnDeclarations(path: string, def: AnyCommand): void {
+  if (def.needs.credentials === "child" && !def.maySpawn) {
+    throw constructionError(
+      `command '${path}' needs credentials for a child without declaring maySpawn (there is nothing to hand credentials to)`,
+    );
+  }
+}
+
 export interface CommandTreeEntry {
   readonly def: AnyCommand;
   readonly id: string;
@@ -162,6 +172,35 @@ function validateSectionOwnership(
   }
 }
 
+/** The config file's top-level keys are the declared section names, so
+ *  a section may only be named something the file format leaves free:
+ *  not `$`-prefixed (those are metadata — $prismaConfig is the version
+ *  marker, and a $meta key is deleted before the loader ever sees it),
+ *  and not `extends` (the key config loaders take as an instruction to
+ *  merge another file in). Both the families and the commands mounted
+ *  without one are checked: whoever declares the section, claiming a
+ *  reserved name is broken at build time, not at a user's runtime. */
+function validateConfigSectionNames(spec: EngineSpec): void {
+  for (const commandFamily of spec.commandFamilies) {
+    rejectReservedSectionName("command family", commandFamily.configSection);
+  }
+  for (const [path, def] of Object.entries(spec.commands)) {
+    rejectReservedSectionName(`command '${path}'`, def.needs.config);
+  }
+}
+
+function rejectReservedSectionName(
+  owner: string,
+  section: ConfigSection<unknown> | undefined,
+): void {
+  if (section === undefined || !reservedConfigSectionName(section.name)) {
+    return;
+  }
+  throw constructionError(
+    `${owner} declares config section '${section.name}', a name the config file reserves ('extends' is a config loader's merge directive, and '$'-prefixed keys are metadata)`,
+  );
+}
+
 function validateDocsBaseUrls(spec: EngineSpec): void {
   for (const commandFamily of spec.commandFamilies) {
     const base = commandFamily.docsBaseUrl;
@@ -179,12 +218,14 @@ export function buildCommandTree(spec: EngineSpec): CommandTreeNode {
     throw constructionError("createCli requires at least one mounted command");
   }
   validateDocsBaseUrls(spec);
+  validateConfigSectionNames(spec);
   const root = emptyNode();
   for (const path of paths) {
     const def = spec.commands[path];
     validateFlags(path, def);
     validatePositionals(path, def);
     validateExitCodes(path, def);
+    validateSpawnDeclarations(path, def);
     validateSectionOwnership(spec, path, def);
     const segments = path.split(" ");
     for (let depth = 1; depth < segments.length; depth += 1) {

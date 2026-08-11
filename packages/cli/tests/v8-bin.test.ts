@@ -1,3 +1,6 @@
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { Runtime } from "@prisma/cli-engine";
 import { describe, expect, it } from "vitest";
 
 import { CLIENT_ID, DEFAULT_REDIRECT_URI } from "../src/auth/client";
@@ -8,6 +11,17 @@ import {
   type HostProcess,
   makeOnSignal,
 } from "../src/v8/runtime";
+
+/** A real config file outside any test's cwd, so --config is the only
+ *  way to reach it. */
+const NAMED_CONFIG_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "fixtures",
+  "v8-config",
+  "elsewhere.config.ts",
+);
+
+const SEMVER_PREFIX = /^\d+\.\d+\.\d+/;
 
 function makeProcess(overrides?: {
   argv?: string[];
@@ -116,8 +130,14 @@ describe("assembleRuntime", () => {
     expect(runtime.cwd).toBe("/tmp/v8-bin-test-cwd");
     expect(runtime.isTty).toEqual({ stdin: true, stdout: true, stderr: false });
     expect(runtime.packageManager).toBeUndefined();
-    expect(runtime.config).toEqual({ sections: {}, diagnostics: [] });
     expect(runtime.managementApi).toEqual({ baseUrl: "https://api.prisma.io" });
+    // resolve, not join: the loader makes the path absolute, and on
+    // Windows that puts a drive on this cwd.
+    expect(await runtime.loadConfig()).toEqual({
+      path: join(resolve("/tmp/v8-bin-test-cwd"), "prisma.config.ts"),
+      sections: {},
+      diagnostics: [],
+    });
 
     runtime.stdout.write("out");
     runtime.stderr.write("err");
@@ -170,6 +190,23 @@ describe("assembleRuntime", () => {
     expect(proc.stderrText).toContain("PRISMA_COMPUTE_AUTH_FILE is deprecated");
     expect(proc.stderrText).toContain("PRISMA_AUTH_FILE");
   });
+
+  it("reads the file --config named, and reports its absence rather than returning an empty config", async () => {
+    const runtime = await assembleRuntime(makeProcess());
+
+    const found = await runtime.loadConfig(NAMED_CONFIG_PATH);
+    expect(found).toEqual({
+      path: NAMED_CONFIG_PATH,
+      sections: { toy: { greeting: "from the named file" } },
+      diagnostics: [],
+    });
+
+    const missing = await runtime.loadConfig(`${NAMED_CONFIG_PATH}.gone`);
+    expect(missing.sections).toEqual({});
+    expect(missing.diagnostics[0]?.diagnostic.code).toBe(
+      "CLI.CONFIG_NOT_FOUND",
+    );
+  }, 60_000);
 
   it("derives managementApi.baseUrl from PRISMA_MANAGEMENT_API_URL", async () => {
     const proc = makeProcess({
@@ -239,6 +276,77 @@ describe("buildCli", () => {
     expect(proc.stdoutText).toContain("auth");
   });
 
+  /** Counts the runs that actually asked for the config file, by
+   *  wrapping the runtime main() assembled before it reaches the CLI. */
+  async function runCountingConfigReads(argv: string[]): Promise<{
+    readonly exitCode: number;
+    readonly reads: number;
+    readonly proc: ReturnType<typeof makeProcess>;
+  }> {
+    const proc = makeProcess({ argv: ["node", "bin.js", ...argv] });
+    const real = buildCli();
+    let reads = 0;
+    const exitCode = await main(proc, () => ({
+      run: (runArgv, runtime, hooks) => {
+        const counting: Runtime = {
+          ...runtime,
+          loadConfig: (configPath) => {
+            reads += 1;
+            return runtime.loadConfig(configPath);
+          },
+        };
+        return real.run(runArgv, counting, hooks);
+      },
+    }));
+    return { exitCode, reads, proc };
+  }
+
+  it("a command with no config need never reads the config file", async () => {
+    const run = await runCountingConfigReads(["telemetry", "status"]);
+
+    expect(run.exitCode).toBe(0);
+    expect(run.reads).toBe(0);
+  });
+
+  it("accepts --config on a command that needs no config, and still does not read it", async () => {
+    const run = await runCountingConfigReads([
+      "telemetry",
+      "status",
+      "--config",
+      NAMED_CONFIG_PATH,
+    ]);
+
+    expect(run.exitCode).toBe(0);
+    expect(run.reads).toBe(0);
+  });
+
+  it("rejects --config= — the shape the parser cannot see as a flag", async () => {
+    const run = await runCountingConfigReads([
+      "telemetry",
+      "status",
+      "--config=",
+    ]);
+
+    expect(run.exitCode).toBe(2);
+    expect(run.proc.stdoutText).toContain("CLI.INVALID_ARGUMENTS");
+    expect(run.proc.stdoutText).toContain("--config needs a path");
+  });
+
+  it("lists --config among the global flags in help", async () => {
+    const proc = makeProcess({
+      argv: ["node", "bin.js", "telemetry", "status", "--help"],
+      isTty: { stdout: true },
+    });
+
+    const exitCode = await main(proc);
+
+    expect(exitCode).toBe(0);
+    expect(proc.stdoutText).toContain("--config");
+    expect(proc.stdoutText).toContain(
+      "Read this config file instead of ./prisma.config.ts",
+    );
+  });
+
   it("runs --version through the real tree, printing the version with exit 0", async () => {
     const proc = makeProcess({
       argv: ["node", "bin.js", "--version"],
@@ -248,7 +356,7 @@ describe("buildCli", () => {
     const exitCode = await main(proc);
 
     expect(exitCode).toBe(0);
-    expect(proc.stdoutText).toMatch(/^\d+\.\d+\.\d+/);
+    expect(proc.stdoutText).toMatch(SEMVER_PREFIX);
     expect(proc.stderrText).toBe("");
   });
 });

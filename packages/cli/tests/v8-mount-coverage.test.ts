@@ -1,0 +1,127 @@
+import { describe, expect, it } from "vitest";
+import { agentInstallCommand } from "../src/v8/agent/install";
+import { agentStatusCommand } from "../src/v8/agent/status";
+import { agentUpdateCommand } from "../src/v8/agent/update";
+import {
+  cliGroups,
+  mountedCommands,
+  platformCommandFamily,
+} from "../src/v8/cli";
+import { feedbackCommand } from "../src/v8/feedback";
+import { telemetryDisableCommand } from "../src/v8/telemetry/disable";
+import { telemetryEnableCommand } from "../src/v8/telemetry/enable";
+import { telemetryStatusCommand } from "../src/v8/telemetry/status";
+
+/**
+ * Commands that deliberately belong to no family: the shell's own
+ * consent surface, and the local utilities that contribute no config
+ * section and call no API.
+ */
+const FAMILYLESS: ReadonlySet<unknown> = new Set([
+  telemetryStatusCommand,
+  telemetryEnableCommand,
+  telemetryDisableCommand,
+  agentInstallCommand,
+  agentUpdateCommand,
+  agentStatusCommand,
+  feedbackCommand,
+]);
+
+/**
+ * Every path the v8 tree mounts, written out. The other assertions in
+ * this file compare the two maps only to each other, so deleting a
+ * command from both leaves them green; this is the one that fails when a
+ * command goes missing or its path is misspelled. Adding a command means
+ * adding its path here.
+ */
+const EXPECTED_MOUNT_PATHS: readonly string[] = [
+  "agent install",
+  "agent status",
+  "agent update",
+  "auth login",
+  "auth logout",
+  "auth whoami",
+  "auth workspace list",
+  "auth workspace logout",
+  "auth workspace use",
+  "branch list",
+  "bucket create",
+  "bucket delete",
+  "bucket key create",
+  "bucket key delete",
+  "bucket key list",
+  "bucket list",
+  "build logs",
+  "feedback",
+  "git connect",
+  "git disconnect",
+  "postgres backup list",
+  "postgres connection create",
+  "postgres connection list",
+  "postgres connection remove",
+  "postgres connection rotate",
+  "postgres create",
+  "postgres list",
+  "postgres remove",
+  "postgres restore",
+  "postgres show",
+  "postgres usage",
+  "project create",
+  "project env add",
+  "project env list",
+  "project env remove",
+  "project env update",
+  "project link",
+  "project list",
+  "project remove",
+  "project rename",
+  "project show",
+  "project transfer",
+  "service domain add",
+  "service domain remove",
+  "service domain retry",
+  "service domain show",
+  "service domain wait",
+  "service list-deploys",
+  "service open",
+  "service promote",
+  "service remove",
+  "service rollback",
+  "service show",
+  "service show-deploy",
+  "telemetry disable",
+  "telemetry enable",
+  "telemetry status",
+];
+
+describe("prisma-v8 mount coverage", () => {
+  it("mounts exactly the expected command paths", () => {
+    expect(Object.keys(mountedCommands).sort()).toEqual(EXPECTED_MOUNT_PATHS);
+  });
+
+  it("mounts every command in the platform family", () => {
+    const mounted = new Set(Object.values(mountedCommands));
+    const unmounted = Object.entries(platformCommandFamily.commands)
+      .filter(([, command]) => !mounted.has(command))
+      .map(([key]) => key);
+
+    expect(unmounted).toEqual([]);
+  });
+
+  it("gives every mounted command a family, except the deliberately familyless ones", () => {
+    const family = new Set(Object.values(platformCommandFamily.commands));
+    const unowned = Object.entries(mountedCommands)
+      .filter(([, command]) => !family.has(command) && !FAMILYLESS.has(command))
+      .map(([path]) => path);
+
+    expect(unowned).toEqual([]);
+  });
+
+  it("declares a group for every mount path prefix", () => {
+    const missing = Object.keys(mountedCommands)
+      .map((path) => path.split(" ").slice(0, -1).join(" "))
+      .filter((group) => group.length > 0 && !(group in cliGroups));
+
+    expect(missing).toEqual([]);
+  });
+});

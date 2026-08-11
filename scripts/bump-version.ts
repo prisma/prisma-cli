@@ -13,6 +13,13 @@
  * idempotent: re-running it without committing the previous bump
  * would otherwise read the *bumped* root version and double-advance.
  *
+ * The lockfile records `workspace:` specifiers, so rewriting them
+ * without regenerating it leaves the two disagreeing and any later
+ * `pnpm install --frozen-lockfile` fails. This script therefore
+ * refreshes the lockfile itself: the version bump is one commit that is
+ * internally consistent, which is the whole reason nothing rewrites a
+ * manifest outside a commit.
+ *
  * The caller (a maintainer, or tooling driving a release PR) is
  * responsible for branch creation, commit, and PR opening — see
  * docs/oss/versioning.md for the procedure.
@@ -55,6 +62,13 @@ console.log("");
 
 const setVersionScript = join(rootDir, "scripts", "set-version.ts");
 execFileSync("node", [setVersionScript, nextVersion], {
+  cwd: rootDir,
+  stdio: "inherit",
+});
+
+console.log("");
+console.log("Refreshing pnpm-lock.yaml to match the rewritten specifiers...");
+execFileSync("pnpm", ["install", "--lockfile-only"], {
   cwd: rootDir,
   stdio: "inherit",
 });

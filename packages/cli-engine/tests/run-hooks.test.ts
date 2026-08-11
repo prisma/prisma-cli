@@ -82,6 +82,7 @@ describe("RunHooks.onSettled", () => {
       { name: "confirm", source: "default" },
       { name: "interactive", source: "default" },
       { name: "color", source: "default" },
+      { name: "config", source: "default" },
       { name: "dry-run", source: "cli" },
       { name: "name", source: "cli" },
       { name: "count", source: "default" },

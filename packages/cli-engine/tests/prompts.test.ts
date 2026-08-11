@@ -492,7 +492,11 @@ describe("stdin cleanup", () => {
         throw new Error(`runtime.exit(${code})`);
       },
       onSignal: () => () => {},
-      config: { sections: {}, diagnostics: [] },
+      loadConfig: async () => ({
+        path: "/prisma.config.ts",
+        sections: {},
+        diagnostics: [],
+      }),
       managementApi: { baseUrl: "https://test.invalid" },
     };
 

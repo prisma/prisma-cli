@@ -90,11 +90,12 @@ Repo: prisma-cli. Give the platform's service resources an atomic CLI surface, r
 
 That makes the shape of the slice mostly a rename plus filling holes — a `service deployment` subgroup absorbing `list-deploys`, `show-deploy`, `logs`, `promote` and `rollback`, plus the five operations that have no command at all. The expensive parts (engine, auth, presenters, error model, the `service` rename) are done.
 
-**Why it still waits for the design work.** Three questions need answers that only S3 can give, and none of them is about whether the resources exist.
+**Why it still waits for the design work.** Four questions need answers, and none of them is about whether the resources exist. The first three are S3's to give; the fourth is for the engine and the Management API owners, because it asks what can open an authenticated log socket and whether one is needed at all.
 
 1. ~~Does Alchemy hold desired state?~~ **Answered (operator, 2026-08-10): yes, and changing the platform directly is overwritten on the next `composer deploy`. Accepted.** So the imperative operations stay, and their effect on a Composer-managed service is understood to be transient. What remains for the design is only whether the CLI says so at the point of use — a service the CLI can tell is Composer-managed could carry a line on `promote`, `rollback`, `start` and `stop` noting the next deploy reconciles it. That depends on question 2: whether the records carry anything identifying a service as Composer-managed.
 2. What do Composer's app and deployment records actually contain? If the Alchemy path populates a different subset of fields than `app deploy` did, `service show` and `service deployment show` are presenting a shape nobody has looked at.
 3. Where does log reading live? `composer log` and a `service deployment logs` would be two ways to read the same thing, and the project spec rules that a subgroup is owned by exactly one command family.
+4. **If log reading lands here, what opens the socket?** Added during S2c, which shelved `service logs` rather than ship it. Deployment logs are the one endpoint in the list that upgrades to a **WebSocket**, and the engine's client is HTTP-only, so the port had been taking a raw token and letting the compute SDK build the URL and set the `Authorization` header itself. The rev-6 credential model rules that out — credentials never reach commands, and `getCredentials` is now deleted — so the command cannot come back until the engine can open an authenticated socket. The design for that, written at the operator's instruction, is `assets/engine/websocket-transport-design.md`: the engine opens the socket and hands back a decoded record stream, with reconnection across the ten-minute cutoff owned by the engine rather than reimplemented per command. **Read its §7 before building anything** — if deployment logs can be served over plain HTTP the way `build logs` already is, the transport work disappears and the command becomes a copy of `build logs`. The shelved handler is reviewed, green, and in the `s2c-services` history, so restoring it is small once the transport question is answered.
 
 One standing caveat: every endpoint above is marked experimental and subject to change without notice. Designing a stable CLI surface over an unstable API is how the next bastardization gets built, so the design has to say what it is willing to depend on.
 
@@ -144,13 +145,32 @@ S6 (after S1) ─────────────► wired in during S3/S5
 S3 ──► S8 (design first) ───────────┘
 ```
 
+## Follow-ups parked on other work
+
+Recorded so they are not lost between slices.
+
+- **Restore the "what to run next" hints that pointed at `service
+  deploy`.** S2c dropped `service deploy` and `service build` (operator
+  ruling: they conflated local compiling with uploading a tarball, and
+  Composer supersedes them). Ten typed next actions in the surviving
+  service commands suggested running `service deploy`, and were removed
+  rather than left pointing at a command the binary no longer answers
+  to — `show`, `list-deploys`, `open`, `promote`, `rollback`, `remove`
+  and the domain commands now explain a failure without offering a
+  follow-up command. **Once Composer's deploy commands exist, add them
+  back pointing there** (operator instruction, 2026-08-10). The removal
+  is recorded in `assets/s2/parity-divergences-s2c.md`.
+- **`service logs` returns in S8**, once the engine can open an
+  authenticated socket. Shelved, not rejected — unlike `service deploy`,
+  which is not coming back in that shape.
+
 ## Coverage ledger (what proves what)
 
 | Engine surface | Proven by |
 | --- | --- |
 | Sync commands, presenters, envelopes, exit codes | S1, S2 |
 | Prompts (defaults, consent, wizard) | S2 (init) |
-| Poll + status events; output streams | S2 (domain wait; app/build logs) |
+| Poll + status events; output streams | S2 (domain wait; `build logs` — `service logs` moved to S8) |
 | Auth via context, refresh under long runs | S2, S3 (deploy) |
 | Config sections, command families, validator absence | S3, S5 |
 | Session commands, signal lifetime | S3 (dev, log) |

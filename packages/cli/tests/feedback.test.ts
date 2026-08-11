@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { executeCli } from "./helpers";
 
+const CLI_USER_AGENT_PREFIX = /^prisma-cli\//;
+
 interface ReceivedRequest {
   body: unknown;
   userAgent: string | undefined;
@@ -87,7 +89,7 @@ describe("feedback", () => {
         arch: process.arch,
       },
     });
-    expect(requests[0]?.userAgent).toMatch(/^prisma-cli\//);
+    expect(requests[0]?.userAgent).toMatch(CLI_USER_AGENT_PREFIX);
   });
 
   it("includes the email only when --email is passed", async () => {

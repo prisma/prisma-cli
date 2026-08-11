@@ -1,0 +1,505 @@
+# D3 design — bucket (6) + branch list + git (2)
+
+> **CONSENT SUPERSESSION (orchestrator amendment, 2026-08-10).** This
+> document was drafted before consent became engine-owned. Wherever a
+> section below still shows a per-command `confirm` flag or a
+> `*.CONFIRMATION_REQUIRED` mapper entry, conventions §5 wins — the
+> child doc may add detail, never contradict a rule. Concretely: §3.3
+> declares NO `confirm` flag (the engine injects the shared repeatable
+> `--confirm <value>`), and §2.1 drops `CONFIRMATION_REQUIRED` from the
+> bucket map because the engine's `CLI.CONSENT_REQUIRED` replaces it.
+> The affected lines are struck below at their own sites. D1 shipped
+> with a dead `PROJECT.CONFIRMATION_REQUIRED` row still in its mapper,
+> already recorded as unreachable in the divergence list; that residue
+> is not repeated here and D1 is not reopened for it.
+
+> **FOUR DETAILS PINNED (orchestrator, 2026-08-10).** The implementer
+> stopped on these rather than improvising, which was right. All four
+> are mechanical consistency choices with no legacy copy to violate, so
+> they are settled here and ratified through the divergence list at PR
+> review rather than blocking the dispatch.
+>
+> 1. **Positional placeholders** are the kebab-case form of the argument
+>    name: `bucketId` → `bucket-id`, `keyId` → `key-id`. This follows
+>    `gitUrl` → `git-url`, the one placeholder §3.8 already pins.
+> 2. **`bucket key create`'s field-row labels** are the environment
+>    variable names — `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`,
+>    `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`. Legacy human output had no
+>    field rows at all (fact sheet §5: only the two literal lines and
+>    the summary), so the rows are a v8 addition and no legacy label
+>    exists to port. The env-var names are the right labels because the
+>    list line immediately above them says to set these environment
+>    variables.
+> 3. **The git group's `--project` placeholder** is `id-or-name`, as the
+>    shipped project and postgres groups already use. Its brief,
+>    "Project id or name", was already pinned.
+> 4. **D3 divergence entries are numbered from 31**, continuing D2's
+>    sequence in the one shared file.
+
+Binding design for dispatch D3. Parent: `conventions.md`; template
+from D1. Grounding fact sheet: `facts/facts-d3-bucket-branch-git.md`
+(verbatim legacy extraction — part of this doc). Binding corrections
+to the inventory: bucket key create's stdout lines are
+`S3_ENDPOINT=` / `S3_ACCESS_KEY_ID=` / `S3_SECRET_ACCESS_KEY=` /
+`S3_BUCKET=` in that order; `branch list` resolution passes no
+commandName (its setup-required copy says "this command").
+
+## 1. Group mounting
+
+| group | brief |
+| --- | --- |
+| `bucket` | Manage object-store buckets for a project |
+| `bucket key` | Manage access keys for an object-store bucket |
+| `branch` | View your Platform branches |
+| `git` | Manage Git repository connections for a project |
+
+Mount paths `bucket list|create|delete`,
+`bucket key list|create|delete`, `branch list`,
+`git connect|disconnect`. Family keys `bucketList`, `bucketCreate`,
+`bucketDelete`, `bucketKeyList`, `bucketKeyCreate`,
+`bucketKeyDelete`, `branchList`, `gitConnect`, `gitDisconnect`.
+
+## 2. Shared machinery
+
+### 2.1 Error mappers
+
+`v8/bucket/errors.ts` (BUCKET.*), `v8/branch/errors.ts` (BRANCH.*),
+`v8/git/errors.ts` (GIT.*) per conventions §4. Complete maps:
+
+Bucket: `USAGE_ERROR` domain bucket (2) → `BUCKET.USAGE_ERROR`;
+~~`CONFIRMATION_REQUIRED` (2) → `BUCKET.CONFIRMATION_REQUIRED`~~
+(struck by the consent supersession above — the engine's
+`CLI.CONSENT_REQUIRED` replaces it, so the bucket map has no
+`CONFIRMATION_REQUIRED` row);
+`BUCKET_KEY_SECRET_MISSING` (1) → `BUCKET.KEY_SECRET_MISSING`;
+`BUCKET_API_ERROR` / passthrough X (1) → `BUCKET.API_ERROR` /
+`BUCKET.X`. Fixture-only `BUCKET_NOT_FOUND`, `BUCKET_KEY_NOT_FOUND`,
+`BRANCH_NOT_FOUND` (bucket domain) die with fixture machinery — no
+v8 entries (real mode passes API codes through; divergence entry).
+Project-resolution errors (bucket list/create) → `PROJECT.*` via
+D1's shared mapper. Workspace-required → `AUTH.USAGE_ERROR`.
+
+Branch: `BRANCH_API_ERROR` / passthrough X (1) → `BRANCH.API_ERROR`
+/ `BRANCH.X`; resolution family → `PROJECT.*`; workspace →
+`AUTH.USAGE_ERROR`.
+
+Git: `USAGE_ERROR` domain project raised by git commands (2) →
+`GIT.USAGE_ERROR`; `REPO_PROVIDER_UNSUPPORTED` (2) →
+`GIT.REPO_PROVIDER_UNSUPPORTED`; `REPO_ALREADY_CONNECTED` (1) →
+`GIT.REPO_ALREADY_CONNECTED`; `REPO_INSTALLATION_REQUIRED` (1) →
+`GIT.REPO_INSTALLATION_REQUIRED`; `REPO_NOT_ACCESSIBLE` (1) →
+`GIT.REPO_NOT_ACCESSIBLE`; `REPO_NOT_CONNECTED` (1) →
+`GIT.REPO_NOT_CONNECTED`; `REPO_CONNECTION_FAILED` (1) →
+`GIT.REPO_CONNECTION_FAILED` (status-aware fix text verbatim, incl.
+the 404/409/422 variants; meta `{status, apiCode?}`); legacy
+401/403 → `AUTH_REQUIRED`: the engine settles every real credentials
+failure itself, so a genuine sign-in problem never reaches this mapper
+— it becomes `CLI.CREDENTIALS_REQUIRED` before the handler runs. What
+does still arrive is the permission residue of a returned 403, and it
+maps mechanically to `GIT.AUTH_REQUIRED` like any unmapped code
+(corrected 2026-08-11: this line previously read "does not port",
+which contradicted divergence 40 and the shipped
+`v8-git.test.ts` case; divergence entry, same class as D1). Resolution family → `PROJECT.*` (with `commandName:
+"git connect"` / `"git disconnect"` preserved).
+
+All copy verbatim + conventions §0-substitutions (command strings →
+`${CLI_NAME} …`, `--trace` fix text, package-runner formatter
+dropped). `PROJECT_AMBIGUOUS`'s hardcoded `app deploy` nextStep
+ports verbatim (pre-existing quirk; divergence note, not a fix —
+consistent with D1).
+
+### 2.2 Operation calls
+
+- Bucket: `createManagementBucketProvider(ctx.api)` →
+  `listBuckets` / `createBucket` / `deleteBucket` / `listKeys` /
+  `createKey` / `deleteKey` (signatures per fact sheet S5).
+  `requireBucketContext` equivalent: workspace (conventions §3a) +
+  `resolveProjectTarget` with `commandName` `"bucket list"` /
+  `"bucket create"` — only for list/create. delete + all key
+  commands: provider only, NO workspace/project resolution (legacy
+  `requireBucketProviderOnly`).
+- Branch: `listBranches(ctx.api, projectId, ctx.signal)`
+  (controllers/branch.ts — export per D1 §0.4 rule); resolution via
+  `resolveProjectTarget` with NO explicitProject and NO commandName
+  (quirk ports verbatim).
+- Git: the flow functions in controllers/project.ts re-homed per
+  §3.8 below: `readGitOriginRemote`, `parseGitHubRepositoryUrl`,
+  `readFirstSourceRepository`, `listScmInstallations`,
+  `findRepositoryInInstallations`, `createGitHubInstallIntent`,
+  `toRepositoryConnection`, inline `ctx.api.POST/DELETE` on
+  source-repositories — imported/exported, not reimplemented.
+
+## 3. Per-command design
+
+Common: `needs: { credentials: true }`; data = legacy result minus
+`verboseContext`; no exitCodes.
+
+### 3.1 `bucket list` — `v8/bucket/list.ts`
+
+- help.summary `List object-store buckets for the resolved project`;
+  examples `bucket list`, `bucket list --branch preview`,
+  `bucket list --json`; flags `project`/`branch` (briefs `Project id
+  or name` / `Branch git name`).
+- Handler: workspace → resolve project (`"bucket list"`) →
+  `provider.listBuckets({ projectId, branchName, signal })`.
+- data `{ projectId, projectName, branchName: branchName ?? null,
+  buckets }`.
+- human: summary info `Listing object-store buckets for the resolved
+  project.`; fields `project:` (+ `branch:` when set); empty → list
+  `["No buckets found."]`; else table
+  `Name | Id | Status | Branch | Created` (Branch cell
+  `branchId ?? "unscoped"`).
+- stdout: table data rows tab-joined. json: legacy
+  `serializeBucketList` shape `{ context, items, count, projectId,
+  branchName, buckets }`. next: none.
+- Tests: success; empty; branch filter passthrough; resolution error
+  (`PROJECT.SETUP_REQUIRED`); json; unauth.
+
+### 3.2 `bucket create` — `v8/bucket/create.ts`
+
+- help.summary `Create an object-store bucket`; examples
+  `bucket create`, `bucket create --name my-store`,
+  `bucket create --branch preview --json`; flags `name:
+  flag.string({ brief: "Bucket display name (auto-generated if
+  omitted)", placeholder: "name" })`, `project`, `branch`.
+- Handler: workspace → resolve (`"bucket create"`) →
+  `provider.createBucket({ projectId, name: flags.name?.trim() ||
+  undefined, branchGitName: branchName, signal })`.
+- data `{ projectId, projectName, bucket }`.
+- human: summary ok `` Created bucket "${bucket.name}" in
+  ${projectName}[ / ${branchId}] `` (legacy `formatBucketTarget`;
+  the `Creating bucket...` progress line drops — d2 class).
+- stdout: none. json: strip shape. next: none.
+- Tests: success (named + auto-name/undefined passthrough); API
+  error passthrough → `BUCKET.<code>` exit 2; json; unauth.
+
+### 3.3 `bucket delete <bucketId>` — `v8/bucket/delete.ts` (consent)
+
+- help.summary `Delete a bucket and all its access keys`; example
+  `bucket delete bkt_123 --confirm bkt_123`; positional `bucketId`
+  (brief `Bucket id`). NO `confirm` flag is declared — the engine
+  injects the shared repeatable `--confirm <value>`, so the command
+  declares only the positional. (The struck draft text read: flag
+  `confirm: flag.string({ brief: "Exact bucket id to confirm
+  deletion", placeholder: "bucket-id" })`. Follow `postgres remove`
+  in `v8/postgres/remove.ts` for the shipped shape.)
+- Handler: blank id → `BUCKET.USAGE_ERROR` (`Bucket id required` /
+  `Bucket deletion needs a bucket id.` / nextActions from fix +
+  `${CLI_NAME} bucket list`); consent per conventions §5 (hold
+  lifted): `ctx.prompt.consent("Deleting this bucket permanently
+  removes all objects and access keys.", { token: id })`; then
+  provider-only → `provider.deleteBucket(id, { signal })`.
+- data `{ bucket: { id } }`.
+- human: summary ok `Deleting object-store bucket.`; fields
+  `bucket: id`; list `["Bucket and all its access keys were
+  removed."]`.
+- stdout: none. json: `{ bucket: { id } }`. next: none.
+- Tests: success; blank id; consent matrix (grant/deny/
+  non-interactive/cancel/mismatch); API error; json; unauth.
+
+### 3.4 `bucket key list <bucketId>` — `v8/bucket/key-list.ts`
+
+- help.summary `List access keys for a bucket`; examples per fact
+  sheet; positional `bucketId`.
+- Handler: blank → `BUCKET.USAGE_ERROR` (`Bucket key listing needs a
+  bucket id.`); provider-only → `provider.listKeys`.
+- data `{ bucketId, keys }`. human: summary info `Listing access
+  keys for bucket.`; fields `bucket: id`; empty → `["No keys
+  found."]`; table `Name | Id | Role | Hint | Created`.
+- stdout: table rows tab-joined. json: legacy shape `{ context:
+  { bucket }, items, count, bucketId, keys }`. next: none.
+- Tests: success; empty; blank id; json; unauth.
+
+### 3.5 `bucket key create <bucketId>` — `v8/bucket/key-create.ts` (secret)
+
+- help.summary `Create a bucket access key and print its one-time
+  credentials`; examples per fact sheet; positional `bucketId`;
+  flags `role: flag.enum({ brief: "Access role (default:
+  read_write)", values: ["read", "read_write"] })`, `name:
+  flag.string({ brief: "Key display name (auto-generated if
+  omitted)", placeholder: "name" })`.
+- Handler: blank id → usage error (`Bucket key creation needs a
+  bucket id.`); role via legacy `resolveKeyRole` semantics
+  (`role === "read" ? "read" : "read_write"`); provider-only →
+  `provider.createKey({ bucketId, name: trim-or-undefined, role,
+  signal })`.
+- data `{ bucketId, key, secretAccessKey, accessKeyId, endpoint,
+  bucketName }`.
+- human: summary ok `` Created key "${key.name}" for bucket
+  "${bucketName}". `` + list `["The credentials below are shown once
+  — copy them now.", "Set these environment variables to use this
+  bucket:"]` + fields block with the four rows, each
+  `sensitive: true` where secret (`S3_SECRET_ACCESS_KEY`,
+  `S3_ACCESS_KEY_ID`) and plain for endpoint/bucket.
+- stdout EXACTLY (order pinned):
+  `S3_ENDPOINT=${endpoint}`, `S3_ACCESS_KEY_ID=${accessKeyId}`,
+  `S3_SECRET_ACCESS_KEY=${secretAccessKey}`,
+  `S3_BUCKET=${bucketName}`.
+- json: result unchanged (secret included). next: none.
+- Tests: success (stdout bytes, masked rows, envelope secret);
+  role default (`--role` omitted → read_write on the wire); blank
+  id; credentials-missing → `BUCKET.KEY_SECRET_MISSING` copy
+  verbatim; json; unauth.
+
+### 3.6 `bucket key delete <bucketId> <keyId>` — `v8/bucket/key-delete.ts`
+
+- help.summary `Revoke and delete a bucket access key`; example per
+  fact sheet; positionals `bucketId`, `keyId` (briefs `Bucket id` /
+  `Key id`). NO confirm flag, no consent (legacy behavior;
+  divergence review note only).
+- Handler: either blank → `BUCKET.USAGE_ERROR` (`Bucket id and key
+  id required` copy verbatim, nextAction `${CLI_NAME} bucket key
+  list <bucketId>`); provider-only → `provider.deleteKey`.
+- data `{ key: { id } }`. human: summary ok `Deleting bucket access
+  key.`; fields `key: id`; list `["The access key was revoked and
+  removed."]`. stdout none; json `{ key }`; next none.
+- Tests: success; blank ids (each); API error; json; unauth.
+
+### 3.7 `branch list` — `v8/branch/list.ts`
+
+- help.summary `List Platform branches for the resolved project`;
+  examples `branch list`, `branch list --json`. NO args (no
+  `--project`; pin/durable resolution only — legacy).
+- Handler: workspace → `resolveProjectTarget` (no explicitProject,
+  no commandName — quirk verbatim) → `listBranches(ctx.api,
+  projectId, ctx.signal)` (cursor pagination to exhaustion,
+  production-first then name sort, `envMap = role` copy).
+- data `{ projectId, projectName, branches }`.
+- human: summary info `Listing branches for the resolved project.`;
+  fields `project:`; empty → `["No branches found."]`; table
+  `Name | Role | Env map`.
+- stdout: table rows tab-joined. json: `{ projectId, projectName,
+  branches }`. next: none.
+- Tests: success (sort proven: production first, then alphabetical);
+  pagination (two pages via fake client); empty; API-code
+  passthrough → `BRANCH.<code>`; unbound → `PROJECT.SETUP_REQUIRED`
+  with the "this command" why-variant; json; unauth.
+
+### 3.8 `git connect [git-url]` — `v8/git/connect.ts` (poll, R-S2b-7)
+
+- help.summary `Connect the resolved project to a GitHub
+  repository`; examples per fact sheet; positional `gitUrl:
+  positional.optionalString({ brief: "GitHub repository URL",
+  placeholder: "git-url" })`; flag `project`.
+- Handler flow (legacy runGitConnect, re-homed):
+  1. workspace → resolve project (`"git connect"`).
+  2. URL: positional ?? `readGitOriginRemote(ctx.cwd, ctx.signal)`;
+     none → `GIT.USAGE_ERROR` (copy verbatim);
+     `parseGitHubRepositoryUrl` null →
+     `GIT.REPO_PROVIDER_UNSUPPORTED`.
+  3. `readFirstSourceRepository(ctx.api, projectId, signal)`:
+     same-repo (case-insensitive) → idempotent success with the
+     existing connection; different repo →
+     `GIT.REPO_ALREADY_CONNECTED`.
+  4. Install resolution: `listScmInstallations` +
+     `findRepositoryInInstallations`; on miss,
+     `createGitHubInstallIntent` → installUrl.
+  5. **INTERACTION NEED REMOVED (operator ruling, 2026-08-11).**
+     `git connect` declares `needs: { credentials: true }` and nothing
+     more. The earlier ruling below — declare `needs.interaction` —
+     was made when the engine had no interaction error of its own and
+     the only alternative was a command reading TTY state, which is
+     banned. `prompt.browserWait` now refuses a non-interactive session
+     itself, naming the install URL, so the declaration bought nothing
+     and cost every scripted run that never reaches the wait: the
+     repository already connected, or the app already installed. Those
+     work again. A non-interactive run that does need the wait settles
+     the engine's `CLI.INTERACTION_REQUIRED`, which names the URL and
+     what to do. Everything else in step 5 stands.
+
+  5. **STEP 5 RESOLVED (orchestrator, 2026-08-10, after the operator
+     landed engine commit c463aa1).** The draft below was written
+     before `browserWait` existed and pinned three facts it could not
+     supply. All four points are now settled; where the draft text
+     conflicts, these win.
+     - **Interval: restored.** `BrowserWaitRequest` now takes an
+       optional `interval`, so the handler passes
+       `PRISMA_CLI_GITHUB_INSTALL_POLL_INTERVAL_MS` (default 2000)
+       as `interval` and `PRISMA_CLI_GITHUB_INSTALL_TIMEOUT_MS`
+       (default 120000) as `timeout`, both read from `ctx.env` with
+       the legacy positive-integer parsing (`readPositiveIntegerEnv`
+       semantics: a non-positive or unparseable value falls back to
+       the default). The design's test case asserting a 1ms interval
+       is writable as pinned — `createTestCli` takes a `delay` spy,
+       so assert the value the poll loop asked for, not elapsed time.
+     - **Events: one, not three.** The draft's `endpoint` → `status
+       waiting` → `status connected` sequence was a design error, not
+       an engine gap: legacy prints one wait line before the poll loop
+       and nothing during it (fact sheet §6, "no status re-print
+       during polling"), and has no "connected" line. The helper's
+       single `endpoint` event is exactly the legacy shape. Assert one
+       event. The three-event sequence is struck.
+     - **`opened`: dropped.** `browserWait` does not report whether
+       the browser opened, and it is not worth recovering: both legacy
+       branches existed to make sure the user had the install URL when
+       no browser opened, and the engine now always writes the URL
+       (`rendering.ts:50` in human mode, a frame in json). Use the
+       browser-opened wait sentence, "Waiting for GitHub App
+       installation or repository access approval...", as `message`,
+       and the browser-opened fix text on
+       `GIT.REPO_INSTALLATION_REQUIRED`, "Finish installing the GitHub
+       App in the browser, then rerun prisma-cli git connect." Drop
+       `opened` from both terminal errors' meta, leaving
+       `{ repository, installUrl }`. Divergence entry.
+     - **The install URL is an `open-url` action, not a
+       `run-command`.** `NextAction` now has an `open-url` kind and a
+       `url` field. In the git mapper, a `nextSteps` entry that is a
+       URL becomes `{ kind: "open-url", label: <the URL>, url: <the
+       URL> }`; command strings keep the `run-command` mapping. This
+       affects `GIT.REPO_INSTALLATION_REQUIRED` and
+       `GIT.REPO_NOT_ACCESSIBLE`, whose first next step is the raw
+       installUrl. Divergence entry; it supersedes entry 42, which
+       recorded the defect. **A `nextSteps` entry counts as a URL when
+       it starts with `https://` or `http://`** (pinned 2026-08-10):
+       the test is total, and no legacy command string in this slice
+       begins with a scheme, so nothing else can match it.
+
+     Draft text follows, superseded at the four points above.
+
+     Wait: OPERATOR RULING (2026-08-10, corrected) — `git connect`
+     declares `needs: { interaction: true }` (the EXISTING S2a
+     mechanism, execution/needs.ts): non-interactive runs fail
+     early, before the handler and any side effects, with the
+     engine's interaction-required error (exit 2). Commands and
+     helpers never read TTY/CI state. The interactive wait flow
+     ports against `ctx.prompt.browserWait` (landed, engine commit
+     6bb8452: `{ url, message, poll(signal), timeout }` — announce +
+     open through the runtime opener + poll on the engine clock;
+     timeout → structured timeout error; Ctrl-C → exit 3;
+     non-interactive → interaction-required with the URL, unreachable
+     here behind needs.interaction) — do not hand-roll polling.
+     Binding mapping onto the helper: url =
+     installUrl; poll predicate = "the GitHub App installation
+     exists" (re-list installations, `findRepositoryInInstallations`
+     match); interval/timeout from
+     `PRISMA_CLI_GITHUB_INSTALL_POLL_INTERVAL_MS` (default 2000) /
+     `PRISMA_CLI_GITHUB_INSTALL_TIMEOUT_MS` (default 120000) read
+     from ctx.env; announcement copy = the legacy wait line
+     verbatim. Outcomes: predicate satisfied → proceed to step 6;
+     timeout → the legacy terminal errors
+     (`GIT.REPO_NOT_ACCESSIBLE` when inspectableInstallationCount >
+     0, else `GIT.REPO_INSTALLATION_REQUIRED`; meta `{repository,
+     installUrl, opened}`). Non-interactive runs never reach the
+     handler at all (needs.interaction) — divergence entry: legacy
+     non-interactive `git connect` succeeded when the repo was
+     already reachable and errored with installUrl meta otherwise;
+     v8 fails every non-interactive run early with the engine's
+     interaction-required error (exit 2). Announce/open/poll events
+     and rendering are the HELPER'S — the handler emits no
+     endpoint/status events of its own. Exact call surface: bind to
+     the landed helper's API at merge-down; any mismatch with this
+     mapping is a STOP, not an adaptation.
+  6. `ctx.api.POST("/v1/source-repositories", { body: { projectId,
+     provider: "github", providerRepositoryId, installationId },
+     signal })`; error → `GIT.REPO_CONNECTION_FAILED` family.
+- data: `{ workspace, project, resolution, repositoryConnection }`
+  (legacy raw shape — it had no serializer; ports as-is).
+- human: summary ok `Connecting Git to the resolved project.`;
+  fields `project`, `workspace`, `repository` (fullName), `status`;
+  list `[<formatGitConnectionDetail(status) verbatim>]`.
+- stdout: none. json: result unchanged. next: none.
+- Tests: explicit-url success; origin-remote fallback (fake
+  `readGitOriginRemote` via cwd-scoped temp git config is NOT used —
+  mock the exported function via vi.mock on its module);
+  no-url usage error; non-GitHub URL; already-connected idempotent
+  success; different-repo conflict; installation-required (meta
+  asserted); not-accessible; poll-then-found
+  (the single `endpoint` event asserted — the struck three-event
+  sequence is superseded by STEP 5 RESOLVED above, which this bullet
+  now follows; fake client scripted across two list calls; interval
+  env set to 1ms); poll timeout; connection-failed 409 fix text;
+  json; unauth.
+- Test-list amendment (orchestrator, 2026-08-10): because `git
+  connect` declares `needs: { interaction: true }`, every case that
+  reaches the handler must run interactively. The draft's
+  "installation-required (non-interactive, meta asserted)" case could
+  never reach the handler, so it is corrected above to an interactive
+  case. Add exactly one case in its place: a non-interactive run
+  settles the engine's interaction-required error at exit 2 before
+  any API call, proven by the fake client recording zero calls. That
+  case is the test of divergence §4.3.
+
+### 3.9 `git disconnect` — `v8/git/disconnect.ts`
+
+- help.summary `Disconnect the GitHub repository from the resolved
+  project`; examples per fact sheet; flag `project`.
+- Handler: workspace → resolve (`"git disconnect"`) →
+  `readFirstSourceRepository`; none → `GIT.REPO_NOT_CONNECTED`
+  (copy verbatim); else `ctx.api.DELETE
+  ("/v1/source-repositories/{id}")`; error →
+  `GIT.REPO_CONNECTION_FAILED` family. No confirmation (legacy).
+- data: `{ workspace, project, resolution, repositoryConnection:
+  <the removed connection> }`.
+- human: summary ok `Disconnecting Git from the resolved project.`;
+  fields `project`, `workspace`, `repository`; list `["GitHub branch
+  automation is no longer active for this project."]`.
+- stdout none; json raw; next none.
+- Tests: success; not-connected; API error; json; unauth.
+- Test-list amendment (orchestrator, 2026-08-10, from review finding
+  D3-R1-01): the single "API error" case becomes two, because
+  `repoConnectionFixForStatus` has two arms and one case can only reach
+  one of them. Keep the 422 case asserting its status-specific fix text,
+  and add a case with a status that has no variant (500), which reaches
+  the default arm — the only place in the git group where the `--trace`
+  to `--log-level verbose` substitution of conventions §0 fires. Without
+  it that substitution is untested here.
+
+### 3.8a Dependencies — RESOLVED (merge-down 2026-08-10)
+
+browserWait, ctx.openUrl, and consent tokens are all landed (engine
+commit 6bb8452). Nothing in D3 waits; no reordering. The timeout
+error browserWait raises on poll expiry replaces the handler-side
+timeout branch: catch it and settle the legacy terminal errors
+(`GIT.REPO_NOT_ACCESSIBLE` / `GIT.REPO_INSTALLATION_REQUIRED`) per
+§3.8 step 5.
+
+## 4. Divergence entries this dispatch adds
+
+D2 classes 2/3/4/7/8/9/10/11 apply, plus:
+1. Bucket delete consent prompt added (flag-only legacy) — pinned
+   question, OPERATOR DECISION 2.
+2. Fixture-only BUCKET_NOT_FOUND / BUCKET_KEY_NOT_FOUND /
+   BRANCH_NOT_FOUND die; real-mode API codes pass through as
+   `BUCKET.<code>`.
+3. git connect: declares needs.interaction — ALL non-interactive
+   runs fail early with the engine's interaction-required error
+   (exit 2), including the legacy non-interactive success case
+   (repo already reachable) and the legacy immediate REPO_* errors
+   with installUrl meta; the interactive wait flow moves onto the
+   engine's browser-wait helper (its announce/open/poll surface
+   replaces the legacy stderr wait line).
+4. git connect/disconnect keep their serializer-less raw json result
+   (resolution object included) — unchanged, recorded for review
+   since other groups strip it.
+5. 401/403 → `CLI.CREDENTIALS_REQUIRED` class (as D1).
+6. `bucket key create --role`: engine enum error replaces commander
+   choices error.
+
+## 5. Legacy test deletion (this dispatch)
+
+Delete fixture-mode cases covering these 9 commands from
+`bucket.test.ts` and `branch.test.ts` (whole files if nothing else
+remains). git connect/disconnect fixture cases live in
+`project.test.ts` / `project-real-mode.test.ts` — delete only the
+git-command cases; `git-adapter.test.ts` (URL parsing units) stays.
+
+Amendment (orchestrator, 2026-08-10, once step 5 landed): D3 kept four
+`project-real-mode.test.ts` cases because `git connect`'s wait was
+unported. Three now have v8 equivalents and are deleted — "creates an
+install intent when the workspace has no GitHub App installation",
+"waits for GitHub App installation in interactive mode and connects
+after approval", and "returns REPO_NOT_ACCESSIBLE when the GitHub App
+cannot see the repository". The fourth stays: "creates an install
+intent when the stored GitHub App installation is unavailable" drives
+a stored installation answering 422 and being skipped inside
+`findRepositoryInInstallations`, a helper v8 calls and does not
+otherwise exercise. Same rule as the D2 provider unit tests — a
+command-level case for a ported command goes, a unit test for a
+surviving helper stays. The two pagination cursor-stall guards stay
+for the same reason.
+`branch-controller.test.ts` / `branch-usecases.test.ts` /
+`read-branch.test.ts` / `local-branch.test.ts` stay until S2d.
+
+## 6. Conformance rows
+
+One row per command in `assets/s2/parity-divergences-s2b.md`.

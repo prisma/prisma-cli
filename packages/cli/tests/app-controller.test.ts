@@ -12,6 +12,8 @@ import {
 } from "./helpers/mock-factories";
 import { writeSkillsLockWithSkill } from "./helpers/skills-lock";
 
+const EMPTY_BRANCH_MESSAGE = /branch value cannot be empty/i;
+
 beforeEach(() => {
   process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_ID = "proj_123";
   process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME = "Acme Dashboard";
@@ -7100,7 +7102,7 @@ describe("app controller", () => {
 
     await expect(
       runAppRemove(context, "hello-world", undefined, undefined, "   "),
-    ).rejects.toThrow(/branch value cannot be empty/i);
+    ).rejects.toThrow(EMPTY_BRANCH_MESSAGE);
     expect(listApps).not.toHaveBeenCalled();
     expect(removeApp).not.toHaveBeenCalled();
   });

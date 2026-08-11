@@ -7,31 +7,43 @@ import { type PositionalSpec, positionalRuntime } from "../args";
 import type { CommandFamily, MountedTree } from "../command-family";
 import type { AnyCommand } from "../commands";
 import type { CommandContext } from "../context";
+import type { ActiveCredential } from "../credential-manager";
 import type { EngineEvent, Severity, StreamEvent } from "../events";
 import type { ManagementApiClient } from "../management-api";
 import type { Format, PresentedResult } from "../presentation";
-import type { CliStructuredError, Result } from "../protocol";
+import { CliStructuredError, type Result } from "../protocol";
 import type { EngineCommandSnapshot, RunSummary } from "../run-summary";
 import type { InputStream, Runtime } from "../runtime";
+import { type ChildStatusSettlement, isChildStatusSettlement } from "../spawn";
 import { type CommandCapabilities, makeContext } from "./command-context";
 import { buildCommandSnapshot } from "./command-snapshot";
 import { buildCommandTree, type CommandTreeEntry } from "./command-tree";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import {
   settleBug,
+  settleChildStatus,
   settleCompleted,
   settleErrored,
   settleSessionCompleted,
   settleThrown,
   settleUnhandled,
+  settleVerbatimExitCode,
   settleVersion,
 } from "./settlement";
 import {
   applySharedFlags,
   defaultInteractive,
+  emptyConfigAssignment,
+  emptyConfigAssignmentError,
+  explicitFormat,
   type SharedFlags,
   sniffFormat,
 } from "./shared-flags";
+import {
+  type DelegatedTerminal,
+  endAbandonedChild,
+  recordSignalDuringSpawn,
+} from "./spawn";
 import {
   buildRoutes,
   capturingText,
@@ -85,6 +97,8 @@ export interface RunState {
   confirmValues: string[];
   interactive: boolean;
   colorEnabled: boolean;
+  /** The file `--config` named, if the run named one. */
+  configPath: string | undefined;
   resolved: boolean;
   settledExitCode: number | undefined;
   usageErrorText: string | undefined;
@@ -99,6 +113,21 @@ export interface RunState {
   /** The value-free snapshot captured when a command mounted;
    *  undefined for runs that never reached one (help, usage errors). */
   snapshot: EngineCommandSnapshot | undefined;
+  /** Set while ctx.spawn is awaiting a child that owns the terminal:
+   *  signals are recorded rather than acted on, and commentary is
+   *  buffered. */
+  delegatedTerminal: DelegatedTerminal | undefined;
+  /** How many prompts are reading the terminal. Claimed before a
+   *  prompt's first await, so an unawaited prompt still blocks
+   *  ctx.spawn from handing the same terminal to a child. */
+  activePrompts: number;
+  /** A signal past the first delivery recorded during a live child,
+   *  replayed as the force exit once the run has settled. */
+  pendingForceExit: "SIGINT" | "SIGTERM" | undefined;
+  /** The credential the needs check resolved for a
+   *  `credentials: "child"` command, carried to the spawn path so it
+   *  is never re-resolved. */
+  spawnCredential: ActiveCredential | undefined;
 }
 
 export interface Invocation {
@@ -113,6 +142,12 @@ export interface Invocation {
   /** The engine-owned abort signal behind ctx.signal, fed by the
    *  runtime's signal subscription. */
   readonly signal: AbortSignal;
+  /** Every config section name the mounted command families declare —
+   *  the closed set of top-level keys prisma.config.ts may contain. */
+  readonly configSections: readonly string[];
+  /** The engine's whole signal policy, reachable so ctx.spawn can
+   *  replay recorded signals through exactly the delivered path. */
+  readonly deliverSignal: (signal: "SIGINT" | "SIGTERM") => void;
 }
 
 export function buildEngine(
@@ -148,7 +183,9 @@ type ErasedHandler = (
     readonly positionals: Record<string, unknown>;
   },
   ctx: CommandContext<unknown, number>,
-) => Promise<Result<PresentedResult<unknown>, CliStructuredError>>;
+) => Promise<
+  Result<PresentedResult<unknown> | ChildStatusSettlement, CliStructuredError>
+>;
 
 type ErasedSessionHandler = (
   args: {
@@ -156,7 +193,7 @@ type ErasedSessionHandler = (
     readonly positionals: Record<string, unknown>;
   },
   ctx: CommandContext<unknown, number>,
-) => Promise<Result<void, CliStructuredError>>;
+) => Promise<Result<undefined | ChildStatusSettlement, CliStructuredError>>;
 
 type ErasedServerHandler = (
   args: {
@@ -179,6 +216,7 @@ export class EngineImpl implements Engine {
   private readonly root: StricliRouteMap<EngineRunContext>;
   private readonly now: () => Date;
   private readonly delay: (ms: number, signal: AbortSignal) => Promise<void>;
+  private readonly configSections: readonly string[];
 
   constructor(
     spec: EngineSpec,
@@ -188,6 +226,7 @@ export class EngineImpl implements Engine {
     this.spec = spec;
     this.now = now;
     this.delay = delay;
+    this.configSections = declaredConfigSections(spec);
     this.root = buildRoutes(
       spec,
       buildCommandTree(spec),
@@ -213,6 +252,7 @@ export class EngineImpl implements Engine {
       confirmValues: [],
       interactive: defaultInteractive(runtime),
       colorEnabled: false,
+      configPath: undefined,
       resolved: false,
       settledExitCode: undefined,
       usageErrorText: undefined,
@@ -221,18 +261,30 @@ export class EngineImpl implements Engine {
       stdinIterator: undefined,
       argv,
       snapshot: undefined,
+      delegatedTerminal: undefined,
+      activePrompts: 0,
+      pendingForceExit: undefined,
+      spawnCredential: undefined,
     };
     const startedAtMs = this.now().getTime();
     const controller = new AbortController();
     let signalDelivered = false;
-    const unsubscribe = runtime.onSignal((signal) => {
+    /** The engine neither aborts nor exits while a child owns the
+     *  terminal: it records, and the affordance replays on child exit,
+     *  so the engine always outlives the child. */
+    const deliverSignal = (signal: "SIGINT" | "SIGTERM"): void => {
+      if (state.delegatedTerminal !== undefined) {
+        recordSignalDuringSpawn(state.delegatedTerminal, signal);
+        return;
+      }
       if (signalDelivered) {
         runtime.exit(signal === "SIGTERM" ? 143 : 130);
         return;
       }
       signalDelivered = true;
       controller.abort(signal);
-    });
+    };
+    const unsubscribe = runtime.onSignal(deliverSignal);
     const invocation: Invocation = {
       runtime,
       hooks: { ...hooks },
@@ -240,10 +292,17 @@ export class EngineImpl implements Engine {
       delay: this.delay,
       state,
       signal: controller.signal,
+      configSections: this.configSections,
+      deliverSignal,
     };
     if (versionRequested(argv)) {
       unsubscribe();
       return settleVersion(this.spec, invocation);
+    }
+    if (emptyConfigAssignment(argv)) {
+      unsubscribe();
+      settleErrored(invocation, emptyConfigAssignmentError());
+      return 2;
     }
     const stricliProcess = {
       /** stricli writes only help text here. In json mode stdout carries
@@ -287,6 +346,9 @@ export class EngineImpl implements Engine {
         ? state.settledExitCode
         : settleUnhandled(this.spec, invocation, stricliProcess.exitCode);
     this.fireOnSettled(invocation, exitCode, startedAtMs);
+    if (state.pendingForceExit !== undefined) {
+      runtime.exit(state.pendingForceExit === "SIGTERM" ? 143 : 130);
+    }
     return exitCode;
   }
 
@@ -335,9 +397,30 @@ export class EngineImpl implements Engine {
       await this.executeServer(invocation, entry, rawFlags);
       return;
     }
+    if (entry.def.maySpawn && explicitFormat(state.argv) === "json") {
+      state.format = "human";
+      settleErrored(invocation, jsonUnsupportedError(entry.id));
+      return;
+    }
+    if (entry.def.maySpawn && invocation.runtime.spawn === undefined) {
+      // A host that mounts a maySpawn command and supplies no adapter
+      // is misconfigured; the run is doomed and refuses here, before
+      // the needs check, rather than mid-handler after side effects.
+      state.format = "human";
+      settleBug(
+        invocation,
+        new Error(
+          `@prisma/cli-engine: command '${entry.id}' declares maySpawn but the Runtime supplies no spawn adapter`,
+        ),
+      );
+      return;
+    }
     let needsOutcome: NeedsOutcome;
     try {
       applySharedFlags(state, rawFlags as SharedFlags, invocation.runtime);
+      if (entry.def.maySpawn) {
+        state.format = "human";
+      }
       needsOutcome = await checkNeeds(entry.def, invocation);
     } catch (cause) {
       settleBug(invocation, cause);
@@ -351,6 +434,7 @@ export class EngineImpl implements Engine {
       settleBug(invocation, needsOutcome.cause);
       return;
     }
+    state.spawnCredential = needsOutcome.spawnCredential;
     const handler: unknown = entry.def.handler;
     const args = {
       flags: declaredFlags(entry.def, rawFlags),
@@ -358,19 +442,28 @@ export class EngineImpl implements Engine {
     };
     const ctx = makeContext(
       invocation,
+      entry.def,
       needsOutcome.config,
       declaredCapabilities(entry.def),
     );
     if (entry.def.kind === "session-command") {
       try {
         const result = await (handler as ErasedSessionHandler)(args, ctx);
+        if (await this.settleAbandonedChild(invocation, false)) {
+          return;
+        }
         state.resolved = true;
-        if (result.ok) {
-          settleSessionCompleted(invocation);
-        } else {
+        if (!result.ok) {
           settleErrored(invocation, result.failure);
+        } else if (isChildStatusSettlement(result.value)) {
+          settleChildStatus(invocation, entry.def, result.value);
+        } else {
+          settleSessionCompleted(invocation);
         }
       } catch (cause) {
+        if (await this.settleAbandonedChild(invocation, true, cause)) {
+          return;
+        }
         state.resolved = true;
         settleThrown(invocation, cause);
       }
@@ -378,16 +471,52 @@ export class EngineImpl implements Engine {
     }
     try {
       const result = await (handler as ErasedHandler)(args, ctx);
+      if (await this.settleAbandonedChild(invocation, false)) {
+        return;
+      }
       state.resolved = true;
-      if (result.ok) {
-        settleCompleted(invocation, entry.def, result.value);
-      } else {
+      if (!result.ok) {
         settleErrored(invocation, result.failure);
+      } else if (isChildStatusSettlement(result.value)) {
+        settleChildStatus(invocation, entry.def, result.value);
+      } else {
+        settleCompleted(invocation, entry.def, result.value);
       }
     } catch (cause) {
+      if (await this.settleAbandonedChild(invocation, true, cause)) {
+        return;
+      }
       state.resolved = true;
       settleThrown(invocation, cause);
     }
+  }
+
+  /** The handler resolved or threw with its child still live. The
+   *  engine ends that child — SIGTERM, the ruled grace period, then
+   *  SIGKILL — and waits for it to exit before settling the run as a
+   *  construction error, so no run finishes under a live child. */
+  private async settleAbandonedChild(
+    invocation: Invocation,
+    threw: boolean,
+    cause?: unknown,
+  ): Promise<boolean> {
+    const state = invocation.state;
+    const terminal = state.delegatedTerminal;
+    if (terminal === undefined) {
+      return false;
+    }
+    await endAbandonedChild(terminal);
+    state.resolved = true;
+    const how = threw
+      ? ` (the handler threw: ${String(cause instanceof Error ? cause.message : cause).split("\n")[0]})`
+      : "";
+    settleBug(
+      invocation,
+      new Error(
+        `@prisma/cli-engine: command '${state.commandId}' resolved while a child was still live — a handler must stay suspended on the ctx.spawn promise until the child ends${how}`,
+      ),
+    );
+    return true;
   }
 
   /** The stdio handoff: a foreign client owns the conversation, so the
@@ -437,11 +566,49 @@ export class EngineImpl implements Engine {
         );
         return;
       }
-      state.settledExitCode = exitCode;
+      settleVerbatimExitCode(invocation, exitCode);
     } catch (cause) {
       settleThrown(invocation, cause);
     }
   }
+}
+
+/** The closed set of config section names. Every mounted command
+ *  contributes the section it needs, whether it reaches the tree
+ *  through a command family or on its own — the shell mounts its own
+ *  commands with no family, and a section the CLI cannot name is a
+ *  section its own command could never read. Every other top-level key
+ *  in prisma.config.ts is reported by the config needs check. */
+function declaredConfigSections(spec: EngineSpec): readonly string[] {
+  return [
+    ...new Set(
+      [
+        ...spec.commandFamilies.map(
+          (commandFamily) => commandFamily.configSection?.name,
+        ),
+        ...Object.values(spec.commands).map((def) => def.needs.config?.name),
+      ].filter((name): name is string => name !== undefined),
+    ),
+  ];
+}
+
+/** A command that may hand the terminal to a child cannot frame its
+ *  output, so json is refused as soon as the command is known — before
+ *  the needs check and before anything runs. */
+function jsonUnsupportedError(commandId: string): CliStructuredError {
+  return new CliStructuredError(
+    "CLI.JSON_UNSUPPORTED",
+    `The '${commandId.replaceAll(".", " ")}' command does not support json output.`,
+    {
+      why: "It hands the terminal to another program, whose output cannot be framed as a json stream.",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label: "Run it without --json or --format json.",
+        },
+      ],
+    },
+  );
 }
 
 function versionRequested(argv: readonly string[]): boolean {

@@ -19,6 +19,7 @@ import {
 } from "../auth/state-file";
 import { fetchWorkspaceName } from "../auth/workspace-name";
 import { runPackageManager } from "./package-manager-runner";
+import { spawnChild } from "./spawn";
 
 export type SignalProcess = Pick<HostProcess, "on" | "off" | "exit">;
 
@@ -81,7 +82,7 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
     },
     exit: (code) => proc.exit(code),
     onSignal: makeOnSignal(proc),
-    config: await loadConfig(proc.cwd()),
+    loadConfig: (configPath) => loadConfig(proc.cwd(), configPath),
     credentialManager: new FileCredentialManager({
       env: proc.env,
       fetchWorkspaceName: fetchWorkspaceName(apiBaseUrl),
@@ -92,6 +93,7 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       apiBaseUrl,
       authBaseUrl: getAuthBaseUrl(proc.env),
     },
+    spawn: spawnChild,
     openUrl: async (url) => {
       await open(url);
     },

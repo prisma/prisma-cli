@@ -1,3 +1,4 @@
+import type { AnyCommand } from "../commands";
 import type { CommandContext } from "../context";
 import type {
   ActiveCredential,
@@ -13,12 +14,14 @@ import {
 } from "../presentation";
 import { type Diagnostic, notOk, okVoid } from "../protocol";
 import { buildManagementApiClient } from "./api-client";
+import { constructionError } from "./command-tree";
 import type { Invocation, RunState } from "./engine";
 import { dependencyResolvable, missingDependencyError } from "./needs";
 import { announceUrl } from "./open-url";
 import { makePackageOperations } from "./package-operations";
 import { makePromptSurface } from "./prompts";
 import { reportEvent } from "./reporting";
+import { makeSpawn } from "./spawn";
 
 export function makeUi(colorEnabled: boolean): Ui {
   if (!colorEnabled) {
@@ -67,6 +70,7 @@ export interface CommandCapabilities {
 
 export function makeContext(
   invocation: Invocation,
+  def: AnyCommand,
   config: unknown,
   capabilities: CommandCapabilities,
 ): CommandContext<unknown, number> {
@@ -80,6 +84,11 @@ export function makeContext(
     },
     presentations: Presentations,
   ): PresentedResult<T> => {
+    if (state.delegatedTerminal !== undefined) {
+      throw constructionError(
+        `command '${state.commandId}' called ctx.present while a child owned the terminal`,
+      );
+    }
     const exitCode = outcome.exitCode ?? 0;
     const diagnostics = outcome.diagnostics ?? [];
     if (
@@ -111,6 +120,7 @@ export function makeContext(
         buildManagementApiClient(invocation);
       return api;
     },
+    spawn: makeSpawn(invocation, def),
     report: (event) => reportEvent(invocation, event),
     prompt: makePromptSurface(invocation),
     openUrl: (request) => announceUrl(invocation, request),

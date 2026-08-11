@@ -3,12 +3,15 @@ name: Publish to npm
 # Source-of-truth model (ported from prisma/prisma; see
 # docs/oss/versioning.md):
 #   The version comes from the root `package.json` `version` field.
-#   Maintainers advance it via `pnpm bump-version`. This workflow can
-#   never publish a version other than what is committed at HEAD.
+#   Maintainers advance it via `pnpm bump-version`, which writes it
+#   across the workspace and is committed. This workflow can never
+#   publish a version other than what is committed at HEAD, and never
+#   rewrites a manifest to get there.
 #
 # Trigger model:
-#   - push to `main` with the root `version` unchanged → publish
-#     `<base>-dev.N` under dist-tag `dev`.
+#   - push to `main` with the root `version` unchanged → nothing to
+#     publish; the committed version is already on the registry. Use
+#     the per-PR pkg.pr.new previews to try an unreleased build.
 #   - push to `main` with the root `version` changed   → publish `<base>`
 #     under dist-tag `latest` and create a GitHub Release (marked
 #     pre-release for RC-line versions like `8.0.0-rc.N`). `latest`
@@ -97,13 +100,12 @@ jobs:
           PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: node scripts/determine-version.ts
 
-      - name: Set package versions
-        run: node scripts/set-version.ts "${{ steps.version.outputs.version }}"
-
       - name: Build packages
+        if: ${{ steps.version.outputs.publish == 'true' }}
         run: pnpm build
 
       - name: Run script tests
+        if: ${{ steps.version.outputs.publish == 'true' }}
         run: pnpm test:scripts
 
       # NODE_AUTH_TOKEN is intentionally NOT set. npm detects the OIDC
@@ -113,8 +115,8 @@ jobs:
       #
       # `pnpm publish` (not `npm publish`) so `workspace:<version>`
       # specifiers are rewritten to exact versions in the published
-      # manifest. `--no-git-checks` because the version stamp above
-      # dirties the tree by design.
+      # manifest. `--no-git-checks` because the packing step touches the
+      # tree; the version itself is whatever the commit says.
       #
       # Publish order: the engine first, then the cli that depends on it.
 
@@ -123,13 +125,13 @@ jobs:
       # registry. Use from any branch via `workflow_dispatch` to validate
       # changes that affect publishing before merging.
       - name: Publish packages (dry-run)
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry-run == 'true' }}
+        if: ${{ steps.version.outputs.publish == 'true' && github.event_name == 'workflow_dispatch' && github.event.inputs.dry-run == 'true' }}
         run: |
           pnpm --filter @prisma/cli-engine publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks --dry-run
           pnpm --filter @prisma/cli publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks --dry-run
 
       - name: Publish packages
-        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true' }}
+        if: ${{ steps.version.outputs.publish == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true') }}
         env:
           NPM_CONFIG_PROVENANCE: "true"
         run: |
@@ -146,7 +148,7 @@ jobs:
       # exists (e.g. a previous run published to npm but failed before this
       # step), edit it in place rather than re-creating it.
       - name: Create GitHub Release for latest publishes
-        if: ${{ steps.version.outputs.tag == 'latest' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true') }}
+        if: ${{ steps.version.outputs.publish == 'true' && steps.version.outputs.tag == 'latest' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}

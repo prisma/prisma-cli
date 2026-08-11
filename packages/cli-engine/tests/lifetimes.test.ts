@@ -16,12 +16,7 @@ import {
   defineSessionCommand,
   type Runtime,
 } from "@prisma/cli-engine";
-import {
-  CliStructuredError,
-  notOk,
-  ok,
-  okVoid,
-} from "@prisma/cli-engine/protocol";
+import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
 import { createTestCli } from "@prisma/cli-engine/testing";
 import { describe, expect, test } from "vitest";
 
@@ -49,7 +44,7 @@ describe("session commands", () => {
         severity: "info",
         text: "shutting down",
       });
-      return okVoid();
+      return ok(undefined);
     },
   });
 
@@ -186,7 +181,11 @@ describe("the engine owns the double-signal policy", () => {
           subscriber = undefined;
         };
       },
-      config: { sections: {}, diagnostics: [] },
+      loadConfig: async () => ({
+        path: "/prisma.config.ts",
+        sections: {},
+        diagnostics: [],
+      }),
       managementApi: { baseUrl: "https://test.invalid" },
     };
     return {

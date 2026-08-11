@@ -161,33 +161,17 @@ dependency subtrees behind execution-time imports.
 
 ### R10 — One config file, validated by its products, never a crash
 
-The engine discovers and evaluates one `prisma.config.ts`. Each product
-contributes a named section and a never-throwing validator; validation
-produces per-section diagnostics, and a command fails only if a section it
-needs is invalid. "Never a crash" covers loading too: a file that fails to
-import or evaluate — a syntax error, a throwing top-level statement — is
-caught by the engine and surfaced as a typed file-level diagnostic naming
-the config path, never a stack trace.
+The engine reads one config file, and it reads it only when the running command needs it. A command declares the section it needs; a run whose command declares none never opens the file, never pays for the loader, and cannot be failed by a broken config. Each product contributes a named section and a never-throwing validator; validation produces per-section diagnostics, and a command fails only if a section it needs is invalid. "Never a crash" covers loading too: a file that fails to import or evaluate — a syntax error, a throwing top-level statement — is caught by the engine and surfaced as a typed file-level diagnostic naming the config path, never a stack trace.
 
-The version-marker contract is exact. The engine package owns both sides
-of it: its `defineConfig` stamps the exported config value with a
-`$prismaConfig` field carrying the config contract version, and its
-loader checks that field before interpreting anything else. Each failure
-mode has its own typed, file-level diagnostic carrying the config path:
-an evaluated file without the marker (in particular a classic Prisma 7
-config, which uses the same filename) fails early with
-`CLI.CONFIG_MISSING_MARKER`; a marker declaring a version this CLI does
-not support — older or newer, future markers included — fails with
-`CLI.CONFIG_INVALID`; a file that cannot be evaluated at all fails with
-`CLI.CONFIG_UNREADABLE`, per the previous paragraph. No best-effort
-reading of unmarked files.
+There are two ways to resolve the file, and they treat absence differently. By discovery: `prisma.config.ts` in the current directory, that directory only, never walking up — and no file there is not an error, because the section validators own absence and supply their defaults. By name: the engine-owned `--config <path>` flag, which reads the file it names instead — and a named file that is not there IS an error, `CLI.CONFIG_NOT_FOUND`, because the user said which file to run against and the CLI would otherwise run against different settings.
 
-**Why:** the unified CLI claims a filename Prisma 7 already owns; a silently
-misparsed v7 file is the worst launch bug available, so detection is a
-structural marker, not a heuristic. Per-section diagnostics exist because one
-product's config problem must not brick the other products' commands. And
-validators that throw turn a user's typo into a stack trace instead of a
-diagnostic with a fix.
+The version-marker contract is exact. The engine package owns both sides of it: its `defineConfig` stamps the exported config value with a `$prismaConfig` field carrying the config contract version, and its loader checks that field before interpreting anything else. Each failure mode has its own typed, file-level diagnostic carrying the config path: an evaluated file without the marker (in particular a classic Prisma 7 config, which uses the same filename) fails early with `CLI.CONFIG_MISSING_MARKER`; a marker declaring a version this CLI does not support — older or newer, future markers included — fails with `CLI.CONFIG_INVALID`; a file that cannot be evaluated at all fails with `CLI.CONFIG_UNREADABLE`, per the previous paragraph; a file named by `--config` that does not exist fails with `CLI.CONFIG_NOT_FOUND`; and a top-level key that is not a section name fails with `CLI.CONFIG_UNKNOWN_SECTION`, per the next paragraph. Those five are every file-level config diagnostic there is; `CLI.CONFIG_INVALID` additionally carries the section-level failure, a command's own section failing its validator. No best-effort reading of unmarked files.
+
+The set of top-level keys is closed. Every top-level key names a config section, and the recognised names are exactly the sections the mounted commands and command families declare — so an unrecognised key is reported rather than ignored, and a settings block the user wrote in good faith never disappears in silence. The engine applies this check itself, in the same place it validates a command's own section, and not in the config loader: the loader is a member of the injected `Runtime`, so a check that lived there would hold only for as long as every host wired a loader that performed it. Two consequences are part of the requirement. First, an unrecognised key is a problem with the file's shape rather than with one section's content, so it is a file-level diagnostic and it fails every command that declares a config section, while commands that need no config keep working. That reach is deliberate: per-section isolation covers a section's content, which is where one product's mistake must not reach another product's commands, and a file whose shape the CLI cannot account for is not a problem any single section owns. Second, the recognised set is derived from the command families and commands a given binary mounts, so a config file's validity depends on the build as well as on the `$prismaConfig` marker — and of those two, only the marker is visible in the file.
+
+Section names are constrained, and the constraint is enforced when the CLI is constructed rather than when a user runs it. A section may not be named `extends`, which config loaders read as an instruction to merge another file in, nor anything beginning `$`, which the file format keeps for metadata (`$prismaConfig` is the version marker itself). A command or command family that declares such a section fails at construction, so the mistake is a build-time failure for a contributor and never a runtime surprise for a user.
+
+**Why:** the unified CLI claims a filename Prisma 7 already owns; a silently misparsed v7 file is the worst launch bug available, so detection is a structural marker, not a heuristic. Per-section diagnostics exist because one product's config problem must not brick the other products' commands. Reading the file only for commands that need it follows the same logic one step further: a product's broken config cannot reach a command that never asked for config. And validators that throw turn a user's typo into a stack trace instead of a diagnostic with a fix.
 
 ### R11 — Pinned versions, tandem releases
 

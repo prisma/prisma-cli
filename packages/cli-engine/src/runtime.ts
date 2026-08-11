@@ -2,6 +2,7 @@ import type { CredentialManager } from "./credential-manager";
 import type { ManagementApiClientConfig } from "./management-api";
 import type { PackageManagerId, PackageManagerRunner } from "./package-manager";
 import type { Diagnostic } from "./protocol";
+import type { SpawnChild } from "./spawn";
 
 /** Minimal structural stream types; no NodeJS.* in the public surface. */
 export interface OutputStream {
@@ -42,10 +43,15 @@ export interface Runtime {
    */
   readonly onSignal: (cb: (signal: "SIGINT" | "SIGTERM") => void) => () => void;
   /**
-   * Loaded config + file-level diagnostics; the shell builds this via
-   * the unified loader. Tests hand in fixtures.
+   * Reads prisma.config.ts, on demand. The engine calls it only when
+   * the command it is about to run declares a config section, so a run
+   * that needs no config never touches the file. `configPath` is the
+   * file `--config` named: the loader resolves it against the runtime's
+   * cwd and reports its absence. Absent means look for prisma.config.ts
+   * in cwd, where absence is not an error. The bin wires the real disk
+   * loader; tests hand in fixtures.
    */
-  readonly config: LoadedConfig;
+  readonly loadConfig: (configPath?: string) => Promise<LoadedConfig>;
   /**
    * The credential manager the bin wires. It is the only source of
    * the needs check, ctx.activeCredential, and ctx.api; absent means
@@ -67,6 +73,14 @@ export interface Runtime {
    * announces the URL instead.
    */
   readonly openUrl?: (url: string) => Promise<void> | void;
+  /**
+   * Starts a child process with inherited stdio, wired by the bin (a
+   * node:child_process adapter) so the engine never imports it. Absent
+   * means this host cannot hand the terminal to a child: a maySpawn
+   * command is refused as an internal error before its needs check and
+   * handler run, so ctx.spawn is never reached.
+   */
+  readonly spawn?: SpawnChild;
   /** Management API endpoint config; the bin derives baseUrl from env. */
   readonly managementApi: { readonly baseUrl: string };
   /**
@@ -108,8 +122,18 @@ export interface HostProcess {
 
 export interface LoadedConfig {
   /**
+   * The file this config came from, absolute: the one `--config` named,
+   * or prisma.config.ts in cwd. A loader that found no file still names
+   * the file it looked for — with no file there are no sections, and
+   * the engine reads the path only to name the file when it reports a
+   * top-level key that is not one of the CLI's sections.
+   */
+  readonly path: string;
+  /**
    * Raw section values by name; validation happens per command via its
-   * command family's section token.
+   * command family's section token. The engine, not the loader, checks
+   * these names against the sections the CLI declares, so the closed
+   * set holds whatever loader a host wires.
    */
   readonly sections: Readonly<Record<string, unknown>>;
   /**
