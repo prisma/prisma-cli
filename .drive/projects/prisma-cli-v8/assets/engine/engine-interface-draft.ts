@@ -47,6 +47,13 @@
  * methods" rule is absolute — no sanctioned exception.
  * exitWithChildStatus(child, opts?) takes { nextActions? }, rendered
  * to stderr before the exit (R-S3-4's reproduce hint).
+ * Amended 2026-08-11 (operator ruling) — SIGNAL SETTLEMENT IS THE
+ * ENGINE'S: a run a delivered signal terminated settles 128+signal
+ * from the engine's own record of that signal, whatever its handler
+ * returns (EXIT CODES below). exitWithChildStatus gains its second
+ * fence in consequence: the child result must be one the engine
+ * produced from a real spawn, so no handler can reach a signal exit
+ * code by describing a child that never existed.
  *
  * THE MODEL, in one analogy (operator, 2026-08-09): commands settle like
  * promises. A command can COMPLETE — and its completion can be
@@ -132,6 +139,22 @@
  * signal fires context.signal and awaits teardown (settling 130/143);
  * a second exits immediately through the runtime's exit proxy — the
  * engine ends the process only ever via Runtime.exit.
+ *
+ * The signal codes are the ENGINE's to settle, from its own record of
+ * the signal it delivered, and never from anything a handler returns
+ * (operator ruling, 2026-08-11). A run a delivered signal terminated
+ * settles 128 + that signal's number for BOTH command kinds —
+ * including the handler that caught context.signal, cleaned up, and
+ * returned successfully. The exit code states how the RUN ended, not
+ * how well the cleanup went, so a session that shuts down cleanly on
+ * Ctrl-C settles 130 while still reporting a completed envelope. No
+ * handler can author these codes: documented codes stop at 99, and
+ * the child-status bypass refuses a child result the engine did not
+ * produce. Two codes are exempt, because neither was this CLI's to
+ * state in the first place, and both pass through verbatim: a real
+ * child's status (the child owned the terminal and the signal reached
+ * it too — that is why exitWithChildStatus reports 128+signal itself)
+ * and a server command's protocol conclusion.
  */
 
 // ————————————————————————————————————————————————————————————————————————
@@ -667,8 +690,10 @@ export interface ChildStatusSettlement {
 /** The sanctioned "exit with the child's status verbatim" outcome:
  *  returned inside ok(...), it settles through the no-envelope bypass
  *  server commands already have — and ONLY from a command that
- *  declares maySpawn; anywhere else it is a construction error (the
- *  bypass is fenced, not merely documented). A signal-killed child
+ *  declares maySpawn, with the ChildResult that command's own
+ *  ctx.spawn returned; anywhere else, or with a child result the
+ *  engine never produced, it is a construction error (the bypass is
+ *  fenced, not merely documented). A signal-killed child
  *  settles 128 + the signal number for the portable signals; an
  *  unknown signal, or an adapter that cannot say how the child ended,
  *  settles 1 — unknown is never success. `nextActions` (a failed
@@ -1099,10 +1124,11 @@ export declare function defineCommand<
  * S3 amendments: a session supports json mode — the event stream is
  * its json surface — UNLESS it declares maySpawn, in which case it
  * rejects --json as soon as the command is known. A session that
- * returns ok(undefined)
- * exits 0; one that returns ok(exitWithChildStatus(child)) exits with
- * the child's status, which is the ONLY way a session settles
- * non-zero without erroring.
+ * returns ok(undefined) exits 0 — or 130/143 when a delivered signal
+ * ended the run, which the engine settles from its own record (EXIT
+ * CODES); one that returns ok(exitWithChildStatus(child)) exits with
+ * the child's status. Those are the two ways a session settles
+ * non-zero without erroring, and neither is a code the handler picks.
  */
 export interface SessionCommandDefinition<
   TFlags extends Record<string, FlagSpec<unknown>> = {},
