@@ -13,4 +13,5 @@ export {
   ok,
   okVoid,
   type Result,
+  STRUCTURED_ERROR,
 } from "../protocol";

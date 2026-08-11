@@ -97,6 +97,18 @@ function diagnosticOf(error: CliStructuredError): Diagnostic {
   return diagnostic;
 }
 
+/** The list is typed, but nothing at runtime has checked it: an error
+ *  built by another copy of the engine passes `CliStructuredError.is`
+ *  on its name, its code and its `toEnvelope` alone, and a handler's
+ *  `notOk` failure is checked by nothing at all. A value that is not a
+ *  list settles as no accompanying findings rather than reaching the
+ *  human renderer and the json envelope as garbage. */
+function accompanyingFindings(diagnostics: unknown): readonly Diagnostic[] {
+  return Array.isArray(diagnostics)
+    ? (diagnostics as readonly Diagnostic[])
+    : [];
+}
+
 export function settleErrored(
   invocation: Invocation,
   error: CliStructuredError,
@@ -108,7 +120,7 @@ export function settleErrored(
     ok: false,
     commandId: state.commandId,
     error: diagnosticOf(error),
-    diagnostics,
+    diagnostics: accompanyingFindings(diagnostics),
     nextActions: error.nextActions,
   });
 }
@@ -150,7 +162,7 @@ export function settleThrown(invocation: Invocation, cause: unknown): void {
   if (isAbortCause(cause, invocation.signal)) {
     settleAborted(invocation);
   } else if (CliStructuredError.is(cause)) {
-    settleErrored(invocation, cause);
+    settleErrored(invocation, cause, cause.diagnostics);
   } else {
     settleBug(invocation, cause);
   }
