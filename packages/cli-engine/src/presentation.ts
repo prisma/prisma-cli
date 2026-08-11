@@ -99,9 +99,68 @@ export interface TreeNode {
   readonly children?: readonly TreeNode[];
 }
 
+/**
+ * What happened: it selects the glyph (✔ ✘ ⚠ ℹ) and carries a default
+ * Tone of the same name. Separate from Tone because a failure can be
+ * painted in a colour that is not `error` — a tree node in its branch
+ * lane's hue, say — and a colour can be chosen where nothing happened.
+ */
+export type Status = "ok" | "error" | "warn" | "info";
+
+/**
+ * What colour to paint, and nothing else. Semantic names and indexed
+ * colours in one union: a command asks for meaning where it has one and
+ * for a distinguishable colour where it does not. The indexed colours
+ * are for telling adjacent things apart — one per branch lane in a
+ * graph, say — and deliberately exclude red so no series member reads
+ * as an error.
+ */
+export type Tone =
+  | "ok"
+  | "warn"
+  | "error"
+  | "info"
+  | "heading"
+  | "identifier"
+  | "ref"
+  | "placeholder"
+  | "link"
+  | "emphasis"
+  | "muted"
+  | "structure"
+  | "highlight"
+  | "color-1"
+  | "color-2"
+  | "color-3"
+  | "color-4"
+  | "color-5"
+  | "color-6";
+
+/**
+ * A run of text and the meaning of its colour. A handler never emits
+ * escape sequences: the engine measures width from `text`, so colour
+ * cannot break alignment, and the same spans can be re-themed or
+ * stripped without re-rendering.
+ */
+export interface Span {
+  readonly text: string;
+  readonly tone?: Tone;
+}
+
+/** Display text anywhere a block or Ui takes it. A bare string is untoned. */
+export type Text = string | readonly Span[];
+
 /** Styling helpers usable inside block text; no direct writing. */
 export interface Ui {
+  /**
+   * How much room the command has: stderr's terminal width, or
+   * Number.POSITIVE_INFINITY when stderr is not a terminal. Only the
+   * command knows what to sacrifice, so the engine hands over the number
+   * and prints an overrun unmodified.
+   */
+  readonly width: number;
   readonly emphasize: (text: string) => string;
   readonly dim: (text: string) => string;
   readonly code: (text: string) => string;
+  readonly tone: (tone: Tone, text: string) => string;
 }

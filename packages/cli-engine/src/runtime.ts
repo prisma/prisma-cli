@@ -6,6 +6,9 @@ import type { SpawnChild } from "./spawn";
 /** Minimal structural stream types; no NodeJS.* in the public surface. */
 export interface OutputStream {
   write(text: string): void;
+  /** The stream's terminal width, absent when it is not a terminal.
+   *  Read per render so a resized terminal is respected next command. */
+  readonly columns?: number;
 }
 
 /**
@@ -99,7 +102,11 @@ export interface HostProcess {
   readonly env: Readonly<Record<string, string | undefined>>;
   cwd(): string;
   readonly stdout: { write(text: string): unknown; isTTY?: boolean };
-  readonly stderr: { write(text: string): unknown; isTTY?: boolean };
+  readonly stderr: {
+    write(text: string): unknown;
+    isTTY?: boolean;
+    columns?: number;
+  };
   readonly stdin: {
     isTTY?: boolean;
     setRawMode?(enabled: boolean): unknown;

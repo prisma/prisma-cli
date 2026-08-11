@@ -124,6 +124,9 @@ export interface TestCli {
       readonly onSettled?: (summary: RunSummary) => void;
       readonly cwd?: string;
       readonly isTty?: { stdin?: boolean; stdout?: boolean; stderr?: boolean };
+      /** Terminal width, as the stream would report it. Absent means
+       *  not a terminal, which is what ui.width reads as unbounded. */
+      readonly columns?: { stderr?: number };
       readonly env?: Readonly<Record<string, string | undefined>>;
     },
   ): Promise<{
@@ -270,6 +273,7 @@ export function createTestCli(spec: {
           write: (text) => {
             stderrText += text;
           },
+          columns: opts?.columns?.stderr,
         },
         stdin: inputStreamFromString(opts?.stdin ?? ""),
         cwd: opts?.cwd ?? "/",

@@ -1,0 +1,160 @@
+/**
+ * The styling surface: what each Tone renders as byte for byte, how the
+ * engine decides whether to colour at all, and how much room it tells a
+ * command it has. No block renders differently yet — this pins the
+ * machinery the block renderers will be written against.
+ */
+import { defineCommand, type Tone } from "@prisma/cli-engine";
+import { ok } from "@prisma/cli-engine/protocol";
+import { createTestCli } from "@prisma/cli-engine/testing";
+import { describe, expect, test } from "vitest";
+import { makePaint, renderText, textWidth } from "../src/execution/palette";
+
+/**
+ * A Record rather than a list, so a Tone added without a pinned
+ * rendering fails to compile rather than going untested. Every value
+ * here is the basic-ANSI sequence colorette emits for the verb the
+ * contract's palette table names.
+ */
+const TONE_BYTES: Readonly<Record<Tone, string>> = {
+  ok: "\u001b[92mX\u001b[39m",
+  warn: "\u001b[33mX\u001b[39m",
+  error: "\u001b[91mX\u001b[39m",
+  info: "\u001b[34mX\u001b[39m",
+  heading: "\u001b[36mX\u001b[39m",
+  identifier: "\u001b[36mX\u001b[39m",
+  ref: "\u001b[32mX\u001b[39m",
+  placeholder: "\u001b[2mX\u001b[22m",
+  link: "\u001b[34mX\u001b[39m",
+  emphasis: "\u001b[1mX\u001b[22m",
+  muted: "\u001b[2mX\u001b[22m",
+  structure: "\u001b[2mX\u001b[22m",
+  highlight: "\u001b[92mX\u001b[39m",
+  "color-1": "\u001b[37mX\u001b[39m",
+  "color-2": "\u001b[36mX\u001b[39m",
+  "color-3": "\u001b[33mX\u001b[39m",
+  "color-4": "\u001b[94mX\u001b[39m",
+  "color-5": "\u001b[35mX\u001b[39m",
+  "color-6": "\u001b[32mX\u001b[39m",
+};
+
+const INDEXED_TONES = [
+  "color-1",
+  "color-2",
+  "color-3",
+  "color-4",
+  "color-5",
+  "color-6",
+] as const satisfies readonly Tone[];
+
+const RED_SEQUENCES = ["\u001b[31m", "\u001b[91m"];
+
+describe("the palette", () => {
+  const paint = makePaint(true);
+  const plain = makePaint(false);
+
+  for (const [tone, bytes] of Object.entries(TONE_BYTES)) {
+    test(`${tone} renders as ${JSON.stringify(bytes)} with colour on`, () => {
+      expect(paint(tone as Tone, "X")).toBe(bytes);
+    });
+
+    test(`${tone} emits no bytes of its own with colour off`, () => {
+      expect(plain(tone as Tone, "X")).toBe("X");
+    });
+  }
+
+  test("no indexed colour is red, so a series member cannot read as an error", () => {
+    for (const tone of INDEXED_TONES) {
+      for (const red of RED_SEQUENCES) {
+        expect(paint(tone, "X")).not.toContain(red);
+      }
+    }
+  });
+});
+
+describe("rendering Text", () => {
+  test("a bare string is untoned", () => {
+    expect(renderText("plain", makePaint(true))).toBe("plain");
+  });
+
+  test("spans are painted individually and concatenated", () => {
+    expect(
+      renderText(
+        [
+          { text: "a", tone: "ok" },
+          { text: "-" },
+          { text: "b", tone: "error" },
+        ],
+        makePaint(true),
+      ),
+    ).toBe("\u001b[92ma\u001b[39m-\u001b[91mb\u001b[39m");
+  });
+
+  test("the same spans with colour off are the text alone", () => {
+    expect(
+      renderText(
+        [
+          { text: "a", tone: "ok" },
+          { text: "-" },
+          { text: "b", tone: "error" },
+        ],
+        makePaint(false),
+      ),
+    ).toBe("a-b");
+  });
+
+  test("width is the display width of the text, whatever the tones", () => {
+    const spans = [
+      { text: "用户", tone: "identifier" as const },
+      { text: "!" },
+    ];
+    expect(textWidth(spans)).toBe(5);
+    expect(textWidth("用户!")).toBe(5);
+  });
+});
+
+const styled = defineCommand({
+  help: { summary: "Report what the styling surface resolved to" },
+  handler: async (_args, ctx) =>
+    ok(
+      ctx.present(
+        { data: {} },
+        {
+          human: (ui) => [
+            { kind: "summary", tone: "ok", text: ui.tone("heading", "H") },
+            { kind: "list", items: [`width=${ui.width}`] },
+          ],
+        },
+      ),
+    ),
+});
+
+function makeCli() {
+  return createTestCli({ commands: { styled } });
+}
+
+/** Format is a separate question from colour — it asks whether stdout
+ *  is a pipe — so these runs state it rather than letting a TTY pick. */
+const HUMAN = ["styled", "--format", "human"];
+
+describe("ui.width", () => {
+  test("is stderr's columns", async () => {
+    const result = await makeCli().run(HUMAN, {
+      isTty: { stderr: true },
+      columns: { stderr: 100 },
+    });
+    expect(result.stderr).toContain("- width=100\n");
+  });
+
+  test("is unbounded when stderr is not a terminal", async () => {
+    const result = await makeCli().run(HUMAN, { isTty: { stderr: false } });
+    expect(result.stderr).toContain("- width=Infinity\n");
+  });
+
+  test("is stdout-blind: a terminal stdout does not supply the width", async () => {
+    const result = await makeCli().run(HUMAN, {
+      isTty: { stdout: true, stderr: false },
+    });
+    expect(result.stderr).toContain("- width=Infinity\n");
+  });
+});
