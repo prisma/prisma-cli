@@ -103,9 +103,44 @@ All green before every commit, judged by pnpm's own exit codes:
   — headings, connectors, glyphs, rails — and nothing else. Commands reaching for
   `ui.tone`, spans and `drawing` is the conversion the contract §6 defers to each
   family.
+- **A bare `vitest run` in `packages/cli-engine` tests `dist`, not source.**
+  The package's `test` script is `build && typecheck && vitest run`, so the
+  validation gate is honest — but anyone editing engine source and reaching
+  straight for `vitest run` is testing the previous build. It surfaced here
+  when a deliberate defect failed to fail. Worth a line in
+  `docs/reference/testing-patterns.md`, which is outside this slice.
+- **Half of stderr is coloured after this PR.** Blocks are; next actions and
+  diagnostics still render as plain strings. That is correct for this slice —
+  the contract's block grammar is what it governs — but it is the first thing a
+  converting family will notice, and the natural next slice. Surfaced in review
+  round 2.
+- **The style guide's card example has no colon on the key**
+  (`│  local repo  ~/code/apple`), while both legacy renderers and contract §3.2
+  write `${label}:`. The engine follows the contract and therefore the shipped
+  bytes; the guide's example is the outlier. Either the guide gets corrected or
+  a later block option makes the colon optional — not this slice's call.
+  Surfaced in review round 2.
+- **A table whose last cell is an empty span carrying a tone keeps its
+  separator spaces**, because the trailing-space strip sees zero-width escape
+  sequences rather than spaces. Alignment is unaffected and no current caller
+  can produce the shape. Reviewer recommends no change; recorded so the next
+  person to touch the strip knows it was considered.
+- **Diagnostics on the parse-failure path render before colour is resolved.**
+  `applySharedFlags` has not run yet, so `state.colorEnabled` is still the
+  `false` default from `engine.ts:289`. Harmless for this slice, which colours
+  only the four block renderers — but a later slice that colours diagnostics or
+  usage errors has to resolve colour pre-parse, the way `sniffFormat` already
+  resolves format, and for the same reason: the decision must be in force before
+  the parser can fail. Surfaced in review round 1.
+- **Colour and width read two independent signals.** Colour keys off
+  `runtime.isTty.stderr`, width off `runtime.stderr.columns`. Node keeps the two
+  consistent, but the test harness lets a caller set a width on a non-terminal
+  stderr or a terminal stderr with no width. Neither combination is wrong today —
+  width already falls back to unbounded — but a future change that infers one
+  from the other should know they are separate. Surfaced in review round 1.
 - **Glyph mode is not adopted.** The ORM detects whether the terminal can render
   unicode box-drawing (`prisma/prisma`
   `packages/1-framework/3-tooling/cli/src/utils/glyph-mode.ts`: TTY plus a UTF-8
-  locale, else ASCII). The engine already emits `✔ ✖ ⚠ ℹ` unconditionally, so
+  locale, else ASCII). The engine already emits `✔ ✘ ⚠ ℹ` unconditionally, so
   connectors do not make it newly wrong, but a tree is more box-drawing than the
   engine has ever emitted. Recorded in `deferred.md`.

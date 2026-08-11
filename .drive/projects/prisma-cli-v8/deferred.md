@@ -37,6 +37,34 @@ Nothing here is tracked outside this file.
   engine's `flag.number` accepts negatives and non-integers; legacy
   `composer log --tail` rejected both. Either the flag gains
   validation or the divergence entry widens.
+- **`pnpm --filter @prisma/cli test` can report green against a stale
+  engine build.** Vitest resolves `@prisma/cli-engine` through the
+  package's own `exports` map, which points at `./dist`; the `paths`
+  entries in `tsconfig.json` are read by `tsc`, not vitest, and no
+  path-resolving plugin is configured. `packages/cli`'s `test` script is
+  a bare `vitest run` with no build step, so run on its own it exercises
+  whatever engine `dist` happens to be on disk. The engine's own `test`
+  script builds first, so a gate that runs the engine suite before the
+  CLI suite — as every gate in this project does — is honest, and
+  `turbo run test` is honest too because `turbo.json` declares `test` as
+  `dependsOn: ["^build"]`. The trap is running one filter in isolation
+  after editing engine source. Surfaced in the engine-colour slice when
+  a deliberately introduced defect failed to fail. The mechanism to fix
+  it already exists in `turbo.json`; the change is to `packages/cli`'s
+  test script.
+- **`spawn-real-child.test.ts` also fails under load, and is a
+  different test from the one below.** In
+  `packages/cli-engine/tests/spawn-real-child.test.ts`, the case
+  "native Ctrl-C reaches the child through the shared process group"
+  failed twice during the engine-colour slice, both times on a machine
+  running the engine and CLI suites concurrently — on the second
+  sighting that run's import phase took 92s against a normal 3–7s. It
+  passed on every isolated and sequential run either side. Nothing in
+  that slice goes near spawn or signals, so this is not its doing.
+  Two independent sightings under load make it worth diagnosing rather
+  than watching: the likely shape is the same as the entry below, a
+  test that waits on a marker the child writes before it is actually
+  ready for the signal.
 - **`v8-spawn-adapter.test.ts` has a race that fails under load.**
   In `packages/cli/tests/v8-spawn-adapter.test.ts`, the "kill
   delivers the signal to the live child" case runs an inline child
@@ -65,7 +93,7 @@ Nothing here is tracked outside this file.
 - **Glyph mode is not adopted.** The ORM decides between unicode and
   ASCII box-drawing from TTY plus a UTF-8 locale
   (`prisma/prisma`, `packages/1-framework/3-tooling/cli/src/utils/
-  glyph-mode.ts`). The engine emits `✔ ✖ ⚠ ℹ` unconditionally today and
+  glyph-mode.ts`). The engine emits `✔ ✘ ⚠ ℹ` unconditionally today and
   will emit `├─ └─ │` the same way. Adopting the ORM's detection is the
   established fix if a non-UTF-8 terminal ever reports mojibake.
 
