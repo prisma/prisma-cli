@@ -158,9 +158,9 @@ describe("installCommand", () => {
       line: "deno add --dev npm:prisma@latest npm:@prisma/client",
     },
   ])("$manager adds dev dependencies", ({ manager, ...expected }) => {
-    expect(
-      installCommand(manager, { packages: PACKAGES, dev: true }),
-    ).toEqual(expected);
+    expect(installCommand(manager, { packages: PACKAGES, dev: true })).toEqual(
+      expected,
+    );
   });
 });
 
