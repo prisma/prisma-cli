@@ -11,7 +11,7 @@ Repo `prisma/prisma-cli`. This is the last slice of the platform port. Two thing
 
 When this lands, `prisma-cli` runs entirely on `@prisma/cli-engine` and the old shell is gone.
 
-The slice contract is `.drive/projects/prisma-cli-v8/specs/s2d-init-and-retirement.md`. Read it in full before you touch anything — it is normative. One warning about it: the paragraph on the shipped-binary cutover contradicts itself mid-sentence ("Resolution is pinned… STOP: that is not pinned anywhere"). That is a previous author catching their own error. The question ledger in `.drive/projects/prisma-cli-v8/specs/s2-overview.md` is authoritative on that point, and see "The one thing that is blocked" below.
+The slice contract is `.drive/projects/prisma-cli-v8/specs/s2d-init-and-retirement.md`. Read it in full before you touch anything — it is normative. One note: an earlier version of that contract contradicted itself mid-sentence on the shipped-binary cutover. That paragraph has been replaced with the ruling described below; if you are reading a stale copy, the question ledger in `.drive/projects/prisma-cli-v8/specs/s2-overview.md` is authoritative.
 
 ## Do not start yet
 
@@ -22,13 +22,17 @@ Two pull requests must land before you begin, because both add commands to the t
 
 Starting before these merge means rebasing a very large deletion across two moving branches. Wait.
 
-## The one thing that is blocked, and what is not
+## Reading the config file from the shipped binary — already decided
 
-**The shipped binary cannot read the config file.** The CLI reads `prisma.config.ts` from the user's project, and the loader (`packages/cli-engine/src/config-loader.ts`) does a plain dynamic `import()` of that path. That works today only because everything runs under `tsx`. The binary we ship runs on ordinary Node, which cannot execute TypeScript, so as things stand the released CLI cannot read the config file it is built around.
+The CLI reads `prisma.config.ts` from the user's project, and the loader (`packages/cli-engine/src/config-loader.ts`) does a plain dynamic `import()` of that path. That works today only because everything runs under `tsx`. The binary we ship runs on ordinary Node, which cannot execute TypeScript, so as things stand the released CLI cannot read the config file it is built around.
 
-The operator has to choose the strategy: bundle a TypeScript-capable loader such as `jiti`, require a TypeScript-capable runtime and document it, or support only a compiled/JSON config in the shipped binary. It changes what a user must install before the CLI works at all, so it is not yours to pick.
+**Do not design a solution. Copy the two reference repositories, which solved this already and identically** (operator ruling, 2026-08-11): take `c12` as a dependency, import it dynamically at the call site, call `loadConfig({ name, cwd, configFile? })`, and declare `typescript` as a peer dependency. The shapes to copy are `packages/1-framework/3-tooling/config-loader/src/load.ts` in prisma/prisma, and the `cli` and `composer` packages in prisma/composer.
 
-**Ask for that ruling early, then get on with everything else.** Only the binary cutover depends on it. The `init` port, the `version` port, the deletions and the grammar check all proceed without it.
+Copy the dependency declarations, not just the call. `c12` evaluates TypeScript through `jiti`, which it declares as a peer, and that is the part that makes it work on plain Node.
+
+Two behaviours worth carrying over with it: `c12` discovers the config by `name`, walking up from `cwd`, with an explicit path passed as `configFile`; and prisma/prisma then verifies that the file `c12` actually loaded is the one that was asked for, treating a missing or empty config as a structured not-found error rather than an empty object.
+
+Nothing in this slice is blocked any more.
 
 ## The work, in the order I would do it
 
@@ -54,7 +58,7 @@ Also delete: the fixture machinery (`src/adapters/mock-api.ts`, `src/use-cases/*
 
 **One knot worth knowing about before you pull on it.** `src/auth/errors.ts` still constructs `CliError`, the old shell's error class, and `src/v8/auth/errors.ts` maps those into structured errors. So the auth module depends on the shell it is meant to outlive. When the shell dies, either `CliError` moves somewhere durable or the auth operations throw structured errors directly and both mapping layers go. The second is cleaner. Decide deliberately rather than discovering it halfway through the deletion.
 
-**4. Cut the binary over** (needs the ruling above). `packages/cli/package.json`'s `bin` points at the engine entry, the build bundles the new tree, and the `prisma-v8` working name and its root script are deleted. Prove it by running the packed tarball on plain Node — not through `tsx`.
+**4. Cut the binary over.** `packages/cli/package.json`'s `bin` points at the engine entry, the build bundles the new tree, and the `prisma-v8` working name and its root script are deleted. Prove it by running the packed tarball on plain Node — not through `tsx`.
 
 **5. Add the grammar completeness check.** A build-time test asserting the mounted command tree is exactly the target grammar: every command in the inventory, minus the ruled removals, plus the ruled renames. The removals so far are `service build`, `service deploy` and `service run` — all superseded by Composer — and the mock-only login flags. `.drive/projects/prisma-cli-v8/assets/s2/command-inventory.md` is the inventory.
 
@@ -96,4 +100,4 @@ The engine publishes as `@prisma/cli-engine`. Nothing publishes automatically an
 
 Other agents work the two open pull requests independently. Do not touch their branches.
 
-The remaining unanswered questions are in `.drive/projects/prisma-cli-v8/specs/s2-overview.md`. Besides the config-evaluation one, the one most likely to reach you is whether an unauthenticated command should still launch a browser login automatically the way the old CLI did — the port fails with a sign-in error instead. It is built to that default and unratified.
+The remaining unanswered questions are in `.drive/projects/prisma-cli-v8/specs/s2-overview.md`. The one most likely to reach you is whether an unauthenticated command should still launch a browser login automatically the way the old CLI did — the port fails with a sign-in error instead. It is built to that default and unratified.
