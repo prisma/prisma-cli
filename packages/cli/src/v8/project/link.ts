@@ -9,7 +9,9 @@ import {
 } from "../../lib/project/resolution";
 import {
   formatCommandArgument,
+  isValidProjectSetupName,
   projectCreateFailedError,
+  projectSetupNameRequiredError,
   resolveProjectForSetup,
   toProjectSummary,
 } from "../../lib/project/setup";
@@ -115,7 +117,12 @@ async function pickProject(
       placeholder: suggested.name,
       default: suggested.name,
     });
-    const project = await createProjectForLink(ctx, workspace, name);
+    // The same rule `project create` applies to its positional: a name
+    // typed at the prompt is no more valid for being typed.
+    if (!isValidProjectSetupName(name)) {
+      throw projectSetupNameRequiredError("project link");
+    }
+    const project = await createProjectForLink(ctx, workspace, name.trim());
     return await bindDirectoryToProject(ctx, workspace, project, "created");
   }
 

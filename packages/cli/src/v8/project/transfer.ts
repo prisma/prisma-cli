@@ -198,7 +198,10 @@ export const projectTransferCommand = defineCommand({
   handler: async (args, ctx) => {
     try {
       const workspace = await resolveActiveWorkspace(ctx);
-      const { toWorkspace, recipientToken } = args.flags;
+      // Normalized once: an all-whitespace flag value must not read as
+      // supplied to one check and absent to the next.
+      const toWorkspace = args.flags.toWorkspace?.trim() || undefined;
+      const recipientToken = args.flags.recipientToken?.trim() || undefined;
 
       if (toWorkspace && recipientToken) {
         throw usageError(
@@ -219,7 +222,7 @@ export const projectTransferCommand = defineCommand({
           "project",
         );
       }
-      if (!toWorkspace?.trim() && !recipientToken?.trim()) {
+      if (!toWorkspace && !recipientToken) {
         throw transferRecipientRequiredError(formatCommand);
       }
 

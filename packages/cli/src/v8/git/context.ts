@@ -31,5 +31,9 @@ export async function resolveGitContext(
     commandName,
   );
 
+  // The legacy source-repository helpers take a narrower client than
+  // ctx.api: the same methods, typed to the handful of paths they call.
+  // Structurally compatible, but neither type is declared in terms of
+  // the other, so the compiler needs the cast spelled out.
   return { api: ctx.api as unknown as SourceRepositoryApiClient, target };
 }
