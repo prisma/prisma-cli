@@ -109,7 +109,7 @@ export function settleErrored(
 
 /** The conventional code for a delivered signal: 128 + its number, so
  *  130 for SIGINT and 143 for SIGTERM. */
-function signalExitCode(signal: "SIGINT" | "SIGTERM" | undefined): number {
+function signalExitCode(signal: "SIGINT" | "SIGTERM"): number {
   return signal === "SIGTERM" ? 143 : 130;
 }
 
@@ -152,7 +152,11 @@ export function settleThrown(invocation: Invocation, cause: unknown): void {
 
 function settleAborted(invocation: Invocation): void {
   const state = invocation.state;
-  state.settledExitCode = signalExitCode(state.deliveredSignal);
+  const signal = state.deliveredSignal;
+  // The run's signal is aborted from one place, and it records the
+  // signal first, so an abort without one would be an engine fault;
+  // it settles cancelled rather than claiming a signal that never came.
+  state.settledExitCode = signal === undefined ? 3 : signalExitCode(signal);
   emitErrored(invocation, {
     ok: false,
     commandId: state.commandId,
