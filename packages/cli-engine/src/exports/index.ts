@@ -114,6 +114,14 @@ export {
   type SpawnOptions,
   type SpawnRequest,
 } from "../spawn";
+export {
+  type TelemetryStatus,
+  telemetryCommandGroup,
+  telemetryDisableCommand,
+  telemetryEnableCommand,
+  telemetryStatusCommand,
+} from "../telemetry/commands";
+export type { TelemetryStatusReason } from "../telemetry/gating";
 export type { TelemetryPayload } from "../telemetry/payload";
 export type { TelemetryDeclaration } from "../telemetry/report";
 export {
