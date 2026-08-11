@@ -262,6 +262,33 @@ describe("construction validation", () => {
     );
   });
 
+  test("an empty mount path fails construction", () => {
+    const offender = defineCommand({
+      help: { summary: "Offender" },
+      handler: null as never,
+    });
+    expect(() => createTestCli({ commands: { "": offender } })).toThrow(
+      "invalid command path ''",
+    );
+  });
+
+  test.each([
+    "migration  status",
+    "migration status ",
+    " migration status",
+  ])("the mount path '%s' fails construction", (path) => {
+    const offender = defineCommand({
+      help: { summary: "Offender" },
+      handler: null as never,
+    });
+    expect(() =>
+      createTestCli({
+        commands: { [path]: offender },
+        groups: { migration: { brief: "Migrations" } },
+      }),
+    ).toThrow("references unknown group");
+  });
+
   test("a variadic positional that is not last fails construction", () => {
     const offender = defineCommand({
       help: { summary: "Offender" },

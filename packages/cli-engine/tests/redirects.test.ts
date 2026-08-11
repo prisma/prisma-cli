@@ -223,6 +223,47 @@ describe("construction-time validation", () => {
     );
   });
 
+  test.each([
+    ["a doubled space", "migration  apply"],
+    ["a trailing space", "migration apply "],
+    ["a leading space", " migration apply"],
+  ])("a retired path with %s fails construction", (_shape, from) => {
+    const family = defineCommandFamily({
+      commands: { status },
+      redirects: [{ from, replacement: "migrate --to <ref>" }],
+    });
+
+    expect(() =>
+      createTestCli({
+        commandFamilies: [family],
+        commands: { "migration status": status },
+        groups: MIGRATION_GROUP,
+      }),
+    ).toThrow(
+      `redirect '${from}' has an empty path segment, so no invocation can produce it`,
+    );
+  });
+
+  test.each([
+    ["a doubled space", "migration  status"],
+    ["a trailing space", "migration status "],
+  ])("a flag redirect whose path has %s fails construction", (_shape, from) => {
+    const family = defineCommandFamily({
+      commands: { status },
+      redirects: [{ from, flag: "graph", replacement: "migration graph" }],
+    });
+
+    expect(() =>
+      createTestCli({
+        commandFamilies: [family],
+        commands: { "migration status": status },
+        groups: MIGRATION_GROUP,
+      }),
+    ).toThrow(
+      `redirect '${from}' has an empty path segment, so no invocation can produce it`,
+    );
+  });
+
   test("a retired flag named in kebab-case fails construction", () => {
     const family = defineCommandFamily({
       commands: { status },
