@@ -1,10 +1,9 @@
-import { authenticatedManagementApiClient } from "../auth/guard";
 import {
-  type BucketProvider,
   createManagementBucketProvider,
   normalizeBucket,
   normalizeKey,
-} from "../lib/bucket/provider";
+} from "../adapters/bucket/management-provider";
+import { authenticatedManagementApiClient } from "../auth/guard";
 import {
   projectResolutionErrorToCliError,
   type ResolvedProjectTarget,
@@ -25,6 +24,7 @@ import type {
   BucketKeyListResult,
   BucketListResult,
 } from "../types/bucket";
+import type { BucketProvider } from "../use-cases/bucket/provider";
 import { requireAuthenticatedAuthState } from "./auth";
 import {
   listFixtureWorkspaceProjects,

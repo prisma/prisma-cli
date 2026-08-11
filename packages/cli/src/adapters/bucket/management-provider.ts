@@ -1,53 +1,10 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Bucket pagination requests must run sequentially.
+/** The `BucketProvider` implementation over the Management API. */
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
 import { CliError } from "../../shell/errors";
 import type { BucketKeySummary, BucketSummary } from "../../types/bucket";
-
-export interface BucketCreateInput {
-  projectId: string;
-  name?: string;
-  branchGitName?: string;
-  signal?: AbortSignal;
-}
-
-export interface BucketKeyCreateInput {
-  bucketId: string;
-  name?: string;
-  role: "read" | "read_write";
-  signal?: AbortSignal;
-}
-
-export interface BucketKeyCreateRecord {
-  key: BucketKeySummary;
-  secretAccessKey: string;
-  accessKeyId: string;
-  endpoint: string;
-  bucketName: string;
-}
-
-export interface BucketProvider {
-  listBuckets(options: {
-    projectId: string;
-    branchName?: string;
-    signal?: AbortSignal;
-  }): Promise<BucketSummary[]>;
-  createBucket(options: BucketCreateInput): Promise<BucketSummary>;
-  deleteBucket(
-    bucketId: string,
-    options?: { signal?: AbortSignal },
-  ): Promise<void>;
-  listKeys(
-    bucketId: string,
-    options?: { signal?: AbortSignal },
-  ): Promise<BucketKeySummary[]>;
-  createKey(options: BucketKeyCreateInput): Promise<BucketKeyCreateRecord>;
-  deleteKey(
-    bucketId: string,
-    keyId: string,
-    options?: { signal?: AbortSignal },
-  ): Promise<void>;
-}
+import type { BucketProvider } from "../../use-cases/bucket/provider";
 
 interface RawApiErrorBody {
   error?: {
@@ -88,7 +45,6 @@ export function createManagementBucketProvider(
       const buckets: RawBucketRecord[] = [];
       let cursor: string | undefined;
 
-      // eslint-disable-next-line no-constant-condition
       while (true) {
         const result = await client.GET("/v1/buckets", {
           params: {
@@ -166,7 +122,6 @@ export function createManagementBucketProvider(
       const keys: RawBucketKeyRecord[] = [];
       let cursor: string | undefined;
 
-      // eslint-disable-next-line no-constant-condition
       while (true) {
         const result = await client.GET("/v1/buckets/{bucketId}/keys", {
           params: {

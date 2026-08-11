@@ -1,9 +1,7 @@
 /** Workspace, project and provider for the `bucket *` commands. */
 import { type CommandContext, flag, positional } from "@prisma/cli-engine";
-import {
-  type BucketProvider,
-  createManagementBucketProvider,
-} from "../../lib/bucket/provider";
+import { createManagementBucketProvider } from "../../adapters/bucket/management-provider";
+import type { BucketProvider } from "../../use-cases/bucket/provider";
 import { resolvePinnedProject } from "../project/context";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 
