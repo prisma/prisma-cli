@@ -115,6 +115,7 @@ export function makeContext(
       }
       const manager = await resolvePackageManager({
         cwd: invocation.runtime.cwd,
+        env: invocation.runtime.env,
         host: invocation.runtime.packageManager,
       });
       return notOk(missingDependencyError(specifier, manager));

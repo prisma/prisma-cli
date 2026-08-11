@@ -1,4 +1,4 @@
-import { detect, getUserAgent } from "package-manager-detector/detect";
+import { detect } from "package-manager-detector/detect";
 
 /** The package managers the engine knows how to drive. */
 export type PackageManagerId = "npm" | "pnpm" | "yarn" | "bun" | "deno";
@@ -26,6 +26,19 @@ function isManager(name: string): name is PackageManagerId {
 }
 
 /**
+ * The manager that invoked this process, read from the environment the
+ * host handed the engine. package-manager-detector's own getUserAgent
+ * reads process.env directly, which the engine may not do; this is the
+ * same parse over Runtime.env.
+ */
+function invokingManager(
+  env: Readonly<Record<string, string | undefined>>,
+): PackageManagerId | undefined {
+  const name = env.npm_config_user_agent?.split("/")[0];
+  return name !== undefined && isManager(name) ? name : undefined;
+}
+
+/**
  * Resolves the manager to drive at `cwd`. In order: the caller's
  * choice, the host's, the project the library detects by walking up
  * from `cwd`, the manager that invoked this process, then npm. Always
@@ -39,6 +52,8 @@ function isManager(name: string): name is PackageManagerId {
  */
 export async function resolvePackageManager(request: {
   readonly cwd: string;
+  /** The host's environment, never the process's. */
+  readonly env: Readonly<Record<string, string | undefined>>;
   /** The caller's explicit choice. */
   readonly override?: PackageManagerId;
   /** What the host declared on `Runtime.packageManager`. */
@@ -52,11 +67,7 @@ export async function resolvePackageManager(request: {
   if (detected !== null && isManager(detected.name)) {
     return detected.name;
   }
-  const userAgent = getUserAgent();
-  if (userAgent !== null && isManager(userAgent)) {
-    return userAgent;
-  }
-  return "npm";
+  return invokingManager(request.env) ?? "npm";
 }
 
 interface Spelling {

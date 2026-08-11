@@ -7,7 +7,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   installCommand,
   type PackageManagerCommand,
@@ -16,7 +16,11 @@ import {
   runCommand,
 } from "../src/package-manager";
 
-const USER_AGENT = "npm_config_user_agent";
+function invokedBy(manager: string): Record<string, string> {
+  return {
+    npm_config_user_agent: `${manager}/9.7.0 npm/? node/v24.0.0 darwin arm64`,
+  };
+}
 
 describe("resolvePackageManager", () => {
   let dir: string;
@@ -26,7 +30,6 @@ describe("resolvePackageManager", () => {
   });
 
   afterEach(async () => {
-    vi.unstubAllEnvs();
     await rm(dir, { recursive: true, force: true });
   });
 
@@ -34,31 +37,37 @@ describe("resolvePackageManager", () => {
     await writeFile(join(dir, "pnpm-lock.yaml"), "");
 
     expect(
-      await resolvePackageManager({ cwd: dir, override: "bun", host: "yarn" }),
+      await resolvePackageManager({
+        cwd: dir,
+        env: {},
+        override: "bun",
+        host: "yarn",
+      }),
     ).toBe("bun");
   });
 
   test("the host's choice beats the project", async () => {
     await writeFile(join(dir, "pnpm-lock.yaml"), "");
 
-    expect(await resolvePackageManager({ cwd: dir, host: "yarn" })).toBe(
-      "yarn",
-    );
+    expect(
+      await resolvePackageManager({ cwd: dir, env: {}, host: "yarn" }),
+    ).toBe("yarn");
   });
 
   test("a lockfile in cwd names the manager", async () => {
     await writeFile(join(dir, "pnpm-lock.yaml"), "");
 
-    expect(await resolvePackageManager({ cwd: dir })).toBe("pnpm");
+    expect(await resolvePackageManager({ cwd: dir, env: {} })).toBe("pnpm");
   });
 
   test("a lockfile in an ancestor directory names the manager", async () => {
     await writeFile(join(dir, "pnpm-lock.yaml"), "");
     const child = join(dir, "packages", "app");
     await mkdir(child, { recursive: true });
-    vi.stubEnv(USER_AGENT, "yarn/4.0.0 npm/? node/v24.0.0 darwin arm64");
 
-    expect(await resolvePackageManager({ cwd: child })).toBe("pnpm");
+    expect(
+      await resolvePackageManager({ cwd: child, env: invokedBy("yarn") }),
+    ).toBe("pnpm");
   });
 
   test("a packageManager field beats a lockfile in the same directory", async () => {
@@ -68,19 +77,23 @@ describe("resolvePackageManager", () => {
       JSON.stringify({ packageManager: "bun@1.2.0" }),
     );
 
-    expect(await resolvePackageManager({ cwd: dir })).toBe("bun");
+    expect(await resolvePackageManager({ cwd: dir, env: {} })).toBe("bun");
   });
 
   test("the invoking manager's user agent is used when the directory has no project", async () => {
-    vi.stubEnv(USER_AGENT, "pnpm/9.7.0 npm/? node/v24.0.0 darwin arm64");
+    expect(
+      await resolvePackageManager({ cwd: dir, env: invokedBy("pnpm") }),
+    ).toBe("pnpm");
+  });
 
-    expect(await resolvePackageManager({ cwd: dir })).toBe("pnpm");
+  test("an unrecognized user agent is ignored", async () => {
+    expect(
+      await resolvePackageManager({ cwd: dir, env: invokedBy("vlt") }),
+    ).toBe("npm");
   });
 
   test("npm is the answer when nothing matches", async () => {
-    vi.stubEnv(USER_AGENT, undefined);
-
-    expect(await resolvePackageManager({ cwd: dir })).toBe("npm");
+    expect(await resolvePackageManager({ cwd: dir, env: {} })).toBe("npm");
   });
 });
 

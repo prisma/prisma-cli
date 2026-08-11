@@ -104,6 +104,7 @@ async function checkDependencies(
   }
   const manager = await resolvePackageManager({
     cwd: runtime.cwd,
+    env: runtime.env,
     host: runtime.packageManager,
   });
   return needsErrored(missingDependencyError(missing, manager));
