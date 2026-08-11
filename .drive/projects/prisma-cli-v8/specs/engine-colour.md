@@ -1,119 +1,153 @@
-# Engine spec — colour in command output
+# Engine spec — the palette, rendering, and terminal width
 
-Status: ruled 2026-08-11 (operator, after QA of the first ported ORM command: output must be able to carry colour). Deliverable: one PR to `packages/cli-engine`. The first consumer is the ORM family, whose renderers are colourless today because the surface below does not exist.
+Status: ruled 2026-08-11 (operator). Deliverable: one PR to `packages/cli-engine`. Consumers: the ORM family and the platform family, both of which lose rendering today.
 
-## 1. The problem, concretely
+Supersedes two earlier revisions of this document. The first routed rich renderings through `Presentations.stdout` (wrong: that is the machine channel). The second proposed a separate `graphic` presenter and left tables, trees and width alone (wrong: the engine owns rendering, so the fix belongs in the block grammar).
 
-The ORM's `migration list` renders a tree where colour carries meaning: the migration name in cyan, the operation count dimmed, a failed verification in red. Ported onto the engine it renders in one colour, because a handler has no way to ask for any other.
+## 1. What is broken
 
-Two independent gaps cause that.
+The engine ships a common renderer that does almost no rendering.
 
-**A rich renderer receives no `Ui` at all.** The engine's presentation surface is:
+- **No colour at all.** `makeUi` (`execution/command-context.ts:24-37`) emits exactly two escape sequences — SGR bold and dim. There is no colour anywhere in the engine, and `colorette` is not a dependency. Every ported platform presenter is written `human: () => [...]`; not one binds `ui`. The entire v8 CLI is unstyled.
+- **Tables do not align.** `renderBlock` (`execution/rendering.ts:86-91`) is `write(columns.join("  "))` then `write(row.join("  "))`. No sizing, no padding. The golden suite pins the result: `name  id  status` over `Acme Inc  ws_1  current`.
+- **Trees have no connectors.** `writeTree` (`:103-124`) emits two-space indents. The style guide specifies `├─ ✘ table user` with dim connectors and coloured glyphs; the block cannot express it, and has zero users.
+- **There is no way to draw.** A migration DAG with gutter lanes is not a tree and not a table. No block kind fits.
+- **Width is unreachable.** `OutputStream` is `{ write(text: string): void }` (`runtime.ts:7-9`) — no `columns`, structurally, even from the bin. Nothing in the engine reads terminal size. Consequently every ORM picture already breaks on a narrow terminal today: they assume unlimited width and let the terminal hard-wrap, which destroys the gutter alignment that carries their meaning.
+
+Both consumers have already lost rendering to this. The platform port flattened `auth workspace list`, `project list` and `agent status` from aligned rail-and-card renderings to ragged blocks, recorded as accepted divergences. The ORM port ships its renderers colourless, and two of them bypass `NO_COLOR` outright (`createColors({ useColor: true })`) to get colour at all.
+
+## 2. Text and the palette
+
+### 2.1 One text type, everywhere
+
+Anywhere a block takes display text, it takes `Text`:
 
 ```ts
-interface Presentations {
-  readonly human: (ui: Ui) => readonly Block[];
-  readonly stdout?: () => readonly string[];   // ← no ui parameter
-  readonly json?: () => unknown;
-  readonly next?: () => readonly NextAction[];
+type Text = string | readonly Span[];
+
+interface Span {
+  readonly text: string;
+  readonly tone?: Tone;
 }
 ```
 
-The ORM's tree, table and graph renderers ship as pre-rendered strings through `stdout` (they are machine-consumable data lines, and their layout is theirs, not the engine's block grammar). `stdout` takes no arguments, so those renderers cannot style anything.
+A bare string is untoned text. Spans carry meaning, never escape sequences: **a handler never emits ANSI**, so the engine can measure, re-theme, and strip by construction. Width is computed from `span.text`, so colour cannot break alignment — the pad-versus-colour trap that exists in shipped code today (`packages/cli/src/lib/app/deploy-output.ts:41`) becomes unrepresentable.
 
-**`Ui` has no vocabulary for it.** It is `{ emphasize, dim, code }`. `Block` already carries a `tone` of `"ok" | "error" | "warn" | "info"` for summaries, so the engine has a tone vocabulary at block level and nothing at string level.
+### 2.2 The palette
 
-## 2. What the ORM actually colours
+One `Tone` union, drawn on by `Span`, `Block.tone`, and `Ui` alike. Semantic names and indexed colours in the same union; a command asks for meaning where it has one, and for a distinguishable colour where it does not.
 
-Counted across the ORM CLI's renderers, so the vocabulary is derived from real use rather than guessed:
+```ts
+type Tone =
+  // status
+  | 'ok' | 'warn' | 'error' | 'info'
+  // text roles
+  | 'heading'      // a section label, a field key, a table column header
+  | 'identifier'   // a name the user typed or will type: a table, a ref, a hash, a command
+  | 'ref'          // a marker or ref name and its punctuation
+  | 'placeholder'  // an argument slot: <ref>
+  | 'link'         // a URL
+  | 'emphasis'     // the primary value on a line
+  | 'muted'        // secondary detail: counts, timestamps, empty states, off-path text
+  | 'structure'    // the drawing itself: gutters, rails, connectors, separators
+  | 'highlight'    // the selected route through a drawing
+  // indexed, non-semantic — for telling adjacent things apart
+  | 'color-1' | 'color-2' | 'color-3' | 'color-4' | 'color-5' | 'color-6' | 'color-7' | 'color-8';
+```
 
-| Colour | Count | What it means there |
-| --- | --- | --- |
-| red | 23 | a failure, drift, a destructive operation |
-| dim | 19 | secondary detail — counts, timestamps, gutters |
-| cyan | 17 | **an identifier**: table name, migration hash, ref name, node label |
-| green | 15 | success, an additive operation |
-| bold | 13 | emphasis within a line |
-| yellow | 5 | a warning |
-| magenta | 3 | **a placeholder slot** in a usage string (`<ref>`) |
-| blue | 2 | a URL |
+Consolidated from what both CLIs colour today. `heading` is the platform's cyan (40 sites: field keys and column headers); `identifier` is the ORM's cyan (18 sites: schema names, hashes, commands) — different meanings, both needed. `muted` and `structure` are both dim today but are not the same thing: one is de-emphasised text, the other is the drawing.
 
-Two of these are not status tones and have no equivalent in `Block.tone`: **identifier** and **placeholder**. A palette of only ok/error/warn/info would force renderers to pick a status tone for a table name, which is why this spec proposes the wider set below.
+The indexed colours are for series — the migration graph assigns one per branch lane, `lane % N`, and tints the lane's gutter cells, node glyph and migration name alike so they read as one colour. The engine owns which colours these are and guarantees they are mutually distinguishable, that none collides with `error`, and that they are stable within a run. A command says `color-3`; it does not know or care what that is.
 
-(The help formatter's colours are excluded from the table above — help is engine-owned and its colouring is the engine's business, not a family's.)
+### 2.3 `Ui`
 
-## 3. The surface
-
-### 3.1 `Ui` gains semantic verbs
+`Ui` gains a verb per tone, for styling inside text, and the available width (§4):
 
 ```ts
 interface Ui {
-  // existing
-  readonly emphasize: (text: string) => string;
-  readonly dim: (text: string) => string;
-  readonly code: (text: string) => string;
-  // new — semantic, never colour names
-  readonly ok: (text: string) => string;
-  readonly error: (text: string) => string;
-  readonly warn: (text: string) => string;
-  readonly info: (text: string) => string;
-  readonly identifier: (text: string) => string;   // a name the user typed or will type
-  readonly placeholder: (text: string) => string;  // an argument slot: <ref>
-  readonly link: (text: string) => string;         // a URL
+  readonly width: number;              // §4
+  readonly emphasize: (text: string) => string;   // kept: existing callers
+  readonly dim: (text: string) => string;         // kept
+  readonly code: (text: string) => string;        // kept
+  readonly tone: (tone: Tone, text: string) => string;
 }
 ```
 
-**Semantic, not colour names, and that is the point.** A product asks for meaning; the engine owns the mapping to an actual colour. One palette across every command in the unified CLI, changeable in one place, and a consumer cannot invent a fifteenth shade of blue. The first four names deliberately match `Block.tone`'s vocabulary so a summary block and a rendered line agree.
+Colour disabled ⇒ every verb is an identity function, so a renderer has one code path and no `if (colour)` branch.
 
-### 3.2 `stdout` receives the same `Ui`
+### 2.4 Colour resolution
+
+Engine-owned, unchanged in principle, corrected in one respect: it must key off **the stream the engine is printing to**. Today it keys off `isTty.stdout` (`execution/shared-flags.ts:156-158`) while blocks render to stderr, so `cmd > file` disables colour for output a human is watching and `cmd 2> file` leaves it on for output nobody sees.
+
+`NO_COLOR` is honoured absolutely. The two ORM renderers that force colour past it stop doing so when the palette is engine-owned — there is no per-renderer colour switch left to bypass.
+
+## 3. The block grammar
+
+`Block` grows and two existing kinds are fixed. The rule is unchanged: **the engine renders; a command describes.** A command reaches for `drawing` only when its layout genuinely cannot be described structurally.
+
+### 3.1 `table` — the engine aligns it
 
 ```ts
-readonly stdout?: (ui: Ui) => readonly string[];
+{ kind: 'table'; columns: readonly Text[]; rows: ReadonlyArray<readonly Text[]> }
 ```
 
-This is the change that unblocks the ORM's renderers. It is source-compatible: an existing `stdout` implementation that ignores the parameter keeps working.
+The engine sizes each column to its widest cell (measured on text, not escapes), pads, and joins with two spaces. Column headers render as `heading` unless the cell carries its own tone. This alone restores `auth workspace list`, `project list` and every other flattened platform table.
 
-### 3.3 When colour is off, the verbs are identity functions
+### 3.2 `tree` — the engine draws the connectors
 
-The engine already resolves whether colour is enabled (`--color` / `--no-color`, `NO_COLOR`, TTY detection, format). That resolution stays entirely engine-owned and is not exposed on the context — a handler never branches on it, it just calls the verb. Colour off means every verb returns its input unchanged, so a renderer has exactly one code path and no `if (colour)` anywhere.
+```ts
+{ kind: 'tree'; roots: readonly TreeNode[] }
 
-## 4. The alignment trap — the part most likely to ship broken
+interface TreeNode {
+  readonly label: Text;
+  readonly tone?: Tone;          // renders a status glyph before the label
+  readonly children?: readonly TreeNode[];
+}
+```
 
-Colour codes have length but no width. A renderer that pads a column and then colours the padded text produces correct output; one that colours first and pads after computes the wrong width and produces a ragged table. The ORM's `migration list` aligns three columns, so this will bite immediately.
+The engine draws `├─`, `└─`, `│` in `structure` tone and the status glyph (`✔ ✖ ⚠ ℹ`) from `tone`, matching the style guide's `├─ ✘ table user`. This restores the ORM's schema tree and the operation trees, and gives `agent status` a way to express the nesting it lost.
 
-The spec requires **both**:
+### 3.3 `drawing` — the escape hatch
 
-1. Documentation on `Ui` stating that tone verbs are applied *after* width computation, with the failure mode named.
-2. A width helper the engine exports — `visibleWidth(text: string): number` — that ignores ANSI sequences, so a renderer that must measure already-styled text has a correct way to do it rather than reaching for a regex of its own.
+```ts
+{ kind: 'drawing'; lines: readonly Text[] }
+```
 
-A golden test that pads and colours in both orders, asserting the aligned one matches, is worth more here than prose.
+Lines of spans, rendered verbatim: the engine applies the palette and writes each line, and does nothing else — no layout, no reflow, no truncation. This is for output whose 2D structure the engine cannot derive: the migration DAG's lane gutter, where lane assignment comes from a BFS over the graph and the same hue must reach the gutter cell, the node glyph and the label text.
 
-## 5. What the engine owns
+`summary`, `fields` and `list` keep their shapes, with `Text` in place of `string`.
 
-- The tone → colour mapping (one module, one table).
-- The enabled/disabled resolution, unchanged from today.
-- Stripping: any tone applied while colour is disabled produces no escape sequence at all — not an escape sequence the engine strips later. There is no post-hoc strip pass to get wrong.
-- The json path never sees styled text: `json()` builds from data, not from rendered strings, so this surface cannot leak escapes into machine output.
+## 4. Terminal width
 
-## 6. Testing
+The engine reads the terminal width **of the stream it is printing to** and hands it to the command as `ui.width`, because only the command knows what to sacrifice: the graph would shorten labels before dropping a lane; the list would shorten migration names before hashes.
 
-- Every verb, colour on and colour off, asserting exact bytes.
-- `stdout(ui)` receives a working `Ui`; an implementation ignoring the parameter still compiles and runs.
-- `visibleWidth` against styled and unstyled text, including multibyte characters.
-- The alignment golden described in §4.
-- One golden per tone in the existing golden-rendering suite, so the palette is pinned centrally and a change to it is a visible diff.
+- When that stream is not a terminal, `ui.width` is `Number.POSITIVE_INFINITY` — unbounded. It behaves correctly in the arithmetic a renderer already does (`Math.min(x, ui.width)`, `ui.width - gutter`), so no renderer needs a special case.
+- **If a command overruns anyway, the engine prints it.** No truncation, no wrapping, no ellipsis. The engine stays dumb; a command that wants to fit was told how much room it had.
+- Reaching `columns` requires widening the runtime seam: `OutputStream` (`runtime.ts:7-9`) and `HostProcess` (`:97-111`) gain an optional `columns?: number`, and the bin adapter (`packages/cli/src/v8/runtime.ts`) passes it through instead of dropping it. Keep the structural typing — no `NodeJS.*` in the public surface.
+- Width is read per render, not cached, so a resized terminal is respected on the next command.
 
-## 7. Coordination
+## 5. Testing
 
-- Lands in `packages/cli-engine`, ships in a published `@prisma/cli-engine`; the ORM port picks it up by version and converts its renderers in the round after.
-- Touches `presentation.ts`, `execution/rendering.ts`, and the exports barrel — a smaller footprint than the package-manager capability or telemetry, and it does not overlap the `cli.ts`/`context.ts`/`runtime.ts` cluster those two contend over.
-- Until it publishes, ported ORM renderers stay colourless; that is a recorded divergence, not a defect to work around with raw ANSI in the family.
+- Every tone, colour on and off, exact bytes; the palette pinned in the golden-rendering suite so a colour change is a visible diff.
+- A table with ragged content aligns; a table whose cells carry spans aligns identically with colour on and off.
+- A tree renders connectors and glyphs matching the style guide's example verbatim.
+- A drawing round-trips its spans with no reflow.
+- `ui.width` is the printing stream's columns; `POSITIVE_INFINITY` when not a terminal; a command that overruns is printed unmodified.
+- `NO_COLOR` suppresses every tone, with no path that bypasses it.
+- Colour resolution follows the printing stream: `cmd > file` on a terminal keeps colour on stderr.
 
-## 8. Acceptance
+## 6. Coordination
 
-- [ ] `Ui` carries the eleven verbs in §3.1; the four status names match `Block.tone`'s vocabulary.
-- [ ] `Presentations.stdout` receives `Ui`; existing implementations are source-compatible.
-- [ ] Colour disabled ⇒ every verb is identity; no escape sequence is emitted anywhere on that path.
-- [ ] `visibleWidth` is exported and correct for styled and multibyte text.
-- [ ] The alignment golden passes, and the palette is pinned in the golden-rendering suite.
-- [ ] No colour resolution is exposed on `CommandContext` — handlers cannot branch on it.
+- Lands in `packages/cli-engine`, ships in a published `@prisma/cli-engine`; both families convert their renderers afterwards.
+- Touches `presentation.ts`, `execution/rendering.ts`, `execution/command-context.ts`, `execution/shared-flags.ts`, `runtime.ts`, and the exports barrel. The runtime change overlaps the package-manager capability and telemetry specs — sequence with the operator.
+- `Text` replacing `string` in block fields is source-compatible: every existing call site passes strings.
+
+## 7. Acceptance
+
+- [ ] One `Tone` union — semantic names plus indexed colours — drawn on by `Span`, `Block.tone`, and `Ui`.
+- [ ] `Text = string | Span[]` accepted everywhere a block takes display text; handlers never emit escape sequences.
+- [ ] `table` aligns; `tree` draws connectors and status glyphs; `drawing` renders spans verbatim.
+- [ ] `ui.width` is the printing stream's width, unbounded off-terminal; overruns print unmodified.
+- [ ] Colour resolution keys off the printing stream; `NO_COLOR` is absolute and unbypassable.
+- [ ] The palette guarantees the indexed colours are mutually distinguishable and none collides with `error`.
+- [ ] Goldens pin the palette, table alignment, and tree connectors.
