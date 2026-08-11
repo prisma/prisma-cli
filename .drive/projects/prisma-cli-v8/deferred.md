@@ -75,11 +75,13 @@ Nothing here is tracked outside this file.
   next deploy. Full citations in `assets/s3/composer-inventory.md`
   §4a and D2's report.
 
-## Composer's public surface — operator-informed, no action pending
+## Composer's public surface — ruled, closed
 
 - **`ExtensionDescriptor.preflight` moved to method syntax** so an
   extension can type its input against its own client (the injected
   management client arrives there under S3's in-process credential
   leg). Consistent with `ContainerDescriptor` in the same file;
-  loosens parameter checking for extension authors. Kept, per the
-  operator's non-objection 2026-08-11.
+  loosens parameter checking for extension authors. RULED KEPT
+  (operator, 2026-08-11). No further action; the change ships with
+  S3 and needs a divergence entry only if it breaks a published
+  extension, which it does not.
