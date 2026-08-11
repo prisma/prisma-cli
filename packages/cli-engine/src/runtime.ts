@@ -7,7 +7,8 @@ import type { SpawnChild } from "./spawn";
 export interface OutputStream {
   write(text: string): void;
   /** The stream's terminal width, absent when it is not a terminal.
-   *  Read per render so a resized terminal is respected next command. */
+   *  The engine reads it at render time rather than caching it, so a
+   *  terminal resized mid-run is respected by the next thing drawn. */
   readonly columns?: number;
 }
 
