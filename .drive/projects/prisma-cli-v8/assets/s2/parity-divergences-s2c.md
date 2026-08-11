@@ -593,11 +593,14 @@ and the default endpoint are all unchanged.
 
 `prisma-cli app run` has no v8 counterpart and is not coming back:
 Composer's commands supersede it. This is a ruled drop, not a
-deferral. There is no `service run` port, no engine mechanism for
-passing a child process's exit code through (which is what ledger Q2
-asked about — the question closes with the drop), and S2d needs no
+deferral. There is no `service run` port, and S2d needs no
 legacy carve-out, because deleting the commander shell deletes the
-command with it. Anyone running a local dev server through
+command with it. (This entry also said there was no engine mechanism
+for passing a child process's exit code through, which is what ledger
+Q2 asked about. True when written; S3 built one for composer's
+converge — `ctx.spawn` and the `exitWithChildStatus` settlement. The
+drop stands, and Q2 stays closed by it: the mechanism now exists and
+the command still does not.) Anyone running a local dev server through
 `prisma-cli app run` moves to Composer.
 
 ### `app deploy` and `app build` are dropped (operator ruling, 2026-08-10)

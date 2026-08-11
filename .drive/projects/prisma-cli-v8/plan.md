@@ -146,8 +146,9 @@ Recorded so they are not lost between slices.
 | Sync commands, presenters, envelopes, exit codes | S1, S2 |
 | Prompts (defaults, consent, wizard) | S2 (init) |
 | Poll + status events; output streams | S2 (domain wait; `build logs` — `service logs` moved to S8) |
-| Auth via context, refresh under long runs | S2, S3 (deploy) |
-| Config sections, command families, validator absence | S3, S5 |
+| Auth via context | S2, S3 (deploy, destroy) |
+| Refresh under long runs | **Still unproven** (corrected at S3 closure). S3 proves the STATIC-token handoff instead: the child is given a snapshot that never refreshes, and the refresh token is never injected, so a long converge runs on a token that can expire mid-run. The contract accepts that and refuses up front when the session is near expiry. The in-process leg uses the engine's refreshing client, but nothing in S3 runs long enough to make it refresh. |
+| Config sections, command families, validator absence | S3 proves ONE section — composer's, a single optional string field — declared by one family and read through the real disk loader in the prisma bin: its total validator including absence, its unknown-key warning diagnostic, and the engine's own unknown-section check. The platform family declares no section, so two families contributing to one config file is unproven, and so is any section with required or structured fields. Both wait for S5. |
 | Session commands, signal lifetime | S3 (dev, log) |
 | Cross-repo/published consumption, pins, tandem releases | S3 |
 | Child-status passthrough exception | S3 |

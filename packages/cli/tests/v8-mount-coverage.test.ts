@@ -4,6 +4,7 @@ import { agentStatusCommand } from "../src/v8/agent/status";
 import { agentUpdateCommand } from "../src/v8/agent/update";
 import {
   cliGroups,
+  composerCommandFamily,
   mountedCommands,
   platformCommandFamily,
 } from "../src/v8/cli";
@@ -52,6 +53,10 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "bucket key list",
   "bucket list",
   "build logs",
+  "composer deploy",
+  "composer destroy",
+  "composer dev",
+  "composer log",
   "feedback",
   "git connect",
   "git disconnect",
@@ -94,14 +99,21 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "telemetry status",
 ];
 
+const MOUNTED_FAMILIES = {
+  platform: platformCommandFamily,
+  composer: composerCommandFamily,
+};
+
 describe("prisma-v8 mount coverage", () => {
   it("mounts exactly the expected command paths", () => {
     expect(Object.keys(mountedCommands).sort()).toEqual(EXPECTED_MOUNT_PATHS);
   });
 
-  it("mounts every command in the platform family", () => {
+  it.each(
+    Object.entries(MOUNTED_FAMILIES),
+  )("mounts every command in the %s family", (_name, commandFamily) => {
     const mounted = new Set(Object.values(mountedCommands));
-    const unmounted = Object.entries(platformCommandFamily.commands)
+    const unmounted = Object.entries(commandFamily.commands)
       .filter(([, command]) => !mounted.has(command))
       .map(([key]) => key);
 
@@ -109,9 +121,13 @@ describe("prisma-v8 mount coverage", () => {
   });
 
   it("gives every mounted command a family, except the deliberately familyless ones", () => {
-    const family = new Set(Object.values(platformCommandFamily.commands));
+    const owned = new Set(
+      Object.values(MOUNTED_FAMILIES).flatMap((commandFamily) =>
+        Object.values(commandFamily.commands),
+      ),
+    );
     const unowned = Object.entries(mountedCommands)
-      .filter(([, command]) => !family.has(command) && !FAMILYLESS.has(command))
+      .filter(([, command]) => !owned.has(command) && !FAMILYLESS.has(command))
       .map(([path]) => path);
 
     expect(unowned).toEqual([]);

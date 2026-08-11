@@ -10,7 +10,7 @@ is unclear, update the relevant product doc before changing the command surface.
 
 Requirements:
 
-- Node.js 22.12 or newer
+- Node.js 24 or newer
 - pnpm 10
 
 Install dependencies:

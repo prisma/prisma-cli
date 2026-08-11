@@ -5,6 +5,13 @@ import {
   createCli,
   defineCommandFamily,
 } from "@prisma/cli-engine";
+// TODO(release): @prisma/composer is pinned in package.json to the
+// pkg.pr.new preview build of composer#220. The tandem release
+// (contract R-S3-6, order engine → composer → prisma-cli) replaces it
+// with the exact published version, which must also be the version
+// composer itself pins @prisma/cli-engine to — until those agree, an
+// install of this package carries two copies of the engine.
+import { createComposerFamily } from "@prisma/composer/family";
 import { CLI_DOCS_URL } from "../cli-name";
 import { getCliVersion } from "../lib/version";
 import { agentInstallCommand } from "./agent/install";
@@ -120,6 +127,15 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
   },
 });
 
+/**
+ * Composer's commands, contributed by composer's own package and run by
+ * this process. Only the command definitions and their handler entry
+ * functions load here; the alchemy and effect constellation stays behind
+ * composer's dynamic executor imports, so mounting costs an unrelated
+ * command nothing.
+ */
+export const composerCommandFamily: CommandFamily = createComposerFamily();
+
 export const cliGroups: Readonly<
   Record<string, { brief: string; description?: string }>
 > = {
@@ -140,6 +156,9 @@ export const cliGroups: Readonly<
   service: { brief: "Manage services and deployments for a project" },
   "service domain": { brief: "Manage custom domains for a service" },
   build: { brief: "Inspect builds created by a git push or Console" },
+  composer: {
+    brief: "Run and deploy applications composed from Prisma modules",
+  },
   agent: { brief: "Manage Prisma skills for AI coding agents" },
   "auth workspace": { brief: "Manage local workspace sessions" },
   telemetry: {
@@ -203,6 +222,10 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "service domain wait": serviceDomainWaitCommand,
   // Platform builds are their own group; there is no local build verb.
   "build logs": buildLogsCommand,
+  "composer deploy": composerCommandFamily.commands.deploy,
+  "composer destroy": composerCommandFamily.commands.destroy,
+  "composer dev": composerCommandFamily.commands.dev,
+  "composer log": composerCommandFamily.commands.log,
   // Local utilities: no owning package, no config section, no API.
   "agent install": agentInstallCommand,
   "agent update": agentUpdateCommand,
@@ -218,7 +241,7 @@ export function buildCli(): Cli {
   return createCli({
     name: "prisma-v8",
     version: getCliVersion(),
-    commandFamilies: [platformCommandFamily],
+    commandFamilies: [platformCommandFamily, composerCommandFamily],
     groups: cliGroups,
     commands: mountedCommands,
   });

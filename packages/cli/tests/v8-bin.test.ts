@@ -22,6 +22,14 @@ const NAMED_CONFIG_PATH = join(
   "elsewhere.config.ts",
 );
 
+/** A prisma.config.ts whose only section is composer's. */
+const COMPOSER_SECTION_CONFIG_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "fixtures",
+  "v8-config",
+  "composer-section.config.ts",
+);
+
 const SEMVER_PREFIX = /^\d+\.\d+\.\d+/;
 
 function makeProcess(overrides?: {
@@ -348,6 +356,31 @@ describe("buildCli", () => {
     expect(proc.stdoutText).toContain(
       "Read this config file instead of ./prisma.config.ts",
     );
+  });
+
+  /** The mount's config wiring, end to end: the section name composer's
+   *  family declares, read by the bin's real disk loader, reaching
+   *  composer's own handler as the path it acts on. */
+  it("hands the composer section of prisma.config.ts to the composer family", async () => {
+    const proc = makeProcess({
+      argv: [
+        "node",
+        "bin.js",
+        "composer",
+        "log",
+        "--config",
+        COMPOSER_SECTION_CONFIG_PATH,
+        "src/service.ts",
+      ],
+    });
+
+    const exitCode = await main(proc);
+
+    expect(exitCode).toBe(2);
+    expect(proc.stdoutText).toContain(
+      join("/tmp/v8-bin-test-cwd", "named-by-the-section.config.ts"),
+    );
+    expect(proc.stdoutText).toContain("there is no walk to fall back on");
   });
 
   it("runs --version through the real tree, printing the version with exit 0", async () => {

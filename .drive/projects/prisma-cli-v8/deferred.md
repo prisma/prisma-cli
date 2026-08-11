@@ -4,7 +4,11 @@ Work identified during a slice that is not part of that slice's
 contract. Each entry: what, why it was deferred, where it lands.
 Nothing here is tracked outside this file.
 
-## Owned by S3/D4 (the slice's closing dispatch)
+## Still open after S3/D4 — all of it in the composer repo
+
+D4 landed the prisma-cli half (the mount, the node floor, the divergence
+file, the ledger corrections, the 1c closure). What is left needs a
+composer checkout.
 
 - **`loadAppConfigDiagnostics()` is called by nothing.** D2 rewrote
   composer's config loading to return diagnostics instead of
@@ -18,12 +22,20 @@ Nothing here is tracked outside this file.
   tree because the family's static graph is alchemy-free). The check
   performs real npm installs, so it needs network to run.
 - **The engine pin moves off `0.0.3`** to whatever the tandem release
-  publishes, in both composer manifests.
-- **Contract corrections at closure**: ledger Q2 (main's #135 dropped
-  `service run` outright, so S3 no longer "closes" it by building the
-  mechanism — the mechanism exists, the command does not), and the
-  coverage-ledger rows for "refresh under long runs" and "config
-  sections" (see contract §10).
+  publishes, in both composer manifests — and it must be the SAME
+  version prisma-cli depends on. They disagree today: prisma-cli builds
+  against the workspace engine and the preview composer pins
+  `@prisma/cli-engine@0.0.7`, so an install of `@prisma/cli` carries two
+  copies of the engine. It works (the settlement markers are
+  `Symbol.for`, so they cross copies), but the tandem release is where
+  it should stop being true.
+- **The prisma bin's mount makes composer's help examples wrong.**
+  Composer writes them as `{bin} deploy src/service.ts`; mounted under
+  the `composer` root the invocation is `prisma composer deploy`, and
+  the engine substitutes only `{bin}`. Fix needs both repos: a
+  mount-aware placeholder in the engine (`{command}` → the command's
+  mounted path) and composer's four example strings rewritten to use it.
+  Recorded in `assets/s2/parity-divergences-s3.md`.
 
 ## Owned by whoever lands the next engine change
 
@@ -33,22 +45,13 @@ Nothing here is tracked outside this file.
   If rev 6's storage surface reshapes again, the single named
   consumer (`packages/cli-engine/src/execution/spawn.ts`) moves with
   it. Recorded in `assets/engine/credential-manager-design.md`.
-- **`--tail` validation is wider than the recorded divergence.** The
-  engine's `flag.number` accepts negatives and non-integers; legacy
-  `composer log --tail` rejected both. Either the flag gains
-  validation or the divergence entry widens.
-- **`v8-spawn-adapter.test.ts` has a race that fails under load.**
-  In `packages/cli/tests/v8-spawn-adapter.test.ts`, the "kill
-  delivers the signal to the live child" case runs an inline child
-  that writes its `ready` marker BEFORE calling
-  `process.on('SIGTERM', ...)`. The test waits on that marker and
-  then kills, so a kill landing in the gap hits the default SIGTERM
-  disposition: the child dies by signal instead of exiting 42, and
-  the assertion fails. Reproduced on a loaded machine (2 of 4 runs)
-  while verifying the child-record change, which does not touch
-  `packages/cli`. Fix: have the child write `ready` only after the
-  handler is installed — the same ordering the engine's own
-  `tests/fixtures/child.mjs` `trap-term` fixture already uses.
+- **A validated number flag**, if `--tail`'s old constraint is wanted
+  back. `flag.number` accepts negatives and fractions, so "non-negative
+  integer" is enforced nowhere. D4 took the other branch this item
+  offered and widened the divergence entry instead
+  (`assets/s2/parity-divergences-s3.md`), which also corrects this
+  item's claim that legacy rejected non-integers — legacy truncated
+  them silently, and rejected only negatives and `NaN`.
 
 ## Upstream, not ours to land
 
@@ -61,6 +64,19 @@ Nothing here is tracked outside this file.
   composer's alchemy bump. Exit condition recorded in
   `skills-contrib/upgrade-alchemy-effect/SKILL.md` in the composer
   repo.
+  **The patch does not reach the prisma bin, and D4 measured what that
+  costs.** A pnpm patch applies in the repo that declares it, so a
+  `prisma` install resolves the unpatched `@alchemy.run/node-utils`.
+  D4's canary (`packages/cli/tests/v8-composer-isolation.test.ts`)
+  imports one composer executor in a fresh prisma bin process and finds
+  one SIGINT and one SIGTERM listener registered by the import alone —
+  the exact condition the contract's design consequence 4 says nothing
+  ships with. It does not fire on a normal run: the same process running
+  `--version` loads no alchemy at all and holds no listener, which is
+  what the test asserts. It fires once a composer command evaluates its
+  config. Until the release chain delivers, composer's own
+  sole-listener detector passes on the patch and the prisma bin has no
+  such protection.
 - **Alchemy's `sync` reports permanent drift on Composer resources.**
   `Deployment.read` returns `previewDomain` while `reconcile`
   persists `appEndpointDomain`; `Sync.ts` deep-equals live against
