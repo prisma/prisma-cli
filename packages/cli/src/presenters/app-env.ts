@@ -15,7 +15,7 @@ import {
   stripVerboseContext,
 } from "./verbose-context";
 
-function scopeLabel(scope: EnvScopeDescriptor): string {
+export function scopeLabel(scope: EnvScopeDescriptor): string {
   if (scope.kind === "role") {
     return scope.role ?? "unknown";
   }
@@ -25,7 +25,7 @@ function scopeLabel(scope: EnvScopeDescriptor): string {
   return `branch:${scope.branchName ?? scope.branchId ?? "unknown"}`;
 }
 
-function listTargetLabel(result: EnvListResult): string {
+export function listTargetLabel(result: EnvListResult): string {
   const target = result.target;
   if (target.source === "overview") {
     return "overview";

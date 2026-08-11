@@ -300,7 +300,7 @@ export async function runEnvUpdate(
   };
 }
 
-function resolveEnvWriteSource(
+export function resolveEnvWriteSource(
   rawAssignment: string | undefined,
   filePath: string | undefined,
   command: "add" | "update",
@@ -347,7 +347,7 @@ function resolveEnvWriteSource(
   return { kind: "single", rawAssignment };
 }
 
-async function resolveEnvWriteInput(
+export async function resolveEnvWriteInput(
   context: CommandContext,
   source: EnvWriteSource,
   command: "add" | "update",
@@ -557,7 +557,7 @@ async function requireClientAndProject(
   };
 }
 
-async function resolveScopeToApi(
+export async function resolveScopeToApi(
   client: ManagementApiClient,
   projectId: string,
   scope: EnvScope,
@@ -608,7 +608,7 @@ async function resolveScopeToApi(
   };
 }
 
-async function resolveListScopeToApi(
+export async function resolveListScopeToApi(
   client: ManagementApiClient,
   projectId: string,
   explicit: EnvScope | undefined,
@@ -721,7 +721,7 @@ function targetFromExplicitScope(scope: EnvScopeDescriptor): EnvListTarget {
   };
 }
 
-function formatScopeFlag(scope: EnvScope): string {
+export function formatScopeFlag(scope: EnvScope): string {
   if (scope.kind === "role") {
     return `--role ${scope.role}`;
   }
@@ -875,7 +875,7 @@ async function projectHasDefaultBranch(
   }
 }
 
-async function listVariables(
+export async function listVariables(
   client: ManagementApiClient,
   projectId: string,
   resolved: ResolvedScope,
@@ -894,7 +894,7 @@ async function listVariables(
   return materializeEffectiveRows(collected, resolved);
 }
 
-async function listOverviewVariables(
+export async function listOverviewVariables(
   client: ManagementApiClient,
   projectId: string,
   signal: AbortSignal,

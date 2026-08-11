@@ -79,7 +79,7 @@ operations, only re-homes invocation behind `ctx.api`-built clients
 where the operation takes an SDK/client argument (inventory's "API
 surface" column names it).
 
-## Commands in scope (30)
+## Commands in scope (31)
 
 `project list|show|create|link|rename|remove|transfer`,
 `project env add|update|list|remove`, `git connect|disconnect`,
@@ -101,13 +101,42 @@ deletion (S2d); auto-login reinstatement (ledger Q1); command aliases
 
 ## Acceptance
 
-- [ ] All 30 commands mounted in the v8 bin under groups
+- [x] All 31 commands mounted in the v8 bin under groups
       `project`, `git`, `branch`, `postgres`, `bucket` (+ declared
-      subgroup help), passing R-S2b-9's test matrix.
-- [ ] `postgres` rename complete; no `database` path survives in v8.
-- [ ] Consent matrix proven for every destructive command.
-- [ ] Secrets pipe-clean and masked per R-S2b-4.
-- [ ] Divergence list updated with every R-S2b-1/2/3/5/8 delta.
-- [ ] Legacy fixture tests for ported commands deleted; legacy shell
-      still green for unported groups.
-- [ ] Root verification green; PR ≥1k LOC; review loop run.
+      subgroup help), passing R-S2b-9's test matrix. The mount-coverage
+      test now asserts the literal path list, so a missing command
+      fails it.
+- [x] `postgres` rename complete; no `database` path survives in v8.
+      The three v8 strings that named the old group and left the error
+      mapper's regex to rewrite them were found by the closure pass and
+      now name `postgres` directly.
+- [x] Consent matrix proven for every destructive command — all seven,
+      each matrix non-vacuous, with the success case driving a real
+      API call.
+- [x] Secrets pipe-clean and masked per R-S2b-4. The golden entry added
+      at closure is what joins our `sensitive` flag to the engine's
+      `********`; before it, neither end proved the other.
+- [x] Divergence list updated, 46 entries and a conformance row for
+      every command.
+- [x] Legacy fixture tests for ported commands deleted, unit tests for
+      helpers and providers the new commands still call kept; legacy
+      shell still green for unported groups.
+- [x] Root verification green; PR #133 at roughly +17,700 lines; both
+      the per-dispatch review rounds and the closure architect and
+      principal-engineer passes run, with every finding dispositioned.
+
+Nothing is left recorded-but-unfixed. Three things were recorded here
+first and then fixed, all because recording them was the wrong call.
+
+`git connect` declared `needs.interaction`, so non-interactive runs
+failed before any API call even when no waiting was needed. Removed on
+the operator's ruling of 2026-08-11; only the install wait needs a
+person, and the engine refuses that itself. `project list` reported an empty
+workspace at exit 0 when the API rejected the request — a refusal
+reported as a success is not a behaviour anyone chose (divergence 46).
+And the stdout lane carried human formatting — sizes as `2.0 KiB`,
+placeholders like `unknown` and `unscoped` — which the Option A channel
+ruling of 2026-08-09 had already settled: stdout is the machine-usable
+payload and human mode is pipe-clean. That ruling was in the normative
+stack the whole time; presenting it as an open question was an error,
+not a judgement call.

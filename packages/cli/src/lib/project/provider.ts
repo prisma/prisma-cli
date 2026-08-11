@@ -163,7 +163,7 @@ export function projectTransferRejectedError(
   });
 }
 
-function projectApiError(
+export function projectApiError(
   summary: string,
   response: Response | undefined,
   error: RawApiErrorBody | undefined,
