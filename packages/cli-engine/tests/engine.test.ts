@@ -15,6 +15,7 @@ import { describe, expect, test } from "vitest";
 describe("main export", () => {
   test("exposes exactly the definition-surface runtime values", () => {
     expect(Object.keys(engine).sort()).toEqual([
+      "EnvironmentCredentialManager",
       "PRESENTED",
       "PRISMA_CONFIG_VERSION",
       "authServiceError",

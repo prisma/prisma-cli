@@ -73,6 +73,7 @@ export type {
   Session,
   StoredSessions,
 } from "../credential-manager";
+export { EnvironmentCredentialManager } from "../environment-credential-manager";
 export type {
   EngineEvent,
   Severity,
