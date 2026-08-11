@@ -121,7 +121,7 @@ const styled = defineCommand({
         { data: {} },
         {
           human: (ui) => [
-            { kind: "summary", tone: "ok", text: ui.tone("heading", "H") },
+            { kind: "summary", status: "ok", text: ui.tone("heading", "H") },
             { kind: "list", items: [`width=${ui.width}`] },
           ],
         },

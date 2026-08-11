@@ -18,7 +18,7 @@ function listPresentations(result: BucketListResult): Presentations {
   const stdoutRows = bucketStdoutRows(result.buckets);
   return {
     human: (): Block[] => [
-      { kind: "summary", tone: "info", text: TITLE },
+      { kind: "summary", status: "info", text: TITLE },
       {
         kind: "fields",
         rows: [

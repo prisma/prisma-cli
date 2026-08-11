@@ -34,7 +34,7 @@ describe("prisma-v8 service promote", () => {
     });
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: "Promoted dep_1 to production.",
     });
   });
@@ -134,7 +134,7 @@ describe("prisma-v8 service promote", () => {
     expect(result.events).toEqual([]);
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: "dep_2 was already live for hello-world.",
     });
   });

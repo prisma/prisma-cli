@@ -148,7 +148,7 @@ export function fileWritePresentations(input: {
   const rows = variableRows(input.variables);
   return {
     human: (): Block[] => [
-      { kind: "summary", tone: "info", text: input.title },
+      { kind: "summary", status: "info", text: input.title },
       {
         kind: "fields",
         rows: [

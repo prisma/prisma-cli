@@ -78,7 +78,7 @@ export function formatTelemetryStatusLines(status: TelemetryStatus): string[] {
 function statusPresentations(status: TelemetryStatus): Presentations {
   return {
     human: () => [
-      { kind: "summary", tone: "info", text: statusSummaryLine(status) },
+      { kind: "summary", status: "info", text: statusSummaryLine(status) },
       {
         kind: "fields",
         rows: [

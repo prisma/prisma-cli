@@ -365,7 +365,7 @@ describe("prisma-v8 project show", () => {
     });
     expect(blocks(result.presented)[0]).toEqual({
       kind: "summary",
-      tone: "warn",
+      status: "warn",
       text: "This directory is not linked to a Prisma Project.",
     });
     expect(result.presented?.presentation.next?.at(-1)).toEqual({
@@ -514,13 +514,13 @@ describe("prisma-v8 project create", () => {
       action: "created",
     });
     expect(blocks(result.presented)).toEqual([
-      { kind: "summary", tone: "ok", text: 'Created Project "my-app"' },
+      { kind: "summary", status: "ok", text: 'Created Project "my-app"' },
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: `Linked "./${path.basename(cwd)}" to Project "my-app"`,
       },
-      { kind: "summary", tone: "info", text: "Saved .prisma/local.json" },
+      { kind: "summary", status: "info", text: "Saved .prisma/local.json" },
     ]);
     expect(
       JSON.parse(
@@ -880,7 +880,7 @@ describe("prisma-v8 project rename", () => {
       previousName: "Billing",
     });
     expect(blocks(result.presented)).toEqual([
-      { kind: "summary", tone: "ok", text: "Renaming project." },
+      { kind: "summary", status: "ok", text: "Renaming project." },
       {
         kind: "fields",
         rows: [
@@ -1202,7 +1202,7 @@ describe("prisma-v8 project env add", () => {
     });
     expect(blocks(result.presented)[0]).toEqual({
       kind: "summary",
-      tone: "info",
+      status: "info",
       text: "Setting a new environment variable.",
     });
   });
@@ -1649,7 +1649,7 @@ describe("prisma-v8 project env update", () => {
     expect(writes).toEqual([{ envVarId: "env_1", value: "sk_new" }]);
     expect(blocks(result.presented)[0]).toEqual({
       kind: "summary",
-      tone: "info",
+      status: "info",
       text: "Replacing the environment variable's value.",
     });
   });
@@ -1861,7 +1861,7 @@ describe("prisma-v8 project env update", () => {
     });
     expect(blocks(result.presented)[0]).toEqual({
       kind: "summary",
-      tone: "info",
+      status: "info",
       text: "Replacing environment variable values from file.",
     });
   });
@@ -2302,7 +2302,7 @@ describe("prisma-v8 project env remove", () => {
     expect(blocks(result.presented)).toEqual([
       {
         kind: "summary",
-        tone: "info",
+        status: "info",
         text: "Removing the environment variable from the scope.",
       },
       {
@@ -2481,7 +2481,7 @@ describe("prisma-v8 project remove", () => {
       localPin: { cleared: true },
     });
     expect(blocks(result.presented)).toEqual([
-      { kind: "summary", tone: "ok", text: "Removing project." },
+      { kind: "summary", status: "ok", text: "Removing project." },
       {
         kind: "fields",
         rows: [

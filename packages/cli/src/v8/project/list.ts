@@ -55,7 +55,7 @@ function listPresentations(result: ProjectListResult): Presentations {
   const stdoutRows = projectStdoutRows(result);
   return {
     human: () => [
-      { kind: "summary", tone: "info", text: TITLE },
+      { kind: "summary", status: "info", text: TITLE },
       {
         kind: "fields",
         rows: [{ label: "workspace", value: result.workspace.name }],

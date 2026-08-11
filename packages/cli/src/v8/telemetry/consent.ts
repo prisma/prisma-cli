@@ -8,7 +8,7 @@ export function consentPresentations(
   json: unknown,
 ): Presentations {
   return {
-    human: () => [{ kind: "summary", tone: "ok", text: line }],
+    human: () => [{ kind: "summary", status: "ok", text: line }],
     stdout: () => [line],
     json: () => json,
   };

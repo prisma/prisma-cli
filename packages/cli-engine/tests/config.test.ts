@@ -699,7 +699,7 @@ function showCommand(
           { data: ctx.config },
           {
             human: () => [
-              { kind: "summary", tone: "ok", text: ctx.config.greeting },
+              { kind: "summary", status: "ok", text: ctx.config.greeting },
             ],
           },
         ),

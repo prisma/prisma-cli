@@ -49,14 +49,14 @@ function listPresentations(result: WorkspaceListResult): Presentations {
     human: () => [
       {
         kind: "summary",
-        tone: "info",
+        status: "info",
         text: "Listing your workspace sessions on this machine.",
       },
       ...(result.environmentCredentialInForce
         ? [
             {
               kind: "summary",
-              tone: "info",
+              status: "info",
               text: ENVIRONMENT_CREDENTIAL_NOTICE,
             } as const,
           ]
@@ -65,7 +65,7 @@ function listPresentations(result: WorkspaceListResult): Presentations {
         ? [
             {
               kind: "summary",
-              tone: "info",
+              status: "info",
               text: "No workspace sessions found.",
             } as const,
           ]

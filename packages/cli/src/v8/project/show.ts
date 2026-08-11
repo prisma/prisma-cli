@@ -76,12 +76,12 @@ function showPresentations(
       result.project === null
         ? {
             kind: "summary",
-            tone: "warn",
+            status: "warn",
             text: "This directory is not linked to a Prisma Project.",
           }
         : {
             kind: "summary",
-            tone: "info",
+            status: "info",
             text: "This directory is linked to the following platform project.",
           },
       { kind: "fields", rows },

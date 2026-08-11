@@ -48,7 +48,7 @@ const greet = defineCommand({
       ctx.present(
         { data: { greeting } },
         {
-          human: () => [{ kind: "summary", tone: "ok", text: greeting }],
+          human: () => [{ kind: "summary", status: "ok", text: greeting }],
           stdout: () => [greeting],
           json: () => ({ greeting }),
           next: () => [{ kind: "done", label: "Nothing else to do" }],
@@ -97,7 +97,7 @@ const check = defineCommand({
           ],
         },
         {
-          human: () => [{ kind: "summary", tone: "warn", text: "1 finding" }],
+          human: () => [{ kind: "summary", status: "warn", text: "1 finding" }],
         },
       ),
     ),
@@ -122,7 +122,7 @@ const whoami = defineCommand({
           human: () => [
             {
               kind: "summary",
-              tone: "ok",
+              status: "ok",
               text: `Signed in (${active?.workspaceId})`,
             },
           ],

@@ -75,7 +75,9 @@ export interface Presentations {
 export type Block =
   | {
       readonly kind: "summary";
-      readonly tone: "ok" | "error" | "warn" | "info";
+      readonly status: Status;
+      /** Overrides the colour the status implies. Never the glyph. */
+      readonly tone?: Tone;
       readonly text: string;
     }
   | {

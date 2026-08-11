@@ -373,7 +373,7 @@ describe("sessions held with none selected", () => {
       ok(
         ctx.present(
           { data: null },
-          { human: () => [{ kind: "summary", tone: "ok", text: "ran" }] },
+          { human: () => [{ kind: "summary", status: "ok", text: "ran" }] },
         ),
       ),
   });
@@ -385,7 +385,7 @@ describe("sessions held with none selected", () => {
       return ok(
         ctx.present(
           { data: null },
-          { human: () => [{ kind: "summary", tone: "ok", text: "ran" }] },
+          { human: () => [{ kind: "summary", status: "ok", text: "ran" }] },
         ),
       );
     },

@@ -1,5 +1,5 @@
 import type { EngineEvent } from "../events";
-import type { Block, PresentedResult } from "../presentation";
+import type { Block, PresentedResult, Status } from "../presentation";
 import type { Diagnostic, NextAction } from "../protocol";
 import type { Invocation, RunState } from "./engine";
 
@@ -62,11 +62,11 @@ export function renderEventHuman(
   }
 }
 
-const TONE_SYMBOL: Readonly<
-  Record<Extract<Block, { kind: "summary" }>["tone"], string>
-> = {
+/** The four Status glyphs (contract §2.2). Distinct from a
+ *  diagnostic's severity symbol, which the protocol owns. */
+const STATUS_SYMBOL: Readonly<Record<Status, string>> = {
   ok: "✔",
-  error: "✖",
+  error: "✘",
   warn: "⚠",
   info: "ℹ",
 };
@@ -74,7 +74,7 @@ const TONE_SYMBOL: Readonly<
 export function renderBlock(block: Block, write: (line: string) => void): void {
   switch (block.kind) {
     case "summary":
-      write(`${TONE_SYMBOL[block.tone]} ${block.text}`);
+      write(`${STATUS_SYMBOL[block.status]} ${block.text}`);
       return;
     case "fields":
       for (const row of block.rows) {
