@@ -138,6 +138,27 @@ async function pickProject(
   );
 }
 
+/** The link itself, without the command around it: resolve the named
+ *  Project or pick one, then bind `ctx.cwd` to it. `init`'s link step
+ *  runs this, so there is one picker and one pin writer. */
+export async function linkDirectoryToProject(
+  ctx: ProjectCommandContext,
+  projectRef: string | undefined,
+): Promise<ProjectSetupResult> {
+  const workspace = await resolveActiveWorkspace(ctx);
+  const projects = await listWorkspaceProjects(ctx, workspace);
+  const ref = projectRef?.trim();
+
+  return ref
+    ? await bindDirectoryToProject(
+        ctx,
+        workspace,
+        toProjectSummary(resolveProjectForSetup(ref, projects, workspace)),
+        "linked",
+      )
+    : await pickProject(ctx, workspace, projects);
+}
+
 export const projectLinkCommand = defineCommand({
   args: {
     positionals: {
@@ -158,20 +179,10 @@ export const projectLinkCommand = defineCommand({
   needs: { credentials: true },
   handler: async (args, ctx) => {
     try {
-      const workspace = await resolveActiveWorkspace(ctx);
-      const projects = await listWorkspaceProjects(ctx, workspace);
-      const projectRef = args.positionals.project?.trim();
-
-      const result = projectRef
-        ? await bindDirectoryToProject(
-            ctx,
-            workspace,
-            toProjectSummary(
-              resolveProjectForSetup(projectRef, projects, workspace),
-            ),
-            "linked",
-          )
-        : await pickProject(ctx, workspace, projects);
+      const result = await linkDirectoryToProject(
+        ctx,
+        args.positionals.project,
+      );
 
       return ok(ctx.present({ data: result }, setupPresentations(result)));
     } catch (error) {

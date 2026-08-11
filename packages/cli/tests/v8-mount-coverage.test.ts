@@ -5,6 +5,7 @@ import {
   mountedCommands,
   platformCommandFamily,
 } from "../src/v8/cli";
+import { initCommand } from "../src/v8/init/init";
 import { telemetryDisableCommand } from "../src/v8/telemetry/disable";
 import { telemetryEnableCommand } from "../src/v8/telemetry/enable";
 import { telemetryStatusCommand } from "../src/v8/telemetry/status";
@@ -15,6 +16,7 @@ const SHELL_OWNED: ReadonlySet<unknown> = new Set([
   telemetryEnableCommand,
   telemetryDisableCommand,
   versionCommand,
+  initCommand,
 ]);
 
 /**
@@ -40,6 +42,7 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "bucket list",
   "git connect",
   "git disconnect",
+  "init",
   "postgres backup list",
   "postgres connection create",
   "postgres connection list",

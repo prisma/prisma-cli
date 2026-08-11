@@ -22,6 +22,7 @@ import { bucketKeyListCommand } from "./bucket/key-list";
 import { bucketListCommand } from "./bucket/list";
 import { gitConnectCommand } from "./git/connect";
 import { gitDisconnectCommand } from "./git/disconnect";
+import { initCommand } from "./init/init";
 import { postgresBackupListCommand } from "./postgres/backup-list";
 import { postgresConnectionCreateCommand } from "./postgres/connection-create";
 import { postgresConnectionListCommand } from "./postgres/connection-list";
@@ -161,6 +162,9 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "telemetry enable": telemetryEnableCommand,
   "telemetry disable": telemetryDisableCommand,
   version: versionCommand,
+  // Top-level, and not the platform package's: init writes a local
+  // compute config. It joins the compute family when S3 brings one.
+  init: initCommand,
 };
 
 export function buildCli(): Cli {
