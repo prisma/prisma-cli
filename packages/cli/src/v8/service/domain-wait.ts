@@ -28,7 +28,7 @@ function parseWaitTimeout(value: string | undefined): number {
   if (trimmed === "0") {
     return 0;
   }
-  const match = /^(\d+)(ms|s|m|h)$/.exec(trimmed);
+  const match = DURATION.exec(trimmed);
   if (!match) {
     throw timeoutInvalidError(value);
   }
@@ -67,6 +67,8 @@ async function sleep(milliseconds: number, signal: AbortSignal): Promise<void> {
     signal.addEventListener("abort", onAbort, { once: true });
   });
 }
+
+const DURATION = /^(\d+)(ms|s|m|h)$/;
 
 export const serviceDomainWaitCommand = defineCommand({
   help: {

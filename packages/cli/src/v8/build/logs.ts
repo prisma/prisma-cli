@@ -3,6 +3,8 @@ import { defineSessionCommand, flag, positional } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 
+const TRAILING_NEWLINE = /\n$/;
+
 /**
  * One line of `GET /v1/builds/{buildId}/logs` (the `BuildLogNdjsonLine`
  * schema). Build logs are a separate system from deployment logs: this
@@ -160,7 +162,7 @@ function reportRecord(
         record.source === "stderr" || record.level === "error"
           ? "diagnostic"
           : "data",
-      line: record.text.replace(/\n$/, ""),
+      line: record.text.replace(TRAILING_NEWLINE, ""),
       // The record's own fields, so a json consumer keeps everything
       // legacy published per record — the cursor above all, because
       // `--cursor` resumes from one.

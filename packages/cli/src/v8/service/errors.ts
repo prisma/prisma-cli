@@ -33,6 +33,9 @@ function toEngineNextAction(action: LegacyNextAction): NextAction {
  */
 const LEGACY_CLI_NAME = "prisma-cli";
 
+const CNAME_HINT = /\bcname(?:s)?\s+to\b/;
+const PRISMA_BUILD_HOST = /\b((?:[a-z0-9-]+\.)+prisma\.build)\b/i;
+
 /**
  * The rename surface for copy that flows through legacy error builders:
  * command lines and the "app target" noun in prose. Deliberately
@@ -615,7 +618,7 @@ function isDomainDnsError(error: DomainApiError): boolean {
     text.includes("no cname") ||
     text.includes("cname record") ||
     text.includes("no a/aaaa") ||
-    /\bcname(?:s)?\s+to\b/.test(text)
+    CNAME_HINT.test(text)
   );
 }
 
@@ -652,7 +655,7 @@ function domainDnsNotConfiguredError(
 
 function extractDomainDnsTarget(error: DomainApiError): string | null {
   const text = `${error.hint ?? ""} ${error.message}`;
-  const match = /\b((?:[a-z0-9-]+\.)+prisma\.build)\b/i.exec(text);
+  const match = PRISMA_BUILD_HOST.exec(text);
   return match?.[1]?.toLowerCase() ?? null;
 }
 

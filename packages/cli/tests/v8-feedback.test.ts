@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { feedbackCommand } from "../src/v8/feedback";
 import { mountsFor } from "./v8-service-testkit";
 
+const USER_AGENT_PREFIX = /^prisma-cli\//;
+
 /** The command posts with the global fetch and the engine hands session
  *  commands no HTTP seam, so the service is faked where the legacy
  *  tests fake it: a loopback server the run is pointed at with
@@ -122,7 +124,7 @@ describe("prisma-v8 feedback", () => {
         arch: process.arch,
       },
     });
-    expect(requests[0]?.userAgent).toMatch(/^prisma-cli\//);
+    expect(requests[0]?.userAgent).toMatch(USER_AGENT_PREFIX);
   });
 
   it("includes the email only when --email is passed", async () => {

@@ -54,6 +54,12 @@ import type {
 } from "./results";
 
 const PRISMA_PROJECT_ID_ENV_VAR = "PRISMA_PROJECT_ID";
+
+/** A hostname's optional root dot, and one DNS label. */
+const TRAILING_DOT = /\.$/;
+const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+/** The group prefix a compute-config error message drops. */
+const SERVICE_PREFIX = /^service /;
 const PRISMA_SERVICE_ID_ENV_VAR = "PRISMA_SERVICE_ID";
 
 export type ServiceContext = Pick<
@@ -485,7 +491,7 @@ export function toServiceDomainSummary(
 }
 
 export function normalizeDomainHostname(hostname: string): string {
-  const normalized = hostname.trim().replace(/\.$/, "").toLowerCase();
+  const normalized = hostname.trim().replace(TRAILING_DOT, "").toLowerCase();
   if (!isValidDomainHostname(normalized)) {
     throw domainHostnameInvalidError(hostname);
   }
@@ -508,15 +514,13 @@ function isValidDomainHostname(hostname: string): boolean {
   if (labels.length < 2) {
     return false;
   }
-  return labels.every((label) =>
-    /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label),
-  );
+  return labels.every((label) => DNS_LABEL.test(label));
 }
 
 export function sameDomainHostname(left: string, right: string): boolean {
   return (
-    left.trim().replace(/\.$/, "").toLowerCase() ===
-    right.trim().replace(/\.$/, "").toLowerCase()
+    left.trim().replace(TRAILING_DOT, "").toLowerCase() ===
+    right.trim().replace(TRAILING_DOT, "").toLowerCase()
   );
 }
 
@@ -564,7 +568,7 @@ export async function resolveServiceReadState(
   const compute = await resolveComputeManagementContext(
     ctx,
     options.configTarget,
-    options.commandName.replace(/^service /, ""),
+    options.commandName.replace(SERVICE_PREFIX, ""),
   );
   const provider = serviceProvider(ctx);
   const target = await resolveServiceProjectContext(ctx, options.projectRef, {
@@ -612,7 +616,7 @@ export async function resolveServiceDomainTarget(
   const compute = await resolveComputeManagementContext(
     ctx,
     options.configTarget,
-    options.commandName.replace(/^service /, ""),
+    options.commandName.replace(SERVICE_PREFIX, ""),
   );
   const branchName = options.branchName?.trim() || "production";
   if (toBranchKind(branchName) !== "production") {
