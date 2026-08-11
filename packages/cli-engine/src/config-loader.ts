@@ -29,12 +29,19 @@ export const CONFIG_FILE_NAME = "prisma.config.ts";
 const MARKER_KEY = "$prismaConfig";
 
 /**
- * Top-level keys that never reach the loader as ordinary config data.
- * c12 reads `extends` as an instruction to merge another config layer,
- * and `$`-prefixed keys are metadata: c12 owns `$env`, `$<NODE_ENV>`
- * and `$meta`, and `$prismaConfig` is this loader's version marker. A
- * command family may not own a section with one of these names;
- * buildCommandTree rejects it at construction.
+ * Top-level keys the config file format keeps for itself, so no
+ * section may be named one of them; buildCommandTree rejects the
+ * declaration at construction.
+ *
+ * `$`-prefixed keys are metadata: `$prismaConfig` is the version
+ * marker, and config loaders read `$env`, `$<NODE_ENV>` and `$meta` —
+ * c12 deletes `$meta` from the config object whatever else it is told.
+ * `extends` is the key config loaders take as "merge another file into
+ * this one". This loader switches that off (`extend: false`), so a key
+ * by that name does reach the config object. It stays reserved anyway:
+ * the file format has no layering of its own, `extends` is the name it
+ * would want if it gained some, and a section called `extends` would
+ * disappear the moment anything switched merging back on.
  */
 export function reservedConfigSectionName(name: string): boolean {
   return name === "extends" || name.startsWith("$");
@@ -69,8 +76,7 @@ function missingMarkerDiagnostic(path: string): Diagnostic {
   return {
     code: "CLI.CONFIG_MISSING_MARKER",
     severity: "error",
-    summary:
-      "This prisma.config.ts was not written for this version of the Prisma CLI, so it cannot be used.",
+    summary: `${path} was not written for this version of the Prisma CLI, so it cannot be used.`,
     why: "Configs for this CLI are created with defineConfig, which records a version marker on the exported object. This file's default export has no marker — it is most likely a Prisma 7 config, which uses the same filename — and the CLI stops rather than misread it.",
     nextActions: [
       {
@@ -92,7 +98,7 @@ function unsupportedVersionDiagnostic(path: string, found: number): Diagnostic {
   return {
     code: "CLI.CONFIG_INVALID",
     severity: "error",
-    summary: `prisma.config.ts declares config version ${found}, but this CLI supports only version ${PRISMA_CONFIG_VERSION}.`,
+    summary: `${path} declares config version ${found}, but this CLI supports only version ${PRISMA_CONFIG_VERSION}.`,
     nextActions: [
       {
         kind: "user-choice",
@@ -127,10 +133,13 @@ function missingNamedFileDiagnostic(path: string): Diagnostic {
  * unrecognised key is a typo or a leftover, and staying silent would
  * mean quietly ignoring settings the user wrote.
  *
- * One key cannot be reported this way: `extends`. c12 consumes it as a
- * merge directive and removes it before the loader sees the object, so
- * a section named `extends` never reaches this check. That is why
- * buildCommandTree refuses to let a command family claim the name.
+ * One key cannot be reported this way: `$meta`. c12 reads it as layer
+ * metadata and deletes it from the config object before returning,
+ * whatever options this loader passes, so it never reaches this check.
+ * On a config built by defineConfig — which freezes what it returns —
+ * that delete throws, and the file is refused as unreadable instead.
+ * Either way the user never gets the unknown-key message, which is why
+ * buildCommandTree refuses to let a section claim the name.
  */
 function unknownSectionDiagnostic(
   path: string,
@@ -140,7 +149,7 @@ function unknownSectionDiagnostic(
   return {
     code: "CLI.CONFIG_UNKNOWN_SECTION",
     severity: "error",
-    summary: `prisma.config.ts has a top-level key '${key}', which is not a config section this CLI recognises.`,
+    summary: `${path} has a top-level key '${key}', which is not a config section this CLI recognises.`,
     why:
       knownSections.length === 0
         ? "This CLI declares no config sections at all, so no top-level key in the file means anything to it."
@@ -161,7 +170,7 @@ function unreadableDiagnostic(path: string, cause: unknown): Diagnostic {
   return {
     code: "CLI.CONFIG_UNREADABLE",
     severity: "error",
-    summary: `prisma.config.ts could not be evaluated: ${firstLine(message)}`,
+    summary: `${path} could not be evaluated: ${firstLine(message)}`,
     nextActions: [
       {
         kind: "user-choice",
@@ -177,8 +186,8 @@ function unreadableDiagnostic(path: string, cause: unknown): Diagnostic {
  * call is prisma/composer's `loadAppConfig` — explicit configFile, cwd
  * at that file's directory, the three lookups it turns off — with
  * prisma/prisma's dynamic import, so a run with no config file never
- * pays for loading c12 or jiti, plus the two options below that
- * composer has no need of and this loader does.
+ * pays for loading c12 or jiti, plus the options below that composer
+ * has no need of and this loader does.
  *
  * The loaded-file check is in both references: c12 is asked for one
  * exact path and must not answer with another.
@@ -192,9 +201,11 @@ async function evaluateConfigFile(path: string): Promise<unknown> {
     rcFile: false,
     globalRc: false,
     packageJson: false,
-    // The two options composer leaves out and this loader cannot.
-    // Composer's config has a fixed set of keys and no `$`-prefixed
-    // marker, so neither behaviour can reach it; ours has both.
+    // The five options composer leaves at their defaults and this
+    // loader cannot. Composer's config has a fixed set of keys and no
+    // `$`-prefixed marker, so none of these behaviours can reach it;
+    // this CLI's top-level key space IS the section namespace, so every
+    // one of them is reachable from an ordinary user config.
     //
     // envName defaults to process.env.NODE_ENV, and c12 then merges the
     // file's `$<NODE_ENV>` and `$env.<NODE_ENV>` blocks over the root.
@@ -208,8 +219,29 @@ async function evaluateConfigFile(path: string): Promise<unknown> {
     // unrecognised `$`-key would vanish instead of being reported as an
     // unknown section. Pinned so a change of default cannot take both
     // away at once.
+    //
+    // extend defaults to reading a top-level `extends` key as an
+    // instruction to merge further files into this one. Here `extends`
+    // has to be an ordinary key like any other: with the directive on,
+    // a section by that name disappears instead of being read, and the
+    // merged-in file contributes sections without ever being checked
+    // for the version marker.
+    //
+    // giget downloads and unpacks an `extends` value beginning http://,
+    // https://, gh:, github:, gitlab: or bitbucket:, then evaluates
+    // what it fetched. What a config file means must never depend on a
+    // network fetch. Unreachable while extend is false, and pinned so
+    // the two cannot come apart.
+    //
+    // dotenv reads a .env beside the config file into process.env.
+    // Loading a config must not mutate the process. Falsy by default
+    // today, and pinned because a change of default would turn reading
+    // a file into a side effect on every later env lookup.
     envName: false,
     omit$Keys: false,
+    extend: false,
+    giget: false,
+    dotenv: false,
   });
   // composer's comparison, not prisma/prisma's raw string equality:
   // realpath normalises the separators and casing c12 hands back on

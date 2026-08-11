@@ -16,6 +16,7 @@ import {
   defineCommandFamily,
   defineConfig,
   defineConfigSection,
+  flag,
   type LoadedConfig,
   loadConfig,
   PRISMA_CONFIG_VERSION,
@@ -25,7 +26,7 @@ import {
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { createTestCli } from "@prisma/cli-engine/testing";
-import { afterAll, describe, expect, test, vi } from "vitest";
+import { afterAll, describe, expect, test } from "vitest";
 
 const TESTS_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -85,8 +86,7 @@ describe("loadConfig", () => {
           diagnostic: {
             code: "CLI.CONFIG_MISSING_MARKER",
             severity: "error",
-            summary:
-              "This prisma.config.ts was not written for this version of the Prisma CLI, so it cannot be used.",
+            summary: `${join(FIXTURES, "unmarked", "prisma.config.ts")} was not written for this version of the Prisma CLI, so it cannot be used.`,
             why: "Configs for this CLI are created with defineConfig, which records a version marker on the exported object. This file's default export has no marker — it is most likely a Prisma 7 config, which uses the same filename — and the CLI stops rather than misread it.",
             nextActions: [
               {
@@ -113,7 +113,7 @@ describe("loadConfig", () => {
           diagnostic: {
             code: "CLI.CONFIG_INVALID",
             severity: "error",
-            summary: `prisma.config.ts declares config version 2, but this CLI supports only version ${PRISMA_CONFIG_VERSION}.`,
+            summary: `${join(FIXTURES, "wrong-version", "prisma.config.ts")} declares config version 2, but this CLI supports only version ${PRISMA_CONFIG_VERSION}.`,
             nextActions: [
               {
                 kind: "user-choice",
@@ -151,8 +151,8 @@ describe("loadConfig", () => {
     expect(loaded.diagnostics).toHaveLength(1);
     expect(loaded.diagnostics[0].section).toBeNull();
     expect(loaded.diagnostics[0].diagnostic.code).toBe("CLI.CONFIG_UNREADABLE");
-    expect(loaded.diagnostics[0].diagnostic.summary).toContain(
-      "boom at config evaluation time",
+    expect(loaded.diagnostics[0].diagnostic.summary).toBe(
+      `${join(FIXTURES, "unreadable", "prisma.config.ts")} could not be evaluated: boom at config evaluation time`,
     );
   });
 });
@@ -167,8 +167,7 @@ describe("top-level keys that are not sections", () => {
         diagnostic: {
           code: "CLI.CONFIG_UNKNOWN_SECTION",
           severity: "error",
-          summary:
-            "prisma.config.ts has a top-level key 'other', which is not a config section this CLI recognises.",
+          summary: `${join(FIXTURES, "marked", "prisma.config.ts")} has a top-level key 'other', which is not a config section this CLI recognises.`,
           why: "The sections this CLI recognises are: toy.",
           nextActions: [
             {
@@ -211,26 +210,94 @@ describe("top-level keys that are not sections", () => {
   });
 
   /**
-   * The one key the report cannot cover. c12 reads a top-level
-   * `extends` as an instruction to merge another config layer and
-   * deletes it before the loader is handed the object, so a user's
-   * section by that name is gone rather than reported. That is exactly
-   * why buildCommandTree refuses to let a command family claim the
-   * name — the section would be unreachable.
+   * `extends` is an ordinary top-level key here. c12 would otherwise
+   * read it as an instruction to merge another file in — pulling
+   * sections out of a file that was never checked for the version
+   * marker, and over the network for a value beginning `http://` or
+   * `gh:` — so the loader passes `extend: false` and the key reaches
+   * the report like any other. The fixture's value is a string because
+   * that is the form c12 acts on.
    */
-  test("a top-level 'extends' is consumed by c12 before the loader sees it, so it is neither a section nor a diagnostic", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      const loaded = await loadConfig(
-        join(FIXTURES, "extends-key"),
-        asks("values"),
-      );
-      expect(Object.keys(loaded.sections)).toEqual(["values"]);
-      expect(loaded.diagnostics).toEqual([]);
-    } finally {
-      warn.mockRestore();
-    }
+  test("a top-level 'extends' is reported as an unknown section rather than obeyed", async () => {
+    const loaded = await loadConfig(
+      join(FIXTURES, "extends-key"),
+      asks("values"),
+    );
+    expect(loaded.sections).toEqual({
+      extends: "./base.config.ts",
+      values: { list: [1, 2] },
+    });
+    expect(loaded.diagnostics).toHaveLength(1);
+    expect(loaded.diagnostics[0].diagnostic.code).toBe(
+      "CLI.CONFIG_UNKNOWN_SECTION",
+    );
+    expect(loaded.diagnostics[0].diagnostic.summary).toContain("'extends'");
   });
+
+  /** The same key with a URL value. Left to c12 this downloads a
+   *  tarball, unpacks it under node_modules and evaluates what was in
+   *  it; here it is data like any other string. */
+  test("an 'extends' value that names a URL is not fetched", async () => {
+    const loaded = await loadConfig(
+      join(FIXTURES, "extends-remote"),
+      asks("values"),
+    );
+    expect(loaded.sections.extends).toBe("http://127.0.0.1:1/evil.tar.gz");
+    expect(loaded.diagnostics.map(({ diagnostic }) => diagnostic.code)).toEqual(
+      ["CLI.CONFIG_UNKNOWN_SECTION"],
+    );
+  });
+
+  /**
+   * The one key the report cannot cover. c12 takes `$meta` as layer
+   * metadata and deletes it from the config object whatever else it is
+   * told, so it never reaches the unknown-key check. defineConfig
+   * freezes what it returns, so that delete throws and the whole file
+   * is refused — a worse message than the unknown-key one, and the
+   * reason no section may be named `$meta`.
+   */
+  test("a top-level '$meta' can never be reported as an unknown section", async () => {
+    const loaded = await loadConfig(join(FIXTURES, "meta-key"), asks("toy"));
+    expect(loaded.sections).toEqual({});
+    expect(loaded.diagnostics.map(({ diagnostic }) => diagnostic.code)).toEqual(
+      ["CLI.CONFIG_UNREADABLE"],
+    );
+    expect(loaded.diagnostics[0].diagnostic.summary).toContain(
+      "Cannot delete property '$meta'",
+    );
+  });
+
+  test("a command mounted with no command family declares its section too", async () => {
+    const requests: ConfigRequest[] = [];
+    const cli = createTestCli({
+      commands: { show: showCommand(toySection()) },
+      loadConfig: async (request) => {
+        requests.push(request);
+        return { sections: { toy: { greeting: "hi" } }, diagnostics: [] };
+      },
+    });
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(requests).toEqual([{ knownSections: ["toy"] }]);
+  });
+
+  /** The shell mounts its own commands with no command family, so this
+   *  is the shape a shell-owned command with a config section takes. */
+  test("a family-less command's own section is not rejected as an unknown key", async () => {
+    const ran = { value: false };
+    const cli = createTestCli({
+      commands: { show: showCommand(toySection(), ran) },
+      loadConfig: (request) => loadConfig(FIXTURES, request),
+    });
+    const run = await cli.run(
+      ["show", "--config", join(FIXTURES, "named", "elsewhere.config.ts")],
+      { isTty: { stdout: true } },
+    );
+    expect(run.stderr).not.toContain("CLI.CONFIG_UNKNOWN_SECTION");
+    expect(run.exitCode).toBe(0);
+    expect(ran.value).toBe(true);
+    expect(run.presented?.data).toEqual({ greeting: "from the named file" });
+  }, 60_000);
 });
 
 describe("--config", () => {
@@ -290,6 +357,39 @@ describe("--config", () => {
       sections: {},
       diagnostics: [],
     });
+  });
+
+  /** A diagnostic's summary is the line a user reads first, so it has
+   *  to name the file that was actually read — which under --config is
+   *  not prisma.config.ts. */
+  test("a diagnostic about the named file names that file, not prisma.config.ts", async () => {
+    const legacy = join(FIXTURES, "named", "legacy.config.ts");
+    const loaded = await loadConfig(FIXTURES, {
+      configPath: legacy,
+      knownSections: ["toy"],
+    });
+    expect(loaded.diagnostics).toHaveLength(1);
+    const { diagnostic } = loaded.diagnostics[0];
+    expect(diagnostic.code).toBe("CLI.CONFIG_MISSING_MARKER");
+    expect(diagnostic.summary).toContain(legacy);
+    expect(diagnostic.summary).not.toContain("prisma.config.ts");
+  });
+
+  test("an invalid section names the file --config asked for", async () => {
+    const cli = createTestCli({
+      commands: { show: showCommand(toySection()) },
+      loadConfig: async () => ({
+        sections: { toy: { greeting: 5 } },
+        diagnostics: [],
+      }),
+    });
+    const run = await cli.run(["show", "--config", "other.config.ts"], {
+      isTty: { stdout: true },
+    });
+    expect(run.exitCode).toBe(2);
+    expect(run.stderr).toContain(
+      "The 'toy' section of other.config.ts is invalid.",
+    );
   });
 });
 
@@ -905,6 +1005,30 @@ describe("--config on the command line", () => {
       "--config needs a path, and was given an empty value",
     );
     expect(failure.requests).toEqual([]);
+  });
+
+  /** The scan runs before parsing, so it cannot tell a flag from data.
+   *  Here `--config=` is another flag's value and no --config was
+   *  written at all, and the run is still rejected. Deliberate: the
+   *  reference implementation does the same, and `--` is the escape. */
+  test("--config= is rejected wherever it appears, including as another flag's value", async () => {
+    const echo = defineCommand({
+      help: { summary: "Echoes a message" },
+      args: { flags: { message: flag.string({ brief: "message" }) } },
+      handler: async (args, ctx) =>
+        ok(ctx.present({ data: args.flags.message }, { human: () => [] })),
+    });
+    const cli = createTestCli({ commands: { echo } });
+    const run = await cli.run(["echo", "--message", "--config="]);
+    expect(run.exitCode).toBe(2);
+    const frame = run.json[0];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error(`expected an errored result frame, got ${run.stderr}`);
+    }
+    expect(frame.envelope.error.code).toBe("CLI.INVALID_ARGUMENTS");
+    expect(frame.envelope.error.summary).toBe(
+      "--config needs a path, and was given an empty value",
+    );
   });
 
   test("after a bare --, --config= is an ordinary argument", async () => {

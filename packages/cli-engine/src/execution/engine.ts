@@ -460,15 +460,21 @@ export class EngineImpl implements Engine {
   }
 }
 
-/** The closed set of config section names: one per command family that
- *  declares a section. Every other top-level key in prisma.config.ts is
- *  reported by the loader. */
+/** The closed set of config section names. Every mounted command
+ *  contributes the section it needs, whether it reaches the tree
+ *  through a command family or on its own — the shell mounts its own
+ *  commands with no family, and a section the CLI cannot name is a
+ *  section its own command could never read. Every other top-level key
+ *  in prisma.config.ts is reported by the loader. */
 function declaredConfigSections(spec: EngineSpec): readonly string[] {
   return [
     ...new Set(
-      spec.commandFamilies
-        .map((commandFamily) => commandFamily.configSection?.name)
-        .filter((name): name is string => name !== undefined),
+      [
+        ...spec.commandFamilies.map(
+          (commandFamily) => commandFamily.configSection?.name,
+        ),
+        ...Object.values(spec.commands).map((def) => def.needs.config?.name),
+      ].filter((name): name is string => name !== undefined),
     ),
   ];
 }

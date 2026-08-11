@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import type { AnyCommand } from "../commands";
+import { CONFIG_FILE_NAME } from "../config-loader";
 import type { ConfigSection, SectionValidation } from "../config-section";
 import { credentialsRequiredError } from "../credential-errors";
 import type { CredentialManager } from "../credential-manager";
@@ -156,16 +157,24 @@ async function checkConfiguration(
       fileLevel.slice(1).map((entry) => entry.diagnostic),
     );
   }
-  return validateConfigSection(section, loaded, invocation);
+  return validateConfigSection(
+    section,
+    loaded,
+    invocation,
+    configPath ?? CONFIG_FILE_NAME,
+  );
 }
 
 /** Validates the command's needed config section. The validator
  *  owns absence (it receives undefined when the section is missing) and
- *  never throws — a throw is an engine-boundary bug, settled as one. */
+ *  never throws — a throw is an engine-boundary bug, settled as one.
+ *  `configFile` is named in the error so a run under --config points at
+ *  the file it actually read. */
 function validateConfigSection(
   section: ConfigSection<unknown>,
   loaded: LoadedConfig,
   invocation: Invocation,
+  configFile: string,
 ): NeedsOutcome {
   const raw = loaded.sections[section.name];
   let validation: SectionValidation<unknown>;
@@ -184,7 +193,7 @@ function validateConfigSection(
     return needsErrored(
       new CliStructuredError(
         "CLI.CONFIG_INVALID",
-        `The '${section.name}' section of prisma.config.ts is invalid.`,
+        `The '${section.name}' section of ${configFile} is invalid.`,
         {
           nextActions: [
             {

@@ -112,7 +112,12 @@ function parseConfigPath(input: string): string {
  * command's positional arguments. prisma/prisma rejects that shape as a
  * usage error (a user who wrote `--config=` meant to name a file), so
  * the engine checks for the exact token before handing argv over.
- * Arguments after a bare `--` are positionals, never flags.
+ *
+ * This runs before parsing, so it cannot tell a flag from data: the
+ * scan rejects `--config=` wherever it appears ahead of a bare `--`,
+ * including as another flag's value or a positional. prisma/prisma's
+ * scan does the same and does not stop at `--`; the token is an odd
+ * one to need as data, and `--` remains the way to pass it.
  */
 export function emptyConfigAssignment(argv: readonly string[]): boolean {
   for (const argument of argv) {

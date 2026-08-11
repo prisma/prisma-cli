@@ -2,6 +2,7 @@ import { flagRuntime, type PositionalSpec, positionalRuntime } from "../args";
 import type { CommandFamily } from "../command-family";
 import type { AnyCommand } from "../commands";
 import { reservedConfigSectionName } from "../config-loader";
+import type { ConfigSection } from "../config-section";
 import type { EngineSpec } from "./engine";
 import { RESERVED_ALIASES, RESERVED_FLAG_NAMES } from "./shared-flags";
 
@@ -164,22 +165,32 @@ function validateSectionOwnership(
 }
 
 /** The config file's top-level keys are the declared section names, so
- *  the names have to be readable back out of the file. A section called
- *  `extends` is not: c12 takes it as an instruction to merge another
- *  config layer and removes it before the loader sees the object, so
- *  the user's section silently disappears. `$`-prefixed names go the
- *  same way — c12 owns $env, $<NODE_ENV> and $meta, and $prismaConfig
- *  is the version marker. A family that claims one is broken at build
- *  time, not at a user's runtime. */
+ *  a section may only be named something the file format leaves free:
+ *  not `$`-prefixed (those are metadata — $prismaConfig is the version
+ *  marker, and a $meta key is deleted before the loader ever sees it),
+ *  and not `extends` (the key config loaders take as an instruction to
+ *  merge another file in). Both the families and the commands mounted
+ *  without one are checked: whoever declares the section, claiming a
+ *  reserved name is broken at build time, not at a user's runtime. */
 function validateConfigSectionNames(spec: EngineSpec): void {
   for (const commandFamily of spec.commandFamilies) {
-    const name = commandFamily.configSection?.name;
-    if (name !== undefined && reservedConfigSectionName(name)) {
-      throw constructionError(
-        `command family declares config section '${name}', a name the config file reserves (a top-level 'extends' key is the config loader's merge directive, and '$'-prefixed keys are metadata) — no such section can be read back`,
-      );
-    }
+    rejectReservedSectionName("command family", commandFamily.configSection);
   }
+  for (const [path, def] of Object.entries(spec.commands)) {
+    rejectReservedSectionName(`command '${path}'`, def.needs.config);
+  }
+}
+
+function rejectReservedSectionName(
+  owner: string,
+  section: ConfigSection<unknown> | undefined,
+): void {
+  if (section === undefined || !reservedConfigSectionName(section.name)) {
+    return;
+  }
+  throw constructionError(
+    `${owner} declares config section '${section.name}', a name the config file reserves ('extends' is a config loader's merge directive, and '$'-prefixed keys are metadata)`,
+  );
 }
 
 function validateDocsBaseUrls(spec: EngineSpec): void {
