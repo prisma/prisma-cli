@@ -4,7 +4,11 @@ import {
   type RouteMap as StricliRouteMap,
 } from "@stricli/core";
 import { type PositionalSpec, positionalRuntime } from "../args";
-import type { CommandFamily, MountedTree } from "../command-family";
+import type {
+  CommandFamily,
+  CommandRedirect,
+  MountedTree,
+} from "../command-family";
 import type { AnyCommand } from "../commands";
 import type { CommandContext } from "../context";
 import type { ActiveCredential } from "../credential-manager";
@@ -14,18 +18,36 @@ import type { Format, PresentedResult } from "../presentation";
 import { CliStructuredError, type Result } from "../protocol";
 import type { EngineCommandSnapshot, RunSummary } from "../run-summary";
 import type { InputStream, Runtime } from "../runtime";
-import { type ChildStatusSettlement, isChildStatusSettlement } from "../spawn";
+import {
+  type ChildResult,
+  type ChildStatusSettlement,
+  isChildStatusSettlement,
+} from "../spawn";
 import {
   reportCommandStart,
   type TelemetryDeclaration,
 } from "../telemetry/report";
 import { makeContext } from "./command-context";
 import { buildCommandSnapshot } from "./command-snapshot";
-import { buildCommandTree, type CommandTreeEntry } from "./command-tree";
+import {
+  buildCommandTree,
+  buildRedirectTable,
+  type CommandTreeEntry,
+  matchFlagRedirect,
+  matchVerbRedirect,
+  type RedirectTable,
+} from "./command-tree";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import {
+  configFlagGivenNoValue,
+  formatFlagGiven,
+  versionFlagGiven,
+} from "./pre-parse-argv";
+import {
+  commandSegments,
   settleBug,
   settleChildStatus,
+  settleCommandMoved,
   settleCompleted,
   settleErrored,
   settleSessionCompleted,
@@ -36,10 +58,8 @@ import {
 } from "./settlement";
 import {
   applySharedFlags,
+  configFlagGivenNoValueError,
   defaultInteractive,
-  emptyConfigAssignment,
-  emptyConfigAssignmentError,
-  explicitFormat,
   type SharedFlags,
   sniffFormat,
 } from "./shared-flags";
@@ -52,6 +72,7 @@ import {
   buildRoutes,
   capturingText,
   type EngineRunContext,
+  usageErrorCode,
 } from "./stricli-adapter";
 
 export interface EngineSpec {
@@ -116,6 +137,9 @@ export interface RunState {
   /** The run's raw argv — consulted only to derive which flag NAMES
    *  were explicitly passed for the settlement snapshot. */
   argv: readonly string[];
+  /** Flags the parse could not resolve, spelled as the user typed them
+   *  and without their leading dashes; consulted for flag redirects. */
+  unresolvedFlagNames: string[];
   /** The value-free snapshot captured when a command mounted;
    *  undefined for runs that never reached one (help, usage errors). */
   snapshot: EngineCommandSnapshot | undefined;
@@ -123,10 +147,19 @@ export interface RunState {
    *  signals are recorded rather than acted on, and commentary is
    *  buffered. */
   delegatedTerminal: DelegatedTerminal | undefined;
+  /** How the run's most recent completed child ended, as ctx.spawn
+   *  reported it. The engine's own record: what ctx.lastChild()
+   *  returns, and the only status exitWithChildStatus can settle. */
+  lastChild: ChildResult | undefined;
   /** How many prompts are reading the terminal. Claimed before a
    *  prompt's first await, so an unawaited prompt still blocks
    *  ctx.spawn from handing the same terminal to a child. */
   activePrompts: number;
+  /** The signal the engine delivered to this run, if one reached it.
+   *  The engine's own record of how the run ended: a run a signal
+   *  terminated settles 128 + that signal's number whatever its handler
+   *  concluded, and no handler can author those codes. */
+  deliveredSignal: "SIGINT" | "SIGTERM" | undefined;
   /** A signal past the first delivery recorded during a live child,
    *  replayed as the force exit once the run has settled. */
   pendingForceExit: "SIGINT" | "SIGTERM" | undefined;
@@ -220,6 +253,7 @@ type ErasedServerHandler = (
 export class EngineImpl implements Engine {
   private readonly spec: EngineSpec;
   private readonly root: StricliRouteMap<EngineRunContext>;
+  private readonly redirects: RedirectTable;
   private readonly now: () => Date;
   private readonly delay: (ms: number, signal: AbortSignal) => Promise<void>;
   private readonly configSections: readonly string[];
@@ -240,6 +274,7 @@ export class EngineImpl implements Engine {
       (invocation, entry, flags, values) =>
         this.executeMounted(invocation, entry, flags, values),
     );
+    this.redirects = buildRedirectTable(spec);
   }
 
   async execute(
@@ -266,15 +301,17 @@ export class EngineImpl implements Engine {
       stricliStderr: "",
       stdinIterator: undefined,
       argv,
+      unresolvedFlagNames: [],
       snapshot: undefined,
       delegatedTerminal: undefined,
+      lastChild: undefined,
       activePrompts: 0,
+      deliveredSignal: undefined,
       pendingForceExit: undefined,
       spawnCredential: undefined,
     };
     const startedAtMs = this.now().getTime();
     const controller = new AbortController();
-    let signalDelivered = false;
     /** The engine neither aborts nor exits while a child owns the
      *  terminal: it records, and the affordance replays on child exit,
      *  so the engine always outlives the child. */
@@ -283,11 +320,11 @@ export class EngineImpl implements Engine {
         recordSignalDuringSpawn(state.delegatedTerminal, signal);
         return;
       }
-      if (signalDelivered) {
+      if (state.deliveredSignal !== undefined) {
         runtime.exit(signal === "SIGTERM" ? 143 : 130);
         return;
       }
-      signalDelivered = true;
+      state.deliveredSignal = signal;
       controller.abort(signal);
     };
     const unsubscribe = runtime.onSignal(deliverSignal);
@@ -301,13 +338,13 @@ export class EngineImpl implements Engine {
       configSections: this.configSections,
       deliverSignal,
     };
-    if (versionRequested(argv)) {
+    if (versionFlagGiven(argv)) {
       unsubscribe();
       return settleVersion(this.spec, invocation);
     }
-    if (emptyConfigAssignment(argv)) {
+    if (configFlagGivenNoValue(argv)) {
       unsubscribe();
-      settleErrored(invocation, emptyConfigAssignmentError());
+      settleErrored(invocation, configFlagGivenNoValueError());
       return 2;
     }
     const stricliProcess = {
@@ -350,12 +387,64 @@ export class EngineImpl implements Engine {
     const exitCode =
       state.settledExitCode !== undefined
         ? state.settledExitCode
-        : settleUnhandled(this.spec, invocation, stricliProcess.exitCode);
+        : this.settleRouting(invocation, stricliProcess.exitCode);
     this.fireOnSettled(invocation, exitCode, startedAtMs);
     if (state.pendingForceExit !== undefined) {
       runtime.exit(state.pendingForceExit === "SIGTERM" ? 143 : 130);
     }
     return exitCode;
+  }
+
+  /** stricli routed or parsed nothing runnable. When the redirect table
+   *  claims the invocation the user typed, the run names its
+   *  replacement; otherwise it settles as the usage error it is. */
+  private settleRouting(
+    invocation: Invocation,
+    stricliExitCode: number | string | null | undefined,
+  ): number {
+    const matched = this.matchRedirect(invocation.state, stricliExitCode);
+    if (matched === undefined) {
+      return settleUnhandled(this.spec, invocation, stricliExitCode);
+    }
+    return settleCommandMoved(
+      this.spec,
+      invocation,
+      matched.redirect,
+      matched.commandId,
+    );
+  }
+
+  private matchRedirect(
+    state: RunState,
+    stricliExitCode: number | string | null | undefined,
+  ):
+    | { readonly redirect: CommandRedirect; readonly commandId: string }
+    | undefined {
+    const failure =
+      typeof stricliExitCode === "number"
+        ? usageErrorCode(stricliExitCode)
+        : undefined;
+    if (failure === "CLI.UNKNOWN_COMMAND") {
+      const redirect = matchVerbRedirect(
+        this.redirects,
+        attemptedPath(state.argv),
+      );
+      return redirect === undefined
+        ? undefined
+        : { redirect, commandId: redirect.from.replaceAll(" ", ".") };
+    }
+    if (failure !== "CLI.INVALID_ARGUMENTS") {
+      return undefined;
+    }
+    const segments = commandSegments(this.spec, state.prefix);
+    const redirect = matchFlagRedirect(
+      this.redirects,
+      segments.join(" "),
+      state.unresolvedFlagNames,
+    );
+    return redirect === undefined
+      ? undefined
+      : { redirect, commandId: segments.join(".") };
   }
 
   /** The onSettled delivery: once per run, after the exit code is
@@ -423,7 +512,7 @@ export class EngineImpl implements Engine {
       await this.executeServer(invocation, entry, rawFlags);
       return;
     }
-    if (entry.def.maySpawn && explicitFormat(state.argv) === "json") {
+    if (entry.def.maySpawn && formatFlagGiven(state.argv) === "json") {
       state.format = "human";
       settleErrored(invocation, jsonUnsupportedError(entry.id));
       return;
@@ -599,6 +688,19 @@ export class EngineImpl implements Engine {
   }
 }
 
+/** The path the user typed, for argv that routed to no command: the
+ *  leading tokens up to the first flag or argument escape. */
+function attemptedPath(argv: readonly string[]): readonly string[] {
+  const segments: string[] = [];
+  for (const token of argv) {
+    if (token.startsWith("-")) {
+      break;
+    }
+    segments.push(token);
+  }
+  return segments;
+}
+
 /** The closed set of config section names. Every mounted command
  *  contributes the section it needs, whether it reaches the tree
  *  through a command family or on its own — the shell mounts its own
@@ -635,18 +737,6 @@ function jsonUnsupportedError(commandId: string): CliStructuredError {
       ],
     },
   );
-}
-
-function versionRequested(argv: readonly string[]): boolean {
-  for (const argument of argv) {
-    if (argument === "--") {
-      return false;
-    }
-    if (argument === "--version") {
-      return true;
-    }
-  }
-  return false;
 }
 
 function declaredFlags(

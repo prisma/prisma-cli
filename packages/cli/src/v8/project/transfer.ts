@@ -5,10 +5,10 @@ import {
   flag,
   type Presentations,
   positional,
+  SERVICE_TOKEN_ENV_VAR,
 } from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { notOk, ok } from "@prisma/cli-engine/protocol";
-import { SERVICE_TOKEN_ENV_VAR } from "../../auth/client";
 import {
   workspaceAmbiguousError,
   workspaceNotAuthenticatedError,

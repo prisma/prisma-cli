@@ -18,10 +18,10 @@ describe("main export", () => {
       "EnvironmentCredentialManager",
       "PRESENTED",
       "PRISMA_CONFIG_VERSION",
+      "SERVICE_TOKEN_ENV_VAR",
       "authServiceError",
       "claimedExpiresAt",
       "claimedIdentity",
-      "claimedWorkspaceId",
       "createCli",
       "credentialRejectedError",
       "credentialWorkspaceId",
@@ -261,6 +261,33 @@ describe("construction validation", () => {
     expect(() => createTestCli({ commands: { offender } })).toThrow(
       "must be camelCase",
     );
+  });
+
+  test("an empty mount path fails construction", () => {
+    const offender = defineCommand({
+      help: { summary: "Offender" },
+      handler: null as never,
+    });
+    expect(() => createTestCli({ commands: { "": offender } })).toThrow(
+      "invalid command path ''",
+    );
+  });
+
+  test.each([
+    "migration  status",
+    "migration status ",
+    " migration status",
+  ])("the mount path '%s' fails construction", (path) => {
+    const offender = defineCommand({
+      help: { summary: "Offender" },
+      handler: null as never,
+    });
+    expect(() =>
+      createTestCli({
+        commands: { [path]: offender },
+        groups: { migration: { brief: "Migrations" } },
+      }),
+    ).toThrow("references unknown group");
   });
 
   test("a variadic positional that is not last fails construction", () => {

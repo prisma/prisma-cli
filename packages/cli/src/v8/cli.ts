@@ -8,6 +8,9 @@ import {
 } from "@prisma/cli-engine";
 import { CLI_DOCS_URL } from "../cli-name";
 import { getCliVersion } from "../lib/version";
+import { agentInstallCommand } from "./agent/install";
+import { agentStatusCommand } from "./agent/status";
+import { agentUpdateCommand } from "./agent/update";
 import { authLoginCommand } from "./auth/login";
 import { authLogoutCommand } from "./auth/logout";
 import { authWhoamiCommand } from "./auth/whoami";
@@ -21,6 +24,8 @@ import { bucketKeyCreateCommand } from "./bucket/key-create";
 import { bucketKeyDeleteCommand } from "./bucket/key-delete";
 import { bucketKeyListCommand } from "./bucket/key-list";
 import { bucketListCommand } from "./bucket/list";
+import { buildLogsCommand } from "./build/logs";
+import { feedbackCommand } from "./feedback";
 import { gitConnectCommand } from "./git/connect";
 import { gitDisconnectCommand } from "./git/disconnect";
 import { postgresBackupListCommand } from "./postgres/backup-list";
@@ -45,6 +50,18 @@ import { projectRemoveCommand } from "./project/remove";
 import { projectRenameCommand } from "./project/rename";
 import { projectShowCommand } from "./project/show";
 import { projectTransferCommand } from "./project/transfer";
+import { serviceDomainAddCommand } from "./service/domain-add";
+import { serviceDomainRemoveCommand } from "./service/domain-remove";
+import { serviceDomainRetryCommand } from "./service/domain-retry";
+import { serviceDomainShowCommand } from "./service/domain-show";
+import { serviceDomainWaitCommand } from "./service/domain-wait";
+import { serviceListDeploysCommand } from "./service/list-deploys";
+import { serviceOpenCommand } from "./service/open";
+import { servicePromoteCommand } from "./service/promote";
+import { serviceRemoveCommand } from "./service/remove";
+import { serviceRollbackCommand } from "./service/rollback";
+import { serviceShowCommand } from "./service/show";
+import { serviceShowDeployCommand } from "./service/show-deploy";
 
 export const platformCommandFamily: CommandFamily = defineCommandFamily({
   commands: {
@@ -85,6 +102,19 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     branchList: branchListCommand,
     gitConnect: gitConnectCommand,
     gitDisconnect: gitDisconnectCommand,
+    serviceShow: serviceShowCommand,
+    serviceOpen: serviceOpenCommand,
+    serviceListDeploys: serviceListDeploysCommand,
+    serviceShowDeploy: serviceShowDeployCommand,
+    servicePromote: servicePromoteCommand,
+    serviceRollback: serviceRollbackCommand,
+    serviceRemove: serviceRemoveCommand,
+    serviceDomainAdd: serviceDomainAddCommand,
+    serviceDomainShow: serviceDomainShowCommand,
+    serviceDomainRemove: serviceDomainRemoveCommand,
+    serviceDomainRetry: serviceDomainRetryCommand,
+    serviceDomainWait: serviceDomainWaitCommand,
+    buildLogs: buildLogsCommand,
   },
 });
 
@@ -109,6 +139,10 @@ export const cliGroups: Readonly<
   "bucket key": { brief: "Manage access keys for an object-store bucket" },
   branch: { brief: "View your Platform branches" },
   git: { brief: "Manage Git repository connections for a project" },
+  service: { brief: "Manage services and deployments for a project" },
+  "service domain": { brief: "Manage custom domains for a service" },
+  build: { brief: "Inspect builds created by a git push or Console" },
+  agent: { brief: "Manage Prisma skills for AI coding agents" },
   "auth workspace": { brief: "Manage local workspace sessions" },
   ...telemetry.groups,
 };
@@ -151,6 +185,25 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "branch list": branchListCommand,
   "git connect": gitConnectCommand,
   "git disconnect": gitDisconnectCommand,
+  "service show": serviceShowCommand,
+  "service open": serviceOpenCommand,
+  "service list-deploys": serviceListDeploysCommand,
+  "service show-deploy": serviceShowDeployCommand,
+  "service promote": servicePromoteCommand,
+  "service rollback": serviceRollbackCommand,
+  "service remove": serviceRemoveCommand,
+  "service domain add": serviceDomainAddCommand,
+  "service domain show": serviceDomainShowCommand,
+  "service domain remove": serviceDomainRemoveCommand,
+  "service domain retry": serviceDomainRetryCommand,
+  "service domain wait": serviceDomainWaitCommand,
+  // Platform builds are their own group; there is no local build verb.
+  "build logs": buildLogsCommand,
+  // Local utilities: no owning package, no config section, no API.
+  "agent install": agentInstallCommand,
+  "agent update": agentUpdateCommand,
+  "agent status": agentStatusCommand,
+  feedback: feedbackCommand,
   // The engine's consent surface, mounted whole (no command family).
   ...telemetry.commands,
 };

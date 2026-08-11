@@ -68,7 +68,7 @@ const command = defineCommand({
         aborted: ctx.signal.aborted,
       }),
     );
-    return ok(exitWithChildStatus(child));
+    return ok(exitWithChildStatus());
   },
 });
 

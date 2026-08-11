@@ -105,7 +105,7 @@ describe("loadConfig", { timeout: 60_000 }, () => {
         {
           section: null,
           diagnostic: {
-            code: "CLI.CONFIG_INVALID",
+            code: "CLI.CONFIG_VERSION_UNSUPPORTED",
             severity: "error",
             summary: `${join(FIXTURES, "wrong-version", "prisma.config.ts")} declares config version 2, but this CLI supports only version ${PRISMA_CONFIG_VERSION}.`,
             nextActions: [
@@ -765,7 +765,7 @@ describe("needs.config", { timeout: 60_000 }, () => {
           ok: false,
           commandId: "show",
           error: {
-            code: "CLI.CONFIG_INVALID",
+            code: "CLI.CONFIG_SECTION_INVALID",
             severity: "error",
             summary: "The 'toy' section of prisma.config.ts is invalid.",
             nextActions: [
@@ -811,7 +811,7 @@ describe("needs.config", { timeout: 60_000 }, () => {
     const run = await cli.run(["show"], { isTty: { stdout: true } });
     expect(run.exitCode).toBe(2);
     expect(run.stdout).toBe("");
-    expect(run.stderr).toContain("✖ [CLI.CONFIG_INVALID]");
+    expect(run.stderr).toContain("✖ [CLI.CONFIG_SECTION_INVALID]");
     expect(run.stderr).toContain("✖ [TOY.GREETING_INVALID]");
   });
 

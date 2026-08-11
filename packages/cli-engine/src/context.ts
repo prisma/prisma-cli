@@ -68,6 +68,16 @@ export interface CommandContext<
    */
   readonly spawn: (options: SpawnOptions) => Promise<ChildResult>;
 
+  /**
+   * How the run's most recent completed child ended, or undefined when
+   * none has run. The engine records every child ctx.spawn returns, so
+   * a handler whose spawn happens deep in its own layering can still
+   * ask "did my child fail?" where it settles, without threading the
+   * result back by hand. This is the same record exitWithChildStatus
+   * settles from.
+   */
+  readonly lastChild: () => ChildResult | undefined;
+
   /** The one way to emit while running. */
   readonly report: (event: EngineEvent) => void;
 
@@ -89,6 +99,10 @@ export interface CommandContext<
    * Fires on Ctrl-C/SIGTERM (engine-owned; a second signal force-exits
    * through the runtime's exit proxy). Session commands run until it
    * fires.
+   *
+   * Once it has fired the engine settles the run at 130/143 from its
+   * own record of the signal, whatever the handler goes on to return —
+   * so cleanup code never states an exit code of its own.
    */
   readonly signal: AbortSignal;
 

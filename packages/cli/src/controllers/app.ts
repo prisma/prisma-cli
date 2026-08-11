@@ -1,5 +1,6 @@
 import { access } from "node:fs/promises";
 import path from "node:path";
+import { SERVICE_TOKEN_ENV_VAR } from "@prisma/cli-engine";
 import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";
 import {
   COMPUTE_CONFIG_FILENAME,
@@ -22,7 +23,7 @@ import { detectComputeAppFromDirectory } from "@prisma/compute-sdk/config/direct
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { matchError, Result } from "better-result";
 import open from "open";
-import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../auth/client";
+import { getApiBaseUrl } from "../auth/client";
 import { authenticatedManagementApiClient } from "../auth/guard";
 import { readAuthState } from "../auth/operations";
 import { FileTokenStorage } from "../auth/token-storage";

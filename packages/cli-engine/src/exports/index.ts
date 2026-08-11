@@ -21,8 +21,10 @@ export {
 export { type Cli, type CliRunHooks, createCli } from "../cli";
 export {
   type CommandFamily,
+  type CommandRedirect,
   defineCommandFamily,
   type MountedTree,
+  type RedirectSpec,
 } from "../command-family";
 export {
   type AnyCommand,
@@ -64,14 +66,15 @@ export {
   emptyServiceTokenError,
   noSessionForWorkspaceError,
 } from "../credential-errors";
-export type {
-  ActiveCredential,
-  Credential,
-  CredentialIdentity,
-  CredentialManager,
-  CredentialOrigin,
-  Session,
-  StoredSessions,
+export {
+  type ActiveCredential,
+  type Credential,
+  type CredentialIdentity,
+  type CredentialManager,
+  type CredentialOrigin,
+  SERVICE_TOKEN_ENV_VAR,
+  type Session,
+  type StoredSessions,
 } from "../credential-manager";
 export { EnvironmentCredentialManager } from "../environment-credential-manager";
 export type {
@@ -124,6 +127,5 @@ export type { TelemetryDeclaration } from "../telemetry/report";
 export {
   claimedExpiresAt,
   claimedIdentity,
-  claimedWorkspaceId,
   credentialWorkspaceId,
 } from "../token-claims";

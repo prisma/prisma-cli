@@ -30,7 +30,6 @@ import type { TokenStorage } from "./management-api";
 import {
   claimedExpiresAt,
   claimedIdentity,
-  claimedWorkspaceId,
   credentialWorkspaceId,
 } from "./token-claims";
 
@@ -167,7 +166,7 @@ export class InMemoryCredentialManager implements CredentialManager {
     this.selection = seed.selectedWorkspaceId;
     this.environmentCredential = seed.environmentCredential;
     if (seed.credential !== undefined) {
-      const workspaceId = claimedWorkspaceId(seed.credential.token);
+      const workspaceId = credentialWorkspaceId(seed.credential.token);
       if (workspaceId === undefined) {
         throw new Error(
           "@prisma/cli-engine/testing: the `credential` seed runs createSession's claims derivation — the token must be a JWT with `workspace_id` (use mintTestJwt)",
@@ -316,7 +315,7 @@ export class InMemoryCredentialManager implements CredentialManager {
           // production mapping rather than a harness-only shape.
           throw credentialsRequiredError("session-ended");
         }
-        const claimed = claimedWorkspaceId(tokens.accessToken);
+        const claimed = credentialWorkspaceId(tokens.accessToken);
         if (claimed !== undefined && claimed !== workspaceId) {
           throw credentialWorkspaceMismatchError(workspaceId);
         }
@@ -420,7 +419,7 @@ export class InMemoryCredentialManager implements CredentialManager {
     credential: Credential,
     workspaceId: string,
   ): Session {
-    const claimed = claimedWorkspaceId(credential.token);
+    const claimed = credentialWorkspaceId(credential.token);
     if (claimed !== undefined && claimed !== workspaceId) {
       throw credentialWorkspaceMismatchError(workspaceId);
     }

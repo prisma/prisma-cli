@@ -1,15 +1,11 @@
+import { SERVICE_TOKEN_ENV_VAR } from "@prisma/cli-engine";
 import {
   createManagementApiClient,
   createManagementApiSdk,
   type ManagementApiClient,
 } from "@prisma/management-api-sdk";
 
-import {
-  CLIENT_ID,
-  getApiBaseUrl,
-  SERVICE_TOKEN_ENV_VAR,
-  UNUSED_REDIRECT_URI,
-} from "./client";
+import { CLIENT_ID, getApiBaseUrl, UNUSED_REDIRECT_URI } from "./client";
 import { FileTokenStorage } from "./token-storage";
 
 /**

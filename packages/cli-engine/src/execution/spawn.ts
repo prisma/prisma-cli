@@ -1,5 +1,9 @@
 import type { AnyCommand } from "../commands";
 import { credentialsRequiredError } from "../credential-errors";
+import {
+  SERVICE_TOKEN_ENV_VAR,
+  WORKSPACE_ID_ENV_VAR,
+} from "../credential-manager";
 import type { EngineEvent } from "../events";
 import { CliStructuredError } from "../protocol";
 import type {
@@ -14,9 +18,6 @@ import { makeDebugLog } from "./debug";
 import type { Invocation } from "./engine";
 import { firstLine } from "./rendering";
 import { flushBufferedEvents } from "./reporting";
-
-const SERVICE_TOKEN_ENV_VAR = "PRISMA_SERVICE_TOKEN";
-const WORKSPACE_ID_ENV_VAR = "PRISMA_WORKSPACE_ID";
 
 /**
  * D1 ruling (S3): how long a child terminated by a programmatic abort
@@ -183,12 +184,29 @@ async function runChild(
   const ended = new AbortController();
   armTerminationLadder(invocation, terminal, child, ended.signal);
   try {
-    return await child.ended;
+    return recordCompletedChild(invocation, await child.ended);
   } catch (cause) {
     throw spawnFailedError(request.command, cause);
   } finally {
     ended.abort();
   }
+}
+
+/** The engine mints the result the handler sees and keeps it on the
+ *  run: the settlement then reads the child's status from the engine's
+ *  own record rather than from anything the handler hands back, and a
+ *  handler whose spawn sits deep in its own layering can still ask how
+ *  the child ended through ctx.lastChild(). */
+function recordCompletedChild(
+  invocation: Invocation,
+  ended: ChildResult,
+): ChildResult {
+  const result = Object.freeze({
+    exitCode: ended.exitCode,
+    signal: ended.signal,
+  });
+  invocation.state.lastChild = result;
+  return result;
 }
 
 /** A programmatic abort of ctx.signal (a delivered signal is recorded

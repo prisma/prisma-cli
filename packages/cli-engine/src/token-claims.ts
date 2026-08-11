@@ -39,13 +39,15 @@ function claimedString(
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-/** The `workspace_id` claim, which is what sessions are keyed by. */
-export function claimedWorkspaceId(token: string): string | undefined {
-  return claimedString(decodeTokenClaims(token), "workspace_id");
-}
-
-/** The workspace a credential names: its `workspace_id` claim, or the
- *  workspace its subject names when it is a service token. */
+/**
+ * The workspace a credential names. One derivation, because a token
+ * says it one of two ways and every caller wants the same answer: an
+ * OAuth token carries `workspace_id`, while a service token names its
+ * workspace through `sub` and carries no `workspace_id` at all. Reading
+ * only the claim was a second path that happened to work because
+ * service tokens reached it by a different route — a split nothing
+ * enforced.
+ */
 export function credentialWorkspaceId(token: string): string | undefined {
   const claims = decodeTokenClaims(token);
   const fromClaim = claimedString(claims, "workspace_id");

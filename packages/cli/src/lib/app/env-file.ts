@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parse as parseDotenv } from "dotenv";
 
-import { usageError } from "../../shell/errors";
+import { usageError } from "../../errors";
 import { validateKey } from "./env-config";
 
 export interface EnvFileAssignment {

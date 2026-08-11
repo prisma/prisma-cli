@@ -1,5 +1,5 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Env file expansion preserves assignment order.
-import { usageError } from "../../shell/errors";
+import { usageError } from "../../errors";
 import { validateKey } from "./env-config";
 import { readEnvFileAssignments } from "./env-file";
 

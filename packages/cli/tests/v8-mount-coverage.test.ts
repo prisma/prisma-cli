@@ -1,16 +1,28 @@
 import { telemetryCommandGroup } from "@prisma/cli-engine";
 import { describe, expect, it } from "vitest";
 import { CLI_DOCS_URL } from "../src/cli-name";
+import { agentInstallCommand } from "../src/v8/agent/install";
+import { agentStatusCommand } from "../src/v8/agent/status";
+import { agentUpdateCommand } from "../src/v8/agent/update";
 import {
   cliGroups,
   mountedCommands,
   platformCommandFamily,
 } from "../src/v8/cli";
+import { feedbackCommand } from "../src/v8/feedback";
 
-/** The consent surface the engine ships and cli.ts spreads in whole. */
-const ENGINE_OWNED: ReadonlySet<unknown> = new Set(
-  Object.values(telemetryCommandGroup({ docsUrl: CLI_DOCS_URL }).commands),
-);
+/**
+ * Commands that deliberately belong to no family: the engine's consent
+ * surface, which cli.ts spreads in whole, and the local utilities that
+ * contribute no config section and call no API.
+ */
+const FAMILYLESS: ReadonlySet<unknown> = new Set([
+  ...Object.values(telemetryCommandGroup({ docsUrl: CLI_DOCS_URL }).commands),
+  agentInstallCommand,
+  agentUpdateCommand,
+  agentStatusCommand,
+  feedbackCommand,
+]);
 
 /**
  * Every path the v8 tree mounts, written out. The other assertions in
@@ -20,6 +32,9 @@ const ENGINE_OWNED: ReadonlySet<unknown> = new Set(
  * adding its path here.
  */
 const EXPECTED_MOUNT_PATHS: readonly string[] = [
+  "agent install",
+  "agent status",
+  "agent update",
   "auth login",
   "auth logout",
   "auth whoami",
@@ -33,6 +48,8 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "bucket key delete",
   "bucket key list",
   "bucket list",
+  "build logs",
+  "feedback",
   "git connect",
   "git disconnect",
   "postgres backup list",
@@ -57,6 +74,18 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "project rename",
   "project show",
   "project transfer",
+  "service domain add",
+  "service domain remove",
+  "service domain retry",
+  "service domain show",
+  "service domain wait",
+  "service list-deploys",
+  "service open",
+  "service promote",
+  "service remove",
+  "service rollback",
+  "service show",
+  "service show-deploy",
   "telemetry disable",
   "telemetry enable",
   "telemetry status",
@@ -76,12 +105,10 @@ describe("prisma-v8 mount coverage", () => {
     expect(unmounted).toEqual([]);
   });
 
-  it("gives every mounted command a family, except the engine-owned ones", () => {
+  it("gives every mounted command a family, except the deliberately familyless ones", () => {
     const family = new Set(Object.values(platformCommandFamily.commands));
     const unowned = Object.entries(mountedCommands)
-      .filter(
-        ([, command]) => !family.has(command) && !ENGINE_OWNED.has(command),
-      )
+      .filter(([, command]) => !family.has(command) && !FAMILYLESS.has(command))
       .map(([path]) => path);
 
     expect(unowned).toEqual([]);

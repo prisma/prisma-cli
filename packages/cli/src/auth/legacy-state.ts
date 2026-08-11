@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { claimedExpiresAt, claimedWorkspaceId } from "@prisma/cli-engine";
+import { claimedExpiresAt, credentialWorkspaceId } from "@prisma/cli-engine";
 import type { CredentialState, StoredSession } from "./state-file";
 import { getAuthContextFilePath } from "./token-storage";
 
@@ -51,7 +51,7 @@ function adoptLegacyEntry(
   };
   if (typeof token !== "string" || token.length === 0) return undefined;
 
-  const workspaceId = claimedWorkspaceId(token);
+  const workspaceId = credentialWorkspaceId(token);
   if (workspaceId === undefined) return undefined;
 
   const name = adoptedName(context.names[workspaceId], workspaceId);

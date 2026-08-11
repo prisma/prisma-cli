@@ -176,7 +176,7 @@ describe("prisma-v8 auth whoami", () => {
 
     expect(human.exitCode).toBe(0);
     expect(human.stdout).toBe(
-      "status: signed in\nsource: PRISMA_SERVICE_TOKEN\n",
+      "status: signed in\nenvironment variable: PRISMA_SERVICE_TOKEN\n",
     );
     expect(human.stderr).not.toContain("workspace:");
     expect(human.stderr).not.toContain("undefined");

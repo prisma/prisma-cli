@@ -135,8 +135,10 @@ describe("wired as a Runtime's manager", () => {
     help: { summary: "Hands credentials to a child" },
     maySpawn: true,
     needs: { credentials: "child" },
-    handler: async (_args, ctx) =>
-      ok(exitWithChildStatus(await ctx.spawn({ command: "alchemy" }))),
+    handler: async (_args, ctx) => {
+      await ctx.spawn({ command: "alchemy" });
+      return ok(exitWithChildStatus());
+    },
   });
   const cli = createCli({
     name: "t",

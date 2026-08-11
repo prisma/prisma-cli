@@ -1,11 +1,17 @@
+import { kebabCase } from "../args";
+import type { CommandRedirect } from "../command-family";
 import type {
   AnyCommand,
   CompletedEnvelope,
   ErroredEnvelope,
 } from "../commands";
 import { PRESENTED, type PresentedResult } from "../presentation";
-import { CliStructuredError, type Diagnostic } from "../protocol";
-import type { ChildStatusSettlement } from "../spawn";
+import {
+  CliStructuredError,
+  type Diagnostic,
+  type NextAction,
+} from "../protocol";
+import { type ChildStatusSettlement, childExitCode } from "../spawn";
 import type { EngineSpec, Invocation } from "./engine";
 import {
   firstLine,
@@ -15,7 +21,7 @@ import {
   writeDiagnostic,
 } from "./rendering";
 import { emitFrame } from "./reporting";
-import { usageErrorCode } from "./stricli-adapter";
+import { resolveExample, usageErrorCode } from "./stricli-adapter";
 
 function undocumentedExitCode(
   def: AnyCommand,
@@ -59,7 +65,8 @@ export function settleCompleted(
   }
   const state = invocation.state;
   invocation.hooks.onPresented?.(presented);
-  state.settledExitCode = presented.exitCode;
+  const exitCode = runExitCode(invocation, presented.exitCode);
+  state.settledExitCode = exitCode;
   if (state.format === "json") {
     const envelope: CompletedEnvelope = {
       ok: true,
@@ -68,7 +75,7 @@ export function settleCompleted(
         presented.presentation.json === undefined
           ? presented.data
           : presented.presentation.json,
-      exitCode: presented.exitCode,
+      exitCode,
       diagnostics: presented.diagnostics.map((diagnostic) =>
         withDocsUrl(state, diagnostic),
       ),
@@ -106,10 +113,27 @@ export function settleErrored(
   });
 }
 
-/** Signal exit codes: 130 SIGINT, 143 SIGTERM. The engine's own
- *  controller only ever aborts with a signal name. */
-function signalExitCode(reason: unknown): number {
-  return reason === "SIGTERM" ? 143 : 130;
+/** The conventional code for a delivered signal: 128 + its number, so
+ *  130 for SIGINT and 143 for SIGTERM. */
+function signalExitCode(signal: "SIGINT" | "SIGTERM"): number {
+  return signal === "SIGTERM" ? 143 : 130;
+}
+
+/**
+ * The engine's own signal record decides how a run ends. A run a
+ * delivered signal terminated settles 128 + that signal's number even
+ * when its handler caught the signal, cleaned up, and returned
+ * successfully: the exit code states how the RUN ended, and a handler
+ * cannot author it — the documented codes stop at 99.
+ *
+ * Verbatim codes are the exception, because they were never this CLI's
+ * to state: a real child's status (the child owned the terminal and the
+ * signal reached it too) and a server command's protocol conclusion
+ * both pass through untouched.
+ */
+function runExitCode(invocation: Invocation, completed: number): number {
+  const signal = invocation.state.deliveredSignal;
+  return signal === undefined ? completed : signalExitCode(signal);
 }
 
 function isAbortCause(cause: unknown, signal: AbortSignal): boolean {
@@ -134,7 +158,11 @@ export function settleThrown(invocation: Invocation, cause: unknown): void {
 
 function settleAborted(invocation: Invocation): void {
   const state = invocation.state;
-  state.settledExitCode = signalExitCode(invocation.signal.reason);
+  const signal = state.deliveredSignal;
+  // The run's signal is aborted from one place, and it records the
+  // signal first, so an abort without one would be an engine fault;
+  // it settles cancelled rather than claiming a signal that never came.
+  state.settledExitCode = signal === undefined ? 3 : signalExitCode(signal);
   emitErrored(invocation, {
     ok: false,
     commandId: state.commandId,
@@ -153,7 +181,8 @@ function settleAborted(invocation: Invocation): void {
  * Settle an exit code the engine did not author, verbatim, with no
  * envelope and no presentation: something other than this CLI's code
  * space produced it. The two callers are the child-status settlement
- * and the server-command handoff.
+ * and the server-command handoff. A delivered signal does not overrule
+ * it — a code from outside is reported as it was received.
  */
 export function settleVerbatimExitCode(
   invocation: Invocation,
@@ -164,13 +193,20 @@ export function settleVerbatimExitCode(
 
 /**
  * The child owned the terminal, so its status becomes the run's
- * verbatim. This is the one path on which a session command settles
- * non-zero without erroring, and the one path on which a result
- * command settles a code it never documented: neither is the handler's
- * own conclusion, it is the child's. Only a command that hands the
- * terminal to another program may settle this way — reachable from a
- * non-declaring handler it would also end a json stream without its
- * terminal result frame.
+ * verbatim: the one path on which a result command settles a code it
+ * never documented, because the code is not the handler's own
+ * conclusion, it is the child's.
+ *
+ * The status comes from the engine's own record of the child, never
+ * from the handler, so there is nothing here for a handler to state.
+ * Two conditions fence it, both construction errors: the command must
+ * hand the terminal to another program — reachable from a
+ * non-declaring handler this would also end a json stream without its
+ * terminal result frame — and a child must actually have run.
+ *
+ * A signal-killed child overrules whatever the handler asked for. The
+ * user stopped the run: it settles 128 + the signal number, with no
+ * envelope and no next actions, because there is nothing to reproduce.
  */
 export function settleChildStatus(
   invocation: Invocation,
@@ -182,19 +218,30 @@ export function settleChildStatus(
       `@prisma/cli-engine: command '${invocation.state.commandId}' returned exitWithChildStatus without declaring maySpawn — only a command that hands the terminal to another program may settle with that program's status`,
     );
   }
-  // Only human format is reachable here: maySpawn forces it.
-  for (const action of settlement.nextActions) {
-    invocation.runtime.stderr.write(`${renderNextAction(action)}\n`);
+  const child = invocation.state.lastChild;
+  if (child === undefined) {
+    throw new Error(
+      `@prisma/cli-engine: command '${invocation.state.commandId}' returned exitWithChildStatus without a child having run — that settlement reports the status of a child ctx.spawn started, and this run started none`,
+    );
   }
-  settleVerbatimExitCode(invocation, settlement.exitCode);
+  // Only human format is reachable here: maySpawn forces it.
+  if (child.signal === null) {
+    for (const action of settlement.nextActions) {
+      invocation.runtime.stderr.write(`${renderNextAction(action)}\n`);
+    }
+  }
+  settleVerbatimExitCode(invocation, childExitCode(child));
 }
 
-/** A session command that returned ok — including after the signal
- *  fired — shut down cleanly: exit 0, no presentation. In json mode the
- *  stream still terminates with exactly one result frame. */
+/** A session command that returned ok shut down cleanly: no
+ *  presentation, and exit 0 — unless a signal ended the run, which
+ *  settles 130/143 from the engine's record even though the shutdown
+ *  itself succeeded. In json mode the stream still terminates with
+ *  exactly one result frame. */
 export function settleSessionCompleted(invocation: Invocation): void {
   const state = invocation.state;
-  state.settledExitCode = 0;
+  const exitCode = runExitCode(invocation, 0);
+  state.settledExitCode = exitCode;
   if (state.format !== "json") {
     return;
   }
@@ -202,7 +249,7 @@ export function settleSessionCompleted(invocation: Invocation): void {
     ok: true,
     commandId: state.commandId,
     result: null,
-    exitCode: 0,
+    exitCode,
     diagnostics: [],
     nextActions: [],
   };
@@ -288,6 +335,58 @@ export function settleVersion(
   return 0;
 }
 
+/** What the user typed that no longer exists: a retired path, or a
+ *  retired flag on a command that still exists. */
+function retiredInvocation(redirect: CommandRedirect): string {
+  if (redirect.flag === undefined) {
+    return `\`${redirect.from}\``;
+  }
+  return `\`--${kebabCase(redirect.flag)}\` on \`${redirect.from}\``;
+}
+
+/** A retired invocation the redirect table claims: the run names its
+ *  replacement instead of failing as an unknown command or flag. A
+ *  retired flag can name a server command, whose stdout belongs to a
+ *  foreign client — so this settlement renders to stderr for the same
+ *  reason settleUnhandled does. */
+export function settleCommandMoved(
+  spec: EngineSpec,
+  invocation: Invocation,
+  redirect: CommandRedirect,
+  commandId: string,
+): number {
+  if (spec.commands[redirect.from]?.kind === "server-command") {
+    invocation.state.format = "human";
+  }
+  const useReplacement: NextAction = {
+    kind: "run-command",
+    label: "Use the replacement",
+    command: resolveExample(redirect.replacement, spec.name),
+  };
+  emitErrored(invocation, {
+    ok: false,
+    commandId,
+    error: {
+      code: "CLI.COMMAND_MOVED",
+      severity: "error",
+      summary: `${retiredInvocation(redirect)} has been replaced`,
+      ...(redirect.reason === undefined ? {} : { why: redirect.reason }),
+      nextActions: [useReplacement],
+    },
+    diagnostics: [],
+    nextActions: [useReplacement],
+  });
+  return 2;
+}
+
+/** The command path stricli resolved, without the binary name. */
+export function commandSegments(
+  spec: EngineSpec,
+  prefix: readonly string[],
+): readonly string[] {
+  return prefix[0] === spec.name ? prefix.slice(1) : prefix;
+}
+
 /** Maps stricli's own settlement (parse/route failures, framework bugs)
  *  onto the engine protocol when the pipeline never settled. A failure
  *  addressed at a server command renders to stderr — a foreign client on
@@ -302,8 +401,7 @@ export function settleUnhandled(
   if (raw === 0) {
     return 0;
   }
-  const segments =
-    state.prefix[0] === spec.name ? state.prefix.slice(1) : state.prefix;
+  const segments = commandSegments(spec, state.prefix);
   if (spec.commands[segments.join(" ")]?.kind === "server-command") {
     state.format = "human";
   }
