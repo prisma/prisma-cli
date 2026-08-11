@@ -36,14 +36,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Resolve preview version
-        id: cli_version
-        run: |
-          node scripts/resolve-package-version.mjs pr \
-            --package-dir packages/cli \
-            --sha '${{ github.event.pull_request.head.sha }}' \
-            --pr-number '${{ github.event.pull_request.number }}' >> "$GITHUB_OUTPUT"
-
       # Build every workspace package up front via the turbo graph so
       # workspace:* dependencies (the CLI's @prisma/cli-engine) have
       # their dist output before the test and build steps below.
@@ -66,15 +58,15 @@ jobs:
         id: compute_build
         run: pnpm --filter @prisma/compute build
 
-      - name: Set preview package version
-        id: set_preview_version
-        working-directory: packages/cli
-        run: pnpm version '${{ steps.cli_version.outputs.version }}' --no-git-tag-version
-
+      # No version stamping: pkg.pr.new serves the tarball at a per-commit
+      # URL, so the committed base version (`8.0.0-rc.N`) ships as-is —
+      # same model as prisma/prisma's preview-publish.yml. The engine is
+      # published alongside the cli so its `workspace:` pin resolves to
+      # the preview build rather than the registry.
       - name: Publish installable PR preview
         id: publish_preview
         continue-on-error: ${{ vars.CLI_PR_PREVIEW_REQUIRED != 'true' }}
-        run: pnpm exec pkg-pr-new publish --bin --comment=update packages/cli
+        run: pnpm exec pkg-pr-new publish --bin --comment=update packages/cli packages/cli-engine
 
       - name: Summarize PR preview publish
         if: ${{ always() }}
@@ -82,12 +74,10 @@ jobs:
           {
             echo "## Preview CLI Package"
             echo
-            echo "- Version: \`${{ steps.cli_version.outputs.version }}\`"
             echo "- CLI tests: \`${{ steps.cli_tests.outcome || 'skipped' }}\`"
             echo "- Compute tests: \`${{ steps.compute_tests.outcome || 'skipped' }}\`"
             echo "- Build: \`${{ steps.cli_build.outcome || 'skipped' }}\`"
             echo "- Compute build: \`${{ steps.compute_build.outcome || 'skipped' }}\`"
-            echo "- Version injection: \`${{ steps.set_preview_version.outcome || 'skipped' }}\`"
             echo "- pkg.pr.new publish: \`${{ steps.publish_preview.outcome || 'skipped' }}\`"
             PUBLISH_OUTCOME="${{ steps.publish_preview.outcome || 'skipped' }}"
             if [ "${PUBLISH_OUTCOME}" != "success" ]; then

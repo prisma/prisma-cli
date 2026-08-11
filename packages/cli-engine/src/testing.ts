@@ -1,11 +1,26 @@
 import type { CommandFamily, MountedTree } from "./command-family";
-import type { Credentials } from "./context";
+import type { Credential } from "./credential-manager";
 import type { EngineEvent, StreamEvent } from "./events";
 import { buildEngine } from "./execution/engine";
+import {
+  InMemoryCredentialManager,
+  type SessionRecord,
+} from "./in-memory-credential-manager";
+import type {
+  ManagementApiClient,
+  ManagementApiClientConfig,
+} from "./management-api";
 import type { PresentedResult } from "./presentation";
+import type { RunSummary } from "./run-summary";
 import type { Runtime } from "./runtime";
 
 export interface TestCli {
+  /**
+   * The mutable in-memory credential manager backing the runs — the
+   * whole stored state (sessions with their credentials, the
+   * selection) is readable back after a run via state().
+   */
+  readonly credentialManager: InMemoryCredentialManager;
   run(
     argv: readonly string[],
     opts?: {
@@ -23,6 +38,9 @@ export interface TestCli {
       readonly abort?: AbortSignal;
       /** Live event tap, for asserting mid-session behavior. */
       readonly onEvent?: (event: EngineEvent) => void;
+      /** Settlement tap: receives the RunSummary the engine fires
+       *  after settlement (once, mounted runs only). */
+      readonly onSettled?: (summary: RunSummary) => void;
       readonly cwd?: string;
       readonly isTty?: { stdin?: boolean; stdout?: boolean; stderr?: boolean };
       readonly env?: Readonly<Record<string, string | undefined>>;
@@ -66,11 +84,52 @@ export function createTestCli(spec: {
   readonly commands: MountedTree;
   readonly groups?: Readonly<Record<string, { readonly brief: string }>>;
   readonly config?: Readonly<Record<string, unknown>>;
-  readonly credentials?: Credentials;
+  /** Convenience manager seed: createSession runs its real claims
+   *  derivation on this credential (mint the token with mintTestJwt). */
+  readonly credential?: Credential;
+  /** Stored sessions, mirroring the state file's records. */
+  readonly sessions?: readonly SessionRecord[];
+  /** The stored selection. */
+  readonly selectedWorkspaceId?: string;
+  /** The credential PRISMA_SERVICE_TOKEN supplies. Its access token is
+   *  also exported to each run's env as PRISMA_SERVICE_TOKEN
+   *  (overridable per run). */
+  readonly environmentCredential?: Credential;
+  /** The SDK client construction config; defaults point every
+   *  endpoint at test.invalid hosts. */
+  readonly managementApiClientConfig?: ManagementApiClientConfig;
+  /** baseUrl defaults to "https://test.invalid"; when `client` is
+   *  supplied, ctx.api IS that object. */
+  readonly managementApi?: {
+    readonly baseUrl?: string;
+    readonly client?: ManagementApiClient;
+  };
   readonly packageManager?: "npm" | "pnpm" | "yarn" | "bun" | "unknown";
-  /** Fixed clock for deterministic stream timestamps. */
+  /** Fixed clock for deterministic stream timestamps; a clock that
+   *  advances also drives prompt.browserWait's timeout. */
   readonly now?: () => Date;
+  /** The browser opener behind ctx.openUrl and prompt.browserWait.
+   *  Defaults to one that succeeds without doing anything; pass a spy
+   *  to assert what was opened, or a thrower to exercise the
+   *  could-not-open path. */
+  readonly openUrl?: (url: string) => Promise<void> | void;
+  /** Waiting is instant under test whatever this does; pass a spy to
+   *  assert the interval a poll loop asked for. */
+  readonly delay?: (ms: number, signal: AbortSignal) => Promise<void>;
 }): TestCli {
+  const credentialManager = new InMemoryCredentialManager({
+    sessions: spec.sessions,
+    selectedWorkspaceId: spec.selectedWorkspaceId,
+    credential: spec.credential,
+    environmentCredential: spec.environmentCredential,
+  });
+  const managementApiClientConfig: ManagementApiClientConfig =
+    spec.managementApiClientConfig ?? {
+      clientId: "test-client-id",
+      redirectUri: "https://test.invalid/auth/callback",
+      apiBaseUrl: spec.managementApi?.baseUrl ?? "https://test.invalid",
+      authBaseUrl: "https://auth.test.invalid",
+    };
   const engine = buildEngine(
     {
       name: "prisma-test",
@@ -79,9 +138,17 @@ export function createTestCli(spec: {
       groups: spec.groups ?? {},
       commands: spec.commands,
     },
-    { now: spec.now },
+    /** Waiting is instant under test: browserWait's polling is driven
+     *  by the seeded clock, never by real time. */
+    {
+      now: spec.now,
+      delay: async (ms, signal) => {
+        await spec.delay?.(ms, signal);
+      },
+    },
   );
   return {
+    credentialManager,
     async run(argv, opts) {
       let stdoutText = "";
       let stderrText = "";
@@ -108,7 +175,13 @@ export function createTestCli(spec: {
         },
         stdin: inputStreamFromString(opts?.stdin ?? ""),
         cwd: opts?.cwd ?? "/",
-        env: opts?.env ?? {},
+        env:
+          spec.environmentCredential === undefined
+            ? (opts?.env ?? {})
+            : {
+                PRISMA_SERVICE_TOKEN: spec.environmentCredential.token,
+                ...opts?.env,
+              },
         isTty: {
           stdin: opts?.isTty?.stdin ?? false,
           stdout: opts?.isTty?.stdout ?? false,
@@ -126,7 +199,12 @@ export function createTestCli(spec: {
           };
         },
         config: { sections: spec.config ?? {}, diagnostics: [] },
-        getCredentials: async () => spec.credentials,
+        credentialManager,
+        managementApiClientConfig,
+        openUrl: spec.openUrl ?? ((): void => {}),
+        managementApi: {
+          baseUrl: spec.managementApi?.baseUrl ?? "https://test.invalid",
+        },
         packageManager: spec.packageManager ?? "unknown",
       };
       const running = engine.execute(argv, runtime, {
@@ -140,7 +218,12 @@ export function createTestCli(spec: {
         onStreamEvent: (frame) => {
           frames.push(frame);
         },
+        onSettled: opts?.onSettled,
         answers: opts?.answers,
+        managementApi:
+          spec.managementApi?.client === undefined
+            ? undefined
+            : { client: spec.managementApi.client },
       });
       const abort = opts?.abort;
       if (abort !== undefined) {

@@ -1,0 +1,168 @@
+name: Publish to npm
+
+# Source-of-truth model (ported from prisma/prisma; see
+# docs/oss/versioning.md):
+#   The version comes from the root `package.json` `version` field.
+#   Maintainers advance it via `pnpm bump-version`. This workflow can
+#   never publish a version other than what is committed at HEAD.
+#
+# Trigger model:
+#   - push to `main` with the root `version` unchanged → publish
+#     `<base>-dev.N` under dist-tag `dev`.
+#   - push to `main` with the root `version` changed   → publish `<base>`
+#     under dist-tag `latest` and create a GitHub Release (marked
+#     pre-release for RC-line versions like `8.0.0-rc.N`). `latest`
+#     tracks the newest release, RC or stable. This is how a merged
+#     `chore(release): ...` PR auto-ships — merging the bump PR is the
+#     operator's deliberate act that moves `latest`.
+#   - workflow_dispatch                                 → publish `<base>`
+#     under the chosen dist-tag (default `latest`); also the dry-run path.
+#
+# Scope: publishes `@prisma/cli-engine` then `@prisma/cli` (the cli
+# depends on the engine, so the engine goes first). `@prisma/compute` is
+# excluded from the lockstep by operator ruling (2026-08-10) and keeps
+# its own workflow (`publish-compute.yml`).
+
+on:
+  push:
+    branches: [main]
+    tags: ["!**"]
+  workflow_dispatch:
+    inputs:
+      dist-tag:
+        description: "npm dist-tag (e.g., latest, dev, beta)"
+        required: true
+        default: "latest"
+        type: string
+      dry-run:
+        description: "Dry-run only (build + pack, no npm publish, no GitHub Release)."
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish packages to npm
+    runs-on: ubuntu-latest
+    # Only `main` may produce a real publish. A dry-run dispatch is permitted
+    # from any branch so maintainers can validate the pipeline before merging
+    # changes that touch publishing. The dry-run path performs no registry
+    # writes and skips the GitHub Release step, so non-main runs cannot
+    # affect production state.
+    if: ${{ github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.dry-run == 'true') }}
+    permissions:
+      contents: write # Required to create the GitHub Release + tag for latest publishes
+      id-token: write # Required for npm OIDC Trusted Publishing
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          # Need history reaching `github.event.before` so `determine-version.ts`
+          # can compare the root `package.json` version at that ref to HEAD and
+          # decide whether this push is a release bump (publish `latest`) or a
+          # routine commit (publish `dev`). A multi-commit push can place
+          # `before` arbitrarily far back, so fetch the full history.
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Configure npm
+        run: pnpm config set registry https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Determine version
+        id: version
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          INPUT_DIST_TAG: ${{ github.event.inputs.dist-tag }}
+          # `before` is the ref `main` pointed at before this push.
+          # `determine-version.ts` reads the root `package.json` at that ref
+          # to detect release bumps. Empty for `workflow_dispatch`, which
+          # the script also handles.
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: node scripts/determine-version.ts
+
+      - name: Set package versions
+        run: node scripts/set-version.ts "${{ steps.version.outputs.version }}"
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Run script tests
+        run: pnpm test:scripts
+
+      # NODE_AUTH_TOKEN is intentionally NOT set. npm detects the OIDC
+      # environment (id-token: write) and authenticates via Trusted
+      # Publishing automatically. Setting NODE_AUTH_TOKEN to any value --
+      # even empty string -- would block OIDC.
+      #
+      # `pnpm publish` (not `npm publish`) so `workspace:<version>`
+      # specifiers are rewritten to exact versions in the published
+      # manifest. `--no-git-checks` because the version stamp above
+      # dirties the tree by design.
+      #
+      # Publish order: the engine first, then the cli that depends on it.
+
+      # Dry-run path: exercises the full publish pipeline (pack, validate
+      # tarball contents, dependency rewriting) without touching the npm
+      # registry. Use from any branch via `workflow_dispatch` to validate
+      # changes that affect publishing before merging.
+      - name: Publish packages (dry-run)
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry-run == 'true' }}
+        run: |
+          pnpm --filter @prisma/cli-engine publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks --dry-run
+          pnpm --filter @prisma/cli publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks --dry-run
+
+      - name: Publish packages
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true' }}
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
+        run: |
+          pnpm --filter @prisma/cli-engine publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks
+          pnpm --filter @prisma/cli publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks
+
+      # Emit a GitHub Release for `latest` publishes only (marked
+      # pre-release when the version is on the RC line). Dev / beta builds
+      # publish to npm but do not produce a Release — those would drown out
+      # the changelog signal. The Release is created at $GITHUB_SHA so the
+      # tag points at the same commit the publish ran from.
+      #
+      # Idempotent on workflow rerun: if a Release for `v$VERSION` already
+      # exists (e.g. a previous run published to npm but failed before this
+      # step), edit it in place rather than re-creating it.
+      - name: Create GitHub Release for latest publishes
+        if: ${{ steps.version.outputs.tag == 'latest' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          PRERELEASE_FLAG=""
+          case "$VERSION" in
+            *-rc.*) PRERELEASE_FLAG="--prerelease" ;;
+          esac
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release edit "v$VERSION" \
+              --target "$GITHUB_SHA" \
+              --title "v$VERSION"
+          else
+            gh release create "v$VERSION" \
+              --target "$GITHUB_SHA" \
+              --title "v$VERSION" \
+              --generate-notes \
+              $PRERELEASE_FLAG
+          fi

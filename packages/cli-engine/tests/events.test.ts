@@ -105,6 +105,77 @@ describe("human rendering", () => {
     );
   });
 
+  test("an open-url next action renders its address, the same way a run-command renders its command", async () => {
+    const withActions = defineCommand({
+      help: { summary: "Suggests both kinds of follow-up" },
+      handler: async (_args, ctx) =>
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              next: () => [
+                {
+                  kind: "open-url",
+                  label: "Install the Prisma GitHub app",
+                  url: "https://github.com/apps/prisma/installations/new",
+                },
+                {
+                  kind: "run-command",
+                  label: "Retry",
+                  command: "prisma git connect",
+                },
+              ],
+            },
+          ),
+        ),
+    });
+    const result = await createTestCli({
+      commands: { probe: withActions },
+      now: EPOCH,
+    }).run(["probe", "--format", "human"]);
+
+    expect(result.stderr).toBe(
+      "→ Install the Prisma GitHub app: https://github.com/apps/prisma/installations/new\n" +
+        "→ Retry: prisma git connect\n",
+    );
+  });
+
+  test("an action whose label is already its command or url prints the string once", async () => {
+    const bareStrings = defineCommand({
+      help: { summary: "Suggests follow-ups mapped from bare strings" },
+      handler: async (_args, ctx) =>
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              next: () => [
+                {
+                  kind: "run-command",
+                  label: "prisma-cli project list",
+                  command: "prisma-cli project list",
+                },
+                {
+                  kind: "open-url",
+                  label: "https://console.prisma.io/upgrade",
+                  url: "https://console.prisma.io/upgrade",
+                },
+              ],
+            },
+          ),
+        ),
+    });
+    const result = await createTestCli({
+      commands: { probe: bareStrings },
+      now: EPOCH,
+    }).run(["probe", "--format", "human"]);
+
+    expect(result.stderr).toBe(
+      "→ prisma-cli project list\n" + "→ https://console.prisma.io/upgrade\n",
+    );
+  });
+
   test("--log-level warn filters info-grade commentary but keeps data lines", async () => {
     const result = await makeCli().run([
       "noisy",

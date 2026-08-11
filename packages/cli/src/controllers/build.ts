@@ -1,4 +1,4 @@
-import { requireComputeAuth } from "../lib/auth/guard";
+import { authenticatedManagementApiClient } from "../auth/guard";
 import { authRequiredError, CliError } from "../shell/errors";
 import { writeJsonEvent } from "../shell/output";
 import type { CommandContext } from "../shell/runtime";
@@ -36,7 +36,7 @@ export async function runBuildLogs(
   buildId: string,
   options: BuildLogsOptions = {},
 ): Promise<void> {
-  const client = await requireComputeAuth(
+  const client = await authenticatedManagementApiClient(
     context.runtime.env,
     context.runtime.signal,
   );

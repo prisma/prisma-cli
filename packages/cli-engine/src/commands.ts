@@ -7,6 +7,7 @@ import type {
 } from "./args";
 import type { ConfigSection } from "./config-section";
 import type { CommandContext } from "./context";
+import type { CredentialManager } from "./credential-manager";
 import type { PresentedResult } from "./presentation";
 import type {
   CliStructuredError,
@@ -128,6 +129,7 @@ export interface CommandDefinition<
   >,
   TConfig = undefined,
   TCode extends number = never,
+  TManagesCredentials extends boolean = false,
 > {
   readonly kind: "result-command";
   readonly help: CommandHelp;
@@ -143,13 +145,28 @@ export interface CommandDefinition<
   readonly exitCodes: Readonly<Record<TCode, string>>;
 
   /**
+   * A CAPABILITY, not a need: when true, ctx.credentialManager appears
+   * on the context. Declaring it never fails a run — this is
+   * documentation and testability, not enforcement. Declared by
+   * exactly the auth commands that operate ON the credential
+   * machinery.
+   */
+  readonly managesCredentials: TManagesCredentials;
+
+  /**
    * The handler function, referenced directly — never a dynamic import
    * (operator ruling, 2026-08-09). A handler that needs heavy
    * dependencies imports them at execution time, inside its body. A
    * handler defined in another file is imported statically and
    * annotated CommandHandler<typeof def>.
    */
-  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode>;
+  readonly handler: Handler<
+    TFlags,
+    TPositionals,
+    TConfig,
+    TCode,
+    TManagesCredentials
+  >;
 }
 
 export type Handler<
@@ -157,15 +174,19 @@ export type Handler<
   TPositionals extends Record<string, PositionalSpec<unknown>>,
   TConfig,
   TCode extends number = never,
+  TManagesCredentials extends boolean = false,
 > = (
   args: Args<TFlags, TPositionals>,
-  ctx: CommandContext<TConfig, TCode>,
+  ctx: CommandContext<TConfig, TCode> &
+    (TManagesCredentials extends true
+      ? { readonly credentialManager: CredentialManager }
+      : unknown),
 ) => Promise<Result<PresentedResult<unknown>, CliStructuredError>>;
 
 /** For impl files: `const run: CommandHandler<typeof migrateCommand> = …` */
 export type CommandHandler<D> =
-  D extends CommandDefinition<infer F, infer P, infer C, infer K>
-    ? Handler<F, P, C, K>
+  D extends CommandDefinition<infer F, infer P, infer C, infer K, infer M>
+    ? Handler<F, P, C, K, M>
     : never;
 
 export function defineCommand<
@@ -184,14 +205,53 @@ export function defineCommand<
   readonly args?: ArgsSpec<TFlags, TPositionals>;
   readonly needs?: NeedsSpec<TConfig>;
   readonly exitCodes?: Readonly<Record<TCode, string>>;
+  readonly managesCredentials: true;
+  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode, true>;
+}): CommandDefinition<TFlags, TPositionals, TConfig, TCode, true>;
+export function defineCommand<
+  TFlags extends Record<string, FlagSpec<unknown>> = Record<
+    never,
+    FlagSpec<unknown>
+  >,
+  TPositionals extends Record<string, PositionalSpec<unknown>> = Record<
+    never,
+    PositionalSpec<unknown>
+  >,
+  TConfig = undefined,
+  TCode extends number = never,
+>(def: {
+  readonly help: HelpSpec;
+  readonly args?: ArgsSpec<TFlags, TPositionals>;
+  readonly needs?: NeedsSpec<TConfig>;
+  readonly exitCodes?: Readonly<Record<TCode, string>>;
   readonly handler: Handler<TFlags, TPositionals, TConfig, TCode>;
-}): CommandDefinition<TFlags, TPositionals, TConfig, TCode> {
+}): CommandDefinition<TFlags, TPositionals, TConfig, TCode>;
+export function defineCommand<
+  TFlags extends Record<string, FlagSpec<unknown>> = Record<
+    never,
+    FlagSpec<unknown>
+  >,
+  TPositionals extends Record<string, PositionalSpec<unknown>> = Record<
+    never,
+    PositionalSpec<unknown>
+  >,
+  TConfig = undefined,
+  TCode extends number = never,
+>(def: {
+  readonly help: HelpSpec;
+  readonly args?: ArgsSpec<TFlags, TPositionals>;
+  readonly needs?: NeedsSpec<TConfig>;
+  readonly exitCodes?: Readonly<Record<TCode, string>>;
+  readonly managesCredentials?: boolean;
+  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode, boolean>;
+}): CommandDefinition<TFlags, TPositionals, TConfig, TCode, boolean> {
   return Object.freeze({
     kind: "result-command" as const,
     help: normalizeHelp(def.help),
     args: normalizeArgs(def.args),
     needs: normalizeNeeds(def.needs),
     exitCodes: def.exitCodes ?? ({} as Readonly<Record<TCode, string>>),
+    managesCredentials: def.managesCredentials ?? false,
     handler: def.handler,
   });
 }
@@ -316,7 +376,8 @@ export type AnyCommand =
         Record<string, FlagSpec<unknown>>,
         Record<string, PositionalSpec<unknown>>,
         unknown,
-        number
+        number,
+        boolean
       >,
       "handler"
     > & { readonly handler: unknown })

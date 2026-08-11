@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted
+Superseded for versioning and release publishing by the prisma/prisma-ported
+model in `docs/oss/versioning.md` (operator ruling 2026-08-10): committed
+lockstep versions on the `8.0.0-rc.N` line, no CI version injection for
+releases. The pkg.pr.new preview channel and the `dev` dist-tag remain.
 
 ## Context
 

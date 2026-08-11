@@ -8,10 +8,13 @@ import type { CommandFamily, MountedTree } from "../command-family";
 import type { AnyCommand } from "../commands";
 import type { CommandContext } from "../context";
 import type { EngineEvent, Severity, StreamEvent } from "../events";
+import type { ManagementApiClient } from "../management-api";
 import type { Format, PresentedResult } from "../presentation";
 import type { CliStructuredError, Result } from "../protocol";
+import type { EngineCommandSnapshot, RunSummary } from "../run-summary";
 import type { InputStream, Runtime } from "../runtime";
 import { makeContext } from "./command-context";
+import { buildCommandSnapshot } from "./command-snapshot";
 import { buildCommandTree, type CommandTreeEntry } from "./command-tree";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import {
@@ -49,7 +52,16 @@ export interface RunHooks {
   readonly onEvent?: (event: EngineEvent) => void;
   readonly onPresented?: (presented: PresentedResult<unknown>) => void;
   readonly onStreamEvent?: (frame: StreamEvent) => void;
+  /** Fired exactly once per run, after settlement, for runs that
+   *  reached a mounted command. Never fired for --help/--version.
+   *  Errors thrown by the hook are swallowed — an observer bug must
+   *  not break a command. */
+  readonly onSettled?: (summary: RunSummary) => void;
   readonly answers?: ReadonlyArray<string | boolean>;
+  /** Test seam: an injected `client` becomes ctx.api verbatim. */
+  readonly managementApi?: {
+    readonly client?: ManagementApiClient;
+  };
 }
 
 export interface Engine {
@@ -67,6 +79,10 @@ export interface RunState {
   format: Format;
   logLevel: Severity;
   yes: boolean;
+  /** The run's unconsumed `--confirm` values. A consent prompt with a
+   *  token removes the value it matched, so one `--confirm` grants one
+   *  consent. */
+  confirmValues: string[];
   interactive: boolean;
   colorEnabled: boolean;
   resolved: boolean;
@@ -77,12 +93,22 @@ export interface RunState {
   /** The stdin iterator a prompt opened, closed when the run settles so
    *  a real process's stdin never keeps the event loop alive. */
   stdinIterator: AsyncIterator<Uint8Array> | undefined;
+  /** The run's raw argv — consulted only to derive which flag NAMES
+   *  were explicitly passed for the settlement snapshot. */
+  argv: readonly string[];
+  /** The value-free snapshot captured when a command mounted;
+   *  undefined for runs that never reached one (help, usage errors). */
+  snapshot: EngineCommandSnapshot | undefined;
 }
 
 export interface Invocation {
   readonly runtime: Runtime;
   readonly hooks: RunHooks;
   readonly now: () => Date;
+  /** Waits, or returns early when the signal fires. The engine's only
+   *  timer, injectable so waiting paths (prompt.browserWait) run
+   *  instantly under test. */
+  readonly delay: (ms: number, signal: AbortSignal) => Promise<void>;
   readonly state: RunState;
   /** The engine-owned abort signal behind ctx.signal, fed by the
    *  runtime's signal subscription. */
@@ -91,9 +117,29 @@ export interface Invocation {
 
 export function buildEngine(
   spec: EngineSpec,
-  options?: { readonly now?: () => Date },
+  options?: {
+    readonly now?: () => Date;
+    readonly delay?: (ms: number, signal: AbortSignal) => Promise<void>;
+  },
 ): Engine {
-  return new EngineImpl(spec, options?.now);
+  return new EngineImpl(spec, options?.now, options?.delay);
+}
+
+/** Resolves on the timer OR on the signal, whichever comes first — the
+ *  caller decides what an abort means, and no timer outlives the run. */
+function waitFor(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    const finish = (): void => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    signal.addEventListener("abort", finish, { once: true });
+  });
 }
 
 type ErasedHandler = (
@@ -132,10 +178,16 @@ export class EngineImpl implements Engine {
   private readonly spec: EngineSpec;
   private readonly root: StricliRouteMap<EngineRunContext>;
   private readonly now: () => Date;
+  private readonly delay: (ms: number, signal: AbortSignal) => Promise<void>;
 
-  constructor(spec: EngineSpec, now: () => Date = () => new Date()) {
+  constructor(
+    spec: EngineSpec,
+    now: () => Date = () => new Date(),
+    delay: (ms: number, signal: AbortSignal) => Promise<void> = waitFor,
+  ) {
     this.spec = spec;
     this.now = now;
+    this.delay = delay;
     this.root = buildRoutes(
       spec,
       buildCommandTree(spec),
@@ -158,6 +210,7 @@ export class EngineImpl implements Engine {
       format,
       logLevel: "info",
       yes: false,
+      confirmValues: [],
       interactive: defaultInteractive(runtime),
       colorEnabled: false,
       resolved: false,
@@ -166,7 +219,10 @@ export class EngineImpl implements Engine {
       internalErrorText: undefined,
       stricliStderr: "",
       stdinIterator: undefined,
+      argv,
+      snapshot: undefined,
     };
+    const startedAtMs = this.now().getTime();
     const controller = new AbortController();
     let signalDelivered = false;
     const unsubscribe = runtime.onSignal((signal) => {
@@ -181,6 +237,7 @@ export class EngineImpl implements Engine {
       runtime,
       hooks: { ...hooks },
       now: this.now,
+      delay: this.delay,
       state,
       signal: controller.signal,
     };
@@ -225,10 +282,38 @@ export class EngineImpl implements Engine {
       unsubscribe();
       await state.stdinIterator?.return?.();
     }
-    if (state.settledExitCode !== undefined) {
-      return state.settledExitCode;
+    const exitCode =
+      state.settledExitCode !== undefined
+        ? state.settledExitCode
+        : settleUnhandled(this.spec, invocation, stricliProcess.exitCode);
+    this.fireOnSettled(invocation, exitCode, startedAtMs);
+    return exitCode;
+  }
+
+  /** The onSettled delivery: once per run, after the exit code is
+   *  final, only for runs that mounted a command (--help, --version,
+   *  and pre-mount usage errors leave no snapshot and fire nothing).
+   *  A throwing hook is swallowed — observation must not break runs. */
+  private fireOnSettled(
+    invocation: Invocation,
+    exitCode: number,
+    startedAtMs: number,
+  ): void {
+    const { state, hooks } = invocation;
+    if (state.snapshot === undefined || hooks.onSettled === undefined) {
+      return;
     }
-    return settleUnhandled(this.spec, invocation, stricliProcess.exitCode);
+    const summary: RunSummary = {
+      commandId: state.commandId,
+      exitCode,
+      durationMs: this.now().getTime() - startedAtMs,
+      snapshot: state.snapshot,
+    };
+    try {
+      hooks.onSettled(summary);
+    } catch {
+      // Swallowed by contract: a telemetry bug must not break a command.
+    }
   }
 
   private async executeMounted(
@@ -240,6 +325,12 @@ export class EngineImpl implements Engine {
     const state = invocation.state;
     state.commandId = entry.id;
     state.docsBaseUrl = entry.docsBaseUrl;
+    state.snapshot = buildCommandSnapshot(
+      entry.id,
+      entry.def,
+      state.argv,
+      values,
+    );
     if (entry.def.kind === "server-command") {
       await this.executeServer(invocation, entry, rawFlags);
       return;
@@ -265,7 +356,11 @@ export class EngineImpl implements Engine {
       flags: declaredFlags(entry.def, rawFlags),
       positionals: distributePositionals(entry.def, values),
     };
-    const ctx = makeContext(invocation, needsOutcome.config);
+    const ctx = makeContext(
+      invocation,
+      needsOutcome.config,
+      entry.def.kind === "result-command" && entry.def.managesCredentials,
+    );
     if (entry.def.kind === "session-command") {
       try {
         const result = await (handler as ErasedSessionHandler)(args, ctx);

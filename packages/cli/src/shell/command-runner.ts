@@ -1,5 +1,5 @@
 import { AuthError as SDKAuthError } from "@prisma/management-api-sdk";
-import { isEmptyServiceTokenError } from "../lib/auth/auth-ops";
+import { isEmptyServiceTokenError } from "../auth/operations";
 import { collectCommandDiagnostics } from "../lib/diagnostics";
 import type { CommandDescriptor } from "./command-meta";
 import { getCommandDescriptor } from "./command-meta";

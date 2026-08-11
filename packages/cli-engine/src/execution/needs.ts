@@ -2,11 +2,12 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import type { AnyCommand } from "../commands";
 import type { ConfigSection, SectionValidation } from "../config-section";
-import type { Credentials } from "../context";
+import { credentialsRequiredError } from "../credential-errors";
+import type { CredentialManager } from "../credential-manager";
 import { CliStructuredError, type Diagnostic } from "../protocol";
 import type { Runtime } from "../runtime";
 import type { Invocation } from "./engine";
-import { firstLine, withDocsUrl, writeDiagnostic } from "./rendering";
+import { withDocsUrl, writeDiagnostic } from "./rendering";
 import { SEVERITY_RANK } from "./reporting";
 
 export type NeedsOutcome =
@@ -100,6 +101,14 @@ function checkDependencies(
   return undefined;
 }
 
+/**
+ * The credentials need, single-sourced from the credential manager:
+ * activeCredential() is the local-only truth (the process pin), and
+ * its structured errors (sessions held none selected, blank env token)
+ * pass through verbatim so the needs check, ctx.activeCredential, and
+ * ctx.api raise identically. A host with no manager wired has no
+ * credentials at all.
+ */
 async function checkCredentials(
   needs: AnyCommand["needs"],
   invocation: Invocation,
@@ -107,46 +116,22 @@ async function checkCredentials(
   if (!needs.credentials) {
     return undefined;
   }
-  let credentials: Credentials | undefined;
+  const manager: CredentialManager | undefined =
+    invocation.runtime.credentialManager;
+  if (manager === undefined) {
+    return needsErrored(credentialsRequiredError());
+  }
   try {
-    credentials = await invocation.runtime.getCredentials();
+    if ((await manager.activeCredential()) === null) {
+      return needsErrored(credentialsRequiredError());
+    }
+    return undefined;
   } catch (cause) {
-    return needsErrored(
-      new CliStructuredError(
-        "CLI.CREDENTIALS_UNREADABLE",
-        "The stored credentials could not be read.",
-        {
-          why: firstLine(
-            cause instanceof Error ? cause.message : String(cause),
-          ),
-          nextActions: [
-            {
-              kind: "user-choice",
-              label:
-                "Sign in again to replace the stored credentials, then run the command again.",
-            },
-          ],
-        },
-      ),
-    );
+    if (CliStructuredError.is(cause)) {
+      return needsErrored(cause);
+    }
+    throw cause;
   }
-  if (credentials === undefined) {
-    return needsErrored(
-      new CliStructuredError(
-        "CLI.CREDENTIALS_REQUIRED",
-        "You must be signed in to run this command.",
-        {
-          nextActions: [
-            {
-              kind: "user-choice",
-              label: "Sign in, then run the command again.",
-            },
-          ],
-        },
-      ),
-    );
-  }
-  return undefined;
 }
 
 function checkConfiguration(

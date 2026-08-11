@@ -6,12 +6,14 @@
  * directives fail the build (TS2578).
  */
 import type {
+  ActiveCredential,
   Char,
   CommandContext,
   CommandFamily,
   CommandHandler,
   CompletedEnvelope,
   ConfigSection,
+  CredentialManager,
   EngineEvent,
   ErroredEnvelope,
   FlagSpec,
@@ -22,6 +24,7 @@ import type {
   PresentedResult,
   Runtime,
   SectionValidation,
+  Session,
   StreamEvent,
 } from "@prisma/cli-engine";
 import {
@@ -307,7 +310,7 @@ export const createCliSpec: Parameters<typeof createCli>[0] = {
 export const createTestCliSpec: Parameters<typeof createTestCli>[0] = {
   commands: tree,
   config: { check: { strict: true } },
-  credentials: { token: "t" },
+  managementApi: { baseUrl: "https://test.invalid" },
   packageManager: "pnpm",
   now: () => new Date(0),
 };
@@ -384,6 +387,94 @@ export const runtimeShape: Runtime = {
   },
   onSignal: () => () => {},
   config: loadedConfig,
-  getCredentials: async () => undefined,
+  managementApi: { baseUrl: "https://test.invalid" },
   packageManager: "pnpm",
+};
+
+// —————————————————————————————————————————————————————————————————————
+// The credential manager surface (design rev 6, the active
+// credential): managesCredentials is a capability —
+// ctx.credentialManager exists exactly when declared;
+// ctx.activeCredential exists on every context; the harness seeds a
+// mutable in-memory manager.
+// —————————————————————————————————————————————————————————————————————
+
+export const managedCommand = defineCommand({
+  help: { summary: "Operates on the credential machinery" },
+  managesCredentials: true,
+  handler: async (_args, ctx) => {
+    const manager: CredentialManager = ctx.credentialManager;
+    const active: ActiveCredential | null = await ctx.activeCredential();
+    void manager;
+    void active;
+    return ok(ctx.present({ data: null }, { human: () => [] }));
+  },
+});
+export const managedIsDeclared: true = managedCommand.managesCredentials;
+
+export const unmanagedCommand = defineCommand({
+  help: { summary: "Ordinary command" },
+  handler: async (_args, ctx) => {
+    const active: ActiveCredential | null = await ctx.activeCredential();
+    void active;
+    // @ts-expect-error the capability was not declared, so the context carries no credentialManager
+    void ctx.credentialManager;
+    return ok(ctx.present({ data: null }, { human: () => [] }));
+  },
+});
+export const unmanagedIsUndeclared: false = unmanagedCommand.managesCredentials;
+
+export const sessionHasNoTokenMaterial:
+  | "workspaceId"
+  | "workspaceName"
+  | "expiresAt" = undefined as unknown as keyof Session;
+
+export const activeCredentialHasNoTokenMaterial:
+  | "workspaceId"
+  | "workspaceName"
+  | "expiresAt"
+  | "identity"
+  | "origin" = undefined as unknown as keyof ActiveCredential;
+
+export const seededHarnessSpec: Parameters<typeof createTestCli>[0] = {
+  commands: tree,
+  credential: {
+    token: "jwt",
+    refreshToken: undefined,
+    expiresAt: undefined,
+  },
+  sessions: [
+    {
+      workspaceId: "workspace-1",
+      workspaceName: "Acme",
+      credential: {
+        token: "jwt",
+        refreshToken: undefined,
+        expiresAt: undefined,
+      },
+    },
+  ],
+  selectedWorkspaceId: "workspace-1",
+  environmentCredential: {
+    token: "jwt",
+    refreshToken: undefined,
+    expiresAt: undefined,
+  },
+  managementApiClientConfig: {
+    clientId: "client",
+    redirectUri: "https://test.invalid/cb",
+    apiBaseUrl: "https://api.test.invalid",
+    authBaseUrl: "https://auth.test.invalid",
+  },
+};
+
+export const runtimeWithManager: Runtime = {
+  ...runtimeShape,
+  credentialManager: undefined as unknown as CredentialManager,
+  managementApiClientConfig: {
+    clientId: "client",
+    redirectUri: "https://test.invalid/cb",
+    apiBaseUrl: "https://api.test.invalid",
+    authBaseUrl: "https://auth.test.invalid",
+  },
 };

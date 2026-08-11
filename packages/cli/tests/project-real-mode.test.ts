@@ -11,8 +11,8 @@ type ApiGetMock = Mock<
 type ApiMutationMock = Mock<(pathName: string, request?: unknown) => unknown>;
 
 afterEach(() => {
-  vi.doUnmock("../src/lib/auth/auth-ops");
-  vi.doUnmock("../src/lib/auth/guard");
+  vi.doUnmock("../src/auth/operations");
+  vi.doUnmock("../src/auth/guard");
   vi.doUnmock("open");
   vi.resetModules();
   vi.restoreAllMocks();
@@ -257,15 +257,18 @@ function expectSourceRepositoryPost(post: ReturnType<typeof vi.fn>): void {
 describe("real project mode", () => {
   it("uses the real API path for project list and sorts by name then id", async () => {
     const readAuthState = mockAuthState();
-    const requireComputeAuth = vi.fn().mockResolvedValue(mockClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(mockClient());
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState,
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
 
     const { createTempCwd, createTestCommandContext } = await import(
@@ -289,7 +292,7 @@ describe("real project mode", () => {
       context.runtime.env,
       context.runtime.signal,
     );
-    expect(requireComputeAuth).toHaveBeenCalledWith(
+    expect(authenticatedManagementApiClient).toHaveBeenCalledWith(
       context.runtime.env,
       context.runtime.signal,
     );
@@ -325,13 +328,14 @@ describe("real project mode", () => {
   });
 
   it("resolves an explicit project in real mode", async () => {
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi.fn().mockResolvedValue(mockClient()),
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient: vi.fn().mockResolvedValue(mockClient()),
     }));
 
     const { createTempCwd, createTestCommandContext } = await import(
@@ -400,13 +404,14 @@ describe("real project mode", () => {
       throw new Error(`Unexpected path ${pathName}`);
     });
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, POST: post })),
     }));
@@ -484,13 +489,14 @@ describe("real project mode", () => {
     });
     const post = vi.fn();
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, POST: post })),
     }));
@@ -568,13 +574,14 @@ describe("real project mode", () => {
       throw new Error(`Unexpected path ${pathName}`);
     });
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, POST: post })),
     }));
@@ -679,13 +686,14 @@ describe("real project mode", () => {
       throw new Error(`Unexpected path ${pathName}`);
     });
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, POST: post })),
     }));
@@ -771,13 +779,14 @@ describe("real project mode", () => {
       throw new Error(`Unexpected path ${pathName}`);
     });
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, POST: post })),
     }));
@@ -905,13 +914,14 @@ describe("real project mode", () => {
       throw new Error(`Unexpected path ${pathName}`);
     });
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, POST: post })),
     }));
@@ -974,13 +984,14 @@ describe("real project mode", () => {
     });
     const post = vi.fn();
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, POST: post })),
     }));
@@ -1049,13 +1060,14 @@ describe("real project mode", () => {
     });
     const post = vi.fn();
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, POST: post })),
     }));
@@ -1122,13 +1134,14 @@ describe("real project mode", () => {
       throw new Error(`Unexpected path ${pathName}`);
     });
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: mockAuthState(),
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth: vi
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient: vi
         .fn()
         .mockResolvedValue(mockClient({ GET: get, DELETE: del })),
     }));

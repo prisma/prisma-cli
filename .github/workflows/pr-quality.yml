@@ -83,3 +83,6 @@ jobs:
       # package's tests, so imports of built dist output resolve.
       - name: Test
         run: pnpm test
+
+      - name: Script tests
+        run: pnpm test:scripts

@@ -7,7 +7,7 @@ import {
   runUpdateDiscovery,
   selectUpdateInstruction,
   UpdateCheckStore,
-} from "../src/shell/update-check";
+} from "../src/update-check";
 import { createTempCwd, executeCli } from "./helpers";
 
 const fixturePath = path.resolve("fixtures/mock-api.json");

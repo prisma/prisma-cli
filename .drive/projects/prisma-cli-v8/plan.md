@@ -80,6 +80,26 @@ Repo: prisma-cli. The small three-check tool — import purity,
 validator no-throw on hostile input, published-tarball verification —
 wired into both products' publish CI as S3/S5 land.
 
+### S8 — Service primitives (design first; after S3, before S7)
+
+Repo: prisma-cli. Give the platform's service resources an atomic CLI surface, replacing what S2c ported for continuity.
+
+**Why this slice exists.** The legacy `app` group fused three concerns — building an artifact, wiring a GitHub repo, and deploying — into single commands, most visibly `app deploy`, which builds, creates a project, creates branches, sets environment variables, optionally provisions a database, and deploys. Composer replaces the building and deploying. What the CLI should own is managing the remote resource, and today it cannot: there is no `service list` and no `service create` despite `GET`/`POST /v1/apps`, no deployment start or stop despite `POST /v1/deployments/{id}/start|stop`, and no deployment delete. A service can currently only be born as a side effect of deploying to it. S2c ported the surviving commands under their legacy names so the commander shell could die in S2d; that port is continuity, not endorsement of the shape.
+
+**The resource model is already right; the CLI hides it.** `/v1/apps` supports list and create, `/v1/apps/{id}` get and delete, `/v1/apps/{id}/deployments` list and create, `/v1/deployments/{id}` get and delete, and `/v1/deployments/{id}/start|stop|logs`. Composer deploys through Alchemy rather than driving that sequence itself, but Alchemy's providers call the same management API, so Composer's services and deployments are ordinary resources under these endpoints. The seam the API already draws is the one to build on: **Composer produces deployments; the CLI manages them.** Promote, rollback, start, stop, delete and logs are resource management, not build concerns — `POST /v1/deployments/{id}/start` says the artifact must be uploaded before it is called, which is the separation stated in the API itself.
+
+That makes the shape of the slice mostly a rename plus filling holes — a `service deployment` subgroup absorbing `list-deploys`, `show-deploy`, `logs`, `promote` and `rollback`, plus the five operations that have no command at all. The expensive parts (engine, auth, presenters, error model, the `service` rename) are done.
+
+**Why it still waits for the design work.** Three questions need answers that only S3 can give, and none of them is about whether the resources exist.
+
+1. ~~Does Alchemy hold desired state?~~ **Answered (operator, 2026-08-10): yes, and changing the platform directly is overwritten on the next `composer deploy`. Accepted.** So the imperative operations stay, and their effect on a Composer-managed service is understood to be transient. What remains for the design is only whether the CLI says so at the point of use — a service the CLI can tell is Composer-managed could carry a line on `promote`, `rollback`, `start` and `stop` noting the next deploy reconciles it. That depends on question 2: whether the records carry anything identifying a service as Composer-managed.
+2. What do Composer's app and deployment records actually contain? If the Alchemy path populates a different subset of fields than `app deploy` did, `service show` and `service deployment show` are presenting a shape nobody has looked at.
+3. Where does log reading live? `composer log` and a `service deployment logs` would be two ways to read the same thing, and the project spec rules that a subgroup is owned by exactly one command family.
+
+One standing caveat: every endpoint above is marked experimental and subject to change without notice. Designing a stable CLI surface over an unstable API is how the next bastardization gets built, so the design has to say what it is willing to depend on.
+
+**Ordering.** After S3, because Composer's contract is the input. Before S7, because S7 mounts the full grammar tree behind a build-time completeness check and this slice changes that tree.
+
 ### S7 — Release pipeline + rc1
 
 Repo: prisma-cli. The `prisma` binary package assembled: full grammar
@@ -92,10 +112,11 @@ when the operator can publish with one action (project DoD).
 
 ```text
 S1 ──► S2 ──► S3 ──► S5 ──► S7
-        │      ▲      ▲
-        └──────┘ (published engine exists after S2's engine hardening)
-S4 (prisma/prisma) ────────► S5
+        │      ▲      ▲             ▲
+        └──────┘      │             │
+S4 (prisma/prisma) ───┴──► S5       │
 S6 (after S1) ─────────────► wired in during S3/S5
+S3 ──► S8 (design first) ───────────┘
 ```
 
 ## Coverage ledger (what proves what)

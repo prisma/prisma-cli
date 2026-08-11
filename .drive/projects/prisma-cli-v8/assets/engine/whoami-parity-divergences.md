@@ -1,5 +1,11 @@
 # `prisma-v8 auth whoami` — parity divergences from `prisma-cli auth whoami`
 
+> SCOPE: this document is whoami-scoped (S1). Its engine-global
+> sections (json framing, format auto-selection, channel discipline,
+> rendering style, `--quiet`, exit codes, flag family) are the
+> baseline for every later port. S2 onward, per-command divergences
+> accumulate in [`../s2/parity-divergences.md`](../s2/parity-divergences.md).
+
 Written for D6 of slice s1-engine-vertical (2026-08-09). Every known place
 where the v8 port's output or behavior differs from the shipped
 `prisma-cli auth whoami`, and why. The v8 side is pinned by
@@ -183,8 +189,10 @@ operations residue resolves.
 ## 12. Update notification / agent tips
 
 The current CLI shell may prepend a cached update notification to any
-command's output, and login (not whoami) appends agent-setup tips. The
-v8 bin has none of that shell behavior.
+command's output, and login (not whoami) appends agent-setup tips.
+UPDATED in S2a: the v8 bin now wires the same cached update
+notification with the legacy sequencing, and `auth login` ports the
+agent-setup tip — see the S2 cumulative divergence list.
 
 ---
 

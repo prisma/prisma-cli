@@ -17,7 +17,10 @@ import { detectComputeAppFromDirectory } from "@prisma/compute-sdk/config/direct
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { matchError, Result } from "better-result";
 import open from "open";
-import { FileTokenStorage } from "../adapters/token-storage";
+import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../auth/client";
+import { authenticatedManagementApiClient } from "../auth/guard";
+import { readAuthState } from "../auth/operations";
+import { FileTokenStorage } from "../auth/token-storage";
 import {
   type AppRecord,
   createAppProvider,
@@ -86,9 +89,6 @@ import {
 } from "../lib/app/local-dev";
 import { enforceProductionDeployGate } from "../lib/app/production-deploy-gate";
 import { resolveReadBranch } from "../lib/app/read-branch";
-import { readAuthState } from "../lib/auth/auth-ops";
-import { getApiBaseUrl, SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
-import { requireComputeAuth } from "../lib/auth/guard";
 import { readLocalGitBranch } from "../lib/git/local-branch";
 import { promptForProjectSetupChoice } from "../lib/project/interactive-setup";
 import {
@@ -3261,7 +3261,7 @@ async function requirePreviewAppProviderWithClient(
   client: ManagementApiClient;
   provider: ReturnType<typeof createAppProvider>;
 }> {
-  const client = await requireComputeAuth(
+  const client = await authenticatedManagementApiClient(
     context.runtime.env,
     context.runtime.signal,
   );

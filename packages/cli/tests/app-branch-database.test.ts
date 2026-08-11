@@ -14,7 +14,8 @@ beforeEach(() => {
   process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME = "Acme Dashboard";
   process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID = "ws_123";
 
-  vi.doMock("../src/lib/auth/auth-ops", () => ({
+  vi.doMock("../src/auth/operations", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../src/auth/operations")>()),
     readAuthState: vi.fn().mockResolvedValue({
       authenticated: true,
       provider: null,
@@ -36,8 +37,8 @@ afterEach(() => {
   delete process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME;
   delete process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID;
 
-  vi.doUnmock("../src/lib/auth/auth-ops");
-  vi.doUnmock("../src/lib/auth/guard");
+  vi.doUnmock("../src/auth/operations");
+  vi.doUnmock("../src/auth/guard");
   vi.doUnmock("../src/lib/app/app-provider");
   vi.doUnmock("../src/lib/app/branch-database");
   vi.doUnmock("../src/lib/app/branch-database-deploy");
@@ -67,7 +68,9 @@ async function writePrismaComputeSkillsLock(cwd: string): Promise<void> {
 
 describe("app deploy branch database setup", () => {
   it("deploy --db creates a branch database and writes branch env overrides before deploying", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const branchId = "branch_feature_db";
     const listApps = vi.fn().mockResolvedValue([
       {
@@ -118,8 +121,8 @@ describe("app deploy branch database setup", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/branch-database", async (importOriginal) => {
       const actual =
@@ -220,7 +223,9 @@ describe("app deploy branch database setup", () => {
   });
 
   it("deploy --db creates a database and writes production env vars on first production deploy", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const branchId = "branch_main";
     const listApps = vi.fn().mockResolvedValue([
       {
@@ -279,8 +284,8 @@ describe("app deploy branch database setup", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/branch-database", async (importOriginal) => {
       const actual =
@@ -371,7 +376,9 @@ describe("app deploy branch database setup", () => {
   });
 
   it("deploy --db creates a branch database and applies a Prisma Next config before deploying", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const branchId = "branch_feature_next";
     const listApps = vi.fn().mockResolvedValue([
       {
@@ -420,8 +427,8 @@ describe("app deploy branch database setup", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/branch-database", async (importOriginal) => {
       const actual =
@@ -500,7 +507,9 @@ describe("app deploy branch database setup", () => {
   });
 
   it("deploy --db leaves an existing branch DATABASE_URL override unchanged", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const branchId = "branch_feature_db";
     const listApps = vi.fn().mockResolvedValue([
       {
@@ -546,8 +555,8 @@ describe("app deploy branch database setup", () => {
         return [];
       });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() => ({
@@ -610,7 +619,9 @@ describe("app deploy branch database setup", () => {
   });
 
   it("deploy --db treats existing production database env vars as BYO DB and leaves them unchanged", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const branchId = "branch_main";
     const listApps = vi.fn().mockResolvedValue([
       {
@@ -671,8 +682,8 @@ describe("app deploy branch database setup", () => {
         },
       );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() => ({
@@ -749,7 +760,9 @@ describe("app deploy branch database setup", () => {
     existingKey,
     envVarId,
   }) => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const branchId = "branch_main";
     const listApps = vi.fn().mockResolvedValue([
       {
@@ -800,8 +813,8 @@ describe("app deploy branch database setup", () => {
         },
       );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() => ({
@@ -866,7 +879,9 @@ describe("app deploy branch database setup", () => {
   });
 
   it("deploy --db repairs a branch that only has DIRECT_URL", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const branchId = "branch_feature_db";
     const listApps = vi.fn().mockResolvedValue([
       {
@@ -929,8 +944,8 @@ describe("app deploy branch database setup", () => {
         return [];
       });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/branch-database", async (importOriginal) => {
       const actual =
@@ -1010,7 +1025,9 @@ describe("app deploy branch database setup", () => {
   });
 
   it("deploy --db removes stale DIRECT_URL when the new branch database has no direct URL", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const branchId = "branch_feature_db";
     const listApps = vi.fn().mockResolvedValue([
       {
@@ -1068,8 +1085,8 @@ describe("app deploy branch database setup", () => {
         return [];
       });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/branch-database", async (importOriginal) => {
       const actual =
@@ -1149,7 +1166,9 @@ describe("app deploy branch database setup", () => {
   });
 
   it("prompts for branch database setup when a preview deploy appears to use a database", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const branchId = "branch_feature_db";
     const confirmPrompt = vi.fn().mockResolvedValue(true);
     const listApps = vi.fn().mockResolvedValue([
@@ -1191,8 +1210,8 @@ describe("app deploy branch database setup", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/shell/prompt", async () => {
       const actual = await vi.importActual<
@@ -1270,7 +1289,9 @@ describe("app deploy branch database setup", () => {
   });
 
   it("--yes alone does not create a database during first production deploy", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const branchId = "branch_main";
     const createBranchDatabase = vi.fn();
     const deployApp = vi.fn().mockResolvedValue({
@@ -1288,8 +1309,8 @@ describe("app deploy branch database setup", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() => ({
@@ -1360,13 +1381,15 @@ describe("app deploy branch database setup", () => {
   });
 
   it("rejects --db for production apps that already have a live deployment", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const branchId = "branch_main";
     const createBranchDatabase = vi.fn();
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() => ({
@@ -1447,12 +1470,14 @@ describe("app deploy branch database setup", () => {
   });
 
   it("rejects --db when deploy also passes database env vars", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const createBranchDatabase = vi.fn();
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() => ({
@@ -1516,7 +1541,9 @@ describe("app deploy branch database setup", () => {
   });
 
   it("cleans up the created branch database when env wiring fails", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const branchId = "branch_feature_db";
     const listApps = vi.fn().mockResolvedValue([
       {
@@ -1540,8 +1567,8 @@ describe("app deploy branch database setup", () => {
       .mockRejectedValue(new Error("env write failed"));
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/branch-database", async (importOriginal) => {
       const actual =
@@ -1727,12 +1754,14 @@ describe("app deploy branch database setup", () => {
   });
 
   it("rejects --db for non-Postgres Prisma Next configs before creating a branch database", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const createBranchDatabase = vi.fn();
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() => ({

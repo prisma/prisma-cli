@@ -34,7 +34,7 @@ import {
   createCommandContext,
 } from "./shell/runtime";
 import { createShellUi } from "./shell/ui";
-import { maybeWriteCachedUpdateNotification } from "./shell/update-check";
+import { maybeWriteCachedUpdateNotification } from "./update-check";
 
 export interface RunCliOptions extends Partial<CliRuntime> {
   argv?: string[];

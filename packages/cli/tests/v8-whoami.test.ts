@@ -1,38 +1,46 @@
-import { defineCommand } from "@prisma/cli-engine";
+/**
+ * The whoami-specific byte baseline (S1), now over the credential
+ * manager: the card, the json stream, and the engine's early
+ * credentials failure.
+ */
+import { defineCommand, type ManagementApiClient } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { createTestCli } from "@prisma/cli-engine/testing";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
 import {
-  EmptyServiceTokenError,
-  readAuthState,
-} from "../src/lib/auth/auth-ops";
-import type { AuthStateResult } from "../src/types/auth";
+  createTestCli,
+  mintTestJwt,
+  type SessionRecord,
+} from "@prisma/cli-engine/testing";
+import { describe, expect, it } from "vitest";
+
 import { authWhoamiCommand } from "../src/v8/auth/whoami";
-
-vi.mock("../src/lib/auth/auth-ops", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/lib/auth/auth-ops")>()),
-  readAuthState: vi.fn(),
-}));
-
-const SIGNED_OUT: AuthStateResult = {
-  authenticated: false,
-  provider: null,
-  user: null,
-  workspace: null,
-  credential: null,
-};
-
-const SIGNED_IN: AuthStateResult = {
-  authenticated: true,
-  provider: "github",
-  user: { id: "usr_456", email: "bob@example.com", name: "Bob Example" },
-  workspace: { id: "ws_123", name: "Acme Inc" },
-  credential: { type: "oauth", id: null, name: null },
-};
 
 const EPOCH = () => new Date(0);
 const T0 = "1970-01-01T00:00:00.000Z";
+
+const SESSION: SessionRecord = {
+  workspaceId: "ws_123",
+  workspaceName: "Acme Inc",
+  credential: {
+    token: mintTestJwt({ workspace_id: "ws_123", sub: "usr_456" }),
+    refreshToken: "refresh_ws_123",
+    expiresAt: undefined,
+  },
+};
+
+const OFFLINE_API = {
+  GET: async () => {
+    throw new Error("offline");
+  },
+} as unknown as ManagementApiClient;
+
+const IDENTIFIED_API = {
+  GET: async () => ({
+    data: {
+      data: { user: { id: "usr_456", email: "bob@example.com", name: "Bob" } },
+    },
+    response: { status: 200 },
+  }),
+} as unknown as ManagementApiClient;
 
 const requiresCredentials = defineCommand({
   help: { summary: "Requires a signed-in session" },
@@ -46,26 +54,40 @@ const requiresCredentials = defineCommand({
   needs: { credentials: true },
 });
 
-function makeCli(options?: { credentials?: { token: string } }) {
+function makeCli(options?: {
+  readonly sessions?: readonly SessionRecord[];
+  readonly selectedWorkspaceId?: string;
+  readonly environmentCredential?: {
+    readonly token: string;
+    readonly refreshToken: string | undefined;
+    readonly expiresAt: Date | undefined;
+  };
+  readonly client?: ManagementApiClient;
+}) {
   return createTestCli({
     commands: {
       "auth whoami": authWhoamiCommand,
       "auth locked": requiresCredentials,
     },
     groups: { auth: { brief: "Manage local authentication for the CLI" } },
-    credentials: options?.credentials,
+    sessions: options?.sessions ?? [],
+    selectedWorkspaceId: options?.selectedWorkspaceId,
+    environmentCredential: options?.environmentCredential,
+    managementApi: { client: options?.client ?? OFFLINE_API },
     now: EPOCH,
   });
 }
 
-beforeEach(() => {
-  vi.mocked(readAuthState).mockReset();
-});
+function signedInCli() {
+  return makeCli({
+    sessions: [SESSION],
+    selectedWorkspaceId: "ws_123",
+    client: IDENTIFIED_API,
+  });
+}
 
 describe("prisma-v8 auth whoami", () => {
   it("renders the signed-out human card on stderr and the payload lines on stdout, exit 0", async () => {
-    vi.mocked(readAuthState).mockResolvedValue(SIGNED_OUT);
-
     const result = await makeCli().run(["auth", "whoami"], {
       isTty: { stdout: true },
     });
@@ -73,46 +95,38 @@ describe("prisma-v8 auth whoami", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("status: signed out\n");
     expect(result.stderr).toBe(
-      "ℹ Showing the current authenticated identity.\n" +
+      "ℹ Showing the active authenticated identity.\n" +
         "status: signed out\n" +
         "→ Sign in: prisma-cli auth login\n",
     );
   });
 
   it("renders the signed-in human output: card on stderr, payload on stdout", async () => {
-    vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
-
-    const result = await makeCli().run(["auth", "whoami"], {
+    const result = await signedInCli().run(["auth", "whoami"], {
       isTty: { stdout: true },
     });
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe(
-      "status: signed in\n" +
-        "user: bob@example.com\n" +
-        "provider: GitHub\n" +
-        "workspace: Acme Inc\n",
+      "status: signed in\nuser: bob@example.com\nworkspace: Acme Inc\n",
     );
     expect(result.stderr).toBe(
-      "ℹ Showing the current authenticated identity.\n" +
+      "ℹ Showing the active authenticated identity.\n" +
         "status: signed in\n" +
         "user: bob@example.com\n" +
-        "provider: GitHub\n" +
         "workspace: Acme Inc\n",
     );
   });
 
   it("emits the json stream with a terminal completed envelope", async () => {
-    vi.mocked(readAuthState).mockResolvedValue(SIGNED_OUT);
-
     const result = await makeCli().run(["auth", "whoami", "--json"]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe(
       `{"kind":"result","envelope":{"ok":true,"commandId":"auth.whoami",` +
-        `"result":{"authenticated":false,"provider":null,"user":null,` +
-        `"workspace":null,"credential":null},"exitCode":0,"diagnostics":[],` +
+        `"result":{"authenticated":false,"workspace":null,"user":null,` +
+        `"source":null,"expiresAt":null},"exitCode":0,"diagnostics":[],` +
         `"nextActions":[{"kind":"run-command","label":"Sign in",` +
         `"command":"prisma-cli auth login"}]},"commandId":"auth.whoami",` +
         `"timestamp":"${T0}"}\n`,
@@ -120,10 +134,8 @@ describe("prisma-v8 auth whoami", () => {
     expect(result.json).toHaveLength(1);
   });
 
-  it("carries the signed-in auth state as the envelope result", async () => {
-    vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
-
-    const result = await makeCli().run(["auth", "whoami", "--json"]);
+  it("carries the signed-in session as the envelope result", async () => {
+    const result = await signedInCli().run(["auth", "whoami", "--json"]);
 
     expect(result.exitCode).toBe(0);
     const frame = result.json[0];
@@ -133,100 +145,150 @@ describe("prisma-v8 auth whoami", () => {
     expect(frame.envelope).toEqual({
       ok: true,
       commandId: "auth.whoami",
-      result: SIGNED_IN,
+      result: {
+        authenticated: true,
+        workspace: { id: "ws_123", name: "Acme Inc" },
+        user: { id: "usr_456", email: "bob@example.com", name: "Bob" },
+        source: "stored",
+        expiresAt: null,
+      },
       exitCode: 0,
       diagnostics: [],
       nextActions: [],
     });
   });
 
-  it("renders the unchanged presentation under --quiet (a log-level alias)", async () => {
-    vi.mocked(readAuthState).mockResolvedValue(SIGNED_IN);
+  /** Design §11.10, test 7: an environment token whose claims name no
+   *  workspace has no workspace row and a null JSON workspace — never
+   *  an empty string and never the literal "undefined". */
+  it("omits the workspace entirely for a claimless environment token", async () => {
+    const cli = makeCli({
+      environmentCredential: {
+        token: mintTestJwt({ sub: "usr_env" }),
+        refreshToken: undefined,
+        expiresAt: undefined,
+      },
+    });
 
-    const result = await makeCli().run(["auth", "whoami", "--quiet"], {
+    const human = await cli.run(["auth", "whoami"], {
+      isTty: { stdout: true },
+    });
+
+    expect(human.exitCode).toBe(0);
+    expect(human.stdout).toBe(
+      "status: signed in\nsource: PRISMA_SERVICE_TOKEN\n",
+    );
+    expect(human.stderr).not.toContain("workspace:");
+    expect(human.stderr).not.toContain("undefined");
+
+    const json = await cli.run(["auth", "whoami", "--json"]);
+    const frame = json.json[0];
+    if (frame.kind !== "result") {
+      throw new Error("expected a result frame");
+    }
+    expect(frame.envelope).toMatchObject({
+      ok: true,
+      result: {
+        authenticated: true,
+        workspace: null,
+        user: { id: "usr_env", email: null, name: null },
+        source: "environment",
+      },
+    });
+    expect(json.stdout).not.toContain('""');
+    expect(json.stdout).not.toContain("undefined");
+  });
+
+  /** A real service token's subject is its workspace, not a person.
+   *  Reporting `workspace:ws_1` as the user's id would put a workspace
+   *  in the user field of a machine-readable contract. */
+  it("reads a service token's workspace subject as a workspace, not a user", async () => {
+    const cli = makeCli({
+      environmentCredential: {
+        token: mintTestJwt({ sub: "workspace:ws_svc" }),
+        refreshToken: undefined,
+        expiresAt: undefined,
+      },
+    });
+
+    const json = await cli.run(["auth", "whoami", "--json"]);
+    const frame = json.json[0];
+    if (frame.kind !== "result") {
+      throw new Error("expected a result frame");
+    }
+    expect(frame.envelope).toMatchObject({
+      ok: true,
+      result: {
+        authenticated: true,
+        workspace: { id: "ws_svc" },
+        user: null,
+        source: "environment",
+      },
+    });
+    expect(json.stdout).not.toContain("workspace:ws_svc");
+  });
+
+  /** The claims and the lookup are read at different moments, so a
+   *  session replaced in between can have them describing two different
+   *  people. Filling a gap in one from the other would report a user
+   *  who does not exist. */
+  it("does not blend two identities when the lookup names a different user", async () => {
+    const differentUser = {
+      GET: async () => ({
+        data: { data: { user: { id: "usr_999", email: null, name: null } } },
+        response: { status: 200 },
+      }),
+    } as unknown as ManagementApiClient;
+    const result = await makeCli({
+      sessions: [SESSION],
+      selectedWorkspaceId: "ws_123",
+      client: differentUser,
+    }).run(["auth", "whoami", "--json"]);
+
+    const frame = result.json[0];
+    if (frame.kind !== "result") {
+      throw new Error("expected a result frame");
+    }
+    expect(frame.envelope).toMatchObject({
+      ok: true,
+      result: { user: { id: "usr_999", email: null, name: null } },
+    });
+  });
+
+  it("falls back to the stored credential's own claims when /v1/me is unreachable", async () => {
+    const result = await makeCli({
+      sessions: [SESSION],
+      selectedWorkspaceId: "ws_123",
+    }).run(["auth", "whoami", "--json"]);
+
+    expect(result.exitCode).toBe(0);
+    const frame = result.json[0];
+    if (frame.kind !== "result") {
+      throw new Error("expected a result frame");
+    }
+    expect(frame.envelope).toMatchObject({
+      result: {
+        user: { id: "usr_456", email: null, name: null },
+        source: "stored",
+      },
+    });
+  });
+
+  it("renders the unchanged presentation under --quiet (a log-level alias)", async () => {
+    const result = await signedInCli().run(["auth", "whoami", "--quiet"], {
       isTty: { stdout: true },
     });
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe(
-      "status: signed in\n" +
-        "user: bob@example.com\n" +
-        "provider: GitHub\n" +
-        "workspace: Acme Inc\n",
+      "status: signed in\nuser: bob@example.com\nworkspace: Acme Inc\n",
     );
     expect(result.stderr).toBe(
-      "ℹ Showing the current authenticated identity.\n" +
+      "ℹ Showing the active authenticated identity.\n" +
         "status: signed in\n" +
         "user: bob@example.com\n" +
-        "provider: GitHub\n" +
         "workspace: Acme Inc\n",
     );
-  });
-
-  it("errors with exit 2 when PRISMA_SERVICE_TOKEN is set but empty", async () => {
-    vi.mocked(readAuthState).mockRejectedValue(new EmptyServiceTokenError());
-
-    const result = await makeCli().run(["auth", "whoami"], {
-      isTty: { stdout: true },
-    });
-
-    expect(result.exitCode).toBe(2);
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toBe(
-      "✖ [AUTH.CONFIG_INVALID] Authentication configuration is invalid\n" +
-        "  why: PRISMA_SERVICE_TOKEN is set but empty. Provide a valid token or unset the variable.\n" +
-        "→ Provide a valid PRISMA_SERVICE_TOKEN value, or unset the variable to use local OAuth login.\n",
-    );
-  });
-
-  it("emits the errored envelope on the json stream", async () => {
-    vi.mocked(readAuthState).mockRejectedValue(new EmptyServiceTokenError());
-
-    const result = await makeCli().run(["auth", "whoami", "--json"]);
-
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toBe("");
-    const frame = result.json[0];
-    if (frame.kind !== "result") {
-      throw new Error("expected a result frame");
-    }
-    expect(frame.envelope).toEqual({
-      ok: false,
-      commandId: "auth.whoami",
-      error: {
-        code: "AUTH.CONFIG_INVALID",
-        severity: "error",
-        summary: "Authentication configuration is invalid",
-        why: "PRISMA_SERVICE_TOKEN is set but empty. Provide a valid token or unset the variable.",
-        nextActions: [
-          {
-            kind: "user-choice",
-            label:
-              "Provide a valid PRISMA_SERVICE_TOKEN value, or unset the variable to use local OAuth login.",
-          },
-        ],
-      },
-      diagnostics: [],
-      nextActions: [
-        {
-          kind: "user-choice",
-          label:
-            "Provide a valid PRISMA_SERVICE_TOKEN value, or unset the variable to use local OAuth login.",
-        },
-      ],
-    });
-  });
-
-  it("settles an unexpected operations failure as a bug with exit 1", async () => {
-    vi.mocked(readAuthState).mockRejectedValue(new Error("disk on fire"));
-
-    const result = await makeCli().run(["auth", "whoami"], {
-      isTty: { stdout: true },
-    });
-
-    expect(result.exitCode).toBe(1);
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("✖ [CLI.INTERNAL_ERROR] disk on fire\n");
   });
 });
 
@@ -244,10 +306,8 @@ describe("needs.credentials early failure", () => {
     );
   });
 
-  it("runs the handler when credentials are present", async () => {
-    const cli = makeCli({ credentials: { token: "tok_1" } });
-
-    const result = await cli.run(["auth", "locked"], {
+  it("runs the handler when a session is selected", async () => {
+    const result = await signedInCli().run(["auth", "locked"], {
       isTty: { stdout: true },
     });
 
@@ -257,26 +317,10 @@ describe("needs.credentials early failure", () => {
   });
 
   it("whoami itself completes without credentials (no needs.credentials)", async () => {
-    vi.mocked(readAuthState).mockResolvedValue(SIGNED_OUT);
     expect(authWhoamiCommand.needs.credentials).toBe(false);
 
     const result = await makeCli().run(["auth", "whoami", "--json"]);
 
     expect(result.exitCode).toBe(0);
-  });
-});
-
-describe("handler env access", () => {
-  it("reads the environment from ctx.env (the harness run's env), not process.env", async () => {
-    vi.mocked(readAuthState).mockResolvedValue(SIGNED_OUT);
-    const env = { PRISMA_SERVICE_TOKEN: "tok_from_ctx" };
-
-    const result = await makeCli().run(["auth", "whoami"], {
-      isTty: { stdout: true },
-      env,
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(vi.mocked(readAuthState).mock.calls[0][0]).toBe(env);
   });
 });

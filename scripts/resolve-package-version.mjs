@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 
+// Serves `publish-compute.yml` only. `@prisma/compute` is excluded from
+// the workspace's lockstep versioning (operator ruling 2026-08-10) and
+// keeps this legacy dev/next-beta scheme; the CLI packages publish via
+// `publish.yml` + `determine-version.ts` / `set-version.ts` instead.
+
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,14 +18,6 @@ export function resolveDevVersion(options) {
   const runAttempt = requireValue(options.runAttempt, "runAttempt");
 
   return `${baseVersion}-dev.${runNumber}.${runAttempt}`;
-}
-
-export function resolvePrVersion(options) {
-  const baseVersion = requireValue(options.baseVersion, "baseVersion");
-  const prNumber = requireValue(options.prNumber, "prNumber");
-  const sha = shortSha(requireValue(options.sha, "sha"));
-
-  return `${baseVersion}-pr.${prNumber}.sha${sha}`;
 }
 
 export function resolveNextBetaVersion(options) {
@@ -102,10 +99,6 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function shortSha(sha) {
-  return sha.slice(0, 12);
-}
-
 function requireValue(value, name) {
   if (value === undefined || value === null || String(value).trim() === "") {
     throw new Error(`${name} is required.`);
@@ -159,17 +152,6 @@ function main() {
     return;
   }
 
-  if (command === "pr") {
-    process.stdout.write(
-      `version=${resolvePrVersion({
-        baseVersion,
-        prNumber: options["pr-number"],
-        sha: options.sha,
-      })}\n`,
-    );
-    return;
-  }
-
   if (command === "next-beta") {
     const latest = options.latest ?? "";
     process.stdout.write(`latest=${latest}\n`);
@@ -180,7 +162,7 @@ function main() {
   }
 
   throw new Error(
-    "Usage: resolve-package-version.mjs <dev|pr|next-beta> [--package-dir <path>] [options]",
+    "Usage: resolve-package-version.mjs <dev|next-beta> [--package-dir <path>] [options]",
   );
 }
 

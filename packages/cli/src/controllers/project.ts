@@ -10,21 +10,21 @@ import {
   parseGitHubRepositoryUrl,
   readGitOriginRemote,
 } from "../adapters/git";
+import { SERVICE_TOKEN_ENV_VAR } from "../auth/client";
+import { authenticatedManagementApiClient } from "../auth/guard";
+import {
+  RecipientSessionInvalidError,
+  resolveRecipientWorkspaceSession,
+} from "../auth/recipient";
 import {
   FileTokenStorage,
   WorkspaceSelectionError,
-} from "../adapters/token-storage";
+} from "../auth/token-storage";
 import {
   type PrismaCliPackageCommandFormatter,
   resolvePrismaCliPackageCommandFormatterSync,
 } from "../lib/agent/cli-command";
 import { createAppProvider } from "../lib/app/app-provider";
-import { SERVICE_TOKEN_ENV_VAR } from "../lib/auth/client";
-import { requireComputeAuth } from "../lib/auth/guard";
-import {
-  RecipientSessionInvalidError,
-  resolveRecipientWorkspaceSession,
-} from "../lib/auth/recipient";
 import { promptForProjectSetupChoice } from "../lib/project/interactive-setup";
 import {
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
@@ -152,7 +152,7 @@ export async function runProjectList(
   }
 
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(
+    const client = await authenticatedManagementApiClient(
       context.runtime.env,
       context.runtime.signal,
     );
@@ -285,7 +285,7 @@ export async function runProjectCreate(
     );
   }
 
-  const client = await requireComputeAuth(
+  const client = await authenticatedManagementApiClient(
     context.runtime.env,
     context.runtime.signal,
   );
@@ -351,7 +351,7 @@ export async function runProjectLink(
   let provider: ReturnType<typeof createAppProvider> | null = null;
   let projects: ProjectCandidate[];
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(
+    const client = await authenticatedManagementApiClient(
       context.runtime.env,
       context.runtime.signal,
     );
@@ -895,7 +895,7 @@ async function requireProjectCommandContext(
 async function requireProjectClient(
   context: CommandContext,
 ): Promise<ManagementApiClient> {
-  const client = await requireComputeAuth(
+  const client = await authenticatedManagementApiClient(
     context.runtime.env,
     context.runtime.signal,
   );
@@ -1120,7 +1120,7 @@ export async function runGitConnect(
   }
 
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(
+    const client = await authenticatedManagementApiClient(
       context.runtime.env,
       context.runtime.signal,
     );
@@ -1262,7 +1262,7 @@ export async function runGitDisconnect(
   }
 
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(
+    const client = await authenticatedManagementApiClient(
       context.runtime.env,
       context.runtime.signal,
     );
@@ -1350,7 +1350,7 @@ async function resolveProjectShowInRealMode(
   workspace: AuthWorkspace,
   explicitProject: string | undefined,
 ): Promise<ProjectShowResult> {
-  const client = await requireComputeAuth(
+  const client = await authenticatedManagementApiClient(
     context.runtime.env,
     context.runtime.signal,
   );
@@ -1378,7 +1378,7 @@ async function resolveRequiredProjectInRealMode(
   explicitProject: string | undefined,
   commandName: string,
 ): Promise<ResolvedProjectTarget> {
-  const client = await requireComputeAuth(
+  const client = await authenticatedManagementApiClient(
     context.runtime.env,
     context.runtime.signal,
   );

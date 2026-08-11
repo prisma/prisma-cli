@@ -8,7 +8,8 @@ beforeEach(() => {
   process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME = "Acme Dashboard";
   process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID = "ws_123";
 
-  vi.doMock("../src/lib/auth/auth-ops", () => ({
+  vi.doMock("../src/auth/operations", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../src/auth/operations")>()),
     readAuthState: vi.fn().mockResolvedValue({
       authenticated: true,
       provider: null,
@@ -30,8 +31,8 @@ afterEach(() => {
   delete process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME;
   delete process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID;
 
-  vi.doUnmock("../src/lib/auth/auth-ops");
-  vi.doUnmock("../src/lib/auth/guard");
+  vi.doUnmock("../src/auth/operations");
+  vi.doUnmock("../src/auth/guard");
   vi.doUnmock("../src/lib/app/app-provider");
   vi.resetModules();
   vi.restoreAllMocks();
@@ -284,10 +285,12 @@ describe("app env vars", () => {
   });
 
   it("project env list requires explicit or durable Project binding", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
 
     const { createTempCwd, createTestCommandContext } = await import(
@@ -356,10 +359,10 @@ describe("app env vars", () => {
         throw new Error(`Unexpected path ${pathName}`);
       }),
     };
-    const requireComputeAuth = vi.fn().mockResolvedValue(client);
+    const authenticatedManagementApiClient = vi.fn().mockResolvedValue(client);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
 
     const { createTempCwd, createTestCommandContext } = await import(
@@ -471,7 +474,9 @@ describe("app env vars", () => {
   });
 
   it("passes env vars to provider deploy without surfacing values", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -497,8 +502,8 @@ describe("app env vars", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() => ({

@@ -1,10 +1,9 @@
 import { randomBytes } from "node:crypto";
-
+import { authenticatedManagementApiClient } from "../auth/guard";
 import {
   type PrismaCliPackageCommandFormatter,
   resolvePrismaCliPackageCommandFormatterSync,
 } from "../lib/agent/cli-command";
-import { requireComputeAuth } from "../lib/auth/guard";
 import {
   createManagementDatabaseProvider,
   type DatabaseProvider,
@@ -715,7 +714,7 @@ async function requireDatabaseContext(
   }
 
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(
+    const client = await authenticatedManagementApiClient(
       context.runtime.env,
       context.runtime.signal,
     );
@@ -769,7 +768,7 @@ async function requireDatabaseProviderOnly(
   const authState = await requireAuthenticatedAuthState(context);
 
   if (isRealMode(context)) {
-    const client = await requireComputeAuth(
+    const client = await authenticatedManagementApiClient(
       context.runtime.env,
       context.runtime.signal,
     );

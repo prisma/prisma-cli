@@ -90,7 +90,7 @@ describe("auth login callback", () => {
       clearTokens: vi.fn(),
     };
 
-    const { login } = await import("../src/lib/auth/login");
+    const { login } = await import("../src/auth/login");
 
     await expect(
       login({
@@ -142,7 +142,7 @@ describe("auth login callback", () => {
         }),
     }));
 
-    const { login } = await import("../src/lib/auth/login");
+    const { login } = await import("../src/auth/login");
 
     await expect(
       login({
@@ -223,7 +223,7 @@ async function requestSuccessPage(options: {
       }),
   }));
 
-  const { login } = await import("../src/lib/auth/login");
+  const { login } = await import("../src/auth/login");
 
   await login({
     hostname: "127.0.0.1",
@@ -408,7 +408,7 @@ async function runLogin(options: {
     }
   });
 
-  const { login } = await import("../src/lib/auth/login");
+  const { login } = await import("../src/auth/login");
 
   await login({
     hostname: "127.0.0.1",

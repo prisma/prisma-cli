@@ -4,14 +4,46 @@
  * Under --yes and in non-interactive contexts a prompt with a declared
  * default resolves to it without displaying; one without a default
  * HALTS the invocation with a structured error (the engine renders the
- * errored envelope, exit 2). consent is structurally undefaultable and
- * always halts in those contexts. Cancellation (EOF at the prompt) is a
- * distinct structured error mapped to exit 3.
+ * errored envelope, exit 2). consent is structurally undefaultable: --yes
+ * never grants it, and outside an interactive terminal the only thing
+ * that can is a matching `--confirm <token>` when the consent declares a
+ * token. Cancellation (EOF at the prompt) is a distinct structured error
+ * mapped to exit 3.
+ *
+ * Rendering is two-tier: real TTYs (isTty.stdin AND stdin.setRawMode
+ * present, no scripted answers) render through @clack/prompts via
+ * clack-renderer.ts; everything else uses the plain line renderer
+ * below. --yes resolution, `--confirm` matching, and structural failures
+ * are decided before the tier branch, so both tiers share identical
+ * semantics. A consent WITH a token renders as type-to-confirm on both
+ * tiers; the tiers differ only in what a wrong answer does — clack
+ * re-prompts, the line renderer fails structurally, because a scripted
+ * or piped answer cannot be corrected.
  */
 import type { PromptSurface } from "../context";
 import { CliStructuredError } from "../protocol";
 import type { InputStream } from "../runtime";
+import {
+  type ClackRenderer,
+  clackCapable,
+  makeClackRenderer,
+} from "./clack-renderer";
 import type { Invocation, RunState } from "./engine";
+import { announceUrl } from "./open-url";
+
+/** How often browserWait asks whether the user has finished. */
+const BROWSER_WAIT_POLL_INTERVAL_MS = 1000;
+
+/** A `--confirm` value grants at most one consent: the matched value is
+ *  removed, so two consents on the same token need two --confirms. */
+function consumeConfirmValue(state: RunState, token: string): boolean {
+  const index = state.confirmValues.indexOf(token);
+  if (index === -1) {
+    return false;
+  }
+  state.confirmValues.splice(index, 1);
+  return true;
+}
 
 function makeLineReader(
   stdin: InputStream,
@@ -79,20 +111,33 @@ function promptUnanswerable(
 function consentUnavailable(
   question: string,
   state: RunState,
+  token: string | undefined,
 ): CliStructuredError {
-  return new CliStructuredError(
-    "CLI.CONSENT_REQUIRED",
-    state.yes
-      ? `"${question}" requires explicit consent, which --yes cannot grant.`
-      : `"${question}" requires explicit consent, and the session is not interactive.`,
-    {
+  const situation = state.yes
+    ? `"${question}" requires explicit consent, which --yes cannot grant.`
+    : `"${question}" requires explicit consent, and the session is not interactive.`;
+  if (token === undefined) {
+    return new CliStructuredError("CLI.CONSENT_REQUIRED", situation, {
       nextActions: [
         {
           kind: "user-choice",
           label:
-            "Run the command interactively, or pass the command's explicit consent flag if it documents one.",
+            "Run the command interactively. Consent can only be granted outside an interactive terminal when the command declares a consent token.",
         },
       ],
+    });
+  }
+  return new CliStructuredError(
+    "CLI.CONSENT_REQUIRED",
+    `${situation} Grant it by passing --confirm ${token}.`,
+    {
+      nextActions: [
+        {
+          kind: "user-choice",
+          label: `Run the command interactively and type ${token}, or pass --confirm ${token}.`,
+        },
+      ],
+      meta: { consentToken: token },
     },
   );
 }
@@ -101,6 +146,63 @@ function promptInvalid(question: string, raw: string): CliStructuredError {
   return new CliStructuredError(
     "CLI.PROMPT_INVALID",
     `"${raw}" is not a valid answer to "${question}".`,
+  );
+}
+
+/** A consent whose token was typed wrong where re-prompting is not
+ *  possible (scripted answers, piped stdin). */
+function consentTokenMismatch(
+  question: string,
+  token: string,
+  raw: string,
+): CliStructuredError {
+  return new CliStructuredError(
+    "CLI.PROMPT_INVALID",
+    `"${raw}" does not confirm "${question}": the answer must be exactly ${token}.`,
+    { meta: { consentToken: token } },
+  );
+}
+
+/** browserWait outside an interactive terminal: nothing is opened and
+ *  nothing is polled, so the URL travels in the error instead. */
+function browserWaitUnavailable(
+  message: string,
+  url: string,
+): CliStructuredError {
+  return new CliStructuredError(
+    "CLI.INTERACTION_REQUIRED",
+    `${message} requires an interactive terminal: it waits for you to finish at ${url}.`,
+    {
+      why: "The session is not interactive (no TTY stdin, CI, or --no-interactive), so the browser cannot be opened and the wait would never end.",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label: `Open ${url} and finish there, then run the command again from an interactive terminal (or pass --interactive).`,
+        },
+      ],
+      meta: { url },
+    },
+  );
+}
+
+function browserWaitTimedOut(
+  message: string,
+  url: string,
+  timeout: number,
+): CliStructuredError {
+  return new CliStructuredError(
+    "CLI.BROWSER_WAIT_TIMEOUT",
+    `${message} was not finished within ${Math.round(timeout / 1000)}s.`,
+    {
+      why: `The command waited for ${url} and stopped waiting before it completed.`,
+      nextActions: [
+        {
+          kind: "user-choice",
+          label: "Run the command again and finish in the browser.",
+        },
+      ],
+      meta: { url, timeoutMs: timeout },
+    },
   );
 }
 
@@ -136,6 +238,31 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
   const { runtime, hooks, state } = invocation;
   let readLine: (() => Promise<string | undefined>) | undefined;
   let answerCursor = 0;
+  let renderer: Promise<ClackRenderer> | undefined;
+
+  const useClack = (): boolean =>
+    hooks.answers === undefined && clackCapable(runtime);
+
+  const renderWithClack = async <T>(
+    question: string,
+    run: (r: ClackRenderer) => Promise<T | symbol>,
+  ): Promise<T> => {
+    renderer ??= (() => {
+      const iterator = runtime.stdin[Symbol.asyncIterator]();
+      invocation.state.stdinIterator = iterator;
+      const stdin: InputStream = {
+        [Symbol.asyncIterator]: () => iterator,
+        setRawMode: (enabled) => runtime.stdin.setRawMode?.(enabled),
+      };
+      return makeClackRenderer(stdin, runtime.stderr);
+    })();
+    const r = await renderer;
+    const value = await run(r);
+    if (r.isCancel(value)) {
+      throw promptCancelled(question);
+    }
+    return value as T;
+  };
 
   const ask = async (
     question: string,
@@ -161,6 +288,29 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
     return line;
   };
 
+  /** The interactive rendering of a consent that declares a token: the
+   *  user types the token itself. Clack lets them try again; the line
+   *  renderer cannot, so a wrong answer there is structural. */
+  const confirmByTyping = async (
+    question: string,
+    token: string,
+  ): Promise<boolean> => {
+    if (useClack()) {
+      await renderWithClack<string>(question, (r) =>
+        r.confirmToken(question, token),
+      );
+      return true;
+    }
+    const typed = await ask(
+      question,
+      `? ${question} (type ${token} to confirm) `,
+    );
+    if (typeof typed !== "string" || typed.trim() !== token) {
+      throw consentTokenMismatch(question, token, String(typed));
+    }
+    return true;
+  };
+
   return {
     confirm: async (question, opts) => {
       const fallback = opts?.default;
@@ -169,6 +319,9 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
           throw promptUnanswerable(question, state);
         }
         return fallback;
+      }
+      if (useClack()) {
+        return renderWithClack(question, (r) => r.confirm(question, fallback));
       }
       let hint = "(y/n)";
       if (fallback === true) {
@@ -179,9 +332,19 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
       const raw = await ask(question, `? ${question} ${hint} `);
       return parseBooleanAnswer(raw, fallback, question);
     },
-    consent: async (question) => {
+    consent: async (question, opts) => {
+      const token = opts?.token;
       if (state.yes || !state.interactive) {
-        throw consentUnavailable(question, state);
+        if (token !== undefined && consumeConfirmValue(state, token)) {
+          return true;
+        }
+        throw consentUnavailable(question, state, token);
+      }
+      if (token !== undefined) {
+        return confirmByTyping(question, token);
+      }
+      if (useClack()) {
+        return renderWithClack(question, (r) => r.consent(question));
       }
       const raw = await ask(question, `? ${question} (y/n) `);
       return isExplicitYes(raw);
@@ -193,6 +356,11 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
           throw promptUnanswerable(question, state);
         }
         return fallback;
+      }
+      if (useClack()) {
+        return renderWithClack(question, (r) =>
+          r.select(question, options, fallback),
+        );
       }
       const rendered = [
         `? ${question}`,
@@ -227,6 +395,12 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
         }
         return fallback;
       }
+      if (useClack()) {
+        const value = await renderWithClack<string>(question, (r) =>
+          r.text(question, opts?.placeholder, fallback),
+        );
+        return value === "" ? (fallback ?? "") : value;
+      }
       const hint = fallback === undefined ? "" : ` (${fallback})`;
       const raw = await ask(question, `? ${question}${hint} `);
       if (typeof raw !== "string") {
@@ -236,6 +410,28 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
         return fallback ?? "";
       }
       return raw;
+    },
+    browserWait: async ({ url, message, poll, timeout, interval }) => {
+      if (!state.interactive) {
+        throw browserWaitUnavailable(message, url);
+      }
+      await announceUrl(invocation, { url, message });
+      const deadline = invocation.now().getTime() + timeout;
+      for (;;) {
+        if (invocation.signal.aborted) {
+          throw promptCancelled(message);
+        }
+        if (await poll(invocation.signal)) {
+          return;
+        }
+        if (invocation.now().getTime() >= deadline) {
+          throw browserWaitTimedOut(message, url, timeout);
+        }
+        await invocation.delay(
+          interval ?? BROWSER_WAIT_POLL_INTERVAL_MS,
+          invocation.signal,
+        );
+      }
     },
   };
 }

@@ -56,7 +56,10 @@
   "overrides": [
     {
       // The tsdown entrypoints: re-export hubs are their intended shape.
-      "includes": ["packages/cli-engine/src/exports/**"],
+      "includes": [
+        "packages/cli-engine/src/exports/**",
+        "packages/cli-telemetry/src/exports/**"
+      ],
       "linter": {
         "rules": {
           "performance": {

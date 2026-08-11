@@ -18,7 +18,7 @@ export {
   type PositionalSpec,
   positional,
 } from "../args";
-export { type Cli, createCli } from "../cli";
+export { type Cli, type CliRunHooks, createCli } from "../cli";
 export {
   type CommandFamily,
   defineCommandFamily,
@@ -48,16 +48,41 @@ export {
   type SectionValidation,
 } from "../config-section";
 export type {
+  BrowserWaitRequest,
   CommandContext,
-  Credentials,
+  OpenUrlOutcome,
+  OpenUrlRequest,
   PromptSurface,
 } from "../context";
+export {
+  authServiceError,
+  type CredentialsRequiredReason,
+  credentialRejectedError,
+  credentialsRequiredError,
+  credentialWorkspaceMismatchError,
+  emptyServiceTokenError,
+  noSessionForWorkspaceError,
+} from "../credential-errors";
+export type {
+  ActiveCredential,
+  Credential,
+  CredentialIdentity,
+  CredentialManager,
+  CredentialOrigin,
+  Session,
+  StoredSessions,
+} from "../credential-manager";
 export type {
   EngineEvent,
   Severity,
   StreamEvent,
   StreamMeta,
 } from "../events";
+export type {
+  ManagementApiClient,
+  ManagementApiClientConfig,
+  TokenStorage,
+} from "../management-api";
 export {
   type Block,
   type Format,
@@ -68,6 +93,7 @@ export {
   type TreeNode,
   type Ui,
 } from "../presentation";
+export type { EngineCommandSnapshot, RunSummary } from "../run-summary";
 export {
   type HostProcess,
   type InputStream,
@@ -76,3 +102,9 @@ export {
   PRISMA_CONFIG_VERSION,
   type Runtime,
 } from "../runtime";
+export {
+  claimedExpiresAt,
+  claimedIdentity,
+  claimedWorkspaceId,
+  credentialWorkspaceId,
+} from "../token-claims";

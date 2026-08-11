@@ -6,8 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTempCwd, createTestCommandContext } from "./helpers";
 
 afterEach(() => {
-  vi.doUnmock("../src/lib/auth/auth-ops");
-  vi.doUnmock("../src/lib/auth/guard");
+  vi.doUnmock("../src/auth/operations");
+  vi.doUnmock("../src/auth/guard");
   vi.resetModules();
   vi.restoreAllMocks();
 });
@@ -102,7 +102,8 @@ function expectedBranchVerboseContext() {
 async function loadController(client: ReturnType<typeof createMockClient>) {
   vi.resetModules();
 
-  vi.doMock("../src/lib/auth/auth-ops", () => ({
+  vi.doMock("../src/auth/operations", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../src/auth/operations")>()),
     readAuthState: vi.fn().mockResolvedValue({
       authenticated: true,
       provider: null,
@@ -113,8 +114,8 @@ async function loadController(client: ReturnType<typeof createMockClient>) {
     performLogin: vi.fn(),
     performLogout: vi.fn(),
   }));
-  vi.doMock("../src/lib/auth/guard", () => ({
-    requireComputeAuth: vi.fn().mockResolvedValue(client),
+  vi.doMock("../src/auth/guard", () => ({
+    authenticatedManagementApiClient: vi.fn().mockResolvedValue(client),
   }));
 
   return import("../src/controllers/branch");

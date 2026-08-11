@@ -1,4 +1,9 @@
-import type { CommandContext, Credentials } from "../context";
+import type { CommandContext } from "../context";
+import type {
+  ActiveCredential,
+  CredentialManager,
+} from "../credential-manager";
+import type { ManagementApiClient } from "../management-api";
 import {
   PRESENTED,
   type Presentations,
@@ -6,8 +11,10 @@ import {
   type Ui,
 } from "../presentation";
 import { type Diagnostic, notOk, okVoid } from "../protocol";
+import { buildManagementApiClient } from "./api-client";
 import type { Invocation, RunState } from "./engine";
 import { dependencyResolvable, missingDependencyError } from "./needs";
+import { announceUrl } from "./open-url";
 import { makePromptSurface } from "./prompts";
 import { reportEvent } from "./reporting";
 
@@ -52,6 +59,7 @@ function materializePresentation(
 export function makeContext(
   invocation: Invocation,
   config: unknown,
+  managesCredentials: boolean,
 ): CommandContext<unknown, number> {
   const state = invocation.state;
   const ui = makeUi(state.colorEnabled);
@@ -81,13 +89,22 @@ export function makeContext(
       presentation: materializePresentation(state, ui, presentations),
     });
   };
-  return {
+  let api: ManagementApiClient | undefined;
+  const context: CommandContext<unknown, number> = {
     config,
     present: present as CommandContext<unknown, number>["present"],
-    getCredentials: (): Promise<Credentials | undefined> =>
-      invocation.runtime.getCredentials(),
+    activeCredential: (): Promise<ActiveCredential | null> =>
+      invocation.runtime.credentialManager?.activeCredential() ??
+      Promise.resolve(null),
+    get api(): ManagementApiClient {
+      api ??=
+        invocation.hooks.managementApi?.client ??
+        buildManagementApiClient(invocation);
+      return api;
+    },
     report: (event) => reportEvent(invocation, event),
     prompt: makePromptSurface(invocation),
+    openUrl: (request) => announceUrl(invocation, request),
     signal: invocation.signal,
     cwd: invocation.runtime.cwd,
     env: invocation.runtime.env,
@@ -101,4 +118,19 @@ export function makeContext(
             ),
           ),
   };
+  if (managesCredentials) {
+    Object.defineProperty(context, "credentialManager", {
+      enumerable: true,
+      get(): CredentialManager {
+        const manager = invocation.runtime.credentialManager;
+        if (manager === undefined) {
+          throw new Error(
+            "@prisma/cli-engine: the command declares managesCredentials but the Runtime supplies no credentialManager",
+          );
+        }
+        return manager;
+      },
+    });
+  }
+  return context;
 }

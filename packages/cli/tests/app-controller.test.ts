@@ -17,7 +17,8 @@ beforeEach(() => {
   process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME = "Acme Dashboard";
   process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID = "ws_123";
 
-  vi.doMock("../src/lib/auth/auth-ops", () => ({
+  vi.doMock("../src/auth/operations", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../src/auth/operations")>()),
     readAuthState: vi.fn().mockResolvedValue({
       authenticated: true,
       provider: null,
@@ -39,8 +40,8 @@ afterEach(() => {
   delete process.env.PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME;
   delete process.env.PRISMA_CLI_TEST_REMEMBER_WORKSPACE_ID;
 
-  vi.doUnmock("../src/lib/auth/auth-ops");
-  vi.doUnmock("../src/lib/auth/guard");
+  vi.doUnmock("../src/auth/operations");
+  vi.doUnmock("../src/auth/guard");
   vi.doUnmock("../src/controllers/agent");
   vi.doUnmock("../src/lib/app/app-provider");
   vi.doUnmock("../src/lib/app/branch-database");
@@ -185,7 +186,9 @@ async function setupAgentPromptDeployTest(options: {
   deployApp?: ReturnType<typeof vi.fn>;
   runAgentInstall?: ReturnType<typeof vi.fn>;
 }) {
-  const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+  const authenticatedManagementApiClient = vi
+    .fn()
+    .mockResolvedValue(createProjectClient());
   const runAgentInstall = options.runAgentInstall ?? vi.fn();
   const deployApp =
     options.deployApp ??
@@ -204,8 +207,8 @@ async function setupAgentPromptDeployTest(options: {
       },
     });
 
-  vi.doMock("../src/lib/auth/guard", () => ({
-    requireComputeAuth,
+  vi.doMock("../src/auth/guard", () => ({
+    authenticatedManagementApiClient,
   }));
   vi.doMock("../src/controllers/agent", () => ({
     runAgentInstall,
@@ -256,7 +259,7 @@ async function setupAgentPromptDeployTest(options: {
   return {
     context,
     deployApp,
-    requireComputeAuth,
+    authenticatedManagementApiClient,
     runAgentInstall,
     runAppDeploy,
   };
@@ -264,7 +267,9 @@ async function setupAgentPromptDeployTest(options: {
 
 describe("app controller", () => {
   it("deploy with a multi-app config and no target deploys every target in order", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi
       .fn()
@@ -285,8 +290,8 @@ describe("app controller", () => {
         }),
       );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -353,7 +358,9 @@ describe("app controller", () => {
 
   it("uses the configured region when creating a new app from config", async () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), "prisma-cli-"));
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi.fn().mockResolvedValue({
       projectId: "proj_123",
@@ -370,8 +377,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -447,7 +454,9 @@ describe("app controller", () => {
   });
 
   it("uses --region when creating a new app", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi.fn().mockResolvedValue({
       projectId: "proj_123",
@@ -464,8 +473,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -540,7 +549,9 @@ describe("app controller", () => {
   });
 
   it("rejects --region when the selected app already exists in another region", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_frontend",
@@ -552,8 +563,8 @@ describe("app controller", () => {
     ]);
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -596,7 +607,9 @@ describe("app controller", () => {
   });
 
   it("rejects --region when PRISMA_APP_ID selects an app in another region", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_frontend",
@@ -608,8 +621,8 @@ describe("app controller", () => {
     ]);
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -653,12 +666,14 @@ describe("app controller", () => {
   });
 
   it("deploy-all stops at the first failing target and reports the rest", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi.fn().mockRejectedValue(new Error("upload exploded"));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -754,7 +769,9 @@ describe("app controller", () => {
   });
 
   it("show run from inside a target root uses the root project pin and the config app name", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_api",
@@ -790,8 +807,8 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -851,7 +868,9 @@ describe("app controller", () => {
   });
 
   it("deploy selects the correct existing app when --app is provided", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_2",
@@ -881,8 +900,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -957,7 +976,9 @@ describe("app controller", () => {
   });
 
   it("does not treat branch name as production authority", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const app = {
       id: "app_1",
       name: "hello-world",
@@ -982,8 +1003,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -1023,7 +1044,9 @@ describe("app controller", () => {
   });
 
   it("forwards deploy build options and HTTP port overrides to the provider", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -1049,8 +1072,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -1106,7 +1129,9 @@ describe("app controller", () => {
   });
 
   it("add_on_active_domain_does_not_retrigger_verification", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const activeDomain = createDomain({ status: "active" });
     const listApps = vi.fn().mockResolvedValue([
       {
@@ -1123,8 +1148,8 @@ describe("app controller", () => {
     });
     const retryDomain = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
@@ -1203,7 +1228,9 @@ describe("app controller", () => {
   });
 
   it("domain add lets explicit --project skip stale local pins", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const domain = createDomain({ status: "active" });
     const listApps = vi.fn().mockResolvedValue([
       {
@@ -1219,8 +1246,8 @@ describe("app controller", () => {
       existing: false,
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
@@ -1271,13 +1298,15 @@ describe("app controller", () => {
   });
 
   it("domain add requires Project setup instead of entering interactive setup", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const createProject = vi.fn();
     const listApps = vi.fn();
     const addDomain = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
@@ -1340,7 +1369,9 @@ describe("app controller", () => {
   });
 
   it("domain add does not synthesize DNS records when the API omits them", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -1355,8 +1386,8 @@ describe("app controller", () => {
       existing: false,
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
@@ -1397,7 +1428,9 @@ describe("app controller", () => {
   });
 
   it("domain add maps quota conflicts to DOMAIN_QUOTA_EXCEEDED", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -1408,8 +1441,8 @@ describe("app controller", () => {
       },
     ]);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
@@ -1461,7 +1494,9 @@ describe("app controller", () => {
   });
 
   it("domain add maps already-registered conflicts to DOMAIN_ALREADY_REGISTERED", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -1472,8 +1507,8 @@ describe("app controller", () => {
       },
     ]);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
@@ -1531,7 +1566,9 @@ describe("app controller", () => {
   });
 
   it("domain add maps DNS preflight failures to DOMAIN_DNS_NOT_CONFIGURED", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -1542,8 +1579,8 @@ describe("app controller", () => {
       },
     ]);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
@@ -1600,7 +1637,9 @@ describe("app controller", () => {
   });
 
   it("domain add does not invent a DNS target when the API omits one", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -1611,8 +1650,8 @@ describe("app controller", () => {
       },
     ]);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
@@ -1666,7 +1705,9 @@ describe("app controller", () => {
   });
 
   it("domain remove reports list-domain failures with the remove command label", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -1678,8 +1719,8 @@ describe("app controller", () => {
     ]);
     const listDomains = vi.fn().mockRejectedValue(new Error("list failed"));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
@@ -1753,7 +1794,9 @@ describe("app controller", () => {
   });
 
   it("domain retry maps API 409 to DOMAIN_RETRY_NOT_ELIGIBLE", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -1767,8 +1810,8 @@ describe("app controller", () => {
       .fn()
       .mockResolvedValue([createDomain({ status: "provisioning_tls" })]);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
@@ -1820,7 +1863,9 @@ describe("app controller", () => {
   });
 
   it("domain wait supports poll-once timeout mode", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -1835,8 +1880,8 @@ describe("app controller", () => {
       .mockResolvedValue([createDomain({ status: "verifying" })]);
     const showDomain = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", async (importOriginal) => {
       const actual =
@@ -1929,7 +1974,7 @@ describe("app controller", () => {
       }),
       POST: vi.fn(),
     };
-    const requireComputeAuth = vi.fn().mockResolvedValue(client);
+    const authenticatedManagementApiClient = vi.fn().mockResolvedValue(client);
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi
       .fn()
@@ -1948,8 +1993,8 @@ describe("app controller", () => {
         },
       }));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -2071,7 +2116,9 @@ describe("app controller", () => {
   });
 
   it("uses and renders configured build entrypoints for custom deploys", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi.fn().mockResolvedValue({
       projectId: "proj_123",
@@ -2088,8 +2135,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -2167,12 +2214,12 @@ describe("app controller", () => {
   });
 
   it("returns LOCAL_STATE_WRITE_FAILED when deploy cannot store the local binding", async () => {
-    const requireComputeAuth = vi
+    const authenticatedManagementApiClient = vi
       .fn()
       .mockResolvedValue(createProjectClient("proj_my_app"));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -2222,7 +2269,9 @@ describe("app controller", () => {
   });
 
   it("fails with migration guidance for a customized prisma.app.json", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -2234,8 +2283,8 @@ describe("app controller", () => {
     ]);
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -2297,7 +2346,9 @@ describe("app controller", () => {
   });
 
   it("warns about and ignores a matching prisma.app.json", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -2323,8 +2374,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -2387,7 +2438,9 @@ describe("app controller", () => {
   });
 
   it("writes the local binding before build failures and renders build-failure copy", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi
       .fn()
@@ -2398,8 +2451,8 @@ describe("app controller", () => {
         },
       );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -2457,7 +2510,9 @@ describe("app controller", () => {
   });
 
   it("surfaces a concrete Next.js standalone-output recovery action", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi
       .fn()
@@ -2470,8 +2525,8 @@ describe("app controller", () => {
         },
       );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -2535,7 +2590,9 @@ describe("app controller", () => {
   });
 
   it("renders runtime-failure copy with deployment logs after the container starts", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     let appName = "";
     const listApps = vi.fn().mockImplementation(async () => [
       {
@@ -2573,8 +2630,8 @@ describe("app controller", () => {
       },
     );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -2638,7 +2695,9 @@ describe("app controller", () => {
   });
 
   it("renders deploy-failure copy when failure happens before runtime starts", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     let appName = "";
     const listApps = vi.fn().mockImplementation(async () => [
       {
@@ -2668,8 +2727,8 @@ describe("app controller", () => {
       },
     );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -2776,7 +2835,9 @@ describe("app controller", () => {
     expectedEntrypoint,
     expectedBuildType,
   }) => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -2802,8 +2863,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -2856,7 +2917,9 @@ describe("app controller", () => {
   });
 
   it("lets PRISMA_PROJECT_ID skip the local pin and resolve the project", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi
       .fn()
@@ -2876,8 +2939,8 @@ describe("app controller", () => {
         },
       }));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -2938,13 +3001,15 @@ describe("app controller", () => {
   });
 
   it("returns PROJECT_SETUP_REQUIRED for non-interactive unbound deploy without mutating local state", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const createProject = vi.fn();
     const listApps = vi.fn();
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -3081,7 +3146,9 @@ describe("app controller", () => {
   });
 
   it("interactive first deploy can select an existing Project and write the local pin", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const createProject = vi.fn();
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi.fn().mockResolvedValue({
@@ -3099,8 +3166,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -3159,7 +3226,9 @@ describe("app controller", () => {
   });
 
   it("interactive first deploy previews detected framework and runtime before the customization prompt", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const createProject = vi.fn();
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi.fn().mockResolvedValue({
@@ -3177,8 +3246,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -3245,7 +3314,9 @@ describe("app controller", () => {
   });
 
   it("prompts to install the Prisma Compute skill during interactive deploy", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const confirmPrompt = vi.fn().mockResolvedValue(true);
     const runAgentInstall = vi.fn().mockResolvedValue({
       command: "agent.install",
@@ -3271,8 +3342,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/controllers/agent", () => ({
       runAgentInstall,
@@ -3344,7 +3415,7 @@ describe("app controller", () => {
   });
 
   it("prompts for Prisma skills before deploy setup failures", async () => {
-    const requireComputeAuth = vi
+    const authenticatedManagementApiClient = vi
       .fn()
       .mockRejectedValue(new Error("auth setup failed"));
     const confirmPrompt = vi.fn().mockResolvedValue(true);
@@ -3358,8 +3429,8 @@ describe("app controller", () => {
       nextSteps: [],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/controllers/agent", () => ({
       runAgentInstall,
@@ -3408,7 +3479,7 @@ describe("app controller", () => {
     });
     expect(runAgentInstall.mock.calls[0][2]).toBe("install");
     expect(runAgentInstall.mock.calls[0][3]).toEqual({ cwd });
-    expect(requireComputeAuth).toHaveBeenCalled();
+    expect(authenticatedManagementApiClient).toHaveBeenCalled();
   });
 
   it("does not prompt again after agent setup is declined during deploy", async () => {
@@ -3466,7 +3537,9 @@ describe("app controller", () => {
   });
 
   it("interactive first deploy can create a new Project from an editable suggested name", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const createProject = vi.fn().mockResolvedValue({
       id: "proj_new",
       name: "interactive-project",
@@ -3487,8 +3560,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -3557,10 +3630,12 @@ describe("app controller", () => {
   });
 
   it("returns FRAMEWORK_NOT_DETECTED before deploy when framework inference fails", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -3601,12 +3676,14 @@ describe("app controller", () => {
   });
 
   it("returns LOCAL_PROJECT_WORKSPACE_MISMATCH when deploy pin belongs to another workspace", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn();
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -3664,12 +3741,14 @@ describe("app controller", () => {
   });
 
   it("returns LOCAL_STATE_STALE when the pinned project is gone", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn();
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -3720,12 +3799,14 @@ describe("app controller", () => {
   });
 
   it("returns LOCAL_STATE_STALE when the local pin has unsupported keys", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn();
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -3805,7 +3886,9 @@ describe("app controller", () => {
   });
 
   it("returns APP_AMBIGUOUS for duplicate app names in non-interactive mode", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -3824,8 +3907,8 @@ describe("app controller", () => {
     ]);
     const deployApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -3930,7 +4013,9 @@ describe("app controller", () => {
   });
 
   it("interactive first deploy can create a new app when none is selected", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi
       .fn()
@@ -3949,8 +4034,8 @@ describe("app controller", () => {
         },
       }));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -4003,7 +4088,9 @@ describe("app controller", () => {
   });
 
   it("auto-creates the inferred app without prompting in non-interactive mode", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi
       .fn()
@@ -4022,8 +4109,8 @@ describe("app controller", () => {
         },
       }));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -4067,7 +4154,9 @@ describe("app controller", () => {
   });
 
   it("omits region from deployApp when --region is not passed for a new app", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
     const deployApp = vi.fn().mockResolvedValue({
       projectId: "proj_123",
@@ -4084,8 +4173,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -4132,7 +4221,9 @@ describe("app controller", () => {
   });
 
   it("creates a project before first deploy when --create-project is provided", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const createProject = vi.fn(async (options: { name: string }) => ({
       id: "proj_new",
       name: options.name,
@@ -4153,8 +4244,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -4234,7 +4325,9 @@ describe("app controller", () => {
   });
 
   it("passes --region to createProject when --create-project and --region are used together", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const createProject = vi.fn(async (options: { name: string }) => ({
       id: "proj_new",
       name: options.name,
@@ -4255,8 +4348,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -4303,7 +4396,7 @@ describe("app controller", () => {
 
   it("reuses the created project on second deploy instead of creating another one", async () => {
     const client = createProjectClient();
-    const requireComputeAuth = vi.fn().mockResolvedValue(client);
+    const authenticatedManagementApiClient = vi.fn().mockResolvedValue(client);
     const createProject = vi.fn().mockResolvedValue({
       id: "proj_new",
       name: "next-smoke",
@@ -4350,8 +4443,8 @@ describe("app controller", () => {
         },
       });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -4459,7 +4552,9 @@ describe("app controller", () => {
   });
 
   it("creates an explicit deploy-time project without depending on repo config preflight", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const createProject = vi.fn().mockResolvedValue({
       id: "proj_new",
       name: "next-smoke",
@@ -4479,8 +4574,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -4538,13 +4633,15 @@ describe("app controller", () => {
   });
 
   it("returns PROJECT_CREATE_FAILED when explicit deploy-time project creation is rejected with 401", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const createProject = vi
       .fn()
       .mockRejectedValue(new Error("Authentication failed (HTTP 401)"));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -4594,13 +4691,15 @@ describe("app controller", () => {
   });
 
   it("returns PROJECT_CREATE_FAILED when explicit deploy-time project creation fails", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const createProject = vi
       .fn()
       .mockRejectedValue(new Error("Internal Server Error (HTTP 503)"));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -4650,7 +4749,9 @@ describe("app controller", () => {
   });
 
   it("does not use saved app selection as the deploy target source", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -4674,8 +4775,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -4723,7 +4824,9 @@ describe("app controller", () => {
   });
 
   it("list-deploys sorts deployments newest first for the selected app", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -4757,8 +4860,8 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -4796,11 +4899,13 @@ describe("app controller", () => {
   });
 
   it("returns PROJECT_NOT_FOUND when the resolved project is not accessible in real mode", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockRejectedValue(new Error("Resource Not Found"));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -4837,7 +4942,9 @@ describe("app controller", () => {
   });
 
   it("list-deploys uses the local known live deployment when the provider cannot confirm it", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -4871,8 +4978,8 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -4921,11 +5028,13 @@ describe("app controller", () => {
   });
 
   it("show requires Project setup even when package name matches a Project", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -4982,11 +5091,13 @@ describe("app controller", () => {
   });
 
   it("show returns undeployed state when the resolved project has no apps", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([]);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -5031,7 +5142,9 @@ describe("app controller", () => {
   });
 
   it("show returns selected app, live deployment, live URL, and recent deployments", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -5067,8 +5180,8 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -5137,7 +5250,9 @@ describe("app controller", () => {
   });
 
   it("show uses the local known live hint when provider live state is incomplete", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -5173,8 +5288,8 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -5228,7 +5343,9 @@ describe("app controller", () => {
   });
 
   it("show-deploy returns deployment detail without branch inference", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const showDeployment = vi.fn().mockResolvedValue({
       app: {
         id: "app_1",
@@ -5245,8 +5362,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -5293,7 +5410,9 @@ describe("app controller", () => {
   });
 
   it("show-deploy uses the local known live deployment when available", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const showDeployment = vi.fn().mockResolvedValue({
       app: {
         id: "app_1",
@@ -5310,8 +5429,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -5352,7 +5471,9 @@ describe("app controller", () => {
   });
 
   it("show-deploy ignores known live deployments from another workspace", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const showDeployment = vi.fn().mockResolvedValue({
       app: {
         id: "app_1",
@@ -5369,8 +5490,8 @@ describe("app controller", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -5416,13 +5537,15 @@ describe("app controller", () => {
   });
 
   it("show-deploy surfaces provider failures instead of reporting not found", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const showDeployment = vi
       .fn()
       .mockRejectedValue(new Error("Missing or invalid authorization token"));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -5460,7 +5583,9 @@ describe("app controller", () => {
 
   it("open launches only in interactive human mode", async () => {
     const openUrl = vi.fn().mockResolvedValue(undefined);
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -5492,8 +5617,8 @@ describe("app controller", () => {
     vi.doMock("open", () => ({
       default: openUrl,
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -5534,7 +5659,9 @@ describe("app controller", () => {
 
   it("open returns the URL without launching the browser in json mode", async () => {
     const openUrl = vi.fn().mockResolvedValue(undefined);
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -5566,8 +5693,8 @@ describe("app controller", () => {
     vi.doMock("open", () => ({
       default: openUrl,
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -5618,7 +5745,9 @@ describe("app controller", () => {
   });
 
   it("open returns NO_DEPLOYMENTS when the selected app has not been deployed yet", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -5639,8 +5768,8 @@ describe("app controller", () => {
       deployments: [],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -5679,7 +5808,9 @@ describe("app controller", () => {
   });
 
   it("open returns FEATURE_UNAVAILABLE when deployments exist but no live URL is exposed", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -5708,8 +5839,8 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -5749,7 +5880,9 @@ describe("app controller", () => {
   });
 
   it("promote switches the selected app to the requested deployment", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -5784,8 +5917,8 @@ describe("app controller", () => {
     });
     const promoteDeployment = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -5843,7 +5976,9 @@ describe("app controller", () => {
   });
 
   it("promote returns a warning when the requested deployment is already live", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -5871,8 +6006,8 @@ describe("app controller", () => {
     });
     const promoteDeployment = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -5913,7 +6048,9 @@ describe("app controller", () => {
   });
 
   it("promote rebinds instead of assuming the newest deployment is live when there is no authoritative live signal", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -5941,8 +6078,8 @@ describe("app controller", () => {
     });
     const promoteDeployment = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -5986,7 +6123,9 @@ describe("app controller", () => {
   });
 
   it("rollback chooses the previous deployment when no explicit target is provided", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -6021,8 +6160,8 @@ describe("app controller", () => {
     });
     const promoteDeployment = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -6081,7 +6220,9 @@ describe("app controller", () => {
   });
 
   it("rollback uses the local known live deployment when the provider cannot confirm it", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -6116,8 +6257,8 @@ describe("app controller", () => {
     });
     const promoteDeployment = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -6170,7 +6311,9 @@ describe("app controller", () => {
   });
 
   it("rollback uses an explicit deployment target when provided", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -6212,8 +6355,8 @@ describe("app controller", () => {
     });
     const promoteDeployment = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -6257,7 +6400,9 @@ describe("app controller", () => {
   });
 
   it("rollback returns NO_PREVIOUS_DEPLOYMENT when only one deployment exists", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -6284,8 +6429,8 @@ describe("app controller", () => {
       ],
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -6326,7 +6471,7 @@ describe("app controller", () => {
   });
 
   it("does not reuse the wrong saved app when the resolved project changes", async () => {
-    const requireComputeAuth = vi
+    const authenticatedManagementApiClient = vi
       .fn()
       .mockResolvedValue(createProjectClient("proj_456"));
     const listApps = vi.fn().mockResolvedValue([]);
@@ -6347,8 +6492,8 @@ describe("app controller", () => {
         },
       }));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -6399,7 +6544,9 @@ describe("app controller", () => {
   });
 
   it("logs streams the live deployment for the selected app", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -6445,8 +6592,8 @@ describe("app controller", () => {
         },
       );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -6490,7 +6637,9 @@ describe("app controller", () => {
   });
 
   it("logs streams an explicit deployment for the selected app", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -6536,8 +6685,8 @@ describe("app controller", () => {
         },
       );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -6578,7 +6727,9 @@ describe("app controller", () => {
   });
 
   it("logs rejects an explicit deployment that does not belong to the selected app", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -6606,8 +6757,8 @@ describe("app controller", () => {
     });
     const streamDeploymentLogs = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -6647,7 +6798,9 @@ describe("app controller", () => {
   });
 
   it("logs emits newline-delimited JSON events in --json mode", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -6694,8 +6847,8 @@ describe("app controller", () => {
         },
       );
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -6751,7 +6904,9 @@ describe("app controller", () => {
   });
 
   it("remove deletes the selected app when --yes is passed", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -6765,8 +6920,8 @@ describe("app controller", () => {
       name: "hello-world",
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -6835,7 +6990,9 @@ describe("app controller", () => {
   });
 
   it("remove scopes the app lookup to an explicit --branch", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -6849,8 +7006,8 @@ describe("app controller", () => {
       name: "hello-world",
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -6898,12 +7055,14 @@ describe("app controller", () => {
   });
 
   it("remove rejects an explicitly empty --branch instead of inferring a branch", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn();
     const removeApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -6967,7 +7126,9 @@ describe("app controller", () => {
   });
 
   it("app remove forwards --branch from the parsed command through to the provider", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -6981,8 +7142,8 @@ describe("app controller", () => {
       name: "hello-world",
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -7038,7 +7199,9 @@ describe("app controller", () => {
   });
 
   it("remove prompts for confirmation in interactive mode", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -7053,8 +7216,8 @@ describe("app controller", () => {
     });
     const textPrompt = vi.fn().mockResolvedValue("hello-world");
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/shell/prompt", async () => {
       const actual = await vi.importActual<
@@ -7111,7 +7274,9 @@ describe("app controller", () => {
   });
 
   it("remove returns CONFIRMATION_REQUIRED in non-interactive mode without --yes", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -7122,8 +7287,8 @@ describe("app controller", () => {
     ]);
     const removeApp = vi.fn();
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -7166,7 +7331,9 @@ describe("app controller", () => {
   });
 
   it("remove returns REMOVE_FAILED when remote deletion fails", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -7179,8 +7346,8 @@ describe("app controller", () => {
       .fn()
       .mockRejectedValue(new Error("Resource Not Found"));
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -7224,7 +7391,9 @@ describe("app controller", () => {
   });
 
   it("remove returns a warning when local cleanup fails after remote deletion", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -7238,8 +7407,8 @@ describe("app controller", () => {
       name: "hello-world",
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -7290,7 +7459,9 @@ describe("app controller", () => {
   });
 
   it("deploy --no-promote builds the candidate without promoting it", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue(createProjectClient());
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
     const listApps = vi.fn().mockResolvedValue([
       {
         id: "app_1",
@@ -7319,8 +7490,8 @@ describe("app controller", () => {
       promoted: false,
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>
@@ -7378,7 +7549,7 @@ describe("app controller", () => {
   });
 
   it("deploy --no-promote on the production branch bypasses the production gate", async () => {
-    const requireComputeAuth = vi
+    const authenticatedManagementApiClient = vi
       .fn()
       .mockResolvedValue(createProjectClient("proj_123", { isDefault: true }));
     const listApps = vi.fn().mockResolvedValue([
@@ -7410,8 +7581,8 @@ describe("app controller", () => {
       promoted: false,
     });
 
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() =>

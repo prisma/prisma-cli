@@ -1,81 +1,124 @@
-import { defineCommand, type Presentations } from "@prisma/cli-engine";
 import {
-  CliStructuredError,
-  type NextAction,
-  notOk,
-  ok,
-} from "@prisma/cli-engine/protocol";
+  type ActiveCredential,
+  type CredentialIdentity,
+  defineCommand,
+  type ManagementApiClient,
+  type Presentations,
+} from "@prisma/cli-engine";
+import { type NextAction, ok } from "@prisma/cli-engine/protocol";
+import { CLI_NAME } from "../../cli-name";
 import {
-  isEmptyServiceTokenError,
-  readAuthState,
-} from "../../lib/auth/auth-ops";
-import type { AuthProviderId, AuthStateResult } from "../../types/auth";
+  credentialFieldRows,
+  ENVIRONMENT_CREDENTIAL_NOTICE,
+} from "./credential-card";
 
-const TITLE = "Showing the current authenticated identity.";
+const TITLE = "Showing the active authenticated identity.";
 
 const SIGN_IN: NextAction = {
   kind: "run-command",
   label: "Sign in",
-  command: "prisma-cli auth login",
+  command: `${CLI_NAME} auth login`,
 };
 
-interface FieldRow {
-  readonly label: string;
-  readonly value: string;
+export interface WhoamiResult {
+  readonly authenticated: boolean;
+  readonly workspace: {
+    readonly id: string;
+    readonly name: string | null;
+  } | null;
+  readonly user: {
+    readonly id: string | null;
+    readonly email: string | null;
+    readonly name: string | null;
+  } | null;
+  readonly source: "stored" | "environment" | null;
+  readonly expiresAt: string | null;
 }
 
-function providerLabel(provider: AuthProviderId): string {
-  return provider === "github" ? "GitHub" : "Google";
+/** whoami answers from the credential's own claims, so the lookup is
+ *  worth a moment and no more. ctx.signal only fires on Ctrl-C, and
+ *  nothing else bounds a request: a host that accepts the connection
+ *  and never answers would otherwise hold the command for minutes. */
+const ENRICHMENT_TIMEOUT_MS = 3_000;
+
+/** Best-effort online enrichment: whoami works offline, so any failure
+ *  leaves the identity as whatever the credential's own claims said. */
+async function fetchedIdentity(
+  api: ManagementApiClient,
+  signal: AbortSignal,
+): Promise<CredentialIdentity | undefined> {
+  const bounded = AbortSignal.any([
+    signal,
+    AbortSignal.timeout(ENRICHMENT_TIMEOUT_MS),
+  ]);
+  try {
+    const { data } = await api.GET("/v1/me", { signal: bounded });
+    const user = data?.data?.user;
+    if (!user) {
+      return undefined;
+    }
+    return {
+      userId: user.id ?? undefined,
+      email: user.email ?? undefined,
+      name: user.name ?? undefined,
+    };
+  } catch {
+    signal.throwIfAborted();
+    return undefined;
+  }
 }
 
-function userLabel(state: AuthStateResult): string | null {
-  if (state.user?.email) {
-    return state.user.email;
-  }
+/**
+ * `/v1/me` wins field by field where it disagrees with the claims, and
+ * the claims are the offline fallback — but only while both describe
+ * the same person. The two are read at different moments, so another
+ * process replacing the session in between can leave the claims
+ * describing one user and the lookup another; filling a gap in one from
+ * the other would then invent a person who does not exist. When the two
+ * name different users, the lookup is taken whole.
+ */
+function mergedIdentity(
+  claimed: CredentialIdentity | undefined,
+  fetched: CredentialIdentity | undefined,
+): CredentialIdentity | null {
+  if (fetched === undefined) return claimed ?? null;
+  if (claimed === undefined) return fetched;
 
-  if (state.credential?.type === "service_token") {
-    return state.credential.name
-      ? `<service token: ${state.credential.name}>`
-      : "<service token>";
-  }
+  const samePerson =
+    fetched.userId === undefined ||
+    claimed.userId === undefined ||
+    fetched.userId === claimed.userId;
+  if (!samePerson) return fetched;
 
-  if (state.credential?.type === "management_token") {
-    return state.credential.name
-      ? `<management token: ${state.credential.name}>`
-      : "<management token>";
-  }
-
-  return null;
+  return {
+    userId: fetched.userId ?? claimed.userId,
+    email: fetched.email ?? claimed.email,
+    name: fetched.name ?? claimed.name,
+  };
 }
 
-function fieldRows(state: AuthStateResult): readonly FieldRow[] {
-  if (!state.authenticated) {
-    return [{ label: "status", value: "signed out" }];
-  }
-
-  const rows: FieldRow[] = [{ label: "status", value: "signed in" }];
-  const user = userLabel(state);
-  if (user) {
-    rows.push({ label: "user", value: user });
-  }
-  if (state.provider) {
-    rows.push({ label: "provider", value: providerLabel(state.provider) });
-  }
-  if (state.workspace?.name) {
-    rows.push({ label: "workspace", value: state.workspace.name });
-  }
-  return rows;
-}
-
-function presentationsFor(state: AuthStateResult): Presentations {
-  const rows = fieldRows(state);
+function presentationsFor(spec: {
+  readonly credential: ActiveCredential | null;
+  readonly identity: CredentialIdentity | null;
+}): Presentations {
+  const rows = credentialFieldRows(spec);
+  const fromEnvironment = spec.credential?.origin.source === "environment";
   return {
     human: () => [
       { kind: "summary", tone: "info", text: TITLE },
       { kind: "fields", rows },
+      ...(fromEnvironment
+        ? [
+            {
+              kind: "summary",
+              tone: "info",
+              text: ENVIRONMENT_CREDENTIAL_NOTICE,
+            } as const,
+          ]
+        : []),
     ],
     stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
-    next: () => (state.authenticated ? [] : [SIGN_IN]),
+    next: () => (spec.credential === null ? [SIGN_IN] : []),
   };
 }
 
@@ -85,31 +128,36 @@ export const authWhoamiCommand = defineCommand({
     examples: ["auth whoami", "auth whoami --json"],
   },
   handler: async (_args, ctx) => {
-    let state: AuthStateResult;
-    try {
-      state = await readAuthState(ctx.env, ctx.signal);
-    } catch (error) {
-      if (isEmptyServiceTokenError(error)) {
-        return notOk(
-          new CliStructuredError(
-            "AUTH.CONFIG_INVALID",
-            "Authentication configuration is invalid",
-            {
-              why: error.message,
-              nextActions: [
-                {
-                  kind: "user-choice",
-                  label:
-                    "Provide a valid PRISMA_SERVICE_TOKEN value, or unset the variable to use local OAuth login.",
-                },
-              ],
+    const credential = await ctx.activeCredential();
+    const identity =
+      credential === null
+        ? null
+        : mergedIdentity(
+            credential.identity,
+            await fetchedIdentity(ctx.api, ctx.signal),
+          );
+    const result: WhoamiResult = {
+      authenticated: credential !== null,
+      workspace:
+        credential === null || credential.workspaceId === undefined
+          ? null
+          : {
+              id: credential.workspaceId,
+              name: credential.workspaceName ?? null,
             },
-          ),
-        );
-      }
-      throw error;
-    }
-
-    return ok(ctx.present({ data: state }, presentationsFor(state)));
+      user:
+        identity === null
+          ? null
+          : {
+              id: identity.userId ?? null,
+              email: identity.email ?? null,
+              name: identity.name ?? null,
+            },
+      source: credential?.origin.source ?? null,
+      expiresAt: credential?.expiresAt?.toISOString() ?? null,
+    };
+    return ok(
+      ctx.present({ data: result }, presentationsFor({ credential, identity })),
+    );
   },
 });

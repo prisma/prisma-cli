@@ -1,13 +1,16 @@
+import { SERVICE_TOKEN_ENV_VAR } from "../auth/client";
 import {
-  createManagementApiSdk,
-  type TokenStorage,
-  type Tokens,
-} from "@prisma/management-api-sdk";
+  performLogin,
+  performLogout,
+  readAuthState,
+  storeLegacyCredential,
+} from "../auth/operations";
 import {
-  FileTokenStorage,
-  type StoredAuthWorkspace,
-  WorkspaceSelectionError,
-} from "../adapters/token-storage";
+  listAuthWorkspaces,
+  logoutAuthWorkspace,
+  switchAuthWorkspace,
+  type WorkspaceOperationContext,
+} from "../auth/workspaces";
 import { resolvePrismaCliPackageCommand } from "../lib/agent/cli-command";
 import { PRISMA_AGENT_INSTALL_ARGS } from "../lib/agent/constants";
 import {
@@ -17,27 +20,14 @@ import {
   shouldOfferPrismaAgentSetup,
 } from "../lib/agent/setup-status";
 import {
-  performLogin,
-  performLogout,
-  readAuthState,
-} from "../lib/auth/auth-ops";
-import {
-  CLIENT_ID,
-  getApiBaseUrl,
-  SERVICE_TOKEN_ENV_VAR,
-} from "../lib/auth/client";
-import {
   authRequiredError,
   usageError,
-  workspaceAmbiguousError,
-  workspaceNotAuthenticatedError,
   workspaceSwitchUnavailableError,
 } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
 import { type CommandContext, canPrompt } from "../shell/runtime";
 import type {
   AuthStateResult,
-  AuthWorkspace,
   AuthWorkspaceListResult,
   AuthWorkspaceLogoutResult,
   AuthWorkspaceUseResult,
@@ -57,6 +47,12 @@ export interface AuthLogoutCommandOptions {
   workspace?: string;
 }
 
+function workspaceOperationContext(
+  context: CommandContext,
+): WorkspaceOperationContext {
+  return { env: context.runtime.env, signal: context.runtime.signal };
+}
+
 function isRealMode(context: CommandContext): boolean {
   return (
     !context.runtime.fixturePath &&
@@ -71,7 +67,15 @@ export async function runAuthLogin(
   let result: AuthStateResult;
 
   if (isRealMode(context)) {
-    await performLogin(context.runtime.env, context.runtime.signal);
+    const credential = await performLogin(
+      context.runtime.env,
+      context.runtime.signal,
+    );
+    await storeLegacyCredential(
+      context.runtime.env,
+      credential,
+      context.runtime.signal,
+    );
     result = await readAuthState(context.runtime.env, context.runtime.signal);
   } else {
     const useCases = createAuthUseCases(createCliUseCaseGateways(context));
@@ -134,7 +138,7 @@ export async function runAuthWorkspaceList(
   context: CommandContext,
 ): Promise<CommandSuccess<AuthWorkspaceListResult>> {
   const result = isRealMode(context)
-    ? await listRealAuthWorkspaces(context)
+    ? await listAuthWorkspaces(workspaceOperationContext(context))
     : await createAuthUseCases(
         createCliUseCaseGateways(context),
       ).listWorkspaces();
@@ -157,7 +161,10 @@ export async function runAuthWorkspaceUse(
     : await selectWorkspaceSession(context);
 
   const result = isRealMode(context)
-    ? await useRealAuthWorkspace(context, selectedWorkspaceRef)
+    ? await switchAuthWorkspace(
+        workspaceOperationContext(context),
+        selectedWorkspaceRef,
+      )
     : await createAuthUseCases(createCliUseCaseGateways(context)).useWorkspace(
         selectedWorkspaceRef,
       );
@@ -185,7 +192,10 @@ export async function runAuthWorkspaceLogout(
   }
 
   const result = isRealMode(context)
-    ? await logoutRealAuthWorkspace(context, workspaceRef)
+    ? await logoutAuthWorkspace(
+        workspaceOperationContext(context),
+        workspaceRef,
+      )
     : await createAuthUseCases(
         createCliUseCaseGateways(context),
       ).logoutWorkspace(workspaceRef);
@@ -219,7 +229,15 @@ export async function requireAuthenticatedAuthState(
       throw authRequiredError();
     }
 
-    await performLogin(context.runtime.env, context.runtime.signal);
+    const credential = await performLogin(
+      context.runtime.env,
+      context.runtime.signal,
+    );
+    await storeLegacyCredential(
+      context.runtime.env,
+      credential,
+      context.runtime.signal,
+    );
     return readAuthState(context.runtime.env, context.runtime.signal);
   }
 
@@ -237,157 +255,6 @@ export async function requireAuthenticatedAuthState(
   return loginWithSelectionFlow(context, useCases, {});
 }
 
-async function listRealAuthWorkspaces(
-  context: CommandContext,
-): Promise<AuthWorkspaceListResult> {
-  const rawServiceToken = context.runtime.env[SERVICE_TOKEN_ENV_VAR];
-  const storage = new FileTokenStorage(
-    context.runtime.env,
-    context.runtime.signal,
-  );
-  const localWorkspaces = await hydrateLocalAuthWorkspaces(
-    context,
-    storage,
-    await storage.listWorkspaces(),
-  );
-
-  if (rawServiceToken !== undefined) {
-    const authState = await readAuthState(
-      context.runtime.env,
-      context.runtime.signal,
-    );
-    return {
-      authSource: authState.authenticated ? "service_token" : "none",
-      activeWorkspace: authState.workspace,
-      workspaces: [
-        ...(authState.workspace
-          ? [
-              {
-                ...authState.workspace,
-                credentialWorkspaceId: null,
-                active: true,
-                source: "service_token" as const,
-                switchable: false,
-                lastSeenAt: null,
-              },
-            ]
-          : []),
-        ...localWorkspaces.map((workspace) => ({
-          ...toAuthWorkspace(workspace),
-          credentialWorkspaceId: workspace.credentialWorkspaceId,
-          active: false,
-          source: "oauth" as const,
-          switchable: false,
-          lastSeenAt: workspace.lastSeenAt,
-        })),
-      ],
-    };
-  }
-
-  const active = localWorkspaces.find((workspace) => workspace.active) ?? null;
-  return {
-    authSource: localWorkspaces.length > 0 ? "oauth" : "none",
-    activeWorkspace: active ? toAuthWorkspace(active) : null,
-    workspaces: localWorkspaces.map((workspace) => ({
-      ...toAuthWorkspace(workspace),
-      credentialWorkspaceId: workspace.credentialWorkspaceId,
-      active: workspace.active,
-      source: "oauth" as const,
-      switchable: true,
-      lastSeenAt: workspace.lastSeenAt,
-    })),
-  };
-}
-
-async function useRealAuthWorkspace(
-  context: CommandContext,
-  workspaceRef: string,
-): Promise<AuthWorkspaceUseResult> {
-  if (context.runtime.env[SERVICE_TOKEN_ENV_VAR] !== undefined) {
-    throw workspaceSwitchUnavailableError();
-  }
-
-  const storage = new FileTokenStorage(
-    context.runtime.env,
-    context.runtime.signal,
-  );
-  await hydrateLocalAuthWorkspaces(
-    context,
-    storage,
-    await storage.listWorkspaces(),
-  );
-
-  try {
-    const result = await storage.useWorkspace(workspaceRef);
-    return {
-      previousWorkspace: result.previous
-        ? toAuthWorkspace(result.previous)
-        : null,
-      workspace: toAuthWorkspace(result.selected),
-    };
-  } catch (error) {
-    if (error instanceof WorkspaceSelectionError) {
-      if (error.reason === "ambiguous") {
-        throw workspaceAmbiguousError(
-          error.workspaceRef ?? workspaceRef,
-          error.matches.map((match) => ({
-            id: match.id,
-            name: match.name,
-            credentialWorkspaceId: match.credentialWorkspaceId,
-          })),
-        );
-      }
-
-      throw workspaceNotAuthenticatedError(error.workspaceRef ?? workspaceRef);
-    }
-
-    throw error;
-  }
-}
-
-async function logoutRealAuthWorkspace(
-  context: CommandContext,
-  workspaceRef: string,
-): Promise<AuthWorkspaceLogoutResult> {
-  const storage = new FileTokenStorage(
-    context.runtime.env,
-    context.runtime.signal,
-  );
-  await hydrateLocalAuthWorkspaces(
-    context,
-    storage,
-    await storage.listWorkspaces(),
-  );
-
-  try {
-    const result = await storage.logoutWorkspace(workspaceRef);
-    return {
-      workspace: toAuthWorkspace(result.workspace),
-      wasActive: result.wasActive,
-      activeWorkspace: result.activeWorkspace
-        ? toAuthWorkspace(result.activeWorkspace)
-        : null,
-    };
-  } catch (error) {
-    if (error instanceof WorkspaceSelectionError) {
-      if (error.reason === "ambiguous") {
-        throw workspaceAmbiguousError(
-          error.workspaceRef ?? workspaceRef,
-          error.matches.map((match) => ({
-            id: match.id,
-            name: match.name,
-            credentialWorkspaceId: match.credentialWorkspaceId,
-          })),
-        );
-      }
-
-      throw workspaceNotAuthenticatedError(error.workspaceRef ?? workspaceRef);
-    }
-
-    throw error;
-  }
-}
-
 async function selectWorkspaceSession(
   context: CommandContext,
 ): Promise<string> {
@@ -397,7 +264,7 @@ async function selectWorkspaceSession(
   }
 
   const result = realMode
-    ? await listRealAuthWorkspaces(context)
+    ? await listAuthWorkspaces(workspaceOperationContext(context))
     : await createAuthUseCases(
         createCliUseCaseGateways(context),
       ).listWorkspaces();
@@ -439,142 +306,6 @@ async function selectWorkspaceSession(
   });
 
   return selected.id;
-}
-
-async function hydrateLocalAuthWorkspaces(
-  context: CommandContext,
-  storage: FileTokenStorage,
-  workspaces: StoredAuthWorkspace[],
-): Promise<StoredAuthWorkspace[]> {
-  const candidates = workspaces.filter(needsWorkspaceMetadataHydration);
-  if (candidates.length === 0) return workspaces;
-
-  const tokensByCredentialWorkspaceId = new Map(
-    (await storage.listWorkspaceTokens()).map((tokens) => [
-      tokens.workspaceId,
-      tokens,
-    ]),
-  );
-  let nextWorkspaces = workspaces;
-
-  for (const workspace of candidates) {
-    const tokens = tokensByCredentialWorkspaceId.get(
-      workspace.credentialWorkspaceId,
-    );
-    if (!tokens) continue;
-
-    const resolved = await resolveOAuthWorkspaceMetadata(context, tokens);
-    if (!resolved) continue;
-
-    await rememberResolvedWorkspaceMetadata(context, storage, tokens, resolved);
-    nextWorkspaces = nextWorkspaces.map((candidate) =>
-      candidate.credentialWorkspaceId === workspace.credentialWorkspaceId
-        ? {
-            ...candidate,
-            id: resolved.id,
-            name: resolved.name,
-            lastSeenAt: new Date().toISOString(),
-          }
-        : candidate,
-    );
-  }
-
-  return nextWorkspaces;
-}
-
-async function rememberResolvedWorkspaceMetadata(
-  context: CommandContext,
-  storage: FileTokenStorage,
-  tokens: Tokens,
-  resolved: { id: string; name: string },
-): Promise<void> {
-  try {
-    await storage.rememberWorkspace(tokens.workspaceId, resolved);
-  } catch {
-    context.runtime.signal?.throwIfAborted();
-  }
-}
-
-function needsWorkspaceMetadataHydration(workspace: StoredAuthWorkspace) {
-  return (
-    workspace.id === workspace.credentialWorkspaceId ||
-    workspace.name === "Unknown workspace" ||
-    workspace.name === workspace.credentialWorkspaceId
-  );
-}
-
-async function resolveOAuthWorkspaceMetadata(
-  context: CommandContext,
-  tokens: Tokens,
-): Promise<{ id: string; name: string } | null> {
-  const refreshStorage = new FileTokenStorage(
-    context.runtime.env,
-    context.runtime.signal,
-    { activateOnSetTokens: false },
-  );
-  const tokenStorage = createSingleWorkspaceTokenStorage(
-    refreshStorage,
-    tokens,
-  );
-  const sdk = createManagementApiSdk({
-    clientId: CLIENT_ID,
-    redirectUri: "http://localhost:0/auth/callback",
-    tokenStorage,
-    apiBaseUrl: getApiBaseUrl(context.runtime.env),
-  });
-
-  try {
-    const { data } = await sdk.client.GET("/v1/workspaces/{id}", {
-      params: { path: { id: tokens.workspaceId } },
-      signal: context.runtime.signal,
-    });
-    const id = stringOrNull(data?.data?.id) ?? tokens.workspaceId;
-    const name = stringOrNull(data?.data?.name) ?? id;
-
-    if (id === tokens.workspaceId && name === tokens.workspaceId) {
-      return null;
-    }
-
-    return { id, name };
-  } catch {
-    context.runtime.signal?.throwIfAborted();
-    return null;
-  }
-}
-
-function createSingleWorkspaceTokenStorage(
-  storage: FileTokenStorage,
-  initialTokens: Tokens,
-): TokenStorage {
-  let currentTokens: Tokens | null = initialTokens;
-
-  return {
-    getTokens: async () => currentTokens,
-    setTokens: async (tokens) => {
-      currentTokens = tokens;
-      await storage.setTokens(tokens);
-    },
-    clearTokens: async () => {
-      const tokens = currentTokens;
-      currentTokens = null;
-      if (tokens) {
-        await storage.clearTokensIfCurrent(tokens);
-      }
-    },
-  };
-}
-
-function stringOrNull(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : null;
-}
-
-function toAuthWorkspace(workspace: StoredAuthWorkspace): AuthWorkspace {
-  return {
-    id: workspace.id,
-    name: workspace.name,
-  };
 }
 
 async function loginWithSelectionFlow(

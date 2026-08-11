@@ -17,6 +17,19 @@
  * family-supplied base; committed versions for releases; auth library
  * lives in the CLI repo, distinct from Prisma Cloud. Prior versions
  * preserved as -v1…-v7.ts; reviews in ./reviews/.
+ * Amended 2026-08-10 for the credential-manager design rev 5 — the
+ * SESSION MODEL (credential-manager-design.md, normative; rev 5
+ * replaced rev 4's grants model): §4 gains ctx.session and the
+ * CredentialManager entity surface (ctx.getCredentials removal is
+ * STAGED — the engine still carries it until the swap's final stage);
+ * §6 gains the managesCredentials capability; §10 gains
+ * Runtime.credentialManager and the injected client config; §11 gains
+ * manager seeding + fixtures.
+ * Amended 2026-08-10 for the ENGINE INTERACTION AFFORDANCES (operator
+ * rulings): consent tokens with the shared --confirm flag (§4a),
+ * ctx.openUrl (§4), and prompt.browserWait (§4a). All three are
+ * engine-owned so command code never reads TTY or CI state and never
+ * invents its own consent-skipping flag.
  *
  * THE MODEL, in one analogy (operator, 2026-08-09): commands settle like
  * promises. A command can COMPLETE — and its completion can be
@@ -90,7 +103,8 @@
  * pipe-clean. json mode is unchanged: the frame stream owns stdout.
  * The engine injects the shared flag family on every non-server
  * command: --format/--json, --log-level/-v/--verbose, -q/--quiet,
- * -y/--yes, --interactive/--no-interactive, --color/--no-color.
+ * -y/--yes, --confirm <value> (repeatable), --interactive/--no-interactive,
+ * --color/--no-color.
  * Commands cannot declare flags with those names. Declared flag keys are
  * camelCase and transliterate to --kebab-case.
  *
@@ -367,17 +381,58 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
     presentations: Presentations,
   ) => PresentedResult<T>
 
-  /** Management-API credentials, resolved at call time so long-lived
-   *  sessions survive token refresh. Undefined when unauthenticated.
-   *  Commands with needs.credentials never see undefined — the engine
-   *  fails them early with the sign-in error. */
-  readonly getCredentials: () => Promise<Credentials | undefined>
+  /** The session this process is acting as (the manager's
+   *  currentSession() pin), or null when signed out — on EVERY
+   *  context. Read-only and local-only: safe to call anywhere; never
+   *  touches the network. Raises the same single-sourced structured
+   *  errors as the needs check for broken-but-not-signed-out states
+   *  (sessions held none current; blank env token).
+   *  ctx.getCredentials is DELETED (staged: the engine carries it
+   *  until the swap's final stage) — the context ends with fewer auth
+   *  surfaces than before: `api` + `session`, plus
+   *  `credentialManager` for the commands that declare the §6
+   *  capability. */
+  readonly session: () => Promise<Session | null>
+
+  /** The Management API client, constructed and owned by the ENGINE:
+   *  the pinned session's client, built from the injected client
+   *  config on first method CALL, once per run (process pinning makes
+   *  the memoization correct). A stored session gets the SDK's
+   *  refreshing path over manager.tokenStorage(workspaceId); an env
+   *  session gets the SDK's static-token path with its error mapping
+   *  at the call site. Request failures pass through the engine-side
+   *  mapping (design §6): refreshTokenInvalid === true → the expired
+   *  CLI.CREDENTIALS_REQUIRED; any other SDK AuthError → a state
+   *  re-read for the workspace the client is BOUND to (session gone →
+   *  session-ended CLI.CREDENTIALS_REQUIRED, otherwise the transient
+   *  auth-service error) — state checks, never message parsing; the
+   *  cause chain is walked for both AuthError and CLI structured
+   *  errors. A request made while signed out throws the structured
+   *  CLI.CREDENTIALS_REQUIRED error (the same constructor the
+   *  needs.credentials check uses). */
+  readonly api: ManagementApiClient
 
   /** The one way to emit while running (§1). */
   readonly report: (event: EngineEvent) => void
 
   /** Interactive input (§4a). */
   readonly prompt: PromptSurface
+
+  /** Shows the user a URL and, interactively, opens it in their
+   *  browser through the runtime's injected opener. The announcement
+   *  is one `endpoint` event (§1): a stderr line in human mode, a
+   *  frame in json mode, so the URL always reaches both a person and
+   *  a machine consumer. A non-interactive run opens nothing and
+   *  reports `{opened: false}` — the URL in the announcement is how it
+   *  gets done by hand. NEVER an error: a host with no browser is not
+   *  a failed command. To then WAIT for the user to finish in that
+   *  browser, use prompt.browserWait (§4a). */
+  readonly openUrl: (request: {
+    readonly url: string
+    /** The announcement label — what the URL is for, in the user's
+     *  terms ("Finish signing in"). */
+    readonly message: string
+  }) => Promise<{ readonly opened: boolean }>
 
   /** Fires on Ctrl-C/SIGTERM (engine-owned; a second signal
    *  force-exits through the runtime's exit proxy). Session commands
@@ -404,12 +459,95 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
   readonly requireDependency: (specifier: string) => Promise<Result<void, CliStructuredError>>
 }
 
+/** Superseded by the credential-manager surface below; carried only
+ *  through the staged swap (Runtime.getCredentials fallback), then
+ *  deleted. */
 export interface Credentials {
-  /** Opaque to the engine; shape owned by the Cloud auth
-   *  library (placeholder pending its design). Workspace selection is
-   *  session state, not a credential — it lives with that library, not
-   *  here. */
   readonly token: string
+}
+
+// —— §4b The credential manager (design rev 5 §2/§3, normative) ——
+// A set of per-workspace sessions, one current. Sessions are keyed
+// by workspace id: at most one session per workspace. No conditional
+// properties: absent = `T | undefined` with the key required.
+
+/** The proof material. Only ever seen by the login flow (which mints
+ *  it) and createSession (which stores it). */
+export interface Credential {
+  readonly token: string
+  readonly refreshToken: string | undefined
+  readonly expiresAt: Date | undefined
+}
+
+/** "Logged-in-edness", scoped to a workspace. Identified to users by
+ *  its workspace. The token is INTERNAL: it lives in the stored
+ *  record, never on this public shape. `source: "environment"` marks
+ *  the ephemeral session composed from PRISMA_SERVICE_TOKEN; it never
+ *  appears in sessions(). */
+export interface Session {
+  readonly workspaceId: string
+  readonly workspaceName: string | undefined
+  readonly expiresAt: Date | undefined
+  readonly source: 'stored' | 'environment'
+  readonly current: boolean
+}
+
+/** Manages sessions: six user-facing operations plus one
+ *  engine-facing accessor. Custody, not user interaction: never opens
+ *  a browser, never prompts. Env is a construction input. The manager
+ *  resolves NO user input: commands resolve refs against sessions()
+ *  and pass the matched Session. Full semantics (process pinning,
+ *  env-override mutation rules, error single-sourcing, locking) are
+ *  normative in credential-manager-design.md §3/§4/§6/§8. */
+export interface CredentialManager {
+  /** The session this PROCESS is acting as: pinned at first read (env
+   *  token if set, else the file's current marker at that moment);
+   *  other processes' marker moves never redirect it, this process's
+   *  own mutations do. Local-only. */
+  currentSession(): Promise<Session | null>
+  /** The available sessions, read fresh from the file. Local-only.
+   *  Under an env override the file's marker is still shown as
+   *  `current`. */
+  sessions(): Promise<readonly Session[]>
+  /** Login's write: verifies the workspace_id claim matches, upserts
+   *  by workspaceId, sets the marker and this process's pin. The name
+   *  is fetched best-effort after the write. */
+  createSession(credential: Credential, workspaceId: string): Promise<Session>
+  /** Switch: sets the file's marker AND this process's pin. The
+   *  argument is a workspace reference — only workspaceId is read,
+   *  re-validated against freshly-read state. */
+  useSession(session: Session): Promise<Session>
+  /** Log out of one workspace. If it was current (marker or pin),
+   *  that current is cleared — no auto-promotion. */
+  endSession(session: Session): Promise<void>
+  /** Log out entirely: remove all sessions and the marker. */
+  endAllSessions(): Promise<void>
+  /** ENGINE-FACING, not a user operation: the SDK TokenStorage view
+   *  for one workspace's session. The engine forwards it into SDK
+   *  client config and never calls its methods itself. */
+  tokenStorage(workspaceId: string): TokenStorage
+}
+
+/** The SDK's typed client and token-storage contract, re-exported by
+ *  the engine so consumers never import @prisma/management-api-sdk
+ *  directly. */
+import type {
+  ManagementApiClient as SdkClient,
+  TokenStorage as SdkTokenStorage,
+} from '@prisma/management-api-sdk'
+
+export type ManagementApiClient = SdkClient
+export type TokenStorage = SdkTokenStorage
+
+/** SDK client construction config, injected by the bin beside the
+ *  manager (§10). All four fields: the SDK's refreshing fetch
+ *  requires the full config even though only login paths read
+ *  redirectUri. */
+export interface ManagementApiClientConfig {
+  readonly clientId: string
+  readonly redirectUri: string
+  readonly apiBaseUrl: string
+  readonly authBaseUrl: string
 }
 
 /**
@@ -430,6 +568,45 @@ export interface Credentials {
  * interactivity) the same default rule applies; the prompt UI writes to
  * stderr, so an interactive json run prompts without touching the
  * stdout stream.
+ *
+ * Rendering is two-tier (S2a D4). A plain line renderer serves
+ * scripted answers and any stdin that cannot enter raw mode (piped
+ * stdin, the test harness); real TTYs — Runtime.isTty.stdin AND
+ * Runtime.stdin.setRawMode present, no scripted answers — render
+ * through @clack/prompts, loaded by dynamic import only on that path.
+ * Both tiers write prompt UI to stderr and share the same structural
+ * rules: --yes resolution, `--confirm` matching, and structural
+ * failures are decided before the tier branch.
+ *
+ * CONSENT TOKENS AND --confirm (operator ruling, 2026-08-10). A
+ * consent may declare a `token`: the natural noun of the action being
+ * consented to — an app name, a hostname — not a yes/no word. The
+ * token changes both halves of the prompt.
+ *   Interactively it becomes TYPE-TO-CONFIRM: the user must type the
+ *   token exactly. On the clack tier a wrong answer re-prompts (the
+ *   only exits are the exact token and Ctrl-C); on the plain line
+ *   tier — scripted answers, piped stdin — a wrong answer cannot be
+ *   corrected, so it fails structurally (exit 2).
+ *   Non-interactively (and under --yes, which is the same skip
+ *   condition) the consent is satisfied iff one of the run's
+ *   `--confirm <value>` values matches the token EXACTLY. Each value
+ *   is consumed once per run, so two consents on one token need two
+ *   --confirms. Otherwise the existing structural consent error
+ *   (CLI.CONSENT_REQUIRED, exit 2), whose message now names the
+ *   expected value and the literal `--confirm <token>` usage.
+ *   A consent WITHOUT a token keeps today's yes/no rendering and stays
+ *   non-interactively unsatisfiable — its error says the command
+ *   should declare a token (the old "pass the command's explicit
+ *   consent flag" wording described the abandoned per-command-flag
+ *   doctrine: commands do not invent consent flags any more).
+ * --yes is unchanged by all of this: it accepts declared defaults and
+ * never grants consent, with or without a token. Clack's cancel symbol (including the \x03 byte
+ * path) maps to the same CLI.PROMPT_CANCELLED exit-3 settlement.
+ * Clack's spinner/log helpers are forbidden (process-global handlers);
+ * progress remains engine events.
+ *
+ * Accepted quirk: clack reads process.stdout.columns for wrap width —
+ * the one process-global read on the interactive path.
  */
 export interface PromptSurface {
   readonly confirm: (
@@ -439,11 +616,21 @@ export interface PromptSurface {
   /**
    * A question requiring EXPLICIT consent — never inferable, not
    * necessarily destructive. Structurally undefaultable: no default
-   * parameter exists, so --yes, Enter-through, and non-interactive
-   * contexts can never satisfy it; the command documents the explicit
-   * flag that grants consent non-interactively.
+   * parameter exists, so --yes and Enter-through can never satisfy it.
+   * `token` is the natural noun of the action; supplying one makes the
+   * interactive prompt type-to-confirm and makes `--confirm <token>`
+   * the one non-interactive way to grant it (§4a header).
    */
-  readonly consent: (question: string) => Promise<boolean>
+  readonly consent: (
+    question: string,
+    opts?: { readonly token?: string },
+  ) => Promise<boolean>
+  /**
+   * On the clack tier, Enter picks the HIGHLIGHTED option — the
+   * declared default when present, else the first option — so moving
+   * the highlight and pressing Enter selects the highlighted value,
+   * not the declared default.
+   */
   readonly select: <T extends string>(
     question: string,
     options: ReadonlyArray<{ value: T; label: string }>,
@@ -453,6 +640,32 @@ export interface PromptSurface {
     question: string,
     opts?: { readonly placeholder?: string; readonly default?: string },
   ) => Promise<string>
+  /**
+   * Sends the user to a URL and waits for them to finish there. It
+   * announces the URL (the same one-line `endpoint` announcement
+   * ctx.openUrl makes), opens the browser through the runtime's
+   * injected opener, then calls `poll` on the ENGINE's injectable
+   * clock at the engine's declared interval until it returns true.
+   * Settles three ways: resolved (poll true); the structured timeout
+   * error when `timeout` elapses first; the standard prompt-cancel
+   * exit-3 settlement on Ctrl-C.
+   *
+   * Non-interactively it throws the structured interaction-required
+   * error (exit 2) WITHOUT opening or polling anything, carrying the
+   * URL so the user can finish by hand. A command that can do nothing
+   * at all without an interactive terminal should say so declaratively
+   * with `needs.interaction` (§6) and fail before it starts, rather
+   * than reaching this error mid-run.
+   */
+  readonly browserWait: (request: {
+    readonly url: string
+    readonly message: string
+    /** Has the user finished? Receives ctx.signal, so a polling
+     *  request aborts with the command. */
+    readonly poll: (signal: AbortSignal) => Promise<boolean>
+    /** Milliseconds to keep polling before giving up. */
+    readonly timeout: number
+  }) => Promise<void>
 }
 
 // ————————————————————————————————————————————————————————————————————————
@@ -632,6 +845,7 @@ export interface CommandDefinition<
   TPositionals extends Record<string, PositionalSpec<unknown>> = {},
   TConfig = undefined,
   TCode extends number = never,
+  TManagesCredentials extends boolean = false,
 > {
   readonly kind: 'result-command'
   readonly help: CommandHelp
@@ -647,13 +861,24 @@ export interface CommandDefinition<
    */
   readonly exitCodes: Readonly<Record<TCode, string>>
 
+  /**
+   * A CAPABILITY, not a need (design rev 5 §4): when true,
+   * ctx.credentialManager appears on the context. Declaring it never
+   * fails a run — documentation and testability, not enforcement.
+   * Declared by exactly: auth login, auth logout, auth workspace
+   * list, auth workspace use, auth workspace logout. whoami uses
+   * ctx.session() only; sessions() lives ONLY on the manager, never
+   * on the universal context.
+   */
+  readonly managesCredentials: TManagesCredentials
+
   /** The handler function, referenced directly — never a dynamic import
    *  (operator ruling, 2026-08-09: "DO NOT DYNAMICALLY IMPORT HANDLERS").
    *  R9's keep-heavy-work-out-of-startup concern is the handler BODY's
    *  business: a handler that needs heavy dependencies imports them at
    *  execution time, inside itself. A handler defined in another file is
    *  imported statically and annotated CommandHandler<typeof def>. */
-  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode>
+  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode, TManagesCredentials>
 }
 
 export type Handler<
@@ -661,16 +886,36 @@ export type Handler<
   TPositionals extends Record<string, PositionalSpec<unknown>>,
   TConfig,
   TCode extends number = never,
+  TManagesCredentials extends boolean = false,
 > = (
   args: Args<TFlags, TPositionals>,
-  ctx: CommandContext<TConfig, TCode>,
+  ctx: CommandContext<TConfig, TCode> &
+    (TManagesCredentials extends true
+      ? { readonly credentialManager: CredentialManager }
+      : unknown),
 ) => Promise<Result<PresentedResult<unknown>, CliStructuredError>>
 
 /** For impl files: `const run: CommandHandler<typeof migrateCommand> = …` */
-export type CommandHandler<D> = D extends CommandDefinition<infer F, infer P, infer C, infer K>
-  ? Handler<F, P, C, K>
+export type CommandHandler<D> = D extends CommandDefinition<infer F, infer P, infer C, infer K, infer M>
+  ? Handler<F, P, C, K, M>
   : never
 
+/** Two overloads (implementation detail worth documenting: a generic
+ *  TManagesCredentials inference site collapses under contextual
+ *  typing, so the capability is a literal in each overload). */
+export declare function defineCommand<
+  TFlags extends Record<string, FlagSpec<unknown>> = {},
+  TPositionals extends Record<string, PositionalSpec<unknown>> = {},
+  TConfig = undefined,
+  TCode extends number = never,
+>(def: {
+  readonly help: HelpSpec
+  readonly args?: ArgsSpec<TFlags, TPositionals>
+  readonly needs?: NeedsSpec<TConfig>
+  readonly exitCodes?: Readonly<Record<TCode, string>>
+  readonly managesCredentials: true
+  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode, true>
+}): CommandDefinition<TFlags, TPositionals, TConfig, TCode, true>
 export declare function defineCommand<
   TFlags extends Record<string, FlagSpec<unknown>> = {},
   TPositionals extends Record<string, PositionalSpec<unknown>> = {},
@@ -915,8 +1160,62 @@ export interface Cli {
   /** Parse, execute, render, return the exit code. Never touches
    *  process globals — it exits only through the runtime's exit proxy
    *  (second-signal force exit) and writes only to the provided
-   *  streams. */
-  run(argv: readonly string[], runtime: Runtime): Promise<number>
+   *  streams. `hooks` is the bin's observation seam (S2a telemetry
+   *  amendment): the engine's internal RunHooks stayed internal, and
+   *  the minimal public surface growth is this optional parameter
+   *  carrying only the settlement observer. */
+  run(argv: readonly string[], runtime: Runtime, hooks?: CliRunHooks): Promise<number>
+}
+
+/**
+ * S2a telemetry amendment. The observation hooks a bin may attach to
+ * a run — deliberately narrower than the engine's internal hook set
+ * (whose other members are test seams reachable only through the
+ * ./testing harness, which also accepts an `onSettled` tap).
+ */
+export interface CliRunHooks {
+  /** Fired exactly once per run, after settlement (exit code final,
+   *  terminal output written). Never fired for --help/--version, and
+   *  never for a run that failed before reaching a mounted command
+   *  (nothing executed, so there is no snapshot). Errors thrown by
+   *  the hook are swallowed — a telemetry bug must not break a
+   *  command. */
+  readonly onSettled?: (summary: RunSummary) => void
+}
+
+/** What onSettled receives. `durationMs` comes from the engine's
+ *  injectable clock (§11), never from wall time directly.
+ *  `commandId` is derived from the same mount entry as
+ *  `snapshot.commandPath` and always equals
+ *  `snapshot.commandPath.join('.')`; both fields are kept on purpose
+ *  (id for addressing, snapshot as the value-free wire projection). */
+export interface RunSummary {
+  readonly commandId: string
+  readonly exitCode: number
+  readonly durationMs: number
+  readonly snapshot: EngineCommandSnapshot
+}
+
+/**
+ * What telemetry records about an invocation, captured when argv is
+ * parsed. It says which command ran and which flags were given, and
+ * never what any of them was set to: the command-path segments, the
+ * flag NAMES with where each value came from,
+ * and a bare count of positionals. Flag `source` derives from what
+ * the engine knows at parse time: flags explicitly present on argv
+ * are 'cli'; the engine reads no flags from the environment today,
+ * so everything else is 'default' ('env' is reserved for a future
+ * env-sourced flag mechanism).
+ */
+export interface EngineCommandSnapshot {
+  /** Mount-path segments ('telemetry status' → ['telemetry',
+   *  'status']). Never includes the binary name. */
+  readonly commandPath: readonly string[]
+  /** One entry per flag the command accepts (the engine-injected
+   *  shared family first, then the command's own declarations), in
+   *  the user-facing kebab-case spelling. */
+  readonly flags: ReadonlyArray<{ readonly name: string; readonly source: 'cli' | 'env' | 'default' }>
+  readonly positionalCount: number
 }
 
 /** Everything environmental, injected once by the bin (or by a test). */
@@ -938,7 +1237,27 @@ export interface Runtime {
   /** Loaded config + file-level diagnostics; the shell builds this via
    *  the unified loader (R10). Tests hand in fixtures. */
   readonly config: LoadedConfig
+  /** The credential manager the bin wires (design rev 5 §4). The
+   *  engine prefers it for the needs check, ctx.session, and ctx.api.
+   *  Optional only during the staged swap; getCredentials below is
+   *  the fallback and is deleted — with the optionality — in the
+   *  swap's final mechanical stage. */
+  readonly credentialManager?: CredentialManager
+  /** SDK client construction config the bin injects beside the
+   *  manager; the engine builds ctx.api from it (the same config
+   *  feeds performLogin). Required whenever a credentialManager is
+   *  wired; optional only during the staged swap. */
+  readonly managementApiClientConfig?: ManagementApiClientConfig
   readonly getCredentials: () => Promise<Credentials | undefined>
+  /** Opens a URL in the user's browser — the login flow's opener,
+   *  wired by the bin so the engine never depends on it. Called only
+   *  for interactive sessions; a throw means "did not open" and never
+   *  fails a command; absent means this host cannot open a browser,
+   *  and the URL is announced instead. */
+  readonly openUrl?: (url: string) => Promise<void> | void
+  /** Management API endpoint config; the bin derives baseUrl from env
+   *  (getApiBaseUrl). */
+  readonly managementApi: { readonly baseUrl: string }
   /** Used by the ENGINE to phrase install commands (handlers never
    *  do — see needs.dependencies and ctx.requireDependency). */
   readonly packageManager: 'npm' | 'pnpm' | 'yarn' | 'bun' | 'unknown'
@@ -987,13 +1306,84 @@ export declare function createTestCli(spec: {
   readonly commands: MountedTree
   readonly groups?: Readonly<Record<string, { readonly brief: string }>>
   readonly config?: Readonly<Record<string, unknown>>
+  /** Legacy seed for the staged-swap getCredentials fallback: selects
+   *  a manager-less runtime. Mutually exclusive with the manager
+   *  seeds below; deleted with the swap's final stage. */
   readonly credentials?: Credentials
+  /** Convenience manager seed: createSession runs its real claims
+   *  derivation on this credential (mint the token with mintTestJwt). */
+  readonly credential?: Credential
+  /** Session-model seeding: stored sessions mirroring the state
+   *  file's records, and the file's current marker. */
+  readonly sessions?: ReadonlyArray<{
+    readonly workspaceId: string
+    readonly workspaceName: string | undefined
+    readonly credential: Credential
+  }>
+  readonly currentWorkspaceId?: string
+  /** Composes the ephemeral env session; also exported to each run's
+   *  env as PRISMA_SERVICE_TOKEN. */
+  readonly environmentToken?: string
+  /** The SDK client construction config; defaults point every
+   *  endpoint at test.invalid hosts (the design's local-endpoint
+   *  fixture surface). */
+  readonly managementApiClientConfig?: ManagementApiClientConfig
+  /** baseUrl defaults to "https://test.invalid"; when `client` is
+   *  supplied, ctx.api IS that object (the uniform mock seam). */
+  readonly managementApi?: {
+    readonly baseUrl?: string
+    readonly client?: ManagementApiClient
+  }
   readonly packageManager?: 'npm' | 'pnpm' | 'yarn' | 'bun' | 'unknown'
-  /** Fixed clock for deterministic stream timestamps. */
+  /** Fixed clock for deterministic stream timestamps; a clock that
+   *  advances also drives prompt.browserWait's timeout, whose waiting
+   *  is instant under the harness. */
   readonly now?: () => Date
+  /** The browser opener behind ctx.openUrl and prompt.browserWait.
+   *  Defaults to one that succeeds without doing anything — a real
+   *  browser is never a test dependency; pass a spy to assert what was
+   *  opened, or a thrower for the could-not-open path. */
+  readonly openUrl?: (url: string) => Promise<void> | void
 }): TestCli
 
+/** Mints an unsigned JWT whose payload is exactly `claims` — the
+ *  harness's claim source (`sub`, `workspace_id`, `exp`, `email`) for
+ *  createSession derivation, migration, and expiry tests. The rest of
+ *  the design's fixture surface (the token-endpoint scripting,
+ *  legacy-store builder, deterministic clock, second-process lock
+ *  holder) lands with the real manager implementation, whose behavior
+ *  it exercises. */
+export declare function mintTestJwt(claims: Readonly<Record<string, unknown>>): string
+
 export interface TestCli {
+  /** The MUTABLE in-memory credential manager backing the runs: the
+   *  full CredentialManager interface — with the design's
+   *  process-pinning semantics (currentSession fixed at first read;
+   *  its own mutations move it) — plus state(), which reads the whole
+   *  stored state back after a run, and overwriteStoredState(), which
+   *  applies a write as ANOTHER process would (never moves the pin).
+   *  Undefined only when the legacy `credentials` seed selected the
+   *  manager-less fallback runtime. */
+  readonly credentialManager:
+    | (CredentialManager & {
+        state(): {
+          readonly sessions: ReadonlyArray<{
+            readonly workspaceId: string
+            readonly workspaceName: string | undefined
+            readonly credential: Credential
+          }>
+          readonly currentWorkspaceId: string | null
+        }
+        overwriteStoredState(state: {
+          readonly sessions?: ReadonlyArray<{
+            readonly workspaceId: string
+            readonly workspaceName: string | undefined
+            readonly credential: Credential
+          }>
+          readonly currentWorkspaceId?: string | null
+        }): void
+      })
+    | undefined
   run(
     argv: readonly string[],
     opts?: {
@@ -1007,6 +1397,10 @@ export interface TestCli {
       readonly abort?: AbortSignal
       /** Live event tap, for asserting mid-session behavior. */
       readonly onEvent?: (event: EngineEvent) => void
+      /** Settlement tap (S2a telemetry amendment): receives the
+       *  RunSummary the engine fires after settlement (once, mounted
+       *  runs only). */
+      readonly onSettled?: (summary: RunSummary) => void
       readonly cwd?: string
       readonly isTty?: { stdin?: boolean; stdout?: boolean; stderr?: boolean }
       readonly env?: Readonly<Record<string, string | undefined>>

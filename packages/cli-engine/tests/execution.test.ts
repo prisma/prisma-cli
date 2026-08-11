@@ -14,7 +14,11 @@ import {
   type Runtime,
 } from "@prisma/cli-engine";
 import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
-import { createTestCli } from "@prisma/cli-engine/testing";
+import {
+  createTestCli,
+  InMemoryCredentialManager,
+  mintTestJwt,
+} from "@prisma/cli-engine/testing";
 import { describe, expect, test } from "vitest";
 
 const EPOCH = () => new Date(0);
@@ -110,16 +114,16 @@ const whoami = defineCommand({
   help: { summary: "Show the signed-in user" },
   needs: { credentials: true },
   handler: async (_args, ctx) => {
-    const credentials = await ctx.getCredentials();
+    const active = await ctx.activeCredential();
     return ok(
       ctx.present(
-        { data: { token: credentials?.token } },
+        { data: { workspaceId: active?.workspaceId } },
         {
           human: () => [
             {
               kind: "summary",
               tone: "ok",
-              text: `Signed in (${credentials?.token})`,
+              text: `Signed in (${active?.workspaceId})`,
             },
           ],
         },
@@ -479,14 +483,18 @@ describe("needs preconditions", () => {
     const cli = createTestCli({
       commands: { "auth whoami": whoami },
       groups: { auth: { brief: "Authentication" } },
-      credentials: { token: "tok-123" },
+      credential: {
+        token: mintTestJwt({ sub: "user-1", workspace_id: "workspace-1" }),
+        refreshToken: undefined,
+        expiresAt: undefined,
+      },
       now: EPOCH,
     });
     const result = await cli.run(["auth", "whoami", "--format", "human"]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("✔ Signed in (tok-123)\n");
+    expect(result.stderr).toBe("✔ Signed in (workspace-1)\n");
   });
 
   function demanding(dependency: string) {
@@ -509,7 +517,7 @@ describe("needs preconditions", () => {
   async function runDemanding(opts: {
     readonly dependency: string;
     readonly interactive: boolean;
-    readonly credentials?: { token: string };
+    readonly signedIn?: boolean;
   }): Promise<{ exitCode: number; stderr: string }> {
     const cli = createCli({
       name: "t",
@@ -550,7 +558,17 @@ describe("needs preconditions", () => {
           },
         ],
       },
-      getCredentials: async () => opts.credentials,
+      credentialManager:
+        opts.signedIn === true
+          ? new InMemoryCredentialManager({
+              credential: {
+                token: mintTestJwt({ workspace_id: "workspace-1" }),
+                refreshToken: undefined,
+                expiresAt: undefined,
+              },
+            })
+          : undefined,
+      managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
     };
     const exitCode = await cli.run(["demanding", "--format", "human"], runtime);
@@ -582,7 +600,7 @@ describe("needs preconditions", () => {
     const credentialsMet = await runDemanding({
       dependency: "typescript",
       interactive: true,
-      credentials: { token: "tok" },
+      signedIn: true,
     });
     expect(credentialsMet.stderr).toContain("CONFIG.UNREADABLE");
   });
@@ -714,7 +732,7 @@ describe("report() after the handler resolved", () => {
       },
       onSignal: () => () => {},
       config: { sections: {}, diagnostics: [] },
-      getCredentials: async () => undefined,
+      managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
     };
     const exitCode = await cli.run(["leaky", "--format", "human"], runtime);
@@ -731,7 +749,7 @@ describe("report() after the handler resolved", () => {
 });
 
 describe("credentials that cannot be read", () => {
-  test("a rejecting getCredentials settles as a structured error, exit 2", async () => {
+  test("the manager's own structured error reaches the user verbatim, exit 2", async () => {
     const locked = defineCommand({
       help: { summary: "Needs credentials" },
       needs: { credentials: true },
@@ -746,6 +764,11 @@ describe("credentials that cannot be read", () => {
       commands: { locked },
     });
     let stdoutText = "";
+    const unreadable = new CliStructuredError(
+      "CLI.CREDENTIALS_UNREADABLE",
+      "Your stored credentials could not be read.",
+      { why: "token file corrupt: unexpected end of JSON input" },
+    );
     const runtime: Runtime = {
       stdout: {
         write: (text) => {
@@ -764,9 +787,12 @@ describe("credentials that cannot be read", () => {
       },
       onSignal: () => () => {},
       config: { sections: {}, diagnostics: [] },
-      getCredentials: async () => {
-        throw new Error("token file corrupt: unexpected end of JSON input");
-      },
+      credentialManager: {
+        activeCredential: async () => {
+          throw unreadable;
+        },
+      } as unknown as Runtime["credentialManager"],
+      managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
     };
     const exitCode = await cli.run(["locked"], runtime);

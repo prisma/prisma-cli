@@ -1,4 +1,5 @@
-import type { Credentials } from "./context";
+import type { CredentialManager } from "./credential-manager";
+import type { ManagementApiClientConfig } from "./management-api";
 import type { Diagnostic } from "./protocol";
 
 /** Minimal structural stream types; no NodeJS.* in the public surface. */
@@ -44,7 +45,29 @@ export interface Runtime {
    * the unified loader. Tests hand in fixtures.
    */
   readonly config: LoadedConfig;
-  readonly getCredentials: () => Promise<Credentials | undefined>;
+  /**
+   * The credential manager the bin wires. It is the only source of
+   * the needs check, ctx.activeCredential, and ctx.api; absent means
+   * this host has no credentials at all, and every command that needs
+   * them fails as signed out.
+   */
+  readonly credentialManager?: CredentialManager;
+  /**
+   * SDK client construction config the bin injects beside the
+   * manager; the engine builds ctx.api from it. Required whenever a
+   * credentialManager is wired.
+   */
+  readonly managementApiClientConfig?: ManagementApiClientConfig;
+  /**
+   * Opens a URL in the user's browser, wired by the bin (the login
+   * flow's opener). The engine calls it only for interactive sessions,
+   * treats a throw as "did not open", and never fails a command over
+   * it. Absent means this host cannot open a browser: the engine
+   * announces the URL instead.
+   */
+  readonly openUrl?: (url: string) => Promise<void> | void;
+  /** Management API endpoint config; the bin derives baseUrl from env. */
+  readonly managementApi: { readonly baseUrl: string };
   /**
    * Used by the ENGINE to phrase install commands (handlers never do —
    * see needs.dependencies and ctx.requireDependency).

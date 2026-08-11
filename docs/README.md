@@ -33,6 +33,7 @@ For local development, continue with:
 
 - [Glossary](reference/glossary.md)
 - [Testing patterns](reference/testing-patterns.md)
+- [Versioning](oss/versioning.md)
 
 ## Contribution Standard
 

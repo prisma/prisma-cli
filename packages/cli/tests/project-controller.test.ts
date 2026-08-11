@@ -7,8 +7,8 @@ import { createTempCwd, createTestCommandContext } from "./helpers";
 const fixturePath = path.resolve("fixtures/mock-api.json");
 
 afterEach(() => {
-  vi.doUnmock("../src/lib/auth/auth-ops");
-  vi.doUnmock("../src/lib/auth/guard");
+  vi.doUnmock("../src/auth/operations");
+  vi.doUnmock("../src/auth/guard");
   vi.doUnmock("../src/lib/app/app-provider");
   vi.resetModules();
   vi.restoreAllMocks();
@@ -156,13 +156,16 @@ describe("project controller", () => {
   });
 
   it("creates a project and writes the local pin", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue({ token: "token" });
     const createProject = vi.fn().mockResolvedValue({
       id: "proj_new",
       name: "New Dashboard",
     });
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: vi.fn().mockResolvedValue({
         authenticated: true,
         provider: null,
@@ -177,8 +180,8 @@ describe("project controller", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() => ({
@@ -225,14 +228,17 @@ describe("project controller", () => {
   });
 
   it("passes region to createProject when --region is provided", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue({ token: "token" });
     const createProject = vi.fn().mockResolvedValue({
       id: "proj_new",
       name: "New Dashboard",
       defaultRegion: "us-east-1",
     });
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: vi.fn().mockResolvedValue({
         authenticated: true,
         provider: null,
@@ -247,8 +253,8 @@ describe("project controller", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() => ({
@@ -279,7 +285,7 @@ describe("project controller", () => {
   });
 
   it("bare project link can create a new project from the interactive setup picker", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue({
+    const authenticatedManagementApiClient = vi.fn().mockResolvedValue({
       token: "token",
       GET: vi.fn().mockResolvedValue({
         data: {
@@ -302,7 +308,8 @@ describe("project controller", () => {
       name: "Interactive Project",
     });
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: vi.fn().mockResolvedValue({
         authenticated: true,
         provider: null,
@@ -317,8 +324,8 @@ describe("project controller", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() => ({
@@ -372,12 +379,15 @@ describe("project controller", () => {
   });
 
   it("returns PROJECT_CREATE_FAILED when project creation fails", async () => {
-    const requireComputeAuth = vi.fn().mockResolvedValue({ token: "token" });
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue({ token: "token" });
     const createProject = vi
       .fn()
       .mockRejectedValue(new Error("Internal Server Error (HTTP 503)"));
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       readAuthState: vi.fn().mockResolvedValue({
         authenticated: true,
         provider: null,
@@ -392,8 +402,8 @@ describe("project controller", () => {
       performLogin: vi.fn(),
       performLogout: vi.fn(),
     }));
-    vi.doMock("../src/lib/auth/guard", () => ({
-      requireComputeAuth,
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
     }));
     vi.doMock("../src/lib/app/app-provider", () => ({
       createAppProvider: vi.fn(() => ({

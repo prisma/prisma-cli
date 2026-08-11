@@ -1,25 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
+import { CLIENT_ID, DEFAULT_REDIRECT_URI } from "../src/auth/client";
 import { buildCli } from "../src/v8/cli";
 import { main } from "../src/v8/main";
 import {
   assembleRuntime,
   detectPackageManager,
   type HostProcess,
-  makeGetCredentials,
   makeOnSignal,
 } from "../src/v8/runtime";
-
-vi.mock("../src/adapters/token-storage", () => ({
-  FileTokenStorage: class {
-    getTokens() {
-      return Promise.resolve({
-        accessToken: "stored_token",
-        workspaceId: "ws_1",
-      });
-    }
-  },
-}));
 
 function makeProcess(overrides?: {
   argv?: string[];
@@ -35,7 +24,10 @@ function makeProcess(overrides?: {
   const exitedWith: number[] = [];
   const proc = {
     argv: overrides?.argv ?? ["node", "bin.js"],
-    env: overrides?.env ?? {},
+    // Telemetry env opt-out so main()'s gating resolution stays inert
+    // (no first-run notice on stderr, no dependence on the developer's
+    // real user config).
+    env: { PRISMA_NEXT_DISABLE_TELEMETRY: "1", ...overrides?.env },
     cwd: () => "/tmp/v8-bin-test-cwd",
     listeners,
     exitedWith,
@@ -132,32 +124,6 @@ describe("makeOnSignal", () => {
   });
 });
 
-describe("makeGetCredentials", () => {
-  it("prefers a non-empty PRISMA_SERVICE_TOKEN over stored tokens", async () => {
-    const getCredentials = makeGetCredentials({
-      PRISMA_SERVICE_TOKEN: " svc_token ",
-    } as NodeJS.ProcessEnv);
-
-    expect(await getCredentials()).toEqual({ token: "svc_token" });
-  });
-
-  it("reads the stored token when no service token is set", async () => {
-    const getCredentials = makeGetCredentials({} as NodeJS.ProcessEnv);
-
-    expect(await getCredentials()).toEqual({ token: "stored_token" });
-  });
-
-  it("fails when PRISMA_SERVICE_TOKEN is set but blank instead of falling back to stored tokens", async () => {
-    const getCredentials = makeGetCredentials({
-      PRISMA_SERVICE_TOKEN: "  ",
-    } as NodeJS.ProcessEnv);
-
-    await expect(getCredentials()).rejects.toThrow(
-      "PRISMA_SERVICE_TOKEN is set but empty",
-    );
-  });
-});
-
 describe("assembleRuntime", () => {
   it("assembles the runtime from the process-like host", async () => {
     const proc = makeProcess({
@@ -170,11 +136,52 @@ describe("assembleRuntime", () => {
     expect(runtime.isTty).toEqual({ stdin: true, stdout: true, stderr: false });
     expect(runtime.packageManager).toBe("pnpm");
     expect(runtime.config).toEqual({ sections: {}, diagnostics: [] });
+    expect(runtime.managementApi).toEqual({ baseUrl: "https://api.prisma.io" });
 
     runtime.stdout.write("out");
     runtime.stderr.write("err");
     expect(proc.stdoutText).toBe("out");
     expect(proc.stderrText).toBe("err");
+  });
+
+  it("wires the credential manager, the SDK client config, and the browser opener", async () => {
+    const proc = makeProcess({
+      env: {
+        PRISMA_AUTH_FILE: "/tmp/v8-bin-test-auth.json",
+        PRISMA_MANAGEMENT_API_URL: "https://api.example.test",
+      },
+    });
+    const runtime = await assembleRuntime(proc);
+
+    expect(runtime.credentialManager).toBeDefined();
+    expect(runtime.managementApiClientConfig).toEqual({
+      clientId: CLIENT_ID,
+      redirectUri: DEFAULT_REDIRECT_URI,
+      apiBaseUrl: "https://api.example.test",
+      authBaseUrl: "https://auth.prisma.io",
+    });
+    expect(typeof runtime.openUrl).toBe("function");
+    expect(proc.stderrText).toBe("");
+  });
+
+  it("warns once when the credentials file is named by the deprecated variable", async () => {
+    const proc = makeProcess({
+      env: { PRISMA_COMPUTE_AUTH_FILE: "/tmp/v8-bin-test-legacy-auth.json" },
+    });
+    await assembleRuntime(proc);
+
+    expect(proc.stderrText).toContain("PRISMA_COMPUTE_AUTH_FILE is deprecated");
+    expect(proc.stderrText).toContain("PRISMA_AUTH_FILE");
+  });
+
+  it("derives managementApi.baseUrl from PRISMA_MANAGEMENT_API_URL", async () => {
+    const proc = makeProcess({
+      env: { PRISMA_MANAGEMENT_API_URL: "https://api.example.test" },
+    });
+    const runtime = await assembleRuntime(proc);
+    expect(runtime.managementApi).toEqual({
+      baseUrl: "https://api.example.test",
+    });
   });
 
   it("proxies exit to process.exit and signals to the process listeners", async () => {

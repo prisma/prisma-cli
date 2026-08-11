@@ -25,10 +25,19 @@ export interface Diagnostic {
  * The typed agent-facing follow-up action.
  */
 export interface NextAction {
-  readonly kind: "run-command" | "user-choice" | "edit-file" | "done";
+  readonly kind:
+    | "run-command"
+    | "open-url"
+    | "user-choice"
+    | "edit-file"
+    | "done";
   readonly label: string;
   readonly command?: string;
   readonly commands?: readonly string[];
+  /** The address an `open-url` action sends the user to. A URL is not
+   *  a command: putting one in `command` tells a consumer to execute
+   *  it. */
+  readonly url?: string;
   readonly reason?: string;
 }
 

@@ -13,7 +13,7 @@ import { getCommandDescriptor } from "../src/shell/command-meta";
 const fixturePath = path.resolve("fixtures/mock-api.json");
 
 afterEach(() => {
-  vi.doUnmock("../src/lib/auth/auth-ops");
+  vi.doUnmock("../src/auth/operations");
   vi.doUnmock("@prisma/management-api-sdk");
   vi.resetModules();
   vi.restoreAllMocks();
@@ -21,7 +21,11 @@ afterEach(() => {
 
 describe("real auth mode", () => {
   it("uses real auth operations when fixture mode is not enabled", async () => {
-    const performLogin = vi.fn().mockResolvedValue(undefined);
+    const performLogin = vi.fn().mockResolvedValue({
+      token: "real-mode-access-token",
+      refreshToken: undefined,
+      expiresAt: undefined,
+    });
     const readAuthState = vi.fn().mockResolvedValue({
       authenticated: true,
       provider: null,
@@ -35,7 +39,8 @@ describe("real auth mode", () => {
     });
     const performLogout = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       performLogin,
       readAuthState,
       performLogout,
@@ -76,11 +81,16 @@ describe("real auth mode", () => {
   });
 
   it("stays in mock mode when fixture mode is enabled", async () => {
-    const performLogin = vi.fn().mockResolvedValue(undefined);
+    const performLogin = vi.fn().mockResolvedValue({
+      token: "real-mode-access-token",
+      refreshToken: undefined,
+      expiresAt: undefined,
+    });
     const readAuthState = vi.fn().mockResolvedValue(null);
     const performLogout = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       performLogin,
       readAuthState,
       performLogout,
@@ -152,7 +162,8 @@ describe("real auth mode", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       performLogin: vi.fn(),
       readAuthState,
       performLogout: vi.fn(),
@@ -213,7 +224,8 @@ describe("real auth mode", () => {
       },
     });
 
-    vi.doMock("../src/lib/auth/auth-ops", () => ({
+    vi.doMock("../src/auth/operations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/operations")>()),
       performLogin: vi.fn(),
       readAuthState,
       performLogout: vi.fn(),
@@ -222,7 +234,7 @@ describe("real auth mode", () => {
     const { createTempCwd, createTestCommandContext } = await import(
       "./helpers"
     );
-    const { FileTokenStorage } = await import("../src/adapters/token-storage");
+    const { FileTokenStorage } = await import("../src/auth/token-storage");
     const { runAuthWorkspaceList } = await import("../src/controllers/auth");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
@@ -295,7 +307,7 @@ describe("real auth mode", () => {
       }),
     }));
 
-    const { FileTokenStorage } = await import("../src/adapters/token-storage");
+    const { FileTokenStorage } = await import("../src/auth/token-storage");
     const { createTempCwd, createTestCommandContext } = await import(
       "./helpers"
     );
@@ -371,7 +383,7 @@ describe("real auth mode", () => {
       }),
     }));
 
-    const { FileTokenStorage } = await import("../src/adapters/token-storage");
+    const { FileTokenStorage } = await import("../src/auth/token-storage");
     const { createTempCwd, createTestCommandContext } = await import(
       "./helpers"
     );
@@ -459,7 +471,7 @@ describe("real auth mode", () => {
       }),
     }));
 
-    const { FileTokenStorage } = await import("../src/adapters/token-storage");
+    const { FileTokenStorage } = await import("../src/auth/token-storage");
     const { createTempCwd, executeCli } = await import("./helpers");
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
