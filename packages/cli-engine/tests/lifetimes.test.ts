@@ -48,25 +48,56 @@ describe("session commands", () => {
     },
   });
 
-  test("runs until the abort signal fires, then exits 0 on clean shutdown", async () => {
+  async function runInterrupted(reason?: string) {
     const controller = new AbortController();
     const cli = createTestCli({ commands: { dev }, now: EPOCH });
-    const result = await cli.run(["dev", "--format", "human"], {
+    return cli.run(["dev", "--format", "human"], {
       abort: controller.signal,
       onEvent: (event) => {
-        if (event.kind === "status") {
+        if (event.kind !== "status") {
+          return;
+        }
+        if (reason === undefined) {
           controller.abort();
+        } else {
+          controller.abort(reason);
         }
       },
     });
+  }
 
-    expect(result.exitCode).toBe(0);
+  test("runs until the signal fires; a clean shutdown still settles 130", async () => {
+    const result = await runInterrupted();
+
+    expect(result.exitCode).toBe(130);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe("server: listening\nshutting down\n");
     expect(result.events.map((event) => event.kind)).toEqual([
       "status",
       "message",
     ]);
+  });
+
+  test("a session SIGTERM settles 143 the same way", async () => {
+    const result = await runInterrupted("SIGTERM");
+
+    expect(result.exitCode).toBe(143);
+    expect(result.stderr).toBe("server: listening\nshutting down\n");
+  });
+
+  test("a session that finishes on its own settles 0", async () => {
+    const drain = defineSessionCommand({
+      help: { summary: "Reaches the end of its own work" },
+      handler: async (_args, ctx) => {
+        ctx.report({ kind: "message", severity: "info", text: "drained" });
+        return ok(undefined);
+      },
+    });
+    const cli = createTestCli({ commands: { drain }, now: EPOCH });
+
+    const result = await cli.run(["drain", "--format", "human"]);
+
+    expect(result.exitCode).toBe(0);
   });
 
   test("json mode terminates the event stream with one completed result frame", async () => {
@@ -77,14 +108,14 @@ describe("session commands", () => {
       abort: controller.signal,
     });
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(130);
     expect(result.json[result.json.length - 1]).toEqual({
       kind: "result",
       envelope: {
         ok: true,
         commandId: "dev",
         result: null,
-        exitCode: 0,
+        exitCode: 130,
         diagnostics: [],
         nextActions: [],
       },
@@ -155,6 +186,51 @@ describe("signal exit codes", () => {
     const result = await runAborted();
 
     expect(result.exitCode).toBe(130);
+  });
+
+  test("a handler that finishes its work after the signal settles 130 too", async () => {
+    const graceful = defineCommand({
+      help: { summary: "Completes successfully after the signal" },
+      handler: async (_args, ctx) => {
+        await signalDone(ctx.signal);
+        return ok(
+          ctx.present({ data: { cleanedUp: true } }, { human: () => [] }),
+        );
+      },
+    });
+    const controller = new AbortController();
+    controller.abort("SIGINT");
+    const cli = createTestCli({ commands: { graceful }, now: EPOCH });
+
+    const result = await cli.run(["graceful", "--json"], {
+      abort: controller.signal,
+    });
+
+    expect(result.exitCode).toBe(130);
+    const last = result.json[result.json.length - 1];
+    expect(
+      last.kind === "result" && last.envelope.ok && last.envelope.exitCode,
+    ).toBe(130);
+  });
+
+  test("a documented exit code does not outrank the delivered signal", async () => {
+    const findings = defineCommand({
+      help: { summary: "Reports findings after the signal" },
+      exitCodes: { 4: "findings" },
+      handler: async (_args, ctx) => {
+        await signalDone(ctx.signal);
+        return ok(
+          ctx.present({ data: null, exitCode: 4 }, { human: () => [] }),
+        );
+      },
+    });
+    const controller = new AbortController();
+    controller.abort("SIGTERM");
+    const cli = createTestCli({ commands: { findings }, now: EPOCH });
+
+    const result = await cli.run(["findings"], { abort: controller.signal });
+
+    expect(result.exitCode).toBe(143);
   });
 });
 

@@ -2,12 +2,13 @@ import type { AnyCommand } from "../commands";
 import { credentialsRequiredError } from "../credential-errors";
 import type { EngineEvent } from "../events";
 import { CliStructuredError } from "../protocol";
-import type {
-  ChildResult,
-  SpawnChild,
-  SpawnedChild,
-  SpawnOptions,
-  SpawnRequest,
+import {
+  type ChildResult,
+  engineSpawnedResult,
+  type SpawnChild,
+  type SpawnedChild,
+  type SpawnOptions,
+  type SpawnRequest,
 } from "../spawn";
 import { constructionError } from "./command-tree";
 import { makeDebugLog } from "./debug";
@@ -188,7 +189,7 @@ async function runChild(
   const ended = new AbortController();
   armTerminationLadder(invocation, terminal, child, ended.signal);
   try {
-    return await child.ended;
+    return engineSpawnedResult(await child.ended);
   } catch (cause) {
     throw spawnFailedError(request.command, cause);
   } finally {

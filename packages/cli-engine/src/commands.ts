@@ -300,9 +300,10 @@ export function defineCommand<
  * UNLESS it declares `maySpawn`, in which case it rejects --json as soon
  * as the command is known, before anything runs (S3): output delegated
  * to a child process cannot be framed. A session that returns
- * ok(undefined) exits 0; one that returns ok(exitWithChildStatus(child))
- * exits with the child's status, which is the only way a session
- * settles non-zero without erroring.
+ * ok(undefined) exits 0 — or 130/143 when a signal ended the run, which
+ * the engine settles from its own record of that signal, not from
+ * anything the handler returns; one that returns
+ * ok(exitWithChildStatus(child)) exits with the child's status.
  */
 export interface SessionCommandDefinition<
   TFlags extends Record<string, FlagSpec<unknown>> = Record<

@@ -89,6 +89,10 @@ export interface CommandContext<
    * Fires on Ctrl-C/SIGTERM (engine-owned; a second signal force-exits
    * through the runtime's exit proxy). Session commands run until it
    * fires.
+   *
+   * Once it has fired the engine settles the run at 130/143 from its
+   * own record of the signal, whatever the handler goes on to return —
+   * so cleanup code never states an exit code of its own.
    */
   readonly signal: AbortSignal;
 
