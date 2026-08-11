@@ -165,8 +165,9 @@ function commandParameters(def: AnyCommand): Record<string, unknown> {
 
 /** Help examples never contain the binary name (operator ruling,
  *  2026-08-09): `{bin}` is substituted with the CLI name; an example
- *  without `{bin}` gets the name prepended. */
-function resolveExample(example: string, cliName: string): string {
+ *  without `{bin}` gets the name prepended. A redirect's replacement is
+ *  written the same way and rendered by the same rule. */
+export function resolveExample(example: string, cliName: string): string {
   return example.includes("{bin}")
     ? example.replaceAll("{bin}", cliName)
     : `${cliName} ${example}`;

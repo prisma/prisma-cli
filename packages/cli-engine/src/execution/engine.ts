@@ -4,7 +4,11 @@ import {
   type RouteMap as StricliRouteMap,
 } from "@stricli/core";
 import { type PositionalSpec, positionalRuntime } from "../args";
-import type { CommandFamily, MountedTree } from "../command-family";
+import type {
+  CommandFamily,
+  CommandRedirect,
+  MountedTree,
+} from "../command-family";
 import type { AnyCommand } from "../commands";
 import type { CommandContext } from "../context";
 import type { EngineEvent, Severity, StreamEvent } from "../events";
@@ -19,11 +23,13 @@ import {
   buildCommandTree,
   buildRedirectTable,
   type CommandTreeEntry,
+  matchVerbRedirect,
   type RedirectTable,
 } from "./command-tree";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import {
   settleBug,
+  settleCommandMoved,
   settleCompleted,
   settleErrored,
   settleSessionCompleted,
@@ -41,6 +47,7 @@ import {
   buildRoutes,
   capturingText,
   type EngineRunContext,
+  usageErrorCode,
 } from "./stricli-adapter";
 
 export interface EngineSpec {
@@ -292,9 +299,49 @@ export class EngineImpl implements Engine {
     const exitCode =
       state.settledExitCode !== undefined
         ? state.settledExitCode
-        : settleUnhandled(this.spec, invocation, stricliProcess.exitCode);
+        : this.settleRouting(invocation, stricliProcess.exitCode);
     this.fireOnSettled(invocation, exitCode, startedAtMs);
     return exitCode;
+  }
+
+  /** stricli routed or parsed nothing runnable. When the redirect table
+   *  claims the invocation the user typed, the run names its
+   *  replacement; otherwise it settles as the usage error it is. */
+  private settleRouting(
+    invocation: Invocation,
+    stricliExitCode: number | string | null | undefined,
+  ): number {
+    const matched = this.matchRedirect(invocation.state, stricliExitCode);
+    if (matched === undefined) {
+      return settleUnhandled(this.spec, invocation, stricliExitCode);
+    }
+    return settleCommandMoved(
+      this.spec,
+      invocation,
+      matched.redirect,
+      matched.commandId,
+    );
+  }
+
+  private matchRedirect(
+    state: RunState,
+    stricliExitCode: number | string | null | undefined,
+  ):
+    | { readonly redirect: CommandRedirect; readonly commandId: string }
+    | undefined {
+    if (typeof stricliExitCode !== "number") {
+      return undefined;
+    }
+    if (usageErrorCode(stricliExitCode) !== "CLI.UNKNOWN_COMMAND") {
+      return undefined;
+    }
+    const redirect = matchVerbRedirect(
+      this.redirects,
+      attemptedPath(state.argv),
+    );
+    return redirect === undefined
+      ? undefined
+      : { redirect, commandId: redirect.from.split(" ").join(".") };
   }
 
   /** The onSettled delivery: once per run, after the exit code is
@@ -449,6 +496,19 @@ export class EngineImpl implements Engine {
       settleThrown(invocation, cause);
     }
   }
+}
+
+/** The path the user typed, for argv that routed to no command: the
+ *  leading tokens up to the first flag or argument escape. */
+function attemptedPath(argv: readonly string[]): readonly string[] {
+  const segments: string[] = [];
+  for (const token of argv) {
+    if (token.startsWith("-")) {
+      break;
+    }
+    segments.push(token);
+  }
+  return segments;
 }
 
 function versionRequested(argv: readonly string[]): boolean {
