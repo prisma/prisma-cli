@@ -700,6 +700,15 @@ export declare const flag: {
     default?: number
   }): FlagSpec<number | undefined>
   boolean<A extends string = never>(spec: { brief: string; alias?: A & Char<A> }): FlagSpec<boolean>
+  /**
+   * A boolean the user can leave unsaid: `--flag`, `--no-flag`, or
+   * neither, which arrives as undefined. Use it when absence means
+   * something of its own — "ask me" rather than "no".
+   */
+  optionalBoolean<A extends string = never>(spec: {
+    brief: string
+    alias?: A & Char<A>
+  }): FlagSpec<boolean | undefined>
   enum<const T extends readonly string[], A extends string = never>(spec: {
     brief: string
     values: T

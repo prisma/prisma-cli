@@ -75,6 +75,54 @@ export const enumFlag: FlagSpec<"a" | "b" | undefined> = flag.enum({
   alias: "F",
 });
 
+// —————————————————————————————————————————————————————————————————————
+// flag.optionalBoolean: the --flag / --no-flag / absent tri-state.
+// flag.boolean can only be true or false, so a command cannot tell "the
+// user said no" from "the user said nothing".
+// —————————————————————————————————————————————————————————————————————
+
+export const optionalBooleanFlag: FlagSpec<boolean | undefined> =
+  flag.optionalBoolean({ brief: "link the directory" });
+export const aliasedOptionalBoolean = flag.optionalBoolean({
+  brief: "link",
+  alias: "l",
+});
+
+export const multiAliasOptionalBoolean = flag.optionalBoolean({
+  brief: "link",
+  // @ts-expect-error the single-character alias rule applies here too
+  alias: "ln",
+});
+
+export const linkCommand = defineCommand({
+  help: { summary: "Link the directory" },
+  args: {
+    flags: {
+      link: flag.optionalBoolean({ brief: "link the directory" }),
+      force: flag.boolean({ brief: "overwrite" }),
+    },
+  },
+  handler: null as never,
+});
+
+type LinkFlags = Parameters<CommandHandler<typeof linkCommand>>[0]["flags"];
+
+// All three states reach the handler: true, false and undefined
+export const linkTrue: LinkFlags["link"] = true;
+export const linkFalse: LinkFlags["link"] = false;
+export const linkAbsent: LinkFlags["link"] = undefined;
+export const linkIsTriState: MutuallyAssignable<
+  LinkFlags["link"],
+  boolean | undefined
+> = true;
+
+// The contrast that makes the constructor worth having: flag.boolean
+// arrives as exactly boolean, so absence is indistinguishable from false
+export const forceIsTotal: MutuallyAssignable<LinkFlags["force"], boolean> =
+  true;
+// @ts-expect-error a plain boolean flag never arrives as undefined
+export const forceAbsent: LinkFlags["force"] = undefined;
+
 // Args specs are phantom-typed, not symbol-branded: the carrier is a
 // never-assigned optional property, and inference still flows from the
 // builders into handler-visible types (asserted in runCheck below).

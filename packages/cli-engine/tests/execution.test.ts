@@ -936,6 +936,53 @@ describe("parse and route failures", () => {
   });
 });
 
+describe("flag.optionalBoolean", () => {
+  const linking = defineCommand({
+    help: { summary: "Link things" },
+    args: { flags: { link: flag.optionalBoolean({ brief: "link it" }) } },
+    handler: async (args, ctx) =>
+      ok(
+        ctx.present(
+          { data: { link: args.flags.link ?? null } },
+          {
+            human: () => [],
+          },
+        ),
+      ),
+  });
+
+  const runWith = (argv: readonly string[]) =>
+    createTestCli({ commands: { linking }, now: EPOCH }).run([
+      "linking",
+      ...argv,
+      "--json",
+    ]);
+
+  test("--flag is true, --no-flag is false, and neither is undefined", async () => {
+    expect((await runWith(["--link"])).presented?.data).toEqual({ link: true });
+    expect((await runWith(["--no-link"])).presented?.data).toEqual({
+      link: false,
+    });
+    expect((await runWith([])).presented?.data).toEqual({ link: null });
+  });
+
+  test("all three settle successfully", async () => {
+    for (const argv of [["--link"], ["--no-link"], []]) {
+      expect((await runWith(argv)).exitCode).toBe(0);
+    }
+  });
+
+  test("help names both spellings", async () => {
+    const result = await createTestCli({
+      commands: { linking },
+      now: EPOCH,
+    }).run(["linking", "--help"], { isTty: { stdout: true } });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("--link/--no-link");
+  });
+});
+
 describe("help examples", () => {
   test("examples get the CLI name: {bin} is substituted, plain examples are prefixed", async () => {
     const exemplified = defineCommand({

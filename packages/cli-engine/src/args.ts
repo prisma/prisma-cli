@@ -19,6 +19,7 @@ export interface FlagRuntimeSpec {
     | "requiredString"
     | "number"
     | "boolean"
+    | "optionalBoolean"
     | "enum"
     | "repeated";
   readonly brief: string;
@@ -87,6 +88,20 @@ export const flag = {
     alias?: A & Char<A>;
   }): FlagSpec<boolean> {
     return brandFlag<boolean>({ type: "boolean", ...spec });
+  },
+  /**
+   * A boolean the user can leave unsaid: `--flag`, `--no-flag`, or
+   * neither, which arrives as undefined. Use it when absence means
+   * something of its own — "ask me" rather than "no".
+   */
+  optionalBoolean<A extends string = never>(spec: {
+    brief: string;
+    alias?: A & Char<A>;
+  }): FlagSpec<boolean | undefined> {
+    return brandFlag<boolean | undefined>({
+      type: "optionalBoolean",
+      ...spec,
+    });
   },
   enum<const T extends readonly string[], A extends string = never>(spec: {
     brief: string;
