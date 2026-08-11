@@ -100,9 +100,21 @@ that motivated it.
 **Builds on.** D3 (the amendment describes what actually shipped).
 **Hands to.** Slice done.
 
-## Open item carried into review
+## Follow-up dispatches (added after the five planned ones)
 
-The `deno` widening of `PackageManagerId` (spec §2.2, amendment 3) is
-implemented on parity grounds and still wants explicit operator confirmation,
-since it changes a name declared frozen. If it is refused, D1's table and the
-type lose one member and nothing else changes.
+**D6 — success returns nothing.** `install` and `run` resolve `okVoid()`;
+the sample command presents warnings instead of the command lines it ran.
+
+**D7 — merge `main`.** `ctx.spawn`, the c12 config loader and the
+`app` → `service` rename all landed while this branch was built.
+
+**D8 — the review's findings.** Two confirmed secret leaks in redaction,
+an unpaired step event on cancellation, an announce-and-spawn on an
+already-aborted run, substring matching on secret names, a quadratic
+stderr tail, two untrue claims in prose, the failure constructor made
+private, and the terminal-ownership interlock against `ctx.spawn`.
+
+## Settled during review
+
+The `deno` widening of `PackageManagerId` (spec §2.2, amendment 3) was
+approved by the operator on 2026-08-11.

@@ -51,7 +51,7 @@ interface PackageOperations {
 type PackageManagerId = 'npm' | 'pnpm' | 'yarn' | 'bun' | 'deno';
 ```
 
-`deno` is in the set because the ORM's `init` supports it today: `formatAddArgs` spells `deno add npm:<pkg>` (`.../commands/init/detect-package-manager.ts`) and the one-off runner table spells `deno run -A npm:<pkg>` (`.../commands/init/skill-install.ts`, `formatPackageManagerCommand`). A four-member type would silently drop deno support at the port, which the project spec's parity bar (FR6) forbids as an undiscovered divergence. This widens the frozen §2 type by one member and needs operator confirmation.
+`deno` is in the set because the ORM's `init` supports it today: `formatAddArgs` spells `deno add npm:<pkg>` (`.../commands/init/detect-package-manager.ts`) and the one-off runner table spells `deno run -A npm:<pkg>` (`.../commands/init/skill-install.ts`, `formatPackageManagerCommand`). A four-member type would silently drop deno support at the port, which the project spec's parity bar (FR6) forbids as an undiscovered divergence. This widens the frozen §2 type by one member; the operator was asked twice, reviewed this section with the widening called out in it, and approved (2026-08-11).
 
 Note which ORM function the runner table comes from: `skill-install.ts`'s `formatPackageManagerCommand` (`pnpm dlx` / `yarn dlx` / `bunx` / `npx` / `deno run -A npm:`), NOT `detect-package-manager.ts`'s `formatRunCommand`, which spells how to run a binary the project has already installed and is a different thing.
 
@@ -102,7 +102,7 @@ Two cases the return type has to answer even though no child produced them, sett
 
    **One exception: the engine reads the user agent from `Runtime.env`, not from the library.** The library's `getUserAgent()` reads `process.env.npm_config_user_agent` directly, which R4 forbids — the engine takes the environment through `Runtime`, never off the process. Reading a file under `cwd` is not an R4 violation (R4 bans process globals, and the engine already resolves modules from `cwd` in `dependencyResolvable` and reads files in the config loader), but reading `process.env` plainly is. So `detect({ cwd })` is used as-is and only the user-agent step is done by the engine: take `Runtime.env['npm_config_user_agent']`, split on `/`, accept the leading token if it names a known manager. That parse is four lines and is exactly what the library does. The practical payoff is that `createTestCli`'s `env` seed decides that step instead of the ambient process, so the test is deterministic.
 
-   Two consequences of the library's behavior, inherited deliberately and documented here so they are not rediscovered as bugs: it walks parent directories all the way to the filesystem root with no project boundary, so a stray lockfile above the project is picked up; and within one directory a `package.json` `packageManager` field beats a lockfile.
+   Three consequences of the library's behavior, inherited deliberately and documented here so they are not rediscovered as bugs: it walks parent directories with no project boundary, so a stray lockfile anywhere above the project is picked up; within one directory a `package.json` `packageManager` field beats a lockfile; and the walk stops one level BELOW the filesystem root, so a lockfile at `/` is never seen and a `cwd` of `/` (the test harness's default) inspects nothing at all and falls through to the user agent.
 
    **`Runtime.packageManager` is deleted.** It exists today only to spell the install command inside `missingDependencyError` (`src/execution/needs.ts`, reached from `needs.dependencies` and `ctx.requireDependency`), it is populated from `npm_config_user_agent` alone (`packages/cli/src/v8/runtime.ts`), and that variable is unset whenever the CLI is not invoked through a package-manager script — which is the common case. Its `'unknown'` member is what forces that error into a next action with no runnable command. Detection replaces it at both call sites, and `'unknown'` leaves the codebase. What remains on `Runtime` is an OPTIONAL `packageManager?: PackageManagerId` override for hosts that know better; `createTestCli`'s existing seed becomes that override unchanged. Reading the project from disk is not an R4 violation — R4 bans process globals, and the engine already resolves modules from `cwd` in `dependencyResolvable` and reads files in the config loader.
 2. **Argv spelling** per manager for both forms. The table is the ORM's current spelling, so the port is behavior-identical (install: `<pm> add [-D]` for npm/pnpm/yarn/bun — note the ORM uses npm's `add` alias, not `install` — and `deno add [--dev] npm:<pkg>`; run: `npx` / `pnpm dlx` / `yarn dlx` / `bunx` / `deno run -A npm:`). One module owns the table; nothing else in the engine or in any command spells a manager command, and `missingDependencyError` reads the same table instead of its own private copy.
@@ -171,8 +171,8 @@ R13's text (PR #128's requirements record) gains the exception in its own words,
 
 - [ ] `installsPackages: true` adds typed `ctx.packages`; absent declaration means no such property (type test).
 - [ ] Both operations compose correct argv for npm, pnpm, yarn, bun (unit-tested table), execute only through `Runtime.runPackageManager`, and never import `child_process` in the engine (a test asserting the engine's import graph — the project's conformance checker does not exist yet and this slice does not build it).
-- [ ] Detection resolves a concrete manager from the project (§3.1), with unit coverage per signal and per precedence step; `Runtime.packageManager` is gone from the interface and its two former call sites read the detected value.
-- [ ] The bin implements `runPackageManager`; a real `prisma` invocation installs a package end to end.
+- [ ] Detection resolves a concrete manager from the project (§3.1), with unit coverage per signal and per precedence step; `Runtime.packageManager` is no longer the source of truth and survives only as an optional host override, with its two former call sites reading the detected value.
+- [ ] The bin implements `runPackageManager`, covered against real child processes (streaming order, the byte bound, non-zero exit, a missing executable, abort), and `assembleRuntime` is asserted to wire it. Driving a real package manager is deliberately NOT a test: it would need the network and a writable project, and the seam exists precisely so that is not required.
 - [ ] Step events frame both operations in human and json modes; the manager's own output surfaces as `output` events.
 - [ ] Failures are `CLI.PACKAGE_MANAGER_FAILED` with the documented meta shape, redacted bounded stderr, and a `run-command` next action carrying the exact command; absent runner yields the same code with `reason: 'runner-unavailable'`. No message hardcodes a manager name.
 - [ ] Abort via `ctx.signal` cancels the child and settles 130/143.
@@ -197,6 +197,19 @@ Each entry names what the first draft said, what it says now, and why.
 10. **Documenting the code moves out of this slice** (§9) into project slice S9.
 11. **Success returns nothing** (§2.2). Was: `ok({ command })`. Why: the capability exists to keep the command away from the package manager, and returning a rendered command line on success hands back precisely what was abstracted away. R5 forbids a product printing it regardless.
 12. **`defineCommand`'s overloads are deleted** in favour of one generic signature (§2.1), with vitest type matchers required to prove the inference holds.
+
+## 10a. Two seams, deliberately
+
+`Runtime.spawn` (main's terminal handoff, `09c1df5`) and `Runtime.runPackageManager` land in the same interface and both start a child process. They are not duplicates and should not be unified, on four counts, each doing work:
+
+- **Terminal ownership.** `spawn` inherits stdio so the child owns the terminal and Ctrl-C reaches it natively — which is exactly why a spawning command rejects `--json`. The package runner pipes, so the engine can frame the operation as events and package operations work under `--json`.
+- **Credentials.** `SpawnRequest` carries a fully composed environment including injected credentials; it is the mechanism behind `needs: { credentials: 'child' }`. The package-manager seam takes no environment at all, and must not — a package manager has no business receiving a Prisma service token.
+- **Settlement.** `spawn` rejects on launch failure and settles the child's status verbatim (128+n for signals). The package runner resolves everything and produces `CLI.PACKAGE_MANAGER_FAILED` at exit 2.
+- **Lifetime.** `spawn` returns a live handle the engine tracks across settlement; the package runner is one awaited call with an `AbortSignal`.
+
+Unifying them would need a mode discriminator leaving half the fields inert in each mode, on a surface published across three repos.
+
+**What they DO share is the terminal, and that interlock is now explicit** (§3.7): `ctx.packages` refuses while a spawned child holds the terminal, and `ctx.spawn` refuses while a package operation is in flight, both raising the construction error the three pre-existing surfaces (`ctx.present`, `ctx.prompt`, `ctx.spawn`) already raise. Four surfaces now track terminal ownership through their own flags; consolidating that into one claim they all consult is a real improvement and belongs with whoever owns the spawn design, not here.
 
 ## 11. Open — needs a ruling before the ORM port
 
