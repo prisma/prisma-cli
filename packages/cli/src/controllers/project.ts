@@ -1,6 +1,7 @@
 import { unlink } from "node:fs/promises";
 import path from "node:path";
 
+import { SERVICE_TOKEN_ENV_VAR } from "@prisma/cli-engine";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { matchError } from "better-result";
 import open from "open";
@@ -10,7 +11,6 @@ import {
   parseGitHubRepositoryUrl,
   readGitOriginRemote,
 } from "../adapters/git";
-import { SERVICE_TOKEN_ENV_VAR } from "../auth/client";
 import {
   workspaceAmbiguousError,
   workspaceNotAuthenticatedError,

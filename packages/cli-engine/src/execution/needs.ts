@@ -299,7 +299,7 @@ function validateConfigSection(
   if (!validation.ok) {
     return needsErrored(
       new CliStructuredError(
-        "CLI.CONFIG_INVALID",
+        "CLI.CONFIG_SECTION_INVALID",
         `The '${section.name}' section of ${configFile} is invalid.`,
         {
           nextActions: [

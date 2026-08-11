@@ -20,6 +20,11 @@ import { buildCommandSnapshot } from "./command-snapshot";
 import { buildCommandTree, type CommandTreeEntry } from "./command-tree";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import {
+  configFlagGivenNoValue,
+  formatFlagGiven,
+  versionFlagGiven,
+} from "./pre-parse-argv";
+import {
   settleBug,
   settleChildStatus,
   settleCompleted,
@@ -32,10 +37,8 @@ import {
 } from "./settlement";
 import {
   applySharedFlags,
+  configFlagGivenNoValueError,
   defaultInteractive,
-  emptyConfigAssignment,
-  emptyConfigAssignmentError,
-  explicitFormat,
   type SharedFlags,
   sniffFormat,
 } from "./shared-flags";
@@ -306,13 +309,13 @@ export class EngineImpl implements Engine {
       configSections: this.configSections,
       deliverSignal,
     };
-    if (versionRequested(argv)) {
+    if (versionFlagGiven(argv)) {
       unsubscribe();
       return settleVersion(this.spec, invocation);
     }
-    if (emptyConfigAssignment(argv)) {
+    if (configFlagGivenNoValue(argv)) {
       unsubscribe();
-      settleErrored(invocation, emptyConfigAssignmentError());
+      settleErrored(invocation, configFlagGivenNoValueError());
       return 2;
     }
     const stricliProcess = {
@@ -408,7 +411,7 @@ export class EngineImpl implements Engine {
       await this.executeServer(invocation, entry, rawFlags);
       return;
     }
-    if (entry.def.maySpawn && explicitFormat(state.argv) === "json") {
+    if (entry.def.maySpawn && formatFlagGiven(state.argv) === "json") {
       state.format = "human";
       settleErrored(invocation, jsonUnsupportedError(entry.id));
       return;
@@ -620,18 +623,6 @@ function jsonUnsupportedError(commandId: string): CliStructuredError {
       ],
     },
   );
-}
-
-function versionRequested(argv: readonly string[]): boolean {
-  for (const argument of argv) {
-    if (argument === "--") {
-      return false;
-    }
-    if (argument === "--version") {
-      return true;
-    }
-  }
-  return false;
 }
 
 function declaredCapabilities(def: AnyCommand): CommandCapabilities {
