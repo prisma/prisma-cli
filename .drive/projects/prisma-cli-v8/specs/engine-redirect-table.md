@@ -48,8 +48,11 @@ defineCommandFamily({
 })
 ```
 
+Two types, following the `HelpSpec` → `CommandHelp` pattern the engine already uses: the ergonomic one you write, and the total one the family carries.
+
 ```ts
-interface CommandRedirect {
+/** What you declare. */
+interface RedirectSpec {
   /** The retired invocation as the user types it: a space-separated
    *  absolute path in the mounted tree, the same convention as
    *  MountedTree keys. */
@@ -62,12 +65,20 @@ interface CommandRedirect {
    *  written: no binary name, `{bin}` available when the name has to sit
    *  mid-string. Placeholder arguments use angle brackets (`<ref>`). */
   readonly replacement: string;
-  /** One sentence of context, shown as the next action's reason. */
+  /** One sentence of context, surfaced as the error's `why`. */
   readonly reason?: string;
+}
+
+/** What the normalized family carries. */
+interface CommandRedirect {
+  readonly from: string;
+  readonly flag: string | undefined;
+  readonly replacement: string;
+  readonly reason: string | undefined;
 }
 ```
 
-`redirects` is optional; normalized definitions carry it as an always-present (possibly empty) readonly array, per the no-conditional-properties ruling.
+`redirects` is optional; normalized definitions carry it as an always-present (possibly empty) readonly array of `CommandRedirect`, per the no-conditional-properties ruling. Annotate a declaration with `RedirectSpec`, not `CommandRedirect` — the latter's keys are all required.
 
 Families declare their redirects; `createCli` collects them from every mounted family into one table, the same way it collects commands. Nothing about a redirect is relative to its family — `from` is what the user types.
 

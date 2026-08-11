@@ -46,6 +46,16 @@ above.
 
 ## Open items
 
+- **A re-mount silently kills a redirect, and nothing fails at construction
+  to say so.** `from` is an absolute path in the shell's tree, so it is a
+  fact about the shell, declared in family code. If the shell later moves a
+  group, the family's redirects stop matching and every check still passes —
+  construction cannot catch it, because a `from` naming something that does
+  not exist is the normal case. The operator ruled this trade-off knowingly
+  on 2026-08-11 when choosing family-declared redirects over shell-mounted
+  ones; the review surfaced it independently. Carry it to the ORM port: a
+  regroup means re-reading the redirect table by hand. Say so in the PR.
+
 - The engine's error codes are catalogued nowhere. Eighteen `CLI.*` codes
   ship undocumented; `CLI.COMMAND_MOVED` makes nineteen. Operator ruled
   2026-08-11 that the catalogue waits for project close-out, when the full
