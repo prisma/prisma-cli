@@ -8,12 +8,18 @@ import {
   createCli,
   defineCommand,
   defineConfigSection,
+  defineSessionCommand,
   type EngineEvent,
   flag,
   positional,
   type Runtime,
 } from "@prisma/cli-engine";
-import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
+import {
+  CliStructuredError,
+  type Diagnostic,
+  notOk,
+  ok,
+} from "@prisma/cli-engine/protocol";
 import {
   createTestCli,
   InMemoryCredentialManager,
@@ -1015,5 +1021,189 @@ describe("--version", () => {
       commandId: "version",
       timestamp: "1970-01-01T00:00:00.000Z",
     });
+  });
+});
+
+describe("a failure carrying several findings", () => {
+  const FINDINGS: readonly Diagnostic[] = [
+    {
+      code: "COMPOSER.MISSING_NAME",
+      severity: "error",
+      summary: "services[0] has no name.",
+      nextActions: [{ kind: "edit-file", label: "Give services[0] a name." }],
+    },
+    {
+      code: "COMPOSER.UNKNOWN_ENGINE",
+      severity: "error",
+      summary: "services[1].engine 'postgres9' is not a known engine.",
+      nextActions: [],
+    },
+    {
+      code: "COMPOSER.PORT_OUT_OF_RANGE",
+      severity: "error",
+      summary: "services[1].port 70000 is above 65535.",
+      nextActions: [],
+    },
+  ];
+
+  const NEXT_ACTIONS = [
+    {
+      kind: "user-choice",
+      label: "Fix all three, then run the command again.",
+    },
+  ] as const;
+
+  function configInvalid() {
+    return new CliStructuredError(
+      "COMPOSER.CONFIG_INVALID",
+      "prisma.config.ts has 3 problems.",
+      {
+        why: "Every problem found is listed below.",
+        nextActions: NEXT_ACTIONS,
+        diagnostics: FINDINGS,
+      },
+    );
+  }
+
+  function erroredEnvelope(commandId: string) {
+    return {
+      ok: false,
+      commandId,
+      error: {
+        code: "COMPOSER.CONFIG_INVALID",
+        severity: "error",
+        summary: "prisma.config.ts has 3 problems.",
+        why: "Every problem found is listed below.",
+        nextActions: NEXT_ACTIONS,
+      },
+      diagnostics: FINDINGS,
+      nextActions: NEXT_ACTIONS,
+    };
+  }
+
+  const STDERR =
+    "✖ [COMPOSER.CONFIG_INVALID] prisma.config.ts has 3 problems.\n" +
+    "  why: Every problem found is listed below.\n" +
+    "→ Fix all three, then run the command again.\n" +
+    "✖ [COMPOSER.MISSING_NAME] services[0] has no name.\n" +
+    "→ Give services[0] a name.\n" +
+    "✖ [COMPOSER.UNKNOWN_ENGINE] services[1].engine 'postgres9' is not a known engine.\n" +
+    "✖ [COMPOSER.PORT_OUT_OF_RANGE] services[1].port 70000 is above 65535.\n";
+
+  const compose = defineCommand({
+    help: { summary: "Fails with everything it found" },
+    handler: async () => notOk(configInvalid()),
+  });
+
+  const watch = defineSessionCommand({
+    help: { summary: "A session that fails with everything it found" },
+    handler: async () => notOk(configInvalid()),
+  });
+
+  const verify = defineCommand({
+    help: { summary: "Throws the same error instead of returning it" },
+    handler: async () => {
+      throw configInvalid();
+    },
+  });
+
+  function cli() {
+    return createTestCli({
+      commands: { compose, watch, verify },
+      now: EPOCH,
+    });
+  }
+
+  test("human renders the primary error then every finding on stderr", async () => {
+    const result = await cli().run(["compose", "--format", "human"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(STDERR);
+  });
+
+  test("json carries all three findings in the one errored envelope", async () => {
+    const result = await cli().run(["compose", "--json"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.json).toEqual([
+      {
+        kind: "result",
+        envelope: erroredEnvelope("compose"),
+        commandId: "compose",
+        timestamp: T0,
+      },
+    ]);
+  });
+
+  test("a session command fails through the same door", async () => {
+    const asJson = await cli().run(["watch", "--json"]);
+
+    expect(asJson.exitCode).toBe(2);
+    expect(asJson.json).toEqual([
+      {
+        kind: "result",
+        envelope: erroredEnvelope("watch"),
+        commandId: "watch",
+        timestamp: T0,
+      },
+    ]);
+
+    const asHuman = await cli().run(["watch", "--format", "human"]);
+
+    expect(asHuman.exitCode).toBe(2);
+    expect(asHuman.stderr).toBe(STDERR);
+  });
+
+  test("a thrown error carrying findings takes the same path", async () => {
+    const asJson = await cli().run(["verify", "--json"]);
+
+    expect(asJson.exitCode).toBe(2);
+    expect(asJson.json).toEqual([
+      {
+        kind: "result",
+        envelope: erroredEnvelope("verify"),
+        commandId: "verify",
+        timestamp: T0,
+      },
+    ]);
+
+    const asHuman = await cli().run(["verify", "--format", "human"]);
+
+    expect(asHuman.exitCode).toBe(2);
+    expect(asHuman.stderr).toBe(STDERR);
+  });
+
+  test("an error with no findings still reports an empty list", async () => {
+    const bare = defineCommand({
+      help: { summary: "Fails with one problem and nothing beside it" },
+      handler: async () =>
+        notOk(new CliStructuredError("COMPOSER.UNREADABLE", "Cannot read it.")),
+    });
+    const result = await createTestCli({
+      commands: { bare },
+      now: EPOCH,
+    }).run(["bare", "--json"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.json).toEqual([
+      {
+        kind: "result",
+        envelope: {
+          ok: false,
+          commandId: "bare",
+          error: {
+            code: "COMPOSER.UNREADABLE",
+            severity: "error",
+            summary: "Cannot read it.",
+            nextActions: [],
+          },
+          diagnostics: [],
+          nextActions: [],
+        },
+        commandId: "bare",
+        timestamp: T0,
+      },
+    ]);
   });
 });

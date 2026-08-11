@@ -150,7 +150,7 @@ export function settleThrown(invocation: Invocation, cause: unknown): void {
   if (isAbortCause(cause, invocation.signal)) {
     settleAborted(invocation);
   } else if (CliStructuredError.is(cause)) {
-    settleErrored(invocation, cause);
+    settleErrored(invocation, cause, cause.diagnostics);
   } else {
     settleBug(invocation, cause);
   }

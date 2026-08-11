@@ -63,6 +63,10 @@ export class CliStructuredError extends Error {
   readonly severity: Diagnostic["severity"];
   readonly why: string | undefined;
   readonly nextActions: readonly NextAction[];
+  /** Accompanying findings when the failure had several. This error is
+   *  the primary one; these are reported alongside it, so a command can
+   *  fail with everything it found instead of only the first thing. */
+  readonly diagnostics: readonly Diagnostic[];
   readonly where:
     | { readonly path?: string; readonly line?: number }
     | undefined;
@@ -76,6 +80,7 @@ export class CliStructuredError extends Error {
       readonly severity?: Diagnostic["severity"];
       readonly why?: string;
       readonly nextActions?: readonly NextAction[];
+      readonly diagnostics?: readonly Diagnostic[];
       readonly where?: { readonly path?: string; readonly line?: number };
       readonly meta?: Record<string, unknown>;
       readonly docsUrl?: string;
@@ -91,6 +96,7 @@ export class CliStructuredError extends Error {
     this.severity = options?.severity ?? "error";
     this.why = options?.why;
     this.nextActions = options?.nextActions ?? [];
+    this.diagnostics = options?.diagnostics ?? [];
     this.where = options?.where
       ? {
           ...ifDefined("path", options.where.path),
