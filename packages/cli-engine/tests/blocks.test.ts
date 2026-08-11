@@ -285,3 +285,112 @@ describe("summary and list", () => {
     ).toBe("- \u001b[36mprisma deploy\u001b[39m\n- plain\n");
   });
 });
+
+/**
+ * Three maps in the engine pick a mark: a block's status, a step's
+ * outcome, and a diagnostic's severity. They answer different questions
+ * and are allowed to; they are not allowed to disagree about the
+ * character. They did: a run reported a failed step and a failed
+ * summary with one mark and the diagnostic explaining it with another.
+ */
+describe("one character per meaning", () => {
+  test("a failure reads the same however the run reports it", async () => {
+    const fail = defineCommand({
+      help: { summary: "Fail on every surface at once" },
+      /** An error-severity diagnostic has to carry a non-zero code. */
+      exitCodes: { 4: "broken" },
+      handler: async (_args, ctx) => {
+        ctx.report({
+          kind: "step-finished",
+          step: "migrate",
+          outcome: "failed",
+        });
+        return ok(
+          ctx.present(
+            {
+              data: null,
+              exitCode: 4,
+              diagnostics: [
+                {
+                  code: "TOY.BROKEN",
+                  severity: "error",
+                  summary: "It broke",
+                  nextActions: [],
+                },
+              ],
+            },
+            {
+              human: () => [
+                { kind: "summary", status: "error", text: "Failed." },
+              ],
+            },
+          ),
+        );
+      },
+    });
+
+    const result = await createTestCli({ commands: { fail } }).run([
+      "fail",
+      "--format",
+      "human",
+    ]);
+
+    expect(result.stderr).toBe(
+      "✘ migrate\n✘ Failed.\n✘ [TOY.BROKEN] It broke\n",
+    );
+  });
+
+  test("ok, warn and info agree across the same surfaces", async () => {
+    const mixed = defineCommand({
+      help: { summary: "Report every non-failure outcome" },
+      handler: async (_args, ctx) => {
+        ctx.report({ kind: "step-finished", step: "build", outcome: "ok" });
+        ctx.report({ kind: "step-finished", step: "seed", outcome: "warning" });
+        return ok(
+          ctx.present(
+            {
+              data: null,
+              diagnostics: [
+                {
+                  code: "TOY.SLOW",
+                  severity: "warn",
+                  summary: "Took a while",
+                  nextActions: [],
+                },
+                {
+                  code: "TOY.NOTE",
+                  severity: "info",
+                  summary: "Worth knowing",
+                  nextActions: [],
+                },
+              ],
+            },
+            {
+              human: () => [
+                { kind: "summary", status: "ok", text: "Built." },
+                { kind: "summary", status: "warn", text: "Slowly." },
+                { kind: "summary", status: "info", text: "Noted." },
+              ],
+            },
+          ),
+        );
+      },
+    });
+
+    const result = await createTestCli({ commands: { mixed } }).run([
+      "mixed",
+      "--format",
+      "human",
+    ]);
+
+    expect(result.stderr).toBe(
+      "✔ build\n" +
+        "⚠ seed\n" +
+        "✔ Built.\n" +
+        "⚠ Slowly.\n" +
+        "ℹ Noted.\n" +
+        "⚠ [TOY.SLOW] Took a while\n" +
+        "ℹ [TOY.NOTE] Worth knowing\n",
+    );
+  });
+});

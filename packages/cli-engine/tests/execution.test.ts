@@ -383,7 +383,7 @@ describe("errored commands", () => {
     expect(result.exitCode).toBe(2);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "✖ [DEMO.BROKEN] It broke\n" +
+      "✘ [DEMO.BROKEN] It broke\n" +
         "  why: The demo always breaks.\n" +
         "→ Do not run the demo.\n",
     );
@@ -876,7 +876,7 @@ describe("parse and route failures", () => {
     expect(result.exitCode).toBe(2);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "✖ [CLI.INVALID_ARGUMENTS] Expected argument for name\n" +
+      "✘ [CLI.INVALID_ARGUMENTS] Expected argument for name\n" +
         '  why: Expected "z" to be one of (a|b), did you mean "a" or "b"?\n' +
         "Failed to parse \"q\" for count: expected a number, received 'q'\n",
     );

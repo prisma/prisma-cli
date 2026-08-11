@@ -20,7 +20,7 @@ const STEP_OUTCOME_SYMBOL: Readonly<
   Record<Extract<EngineEvent, { kind: "step-finished" }>["outcome"], string>
 > = {
   ok: "✔",
-  failed: "✖",
+  failed: "✘",
   skipped: "↷",
   warning: "⚠",
 };
@@ -70,8 +70,12 @@ export function renderEventHuman(
   }
 }
 
-/** The four Status glyphs (contract §2.2). Distinct from a
- *  diagnostic's severity symbol, which the protocol owns. */
+/**
+ * The four Status glyphs. The step-outcome map above and the
+ * diagnostic-severity map below answer different questions, but the
+ * three draw the same characters on purpose: one run must not report a
+ * failure with one mark and explain it with another.
+ */
 const STATUS_SYMBOL: Readonly<Record<Status, string>> = {
   ok: "✔",
   error: "✘",
@@ -256,7 +260,7 @@ function treeLabel(node: TreeNode, paint: Paint): string {
 }
 
 const DIAGNOSTIC_SYMBOL: Readonly<Record<Diagnostic["severity"], string>> = {
-  error: "✖",
+  error: "✘",
   warn: "⚠",
   info: "ℹ",
 };

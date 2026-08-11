@@ -166,7 +166,7 @@ describe("v8 golden rendering", () => {
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toBe(
-      "✖ [AUTH.WORKSPACE_AMBIGUOUS] More than one workspace session is named 'Acme Inc'.\n" +
+      "✘ [AUTH.WORKSPACE_AMBIGUOUS] More than one workspace session is named 'Acme Inc'.\n" +
         "  why: Matching workspaces: ws_1, ws_9.\n" +
         "→ List your workspace sessions and pass a workspace id: prisma-cli auth workspace list\n",
     );

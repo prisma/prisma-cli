@@ -301,7 +301,7 @@ describe("needs.credentials early failure", () => {
     expect(result.exitCode).toBe(2);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "✖ [CLI.CREDENTIALS_REQUIRED] You must be signed in to run this command.\n" +
+      "✘ [CLI.CREDENTIALS_REQUIRED] You must be signed in to run this command.\n" +
         "→ Sign in, then run the command again.\n",
     );
   });

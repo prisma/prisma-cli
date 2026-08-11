@@ -811,8 +811,8 @@ describe("needs.config", { timeout: 60_000 }, () => {
     const run = await cli.run(["show"], { isTty: { stdout: true } });
     expect(run.exitCode).toBe(2);
     expect(run.stdout).toBe("");
-    expect(run.stderr).toContain("✖ [CLI.CONFIG_SECTION_INVALID]");
-    expect(run.stderr).toContain("✖ [TOY.GREETING_INVALID]");
+    expect(run.stderr).toContain("✘ [CLI.CONFIG_SECTION_INVALID]");
+    expect(run.stderr).toContain("✘ [TOY.GREETING_INVALID]");
   });
 
   test("a validator that throws is an engine-boundary bug: exit 1", async () => {
