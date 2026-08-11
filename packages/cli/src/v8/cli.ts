@@ -10,6 +10,7 @@ import { authWorkspaceUseCommand } from "./auth/workspace-use";
 import { telemetryDisableCommand } from "./telemetry/disable";
 import { telemetryEnableCommand } from "./telemetry/enable";
 import { telemetryStatusCommand } from "./telemetry/status";
+import { versionCommand } from "./version";
 
 export function buildCli(): Cli {
   return createCli({
@@ -49,6 +50,7 @@ export function buildCli(): Cli {
       "telemetry status": telemetryStatusCommand,
       "telemetry enable": telemetryEnableCommand,
       "telemetry disable": telemetryDisableCommand,
+      version: versionCommand,
     },
   });
 }

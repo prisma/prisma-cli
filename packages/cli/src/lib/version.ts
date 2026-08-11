@@ -21,10 +21,16 @@ function readPackageMetadata(): PackageMetadata {
   }
 }
 
-export function getCliVersion(): string {
-  const pkg = readPackageMetadata();
+/** The bundled package's version, or undefined when it cannot be read.
+ *  The v8 shell raises its own structured error for the absent case. */
+export function readCliVersion(): string | undefined {
+  return readPackageMetadata().version;
+}
 
-  if (!pkg.version) {
+export function getCliVersion(): string {
+  const version = readCliVersion();
+
+  if (!version) {
     throw new CliError({
       code: "VERSION_UNAVAILABLE",
       domain: "cli",
@@ -35,7 +41,7 @@ export function getCliVersion(): string {
     });
   }
 
-  return pkg.version;
+  return version;
 }
 
 // Published bin name is the agreed user-facing identifier for the preview.
