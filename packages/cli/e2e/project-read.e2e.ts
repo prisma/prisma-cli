@@ -1,6 +1,7 @@
-/** Read-only happy paths for the project commands. */
+/** Read-only happy paths for the project and auth commands. */
 import { expect, it } from "vitest";
 
+import { useScratchProject } from "./scratch";
 import { describeCommand, session } from "./suite";
 
 interface ListResult {
@@ -10,24 +11,25 @@ interface ListResult {
 
 const PROJECT_ID = /^proj_/;
 
-async function listProjects(): Promise<ListResult> {
-  const cli = await session();
-  return (await cli.run(["project", "list"])).envelope.result as ListResult;
-}
+/** The list is checked against a project this run created, rather than
+ *  against whatever the workspace happens to contain. An assertion that
+ *  needs the workspace pre-populated fails for the wrong reason the day
+ *  someone empties it, and passing it a project it must contain is the
+ *  stronger check anyway. */
+const scratch = useScratchProject("read");
 
 describeCommand("project list", () => {
-  it("lists the workspace's projects", async () => {
-    const cli = await session();
-    const run = await cli.run(["project", "list"]);
+  it("lists the workspace's projects, including one just created", async () => {
+    const run = await scratch.run(["project", "list"]);
     const result = run.envelope.result as ListResult;
 
     expect(run.exitCode).toBe(0);
     // The defect this suite exists for: a workspace-id format mismatch
-    // filtered every project away and still reported success. An empty
-    // list is indistinguishable from that failure, so the e2e workspace
-    // must hold at least one project.
-    expect(result.count).toBeGreaterThan(0);
-    expect(result.items.length).toBe(result.count);
+    // filtered every project away and still reported success. Requiring
+    // the new project to appear catches that, and catches any later
+    // filter that empties a non-empty response.
+    expect(result.items.map((item) => item.id)).toContain(scratch.project().id);
+    expect(result.count).toBe(result.items.length);
     for (const project of result.items) {
       expect(project.id).toMatch(PROJECT_ID);
       expect(project.name).toBeTruthy();
@@ -37,13 +39,9 @@ describeCommand("project list", () => {
 
 describeCommand("project show", () => {
   it("shows a project resolved by id", async () => {
-    const listed = await listProjects();
-    const target = listed.items[0];
-    if (target === undefined)
-      throw new Error("the e2e workspace has no project");
+    const target = scratch.project();
 
-    const cli = await session();
-    const run = await cli.run(["project", "show", "--project", target.id]);
+    const run = await scratch.run(["project", "show", "--project", target.id]);
     const shown = run.envelope.result as {
       readonly project: { readonly id: string; readonly name: string };
     };
