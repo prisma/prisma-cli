@@ -69,8 +69,6 @@ function warnBlock(text: string): Block {
   return { kind: "summary", tone: "warn", text };
 }
 
-type OperationResult = Result<{ readonly command: string }, CliStructuredError>;
-
 /**
  * The sample command: scaffolding that installs its dependencies, its
  * tooling, and the agent skills, retrying with npm when pnpm reports a
@@ -81,14 +79,13 @@ const init = defineCommand({
   help: { summary: "Scaffold a project and install what it needs" },
   installsPackages: true,
   handler: async (_args, ctx) => {
-    const commands: string[] = [];
     const warnings: string[] = [];
     let manager: PackageManagerId | undefined;
 
     const install = async (request: {
       readonly packages: readonly string[];
       readonly dev?: boolean;
-    }): Promise<OperationResult> => {
+    }): Promise<Result<void, CliStructuredError>> => {
       const attempt = await ctx.packages.install({ ...request, manager });
       if (attempt.ok || !pnpmCouldNotResolve(attempt.failure)) {
         return attempt;
@@ -102,13 +99,11 @@ const init = defineCommand({
     if (!dependencies.ok) {
       return notOk(dependencies.failure);
     }
-    commands.push(dependencies.value.command);
 
     const tooling = await install({ packages: TOOLING_PACKAGES, dev: true });
     if (!tooling.ok) {
       return notOk(tooling.failure);
     }
-    commands.push(tooling.value.command);
 
     const skills = await ctx.packages.run({
       package: SKILLS_PACKAGE,
@@ -118,17 +113,13 @@ const init = defineCommand({
     if (!skills.ok) {
       return notOk(skills.failure);
     }
-    commands.push(skills.value.command);
 
     return ok(
       ctx.present(
-        { data: { commands, warnings } },
+        { data: { warnings } },
         {
-          human: () => [
-            ...warnings.map(warnBlock),
-            { kind: "list", items: commands },
-          ],
-          json: () => ({ commands, warnings }),
+          human: () => warnings.map(warnBlock),
+          json: () => ({ warnings }),
         },
       ),
     );
@@ -248,14 +239,7 @@ describe("every operation succeeds", () => {
         cwd: "/project",
       },
     ]);
-    expect(result.presented?.data).toEqual({
-      commands: [
-        PNPM_ADD_RUNTIME,
-        "pnpm add -D typescript@latest",
-        "pnpm dlx @prisma/agent-skills add prisma",
-      ],
-      warnings: [],
-    });
+    expect(result.presented?.data).toEqual({ warnings: [] });
     expect(result.stdout).toBe(
       "+ add prisma@latest @prisma/client@latest\n" +
         "+ add -D typescript@latest\n" +
@@ -270,10 +254,7 @@ describe("every operation succeeds", () => {
         "✔ pnpm add -D typescript@latest\n" +
         "▸ pnpm dlx @prisma/agent-skills add prisma\n" +
         "pnpm: resolving\n" +
-        "✔ pnpm dlx @prisma/agent-skills add prisma\n" +
-        `- ${PNPM_ADD_RUNTIME}\n` +
-        "- pnpm add -D typescript@latest\n" +
-        "- pnpm dlx @prisma/agent-skills add prisma\n",
+        "✔ pnpm dlx @prisma/agent-skills add prisma\n",
     );
   });
 
@@ -335,14 +316,7 @@ describe("every operation succeeds", () => {
     expect(envelopeOf(result.json)).toEqual<CompletedEnvelope>({
       ok: true,
       commandId: "init",
-      result: {
-        commands: [
-          PNPM_ADD_RUNTIME,
-          "pnpm add -D typescript@latest",
-          "pnpm dlx @prisma/agent-skills add prisma",
-        ],
-        warnings: [],
-      },
+      result: { warnings: [] },
       exitCode: 0,
       diagnostics: [],
       nextActions: [],
@@ -453,14 +427,7 @@ describe("the ORM's pnpm-to-npm fallback", () => {
         cwd: "/project",
       },
     ]);
-    expect(result.presented?.data).toEqual({
-      commands: [
-        NPM_ADD_RUNTIME,
-        "npm add -D typescript@latest",
-        "npx @prisma/agent-skills add prisma",
-      ],
-      warnings: [FALLBACK_WARNING],
-    });
+    expect(result.presented?.data).toEqual({ warnings: [FALLBACK_WARNING] });
   });
 
   test("human mode: the failed pnpm step, the npm retry, and why it happened", async () => {
@@ -481,10 +448,7 @@ describe("the ORM's pnpm-to-npm fallback", () => {
         "▸ npx @prisma/agent-skills add prisma\n" +
         "npx: resolving\n" +
         "✔ npx @prisma/agent-skills add prisma\n" +
-        `⚠ ${FALLBACK_WARNING}\n` +
-        `- ${NPM_ADD_RUNTIME}\n` +
-        "- npm add -D typescript@latest\n" +
-        "- npx @prisma/agent-skills add prisma\n",
+        `⚠ ${FALLBACK_WARNING}\n`,
     );
   });
 
@@ -503,14 +467,7 @@ describe("the ORM's pnpm-to-npm fallback", () => {
     expect(envelopeOf(result.json)).toEqual<CompletedEnvelope>({
       ok: true,
       commandId: "init",
-      result: {
-        commands: [
-          NPM_ADD_RUNTIME,
-          "npm add -D typescript@latest",
-          "npx @prisma/agent-skills add prisma",
-        ],
-        warnings: [FALLBACK_WARNING],
-      },
+      result: { warnings: [FALLBACK_WARNING] },
       exitCode: 0,
       diagnostics: [],
       nextActions: [],

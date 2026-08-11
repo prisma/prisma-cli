@@ -83,13 +83,13 @@ function recorder(
   };
 }
 
-type OperationResult = Result<{ readonly command: string }, CliStructuredError>;
-
 /** A command that performs one operation and reports its outcome as the
- *  command's own: ok presents the command line it ran, notOk hands the
- *  engine the structured failure verbatim. */
+ *  command's own: success presents nothing, because the operation hands
+ *  back nothing; notOk hands the engine the structured failure verbatim. */
 function installer(
-  operation: (packages: PackageOperations) => Promise<OperationResult>,
+  operation: (
+    packages: PackageOperations,
+  ) => Promise<Result<void, CliStructuredError>>,
 ) {
   return defineCommand({
     help: { summary: "Installs packages" },
@@ -99,12 +99,7 @@ function installer(
       if (!outcome.ok) {
         return notOk(outcome.failure);
       }
-      return ok(
-        ctx.present(
-          { data: outcome.value },
-          { human: () => [], json: () => outcome.value },
-        ),
-      );
+      return ok(ctx.present({ data: null }, { human: () => [] }));
     },
   });
 }
@@ -159,13 +154,12 @@ describe("ctx.packages.install", () => {
       packageManagerRunner: runner,
     });
 
-    const { exitCode, presented } = await cli.run(["toy"], { cwd: "/project" });
+    const { exitCode } = await cli.run(["toy"], { cwd: "/project" });
 
     expect(exitCode).toBe(0);
     expect(runs).toEqual([
       { file: "pnpm", args: ["add", "-D", "prisma@latest"], cwd: "/project" },
     ]);
-    expect(presented?.data).toEqual({ command: "pnpm add -D prisma@latest" });
   });
 
   test("the manager override is what the caller's retry needs", async () => {
@@ -220,7 +214,7 @@ describe("ctx.packages.run", () => {
       packageManagerRunner: runner,
     });
 
-    const { exitCode, presented } = await cli.run(["toy"], { cwd: "/project" });
+    const { exitCode } = await cli.run(["toy"], { cwd: "/project" });
 
     expect(exitCode).toBe(0);
     expect(runs).toEqual([
@@ -230,9 +224,6 @@ describe("ctx.packages.run", () => {
         cwd: "/project",
       },
     ]);
-    expect(presented?.data).toEqual({
-      command: "pnpm dlx skills@latest add -y",
-    });
   });
 });
 

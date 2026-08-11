@@ -10,6 +10,10 @@ export type PackageManagerId = "npm" | "pnpm" | "yarn" | "bun" | "deno";
  * is a value, not a throw — except under cancellation, which throws the
  * abort reason so the run settles the way Ctrl-C settles everywhere
  * else. Neither may be called while the other is still running.
+ *
+ * Success carries nothing back: the command line stays with the engine,
+ * which announces it, streams the manager's output under it, and puts
+ * the runnable spelling on a failure's next action.
  */
 export interface PackageOperations {
   /** Adds dependencies to the project. */
@@ -21,7 +25,7 @@ export interface PackageOperations {
     readonly cwd?: string;
     /** Overrides detection, so a caller can retry with another manager. */
     readonly manager?: PackageManagerId;
-  }): Promise<Result<{ readonly command: string }, CliStructuredError>>;
+  }): Promise<Result<void, CliStructuredError>>;
 
   /** Runs a package's bin once, without adding a dependency. */
   run(request: {
@@ -32,7 +36,7 @@ export interface PackageOperations {
     readonly cwd?: string;
     /** Overrides detection, so a caller can retry with another manager. */
     readonly manager?: PackageManagerId;
-  }): Promise<Result<{ readonly command: string }, CliStructuredError>>;
+  }): Promise<Result<void, CliStructuredError>>;
 }
 
 /**

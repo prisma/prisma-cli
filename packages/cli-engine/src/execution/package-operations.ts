@@ -8,7 +8,12 @@ import {
   runCommand,
 } from "../package-manager";
 import { packageManagerFailedError } from "../package-manager-errors";
-import { type CliStructuredError, notOk, ok, type Result } from "../protocol";
+import {
+  type CliStructuredError,
+  notOk,
+  okVoid,
+  type Result,
+} from "../protocol";
 import type { Invocation } from "./engine";
 import { redactSecrets } from "./redaction";
 import { reportEvent } from "./reporting";
@@ -33,8 +38,6 @@ interface Placement {
   readonly cwd?: string;
   readonly manager?: PackageManagerId;
 }
-
-type OperationResult = Result<{ readonly command: string }, CliStructuredError>;
 
 function spell(
   operation: Operation,
@@ -137,7 +140,7 @@ async function execute(
   invocation: Invocation,
   operation: Operation,
   placement: Placement,
-): Promise<OperationResult> {
+): Promise<Result<void, CliStructuredError>> {
   const { runtime, signal } = invocation;
   const cwd = placement.cwd ?? runtime.cwd;
   const manager = await resolvePackageManager({
@@ -182,7 +185,7 @@ async function execute(
     outcome: result.exitCode === 0 ? "ok" : "failed",
   });
   if (result.exitCode === 0) {
-    return ok({ command: command.line });
+    return okVoid();
   }
   return notOk(
     failed(operation, command, {
@@ -202,7 +205,7 @@ export function makePackageOperations(
   const perform = async (
     operation: Operation,
     placement: Placement,
-  ): Promise<OperationResult> => {
+  ): Promise<Result<void, CliStructuredError>> => {
     if (running) {
       throw new Error(
         "@prisma/cli-engine: ctx.packages runs one operation at a time, so two package managers can never write one project at once",
