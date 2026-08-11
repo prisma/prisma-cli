@@ -4,6 +4,7 @@ import {
   notOk,
   ok,
   okVoid,
+  STRUCTURED_ERROR,
 } from "@prisma/cli-engine/protocol";
 import { describe, expect, test } from "vitest";
 
@@ -11,6 +12,7 @@ describe("./protocol subpath", () => {
   test("is importable and exports only the protocol runtime surface", () => {
     expect(Object.keys(protocol).sort()).toEqual([
       "CliStructuredError",
+      "STRUCTURED_ERROR",
       "notOk",
       "ok",
       "okVoid",
@@ -144,6 +146,40 @@ describe("CliStructuredError.toEnvelope", () => {
     expect(CliStructuredError.is(foreignCopy)).toBe(true);
     expect(CliStructuredError.is(new Error("boom"))).toBe(false);
     expect(CliStructuredError.is("boom")).toBe(false);
+  });
+
+  test("the brand is a registry symbol, so every copy looks up the same key", () => {
+    expect(STRUCTURED_ERROR).toBe(
+      Symbol.for("@prisma/cli-engine.structuredError"),
+    );
+    expect(new CliStructuredError("A.B", "boom")[STRUCTURED_ERROR]).toBe(true);
+  });
+
+  test("is() accepts a branded error whose prototype is not this class", () => {
+    // Nothing on the chain leads to CliStructuredError, and it is not
+    // even an Error: the brand is the whole claim, which is what a copy
+    // of this package built somewhere else can actually hand over.
+    const otherCopy = {
+      [STRUCTURED_ERROR]: true,
+      name: "SomethingElse",
+      code: "A.B",
+      toEnvelope: () => ({ ok: false }),
+    };
+
+    expect(Object.getPrototypeOf(otherCopy)).toBe(Object.prototype);
+    expect(otherCopy).not.toBeInstanceOf(Error);
+    expect(otherCopy).not.toBeInstanceOf(CliStructuredError);
+    expect(CliStructuredError.is(otherCopy)).toBe(true);
+  });
+
+  test("is() rejects an ordinary error and anything else unmarked", () => {
+    expect(CliStructuredError.is(new Error("boom"))).toBe(false);
+    expect(CliStructuredError.is(new TypeError("boom"))).toBe(false);
+    expect(CliStructuredError.is({ [STRUCTURED_ERROR]: false })).toBe(false);
+    expect(CliStructuredError.is({ code: "A.B" })).toBe(false);
+    expect(CliStructuredError.is(null)).toBe(false);
+    expect(CliStructuredError.is(undefined)).toBe(false);
+    expect(CliStructuredError.is(42)).toBe(false);
   });
 });
 

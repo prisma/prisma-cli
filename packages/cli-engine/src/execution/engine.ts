@@ -525,7 +525,7 @@ export class EngineImpl implements Engine {
       }
       state.resolved = true;
       if (!result.ok) {
-        settleErrored(invocation, result.failure);
+        settleErrored(invocation, result.failure, result.failure.diagnostics);
       } else if (isChildStatusSettlement(result.value)) {
         settleChildStatus(invocation, entry.def, result.value);
       } else {
