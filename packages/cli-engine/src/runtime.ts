@@ -92,7 +92,9 @@ export interface Runtime {
    * Fire-and-forget delivery of one composed telemetry payload. The bin
    * owns the process work and the detachment, which is why the engine
    * imports no child_process and performs no network I/O for telemetry.
-   * Absent means this host delivers nothing — not an error.
+   * Absent means this host reports nothing — not an error, and the whole
+   * sequence is skipped rather than only the delivery: no config read,
+   * no disclosure, no mint.
    */
   readonly spawnTelemetry?: (payload: TelemetryPayload) => void;
   /** Management API endpoint config; the bin derives baseUrl from env. */

@@ -90,6 +90,12 @@ function discloseAndMint(inputs: TelemetryReportInputs): string | undefined {
  * disclose and mint on a first enabled run, compose, hand the payload to
  * the host's seam. The engine composes; the host spawns.
  *
+ * A host with no seam is turned away first, before the config is even
+ * read: a CLI that cannot deliver an event must not tell the user it
+ * collects data, and must not mint an installation id it has no use
+ * for. Declaring telemetry and wiring the seam are two halves of one
+ * decision; either one missing means the run reports nothing.
+ *
  * Every failure is swallowed: a malformed stored config, an unwritable
  * config directory and a throwing seam all leave the run's exit code,
  * stdout and stderr exactly as they would have been.
@@ -97,7 +103,8 @@ function discloseAndMint(inputs: TelemetryReportInputs): string | undefined {
 export function reportCommandStart(inputs: TelemetryReportInputs): void {
   try {
     const { host, snapshot } = inputs;
-    if (snapshot.commandPath[0] === EXEMPT_COMMAND) {
+    const deliver = host.spawnTelemetry;
+    if (deliver === undefined || snapshot.commandPath[0] === EXEMPT_COMMAND) {
       return;
     }
     const config = readUserConfig(host.env);
@@ -112,7 +119,7 @@ export function reportCommandStart(inputs: TelemetryReportInputs): void {
     if (installationId === undefined) {
       return;
     }
-    host.spawnTelemetry?.(
+    deliver(
       composeTelemetryPayload({
         installationId,
         version: inputs.version,

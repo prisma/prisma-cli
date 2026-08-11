@@ -45,11 +45,12 @@ export function createCli(spec: {
   >;
   readonly commands: MountedTree;
   /**
-   * Declaring this turns telemetry on: the engine reads the user's
-   * preference, discloses on the first enabled run, mints the shared
-   * installation id, and hands one payload per run to
-   * `Runtime.spawnTelemetry`. Omitting it means the CLI reports
-   * nothing — no config read, no disclosure, no mint, no seam call.
+   * Declaring this, together with a `Runtime.spawnTelemetry` seam,
+   * turns telemetry on: the engine reads the user's preference,
+   * discloses on the first enabled run, mints the shared installation
+   * id, and hands one payload per run to the seam. Both halves are
+   * required — with either one missing the CLI reports nothing, and
+   * reads no config, prints no disclosure and mints no id.
    */
   readonly telemetry?: TelemetryDeclaration;
 }): Cli {

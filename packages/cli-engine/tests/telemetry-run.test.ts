@@ -349,11 +349,7 @@ describe("no telemetry failure is observable in the run", () => {
     expect(result.telemetry).toHaveLength(1);
   });
 
-  it("a host with no seam at all changes nothing either", async () => {
-    writeFileSync(
-      userConfigPath(isolatedEnv()),
-      JSON.stringify({ installationId: "stored-id" }),
-    );
+  it("a declaration with no seam behaves exactly like no declaration — no notice, no file, not one byte", async () => {
     const expected = await baseline();
 
     const result = await run(makeCli({ telemetrySpawner: null }), DEPLOY_ARGV);
@@ -361,6 +357,9 @@ describe("no telemetry failure is observable in the run", () => {
     expect(result.exitCode).toBe(expected.exitCode);
     expect(result.stdout).toBe(expected.stdout);
     expect(result.stderr).toBe(expected.stderr);
+    expect(result.stderr).not.toContain("anonymous CLI usage data");
+    expect(existsSync(userConfigPath(isolatedEnv()))).toBe(false);
+    expect(result.telemetry).toEqual([]);
   });
 
   it("a malformed stored config costs the run nothing but the disclosure it was due", async () => {

@@ -238,14 +238,12 @@ describe("reportCommandStart", () => {
     ).not.toThrow();
   });
 
-  it("still discloses and mints when the host wires no seam", () => {
+  it("does nothing at all when the host wires no seam — a CLI that cannot deliver must not disclose or mint", () => {
     report(makeHost({ spawnTelemetry: null }));
 
     expect(payloads).toEqual([]);
-    expect(stderrText).toContain("Prisma collects anonymous CLI usage data");
-    expect(readUserConfig(isolatedEnv()).installationId).toEqual(
-      expect.any(String),
-    );
+    expect(stderrText).toBe("");
+    expect(existsSync(userConfigPath(isolatedEnv()))).toBe(false);
   });
 
   it("skips the event rather than sending a junk id when the mint fails", () => {
