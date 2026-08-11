@@ -99,6 +99,7 @@ Longest-match wins if a redirect path prefixes another; matching is exact on pat
 - A verb redirect (`flag` absent) whose `from` resolves to anything already in the tree — a mounted command **or a group** — is a construction error. The group half matters: stricli resolves a bare group path to the help integration, so it never reaches the unknown-command branch, and a redirect sitting there could never fire. Live commands do not silently win; the tree is wrong and says so at construction.
 - A flag redirect (`flag` present) whose `from` does NOT name a mounted command is a construction error.
 - A flag redirect whose `flag` is not camelCase is a construction error, the same rule flag declarations obey. Matching camel-cases what the user typed, so a `flag` stored as `old-flag` can never be hit: the entry looks plausible and silently does nothing. Added 2026-08-11 after review.
+- A `from` with any empty segment — a doubled, leading or trailing space — is a construction error. Lookup rejoins the user's argv tokens with single spaces, so such a key can never be produced: the same silent no-op as the rule above. A mounted path with the same defect was already refused, though mostly by the group-declaration check rather than by `insertCommand`'s own empty-segment rule, which in practice only fires for the empty path; redirects declare no groups, so they had neither. Both now share one helper. Added 2026-08-11 (operator) after the first version shipped without it.
 - A flag redirect whose `flag` IS declared by the named command is a construction error.
 - Two redirects with the same `from` (and, for flag entries, the same `flag`) are a construction error.
 
@@ -128,5 +129,5 @@ The first and last of these bind across families: `createCli` validates the merg
 - [ ] `defineCommandFamily` accepts `redirects`; normalized families always carry the array; `createCli` merges every family's entries into one table.
 - [ ] A retired verb settles as `CLI.COMMAND_MOVED`, exit 2, with a `run-command` next action carrying the rendered replacement; unmatched unknowns behave exactly as before.
 - [ ] A retired flag on a live command settles the same way.
-- [ ] All five construction-time validations fail at `createCli` with clear messages.
+- [ ] All six construction-time validations fail at `createCli` with clear messages.
 - [ ] No redirect appears in any help output (test-proven).
