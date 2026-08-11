@@ -699,6 +699,7 @@ describe("the engine's debug valve", () => {
           ? failure.clone()
           : jsonResponse(401, { message: "unauthorized" }),
       );
+      // biome-ignore lint/performance/noAwaitInLoops: scriptFetch above swaps the one shared fetch stub, so a run has to finish before the next iteration rewrites the response it is answering with.
       const { stderr, stdout, json } = await cliWithDebug().run(
         ["toy", "--json"],
         { env: { PRISMA_DEBUG: "1" } },

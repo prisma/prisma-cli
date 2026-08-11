@@ -53,26 +53,11 @@ export async function maybeSetupBranchDatabase(
     return emptyBranchDatabaseSetupOutcome();
   }
 
-  if (hasProvidedDatabaseEnvVars(options.providedEnvVars)) {
-    if (options.db === true) {
-      throw usageError(
-        "Database setup cannot be combined with provided database env vars",
-        "The deploy command received --db and a DATABASE_URL or DIRECT_URL value from --env.",
-        "Remove the --env database value to let --db create and wire a database, or remove --db to deploy with the provided value.",
-        [
-          "prisma-cli app deploy --db",
-          "prisma-cli app deploy --env DATABASE_URL=postgresql://example",
-        ],
-        "app",
-      );
-    }
-
-    return emptyBranchDatabaseSetupOutcome();
-  }
-
-  if (branch.kind === "production" && !options.firstProductionDeploy) {
-    if (options.db === true) {
-      throw productionDatabaseSetupAfterFirstDeployError();
+  const databaseRequested = options.db === true;
+  const conflict = findBranchDatabaseSetupConflict(branch, options);
+  if (conflict) {
+    if (databaseRequested) {
+      throw branchDatabaseSetupConflictError(conflict);
     }
 
     return emptyBranchDatabaseSetupOutcome();
@@ -84,28 +69,14 @@ export async function maybeSetupBranchDatabase(
     branch,
     context.runtime.signal,
   );
-  const targetEnvVars = getTargetDatabaseEnvVarKeys(envState);
 
   if (hasExistingDatabaseEnvForTarget(branch, envState)) {
-    const warning =
-      options.db === true
-        ? existingDatabaseEnvWarning(branch, targetEnvVars)
-        : null;
-    if (warning) {
-      emitBranchDatabaseWarning(context, warning);
-    }
-
-    return {
-      result:
-        options.db === true
-          ? {
-              status: "skipped",
-              reason: existingDatabaseEnvReason(branch),
-              envVars: targetEnvVars,
-            }
-          : undefined,
-      warnings: warning ? [warning] : [],
-    };
+    return existingDatabaseEnvOutcome(
+      context,
+      branch,
+      envState,
+      databaseRequested,
+    );
   }
 
   const localSignal = await inspectBranchDatabaseSignal(
@@ -113,7 +84,7 @@ export async function maybeSetupBranchDatabase(
     context.runtime.signal,
   );
   if (localSignal.unsupportedSchema) {
-    if (options.db === true) {
+    if (databaseRequested) {
       throw unsupportedBranchDatabaseSchemaError(
         localSignal.unsupportedSchema,
         branch,
@@ -124,37 +95,15 @@ export async function maybeSetupBranchDatabase(
     return emptyBranchDatabaseSetupOutcome();
   }
 
-  const hasSignal =
-    hasBranchDatabaseSignal(localSignal) ||
-    Boolean(envState.inheritedPreviewDatabaseUrl);
-  if (options.db !== true) {
-    if (!hasSignal) {
-      return emptyBranchDatabaseSetupOutcome();
-    }
-
-    if (!canPrompt(context) || context.flags.yes) {
-      const warning = databasePromptSuppressedWarning(branch);
-      emitBranchDatabaseWarning(context, warning);
-      return {
-        result: undefined,
-        warnings: [warning],
-      };
-    }
-
-    maybeRenderBranchDatabaseSignal(context, branch, localSignal, envState);
-    const shouldCreate = await confirmPrompt({
-      input: context.runtime.stdin,
-      output: context.output.stderr,
-      signal: context.runtime.signal,
-      message: databasePromptMessage(branch),
-      initialValue: false,
-    });
-
-    if (!shouldCreate) {
-      return emptyBranchDatabaseSetupOutcome();
-    }
-  } else if (!canPrompt(context) && !context.flags.yes) {
-    throw nonInteractiveDatabaseSetupRequiresYesError(branch);
+  const confirmation = await confirmBranchDatabaseSetup(
+    context,
+    branch,
+    localSignal,
+    envState,
+    databaseRequested,
+  );
+  if (!confirmation.confirmed) {
+    return confirmation.outcome;
   }
 
   return setupBranchDatabase(
@@ -166,6 +115,112 @@ export async function maybeSetupBranchDatabase(
     envState,
     options.projectDir,
   );
+}
+
+type BranchDatabaseSetupConflict =
+  | "provided-env-vars"
+  | "production-after-first-deploy";
+
+function findBranchDatabaseSetupConflict(
+  branch: BranchDatabaseDeployBranch,
+  options: {
+    providedEnvVars: Record<string, string> | undefined;
+    firstProductionDeploy: boolean;
+  },
+): BranchDatabaseSetupConflict | null {
+  if (hasProvidedDatabaseEnvVars(options.providedEnvVars)) {
+    return "provided-env-vars";
+  }
+
+  if (branch.kind === "production" && !options.firstProductionDeploy) {
+    return "production-after-first-deploy";
+  }
+
+  return null;
+}
+
+function branchDatabaseSetupConflictError(
+  conflict: BranchDatabaseSetupConflict,
+): CliError {
+  switch (conflict) {
+    case "provided-env-vars":
+      return providedDatabaseEnvVarsError();
+    case "production-after-first-deploy":
+      return productionDatabaseSetupAfterFirstDeployError();
+  }
+}
+
+function existingDatabaseEnvOutcome(
+  context: CommandContext,
+  branch: BranchDatabaseDeployBranch,
+  envState: BranchDatabaseEnvState,
+  databaseRequested: boolean,
+): BranchDatabaseSetupOutcome {
+  if (!databaseRequested) {
+    return emptyBranchDatabaseSetupOutcome();
+  }
+
+  const envVars = getTargetDatabaseEnvVarKeys(envState);
+  const warning = existingDatabaseEnvWarning(branch, envVars);
+  emitBranchDatabaseWarning(context, warning);
+
+  return {
+    result: {
+      status: "skipped",
+      reason: existingDatabaseEnvReason(branch),
+      envVars,
+    },
+    warnings: [warning],
+  };
+}
+
+type BranchDatabaseSetupConfirmation =
+  | { confirmed: true }
+  | { confirmed: false; outcome: BranchDatabaseSetupOutcome };
+
+async function confirmBranchDatabaseSetup(
+  context: CommandContext,
+  branch: BranchDatabaseDeployBranch,
+  signal: BranchDatabaseSignal,
+  envState: BranchDatabaseEnvState,
+  databaseRequested: boolean,
+): Promise<BranchDatabaseSetupConfirmation> {
+  if (databaseRequested) {
+    if (!canPrompt(context) && !context.flags.yes) {
+      throw nonInteractiveDatabaseSetupRequiresYesError(branch);
+    }
+
+    return { confirmed: true };
+  }
+
+  const hasSignal =
+    hasBranchDatabaseSignal(signal) ||
+    Boolean(envState.inheritedPreviewDatabaseUrl);
+  if (!hasSignal) {
+    return { confirmed: false, outcome: emptyBranchDatabaseSetupOutcome() };
+  }
+
+  if (!canPrompt(context) || context.flags.yes) {
+    const warning = databasePromptSuppressedWarning(branch);
+    emitBranchDatabaseWarning(context, warning);
+    return {
+      confirmed: false,
+      outcome: { result: undefined, warnings: [warning] },
+    };
+  }
+
+  maybeRenderBranchDatabaseSignal(context, branch, signal, envState);
+  const shouldCreate = await confirmPrompt({
+    input: context.runtime.stdin,
+    output: context.output.stderr,
+    signal: context.runtime.signal,
+    message: databasePromptMessage(branch),
+    initialValue: false,
+  });
+
+  return shouldCreate
+    ? { confirmed: true }
+    : { confirmed: false, outcome: emptyBranchDatabaseSetupOutcome() };
 }
 
 async function setupBranchDatabase(
@@ -524,6 +579,19 @@ function emptyBranchDatabaseSetupOutcome(): BranchDatabaseSetupOutcome {
     result: undefined,
     warnings: [],
   };
+}
+
+function providedDatabaseEnvVarsError(): CliError {
+  return usageError(
+    "Database setup cannot be combined with provided database env vars",
+    "The deploy command received --db and a DATABASE_URL or DIRECT_URL value from --env.",
+    "Remove the --env database value to let --db create and wire a database, or remove --db to deploy with the provided value.",
+    [
+      "prisma-cli app deploy --db",
+      "prisma-cli app deploy --env DATABASE_URL=postgresql://example",
+    ],
+    "app",
+  );
 }
 
 function productionDatabaseSetupAfterFirstDeployError(): CliError {

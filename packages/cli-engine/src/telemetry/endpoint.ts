@@ -24,7 +24,7 @@ export const TELEMETRY_ENDPOINT_PATH = "/events";
 export function resolveTelemetryEndpoint(
   env: Readonly<Record<string, string | undefined>>,
 ): string {
-  const override = env["PRISMA_TELEMETRY_ENDPOINT"];
+  const override = env.PRISMA_TELEMETRY_ENDPOINT;
   const base =
     override !== undefined && override.length > 0
       ? override

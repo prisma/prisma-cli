@@ -74,16 +74,13 @@ export function isParentToSenderPayload(
     return false;
   }
   const record = value as Record<string, unknown>;
-  if (!isNonEmptyString(record["installationId"])) return false;
-  if (!isNonEmptyString(record["version"])) return false;
-  if (!isNonEmptyString(record["command"])) return false;
-  if (!isStringArray(record["flags"])) return false;
-  if (!isNonEmptyString(record["projectRoot"])) return false;
-  if (!isNonEmptyString(record["endpoint"])) return false;
-  if (
-    "databaseTarget" in record &&
-    typeof record["databaseTarget"] !== "string"
-  ) {
+  if (!isNonEmptyString(record.installationId)) return false;
+  if (!isNonEmptyString(record.version)) return false;
+  if (!isNonEmptyString(record.command)) return false;
+  if (!isStringArray(record.flags)) return false;
+  if (!isNonEmptyString(record.projectRoot)) return false;
+  if (!isNonEmptyString(record.endpoint)) return false;
+  if ("databaseTarget" in record && typeof record.databaseTarget !== "string") {
     return false;
   }
   return true;

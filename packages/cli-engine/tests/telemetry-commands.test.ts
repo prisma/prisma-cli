@@ -256,13 +256,18 @@ describe("telemetry disable", () => {
 
 describe("an env that names no config directory", () => {
   it("fails each command with one structured error instead of guessing a location", async () => {
-    for (const argv of [
-      ["telemetry", "status"],
-      ["telemetry", "enable"],
-      ["telemetry", "disable"],
-    ]) {
-      const result = await run([...argv, "--json"], { env: {} });
+    const runs = await Promise.all(
+      [
+        ["telemetry", "status"],
+        ["telemetry", "enable"],
+        ["telemetry", "disable"],
+      ].map(async (argv) => ({
+        argv,
+        result: await run([...argv, "--json"], { env: {} }),
+      })),
+    );
 
+    for (const { argv, result } of runs) {
       expect(result.exitCode, argv.join(" ")).toBe(2);
       expect(JSON.stringify(result.json), argv.join(" ")).toContain(
         "CLI.TELEMETRY_PREFERENCE_UNAVAILABLE",

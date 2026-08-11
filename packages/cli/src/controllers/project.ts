@@ -762,39 +762,53 @@ async function resolveTransferRecipient(
   }
 
   if (!isRealMode(context)) {
-    const workspaces = context.api.listWorkspaces();
-    const matches = workspaces.filter(
-      (candidate) =>
-        candidate.id === workspaceRef ||
-        candidate.name.toLowerCase() === workspaceRef.toLowerCase(),
-    );
-    const match = matches[0];
-    if (match === undefined) {
-      throw workspaceNotAuthenticatedError(workspaceRef);
-    }
-    if (matches.length > 1) {
-      throw workspaceAmbiguousError(
-        workspaceRef,
-        matches.map((match) => ({
-          id: match.id,
-          name: match.name,
-          credentialWorkspaceId: match.id,
-        })),
-      );
-    }
-    return {
-      // Fixture transfers authorize by workspace id instead of a real token.
-      accessToken: match.id,
-      workspaceId: match.id,
-      workspaceName: match.name,
-      source: "workspace-session",
-    };
+    return resolveTransferRecipientInFixtureMode(context, workspaceRef);
   }
 
   if (context.runtime.env[SERVICE_TOKEN_ENV_VAR] !== undefined) {
     throw transferRecipientUnavailableError(formatCommand);
   }
 
+  return resolveTransferRecipientFromWorkspaceSession(context, workspaceRef);
+}
+
+function resolveTransferRecipientInFixtureMode(
+  context: CommandContext,
+  workspaceRef: string,
+): ResolvedTransferRecipient {
+  const workspaces = context.api.listWorkspaces();
+  const matches = workspaces.filter(
+    (candidate) =>
+      candidate.id === workspaceRef ||
+      candidate.name.toLowerCase() === workspaceRef.toLowerCase(),
+  );
+  const match = matches[0];
+  if (match === undefined) {
+    throw workspaceNotAuthenticatedError(workspaceRef);
+  }
+  if (matches.length > 1) {
+    throw workspaceAmbiguousError(
+      workspaceRef,
+      matches.map((match) => ({
+        id: match.id,
+        name: match.name,
+        credentialWorkspaceId: match.id,
+      })),
+    );
+  }
+  return {
+    // Fixture transfers authorize by workspace id instead of a real token.
+    accessToken: match.id,
+    workspaceId: match.id,
+    workspaceName: match.name,
+    source: "workspace-session",
+  };
+}
+
+async function resolveTransferRecipientFromWorkspaceSession(
+  context: CommandContext,
+  workspaceRef: string,
+): Promise<ResolvedTransferRecipient> {
   try {
     const session = await resolveRecipientWorkspaceSession(
       workspaceRef,
@@ -808,24 +822,31 @@ async function resolveTransferRecipient(
       source: "workspace-session",
     };
   } catch (error) {
-    if (error instanceof WorkspaceSelectionError) {
-      if (error.reason === "ambiguous") {
-        throw workspaceAmbiguousError(
-          error.workspaceRef ?? workspaceRef,
-          error.matches.map((match) => ({
-            id: match.id,
-            name: match.name,
-            credentialWorkspaceId: match.credentialWorkspaceId,
-          })),
-        );
-      }
-      throw workspaceNotAuthenticatedError(error.workspaceRef ?? workspaceRef);
-    }
-    if (error instanceof RecipientSessionInvalidError) {
-      throw workspaceNotAuthenticatedError(error.workspaceRef);
-    }
-    throw error;
+    throw recipientWorkspaceSessionFailure(error, workspaceRef);
   }
+}
+
+function recipientWorkspaceSessionFailure(
+  error: unknown,
+  workspaceRef: string,
+): unknown {
+  if (error instanceof WorkspaceSelectionError) {
+    if (error.reason === "ambiguous") {
+      return workspaceAmbiguousError(
+        error.workspaceRef ?? workspaceRef,
+        error.matches.map((match) => ({
+          id: match.id,
+          name: match.name,
+          credentialWorkspaceId: match.credentialWorkspaceId,
+        })),
+      );
+    }
+    return workspaceNotAuthenticatedError(error.workspaceRef ?? workspaceRef);
+  }
+  if (error instanceof RecipientSessionInvalidError) {
+    return workspaceNotAuthenticatedError(error.workspaceRef);
+  }
+  return error;
 }
 
 interface ProjectMutationContext {

@@ -190,6 +190,7 @@ async function hydrateLocalAuthWorkspaces(
     );
     if (!tokens) continue;
 
+    // biome-ignore lint/performance/noAwaitInLoops: rememberResolvedWorkspaceMetadata below rewrites the one shared auth file, reading it and writing it back; resolving workspaces at once would let those writes clobber each other.
     const resolved = await resolveOAuthWorkspaceMetadata(context, tokens);
     if (!resolved) continue;
 

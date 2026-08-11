@@ -160,7 +160,7 @@ function spawnSender(options: {
  */
 function childEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return {
-    PATH: process.env["PATH"],
+    PATH: process.env.PATH,
     ...extra,
   };
 }

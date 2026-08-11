@@ -1660,6 +1660,42 @@ describe("app deploy branch database setup", () => {
     expect(signal.schema?.path).toBe(path.join(cwd, "prisma/schema.prisma"));
   });
 
+  it("scans directory entries in code unit order, which no locale can reorder", async () => {
+    const { createTempCwd } = await import("./helpers");
+    const { inspectBranchDatabaseSignal } = await import(
+      "../src/lib/app/branch-database"
+    );
+    const cwd = await createTempCwd();
+    await writeFile(path.join(cwd, "a.ts"), "process.env.DATABASE_URL\n");
+    await writeFile(path.join(cwd, "B.ts"), "process.env.DATABASE_URL\n");
+
+    const signal = await inspectBranchDatabaseSignal(
+      cwd,
+      new AbortController().signal,
+    );
+
+    expect(signal.databaseUrlReferences).toEqual(["B.ts", "a.ts"]);
+  });
+
+  it("breaks a tie between equally short schema paths in code unit order", async () => {
+    const { createTempCwd } = await import("./helpers");
+    const { inspectBranchDatabaseSignal } = await import(
+      "../src/lib/app/branch-database"
+    );
+    const cwd = await createTempCwd();
+    await mkdir(path.join(cwd, "a"), { recursive: true });
+    await mkdir(path.join(cwd, "B"), { recursive: true });
+    await writeFile(path.join(cwd, "a/schema.prisma"), "");
+    await writeFile(path.join(cwd, "B/schema.prisma"), "");
+
+    const signal = await inspectBranchDatabaseSignal(
+      cwd,
+      new AbortController().signal,
+    );
+
+    expect(signal.schema?.path).toBe(path.join(cwd, "B/schema.prisma"));
+  });
+
   it("ignores installed agent skills when scanning for DATABASE_URL references", async () => {
     const { createTempCwd } = await import("./helpers");
     const { hasBranchDatabaseSignal, inspectBranchDatabaseSignal } =

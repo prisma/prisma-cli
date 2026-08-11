@@ -473,6 +473,73 @@ export class EngineImpl implements Engine {
     }
   }
 
+  /** The refusals a maySpawn command can hit before anything runs: a
+   *  child's terminal output cannot be framed as a json stream, and a
+   *  host that mounts the command without a spawn adapter is
+   *  misconfigured. Returns whether the run was settled here. */
+  private refuseUnspawnable(
+    invocation: Invocation,
+    entry: CommandTreeEntry,
+  ): boolean {
+    const state = invocation.state;
+    if (!entry.def.maySpawn) {
+      return false;
+    }
+    if (formatFlagGiven(state.argv) === "json") {
+      state.format = "human";
+      settleErrored(invocation, jsonUnsupportedError(entry.id));
+      return true;
+    }
+    if (invocation.runtime.spawn === undefined) {
+      // The run is doomed, and refuses here, before the needs check,
+      // rather than mid-handler after side effects.
+      state.format = "human";
+      settleBug(
+        invocation,
+        new Error(
+          `@prisma/cli-engine: command '${entry.id}' declares maySpawn but the Runtime supplies no spawn adapter`,
+        ),
+      );
+      return true;
+    }
+    return false;
+  }
+
+  /** Every mounted handler settles the same way: an abandoned child
+   *  wins over the handler's own outcome, a failure settles errored, a
+   *  child-status value settles as that child's exit, and any other
+   *  value is the command's own completion. */
+  private async settleHandlerOutcome<T>(
+    invocation: Invocation,
+    entry: CommandTreeEntry,
+    runHandler: () => Promise<
+      Result<T | ChildStatusSettlement, CliStructuredError>
+    >,
+    settleCompletion: (value: T) => void,
+  ): Promise<void> {
+    const state = invocation.state;
+    try {
+      const result = await runHandler();
+      if (await this.settleAbandonedChild(invocation, false)) {
+        return;
+      }
+      state.resolved = true;
+      if (!result.ok) {
+        settleErrored(invocation, result.failure, result.failure.diagnostics);
+      } else if (isChildStatusSettlement(result.value)) {
+        settleChildStatus(invocation, entry.def, result.value);
+      } else {
+        settleCompletion(result.value);
+      }
+    } catch (cause) {
+      if (await this.settleAbandonedChild(invocation, true, cause)) {
+        return;
+      }
+      state.resolved = true;
+      settleThrown(invocation, cause);
+    }
+  }
+
   /** The telemetry fire, at command start: once per run, from the
    *  parse-time snapshot, before the handler and before any command
    *  output. A CLI that declared no telemetry block reports nothing —
@@ -512,22 +579,7 @@ export class EngineImpl implements Engine {
       await this.executeServer(invocation, entry, rawFlags);
       return;
     }
-    if (entry.def.maySpawn && formatFlagGiven(state.argv) === "json") {
-      state.format = "human";
-      settleErrored(invocation, jsonUnsupportedError(entry.id));
-      return;
-    }
-    if (entry.def.maySpawn && invocation.runtime.spawn === undefined) {
-      // A host that mounts a maySpawn command and supplies no adapter
-      // is misconfigured; the run is doomed and refuses here, before
-      // the needs check, rather than mid-handler after side effects.
-      state.format = "human";
-      settleBug(
-        invocation,
-        new Error(
-          `@prisma/cli-engine: command '${entry.id}' declares maySpawn but the Runtime supplies no spawn adapter`,
-        ),
-      );
+    if (this.refuseUnspawnable(invocation, entry)) {
       return;
     }
     let needsOutcome: NeedsOutcome;
@@ -562,48 +614,20 @@ export class EngineImpl implements Engine {
       entry.def.kind === "result-command" && entry.def.managesCredentials,
     );
     if (entry.def.kind === "session-command") {
-      try {
-        const result = await (handler as ErasedSessionHandler)(args, ctx);
-        if (await this.settleAbandonedChild(invocation, false)) {
-          return;
-        }
-        state.resolved = true;
-        if (!result.ok) {
-          settleErrored(invocation, result.failure, result.failure.diagnostics);
-        } else if (isChildStatusSettlement(result.value)) {
-          settleChildStatus(invocation, entry.def, result.value);
-        } else {
-          settleSessionCompleted(invocation);
-        }
-      } catch (cause) {
-        if (await this.settleAbandonedChild(invocation, true, cause)) {
-          return;
-        }
-        state.resolved = true;
-        settleThrown(invocation, cause);
-      }
+      await this.settleHandlerOutcome<undefined>(
+        invocation,
+        entry,
+        () => (handler as ErasedSessionHandler)(args, ctx),
+        () => settleSessionCompleted(invocation),
+      );
       return;
     }
-    try {
-      const result = await (handler as ErasedHandler)(args, ctx);
-      if (await this.settleAbandonedChild(invocation, false)) {
-        return;
-      }
-      state.resolved = true;
-      if (!result.ok) {
-        settleErrored(invocation, result.failure, result.failure.diagnostics);
-      } else if (isChildStatusSettlement(result.value)) {
-        settleChildStatus(invocation, entry.def, result.value);
-      } else {
-        settleCompleted(invocation, entry.def, result.value);
-      }
-    } catch (cause) {
-      if (await this.settleAbandonedChild(invocation, true, cause)) {
-        return;
-      }
-      state.resolved = true;
-      settleThrown(invocation, cause);
-    }
+    await this.settleHandlerOutcome<PresentedResult<unknown>>(
+      invocation,
+      entry,
+      () => (handler as ErasedHandler)(args, ctx),
+      (presented) => settleCompleted(invocation, entry.def, presented),
+    );
   }
 
   /** The handler resolved or threw with its child still live. The

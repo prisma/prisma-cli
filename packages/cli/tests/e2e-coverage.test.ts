@@ -90,9 +90,17 @@ async function mountedCommands(): Promise<string[]> {
 
 async function coveredCommands(): Promise<Map<string, string[]>> {
   const entries = await readdir(E2E_DIR);
+  const suites = await Promise.all(
+    entries
+      .filter((name) => name.endsWith(".e2e.ts"))
+      .map(async (entry) => ({
+        entry,
+        source: await readFile(path.join(E2E_DIR, entry), "utf8"),
+      })),
+  );
+
   const covered = new Map<string, string[]>();
-  for (const entry of entries.filter((name) => name.endsWith(".e2e.ts"))) {
-    const source = await readFile(path.join(E2E_DIR, entry), "utf8");
+  for (const { entry, source } of suites) {
     for (const match of source.matchAll(/describeCommand\(\s*"([^"]+)"/g)) {
       const command = match[1] as string;
       covered.set(command, [...(covered.get(command) ?? []), entry]);

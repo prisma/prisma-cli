@@ -149,8 +149,8 @@ describe("readUserConfig", () => {
       JSON.stringify({ someFutureField: "opaque", nested: { foo: "bar" } }),
     );
     const config = readUserConfig(env);
-    expect(config["someFutureField"]).toBe("opaque");
-    expect(config["nested"]).toEqual({ foo: "bar" });
+    expect(config.someFutureField).toBe("opaque");
+    expect(config.nested).toEqual({ foo: "bar" });
   });
 });
 

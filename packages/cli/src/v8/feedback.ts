@@ -2,19 +2,20 @@ import type { Presentations } from "@prisma/cli-engine";
 import { defineCommand, flag, positional } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../cli-name";
+import {
+  FEEDBACK_TIMEOUT_MS,
+  unreachableDetail,
+  unreadableBodyDetail,
+} from "../lib/feedback";
 import { getCliVersion } from "../lib/version";
 
 const DEFAULT_FEEDBACK_ENDPOINT =
   "https://hiieirp2pwqnjvq9axzyg6d0.fra.prisma.build/feedback";
-// Feedback must never feel slower than the thought it carries; a service
-// that cannot answer quickly is treated as unavailable.
-const FEEDBACK_TIMEOUT_MS = 3_000;
 // Mirrors the feedback service's own limits so refusals happen before the
 // network round trip.
 const MAX_MESSAGE_LENGTH = 4_000;
 const MAX_EMAIL_LENGTH = 320;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const TIMEOUT_DETAIL = `The feedback service did not answer within ${FEEDBACK_TIMEOUT_MS / 1000} seconds.`;
 
 interface FeedbackContext {
   cliVersion: string;
@@ -128,14 +129,13 @@ async function readServiceError(
     : "";
 }
 
-async function postFeedback(
+async function sendFeedback(
   endpoint: string,
   body: Record<string, unknown>,
   signal: AbortSignal,
-): Promise<string | null> {
-  let response: Response;
+): Promise<Response> {
   try {
-    response = await fetch(endpoint, {
+    return await fetch(endpoint, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -151,19 +151,14 @@ async function postFeedback(
     if (signal.aborted) {
       throw error;
     }
-    throw sendFailedError(
-      error instanceof Error && error.name === "TimeoutError"
-        ? TIMEOUT_DETAIL
-        : `The feedback service could not be reached${error instanceof Error && error.cause instanceof Error ? ` (${error.cause.message})` : ""}.`,
-    );
+    throw sendFailedError(unreachableDetail(error));
   }
+}
 
-  if (!response.ok) {
-    throw sendFailedError(
-      `The feedback service responded with HTTP ${response.status}${await readServiceError(response, signal)}.`,
-    );
-  }
-
+async function readSubmissionId(
+  response: Response,
+  signal: AbortSignal,
+): Promise<string | null> {
   // The body read runs under the same abort signal as the request, so a
   // stalled response or a user cancellation here must not be mistaken for a
   // fully received non-JSON body.
@@ -175,16 +170,28 @@ async function postFeedback(
       throw error;
     }
     if (!(error instanceof SyntaxError)) {
-      throw sendFailedError(
-        error instanceof Error && error.name === "TimeoutError"
-          ? TIMEOUT_DETAIL
-          : "The feedback service response could not be read.",
-      );
+      throw sendFailedError(unreadableBodyDetail(error));
     }
     // The body arrived but was not JSON; the submission itself succeeded.
     payload = null;
   }
   return typeof payload?.id === "string" ? payload.id : null;
+}
+
+async function postFeedback(
+  endpoint: string,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const response = await sendFeedback(endpoint, body, signal);
+
+  if (!response.ok) {
+    throw sendFailedError(
+      `The feedback service responded with HTTP ${response.status}${await readServiceError(response, signal)}.`,
+    );
+  }
+
+  return readSubmissionId(response, signal);
 }
 
 export const feedbackCommand = defineCommand({
