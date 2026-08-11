@@ -1502,11 +1502,13 @@ describe("prisma-v8 postgres backup list", () => {
         ["bkp_2", "unknown", "unknown", "unknown", "unknown"],
       ],
     });
-    // The table renders 2048 bytes as "2.0 KiB" for a reader; stdout
-    // carries the byte count, because "2.0 KiB" will not parse back.
+    // Every human affordance in the table above is absent here: 2048
+    // rather than "2.0 KiB", which will not parse back, and empty
+    // fields rather than "unknown", which a consumer cannot tell from a
+    // backup whose type really is that word.
     expect(result.presented?.presentation.stdout).toEqual([
       "bkp_1\tautomatic\tavailable\t2048\t2026-06-01T00:00:00.000Z",
-      "bkp_2\tunknown\tunknown\t\t",
+      "bkp_2\t\t\t\t",
     ]);
   });
 

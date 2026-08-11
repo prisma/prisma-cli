@@ -57,8 +57,8 @@ export function backupRows(
 ): string[][] {
   return backups.map((backup) => [
     backup.id,
-    backup.backupType,
-    backup.status,
+    backup.backupType || "unknown",
+    backup.status || "unknown",
     formatBackupSize(backup.size),
     backup.createdAt || "unknown",
   ]);

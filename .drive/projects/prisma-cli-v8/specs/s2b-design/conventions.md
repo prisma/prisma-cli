@@ -259,18 +259,25 @@ out of contract.
   exists. stdout carries the bare key; anything needing the source uses
   `--json`, which carries the whole record. Check every list command's
   stdout rows against this, not just the one that was caught.
-  What this rule deliberately does NOT reach, checked and left alone
-  2026-08-11: `postgres backup list` prints a size as `2.0 KiB`, which a
-  consumer cannot turn back into 2048, and `postgres list` puts
-  `isDefault` in the status cell when `status` is null, so that column
-  means different things on different rows. Neither glues two facts into
-  one cell, so neither is what this amendment is about — but both are
-  the same kind of unhelpful to a pipe consumer. Making stdout carry
-  machine-readable values everywhere is a larger decision than this
-  amendment: it reaches sizes, timestamps and status columns across
-  every group, and `--json` already exists as the lossless lane. Left
-  for the operator rather than settled by an implementer's judgement or
-  an orchestrator's at three in the morning.
+  **This was never an open question, and treating it as one was an
+  error.** The Option A channel ruling (2026-08-09, recorded in
+  `../../assets/engine/whoami-parity-divergences.md`) already settles
+  it: "human Blocks are presentation prose on stderr; the
+  `Presentations.stdout` payload lines are the machine-usable payload
+  and are always written to stdout in human mode — that is what the
+  surface is for. Human mode is pipe-clean." So the rule is not merely
+  "do not glue two facts together" — it is that stdout carries values a
+  program can consume, and every human affordance stays on the human
+  side.
+
+  Concretely, none of these belong in a stdout row: a size rendered as
+  `2.0 KiB`, which will not parse back to 2048; the placeholders
+  `unknown`, `unscoped`, `none` and `default`, which a consumer cannot
+  tell from a real value of the same text; and a column whose meaning
+  changes by row, as `postgres list`'s status does when it falls back to
+  `isDefault`. An absent value is an empty field. The human table keeps
+  its formatting and its placeholders; where the two differ, the
+  command builds two sets of rows, as `project env list` already does.
 - **Cancellation is never remapped (amended 2026-08-11).** A handler
   that wraps a rejected operation in a mapped error must first rethrow
   when `ctx.signal.aborted`, so a cancelled run settles as cancelled

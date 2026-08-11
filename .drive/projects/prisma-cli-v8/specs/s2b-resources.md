@@ -125,17 +125,17 @@ deletion (S2d); auto-login reinstatement (ledger Q1); command aliases
       the per-dispatch review rounds and the closure architect and
       principal-engineer passes run, with every finding dispositioned.
 
-Two things this slice records rather than fixes, both for the operator.
-A third — `project list` reporting an empty workspace at exit 0 when the
-API rejected the request — was recorded first and then fixed on the
-operator's ruling of 2026-08-11, because reporting a refusal as a
-success is not a behaviour anyone chose; see divergence 46. The two
-that remain: `git connect`
-declares `needs.interaction`, so non-interactive runs fail before any
-API call even when no wait would have been needed; and the stdout lane
-still carries two human-formatted values that a pipe consumer cannot
-use — a backup size as `2.0 KiB` and a status column that holds
-`isDefault` when the status is null. The decorated-key case that
-prompted the check is fixed; these two are a broader question about
-whether stdout is a machine lane or a mirror of the human table, which
-reaches every group and wants deciding rather than patching.
+One thing this slice records rather than fixes, for the operator:
+`git connect` declares `needs.interaction`, so non-interactive runs fail
+before any API call even when no waiting would have been needed.
+
+Two others were recorded here first and then fixed, both because
+recording them was the wrong call. `project list` reported an empty
+workspace at exit 0 when the API rejected the request — a refusal
+reported as a success is not a behaviour anyone chose (divergence 46).
+And the stdout lane carried human formatting — sizes as `2.0 KiB`,
+placeholders like `unknown` and `unscoped` — which the Option A channel
+ruling of 2026-08-09 had already settled: stdout is the machine-usable
+payload and human mode is pipe-clean. That ruling was in the normative
+stack the whole time; presenting it as an open question was an error,
+not a judgement call.
