@@ -151,6 +151,7 @@ function parseResultFrame(stdout: string): ResultEnvelope {
 export class E2eSession {
   readonly #credentials: E2eCredentials;
   readonly #home: string;
+  readonly #workdirs: string[] = [];
 
   private constructor(credentials: E2eCredentials, home: string) {
     this.#credentials = credentials;
@@ -163,13 +164,22 @@ export class E2eSession {
   }
 
   async close(): Promise<void> {
-    await rm(this.#home, { recursive: true, force: true });
+    await Promise.all(
+      [this.#home, ...this.#workdirs].map((directory) =>
+        rm(directory, { recursive: true, force: true }),
+      ),
+    );
+    this.#workdirs.length = 0;
   }
 
   /** A throwaway working directory, so `.prisma/local.json` written by
-   *  one test cannot change what another test resolves. */
+   *  one test cannot change what another test resolves. Tracked so that
+   *  close() takes them with it — several suites call this per test, and
+   *  each one left a directory holding a project pin behind. */
   async workdir(): Promise<string> {
-    return mkdtemp(path.join(os.tmpdir(), "prisma-e2e-cwd-"));
+    const created = await mkdtemp(path.join(os.tmpdir(), "prisma-e2e-cwd-"));
+    this.#workdirs.push(created);
+    return created;
   }
 
   async run(
@@ -211,6 +221,16 @@ export class E2eSession {
         killed?: boolean;
       };
       if (spawned.stdout === undefined) throw failure;
+      // A timed-out child was killed, so its output stops mid-stream and
+      // carries no result frame. Left alone that surfaces as "no
+      // terminal result frame", which blames the CLI for the clock.
+      if (spawned.killed === true) {
+        const limit = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+        throw new Error(
+          `\`${argv.join(" ")}\` was killed after ${limit}ms\n` +
+            `${(spawned.stderr ?? "").slice(0, 2000)}`,
+        );
+      }
       stdout = spawned.stdout;
       stderr = spawned.stderr ?? "";
       exitCode = typeof spawned.code === "number" ? spawned.code : 1;
@@ -230,11 +250,29 @@ export class E2eSession {
 
 /** Names every resource this run creates, so cleanup can recognise its
  *  own litter and a stray failure can never delete something a human
- *  made. `e2e-` is the only prefix cleanup will ever remove. */
+ *  made. These are the only prefixes cleanup will ever remove. */
+export const SCRATCH_PREFIX = "e2e-";
+
+/** The same marker for resources that reject hyphens — a Postgres
+ *  database name among them. Anything sweeping a workspace for leftovers
+ *  has to look for both forms, so both live here rather than being
+ *  spelled out at a call site. */
+export const SCRATCH_PREFIX_UNDERSCORE = "e2e_";
+
 export function scratchName(label: string): string {
   const stamp = Date.now().toString(36);
   const salt = Math.random().toString(36).slice(2, 8);
-  return `e2e-${label}-${stamp}-${salt}`;
+  return `${SCRATCH_PREFIX}${label}-${stamp}-${salt}`;
 }
 
-export const SCRATCH_PREFIX = "e2e-";
+/** `scratchName` in the underscore form, still recognisable as ours. */
+export function scratchDatabaseName(label: string): string {
+  return scratchName(label).replaceAll("-", "_");
+}
+
+export function isScratchName(name: string): boolean {
+  return (
+    name.startsWith(SCRATCH_PREFIX) ||
+    name.startsWith(SCRATCH_PREFIX_UNDERSCORE)
+  );
+}

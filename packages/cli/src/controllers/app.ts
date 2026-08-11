@@ -3551,7 +3551,7 @@ async function resolveDeployProjectContext(
 
   const localPin = options.localPin;
   if (localPin.kind === "present") {
-    if (localPin.pin.workspaceId !== workspace.id) {
+    if (!sameWorkspaceId(localPin.pin.workspaceId, workspace.id)) {
       throw localProjectWorkspaceMismatchError({
         pinnedWorkspaceId: localPin.pin.workspaceId,
         pinnedProjectId: localPin.pin.projectId,

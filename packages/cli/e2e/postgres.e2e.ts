@@ -5,7 +5,7 @@
  */
 import { expect, it } from "vitest";
 
-import { scratchName } from "./harness";
+import { scratchDatabaseName, scratchName } from "./harness";
 import { useScratchProject } from "./scratch";
 import { describeCommand } from "./suite";
 
@@ -38,7 +38,7 @@ describeCommand("postgres create", () => {
     const run = await scratch.run([
       "postgres",
       "create",
-      scratchName("db").replaceAll("-", "_"),
+      scratchDatabaseName("db"),
     ]);
     const created = run.envelope.result as {
       readonly database: { readonly id: string; readonly name: string };

@@ -714,7 +714,7 @@ async function readImplicitLocalPin(
   const localPin = localPinResult.value;
   if (
     localPin.kind === "present" &&
-    localPin.pin.workspaceId !== options.workspace.id
+    !sameWorkspaceId(localPin.pin.workspaceId, options.workspace.id)
   ) {
     return Result.err(
       new LocalProjectWorkspaceMismatchError({

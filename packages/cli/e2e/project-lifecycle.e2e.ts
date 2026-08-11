@@ -147,15 +147,29 @@ describeCommand("project remove", () => {
       .envelope.result as { readonly project: { readonly id: string } };
     const id = created.project.id;
 
-    const run = await cli.run(["project", "remove", id, "--confirm", id], {
-      cwd,
-    });
-    expect(run.envelope.ok).toBe(true);
+    // This project is created outside useScratchProject, so nothing else
+    // will clean it up. Without the finally, an assertion failing between
+    // here and the removal leaves it in the real workspace for good.
+    let removed = false;
+    try {
+      const run = await cli.run(["project", "remove", id, "--confirm", id], {
+        cwd,
+      });
+      expect(run.envelope.ok).toBe(true);
+      removed = true;
 
-    const remaining = (await cli.run(["project", "list"], { cwd })).envelope
-      .result as {
-      readonly items: ReadonlyArray<{ readonly id: string }>;
-    };
-    expect(remaining.items.map((item) => item.id)).not.toContain(id);
+      const remaining = (await cli.run(["project", "list"], { cwd })).envelope
+        .result as {
+        readonly items: ReadonlyArray<{ readonly id: string }>;
+      };
+      expect(remaining.items.map((item) => item.id)).not.toContain(id);
+    } finally {
+      if (!removed) {
+        await cli.run(["project", "remove", id, "--confirm", id], {
+          cwd,
+          expectOk: false,
+        });
+      }
+    }
   });
 });

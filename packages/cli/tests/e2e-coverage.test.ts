@@ -75,6 +75,13 @@ async function mountedCommands(): Promise<string[]> {
     throw new Error(`could not find mountedCommands in ${CLI_SOURCE}`);
   }
   const end = source.indexOf("\n};", start);
+  if (end === -1) {
+    throw new Error(
+      `could not find the end of mountedCommands in ${CLI_SOURCE}. Without ` +
+        "it the scan runs to the end of the file and reports every other " +
+        "object literal's keys as commands.",
+    );
+  }
   const block = source.slice(start + marker.length, end);
   return [...block.matchAll(/^\s*"([^"]+)":/gm)].map(
     (match) => match[1] as string,

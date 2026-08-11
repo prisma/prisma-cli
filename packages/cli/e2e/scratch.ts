@@ -9,7 +9,7 @@
 import { afterAll, beforeAll } from "vitest";
 
 import type { CliRun, RunOptions } from "./harness";
-import { SCRATCH_PREFIX, scratchName } from "./harness";
+import { isScratchName, scratchName } from "./harness";
 import { session } from "./suite";
 
 export interface ScratchProject {
@@ -47,18 +47,31 @@ export function useScratchProject(label: string): ScratchHandle {
 
   afterAll(async () => {
     if (created === undefined) return;
-    if (!created.name.startsWith(SCRATCH_PREFIX)) {
+    if (!isScratchName(created.name)) {
       throw new Error(
         `refusing to remove "${created.name}": not an e2e scratch project`,
       );
     }
     // Removal is permanent, so the CLI demands the project id back as
     // consent; --yes deliberately cannot grant it.
+    //
+    // The run must not throw — a teardown failure would mask whatever
+    // the test itself found — but it must not go unrecorded either. A
+    // silent failure leaves the project in the real workspace, and each
+    // failing run adds another.
     const cli = await session();
-    await cli.run(["project", "remove", created.id, "--confirm", created.id], {
-      cwd: created.cwd,
-      expectOk: false,
-    });
+    const removal = await cli.run(
+      ["project", "remove", created.id, "--confirm", created.id],
+      { cwd: created.cwd, expectOk: false },
+    );
+    if (!removal.envelope.ok) {
+      console.warn(
+        `e2e teardown could not remove ${created.name} (${created.id}): ` +
+          `${removal.envelope.error?.code ?? "(no code)"} — ` +
+          `${removal.envelope.error?.summary ?? "(no summary)"}. ` +
+          "It is still in the workspace and needs removing by hand.",
+      );
+    }
   });
 
   const project = () => {
