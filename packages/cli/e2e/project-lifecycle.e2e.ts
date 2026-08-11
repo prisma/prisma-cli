@@ -11,7 +11,7 @@ import path from "node:path";
 import { expect, it } from "vitest";
 
 import { scratchName } from "./harness";
-import { useScratchProject } from "./scratch";
+import { removeScratchProject, useScratchProject } from "./scratch";
 import { describeCommand, session } from "./suite";
 
 const scratch = useScratchProject("lifecycle");
@@ -165,10 +165,7 @@ describeCommand("project remove", () => {
       expect(remaining.items.map((item) => item.id)).not.toContain(id);
     } finally {
       if (!removed) {
-        await cli.run(["project", "remove", id, "--confirm", id], {
-          cwd,
-          expectOk: false,
-        });
+        await removeScratchProject(cli, { id, name, cwd });
       }
     }
   });

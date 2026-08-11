@@ -20,6 +20,40 @@ export interface ScratchProject {
   readonly cwd: string;
 }
 
+/**
+ * Removes a project created by a test, reporting every way it can fail
+ * and raising none of them. Shared so that no cleanup path has to
+ * remember this on its own.
+ */
+export async function removeScratchProject(
+  cli: {
+    run: (args: readonly string[], options?: RunOptions) => Promise<CliRun>;
+  },
+  project: { readonly id: string; readonly name: string; readonly cwd: string },
+): Promise<void> {
+  const stranded = (detail: string) =>
+    console.warn(
+      `e2e teardown could not remove ${project.name} (${project.id}): ` +
+        `${detail}. It is still in the workspace and needs removing by hand.`,
+    );
+  try {
+    const removal = await cli.run(
+      ["project", "remove", project.id, "--confirm", project.id],
+      { cwd: project.cwd, expectOk: false },
+    );
+    if (!removal.envelope.ok) {
+      stranded(
+        `${removal.envelope.error?.code ?? "(no code)"} — ` +
+          `${removal.envelope.error?.summary ?? "(no summary)"}`,
+      );
+    }
+  } catch (failure) {
+    // A timeout or an unreadable stream lands here rather than in the
+    // envelope, and must not escape a teardown.
+    stranded(failure instanceof Error ? failure.message : String(failure));
+  }
+}
+
 export interface ScratchHandle {
   project: () => ScratchProject;
   /** Runs the CLI in the linked working directory. */
@@ -55,23 +89,13 @@ export function useScratchProject(label: string): ScratchHandle {
     // Removal is permanent, so the CLI demands the project id back as
     // consent; --yes deliberately cannot grant it.
     //
-    // The run must not throw — a teardown failure would mask whatever
-    // the test itself found — but it must not go unrecorded either. A
-    // silent failure leaves the project in the real workspace, and each
-    // failing run adds another.
+    // Teardown must not throw — that would mask whatever the test
+    // itself found — but it must not go unrecorded either: a silent
+    // failure leaves the project in the real workspace, and each failing
+    // run adds another. `expectOk: false` alone is not enough, because
+    // run() still throws on a timeout or an unreadable stream.
     const cli = await session();
-    const removal = await cli.run(
-      ["project", "remove", created.id, "--confirm", created.id],
-      { cwd: created.cwd, expectOk: false },
-    );
-    if (!removal.envelope.ok) {
-      console.warn(
-        `e2e teardown could not remove ${created.name} (${created.id}): ` +
-          `${removal.envelope.error?.code ?? "(no code)"} — ` +
-          `${removal.envelope.error?.summary ?? "(no summary)"}. ` +
-          "It is still in the workspace and needs removing by hand.",
-      );
-    }
+    await removeScratchProject(cli, created);
   });
 
   const project = () => {
