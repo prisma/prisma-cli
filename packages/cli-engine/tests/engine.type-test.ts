@@ -388,7 +388,17 @@ export const runtimeShape: Runtime = {
   onSignal: () => () => {},
   config: loadedConfig,
   managementApi: { baseUrl: "https://test.invalid" },
+};
+
+export const runtimeWithPackageManagerOverride: Runtime = {
+  ...runtimeShape,
   packageManager: "pnpm",
+};
+
+export const runtimeWithUnrecognizedPackageManager: Runtime = {
+  ...runtimeShape,
+  // @ts-expect-error detection always resolves a concrete manager, so there is no 'unknown'
+  packageManager: "unknown",
 };
 
 // —————————————————————————————————————————————————————————————————————

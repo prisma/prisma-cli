@@ -5,6 +5,9 @@
  * (needs.dependencies + ctx.requireDependency with the engine-phrased
  * install error).
  */
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   type Block,
   createCli,
@@ -394,9 +397,39 @@ describe("optional dependencies", () => {
       {
         kind: "run-command",
         label: `Install '${MISSING}'`,
-        command: `npm install ${MISSING}`,
+        command: `npm add ${MISSING}`,
       },
     ]);
+  });
+
+  test("with no host override the install command comes from the project at cwd", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "engine-needs-"));
+    try {
+      await writeFile(join(dir, "yarn.lock"), "");
+      const command = defineCommand({
+        help: { summary: "Unconditionally needs a missing dependency" },
+        needs: { dependencies: [MISSING] },
+        handler: async (_args, ctx) =>
+          ok(ctx.present({ data: null }, { human: () => [] })),
+      });
+      const cli = createTestCli({ commands: { command }, now: EPOCH });
+      const result = await cli.run(["command", "--json"], { cwd: dir });
+
+      const last = result.json[result.json.length - 1];
+      expect(
+        last.kind === "result" &&
+          !last.envelope.ok &&
+          last.envelope.error.nextActions,
+      ).toEqual([
+        {
+          kind: "run-command",
+          label: `Install '${MISSING}'`,
+          command: `yarn add ${MISSING}`,
+        },
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   test("needs.dependencies passes when every specifier resolves", async () => {
