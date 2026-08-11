@@ -220,7 +220,14 @@ async function readSortedDirectoryEntries(
     throw error;
   }
 
-  return entries.sort((left, right) => left.name.localeCompare(right.name));
+  return entries.sort((left, right) => compareCodeUnits(left.name, right.name));
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  if (left < right) {
+    return -1;
+  }
+  return left > right ? 1 : 0;
 }
 
 function isScannableDirectory(entry: Dirent): boolean {
@@ -339,7 +346,7 @@ function sortByPreferredRelativePath(
       if (right.relative === preferredRootFile) return 1;
       return (
         left.relative.length - right.relative.length ||
-        left.relative.localeCompare(right.relative)
+        compareCodeUnits(left.relative, right.relative)
       );
     })
     .map((candidate) => candidate.absolute);
