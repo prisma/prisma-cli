@@ -1,4 +1,4 @@
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Runtime } from "@prisma/cli-engine";
 import { describe, expect, it } from "vitest";
@@ -150,8 +150,10 @@ describe("assembleRuntime", () => {
     expect(runtime.isTty).toEqual({ stdin: true, stdout: true, stderr: false });
     expect(runtime.packageManager).toBe("pnpm");
     expect(runtime.managementApi).toEqual({ baseUrl: "https://api.prisma.io" });
+    // resolve, not join: the loader makes the path absolute, and on
+    // Windows that puts a drive on this cwd.
     expect(await runtime.loadConfig()).toEqual({
-      path: join("/tmp/v8-bin-test-cwd", "prisma.config.ts"),
+      path: join(resolve("/tmp/v8-bin-test-cwd"), "prisma.config.ts"),
       sections: {},
       diagnostics: [],
     });
