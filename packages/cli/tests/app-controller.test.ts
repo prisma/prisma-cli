@@ -5474,6 +5474,128 @@ describe("app controller", () => {
     expect(result.result.deployment.live).toBe(true);
   });
 
+  it("show-deploy believes the API live deployment id over a disagreeing cached one", async () => {
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
+    const showDeployment = vi.fn().mockResolvedValue({
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "dep_999",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://preview.prisma.app",
+        createdAt: "2026-04-11T12:00:00.000Z",
+        live: null,
+      },
+    });
+
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
+    }));
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps: vi.fn(),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment,
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppShowDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await context.stateStore.setKnownLiveDeployment(
+      "proj_123",
+      "app_1",
+      "dep_123",
+    );
+
+    const result = await runAppShowDeploy(context, "dep_123");
+
+    expect(result.result.deployment.live).toBe(false);
+  });
+
+  it("show-deploy falls back to the cached live deployment id when the API sends an empty one", async () => {
+    const authenticatedManagementApiClient = vi
+      .fn()
+      .mockResolvedValue(createProjectClient());
+    const showDeployment = vi.fn().mockResolvedValue({
+      app: {
+        id: "app_1",
+        name: "hello-world",
+        region: "eu-west-3",
+        liveDeploymentId: "",
+      },
+      deployment: {
+        id: "dep_123",
+        status: "running",
+        url: "https://preview.prisma.app",
+        createdAt: "2026-04-11T12:00:00.000Z",
+        live: null,
+      },
+    });
+
+    vi.doMock("../src/auth/guard", () => ({
+      authenticatedManagementApiClient,
+    }));
+    vi.doMock("../src/lib/app/app-provider", () => ({
+      createAppProvider: vi.fn(() =>
+        withBranchDatabaseProviderDefaults({
+          resolveBranch: createResolveBranch(),
+          listApps: vi.fn(),
+          deployApp: vi.fn(),
+          listDeployments: vi.fn(),
+          showDeployment,
+        }),
+      ),
+    }));
+
+    const { createTempCwd, createTestCommandContext } = await import(
+      "./helpers"
+    );
+    const { runAppShowDeploy } = await import("../src/controllers/app");
+    const cwd = await createTempCwd();
+    const stateDir = path.join(cwd, ".state");
+    const { context } = await createTestCommandContext({
+      cwd,
+      stateDir,
+      env: {
+        ...process.env,
+        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
+      },
+    });
+
+    await context.stateStore.setKnownLiveDeployment(
+      "proj_123",
+      "app_1",
+      "dep_123",
+    );
+
+    const result = await runAppShowDeploy(context, "dep_123");
+
+    expect(result.result.deployment.live).toBe(true);
+  });
+
   it("show-deploy ignores known live deployments from another workspace", async () => {
     const authenticatedManagementApiClient = vi
       .fn()
