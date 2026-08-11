@@ -108,7 +108,7 @@ The first and last of these bind across families: `createCli` validates the merg
 ## 4. Coordination
 
 - Lands in `packages/cli-engine`, ships in a published `@prisma/cli-engine` version; the ORM port consumes it only from the published package and its round is sequenced behind that publish (with a fallback: if unpublished when the port reaches it, the ORM ships without redirects and adds them in a follow-up — the port does not block on this).
-- Branch off `main`, PR into `main`, like every other slice in this project. The S3/Composer stream and the init/shell-retirement stream both have in-flight changes in `execution/command-tree.ts`, `execution/stricli-adapter.ts`, `execution/settlement.ts` and `execution/engine.ts`, so merge down from `main` before opening and expect conflicts in those four files. The package-manager capability (a sibling engine spec) lands independently; its surface is `defineCommand` and `Runtime`, which this PR does not touch.
+- The implementation branches off this document's branch (`spec/redirect-table`, PR #141) so the ruled contract travels with the code, and its PR stacks on #141 — retarget to `main` when #141 merges. The S3/Composer stream and the init/shell-retirement stream both have in-flight changes in `execution/command-tree.ts`, `execution/stricli-adapter.ts`, `execution/settlement.ts` and `execution/engine.ts`, so merge down from `main` before opening and expect conflicts in those four files. The package-manager capability (a sibling engine spec) lands independently; its surface is `defineCommand` and `Runtime`, which this PR does not touch.
 - Where this document and the shipped engine source disagree on existing mechanisms, follow the code's established patterns.
 
 ## 5. Acceptance
