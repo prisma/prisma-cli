@@ -33,6 +33,8 @@ const T0 = "1970-01-01T00:00:00.000Z";
 const RUNTIME_PACKAGES = ["prisma@latest", "@prisma/client@latest"];
 const TOOLING_PACKAGES = ["typescript@latest"];
 const SKILLS_PACKAGE = "@prisma/agent-skills";
+const PRIVATE_TARBALL = "https://ci:s3cret@registry.acme.dev/client.tgz";
+const REDACTED_TARBALL = "https://…@registry.acme.dev/client.tgz";
 
 const PNPM_RESOLUTION_FAILURES: readonly RegExp[] = [
   /ERR_PNPM_WORKSPACE_PKG_NOT_FOUND/,
@@ -152,6 +154,24 @@ const race = defineCommand({
   },
 });
 
+/**
+ * The same install pointed at a private registry: the specifier the user
+ * supplied carries the credential the manager needs to fetch it.
+ */
+const vendored = defineCommand({
+  help: { summary: "Install a dependency from a private registry" },
+  installsPackages: true,
+  handler: async (_args, ctx) => {
+    const installed = await ctx.packages.install({
+      packages: [PRIVATE_TARBALL],
+    });
+    if (!installed.ok) {
+      return notOk(installed.failure);
+    }
+    return ok(ctx.present({ data: null }, { human: () => [] }));
+  },
+});
+
 interface SeamCall {
   readonly file: string;
   readonly args: readonly string[];
@@ -190,7 +210,7 @@ function cliWith(spec: {
   readonly runner?: PackageManagerRunner;
 }) {
   return createTestCli({
-    commands: { init, race },
+    commands: { init, race, vendored },
     packageManager: spec.manager ?? "pnpm",
     packageManagerRunner: spec.runner,
     now: EPOCH,
@@ -374,8 +394,25 @@ describe("a manager that exited non-zero", () => {
         stderrTail: REDACTED_NPM_NOT_FOUND,
       },
     });
+  });
+
+  test("json mode: the credential in the specifier reaches the manager and no further, the remedy included", async () => {
+    const { calls, runner } = fakeManager(NPM_NOT_FOUND);
+
+    const result = await cliWith({ manager: "npm", runner }).run(
+      ["vendored", "--json"],
+      { cwd: "/project" },
+    );
+
+    expect(commandLine(calls[0])).toBe(`npm add ${PRIVATE_TARBALL}`);
     expect(errorOf(result.json).nextActions[0]?.command).toBe(
+      `npm add ${REDACTED_TARBALL}`,
+    );
+    expect(errorOf(result.json).nextActions[0]?.command).not.toBe(
       commandLine(calls[0]),
+    );
+    expect(errorOf(result.json).meta?.command).toBe(
+      errorOf(result.json).nextActions[0]?.command,
     );
   });
 

@@ -13,7 +13,7 @@ export type PackageManagerId = "npm" | "pnpm" | "yarn" | "bun" | "deno";
  *
  * Success carries nothing back: the command line stays with the engine,
  * which announces it, streams the manager's output under it, and puts
- * the runnable spelling on a failure's next action.
+ * the redacted spelling on a failure's next action.
  */
 export interface PackageOperations {
   /** Adds dependencies to the project. */
@@ -41,7 +41,8 @@ export interface PackageOperations {
 
 /**
  * One package-manager invocation: the pieces needed to spawn it, plus
- * the exact line to show the user.
+ * the same invocation as one shell-quoted line, which is redacted before
+ * anything shows it.
  */
 export interface PackageManagerCommand {
   readonly file: string;

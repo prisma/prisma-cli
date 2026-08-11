@@ -3,14 +3,8 @@ import { CliStructuredError } from "./protocol";
 
 interface PackageManagerOutcome {
   readonly manager: PackageManagerId;
-  /** The command line as the user is shown it: secrets redacted. */
+  /** The only spelling that leaves the engine: secrets redacted. */
   readonly command: string;
-  /**
-   * The same line with its secrets intact. The next action tells the
-   * user to run it themselves, so redacting it would hand them a
-   * command that does not work.
-   */
-  readonly runnableCommand: string;
   readonly exitCode: number;
   /** Bounded and redacted by the time it gets here. */
   readonly stderrTail: string;
@@ -55,7 +49,7 @@ export function packageManagerFailedError(
           label: installing
             ? "Run the install yourself"
             : "Run the command yourself",
-          command: failure.runnableCommand,
+          command: failure.command,
         },
       ],
       meta: {

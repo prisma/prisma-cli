@@ -223,11 +223,16 @@ The command line is announced before it runs, and the manager's own output
 is shown while it runs, so nothing happens the user cannot see — with any
 credentials in either stripped out, because being visible to the user must
 not mean being visible in a log or a `--json` stream. A failure comes back
-as a structured error whose remedy carries the command in full, secrets
-included, because a command offered for the user to run has to actually
-run. And the engine composes the command but never spawns it: execution
-belongs to the shell, so the engine holds no process-spawning machinery of
-its own.
+as a structured error whose remedy carries that same redacted command, not
+a runnable one: whoever put a credential into a package specifier still
+holds it and can supply it again, so printing it back to save them that
+step buys a moment's convenience and risks writing the credential
+permanently into a CI log, where it cannot be taken back. One
+unconditional rule is worth more than a rule plus an exception, and an
+exception carved into the component whose job is not leaking secrets is
+where the leak would live. And the engine composes the command but never
+spawns it: execution belongs to the shell, so the engine holds no
+process-spawning machinery of its own.
 
 **Why:** a previous incarnation of the Prisma CLI installed command
 submodules on demand into a hidden `node_modules` in the working directory.

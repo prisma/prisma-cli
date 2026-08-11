@@ -531,9 +531,10 @@ describe("CLI.PACKAGE_MANAGER_FAILED", () => {
     });
   });
 
-  test("what is shown is redacted; what the user is told to run is not", async () => {
+  test("the manager gets the secret; every line the user sees is redacted, the remedy included", async () => {
     const secret = "https://bot:s3cret@registry.acme.dev/prisma.tgz";
-    const { runner } = recorder({ exitCode: 1, stderr: "" });
+    const redacted = "npm add https://…@registry.acme.dev/prisma.tgz";
+    const { runs, runner } = recorder({ exitCode: 1, stderr: "" });
     const cli = createTestCli({
       commands: {
         toy: installer((packages) => packages.install({ packages: [secret] })),
@@ -542,18 +543,23 @@ describe("CLI.PACKAGE_MANAGER_FAILED", () => {
       packageManagerRunner: runner,
     });
 
-    const { events, json } = await cli.run(["toy", "--json"]);
+    const { events, json } = await cli.run(["toy", "--json"], {
+      cwd: "/project",
+    });
     const envelope = json.find((frame) => frame.kind === "result");
 
+    expect(runs).toEqual([
+      { file: "npm", args: ["add", secret], cwd: "/project" },
+    ]);
     expect(events).toContainEqual({
       kind: "step-started",
-      step: "npm add https://…@registry.acme.dev/prisma.tgz",
+      step: redacted,
     });
     expect(envelope).toMatchObject({
       envelope: {
         error: {
-          meta: { command: "npm add https://…@registry.acme.dev/prisma.tgz" },
-          nextActions: [{ command: `npm add ${secret}` }],
+          meta: { command: redacted },
+          nextActions: [{ command: redacted }],
         },
       },
     });
