@@ -120,6 +120,7 @@ import {
   resolveProjectForSetup,
   toProjectSummary,
 } from "../lib/project/setup";
+import { sameWorkspaceId } from "../lib/workspace-id";
 import { formatCommandArgument } from "../shell/command-arguments";
 import {
   authRequiredError,
@@ -3583,7 +3584,10 @@ async function resolveDeployProjectContext(
   }
 
   const platformMapping = await resolveDurablePlatformMapping();
-  if (platformMapping && platformMapping.workspace.id === workspace.id) {
+  if (
+    platformMapping &&
+    sameWorkspaceId(platformMapping.workspace.id, workspace.id)
+  ) {
     return withRemoteDeployBranch(
       provider,
       {

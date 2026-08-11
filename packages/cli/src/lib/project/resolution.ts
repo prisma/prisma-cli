@@ -20,6 +20,7 @@ import type {
   ProjectSource,
   ProjectSummary,
 } from "../../types/project";
+import { sameWorkspaceId } from "../workspace-id";
 import {
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
   type LocalResolutionPinReadAbortedError,
@@ -646,7 +647,7 @@ async function resolveBoundProjectTarget(
     return Result.ok(null);
   }
   if (localPin.kind === "present") {
-    if (localPin.pin.workspaceId !== options.workspace.id) {
+    if (!sameWorkspaceId(localPin.pin.workspaceId, options.workspace.id)) {
       return Result.err(
         new LocalProjectWorkspaceMismatchError({
           pinnedWorkspaceId: localPin.pin.workspaceId,
@@ -674,7 +675,7 @@ async function resolveBoundProjectTarget(
   const platformMapping = await resolveDurablePlatformMapping();
   if (
     platformMapping &&
-    platformMapping.workspace.id === options.workspace.id
+    sameWorkspaceId(platformMapping.workspace.id, options.workspace.id)
   ) {
     return Result.ok(
       resolvedTarget(options.workspace, platformMapping, "platform-mapping", {

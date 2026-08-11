@@ -60,6 +60,7 @@ import {
   resolveProjectForSetup,
   toProjectSummary,
 } from "../lib/project/setup";
+import { sameWorkspaceId } from "../lib/workspace-id";
 import { formatCommandArgument } from "../shell/command-arguments";
 import {
   authRequiredError,
@@ -118,7 +119,7 @@ export async function readProjectListLocalBinding(
 
   const pin = pinResult.value;
   if (pin.kind === "present") {
-    return pin.pin.workspaceId === workspace.id &&
+    return sameWorkspaceId(pin.pin.workspaceId, workspace.id) &&
       projects.some((project) => project.id === pin.pin.projectId)
       ? { status: "linked" }
       : { status: "invalid" };
@@ -1456,7 +1457,7 @@ export async function listRealWorkspaceProjects(
   }
   return sortProjects(
     (data.data ?? [])
-      .filter((project) => project.workspace.id === workspace.id)
+      .filter((project) => sameWorkspaceId(project.workspace.id, workspace.id))
       .map((project) => ({
         id: project.id,
         name: project.name,
