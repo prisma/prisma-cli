@@ -62,9 +62,11 @@ succeeds; if not, stop and surface the issue.
    version it wrote matches `$NEXT`; on mismatch the worktree's value is
    authoritative — remove worktree and branch, restart from step 1.
 
-4. **Refresh the lockfile.** Internal deps are pinned
-   `workspace:<version>`, so run `pnpm install --lockfile-only`;
-   without it the release PR fails with `ERR_PNPM_OUTDATED_LOCKFILE`.
+4. **Check the lockfile moved.** `pnpm bump-version` refreshes
+   `pnpm-lock.yaml` itself, because internal deps are pinned
+   `workspace:<version>` and a stale lockfile fails every later frozen
+   install with `ERR_PNPM_OUTDATED_LOCKFILE`. If it is missing from the
+   diff, stop — the bump did not finish.
 
 5. **Sanity-check the diff.** Only `package.json` files and
    `pnpm-lock.yaml`; manifests change exactly `version` +

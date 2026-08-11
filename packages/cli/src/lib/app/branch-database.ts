@@ -376,12 +376,14 @@ async function classifyPrismaNextConfig(
   };
 }
 
+const SCHEMA_PROVIDER = /\bprovider\s*=\s*"([^"]+)"/;
+
 async function classifyPrismaOrmSchemaTarget(
   schemaPath: string,
   signal: AbortSignal,
 ): Promise<"postgresql" | "unknown" | UnsupportedBranchDatabaseSchemaTarget> {
   const content = await readTextFileIfSmall(schemaPath, signal);
-  const provider = content?.match(/\bprovider\s*=\s*"([^"]+)"/)?.[1] ?? null;
+  const provider = content?.match(SCHEMA_PROVIDER)?.[1] ?? null;
 
   switch (provider) {
     case "postgresql":

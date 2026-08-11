@@ -28,6 +28,7 @@ import {
   clackCapable,
   makeClackRenderer,
 } from "./clack-renderer";
+import { constructionError } from "./command-tree";
 import type { Invocation, RunState } from "./engine";
 import { announceUrl } from "./open-url";
 
@@ -311,7 +312,17 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
     return true;
   };
 
-  return {
+  /** A prompt writes to stderr and reads the engine's stdin — the same
+   *  terminal a live child inherited. Like ctx.present, prompting while
+   *  a child owns the terminal is a construction error. */
+  const requireOwnTerminal = (): void => {
+    if (state.delegatedTerminal !== undefined) {
+      throw constructionError(
+        `command '${state.commandId}' called ctx.prompt while a child owned the terminal`,
+      );
+    }
+  };
+  const surface: PromptSurface = {
     confirm: async (question, opts) => {
       const fallback = opts?.default;
       if (state.yes || !state.interactive) {
@@ -433,5 +444,31 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
         );
       }
     },
+  };
+  /** The claim is taken synchronously, before the prompt's first await:
+   *  a handler that starts a prompt without awaiting it has already
+   *  begun reading stdin, so ctx.spawn must not hand the same terminal
+   *  to a child. */
+  const claimTerminal = async <T>(prompt: () => Promise<T>): Promise<T> => {
+    requireOwnTerminal();
+    state.activePrompts += 1;
+    try {
+      return await prompt();
+    } finally {
+      state.activePrompts -= 1;
+    }
+  };
+  return {
+    confirm: (question, opts) =>
+      claimTerminal(() => surface.confirm(question, opts)),
+    consent: (question, opts) =>
+      claimTerminal(() => surface.consent(question, opts)),
+    select: <T extends string>(
+      question: string,
+      options: ReadonlyArray<{ value: T; label: string }>,
+      opts?: { readonly default?: T },
+    ) => claimTerminal(() => surface.select(question, options, opts)),
+    text: (question, opts) => claimTerminal(() => surface.text(question, opts)),
+    browserWait: (request) => claimTerminal(() => surface.browserWait(request)),
   };
 }

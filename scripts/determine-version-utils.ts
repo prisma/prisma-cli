@@ -11,7 +11,6 @@ const STABLE_BASE_PATTERN = new RegExp(`^${NUM}\\.${NUM}\\.${NUM}$`);
 // reaching the pipeline is a mistake to fail on, not a case to support.
 // A future RC line widens this constant.
 const RC_BASE_PATTERN = /^8\.0\.0-rc\.([1-9]\d*)$/;
-const DEV_PATTERN = /^(\d+\.\d+\.\d+(?:-rc\.\d+)?)-dev\.(\d+)$/;
 
 export interface ParsedVersion {
   major: number;
@@ -64,35 +63,6 @@ export function computeNextReleaseVersion(current: string): string {
 export interface VersionResult {
   version: string;
   tag: string;
-}
-
-/**
- * Composes the `<base>-dev.N` version for a routine (non-release) push,
- * given the version currently published under the `dev` dist-tag. The
- * counter continues while the base is unchanged and resets to 1 when
- * the base moves (new minor, new rc counter, stable-to-rc transition).
- */
-export function composeDevVersion(
-  baseVersion: string,
-  latestDevVersion: string | undefined,
-): VersionResult {
-  let buildNumber = 1;
-
-  if (latestDevVersion) {
-    const match = latestDevVersion.match(DEV_PATTERN);
-
-    if (match) {
-      const [, devBase, build] = match;
-      if (devBase === baseVersion) {
-        buildNumber = Number.parseInt(build, 10) + 1;
-      }
-    }
-  }
-
-  return {
-    version: `${baseVersion}-dev.${buildNumber}`,
-    tag: "dev",
-  };
 }
 
 /**

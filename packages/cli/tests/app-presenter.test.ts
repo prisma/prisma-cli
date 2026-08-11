@@ -17,6 +17,9 @@ import type {
 } from "../src/types/app";
 import { createTestCommandContext } from "./helpers";
 
+const BARE_APP_LOGS_LINE = /prisma-cli app logs$/m;
+const LIVE_IN_LINE = /^Live in/m;
+
 function createDomain(
   overrides: Partial<AppDomainSummary> = {},
 ): AppDomainSummary {
@@ -246,7 +249,7 @@ describe("app deploy presenter", () => {
 
     expect(lines).toContain("prisma-cli app logs api");
     expect(lines).toContain("prisma-cli app logs web");
-    expect(lines).not.toMatch(/prisma-cli app logs$/m);
+    expect(lines).not.toMatch(BARE_APP_LOGS_LINE);
   });
 
   it("keeps verbose-only deploy details out of JSON serialization", () => {
@@ -303,7 +306,7 @@ describe("app deploy presenter", () => {
     expect(lines).toContain("The live deployment is unchanged.");
     expect(lines).toContain("https://dep-candidate.fra.prisma.build");
     expect(lines).toContain("prisma-cli app promote dep_candidate");
-    expect(lines).not.toMatch(/^Live in/m);
+    expect(lines).not.toMatch(LIVE_IN_LINE);
   });
 
   it("shows region with platform-default provenance when no --region was passed and project has no default region", async () => {

@@ -17,26 +17,15 @@ import { CliError } from "../../shell/errors";
 
 // The compute config contract (types, validation, discovery, loading) lives
 // in @prisma/compute-sdk/config so the CLI, build-runner, and scaffolding
-// share one implementation. This module re-exports what app commands consume
-// and keeps the CLI-specific glue: flag/config precedence and CliError
-// presentation.
-export {
-  COMPUTE_CONFIG_FILENAME,
-  COMPUTE_CONFIG_FILENAMES,
-  ComputeConfigAmbiguousError,
-  type ComputeConfigError,
-  ComputeConfigInvalidError,
-  ComputeConfigLoadError,
-  type ComputeConfigTargetError,
-  ComputeConfigTargetRequiredError,
-  ComputeConfigTargetUnknownError,
-  type ComputeDeployTarget,
-  type ComputeDeployTargetBuild,
-  computeTargetAppDir,
-  inferComputeTargetFromCwd,
-  type LoadedComputeConfig,
-  normalizeComputeConfig,
-  selectComputeDeployTarget,
+// share one implementation. Runtime values are imported straight from the
+// SDK; this module re-exports the shared types and keeps the CLI-specific
+// glue: flag/config precedence and CliError presentation.
+export type {
+  ComputeConfigError,
+  ComputeConfigTargetError,
+  ComputeDeployTarget,
+  ComputeDeployTargetBuild,
+  LoadedComputeConfig,
 } from "@prisma/compute-sdk/config";
 
 /**

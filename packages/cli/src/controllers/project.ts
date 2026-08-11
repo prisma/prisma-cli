@@ -11,15 +11,16 @@ import {
   readGitOriginRemote,
 } from "../adapters/git";
 import { SERVICE_TOKEN_ENV_VAR } from "../auth/client";
+import {
+  workspaceAmbiguousError,
+  workspaceNotAuthenticatedError,
+} from "../auth/errors";
 import { authenticatedManagementApiClient } from "../auth/guard";
 import {
   RecipientSessionInvalidError,
   resolveRecipientWorkspaceSession,
 } from "../auth/recipient";
-import {
-  FileTokenStorage,
-  WorkspaceSelectionError,
-} from "../auth/token-storage";
+import { WorkspaceSelectionError } from "../auth/token-storage";
 import {
   type PrismaCliPackageCommandFormatter,
   resolvePrismaCliPackageCommandFormatterSync,
@@ -35,6 +36,7 @@ import {
 import {
   createManagementProjectProvider,
   type ProjectProvider,
+  projectApiError,
   projectRemoveBlockedError,
   projectRenameFailedError,
   projectTransferRejectedError,
@@ -51,7 +53,6 @@ import {
 } from "../lib/project/resolution";
 import {
   bindProjectToDirectory,
-  formatCommandArgument,
   isValidProjectSetupName,
   projectCreateFailedError,
   projectDirectoryBindingErrorToCliError,
@@ -59,13 +60,12 @@ import {
   resolveProjectForSetup,
   toProjectSummary,
 } from "../lib/project/setup";
+import { formatCommandArgument } from "../shell/command-arguments";
 import {
   authRequiredError,
   CliError,
   featureUnavailableError,
   usageError,
-  workspaceAmbiguousError,
-  workspaceNotAuthenticatedError,
   workspaceRequiredError,
 } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
@@ -95,8 +95,8 @@ export interface GitDisconnectOptions {
   project?: string;
 }
 
-const GITHUB_INSTALL_POLL_INTERVAL_MS = 2_000;
-const GITHUB_INSTALL_POLL_TIMEOUT_MS = 120_000;
+export const GITHUB_INSTALL_POLL_INTERVAL_MS = 2_000;
+export const GITHUB_INSTALL_POLL_TIMEOUT_MS = 120_000;
 
 function isRealMode(context: CommandContext): boolean {
   return (
@@ -105,7 +105,7 @@ function isRealMode(context: CommandContext): boolean {
   );
 }
 
-async function readProjectListLocalBinding(
+export async function readProjectListLocalBinding(
   cwd: string,
   workspace: AuthWorkspace,
   projects: Array<Pick<ProjectCandidate, "id">>,
@@ -775,7 +775,8 @@ async function resolveTransferRecipient(
         candidate.id === workspaceRef ||
         candidate.name.toLowerCase() === workspaceRef.toLowerCase(),
     );
-    if (matches.length === 0) {
+    const match = matches[0];
+    if (match === undefined) {
       throw workspaceNotAuthenticatedError(workspaceRef);
     }
     if (matches.length > 1) {
@@ -790,9 +791,9 @@ async function resolveTransferRecipient(
     }
     return {
       // Fixture transfers authorize by workspace id instead of a real token.
-      accessToken: matches[0]!.id,
-      workspaceId: matches[0]!.id,
-      workspaceName: matches[0]!.name,
+      accessToken: match.id,
+      workspaceId: match.id,
+      workspaceName: match.name,
       source: "workspace-session",
     };
   }
@@ -983,7 +984,7 @@ function requireProjectExactConfirmation(options: {
   });
 }
 
-function transferRecipientRequiredError(
+export function transferRecipientRequiredError(
   formatCommand: PrismaCliPackageCommandFormatter,
 ): CliError {
   return new CliError({
@@ -1008,7 +1009,7 @@ function transferRecipientRequiredError(
   });
 }
 
-function transferRecipientUnavailableError(
+export function transferRecipientUnavailableError(
   formatCommand: PrismaCliPackageCommandFormatter,
 ): CliError {
   return new CliError({
@@ -1032,7 +1033,7 @@ function transferRecipientUnavailableError(
   });
 }
 
-async function cleanupLocalPinForProject(
+export async function cleanupLocalPinForProject(
   context: CommandContext,
   projectId: string,
   hooks: { onError: (message: string) => void },
@@ -1062,7 +1063,7 @@ async function cleanupLocalPinForProject(
   }
 }
 
-async function rewriteOrClearLocalPinForProject(
+export async function rewriteOrClearLocalPinForProject(
   context: CommandContext,
   projectId: string,
   recipientWorkspaceId: string | null,
@@ -1442,9 +1443,19 @@ export async function listRealWorkspaceProjects(
   workspace: AuthWorkspace,
   signal?: AbortSignal,
 ): Promise<ProjectCandidate[]> {
-  const { data } = await client.GET("/v1/projects", { signal });
+  const { data, error, response } = await client.GET("/v1/projects", {
+    signal,
+  });
+  // Without this the caller cannot tell a rejected request from a
+  // workspace with no projects: both arrived as an empty list, so
+  // `project list` reported "No projects found." and exited 0 while the
+  // API was refusing it. Every command that resolves a project by name
+  // reads through here too.
+  if (error || !data) {
+    throw projectApiError("Failed to list projects", response, error);
+  }
   return sortProjects(
-    (data?.data ?? [])
+    (data.data ?? [])
       .filter((project) => project.workspace.id === workspace.id)
       .map((project) => ({
         id: project.id,
@@ -1519,7 +1530,7 @@ interface ScmRepositoryResponse {
   isPrivate: boolean;
 }
 
-interface InstalledRepositoryMatch {
+export interface InstalledRepositoryMatch {
   installation: ScmInstallationResponse;
   repository: ScmRepositoryResponse;
 }
@@ -1529,7 +1540,7 @@ interface InstallationRepositoryLookup {
   inspectableInstallationCount: number;
 }
 
-interface SourceRepositoryApiError {
+export interface SourceRepositoryApiError {
   error?: {
     code?: string;
     message?: string;
@@ -1543,7 +1554,7 @@ interface SourceRepositoryApiResult<T> {
   response?: Response;
 }
 
-interface SourceRepositoryApiClient {
+export interface SourceRepositoryApiClient {
   POST(
     path: "/v1/source-repositories",
     options: {
@@ -1735,7 +1746,7 @@ async function resolveInstalledRepository(
   throw repoInstallationRequiredError(repository, installUrl, opened);
 }
 
-async function findRepositoryInInstallations(
+export async function findRepositoryInInstallations(
   api: SourceRepositoryApiClient,
   installations: ScmInstallationResponse[],
   repository: GitHubRepositoryReference,
@@ -1828,7 +1839,7 @@ async function waitForInstalledRepository(
   return { match: null, inspectableInstallationCount };
 }
 
-function readPositiveIntegerEnv(
+export function readPositiveIntegerEnv(
   value: string | undefined,
   fallback: number,
 ): number {
@@ -1881,7 +1892,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-async function listScmInstallations(
+export async function listScmInstallations(
   api: SourceRepositoryApiClient,
   workspaceId: string,
   signal: AbortSignal,
@@ -2034,7 +2045,7 @@ function isUnavailableScmInstallationError(error: unknown): boolean {
   return error.meta.status === 404 || error.meta.status === 422;
 }
 
-async function createGitHubInstallIntent(
+export async function createGitHubInstallIntent(
   api: SourceRepositoryApiClient,
   workspaceId: string,
   signal: AbortSignal,
@@ -2081,7 +2092,7 @@ async function openInstallUrlIfInteractive(
   }
 }
 
-async function readFirstSourceRepository(
+export async function readFirstSourceRepository(
   api: SourceRepositoryApiClient,
   projectId: string,
   signal: AbortSignal,
@@ -2132,7 +2143,7 @@ function createPendingRepositoryConnection(
   };
 }
 
-function toRepositoryConnection(
+export function toRepositoryConnection(
   record: SourceRepositoryResponse,
 ): GitRepositoryConnection {
   const [owner = "", name = ""] = record.repoFullName.split("/");
@@ -2164,7 +2175,7 @@ function toRepositoryConnection(
   };
 }
 
-function unsupportedRepositoryProviderError(): CliError {
+export function unsupportedRepositoryProviderError(): CliError {
   return new CliError({
     code: "REPO_PROVIDER_UNSUPPORTED",
     domain: "project",
@@ -2176,7 +2187,7 @@ function unsupportedRepositoryProviderError(): CliError {
   });
 }
 
-function repoNotConnectedError(): CliError {
+export function repoNotConnectedError(): CliError {
   return new CliError({
     code: "REPO_NOT_CONNECTED",
     domain: "project",
@@ -2188,7 +2199,7 @@ function repoNotConnectedError(): CliError {
   });
 }
 
-function repoInstallationRequiredError(
+export function repoInstallationRequiredError(
   repository: GitHubRepositoryReference,
   installUrl: string,
   opened: boolean,
@@ -2211,7 +2222,7 @@ function repoInstallationRequiredError(
   });
 }
 
-function repoNotAccessibleError(
+export function repoNotAccessibleError(
   repository: GitHubRepositoryReference,
   installUrl: string,
   opened: boolean,
@@ -2232,7 +2243,9 @@ function repoNotAccessibleError(
   });
 }
 
-function repoAlreadyConnectedError(repositoryFullName: string): CliError {
+export function repoAlreadyConnectedError(
+  repositoryFullName: string,
+): CliError {
   return new CliError({
     code: "REPO_ALREADY_CONNECTED",
     domain: "project",
@@ -2247,11 +2260,11 @@ function repoAlreadyConnectedError(repositoryFullName: string): CliError {
   });
 }
 
-function repositoryFullNamesMatch(left: string, right: string): boolean {
+export function repositoryFullNamesMatch(left: string, right: string): boolean {
   return left.toLowerCase() === right.toLowerCase();
 }
 
-function repoConnectionApiError(
+export function repoConnectionApiError(
   summary: string,
   response: Response | undefined,
   error: SourceRepositoryApiError | undefined,

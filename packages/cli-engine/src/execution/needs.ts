@@ -3,15 +3,29 @@ import { resolve } from "node:path";
 import type { AnyCommand } from "../commands";
 import type { ConfigSection, SectionValidation } from "../config-section";
 import { credentialsRequiredError } from "../credential-errors";
-import type { CredentialManager } from "../credential-manager";
+import type { ActiveCredential } from "../credential-manager";
 import { CliStructuredError, type Diagnostic } from "../protocol";
 import type { Runtime } from "../runtime";
 import type { Invocation } from "./engine";
 import { withDocsUrl, writeDiagnostic } from "./rendering";
 import { SEVERITY_RANK } from "./reporting";
 
+/**
+ * D1 ruling (S3): a session expiring within this window is refused
+ * before the handler runs. The child receives a snapshot of the token
+ * and cannot refresh it, and the in-process work that precedes the
+ * spawn creates platform resources, so the refusal has to come first.
+ */
+export const CREDENTIAL_NEAR_EXPIRY_MS = 5 * 60_000;
+
 export type NeedsOutcome =
-  | { readonly kind: "ok"; readonly config: unknown }
+  | {
+      readonly kind: "ok";
+      readonly config: unknown;
+      /** The credential resolved for a `credentials: "child"` command,
+       *  carried forward so the spawn path never re-resolves it. */
+      readonly spawnCredential: ActiveCredential | undefined;
+    }
   | {
       readonly kind: "errored";
       readonly error: CliStructuredError;
@@ -50,16 +64,25 @@ export async function checkNeeds(
 ): Promise<NeedsOutcome> {
   const needs = def.needs;
   const failure =
-    checkInteraction(needs, invocation) ??
-    checkDependencies(needs, invocation) ??
-    (await checkCredentials(needs, invocation));
+    checkInteraction(needs, invocation) ?? checkDependencies(needs, invocation);
   if (failure !== undefined) {
     return failure;
   }
-  if (needs.config !== undefined) {
-    return checkConfiguration(needs.config, invocation);
+  const credentials = await checkCredentials(needs, invocation);
+  if (credentials.failure !== undefined) {
+    return credentials.failure;
   }
-  return { kind: "ok", config: undefined };
+  if (needs.config !== undefined) {
+    const outcome = checkConfiguration(needs.config, invocation);
+    return outcome.kind === "ok"
+      ? { ...outcome, spawnCredential: credentials.spawnCredential }
+      : outcome;
+  }
+  return {
+    kind: "ok",
+    config: undefined,
+    spawnCredential: credentials.spawnCredential,
+  };
 }
 
 function checkInteraction(
@@ -108,30 +131,61 @@ function checkDependencies(
  * pass through verbatim so the needs check, ctx.activeCredential, and
  * ctx.api raise identically. A host with no manager wired has no
  * credentials at all.
+ *
+ * The `"child"` form resolves the same credential ONCE, additionally
+ * refuses a session about to expire — before the handler runs, not
+ * before the spawn: the work that precedes a spawn creates real
+ * platform resources, and the child cannot refresh the snapshot it is
+ * given — and carries the credential forward for the spawn path.
  */
 async function checkCredentials(
   needs: AnyCommand["needs"],
   invocation: Invocation,
-): Promise<NeedsOutcome | undefined> {
-  if (!needs.credentials) {
-    return undefined;
+): Promise<{
+  readonly failure?: NeedsOutcome;
+  readonly spawnCredential?: ActiveCredential;
+}> {
+  if (needs.credentials === false) {
+    return {};
   }
-  const manager: CredentialManager | undefined =
-    invocation.runtime.credentialManager;
+  const manager = invocation.runtime.credentialManager;
   if (manager === undefined) {
-    return needsErrored(credentialsRequiredError());
+    return { failure: needsErrored(credentialsRequiredError()) };
   }
+  let credential: ActiveCredential | null;
   try {
-    if ((await manager.activeCredential()) === null) {
-      return needsErrored(credentialsRequiredError());
-    }
-    return undefined;
+    credential = await manager.activeCredential();
   } catch (cause) {
     if (CliStructuredError.is(cause)) {
-      return needsErrored(cause);
+      return { failure: needsErrored(cause) };
     }
     throw cause;
   }
+  if (credential === null) {
+    return { failure: needsErrored(credentialsRequiredError()) };
+  }
+  if (needs.credentials !== "child") {
+    return {};
+  }
+  const expiry = nearExpiryFailure(credential, invocation);
+  return expiry === undefined
+    ? { spawnCredential: credential }
+    : { failure: expiry };
+}
+
+function nearExpiryFailure(
+  credential: ActiveCredential,
+  invocation: Invocation,
+): NeedsOutcome | undefined {
+  if (credential.expiresAt === undefined) {
+    return undefined;
+  }
+  const remainingMs =
+    credential.expiresAt.getTime() - invocation.now().getTime();
+  if (remainingMs > CREDENTIAL_NEAR_EXPIRY_MS) {
+    return undefined;
+  }
+  return needsErrored(credentialsRequiredError("expiring-soon"));
 }
 
 function checkConfiguration(
@@ -189,7 +243,7 @@ function validateConfigSection(
     );
   }
   writeSectionWarnings(invocation, validation.diagnostics);
-  return { kind: "ok", config: validation.value };
+  return { kind: "ok", config: validation.value, spawnCredential: undefined };
 }
 
 /** Diagnostics on an OK validation are warnings: written to stderr as
