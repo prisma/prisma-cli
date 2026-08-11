@@ -18,7 +18,7 @@
  * Every c12 feature beyond "evaluate this one file" is switched off
  * below so discovery and merging stay exactly as they were.
  */
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Diagnostic } from "./protocol";
 import type { ConfigRequest, LoadedConfig } from "./runtime";
@@ -192,9 +192,16 @@ async function evaluateConfigFile(path: string): Promise<unknown> {
     globalRc: false,
     packageJson: false,
   });
-  if (result.configFile !== path) {
+  // composer's comparison, not prisma/prisma's raw string equality:
+  // realpath normalises the separators and casing c12 hands back on
+  // Windows, where the raw compare fails on a file it did load.
+  const loadedFile = result.configFile;
+  if (
+    typeof loadedFile !== "string" ||
+    realpathSync(loadedFile) !== realpathSync(path)
+  ) {
     throw new Error(
-      `config loading resolved ${String(result.configFile)} instead of ${path}`,
+      `config loading resolved ${String(loadedFile)} instead of ${path}`,
     );
   }
   return result.config;
