@@ -93,7 +93,7 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
     },
     exit: (code) => proc.exit(code),
     onSignal: makeOnSignal(proc),
-    config: await loadConfig(proc.cwd()),
+    loadConfig: (configPath) => loadConfig(proc.cwd(), configPath),
     credentialManager: new FileCredentialManager({
       env: proc.env,
       fetchWorkspaceName: fetchWorkspaceName(apiBaseUrl),

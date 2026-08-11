@@ -1,11 +1,12 @@
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import type { AnyCommand } from "../commands";
+import { CONFIG_FILE_NAME } from "../config-loader";
 import type { ConfigSection, SectionValidation } from "../config-section";
 import { credentialsRequiredError } from "../credential-errors";
 import type { ActiveCredential } from "../credential-manager";
 import { CliStructuredError, type Diagnostic } from "../protocol";
-import type { Runtime } from "../runtime";
+import type { LoadedConfig, Runtime } from "../runtime";
 import type { Invocation } from "./engine";
 import { withDocsUrl, writeDiagnostic } from "./rendering";
 import { SEVERITY_RANK } from "./reporting";
@@ -73,7 +74,7 @@ export async function checkNeeds(
     return credentials.failure;
   }
   if (needs.config !== undefined) {
-    const outcome = checkConfiguration(needs.config, invocation);
+    const outcome = await checkConfiguration(needs.config, invocation);
     return outcome.kind === "ok"
       ? { ...outcome, spawnCredential: credentials.spawnCredential }
       : outcome;
@@ -188,30 +189,90 @@ function nearExpiryFailure(
   return needsErrored(credentialsRequiredError("expiring-soon"));
 }
 
-function checkConfiguration(
+/**
+ * A top-level key in the config file that is not one of the sections
+ * the mounted commands and command families declare. The set is closed,
+ * so an unrecognised key is a typo or a leftover, and staying silent
+ * would mean quietly ignoring settings the user wrote.
+ *
+ * The check is the engine's rather than the loader's because the loader
+ * is a Runtime member a host supplies: a check on the far side of that
+ * seam holds only for as long as every host writes one.
+ */
+function unknownSectionDiagnostic(
+  path: string,
+  key: string,
+  configSections: readonly string[],
+): Diagnostic {
+  return {
+    code: "CLI.CONFIG_UNKNOWN_SECTION",
+    severity: "error",
+    summary: `${path} has a top-level key '${key}', which is not a config section this CLI recognises.`,
+    why: `The sections this CLI recognises are: ${[...configSections].sort().join(", ")}.`,
+    nextActions: [
+      {
+        kind: "user-choice",
+        label:
+          "Remove the key, or rename it to one of the recognised section names.",
+      },
+    ],
+    where: { path },
+  };
+}
+
+function unknownSections(
+  loaded: LoadedConfig,
+  configSections: readonly string[],
+): readonly Diagnostic[] {
+  const declared = new Set(configSections);
+  return Object.keys(loaded.sections)
+    .filter((key) => !declared.has(key))
+    .map((key) => unknownSectionDiagnostic(loaded.path, key, configSections));
+}
+
+/** The config file is read HERE and nowhere else, so a command with no
+ *  needs.config never touches it. The file `--config` named travels on
+ *  the run state; the closed set of section names comes from the
+ *  mounted command families, and every key outside it is reported here
+ *  whatever the loader did or did not check. */
+async function checkConfiguration(
   section: ConfigSection<unknown>,
   invocation: Invocation,
-): NeedsOutcome {
-  const fileLevel = invocation.runtime.config.diagnostics.filter(
-    (entry) => entry.section === null,
-  );
+): Promise<NeedsOutcome> {
+  const configPath = invocation.state.configPath;
+  const loaded = await invocation.runtime.loadConfig(configPath);
+  const fileLevel = [
+    ...loaded.diagnostics
+      .filter((entry) => entry.section === null)
+      .map((entry) => entry.diagnostic),
+    ...unknownSections(loaded, invocation.configSections),
+  ];
   if (fileLevel.length > 0) {
     return needsErrored(
-      structuredErrorFromDiagnostic(fileLevel[0].diagnostic),
-      fileLevel.slice(1).map((entry) => entry.diagnostic),
+      structuredErrorFromDiagnostic(fileLevel[0]),
+      fileLevel.slice(1),
     );
   }
-  return validateConfigSection(section, invocation);
+  return validateConfigSection(
+    section,
+    loaded,
+    invocation,
+    configPath ?? CONFIG_FILE_NAME,
+  );
 }
 
 /** Validates the command's needed config section. The validator
  *  owns absence (it receives undefined when the section is missing) and
- *  never throws — a throw is an engine-boundary bug, settled as one. */
+ *  never throws — a throw is an engine-boundary bug, settled as one.
+ *  `configFile` is named in the error so a run under --config points at
+ *  the file it actually read. */
 function validateConfigSection(
   section: ConfigSection<unknown>,
+  loaded: LoadedConfig,
   invocation: Invocation,
+  configFile: string,
 ): NeedsOutcome {
-  const raw = invocation.runtime.config.sections[section.name];
+  const raw = loaded.sections[section.name];
   let validation: SectionValidation<unknown>;
   try {
     validation = section.validate(raw);
@@ -228,7 +289,7 @@ function validateConfigSection(
     return needsErrored(
       new CliStructuredError(
         "CLI.CONFIG_INVALID",
-        `The '${section.name}' section of prisma.config.ts is invalid.`,
+        `The '${section.name}' section of ${configFile} is invalid.`,
         {
           nextActions: [
             {

@@ -404,6 +404,7 @@ export const invalidMessage: EngineEvent = {
 // —————————————————————————————————————————————————————————————————————
 
 export const loadedConfig: LoadedConfig = {
+  path: "/project/prisma.config.ts",
   sections: { check: { strict: true } },
   diagnostics: [{ section: null, diagnostic }],
 };
@@ -419,7 +420,10 @@ export const runtimeShape: Runtime = {
     throw new Error(String(code));
   },
   onSignal: () => () => {},
-  config: loadedConfig,
+  loadConfig: async (configPath?: string) =>
+    configPath === undefined
+      ? { path: "/project/prisma.config.ts", sections: {}, diagnostics: [] }
+      : loadedConfig,
   managementApi: { baseUrl: "https://test.invalid" },
   packageManager: "pnpm",
 };

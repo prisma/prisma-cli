@@ -107,7 +107,11 @@ function makeRuntime(overrides?: {
       throw new Error(`runtime.exit(${code})`);
     },
     onSignal: () => () => {},
-    config: { sections: {}, diagnostics: [] },
+    loadConfig: async () => ({
+      path: "/prisma.config.ts",
+      sections: {},
+      diagnostics: [],
+    }),
     credentialManager: overrides?.credentialManager,
     managementApiClientConfig: CLIENT_CONFIG,
     managementApi: { baseUrl: "https://test.invalid" },
