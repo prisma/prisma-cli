@@ -53,12 +53,21 @@ function ifDefined<K extends string, V>(
   return value !== undefined ? ({ [key]: value } as Partial<Record<K, V>>) : {};
 }
 
+/** The mark a structured error carries so it can be recognized without
+ *  its prototype. A registry symbol resolves to one symbol across every
+ *  copy of this package in an install, so an error built by another copy
+ *  carries the same key this one looks for. */
+export const STRUCTURED_ERROR: unique symbol = Symbol.for(
+  "@prisma/cli-engine.structuredError",
+);
+
 /**
  * Structured CLI error carrying everything an error envelope needs.
  * `code` is a dotted `NAMESPACE.SUBCODE` string; the namespace prefix is
  * the error's category.
  */
 export class CliStructuredError extends Error {
+  readonly [STRUCTURED_ERROR] = true as const;
   readonly code: `${string}.${string}`;
   readonly severity: Diagnostic["severity"];
   readonly why: string | undefined;
@@ -125,14 +134,26 @@ export class CliStructuredError extends Error {
   }
 
   /**
-   * Duck-typed guard that works across module boundaries where
-   * instanceof may fail.
+   * Recognizes a structured error across module boundaries, where
+   * instanceof fails because each copy of this package has its own
+   * class. The brand answers it outright. The duck-typed check behind
+   * it is the fallback for an error from a copy old enough to predate
+   * the brand: rejecting those would turn a real failure into an
+   * engine-bug report, so it has to keep working.
+   *
+   * Neither branch asks what the value's prototype is. Nothing in
+   * settlement needs an Error — it reads `code` and `nextActions` and
+   * calls `toEnvelope` — so a prototype chain, which is local to the
+   * copy that made it, is not the thing worth checking.
    */
   static is(error: unknown): error is CliStructuredError {
-    if (!(error instanceof Error)) {
+    if (typeof error !== "object" || error === null) {
       return false;
     }
     const candidate = error as CliStructuredError;
+    if (candidate[STRUCTURED_ERROR] === true) {
+      return true;
+    }
     return (
       candidate.name === "CliStructuredError" &&
       typeof candidate.code === "string" &&

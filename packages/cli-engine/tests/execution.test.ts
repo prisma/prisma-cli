@@ -19,6 +19,7 @@ import {
   type Diagnostic,
   notOk,
   ok,
+  STRUCTURED_ERROR,
 } from "@prisma/cli-engine/protocol";
 import {
   createTestCli,
@@ -1202,6 +1203,190 @@ describe("a failure carrying several findings", () => {
           nextActions: [],
         },
         commandId: "bare",
+        timestamp: T0,
+      },
+    ]);
+  });
+});
+
+describe("a structured error built by another copy of the engine", () => {
+  /** A copy old enough to predate the brand: recognized only by the
+   *  duck-typed fallback, an Error named CliStructuredError with a
+   *  string code and a toEnvelope function. Two engine copies in one
+   *  install is a shipped situation, so an instance of a different class
+   *  reaches settlement whole and its `diagnostics` is whatever that
+   *  copy put there. */
+  function foreignError(fields: Record<string, unknown>): CliStructuredError {
+    return Object.assign(new Error("prisma.config.ts could not be read."), {
+      name: "CliStructuredError",
+      code: "COMPOSER.UNREADABLE",
+      severity: "error",
+      nextActions: [],
+      toEnvelope: () => ({
+        ok: false,
+        code: "COMPOSER.UNREADABLE",
+        severity: "error",
+        summary: "prisma.config.ts could not be read.",
+        nextActions: [],
+      }),
+      ...fields,
+    }) as unknown as CliStructuredError;
+  }
+
+  /** A copy that carries the brand. Its prototype leads nowhere near
+   *  this module's class and it is not an Error at all, so the brand is
+   *  the only thing the guard has to go on. */
+  function brandedError(fields: Record<string, unknown>): CliStructuredError {
+    return {
+      [STRUCTURED_ERROR]: true,
+      name: "SomethingElse",
+      code: "COMPOSER.UNREADABLE",
+      severity: "error",
+      nextActions: [],
+      toEnvelope: () => ({
+        ok: false,
+        code: "COMPOSER.UNREADABLE",
+        severity: "error",
+        summary: "prisma.config.ts could not be read.",
+        nextActions: [],
+      }),
+      ...fields,
+    } as unknown as CliStructuredError;
+  }
+
+  const LONE_FINDING: Diagnostic = {
+    code: "COMPOSER.MISSING_NAME",
+    severity: "error",
+    summary: "services[0] has no name.",
+    nextActions: [],
+  };
+
+  function erroredEnvelope(commandId: string) {
+    return {
+      ok: false,
+      commandId,
+      error: {
+        code: "COMPOSER.UNREADABLE",
+        severity: "error",
+        summary: "prisma.config.ts could not be read.",
+        nextActions: [],
+      },
+      diagnostics: [],
+      nextActions: [],
+    };
+  }
+
+  const STDERR =
+    "✖ [COMPOSER.UNREADABLE] prisma.config.ts could not be read.\n";
+
+  function cli(fields: Record<string, unknown>) {
+    return createTestCli({
+      commands: {
+        thrown: defineCommand({
+          help: { summary: "Throws the other copy's error" },
+          handler: async () => {
+            throw foreignError(fields);
+          },
+        }),
+        returned: defineCommand({
+          help: { summary: "Returns the other copy's error" },
+          handler: async () => notOk(foreignError(fields)),
+        }),
+        branded: defineCommand({
+          help: { summary: "Throws a branded error from another copy" },
+          handler: async () => {
+            throw brandedError(fields);
+          },
+        }),
+      },
+      now: EPOCH,
+    });
+  }
+
+  // A single finding where a list belongs: the shape a copy that carries
+  // one accompanying finding rather than several would hand over.
+  const NOT_A_LIST = { diagnostics: LONE_FINDING };
+
+  test("a thrown one whose findings are not a list renders only the error", async () => {
+    const result = await cli(NOT_A_LIST).run(["thrown", "--format", "human"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(STDERR);
+  });
+
+  test("and its json envelope reports no findings rather than garbage", async () => {
+    const result = await cli(NOT_A_LIST).run(["thrown", "--json"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.json).toEqual([
+      {
+        kind: "result",
+        envelope: erroredEnvelope("thrown"),
+        commandId: "thrown",
+        timestamp: T0,
+      },
+    ]);
+  });
+
+  test("a returned one takes the same path", async () => {
+    const asHuman = await cli(NOT_A_LIST).run([
+      "returned",
+      "--format",
+      "human",
+    ]);
+
+    expect(asHuman.exitCode).toBe(2);
+    expect(asHuman.stdout).toBe("");
+    expect(asHuman.stderr).toBe(STDERR);
+
+    const asJson = await cli(NOT_A_LIST).run(["returned", "--json"]);
+
+    expect(asJson.exitCode).toBe(2);
+    expect(asJson.json).toEqual([
+      {
+        kind: "result",
+        envelope: erroredEnvelope("returned"),
+        commandId: "returned",
+        timestamp: T0,
+      },
+    ]);
+  });
+
+  test("an older copy's error, with no findings field at all, still settles as the error it is", async () => {
+    const asHuman = await cli({}).run(["thrown", "--format", "human"]);
+
+    expect(asHuman.exitCode).toBe(2);
+    expect(asHuman.stderr).toBe(STDERR);
+
+    const asJson = await cli({}).run(["thrown", "--json"]);
+
+    expect(asJson.exitCode).toBe(2);
+    expect(asJson.json).toEqual([
+      {
+        kind: "result",
+        envelope: erroredEnvelope("thrown"),
+        commandId: "thrown",
+        timestamp: T0,
+      },
+    ]);
+  });
+
+  test("the brand alone settles it, and its findings are normalized the same way", async () => {
+    const asHuman = await cli(NOT_A_LIST).run(["branded", "--format", "human"]);
+
+    expect(asHuman.exitCode).toBe(2);
+    expect(asHuman.stdout).toBe("");
+    expect(asHuman.stderr).toBe(STDERR);
+
+    const asJson = await cli(NOT_A_LIST).run(["branded", "--json"]);
+
+    expect(asJson.exitCode).toBe(2);
+    expect(asJson.json).toEqual([
+      {
+        kind: "result",
+        envelope: erroredEnvelope("branded"),
+        commandId: "branded",
         timestamp: T0,
       },
     ]);
