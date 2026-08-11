@@ -49,20 +49,20 @@ function usePresentations(spec: {
     human: () => [
       {
         kind: "summary",
-        tone: "info",
+        status: "info",
         text: "Switching the current workspace session.",
       },
       { kind: "fields", rows },
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: "Current workspace session updated.",
       },
       ...(spec.environmentCredentialInForce
         ? [
             {
               kind: "summary",
-              tone: "info",
+              status: "info",
               text: ENVIRONMENT_CREDENTIAL_NOTICE,
             } as const,
           ]

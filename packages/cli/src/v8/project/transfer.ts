@@ -123,7 +123,7 @@ function transferPresentations(
 ): Presentations {
   return {
     human: (): Block[] => [
-      { kind: "summary", tone: "ok", text: "Transferring project." },
+      { kind: "summary", status: "ok", text: "Transferring project." },
       {
         kind: "fields",
         rows: [
@@ -226,7 +226,7 @@ export const projectTransferCommand = defineCommand({
         throw transferRecipientRequiredError(formatCommand);
       }
 
-      const projects = await listWorkspaceProjects(ctx, workspace);
+      const projects = await listWorkspaceProjects(ctx);
       const project = toProjectSummary(
         resolveProjectForSetup(
           args.positionals.project.trim(),

@@ -1,37 +1,41 @@
 import type { UserConfig } from "./user-config";
 
 /**
- * Why telemetry resolved the way it did. Total: every resolution
- * carries a reason, enabled or not, so status surfaces can project
- * copy from it without re-deriving the decision.
+ * Why telemetry resolved the way it did. Total: every resolution carries
+ * a reason, enabled or not, so `telemetry status` projects its copy from
+ * the resolution instead of re-deriving the decision.
  */
-export type GatingDisabledReason = "ci" | "env-opt-out" | "stored-opt-out";
-export type GatingEnabledReason = "stored-opt-in" | "default-on";
+export type TelemetryDisabledReason = "ci" | "env-opt-out" | "stored-opt-out";
+export type TelemetryEnabledReason = "stored-opt-in" | "default-on";
+export type TelemetryStatusReason =
+  | TelemetryDisabledReason
+  | TelemetryEnabledReason;
 
 export type GatingResolution =
-  | { readonly enabled: true; readonly reason: GatingEnabledReason }
-  | { readonly enabled: false; readonly reason: GatingDisabledReason };
+  | { readonly enabled: true; readonly reason: TelemetryEnabledReason }
+  | { readonly enabled: false; readonly reason: TelemetryDisabledReason };
 
 export interface GatingInputs {
   /**
    * Environment-variable lookups the resolver consults. Tests pass a
-   * literal record; production passes `process.env`. The two opt-out
-   * signals are `PRISMA_NEXT_DISABLE_TELEMETRY` (Prisma-specific) and
-   * `DO_NOT_TRACK` (community convention).
+   * literal record; production passes the process environment. The two
+   * opt-out signals are `PRISMA_DISABLE_TELEMETRY` (Prisma-specific)
+   * and `DO_NOT_TRACK` (community convention).
    */
   readonly env: Readonly<Record<string, string | undefined>>;
   /** Result of `readUserConfig()` — file-missing tolerated as `{}`. */
   readonly config: UserConfig;
-  /** CI detection result from the consumer. CI hard-disables. */
+  /** CI detection, supplied by the host through `Runtime.isCI`. The
+   *  engine never detects CI itself. CI hard-disables. */
   readonly inCI: boolean;
 }
 
 /**
- * A `PRISMA_NEXT_DISABLE_TELEMETRY` value counts as an opt-out only if
- * it parses as a truthy string. The set-but-falsy spellings (`''`,
- * `'0'`, `'false'`) are intentionally treated as not-set so a parent
- * shell that exports the variable to a benign value doesn't accidentally
- * disable telemetry for child processes.
+ * A `PRISMA_DISABLE_TELEMETRY` value counts as an opt-out only if it
+ * parses as a truthy string. The set-but-falsy spellings (`''`, `'0'`,
+ * `'false'`) are intentionally treated as not-set so a parent shell that
+ * exports the variable to a benign value doesn't accidentally disable
+ * telemetry for child processes.
  */
 function isTruthyOptOut(raw: string | undefined): boolean {
   if (raw === undefined) return false;
@@ -44,13 +48,13 @@ function isTruthyOptOut(raw: string | undefined): boolean {
 
 /**
  * Pure-function resolution of the gating decision. Same input → same
- * output; no I/O. The caller is responsible for reading the env, the
- * user config, and the CI signal.
+ * output; no I/O. The caller reads the env, the user config and the CI
+ * signal.
  *
  * Decision order:
  *   1. CI (`inCI`) → disabled (`ci`). CI environments never emit,
  *      regardless of any stored consent.
- *   2. Env-var override (`PRISMA_NEXT_DISABLE_TELEMETRY` truthy, or
+ *   2. Env-var override (`PRISMA_DISABLE_TELEMETRY` truthy, or
  *      `DO_NOT_TRACK=1`) → disabled (`env-opt-out`), winning over any
  *      stored or unset preference.
  *   3. Stored `enableTelemetry === false` → disabled (`stored-opt-out`).
@@ -65,7 +69,7 @@ export function resolveGating(inputs: GatingInputs): GatingResolution {
     return { enabled: false, reason: "ci" };
   }
   if (
-    isTruthyOptOut(inputs.env["PRISMA_NEXT_DISABLE_TELEMETRY"]) ||
+    isTruthyOptOut(inputs.env["PRISMA_DISABLE_TELEMETRY"]) ||
     inputs.env["DO_NOT_TRACK"] === "1"
   ) {
     return { enabled: false, reason: "env-opt-out" };

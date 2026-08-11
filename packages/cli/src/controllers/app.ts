@@ -120,6 +120,7 @@ import {
   resolveProjectForSetup,
   toProjectSummary,
 } from "../lib/project/setup";
+import { sameWorkspaceId } from "../lib/workspace-id";
 import { formatCommandArgument } from "../shell/command-arguments";
 import {
   authRequiredError,
@@ -3414,7 +3415,7 @@ async function resolveProjectContext(
     envProjectId: options?.envProjectId,
     projectDir: options?.projectDir,
     listProjects: () =>
-      listRealWorkspaceProjects(client, workspace, context.runtime.signal),
+      listRealWorkspaceProjects(client, context.runtime.signal),
     commandName: options?.commandName,
   });
   if (resolvedResult.isErr()) {
@@ -3469,7 +3470,6 @@ async function resolveDeployProjectContext(
     options.branch ?? (await resolveDeployBranch(context, undefined));
   const projects = await listRealWorkspaceProjects(
     client,
-    workspace,
     context.runtime.signal,
   );
 
@@ -3551,7 +3551,7 @@ async function resolveDeployProjectContext(
 
   const localPin = options.localPin;
   if (localPin.kind === "present") {
-    if (localPin.pin.workspaceId !== workspace.id) {
+    if (!sameWorkspaceId(localPin.pin.workspaceId, workspace.id)) {
       throw localProjectWorkspaceMismatchError({
         pinnedWorkspaceId: localPin.pin.workspaceId,
         pinnedProjectId: localPin.pin.projectId,
@@ -3583,7 +3583,10 @@ async function resolveDeployProjectContext(
   }
 
   const platformMapping = await resolveDurablePlatformMapping();
-  if (platformMapping && platformMapping.workspace.id === workspace.id) {
+  if (
+    platformMapping &&
+    sameWorkspaceId(platformMapping.workspace.id, workspace.id)
+  ) {
     return withRemoteDeployBranch(
       provider,
       {

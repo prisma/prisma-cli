@@ -410,6 +410,7 @@ export const loadedConfig: LoadedConfig = {
 };
 
 export const runtimeShape: Runtime = {
+  isCI: false,
   stdout: { write() {} },
   stderr: { write() {} },
   stdin: undefined as unknown as InputStream,

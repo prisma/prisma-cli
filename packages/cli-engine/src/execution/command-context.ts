@@ -12,27 +12,40 @@ import {
   type Ui,
 } from "../presentation";
 import { type Diagnostic, notOk, okVoid } from "../protocol";
+import type { OutputStream } from "../runtime";
 import { buildManagementApiClient } from "./api-client";
 import { constructionError } from "./command-tree";
 import type { Invocation, RunState } from "./engine";
 import { dependencyResolvable, missingDependencyError } from "./needs";
 import { announceUrl } from "./open-url";
+import { makePaint } from "./palette";
 import { makePromptSurface } from "./prompts";
 import { reportEvent } from "./reporting";
 import { makeSpawn } from "./spawn";
 
-export function makeUi(colorEnabled: boolean): Ui {
-  if (!colorEnabled) {
-    return {
-      emphasize: (text) => text,
-      dim: (text) => text,
-      code: (text) => `\`${text}\``,
-    };
-  }
+/** Unbounded off-terminal, so the arithmetic a renderer already does —
+ *  Math.min(x, ui.width), ui.width - gutter — stays correct with no
+ *  special case. */
+function availableWidth(stream: OutputStream): number {
+  const columns = stream.columns;
+  return columns !== undefined && columns > 0
+    ? columns
+    : Number.POSITIVE_INFINITY;
+}
+
+/** Blocks render to stderr, so both the width and the colour decision
+ *  are stderr's. `width` is a getter because the contract reads it per
+ *  render rather than caching it. */
+export function makeUi(colorEnabled: boolean, stderr: OutputStream): Ui {
+  const paint = makePaint(colorEnabled);
   return {
-    emphasize: (text) => `\u001b[1m${text}\u001b[22m`,
-    dim: (text) => `\u001b[2m${text}\u001b[22m`,
+    get width() {
+      return availableWidth(stderr);
+    },
+    emphasize: (text) => paint("emphasis", text),
+    dim: (text) => paint("muted", text),
     code: (text) => `\`${text}\``,
+    tone: paint,
   };
 }
 
@@ -66,7 +79,7 @@ export function makeContext(
   managesCredentials: boolean,
 ): CommandContext<unknown, number> {
   const state = invocation.state;
-  const ui = makeUi(state.colorEnabled);
+  const ui = makeUi(state.colorEnabled, invocation.runtime.stderr);
   const present = <T>(
     outcome: {
       readonly data: T;
@@ -119,6 +132,7 @@ export function makeContext(
     signal: invocation.signal,
     cwd: invocation.runtime.cwd,
     env: invocation.runtime.env,
+    isCI: invocation.runtime.isCI,
     requireDependency: async (specifier) =>
       dependencyResolvable(specifier, invocation.runtime.cwd)
         ? okVoid()

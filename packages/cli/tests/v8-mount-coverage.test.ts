@@ -1,4 +1,6 @@
+import { telemetryCommandGroup } from "@prisma/cli-engine";
 import { describe, expect, it } from "vitest";
+import { CLI_DOCS_URL } from "../src/cli-name";
 import { agentInstallCommand } from "../src/v8/agent/install";
 import { agentStatusCommand } from "../src/v8/agent/status";
 import { agentUpdateCommand } from "../src/v8/agent/update";
@@ -8,19 +10,14 @@ import {
   platformCommandFamily,
 } from "../src/v8/cli";
 import { feedbackCommand } from "../src/v8/feedback";
-import { telemetryDisableCommand } from "../src/v8/telemetry/disable";
-import { telemetryEnableCommand } from "../src/v8/telemetry/enable";
-import { telemetryStatusCommand } from "../src/v8/telemetry/status";
 
 /**
- * Commands that deliberately belong to no family: the shell's own
- * consent surface, and the local utilities that contribute no config
- * section and call no API.
+ * Commands that deliberately belong to no family: the engine's consent
+ * surface, which cli.ts spreads in whole, and the local utilities that
+ * contribute no config section and call no API.
  */
 const FAMILYLESS: ReadonlySet<unknown> = new Set([
-  telemetryStatusCommand,
-  telemetryEnableCommand,
-  telemetryDisableCommand,
+  ...Object.values(telemetryCommandGroup({ docsUrl: CLI_DOCS_URL }).commands),
   agentInstallCommand,
   agentUpdateCommand,
   agentStatusCommand,

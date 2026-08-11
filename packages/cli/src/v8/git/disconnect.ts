@@ -22,7 +22,7 @@ function disconnectPresentations(
     human: (): Block[] => [
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: "Disconnecting Git from the resolved project.",
       },
       {
