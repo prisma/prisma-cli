@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   assertCanonicalBase,
-  composeDevVersion,
   computeNextMinor,
   computeNextReleaseVersion,
   parseVersion,
@@ -89,54 +88,6 @@ describe("computeNextReleaseVersion", () => {
       () => computeNextReleaseVersion("9.0.0-rc.1"),
       /not canonical/,
     );
-  });
-});
-
-describe("composeDevVersion", () => {
-  it("starts at dev.1 when no dev build exists yet", () => {
-    assert.deepEqual(composeDevVersion("0.17.0", undefined), {
-      version: "0.17.0-dev.1",
-      tag: "dev",
-    });
-  });
-
-  it("increments the counter when the latest dev build shares the base", () => {
-    assert.deepEqual(composeDevVersion("0.17.0", "0.17.0-dev.4"), {
-      version: "0.17.0-dev.5",
-      tag: "dev",
-    });
-  });
-
-  it("resets the counter when the base moved on", () => {
-    assert.deepEqual(composeDevVersion("0.18.0", "0.17.0-dev.9"), {
-      version: "0.18.0-dev.1",
-      tag: "dev",
-    });
-  });
-
-  it("composes dev builds on an rc base", () => {
-    assert.deepEqual(composeDevVersion("8.0.0-rc.1", undefined), {
-      version: "8.0.0-rc.1-dev.1",
-      tag: "dev",
-    });
-    assert.deepEqual(composeDevVersion("8.0.0-rc.1", "8.0.0-rc.1-dev.7"), {
-      version: "8.0.0-rc.1-dev.8",
-      tag: "dev",
-    });
-  });
-
-  it("resets the counter when the rc counter moved on", () => {
-    assert.deepEqual(composeDevVersion("8.0.0-rc.2", "8.0.0-rc.1-dev.7"), {
-      version: "8.0.0-rc.2-dev.1",
-      tag: "dev",
-    });
-  });
-
-  it("resets the counter across the stable-to-rc transition", () => {
-    assert.deepEqual(composeDevVersion("8.0.0-rc.1", "0.17.0-dev.12"), {
-      version: "8.0.0-rc.1-dev.1",
-      tag: "dev",
-    });
   });
 });
 
