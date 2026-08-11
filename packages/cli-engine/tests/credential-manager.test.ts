@@ -25,6 +25,10 @@ import {
 } from "@prisma/cli-engine/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+const JWT_WORKSPACE_ID_REQUIRED = /must be a JWT with `workspace_id`/;
+const ACTIVE_CREDENTIAL_FIRST =
+  /only valid once activeCredential\(\) has returned non-null/;
+
 const userCredential = (overrides?: {
   readonly sub?: string;
   readonly workspaceId?: string;
@@ -654,6 +658,34 @@ describe("token material never leaves", () => {
   });
 });
 
+describe("activeAccessToken, the spawn path's read", () => {
+  test("an unseeded manager has no token to give and returns null", async () => {
+    const manager = new InMemoryCredentialManager({});
+
+    expect(await manager.activeAccessToken()).toBeNull();
+  });
+
+  test("no token is available after the last session ends", async () => {
+    const manager = new InMemoryCredentialManager({
+      sessions: [sessionRecordFor("workspace-1")],
+      selectedWorkspaceId: "workspace-1",
+    });
+    await manager.endAllSessions();
+
+    expect(await manager.activeAccessToken()).toBeNull();
+  });
+
+  test("a selected session's access token is what the child would get", async () => {
+    const record = sessionRecordFor("workspace-1");
+    const manager = new InMemoryCredentialManager({
+      sessions: [record],
+      selectedWorkspaceId: "workspace-1",
+    });
+
+    expect(await manager.activeAccessToken()).toBe(record.credential.token);
+  });
+});
+
 describe("harness seed validation", () => {
   test("a `credential` seed whose token names no workspace is refused: createSession is workspace-keyed", () => {
     expect(
@@ -665,7 +697,7 @@ describe("harness seed validation", () => {
             expiresAt: undefined,
           },
         }),
-    ).toThrow(/must be a JWT with `workspace_id`/);
+    ).toThrow(JWT_WORKSPACE_ID_REQUIRED);
   });
 
   test("activeCredentialStorage before the credential resolves is a harness misuse", async () => {
@@ -674,7 +706,7 @@ describe("harness seed validation", () => {
       selectedWorkspaceId: "workspace-1",
     });
     await expect(manager.activeCredentialStorage()).rejects.toThrow(
-      /only valid once activeCredential\(\) has returned non-null/,
+      ACTIVE_CREDENTIAL_FIRST,
     );
   });
 

@@ -40,6 +40,7 @@ export {
   type NeedsSpec,
   type ServerCommandDefinition,
   type SessionCommandDefinition,
+  type SpawnDeclarations,
 } from "../commands";
 export { defineConfig, loadConfig } from "../config-loader";
 export {
@@ -72,6 +73,7 @@ export type {
   Session,
   StoredSessions,
 } from "../credential-manager";
+export { EnvironmentCredentialManager } from "../environment-credential-manager";
 export type {
   EngineEvent,
   Severity,
@@ -103,6 +105,16 @@ export {
   PRISMA_CONFIG_VERSION,
   type Runtime,
 } from "../runtime";
+export {
+  type ChildResult,
+  type ChildStatusSettlement,
+  type ExitWithChildStatusOptions,
+  exitWithChildStatus,
+  type SpawnChild,
+  type SpawnedChild,
+  type SpawnOptions,
+  type SpawnRequest,
+} from "../spawn";
 export {
   claimedExpiresAt,
   claimedIdentity,

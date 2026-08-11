@@ -18,8 +18,6 @@ import {
   projectNotFoundError,
 } from "./resolution";
 
-export { formatCommandArgument } from "../../shell/command-arguments";
-
 export type ProjectDirectoryBindingError =
   | LocalResolutionPinWriteError
   | LocalResolutionPinGitignoreUpdateError;
@@ -47,11 +45,12 @@ export function resolveProjectForSetup(
   const matches = projects.filter(
     (project) => project.id === projectRef || project.name === projectRef,
   );
-  if (matches.length === 1) {
-    return matches[0]!;
-  }
   if (matches.length > 1) {
     throw projectAmbiguousError(projectRef, matches);
+  }
+  const match = matches[0];
+  if (match !== undefined) {
+    return match;
   }
   throw projectNotFoundError(projectRef, workspace);
 }
@@ -204,6 +203,8 @@ export function projectCreateFailedError(
   });
 }
 
+const PATH_SEPARATORS = /[\\/]/;
+
 function formatSetupDirectory(
   directory: string,
   context: CommandContext,
@@ -214,9 +215,11 @@ function formatSetupDirectory(
     return shortenHomePath(directory, context.runtime.env);
   }
 
-  const basename = directory.split(/[\\/]/).filter(Boolean).pop();
+  const basename = directory.split(PATH_SEPARATORS).filter(Boolean).pop();
   return basename ? `./${basename}` : ".";
 }
+
+const HTTP_STATUS_IN_MESSAGE = /\(HTTP (\d{3})\)/;
 
 function extractHttpStatus(error: unknown): number | null {
   if (!error || typeof error !== "object") {
@@ -236,7 +239,7 @@ function extractHttpStatus(error: unknown): number | null {
   }
 
   if (typeof candidate.message === "string") {
-    const match = /\(HTTP (\d{3})\)/.exec(candidate.message);
+    const match = HTTP_STATUS_IN_MESSAGE.exec(candidate.message);
     if (match) {
       return Number.parseInt(match[1], 10);
     }

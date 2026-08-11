@@ -15,6 +15,7 @@ const useSessionAction: NextAction = {
 export type CredentialsRequiredReason =
   | "unauthenticated"
   | "expired"
+  | "expiring-soon"
   | "session-ended"
   | "sessions-held-none-selected";
 
@@ -38,6 +39,15 @@ export function credentialsRequiredError(
         "CLI.CREDENTIALS_REQUIRED",
         "Your session has expired — sign in again.",
         { nextActions: [signInAction] },
+      );
+    case "expiring-soon":
+      return new CliStructuredError(
+        "CLI.CREDENTIALS_REQUIRED",
+        "Your session expires too soon to run this command — sign in again.",
+        {
+          why: "This command hands your credentials to another program, which cannot refresh them while it runs.",
+          nextActions: [signInAction],
+        },
       );
     case "session-ended":
       return new CliStructuredError(

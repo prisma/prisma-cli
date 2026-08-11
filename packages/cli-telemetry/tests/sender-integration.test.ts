@@ -7,6 +7,10 @@ import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { ParentToSenderPayload, TelemetryEvent } from "../src/payload";
 
+const DB_URL_LEAK = /postgres:\/\/u:p@h\/d/;
+const PROJECT_NAME_LEAK = /customer-acme-payments/;
+const HOME_PATH_LEAK = /\/Users\/alice\/secrets/;
+
 /**
  * End-to-end sender coverage against a local mock HTTP backend — the
  * same faking approach the ORM CLI's integration suite uses (endpoint
@@ -200,9 +204,9 @@ describe("sender end-to-end via a local mock backend", () => {
     expect(captured).toHaveLength(1);
     expect(captured[0]?.body.flags).toEqual(sensitiveFlags);
     const serialised = JSON.stringify(captured[0]?.body);
-    expect(serialised).not.toMatch(/postgres:\/\/u:p@h\/d/);
-    expect(serialised).not.toMatch(/customer-acme-payments/);
-    expect(serialised).not.toMatch(/\/Users\/alice\/secrets/);
+    expect(serialised).not.toMatch(DB_URL_LEAK);
+    expect(serialised).not.toMatch(PROJECT_NAME_LEAK);
+    expect(serialised).not.toMatch(HOME_PATH_LEAK);
   });
 
   it("never reads a prisma-next.config.* from projectRoot (config load dropped; payload-only fields)", async () => {

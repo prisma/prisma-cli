@@ -1,4 +1,5 @@
 import { SERVICE_TOKEN_ENV_VAR } from "../auth/client";
+import { workspaceSwitchUnavailableError } from "../auth/errors";
 import {
   performLogin,
   performLogout,
@@ -19,11 +20,7 @@ import {
   resolvePrismaAgentSetupCwd,
   shouldOfferPrismaAgentSetup,
 } from "../lib/agent/setup-status";
-import {
-  authRequiredError,
-  usageError,
-  workspaceSwitchUnavailableError,
-} from "../shell/errors";
+import { authRequiredError, usageError } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
 import { type CommandContext, canPrompt } from "../shell/runtime";
 import type {

@@ -1,5 +1,3 @@
-import path from "node:path";
-
 import { shortenHomePath } from "../lib/fs/home-path";
 
 import type { CommandDiagnostics } from "../types/diagnostics";

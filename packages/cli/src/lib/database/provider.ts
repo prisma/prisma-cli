@@ -691,8 +691,11 @@ export function normalizeBackupList(
   return {
     backups: (body.data ?? []).map((backup) => ({
       id: backup.id,
-      backupType: backup.backupType ?? "unknown",
-      status: backup.status ?? "unknown",
+      // Absence is carried, not renamed: "unknown" here reached the json
+      // envelope as though the API had said it, and a consumer could not
+      // tell it from a real value. The human table supplies the word.
+      backupType: backup.backupType ?? "",
+      status: backup.status ?? "",
       size: backup.size ?? null,
       createdAt: backup.createdAt ?? "",
     })),

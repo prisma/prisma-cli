@@ -18,6 +18,7 @@ import {
   STATE_FILE_ENV_VAR,
 } from "../auth/state-file";
 import { fetchWorkspaceName } from "../auth/workspace-name";
+import { spawnChild } from "./spawn";
 
 export type SignalProcess = Pick<HostProcess, "on" | "off" | "exit">;
 
@@ -103,6 +104,7 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       apiBaseUrl,
       authBaseUrl: getAuthBaseUrl(proc.env),
     },
+    spawn: spawnChild,
     openUrl: async (url) => {
       await open(url);
     },

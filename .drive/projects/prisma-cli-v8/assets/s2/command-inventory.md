@@ -1,8 +1,8 @@
 # S2 Command Inventory — @prisma/cli commander shell (grounding for v8 port specs)
 
-Source of truth read on branch `claude/prisma-cli-s1-d6-013cea` at repo
-`/Users/will/Projects/prisma/prisma-cli/.claude/worktrees/prisma-cli-s1-d6-013cea`.
-All paths below are relative to `packages/cli/` unless prefixed.
+Source of truth read on branch `claude/prisma-cli-s1-d6-013cea` of the
+`prisma/prisma-cli` repository. All paths below are relative to
+`packages/cli/` unless prefixed.
 
 Registration lives in `src/cli.ts` (root program) + `src/commands/*/index.ts` +
 `src/commands/env.ts`. Descriptions/examples live centrally in
