@@ -34,6 +34,14 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
     "Needs a GitHub App installation on the account under test, which CI cannot provision.",
   "git disconnect":
     "Needs a connected repository, which `git connect` cannot create here.",
+  "composer deploy":
+    "Provisions real cloud infrastructure for an app entry point, through a child `alchemy deploy`. Standing that up per CI run is neither cheap nor unattended-safe.",
+  "composer destroy":
+    "Tears down what `composer deploy` provisioned, which this suite cannot create.",
+  "composer dev":
+    "A session command: it runs until SIGINT or SIGTERM, redeploying on file change, so it has no happy path that terminates on its own.",
+  "composer log":
+    "A session command that streams until interrupted, against an app only `composer deploy` could have deployed.",
 };
 
 /**

@@ -30,8 +30,8 @@ importers:
         specifier: workspace:8.0.0-rc.1
         version: link:../cli-engine
       '@prisma/composer':
-        specifier: https://pkg.pr.new/@prisma/composer@220
-        version: https://pkg.pr.new/@prisma/composer@220(@types/node@22.19.19)(magicast@0.5.3)(rollup@4.62.2)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(workerd@1.20260704.1)(ws@8.21.0)
+        specifier: 0.6.0-dev.15
+        version: 0.6.0-dev.15(@types/node@22.19.19)(magicast@0.5.3)(rollup@4.62.2)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(workerd@1.20260704.1)(ws@8.21.0)
       '@prisma/compute-sdk':
         specifier: 0.39.0
         version: 0.39.0(@prisma/management-api-sdk@1.55.0)(rollup@4.62.2)
@@ -1246,9 +1246,8 @@ packages:
     resolution: {integrity: sha512-at7M9hqN9eE0CkAj+U7Ey0ZSqTTSmI1r5Uk9rCc7hbAJgEk3keyQ/ObeXtd0BMu6G9rcb7zGGMQyumKH1gEolQ==}
     engines: {node: '>=22.12.0'}
 
-  '@prisma/composer@https://pkg.pr.new/@prisma/composer@220':
-    resolution: {integrity: sha512-thbBzor5ryiLgBAkUN41mWco/liK8avqPG0U0FkDFR9sqUfgPmEJNEFVsoFlFEmhSK02mP8HFARiOjqzS0ywFQ==, tarball: https://pkg.pr.new/@prisma/composer@220}
-    version: 0.6.0
+  '@prisma/composer@0.6.0-dev.15':
+    resolution: {integrity: sha512-owbm3SziouQKyBXRA/8W1sAFs205tTUSscXX5eQidS2V/rTNlWBua3HnXdRdBElJYaSWJerBouL126f4qCc4OQ==}
     engines: {node: '>=24'}
     hasBin: true
 
@@ -4129,7 +4128,7 @@ snapshots:
     transitivePeerDependencies:
       - magicast
 
-  '@prisma/composer@https://pkg.pr.new/@prisma/composer@220(@types/node@22.19.19)(magicast@0.5.3)(rollup@4.62.2)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(workerd@1.20260704.1)(ws@8.21.0)':
+  '@prisma/composer@0.6.0-dev.15(@types/node@22.19.19)(magicast@0.5.3)(rollup@4.62.2)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(workerd@1.20260704.1)(ws@8.21.0)':
     dependencies:
       '@effect/vitest': 4.0.0-beta.103(effect@4.0.0-beta.103)(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))
       '@prisma/cli-engine': 0.0.7(magicast@0.5.3)

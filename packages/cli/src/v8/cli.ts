@@ -6,12 +6,13 @@ import {
   defineCommandFamily,
   telemetryCommandGroup,
 } from "@prisma/cli-engine";
-// TODO(release): @prisma/composer is pinned in package.json to the
-// pkg.pr.new preview build of composer#220. The tandem release
-// (contract R-S3-6, order engine → composer → prisma-cli) replaces it
-// with the exact published version, which must also be the version
-// composer itself pins @prisma/cli-engine to — until those agree, an
-// install of this package carries two copies of the engine.
+// TODO(release): @prisma/composer@0.6.0-dev.15 pins
+// @prisma/cli-engine@0.0.7, while this package ships the workspace
+// engine at the lockstep version (8.0.0-rc.1). Those are different
+// versions, so an install of @prisma/cli resolves two copies of the
+// engine. Closing it is composer's move, not this repo's: composer
+// must pin the same engine version prisma-cli publishes, per the
+// tandem release order engine → composer → prisma-cli (R-S3-6).
 import { createComposerFamily } from "@prisma/composer/family";
 import { CLI_DOCS_URL, CLI_NAME } from "../cli-name";
 import { getCliVersion } from "../lib/version";

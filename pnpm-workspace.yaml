@@ -18,5 +18,6 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - '@prisma/compute-sdk'
   - '@prisma/management-api-sdk'
+  - '@prisma/composer'
   # Reached through @prisma/composer, which pins it exactly.
   - '@prisma/cli-engine'
