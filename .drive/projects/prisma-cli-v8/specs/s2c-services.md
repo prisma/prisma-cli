@@ -28,16 +28,11 @@ inventory's step structure; SDK polling drives events through the
 injectable clock. `service remove`'s type-the-name confirmation ports
 to `prompt.consent` + its current flag per R-S2b-3.
 
-R-S2c-4 **`service run`** — PARKED (morning-questions ledger Q2). The
-legacy command passes the child dev-server's exit code through as the
-CLI's exit code; engine session commands have no exit-code channel,
-and the same passthrough exception is already ruled for Composer's
-S3 adoption. Decision needed: build the engine's child-status
-passthrough mechanism here (S2c) or defer `service run`'s port to
-ride S3's mechanism. DO NOT port `service run` until ruled; the
-legacy shell keeps serving it meanwhile (shell deletion is S2d — if
-Q2 resolves "defer to S3", S2d keeps a minimal legacy path for
-`service run` only, recorded there).
+R-S2c-4 **`service run`** — RULED (operator, 2026-08-11): DROPPED. It
+does not port and no engine child-exit-code passthrough is built for
+it. Starting a local dev server and passing its exit code through is
+Composer's `dev`. Divergence entry alongside `service build` and
+`service deploy`.
 
 R-S2c-5 **`service build`**: result command; local build; progress
 events from the SDK build reporter; no `ctx.api`.
@@ -58,11 +53,12 @@ rollback|remove`, `service domain add|show|remove|retry|wait`,
 `service env *` — NOTE: the inventory places env under `project env`
 (S2b) only; `app` has a `domain` subgroup and no `env` subgroup —
 scope follows the inventory. `build logs`, `agent
-install|update|status`, `feedback`. Parked: `service run` (Q2).
+install|update|status`, `feedback`. Dropped: `service run`,
+`service build`, `service deploy` (ruled; superseded by Composer).
 
 ## Out of scope
 
-`init`, shell deletion (S2d); `service run` until Q2; Composer (S3).
+`init`, shell deletion (S2d); Composer (S3).
 
 ## Acceptance
 
@@ -73,7 +69,7 @@ install|update|status`, `feedback`. Parked: `service run` (Q2).
       semantic tests (step/progress/status ordering).
 - [ ] Divergence list updated (rename class, stream-wrapper drop,
       consent/exit unifications, error-code map).
-- [ ] Q2 either ruled and implemented or still parked with the legacy
-      path intact and S2d's contract updated accordingly.
+- [x] Q2 ruled: `service run` dropped, so S2d deletes the commander
+      shell with no exceptions.
 - [ ] Legacy fixture tests for ported commands deleted; root
       verification green; PR ≥1k LOC; review loop run.
