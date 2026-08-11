@@ -125,12 +125,13 @@ deletion (S2d); auto-login reinstatement (ledger Q1); command aliases
       the per-dispatch review rounds and the closure architect and
       principal-engineer passes run, with every finding dispositioned.
 
-One thing this slice records rather than fixes, for the operator:
-`git connect` declares `needs.interaction`, so non-interactive runs fail
-before any API call even when no waiting would have been needed.
+Nothing is left recorded-but-unfixed. Three things were recorded here
+first and then fixed, all because recording them was the wrong call.
 
-Two others were recorded here first and then fixed, both because
-recording them was the wrong call. `project list` reported an empty
+`git connect` declared `needs.interaction`, so non-interactive runs
+failed before any API call even when no waiting was needed. Removed on
+the operator's ruling of 2026-08-11; only the install wait needs a
+person, and the engine refuses that itself. `project list` reported an empty
 workspace at exit 0 when the API rejected the request — a refusal
 reported as a success is not a behaviour anyone chose (divergence 46).
 And the stdout lane carried human formatting — sizes as `2.0 KiB`,

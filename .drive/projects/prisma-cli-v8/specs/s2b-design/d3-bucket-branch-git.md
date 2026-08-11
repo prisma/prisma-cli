@@ -294,6 +294,19 @@ Common: `needs: { credentials: true }`; data = legacy result minus
   4. Install resolution: `listScmInstallations` +
      `findRepositoryInInstallations`; on miss,
      `createGitHubInstallIntent` → installUrl.
+  5. **INTERACTION NEED REMOVED (operator ruling, 2026-08-11).**
+     `git connect` declares `needs: { credentials: true }` and nothing
+     more. The earlier ruling below — declare `needs.interaction` —
+     was made when the engine had no interaction error of its own and
+     the only alternative was a command reading TTY state, which is
+     banned. `prompt.browserWait` now refuses a non-interactive session
+     itself, naming the install URL, so the declaration bought nothing
+     and cost every scripted run that never reaches the wait: the
+     repository already connected, or the app already installed. Those
+     work again. A non-interactive run that does need the wait settles
+     the engine's `CLI.INTERACTION_REQUIRED`, which names the URL and
+     what to do. Everything else in step 5 stands.
+
   5. **STEP 5 RESOLVED (orchestrator, 2026-08-10, after the operator
      landed engine commit c463aa1).** The draft below was written
      before `browserWait` existed and pinned three facts it could not

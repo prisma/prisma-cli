@@ -207,8 +207,8 @@ async function pinnedCwd() {
   return cwd;
 }
 
-/** `git connect` declares needs.interaction, so every run that reaches
- *  its handler must look interactive. */
+/** Only the install wait needs a person. Cases that reach it say so;
+ *  the rest run non-interactively, as a scripted caller would. */
 const INTERACTIVE = { stdin: true, stdout: true };
 
 function resultFrame(frames: ReadonlyArray<{ kind: string }>) {
@@ -701,19 +701,33 @@ describe("prisma-v8 git connect", () => {
     });
   });
 
-  it("fails a non-interactive run before it calls the API", async () => {
+  it("connects non-interactively when nothing needs approving", async () => {
     const calls: Call[] = [];
     const result = await makeCli(gitClient({ calls })).run(
       ["git", "connect", REPO_URL, "--json"],
       { cwd: await pinnedCwd() },
     );
 
+    expect(result.exitCode).toBe(0);
+    expect(
+      calls.some(
+        (call) =>
+          call.method === "POST" && call.path.endsWith("source-repositories"),
+      ),
+    ).toBe(true);
+  });
+
+  it("fails a non-interactive run only once it needs the install wait", async () => {
+    const result = await makeCli(
+      gitClient({ installations: [], routes: { ...INSTALL_INTENT_ROUTE } }),
+    ).run(["git", "connect", REPO_URL, "--json"], { cwd: await pinnedCwd() });
+
     expect(result.exitCode).toBe(2);
-    expect(resultFrame(result.json).envelope).toMatchObject({
-      ok: false,
-      error: { code: "CLI.INTERACTION_REQUIRED" },
-    });
-    expect(calls).toEqual([]);
+    // The engine's own refusal, raised by prompt.browserWait when it has
+    // a person to wait for and no terminal to wait in. It names the
+    // install URL, so a scripted caller can act on it.
+    expect(errorOf(result.json).code).toBe("CLI.INTERACTION_REQUIRED");
+    expect(errorOf(result.json).summary).toContain(INSTALL_URL);
   });
 
   it("requires credentials", async () => {

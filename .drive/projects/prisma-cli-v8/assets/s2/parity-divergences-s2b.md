@@ -403,12 +403,19 @@ dropped). On top of them:
     fixture-mode branch of the legacy controller — which returned
     `projectName: "not resolved"` and an empty list instead of erroring —
     has no v8 counterpart.
-38. **`git connect` declares `needs.interaction`.** Every non-interactive
-    run now fails early with the engine's `CLI.INTERACTION_REQUIRED`
-    (exit 2), before any API call. That removes two legacy behaviors: a
-    non-interactive run that succeeded because the repository was already
-    reachable, and the immediate `REPO_INSTALLATION_REQUIRED` /
-    `REPO_NOT_ACCESSIBLE` errors carrying `installUrl` in `meta`.
+38. **`git connect` no longer refuses every scripted run.** It was
+    ported declaring `needs: { interaction: true }`, which failed any
+    non-interactive invocation before the handler ran — including the
+    ones the legacy command completed happily, where the repository was
+    already connected or the app already installed. Operator ruling
+    2026-08-11 removed the declaration: only the install wait needs a
+    person, and `prompt.browserWait` refuses a non-interactive session
+    on its own. Remaining divergence from legacy: where the legacy
+    command raised `REPO_INSTALLATION_REQUIRED` or `REPO_NOT_ACCESSIBLE`
+    with the install URL in `meta`, v8 settles the engine's
+    `CLI.INTERACTION_REQUIRED`, whose summary names the same URL and
+    whose next action says to finish there and rerun.
+
 39. **`git connect` and `git disconnect` keep their raw json result.**
     Neither had a serializer, so `--json` still emits
     `{ workspace, project, resolution, repositoryConnection }` —

@@ -163,7 +163,12 @@ export const gitConnectCommand = defineCommand({
       "git connect --project proj_123",
     ],
   },
-  needs: { credentials: true, interaction: true },
+  // Deliberately no `interaction` need. Only the install wait requires a
+  // person, and `prompt.browserWait` refuses a non-interactive session
+  // itself, naming the URL. Declaring the need here would have failed
+  // every scripted run up front, including the ones that never reach the
+  // wait: the repository already connected, or the app already installed.
+  needs: { credentials: true },
   handler: async (args, ctx) => {
     try {
       const { api, target } = await resolveGitContext(
