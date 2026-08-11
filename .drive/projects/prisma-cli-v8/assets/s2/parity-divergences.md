@@ -200,6 +200,19 @@ on every `whoami`/`list` and wrote them back. Accepted and stated.
   before the command runs), same opt-out instructions, and the same
   `installationId`-keyed once-only behaviour. The ORM inherits this
   wording when its bin ports onto the engine.
+- **A negated flag ships one name, not two.** Commander gives
+  `--no-color` the same attribute name as `--color`, so the ORM CLI's
+  sanitiser sees both option entries sourced from the command line and
+  emits `["color", "no-color"]` — whichever spelling the user typed.
+  The engine maps a `--no-<flag>` token back to its base key and emits
+  `["color"]`. Neither preserves polarity, so nothing is lost: the ORM
+  simply ships a flag the user never typed and double-counts these in
+  aggregate. Affects `--color` and `--interactive`, the only negatable
+  flags on either side. This is not new — the engine's snapshot builder
+  has behaved this way since S1 — but the engine becoming the shared
+  implementation is when the ORM's counts for those two flags change,
+  so the backend should expect the discontinuity at its cutover, not at
+  this PR.
 
 ### Test surface
 
