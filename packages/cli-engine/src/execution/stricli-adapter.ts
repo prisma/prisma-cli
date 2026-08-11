@@ -252,8 +252,8 @@ export function capturingText(state: RunState): ApplicationText {
   return {
     ...text_en,
     exceptionWhileParsingArguments(exc, ansiColor) {
-      /** stricli reports each parse failure separately, so a flag it
-       *  could not resolve is recorded here for the redirect table. */
+      // Formatting is the only place stricli hands over the parse
+      // exception itself, one call per failure.
       if (exc instanceof FlagNotFoundError) {
         state.unresolvedFlagNames.push(exc.input);
       }

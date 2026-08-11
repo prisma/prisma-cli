@@ -335,19 +335,20 @@ export class EngineImpl implements Engine {
   ):
     | { readonly redirect: CommandRedirect; readonly commandId: string }
     | undefined {
-    if (typeof stricliExitCode !== "number") {
-      return undefined;
-    }
-    if (usageErrorCode(stricliExitCode) === "CLI.UNKNOWN_COMMAND") {
+    const failure =
+      typeof stricliExitCode === "number"
+        ? usageErrorCode(stricliExitCode)
+        : undefined;
+    if (failure === "CLI.UNKNOWN_COMMAND") {
       const redirect = matchVerbRedirect(
         this.redirects,
         attemptedPath(state.argv),
       );
       return redirect === undefined
         ? undefined
-        : { redirect, commandId: redirect.from.split(" ").join(".") };
+        : { redirect, commandId: redirect.from.replaceAll(" ", ".") };
     }
-    if (usageErrorCode(stricliExitCode) !== "CLI.INVALID_ARGUMENTS") {
+    if (failure !== "CLI.INVALID_ARGUMENTS") {
       return undefined;
     }
     const segments = commandSegments(this.spec, state.prefix);
