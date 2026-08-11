@@ -122,6 +122,13 @@ export {
   type SpawnRequest,
 } from "../spawn";
 export {
+  type TelemetryStatus,
+  telemetryCommandGroup,
+} from "../telemetry/commands";
+export type { TelemetryStatusReason } from "../telemetry/gating";
+export type { TelemetryPayload } from "../telemetry/payload";
+export type { TelemetryDeclaration } from "../telemetry/report";
+export {
   claimedExpiresAt,
   claimedIdentity,
   credentialWorkspaceId,

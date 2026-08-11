@@ -528,6 +528,7 @@ describe("needs preconditions", () => {
     });
     let stderrText = "";
     const runtime: Runtime = {
+      isCI: false,
       stdout: { write: () => {} },
       stderr: {
         write: (text) => {
@@ -716,6 +717,7 @@ describe("report() after the handler resolved", () => {
     });
     let stderrText = "";
     const runtime: Runtime = {
+      isCI: false,
       stdout: { write: () => {} },
       stderr: {
         write: (text) => {
@@ -777,6 +779,7 @@ describe("credentials that cannot be read", () => {
       { why: "token file corrupt: unexpected end of JSON input" },
     );
     const runtime: Runtime = {
+      isCI: false,
       stdout: {
         write: (text) => {
           stdoutText += text;

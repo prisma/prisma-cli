@@ -4,8 +4,9 @@ import {
   type CommandFamily,
   createCli,
   defineCommandFamily,
+  telemetryCommandGroup,
 } from "@prisma/cli-engine";
-import { CLI_DOCS_URL } from "../cli-name";
+import { CLI_DOCS_URL, CLI_NAME } from "../cli-name";
 import { getCliVersion } from "../lib/version";
 import { agentInstallCommand } from "./agent/install";
 import { agentStatusCommand } from "./agent/status";
@@ -61,9 +62,6 @@ import { serviceRemoveCommand } from "./service/remove";
 import { serviceRollbackCommand } from "./service/rollback";
 import { serviceShowCommand } from "./service/show";
 import { serviceShowDeployCommand } from "./service/show-deploy";
-import { telemetryDisableCommand } from "./telemetry/disable";
-import { telemetryEnableCommand } from "./telemetry/enable";
-import { telemetryStatusCommand } from "./telemetry/status";
 
 export const platformCommandFamily: CommandFamily = defineCommandFamily({
   commands: {
@@ -120,6 +118,10 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
   },
 });
 
+/** The engine ships the three telemetry commands and the group help
+ *  text that belongs to them; both halves are spread in below. */
+const telemetry = telemetryCommandGroup({ docsUrl: CLI_DOCS_URL });
+
 export const cliGroups: Readonly<
   Record<string, { brief: string; description?: string }>
 > = {
@@ -142,13 +144,7 @@ export const cliGroups: Readonly<
   build: { brief: "Inspect builds created by a git push or Console" },
   agent: { brief: "Manage Prisma skills for AI coding agents" },
   "auth workspace": { brief: "Manage local workspace sessions" },
-  telemetry: {
-    brief: "Inspect and change anonymous CLI telemetry",
-    description:
-      "Show telemetry status, or enable / disable anonymous CLI usage data.\n" +
-      `Telemetry is on by default (opt-out); see ${CLI_DOCS_URL}\n` +
-      "for what is collected and why.",
-  },
+  ...telemetry.groups,
 };
 
 export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
@@ -208,18 +204,17 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "agent update": agentUpdateCommand,
   "agent status": agentStatusCommand,
   feedback: feedbackCommand,
-  // Shell-owned consent surface (no command family).
-  "telemetry status": telemetryStatusCommand,
-  "telemetry enable": telemetryEnableCommand,
-  "telemetry disable": telemetryDisableCommand,
+  // The engine's consent surface, mounted whole (no command family).
+  ...telemetry.commands,
 };
 
 export function buildCli(): Cli {
   return createCli({
-    name: "prisma-v8",
+    name: CLI_NAME,
     version: getCliVersion(),
     commandFamilies: [platformCommandFamily],
     groups: cliGroups,
     commands: mountedCommands,
+    telemetry: { docsUrl: CLI_DOCS_URL },
   });
 }

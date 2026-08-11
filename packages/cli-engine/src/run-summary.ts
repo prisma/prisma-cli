@@ -1,9 +1,10 @@
 /**
- * The value-free command snapshot the engine records at parse time and
- * hands to `RunHooks.onSettled`. Consumed by the shell's telemetry
- * wiring; carries NO user data — command-path segments, flag names
- * with their value source, and a bare count of positionals. Flag
- * values, positional values, and raw argv never appear here.
+ * The value-free command snapshot the engine records at parse time.
+ * The engine's own telemetry composes its payload from it at command
+ * start, and it rides along on the RunSummary a bin may observe.
+ * Carries NO user data — command-path segments, flag names with their
+ * value source, and a bare count of positionals. Flag values,
+ * positional values, and raw argv never appear here.
  */
 export interface EngineCommandSnapshot {
   /** Mount-path segments of the executed command ('telemetry status'

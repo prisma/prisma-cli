@@ -842,6 +842,7 @@ describe("needs.config", { timeout: 60_000 }, () => {
   function jsonRuntime(cwd: string, reads?: { value: number }) {
     let stdoutText = "";
     const runtime: Runtime = {
+      isCI: false,
       stdout: {
         write: (text) => {
           stdoutText += text;

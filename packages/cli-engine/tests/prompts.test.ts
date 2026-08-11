@@ -482,6 +482,7 @@ describe("stdin cleanup", () => {
       commands: { probe: promptCommand(confirmNoDefault) },
     });
     const runtime: Runtime = {
+      isCI: false,
       stdout: { write: () => {} },
       stderr: { write: () => {} },
       stdin: unendingStdin,

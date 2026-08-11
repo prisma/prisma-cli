@@ -93,6 +93,7 @@ describe("scripted and non-TTY paths are clack-free", () => {
   test("canary: a raw-mode-capable TTY run does reach the clack import", async () => {
     let stderr = "";
     const runtime: Runtime = {
+      isCI: false,
       stdout: { write: () => {} },
       stderr: {
         write: (text) => {

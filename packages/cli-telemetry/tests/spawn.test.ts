@@ -1,114 +1,71 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { EngineCommandSnapshot } from "../src/sanitize";
-import {
-  type RunTelemetryInputs,
-  runTelemetry,
-  senderModuleUrl,
-} from "../src/spawn";
-import { userConfigPath, writeUserConfig } from "../src/user-config";
+/**
+ * The spawner after the engine took the decision: it forks, sends the
+ * payload it was given, and detaches. It resolves no gating, reads no
+ * config and composes nothing.
+ */
+import { fork } from "node:child_process";
+import { EventEmitter } from "node:events";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ParentToSenderPayload } from "../src/payload";
+import { runTelemetry } from "../src/spawn";
 
-const commandInput: EngineCommandSnapshot = {
-  commandPath: ["init"],
-  positionalCount: 0,
-  flags: [{ name: "target", source: "cli" }],
+vi.mock("node:child_process", () => ({ fork: vi.fn() }));
+
+const PAYLOAD: ParentToSenderPayload = {
+  installationId: "id-1",
+  version: "0.9.0",
+  command: "init",
+  flags: ["target"],
+  projectRoot: "/projects/acme",
+  endpoint: "https://telemetry.invalid/events",
 };
 
-function makeInputs(
-  overrides: Partial<RunTelemetryInputs> = {},
-): RunTelemetryInputs {
-  return {
-    command: commandInput,
-    version: "0.9.0",
-    projectRoot: process.cwd(),
-    senderPath: "/non/existent/path/never-forked.js",
-    isCI: false,
-    env: {},
-    ...overrides,
-  };
+class FakeChild extends EventEmitter {
+  send = vi.fn(
+    (_payload: unknown, callback?: (error: Error | null) => void): boolean => {
+      callback?.(null);
+      return true;
+    },
+  );
+  disconnect = vi.fn();
+  unref = vi.fn();
 }
 
-describe("runTelemetry — gating decisions short-circuit before fork", () => {
-  let xdgRoot: string;
-  let originalXdg: string | undefined;
+let child: FakeChild;
 
-  beforeEach(() => {
-    xdgRoot = mkdtempSync(join(tmpdir(), "cli-telemetry-spawn-"));
-    originalXdg = process.env["XDG_CONFIG_HOME"];
-    process.env["XDG_CONFIG_HOME"] = xdgRoot;
-    mkdirSync(dirname(userConfigPath()), { recursive: true });
-  });
-
-  afterEach(() => {
-    if (originalXdg === undefined) {
-      delete process.env["XDG_CONFIG_HOME"];
-    } else {
-      process.env["XDG_CONFIG_HOME"] = originalXdg;
-    }
-    rmSync(xdgRoot, { recursive: true, force: true });
-  });
-
-  it("returns gated-off when no config file exists (no installation id yet)", () => {
-    expect(runTelemetry(makeInputs())).toEqual({
-      spawned: false,
-      reason: "gated-off",
-    });
-  });
-
-  it("returns gated-off when enableTelemetry is false", () => {
-    writeUserConfig({ enableTelemetry: false });
-    expect(runTelemetry(makeInputs())).toEqual({
-      spawned: false,
-      reason: "gated-off",
-    });
-  });
-
-  it("returns ci when isCI is true, even with stored opt-in", () => {
-    writeUserConfig({ enableTelemetry: true });
-    expect(runTelemetry(makeInputs({ isCI: true }))).toEqual({
-      spawned: false,
-      reason: "ci",
-    });
-  });
-
-  it("returns gated-off when PRISMA_NEXT_DISABLE_TELEMETRY overrides a stored opt-in", () => {
-    writeUserConfig({ enableTelemetry: true });
-    expect(
-      runTelemetry(makeInputs({ env: { PRISMA_NEXT_DISABLE_TELEMETRY: "1" } })),
-    ).toEqual({ spawned: false, reason: "gated-off" });
-  });
-
-  it("returns gated-off when DO_NOT_TRACK=1 overrides a stored opt-in", () => {
-    writeUserConfig({ enableTelemetry: true });
-    expect(runTelemetry(makeInputs({ env: { DO_NOT_TRACK: "1" } }))).toEqual({
-      spawned: false,
-      reason: "gated-off",
-    });
-  });
-
-  it("returns gated-off when installationId is missing despite enableTelemetry=true (defence-in-depth)", () => {
-    writeFileSync(userConfigPath(), JSON.stringify({ enableTelemetry: true }));
-    expect(runTelemetry(makeInputs())).toEqual({
-      spawned: false,
-      reason: "gated-off",
-    });
-  });
-
-  it("returns spawned:true synchronously even when the sender path does not exist (child fails out-of-band, never throws)", () => {
-    writeUserConfig({ enableTelemetry: true });
-    // fork() of a nonexistent path does not throw — it spawns a child
-    // that errors asynchronously on its own exit, so runTelemetry
-    // returns `spawned: true` synchronously and the parent is never
-    // perturbed by the downstream failure.
-    expect(runTelemetry(makeInputs())).toEqual({ spawned: true });
-  });
+beforeEach(() => {
+  child = new FakeChild();
+  vi.mocked(fork).mockReset();
+  vi.mocked(fork).mockReturnValue(child as unknown as ReturnType<typeof fork>);
 });
 
-describe("senderModuleUrl", () => {
-  it("resolves the sender entry relative to the consumer's import.meta.url", () => {
-    const consumer = "file:///some/consumer/dist/cli.js";
-    expect(senderModuleUrl(consumer)).toBe("/some/consumer/dist/sender.js");
+describe("runTelemetry", () => {
+  it("forks the sender detached, with the parent's streams ignored", () => {
+    expect(
+      runTelemetry({ payload: PAYLOAD, senderPath: "/sender/path.js" }),
+    ).toEqual({ spawned: true });
+
+    expect(fork).toHaveBeenCalledWith("/sender/path.js", [], {
+      detached: true,
+      stdio: ["pipe", "ignore", "ignore", "ipc"],
+    });
+  });
+
+  it("sends the payload verbatim, then disconnects and unrefs", () => {
+    runTelemetry({ payload: PAYLOAD, senderPath: "/sender/path.js" });
+
+    expect(child.send.mock.calls[0]?.[0]).toBe(PAYLOAD);
+    expect(child.disconnect).toHaveBeenCalledTimes(1);
+    expect(child.unref).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports fork-failed instead of throwing when fork throws", () => {
+    vi.mocked(fork).mockImplementation(() => {
+      throw new Error("EMFILE");
+    });
+
+    expect(
+      runTelemetry({ payload: PAYLOAD, senderPath: "/sender/path.js" }),
+    ).toEqual({ spawned: false, reason: "fork-failed" });
   });
 });

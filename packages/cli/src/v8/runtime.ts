@@ -1,9 +1,12 @@
+import { fileURLToPath } from "node:url";
 import {
   type HostProcess,
   type InputStream,
   loadConfig,
   type Runtime,
 } from "@prisma/cli-engine";
+import { runTelemetry } from "@repo/cli-telemetry";
+import { isCI } from "ci-info";
 import open from "open";
 import {
   CLIENT_ID,
@@ -51,6 +54,21 @@ export function detectPackageManager(
   return "unknown";
 }
 
+/**
+ * Path to the compiled sender entry. In the workspace (dev runs and the
+ * monorepo dist) the package specifier resolves to
+ * `packages/cli-telemetry/dist/sender.js`; in the published cli the
+ * telemetry package is bundled away, so the fallback resolves the copy
+ * tsdown emits next to the v8 entry (`dist/v8/sender.js`).
+ */
+function resolveSenderPath(): string {
+  try {
+    return fileURLToPath(import.meta.resolve("@repo/cli-telemetry/sender"));
+  } catch {
+    return fileURLToPath(new URL("./sender.js", import.meta.url));
+  }
+}
+
 /** PRISMA_COMPUTE_AUTH_FILE still names the credentials file, but
  *  PRISMA_AUTH_FILE is the supported name. Warned once per process. */
 function warnOnDeprecatedStateFileEnvVar(proc: HostProcess): void {
@@ -94,6 +112,7 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       stdout: proc.stdout.isTTY === true,
       stderr: proc.stderr.isTTY === true,
     },
+    isCI,
     exit: (code) => proc.exit(code),
     onSignal: makeOnSignal(proc),
     loadConfig: (configPath) => loadConfig(proc.cwd(), configPath),
@@ -108,6 +127,12 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       authBaseUrl: getAuthBaseUrl(proc.env),
     },
     spawn: spawnChild,
+    /** The engine has already decided and composed; the bin only forks
+     *  the detached sender and hands the payload over. Every failure is
+     *  swallowed inside runTelemetry. */
+    spawnTelemetry: (payload) => {
+      runTelemetry({ payload, senderPath: resolveSenderPath() });
+    },
     openUrl: async (url) => {
       await open(url);
     },
