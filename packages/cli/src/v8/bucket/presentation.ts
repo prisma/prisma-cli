@@ -19,6 +19,20 @@ export function bucketRows(buckets: readonly BucketSummary[]): string[][] {
   ]);
 }
 
+/** The stdout rows: an unscoped bucket has an empty branch field, not
+ *  the word a reader wants to see there. */
+export function bucketStdoutRows(
+  buckets: readonly BucketSummary[],
+): string[][] {
+  return buckets.map((bucket) => [
+    bucket.name,
+    bucket.id,
+    bucket.status,
+    bucket.branchId ?? "",
+    bucket.createdAt,
+  ]);
+}
+
 export function bucketKeyRows(keys: readonly BucketKeySummary[]): string[][] {
   return keys.map((key) => [
     key.name,

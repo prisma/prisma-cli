@@ -10,7 +10,7 @@ import { serializeDatabaseList } from "../../presenters/database";
 import type { DatabaseListResult } from "../../types/database";
 import { branchFlag, projectFlag, resolvePostgresContext } from "./context";
 import { mapPostgresOperationError } from "./errors";
-import { formatStatus } from "./presentation";
+import { formatStatus, statusValue } from "./presentation";
 
 const TITLE = "Listing databases for the resolved project.";
 
@@ -24,8 +24,21 @@ function databaseRows(result: DatabaseListResult): string[][] {
   ]);
 }
 
+/** The stdout rows carry the values, not the reader's placeholders:
+ *  an absent branch, region or status is an empty field. */
+function databaseStdoutRows(result: DatabaseListResult): string[][] {
+  return result.databases.map((database) => [
+    database.name,
+    database.branchName ?? "",
+    database.region ?? "",
+    statusValue(database),
+    database.id,
+  ]);
+}
+
 function listPresentations(result: DatabaseListResult): Presentations {
   const rows = databaseRows(result);
+  const stdoutRows = databaseStdoutRows(result);
   return {
     human: (): Block[] => [
       { kind: "summary", tone: "info", text: TITLE },
@@ -48,7 +61,7 @@ function listPresentations(result: DatabaseListResult): Presentations {
             },
           ]),
     ],
-    stdout: () => rows.map((row) => row.join("\t")),
+    stdout: () => stdoutRows.map((row) => row.join("\t")),
     json: () => serializeDatabaseList(result),
   };
 }

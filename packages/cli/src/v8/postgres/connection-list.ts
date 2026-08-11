@@ -26,10 +26,22 @@ function connectionRows(result: DatabaseConnectionListResult): string[][] {
   ]);
 }
 
+/** The stdout rows: an absent creation time is an empty field. */
+function connectionStdoutRows(
+  result: DatabaseConnectionListResult,
+): string[][] {
+  return result.connections.map((connection) => [
+    connection.name,
+    connection.id,
+    connection.createdAt ?? "",
+  ]);
+}
+
 function listPresentations(
   result: DatabaseConnectionListResult,
 ): Presentations {
   const rows = connectionRows(result);
+  const stdoutRows = connectionStdoutRows(result);
   return {
     human: (): Block[] => [
       { kind: "summary", tone: "info", text: TITLE },
@@ -47,7 +59,7 @@ function listPresentations(
             },
           ]),
     ],
-    stdout: () => rows.map((row) => row.join("\t")),
+    stdout: () => stdoutRows.map((row) => row.join("\t")),
     json: () => serializeDatabaseConnectionList(result),
   };
 }

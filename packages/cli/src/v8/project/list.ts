@@ -25,6 +25,16 @@ function projectRows(result: ProjectListResult): string[][] {
   ]);
 }
 
+/** The stdout rows: a project with no default region has an empty
+ *  region field, not the word the human table shows. */
+function projectStdoutRows(result: ProjectListResult): string[][] {
+  return result.projects.map((project) => [
+    project.name,
+    project.id,
+    project.defaultRegion ?? "",
+  ]);
+}
+
 function nextActionsFor(result: ProjectListResult) {
   if (result.localBinding?.status === "linked") {
     return [];
@@ -42,6 +52,7 @@ function nextActionsFor(result: ProjectListResult) {
 
 function listPresentations(result: ProjectListResult): Presentations {
   const rows = projectRows(result);
+  const stdoutRows = projectStdoutRows(result);
   return {
     human: () => [
       { kind: "summary", tone: "info", text: TITLE },
@@ -59,7 +70,7 @@ function listPresentations(result: ProjectListResult): Presentations {
             } as const,
           ]),
     ],
-    stdout: () => rows.map((row) => row.join("\t")),
+    stdout: () => stdoutRows.map((row) => row.join("\t")),
     json: () => serializeProjectList(result),
     next: () => nextActionsFor(result),
   };

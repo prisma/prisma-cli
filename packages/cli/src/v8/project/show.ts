@@ -45,6 +45,26 @@ function fieldRows(
   ];
 }
 
+/** The stdout mirror. Three human affordances stay on the human side:
+ *  the home directory shortened to `~`, the workspace and project glued
+ *  into one "platform" line, and the words "Not linked" standing in for
+ *  an absent project. stdout gets the raw path and one fact per line,
+ *  under the labels this same command already uses when the directory
+ *  is not linked. */
+function stdoutFieldRows(result: ProjectShowResult, cwd: string): FieldRow[] {
+  return [
+    { label: "local repo", value: cwd },
+    { label: "workspace", value: result.workspace.name },
+    { label: "project", value: result.project?.name ?? "" },
+    ...(result.project?.url
+      ? [{ label: "url", value: result.project.url }]
+      : []),
+    ...(result.project?.defaultRegion
+      ? [{ label: "region", value: result.project.defaultRegion }]
+      : []),
+  ];
+}
+
 function showPresentations(
   result: ProjectShowResult,
   cwd: string,
@@ -66,7 +86,8 @@ function showPresentations(
           },
       { kind: "fields", rows },
     ],
-    stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
+    stdout: () =>
+      stdoutFieldRows(result, cwd).map((row) => `${row.label}: ${row.value}`),
     next: () =>
       result.project === null
         ? toNextActions(

@@ -9,12 +9,13 @@ import { serializeBucketList } from "../../presenters/bucket";
 import type { BucketListResult } from "../../types/bucket";
 import { branchFlag, projectFlag, resolveBucketContext } from "./context";
 import { mapBucketOperationError } from "./errors";
-import { bucketRows } from "./presentation";
+import { bucketRows, bucketStdoutRows } from "./presentation";
 
 const TITLE = "Listing object-store buckets for the resolved project.";
 
 function listPresentations(result: BucketListResult): Presentations {
   const rows = bucketRows(result.buckets);
+  const stdoutRows = bucketStdoutRows(result.buckets);
   return {
     human: (): Block[] => [
       { kind: "summary", tone: "info", text: TITLE },
@@ -37,7 +38,7 @@ function listPresentations(result: BucketListResult): Presentations {
             },
           ]),
     ],
-    stdout: () => rows.map((row) => row.join("\t")),
+    stdout: () => stdoutRows.map((row) => row.join("\t")),
     json: () => serializeBucketList(result),
   };
 }

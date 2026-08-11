@@ -141,6 +141,43 @@ in round 2, once the engine's consent tokens arrived
     a refusal as a success was not a behaviour anyone chose, and the
     database, branch, bucket, app and env controllers all read through
     the same function, so the fix reaches them too.
+47. **stdout rows carry raw values where the human table formats
+    them.** The Option A channel ruling (2026-08-09) makes the human
+    Blocks presentation prose on stderr and the `Presentations.stdout`
+    lines the machine-usable payload, so no human formatting and no
+    placeholder may reach a stdout row: an absent value is an empty
+    field, and where the two lanes differ the command builds two sets
+    of rows. The human tables and cards are unchanged, and `--json`
+    remains the lossless record.
+
+    What changed on stdout, by command. `project list`: an absent
+    default region is empty, not `none`. `project show`: the local
+    repo path is raw rather than shortened to `~`, the single
+    `platform: <workspace> / <project>` line becomes a `workspace` and
+    a `project` line — the labels this command already uses when the
+    directory is not linked — and an unlinked directory leaves the
+    project field empty instead of saying `Not linked`. `project env
+    list` already carried the bare key (entry 42's sibling, fixed the
+    same day). `postgres list`: absent branch and region are empty, and
+    the status field carries the raw status — the `isDefault` fallback
+    is a different fact and does not belong in that column, so an
+    absent status is empty there too. `postgres show`: the same three.
+    `postgres usage`: the period becomes `period start` and `period
+    end` rather than one glued sentence, each metric carries its number
+    without the unit, and an absent bound or timestamp is empty.
+    `postgres backup list`: the size is the byte count, not `2.0 KiB`,
+    and an absent timestamp is empty. `postgres connection list` and
+    `bucket list`: absent timestamp and branch are empty.
+    `branch list` and `bucket key list` needed no change — every cell
+    was already a raw required field.
+
+    Two placeholders survive on stdout and this slice cannot remove
+    them. `postgres backup list`'s `backupType` and `status` are the
+    literal string `unknown` when the API omits them, because
+    `normalizeBackupList` (`lib/database/provider.ts`) substitutes that
+    word in the **operation layer**, before any presentation runs — the
+    fix is a legacy body change, out of scope here. Recorded so the
+    gap is visible rather than assumed closed.
 
 ### Error code map
 

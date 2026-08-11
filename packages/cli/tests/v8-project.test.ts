@@ -183,9 +183,10 @@ describe("prisma-v8 project list", () => {
         ["Storefront", "proj_2", "none"],
       ],
     });
+    // stdout carries the values, not the table's "none" placeholder.
     expect(result.presented?.presentation.stdout).toEqual([
       "Billing\tproj_1\tus-east-1",
-      "Storefront\tproj_2\tnone",
+      "Storefront\tproj_2\t",
     ]);
     expect(result.presented?.presentation.next).toEqual([]);
   });
@@ -337,6 +338,16 @@ describe("prisma-v8 project show", () => {
         { label: "region", value: "us-east-1" },
       ],
     });
+    // The card shortens $HOME to ~ and glues the workspace and project
+    // into one "platform" line. stdout carries the raw path and one
+    // fact per line, under the labels this command already uses when
+    // the directory is not linked.
+    expect(result.presented?.presentation.stdout).toEqual([
+      `local repo: ${cwd}`,
+      "workspace: Acme Inc",
+      "project: Billing",
+      "region: us-east-1",
+    ]);
   });
 
   it("treats an unlinked directory as a success with setup next actions", async () => {
@@ -362,6 +373,12 @@ describe("prisma-v8 project show", () => {
       label: "Retry with an explicit Project",
       command: "prisma-cli project show --project <id-or-name>",
     });
+    // "Not linked" is prose for a reader; stdout leaves the field empty.
+    expect(result.presented?.presentation.stdout).toEqual([
+      `local repo: ${cwd}`,
+      "workspace: Acme Inc",
+      "project: ",
+    ]);
   });
 
   it("maps an unknown --project to PROJECT.NOT_FOUND", async () => {

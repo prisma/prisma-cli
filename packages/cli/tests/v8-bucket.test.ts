@@ -207,9 +207,10 @@ describe("prisma-v8 bucket list", () => {
         ],
       },
     ]);
+    // stdout carries the values, not the table's "unscoped" placeholder.
     expect(result.presented?.presentation.stdout).toEqual([
       "assets\tbkt_1\tready\tmain\t2026-06-01T00:00:00.000Z",
-      "uploads\tbkt_2\tcreating\tunscoped\t2026-06-02T00:00:00.000Z",
+      "uploads\tbkt_2\tcreating\t\t2026-06-02T00:00:00.000Z",
     ]);
   });
 

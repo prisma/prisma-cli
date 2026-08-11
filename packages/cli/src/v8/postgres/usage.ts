@@ -42,6 +42,24 @@ function fieldRows(result: DatabaseUsageResult): FieldRow[] {
   ];
 }
 
+/** The stdout mirror of the field rows. The reader's card carries the
+ *  unit beside each metric and the word "unknown" for an absent value;
+ *  stdout carries the number and an empty field, because that is what a
+ *  program can consume. The units and the period bounds are both in the
+ *  `--json` record. */
+function stdoutFieldRows(result: DatabaseUsageResult): FieldRow[] {
+  return [
+    { label: "project", value: result.projectName },
+    { label: "database", value: result.database.name },
+    { label: "id", value: result.database.id },
+    { label: "period start", value: result.period.start || "" },
+    { label: "period end", value: result.period.end || "" },
+    { label: "operations", value: String(result.metrics.operations.used) },
+    { label: "storage", value: String(result.metrics.storage.used) },
+    { label: "generated", value: result.generatedAt || "" },
+  ];
+}
+
 function usagePresentations(result: DatabaseUsageResult): Presentations {
   const rows = fieldRows(result);
   return {
@@ -49,7 +67,8 @@ function usagePresentations(result: DatabaseUsageResult): Presentations {
       { kind: "summary", tone: "info", text: TITLE },
       { kind: "fields", rows },
     ],
-    stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
+    stdout: () =>
+      stdoutFieldRows(result).map((row) => `${row.label}: ${row.value}`),
   };
 }
 

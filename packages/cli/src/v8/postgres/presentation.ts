@@ -19,10 +19,23 @@ export function postgresTargetLabel(
   return branchName ? `${projectName} / ${branchName}` : projectName;
 }
 
+/** The human status cell: the database's own status, or what we can say
+ *  about it when the API did not report one. */
 export function formatStatus(database: DatabaseSummary): string {
   return database.status ?? (database.isDefault ? "default" : "unknown");
 }
 
+/** The stdout status cell. The Option A channel ruling makes stdout the
+ *  machine-usable payload, so it carries the raw status and nothing
+ *  else: an absent status is an empty field, and `isDefault` is a
+ *  different fact that does not belong in this one. */
+export function statusValue(database: DatabaseSummary): string {
+  return database.status ?? "";
+}
+
+/** The human size cell. `formatBackupSize` is for reading; stdout gets
+ *  the byte count through `backupStdoutRows`, because "2.0 KiB" will
+ *  not parse back to 2048. */
 export function formatBackupSize(size: number | null): string {
   if (size === null) {
     return "unknown";
@@ -48,6 +61,18 @@ export function backupRows(
     backup.status,
     formatBackupSize(backup.size),
     backup.createdAt || "unknown",
+  ]);
+}
+
+export function backupStdoutRows(
+  backups: readonly DatabaseBackupSummary[],
+): string[][] {
+  return backups.map((backup) => [
+    backup.id,
+    backup.backupType,
+    backup.status,
+    backup.size === null ? "" : String(backup.size),
+    backup.createdAt || "",
   ]);
 }
 

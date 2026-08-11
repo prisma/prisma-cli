@@ -219,8 +219,11 @@ describe("prisma-v8 postgres list", () => {
         ["acme-production", "main", "us-east-1", "ready", "db_1"],
       ],
     });
+    // The human table shows the reader "unscoped" and "unknown"; the
+    // stdout lane carries the values, so an absent branch, region or
+    // status is an empty field (conventions §8, Option A channel).
     expect(result.presented?.presentation.stdout).toEqual([
-      "acme-preview\tunscoped\tunknown\tunknown\tdb_2",
+      "acme-preview\t\t\t\tdb_2",
       "acme-production\tmain\tus-east-1\tready\tdb_1",
     ]);
   });
@@ -390,9 +393,17 @@ describe("prisma-v8 postgres show", () => {
         { label: "connections", value: "1" },
       ],
     });
-    expect(result.presented?.presentation.stdout).toContain(
+    // The card shows the reader "unscoped"/"unknown" where a value is
+    // absent; stdout mirrors the same labels with raw values.
+    expect(result.presented?.presentation.stdout).toEqual([
+      "project: Billing",
       "database: acme-production",
-    );
+      "id: db_1",
+      "branch: main",
+      "region: us-east-1",
+      "status: ready",
+      "connections: 1",
+    ]);
   });
 
   it("shows a database addressed by name", async () => {
@@ -773,6 +784,19 @@ describe("prisma-v8 postgres usage", () => {
         { label: "generated", value: "2026-07-01T00:00:00.000Z" },
       ],
     });
+    // The card glues each metric to its unit and the period bounds into
+    // one sentence; stdout carries one raw fact per line, units and all
+    // bounds being in the --json record.
+    expect(result.presented?.presentation.stdout).toEqual([
+      "project: Billing",
+      "database: acme-production",
+      "id: db_1",
+      "period start: 2026-06-01T00:00:00.000Z",
+      "period end: 2026-06-30T23:59:59.999Z",
+      "operations: 1200",
+      "storage: 3",
+      "generated: 2026-07-01T00:00:00.000Z",
+    ]);
   });
 
   it("expands date-only bounds to UTC day boundaries", async () => {
@@ -1478,6 +1502,12 @@ describe("prisma-v8 postgres backup list", () => {
         ["bkp_2", "unknown", "unknown", "unknown", "unknown"],
       ],
     });
+    // The table renders 2048 bytes as "2.0 KiB" for a reader; stdout
+    // carries the byte count, because "2.0 KiB" will not parse back.
+    expect(result.presented?.presentation.stdout).toEqual([
+      "bkp_1\tautomatic\tavailable\t2048\t2026-06-01T00:00:00.000Z",
+      "bkp_2\tunknown\tunknown\t\t",
+    ]);
   });
 
   it("renders an empty-state list block", async () => {
@@ -1658,7 +1688,7 @@ describe("prisma-v8 postgres connection list", () => {
     });
     expect(result.presented?.presentation.stdout).toEqual([
       "primary\tconn_1\t2026-06-01T00:00:00.000Z",
-      "conn_2\tconn_2\tunknown",
+      "conn_2\tconn_2\t",
     ]);
   });
 

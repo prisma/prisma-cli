@@ -14,7 +14,7 @@ import {
   resolvePostgresContext,
 } from "./context";
 import { mapPostgresOperationError } from "./errors";
-import { type FieldRow, formatStatus } from "./presentation";
+import { type FieldRow, formatStatus, statusValue } from "./presentation";
 
 const TITLE = "Showing database metadata.";
 
@@ -30,6 +30,21 @@ function fieldRows(result: DatabaseShowResult): FieldRow[] {
   ];
 }
 
+/** The stdout mirror of the field rows: same labels, raw values. An
+ *  absent branch, region or status is an empty field rather than the
+ *  word the card shows a reader. */
+function stdoutFieldRows(result: DatabaseShowResult): FieldRow[] {
+  return [
+    { label: "project", value: result.projectName },
+    { label: "database", value: result.database.name },
+    { label: "id", value: result.database.id },
+    { label: "branch", value: result.database.branchName ?? "" },
+    { label: "region", value: result.database.region ?? "" },
+    { label: "status", value: statusValue(result.database) },
+    { label: "connections", value: String(result.connections.length) },
+  ];
+}
+
 function showPresentations(result: DatabaseShowResult): Presentations {
   const rows = fieldRows(result);
   return {
@@ -37,7 +52,8 @@ function showPresentations(result: DatabaseShowResult): Presentations {
       { kind: "summary", tone: "info", text: TITLE },
       { kind: "fields", rows },
     ],
-    stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
+    stdout: () =>
+      stdoutFieldRows(result).map((row) => `${row.label}: ${row.value}`),
   };
 }
 

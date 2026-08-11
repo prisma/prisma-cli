@@ -17,7 +17,7 @@ import {
   resolvePostgresContext,
 } from "./context";
 import { mapPostgresOperationError } from "./errors";
-import { backupRows } from "./presentation";
+import { backupRows, backupStdoutRows } from "./presentation";
 
 const TITLE = "Listing platform-created database backups.";
 
@@ -25,6 +25,7 @@ function backupListPresentations(
   result: DatabaseBackupListResult,
 ): Presentations {
   const rows = backupRows(result.backups);
+  const stdoutRows = backupStdoutRows(result.backups);
   return {
     human: (): Block[] => [
       { kind: "summary", tone: "info", text: TITLE },
@@ -55,7 +56,7 @@ function backupListPresentations(
           ]
         : []),
     ],
-    stdout: () => rows.map((row) => row.join("\t")),
+    stdout: () => stdoutRows.map((row) => row.join("\t")),
     json: () => serializeDatabaseBackupList(result),
   };
 }
