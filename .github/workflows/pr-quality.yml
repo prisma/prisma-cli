@@ -55,7 +55,7 @@ jobs:
         uses: biomejs/setup-biome@4c91541eaada48f67d7dbd7833600ce162b68f51 # v2.7.1
 
       - name: Lint
-        run: biome ci .
+        run: biome ci . --error-on-warnings
 
   test:
     name: Test
