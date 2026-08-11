@@ -3,6 +3,7 @@ import type { Format } from "../presentation";
 import { CliStructuredError } from "../protocol";
 import type { Runtime } from "../runtime";
 import type { RunState } from "./engine";
+import { formatFlagGiven } from "./pre-parse-argv";
 
 /** The engine-injected shared flag family. Commands cannot declare
  *  these names or aliases; handlers never see their values. */
@@ -104,34 +105,7 @@ function parseConfigPath(input: string): string {
   return input;
 }
 
-/**
- * The one malformed `--config` shape the parser cannot see. stricli
- * matches a flag-with-value against `/^--([a-z][a-z-.\d_]+)=(.+)$/`,
- * which needs at least one character after the `=`, so the bare token
- * `--config=` is not a flag to it at all and falls through to the
- * command's positional arguments. prisma/prisma rejects that shape as a
- * usage error (a user who wrote `--config=` meant to name a file), so
- * the engine checks for the exact token before handing argv over.
- *
- * This runs before parsing, so it cannot tell a flag from data: the
- * scan rejects `--config=` wherever it appears ahead of a bare `--`,
- * including as another flag's value or a positional. prisma/prisma's
- * scan does the same and does not stop at `--`; the token is an odd
- * one to need as data, and `--` remains the way to pass it.
- */
-export function emptyConfigAssignment(argv: readonly string[]): boolean {
-  for (const argument of argv) {
-    if (argument === "--") {
-      return false;
-    }
-    if (argument === "--config=") {
-      return true;
-    }
-  }
-  return false;
-}
-
-export function emptyConfigAssignmentError(): CliStructuredError {
+export function configFlagGivenNoValueError(): CliStructuredError {
   return new CliStructuredError(
     "CLI.INVALID_ARGUMENTS",
     "--config needs a path, and was given an empty value",
@@ -164,32 +138,9 @@ export interface SharedFlags {
 
 /** The pre-parse format decision: json framing must be in effect before
  *  stricli parses (its own failure output is framed too), so the format
- *  flags are scanned from raw argv. */
+ *  flags are read from raw argv and a TTY stdout decides the rest. */
 export function sniffFormat(argv: readonly string[], runtime: Runtime): Format {
-  return explicitFormat(argv) ?? (runtime.isTty.stdout ? "human" : "json");
-}
-
-/** The format requested by --json / --format / --format=<value>, if
- *  any. Arguments after a bare `--` are positionals, never flags. */
-export function explicitFormat(argv: readonly string[]): Format | undefined {
-  for (const [index, argument] of argv.entries()) {
-    if (argument === "--") {
-      return undefined;
-    }
-    if (argument === "--json" || argument === "--format=json") {
-      return "json";
-    }
-    if (argument === "--format=human") {
-      return "human";
-    }
-    if (argument === "--format") {
-      const value = argv[index + 1];
-      if (value === "json" || value === "human") {
-        return value;
-      }
-    }
-  }
-  return undefined;
+  return formatFlagGiven(argv) ?? (runtime.isTty.stdout ? "human" : "json");
 }
 
 export function applySharedFlags(

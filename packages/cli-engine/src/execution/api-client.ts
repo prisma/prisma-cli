@@ -3,17 +3,16 @@ import {
   credentialRejectedError,
   credentialsRequiredError,
 } from "../credential-errors";
-import type {
-  ActiveCredential,
-  CredentialManager,
-  StoredSessions,
+import {
+  type ActiveCredential,
+  type CredentialManager,
+  SERVICE_TOKEN_ENV_VAR,
+  type StoredSessions,
 } from "../credential-manager";
 import type { ManagementApiClient, TokenStorage } from "../management-api";
 import { CliStructuredError } from "../protocol";
 import { type DebugLog, makeDebugLog } from "./debug";
 import type { Invocation } from "./engine";
-
-const SERVICE_TOKEN_ENV_VAR = "PRISMA_SERVICE_TOKEN";
 
 /** What the last refresh attempt threw, if it threw. The mapping below
  *  identifies a failure as coming from the refresh path by finding this

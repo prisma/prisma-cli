@@ -4,7 +4,6 @@ import path from "node:path";
 export const CLIENT_ID = "cmm3lndn701oo0uefvxzo0ivw";
 export const DEFAULT_API_BASE_URL = "https://api.prisma.io";
 export const DEFAULT_AUTH_BASE_URL = "https://auth.prisma.io";
-export const SERVICE_TOKEN_ENV_VAR = "PRISMA_SERVICE_TOKEN";
 export const AUTH_FILE_ENV_VAR = "PRISMA_COMPUTE_AUTH_FILE";
 
 /**

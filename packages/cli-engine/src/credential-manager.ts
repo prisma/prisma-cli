@@ -1,5 +1,12 @@
 import type { TokenStorage } from "./management-api";
 
+/** The environment variables that supply a credential to a process: a
+ *  service token, plus the workspace it acts in when the token's own
+ *  claims name none. EnvironmentCredentialManager reads the pair; the
+ *  spawn path writes it into a child's environment. */
+export const SERVICE_TOKEN_ENV_VAR = "PRISMA_SERVICE_TOKEN";
+export const WORKSPACE_ID_ENV_VAR = "PRISMA_WORKSPACE_ID";
+
 /**
  * The proof material. Seen by the login flow (which mints it),
  * createSession (which stores it), and the engine (which authenticates

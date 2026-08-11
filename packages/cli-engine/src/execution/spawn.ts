@@ -1,5 +1,9 @@
 import type { AnyCommand } from "../commands";
 import { credentialsRequiredError } from "../credential-errors";
+import {
+  SERVICE_TOKEN_ENV_VAR,
+  WORKSPACE_ID_ENV_VAR,
+} from "../credential-manager";
 import type { EngineEvent } from "../events";
 import { CliStructuredError } from "../protocol";
 import type {
@@ -14,9 +18,6 @@ import { makeDebugLog } from "./debug";
 import type { Invocation } from "./engine";
 import { firstLine } from "./rendering";
 import { flushBufferedEvents } from "./reporting";
-
-const SERVICE_TOKEN_ENV_VAR = "PRISMA_SERVICE_TOKEN";
-const WORKSPACE_ID_ENV_VAR = "PRISMA_WORKSPACE_ID";
 
 /**
  * D1 ruling (S3): how long a child terminated by a programmatic abort
