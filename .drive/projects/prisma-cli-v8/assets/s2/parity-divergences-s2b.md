@@ -48,6 +48,18 @@ in round 2, once the engine's consent tokens arrived
    bytes. The title, field labels, table columns and empty-state
    sentences port verbatim.
 
+   **Narrowed by the engine-colour slice** (`specs/engine-colour.md`).
+   The card's aligned key column and its accent-coloured keys are back,
+   and byte-equal to the legacy `renderFieldRows` — a test in
+   `packages/cli/tests/v8-golden-rendering.test.ts` asserts the engine's
+   output against the commander shell's own renderer rather than against
+   a copied string. Tables align the same way. What is still missing is
+   the framing around the card, not the card: the dim `│` rail exists as
+   `fields.rail` but no command sets it yet, and the header line
+   (`project show → description`), its blank-line spacing and its
+   `Read more` row have no engine counterpart. Adopting the rail per
+   command is recorded in `deferred.md`.
+
 ### D1-specific divergences
 
 10. **`rm` alias dropped** for `project env remove` (R-S2b-8). The v8

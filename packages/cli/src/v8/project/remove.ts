@@ -25,7 +25,7 @@ const CONSENT_QUESTION =
 function removePresentations(result: ProjectRemoveResult): Presentations {
   return {
     human: (): Block[] => [
-      { kind: "summary", tone: "ok", text: "Removing project." },
+      { kind: "summary", status: "ok", text: "Removing project." },
       {
         kind: "fields",
         rows: [
@@ -64,7 +64,7 @@ export const projectRemoveCommand = defineCommand({
   handler: async (args, ctx) => {
     try {
       const workspace = await resolveActiveWorkspace(ctx);
-      const projects = await listWorkspaceProjects(ctx, workspace);
+      const projects = await listWorkspaceProjects(ctx);
       const project = toProjectSummary(
         resolveProjectForSetup(
           args.positionals.project.trim(),

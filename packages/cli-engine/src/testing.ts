@@ -15,6 +15,8 @@ import type { PresentedResult } from "./presentation";
 import type { RunSummary } from "./run-summary";
 import type { Runtime } from "./runtime";
 import type { ChildResult, SpawnChild, SpawnRequest } from "./spawn";
+import type { TelemetryPayload } from "./telemetry/payload";
+import type { TelemetryDeclaration } from "./telemetry/report";
 
 /**
  * What a scripted fake child does. `nextKill` resolves with each signal
@@ -124,7 +126,13 @@ export interface TestCli {
       readonly onSettled?: (summary: RunSummary) => void;
       readonly cwd?: string;
       readonly isTty?: { stdin?: boolean; stdout?: boolean; stderr?: boolean };
+      /** Terminal width, as the stream would report it. Absent means
+       *  not a terminal, which is what ui.width reads as unbounded. */
+      readonly columns?: { stderr?: number };
       readonly env?: Readonly<Record<string, string | undefined>>;
+      /** Overrides the CLI-level seed, so one harness can assert both
+       *  sides of the CI branch. */
+      readonly isCI?: boolean;
     },
   ): Promise<{
     readonly exitCode: number;
@@ -141,6 +149,10 @@ export interface TestCli {
     readonly presented: PresentedResult<unknown> | undefined;
     /** Every ctx.spawn the run made, in order. */
     readonly spawns: readonly SpawnRecord[];
+    /** Every telemetry payload the run handed to the seam, in order.
+     *  Empty when the CLI declared no telemetry, when gating disabled
+     *  the run, or when the harness wired no seam. */
+    readonly telemetry: readonly TelemetryPayload[];
   }>;
 }
 
@@ -237,6 +249,17 @@ export function createTestCli(spec: {
   readonly spawn?: SpawnChild;
   /** Scripts the built-in fake child. Defaults to one that exits 0. */
   readonly spawnScript?: ScriptedChildProgram;
+  /** Declares telemetry, exactly as `createCli` does. Absent means this
+   *  CLI reports nothing, which is what every test that says nothing
+   *  about telemetry gets. */
+  readonly telemetry?: TelemetryDeclaration;
+  /** The seam behind Runtime.spawnTelemetry. Payloads are recorded on
+   *  the run result either way; pass a spy to assert ordering, a
+   *  thrower to exercise failure isolation, or `null` to model a host
+   *  that wires no seam at all. */
+  readonly telemetrySpawner?: ((payload: TelemetryPayload) => void) | null;
+  /** Seeds Runtime.isCI for every run; `run({ isCI })` overrides it. */
+  readonly isCI?: boolean;
 }): TestCli {
   const credentialManager = new InMemoryCredentialManager({
     sessions: spec.sessions,
@@ -272,6 +295,7 @@ export function createTestCli(spec: {
       commandFamilies: spec.commandFamilies ?? [],
       groups: spec.groups ?? {},
       commands: spec.commands,
+      telemetry: spec.telemetry,
     },
     /** Waiting is instant under test: browserWait's polling is driven
      *  by the seeded clock, never by real time. */
@@ -291,6 +315,7 @@ export function createTestCli(spec: {
       const events: EngineEvent[] = [];
       let presented: PresentedResult<unknown> | undefined;
       const spawns: MutableSpawnRecord[] = [];
+      const telemetry: TelemetryPayload[] = [];
       const signalListeners = new Set<(signal: "SIGINT" | "SIGTERM") => void>();
       const deliverSignal = (reason: unknown): void => {
         const signal = reason === "SIGTERM" ? "SIGTERM" : "SIGINT";
@@ -308,6 +333,7 @@ export function createTestCli(spec: {
           write: (text) => {
             stderrText += text;
           },
+          columns: opts?.columns?.stderr,
         },
         stdin: inputStreamFromString(opts?.stdin ?? ""),
         cwd: opts?.cwd ?? "/",
@@ -317,6 +343,7 @@ export function createTestCli(spec: {
           stdout: opts?.isTty?.stdout ?? false,
           stderr: opts?.isTty?.stderr ?? false,
         },
+        isCI: opts?.isCI ?? spec.isCI ?? false,
         exit: (code: number): never => {
           throw new Error(
             `@prisma/cli-engine: runtime.exit(${code}) reached the test harness`,
@@ -332,6 +359,13 @@ export function createTestCli(spec: {
         credentialManager,
         managementApiClientConfig,
         spawn: recordingSpawn(spawnChild, spawns),
+        spawnTelemetry:
+          spec.telemetrySpawner === null
+            ? undefined
+            : (payload) => {
+                telemetry.push(payload);
+                spec.telemetrySpawner?.(payload);
+              },
         openUrl,
         managementApi: { baseUrl: managementApiBaseUrl },
         packageManager,
@@ -364,6 +398,7 @@ export function createTestCli(spec: {
         events,
         presented,
         spawns,
+        telemetry,
       };
     },
   };

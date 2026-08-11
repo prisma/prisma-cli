@@ -1,9 +1,14 @@
 /**
- * Wire-shape payload the parent IPC-sends to the forked child sender.
- * Mirrors only the fields the parent has naturally in hand at command
- * settlement: installation id, sanitized command + flags, CLI version,
- * and the project root the child uses to discover everything else. The
- * child probes its own process (runtime/os/arch, package manager, ts
+ * Wire-shape payload the parent IPC-sends to the forked child sender:
+ * installation id, sanitized command + flags, CLI version, and the
+ * project root the child uses to discover everything else. The engine
+ * composes it at command start (`TelemetryPayload` in
+ * `@prisma/cli-engine`); this is the child's own declaration of the
+ * same shape, kept structural so the forked sender stays a leaf with no
+ * engine dependency. The two are checked against each other where they
+ * meet, in the bin that hands one to the other.
+ *
+ * The child probes its own process (runtime/os/arch, package manager, ts
  * version, agent). The ORM CLI's child additionally loaded
  * `prisma-next.config.*` via c12 for `databaseTarget` + `extensions`;
  * that config does not exist in this product, so the load was dropped

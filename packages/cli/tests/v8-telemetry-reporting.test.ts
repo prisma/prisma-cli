@@ -1,244 +1,165 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+/**
+ * The shell's half of telemetry after the engine took the rest: the
+ * runtime seam that forks the detached sender, the CI answer the engine
+ * gates on, and the guard that keeps the suite from ever reaching a real
+ * fork or the developer's real config file.
+ *
+ * The decision, the disclosure, the mint and the payload are the
+ * engine's and are tested there (`packages/cli-engine/tests/telemetry-*`).
+ */
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import type { RunSummary } from "@prisma/cli-engine";
-import {
-  type RunTelemetryInputs,
-  readUserConfig,
-  userConfigPath,
-} from "@repo/cli-telemetry";
+import { join } from "node:path";
+import type { TelemetryPayload } from "@prisma/cli-engine";
+import { type ParentToSenderPayload, runTelemetry } from "@repo/cli-telemetry";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { main } from "../src/v8/main";
+import { assembleRuntime, type HostProcess } from "../src/v8/runtime";
 
-import { resolveTelemetryHooks } from "../src/v8/telemetry/reporting";
+vi.mock("@repo/cli-telemetry", () => ({ runTelemetry: vi.fn() }));
+vi.mock("ci-info", () => ({ isCI: false }));
 
-const V4_UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const SENDER_ENTRY = /sender\.js$/;
 
-function makeSummary(overrides: Partial<RunSummary> = {}): RunSummary {
-  return {
-    commandId: "auth.whoami",
-    exitCode: 0,
-    durationMs: 5,
-    snapshot: {
-      commandPath: ["auth", "whoami"],
-      flags: [{ name: "json", source: "cli" }],
-      positionalCount: 0,
-    },
-    ...overrides,
-  };
-}
+let configRoot: string;
 
-function makeProc(env: Record<string, string | undefined> = {}) {
+function makeProcess(overrides?: {
+  argv?: string[];
+  env?: NodeJS.ProcessEnv;
+}): HostProcess & { stderrText: string; stdoutText: string } {
   const proc = {
-    env,
-    cwd: () => "/project/root",
+    argv: overrides?.argv ?? ["node", "bin.js"],
+    env: {
+      XDG_CONFIG_HOME: configRoot,
+      APPDATA: configRoot,
+      ...overrides?.env,
+    },
+    cwd: () => "/projects/acme",
+    stdoutText: "",
     stderrText: "",
+    stdout: {
+      write(text: string) {
+        proc.stdoutText += text;
+      },
+    },
     stderr: {
       write(text: string) {
         proc.stderrText += text;
       },
     },
+    stdin: {
+      async *[Symbol.asyncIterator]() {},
+    },
+    on: () => undefined,
+    off: () => undefined,
+    exit: ((code: number) => {
+      throw new Error(`process.exit(${code}) reached the test`);
+    }) as never,
   };
   return proc;
 }
 
-// The config path resolves from XDG_CONFIG_HOME on POSIX and APPDATA on
-// win32, so both must point at the temp dir for the tests to be hermetic
-// on every platform.
-const CONFIG_ENV_VARS = ["XDG_CONFIG_HOME", "APPDATA"] as const;
-
-let xdgRoot: string;
-let originalConfigEnv: Record<string, string | undefined>;
+function configPath(): string {
+  return join(configRoot, "prisma", "config.json");
+}
 
 beforeEach(() => {
-  xdgRoot = mkdtempSync(join(tmpdir(), "v8-telemetry-wiring-"));
-  originalConfigEnv = {};
-  for (const name of CONFIG_ENV_VARS) {
-    originalConfigEnv[name] = process.env[name];
-    process.env[name] = xdgRoot;
-  }
-  mkdirSync(dirname(userConfigPath()), { recursive: true });
+  configRoot = mkdtempSync(join(tmpdir(), "v8-telemetry-wiring-"));
+  vi.mocked(runTelemetry).mockReset();
 });
 
 afterEach(() => {
-  for (const name of CONFIG_ENV_VARS) {
-    const original = originalConfigEnv[name];
-    if (original === undefined) {
-      delete process.env[name];
-    } else {
-      process.env[name] = original;
-    }
-  }
-  rmSync(xdgRoot, { recursive: true, force: true });
+  rmSync(configRoot, { recursive: true, force: true });
 });
 
-describe("resolveTelemetryHooks — decision resolution", () => {
-  it("attaches no hook in CI, even with a stored opt-in", () => {
-    writeFileSync(
-      userConfigPath(),
-      JSON.stringify({ enableTelemetry: true, installationId: "id-1" }),
-    );
-    expect(
-      resolveTelemetryHooks(makeProc(), { inCI: true, fire: vi.fn() }),
-    ).toBeUndefined();
+describe("the runtime's telemetry seam", () => {
+  it("forks the sender with the payload the engine composed", async () => {
+    const runtime = await assembleRuntime(makeProcess());
+    const payload: TelemetryPayload = {
+      installationId: "id-1",
+      version: "8.0.0",
+      command: "auth whoami",
+      flags: ["json"],
+      projectRoot: "/projects/acme",
+      endpoint: "https://telemetry.invalid/events",
+    };
+
+    runtime.spawnTelemetry?.(payload);
+
+    expect(runTelemetry).toHaveBeenCalledTimes(1);
+    const inputs = vi.mocked(runTelemetry).mock.calls[0]?.[0];
+    expect(inputs?.payload).toBe(payload);
+    expect(inputs?.senderPath).toMatch(SENDER_ENTRY);
   });
 
-  it("attaches no hook under an env opt-out", () => {
-    expect(
-      resolveTelemetryHooks(makeProc({ PRISMA_NEXT_DISABLE_TELEMETRY: "1" }), {
-        inCI: false,
-        fire: vi.fn(),
-      }),
-    ).toBeUndefined();
-    expect(
-      resolveTelemetryHooks(makeProc({ DO_NOT_TRACK: "1" }), {
-        inCI: false,
-        fire: vi.fn(),
-      }),
-    ).toBeUndefined();
+  /**
+   * The engine composes `TelemetryPayload`; the child sender declares
+   * `ParentToSenderPayload` structurally so it stays a leaf with no
+   * engine dependency. This bin is where the two meet, so it is where
+   * they are checked against each other — both directions, so neither
+   * side can drift a field without failing the build. The assignments
+   * are the assertion; the expect only keeps them honest at runtime.
+   */
+  it("hands the sender exactly the shape the engine composes", () => {
+    const engineToSender: ParentToSenderPayload = {} as TelemetryPayload;
+    const senderToEngine: TelemetryPayload = {} as ParentToSenderPayload;
+
+    expect(engineToSender).toEqual(senderToEngine);
   });
 
-  it("attaches no hook under a stored opt-out", () => {
-    writeFileSync(userConfigPath(), JSON.stringify({ enableTelemetry: false }));
-    expect(
-      resolveTelemetryHooks(makeProc(), { inCI: false, fire: vi.fn() }),
-    ).toBeUndefined();
+  it("is wired on every runtime, so a host is never silently unable to report", async () => {
+    const runtime = await assembleRuntime(makeProcess());
+
+    expect(runtime.spawnTelemetry).toBeTypeOf("function");
   });
 
-  it("attaches a hook on the opt-out default (no stored choice)", () => {
-    expect(
-      resolveTelemetryHooks(makeProc(), { inCI: false, fire: vi.fn() }),
-    ).toBeDefined();
+  it("takes the CI answer from ci-info, so a CI run never reports", async () => {
+    vi.resetModules();
+    vi.doMock("ci-info", () => ({ isCI: true }));
+    const { assembleRuntime: assembleInCI } = await import("../src/v8/runtime");
+
+    const runtime = await assembleInCI(makeProcess());
+
+    expect(runtime.isCI).toBe(true);
+    vi.doUnmock("ci-info");
+    vi.resetModules();
   });
 });
 
-describe("resolveTelemetryHooks — the attached hook", () => {
-  it("fires the sender spawn with the engine snapshot, project root, and stored id", () => {
-    writeFileSync(
-      userConfigPath(),
-      JSON.stringify({ enableTelemetry: true, installationId: "stored-id" }),
-    );
-    const fire = vi.fn().mockReturnValue({ spawned: true });
-    const proc = makeProc();
-    const hooks = resolveTelemetryHooks(proc, {
-      inCI: false,
-      fire,
-      senderPath: "/sender/path.js",
-    });
-
-    hooks?.onSettled?.(makeSummary());
-
-    expect(fire).toHaveBeenCalledTimes(1);
-    const inputs = fire.mock.calls[0]?.[0] as RunTelemetryInputs;
-    expect(inputs.command).toEqual({
-      commandPath: ["auth", "whoami"],
-      flags: [{ name: "json", source: "cli" }],
-      positionalCount: 0,
-    });
-    expect(inputs.projectRoot).toBe("/project/root");
-    expect(inputs.senderPath).toBe("/sender/path.js");
-    expect(inputs.isCI).toBe(false);
-    expect(inputs.userConfig?.installationId).toBe("stored-id");
-    expect(typeof inputs.version).toBe("string");
-    // No first-run notice for a returning installation.
-    expect(proc.stderrText).toBe("");
+describe("the suite never reports", () => {
+  it("the harness sets PRISMA_DISABLE_TELEMETRY=1", () => {
+    expect(process.env["PRISMA_DISABLE_TELEMETRY"]).toBe("1");
   });
 
-  it("discloses on stderr at resolve time — pre-run, before any command output", () => {
-    const proc = makeProc();
-    resolveTelemetryHooks(proc, {
-      inCI: false,
-      fire: vi.fn(),
-      senderPath: "/sender/path.js",
+  it("a real run neither forks the sender nor writes a config file", async () => {
+    const proc = makeProcess({
+      argv: ["node", "bin.js", "auth", "whoami"],
+      env: {
+        XDG_CONFIG_HOME: configRoot,
+        APPDATA: configRoot,
+        PRISMA_AUTH_FILE: join(configRoot, "auth.json"),
+        PRISMA_DISABLE_TELEMETRY: process.env["PRISMA_DISABLE_TELEMETRY"],
+      },
     });
 
-    // The notice printed without any settlement having happened.
-    expect(proc.stderrText).toContain(
-      "Prisma collects anonymous CLI usage data, enabled by default.",
-    );
-    expect(proc.stderrText).toContain(
-      "https://www.prisma.io/docs/orm/tools/prisma-cli",
-    );
-    expect(proc.stderrText).toContain('"prisma-cli telemetry disable"');
-    expect(proc.stderrText).toContain(userConfigPath());
-    // Nothing minted yet: disclosure is print-only.
-    expect(readUserConfig().installationId).toBeUndefined();
+    await main(proc);
+
+    expect(runTelemetry).not.toHaveBeenCalled();
+    expect(existsSync(configPath())).toBe(false);
+    expect(proc.stderrText).not.toContain("anonymous CLI usage data");
   });
 
-  it("mints the shared installation id at the first settlement", () => {
-    const fire = vi.fn().mockReturnValue({ spawned: true });
-    const proc = makeProc();
-    const hooks = resolveTelemetryHooks(proc, {
-      inCI: false,
-      fire,
-      senderPath: "/sender/path.js",
-    });
+  it("main attaches no run hooks — the engine owns the fire point now", async () => {
+    const proc = makeProcess({ argv: ["node", "bin.js", "--version"] });
+    let hooksSeen: unknown = "not called";
 
-    hooks?.onSettled?.(makeSummary());
+    await main(proc, () => ({
+      run: (_argv, _runtime, hooks) => {
+        hooksSeen = hooks;
+        return Promise.resolve(0);
+      },
+    }));
 
-    const stored = readUserConfig();
-    expect(stored.installationId).toMatch(V4_UUID);
-    // The mint records no consent the user never gave.
-    expect(stored.enableTelemetry).toBeUndefined();
-    const inputs = fire.mock.calls[0]?.[0] as RunTelemetryInputs;
-    expect(inputs.userConfig?.installationId).toBe(stored.installationId);
-  });
-
-  it("never mints on a telemetry-family settlement (status must keep reporting 'not stored')", () => {
-    const fire = vi.fn();
-    const proc = makeProc();
-    const hooks = resolveTelemetryHooks(proc, { inCI: false, fire });
-
-    hooks?.onSettled?.(
-      makeSummary({
-        commandId: "telemetry.status",
-        snapshot: {
-          commandPath: ["telemetry", "status"],
-          flags: [],
-          positionalCount: 0,
-        },
-      }),
-    );
-
-    expect(fire).not.toHaveBeenCalled();
-    expect(readUserConfig().installationId).toBeUndefined();
-  });
-
-  it("never fires for the telemetry command family itself", () => {
-    writeFileSync(
-      userConfigPath(),
-      JSON.stringify({ enableTelemetry: true, installationId: "stored-id" }),
-    );
-    const fire = vi.fn();
-    const hooks = resolveTelemetryHooks(makeProc(), { inCI: false, fire });
-
-    for (const leaf of ["status", "enable", "disable"]) {
-      hooks?.onSettled?.(
-        makeSummary({
-          commandId: `telemetry.${leaf}`,
-          snapshot: {
-            commandPath: ["telemetry", leaf],
-            flags: [],
-            positionalCount: 0,
-          },
-        }),
-      );
-    }
-
-    expect(fire).not.toHaveBeenCalled();
-  });
-
-  it("swallows a throwing spawn — the hook never propagates", () => {
-    writeFileSync(
-      userConfigPath(),
-      JSON.stringify({ enableTelemetry: true, installationId: "stored-id" }),
-    );
-    const fire = vi.fn(() => {
-      throw new Error("spawn exploded");
-    });
-    const hooks = resolveTelemetryHooks(makeProc(), { inCI: false, fire });
-
-    expect(() => hooks?.onSettled?.(makeSummary())).not.toThrow();
-    expect(fire).toHaveBeenCalledTimes(1);
+    expect(hooksSeen).toBeUndefined();
   });
 });

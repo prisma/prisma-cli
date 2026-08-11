@@ -63,7 +63,7 @@ describe("prisma-v8 service domain add", () => {
     });
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: "Added shop.acme.com to hello-world.",
     });
   });
@@ -114,7 +114,7 @@ describe("prisma-v8 service domain add", () => {
     expect(result.presented?.data).toMatchObject({ existing: true });
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
-      tone: "info",
+      status: "info",
       text: "Showing the existing custom domain for the selected service.",
     });
   });
@@ -357,7 +357,7 @@ describe("prisma-v8 service domain show", () => {
     // success marker belongs to the commands that changed something.
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
-      tone: "info",
+      status: "info",
       text: "Showing custom domain status.",
     });
   });
@@ -448,7 +448,7 @@ describe("prisma-v8 service domain retry", () => {
     });
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: "Retried verification for shop.acme.com.",
     });
   });
@@ -561,7 +561,7 @@ describe("prisma-v8 service domain remove", () => {
     });
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: "Removed shop.acme.com from hello-world.",
     });
     expect(removed).toEqual(["dom_1"]);

@@ -251,7 +251,7 @@ describe("prisma-v8 git connect", () => {
     expect(blocks(result.presented)).toEqual([
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: "Connecting Git to the resolved project.",
       },
       {
@@ -754,7 +754,7 @@ describe("prisma-v8 git disconnect", () => {
     expect(blocks(result.presented)).toEqual([
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: "Disconnecting Git from the resolved project.",
       },
       {

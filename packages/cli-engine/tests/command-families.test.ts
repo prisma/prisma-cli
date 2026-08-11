@@ -192,7 +192,7 @@ describe("docs-URL derivation", () => {
     });
 
     expect(result.stderr).toBe(
-      `✖ [TOY.BROKEN] It broke\n  docs: ${BASE}TOY.BROKEN\n`,
+      `✘ [TOY.BROKEN] It broke\n  docs: ${BASE}TOY.BROKEN\n`,
     );
   });
 

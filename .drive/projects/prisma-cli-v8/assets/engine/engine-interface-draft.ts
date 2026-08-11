@@ -45,15 +45,26 @@
  * manager gains the named engine-facing operation activeAccessToken()
  * for the spawn path's read, so the "engine never calls storage
  * methods" rule is absolute — no sanctioned exception.
- * exitWithChildStatus(child, opts?) takes { nextActions? }, rendered
+ * exitWithChildStatus(opts?) takes { nextActions? }, rendered
  * to stderr before the exit (R-S3-4's reproduce hint).
  * Amended 2026-08-11 (operator ruling) — SIGNAL SETTLEMENT IS THE
  * ENGINE'S: a run a delivered signal terminated settles 128+signal
  * from the engine's own record of that signal, whatever its handler
- * returns (EXIT CODES below). exitWithChildStatus gains its second
- * fence in consequence: the child result must be one the engine
- * produced from a real spawn, so no handler can reach a signal exit
- * code by describing a child that never existed.
+ * returns (EXIT CODES below).
+ * Amended 2026-08-11 (operator review of composer#220) — THE ENGINE
+ * RECORDS THE CHILD, AND OWNS HOW A HANDOFF SETTLES. §4 gains
+ * ctx.lastChild(): the run's most recent completed child, kept by the
+ * engine because ctx.spawn already mints every ChildResult. And
+ * exitWithChildStatus LOSES its child argument — it settles from that
+ * record. Two consequences, both deliberate. Handlers stop threading
+ * the child result out of whatever layer spawned it (composer was
+ * hand-rolling a recorder for exactly this). And the settlement
+ * ORDERING becomes the engine's: a signal-killed child settles as the
+ * abort — 128+signal, no envelope, no nextActions — even when the
+ * caller passed nextActions, so a Ctrl-C'd converge never carries a
+ * reproduce hint. The "invented child result" fence disappears with
+ * the argument that made the misuse possible; the maySpawn fence
+ * stays, joined by a construction error when no child ran at all.
  *
  * THE MODEL, in one analogy (operator, 2026-08-09): commands settle like
  * promises. A command can COMPLETE — and its completion can be
@@ -149,8 +160,10 @@
  * how well the cleanup went, so a session that shuts down cleanly on
  * Ctrl-C settles 130 while still reporting a completed envelope. No
  * handler can author these codes: documented codes stop at 99, and
- * the child-status bypass refuses a child result the engine did not
- * produce. Two codes are exempt, because neither was this CLI's to
+ * the child-status bypass takes its code from the engine's own record
+ * of the child rather than from anything the handler hands back — the
+ * handler names no child and no code at all. Two codes are exempt,
+ * because neither was this CLI's to
  * state in the first place, and both pass through verbatim: a real
  * child's status (the child owned the terminal and the signal reached
  * it too — that is why exitWithChildStatus reports 128+signal itself)
@@ -480,6 +493,14 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
    */
   readonly spawn: (options: SpawnOptions) => Promise<ChildResult>
 
+  /** S3: how the run's most recent COMPLETED child ended, or undefined
+   *  when none has run. The engine records every child ctx.spawn
+   *  returns — it mints them all anyway — so a handler whose spawn
+   *  happens somewhere else in its own layering can still ask "did my
+   *  child fail?" where it settles, instead of threading the result
+   *  back by hand. Same record exitWithChildStatus settles from. */
+  readonly lastChild: () => ChildResult | undefined
+
   /** The one way to emit while running (§1). */
   readonly report: (event: EngineEvent) => void
 
@@ -681,27 +702,32 @@ export interface SpawnedChild {
  *  engine never imports it. */
 export type SpawnChild = (request: SpawnRequest) => SpawnedChild
 
-/** Opaque: built exclusively by exitWithChildStatus. */
+/** Opaque: built exclusively by exitWithChildStatus. It carries no
+ *  exit code — the code is not the handler's to state, so the engine
+ *  reads it off its own record of the child at settlement. */
 export interface ChildStatusSettlement {
-  readonly exitCode: number
   readonly nextActions: readonly NextAction[]
 }
 
 /** The sanctioned "exit with the child's status verbatim" outcome:
  *  returned inside ok(...), it settles through the no-envelope bypass
- *  server commands already have — and ONLY from a command that
- *  declares maySpawn, with the ChildResult that command's own
- *  ctx.spawn returned; anywhere else, or with a child result the
- *  engine never produced, it is a construction error (the bypass is
- *  fenced, not merely documented). A signal-killed child
- *  settles 128 + the signal number for the portable signals; an
- *  unknown signal, or an adapter that cannot say how the child ended,
- *  settles 1 — unknown is never success. `nextActions` (a failed
- *  converge's reproduce hint, R-S3-4) render to stderr in the
- *  engine's next-action style before the process exits with the
- *  child's code; the envelope stays absent. */
+ *  server commands already have, with the status of the child THIS
+ *  RUN spawned — ctx.lastChild(). The handler names no child, so
+ *  there is no way to describe one that never existed. Two
+ *  construction errors fence it: settling it from a command that does
+ *  not declare maySpawn, and settling it when no child ran at all.
+ *
+ *  The engine owns the ORDERING, which is composer's converge rule
+ *  promoted into the engine. A signal-killed child is the user
+ *  aborting: it settles 128 + the signal number (portable signals),
+ *  with no envelope and NO nextActions — the hint is dropped even
+ *  when the caller passed one, because there is nothing to reproduce.
+ *  Otherwise the child's own code passes through verbatim and
+ *  `nextActions` (a failed converge's reproduce hint, R-S3-4) render
+ *  to stderr in the engine's next-action style before the process
+ *  exits with that code. An unknown signal, or an adapter that cannot
+ *  say how the child ended, settles 1 — unknown is never success. */
 export declare function exitWithChildStatus(
-  child: ChildResult,
   opts?: { readonly nextActions?: readonly NextAction[] },
 ): ChildStatusSettlement
 
@@ -1126,8 +1152,8 @@ export declare function defineCommand<
  * rejects --json as soon as the command is known. A session that
  * returns ok(undefined) exits 0 — or 130/143 when a delivered signal
  * ended the run, which the engine settles from its own record (EXIT
- * CODES); one that returns ok(exitWithChildStatus(child)) exits with
- * the child's status. Those are the two ways a session settles
+ * CODES); one that returns ok(exitWithChildStatus()) exits with the
+ * status of the child it spawned. Those are the two ways a session settles
  * non-zero without erroring, and neither is a code the handler picks.
  */
 export interface SessionCommandDefinition<
@@ -1210,36 +1236,102 @@ export type AnyCommand =
 // §7 Presentation primitives — the R5 vocabulary
 // ————————————————————————————————————————————————————————————————————————
 
+// Amended by the engine-colour slice (specs/engine-colour.md, ruled
+// 2026-08-11): Status split out of tone, Text everywhere, the drawing
+// block, the card's rail, and Ui's palette and width.
+
+/** What happened: selects the glyph (✔ ✘ ⚠ ℹ) and carries a default Tone
+ *  of the same name. Separate from Tone because a failure can be painted
+ *  a colour that is not `error` — a tree node in its branch lane's hue. */
+export type Status = 'ok' | 'error' | 'warn' | 'info'
+
+/** What colour to paint, and nothing else. The indexed colours are for
+ *  telling adjacent things apart and exclude red, so no series member
+ *  reads as an error. */
+export type Tone =
+  | 'ok'
+  | 'warn'
+  | 'error'
+  | 'info'
+  | 'heading'
+  | 'identifier'
+  | 'ref'
+  | 'placeholder'
+  | 'link'
+  | 'emphasis'
+  | 'muted'
+  | 'structure'
+  | 'highlight'
+  | 'color-1'
+  | 'color-2'
+  | 'color-3'
+  | 'color-4'
+  | 'color-5'
+  | 'color-6'
+
+/** A run of text and the meaning of its colour. A handler never emits
+ *  escape sequences, so the engine measures width from `text` and colour
+ *  cannot break alignment. */
+export interface Span {
+  readonly text: string
+  readonly tone?: Tone
+}
+
+/** Display text anywhere a block or Ui takes it. A bare string is untoned. */
+export type Text = string | readonly Span[]
+
 /** Deliberately small; grows by the same evidence rule as events. */
 export type Block =
   | {
       readonly kind: 'summary'
-      readonly tone: 'ok' | 'error' | 'warn' | 'info'
-      readonly text: string
+      readonly status: Status
+      /** Overrides the colour the status implies. Never the glyph. */
+      readonly tone?: Tone
+      readonly text: Text
     }
   | {
+      /** A key/value card: the engine pads the keys so every value starts
+       *  in the same column. `rail` draws the dim `│` down the left. */
       readonly kind: 'fields'
-      readonly rows: ReadonlyArray<{ label: string; value: string; sensitive?: boolean }>
+      readonly rows: ReadonlyArray<{ label: Text; value: Text; sensitive?: boolean }>
+      readonly rail?: boolean
     }
   | {
+      /** The engine sizes every column to its widest cell. */
       readonly kind: 'table'
-      readonly columns: readonly string[]
-      readonly rows: ReadonlyArray<readonly string[]>
+      readonly columns: readonly Text[]
+      readonly rows: ReadonlyArray<readonly Text[]>
     }
-  | { readonly kind: 'list'; readonly items: readonly string[] }
+  | { readonly kind: 'list'; readonly items: readonly Text[] }
   | { readonly kind: 'tree'; readonly roots: readonly TreeNode[] }
+  | {
+      /** Lines of spans, rendered verbatim — no layout, no reflow, no
+       *  truncation. For output whose two-dimensional structure the engine
+       *  cannot derive, such as a migration graph's lane gutter. */
+      readonly kind: 'drawing'
+      readonly lines: readonly Text[]
+    }
 // NOTE: recorded findings are NOT a Block — they are the outcome's
 // diagnostics; the engine renders them with the top-level error layout
 // and carries them into the envelope, so the two surfaces cannot
 // diverge.
 
 export interface TreeNode {
-  readonly label: string
+  readonly label: Text
+  /** Renders the status glyph before the label. */
+  readonly status?: Status
+  /** Colours the glyph and the label; defaults from `status`. */
+  readonly tone?: Tone
   readonly children?: readonly TreeNode[]
 }
 
-/** Styling helpers usable inside block text; no direct writing. */
+/** Styling helpers usable inside block text; no direct writing. `width`
+ *  is the printing stream's columns, POSITIVE_INFINITY off-terminal — the
+ *  engine never truncates, so a command that wants to fit is told how much
+ *  room it has. */
 export interface Ui {
+  readonly width: number
+  readonly tone: (tone: Tone, text: string) => string
   readonly emphasize: (text: string) => string
   readonly dim: (text: string) => string
   readonly code: (text: string) => string

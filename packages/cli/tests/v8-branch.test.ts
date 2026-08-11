@@ -141,7 +141,7 @@ describe("prisma-v8 branch list", () => {
     expect(blocks(result.presented)).toEqual([
       {
         kind: "summary",
-        tone: "info",
+        status: "info",
         text: "Listing branches for the resolved project.",
       },
       { kind: "fields", rows: [{ label: "project", value: "Billing" }] },

@@ -48,7 +48,7 @@ const greet = defineCommand({
       ctx.present(
         { data: { greeting } },
         {
-          human: () => [{ kind: "summary", tone: "ok", text: greeting }],
+          human: () => [{ kind: "summary", status: "ok", text: greeting }],
           stdout: () => [greeting],
           json: () => ({ greeting }),
           next: () => [{ kind: "done", label: "Nothing else to do" }],
@@ -97,7 +97,7 @@ const check = defineCommand({
           ],
         },
         {
-          human: () => [{ kind: "summary", tone: "warn", text: "1 finding" }],
+          human: () => [{ kind: "summary", status: "warn", text: "1 finding" }],
         },
       ),
     ),
@@ -122,7 +122,7 @@ const whoami = defineCommand({
           human: () => [
             {
               kind: "summary",
-              tone: "ok",
+              status: "ok",
               text: `Signed in (${active?.workspaceId})`,
             },
           ],
@@ -383,7 +383,7 @@ describe("errored commands", () => {
     expect(result.exitCode).toBe(2);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "✖ [DEMO.BROKEN] It broke\n" +
+      "✘ [DEMO.BROKEN] It broke\n" +
         "  why: The demo always breaks.\n" +
         "→ Do not run the demo.\n",
     );
@@ -528,6 +528,7 @@ describe("needs preconditions", () => {
     });
     let stderrText = "";
     const runtime: Runtime = {
+      isCI: false,
       stdout: { write: () => {} },
       stderr: {
         write: (text) => {
@@ -683,7 +684,7 @@ describe("sensitive field rows", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("name: deploy key\ntoken: ********\n");
+    expect(result.stderr).toBe("name:   deploy key\ntoken:  ********\n");
   });
 
   test("the json result payload is the command's own and stays unmasked", async () => {
@@ -716,6 +717,7 @@ describe("report() after the handler resolved", () => {
     });
     let stderrText = "";
     const runtime: Runtime = {
+      isCI: false,
       stdout: { write: () => {} },
       stderr: {
         write: (text) => {
@@ -747,8 +749,10 @@ describe("report() after the handler resolved", () => {
     expect(() =>
       smuggled?.({ kind: "message", severity: "info", text: "late" }),
     ).not.toThrow();
+    // The whole line: this mark is written as a literal rather than
+    // read from the diagnostic-severity map, so nothing else pins it.
     expect(stderrText).toContain(
-      "report() was called after the handler resolved",
+      "✘ [CLI.INTERNAL_ERROR] @prisma/cli-engine: report() was called after the handler resolved\n",
     );
   });
 });
@@ -775,6 +779,7 @@ describe("credentials that cannot be read", () => {
       { why: "token file corrupt: unexpected end of JSON input" },
     );
     const runtime: Runtime = {
+      isCI: false,
       stdout: {
         write: (text) => {
           stdoutText += text;
@@ -876,7 +881,7 @@ describe("parse and route failures", () => {
     expect(result.exitCode).toBe(2);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "✖ [CLI.INVALID_ARGUMENTS] Expected argument for name\n" +
+      "✘ [CLI.INVALID_ARGUMENTS] Expected argument for name\n" +
         '  why: Expected "z" to be one of (a|b), did you mean "a" or "b"?\n' +
         "Failed to parse \"q\" for count: expected a number, received 'q'\n",
     );

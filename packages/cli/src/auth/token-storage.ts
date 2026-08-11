@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { CredentialsStore } from "@prisma/credentials-store";
 import type { TokenStorage, Tokens } from "@prisma/management-api-sdk";
+import { sameWorkspaceId } from "../lib/workspace-id";
 import { getAuthFilePath } from "./client";
 
 interface StoredCredential {
@@ -763,17 +764,10 @@ function workspaceMatchesRef(
   ref: string,
 ): boolean {
   return (
-    workspace.credentialWorkspaceId === ref ||
-    workspace.id === ref ||
-    stripWorkspacePrefix(workspace.credentialWorkspaceId) ===
-      stripWorkspacePrefix(ref) ||
-    stripWorkspacePrefix(workspace.id) === stripWorkspacePrefix(ref) ||
+    sameWorkspaceId(workspace.credentialWorkspaceId, ref) ||
+    sameWorkspaceId(workspace.id, ref) ||
     workspace.name.toLowerCase() === ref.toLowerCase()
   );
-}
-
-function stripWorkspacePrefix(value: string): string {
-  return value.startsWith("wksp_") ? value.slice("wksp_".length) : value;
 }
 
 function workspaceDisplayName(name: string, credentialWorkspaceId: string) {

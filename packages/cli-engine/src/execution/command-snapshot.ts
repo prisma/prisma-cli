@@ -6,20 +6,10 @@
  * only for WHICH flag names appear, never for values), and the parsed
  * positional slots (reduced to a count on the spot).
  */
-import { flagRuntime } from "../args";
+import { camelCase, flagRuntime, kebabCase } from "../args";
 import type { AnyCommand } from "../commands";
 import type { EngineCommandSnapshot } from "../run-summary";
 import { SHARED_ALIASES, SHARED_FLAG_PARAMETERS } from "./shared-flags";
-
-function kebabCase(key: string): string {
-  return key.replace(/[A-Z]/g, (upper) => `-${upper.toLowerCase()}`);
-}
-
-function camelCase(raw: string): string {
-  return raw.replace(/-([a-zA-Z0-9])/g, (_, char: string) =>
-    char.toUpperCase(),
-  );
-}
 
 function declaredFlagKeys(def: AnyCommand): readonly string[] {
   const own = Object.keys(def.args.flags);

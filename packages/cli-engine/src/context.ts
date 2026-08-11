@@ -68,6 +68,16 @@ export interface CommandContext<
    */
   readonly spawn: (options: SpawnOptions) => Promise<ChildResult>;
 
+  /**
+   * How the run's most recent completed child ended, or undefined when
+   * none has run. The engine records every child ctx.spawn returns, so
+   * a handler whose spawn happens deep in its own layering can still
+   * ask "did my child fail?" where it settles, without threading the
+   * result back by hand. This is the same record exitWithChildStatus
+   * settles from.
+   */
+  readonly lastChild: () => ChildResult | undefined;
+
   /** The one way to emit while running. */
   readonly report: (event: EngineEvent) => void;
 
@@ -104,6 +114,15 @@ export interface CommandContext<
    * via ctx.env, never process.env.
    */
   readonly env: Readonly<Record<string, string | undefined>>;
+
+  /**
+   * The host's answer to "is this CI", from Runtime.isCI — what
+   * telemetry gates on. Not the engine's interactivity decision, which
+   * is its own thing (stdin a TTY, no CI in the environment,
+   * --interactive/--no-interactive), so prompts and spinners follow
+   * ctx.prompt and the engine's interaction handling, not this.
+   */
+  readonly isCI: boolean;
 
   /**
    * Conditional optional-dependency need. Resolves when the

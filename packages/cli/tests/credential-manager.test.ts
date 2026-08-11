@@ -367,7 +367,7 @@ describe("the state file", () => {
       await Promise.all(
         [WORKSPACE_B, WORKSPACE_C].map((workspaceId) =>
           makeManager({
-            env: { PRISMA_NEXT_DEBUG: "1" },
+            env: { PRISMA_DEBUG: "1" },
             debugWrite: (text) => debugLines.push(text),
           }).createSession(credentialFor(workspaceId), workspaceId),
         ),
@@ -1021,7 +1021,7 @@ describe("token material never leaks", () => {
     const rotatedSecret = "s3cret-rotated-refresh-token";
     const debugLines: string[] = [];
     const manager = makeManager({
-      env: { PRISMA_NEXT_DEBUG: "1" },
+      env: { PRISMA_DEBUG: "1" },
       debugWrite: (text) => debugLines.push(text),
     });
     const credential = {
@@ -1045,7 +1045,7 @@ describe("token material never leaks", () => {
     });
 
     const secondProcess = makeManager({
-      env: { PRISMA_NEXT_DEBUG: "1" },
+      env: { PRISMA_DEBUG: "1" },
       debugWrite: (text) => debugLines.push(text),
     });
     await secondProcess.createSession(
