@@ -11,15 +11,16 @@ import {
   readGitOriginRemote,
 } from "../adapters/git";
 import { SERVICE_TOKEN_ENV_VAR } from "../auth/client";
+import {
+  workspaceAmbiguousError,
+  workspaceNotAuthenticatedError,
+} from "../auth/errors";
 import { authenticatedManagementApiClient } from "../auth/guard";
 import {
   RecipientSessionInvalidError,
   resolveRecipientWorkspaceSession,
 } from "../auth/recipient";
-import {
-  FileTokenStorage,
-  WorkspaceSelectionError,
-} from "../auth/token-storage";
+import { WorkspaceSelectionError } from "../auth/token-storage";
 import {
   type PrismaCliPackageCommandFormatter,
   resolvePrismaCliPackageCommandFormatterSync,
@@ -51,7 +52,6 @@ import {
 } from "../lib/project/resolution";
 import {
   bindProjectToDirectory,
-  formatCommandArgument,
   isValidProjectSetupName,
   projectCreateFailedError,
   projectDirectoryBindingErrorToCliError,
@@ -59,13 +59,12 @@ import {
   resolveProjectForSetup,
   toProjectSummary,
 } from "../lib/project/setup";
+import { formatCommandArgument } from "../shell/command-arguments";
 import {
   authRequiredError,
   CliError,
   featureUnavailableError,
   usageError,
-  workspaceAmbiguousError,
-  workspaceNotAuthenticatedError,
   workspaceRequiredError,
 } from "../shell/errors";
 import type { CommandSuccess } from "../shell/output";
@@ -775,7 +774,8 @@ async function resolveTransferRecipient(
         candidate.id === workspaceRef ||
         candidate.name.toLowerCase() === workspaceRef.toLowerCase(),
     );
-    if (matches.length === 0) {
+    const match = matches[0];
+    if (match === undefined) {
       throw workspaceNotAuthenticatedError(workspaceRef);
     }
     if (matches.length > 1) {
@@ -790,9 +790,9 @@ async function resolveTransferRecipient(
     }
     return {
       // Fixture transfers authorize by workspace id instead of a real token.
-      accessToken: matches[0]!.id,
-      workspaceId: matches[0]!.id,
-      workspaceName: matches[0]!.name,
+      accessToken: match.id,
+      workspaceId: match.id,
+      workspaceName: match.name,
       source: "workspace-session",
     };
   }

@@ -5,6 +5,10 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
+const BETA_BASE_ERROR =
+  /Cannot compute the next beta from npm latest \(0\.1\.0\)\./;
+const USAGE_LINE = /Usage: resolve-package-version\.mjs <dev\|next-beta>/;
+
 // The script is exercised as a subprocess, exactly as CI invokes it
 // (`node scripts/resolve-package-version.mjs ...`). Base version 0.1.0 is
 // resolved from `packages/compute` — the one remaining consumer
@@ -59,10 +63,7 @@ describe("resolve package version (compute)", () => {
   it("fails when npm latest is outside the supported beta line", async () => {
     const result = await runScript(["next-beta", "--latest", "0.1.0"]);
     assert.equal(result.failed, true);
-    assert.match(
-      result.stderr,
-      /Cannot compute the next beta from npm latest \(0\.1\.0\)\./,
-    );
+    assert.match(result.stderr, BETA_BASE_ERROR);
   });
 
   it("computes a unique dev build version", async () => {
@@ -85,9 +86,6 @@ describe("resolve package version (compute)", () => {
       "f1110dd704a9",
     ]);
     assert.equal(result.failed, true);
-    assert.match(
-      result.stderr,
-      /Usage: resolve-package-version\.mjs <dev\|next-beta>/,
-    );
+    assert.match(result.stderr, USAGE_LINE);
   });
 });

@@ -80,6 +80,9 @@ function resolveRuntime(versions: VersionsSnapshot): {
   return { name: "node", version: versions.node };
 }
 
+const WHITESPACE = /\s+/;
+const SEMVER_RANGE_PREFIX = /^[\^~]/;
+
 /**
  * Parse `npm_config_user_agent` into a `<pm>/<version>` token. The
  * value, when present, looks like
@@ -90,7 +93,7 @@ export function parsePackageManager(
   userAgent: string | undefined,
 ): string | null {
   if (userAgent === undefined) return null;
-  const first = userAgent.split(/\s+/)[0];
+  const first = userAgent.split(WHITESPACE)[0];
   if (first === undefined || first.length === 0) return null;
   if (!first.includes("/")) return null;
   return first;
@@ -117,7 +120,7 @@ export function readTsVersionFromPackageJson(
     pickStringDep(parsed["devDependencies"]) ??
     pickStringDep(parsed["dependencies"]);
   if (candidate === null) return null;
-  return candidate.replace(/^[\^~]/, "");
+  return candidate.replace(SEMVER_RANGE_PREFIX, "");
 }
 
 function pickStringDep(deps: unknown): string | null {

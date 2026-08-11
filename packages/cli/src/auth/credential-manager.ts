@@ -17,7 +17,6 @@ import {
   credentialWorkspaceMismatchError,
   noSessionForWorkspaceError,
 } from "@prisma/cli-engine";
-import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import { environmentServiceToken } from "./service-token";
 import {
   type CredentialState,

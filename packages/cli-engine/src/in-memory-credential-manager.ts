@@ -22,7 +22,6 @@ import {
 import type {
   ActiveCredential,
   Credential,
-  CredentialIdentity,
   CredentialManager,
   Session,
   StoredSessions,

@@ -178,7 +178,7 @@ type ErasedSessionHandler = (
     readonly positionals: Record<string, unknown>;
   },
   ctx: CommandContext<unknown, number>,
-) => Promise<Result<void | ChildStatusSettlement, CliStructuredError>>;
+) => Promise<Result<undefined | ChildStatusSettlement, CliStructuredError>>;
 
 type ErasedServerHandler = (
   args: {

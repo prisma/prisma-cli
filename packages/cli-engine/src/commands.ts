@@ -324,7 +324,7 @@ export interface SessionCommandDefinition<
   readonly handler: (
     args: Args<TFlags, TPositionals>,
     ctx: CommandContext<TConfig>,
-  ) => Promise<Result<void | ChildStatusSettlement, CliStructuredError>>;
+  ) => Promise<Result<undefined | ChildStatusSettlement, CliStructuredError>>;
 }
 
 export function defineSessionCommand<

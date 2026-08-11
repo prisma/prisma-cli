@@ -5,6 +5,9 @@ import { describe, expect, it } from "vitest";
 
 import { createTempCwd, executeCli } from "./helpers";
 
+const BUCKET_HELP_ROW = /bucket\s+Manage object-store buckets for a project/;
+const BUCKET_ID = /^bkt_/;
+
 const fixturePath = path.resolve("fixtures/mock-api.json");
 
 async function login(cwd: string, stateDir: string) {
@@ -58,9 +61,7 @@ describe("bucket commands", () => {
     });
 
     expect(root.exitCode).toBe(0);
-    expect(root.stderr).toMatch(
-      /bucket\s+Manage object-store buckets for a project/,
-    );
+    expect(root.stderr).toMatch(BUCKET_HELP_ROW);
 
     expect(bucket.exitCode).toBe(0);
     const bucketHelp = stripAnsi(bucket.stderr).replace(/[ \t]+\n/g, "\n");
@@ -159,7 +160,7 @@ describe("bucket commands", () => {
         projectName: "Acme Dashboard",
       },
     });
-    expect(payload.result.bucket.id).toMatch(/^bkt_/);
+    expect(payload.result.bucket.id).toMatch(BUCKET_ID);
   });
 
   it("creates a bucket without a name (auto-generated)", async () => {
@@ -174,7 +175,7 @@ describe("bucket commands", () => {
     const payload = JSON.parse(result.stdout);
 
     expect(result.exitCode).toBe(0);
-    expect(payload.result.bucket.id).toMatch(/^bkt_/);
+    expect(payload.result.bucket.id).toMatch(BUCKET_ID);
     expect(payload.result.bucket.name).toBeTruthy();
   });
 
