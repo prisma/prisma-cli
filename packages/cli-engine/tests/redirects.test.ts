@@ -476,7 +476,7 @@ describe("retired verbs", () => {
     expect(result.exitCode).toBe(2);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "✖ [CLI.COMMAND_MOVED] `migration apply` has been replaced\n" +
+      "✘ [CLI.COMMAND_MOVED] `migration apply` has been replaced\n" +
         "  why: migration apply was replaced by migrate --to.\n" +
         "→ Use the replacement: prisma-test migrate --to <ref>\n",
     );
@@ -651,7 +651,7 @@ describe("retired flags", () => {
     expect(result.exitCode).toBe(2);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "✖ [CLI.COMMAND_MOVED] `--graph` on `migration status` has been replaced\n" +
+      "✘ [CLI.COMMAND_MOVED] `--graph` on `migration status` has been replaced\n" +
         "  why: The --graph flag became its own command.\n" +
         "→ Use the replacement: prisma-test migration graph\n",
     );

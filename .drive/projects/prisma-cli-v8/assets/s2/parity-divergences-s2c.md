@@ -571,7 +571,10 @@ and the default endpoint are all unchanged.
   including `--copy` forced on Windows, `--all-agents` sending
   `--agent *`, and the package manager detected from the project.
 - Human output is the engine's summary line plus field rows instead of
-  the legacy rail-drawn block. Neither writes a stdout payload.
+  the legacy rail-drawn block. Neither writes a stdout payload. Since the
+  engine-colour slice the field rows align and their keys carry the accent
+  colour, byte-equal to the legacy `renderFieldRows`; the rail itself is
+  available as `fields.rail` but not yet set here.
 - **Help examples lose the package runner, and the command now spells itself two ways (ESCALATED — engine gap).** Legacy rendered the `agent` group's examples through the project's own runner (`resolvePrismaCliPackageCommandFormatterSync`), so help read `pnpm dlx @prisma/cli@latest agent install`. The operator ruling of 2026-08-09 on the engine interface says examples are written without the binary name — the engine substitutes `{bin}`, or prepends the CLI name to an example that carries none (`assets/engine/engine-interface-draft.ts`, `HelpSpec.examples`) — so the ported examples are bare (`agent install`). The engine has no way to express the old form: examples are static strings resolved at definition time, and the runner is discovered from the filesystem at run time. The visible consequence is that one command now names itself two ways — help says `agent install`, while the same command's own next action still carries the package-runner form `npx -y @prisma/cli@latest agent status`, because next actions are built at run time and keep legacy's string. Worth settling once, group-wide, alongside the same question for every other ported group; nothing here should diverge on its own.
 
 ### `agent status`
@@ -587,7 +590,9 @@ and the default endpoint are all unchanged.
   condition (no skills installed).
 - The result record is unchanged field for field. Human output is a
   summary line, field rows and a skills table instead of the legacy
-  rail-drawn block.
+  rail-drawn block. Since the engine-colour slice the rows and the table
+  align and carry the accent colour; only the rail is still absent, and
+  it is now a per-command opt-in rather than a missing capability.
 
 ### `app run` is dropped (operator ruling, 2026-08-10)
 

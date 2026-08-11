@@ -82,6 +82,9 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       write: (text) => {
         proc.stderr.write(text);
       },
+      get columns() {
+        return proc.stderr.columns;
+      },
     },
     stdin,
     cwd: proc.cwd(),

@@ -123,7 +123,7 @@ function transferPresentations(
 ): Presentations {
   return {
     human: (): Block[] => [
-      { kind: "summary", tone: "ok", text: "Transferring project." },
+      { kind: "summary", status: "ok", text: "Transferring project." },
       {
         kind: "fields",
         rows: [

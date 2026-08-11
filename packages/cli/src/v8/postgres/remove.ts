@@ -21,7 +21,7 @@ const CONSENT_QUESTION =
 function removePresentations(result: DatabaseRemoveResult): Presentations {
   return {
     human: (): Block[] => [
-      { kind: "summary", tone: "ok", text: "Removing database." },
+      { kind: "summary", status: "ok", text: "Removing database." },
       {
         kind: "fields",
         rows: [

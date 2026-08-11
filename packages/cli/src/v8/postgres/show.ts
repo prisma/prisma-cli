@@ -49,7 +49,7 @@ function showPresentations(result: DatabaseShowResult): Presentations {
   const rows = fieldRows(result);
   return {
     human: (): Block[] => [
-      { kind: "summary", tone: "info", text: TITLE },
+      { kind: "summary", status: "info", text: TITLE },
       { kind: "fields", rows },
     ],
     stdout: () =>
