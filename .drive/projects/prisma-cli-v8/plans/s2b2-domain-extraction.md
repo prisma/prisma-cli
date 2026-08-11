@@ -1,24 +1,32 @@
-# S2b2 dispatch plan — domain extraction
+# S2b2 dispatch plan — domain extraction, bucket group
 
-Contract: `../specs/s2b2-domain-extraction.md`. Branch `s2b2-domain-extraction` off `main` after S2b merges. Standing rules as in S2b's plan: explicit staging, the six-command verification before every commit judged by each command's own exit code, unpinned fact → STOP.
+Contract: `../specs/s2b2-domain-extraction.md`. Branch `s2b2-domain-extraction` off `main`.
 
-One difference from S2b worth stating up front: **the tests are the specification here.** S2b's implementer worked from design documents because the behaviour was being created. Here the behaviour exists and 1,007 tests assert it, so the instruction to every dispatch is that no test may be edited to accommodate a move. A test that needs changing means the move changed behaviour, which is a defect.
+Standing rules as in S2b's plan: explicit staging; the six verification commands before every commit, each judged by its own exit code and never chained off an echo; an unpinned fact is a STOP, not a guess.
 
-### D1 — the error base
-R-X-1 alone. `CliError` and `usageError` to `src/errors.ts`, `shell/errors.ts` re-exporting, every `src/v8/**` import repointed. Smallest possible change, landed first, because it is what blocks S2d from deleting the shell and it touches the most files.
+**The tests are the specification.** S2b's implementer worked from design documents because the behaviour was being created. Here it exists and is asserted from outside, so no test may be edited to accommodate a move. A test that needs changing means the move changed behaviour.
 
-### D2 — providers
-R-X-3. Four provider modules to `src/api/<area>/`. A move and an import repoint across both trees; no bodies change. Verifiable by the diff being imports and paths only.
+### D1 — the four provider-only commands
+`bucket delete`, `bucket key list`, `bucket key create`, `bucket key delete`. These reach nothing but `BucketProvider`, so this dispatch establishes the whole shape against the easy case: the port interface moves to `use-cases/bucket/`, `createManagementBucketProvider` moves to `adapters/bucket/`, four use cases are written, four handlers are reduced to parsing and presentation.
 
-### D3 — domain rules
-R-X-2 and R-X-8. The twelve symbols to `src/domain/<area>/`, taking plain arguments rather than a shell `CommandContext`. This is where the legacy-context adapter and its proxy die, and it is the only dispatch that changes a function signature — so it is the one where the legacy shell's tests are the real check, since the shell calls the same functions.
+It also settles two questions the later groups inherit, and settles them where they are cheap: where consent sits for `bucket delete` (the handler, per R-Y-2), and how a one-time secret is handled for `bucket key create` — the use case returns the credentials, the handler decides that stdout gets them bare and the card gets them masked.
 
-### D4 — presentation
-R-X-4. The eight serializers and five formatters reimplemented in `src/v8/<group>/presentation.ts`, v8's imports of `presenters/` dropped. The json envelope tests are the proof: they assert the result shape key for key and must pass untouched.
+### D2 — the two project-addressing commands
+`bucket list` and `bucket create`. Introduces the two shared ports for project resolution and implements them over the existing functions. This is where the slice meets the problem every other group has, so it is the dispatch whose difficulty predicts the rest.
 
-### D5 — closure
-The boundary test that makes the first acceptance box enforceable rather than aspirational: nothing under `src/v8/**` imports from `shell/`, `controllers/` or `presenters/`. Review loop, PR.
+### D3 — the boundary check and closure
+A test asserting that nothing under `src/v8/bucket/**` imports from `shell/`, `controllers/`, `presenters/` or `lib/` — which makes the second acceptance box enforced rather than inspected. Then the review round, the reassessment write-up the contract requires, and the PR.
 
-Completeness: D1→error base; D2→providers; D3→domain rules and the adapter; D4→presentation; D5→the boundary test and closure. Every contract acceptance box maps to exactly one dispatch.
+Completeness: D1 → the shape, consent and secrets; D2 → shared resolution; D3 → the boundary check, the reassessment, closure. Every acceptance box maps to exactly one dispatch.
 
-Ordering is deliberate: D1 and D2 are pure moves and prove the machinery, D3 is the only signature change and lands with the shell's tests as its check, D4 is additive to v8 and subtractive from its imports, and D5 makes the whole thing impossible to regress.
+## The reassessment this slice exists to inform
+
+D3's write-up answers, with evidence rather than impression:
+
+- What did the six handlers actually shrink to, and how much of that was presentation rather than logic?
+- Did any port signature need an engine or shell type, and if so which and why?
+- `bucket list` and `bucket create` reach project resolution through the legacy-context adapter. Did the two shared ports isolate that cleanly, or did the adapter leak into the use case?
+- Which of R-Y-1 to R-Y-8 was hardest to hold, and what did holding it cost?
+- On that evidence: do the remaining four groups go in one slice or four?
+
+That last question is the operator's, and this slice exists to make it answerable.
