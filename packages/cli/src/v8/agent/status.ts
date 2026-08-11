@@ -16,7 +16,18 @@ import {
   type AgentContext,
   listInstalledPrismaSkills,
   type SkillsListFailure,
+  type SkillsListSuccess,
 } from "./skills-cli";
+
+function resolveStatusSource(
+  skillsList: SkillsListSuccess | SkillsListFailure,
+  statusScope: "project" | "global",
+): AgentStatusResult["statusSource"] {
+  if (skillsList.status === "ok") {
+    return "skills-cli";
+  }
+  return statusScope === "project" ? "skills-lock" : "unavailable";
+}
 
 async function openStateStore(ctx: AgentContext): Promise<LocalStateStore> {
   const stateDir = await resolveStateDir({
@@ -81,12 +92,7 @@ export const agentStatusCommand = defineCommand({
       skillsLockPath: setupStatus.skillsLockPath,
       skillsLockInstalled: setupStatus.skillsInstalled,
       skillsInstalled,
-      statusSource:
-        skillsList.status === "ok"
-          ? "skills-cli"
-          : statusScope === "project"
-            ? "skills-lock"
-            : "unavailable",
+      statusSource: resolveStatusSource(skillsList, statusScope),
       promptDismissedAt: setupStatus.promptDismissedAt,
     };
     const installCommand = skillsInstalled

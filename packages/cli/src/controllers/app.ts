@@ -174,6 +174,12 @@ const DOMAIN_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const CNAME_TO_PHRASE = /\bcname(?:s)?\s+to\b/;
 const PRISMA_BUILD_HOSTNAME = /\b((?:[a-z0-9-]+\.)+prisma\.build)\b/i;
 const WAIT_TIMEOUT_DURATION = /^(\d+)(ms|s|m|h)$/;
+const WAIT_TIMEOUT_UNIT_MULTIPLIER_MS: Record<string, number> = {
+  ms: 1,
+  s: 1000,
+  m: 60 * 1000,
+  h: 60 * 60 * 1000,
+};
 const NEXTJS_MENTION = /next\.?js/i;
 const STANDALONE_OUTPUT_MENTION = /standalone output/i;
 
@@ -1166,7 +1172,8 @@ export async function runAppShowDeploy(
           deployment.app.id,
         )
       : null;
-  const providerLiveDeploymentId = deployment.app?.liveDeploymentId ?? null;
+  const liveDeploymentId =
+    deployment.app?.liveDeploymentId || knownLiveDeploymentId;
 
   return {
     command: "app.show-deploy",
@@ -1179,11 +1186,9 @@ export async function runAppShowDeploy(
         : null,
       deployment: {
         ...deployment.deployment,
-        live: providerLiveDeploymentId
-          ? deployment.deployment.id === providerLiveDeploymentId
-          : knownLiveDeploymentId
-            ? deployment.deployment.id === knownLiveDeploymentId
-            : deployment.deployment.live,
+        live: liveDeploymentId
+          ? deployment.deployment.id === liveDeploymentId
+          : deployment.deployment.live,
       },
     },
     warnings: [],
@@ -2624,15 +2629,7 @@ function parseDomainWaitTimeout(value: string | undefined): number {
   }
 
   const amount = Number.parseInt(match[1], 10);
-  const unit = match[2];
-  const multiplier =
-    unit === "h"
-      ? 60 * 60 * 1000
-      : unit === "m"
-        ? 60 * 1000
-        : unit === "s"
-          ? 1000
-          : 1;
+  const multiplier = WAIT_TIMEOUT_UNIT_MULTIPLIER_MS[match[2]] ?? 1;
   return amount * multiplier;
 }
 
@@ -4712,6 +4709,16 @@ function deployFailedError(
   });
 }
 
+function describeStalledDeployPhase(progress: DeployProgressState): string {
+  if (progress.uploadCompleted) {
+    return "The artifact uploaded, but the deployment did not start.";
+  }
+  if (progress.archiveReady) {
+    return "The app built locally, but the artifact did not finish uploading.";
+  }
+  return "The app built locally, but the deployment did not start.";
+}
+
 function appDeployFailedError(
   error: unknown,
   progress: DeployProgressState,
@@ -4802,11 +4809,7 @@ function appDeployFailedError(
     : [
         phaseHeadline,
         "",
-        progress.uploadCompleted
-          ? "The artifact uploaded, but the deployment did not start."
-          : progress.archiveReady
-            ? "The app built locally, but the artifact did not finish uploading."
-            : "The app built locally, but the deployment did not start.",
+        describeStalledDeployPhase(progress),
         "",
         ...recoveryLines,
       ];

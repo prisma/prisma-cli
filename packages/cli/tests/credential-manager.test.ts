@@ -30,6 +30,7 @@ const NO_SPACE_LEFT = /no space left/;
 const POSIX_MODES = process.platform !== "win32";
 
 function expectOwnerOnly(mode: number): void {
+  // biome-ignore lint/nursery/noConditionalExpect: the condition is the host platform, not test data — it is fixed before any test runs, so it cannot vary with the code under test and cannot hide a regression. On POSIX, where the permission bits exist, the assertion always runs.
   if (POSIX_MODES) expect(mode & 0o777).toBe(0o600);
 }
 

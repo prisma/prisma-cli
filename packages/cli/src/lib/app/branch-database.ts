@@ -114,19 +114,26 @@ export async function inspectBranchDatabaseSignal(
     : selectedPrismaOrmSchema.schema;
   const unsupportedSchema = schema
     ? null
-    : unsupportedPrismaNextConfig
-      ? {
-          kind: "prisma-next" as const,
-          path: unsupportedPrismaNextConfig.path,
-          target: unsupportedPrismaNextConfig.target,
-        }
-      : selectedPrismaOrmSchema.unsupportedSchema;
+    : (toUnsupportedSchema(unsupportedPrismaNextConfig) ??
+      selectedPrismaOrmSchema.unsupportedSchema);
 
   return {
     schema,
     unsupportedSchema,
     databaseUrlReferences: state.databaseUrlReferences,
   };
+}
+
+function toUnsupportedSchema(
+  config: {
+    path: string;
+    target: UnsupportedBranchDatabaseSchemaTarget;
+  } | null,
+): UnsupportedBranchDatabaseSchema | null {
+  if (!config) {
+    return null;
+  }
+  return { kind: "prisma-next", path: config.path, target: config.target };
 }
 
 export function hasBranchDatabaseSignal(signal: BranchDatabaseSignal): boolean {

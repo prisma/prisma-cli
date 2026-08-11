@@ -391,15 +391,21 @@ export function selectedServiceMissingError(
   );
 }
 
+function formatDomainFailureWhy(domain: DomainRecord): string {
+  if (!domain.failureReason) {
+    return "The platform reported a terminal failed state for this custom domain.";
+  }
+  if (!domain.failureCategory) {
+    return domain.failureReason;
+  }
+  return `${domain.failureCategory}: ${domain.failureReason}`;
+}
+
 export function domainVerificationFailedError(
   hostname: string,
   domain: DomainRecord,
 ): CliStructuredError {
-  const why = domain.failureReason
-    ? domain.failureCategory
-      ? `${domain.failureCategory}: ${domain.failureReason}`
-      : domain.failureReason
-    : "The platform reported a terminal failed state for this custom domain.";
+  const why = formatDomainFailureWhy(domain);
   const guidance = formatDomainFailureFix(domain);
   return new CliStructuredError(
     "SERVICE.DOMAIN_VERIFICATION_FAILED",
