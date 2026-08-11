@@ -13,7 +13,7 @@ import type { Format, PresentedResult } from "../presentation";
 import type { CliStructuredError, Result } from "../protocol";
 import type { EngineCommandSnapshot, RunSummary } from "../run-summary";
 import type { InputStream, Runtime } from "../runtime";
-import { makeContext } from "./command-context";
+import { type CommandCapabilities, makeContext } from "./command-context";
 import { buildCommandSnapshot } from "./command-snapshot";
 import { buildCommandTree, type CommandTreeEntry } from "./command-tree";
 import { checkNeeds, type NeedsOutcome } from "./needs";
@@ -359,7 +359,7 @@ export class EngineImpl implements Engine {
     const ctx = makeContext(
       invocation,
       needsOutcome.config,
-      entry.def.kind === "result-command" && entry.def.managesCredentials,
+      declaredCapabilities(entry.def),
     );
     if (entry.def.kind === "session-command") {
       try {
@@ -454,6 +454,16 @@ function versionRequested(argv: readonly string[]): boolean {
     }
   }
   return false;
+}
+
+function declaredCapabilities(def: AnyCommand): CommandCapabilities {
+  if (def.kind !== "result-command") {
+    return { managesCredentials: false, installsPackages: false };
+  }
+  return {
+    managesCredentials: def.managesCredentials,
+    installsPackages: def.installsPackages,
+  };
 }
 
 function declaredFlags(

@@ -88,7 +88,12 @@ export type {
   PackageManagerRunner,
   PackageManagerRunRequest,
   PackageManagerRunResult,
+  PackageOperations,
 } from "../package-manager";
+export {
+  type PackageManagerFailure,
+  packageManagerFailedError,
+} from "../package-manager-errors";
 export {
   type Block,
   type Format,

@@ -1,7 +1,39 @@
 import { detect } from "package-manager-detector/detect";
+import type { CliStructuredError, Result } from "./protocol";
 
 /** The package managers the engine knows how to drive. */
 export type PackageManagerId = "npm" | "pnpm" | "yarn" | "bun" | "deno";
+
+/**
+ * ctx.packages: what a command declaring `installsPackages` may do to
+ * the user's project. Both operations resolve — a manager that failed
+ * is a value, not a throw — except under cancellation, which throws the
+ * abort reason so the run settles the way Ctrl-C settles everywhere
+ * else. Neither may be called while the other is still running.
+ */
+export interface PackageOperations {
+  /** Adds dependencies to the project. */
+  install(request: {
+    /** Specifiers as the user would type them, e.g. "prisma@latest". */
+    readonly packages: readonly string[];
+    readonly dev?: boolean;
+    /** Defaults to ctx.cwd. */
+    readonly cwd?: string;
+    /** Overrides detection, so a caller can retry with another manager. */
+    readonly manager?: PackageManagerId;
+  }): Promise<Result<{ readonly command: string }, CliStructuredError>>;
+
+  /** Runs a package's bin once, without adding a dependency. */
+  run(request: {
+    /** The package whose bin to execute, e.g. "skills". */
+    readonly package: string;
+    readonly args: readonly string[];
+    /** Defaults to ctx.cwd. */
+    readonly cwd?: string;
+    /** Overrides detection, so a caller can retry with another manager. */
+    readonly manager?: PackageManagerId;
+  }): Promise<Result<{ readonly command: string }, CliStructuredError>>;
+}
 
 /**
  * One package-manager invocation: the pieces needed to spawn it, plus

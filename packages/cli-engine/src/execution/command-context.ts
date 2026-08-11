@@ -4,6 +4,7 @@ import type {
   CredentialManager,
 } from "../credential-manager";
 import type { ManagementApiClient } from "../management-api";
+import type { PackageOperations } from "../package-manager";
 import { resolvePackageManager } from "../package-manager";
 import {
   PRESENTED,
@@ -16,6 +17,7 @@ import { buildManagementApiClient } from "./api-client";
 import type { Invocation, RunState } from "./engine";
 import { dependencyResolvable, missingDependencyError } from "./needs";
 import { announceUrl } from "./open-url";
+import { makePackageOperations } from "./package-operations";
 import { makePromptSurface } from "./prompts";
 import { reportEvent } from "./reporting";
 
@@ -57,10 +59,17 @@ function materializePresentation(
   };
 }
 
+/** The capability flags the command declared: each one adds a surface
+ *  to the context and nothing else. */
+export interface CommandCapabilities {
+  readonly managesCredentials: boolean;
+  readonly installsPackages: boolean;
+}
+
 export function makeContext(
   invocation: Invocation,
   config: unknown,
-  managesCredentials: boolean,
+  capabilities: CommandCapabilities,
 ): CommandContext<unknown, number> {
   const state = invocation.state;
   const ui = makeUi(state.colorEnabled);
@@ -121,7 +130,7 @@ export function makeContext(
       return notOk(missingDependencyError(specifier, manager));
     },
   };
-  if (managesCredentials) {
+  if (capabilities.managesCredentials) {
     Object.defineProperty(context, "credentialManager", {
       enumerable: true,
       get(): CredentialManager {
@@ -133,6 +142,15 @@ export function makeContext(
         }
         return manager;
       },
+    });
+  }
+  if (capabilities.installsPackages) {
+    /** A host with no runner is not an error here: the operation is
+     *  offered and reports the structured failure when it is called. */
+    const packages: PackageOperations = makePackageOperations(invocation);
+    Object.defineProperty(context, "packages", {
+      enumerable: true,
+      value: packages,
     });
   }
   return context;

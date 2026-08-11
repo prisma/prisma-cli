@@ -8,6 +8,7 @@ import type {
 import type { ConfigSection } from "./config-section";
 import type { CommandContext } from "./context";
 import type { CredentialManager } from "./credential-manager";
+import type { PackageOperations } from "./package-manager";
 import type { PresentedResult } from "./presentation";
 import type {
   CliStructuredError,
@@ -130,6 +131,7 @@ export interface CommandDefinition<
   TConfig = undefined,
   TCode extends number = never,
   TManagesCredentials extends boolean = false,
+  TInstallsPackages extends boolean = false,
 > {
   readonly kind: "result-command";
   readonly help: CommandHelp;
@@ -154,6 +156,13 @@ export interface CommandDefinition<
   readonly managesCredentials: TManagesCredentials;
 
   /**
+   * A CAPABILITY, not a need: when true, ctx.packages appears on the
+   * context and the command may run the user's package manager in the
+   * user's project. Declaring it never fails a run.
+   */
+  readonly installsPackages: TInstallsPackages;
+
+  /**
    * The handler function, referenced directly — never a dynamic import
    * (operator ruling, 2026-08-09). A handler that needs heavy
    * dependencies imports them at execution time, inside its body. A
@@ -165,7 +174,8 @@ export interface CommandDefinition<
     TPositionals,
     TConfig,
     TCode,
-    TManagesCredentials
+    TManagesCredentials,
+    TInstallsPackages
   >;
 }
 
@@ -175,18 +185,29 @@ export type Handler<
   TConfig,
   TCode extends number = never,
   TManagesCredentials extends boolean = false,
+  TInstallsPackages extends boolean = false,
 > = (
   args: Args<TFlags, TPositionals>,
   ctx: CommandContext<TConfig, TCode> &
     (TManagesCredentials extends true
       ? { readonly credentialManager: CredentialManager }
+      : unknown) &
+    (TInstallsPackages extends true
+      ? { readonly packages: PackageOperations }
       : unknown),
 ) => Promise<Result<PresentedResult<unknown>, CliStructuredError>>;
 
 /** For impl files: `const run: CommandHandler<typeof migrateCommand> = …` */
 export type CommandHandler<D> =
-  D extends CommandDefinition<infer F, infer P, infer C, infer K, infer M>
-    ? Handler<F, P, C, K, M>
+  D extends CommandDefinition<
+    infer F,
+    infer P,
+    infer C,
+    infer K,
+    infer M,
+    infer I
+  >
+    ? Handler<F, P, C, K, M, I>
     : never;
 
 export function defineCommand<
@@ -200,58 +221,40 @@ export function defineCommand<
   >,
   TConfig = undefined,
   TCode extends number = never,
+  TManagesCredentials extends boolean = false,
+  TInstallsPackages extends boolean = false,
 >(def: {
   readonly help: HelpSpec;
   readonly args?: ArgsSpec<TFlags, TPositionals>;
   readonly needs?: NeedsSpec<TConfig>;
   readonly exitCodes?: Readonly<Record<TCode, string>>;
-  readonly managesCredentials: true;
-  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode, true>;
-}): CommandDefinition<TFlags, TPositionals, TConfig, TCode, true>;
-export function defineCommand<
-  TFlags extends Record<string, FlagSpec<unknown>> = Record<
-    never,
-    FlagSpec<unknown>
-  >,
-  TPositionals extends Record<string, PositionalSpec<unknown>> = Record<
-    never,
-    PositionalSpec<unknown>
-  >,
-  TConfig = undefined,
-  TCode extends number = never,
->(def: {
-  readonly help: HelpSpec;
-  readonly args?: ArgsSpec<TFlags, TPositionals>;
-  readonly needs?: NeedsSpec<TConfig>;
-  readonly exitCodes?: Readonly<Record<TCode, string>>;
-  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode>;
-}): CommandDefinition<TFlags, TPositionals, TConfig, TCode>;
-export function defineCommand<
-  TFlags extends Record<string, FlagSpec<unknown>> = Record<
-    never,
-    FlagSpec<unknown>
-  >,
-  TPositionals extends Record<string, PositionalSpec<unknown>> = Record<
-    never,
-    PositionalSpec<unknown>
-  >,
-  TConfig = undefined,
-  TCode extends number = never,
->(def: {
-  readonly help: HelpSpec;
-  readonly args?: ArgsSpec<TFlags, TPositionals>;
-  readonly needs?: NeedsSpec<TConfig>;
-  readonly exitCodes?: Readonly<Record<TCode, string>>;
-  readonly managesCredentials?: boolean;
-  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode, boolean>;
-}): CommandDefinition<TFlags, TPositionals, TConfig, TCode, boolean> {
+  readonly managesCredentials?: TManagesCredentials;
+  readonly installsPackages?: TInstallsPackages;
+  readonly handler: Handler<
+    TFlags,
+    TPositionals,
+    TConfig,
+    TCode,
+    TManagesCredentials,
+    TInstallsPackages
+  >;
+}): CommandDefinition<
+  TFlags,
+  TPositionals,
+  TConfig,
+  TCode,
+  TManagesCredentials,
+  TInstallsPackages
+> {
   return Object.freeze({
     kind: "result-command" as const,
     help: normalizeHelp(def.help),
     args: normalizeArgs(def.args),
     needs: normalizeNeeds(def.needs),
     exitCodes: def.exitCodes ?? ({} as Readonly<Record<TCode, string>>),
-    managesCredentials: def.managesCredentials ?? false,
+    managesCredentials: (def.managesCredentials ??
+      false) as TManagesCredentials,
+    installsPackages: (def.installsPackages ?? false) as TInstallsPackages,
     handler: def.handler,
   });
 }
@@ -377,6 +380,7 @@ export type AnyCommand =
         Record<string, PositionalSpec<unknown>>,
         unknown,
         number,
+        boolean,
         boolean
       >,
       "handler"
