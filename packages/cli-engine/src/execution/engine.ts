@@ -5,20 +5,22 @@ import {
 } from "@stricli/core";
 import { type PositionalSpec, positionalRuntime } from "../args";
 import type { CommandFamily, MountedTree } from "../command-family";
-import type { AnyCommand } from "../commands";
+import { type AnyCommand, commandMaySpawn } from "../commands";
 import type { CommandContext } from "../context";
 import type { EngineEvent, Severity, StreamEvent } from "../events";
 import type { ManagementApiClient } from "../management-api";
 import type { Format, PresentedResult } from "../presentation";
-import type { CliStructuredError, Result } from "../protocol";
+import { CliStructuredError, type Result } from "../protocol";
 import type { EngineCommandSnapshot, RunSummary } from "../run-summary";
 import type { InputStream, Runtime } from "../runtime";
+import { type ChildStatusSettlement, isChildStatusSettlement } from "../spawn";
 import { makeContext } from "./command-context";
 import { buildCommandSnapshot } from "./command-snapshot";
 import { buildCommandTree, type CommandTreeEntry } from "./command-tree";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import {
   settleBug,
+  settleChildStatus,
   settleCompleted,
   settleErrored,
   settleSessionCompleted,
@@ -29,9 +31,11 @@ import {
 import {
   applySharedFlags,
   defaultInteractive,
+  explicitFormat,
   type SharedFlags,
   sniffFormat,
 } from "./shared-flags";
+import { type LiveSpawn, recordSignalDuringSpawn } from "./spawn";
 import {
   buildRoutes,
   capturingText,
@@ -99,6 +103,13 @@ export interface RunState {
   /** The value-free snapshot captured when a command mounted;
    *  undefined for runs that never reached one (help, usage errors). */
   snapshot: EngineCommandSnapshot | undefined;
+  /** Set while ctx.spawn is awaiting a child that owns the terminal:
+   *  signals are recorded rather than acted on, and commentary is
+   *  buffered. */
+  liveSpawn: LiveSpawn | undefined;
+  /** The second signal recorded during a live child, replayed as the
+   *  force exit once the handler has resolved. */
+  pendingForceExit: "SIGINT" | "SIGTERM" | undefined;
 }
 
 export interface Invocation {
@@ -113,6 +124,9 @@ export interface Invocation {
   /** The engine-owned abort signal behind ctx.signal, fed by the
    *  runtime's signal subscription. */
   readonly signal: AbortSignal;
+  /** The engine's whole signal policy, reachable so ctx.spawn can
+   *  replay recorded signals through exactly the delivered path. */
+  readonly deliverSignal: (signal: "SIGINT" | "SIGTERM") => void;
 }
 
 export function buildEngine(
@@ -148,7 +162,9 @@ type ErasedHandler = (
     readonly positionals: Record<string, unknown>;
   },
   ctx: CommandContext<unknown, number>,
-) => Promise<Result<PresentedResult<unknown>, CliStructuredError>>;
+) => Promise<
+  Result<PresentedResult<unknown> | ChildStatusSettlement, CliStructuredError>
+>;
 
 type ErasedSessionHandler = (
   args: {
@@ -156,7 +172,7 @@ type ErasedSessionHandler = (
     readonly positionals: Record<string, unknown>;
   },
   ctx: CommandContext<unknown, number>,
-) => Promise<Result<void, CliStructuredError>>;
+) => Promise<Result<void | ChildStatusSettlement, CliStructuredError>>;
 
 type ErasedServerHandler = (
   args: {
@@ -221,18 +237,28 @@ export class EngineImpl implements Engine {
       stdinIterator: undefined,
       argv,
       snapshot: undefined,
+      liveSpawn: undefined,
+      pendingForceExit: undefined,
     };
     const startedAtMs = this.now().getTime();
     const controller = new AbortController();
     let signalDelivered = false;
-    const unsubscribe = runtime.onSignal((signal) => {
+    /** The engine neither aborts nor exits while a child owns the
+     *  terminal: it records, and the affordance replays on child exit,
+     *  so the engine always outlives the child. */
+    const deliverSignal = (signal: "SIGINT" | "SIGTERM"): void => {
+      if (state.liveSpawn !== undefined) {
+        recordSignalDuringSpawn(state.liveSpawn, signal);
+        return;
+      }
       if (signalDelivered) {
         runtime.exit(signal === "SIGTERM" ? 143 : 130);
         return;
       }
       signalDelivered = true;
       controller.abort(signal);
-    });
+    };
+    const unsubscribe = runtime.onSignal(deliverSignal);
     const invocation: Invocation = {
       runtime,
       hooks: { ...hooks },
@@ -240,6 +266,7 @@ export class EngineImpl implements Engine {
       delay: this.delay,
       state,
       signal: controller.signal,
+      deliverSignal,
     };
     if (versionRequested(argv)) {
       unsubscribe();
@@ -287,6 +314,9 @@ export class EngineImpl implements Engine {
         ? state.settledExitCode
         : settleUnhandled(this.spec, invocation, stricliProcess.exitCode);
     this.fireOnSettled(invocation, exitCode, startedAtMs);
+    if (state.pendingForceExit !== undefined) {
+      runtime.exit(state.pendingForceExit === "SIGTERM" ? 143 : 130);
+    }
     return exitCode;
   }
 
@@ -335,9 +365,17 @@ export class EngineImpl implements Engine {
       await this.executeServer(invocation, entry, rawFlags);
       return;
     }
+    if (commandMaySpawn(entry.def) && explicitFormat(state.argv) === "json") {
+      state.format = "human";
+      settleErrored(invocation, jsonUnsupportedError(entry.id));
+      return;
+    }
     let needsOutcome: NeedsOutcome;
     try {
       applySharedFlags(state, rawFlags as SharedFlags, invocation.runtime);
+      if (commandMaySpawn(entry.def)) {
+        state.format = "human";
+      }
       needsOutcome = await checkNeeds(entry.def, invocation);
     } catch (cause) {
       settleBug(invocation, cause);
@@ -358,6 +396,7 @@ export class EngineImpl implements Engine {
     };
     const ctx = makeContext(
       invocation,
+      entry.def,
       needsOutcome.config,
       entry.def.kind === "result-command" && entry.def.managesCredentials,
     );
@@ -365,10 +404,12 @@ export class EngineImpl implements Engine {
       try {
         const result = await (handler as ErasedSessionHandler)(args, ctx);
         state.resolved = true;
-        if (result.ok) {
-          settleSessionCompleted(invocation);
-        } else {
+        if (!result.ok) {
           settleErrored(invocation, result.failure);
+        } else if (isChildStatusSettlement(result.value)) {
+          settleChildStatus(invocation, result.value);
+        } else {
+          settleSessionCompleted(invocation);
         }
       } catch (cause) {
         state.resolved = true;
@@ -379,10 +420,12 @@ export class EngineImpl implements Engine {
     try {
       const result = await (handler as ErasedHandler)(args, ctx);
       state.resolved = true;
-      if (result.ok) {
-        settleCompleted(invocation, entry.def, result.value);
-      } else {
+      if (!result.ok) {
         settleErrored(invocation, result.failure);
+      } else if (isChildStatusSettlement(result.value)) {
+        settleChildStatus(invocation, result.value);
+      } else {
+        settleCompleted(invocation, entry.def, result.value);
       }
     } catch (cause) {
       state.resolved = true;
@@ -442,6 +485,25 @@ export class EngineImpl implements Engine {
       settleThrown(invocation, cause);
     }
   }
+}
+
+/** A command that may hand the terminal to a child cannot frame its
+ *  output, so json is refused as soon as the command is known — before
+ *  the needs check and before anything runs. */
+function jsonUnsupportedError(commandId: string): CliStructuredError {
+  return new CliStructuredError(
+    "CLI.JSON_UNSUPPORTED",
+    `The '${commandId.replaceAll(".", " ")}' command does not support json output.`,
+    {
+      why: "It hands the terminal to another program, whose output cannot be framed as a json stream.",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label: "Run it without --json or --format json.",
+        },
+      ],
+    },
+  );
 }
 
 function versionRequested(argv: readonly string[]): boolean {

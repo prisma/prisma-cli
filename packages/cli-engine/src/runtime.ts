@@ -1,6 +1,7 @@
 import type { CredentialManager } from "./credential-manager";
 import type { ManagementApiClientConfig } from "./management-api";
 import type { Diagnostic } from "./protocol";
+import type { SpawnChild } from "./spawn";
 
 /** Minimal structural stream types; no NodeJS.* in the public surface. */
 export interface OutputStream {
@@ -66,6 +67,13 @@ export interface Runtime {
    * announces the URL instead.
    */
   readonly openUrl?: (url: string) => Promise<void> | void;
+  /**
+   * Starts a child process with inherited stdio, wired by the bin (a
+   * node:child_process adapter) so the engine never imports it. Absent
+   * means this host cannot hand the terminal to a child: ctx.spawn then
+   * fails with the engine's internal error.
+   */
+  readonly spawn?: SpawnChild;
   /** Management API endpoint config; the bin derives baseUrl from env. */
   readonly managementApi: { readonly baseUrl: string };
   /**

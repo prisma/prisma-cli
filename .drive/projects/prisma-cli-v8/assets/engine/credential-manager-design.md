@@ -229,7 +229,10 @@ Engine integration:
   credential snapshot — `getTokens` re-reads the file on every call
   and returns that workspace's current record. Write rules in §6.
   All SDK methods including the required `clearTokens` are
-  implemented; the engine forwards the view and never calls it.
+  implemented; the engine forwards the view and never calls it
+  (the ONE sanctioned exception is `ctx.spawn`'s credential
+  injection, stated against the rev-6 surface in §11.5 — the S3
+  amendment, 2026-08-11).
 - Error unwrapping: the SDK's error middleware wraps non-SDK errors
   into `FetchError(cause)`; the engine's mapping walks the cause
   chain for BOTH `AuthError` and CLI structured errors, so
@@ -761,6 +764,22 @@ All three mutations are workspace-id-keyed, symmetric with
 rather than reshaped: nothing needs storage for a workspace other than
 the active one, and the parameter implies an axis of variation the
 system does not have.
+
+S3 amendment (2026-08-11): the engine forwards the storage
+`activeCredentialStorage()` returns into SDK client config and never
+calls its methods itself, with ONE sanctioned exception — `ctx.spawn`'s
+credential injection, in the engine's spawn module
+(`packages/cli-engine/src/execution/spawn.ts`, `spawnToken`), reads
+`(await activeCredentialStorage()).getTokens().accessToken` at spawn
+time to hand the active credential's access token to a child process as
+`PRISMA_SERVICE_TOKEN` (+ `PRISMA_WORKSPACE_ID` when the credential
+names a workspace). The injected token is a snapshot; the child never
+refreshes; the refresh token is never injected. That read builds no
+second API client, so the one-client-per-process invariant of this
+design HOLDS: the engine's pinned refreshing client remains the only
+client ever constructed in the process (composer's in-process leg is
+authenticated by injecting that same `ctx.api` through its
+`deps.client` seam, not by composing another client from env).
 
 ### 11.6 whoami
 

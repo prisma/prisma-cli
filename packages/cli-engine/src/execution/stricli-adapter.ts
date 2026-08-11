@@ -21,7 +21,7 @@ import {
   type PositionalSpec,
   positionalRuntime,
 } from "../args";
-import type { AnyCommand } from "../commands";
+import { type AnyCommand, commandMaySpawn } from "../commands";
 import type { CommandTreeEntry, CommandTreeNode } from "./command-tree";
 import type { EngineSpec, Invocation, RunState } from "./engine";
 import { SHARED_ALIASES, SHARED_FLAG_PARAMETERS } from "./shared-flags";
@@ -172,6 +172,11 @@ function resolveExample(example: string, cliName: string): string {
     : `${cliName} ${example}`;
 }
 
+/** The --json refusal is stated in help, so a machine consumer learns
+ *  it without running the command. */
+const NO_JSON_NOTE =
+  "This command hands the terminal to another program and does not support --json.";
+
 function commandDocs(
   def: AnyCommand,
   cliName: string,
@@ -179,16 +184,18 @@ function commandDocs(
   const examples = def.help.examples.map((example) =>
     resolveExample(example, cliName),
   );
-  if (examples.length === 0) {
+  const notes = commandMaySpawn(def) ? ["", NO_JSON_NOTE] : [];
+  if (examples.length === 0 && notes.length === 0) {
     return { brief: def.help.summary, fullDescription: def.help.description };
   }
   return {
     brief: def.help.summary,
     fullDescription: [
       def.help.description ?? def.help.summary,
-      "",
-      "Examples:",
-      ...examples.map((example) => `  ${example}`),
+      ...notes,
+      ...(examples.length === 0
+        ? []
+        : ["", "Examples:", ...examples.map((example) => `  ${example}`)]),
     ].join("\n"),
   };
 }

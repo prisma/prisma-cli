@@ -16,6 +16,7 @@ import type {
   Result,
 } from "./protocol";
 import type { InputStream, OutputStream } from "./runtime";
+import type { ChildStatusSettlement } from "./spawn";
 
 /**
  * Command definitions carry no mount path and are runtime-discriminated
@@ -107,6 +108,23 @@ function normalizeArgs<
   });
 }
 
+/**
+ * The terminal-handoff declarations, normalized onto every result and
+ * session definition.
+ *
+ * `maySpawn` unlocks ctx.spawn and makes the command reject `--json` at
+ * parse time: output delegated to a child process cannot be framed.
+ *
+ * `credentialsForSpawn` makes the engine compose the active
+ * credential into every child environment (PRISMA_SERVICE_TOKEN,
+ * PRISMA_WORKSPACE_ID) and refuse the run before the handler when that
+ * credential expires too soon to hand out. It requires `maySpawn`.
+ */
+export interface SpawnDeclarations {
+  readonly maySpawn?: boolean;
+  readonly credentialsForSpawn?: boolean;
+}
+
 function normalizeNeeds<TConfig>(
   spec: NeedsSpec<TConfig> | undefined,
 ): CommandNeeds<TConfig> {
@@ -153,6 +171,11 @@ export interface CommandDefinition<
    */
   readonly managesCredentials: TManagesCredentials;
 
+  /** See SpawnDeclarations. */
+  readonly maySpawn: boolean;
+  /** See SpawnDeclarations. */
+  readonly credentialsForSpawn: boolean;
+
   /**
    * The handler function, referenced directly — never a dynamic import
    * (operator ruling, 2026-08-09). A handler that needs heavy
@@ -181,7 +204,9 @@ export type Handler<
     (TManagesCredentials extends true
       ? { readonly credentialManager: CredentialManager }
       : unknown),
-) => Promise<Result<PresentedResult<unknown>, CliStructuredError>>;
+) => Promise<
+  Result<PresentedResult<unknown> | ChildStatusSettlement, CliStructuredError>
+>;
 
 /** For impl files: `const run: CommandHandler<typeof migrateCommand> = …` */
 export type CommandHandler<D> =
@@ -200,14 +225,16 @@ export function defineCommand<
   >,
   TConfig = undefined,
   TCode extends number = never,
->(def: {
-  readonly help: HelpSpec;
-  readonly args?: ArgsSpec<TFlags, TPositionals>;
-  readonly needs?: NeedsSpec<TConfig>;
-  readonly exitCodes?: Readonly<Record<TCode, string>>;
-  readonly managesCredentials: true;
-  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode, true>;
-}): CommandDefinition<TFlags, TPositionals, TConfig, TCode, true>;
+>(
+  def: {
+    readonly help: HelpSpec;
+    readonly args?: ArgsSpec<TFlags, TPositionals>;
+    readonly needs?: NeedsSpec<TConfig>;
+    readonly exitCodes?: Readonly<Record<TCode, string>>;
+    readonly managesCredentials: true;
+    readonly handler: Handler<TFlags, TPositionals, TConfig, TCode, true>;
+  } & SpawnDeclarations,
+): CommandDefinition<TFlags, TPositionals, TConfig, TCode, true>;
 export function defineCommand<
   TFlags extends Record<string, FlagSpec<unknown>> = Record<
     never,
@@ -219,13 +246,15 @@ export function defineCommand<
   >,
   TConfig = undefined,
   TCode extends number = never,
->(def: {
-  readonly help: HelpSpec;
-  readonly args?: ArgsSpec<TFlags, TPositionals>;
-  readonly needs?: NeedsSpec<TConfig>;
-  readonly exitCodes?: Readonly<Record<TCode, string>>;
-  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode>;
-}): CommandDefinition<TFlags, TPositionals, TConfig, TCode>;
+>(
+  def: {
+    readonly help: HelpSpec;
+    readonly args?: ArgsSpec<TFlags, TPositionals>;
+    readonly needs?: NeedsSpec<TConfig>;
+    readonly exitCodes?: Readonly<Record<TCode, string>>;
+    readonly handler: Handler<TFlags, TPositionals, TConfig, TCode>;
+  } & SpawnDeclarations,
+): CommandDefinition<TFlags, TPositionals, TConfig, TCode>;
 export function defineCommand<
   TFlags extends Record<string, FlagSpec<unknown>> = Record<
     never,
@@ -237,14 +266,16 @@ export function defineCommand<
   >,
   TConfig = undefined,
   TCode extends number = never,
->(def: {
-  readonly help: HelpSpec;
-  readonly args?: ArgsSpec<TFlags, TPositionals>;
-  readonly needs?: NeedsSpec<TConfig>;
-  readonly exitCodes?: Readonly<Record<TCode, string>>;
-  readonly managesCredentials?: boolean;
-  readonly handler: Handler<TFlags, TPositionals, TConfig, TCode, boolean>;
-}): CommandDefinition<TFlags, TPositionals, TConfig, TCode, boolean> {
+>(
+  def: {
+    readonly help: HelpSpec;
+    readonly args?: ArgsSpec<TFlags, TPositionals>;
+    readonly needs?: NeedsSpec<TConfig>;
+    readonly exitCodes?: Readonly<Record<TCode, string>>;
+    readonly managesCredentials?: boolean;
+    readonly handler: Handler<TFlags, TPositionals, TConfig, TCode, boolean>;
+  } & SpawnDeclarations,
+): CommandDefinition<TFlags, TPositionals, TConfig, TCode, boolean> {
   return Object.freeze({
     kind: "result-command" as const,
     help: normalizeHelp(def.help),
@@ -252,6 +283,8 @@ export function defineCommand<
     needs: normalizeNeeds(def.needs),
     exitCodes: def.exitCodes ?? ({} as Readonly<Record<TCode, string>>),
     managesCredentials: def.managesCredentials ?? false,
+    maySpawn: def.maySpawn ?? false,
+    credentialsForSpawn: def.credentialsForSpawn ?? false,
     handler: def.handler,
   });
 }
@@ -259,8 +292,14 @@ export function defineCommand<
 /**
  * A session command (dev, log tail): runs until the signal fires,
  * speaks entirely through events, returns Result<void>. No
- * presentation, no exit-code set. A session always supports json mode:
- * the event stream is its json surface.
+ * presentation, no exit-code set.
+ *
+ * A session supports json mode — the event stream is its json surface —
+ * UNLESS it declares `maySpawn`, in which case it rejects --json at
+ * parse time (S3): output delegated to a child process cannot be
+ * framed. A session that returns ok(undefined) exits 0; one that returns
+ * ok(exitWithChildStatus(child)) exits with the child's status, which is
+ * the only way a session settles non-zero without erroring.
  */
 export interface SessionCommandDefinition<
   TFlags extends Record<string, FlagSpec<unknown>> = Record<
@@ -277,10 +316,14 @@ export interface SessionCommandDefinition<
   readonly help: CommandHelp;
   readonly args: CommandArgs<TFlags, TPositionals>;
   readonly needs: CommandNeeds<TConfig>;
+  /** See SpawnDeclarations. */
+  readonly maySpawn: boolean;
+  /** See SpawnDeclarations. */
+  readonly credentialsForSpawn: boolean;
   readonly handler: (
     args: Args<TFlags, TPositionals>,
     ctx: CommandContext<TConfig>,
-  ) => Promise<Result<void, CliStructuredError>>;
+  ) => Promise<Result<void | ChildStatusSettlement, CliStructuredError>>;
 }
 
 export function defineSessionCommand<
@@ -293,21 +336,25 @@ export function defineSessionCommand<
     PositionalSpec<unknown>
   >,
   TConfig = undefined,
->(def: {
-  readonly help: HelpSpec;
-  readonly args?: ArgsSpec<TFlags, TPositionals>;
-  readonly needs?: NeedsSpec<TConfig>;
-  readonly handler: SessionCommandDefinition<
-    TFlags,
-    TPositionals,
-    TConfig
-  >["handler"];
-}): SessionCommandDefinition<TFlags, TPositionals, TConfig> {
+>(
+  def: {
+    readonly help: HelpSpec;
+    readonly args?: ArgsSpec<TFlags, TPositionals>;
+    readonly needs?: NeedsSpec<TConfig>;
+    readonly handler: SessionCommandDefinition<
+      TFlags,
+      TPositionals,
+      TConfig
+    >["handler"];
+  } & SpawnDeclarations,
+): SessionCommandDefinition<TFlags, TPositionals, TConfig> {
   return Object.freeze({
     kind: "session-command" as const,
     help: normalizeHelp(def.help),
     args: normalizeArgs(def.args),
     needs: normalizeNeeds(def.needs),
+    maySpawn: def.maySpawn ?? false,
+    credentialsForSpawn: def.credentialsForSpawn ?? false,
     handler: def.handler,
   });
 }
@@ -393,6 +440,16 @@ export type AnyCommand =
       ServerCommandDefinition<Record<string, FlagSpec<unknown>>, unknown>,
       "handler"
     > & { readonly handler: unknown });
+
+/** Server commands own stdio already and carry no spawn declarations;
+ *  these narrow the erased union for the engine's own checks. */
+export function commandMaySpawn(def: AnyCommand): boolean {
+  return def.kind !== "server-command" && def.maySpawn;
+}
+
+export function commandNeedsCredentialsForSpawn(def: AnyCommand): boolean {
+  return def.kind !== "server-command" && def.credentialsForSpawn;
+}
 
 export interface CompletedEnvelope<T = unknown> {
   /**

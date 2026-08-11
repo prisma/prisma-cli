@@ -1,14 +1,18 @@
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
-import type { AnyCommand } from "../commands";
+import { type AnyCommand, commandNeedsCredentialsForSpawn } from "../commands";
 import type { ConfigSection, SectionValidation } from "../config-section";
 import { credentialsRequiredError } from "../credential-errors";
-import type { CredentialManager } from "../credential-manager";
+import type {
+  ActiveCredential,
+  CredentialManager,
+} from "../credential-manager";
 import { CliStructuredError, type Diagnostic } from "../protocol";
 import type { Runtime } from "../runtime";
 import type { Invocation } from "./engine";
 import { withDocsUrl, writeDiagnostic } from "./rendering";
 import { SEVERITY_RANK } from "./reporting";
+import { activeSpawnCredential, CREDENTIAL_NEAR_EXPIRY_MS } from "./spawn";
 
 export type NeedsOutcome =
   | { readonly kind: "ok"; readonly config: unknown }
@@ -52,7 +56,8 @@ export async function checkNeeds(
   const failure =
     checkInteraction(needs, invocation) ??
     checkDependencies(needs, invocation) ??
-    (await checkCredentials(needs, invocation));
+    (await checkCredentials(needs, invocation)) ??
+    (await checkSpawnCredentialLifetime(def, invocation));
   if (failure !== undefined) {
     return failure;
   }
@@ -132,6 +137,40 @@ async function checkCredentials(
     }
     throw cause;
   }
+}
+
+/**
+ * A command that hands credentials to a child gets them checked BEFORE
+ * the handler runs, not before the spawn: the work that precedes a
+ * spawn creates real platform resources, so a run doomed by a session
+ * about to expire must refuse first. The child cannot refresh the
+ * snapshot it is given.
+ */
+async function checkSpawnCredentialLifetime(
+  def: AnyCommand,
+  invocation: Invocation,
+): Promise<NeedsOutcome | undefined> {
+  if (!commandNeedsCredentialsForSpawn(def)) {
+    return undefined;
+  }
+  let credential: ActiveCredential;
+  try {
+    credential = await activeSpawnCredential(invocation);
+  } catch (cause) {
+    if (CliStructuredError.is(cause)) {
+      return needsErrored(cause);
+    }
+    throw cause;
+  }
+  if (credential.expiresAt === undefined) {
+    return undefined;
+  }
+  const remainingMs =
+    credential.expiresAt.getTime() - invocation.now().getTime();
+  if (remainingMs > CREDENTIAL_NEAR_EXPIRY_MS) {
+    return undefined;
+  }
+  return needsErrored(credentialsRequiredError("expiring-soon"));
 }
 
 function checkConfiguration(

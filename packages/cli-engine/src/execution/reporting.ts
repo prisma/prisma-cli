@@ -37,6 +37,12 @@ export function reportEvent(invocation: Invocation, event: EngineEvent): void {
     reportAfterResolution(invocation);
     return;
   }
+  // No engine write may interleave with a live child's terminal
+  // output; the buffer is flushed in order when the child ends.
+  if (state.liveSpawn !== undefined) {
+    state.liveSpawn.buffered.push(event);
+    return;
+  }
   invocation.hooks.onEvent?.(event);
   const severity = eventDisplaySeverity(event);
   if (
@@ -54,6 +60,15 @@ export function reportEvent(invocation: Invocation, event: EngineEvent): void {
     return;
   }
   renderEventHuman(invocation, event);
+}
+
+export function flushBufferedEvents(
+  invocation: Invocation,
+  buffered: readonly EngineEvent[],
+): void {
+  for (const event of buffered) {
+    reportEvent(invocation, event);
+  }
 }
 
 export function emitFrame(invocation: Invocation, frame: StreamEvent): void {

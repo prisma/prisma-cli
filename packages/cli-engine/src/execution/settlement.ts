@@ -5,6 +5,7 @@ import type {
 } from "../commands";
 import { PRESENTED, type PresentedResult } from "../presentation";
 import { CliStructuredError, type Diagnostic } from "../protocol";
+import type { ChildStatusSettlement } from "../spawn";
 import type { EngineSpec, Invocation } from "./engine";
 import {
   firstLine,
@@ -145,6 +146,21 @@ function settleAborted(invocation: Invocation): void {
     diagnostics: [],
     nextActions: [],
   });
+}
+
+/**
+ * The child owned the terminal, so its status becomes the run's
+ * verbatim: no envelope, no presentation — the settlement bypass server
+ * commands already have. This is the one path on which a session
+ * command settles non-zero without erroring, and the one path on which
+ * a result command settles a code it never documented: neither is the
+ * handler's own conclusion, it is the child's.
+ */
+export function settleChildStatus(
+  invocation: Invocation,
+  settlement: ChildStatusSettlement,
+): void {
+  invocation.state.settledExitCode = settlement.exitCode;
 }
 
 /** A session command that returned ok — including after the signal

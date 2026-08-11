@@ -125,6 +125,13 @@ export interface CredentialManager {
    * already ruled there is one credential per process, and an
    * environment credential may have no workspace id to key on. Only
    * valid once `activeCredential()` has returned non-null.
+   *
+   * The engine forwards the storage into SDK client config; the ONE
+   * place engine code calls a method on it is ctx.spawn's credential
+   * injection, which reads `getTokens().accessToken` at spawn time to
+   * hand the active credential's access token to a child process. That
+   * read builds no second API client, so the design's
+   * one-client-per-process invariant holds.
    */
   activeCredentialStorage(): Promise<TokenStorage>;
 }

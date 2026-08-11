@@ -1,6 +1,10 @@
 import { flagRuntime, type PositionalSpec, positionalRuntime } from "../args";
 import type { CommandFamily } from "../command-family";
-import type { AnyCommand } from "../commands";
+import {
+  type AnyCommand,
+  commandMaySpawn,
+  commandNeedsCredentialsForSpawn,
+} from "../commands";
 import type { EngineSpec } from "./engine";
 import { RESERVED_ALIASES, RESERVED_FLAG_NAMES } from "./shared-flags";
 
@@ -80,6 +84,14 @@ function validateExitCodes(path: string, def: AnyCommand): void {
         `command '${path}' documents exit code ${key}; documented codes must be integers in 4-99`,
       );
     }
+  }
+}
+
+function validateSpawnDeclarations(path: string, def: AnyCommand): void {
+  if (commandNeedsCredentialsForSpawn(def) && !commandMaySpawn(def)) {
+    throw constructionError(
+      `command '${path}' declares credentialsForSpawn without maySpawn (there is nothing to hand credentials to)`,
+    );
   }
 }
 
@@ -185,6 +197,7 @@ export function buildCommandTree(spec: EngineSpec): CommandTreeNode {
     validateFlags(path, def);
     validatePositionals(path, def);
     validateExitCodes(path, def);
+    validateSpawnDeclarations(path, def);
     validateSectionOwnership(spec, path, def);
     const segments = path.split(" ");
     for (let depth = 1; depth < segments.length; depth += 1) {

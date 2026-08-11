@@ -40,6 +40,7 @@ export {
   type NeedsSpec,
   type ServerCommandDefinition,
   type SessionCommandDefinition,
+  type SpawnDeclarations,
 } from "../commands";
 export { defineConfig, loadConfig } from "../config-loader";
 export {
@@ -108,3 +109,12 @@ export {
   claimedWorkspaceId,
   credentialWorkspaceId,
 } from "../token-claims";
+export {
+  type ChildResult,
+  type ChildStatusSettlement,
+  exitWithChildStatus,
+  type SpawnChild,
+  type SpawnedChild,
+  type SpawnOptions,
+  type SpawnRequest,
+} from "../spawn";

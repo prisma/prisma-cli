@@ -10,4 +10,9 @@ export {
   mintTestJwt,
   type SessionRecord,
 } from "../in-memory-credential-manager";
-export { createTestCli, type TestCli } from "../testing";
+export {
+  createTestCli,
+  type ScriptedChildProgram,
+  type SpawnRecord,
+  type TestCli,
+} from "../testing";

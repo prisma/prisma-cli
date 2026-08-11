@@ -30,6 +30,16 @@
  * ctx.openUrl (§4), and prompt.browserWait (§4a). All three are
  * engine-owned so command code never reads TTY or CI state and never
  * invents its own consent-skipping flag.
+ * Amended 2026-08-11 for S3 (the TERMINAL HANDOFF, contract
+ * s3-composer.md): §4 gains ctx.spawn and §4c its shapes +
+ * exitWithChildStatus; §6 gains the SpawnDeclarations
+ * (maySpawn/credentialsForSpawn) and the two kind amendments (a
+ * maySpawn command rejects --json at parse time; a session settles
+ * non-zero through exitWithChildStatus and no other way); the
+ * manager's engine-facing storage (rev 6: activeCredentialStorage())
+ * gains its ONE sanctioned engine-internal call site; §10 gains
+ * Runtime.spawn. D1 rulings: abort-ladder grace 5s; near-expiry
+ * refusal threshold 5min.
  *
  * THE MODEL, in one analogy (operator, 2026-08-09): commands settle like
  * promises. A command can COMPLETE — and its completion can be
@@ -412,6 +422,26 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
    *  needs.credentials check uses). */
   readonly api: ManagementApiClient
 
+  /**
+   * S3: hands the terminal to a child process and resolves when it
+   * ends. Inherited stdio, same process group (POSIX) / console
+   * (Windows), no detach — the terminal delivers Ctrl-C to the child
+   * natively. While a child is live the engine neither aborts nor
+   * exits: delivered signals are RECORDED and replayed into the
+   * normal ladder on child exit (one recorded → ctx.signal aborts as
+   * if just delivered; two+ → abort plus a force exit once the
+   * handler has had its turn), so the engine always outlives the
+   * child. SIGTERM — no native path to the child — is forwarded
+   * during the window. A programmatic abort terminates the child:
+   * SIGTERM, a 5s grace (D1 ruling), SIGKILL. ctx.report during a
+   * live child is buffered and flushed in order on exit;
+   * ctx.present, and a second concurrent spawn, are construction
+   * errors. Only commands declaring `maySpawn` (§6) may call it.
+   * Handlers branch on `signal` before `exitCode`: a signal-killed
+   * child is an abort, not a failure.
+   */
+  readonly spawn: (options: SpawnOptions) => Promise<ChildResult>
+
   /** The one way to emit while running (§1). */
   readonly report: (event: EngineEvent) => void
 
@@ -465,6 +495,65 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
 export interface Credentials {
   readonly token: string
 }
+
+// —— §4c The terminal handoff (S3) ——
+
+/** What a handler passes to ctx.spawn. */
+export interface SpawnOptions {
+  readonly command: string
+  readonly args?: readonly string[]
+  /** Defaults to ctx.cwd. */
+  readonly cwd?: string
+  /** Added to, and overriding, the invocation environment. The
+   *  engine's credential variables are applied last and cannot be
+   *  overridden. */
+  readonly env?: Readonly<Record<string, string | undefined>>
+}
+
+/** How a child ended. Branch on `signal` first: a signal-killed child
+ *  is an abort, not a failure. */
+export interface ChildResult {
+  readonly exitCode: number | null
+  readonly signal: string | null
+}
+
+/** A fully composed child invocation, as the Runtime adapter receives
+ *  it: env is the child's COMPLETE environment, credentials already
+ *  injected by the engine (the active credential's access token, read
+ *  at spawn time through the manager's engine-facing storage — rev 6:
+ *  activeCredentialStorage(); PRISMA_WORKSPACE_ID alongside when the
+ *  credential names a workspace; the refresh token NEVER). */
+export interface SpawnRequest {
+  readonly command: string
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+}
+
+/** The live child an adapter returns. `ended` rejects only when the
+ *  child could not be launched; the engine phrases that as the
+ *  structured CLI.SPAWN_FAILED. */
+export interface SpawnedChild {
+  readonly ended: Promise<ChildResult>
+  readonly kill: (signal: 'SIGTERM' | 'SIGKILL') => void
+}
+
+/** The Runtime seam (§10): starts the child with INHERITED stdio, in
+ *  the caller's own process group (POSIX) / console (Windows) — no
+ *  `detached`, no new console. The bin adapts node:child_process; the
+ *  engine never imports it. */
+export type SpawnChild = (request: SpawnRequest) => SpawnedChild
+
+/** Opaque: built exclusively by exitWithChildStatus. */
+export interface ChildStatusSettlement {
+  readonly exitCode: number
+}
+
+/** The sanctioned "exit with the child's status verbatim" outcome:
+ *  returned inside ok(...), it settles through the no-envelope bypass
+ *  server commands already have. A signal-killed child settles
+ *  128 + the signal number. */
+export declare function exitWithChildStatus(child: ChildResult): ChildStatusSettlement
 
 // —— §4b The credential manager (design rev 5 §2/§3, normative) ——
 // A set of per-workspace sessions, one current. Sessions are keyed
@@ -524,7 +613,13 @@ export interface CredentialManager {
   endAllSessions(): Promise<void>
   /** ENGINE-FACING, not a user operation: the SDK TokenStorage view
    *  for one workspace's session. The engine forwards it into SDK
-   *  client config and never calls its methods itself. */
+   *  client config; the ONE place engine code calls a method on the
+   *  engine-facing storage (rev 6: activeCredentialStorage()) is
+   *  ctx.spawn's credential injection (S3), which reads
+   *  `getTokens().accessToken` at spawn time to hand the active
+   *  credential's access token to a child. That read builds no second
+   *  API client, so the one-client-per-process invariant holds
+   *  (credential-manager-design.md §11.5). */
   tokenStorage(workspaceId: string): TokenStorage
 }
 
@@ -872,6 +967,11 @@ export interface CommandDefinition<
    */
   readonly managesCredentials: TManagesCredentials
 
+  /** See SpawnDeclarations (S3). */
+  readonly maySpawn: boolean
+  /** See SpawnDeclarations (S3). */
+  readonly credentialsForSpawn: boolean
+
   /** The handler function, referenced directly — never a dynamic import
    *  (operator ruling, 2026-08-09: "DO NOT DYNAMICALLY IMPORT HANDLERS").
    *  R9's keep-heavy-work-out-of-startup concern is the handler BODY's
@@ -893,7 +993,25 @@ export type Handler<
     (TManagesCredentials extends true
       ? { readonly credentialManager: CredentialManager }
       : unknown),
-) => Promise<Result<PresentedResult<unknown>, CliStructuredError>>
+) => Promise<Result<PresentedResult<unknown> | ChildStatusSettlement, CliStructuredError>>
+
+/**
+ * S3: the terminal-handoff declarations, accepted by defineCommand and
+ * defineSessionCommand and normalized onto their definitions.
+ * `maySpawn` unlocks ctx.spawn and makes the command reject `--json`
+ * at PARSE time, exit 2, stated in help (delegated terminal output
+ * cannot be framed). `credentialsForSpawn` makes the engine compose
+ * the current session's credentials into every child environment and
+ * refuse the run BEFORE the handler when the session expires within
+ * the 5-minute threshold (D1 ruling) — the credentials-required error
+ * with a re-auth next action. It requires maySpawn (construction
+ * error otherwise). Server commands carry neither: they own stdio
+ * already.
+ */
+export interface SpawnDeclarations {
+  readonly maySpawn?: boolean
+  readonly credentialsForSpawn?: boolean
+}
 
 /** For impl files: `const run: CommandHandler<typeof migrateCommand> = …` */
 export type CommandHandler<D> = D extends CommandDefinition<infer F, infer P, infer C, infer K, infer M>
@@ -915,7 +1033,7 @@ export declare function defineCommand<
   readonly exitCodes?: Readonly<Record<TCode, string>>
   readonly managesCredentials: true
   readonly handler: Handler<TFlags, TPositionals, TConfig, TCode, true>
-}): CommandDefinition<TFlags, TPositionals, TConfig, TCode, true>
+} & SpawnDeclarations): CommandDefinition<TFlags, TPositionals, TConfig, TCode, true>
 export declare function defineCommand<
   TFlags extends Record<string, FlagSpec<unknown>> = {},
   TPositionals extends Record<string, PositionalSpec<unknown>> = {},
@@ -927,13 +1045,19 @@ export declare function defineCommand<
   readonly needs?: NeedsSpec<TConfig>
   readonly exitCodes?: Readonly<Record<TCode, string>>
   readonly handler: Handler<TFlags, TPositionals, TConfig, TCode>
-}): CommandDefinition<TFlags, TPositionals, TConfig, TCode>
+} & SpawnDeclarations): CommandDefinition<TFlags, TPositionals, TConfig, TCode>
 
 /**
  * A session command (dev, log tail): runs until the signal fires,
  * speaks entirely through events, returns Result<void>. No
- * presentation, no exit-code set. A session always supports json mode:
- * the event stream is its json surface.
+ * presentation, no exit-code set.
+ *
+ * S3 amendments: a session supports json mode — the event stream is
+ * its json surface — UNLESS it declares maySpawn, in which case it
+ * rejects --json at parse time. A session that returns ok(undefined)
+ * exits 0; one that returns ok(exitWithChildStatus(child)) exits with
+ * the child's status, which is the ONLY way a session settles
+ * non-zero without erroring.
  */
 export interface SessionCommandDefinition<
   TFlags extends Record<string, FlagSpec<unknown>> = {},
@@ -944,10 +1068,14 @@ export interface SessionCommandDefinition<
   readonly help: CommandHelp
   readonly args: CommandArgs<TFlags, TPositionals>
   readonly needs: CommandNeeds<TConfig>
+  /** See SpawnDeclarations (S3). */
+  readonly maySpawn: boolean
+  /** See SpawnDeclarations (S3). */
+  readonly credentialsForSpawn: boolean
   readonly handler: (
     args: Args<TFlags, TPositionals>,
     ctx: CommandContext<TConfig>,
-  ) => Promise<Result<void, CliStructuredError>>
+  ) => Promise<Result<void | ChildStatusSettlement, CliStructuredError>>
 }
 
 export declare function defineSessionCommand<
@@ -959,7 +1087,7 @@ export declare function defineSessionCommand<
   readonly args?: ArgsSpec<TFlags, TPositionals>
   readonly needs?: NeedsSpec<TConfig>
   readonly handler: SessionCommandDefinition<TFlags, TPositionals, TConfig>['handler']
-}): SessionCommandDefinition<TFlags, TPositionals, TConfig>
+} & SpawnDeclarations): SessionCommandDefinition<TFlags, TPositionals, TConfig>
 
 /**
  * A server command (lsp): a foreign client on the other end of stdio
@@ -1255,6 +1383,12 @@ export interface Runtime {
    *  fails a command; absent means this host cannot open a browser,
    *  and the URL is announced instead. */
   readonly openUrl?: (url: string) => Promise<void> | void
+  /** S3: the terminal-handoff seam (§4c) — starts a child with
+   *  inherited stdio, wired by the bin as a node:child_process
+   *  adapter so the engine never imports it. Absent means this host
+   *  cannot hand the terminal to a child: ctx.spawn then fails with
+   *  the engine's internal error. */
+  readonly spawn?: SpawnChild
   /** Management API endpoint config; the bin derives baseUrl from env
    *  (getApiBaseUrl). */
   readonly managementApi: { readonly baseUrl: string }
@@ -1344,6 +1478,21 @@ export declare function createTestCli(spec: {
    *  browser is never a test dependency; pass a spy to assert what was
    *  opened, or a thrower for the could-not-open path. */
   readonly openUrl?: (url: string) => Promise<void> | void
+  /** S3: the spawn adapter behind ctx.spawn. Defaults to the scripted
+   *  fake below; the real-child tests pass a node:child_process
+   *  adapter, which is how the engine package itself never imports
+   *  one. Every run records its spawns — command, args, cwd, env
+   *  KEYS (values never: a recording must not carry token material),
+   *  and the signals the engine delivered. */
+  readonly spawn?: SpawnChild
+  /** S3: scripts the built-in fake child (defaults to exit 0). The
+   *  script receives the composed SpawnRequest and a nextKill()
+   *  awaiting each engine-delivered signal, so it can model a child
+   *  that ignores SIGTERM and dies only on SIGKILL. */
+  readonly spawnScript?: (
+    request: SpawnRequest,
+    child: { readonly nextKill: () => Promise<'SIGTERM' | 'SIGKILL'> },
+  ) => ChildResult | Promise<ChildResult>
 }): TestCli
 
 /** Mints an unsigned JWT whose payload is exactly `claims` — the

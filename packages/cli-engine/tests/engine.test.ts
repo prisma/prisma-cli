@@ -33,6 +33,7 @@ describe("main export", () => {
       "defineServerCommand",
       "defineSessionCommand",
       "emptyServiceTokenError",
+      "exitWithChildStatus",
       "flag",
       "loadConfig",
       "noSessionForWorkspaceError",
