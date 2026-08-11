@@ -93,10 +93,6 @@ export type {
   PackageOperations,
 } from "../package-manager";
 export {
-  type PackageManagerFailure,
-  packageManagerFailedError,
-} from "../package-manager-errors";
-export {
   type Block,
   type Format,
   type Outcome,

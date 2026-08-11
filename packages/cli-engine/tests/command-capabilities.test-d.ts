@@ -159,6 +159,30 @@ test("declaring a capability false is the same as not declaring it", () => {
   >();
 });
 
+/**
+ * A recorded decision, not an accident: the deleted overloads rejected a
+ * flag that is not a literal, and the single signature accepts one. The
+ * generic infers `boolean`, the conditional in Handler collapses, and
+ * the handler is handed no ctx.packages while the runtime still builds
+ * it — type-safe and useless, which is the whole discouragement a
+ * computed flag needs.
+ */
+test("a flag that is not a literal infers boolean and loses its surface", () => {
+  const computed = Date.now() > 0;
+  const def = defineCommand({
+    help: { summary: "Decides at runtime whether it installs" },
+    installsPackages: computed,
+    handler: async (_args, ctx) => {
+      // @ts-expect-error the flag is not the literal true
+      void ctx.packages;
+      return ok(ctx.present({ data: null }, { human: () => [] }));
+    },
+  });
+
+  expectTypeOf(def.installsPackages).toEqualTypeOf<boolean>();
+  expectTypeOf<ContextOf<typeof def>>().not.toHaveProperty("packages");
+});
+
 test("the capability generics leave the exit-code catalogue alone", () => {
   const def = defineCommand({
     help: { summary: "Signs in, installs, and reports findings" },
