@@ -2,19 +2,20 @@ import type { Presentations } from "@prisma/cli-engine";
 import { defineCommand, flag, positional } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../cli-name";
+import {
+  FEEDBACK_TIMEOUT_MS,
+  unreachableDetail,
+  unreadableBodyDetail,
+} from "../lib/feedback";
 import { getCliVersion } from "../lib/version";
 
 const DEFAULT_FEEDBACK_ENDPOINT =
   "https://hiieirp2pwqnjvq9axzyg6d0.fra.prisma.build/feedback";
-// Feedback must never feel slower than the thought it carries; a service
-// that cannot answer quickly is treated as unavailable.
-const FEEDBACK_TIMEOUT_MS = 3_000;
 // Mirrors the feedback service's own limits so refusals happen before the
 // network round trip.
 const MAX_MESSAGE_LENGTH = 4_000;
 const MAX_EMAIL_LENGTH = 320;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const TIMEOUT_DETAIL = `The feedback service did not answer within ${FEEDBACK_TIMEOUT_MS / 1000} seconds.`;
 
 interface FeedbackContext {
   cliVersion: string;
@@ -126,27 +127,6 @@ async function readServiceError(
   return typeof payload?.error?.message === "string"
     ? ` (${payload.error.message})`
     : "";
-}
-
-function isTimeout(error: unknown): boolean {
-  return error instanceof Error && error.name === "TimeoutError";
-}
-
-function unreachableDetail(error: unknown): string {
-  if (isTimeout(error)) {
-    return TIMEOUT_DETAIL;
-  }
-  const cause =
-    error instanceof Error && error.cause instanceof Error
-      ? ` (${error.cause.message})`
-      : "";
-  return `The feedback service could not be reached${cause}.`;
-}
-
-function unreadableBodyDetail(error: unknown): string {
-  return isTimeout(error)
-    ? TIMEOUT_DETAIL
-    : "The feedback service response could not be read.";
 }
 
 async function sendFeedback(
