@@ -16,7 +16,7 @@
  * below so discovery and merging stay exactly as they were.
  */
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Diagnostic } from "./protocol";
 import type { LoadedConfig } from "./runtime";
 import { PRISMA_CONFIG_VERSION } from "./runtime";
@@ -104,25 +104,37 @@ function unreadableDiagnostic(path: string, cause: unknown): Diagnostic {
 }
 
 /**
- * Evaluates the file at `path` and returns its default export. c12 is
- * imported here rather than at module scope so a run with no config
- * file never pays for loading it or jiti.
+ * Evaluates the file at `path` and returns its default export. The c12
+ * call is prisma/composer's `loadAppConfig` verbatim — explicit
+ * configFile, cwd at that file's directory, the three lookups it turns
+ * off — with prisma/prisma's dynamic import, so a run with no config
+ * file never pays for loading c12 or jiti.
+ *
+ * The loaded-file check is in both references: c12 is asked for one
+ * exact path and must not answer with another.
  */
-async function evaluateConfigFile(path: string, cwd: string): Promise<unknown> {
+async function evaluateConfigFile(path: string): Promise<unknown> {
   const c12 = await import("c12");
   const result = await c12.loadConfig({
     name: "prisma",
-    cwd,
     configFile: path,
+    cwd: dirname(path),
     rcFile: false,
     globalRc: false,
     packageJson: false,
-    dotenv: false,
-    envName: false,
+    // The one deviation from the references, and it is forced: their
+    // configs have a fixed set of keys, ours says every top-level key
+    // is a section name. c12 reads `extends` as an instruction to merge
+    // another config layer, so with their options a user's section
+    // called `extends` is consumed and disappears — demonstrated by the
+    // test, not assumed.
     extend: false,
-    giget: false,
-    omit$Keys: false,
   });
+  if (result.configFile !== path) {
+    throw new Error(
+      `config loading resolved ${String(result.configFile)} instead of ${path}`,
+    );
+  }
   return result.config;
 }
 
@@ -138,7 +150,7 @@ export async function loadConfig(cwd: string): Promise<LoadedConfig> {
   }
   let exported: unknown;
   try {
-    exported = await evaluateConfigFile(path, cwd);
+    exported = await evaluateConfigFile(path);
   } catch (cause) {
     return fileLevelConfig(unreadableDiagnostic(path, cause));
   }
