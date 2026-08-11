@@ -16,7 +16,6 @@ import {
   credentialWorkspaceMismatchError,
   noSessionForWorkspaceError,
 } from "@prisma/cli-engine";
-import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import { environmentServiceToken } from "./service-token";
 import {
   type CredentialState,
@@ -264,6 +263,19 @@ export class FileCredentialManager implements CredentialManager {
   async activeCredentialStorage(): Promise<TokenStorage> {
     this.#activeStorage ??= this.#buildActiveStorage();
     return this.#activeStorage;
+  }
+
+  /** The spawn path's read: the active credential's access token,
+   *  fresh on every call, never the refresh token. Null when there is
+   *  no active credential to read — storage exists only once
+   *  activeCredential() has returned non-null. */
+  async activeAccessToken(): Promise<string | null> {
+    if ((await this.activeCredential()) === null) {
+      return null;
+    }
+    const storage = await this.activeCredentialStorage();
+    const tokens = await storage.getTokens();
+    return tokens === null ? null : tokens.accessToken;
   }
 
   /** §11.2: which storage is chosen once, when the pin resolves. Each

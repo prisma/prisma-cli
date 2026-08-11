@@ -1446,6 +1446,8 @@ describe("prisma-v8 postgres remove", () => {
   });
 });
 
+const GENERATED_CONNECTION_NAME = /^cli-\d{17}-[0-9a-f]{4}$/;
+
 const BACKUP_BODY = {
   data: [
     {
@@ -1787,7 +1789,7 @@ describe("prisma-v8 postgres connection create", () => {
     const body = calls.find(
       (call) => call.path === "/v1/databases/{databaseId}/connections",
     )?.init.body as { name: string };
-    expect(body.name).toMatch(/^cli-\d{17}-[0-9a-f]{4}$/);
+    expect(body.name).toMatch(GENERATED_CONNECTION_NAME);
     expect(result.presented?.presentation.stdout).toEqual([
       "postgres://pooled/db",
     ]);

@@ -10,6 +10,8 @@ import {
   makeOnSignal,
 } from "../src/v8/runtime";
 
+const SEMVER_PREFIX = /^\d+\.\d+\.\d+/;
+
 function makeProcess(overrides?: {
   argv?: string[];
   env?: NodeJS.ProcessEnv;
@@ -227,5 +229,31 @@ describe("main", () => {
 describe("buildCli", () => {
   it("constructs the shipped command tree without throwing", () => {
     expect(() => buildCli()).not.toThrow();
+  });
+
+  it("runs --help through the real tree with a stub process", async () => {
+    const proc = makeProcess({
+      argv: ["node", "bin.js", "--help"],
+      isTty: { stdout: true },
+    });
+
+    const exitCode = await main(proc);
+
+    expect(exitCode).toBe(0);
+    expect(proc.stdoutText).toContain("USAGE");
+    expect(proc.stdoutText).toContain("auth");
+  });
+
+  it("runs --version through the real tree, printing the version with exit 0", async () => {
+    const proc = makeProcess({
+      argv: ["node", "bin.js", "--version"],
+      isTty: { stdout: true },
+    });
+
+    const exitCode = await main(proc);
+
+    expect(exitCode).toBe(0);
+    expect(proc.stdoutText).toMatch(SEMVER_PREFIX);
+    expect(proc.stderrText).toBe("");
   });
 });

@@ -1,11 +1,11 @@
 import path from "node:path";
+import { formatCommandArgument } from "../../shell/command-arguments";
 import { CliError, usageError } from "../../shell/errors";
 import { confirmPrompt } from "../../shell/prompt";
 import type { CommandContext } from "../../shell/runtime";
 import { canPrompt } from "../../shell/runtime";
 import { renderSummaryLine } from "../../shell/ui";
 import type { AppDeployResult } from "../../types/app";
-import { formatCommandArgument } from "../project/setup";
 import type {
   AppProvider,
   BranchDatabaseRecord,

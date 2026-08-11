@@ -1,6 +1,6 @@
 import type { CommandContext } from "@prisma/cli-engine";
 import { defineSessionCommand, flag, positional } from "@prisma/cli-engine";
-import { CliStructuredError, okVoid } from "@prisma/cli-engine/protocol";
+import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 
 /**
@@ -260,6 +260,6 @@ export const buildLogsCommand = defineSessionCommand({
     if (failure !== null) {
       throw buildFailedError(buildId, failure);
     }
-    return okVoid();
+    return ok(undefined);
   },
 });

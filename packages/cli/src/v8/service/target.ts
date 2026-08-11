@@ -1,4 +1,10 @@
 import type { CommandContext } from "@prisma/cli-engine";
+import {
+  COMPUTE_CONFIG_FILENAME,
+  ComputeConfigTargetRequiredError,
+  inferComputeTargetFromCwd,
+  selectComputeDeployTarget,
+} from "@prisma/compute-sdk/config";
 import { LocalStateStore } from "../../adapters/local-state";
 import {
   type AppProvider,
@@ -7,14 +13,10 @@ import {
   type DomainRecord,
 } from "../../lib/app/app-provider";
 import {
-  COMPUTE_CONFIG_FILENAME,
-  ComputeConfigTargetRequiredError,
   type ComputeDeployTarget,
   computeConfigErrorToCliError,
-  inferComputeTargetFromCwd,
   type LoadedComputeConfig,
   loadComputeConfig,
-  selectComputeDeployTarget,
 } from "../../lib/app/compute-config";
 import { resolveReadBranch } from "../../lib/app/read-branch";
 import { readLocalGitBranch } from "../../lib/git/local-branch";

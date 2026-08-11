@@ -148,14 +148,6 @@ export function workspaceRequiredError(): CliError {
   );
 }
 
-// The auth-specific constructors moved to the auth module
-// (src/auth/errors.ts); re-exported here so legacy imports stay valid.
-export {
-  workspaceAmbiguousError,
-  workspaceNotAuthenticatedError,
-  workspaceSwitchUnavailableError,
-} from "./auth/errors";
-
 export function featureUnavailableError(
   summary: string,
   why: string,
