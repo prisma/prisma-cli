@@ -13,13 +13,16 @@ composer's pkg.pr.new workflow mid-slice.
 
 ### D1 — `ctx.spawn` + credential injection (prisma-cli: engine)
 Contract R-S3-1: the affordance (inherited stdio, same group,
-defer-signals, outlive-child, no-interleave rule), `Runtime.spawn`
-seam + harness fake, `exitWithChildStatus` settlement outcome,
-parse-time `--json` rejection + session-kind json amendment,
+record-and-replay signal latch, SIGTERM forwarding, abort ladder,
+outlive-child, buffered commentary, reentrancy rule),
+`Runtime.spawn` seam + harness fake, `exitWithChildStatus` +
+session-kind settlement amendment, parse-time `--json` rejection,
 credential injection with the SPI amendment (env pass-through
 branch; stored-session read at the one named call site;
-near-expiry refusal threshold ruled here), draft amendments, the
-real-child/fake-spawn test split from the contract's acceptance.
+near-expiry refusal threshold ruled here), the production
+environment-only CredentialManager exported from the main
+entrypoint, draft amendments, the real-child/fake-spawn test split
+from the contract's acceptance.
 
 ### D2 — composer foundations (prisma/composer)
 Contract R-S3-2/3/5 minus the commands: exact-pinned engine
@@ -29,9 +32,10 @@ check); the config projection + diagnostics-list loader rewrite +
 static-graph import check; the rebuilt thin CLI (engine + family
 skeleton) replacing clipanion `main.ts`; both test surfaces (fake
 child script; the control-API double + conformance check from
-`./testing`); the alchemy-patch disposition; the S8 planner-drift
-read (alchemy source from installed node_modules) reported as a
-note to the operator.
+`./testing`); the S8 planner-drift read (alchemy source from installed
+node_modules) reported as a note to the operator. (The
+alchemy-patch item is dropped: types-only, no runtime effect.)
+D2 and D3 land as a stack; the clipanion shell is deleted in D3.
 
 ### D3 — the four commands + e2e rewrite (prisma/composer)
 Contract R-S3-4: deploy/destroy/dev/log as engine handlers
