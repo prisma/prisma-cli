@@ -1,16 +1,2 @@
-// biome-ignore-all lint/performance/useTopLevelRegex: Existing shell quoting regexes are kept inline for readability.
-export function formatCommandArgument(value: string): string {
-  return /^[A-Za-z0-9._/-]+$/.test(value) && !value.startsWith("-")
-    ? value
-    : `'${value.replace(/'/g, "'\\''")}'`;
-}
-
-export function formatShellCommand(command: readonly string[]): string {
-  return command.map(formatShellCommandWord).join(" ");
-}
-
-function formatShellCommandWord(value: string): string {
-  return /^[A-Za-z0-9_./:@=-]+$/.test(value)
-    ? value
-    : `'${value.replace(/'/g, "'\\''")}'`;
-}
+/** Moved out of the commander shell — see ../errors for why. */
+export * from "../command-arguments";

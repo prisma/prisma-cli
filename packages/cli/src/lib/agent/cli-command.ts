@@ -1,4 +1,4 @@
-import { formatPrismaCliCommand } from "../../shell/cli-command";
+import { formatPrismaCliCommand } from "../../cli-command";
 import {
   resolvePackageRunner,
   resolvePackageRunnerSync,

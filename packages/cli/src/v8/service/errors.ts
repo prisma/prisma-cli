@@ -1,10 +1,10 @@
 import type { NextAction } from "@prisma/cli-engine/protocol";
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
+import type { CliError } from "../../errors";
 import { DomainApiError, type DomainRecord } from "../../lib/app/app-provider";
 import { formatDomainFailureFix } from "../../lib/app/domain-guidance";
-import type { CliError } from "../../shell/errors";
-import type { NextAction as LegacyNextAction } from "../../shell/next-actions";
+import type { NextAction as LegacyNextAction } from "../../next-actions";
 
 type DomainCommand = "add" | "show" | "remove" | "retry" | "wait";
 

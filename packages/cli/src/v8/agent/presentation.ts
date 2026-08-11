@@ -1,6 +1,6 @@
 import type { Block, Presentations } from "@prisma/cli-engine";
 import type { NextAction } from "@prisma/cli-engine/protocol";
-import { formatShellCommand } from "../../shell/command-arguments";
+import { formatShellCommand } from "../shell-command";
 import type { AgentInstallResult, AgentStatusResult } from "./results";
 
 function fields(rows: Array<{ label: string; value: string }>): Block {

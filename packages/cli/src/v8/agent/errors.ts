@@ -1,5 +1,5 @@
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
-import { formatShellCommand } from "../../shell/command-arguments";
+import { formatShellCommand } from "../shell-command";
 
 /**
  * The installer's own command line is the next action: legacy carried it

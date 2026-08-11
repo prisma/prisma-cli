@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import process from "node:process";
 
 import { CLI_NAME } from "../cli-name";
-import { CliError } from "../shell/errors";
+import { CliError } from "../errors";
 import type { VersionInvocation, VersionResult } from "../types/version";
 
 interface PackageMetadata {

@@ -8,9 +8,9 @@ import {
   type UnhandledException,
 } from "better-result";
 
-import { formatCommandArgument } from "../../shell/command-arguments";
-import { CliError } from "../../shell/errors";
-import type { NextAction } from "../../shell/next-actions";
+import { formatCommandArgument } from "../../command-arguments";
+import { CliError } from "../../errors";
+import type { NextAction } from "../../next-actions";
 import type { AuthWorkspace } from "../../types/auth";
 import type {
   BoundProjectShowResult,

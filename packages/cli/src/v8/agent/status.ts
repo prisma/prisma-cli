@@ -8,8 +8,8 @@ import {
   readPrismaAgentSetupStatus,
   resolvePrismaAgentSetupCwd,
 } from "../../lib/agent/setup-status";
-import { formatShellCommand } from "../../shell/command-arguments";
 import { resolveStateDir } from "../../state-dir";
+import { formatShellCommand } from "../shell-command";
 import { statusPresentations } from "./presentation";
 import type { AgentStatusResult } from "./results";
 import {
