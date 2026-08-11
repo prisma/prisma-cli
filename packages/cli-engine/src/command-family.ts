@@ -11,7 +11,8 @@ export interface RedirectSpec {
   /**
    * The retired invocation as the user types it: a space-separated
    * absolute path in the mounted tree, the same convention as
-   * MountedTree keys.
+   * MountedTree keys. Whitespace only separates segments, so it is
+   * normalized away — `'  migration \t apply '` is `'migration apply'`.
    */
   readonly from: string;
   /**
@@ -57,9 +58,15 @@ export interface CommandFamily {
   readonly redirects: readonly CommandRedirect[];
 }
 
+/** A path is segments separated by whitespace, so the separator's shape
+ *  carries no meaning and one form reaches the table and every lookup. */
+function normalizePath(from: string): string {
+  return from.trim().replace(/\s+/g, " ");
+}
+
 function normalizeRedirect(spec: RedirectSpec): CommandRedirect {
   return Object.freeze({
-    from: spec.from,
+    from: normalizePath(spec.from),
     flag: spec.flag,
     replacement: spec.replacement,
     reason: spec.reason,
