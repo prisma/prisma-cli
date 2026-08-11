@@ -197,8 +197,8 @@ export function makePackageOperations(
   invocation: Invocation,
 ): PackageOperations {
   let running = false;
-  /** The claim is taken before the first await, so a caller that fires
-   *  a second operation without awaiting the first still hits it. */
+  // The claim is taken before the first await, so a second operation
+  // fired without awaiting the first still hits it.
   const perform = async (
     operation: Operation,
     placement: Placement,

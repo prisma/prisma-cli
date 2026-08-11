@@ -299,6 +299,34 @@ describe("the events an operation frames", () => {
     });
   });
 
+  test("a secret the manager printed does not reach the event stream", async () => {
+    const runner: PackageManagerRunner = async ({ onOutput }) => {
+      onOutput(
+        "diagnostic",
+        "npm ERR! 401 https://bot:s3cret@registry.acme.dev\n",
+      );
+      return { exitCode: 0, stderr: "" };
+    };
+    const cli = createTestCli({
+      commands: {
+        toy: installer((packages) =>
+          packages.install({ packages: ["prisma"] }),
+        ),
+      },
+      packageManager: "npm",
+      packageManagerRunner: runner,
+    });
+
+    const { events } = await cli.run(["toy"]);
+
+    expect(events).toContainEqual({
+      kind: "output",
+      source: "npm",
+      channel: "diagnostic",
+      line: "npm ERR! 401 https://…@registry.acme.dev",
+    });
+  });
+
   test("a failed manager finishes the step as failed", async () => {
     const { runner } = recorder({ exitCode: 1, stderr: "boom" });
     const cli = createTestCli({
