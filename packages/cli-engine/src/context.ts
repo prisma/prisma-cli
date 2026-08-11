@@ -3,6 +3,7 @@ import type { EngineEvent } from "./events";
 import type { ManagementApiClient } from "./management-api";
 import type { Outcome, Presentations, PresentedResult } from "./presentation";
 import type { CliStructuredError, Result } from "./protocol";
+import type { ChildResult, SpawnOptions } from "./spawn";
 
 /** The handler context — the whole world arrives as one argument. */
 export interface CommandContext<
@@ -43,6 +44,29 @@ export interface CommandContext<
    * needs.credentials check uses).
    */
   readonly api: ManagementApiClient;
+
+  /**
+   * Hands the terminal to a child process and resolves when it ends.
+   * The child inherits stdio and runs in this process's own group
+   * (POSIX) or console (Windows), so Ctrl-C reaches it natively.
+   *
+   * While a child is live the engine neither aborts nor exits on a
+   * delivered signal: it records signals and replays them into its
+   * normal ladder once the child has ended, so the engine always
+   * outlives the child. SIGTERM, which has no native path to the child,
+   * is forwarded to it. A programmatic abort of ctx.signal terminates
+   * the child with SIGTERM, a grace period, then SIGKILL.
+   *
+   * ctx.report is buffered for the duration and flushed in order when
+   * the child ends; ctx.present during a live child, and a second
+   * concurrent ctx.spawn, are engine-internal errors. A launch failure
+   * (no such command) throws CLI.SPAWN_FAILED.
+   *
+   * Only commands declaring `maySpawn` may call it. Branch on `signal`
+   * before `exitCode`: a signal-killed child is an abort, not a
+   * failure.
+   */
+  readonly spawn: (options: SpawnOptions) => Promise<ChildResult>;
 
   /** The one way to emit while running. */
   readonly report: (event: EngineEvent) => void;

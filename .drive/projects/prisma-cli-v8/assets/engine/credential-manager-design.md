@@ -229,7 +229,11 @@ Engine integration:
   credential snapshot — `getTokens` re-reads the file on every call
   and returns that workspace's current record. Write rules in §6.
   All SDK methods including the required `clearTokens` are
-  implemented; the engine forwards the view and never calls it.
+  implemented; the engine forwards the view and never calls it —
+  no exceptions. The engine's own token read for `ctx.spawn`'s
+  credential injection goes through the named operation
+  `activeAccessToken()` (§11.5, the S3 amendment as re-ruled after
+  the PR-136 review, 2026-08-11), so the rule stays absolute.
 - Error unwrapping: the SDK's error middleware wraps non-SDK errors
   into `FetchError(cause)`; the engine's mapping walks the cause
   chain for BOTH `AuthError` and CLI structured errors, so
@@ -753,6 +757,10 @@ endAllSessions(): Promise<void>;
  *  have no workspace id to key on. Only valid once activeCredential()
  *  has returned non-null; the engine resolves that first. */
 activeCredentialStorage(): Promise<TokenStorage>;
+/** ENGINE-FACING (S3). The active credential's ACCESS token, read
+ *  fresh on every call, for handing to a child process. Never the
+ *  refresh token. Single consumer: ctx.spawn's credential injection. */
+activeAccessToken(): Promise<string | null>;
 ```
 
 All three mutations are workspace-id-keyed, symmetric with
@@ -761,6 +769,27 @@ All three mutations are workspace-id-keyed, symmetric with
 rather than reshaped: nothing needs storage for a workspace other than
 the active one, and the parameter implies an axis of variation the
 system does not have.
+
+S3 amendment (2026-08-11, re-ruled after the PR-136 architect review):
+the engine forwards the storage `activeCredentialStorage()` returns
+into SDK client config and never calls its methods itself — no
+exceptions. What the spawn path needs is a manager OPERATION, not a
+carve-out: the interface gains `activeAccessToken()`, whose single
+consumer is `ctx.spawn`'s credential injection in the engine's spawn
+module (`packages/cli-engine/src/execution/spawn.ts`, `spawnToken`).
+It is read at spawn time and handed to the child as
+`PRISMA_SERVICE_TOKEN` (+ `PRISMA_WORKSPACE_ID` when the credential
+names a workspace; when it names none, an inherited
+`PRISMA_WORKSPACE_ID` is DELETED from the child environment — the two
+variables are one protocol, written as a unit). The injected token is
+a snapshot; the child never refreshes; the refresh token is never
+injected. The read builds no second API client, so the
+one-client-per-process invariant of this design HOLDS: the engine's
+pinned refreshing client remains the only client ever constructed in
+the process (composer's in-process leg is authenticated by injecting
+that same `ctx.api` through its `deps.client` seam, not by composing
+another client from env). For an environment-only manager the
+operation is a pass-through of the env token — no storage involved.
 
 ### 11.6 whoami
 

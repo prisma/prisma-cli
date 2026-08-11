@@ -10,6 +10,10 @@ import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { notOk, ok } from "@prisma/cli-engine/protocol";
 import { SERVICE_TOKEN_ENV_VAR } from "../../auth/client";
 import {
+  workspaceAmbiguousError,
+  workspaceNotAuthenticatedError,
+} from "../../auth/errors";
+import {
   RecipientSessionInvalidError,
   resolveRecipientWorkspaceSession,
 } from "../../auth/recipient";
@@ -23,15 +27,11 @@ import {
 import type { PrismaCliPackageCommandFormatter } from "../../lib/agent/cli-command";
 import { createManagementProjectProvider } from "../../lib/project/provider";
 import {
-  formatCommandArgument,
   resolveProjectForSetup,
   toProjectSummary,
 } from "../../lib/project/setup";
-import {
-  usageError,
-  workspaceAmbiguousError,
-  workspaceNotAuthenticatedError,
-} from "../../shell/errors";
+import { formatCommandArgument } from "../../shell/command-arguments";
+import { usageError } from "../../shell/errors";
 import type { ProjectTransferResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import {

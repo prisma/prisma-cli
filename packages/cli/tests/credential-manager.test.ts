@@ -22,6 +22,8 @@ import { FileCredentialManager } from "../src/auth/credential-manager";
 import { readCredentialState } from "../src/auth/state-file";
 import { getAuthContextFilePath } from "../src/auth/token-storage";
 
+const NO_SPACE_LEFT = /no space left/;
+
 /** Windows has no Unix permission bits — `stat` reports 0o666 whatever
  *  the file was created with — so the mode assertions only mean
  *  something on a POSIX filesystem. */
@@ -281,7 +283,7 @@ describe("the state file", () => {
     try {
       await expect(
         makeManager().createSession(credentialFor(WORKSPACE_A), WORKSPACE_A),
-      ).rejects.toThrow(/no space left/);
+      ).rejects.toThrow(NO_SPACE_LEFT);
     } finally {
       opens.mockRestore();
     }

@@ -16,18 +16,11 @@ import {
 
 import type { AppBuildSettings } from "./build-settings";
 
-export {
-  type AppBuildSettings,
-  type AppBuildSettingsBuildType,
-  type AppBuildSettingsResolution,
-  detectLegacyBuildSettings,
-  hasAnyPackageDependency,
-  hasPackageDependency,
-  type LegacyBuildSettingsDetection,
-  PRISMA_APP_CONFIG_FILENAME,
-  resolveAppBuildSettings,
-  resolveConfiguredAppBuildSettings,
-  resolveInferredAppBuildSettings,
+export type {
+  AppBuildSettings,
+  AppBuildSettingsBuildType,
+  AppBuildSettingsResolution,
+  LegacyBuildSettingsDetection,
 } from "./build-settings";
 
 export type AppBuildType = BuildType;

@@ -2,16 +2,21 @@ import { access } from "node:fs/promises";
 import path from "node:path";
 import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";
 import {
+  COMPUTE_CONFIG_FILENAME,
   COMPUTE_REGIONS,
+  ComputeConfigTargetRequiredError,
   type ComputeFramework,
   type ConfigBackedBuildType,
+  computeTargetAppDir,
   ENTRYPOINT_BUILD_TYPES,
   FRAMEWORKS,
   type FrameworkBuildType,
   frameworkByKey,
   frameworkFromAlias,
+  inferComputeTargetFromCwd,
   isConfigBackedBuildType,
   LOCAL_DEV_BUILD_TYPES,
+  selectComputeDeployTarget,
 } from "@prisma/compute-sdk/config";
 import { detectComputeAppFromDirectory } from "@prisma/compute-sdk/config/directory";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
@@ -37,32 +42,29 @@ import {
   type AppBuildSettings,
   type AppBuildSettingsResolution,
   type AppBuildType,
-  detectLegacyBuildSettings,
   executeAppBuild,
-  PRISMA_APP_CONFIG_FILENAME,
   RESOLVED_APP_BUILD_TYPES,
+} from "../lib/app/build";
+import {
+  detectLegacyBuildSettings,
+  PRISMA_APP_CONFIG_FILENAME,
   resolveConfiguredAppBuildSettings,
   resolveInferredAppBuildSettings,
-} from "../lib/app/build";
+} from "../lib/app/build-settings";
 import {
   readBunPackageEntrypoint,
   readBunPackageJson,
 } from "../lib/app/bun-project";
 import {
-  COMPUTE_CONFIG_FILENAME,
   type ComputeConfigCommandName,
-  ComputeConfigTargetRequiredError,
   type ComputeDeployTarget,
   computeConfigErrorToCliError,
   computeFrameworkToBuildType,
-  computeTargetAppDir,
-  inferComputeTargetFromCwd,
   type LoadedComputeConfig,
   loadComputeConfig,
   type MergedDeployInput,
   mergeComputeDeployInputs,
   mergeComputeLocalInputs,
-  selectComputeDeployTarget,
 } from "../lib/app/compute-config";
 import {
   renderDeployOutputRows,
@@ -111,13 +113,13 @@ import {
 } from "../lib/project/resolution";
 import {
   bindProjectToDirectory,
-  formatCommandArgument,
   projectCreateFailedError,
   projectDirectoryBindingErrorToCliError,
   projectSetupNameRequiredError,
   resolveProjectForSetup,
   toProjectSummary,
 } from "../lib/project/setup";
+import { formatCommandArgument } from "../shell/command-arguments";
 import {
   authRequiredError,
   CliError,
@@ -165,6 +167,14 @@ const FRAMEWORK_DEFAULT_HTTP_PORT = 3000;
 const PRISMA_PROJECT_ID_ENV_VAR = "PRISMA_PROJECT_ID";
 const PRISMA_APP_ID_ENV_VAR = "PRISMA_APP_ID";
 const COMPUTE_REGION_IDS = new Set<string>(COMPUTE_REGIONS);
+const APP_COMMAND_PREFIX = /^app /;
+const TRAILING_DOT = /\.$/;
+const DOMAIN_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const CNAME_TO_PHRASE = /\bcname(?:s)?\s+to\b/;
+const PRISMA_BUILD_HOSTNAME = /\b((?:[a-z0-9-]+\.)+prisma\.build)\b/i;
+const WAIT_TIMEOUT_DURATION = /^(\d+)(ms|s|m|h)$/;
+const NEXTJS_MENTION = /next\.?js/i;
+const STANDALONE_OUTPUT_MENTION = /standalone output/i;
 
 function isRealMode(context: CommandContext): boolean {
   return (
@@ -1182,7 +1192,7 @@ export async function runAppShowDeploy(
 
 export async function runAppOpen(
   context: CommandContext,
-  appName: string | undefined,
+  appNameArg: string | undefined,
   projectRef?: string,
   configTarget?: string,
 ): Promise<CommandSuccess<AppOpenResult>> {
@@ -1193,7 +1203,7 @@ export async function runAppOpen(
     configTarget,
     "open",
   );
-  appName = appName ?? compute.configAppName;
+  const appName = appNameArg ?? compute.configAppName;
   const { provider, target, projectId } =
     await requireProviderAndProjectContext(context, projectRef, {
       commandName: "app open",
@@ -1565,7 +1575,7 @@ export async function runAppDomainWait(
 
 export async function runAppLogs(
   context: CommandContext,
-  appName: string | undefined,
+  appNameArg: string | undefined,
   deploymentId: string | undefined,
   projectRef?: string,
   configTarget?: string,
@@ -1577,7 +1587,7 @@ export async function runAppLogs(
     configTarget,
     "logs",
   );
-  appName = appName ?? compute.configAppName;
+  const appName = appNameArg ?? compute.configAppName;
   const {
     provider,
     target: resolvedTarget,
@@ -1822,7 +1832,7 @@ function writeLogRecord(context: CommandContext, record: StreamRecord): void {
 export async function runAppPromote(
   context: CommandContext,
   deploymentId: string,
-  appName: string | undefined,
+  appNameArg: string | undefined,
   projectRef?: string,
   configTarget?: string,
 ): Promise<CommandSuccess<AppPromoteResult>> {
@@ -1833,7 +1843,7 @@ export async function runAppPromote(
     configTarget,
     "promote",
   );
-  appName = appName ?? compute.configAppName;
+  const appName = appNameArg ?? compute.configAppName;
   const { provider, target, projectId } =
     await requireProviderAndProjectContext(context, projectRef, {
       commandName: "app promote",
@@ -1923,7 +1933,7 @@ export async function runAppPromote(
 
 export async function runAppRollback(
   context: CommandContext,
-  appName: string | undefined,
+  appNameArg: string | undefined,
   deploymentId: string | undefined,
   projectRef?: string,
   configTarget?: string,
@@ -1935,7 +1945,7 @@ export async function runAppRollback(
     configTarget,
     "rollback",
   );
-  appName = appName ?? compute.configAppName;
+  const appName = appNameArg ?? compute.configAppName;
   const { provider, target, projectId } =
     await requireProviderAndProjectContext(context, projectRef, {
       commandName: "app rollback",
@@ -2042,7 +2052,7 @@ export async function runAppRollback(
  */
 export async function runAppRemove(
   context: CommandContext,
-  appName: string | undefined,
+  appNameArg: string | undefined,
   projectRef?: string,
   configTarget?: string,
   branchName?: string,
@@ -2054,7 +2064,7 @@ export async function runAppRemove(
     configTarget,
     "remove",
   );
-  appName = appName ?? compute.configAppName;
+  const appName = appNameArg ?? compute.configAppName;
   // A blank --branch must not fall through to inference, which can reach production.
   if (branchName !== undefined && branchName.trim() === "") {
     throw usageError(
@@ -2138,7 +2148,7 @@ async function resolveAppDomainTarget(
   const compute = await resolveComputeManagementContext(
     context,
     options?.configTarget,
-    commandName.replace(/^app /, ""),
+    commandName.replace(APP_COMMAND_PREFIX, ""),
   );
   const branch = resolveDomainBranch(options?.branchName);
   if (toBranchKind(branch.name) !== "production") {
@@ -2271,7 +2281,7 @@ async function resolveDomainByHostname(
 }
 
 function normalizeDomainHostname(hostname: string): string {
-  const normalized = hostname.trim().replace(/\.$/, "").toLowerCase();
+  const normalized = hostname.trim().replace(TRAILING_DOT, "").toLowerCase();
   if (!isValidDomainHostname(normalized)) {
     throw new CliError({
       code: "DOMAIN_HOSTNAME_INVALID",
@@ -2305,15 +2315,13 @@ function isValidDomainHostname(hostname: string): boolean {
     return false;
   }
 
-  return labels.every((label) =>
-    /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label),
-  );
+  return labels.every((label) => DOMAIN_LABEL.test(label));
 }
 
 function sameDomainHostname(left: string, right: string): boolean {
   return (
-    left.trim().replace(/\.$/, "").toLowerCase() ===
-    right.trim().replace(/\.$/, "").toLowerCase()
+    left.trim().replace(TRAILING_DOT, "").toLowerCase() ===
+    right.trim().replace(TRAILING_DOT, "").toLowerCase()
   );
 }
 
@@ -2538,7 +2546,7 @@ function isDomainDnsError(error: DomainApiError): boolean {
     text.includes("no cname") ||
     text.includes("cname record") ||
     text.includes("no a/aaaa") ||
-    /\bcname(?:s)?\s+to\b/.test(text)
+    CNAME_TO_PHRASE.test(text)
   );
 }
 
@@ -2567,7 +2575,7 @@ function domainDnsNotConfiguredError(
 
 function extractDomainDnsTarget(error: DomainApiError): string | null {
   const text = `${error.hint ?? ""} ${error.message}`;
-  const match = /\b((?:[a-z0-9-]+\.)+prisma\.build)\b/i.exec(text);
+  const match = PRISMA_BUILD_HOSTNAME.exec(text);
   return match?.[1]?.toLowerCase() ?? null;
 }
 
@@ -2603,7 +2611,7 @@ function parseDomainWaitTimeout(value: string | undefined): number {
     return 0;
   }
 
-  const match = /^(\d+)(ms|s|m|h)$/.exec(trimmed);
+  const match = WAIT_TIMEOUT_DURATION.exec(trimmed);
   if (!match) {
     throw usageError(
       `Invalid timeout "${value}"`,
@@ -3393,22 +3401,19 @@ async function resolveProjectContext(
   },
 ): Promise<ResolvedAppProjectContext> {
   const authState = await requireAuthenticatedAuthState(context);
-  if (!authState.workspace) {
+  const workspace = authState.workspace;
+  if (!workspace) {
     throw workspaceRequiredError();
   }
 
   const resolvedResult = await resolveProjectTarget({
     context,
-    workspace: authState.workspace,
+    workspace,
     explicitProject,
     envProjectId: options?.envProjectId,
     projectDir: options?.projectDir,
     listProjects: () =>
-      listRealWorkspaceProjects(
-        client,
-        authState.workspace!,
-        context.runtime.signal,
-      ),
+      listRealWorkspaceProjects(client, workspace, context.runtime.signal),
     commandName: options?.commandName,
   });
   if (resolvedResult.isErr()) {
@@ -4909,7 +4914,9 @@ function projectSetupRequiredError(
 }
 
 function isNextStandaloneOutputFailure(message: string): boolean {
-  return /next\.?js/i.test(message) && /standalone output/i.test(message);
+  return (
+    NEXTJS_MENTION.test(message) && STANDALONE_OUTPUT_MENTION.test(message)
+  );
 }
 
 function noDeploymentsError(summary: string, why: string): CliError {

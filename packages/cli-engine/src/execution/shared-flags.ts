@@ -106,7 +106,7 @@ export function sniffFormat(argv: readonly string[], runtime: Runtime): Format {
 
 /** The format requested by --json / --format / --format=<value>, if
  *  any. Arguments after a bare `--` are positionals, never flags. */
-function explicitFormat(argv: readonly string[]): Format | undefined {
+export function explicitFormat(argv: readonly string[]): Format | undefined {
   for (const [index, argument] of argv.entries()) {
     if (argument === "--") {
       return undefined;

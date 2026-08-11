@@ -7,6 +7,8 @@ import {
   parseVersion,
 } from "./determine-version-utils.ts";
 
+const NOT_CANONICAL = /not canonical/;
+
 describe("parseVersion", () => {
   it("parses a clean release", () => {
     assert.deepEqual(parseVersion("0.7.0"), { major: 0, minor: 7, patch: 0 });
@@ -71,23 +73,17 @@ describe("computeNextReleaseVersion", () => {
   it("rejects a non-canonical base", () => {
     assert.throws(
       () => computeNextReleaseVersion("8.0.0-dev.1"),
-      /not canonical/,
+      NOT_CANONICAL,
     );
   });
 
   it("rejects rc bases outside the 8.0.0 line", () => {
     assert.throws(
       () => computeNextReleaseVersion("0.17.0-rc.1"),
-      /not canonical/,
+      NOT_CANONICAL,
     );
-    assert.throws(
-      () => computeNextReleaseVersion("8.0.1-rc.1"),
-      /not canonical/,
-    );
-    assert.throws(
-      () => computeNextReleaseVersion("9.0.0-rc.1"),
-      /not canonical/,
-    );
+    assert.throws(() => computeNextReleaseVersion("8.0.1-rc.1"), NOT_CANONICAL);
+    assert.throws(() => computeNextReleaseVersion("9.0.0-rc.1"), NOT_CANONICAL);
   });
 });
 
@@ -103,42 +99,39 @@ describe("assertCanonicalBase", () => {
   });
 
   it("rejects a dev suffix", () => {
-    assert.throws(() => assertCanonicalBase("0.7.0-dev.1"), /not canonical/);
-    assert.throws(
-      () => assertCanonicalBase("8.0.0-rc.1-dev.2"),
-      /not canonical/,
-    );
+    assert.throws(() => assertCanonicalBase("0.7.0-dev.1"), NOT_CANONICAL);
+    assert.throws(() => assertCanonicalBase("8.0.0-rc.1-dev.2"), NOT_CANONICAL);
   });
 
   it("rejects non-rc pre-release suffixes", () => {
-    assert.throws(() => assertCanonicalBase("8.0.0-beta.1"), /not canonical/);
-    assert.throws(() => assertCanonicalBase("8.0.0-rc"), /not canonical/);
-    assert.throws(() => assertCanonicalBase("8.0.0-rc."), /not canonical/);
+    assert.throws(() => assertCanonicalBase("8.0.0-beta.1"), NOT_CANONICAL);
+    assert.throws(() => assertCanonicalBase("8.0.0-rc"), NOT_CANONICAL);
+    assert.throws(() => assertCanonicalBase("8.0.0-rc."), NOT_CANONICAL);
   });
 
   it("rejects rc bases outside the 8.0.0 line", () => {
-    assert.throws(() => assertCanonicalBase("0.17.0-rc.1"), /not canonical/);
-    assert.throws(() => assertCanonicalBase("8.0.1-rc.1"), /not canonical/);
-    assert.throws(() => assertCanonicalBase("8.1.0-rc.1"), /not canonical/);
-    assert.throws(() => assertCanonicalBase("9.0.0-rc.1"), /not canonical/);
+    assert.throws(() => assertCanonicalBase("0.17.0-rc.1"), NOT_CANONICAL);
+    assert.throws(() => assertCanonicalBase("8.0.1-rc.1"), NOT_CANONICAL);
+    assert.throws(() => assertCanonicalBase("8.1.0-rc.1"), NOT_CANONICAL);
+    assert.throws(() => assertCanonicalBase("9.0.0-rc.1"), NOT_CANONICAL);
   });
 
   it("rejects rc.0 — the counter starts at rc.1", () => {
-    assert.throws(() => assertCanonicalBase("8.0.0-rc.0"), /not canonical/);
+    assert.throws(() => assertCanonicalBase("8.0.0-rc.0"), NOT_CANONICAL);
   });
 
   it("rejects a missing component", () => {
-    assert.throws(() => assertCanonicalBase("0.7"), /not canonical/);
+    assert.throws(() => assertCanonicalBase("0.7"), NOT_CANONICAL);
   });
 
   it("rejects an empty string", () => {
-    assert.throws(() => assertCanonicalBase(""), /not canonical/);
+    assert.throws(() => assertCanonicalBase(""), NOT_CANONICAL);
   });
 
   it("rejects components with leading zeros", () => {
-    assert.throws(() => assertCanonicalBase("01.2.3"), /not canonical/);
-    assert.throws(() => assertCanonicalBase("1.02.3"), /not canonical/);
-    assert.throws(() => assertCanonicalBase("1.2.03"), /not canonical/);
-    assert.throws(() => assertCanonicalBase("8.0.0-rc.01"), /not canonical/);
+    assert.throws(() => assertCanonicalBase("01.2.3"), NOT_CANONICAL);
+    assert.throws(() => assertCanonicalBase("1.02.3"), NOT_CANONICAL);
+    assert.throws(() => assertCanonicalBase("1.2.03"), NOT_CANONICAL);
+    assert.throws(() => assertCanonicalBase("8.0.0-rc.01"), NOT_CANONICAL);
   });
 });

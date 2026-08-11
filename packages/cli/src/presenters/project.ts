@@ -1,4 +1,3 @@
-import path from "node:path";
 import stringWidth from "string-width";
 import { shortenHomePath } from "../lib/fs/home-path";
 import { renderMutate, renderShow, serializeList } from "../output/patterns";

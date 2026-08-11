@@ -202,7 +202,7 @@ function renderBranchDatabaseDeploySummary(
   context: CommandContext,
   result: AppDeployResult,
 ): string[] {
-  if (!result.branchDatabase || result.branchDatabase.status !== "created") {
+  if (result.branchDatabase?.status !== "created") {
     return [];
   }
 

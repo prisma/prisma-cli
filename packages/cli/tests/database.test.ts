@@ -1,9 +1,11 @@
-import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import stripAnsi from "strip-ansi";
 import { describe, expect, it } from "vitest";
 
 import { createTempCwd, executeCli } from "./helpers";
+
+const DATABASE_HELP_ROW =
+  /database\s+Manage Prisma Postgres databases for a project/;
 
 const fixturePath = path.resolve("fixtures/mock-api.json");
 
@@ -34,9 +36,7 @@ describe("database commands", () => {
     expect(root.exitCode).toBe(0);
     // The column width flexes with the widest command name, so only the
     // row's presence is asserted, not its exact padding.
-    expect(root.stderr).toMatch(
-      /database\s+Manage Prisma Postgres databases for a project/,
-    );
+    expect(root.stderr).toMatch(DATABASE_HELP_ROW);
 
     expect(database.exitCode).toBe(0);
     const databaseHelp = stripAnsi(database.stderr).replace(/[ \t]+\n/g, "\n");

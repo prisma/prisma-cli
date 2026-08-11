@@ -540,8 +540,10 @@ export async function inferTargetName(
   };
 }
 
+const INFERRED_TARGET_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+
 function isValidInferredTargetName(value: string): boolean {
-  return /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(value);
+  return INFERRED_TARGET_NAME.test(value);
 }
 
 export function sortProjects<T extends Pick<ProjectCandidate, "id" | "name">>(
