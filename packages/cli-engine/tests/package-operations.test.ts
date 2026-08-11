@@ -52,6 +52,60 @@ describe("redactSecrets", () => {
     expect(redactSecrets(url)).toBe(url);
   });
 
+  test("an @ in the query of a URL that has no userinfo is left alone", () => {
+    const url = "https://registry.acme.dev?maintainer=dev@acme.dev";
+
+    expect(redactSecrets(url)).toBe(url);
+  });
+
+  test("the port, path, query and encoding around the userinfo survive", () => {
+    expect(
+      redactSecrets("https://bot:dGVzdA==@registry.acme.dev:443/a/./b%2Fc?q=1"),
+    ).toBe("https://…@registry.acme.dev:443/a/./b%2Fc?q=1");
+  });
+
+  test("a URL ending a sentence keeps its punctuation", () => {
+    expect(
+      redactSecrets("npm ERR! see https://bot:s3cret@registry.acme.dev/x."),
+    ).toBe("npm ERR! see https://…@registry.acme.dev/x.");
+  });
+
+  test("a URL wrapped in quotes or parentheses keeps its wrapper", () => {
+    expect(
+      redactSecrets(
+        'fetch "https://bot:s3cret@acme.dev/x" (https://ci:tok@acme.dev/y)',
+      ),
+    ).toBe('fetch "https://…@acme.dev/x" (https://…@acme.dev/y)');
+  });
+
+  test("two URLs separated by a comma are both redacted", () => {
+    expect(redactSecrets("https://a:b@one.dev/x,https://c:d@two.dev/y")).toBe(
+      "https://…@one.dev/x,https://…@two.dev/y",
+    );
+  });
+
+  test("prose punctuation inside a password does not end the userinfo", () => {
+    expect(
+      redactSecrets("npm ERR! https://bot:p(ss,w0rd;@registry.acme.dev/x"),
+    ).toBe("npm ERR! https://…@registry.acme.dev/x");
+  });
+
+  test("a word that merely contains a colon is not a URL", () => {
+    const line = "pnpm: prisma@workspace:* failed at index.js:1:2";
+
+    expect(redactSecrets(line)).toBe(line);
+  });
+
+  test("a URL cut short of its scheme is not one, so it is passed through", () => {
+    // What the 64 KiB stderr bound would leave if it cut inside `https://`.
+    // The bin trims its tail forward to a line boundary so this cannot
+    // reach here; `ci:` parses as a scheme with an opaque path, which
+    // carries no userinfo to redact.
+    const cut = "ci:s3cret@registry.acme.dev/prisma";
+
+    expect(redactSecrets(cut)).toBe(cut);
+  });
+
   test("assignments whose name says secret lose their value", () => {
     expect(
       redactSecrets(
