@@ -48,7 +48,6 @@ import { projectTransferCommand } from "./project/transfer";
 import { telemetryDisableCommand } from "./telemetry/disable";
 import { telemetryEnableCommand } from "./telemetry/enable";
 import { telemetryStatusCommand } from "./telemetry/status";
-import { versionCommand } from "./version";
 
 export const platformCommandFamily: CommandFamily = defineCommandFamily({
   commands: {
@@ -161,7 +160,6 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "telemetry status": telemetryStatusCommand,
   "telemetry enable": telemetryEnableCommand,
   "telemetry disable": telemetryDisableCommand,
-  version: versionCommand,
   // Top-level, and not the platform package's: init writes a local
   // compute config. It joins the compute family when S3 brings one.
   init: initCommand,

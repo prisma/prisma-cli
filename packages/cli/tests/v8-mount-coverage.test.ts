@@ -9,13 +9,11 @@ import { initCommand } from "../src/v8/init/init";
 import { telemetryDisableCommand } from "../src/v8/telemetry/disable";
 import { telemetryEnableCommand } from "../src/v8/telemetry/enable";
 import { telemetryStatusCommand } from "../src/v8/telemetry/status";
-import { versionCommand } from "../src/v8/version";
 
 const SHELL_OWNED: ReadonlySet<unknown> = new Set([
   telemetryStatusCommand,
   telemetryEnableCommand,
   telemetryDisableCommand,
-  versionCommand,
   initCommand,
 ]);
 
@@ -68,7 +66,6 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "telemetry disable",
   "telemetry enable",
   "telemetry status",
-  "version",
 ];
 
 describe("prisma-v8 mount coverage", () => {
