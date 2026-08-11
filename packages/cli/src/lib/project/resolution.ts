@@ -11,7 +11,6 @@ import {
 import { formatCommandArgument } from "../../shell/command-arguments";
 import { CliError } from "../../shell/errors";
 import type { NextAction } from "../../shell/next-actions";
-import type { CommandContext } from "../../shell/runtime";
 import type { AuthWorkspace } from "../../types/auth";
 import type {
   BoundProjectShowResult,
@@ -141,8 +140,19 @@ export interface InferredTargetName {
   source: InferredTargetNameSource;
 }
 
+/**
+ * What project resolution reads from its caller: where the command was
+ * invoked, and the run's abort signal. Deliberately not the shell's
+ * CommandContext — resolution needs neither its output streams nor its
+ * flags, and typing it that way forced every other caller to be, or to
+ * impersonate, the shell.
+ */
+export interface ProjectResolutionContext {
+  runtime: { cwd: string; signal: AbortSignal };
+}
+
 export interface ResolveProjectOptions {
-  context: CommandContext;
+  context: ProjectResolutionContext;
   workspace: AuthWorkspace;
   explicitProject?: string;
   envProjectId?: string;

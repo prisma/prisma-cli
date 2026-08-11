@@ -20,11 +20,11 @@ import { resolveReadBranch } from "../../lib/app/read-branch";
 import { readLocalGitBranch } from "../../lib/git/local-branch";
 import {
   type ProjectCandidate,
+  type ProjectResolutionContext,
   projectResolutionErrorToCliError,
   resolveProjectTarget,
   sortProjects,
 } from "../../lib/project/resolution";
-import type { CommandContext as LegacyCommandContext } from "../../shell/runtime";
 import { resolveStateDir } from "../../state-dir";
 import type { AuthWorkspace } from "../../types/auth";
 import type { BranchKind } from "../../types/branch";
@@ -116,12 +116,10 @@ function readServiceEnvOverride(
   return value ? value : undefined;
 }
 
-/** The narrow slice of the legacy shell context the reused resolution
- *  operations actually read (cwd + signal). */
-function legacyResolutionContext(ctx: ServiceContext): LegacyCommandContext {
-  return {
-    runtime: { cwd: ctx.cwd, signal: ctx.signal },
-  } as unknown as LegacyCommandContext;
+/** What project resolution reads: where the command was invoked, and
+ *  the run's abort signal. */
+function resolutionContext(ctx: ServiceContext): ProjectResolutionContext {
+  return { runtime: { cwd: ctx.cwd, signal: ctx.signal } };
 }
 
 async function resolveComputeTarget(
@@ -254,7 +252,7 @@ export async function resolveServiceProjectContext(
 ): Promise<ResolvedServiceProjectContext> {
   const workspace = await requireWorkspace(ctx);
   const resolvedResult = await resolveProjectTarget({
-    context: legacyResolutionContext(ctx),
+    context: resolutionContext(ctx),
     workspace,
     ...(explicitProject !== undefined ? { explicitProject } : {}),
     ...(options.envProjectId !== undefined
