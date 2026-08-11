@@ -79,7 +79,7 @@ async function listRealBranches(
     context,
     workspace,
     listProjects: () =>
-      listRealWorkspaceProjects(client, workspace, context.runtime.signal),
+      listRealWorkspaceProjects(client, context.runtime.signal),
   });
   if (targetResult.isErr()) {
     throw projectResolutionErrorToCliError(targetResult.error);

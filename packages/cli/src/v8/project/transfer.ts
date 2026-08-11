@@ -226,7 +226,7 @@ export const projectTransferCommand = defineCommand({
         throw transferRecipientRequiredError(formatCommand);
       }
 
-      const projects = await listWorkspaceProjects(ctx, workspace);
+      const projects = await listWorkspaceProjects(ctx);
       const project = toProjectSummary(
         resolveProjectForSetup(
           args.positionals.project.trim(),

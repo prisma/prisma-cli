@@ -14,8 +14,6 @@ import { createTempCwd } from "./helpers";
 const CREDENTIAL_WORKSPACE_ID = "cmjs0z06102rz2mgzk5zqj495";
 const API_WORKSPACE_ID = `wksp_${CREDENTIAL_WORKSPACE_ID}`;
 
-const WORKSPACE = { id: CREDENTIAL_WORKSPACE_ID, name: "Acme Inc" };
-
 function clientReturning(projects: unknown[]) {
   return {
     GET: vi.fn().mockResolvedValue({ data: { data: projects } }),
@@ -39,7 +37,6 @@ describe("workspace id matching", () => {
     expect(sameWorkspaceId(CREDENTIAL_WORKSPACE_ID, API_WORKSPACE_ID)).toBe(
       true,
     );
-    expect(sameWorkspaceId(API_WORKSPACE_ID, API_WORKSPACE_ID)).toBe(true);
     expect(stripWorkspacePrefix(API_WORKSPACE_ID)).toBe(
       CREDENTIAL_WORKSPACE_ID,
     );
@@ -55,13 +52,13 @@ describe("workspace id matching", () => {
 });
 
 describe("listRealWorkspaceProjects", () => {
-  it("lists the workspace's projects when the API returns prefixed workspace ids", async () => {
+  it("returns what the API returned, sorted, without filtering", async () => {
     const client = clientReturning([
       apiProject("proj_456", "Billing API", API_WORKSPACE_ID),
       apiProject("proj_123", "Acme Dashboard", API_WORKSPACE_ID),
     ]);
 
-    const projects = await listRealWorkspaceProjects(client, WORKSPACE);
+    const projects = await listRealWorkspaceProjects(client);
 
     expect(projects.map((project) => project.id)).toEqual([
       "proj_123",
@@ -69,35 +66,67 @@ describe("listRealWorkspaceProjects", () => {
     ]);
   });
 
-  it("still excludes projects belonging to another workspace", async () => {
+  /** The credential names one workspace and the API answers within it,
+   *  so this case does not arise in production. It is pinned because
+   *  the filter that used to drop such a row dropped every row instead
+   *  whenever the two id forms met, reporting "No projects found." for
+   *  a workspace full of projects. Surfacing a stray row is a far
+   *  cheaper failure than hiding every row. */
+  it("does not hide a project the API attributes to another workspace", async () => {
     const client = clientReturning([
       apiProject("proj_456", "Billing API", API_WORKSPACE_ID),
       apiProject("proj_999", "Alpha", "wksp_other"),
     ]);
 
-    const projects = await listRealWorkspaceProjects(client, WORKSPACE);
+    const projects = await listRealWorkspaceProjects(client);
 
-    expect(projects.map((project) => project.id)).toEqual(["proj_456"]);
+    expect(projects.map((project) => project.id)).toEqual([
+      "proj_999",
+      "proj_456",
+    ]);
   });
 });
 
 describe("readProjectListLocalBinding", () => {
-  it("reports a directory as linked when the pin holds the other id form", async () => {
+  /** The pin records the workspace id the CLI held when it was written,
+   *  which is the bare form under v8 and the prefixed form under v7.
+   *  The binding is judged by whether the pinned project is one the API
+   *  returned, so neither form can make a linked directory read as
+   *  invalid. */
+  it("reports a directory as linked whichever id form the pin holds", async () => {
+    for (const workspaceId of [API_WORKSPACE_ID, CREDENTIAL_WORKSPACE_ID]) {
+      const cwd = await createTempCwd();
+      const written = await writeLocalResolutionPin(
+        cwd,
+        { workspaceId, projectId: "proj_123" },
+        AbortSignal.timeout(5_000),
+      );
+      expect(written.isOk()).toBe(true);
+
+      const binding = await readProjectListLocalBinding(
+        cwd,
+        [{ id: "proj_123" }],
+        AbortSignal.timeout(5_000),
+      );
+
+      expect(binding).toEqual({ status: "linked" });
+    }
+  });
+
+  it("reports invalid when the pinned project is not one the API returned", async () => {
     const cwd = await createTempCwd();
-    const written = await writeLocalResolutionPin(
+    await writeLocalResolutionPin(
       cwd,
-      { workspaceId: API_WORKSPACE_ID, projectId: "proj_123" },
+      { workspaceId: CREDENTIAL_WORKSPACE_ID, projectId: "proj_gone" },
       AbortSignal.timeout(5_000),
     );
-    expect(written.isOk()).toBe(true);
 
     const binding = await readProjectListLocalBinding(
       cwd,
-      WORKSPACE,
       [{ id: "proj_123" }],
       AbortSignal.timeout(5_000),
     );
 
-    expect(binding).toEqual({ status: "linked" });
+    expect(binding).toEqual({ status: "invalid" });
   });
 });

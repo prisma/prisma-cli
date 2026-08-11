@@ -3415,7 +3415,7 @@ async function resolveProjectContext(
     envProjectId: options?.envProjectId,
     projectDir: options?.projectDir,
     listProjects: () =>
-      listRealWorkspaceProjects(client, workspace, context.runtime.signal),
+      listRealWorkspaceProjects(client, context.runtime.signal),
     commandName: options?.commandName,
   });
   if (resolvedResult.isErr()) {
@@ -3470,7 +3470,6 @@ async function resolveDeployProjectContext(
     options.branch ?? (await resolveDeployBranch(context, undefined));
   const projects = await listRealWorkspaceProjects(
     client,
-    workspace,
     context.runtime.signal,
   );
 

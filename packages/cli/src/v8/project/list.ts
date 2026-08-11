@@ -85,12 +85,9 @@ export const projectListCommand = defineCommand({
   handler: async (_args, ctx) => {
     try {
       const workspace = await resolveActiveWorkspace(ctx);
-      const projects = sortProjects(
-        await listWorkspaceProjects(ctx, workspace),
-      );
+      const projects = sortProjects(await listWorkspaceProjects(ctx));
       const localBinding = await readProjectListLocalBinding(
         ctx.cwd,
-        workspace,
         projects,
         ctx.signal,
       );

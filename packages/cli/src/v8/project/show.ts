@@ -123,7 +123,7 @@ export const projectShowCommand = defineCommand({
         context: legacyOperationContext(ctx),
         workspace,
         explicitProject: args.flags.project,
-        listProjects: () => listWorkspaceProjects(ctx, workspace),
+        listProjects: () => listWorkspaceProjects(ctx),
         commandName: "project show",
       });
       if (inspected.isErr()) {

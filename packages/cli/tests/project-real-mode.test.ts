@@ -55,12 +55,6 @@ function mockClient(
                   workspace: { id: "ws_123", name: "Acme Inc" },
                 },
                 {
-                  id: "proj_999",
-                  name: "Alpha",
-                  slug: "alpha",
-                  workspace: { id: "ws_other", name: "Other" },
-                },
-                {
                   id: "proj_123",
                   name: "Acme Dashboard",
                   slug: "acme-dashboard",
