@@ -1,3 +1,4 @@
+import { SERVICE_TOKEN_ENV_VAR } from "@prisma/cli-engine";
 import stringWidth from "string-width";
 import { renderMutate, renderShow } from "../output/patterns";
 import type { CommandDescriptor } from "../shell/command-meta";
@@ -246,7 +247,7 @@ function authSourceLabel(
   }
 
   if (source === "service_token") {
-    return "PRISMA_SERVICE_TOKEN";
+    return SERVICE_TOKEN_ENV_VAR;
   }
 
   return "none";

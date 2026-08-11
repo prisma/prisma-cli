@@ -1,4 +1,4 @@
-import { SERVICE_TOKEN_ENV_VAR } from "../auth/client";
+import { SERVICE_TOKEN_ENV_VAR } from "@prisma/cli-engine";
 import { workspaceSwitchUnavailableError } from "../auth/errors";
 import {
   performLogin,

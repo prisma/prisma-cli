@@ -356,7 +356,9 @@ describe("auth whoami", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("workspace: ws_env");
-    expect(result.stdout).toContain("source: PRISMA_SERVICE_TOKEN");
+    expect(result.stdout).toContain(
+      "environment variable: PRISMA_SERVICE_TOKEN",
+    );
     expect(result.stderr).toContain(
       "PRISMA_SERVICE_TOKEN supplies the credential in force",
     );

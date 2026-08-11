@@ -18,6 +18,7 @@ describe("main export", () => {
       "EnvironmentCredentialManager",
       "PRESENTED",
       "PRISMA_CONFIG_VERSION",
+      "SERVICE_TOKEN_ENV_VAR",
       "authServiceError",
       "claimedExpiresAt",
       "claimedIdentity",
