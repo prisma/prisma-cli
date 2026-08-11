@@ -1,14 +1,70 @@
 # Engine spec — the engine owns telemetry reporting
 
-Status: ruled 2026-08-11 (operator: telemetry reporting is not a consumer's responsibility; it belongs in the engine). Deliverable: one PR to `packages/cli-engine`, plus the mechanical deletion of the shell's copy. The second consumer is the ORM's `prisma-next` bin, which must not have to re-implement any of this.
+Status: ruled 2026-08-11 (operator: telemetry reporting is not a consumer's
+responsibility; it belongs in the engine). Amended the same day by three
+further rulings — **read §1.1 before the body**, it overrides the original
+draft wherever the two still read differently.
+
+Deliverable: one PR to `packages/cli-engine`, plus the deletion of the
+shell's copy. The second consumer is the ORM's `prisma-next` bin, which must
+not have to re-implement any of this.
 
 ## 1. What this is and why
 
-The engine already produces everything telemetry needs — `RunSummary` (command path, flag names with their source, positional count, exit code, duration) delivered exactly once per run through `CliRunHooks.onSettled` (`cli-engine/src/run-summary.ts`, `cli.ts:15,50`). It stops there. Sending is left to each consumer, and today the platform shell does it in 136 lines of bin code (`packages/cli/src/v8/telemetry/reporting.ts`): resolve gating, print the first-run disclosure, resolve the sender's path, attach the hook, spawn the detached sender, swallow every failure.
+The engine already knows everything telemetry needs at parse time: the
+command path, the flag names with their value source, and a count of
+positionals (`EngineCommandSnapshot`, `src/run-summary.ts`), built in
+`executeMounted` (`src/execution/engine.ts:390`). It stops there. Sending is
+left to each consumer, and today the platform shell does it in 136 lines of
+bin code (`packages/cli/src/v8/telemetry/reporting.ts`): resolve gating,
+print the first-run disclosure, resolve the sender's path, attach a hook,
+spawn the detached sender, swallow every failure.
 
-That leaves the ORM's `prisma-next` bin to write the same 136 lines against a second copy of the telemetry package, with the same installation id, the same endpoint, the same wire shape, and the same first-run disclosure — and any drift between the two is a silent reporting inconsistency across binaries that are supposed to be one product. The project's own framing has the engine owning "argv parsing, help, output envelopes, JSON mode, prompts, consent, **telemetry**, error presentation, and exit codes". Reporting is the half that never landed.
+That leaves the ORM's `prisma-next` bin to write the same logic against a
+second copy of the telemetry package, with the same installation id, the same
+endpoint, the same wire shape, and the same first-run disclosure. The two
+copies have **already drifted**: `@repo/cli-telemetry`'s gating resolves CI
+inside `resolveGating` and reports `env-opt-out`, while the ORM's resolves CI
+in the caller and reports `env-override`, with a second projection in its
+`telemetry status` command translating one vocabulary into the other. Nothing
+user-visible has broken yet; that is luck, not design.
 
-There is no purity argument against it: the engine already constructs an authenticated API client (`ctx.api`) and opens URLs through the runtime. Telemetry is one more engine-owned side surface with a bin-supplied seam for the actual process work.
+The project's own framing has the engine owning "argv parsing, help, output
+envelopes, JSON mode, prompts, consent, **telemetry**, error presentation,
+and exit codes". Reporting is the half that never landed.
+
+There is no purity argument against it: the engine already constructs an
+authenticated API client, opens URLs, and reads the filesystem
+(`src/config-loader.ts` imports `node:fs`). Telemetry is one more engine-owned
+surface with a bin-supplied seam for the actual process work.
+
+### 1.1 Operator rulings — these override the original draft
+
+1. **Whatever the ORM does today moves into the engine, as it is.** The
+   engine reproduces the shipped ORM behaviour; it does not improve it in
+   passing. Where the platform shell and the ORM disagree, the ORM wins.
+2. **Report a command's option names without special-casing; never report
+   param values.** No per-command allowlist, no curation. Option names as the
+   user spelled them, and no value of any option or positional ever leaves
+   the process.
+3. **Follow the ORM's example on timing** — the event fires at *command
+   start*, from the parse-time snapshot, not at settlement.
+
+Three things the original draft asked for are struck by those rulings:
+
+- **No outcome data on the wire.** The draft added exit code, duration,
+  platform/arch/node version and a CI flag. The shipped event has none of
+  them, and prisma/prisma's published `docs/Telemetry.md` tells users in
+  writing: "**No outcome data.** Phase 1 does not collect success/failure,
+  exit code, or elapsed time." Firing at command start makes this structural
+  — at that point no exit code or duration exists to send.
+- **No `onSettled`.** `RunSummary` is by construction a settlement artifact.
+  The engine fires from `EngineCommandSnapshot` instead, at the point the
+  snapshot is built.
+- **No `ctx.telemetryStatus`, no `ctx.telemetry.setEnabled`, no
+  `managesTelemetry` capability.** The engine ships the three commands
+  itself (§2.4), so no product needs private access to render or mutate the
+  preference. Unbuilt surface, dropped rather than built unused.
 
 ## 2. The surface
 
@@ -21,91 +77,240 @@ createCli({
   commandFamilies,
   groups,
   commands,
-  telemetry: {
-    endpoint: 'https://…',            // where events go
-    docsUrl: 'https://…',             // named in the first-run disclosure
-    disableEnvVars: ['PRISMA_NEXT_DISABLE_TELEMETRY'],  // product opt-outs; DO_NOT_TRACK is always honored
-    enrich?: (summary: RunSummary) => Record<string, unknown>,  // product-specific payload fields
-  },
+  telemetry: { docsUrl: 'https://…' },   // named in the first-run disclosure
 })
 ```
 
-Omitting `telemetry` means the CLI reports nothing — the engine attaches no hook and reads no config. There is no default endpoint.
+One field. The endpoint, the opt-out environment variable names, the
+user-config path and the disclosure wording are Prisma constants and live in
+the engine — the engine is Prisma-specific by design, and a generic
+extension mechanism here would be surface with one caller. The CLI's own
+name and version come from `createCli`'s existing fields.
 
-### 2.2 What the engine does with it
+Omitting `telemetry` means the CLI reports nothing: the engine reads no
+config, prints no disclosure, mints no id, and calls no seam. There is no
+default endpoint and no way to report without declaring the block.
 
-Once per run, in this order:
+### 2.2 What the engine does, and when
 
-1. **Resolve gating** before the command dispatches, from (in precedence order): `DO_NOT_TRACK`, the product's `disableEnvVars`, CI detection, the stored user preference. The resolved decision carries its reason (`env-override`, `ci`, `stored-opt-out`, `default-on`, `stored-opt-in`) and is readable by commands through `ctx.telemetryStatus` (§2.3) so a product's own `telemetry status` command needs no private access.
-2. **Print the first-run disclosure** when telemetry is enabled and no user config exists yet — pre-run, to stderr, naming the docs URL, the config file path, the environment opt-outs, and the product's own disable command when one is mounted. Timing is the ratified one: disclosure pre-run, event at settlement.
-3. **Mint and store the installation id** on first enabled run (a v4 UUID in the user-level config, never rotated, never derived from anything machine-identifying).
-4. **Attach the settlement hook** and, at settlement, emit the event through the runtime seam below. Never for `--help`/`--version`, never for a run that failed before reaching a mounted command (the existing `RunSummary` contract).
-5. **Swallow every telemetry failure.** A telemetry fault never changes an exit code, never writes to a command's output, and never delays settlement beyond handing the payload to the seam.
+Immediately after `state.snapshot` is assigned in `executeMounted`
+(`src/execution/engine.ts:390`) — before the needs check, before the handler,
+before any command output — and exactly once per run:
 
-Payload fields the engine owns: installation id, CLI name and version, command path, flag names with `source`, positional count, exit code, duration, platform/arch/node version, CI flag. **Values are never collected** — not flag values, not positionals, not paths, not error messages. `enrich` may add product fields and is subject to the same rule; the engine redacts anything matching its secret-shaped patterns before sending.
+1. **Skip the exemption.** A run whose command path starts with `telemetry`
+   sends nothing and mints nothing. `telemetry disable` must not report a
+   usage event on its way to disabling, and `telemetry status` must not mint
+   an id while merely reporting state. This is the only command-specific
+   exemption, and it is the one the ORM already has.
+2. **Resolve gating**, in the ORM's order: CI hard-disables first, then the
+   environment opt-outs (`PRISMA_NEXT_DISABLE_TELEMETRY` truthy, or
+   `DO_NOT_TRACK=1`), then a stored `enableTelemetry: false`, then a stored
+   `true`, then the opt-out default (absent means on). The resolution carries
+   its reason from the five-value union in §2.3.
+3. **Print the first-run disclosure** when the decision is enabled and no
+   installation id is stored yet — to stderr, never stdout, so it cannot
+   corrupt piped output. Composed by the engine from the CLI name, the
+   declared `docsUrl` and the resolved config path (§2.6).
+4. **Mint and store the installation id** — a v4 UUID, written without
+   touching `enableTelemetry`, so a default-on first run records no consent
+   the user never gave. Never rotated, never derived from anything
+   machine-identifying.
+5. **Compose the payload and hand it to the seam** (§2.5). The engine
+   composes; the bin spawns.
+6. **Swallow every failure.** An unwritable config directory, a throwing
+   seam, a malformed stored config — none of it changes an exit code, writes
+   to a command's output, or delays the run.
 
-### 2.3 `ctx.telemetryStatus`
+A run that never mounts a command (`--help`, `--version`, an unknown
+command, a usage error) builds no snapshot and therefore reports nothing.
+
+**No values, ever.** The payload carries the command path joined with
+spaces and the *names* of the options whose source is `cli` — the options
+the user actually typed, in the engine's own kebab-case spelling, with no
+per-command filtering. Option values, positional values and raw argv never
+reach the payload. `positionalCount` exists on the snapshot and is
+deliberately never read.
+
+### 2.3 The status reasons
+
+The five the two CLIs already agree on at the surface, evaluated in that
+order:
 
 ```ts
-interface TelemetryStatus {
-  readonly enabled: boolean;
-  readonly reason: 'env-override' | 'ci' | 'stored-opt-out' | 'stored-opt-in' | 'default-on' | 'not-configured';
-  readonly configPath: string;          // the user-level config file
-  readonly installationId?: string;     // present only when one has been minted
-}
+type TelemetryStatusReason =
+  | 'ci'              // a CI environment was detected
+  | 'env-opt-out'     // DO_NOT_TRACK / PRISMA_NEXT_DISABLE_TELEMETRY
+  | 'stored-opt-out'  // "enableTelemetry": false
+  | 'stored-opt-in'   // "enableTelemetry": true
+  | 'default-on';     // no explicit choice stored
 ```
 
-Always present on `CommandContext` (no capability declaration). Read-only. This is what a product's `telemetry status` command renders, and what `telemetry enable|disable` mutate through §2.4.
+The original draft's `env-override` and `not-configured` spellings are
+dropped. `env-override` is the ORM's *internal* gating vocabulary, which its
+own `telemetry status` already translates to `env-opt-out` before showing a
+user; the engine collapses that translation by resolving to the user-facing
+union directly. `not-configured` describes a CLI that declared no telemetry
+block, which has no status command mounted to report it.
 
-### 2.4 Mutating the preference
+### 2.4 The commands
 
-```ts
-ctx.telemetry.setEnabled(enabled: boolean): Promise<Result<TelemetryStatus, CliStructuredError>>
-```
+The engine ships `telemetry status`, `telemetry enable` and `telemetry
+disable`, mountable by a product in one line, with the help text, output and
+exit behaviour the two CLIs already share:
 
-Available on commands declaring `managesTelemetry: true` (capability, same pattern as `managesCredentials`). Writes the user-level config, mints the installation id when enabling, and returns the new status. This exists so the *commands* `telemetry enable|disable` are thin presentation over an engine-owned store rather than each product owning the file format.
+- **`status`** — read-only. Reports enabled/disabled with the reason, the
+  config file path, and whether an installation id is stored. Never prints
+  the id itself, never mints, never writes, never sends.
+- **`enable`** — stores `enableTelemetry: true` and mints an installation id
+  if none exists.
+- **`disable`** — stores `enableTelemetry: false`. Mints nothing, sends
+  nothing.
 
-**Whether the engine should also ship the three `telemetry status|enable|disable` commands themselves** (mountable by a product with one line, instead of each product writing its own presentation) is left to the implementer to propose in the PR; the operator's instinct is that the CLI's telemetry commands are as much engine surface as its `--json` flag is. Ship §2.3/§2.4 regardless — the commands can follow.
+They are ordinary engine commands: `ctx.present` with human, stdout and json
+presentations, so `--json` works the way it does everywhere else.
 
 ### 2.5 The runtime seam
 
 ```ts
 interface Runtime {
   // …existing members…
-  spawnTelemetry?: (spec: {
-    readonly payload: unknown;
-    readonly endpoint: string;
-    readonly signal: AbortSignal;
-  }) => void;   // fire-and-forget; the bin owns detachment
+  /** True when this process runs in CI. The bin wires `ci-info`; the
+   *  engine never detects CI itself. */
+  readonly isCI: boolean;
+  /** Fire-and-forget delivery of one composed telemetry payload. The bin
+   *  owns the process work and the detachment. Absent means this host
+   *  reports nothing — not an error. */
+  readonly spawnTelemetry?: (payload: TelemetryPayload) => void;
 }
 ```
 
-The engine composes and redacts the payload; the bin spawns. Absent seam means no reporting (and no error). The engine imports no `child_process` and performs no network I/O for telemetry itself. `createTestCli` gains a `telemetrySpawner` seed so a product's telemetry behavior is assertable offline; tests never contact a real endpoint.
+The engine composes and hands over; the bin forks. The engine imports no
+`node:child_process` and performs no network I/O for telemetry. `isCI` is a
+Runtime field rather than an engine-side `ci-info` import because the engine
+never reads process globals — the same rule that keeps TTY detection on the
+Runtime.
 
-## 3. Migration of the existing consumer
+`createTestCli` gains a `telemetrySpawner` seed and an `isCI` seed so a
+product's telemetry behaviour is assertable offline; no test contacts a real
+endpoint.
 
-`packages/cli/src/v8/telemetry/reporting.ts` and `is-ci.ts` are deleted; `main.ts`'s `resolveTelemetryHooks` wiring is replaced by the `telemetry` block on `createCli`. `@repo/cli-telemetry`'s sender becomes the bin's `spawnTelemetry` implementation. The gating, user-config, and payload modules move into the engine (they are the engine's now); the detached sender process stays with the bin. **The wire shape, endpoint, user-config file path, and installation id must not change** — an existing user's id survives, and events from the platform CLI before and after this change are indistinguishable to the backend.
+### 2.6 What moves, and what stays
 
-## 4. Testing
+| Module | Where it lands |
+| --- | --- |
+| `cli-telemetry/src/gating.ts` | engine — resolving to the §2.3 union |
+| `cli-telemetry/src/user-config.ts` | engine — read, write, mint, path resolution |
+| `cli-telemetry/src/sanitize.ts` | engine — importing the real `EngineCommandSnapshot` instead of redeclaring it |
+| `cli-telemetry/src/endpoint.ts` | engine — constant plus the `PRISMA_NEXT_TELEMETRY_ENDPOINT` test override |
+| `ParentToSenderPayload` (the type) | engine — it is what the engine composes |
+| `isParentToSenderPayload` (the validator) | stays in `cli-telemetry` — it guards the child's trust boundary |
+| `cli-telemetry/src/enrich.ts`, `sender.ts` | stay — the child still probes the system and POSTs |
+| `cli-telemetry/src/spawn.ts` | stays, shrunk: the engine has already decided, so it forks and sends, and no longer re-resolves gating or re-reads the user config |
+| `cli/src/v8/telemetry/reporting.ts`, `is-ci.ts`, `status.ts`, `enable.ts`, `disable.ts`, `consent.ts` | deleted |
+| `cli/src/v8/telemetry/sender.ts` | stays — the build entry that carries the forkable sender into the published cli |
 
-- Gating precedence table (every env/CI/stored combination), disclosure fires exactly once and only on first enabled run, id minted once and never rotated, no event for `--help`/`--version`/unmounted runs, event emitted exactly once at settlement.
-- A telemetry fault (throwing spawner, unwritable config, malformed stored config) changes nothing observable about the run — asserted on exit code, stdout, stderr.
-- No values in the payload: a run with flag values, positionals and a failing command asserts the payload contains names and counts only.
-- The platform CLI's existing telemetry tests port onto the new surface and must keep passing unchanged in intent.
+`packages/cli/src/v8/runtime.ts` gains `isCI` (wiring `ci-info`) and
+`spawnTelemetry`; `main.ts` drops its `resolveTelemetryHooks` block; `cli.ts`
+mounts the engine's three commands in place of its own.
 
-## 5. Coordination
+## 3. What must not change
 
-- Lands in `packages/cli-engine` and ships in a published `@prisma/cli-engine`; consumers pick it up by version.
-- Touches `cli.ts`, `context.ts`, `runtime.ts`, `testing.ts`, `run-summary.ts` — the same files as the package-manager capability (spec `engine-package-manager-capability.md`, PR #140) and the S3/Composer stream. Sequence with the operator.
-- **The ORM port depends on this for its cutover** (the round that hands the `prisma-next` binary to the engine-built bin). Until it publishes, the ORM's new bin reports nothing and the commander CLI keeps reporting as it always has — no user-visible gap, because the commander CLI owns the binary until then.
+**The wire shape, the endpoint, the user-config file path and existing
+installation ids.** An existing user's id survives; events from the platform
+CLI before and after this change are indistinguishable to the backend; a user
+who has opted out stays opted out.
 
-## 6. Acceptance
+Concretely: the 13-field `TelemetryEvent` is untouched; the parent still
+sends `{ installationId, version, command, flags, projectRoot, endpoint }`
+over IPC; the preference still lives at
+`$XDG_CONFIG_HOME/prisma-next/config.json` (falling back to
+`~/.config/prisma-next/config.json`, and `%APPDATA%\prisma-next\config.json`
+on Windows), still shared by both binaries so one answer and one id serve
+both; `PRISMA_NEXT_DISABLE_TELEMETRY` and `DO_NOT_TRACK` still work.
 
-- [ ] `createCli({ telemetry })` is the only wiring a consumer writes; no consumer re-implements gating, disclosure, id minting, or hook attachment.
-- [ ] Gating precedence, disclosure timing, and id lifetime match the current shipped behavior exactly.
-- [ ] `ctx.telemetryStatus` on every context; `ctx.telemetry.setEnabled` under `managesTelemetry: true`.
-- [ ] Payload carries no values from argv; `enrich` output is redacted the same way.
+The `prisma-next`-branded directory and environment variable under a binary
+called `prisma` are a known wart. Renaming them is ecosystem cutover, which
+this project lists as a non-goal.
+
+`ParentToSenderPayload.databaseTarget` stays on the type for wire
+compatibility and the engine never populates it — the ORM's parent never did
+either; the child derives it from the user's config.
+
+## 4. Divergences this creates
+
+Both are recorded in `assets/s2/parity-divergences.md` as part of the slice.
+
+- **The platform CLI moves from settlement to command start.** Its S2a
+  divergence note — that a run which crashes or exits early before settlement
+  emits nothing — is retired rather than extended, because the event now
+  fires before the command runs at all. ADR 217 (prisma/prisma), which makes
+  "spawned at command start" the load-bearing isolation decision, stays true
+  and needs no amendment.
+- **The ORM's first-run disclosure wording changes** from "Prisma Next
+  collects anonymous CLI usage data" to "Prisma collects anonymous CLI usage
+  data", because the engine composes one disclosure for one product. Same
+  channel, same timing, same opt-out instructions.
+
+## 5. Testing
+
+- **Gating precedence**, every combination of CI, both environment opt-outs
+  (including the falsy spellings `''`, `'0'`, `'false'`, which must not
+  disable), and stored `true` / `false` / absent — asserted on both the
+  decision and its reason.
+- **Disclosure** fires exactly once, only on an enabled run with no stored
+  id, only on stderr; never when disabled, never in CI, never for
+  `telemetry *`.
+- **The id** is minted once, never rotated across an on → off → on cycle, and
+  a default-on mint leaves `enableTelemetry` absent.
+- **Timing and exemption**: the seam is called before the handler runs, not
+  after; once per run; never for `--help`, `--version`, an unknown command,
+  or any `telemetry *` path.
+- **No values**: a run with option values, positionals and an option that
+  defaults asserts the payload carries the command path and the typed option
+  names only.
+- **Every failure is invisible**: a throwing spawner, an unwritable config
+  directory and a malformed stored config each leave exit code, stdout and
+  stderr byte-identical to the same run without telemetry.
+- The platform CLI's existing telemetry tests
+  (`packages/cli/tests/v8-telemetry*.test.ts`) port onto the new surface and
+  keep passing unchanged in intent.
+
+## 6. Coordination
+
+- Lands in `packages/cli-engine` and ships in a published
+  `@prisma/cli-engine`; consumers pick it up by version.
+- Touches `cli.ts`, `runtime.ts`, `testing.ts`, `execution/engine.ts` — the
+  same files as the package-manager capability (PR #140) and the redirect
+  table (PR #142). Sequence with the operator.
+- **The ORM port depends on this for its cutover.** Until it publishes, the
+  ORM's new bin reports nothing and the commander CLI keeps reporting as it
+  always has — no user-visible gap, because the commander CLI owns the binary
+  until then.
+
+## 7. Acceptance
+
+- [ ] `createCli({ telemetry: { docsUrl } })` is the only wiring a consumer
+      writes; no consumer re-implements gating, disclosure, id minting, or
+      firing.
+- [ ] The event fires at command start, from the parse-time snapshot, before
+      the handler runs.
+- [ ] Gating precedence, disclosure timing and id lifetime match the shipped
+      ORM behaviour exactly.
+- [ ] The engine mounts `telemetry status|enable|disable`; a `telemetry *`
+      run reports nothing and mints nothing.
+- [ ] The payload carries no value from argv; positionals never appear.
 - [ ] Every telemetry failure is invisible to the run.
-- [ ] `createTestCli` seeds a spawner; no test reaches a real endpoint.
-- [ ] The platform shell's `reporting.ts`/`is-ci.ts` are deleted and its telemetry tests pass against the engine surface.
-- [ ] Wire shape, endpoint, config path and installation ids are unchanged for existing users.
+- [ ] `createTestCli` seeds the spawner and `isCI`; no test reaches a real
+      endpoint.
+- [ ] The shell's `reporting.ts`, `is-ci.ts` and three telemetry commands are
+      deleted, and its telemetry tests pass against the engine surface.
+- [ ] Wire shape, endpoint, config path and installation ids are unchanged
+      for existing users.
+
+## 8. Follow-ups
+
+- **`CliRunHooks.onSettled` has no consumer left.** It was introduced for
+  telemetry. Kept as-is here — removing published engine surface is its own
+  decision — and recorded so the next person to touch `cli.ts` can weigh it.
+- **The `prisma-next` directory name and `PRISMA_NEXT_DISABLE_TELEMETRY`**
+  outlive the product name they came from. Ecosystem cutover.
