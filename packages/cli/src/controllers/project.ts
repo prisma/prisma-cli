@@ -16,10 +16,7 @@ import {
   RecipientSessionInvalidError,
   resolveRecipientWorkspaceSession,
 } from "../auth/recipient";
-import {
-  FileTokenStorage,
-  WorkspaceSelectionError,
-} from "../auth/token-storage";
+import { WorkspaceSelectionError } from "../auth/token-storage";
 import {
   type PrismaCliPackageCommandFormatter,
   resolvePrismaCliPackageCommandFormatterSync,
@@ -34,8 +31,8 @@ import {
 } from "../lib/project/local-pin";
 import {
   createManagementProjectProvider,
-  projectApiError,
   type ProjectProvider,
+  projectApiError,
   projectRemoveBlockedError,
   projectRenameFailedError,
   projectTransferRejectedError,
