@@ -138,10 +138,39 @@ describe("redactSecrets", () => {
     );
   });
 
+  test("a header's value goes, and the scheme in front of it goes with it", () => {
+    expect(
+      redactSecrets("npm http fetch Authorization: Bearer eyJhbGci.payload"),
+    ).toBe("npm http fetch Authorization: …");
+  });
+
+  test("a flag whose name says secret loses the word after it", () => {
+    expect(redactSecrets("npm add --auth-token npm_abc123 --token xyz")).toBe(
+      "npm add --auth-token … --token …",
+    );
+  });
+
+  test("a flag that merely contains a secret word keeps its value", () => {
+    expect(redactSecrets("pnpm add --keyring gnome --dev prisma")).toBe(
+      "pnpm add --keyring gnome --dev prisma",
+    );
+  });
+
+  test("the flag after a secret flag is the next flag, not its value", () => {
+    expect(redactSecrets("npm add --token --registry https://acme.dev")).toBe(
+      "npm add --token --registry https://acme.dev",
+    );
+  });
+
+  /** Spec §5: the ORM's pnpm-to-npm fallback matches these out of
+   *  meta.stderrTail, so redaction must not touch any of them. */
   test("the error text a caller's retry predicate matches survives", () => {
     const stderr = [
       'ERR_PNPM_WORKSPACE_PKG_NOT_FOUND  In app: "prisma@workspace:*" is in the dependencies but no package named prisma is present',
       "ERR_PNPM_NO_MATCHING_VERSION  No matching version found for @prisma/client@catalog:default",
+      "No matching version found for prisma@catalog:default in the catalog",
+      "workspace:* is not a valid version",
+      "catalog: is not a valid spec",
     ].join("\n");
 
     expect(redactSecrets(stderr)).toBe(stderr);
@@ -624,6 +653,40 @@ describe("the two ways an operation does not resolve notOk", () => {
     });
 
     expect(exitCode).toBe(130);
+    expect(json.find((frame) => frame.kind === "result")).toMatchObject({
+      envelope: { ok: false, error: { code: "CLI.ABORTED" } },
+    });
+  });
+
+  test("an abort while detection is running announces nothing and runs nothing", async () => {
+    const controller = new AbortController();
+    const { runs, runner } = recorder();
+    const toy = defineCommand({
+      help: { summary: "Installs packages" },
+      installsPackages: true,
+      handler: async (_args, ctx) => {
+        // install() returns to here suspended inside detection's first
+        // await, so this abort lands after the check that precedes
+        // detection and before anything is announced or spawned.
+        const installing = ctx.packages.install({ packages: ["prisma"] });
+        controller.abort();
+        await installing;
+        return ok(ctx.present({ data: null }, { human: () => [] }));
+      },
+    });
+    // No packageManager seed, so detection actually runs.
+    const cli = createTestCli({
+      commands: { toy },
+      packageManagerRunner: runner,
+    });
+
+    const { exitCode, events, json } = await cli.run(["toy", "--json"], {
+      abort: controller.signal,
+    });
+
+    expect(exitCode).toBe(130);
+    expect(runs).toEqual([]);
+    expect(events).toEqual([]);
     expect(json.find((frame) => frame.kind === "result")).toMatchObject({
       envelope: { ok: false, error: { code: "CLI.ABORTED" } },
     });

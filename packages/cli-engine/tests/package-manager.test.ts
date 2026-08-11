@@ -234,6 +234,26 @@ describe("runCommand", () => {
   });
 });
 
+describe("the line a user is told to run by hand", () => {
+  test("an argument a shell would have re-read is quoted", () => {
+    expect(
+      installCommand("npm", {
+        packages: ["prisma@>=1 <2", "file:../pkg;rm -rf /", "$HOME/pkg.tgz"],
+      }),
+    ).toEqual<PackageManagerCommand>({
+      file: "npm",
+      args: ["add", "prisma@>=1 <2", "file:../pkg;rm -rf /", "$HOME/pkg.tgz"],
+      line: "npm add 'prisma@>=1 <2' 'file:../pkg;rm -rf /' '$HOME/pkg.tgz'",
+    });
+  });
+
+  test("a single quote in an argument leaves the quoting and re-enters it", () => {
+    expect(runCommand("bun", { package: "it's", args: [""] }).line).toBe(
+      "bunx 'it'\\''s' ''",
+    );
+  });
+});
+
 test("no engine source can spawn: child_process is absent from its imports", async () => {
   const src = fileURLToPath(new URL("../src", import.meta.url));
   const entries = await readdir(src, { recursive: true });

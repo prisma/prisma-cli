@@ -132,6 +132,25 @@ describe("runPackageManager", () => {
     expect(joined(chunks, "diagnostic")).toHaveLength(100 * 1024 + 8);
   });
 
+  it("a CRLF at the cut leaves no stray newline at the head of the tail", async () => {
+    const { onOutput } = collect();
+
+    const result = await runPackageManager({
+      file: NODE,
+      args: [
+        "-e",
+        `process.stderr.write("x".repeat(70 * 1024) +
+           "\\r\\nnpm ERR! one\\r\\nnpm ERR! two\\r\\n");
+         process.exitCode = 1;`,
+      ],
+      cwd: dir,
+      signal: new AbortController().signal,
+      onOutput,
+    });
+
+    expect(result.stderr).toBe("npm ERR! one\r\nnpm ERR! two\r\n");
+  });
+
   it("a cut inside a URL's scheme leaves no bare userinfo in the tail", async () => {
     const { onOutput } = collect();
     // Redaction recognises a URL by its scheme, so what the 64 KiB cut
@@ -194,6 +213,24 @@ describe("runPackageManager", () => {
     });
 
     expect(joined(chunks, "data")).toBe("✓");
+  });
+
+  it("a character the child died part-way through still reaches the caller", async () => {
+    const { chunks, onOutput } = collect();
+
+    await runPackageManager({
+      file: NODE,
+      args: [
+        "-e",
+        `process.stdout.write("done ");
+         process.stdout.write(Buffer.from("\\u2713", "utf8").subarray(0, 2));`,
+      ],
+      cwd: dir,
+      signal: new AbortController().signal,
+      onOutput,
+    });
+
+    expect(joined(chunks, "data")).toBe("done \uFFFD");
   });
 
   it("a missing executable is a result carrying a non-zero exit code", async () => {

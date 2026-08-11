@@ -8,7 +8,9 @@ const STDERR_TAIL_BYTES = 64 * 1024;
  *  code of its own; the run still failed, and the engine reports it. */
 const NO_EXIT_CODE = 1;
 
-const LINE_BREAKS = [0x0a, 0x0d];
+const LF = 0x0a;
+const CR = 0x0d;
+const LINE_BREAKS = [LF, CR];
 
 /**
  * The engine redacts a URL by its scheme, and the bound cuts at an
@@ -24,7 +26,9 @@ function fromLineStart(window: Buffer): Buffer {
   if (breaks.length === 0) {
     return Buffer.alloc(0);
   }
-  return window.subarray(Math.min(...breaks) + 1);
+  const at = Math.min(...breaks);
+  const span = window[at] === CR && window[at + 1] === LF ? 2 : 1;
+  return window.subarray(at + span);
 }
 
 /** Keeps the last `limit` bytes by dropping whole chunks off the front,
@@ -61,20 +65,27 @@ function boundedTail(limit: number) {
 }
 
 /** Decodes across chunk boundaries, so a multi-byte character split by
- *  the pipe is not delivered as two replacement characters. */
+ *  the pipe is not delivered as two replacement characters. Returns the
+ *  final decode: a child that died part-way through a character leaves
+ *  bytes the decoder is still holding, and without it they are lost. */
 function forward(
   source: Readable,
   emit: (text: string) => void,
   keep?: (chunk: Buffer) => void,
-): void {
+): () => void {
   const decoder = new TextDecoder();
-  source.on("data", (chunk: Buffer) => {
-    keep?.(chunk);
-    const text = decoder.decode(chunk, { stream: true });
+  const emitDecoded = (text: string): void => {
     if (text !== "") {
       emit(text);
     }
+  };
+  source.on("data", (chunk: Buffer) => {
+    keep?.(chunk);
+    emitDecoded(decoder.decode(chunk, { stream: true }));
   });
+  return () => {
+    emitDecoded(decoder.decode());
+  };
 }
 
 /**
@@ -98,9 +109,17 @@ export const runPackageManager: PackageManagerRunner = async ({
     buffer: false,
     reject: false,
   });
-  forward(subprocess.stdout, (text) => onOutput("data", text));
-  forward(subprocess.stderr, (text) => onOutput("diagnostic", text), tail.push);
+  const flushStdout = forward(subprocess.stdout, (text) =>
+    onOutput("data", text),
+  );
+  const flushStderr = forward(
+    subprocess.stderr,
+    (text) => onOutput("diagnostic", text),
+    tail.push,
+  );
   const result = await subprocess;
+  flushStdout();
+  flushStderr();
   return {
     exitCode: result.exitCode ?? NO_EXIT_CODE,
     // A child that never started wrote nothing, and why it never

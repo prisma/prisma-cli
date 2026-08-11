@@ -142,8 +142,31 @@ interface Spelling {
   ) => PackageManagerCommand;
 }
 
+/**
+ * The characters a POSIX shell hands to a command unchanged. Everything
+ * else — whitespace, `|`, `>`, `$`, `*`, quotes — either moves an
+ * argument boundary or is syntax the shell acts on, and the line is
+ * offered to the user as the command to run by hand: it has to reach
+ * their package manager as the argv the engine composed.
+ */
+const SHELL_SAFE = /^[A-Za-z0-9_@%+=:,./-]+$/;
+
+/**
+ * Single quotes, because a POSIX shell expands nothing inside them; a
+ * single quote in the entry itself has to leave and re-enter them.
+ * Known limitation: this is not a Windows rule — cmd.exe treats `'` as
+ * an ordinary character and reads `%` and `^` — so a line pasted into
+ * cmd.exe or PowerShell is not quoted for those shells.
+ */
+function shellQuote(entry: string): string {
+  if (SHELL_SAFE.test(entry)) {
+    return entry;
+  }
+  return `'${entry.replaceAll("'", String.raw`'\''`)}'`;
+}
+
 function spell(file: string, args: readonly string[]): PackageManagerCommand {
-  return { file, args, line: [file, ...args].join(" ") };
+  return { file, args, line: [file, ...args].map(shellQuote).join(" ") };
 }
 
 function addSpelling(file: string): Spelling["install"] {

@@ -78,6 +78,16 @@ function failed(
   );
 }
 
+/** Cancellation throws rather than resolving a failure, so an aborted
+ *  operation settles the way Ctrl-C settles everywhere else. Asked again
+ *  after detection: that await is long enough for the signal to fire,
+ *  and an operation nothing spawned must announce nothing. */
+function stopIfCancelled(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw signal.reason;
+  }
+}
+
 /** The seam hands over chunks as the child writes them; an `output`
  *  event carries one line, so a line split across two chunks waits for
  *  its second half. */
@@ -143,11 +153,7 @@ async function execute(
   placement: Placement,
 ): Promise<Result<void, CliStructuredError>> {
   const { runtime, signal } = invocation;
-  // A handler cancelled while it awaited something else announces
-  // nothing and spawns nothing: the operation never became one.
-  if (signal.aborted) {
-    throw signal.reason;
-  }
+  stopIfCancelled(signal);
   const cwd = placement.cwd ?? runtime.cwd;
   const manager = await resolvePackageManager({
     cwd,
@@ -155,6 +161,7 @@ async function execute(
     override: placement.manager,
     host: runtime.packageManager,
   });
+  stopIfCancelled(signal);
   const command = spell(operation, manager);
   const runner = runtime.runPackageManager;
   if (runner === undefined) {
@@ -189,9 +196,7 @@ async function execute(
     step,
     outcome: signal.aborted || result.exitCode !== 0 ? "failed" : "ok",
   });
-  if (signal.aborted) {
-    throw signal.reason;
-  }
+  stopIfCancelled(signal);
   if (result.exitCode === 0) {
     return okVoid();
   }

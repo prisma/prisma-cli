@@ -34,13 +34,36 @@ function redactUserinfo(candidate: string): string {
   return `${candidate.slice(0, start)}${REDACTED}${candidate.slice(end)}`;
 }
 
-const ASSIGNMENT = /\b([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S+)/g;
+const VALUE = String.raw`"[^"]*"|'[^']*'|\S+`;
 
-const SECRET_WORDS = new Set(["TOKEN", "KEY", "SECRET", "PASSWORD"]);
+const ASSIGNMENT = new RegExp(
+  String.raw`\b([A-Za-z_][A-Za-z0-9_]*)=(${VALUE})`,
+  "g",
+);
 
-/** Underscores and camelCase humps: `MY_API_TOKEN` and `_authToken`
- *  name a secret, `monkey` and `tokenizer` do not. */
-const NAME_WORDS = /_+|(?<=[a-z0-9])(?=[A-Z])/;
+/** A header's value runs to the end of its line, because an auth scheme
+ *  and its credential are one value: `Authorization: Bearer eyJ…`. */
+const HEADER = /\b([A-Za-z][A-Za-z0-9_-]*):[ \t]+[^\n]+/g;
+
+/** A flag's value is the word after it. A word starting with a dash is
+ *  the next flag rather than this one's value. */
+const FLAG = new RegExp(
+  String.raw`(--?[A-Za-z][A-Za-z0-9_-]*)[ \t]+(?!-)(?:${VALUE})`,
+  "g",
+);
+
+const SECRET_WORDS = new Set([
+  "TOKEN",
+  "KEY",
+  "SECRET",
+  "PASSWORD",
+  "AUTHORIZATION",
+]);
+
+/** Underscores, hyphens and camelCase humps: `MY_API_TOKEN`,
+ *  `--auth-token` and `_authToken` name a secret; `monkey`,
+ *  `--keyring` and `tokenizer` do not. */
+const NAME_WORDS = /[_-]+|(?<=[a-z0-9])(?=[A-Z])/;
 
 function namesSecret(name: string): boolean {
   return name
@@ -49,15 +72,22 @@ function namesSecret(name: string): boolean {
 }
 
 /**
- * Removes the two shapes a package manager's output leaks credentials
- * in: the userinfo of a URL, and the value of a variable whose name
- * says it holds a secret. Everything else survives verbatim, so a
- * caller matching an error code out of stderr still finds it.
+ * Removes the shapes a package manager's output leaks credentials in:
+ * the userinfo of a URL, and the value carried by a name that says it
+ * holds a secret — after an `=`, after a header's colon, or after a
+ * flag. Everything else survives verbatim, so a caller matching an
+ * error code out of stderr still finds it.
  */
 export function redactSecrets(text: string): string {
   return text
     .replace(URL_AUTHORITY, redactUserinfo)
     .replace(ASSIGNMENT, (assignment, name: string) =>
       namesSecret(name) ? `${name}=${REDACTED}` : assignment,
+    )
+    .replace(HEADER, (header, name: string) =>
+      namesSecret(name) ? `${name}: ${REDACTED}` : header,
+    )
+    .replace(FLAG, (flag, name: string) =>
+      namesSecret(name) ? `${name} ${REDACTED}` : flag,
     );
 }
