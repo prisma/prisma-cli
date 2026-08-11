@@ -636,10 +636,10 @@ describe("the engine's debug valve", () => {
       managementApiClientConfig: CLIENT_CONFIG,
     });
 
-  test("PRISMA_NEXT_DEBUG=1 records the refresh attempt and the endpoint's verdict", async () => {
+  test("PRISMA_DEBUG=1 records the refresh attempt and the endpoint's verdict", async () => {
     refreshRejectedAsInvalidGrant();
     const { stderr } = await cliWithDebug().run(["toy", "--json"], {
-      env: { PRISMA_NEXT_DEBUG: "1" },
+      env: { PRISMA_DEBUG: "1" },
     });
     expect(stderr).toContain("refresh attempted for session workspace-1");
     expect(stderr).toContain(
@@ -656,7 +656,7 @@ describe("the engine's debug valve", () => {
         : jsonResponse(401, { message: "unauthorized" }),
     );
     const { stderr } = await cliWithDebug().run(["toy", "--json"], {
-      env: { PRISMA_NEXT_DEBUG: "1" },
+      env: { PRISMA_DEBUG: "1" },
     });
     expect(stderr).toContain(
       "refresh failed: refreshTokenInvalid=false error=Token request failed with status 503",
@@ -673,7 +673,7 @@ describe("the engine's debug valve", () => {
         : jsonResponse(401, { message: "unauthorized" }),
     );
     const { stderr } = await cliWithDebug().run(["toy", "--json"], {
-      env: { PRISMA_NEXT_DEBUG: "1" },
+      env: { PRISMA_DEBUG: "1" },
     });
     expect(stderr).toContain("refresh failed without an AuthError (Error)");
   });
@@ -701,7 +701,7 @@ describe("the engine's debug valve", () => {
       );
       const { stderr, stdout, json } = await cliWithDebug().run(
         ["toy", "--json"],
-        { env: { PRISMA_NEXT_DEBUG: "1" } },
+        { env: { PRISMA_DEBUG: "1" } },
       );
       const everything = stderr + stdout + JSON.stringify(json);
       expect(stderr).toContain("refresh attempted for session workspace-1");
