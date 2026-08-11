@@ -217,25 +217,44 @@ the shell's point of view the tree is structural: central definition makes
 path collisions impossible and keeps the shipped tree checkable against the
 agreed grammar in one place.
 
-### R13 — The CLI never touches a package manager
+### R13 — The CLI is never a package manager
 
-The shell does not install, download, or vendor packages at runtime — no
-self-installing command modules, no hidden `node_modules`, ever. Components
-that only some commands need are declared as optional peer dependencies; a
-command that requires one checks for it at execution time and, when it is
-absent, returns a structured error naming the dependency and how to install
-it with the user's own package manager.
+The CLI never installs, downloads, or vendors packages on its own
+initiative or into its own hidden state — no self-installing command
+modules, no hidden `node_modules`, no package store of its own, ever.
+Components that only some commands need are declared as optional peer
+dependencies; a command that requires one checks for it at execution time
+and, when it is absent, returns a structured error naming the dependency
+and how to install it with the user's own package manager.
+
+Running the user's own package manager is a different act, and a command
+may do it: adding dependencies to the project the user is working in, or
+running a package's binary once, because the user asked for it. The case
+this exists for is `prisma init`, which scaffolds a project and then
+installs the dependencies it just wrote into `package.json`. A command
+declares that it installs packages, and the work goes through the engine's
+package operations, whose terms are what keep the two apart. The manager
+is the one the user's project already uses, detected rather than imposed.
+The exact command line is announced before it runs, and the manager's own
+output is shown while it runs, so nothing happens the user cannot see. A
+failure comes back as a structured error carrying that same command line,
+so the user can run it themselves. And the engine composes the command but
+never spawns it: execution belongs to the shell, so the engine holds no
+process-spawning machinery of its own.
 
 **Why:** a previous incarnation of the Prisma CLI installed command
 submodules on demand into a hidden `node_modules` in the working directory.
 That approach is compatible with exactly one package manager and produces
 edge cases everywhere else — lockfiles that lie, deduplication that never
-happens, state the user cannot see or clean. The user already has a package
-manager; the CLI's job is to declare what it needs and say clearly what is
-missing, not to become a second, worse package manager. The structured
-"optional dependency missing" error follows R6 like every other expected
-failure.
-
+happens, state the user cannot see or clean. The fault was never running a
+package manager; it was the CLI running one for its own purposes, in a
+place the user could not inspect. An install the user asked for, performed
+by their own manager in their own project, leaves behind ordinary project
+state they own and their tools already understand. The user already has a
+package manager; the CLI's job is to drive it in the open or to say
+clearly what is missing, not to become a second, worse package manager.
+Both structured errors here — the missing optional dependency and the
+failed package-manager run — follow R6 like every other expected failure.
 
 ### R14 — One event vocabulary, engine-defined, with product extensions
 
