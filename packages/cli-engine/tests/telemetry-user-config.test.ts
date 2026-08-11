@@ -25,34 +25,54 @@ import {
 const V4_UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-let xdgRoot: string;
-let originalXdg: string | undefined;
+// The config path resolves from XDG_CONFIG_HOME on POSIX and APPDATA on
+// win32, so both must point at the temp dir for the tests to be hermetic
+// on every platform.
+const CONFIG_ENV_VARS = ["XDG_CONFIG_HOME", "APPDATA"] as const;
+
+let configRoot: string;
+let originalConfigEnv: Record<string, string | undefined>;
+
+function pointConfigEnvAt(root: string): void {
+  for (const name of CONFIG_ENV_VARS) {
+    process.env[name] = root;
+  }
+}
 
 beforeEach(() => {
-  xdgRoot = mkdtempSync(join(tmpdir(), "prisma-cli-engine-telemetry-"));
-  originalXdg = process.env["XDG_CONFIG_HOME"];
-  process.env["XDG_CONFIG_HOME"] = xdgRoot;
+  configRoot = mkdtempSync(join(tmpdir(), "prisma-cli-engine-telemetry-"));
+  originalConfigEnv = {};
+  for (const name of CONFIG_ENV_VARS) {
+    originalConfigEnv[name] = process.env[name];
+  }
+  pointConfigEnvAt(configRoot);
   mkdirSync(dirname(userConfigPath()), { recursive: true });
 });
 
 afterEach(() => {
-  if (originalXdg === undefined) {
-    delete process.env["XDG_CONFIG_HOME"];
-  } else {
-    process.env["XDG_CONFIG_HOME"] = originalXdg;
+  for (const name of CONFIG_ENV_VARS) {
+    const original = originalConfigEnv[name];
+    if (original === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = original;
+    }
   }
-  rmSync(xdgRoot, { recursive: true, force: true });
+  rmSync(configRoot, { recursive: true, force: true });
 });
 
 describe("userConfigPath", () => {
   it("resolves the shared prisma-next config file (the same file the ORM binary reads)", () => {
-    expect(userConfigPath()).toBe(join(xdgRoot, "prisma-next", "config.json"));
+    expect(userConfigPath()).toBe(
+      join(configRoot, "prisma-next", "config.json"),
+    );
   });
 
-  it("re-resolves per call, so a changed XDG_CONFIG_HOME is honoured", () => {
+  it("re-resolves per call, so a changed config directory is honoured", () => {
     const other = mkdtempSync(join(tmpdir(), "prisma-cli-engine-telemetry-"));
-    process.env["XDG_CONFIG_HOME"] = other;
+    pointConfigEnvAt(other);
     expect(userConfigPath()).toBe(join(other, "prisma-next", "config.json"));
+    pointConfigEnvAt(configRoot);
     rmSync(other, { recursive: true, force: true });
   });
 });
@@ -145,7 +165,7 @@ describe("writeUserConfig", () => {
   });
 
   it("creates the config directory when it is missing", () => {
-    rmSync(xdgRoot, { recursive: true, force: true });
+    rmSync(configRoot, { recursive: true, force: true });
     writeUserConfig({ enableTelemetry: false });
     expect(existsSync(userConfigPath())).toBe(true);
   });
