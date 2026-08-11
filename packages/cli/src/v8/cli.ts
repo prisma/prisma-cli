@@ -4,6 +4,7 @@ import {
   type CommandFamily,
   createCli,
   defineCommandFamily,
+  telemetryCommandGroup,
 } from "@prisma/cli-engine";
 import { CLI_DOCS_URL } from "../cli-name";
 import { getCliVersion } from "../lib/version";
@@ -44,9 +45,6 @@ import { projectRemoveCommand } from "./project/remove";
 import { projectRenameCommand } from "./project/rename";
 import { projectShowCommand } from "./project/show";
 import { projectTransferCommand } from "./project/transfer";
-import { telemetryDisableCommand } from "./telemetry/disable";
-import { telemetryEnableCommand } from "./telemetry/enable";
-import { telemetryStatusCommand } from "./telemetry/status";
 
 export const platformCommandFamily: CommandFamily = defineCommandFamily({
   commands: {
@@ -90,6 +88,10 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
   },
 });
 
+/** The engine ships the three telemetry commands and the group help
+ *  text that belongs to them; both halves are spread in below. */
+const telemetry = telemetryCommandGroup({ docsUrl: CLI_DOCS_URL });
+
 export const cliGroups: Readonly<
   Record<string, { brief: string; description?: string }>
 > = {
@@ -108,13 +110,7 @@ export const cliGroups: Readonly<
   branch: { brief: "View your Platform branches" },
   git: { brief: "Manage Git repository connections for a project" },
   "auth workspace": { brief: "Manage local workspace sessions" },
-  telemetry: {
-    brief: "Inspect and change anonymous CLI telemetry",
-    description:
-      "Show telemetry status, or enable / disable anonymous CLI usage data.\n" +
-      `Telemetry is on by default (opt-out); see ${CLI_DOCS_URL}\n` +
-      "for what is collected and why.",
-  },
+  ...telemetry.groups,
 };
 
 export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
@@ -155,10 +151,8 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "branch list": branchListCommand,
   "git connect": gitConnectCommand,
   "git disconnect": gitDisconnectCommand,
-  // Shell-owned consent surface (no command family).
-  "telemetry status": telemetryStatusCommand,
-  "telemetry enable": telemetryEnableCommand,
-  "telemetry disable": telemetryDisableCommand,
+  // The engine's consent surface, mounted whole (no command family).
+  ...telemetry.commands,
 };
 
 export function buildCli(): Cli {
@@ -168,5 +162,6 @@ export function buildCli(): Cli {
     commandFamilies: [platformCommandFamily],
     groups: cliGroups,
     commands: mountedCommands,
+    telemetry: { docsUrl: CLI_DOCS_URL },
   });
 }

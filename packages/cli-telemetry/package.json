@@ -2,7 +2,7 @@
   "name": "@repo/cli-telemetry",
   "private": true,
   "version": "8.0.0-rc.1",
-  "description": "CLI telemetry client: detached subprocess sender, gating resolution, user-config store, and the value-free command sanitizer",
+  "description": "CLI telemetry child sender: the detached subprocess the engine hands a composed payload to, its system probes, and the POST",
   "type": "module",
   "sideEffects": [
     "./dist/sender.js",

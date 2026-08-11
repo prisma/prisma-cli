@@ -1,19 +1,16 @@
+import { telemetryCommandGroup } from "@prisma/cli-engine";
 import { describe, expect, it } from "vitest";
-
+import { CLI_DOCS_URL } from "../src/cli-name";
 import {
   cliGroups,
   mountedCommands,
   platformCommandFamily,
 } from "../src/v8/cli";
-import { telemetryDisableCommand } from "../src/v8/telemetry/disable";
-import { telemetryEnableCommand } from "../src/v8/telemetry/enable";
-import { telemetryStatusCommand } from "../src/v8/telemetry/status";
 
-const SHELL_OWNED: ReadonlySet<unknown> = new Set([
-  telemetryStatusCommand,
-  telemetryEnableCommand,
-  telemetryDisableCommand,
-]);
+/** The consent surface the engine ships and cli.ts spreads in whole. */
+const ENGINE_OWNED: ReadonlySet<unknown> = new Set(
+  Object.values(telemetryCommandGroup({ docsUrl: CLI_DOCS_URL }).commands),
+);
 
 /**
  * Every path the v8 tree mounts, written out. The other assertions in
@@ -79,11 +76,11 @@ describe("prisma-v8 mount coverage", () => {
     expect(unmounted).toEqual([]);
   });
 
-  it("gives every mounted command a family, except the shell-owned ones", () => {
+  it("gives every mounted command a family, except the engine-owned ones", () => {
     const family = new Set(Object.values(platformCommandFamily.commands));
     const unowned = Object.entries(mountedCommands)
       .filter(
-        ([, command]) => !family.has(command) && !SHELL_OWNED.has(command),
+        ([, command]) => !family.has(command) && !ENGINE_OWNED.has(command),
       )
       .map(([path]) => path);
 
