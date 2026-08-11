@@ -44,13 +44,13 @@ const FILE_NAME = "config.json";
  */
 function configDir(): string {
   if (process.platform === "win32") {
-    const appData = process.env["APPDATA"];
+    const appData = process.env.APPDATA;
     if (appData !== undefined && appData.length > 0) {
       return join(appData, APP_DIR);
     }
     return join(homedir(), "AppData", "Roaming", APP_DIR);
   }
-  const xdg = process.env["XDG_CONFIG_HOME"];
+  const xdg = process.env.XDG_CONFIG_HOME;
   if (xdg !== undefined && xdg.length > 0) {
     return join(xdg, APP_DIR);
   }
@@ -107,11 +107,8 @@ export function readUserConfig(): UserConfig {
 export function writeUserConfig(partial: Partial<UserConfig>): void {
   const current = readUserConfig();
   const merged: Record<string, unknown> = { ...current, ...partial };
-  if (
-    partial.enableTelemetry === true &&
-    merged["installationId"] === undefined
-  ) {
-    merged["installationId"] = randomUUID();
+  if (partial.enableTelemetry === true && merged.installationId === undefined) {
+    merged.installationId = randomUUID();
   }
   const path = userConfigPath();
   const dir = dirname(path);

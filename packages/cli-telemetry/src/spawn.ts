@@ -116,7 +116,7 @@ export function runTelemetry(inputs: RunTelemetryInputs): TelemetryRunOutcome {
     // is swallowed unconditionally.
     child.on("error", () => {});
     child.send(payload, (err) => {
-      if (err !== null && process.env["PRISMA_NEXT_DEBUG"] === "1") {
+      if (err !== null && process.env.PRISMA_NEXT_DEBUG === "1") {
         process.stderr.write(
           `[cli-telemetry] parent send error: ${String(err)}\n`,
         );
@@ -126,7 +126,7 @@ export function runTelemetry(inputs: RunTelemetryInputs): TelemetryRunOutcome {
     child.unref();
     return { spawned: true };
   } catch (err) {
-    if (process.env["PRISMA_NEXT_DEBUG"] === "1") {
+    if (process.env.PRISMA_NEXT_DEBUG === "1") {
       process.stderr.write(
         `[cli-telemetry] parent fork failed: ${String(err)}\n`,
       );

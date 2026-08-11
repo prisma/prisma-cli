@@ -32,9 +32,9 @@ describe("readUserConfig / writeUserConfig", () => {
 
   afterEach(() => {
     if (originalXdg === undefined) {
-      delete process.env["XDG_CONFIG_HOME"];
+      delete process.env.XDG_CONFIG_HOME;
     } else {
-      process.env["XDG_CONFIG_HOME"] = originalXdg;
+      process.env.XDG_CONFIG_HOME = originalXdg;
     }
     rmSync(xdgRoot, { recursive: true, force: true });
   });
@@ -72,8 +72,8 @@ describe("readUserConfig / writeUserConfig", () => {
       }),
     );
     const cfg = readUserConfig() as Record<string, unknown>;
-    expect(cfg["someFutureField"]).toBe("opaque");
-    expect(cfg["nested"]).toEqual({ foo: "bar" });
+    expect(cfg.someFutureField).toBe("opaque");
+    expect(cfg.nested).toEqual({ foo: "bar" });
   });
 
   it("tolerates a malformed (unparseable) file by returning an empty object", () => {
@@ -115,10 +115,10 @@ describe("readUserConfig / writeUserConfig", () => {
     );
     writeUserConfig({ enableTelemetry: true });
     const cfg = readUserConfig() as Record<string, unknown>;
-    expect(cfg["enableTelemetry"]).toBe(true);
-    expect(cfg["installationId"]).toBe("kept");
-    expect(cfg["unknown"]).toBe("preserve-me");
-    expect(cfg["nested"]).toEqual({ foo: 1 });
+    expect(cfg.enableTelemetry).toBe(true);
+    expect(cfg.installationId).toBe("kept");
+    expect(cfg.unknown).toBe("preserve-me");
+    expect(cfg.nested).toEqual({ foo: 1 });
   });
 
   it("writes via temp-file-and-rename so a half-written file is never observable", () => {
@@ -147,9 +147,9 @@ describe("ensureInstallationId", () => {
 
   afterEach(() => {
     if (originalXdg === undefined) {
-      delete process.env["XDG_CONFIG_HOME"];
+      delete process.env.XDG_CONFIG_HOME;
     } else {
-      process.env["XDG_CONFIG_HOME"] = originalXdg;
+      process.env.XDG_CONFIG_HOME = originalXdg;
     }
     rmSync(xdgRoot, { recursive: true, force: true });
   });

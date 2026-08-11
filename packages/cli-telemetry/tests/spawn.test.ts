@@ -36,16 +36,16 @@ describe("runTelemetry — gating decisions short-circuit before fork", () => {
 
   beforeEach(() => {
     xdgRoot = mkdtempSync(join(tmpdir(), "cli-telemetry-spawn-"));
-    originalXdg = process.env["XDG_CONFIG_HOME"];
-    process.env["XDG_CONFIG_HOME"] = xdgRoot;
+    originalXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = xdgRoot;
     mkdirSync(dirname(userConfigPath()), { recursive: true });
   });
 
   afterEach(() => {
     if (originalXdg === undefined) {
-      delete process.env["XDG_CONFIG_HOME"];
+      delete process.env.XDG_CONFIG_HOME;
     } else {
-      process.env["XDG_CONFIG_HOME"] = originalXdg;
+      process.env.XDG_CONFIG_HOME = originalXdg;
     }
     rmSync(xdgRoot, { recursive: true, force: true });
   });

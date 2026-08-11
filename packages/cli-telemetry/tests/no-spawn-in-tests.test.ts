@@ -25,23 +25,23 @@ describe("test runs short-circuit the telemetry path", () => {
 
   beforeEach(() => {
     xdgRoot = mkdtempSync(join(tmpdir(), "cli-telemetry-probe-"));
-    originalXdg = process.env["XDG_CONFIG_HOME"];
-    process.env["XDG_CONFIG_HOME"] = xdgRoot;
+    originalXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = xdgRoot;
     mkdirSync(dirname(userConfigPath()), { recursive: true });
     vi.mocked(childProcess.fork).mockReset();
   });
 
   afterEach(() => {
     if (originalXdg === undefined) {
-      delete process.env["XDG_CONFIG_HOME"];
+      delete process.env.XDG_CONFIG_HOME;
     } else {
-      process.env["XDG_CONFIG_HOME"] = originalXdg;
+      process.env.XDG_CONFIG_HOME = originalXdg;
     }
     rmSync(xdgRoot, { recursive: true, force: true });
   });
 
   it("the test harness sets PRISMA_NEXT_DISABLE_TELEMETRY=1", () => {
-    expect(process.env["PRISMA_NEXT_DISABLE_TELEMETRY"]).toBe("1");
+    expect(process.env.PRISMA_NEXT_DISABLE_TELEMETRY).toBe("1");
   });
 
   it("runTelemetry returns gated-off under the harness env even with a stored opt-in", () => {

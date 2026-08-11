@@ -24,7 +24,7 @@ import { isParentToSenderPayload, type ParentToSenderPayload } from "./payload";
 const REQUEST_TIMEOUT_MS = 1500;
 
 function debugLog(message: string, error?: unknown): void {
-  if (process.env["PRISMA_NEXT_DEBUG"] !== "1") return;
+  if (process.env.PRISMA_NEXT_DEBUG !== "1") return;
   if (error !== undefined) {
     process.stderr.write(`[cli-telemetry] ${message}: ${String(error)}\n`);
   } else {

@@ -65,8 +65,8 @@ export function resolveGating(inputs: GatingInputs): GatingResolution {
     return { enabled: false, reason: "ci" };
   }
   if (
-    isTruthyOptOut(inputs.env["PRISMA_NEXT_DISABLE_TELEMETRY"]) ||
-    inputs.env["DO_NOT_TRACK"] === "1"
+    isTruthyOptOut(inputs.env.PRISMA_NEXT_DISABLE_TELEMETRY) ||
+    inputs.env.DO_NOT_TRACK === "1"
   ) {
     return { enabled: false, reason: "env-opt-out" };
   }
