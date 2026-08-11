@@ -235,6 +235,25 @@ export function noPreviousDeploymentError(): CliStructuredError {
   );
 }
 
+/** Rolling back without `--to` needs the live deployment: the default
+ *  target is defined relative to it. */
+export function liveDeploymentUnknownError(): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.LIVE_DEPLOYMENT_UNKNOWN",
+    "Cannot determine which deployment is currently live",
+    {
+      why: "Neither the service record, nor the platform's deployment listing, nor the local cache names a live deployment, so the deployment to roll back to cannot be chosen without guessing what production is serving.",
+      nextActions: [
+        runCommandAction(
+          "Roll back to a named deployment",
+          "service rollback --to <deployment>",
+        ),
+        runCommandAction("List deployments", "service list-deploys"),
+      ],
+    },
+  );
+}
+
 export function removeFailedError(
   summary: string,
   cause: unknown,

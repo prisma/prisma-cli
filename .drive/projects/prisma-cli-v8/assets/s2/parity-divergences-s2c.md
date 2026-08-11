@@ -148,8 +148,8 @@ The refusal above is pinned there too, from a seeded
 
 ### `service domain remove` consent
 
-Recorded with the group's other consent point in "Consent" under
-dispatch 2 below — one table, one mechanism, for both.
+Recorded with the group's other consent points in "Consent" under
+dispatch 2 below — one table, one mechanism, for all three.
 
 ### Interactive service picker
 
@@ -227,7 +227,7 @@ dies in S2d).
 
 Command ids follow: `app.promote` → `service.promote`, etc.
 
-### Consent (Q5 class; operator-ruled 2026-08-10, shipped)
+### Consent (Q5 class; operator-ruled 2026-08-10 and 2026-08-11, shipped)
 
 Consent is engine-owned and this is what ships: each consent point
 declares a token — the natural noun of the action — so an interactive
@@ -242,10 +242,13 @@ takes the same non-interactive branch.
 | --- | --- | --- | --- |
 | `service remove` | typed app name on a TTY; `-y/--yes` skipped it; non-interactive without `--yes` → `CONFIRMATION_REQUIRED` (exit 1) | type the service name interactively, or `--confirm <service>` | the service name |
 | `service domain remove` | `-y/--yes` skipped the yes/no confirm | type the hostname interactively, or `--confirm <hostname>` | the hostname |
+| `service rollback` | none — the command asked nothing and rolled production back | type the target deployment's id interactively, or `--confirm <deployment>` | the target deployment's id |
 
-The slice had a third consent point, `service deploy`'s production replace, until deploy was dropped (see "`app deploy` and `app build` are dropped" under dispatch 4). The mechanism below is unchanged by its removal.
+`service rollback`'s consent is new in v8, not a ported one: this is an operator ruling of 2026-08-11, and it answers the follow-up this file used to carry under "`service promote` / `service rollback`". The shipping CLI changes what production serves and asks nothing at all. **The token is the target deployment's id, not the service name.** The hazard the command carries is promoting the wrong deployment, and typing the service name would not make anyone look at which deployment is about to go live; typing `dep_123` does. The question names both — `Roll back Service "hello-world" to deployment dep_1 and make it live?` — and is asked after the target is resolved, because a user cannot consent to a deployment id the command has not chosen yet. It is asked on both paths: an explicit `--to`, and the resolved default. It is also asked when the target turns out to be the deployment already live, which is the one place a caller sees a behaviour change beyond the consent itself: `service rollback --to <already-live>` used to complete with a warning in a non-interactive run and now needs `--confirm <already-live>` to reach that same warning.
 
-Transitions, identical on both:
+`service deploy`'s production replace was a consent point too, until deploy was dropped (see "`app deploy` and `app build` are dropped" under dispatch 4). The mechanism below is unchanged by its removal.
+
+Transitions, identical on all three:
 
 - **Granted** interactively by typing the token, non-interactively by
   `--confirm <token>`. `--confirm` never SKIPS an interactive prompt: an
@@ -270,6 +273,7 @@ Transitions, identical on both:
 | `DEPLOYMENT_NOT_FOUND` (1) | `SERVICE.DEPLOYMENT_NOT_FOUND` (2) | promote, rollback |
 | `USAGE_ERROR` (2) — "App promote/rollback/remove requires an existing app" | `SERVICE.TARGET_REQUIRED` (2) | promote, rollback, remove |
 | `USAGE_ERROR` (2) — empty `--branch` | `SERVICE.BRANCH_INVALID` (2) | remove |
+| *(no legacy code — legacy promoted the newest deployment and reported success)* | `SERVICE.LIVE_DEPLOYMENT_UNKNOWN` (2) | rollback (see the ruling below) |
 
 The deploy-only rows this table used to carry went with the command; see "`app deploy` and `app build` are dropped" under dispatch 4. Two of those codes survive because a read command still raises them, and they keep their dispatch 1 rows: `SERVICE.PROJECT_SETUP_REQUIRED`, which still carries the candidate list and the suggested project name in `meta` exactly as legacy did, and `SERVICE.LOCAL_STATE_STALE`.
 
@@ -325,11 +329,28 @@ takes a constrained text answer will need it.
   deployment (`starting` → `start-requested` → the SDK's own status values →
   `running` → `promoting` → `promoted`) plus an `endpoint` event for the
   promoted URL, bracketed by a `promote` / `rollback` step.
-- **`service rollback` still has no confirmation** — production-affecting
-  and unconfirmed, ported as-is for parity. Flagged for the operator: with
-  consent becoming engine-owned, rollback is the obvious next consent point
-  (token = the target deployment id), but adding one is a product decision,
-  not a port decision.
+- **`service rollback` now asks for consent** — this entry used to record
+  that it did not, and flagged for the operator that rollback was the
+  obvious next consent point with the target deployment id as its token.
+  The operator ruled on it on 2026-08-11 and that is what ships: rollback
+  is the group's third consent point, on exactly that token. Nothing is
+  left open — see the consent entry above for the wording, the ordering
+  and what changes for a non-interactive caller.
+
+### `service rollback` refuses to guess which deployment is live (operator ruling, 2026-08-11)
+
+The second of the two rollback rulings, and like the consent it is a deliberate divergence rather than a port decision.
+
+**What the shipping CLI does.** Without `--to`, rollback picks "the newest deployment that is not the live one" — `deployments.find((deployment) => deployment.id !== currentLiveDeploymentId)` (`src/controllers/app.ts`, `resolveRollbackTarget`). `resolveCurrentLiveDeploymentId` returns `null` when the service record, the platform's deployment listing and the local cache all fail to name a live deployment, and against `null` that predicate is true for every deployment. So the command takes the newest one — most likely the deployment already live — promotes it, and reports a successful rollback. The user is told production was rolled back when nothing moved, and the local cache is then written with that guess.
+
+**What v8 does.** `resolveRollbackTarget` (`src/v8/service/release.ts`) refuses instead: with no `--to` and no identifiable live deployment it raises the new `SERVICE.LIVE_DEPLOYMENT_UNKNOWN` (exit 2), whose `why` says nothing names a live deployment and whose two typed next actions are `service rollback --to <deployment>` and `service list-deploys`. The refusal lands before the consent prompt, before any promote call and before any local state write.
+
+The scope is exactly the ambiguous case:
+
+- **`--to` given** — the user named the target, so there is nothing to resolve. Unchanged, including when the live deployment is unknown: the run promotes the named deployment and reports `previousLiveDeploymentId: null`, which the human presentation already renders as "unknown".
+- **No `--to`, live deployment known** — unchanged: the newest deployment that is not the live one.
+- **No `--to`, live deployment unknown** — the new refusal.
+- **No deployments at all** — still `SERVICE.NO_PREVIOUS_DEPLOYMENT`, which is checked first. An empty listing has no live deployment either, but "there is no earlier deployment" is the more useful of the two answers, and the new error's advice — name a deployment, list them — would point at an empty list.
 
 ### `service remove`
 
@@ -587,7 +608,7 @@ The reasoning is about the shape of the command, not about how the port went. `a
 
 Nobody loses a command today. The legacy commander shell still serves `app deploy` and `app build`, and keeps serving them until S2d deletes the shell. What that deletion replaces them with is a Composer question, not a port question, so unlike `app run` this drop does leave something for S2d to answer.
 
-Two engine gaps escalated during this slice existed only for `app deploy` and are retired with it: the `--db` / `--no-db` three-way flag problem, and the missing validator on `prompt.text`. Both are recorded as retired entries under dispatch 2, so this ruling took the open escalations from six to four (the `service logs` shelve below then took them to three; the rev-6 credential merge-down later added a seventh gap, open, under dispatch 1). The consent table under dispatch 2 loses `service deploy`'s production replace and is down to two consent points. The dispatch 1 and dispatch 2 divergence entries that described only these two commands are gone, and the entries that covered several commands now name only the ones that ship.
+Two engine gaps escalated during this slice existed only for `app deploy` and are retired with it: the `--db` / `--no-db` three-way flag problem, and the missing validator on `prompt.text`. Both are recorded as retired entries under dispatch 2, so this ruling took the open escalations from six to four (the `service logs` shelve below then took them to three; the rev-6 credential merge-down later added a seventh gap, open, under dispatch 1). The consent table under dispatch 2 loses `service deploy`'s production replace and is down to two consent points (the 2026-08-11 ruling on `service rollback` later made it three again). The dispatch 1 and dispatch 2 divergence entries that described only these two commands are gone, and the entries that covered several commands now name only the ones that ship.
 
 The tap this slice added to legacy code for `service build` is reverted. `executeAppBuild` and `resolveAppBuildStrategy` (`packages/cli/src/lib/app/build.ts`) had gained an optional `io` parameter so the v8 command could stream the bundler's per-line output as engine events; nothing in the legacy shell ever passed it, so the parameter is removed and the file is back to what it was.
 

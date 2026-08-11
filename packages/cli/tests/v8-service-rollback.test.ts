@@ -1,12 +1,43 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   DEPLOYMENTS,
   makeServiceCli,
   page,
   presentedSummary,
+  type Routes,
   releaseRoutes,
+  SERVICE_DETAIL,
 } from "./v8-service-testkit";
+
+const INTERACTIVE = { stdin: true, stdout: true, stderr: true };
+
+/** A promote route that counts what reached it, for the runs that must
+ *  never promote anything. */
+function countPromoteCalls(): { routes: Routes; count: () => number } {
+  let calls = 0;
+  return {
+    routes: {
+      "POST /v1/apps/{appId}/promote": () => {
+        calls += 1;
+        return { data: { data: { appEndpointDomain: "hello.prisma.app" } } };
+      },
+    },
+    count: () => calls,
+  };
+}
+
+/** Nothing names a live deployment: the service record points at no
+ *  deployment, the listing marks none live, and a fresh state dir has
+ *  no cached pointer. */
+function unknownLiveDeploymentRoutes(overrides: Routes = {}): Routes {
+  return releaseRoutes({
+    "GET /v1/apps/{appId}": () => ({
+      data: { data: { ...SERVICE_DETAIL, latestDeploymentId: null } },
+    }),
+    ...overrides,
+  });
+}
 
 describe("prisma-v8 service rollback", () => {
   it("rolls back to the deployment before the live one by default", async () => {
@@ -20,6 +51,8 @@ describe("prisma-v8 service rollback", () => {
         "acme-app",
         "--service",
         "hello-world",
+        "--confirm",
+        "dep_1",
       ],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
@@ -50,6 +83,8 @@ describe("prisma-v8 service rollback", () => {
         "acme-app",
         "--service",
         "hello-world",
+        "--confirm",
+        "dep_2",
       ],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
@@ -84,6 +119,8 @@ describe("prisma-v8 service rollback", () => {
         "acme-app",
         "--service",
         "hello-world",
+        "--confirm",
+        "dep_1",
       ],
       { cwd: harness.cwd, env: harness.env },
     );
@@ -105,6 +142,8 @@ describe("prisma-v8 service rollback", () => {
         "acme-app",
         "--service",
         "hello-world",
+        "--confirm",
+        "dep_1",
       ],
       { cwd: harness.cwd, env: harness.env },
     );
@@ -141,6 +180,8 @@ describe("prisma-v8 service rollback", () => {
         "acme-app",
         "--service",
         "hello-world",
+        "--confirm",
+        "dep_1",
         "--json",
       ],
       { cwd: harness.cwd, env: harness.env },
@@ -155,6 +196,236 @@ describe("prisma-v8 service rollback", () => {
     expect(frame.envelope.result).toMatchObject({
       deployment: { id: "dep_1" },
       previousLiveDeploymentId: "dep_2",
+    });
+  });
+
+  it("asks for consent on the resolved deployment and rolls back once it is typed", async () => {
+    const harness = await makeServiceCli({ routes: releaseRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "rollback",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+      ],
+      {
+        cwd: harness.cwd,
+        env: harness.env,
+        isTty: INTERACTIVE,
+        // The run prompts exactly once, and only the deployment id
+        // answers it: a scripted answer the prompt never asks for fails
+        // the run, and a wrong one settles as a mismatch.
+        answers: ["dep_1"],
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({
+      deployment: { id: "dep_1" },
+    });
+  });
+
+  it("settles a mistyped consent token as the engine mismatch error", async () => {
+    const harness = await makeServiceCli({ routes: releaseRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "rollback",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+      ],
+      {
+        cwd: harness.cwd,
+        env: harness.env,
+        isTty: INTERACTIVE,
+        answers: ["hello-world"],
+      },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(result.events).toEqual([]);
+  });
+
+  it("settles non-interactive runs with the engine consent error, naming the deployment", async () => {
+    const promoteCalls = countPromoteCalls();
+    const harness = await makeServiceCli({
+      routes: releaseRoutes(promoteCalls.routes),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "rollback",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(result.events).toEqual([]);
+    expect(promoteCalls.count()).toBe(0);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
+    expect(frame.envelope.error.summary).toContain(
+      'Roll back Service "hello-world" to deployment dep_1 and make it live?',
+    );
+    expect(frame.envelope.error.summary).toContain("--confirm dep_1");
+    expect(frame.envelope.error.meta).toMatchObject({
+      consentToken: "dep_1",
+    });
+  });
+
+  it("refuses a --confirm value that is not the target deployment id", async () => {
+    const harness = await makeServiceCli({ routes: releaseRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "rollback",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--confirm",
+        "hello-world",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(result.events).toEqual([]);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
+    expect(frame.envelope.error.meta).toMatchObject({
+      consentToken: "dep_1",
+    });
+  });
+
+  it("never lets --yes alone grant the rollback", async () => {
+    const harness = await makeServiceCli({ routes: releaseRoutes() });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "rollback",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--yes",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env, isTty: INTERACTIVE },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(result.events).toEqual([]);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
+  });
+
+  it("refuses to pick a target when nothing names the live deployment", async () => {
+    const promoteCalls = countPromoteCalls();
+    const harness = await makeServiceCli({
+      routes: unknownLiveDeploymentRoutes(promoteCalls.routes),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "rollback",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--json",
+      ],
+      {
+        cwd: harness.cwd,
+        env: harness.env,
+        isTty: INTERACTIVE,
+        // dep_2 is the newest deployment, which is what picking "the
+        // newest that is not the live one" returns while the live one is
+        // unknown. Scripting consent for it means a run that guesses
+        // again completes instead of failing here.
+        answers: ["dep_2"],
+      },
+    );
+
+    expect(result.exitCode).toBe(2);
+    // Nothing was promoted and no step was opened: the refusal lands
+    // before the command touches the service.
+    expect(promoteCalls.count()).toBe(0);
+    expect(result.events).toEqual([]);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.LIVE_DEPLOYMENT_UNKNOWN");
+    expect(frame.envelope.nextActions).toEqual([
+      {
+        kind: "run-command",
+        label: "Roll back to a named deployment",
+        command: "prisma-cli service rollback --to <deployment>",
+      },
+      {
+        kind: "run-command",
+        label: "List deployments",
+        command: "prisma-cli service list-deploys",
+      },
+    ]);
+  });
+
+  it("still rolls back to an explicit --to when the live deployment is unknown", async () => {
+    const harness = await makeServiceCli({
+      routes: unknownLiveDeploymentRoutes(),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "rollback",
+        "--to",
+        "dep_1",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--confirm",
+        "dep_1",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({
+      deployment: { id: "dep_1" },
+      previousLiveDeploymentId: null,
+    });
+    expect(result.events.at(-1)).toEqual({
+      kind: "step-finished",
+      step: "rollback",
+      outcome: "ok",
     });
   });
 
@@ -200,6 +471,36 @@ describe("prisma-v8 service rollback", () => {
     ]);
   });
 
+  it("reports SERVICE.NO_PREVIOUS_DEPLOYMENT for a service with no deployments at all", async () => {
+    const harness = await makeServiceCli({
+      routes: unknownLiveDeploymentRoutes({
+        "GET /v1/apps/{appId}/deployments": () => ({ data: page([]) }),
+      }),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "rollback",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    // An empty listing has no live deployment either, and the emptiness
+    // is the more useful answer of the two.
+    expect(frame.envelope.error.code).toBe("SERVICE.NO_PREVIOUS_DEPLOYMENT");
+  });
+
   it("settles a failing promote call as SERVICE.DEPLOY_FAILED after a failed step", async () => {
     const harness = await makeServiceCli({
       routes: releaseRoutes({
@@ -218,6 +519,8 @@ describe("prisma-v8 service rollback", () => {
         "acme-app",
         "--service",
         "hello-world",
+        "--confirm",
+        "dep_1",
         "--json",
       ],
       { cwd: harness.cwd, env: harness.env },
@@ -252,30 +555,6 @@ describe("prisma-v8 service rollback", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
-  });
-
-  it("runs without any confirmation prompt (legacy parity, recorded as a divergence follow-up)", async () => {
-    const harness = await makeServiceCli({ routes: releaseRoutes() });
-
-    const result = await harness.cli.run(
-      [
-        "service",
-        "rollback",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-      ],
-      {
-        cwd: harness.cwd,
-        env: harness.env,
-        isTty: { stdin: true, stdout: true, stderr: true },
-        // An unexpected prompt fails the run: this proves rollback asks nothing.
-        answers: [],
-      },
-    );
-
-    expect(result.exitCode).toBe(0);
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {

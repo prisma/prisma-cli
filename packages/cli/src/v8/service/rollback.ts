@@ -1,7 +1,11 @@
 import { defineCommand, flag, positional } from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { ok } from "@prisma/cli-engine/protocol";
-import { deployFailedError, runCommandAction } from "./errors";
+import {
+  deployFailedError,
+  runCommandAction,
+  userCancelledError,
+} from "./errors";
 import { rollbackPresentations } from "./presentation";
 import {
   promoteProgressReporter,
@@ -19,7 +23,11 @@ import {
 export const serviceRollbackCommand = defineCommand({
   help: {
     summary: "Roll back production to a previous deployment",
-    examples: ["service rollback", "service rollback --to dep_123"],
+    examples: [
+      "service rollback",
+      "service rollback --to dep_123",
+      "service rollback --to dep_123 --confirm dep_123",
+    ],
   },
   args: {
     flags: {
@@ -74,6 +82,19 @@ export const serviceRollbackCommand = defineCommand({
           deploymentsResult.deployments,
           currentLiveDeploymentId,
         );
+
+    const granted = await ctx.prompt.consent(
+      `Roll back Service "${state.service.name}" to deployment ${targetDeployment.id} and make it live?`,
+      { token: targetDeployment.id },
+    );
+    // A token consent resolves to true or throws (mismatch, or the
+    // engine's consent-required error), so this guard only fires if that
+    // contract ever loosens — never proceed with a destructive call on a
+    // falsy consent.
+    if (!granted) {
+      throw userCancelledError("Service rollback canceled");
+    }
+
     const alreadyLive = currentLiveDeploymentId === targetDeployment.id;
 
     await rememberSelectedService(

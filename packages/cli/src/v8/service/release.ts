@@ -7,6 +7,7 @@ import type {
 } from "../../lib/app/app-provider";
 import {
   deploymentNotFoundForServiceError,
+  liveDeploymentUnknownError,
   noPreviousDeploymentError,
   releaseTargetRequiredError,
 } from "./errors";
@@ -72,11 +73,20 @@ export function requireDeploymentForService(
   return deployment;
 }
 
-/** The rollback default: the newest deployment that is not the live one. */
+/** The rollback default: the newest deployment that is not the live
+ *  one. With nothing naming the live deployment, every deployment
+ *  qualifies and the newest one — most likely the one already live — is
+ *  what a caller would get, so this refuses instead of guessing. */
 export function resolveRollbackTarget(
   deployments: DeploymentRecord[],
   currentLiveDeploymentId: string | null,
 ): DeploymentRecord {
+  if (deployments.length === 0) {
+    throw noPreviousDeploymentError();
+  }
+  if (currentLiveDeploymentId === null) {
+    throw liveDeploymentUnknownError();
+  }
   const previousDeployment = deployments.find(
     (deployment) => deployment.id !== currentLiveDeploymentId,
   );
