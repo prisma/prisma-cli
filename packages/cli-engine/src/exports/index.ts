@@ -95,6 +95,10 @@ export {
   PRESENTED,
   type Presentations,
   type PresentedResult,
+  type Span,
+  type Status,
+  type Text,
+  type Tone,
   type TreeNode,
   type Ui,
 } from "../presentation";

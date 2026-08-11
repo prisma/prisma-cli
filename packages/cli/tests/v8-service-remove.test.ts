@@ -40,7 +40,7 @@ describe("prisma-v8 service remove", () => {
     });
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: "Removed hello-world and every deployment it owned.",
     });
     // A removal used to offer `service deploy`; the binary has no such

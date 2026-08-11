@@ -85,7 +85,7 @@ export function formatTelemetryStatusLines(
 function statusPresentations(status: TelemetryStatus): Presentations {
   return {
     human: () => [
-      { kind: "summary", tone: "info", text: statusSummaryLine(status) },
+      { kind: "summary", status: "info", text: statusSummaryLine(status) },
       {
         kind: "fields",
         rows: [
@@ -106,7 +106,7 @@ function statusPresentations(status: TelemetryStatus): Presentations {
  *  the json result. */
 function consentPresentations(line: string, json: unknown): Presentations {
   return {
-    human: () => [{ kind: "summary", tone: "ok", text: line }],
+    human: () => [{ kind: "summary", status: "ok", text: line }],
     stdout: () => [line],
     json: () => json,
   };

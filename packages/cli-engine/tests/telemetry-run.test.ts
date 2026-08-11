@@ -69,7 +69,7 @@ const deploy = defineCommand({
     return ok(
       ctx.present(
         { data: null },
-        { human: () => [{ kind: "summary", tone: "ok", text: "deployed" }] },
+        { human: () => [{ kind: "summary", status: "ok", text: "deployed" }] },
       ),
     );
   },
@@ -86,7 +86,7 @@ const telemetryStatus = defineCommand({
     ok(
       ctx.present(
         { data: null },
-        { human: () => [{ kind: "summary", tone: "ok", text: "enabled" }] },
+        { human: () => [{ kind: "summary", status: "ok", text: "enabled" }] },
       ),
     ),
 });
@@ -101,7 +101,7 @@ const signedOut = defineCommand({
     return ok(
       ctx.present(
         { data: null },
-        { human: () => [{ kind: "summary", tone: "ok", text: "signed in" }] },
+        { human: () => [{ kind: "summary", status: "ok", text: "signed in" }] },
       ),
     );
   },
@@ -116,7 +116,7 @@ const spawning = defineCommand({
     return ok(
       ctx.present(
         { data: null },
-        { human: () => [{ kind: "summary", tone: "ok", text: "spawned" }] },
+        { human: () => [{ kind: "summary", status: "ok", text: "spawned" }] },
       ),
     );
   },

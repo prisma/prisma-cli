@@ -564,7 +564,7 @@ describe("prisma-v8 postgres create", () => {
     expect(blocks(result.presented)).toEqual([
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: 'Created database "my-db" in Billing / main.',
       },
       {
@@ -973,7 +973,7 @@ describe("prisma-v8 postgres restore", () => {
     expect(blocks(result.presented)).toEqual([
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: "Restoring database from backup.",
       },
       {
@@ -1296,7 +1296,7 @@ describe("prisma-v8 postgres remove", () => {
       ),
     ).toBe(true);
     expect(blocks(result.presented)).toEqual([
-      { kind: "summary", tone: "ok", text: "Removing database." },
+      { kind: "summary", status: "ok", text: "Removing database." },
       {
         kind: "fields",
         rows: [
@@ -1795,7 +1795,7 @@ describe("prisma-v8 postgres connection create", () => {
     ]);
     expect(blocks(result.presented)[0]).toEqual({
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: 'Added a connection to "acme-production" in Billing / main.',
     });
     expect(
@@ -1943,7 +1943,7 @@ describe("prisma-v8 postgres connection rotate", () => {
     ]);
     expect(blocks(result.presented)[0]).toEqual({
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: 'Rotated credentials for "acme-production". The previous credentials no longer work.',
     });
   });
@@ -1972,7 +1972,7 @@ describe("prisma-v8 postgres connection rotate", () => {
 
     expect(blocks(result.presented)[0]).toEqual({
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: "Rotated credentials for connection conn_1. The previous credentials no longer work.",
     });
   });
@@ -2201,7 +2201,7 @@ describe("prisma-v8 postgres connection remove", () => {
       ),
     ).toBe(true);
     expect(blocks(result.presented)).toEqual([
-      { kind: "summary", tone: "ok", text: "Removing database connection." },
+      { kind: "summary", status: "ok", text: "Removing database connection." },
       {
         kind: "fields",
         rows: [{ label: "connection", value: "conn_1" }],

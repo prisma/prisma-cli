@@ -60,7 +60,7 @@ function promptCli(run: (prompt: PromptSurface) => Promise<unknown>) {
             human: (): readonly Block[] => [
               {
                 kind: "summary",
-                tone: "ok",
+                status: "ok",
                 text: `answer=${JSON.stringify(answer)}`,
               },
             ],

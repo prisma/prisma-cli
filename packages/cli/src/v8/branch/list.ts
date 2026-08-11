@@ -25,7 +25,7 @@ function listPresentations(result: BranchListResult): Presentations {
   ]);
   return {
     human: (): Block[] => [
-      { kind: "summary", tone: "info", text: TITLE },
+      { kind: "summary", status: "info", text: TITLE },
       {
         kind: "fields",
         rows: [{ label: "project", value: result.projectName }],

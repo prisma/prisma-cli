@@ -34,11 +34,13 @@ function makeProcess(overrides?: {
   argv?: string[];
   env?: NodeJS.ProcessEnv;
   isTty?: { stdin?: boolean; stdout?: boolean; stderr?: boolean };
+  columns?: number;
 }): HostProcess & {
   listeners: Map<string, Array<() => void>>;
   exitedWith: number[];
   stderrText: string;
   stdoutText: string;
+  stderr: { columns?: number };
 } {
   const listeners = new Map<string, Array<() => void>>();
   const exitedWith: number[] = [];
@@ -66,6 +68,8 @@ function makeProcess(overrides?: {
     },
     stderr: {
       isTTY: overrides?.isTty?.stderr,
+      /** Node updates this on SIGWINCH, so the test can move it. */
+      columns: overrides?.columns,
       write(text: string) {
         proc.stderrText += text;
       },
@@ -173,6 +177,21 @@ describe("assembleRuntime", () => {
     runtime.stderr.write("err");
     expect(proc.stdoutText).toBe("out");
     expect(proc.stderrText).toBe("err");
+  });
+
+  /**
+   * The engine reads stderr's width at render time so a terminal
+   * resized mid-run reports its new size. That only holds if the bin
+   * forwards the live property instead of copying it once, here, while
+   * assembling the runtime — a copy freezes ui.width at process start.
+   */
+  it("forwards stderr's width live, not as a snapshot", async () => {
+    const proc = makeProcess({ isTty: { stderr: true }, columns: 120 });
+    const runtime = await assembleRuntime(proc);
+
+    expect(runtime.stderr.columns).toBe(120);
+    proc.stderr.columns = 60;
+    expect(runtime.stderr.columns).toBe(60);
   });
 
   it("wires the credential manager, the SDK client config, and the browser opener", async () => {

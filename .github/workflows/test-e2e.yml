@@ -1,0 +1,79 @@
+name: End-to-end (real API)
+
+# Runs the shipped binary against the real management API. Kept out of
+# the main Test workflow because it needs a credential, creates and
+# deletes real resources, and cannot run on a fork's pull request.
+# Deliberately `pull_request`, never `pull_request_target`: this job
+# holds a service token, and `pull_request_target` would hand that token
+# to a fork's own code — its install scripts and its test files — the
+# moment the workflow checked the pull request out. A maintainer label
+# is not a defence, because the label survives the next push.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # These tests share one workspace, so two runs would race over the
+  # projects they create. Never cancel a run mid-flight: teardown has to
+  # finish or it leaves real resources behind.
+  group: test-e2e
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    # A pull request from a fork gets no secrets, so there is nothing
+    # here for it to run. Skip the job outright: a skipped job is
+    # visible, whereas a credential-less run would report green.
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+
+      - name: Enable pnpm
+        shell: bash
+        run: |
+          corepack enable
+          PNPM_VERSION="$(node -p 'const pm = require("./package.json").packageManager; const match = pm && pm.match(/^pnpm@(.+)$/); if (!match) throw new Error("packageManager must be pnpm@<version>"); match[1]')"
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
+          echo "PNPM_STORE_PATH=$(pnpm store path)" >> "$GITHUB_ENV"
+
+      - name: Cache pnpm store
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.PNPM_STORE_PATH }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # These tests run dist/v8/cli.js, so the artifact has to exist.
+      # `pnpm --filter` runs the package script directly and never
+      # consults turbo, so turbo's dependsOn cannot supply this.
+      - name: Build workspace packages
+        run: pnpm build
+
+      - name: Run the real-API end-to-end suite
+        run: pnpm --filter @prisma/cli test:e2e
+        env:
+          PRISMA_E2E_SERVICE_TOKEN: ${{ secrets.PRISMA_E2E_SERVICE_TOKEN }}
+          PRISMA_E2E_WORKSPACE_ID: ${{ secrets.PRISMA_E2E_WORKSPACE_ID }}
+          # Without this a missing secret would skip the whole suite and
+          # report success — the failure mode this suite exists to stop.
+          PRISMA_E2E_REQUIRED: "1"

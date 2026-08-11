@@ -48,19 +48,19 @@ export function setupPresentations(result: ProjectSetupResult): Presentations {
         ? [
             {
               kind: "summary" as const,
-              tone: "ok" as const,
+              status: "ok" as const,
               text: `Created Project "${result.project.name}"`,
             },
           ]
         : []),
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: `Linked "${result.directory}" to Project "${result.project.name}"`,
       },
       {
         kind: "summary",
-        tone: "info",
+        status: "info",
         text: `Saved ${result.localPin.path}`,
       },
     ],
