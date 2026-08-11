@@ -6,7 +6,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type ConfigRequest,
@@ -294,6 +294,98 @@ describe("--config", () => {
 });
 
 /**
+ * c12 resolves a relative path a second time against its own cwd, and
+ * jiti cannot import a relative specifier at all, so the loader makes
+ * the path absolute before it does anything else with it. The shipped
+ * bin always passes an absolute process.cwd(), so only these tests hold
+ * the behaviour in place.
+ */
+describe("a relative cwd", () => {
+  const RELATIVE_FIXTURES = relative(process.cwd(), FIXTURES);
+
+  test("discovery reads the config under a relative cwd", async () => {
+    const loaded = await loadConfig(
+      join(RELATIVE_FIXTURES, "marked"),
+      asks("toy", "other"),
+    );
+    expect(loaded.sections).toEqual({
+      toy: { greeting: "hello" },
+      other: { level: 2 },
+    });
+  });
+
+  test("a relative --config value resolves against a relative cwd", async () => {
+    const loaded = await loadConfig(RELATIVE_FIXTURES, {
+      configPath: join("named", "elsewhere.config.ts"),
+      knownSections: ["toy"],
+    });
+    expect(loaded.sections).toEqual({
+      toy: { greeting: "from the named file" },
+    });
+  });
+
+  test("the path a diagnostic reports is absolute even so", async () => {
+    const loaded = await loadConfig(
+      join(RELATIVE_FIXTURES, "unmarked"),
+      asks("toy"),
+    );
+    expect(loaded.diagnostics[0]?.diagnostic.where).toEqual({
+      path: join(FIXTURES, "unmarked", "prisma.config.ts"),
+    });
+  });
+});
+
+/**
+ * Left to itself, c12 merges a config file's `$<NODE_ENV>` and
+ * `$env.<NODE_ENV>` blocks over the root, so the same file would mean
+ * different things in different shells. The loader switches that off,
+ * and keeps `$`-prefixed keys, which is how the version marker survives
+ * and how an unrecognised `$` key still gets reported.
+ */
+describe("NODE_ENV does not change the effective config", () => {
+  async function underNodeEnv<T>(
+    value: string,
+    body: () => Promise<T>,
+  ): Promise<T> {
+    const before = process.env.NODE_ENV;
+    process.env.NODE_ENV = value;
+    try {
+      return await body();
+    } finally {
+      if (before === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = before;
+      }
+    }
+  }
+
+  test("a $<NODE_ENV> block does not overlay a section value", async () => {
+    const loaded = await underNodeEnv("production", () =>
+      loadConfig(join(FIXTURES, "env-overlay"), asks("toy")),
+    );
+    expect(loaded.sections.toy).toEqual({ greeting: "plain" });
+  });
+
+  test("a $env block does not overlay a section value", async () => {
+    const loaded = await underNodeEnv("production", () =>
+      loadConfig(join(FIXTURES, "env-block"), asks("toy")),
+    );
+    expect(loaded.sections.toy).toEqual({ greeting: "plain" });
+  });
+
+  test("the $prismaConfig marker survives, and the unused $ block is reported as an unknown section", async () => {
+    const loaded = await underNodeEnv("production", () =>
+      loadConfig(join(FIXTURES, "env-overlay"), asks("toy")),
+    );
+    expect(loaded.diagnostics.map(({ diagnostic }) => diagnostic.code)).toEqual(
+      ["CLI.CONFIG_UNKNOWN_SECTION"],
+    );
+    expect(loaded.diagnostics[0].diagnostic.summary).toContain("'$production'");
+  });
+});
+
+/**
  * The shipped CLI is plain Node, not tsx, so the loader has to evaluate
  * TypeScript by itself. These tests run the BUILT package in a separate
  * `node` process that cannot execute TypeScript, and check both halves:
@@ -426,7 +518,11 @@ export default defineConfig({ toy: { greeting: Level.Verbose } });
 `,
       [],
     );
-    expect(probe.directImportError).toBe("ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX");
+    // Which error a Node in our supported range (>=22.12.0) reports for
+    // TypeScript it cannot strip varies by version, so this asserts only
+    // that the direct import failed. What the test is for is the pair:
+    // the direct import fails where loadConfig, below, succeeds.
+    expect(probe.directImportError).toEqual(expect.any(String));
     expect(probe.loaded).toEqual({
       sections: { toy: { greeting: "verbose" } },
       diagnostics: [],

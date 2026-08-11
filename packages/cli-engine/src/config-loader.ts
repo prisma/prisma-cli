@@ -174,10 +174,11 @@ function unreadableDiagnostic(path: string, cause: unknown): Diagnostic {
 
 /**
  * Evaluates the file at `path` and returns its default export. The c12
- * call is prisma/composer's `loadAppConfig` verbatim — explicit
- * configFile, cwd at that file's directory, the three lookups it turns
- * off, and nothing else — with prisma/prisma's dynamic import, so a run
- * with no config file never pays for loading c12 or jiti.
+ * call is prisma/composer's `loadAppConfig` — explicit configFile, cwd
+ * at that file's directory, the three lookups it turns off — with
+ * prisma/prisma's dynamic import, so a run with no config file never
+ * pays for loading c12 or jiti, plus the two options below that
+ * composer has no need of and this loader does.
  *
  * The loaded-file check is in both references: c12 is asked for one
  * exact path and must not answer with another.
@@ -191,6 +192,24 @@ async function evaluateConfigFile(path: string): Promise<unknown> {
     rcFile: false,
     globalRc: false,
     packageJson: false,
+    // The two options composer leaves out and this loader cannot.
+    // Composer's config has a fixed set of keys and no `$`-prefixed
+    // marker, so neither behaviour can reach it; ours has both.
+    //
+    // envName defaults to process.env.NODE_ENV, and c12 then merges the
+    // file's `$<NODE_ENV>` and `$env.<NODE_ENV>` blocks over the root.
+    // A file with a `$production` block would mean one thing in a
+    // normal shell and another under NODE_ENV=production. false turns
+    // the merge off, so the file means the same thing everywhere.
+    //
+    // omit$Keys is already falsy by default, and this loader depends on
+    // that: `$prismaConfig` is the version marker, so stripping
+    // `$`-keys would make every valid config read as unmarked, and an
+    // unrecognised `$`-key would vanish instead of being reported as an
+    // unknown section. Pinned so a change of default cannot take both
+    // away at once.
+    envName: false,
+    omit$Keys: false,
   });
   // composer's comparison, not prisma/prisma's raw string equality:
   // realpath normalises the separators and casing c12 hands back on
@@ -233,12 +252,24 @@ function unknownSections(
     }));
 }
 
-/** The path the request asks for: the file named by --config, resolved
- *  against cwd, or prisma.config.ts in cwd. */
+/**
+ * The path the request asks for, always absolute: the file named by
+ * --config, resolved against cwd, or prisma.config.ts in cwd.
+ *
+ * Absolute is not cosmetic, and it is one more thing than either
+ * reference repository does — both are handed an absolute path before
+ * they reach c12, so neither has to resolve one. Given a relative path,
+ * c12 resolves it a second time against its own cwd and looks for a
+ * file that is not there, and jiti cannot import a relative specifier
+ * at all. Resolving here also makes the file's path in every diagnostic
+ * absolute, and makes the loaded-file comparison compare like with
+ * like.
+ */
 function requestedPath(cwd: string, request: ConfigRequest): string {
+  const root = resolve(cwd);
   return request.configPath === undefined
-    ? join(cwd, CONFIG_FILE_NAME)
-    : resolve(cwd, request.configPath);
+    ? join(root, CONFIG_FILE_NAME)
+    : resolve(root, request.configPath);
 }
 
 /**
