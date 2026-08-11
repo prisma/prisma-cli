@@ -747,8 +747,10 @@ describe("report() after the handler resolved", () => {
     expect(() =>
       smuggled?.({ kind: "message", severity: "info", text: "late" }),
     ).not.toThrow();
+    // The whole line: this mark is written as a literal rather than
+    // read from the diagnostic-severity map, so nothing else pins it.
     expect(stderrText).toContain(
-      "report() was called after the handler resolved",
+      "✘ [CLI.INTERNAL_ERROR] @prisma/cli-engine: report() was called after the handler resolved\n",
     );
   });
 });
