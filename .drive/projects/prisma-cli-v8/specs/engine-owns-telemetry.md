@@ -343,3 +343,9 @@ Both are recorded in `assets/s2/parity-divergences.md` as part of the slice.
   that constructs a `Runtime` must add it. Correct — a host that forgot an
   optional one would silently report from CI — but it needs a release note at
   `8.0.0-rc.1`.
+- **An unwritable config directory makes `telemetry enable|disable` fail as
+  `CLI.INTERNAL_ERROR`.** Identical to the platform shell's current behaviour
+  and better than the ORM's, so §1.1 rule 1 says leave it here. But a consent
+  surface deserves a phrased error naming the file it could not write, not the
+  engine's generic one — "my opt-out did not take" is the worst failure this
+  surface has.
