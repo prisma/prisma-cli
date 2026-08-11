@@ -49,6 +49,17 @@ Outcome: a CLI that declares `telemetry: { docsUrl }` discloses on first run,
 mints its id, and hands one payload to the runtime seam before the handler
 runs — and no telemetry failure is observable in the run.
 
+**First task, carried over from D1.** D1 ported the preference store as-is,
+including its direct `process.env` reads for `$XDG_CONFIG_HOME` and
+`%APPDATA%`. Contract §2.5 now pins the fix: thread `env` through
+`userConfigPath`, `readUserConfig`, `writeUserConfig` and
+`ensureInstallationId`, sourcing it from `runtime.env`. D2 is the first
+caller, so it owns the signature change and the D1 test updates that follow;
+D3's commands take `ctx.env`. `process.platform` and `process.pid` stay —
+see §2.5. Until this lands, a `createTestCli` run reads and writes the real
+user's config file, which is why D2's failure-isolation tests cannot be
+written before it.
+
 Surfaces in play:
 
 | File | What changes |

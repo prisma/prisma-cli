@@ -36,3 +36,8 @@ npm-debug.log*
 .drive/projects/prisma-cli-v8/reviews/
 .drive/projects/prisma-cli-v8/specs/reviews/
 wip/
+
+# Reference clones of other repos, read while working. Ignored here rather
+# than in .git/info/exclude because biome reads .gitignore, and a clone
+# carrying its own root config fails `pnpm lint` before it lints anything.
+.reference/

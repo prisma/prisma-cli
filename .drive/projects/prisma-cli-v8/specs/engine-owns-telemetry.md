@@ -190,6 +190,22 @@ Runtime field rather than an engine-side `ci-info` import because the engine
 never reads process globals — the same rule that keeps TTY detection on the
 Runtime.
 
+That rule binds the preference store too, and it is the one place a
+port-as-is would break it. `$XDG_CONFIG_HOME` and `%APPDATA%` are invocation
+inputs: they must resolve from `runtime.env`, threaded through the path
+resolver, the reader, the writer and the id mint, not read from
+`process.env`. The engine reads `process.env` nowhere today — five separate
+doc comments across `context.ts`, `credential-manager.ts`,
+`environment-credential-manager.ts` and `execution/debug.ts` say so — and a
+telemetry module that did would also mean any `createTestCli` run touched the
+real user's config file.
+
+`process.platform` and `process.pid` stay. Neither varies with an invocation,
+neither is modelled on the Runtime, and adding a `platform` field for one
+caller is surface without a second consumer. Nothing in either CLI's test
+suite exercises the Windows branch of the path resolver today, so this
+changes no coverage.
+
 `createTestCli` gains a `telemetrySpawner` seed and an `isCI` seed so a
 product's telemetry behaviour is assertable offline; no test contacts a real
 endpoint.
