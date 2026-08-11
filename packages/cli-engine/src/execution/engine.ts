@@ -23,11 +23,13 @@ import {
   buildCommandTree,
   buildRedirectTable,
   type CommandTreeEntry,
+  matchFlagRedirect,
   matchVerbRedirect,
   type RedirectTable,
 } from "./command-tree";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import {
+  commandSegments,
   settleBug,
   settleCommandMoved,
   settleCompleted,
@@ -108,6 +110,9 @@ export interface RunState {
   /** The run's raw argv — consulted only to derive which flag NAMES
    *  were explicitly passed for the settlement snapshot. */
   argv: readonly string[];
+  /** Flags the parse could not resolve, spelled as the user typed them
+   *  and without their leading dashes; consulted for flag redirects. */
+  unresolvedFlagNames: string[];
   /** The value-free snapshot captured when a command mounted;
    *  undefined for runs that never reached one (help, usage errors). */
   snapshot: EngineCommandSnapshot | undefined;
@@ -234,6 +239,7 @@ export class EngineImpl implements Engine {
       stricliStderr: "",
       stdinIterator: undefined,
       argv,
+      unresolvedFlagNames: [],
       snapshot: undefined,
     };
     const startedAtMs = this.now().getTime();
@@ -332,16 +338,27 @@ export class EngineImpl implements Engine {
     if (typeof stricliExitCode !== "number") {
       return undefined;
     }
-    if (usageErrorCode(stricliExitCode) !== "CLI.UNKNOWN_COMMAND") {
+    if (usageErrorCode(stricliExitCode) === "CLI.UNKNOWN_COMMAND") {
+      const redirect = matchVerbRedirect(
+        this.redirects,
+        attemptedPath(state.argv),
+      );
+      return redirect === undefined
+        ? undefined
+        : { redirect, commandId: redirect.from.split(" ").join(".") };
+    }
+    if (usageErrorCode(stricliExitCode) !== "CLI.INVALID_ARGUMENTS") {
       return undefined;
     }
-    const redirect = matchVerbRedirect(
+    const segments = commandSegments(this.spec, state.prefix);
+    const redirect = matchFlagRedirect(
       this.redirects,
-      attemptedPath(state.argv),
+      segments.join(" "),
+      state.unresolvedFlagNames,
     );
     return redirect === undefined
       ? undefined
-      : { redirect, commandId: redirect.from.split(" ").join(".") };
+      : { redirect, commandId: segments.join(".") };
   }
 
   /** The onSettled delivery: once per run, after the exit code is

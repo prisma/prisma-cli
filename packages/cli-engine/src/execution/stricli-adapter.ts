@@ -8,6 +8,7 @@ import {
   type ApplicationText,
   buildCommand,
   buildRouteMap,
+  FlagNotFoundError,
   type CommandContext as StricliBaseContext,
   type Command as StricliCommand,
   type RouteMap as StricliRouteMap,
@@ -251,6 +252,11 @@ export function capturingText(state: RunState): ApplicationText {
   return {
     ...text_en,
     exceptionWhileParsingArguments(exc, ansiColor) {
+      /** stricli reports each parse failure separately, so a flag it
+       *  could not resolve is recorded here for the redirect table. */
+      if (exc instanceof FlagNotFoundError) {
+        state.unresolvedFlagNames.push(exc.input);
+      }
       const message = text_en.exceptionWhileParsingArguments.call(
         text_en,
         exc,

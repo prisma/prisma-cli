@@ -362,6 +362,140 @@ describe("retired verbs", () => {
   });
 });
 
+describe("retired flags", () => {
+  const GRAPH: RedirectSpec = {
+    from: "migration status",
+    flag: "graph",
+    replacement: "migration graph",
+    reason: "The --graph flag became its own command.",
+  };
+
+  test("typing one settles as CLI.COMMAND_MOVED naming the replacement", async () => {
+    const result = await redirectingCli([GRAPH]).run([
+      "migration",
+      "status",
+      "--graph",
+      "--json",
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    const envelope = erroredEnvelope(result.json);
+    expect(envelope.commandId).toBe("migration.status");
+    expect(envelope.error.code).toBe("CLI.COMMAND_MOVED");
+    expect(envelope.error.summary).toBe(
+      "`--graph` on `migration status` has been replaced",
+    );
+    expect(envelope.error.why).toBe("The --graph flag became its own command.");
+    expect(envelope.nextActions).toEqual([
+      {
+        kind: "run-command",
+        label: "Use the replacement",
+        command: "prisma-test migration graph",
+      },
+    ]);
+  });
+
+  test("the flag matches in either spelling the scanner accepts", async () => {
+    const cli = redirectingCli([
+      {
+        from: "migration status",
+        flag: "skipGenerate",
+        replacement: "migration status",
+      },
+    ]);
+
+    const kebab = await cli.run([
+      "migration",
+      "status",
+      "--skip-generate",
+      "--json",
+    ]);
+    expect(erroredEnvelope(kebab.json).error.code).toBe("CLI.COMMAND_MOVED");
+    expect(erroredEnvelope(kebab.json).error.summary).toBe(
+      "`--skip-generate` on `migration status` has been replaced",
+    );
+
+    const camel = await cli.run([
+      "migration",
+      "status",
+      "--skipGenerate",
+      "--json",
+    ]);
+    expect(erroredEnvelope(camel.json).error.code).toBe("CLI.COMMAND_MOVED");
+  });
+
+  test("a retired flag carrying a value still matches", async () => {
+    const result = await redirectingCli([GRAPH]).run([
+      "migration",
+      "status",
+      "--graph=wide",
+      "--json",
+    ]);
+
+    expect(erroredEnvelope(result.json).error.code).toBe("CLI.COMMAND_MOVED");
+  });
+
+  test("an unknown flag matching no redirect is unchanged", async () => {
+    const result = await redirectingCli([GRAPH]).run([
+      "migration",
+      "status",
+      "--nope",
+      "--json",
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(erroredEnvelope(result.json).error.code).toBe(
+      "CLI.INVALID_ARGUMENTS",
+    );
+  });
+
+  test("the same flag retired on another command does not match", async () => {
+    const list = defineCommand({
+      help: { summary: "List migrations" },
+      handler: async (_args, ctx) =>
+        ok(ctx.present({ data: null }, { human: () => [] })),
+    });
+    const cli = createTestCli({
+      commandFamilies: [
+        defineCommandFamily({
+          commands: { status, list },
+          redirects: [
+            {
+              from: "migration list",
+              flag: "graph",
+              replacement: "migration graph",
+            },
+          ],
+        }),
+      ],
+      commands: { "migration status": status, "migration list": list },
+      groups: MIGRATION_GROUP,
+      now: EPOCH,
+    });
+
+    const result = await cli.run(["migration", "status", "--graph", "--json"]);
+
+    expect(erroredEnvelope(result.json).error.code).toBe(
+      "CLI.INVALID_ARGUMENTS",
+    );
+  });
+
+  test("human mode renders the replacement on stderr", async () => {
+    const result = await redirectingCli([GRAPH]).run(
+      ["migration", "status", "--graph"],
+      { isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      "✖ [CLI.COMMAND_MOVED] `--graph` on `migration status` has been replaced\n" +
+        "  why: The --graph flag became its own command.\n" +
+        "→ Use the replacement: prisma-test migration graph\n",
+    );
+  });
+});
+
 describe("redirects stay out of help", () => {
   const cli = redirectingCli([
     { from: "migration apply", replacement: "migrate --to <ref>" },
