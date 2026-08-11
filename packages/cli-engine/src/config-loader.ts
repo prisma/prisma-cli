@@ -8,10 +8,15 @@
  * classic Prisma 7 config, which uses the same filename) fails early
  * with one typed diagnostic — the loader never partially interprets an
  * unmarked file, and never guesses.
+ *
+ * Evaluation goes through c12, the same loader prisma/prisma and
+ * prisma/composer use, because the shipped CLI runs on ordinary Node,
+ * which cannot import a .ts file. c12 transpiles it with jiti first.
+ * Every c12 feature beyond "evaluate this one file" is switched off
+ * below so discovery and merging stay exactly as they were.
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import type { Diagnostic } from "./protocol";
 import type { LoadedConfig } from "./runtime";
 import { PRISMA_CONFIG_VERSION } from "./runtime";
@@ -99,6 +104,29 @@ function unreadableDiagnostic(path: string, cause: unknown): Diagnostic {
 }
 
 /**
+ * Evaluates the file at `path` and returns its default export. c12 is
+ * imported here rather than at module scope so a run with no config
+ * file never pays for loading it or jiti.
+ */
+async function evaluateConfigFile(path: string, cwd: string): Promise<unknown> {
+  const c12 = await import("c12");
+  const result = await c12.loadConfig({
+    name: "prisma",
+    cwd,
+    configFile: path,
+    rcFile: false,
+    globalRc: false,
+    packageJson: false,
+    dotenv: false,
+    envName: false,
+    extend: false,
+    giget: false,
+    omit$Keys: false,
+  });
+  return result.config;
+}
+
+/**
  * The real-disk loader behind Runtime.config: reads prisma.config.ts
  * from cwd (cwd only — no walking up) and produces LoadedConfig. The
  * bin builds Runtime.config with this; tests hand in fixtures.
@@ -108,13 +136,12 @@ export async function loadConfig(cwd: string): Promise<LoadedConfig> {
   if (!existsSync(path)) {
     return { sections: {}, diagnostics: [] };
   }
-  let loaded: unknown;
+  let exported: unknown;
   try {
-    loaded = await import(pathToFileURL(path).href);
+    exported = await evaluateConfigFile(path, cwd);
   } catch (cause) {
     return fileLevelConfig(unreadableDiagnostic(path, cause));
   }
-  const exported = (loaded as { readonly default?: unknown }).default;
   if (!hasVersionMarker(exported)) {
     return fileLevelConfig(missingMarkerDiagnostic(path));
   }

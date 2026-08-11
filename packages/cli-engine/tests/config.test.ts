@@ -4,6 +4,8 @@
  * fail-early diagnostic, and needs.config validation wired end to end
  * through the harness.
  */
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -19,13 +21,11 @@ import {
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { createTestCli } from "@prisma/cli-engine/testing";
-import { describe, expect, test } from "vitest";
+import { afterAll, describe, expect, test } from "vitest";
 
-const FIXTURES = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "fixtures",
-  "config",
-);
+const TESTS_DIR = dirname(fileURLToPath(import.meta.url));
+
+const FIXTURES = join(TESTS_DIR, "fixtures", "config");
 
 const EPOCH = () => new Date(0);
 const T0 = "1970-01-01T00:00:00.000Z";
@@ -113,6 +113,21 @@ describe("loadConfig", () => {
     });
   });
 
+  test("every top-level key is a section, including 'extends', and values keep their types", async () => {
+    const loaded = await loadConfig(join(FIXTURES, "passthrough"));
+    expect(loaded.diagnostics).toEqual([]);
+    expect(Object.keys(loaded.sections)).toEqual(["extends", "values"]);
+    expect(loaded.sections.extends).toEqual({
+      note: "a top-level key named extends is just a section",
+    });
+    const values = loaded.sections.values as {
+      readonly list: unknown;
+      readonly when: unknown;
+    };
+    expect(values.list).toEqual([1, 2]);
+    expect(values.when).toBeInstanceOf(Date);
+  });
+
   test("a file that throws while evaluating yields a file-level diagnostic", async () => {
     const loaded = await loadConfig(join(FIXTURES, "unreadable"));
     expect(loaded.sections).toEqual({});
@@ -123,6 +138,105 @@ describe("loadConfig", () => {
       "boom at config evaluation time",
     );
   });
+});
+
+/**
+ * The shipped CLI is plain Node, not tsx, so the loader has to evaluate
+ * TypeScript by itself. These tests run the BUILT package in a separate
+ * `node` process that cannot execute TypeScript, and check both halves:
+ * a direct `import()` of the config file fails there, and loadConfig
+ * still returns its sections.
+ */
+const SANDBOX_ROOT = join(TESTS_DIR, "tmp");
+
+const PROBE = `
+import { pathToFileURL } from "node:url";
+import { loadConfig } from "@prisma/cli-engine";
+
+const [cwd, configPath] = process.argv.slice(2);
+
+let directImportError = null;
+try {
+  await import(pathToFileURL(configPath).href);
+} catch (error) {
+  directImportError = error.code ?? error.message;
+}
+
+const loaded = await loadConfig(cwd);
+process.stdout.write("__PROBE__" + JSON.stringify({ directImportError, loaded }));
+`;
+
+interface ProbeResult {
+  readonly directImportError: string | null;
+  readonly loaded: {
+    readonly sections: unknown;
+    readonly diagnostics: unknown;
+  };
+}
+
+function runProbeOnPlainNode(config: string, nodeArgs: string[]): ProbeResult {
+  mkdirSync(SANDBOX_ROOT, { recursive: true });
+  const cwd = mkdtempSync(join(SANDBOX_ROOT, "plain-node-"));
+  const configPath = join(cwd, "prisma.config.ts");
+  const probePath = join(cwd, "probe.mjs");
+  writeFileSync(configPath, config);
+  writeFileSync(probePath, PROBE);
+
+  const run = spawnSync(
+    process.execPath,
+    [...nodeArgs, probePath, cwd, configPath],
+    { encoding: "utf8" },
+  );
+  if (run.status !== 0) {
+    throw new Error(`probe exited ${run.status}:\n${run.stderr}`);
+  }
+  const marker = run.stdout.indexOf("__PROBE__");
+  if (marker === -1) {
+    throw new Error(`probe printed no result:\n${run.stdout}\n${run.stderr}`);
+  }
+  return JSON.parse(run.stdout.slice(marker + "__PROBE__".length));
+}
+
+afterAll(() => {
+  rmSync(SANDBOX_ROOT, { recursive: true, force: true });
+});
+
+describe("loadConfig on a Node that cannot execute TypeScript", () => {
+  test("reads a config when Node's TypeScript support is switched off", () => {
+    const probe = runProbeOnPlainNode(
+      `import { defineConfig } from "@prisma/cli-engine";
+
+const greeting: string = "hello from plain node";
+
+export default defineConfig({ toy: { greeting } });
+`,
+      ["--no-experimental-strip-types"],
+    );
+    expect(probe.directImportError).toBe("ERR_UNKNOWN_FILE_EXTENSION");
+    expect(probe.loaded).toEqual({
+      sections: { toy: { greeting: "hello from plain node" } },
+      diagnostics: [],
+    });
+  }, 60_000);
+
+  test("reads a config using TypeScript that Node cannot strip", () => {
+    const probe = runProbeOnPlainNode(
+      `import { defineConfig } from "@prisma/cli-engine";
+
+enum Level {
+  Verbose = "verbose",
+}
+
+export default defineConfig({ toy: { greeting: Level.Verbose } });
+`,
+      [],
+    );
+    expect(probe.directImportError).toBe("ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX");
+    expect(probe.loaded).toEqual({
+      sections: { toy: { greeting: "verbose" } },
+      diagnostics: [],
+    });
+  }, 60_000);
 });
 
 interface ToyConfig {
