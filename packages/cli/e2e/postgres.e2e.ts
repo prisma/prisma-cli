@@ -24,6 +24,15 @@ function requireDatabase(): string {
   return databaseId;
 }
 
+function requireConnection(): string {
+  if (connectionId === undefined) {
+    throw new Error(
+      "postgres connection create did not run or did not report an id",
+    );
+  }
+  return connectionId;
+}
+
 describeCommand("postgres create", () => {
   it("creates a database in the scratch project", async () => {
     const run = await scratch.run([
@@ -115,20 +124,19 @@ describeCommand("postgres connection list", () => {
     ]);
 
     expect(run.envelope.ok).toBe(true);
-    expect(JSON.stringify(run.envelope.result)).toContain(connectionId ?? "");
+    expect(JSON.stringify(run.envelope.result)).toContain(requireConnection());
   });
 });
 
 describeCommand("postgres connection rotate", () => {
   it("rotates the connection's secret", async () => {
-    if (connectionId === undefined) throw new Error("no connection to rotate");
     const run = await scratch.run([
       "postgres",
       "connection",
       "rotate",
-      connectionId,
+      requireConnection(),
       "--confirm",
-      connectionId,
+      requireConnection(),
     ]);
 
     expect(run.envelope.ok).toBe(true);
@@ -137,14 +145,13 @@ describeCommand("postgres connection rotate", () => {
 
 describeCommand("postgres connection remove", () => {
   it("removes the connection", async () => {
-    if (connectionId === undefined) throw new Error("no connection to remove");
     const run = await scratch.run([
       "postgres",
       "connection",
       "remove",
-      connectionId,
+      requireConnection(),
       "--confirm",
-      connectionId,
+      requireConnection(),
     ]);
 
     expect(run.envelope.ok).toBe(true);

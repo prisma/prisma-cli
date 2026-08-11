@@ -20,6 +20,13 @@ function requireBucket(): string {
   return bucketId;
 }
 
+function requireKey(): string {
+  if (keyId === undefined) {
+    throw new Error("bucket key create did not run or did not report an id");
+  }
+  return keyId;
+}
+
 describeCommand("bucket create", () => {
   it("creates a bucket in the scratch project", async () => {
     const run = await scratch.run([
@@ -72,21 +79,20 @@ describeCommand("bucket key list", () => {
     const run = await scratch.run(["bucket", "key", "list", requireBucket()]);
 
     expect(run.envelope.ok).toBe(true);
-    expect(JSON.stringify(run.envelope.result)).toContain(keyId ?? "");
+    expect(JSON.stringify(run.envelope.result)).toContain(requireKey());
   });
 });
 
 describeCommand("bucket key delete", () => {
   it("deletes the access key", async () => {
-    if (keyId === undefined) throw new Error("no key to delete");
     const run = await scratch.run([
       "bucket",
       "key",
       "delete",
       requireBucket(),
-      keyId,
+      requireKey(),
       "--confirm",
-      keyId,
+      requireKey(),
     ]);
 
     expect(run.envelope.ok).toBe(true);
