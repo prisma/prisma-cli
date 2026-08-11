@@ -121,6 +121,11 @@ export interface RunState {
    *  prompt's first await, so an unawaited prompt still blocks
    *  ctx.spawn from handing the same terminal to a child. */
   activePrompts: number;
+  /** Set while a ctx.packages operation is in flight. It serializes the
+   *  operations against each other, and blocks ctx.spawn: a child
+   *  writing the terminal directly while the manager's output is being
+   *  streamed leaves the two in no defined order. */
+  packageOperationRunning: boolean;
   /** A signal past the first delivery recorded during a live child,
    *  replayed as the force exit once the run has settled. */
   pendingForceExit: "SIGINT" | "SIGTERM" | undefined;
@@ -263,6 +268,7 @@ export class EngineImpl implements Engine {
       snapshot: undefined,
       delegatedTerminal: undefined,
       activePrompts: 0,
+      packageOperationRunning: false,
       pendingForceExit: undefined,
       spawnCredential: undefined,
     };

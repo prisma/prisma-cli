@@ -14,6 +14,7 @@ import {
   okVoid,
   type Result,
 } from "../protocol";
+import { constructionError } from "./command-tree";
 import type { Invocation } from "./engine";
 import { redactSecrets } from "./redaction";
 import { reportEvent } from "./reporting";
@@ -142,6 +143,11 @@ async function execute(
   placement: Placement,
 ): Promise<Result<void, CliStructuredError>> {
   const { runtime, signal } = invocation;
+  // A handler cancelled while it awaited something else announces
+  // nothing and spawns nothing: the operation never became one.
+  if (signal.aborted) {
+    throw signal.reason;
+  }
   const cwd = placement.cwd ?? runtime.cwd;
   const manager = await resolvePackageManager({
     cwd,
@@ -176,14 +182,16 @@ async function execute(
   } finally {
     output.flush();
   }
-  if (signal.aborted) {
-    throw signal.reason;
-  }
+  // A cancelled operation ran, so its step closes before the abort
+  // travels: a consumer pairing step events never sees an open one.
   reportEvent(invocation, {
     kind: "step-finished",
     step,
-    outcome: result.exitCode === 0 ? "ok" : "failed",
+    outcome: signal.aborted || result.exitCode !== 0 ? "failed" : "ok",
   });
+  if (signal.aborted) {
+    throw signal.reason;
+  }
   if (result.exitCode === 0) {
     return okVoid();
   }
@@ -199,23 +207,28 @@ async function execute(
 export function makePackageOperations(
   invocation: Invocation,
 ): PackageOperations {
-  let running = false;
+  const state = invocation.state;
   // The claim is taken before the first await, so a second operation
   // fired without awaiting the first still hits it.
   const perform = async (
     operation: Operation,
     placement: Placement,
   ): Promise<Result<void, CliStructuredError>> => {
-    if (running) {
-      throw new Error(
-        "@prisma/cli-engine: ctx.packages runs one operation at a time, so two package managers can never write one project at once",
+    if (state.delegatedTerminal !== undefined) {
+      throw constructionError(
+        `command '${state.commandId}' called ctx.packages while a child owned the terminal`,
       );
     }
-    running = true;
+    if (state.packageOperationRunning) {
+      throw constructionError(
+        "ctx.packages runs one operation at a time, so two package managers can never write one project at once",
+      );
+    }
+    state.packageOperationRunning = true;
     try {
       return await execute(invocation, operation, placement);
     } finally {
-      running = false;
+      state.packageOperationRunning = false;
     }
   };
 

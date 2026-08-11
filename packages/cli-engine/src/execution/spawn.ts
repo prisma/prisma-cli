@@ -82,6 +82,11 @@ export function makeSpawn(
         `command '${state.commandId}' called ctx.spawn while a prompt owned the terminal`,
       );
     }
+    if (state.packageOperationRunning) {
+      throw constructionError(
+        `command '${state.commandId}' called ctx.spawn while a package operation was still running`,
+      );
+    }
     const spawnChild = invocation.runtime.spawn;
     if (spawnChild === undefined) {
       throw new Error(

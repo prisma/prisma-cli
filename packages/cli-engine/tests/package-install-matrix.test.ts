@@ -519,10 +519,54 @@ describe("cancellation", () => {
     expect(cancelled.stderr).toBe(
       `▸ ${PNPM_ADD_RUNTIME}\n` +
         "pnpm: resolving\n" +
+        `✖ ${PNPM_ADD_RUNTIME}\n` +
         "✖ [CLI.ABORTED] The command was aborted before it completed.\n",
     );
     expect(failed.exitCode).toBe(2);
     expect(errorOf(failed.json).code).toBe("CLI.PACKAGE_MANAGER_FAILED");
+  });
+
+  test("json mode: the cancelled operation's step closes before the abort", async () => {
+    const controller = new AbortController();
+    const { runner: record } = fakeManager(KILLED_CHILD);
+    const aborting: PackageManagerRunner = async (request) => {
+      controller.abort();
+      return record(request);
+    };
+
+    const result = await cliWith({ runner: aborting }).run(JSON_MODE, {
+      cwd: "/project",
+      abort: controller.signal,
+    });
+
+    expect(result.exitCode).toBe(130);
+    expect(result.json.map((frame) => frame.kind)).toEqual([
+      "step-started",
+      "output",
+      "output",
+      "step-finished",
+      "result",
+    ]);
+    expect(
+      result.json
+        .filter((frame) => frame.kind === "step-finished")
+        .map((frame) => frame.outcome),
+    ).toEqual(["failed"]);
+  });
+
+  test("an operation begun after the abort announces nothing and runs nothing", async () => {
+    const controller = new AbortController();
+    const { calls, runner } = fakeManager();
+    controller.abort();
+
+    const result = await cliWith({ runner }).run(JSON_MODE, {
+      cwd: "/project",
+      abort: controller.signal,
+    });
+
+    expect(result.exitCode).toBe(130);
+    expect(calls).toEqual([]);
+    expect(result.events).toEqual([]);
   });
 });
 

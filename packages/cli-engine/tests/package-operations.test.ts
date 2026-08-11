@@ -575,6 +575,67 @@ describe("the two ways an operation does not resolve notOk", () => {
     });
   });
 
+  test("an operation while a child owns the terminal is a caller bug", async () => {
+    const { runs, runner } = recorder();
+    const toy = defineCommand({
+      help: { summary: "Installs mid-child" },
+      installsPackages: true,
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        const child = ctx.spawn({ command: "alchemy" });
+        const failure = await ctx.packages.install({ packages: ["prisma"] }).then(
+          () => "no error",
+          (cause: unknown) => String(cause),
+        );
+        await child;
+        return ok(ctx.present({ data: failure }, { human: () => [] }));
+      },
+    });
+    const cli = createTestCli({
+      commands: { toy },
+      packageManager: "npm",
+      packageManagerRunner: runner,
+    });
+
+    const result = await cli.run(["toy"]);
+
+    expect(result.presented?.data).toContain(
+      "called ctx.packages while a child owned the terminal",
+    );
+    expect(runs).toEqual([]);
+  });
+
+  test("a child spawned while an operation is running is a caller bug", async () => {
+    const { runs, runner } = recorder();
+    const toy = defineCommand({
+      help: { summary: "Spawns mid-install" },
+      installsPackages: true,
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        const installing = ctx.packages.install({ packages: ["prisma"] });
+        const failure = await ctx.spawn({ command: "alchemy" }).then(
+          () => "no error",
+          (cause: unknown) => String(cause),
+        );
+        await installing;
+        return ok(ctx.present({ data: failure }, { human: () => [] }));
+      },
+    });
+    const cli = createTestCli({
+      commands: { toy },
+      packageManager: "npm",
+      packageManagerRunner: runner,
+    });
+
+    const result = await cli.run(["toy"]);
+
+    expect(result.presented?.data).toContain(
+      "called ctx.spawn while a package operation was still running",
+    );
+    expect(result.spawns).toEqual([]);
+    expect(runs).toHaveLength(1);
+  });
+
   test("the child sees the run's own signal", async () => {
     let sameSignal: boolean | undefined;
     let captured: AbortSignal | undefined;
