@@ -183,7 +183,7 @@ describe("the engine owns the double-signal policy", () => {
           subscriber = undefined;
         };
       },
-      config: { sections: {}, diagnostics: [] },
+      loadConfig: async () => ({ sections: {}, diagnostics: [] }),
       managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
     };

@@ -67,6 +67,45 @@ describe("foreign-section references", () => {
   });
 });
 
+/**
+ * The config file's top-level keys are the declared section names, so a
+ * family may only claim a name that can be read back out of the file.
+ * c12 removes `extends` (its merge directive) and owns the `$`-prefixed
+ * keys, so a section by one of those names would silently vanish. That
+ * is a construction error, raised at build time.
+ */
+describe("section names the config file reserves", () => {
+  function familyClaiming(name: string) {
+    const section = defineConfigSection<null>({
+      name,
+      validate: () => ({ ok: true, value: null, diagnostics: [] }),
+    });
+    const command = configCommand(section);
+    return {
+      commandFamilies: [
+        defineCommandFamily({ configSection: section, commands: { command } }),
+      ],
+      commands: { command },
+    };
+  }
+
+  test.each([
+    "extends",
+    "$env",
+    "$meta",
+    "$prismaConfig",
+    "$production",
+  ])("a command family claiming the section '%s' fails construction", (name) => {
+    expect(() => createTestCli(familyClaiming(name))).toThrow(
+      `command family declares config section '${name}', a name the config file reserves`,
+    );
+  });
+
+  test("an ordinary section name still constructs", () => {
+    expect(() => createTestCli(familyClaiming("extended"))).not.toThrow();
+  });
+});
+
 describe("docs-URL derivation", () => {
   const BASE = "https://pris.ly/cli/errors/";
 

@@ -83,7 +83,13 @@ export function createTestCli(spec: {
   readonly commandFamilies?: readonly CommandFamily[];
   readonly commands: MountedTree;
   readonly groups?: Readonly<Record<string, { readonly brief: string }>>;
+  /** Seeds the sections the config file would have held. The engine
+   *  asks for them only when the command declares a config section. */
   readonly config?: Readonly<Record<string, unknown>>;
+  /** Replaces the loader outright — to assert what --config asked for,
+   *  to return file-level diagnostics, or to prove a run never reads
+   *  the config at all. Wins over `config` when both are given. */
+  readonly loadConfig?: Runtime["loadConfig"];
   /** Convenience manager seed: createSession runs its real claims
    *  derivation on this credential (mint the token with mintTestJwt). */
   readonly credential?: Credential;
@@ -198,7 +204,9 @@ export function createTestCli(spec: {
             signalListeners.delete(cb);
           };
         },
-        config: { sections: spec.config ?? {}, diagnostics: [] },
+        loadConfig:
+          spec.loadConfig ??
+          (async () => ({ sections: spec.config ?? {}, diagnostics: [] })),
         credentialManager,
         managementApiClientConfig,
         openUrl: spec.openUrl ?? ((): void => {}),

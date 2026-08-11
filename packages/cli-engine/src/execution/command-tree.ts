@@ -1,6 +1,7 @@
 import { flagRuntime, type PositionalSpec, positionalRuntime } from "../args";
 import type { CommandFamily } from "../command-family";
 import type { AnyCommand } from "../commands";
+import { reservedConfigSectionName } from "../config-loader";
 import type { EngineSpec } from "./engine";
 import { RESERVED_ALIASES, RESERVED_FLAG_NAMES } from "./shared-flags";
 
@@ -162,6 +163,25 @@ function validateSectionOwnership(
   }
 }
 
+/** The config file's top-level keys are the declared section names, so
+ *  the names have to be readable back out of the file. A section called
+ *  `extends` is not: c12 takes it as an instruction to merge another
+ *  config layer and removes it before the loader sees the object, so
+ *  the user's section silently disappears. `$`-prefixed names go the
+ *  same way — c12 owns $env, $<NODE_ENV> and $meta, and $prismaConfig
+ *  is the version marker. A family that claims one is broken at build
+ *  time, not at a user's runtime. */
+function validateConfigSectionNames(spec: EngineSpec): void {
+  for (const commandFamily of spec.commandFamilies) {
+    const name = commandFamily.configSection?.name;
+    if (name !== undefined && reservedConfigSectionName(name)) {
+      throw constructionError(
+        `command family declares config section '${name}', a name the config file reserves (a top-level 'extends' key is the config loader's merge directive, and '$'-prefixed keys are metadata) — no such section can be read back`,
+      );
+    }
+  }
+}
+
 function validateDocsBaseUrls(spec: EngineSpec): void {
   for (const commandFamily of spec.commandFamilies) {
     const base = commandFamily.docsBaseUrl;
@@ -179,6 +199,7 @@ export function buildCommandTree(spec: EngineSpec): CommandTreeNode {
     throw constructionError("createCli requires at least one mounted command");
   }
   validateDocsBaseUrls(spec);
+  validateConfigSectionNames(spec);
   const root = emptyNode();
   for (const path of paths) {
     const def = spec.commands[path];

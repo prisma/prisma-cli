@@ -29,6 +29,8 @@ import {
 import {
   applySharedFlags,
   defaultInteractive,
+  emptyConfigAssignment,
+  emptyConfigAssignmentError,
   type SharedFlags,
   sniffFormat,
 } from "./shared-flags";
@@ -85,6 +87,8 @@ export interface RunState {
   confirmValues: string[];
   interactive: boolean;
   colorEnabled: boolean;
+  /** The file `--config` named, if the run named one. */
+  configPath: string | undefined;
   resolved: boolean;
   settledExitCode: number | undefined;
   usageErrorText: string | undefined;
@@ -113,6 +117,9 @@ export interface Invocation {
   /** The engine-owned abort signal behind ctx.signal, fed by the
    *  runtime's signal subscription. */
   readonly signal: AbortSignal;
+  /** Every config section name the mounted command families declare —
+   *  the closed set of top-level keys prisma.config.ts may contain. */
+  readonly configSections: readonly string[];
 }
 
 export function buildEngine(
@@ -179,6 +186,7 @@ export class EngineImpl implements Engine {
   private readonly root: StricliRouteMap<EngineRunContext>;
   private readonly now: () => Date;
   private readonly delay: (ms: number, signal: AbortSignal) => Promise<void>;
+  private readonly configSections: readonly string[];
 
   constructor(
     spec: EngineSpec,
@@ -188,6 +196,7 @@ export class EngineImpl implements Engine {
     this.spec = spec;
     this.now = now;
     this.delay = delay;
+    this.configSections = declaredConfigSections(spec);
     this.root = buildRoutes(
       spec,
       buildCommandTree(spec),
@@ -213,6 +222,7 @@ export class EngineImpl implements Engine {
       confirmValues: [],
       interactive: defaultInteractive(runtime),
       colorEnabled: false,
+      configPath: undefined,
       resolved: false,
       settledExitCode: undefined,
       usageErrorText: undefined,
@@ -240,10 +250,16 @@ export class EngineImpl implements Engine {
       delay: this.delay,
       state,
       signal: controller.signal,
+      configSections: this.configSections,
     };
     if (versionRequested(argv)) {
       unsubscribe();
       return settleVersion(this.spec, invocation);
+    }
+    if (emptyConfigAssignment(argv)) {
+      unsubscribe();
+      settleErrored(invocation, emptyConfigAssignmentError());
+      return 2;
     }
     const stricliProcess = {
       /** stricli writes only help text here. In json mode stdout carries
@@ -442,6 +458,19 @@ export class EngineImpl implements Engine {
       settleThrown(invocation, cause);
     }
   }
+}
+
+/** The closed set of config section names: one per command family that
+ *  declares a section. Every other top-level key in prisma.config.ts is
+ *  reported by the loader. */
+function declaredConfigSections(spec: EngineSpec): readonly string[] {
+  return [
+    ...new Set(
+      spec.commandFamilies
+        .map((commandFamily) => commandFamily.configSection?.name)
+        .filter((name): name is string => name !== undefined),
+    ),
+  ];
 }
 
 function versionRequested(argv: readonly string[]): boolean {

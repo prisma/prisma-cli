@@ -41,10 +41,12 @@ export interface Runtime {
    */
   readonly onSignal: (cb: (signal: "SIGINT" | "SIGTERM") => void) => () => void;
   /**
-   * Loaded config + file-level diagnostics; the shell builds this via
-   * the unified loader. Tests hand in fixtures.
+   * Reads prisma.config.ts, on demand. The engine calls it only when
+   * the command it is about to run declares a config section, so a run
+   * that needs no config never touches the file. The bin wires the real
+   * disk loader; tests hand in fixtures.
    */
-  readonly config: LoadedConfig;
+  readonly loadConfig: (request: ConfigRequest) => Promise<LoadedConfig>;
   /**
    * The credential manager the bin wires. It is the only source of
    * the needs check, ctx.activeCredential, and ctx.api; absent means
@@ -94,6 +96,22 @@ export interface HostProcess {
   on(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;
   off(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;
   exit(code: number): never;
+}
+
+/** What the engine asks the loader for. */
+export interface ConfigRequest {
+  /**
+   * The file named by `--config`. The loader resolves it against the
+   * runtime's cwd and reports its absence. Absent means: look for
+   * prisma.config.ts in cwd, where absence is not an error.
+   */
+  readonly configPath?: string;
+  /**
+   * Every section name the mounted command families declare — the
+   * closed set of top-level keys the file may contain. Any other
+   * top-level key is reported.
+   */
+  readonly knownSections: readonly string[];
 }
 
 export interface LoadedConfig {

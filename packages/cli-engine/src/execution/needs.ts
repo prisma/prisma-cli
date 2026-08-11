@@ -5,7 +5,7 @@ import type { ConfigSection, SectionValidation } from "../config-section";
 import { credentialsRequiredError } from "../credential-errors";
 import type { CredentialManager } from "../credential-manager";
 import { CliStructuredError, type Diagnostic } from "../protocol";
-import type { Runtime } from "../runtime";
+import type { LoadedConfig, Runtime } from "../runtime";
 import type { Invocation } from "./engine";
 import { withDocsUrl, writeDiagnostic } from "./rendering";
 import { SEVERITY_RANK } from "./reporting";
@@ -134,11 +134,20 @@ async function checkCredentials(
   }
 }
 
-function checkConfiguration(
+/** The config file is read HERE and nowhere else, so a command with no
+ *  needs.config never touches it. The file `--config` named travels on
+ *  the run state; the closed set of section names comes from the
+ *  mounted command families. */
+async function checkConfiguration(
   section: ConfigSection<unknown>,
   invocation: Invocation,
-): NeedsOutcome {
-  const fileLevel = invocation.runtime.config.diagnostics.filter(
+): Promise<NeedsOutcome> {
+  const configPath = invocation.state.configPath;
+  const loaded = await invocation.runtime.loadConfig({
+    ...(configPath === undefined ? {} : { configPath }),
+    knownSections: invocation.configSections,
+  });
+  const fileLevel = loaded.diagnostics.filter(
     (entry) => entry.section === null,
   );
   if (fileLevel.length > 0) {
@@ -147,7 +156,7 @@ function checkConfiguration(
       fileLevel.slice(1).map((entry) => entry.diagnostic),
     );
   }
-  return validateConfigSection(section, invocation);
+  return validateConfigSection(section, loaded, invocation);
 }
 
 /** Validates the command's needed config section. The validator
@@ -155,9 +164,10 @@ function checkConfiguration(
  *  never throws — a throw is an engine-boundary bug, settled as one. */
 function validateConfigSection(
   section: ConfigSection<unknown>,
+  loaded: LoadedConfig,
   invocation: Invocation,
 ): NeedsOutcome {
-  const raw = invocation.runtime.config.sections[section.name];
+  const raw = loaded.sections[section.name];
   let validation: SectionValidation<unknown>;
   try {
     validation = section.validate(raw);

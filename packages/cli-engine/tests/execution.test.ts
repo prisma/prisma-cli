@@ -544,7 +544,7 @@ describe("needs preconditions", () => {
         throw new Error(`runtime.exit(${code})`);
       },
       onSignal: () => () => {},
-      config: {
+      loadConfig: async () => ({
         sections: {},
         diagnostics: [
           {
@@ -557,7 +557,7 @@ describe("needs preconditions", () => {
             },
           },
         ],
-      },
+      }),
       credentialManager:
         opts.signedIn === true
           ? new InMemoryCredentialManager({
@@ -731,7 +731,7 @@ describe("report() after the handler resolved", () => {
         throw new Error(`runtime.exit(${code})`);
       },
       onSignal: () => () => {},
-      config: { sections: {}, diagnostics: [] },
+      loadConfig: async () => ({ sections: {}, diagnostics: [] }),
       managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
     };
@@ -786,7 +786,7 @@ describe("credentials that cannot be read", () => {
         throw new Error(`runtime.exit(${code})`);
       },
       onSignal: () => () => {},
-      config: { sections: {}, diagnostics: [] },
+      loadConfig: async () => ({ sections: {}, diagnostics: [] }),
       credentialManager: {
         activeCredential: async () => {
           throw unreadable;

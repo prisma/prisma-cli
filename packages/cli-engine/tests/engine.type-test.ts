@@ -12,6 +12,7 @@ import type {
   CommandFamily,
   CommandHandler,
   CompletedEnvelope,
+  ConfigRequest,
   ConfigSection,
   CredentialManager,
   EngineEvent,
@@ -386,7 +387,10 @@ export const runtimeShape: Runtime = {
     throw new Error(String(code));
   },
   onSignal: () => () => {},
-  config: loadedConfig,
+  loadConfig: async (request: ConfigRequest) =>
+    request.knownSections.length === 0
+      ? { sections: {}, diagnostics: [] }
+      : loadedConfig,
   managementApi: { baseUrl: "https://test.invalid" },
   packageManager: "pnpm",
 };

@@ -492,7 +492,7 @@ describe("stdin cleanup", () => {
         throw new Error(`runtime.exit(${code})`);
       },
       onSignal: () => () => {},
-      config: { sections: {}, diagnostics: [] },
+      loadConfig: async () => ({ sections: {}, diagnostics: [] }),
       managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
     };
