@@ -80,6 +80,11 @@ The engine composes `file` + `args` and calls this; the bin spawns. The engine n
 
 The child's output is streamed to `onOutput` as it arrives and surfaced as `output` events (§3.8). Stderr is ALSO accumulated, bounded (last 64 KiB), and carried on the failure for the caller's predicate (§5) after redaction (§3.4) — streaming it and buffering it are not alternatives.
 
+Two cases the return type has to answer even though no child produced them, settled during implementation:
+
+- **`exitCode` when the child never ran or was killed by a signal.** Both leave the spawner with no exit code of its own, and the field is a plain `number`. It reports `1`. (127 was the alternative, but "command not found" is a lie for the signal case, and the two are not distinguishable without a second field nobody needs — the consumer only branches zero versus non-zero.)
+- **`stderr` when the child never started.** A process that failed to spawn wrote nothing, so the failure would carry no account of why the manager did not run. The adapter substitutes the spawn error's own short message, and ONLY when the child wrote nothing itself — so it can never displace real manager output, and it cannot accidentally satisfy §5's pnpm predicate, which matches `ERR_PNPM_*` and catalog/workspace text.
+
 **The bin implements this seam in the same change.** It is optional on the interface so the harness can exercise the absent-runner path, not so the shipped binary can omit it: with no bin implementation every `ctx.packages` call in the ORM and Composer ports fails `runner-unavailable`, which is the whole capability dead on arrival. `packages/cli` already depends on execa (`^9.6.1`); the implementation is a thin adapter, and it is the only place in the repo that spawns a package manager.
 
 ## 3. What the engine owns
