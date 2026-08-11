@@ -6,13 +6,12 @@ import {
 } from "../credential-manager";
 import type { EngineEvent } from "../events";
 import { CliStructuredError } from "../protocol";
-import {
-  type ChildResult,
-  engineSpawnedResult,
-  type SpawnChild,
-  type SpawnedChild,
-  type SpawnOptions,
-  type SpawnRequest,
+import type {
+  ChildResult,
+  SpawnChild,
+  SpawnedChild,
+  SpawnOptions,
+  SpawnRequest,
 } from "../spawn";
 import { constructionError } from "./command-tree";
 import { makeDebugLog } from "./debug";
@@ -190,12 +189,29 @@ async function runChild(
   const ended = new AbortController();
   armTerminationLadder(invocation, terminal, child, ended.signal);
   try {
-    return engineSpawnedResult(await child.ended);
+    return recordCompletedChild(invocation, await child.ended);
   } catch (cause) {
     throw spawnFailedError(request.command, cause);
   } finally {
     ended.abort();
   }
+}
+
+/** The engine mints the result the handler sees and keeps it on the
+ *  run: the settlement then reads the child's status from the engine's
+ *  own record rather than from anything the handler hands back, and a
+ *  handler whose spawn sits deep in its own layering can still ask how
+ *  the child ended through ctx.lastChild(). */
+function recordCompletedChild(
+  invocation: Invocation,
+  ended: ChildResult,
+): ChildResult {
+  const result = Object.freeze({
+    exitCode: ended.exitCode,
+    signal: ended.signal,
+  });
+  invocation.state.lastChild = result;
+  return result;
 }
 
 /** A programmatic abort of ctx.signal (a delivered signal is recorded

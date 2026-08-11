@@ -121,6 +121,7 @@ export function makeContext(
       return api;
     },
     spawn: makeSpawn(invocation, def),
+    lastChild: () => state.lastChild,
     report: (event) => reportEvent(invocation, event),
     prompt: makePromptSurface(invocation),
     openUrl: (request) => announceUrl(invocation, request),

@@ -21,8 +21,10 @@ export {
 export { type Cli, type CliRunHooks, createCli } from "../cli";
 export {
   type CommandFamily,
+  type CommandRedirect,
   defineCommandFamily,
   type MountedTree,
+  type RedirectSpec,
 } from "../command-family";
 export {
   type AnyCommand,

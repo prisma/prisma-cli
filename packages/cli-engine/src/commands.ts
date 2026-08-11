@@ -303,7 +303,8 @@ export function defineCommand<
  * ok(undefined) exits 0 — or 130/143 when a signal ended the run, which
  * the engine settles from its own record of that signal, not from
  * anything the handler returns; one that returns
- * ok(exitWithChildStatus(child)) exits with the child's status.
+ * ok(exitWithChildStatus()) exits with the status of the child it
+ * spawned.
  */
 export interface SessionCommandDefinition<
   TFlags extends Record<string, FlagSpec<unknown>> = Record<
