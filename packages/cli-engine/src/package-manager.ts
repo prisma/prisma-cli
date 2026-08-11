@@ -13,6 +13,31 @@ export interface PackageManagerCommand {
   readonly line: string;
 }
 
+/** One package-manager execution, handed to the host to spawn. */
+export interface PackageManagerRunRequest {
+  readonly file: string;
+  readonly args: readonly string[];
+  readonly cwd: string;
+  readonly signal: AbortSignal;
+  /** Called with each chunk as the child writes it, so the engine can
+   *  emit `output` events while the operation runs. */
+  readonly onOutput: (channel: "data" | "diagnostic", chunk: string) => void;
+}
+
+/** What the child produced: its exit code — non-zero covers a manager
+ *  that failed and an executable that was not there — and its stderr,
+ *  bounded to the last 64 KiB. */
+export interface PackageManagerRunResult {
+  readonly exitCode: number;
+  readonly stderr: string;
+}
+
+/** Spawns a package manager on the engine's behalf. A manager that
+ *  fails is a resolved result, never a rejection. */
+export type PackageManagerRunner = (
+  request: PackageManagerRunRequest,
+) => Promise<PackageManagerRunResult>;
+
 const MANAGERS: ReadonlySet<string> = new Set<PackageManagerId>([
   "npm",
   "pnpm",

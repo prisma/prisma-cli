@@ -83,7 +83,12 @@ export type {
   ManagementApiClientConfig,
   TokenStorage,
 } from "../management-api";
-export type { PackageManagerId } from "../package-manager";
+export type {
+  PackageManagerId,
+  PackageManagerRunner,
+  PackageManagerRunRequest,
+  PackageManagerRunResult,
+} from "../package-manager";
 export {
   type Block,
   type Format,

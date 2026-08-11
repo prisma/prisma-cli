@@ -312,6 +312,7 @@ export const createTestCliSpec: Parameters<typeof createTestCli>[0] = {
   config: { check: { strict: true } },
   managementApi: { baseUrl: "https://test.invalid" },
   packageManager: "pnpm",
+  packageManagerRunner: async () => ({ exitCode: 0, stderr: "" }),
   now: () => new Date(0),
 };
 
@@ -399,6 +400,23 @@ export const runtimeWithUnrecognizedPackageManager: Runtime = {
   ...runtimeShape,
   // @ts-expect-error detection always resolves a concrete manager, so there is no 'unknown'
   packageManager: "unknown",
+};
+
+export const runtimeWithPackageManagerRunner: Runtime = {
+  ...runtimeShape,
+  runPackageManager: async ({ file, args, cwd, signal, onOutput }) => {
+    onOutput("data", [file, ...args, cwd, String(signal.aborted)].join(" "));
+    return { exitCode: 0, stderr: "" };
+  },
+};
+
+export const runtimeWithUnknownOutputChannel: Runtime = {
+  ...runtimeShape,
+  runPackageManager: async ({ onOutput }) => {
+    // @ts-expect-error the seam's channels are the output event's channels
+    onOutput("stdout", "building");
+    return { exitCode: 0, stderr: "" };
+  },
 };
 
 // —————————————————————————————————————————————————————————————————————

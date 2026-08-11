@@ -18,6 +18,7 @@ import {
   STATE_FILE_ENV_VAR,
 } from "../auth/state-file";
 import { fetchWorkspaceName } from "../auth/workspace-name";
+import { runPackageManager } from "./package-manager-runner";
 
 export type SignalProcess = Pick<HostProcess, "on" | "off" | "exit">;
 
@@ -95,5 +96,6 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       await open(url);
     },
     managementApi: { baseUrl: apiBaseUrl },
+    runPackageManager,
   };
 }

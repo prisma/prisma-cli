@@ -4,9 +4,17 @@
  * real temporary directories, one case per precedence step, so a
  * behavior change in package-manager-detector is caught here.
  */
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   installCommand,
@@ -15,6 +23,8 @@ import {
   resolvePackageManager,
   runCommand,
 } from "../src/package-manager";
+
+const CHILD_PROCESS_IMPORT = /["'](?:node:)?child_process["']/;
 
 function invokedBy(manager: string): Record<string, string> {
   return {
@@ -222,4 +232,23 @@ describe("runCommand", () => {
       line: "pnpm dlx skills",
     });
   });
+});
+
+test("no engine source can spawn: child_process is absent from its imports", async () => {
+  const src = fileURLToPath(new URL("../src", import.meta.url));
+  const entries = await readdir(src, { recursive: true });
+  const sources = await Promise.all(
+    entries
+      .filter((entry) => entry.endsWith(".ts"))
+      .map(async (entry) => ({
+        entry,
+        text: await readFile(join(src, entry), "utf8"),
+      })),
+  );
+
+  expect(
+    sources
+      .filter(({ text }) => CHILD_PROCESS_IMPORT.test(text))
+      .map(({ entry }) => entry),
+  ).toEqual([]);
 });

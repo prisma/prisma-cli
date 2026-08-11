@@ -1,6 +1,6 @@
 import type { CredentialManager } from "./credential-manager";
 import type { ManagementApiClientConfig } from "./management-api";
-import type { PackageManagerId } from "./package-manager";
+import type { PackageManagerId, PackageManagerRunner } from "./package-manager";
 import type { Diagnostic } from "./protocol";
 
 /** Minimal structural stream types; no NodeJS.* in the public surface. */
@@ -75,6 +75,14 @@ export interface Runtime {
    * the project at cwd.
    */
   readonly packageManager?: PackageManagerId;
+  /**
+   * Spawns the package manager the engine composed. The engine never
+   * imports child_process; this is the only way a manager runs. It is
+   * optional so a harness can exercise the no-runner path — every
+   * shipped host wires it, and a host without it can run no package
+   * operation at all.
+   */
+  readonly runPackageManager?: PackageManagerRunner;
 }
 
 /**
