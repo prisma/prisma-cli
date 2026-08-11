@@ -2,6 +2,7 @@ import type { CredentialManager } from "./credential-manager";
 import type { ManagementApiClientConfig } from "./management-api";
 import type { Diagnostic } from "./protocol";
 import type { SpawnChild } from "./spawn";
+import type { TelemetryPayload } from "./telemetry/payload";
 
 /** Minimal structural stream types; no NodeJS.* in the public surface. */
 export interface OutputStream {
@@ -29,6 +30,13 @@ export interface Runtime {
     readonly stdout: boolean;
     readonly stderr: boolean;
   };
+  /**
+   * True when this process runs in CI, where telemetry never reports.
+   * The bin wires `ci-info`; the engine detects CI no more than it
+   * detects a TTY. Required, not optional: a host that forgot it would
+   * silently report from CI.
+   */
+  readonly isCI: boolean;
   /**
    * Ends the process. The bin passes process.exit; the engine is the
    * only caller (second-signal force exit, 130/143).
@@ -80,6 +88,13 @@ export interface Runtime {
    * handler run, so ctx.spawn is never reached.
    */
   readonly spawn?: SpawnChild;
+  /**
+   * Fire-and-forget delivery of one composed telemetry payload. The bin
+   * owns the process work and the detachment, which is why the engine
+   * imports no child_process and performs no network I/O for telemetry.
+   * Absent means this host delivers nothing — not an error.
+   */
+  readonly spawnTelemetry?: (payload: TelemetryPayload) => void;
   /** Management API endpoint config; the bin derives baseUrl from env. */
   readonly managementApi: { readonly baseUrl: string };
   /**

@@ -114,6 +114,8 @@ export {
   type SpawnOptions,
   type SpawnRequest,
 } from "../spawn";
+export type { TelemetryPayload } from "../telemetry/payload";
+export type { TelemetryDeclaration } from "../telemetry/report";
 export {
   claimedExpiresAt,
   claimedIdentity,

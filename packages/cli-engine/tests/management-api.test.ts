@@ -87,6 +87,7 @@ function makeRuntime(overrides?: {
   let stderrText = "";
   let stdoutText = "";
   return {
+    isCI: false,
     stdout: {
       write: (text) => {
         stdoutText += text;

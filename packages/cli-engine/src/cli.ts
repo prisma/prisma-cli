@@ -2,6 +2,7 @@ import type { CommandFamily, MountedTree } from "./command-family";
 import { buildEngine } from "./execution/engine";
 import type { RunSummary } from "./run-summary";
 import type { Runtime } from "./runtime";
+import type { TelemetryDeclaration } from "./telemetry/report";
 
 /**
  * The observation hooks a bin may attach to a run. Deliberately
@@ -43,6 +44,14 @@ export function createCli(spec: {
     Record<string, { readonly brief: string; readonly description?: string }>
   >;
   readonly commands: MountedTree;
+  /**
+   * Declaring this turns telemetry on: the engine reads the user's
+   * preference, discloses on the first enabled run, mints the shared
+   * installation id, and hands one payload per run to
+   * `Runtime.spawnTelemetry`. Omitting it means the CLI reports
+   * nothing — no config read, no disclosure, no mint, no seam call.
+   */
+  readonly telemetry?: TelemetryDeclaration;
 }): Cli {
   const engine = buildEngine(spec);
   return {

@@ -66,3 +66,25 @@ export function sanitizeCommandSnapshot(
     ),
   };
 }
+
+/**
+ * The whole payload, from the run's identity plus its snapshot. The
+ * snapshot reaches the payload only through
+ * {@link sanitizeCommandSnapshot}, so no field of it can arrive by
+ * another route. `databaseTarget` is left unset — see its doc-block.
+ */
+export function composeTelemetryPayload(inputs: {
+  readonly installationId: string;
+  readonly version: string;
+  readonly projectRoot: string;
+  readonly endpoint: string;
+  readonly snapshot: EngineCommandSnapshot;
+}): TelemetryPayload {
+  return {
+    installationId: inputs.installationId,
+    version: inputs.version,
+    projectRoot: inputs.projectRoot,
+    endpoint: inputs.endpoint,
+    ...sanitizeCommandSnapshot(inputs.snapshot),
+  };
+}

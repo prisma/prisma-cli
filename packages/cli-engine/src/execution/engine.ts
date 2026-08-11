@@ -15,6 +15,10 @@ import { CliStructuredError, type Result } from "../protocol";
 import type { EngineCommandSnapshot, RunSummary } from "../run-summary";
 import type { InputStream, Runtime } from "../runtime";
 import { type ChildStatusSettlement, isChildStatusSettlement } from "../spawn";
+import {
+  reportCommandStart,
+  type TelemetryDeclaration,
+} from "../telemetry/report";
 import { makeContext } from "./command-context";
 import { buildCommandSnapshot } from "./command-snapshot";
 import { buildCommandTree, type CommandTreeEntry } from "./command-tree";
@@ -58,6 +62,8 @@ export interface EngineSpec {
     Record<string, { readonly brief: string; readonly description?: string }>
   >;
   readonly commands: MountedTree;
+  /** Absent means this CLI reports nothing. */
+  readonly telemetry?: TelemetryDeclaration;
 }
 
 export interface RunHooks {
@@ -378,6 +384,25 @@ export class EngineImpl implements Engine {
     }
   }
 
+  /** The telemetry fire, at command start: once per run, from the
+   *  parse-time snapshot, before the handler and before any command
+   *  output. A CLI that declared no telemetry block reports nothing —
+   *  no config read, no disclosure, no mint, no seam call. Runs that
+   *  never mount a command never reach here and so never report. */
+  private fireTelemetry(invocation: Invocation): void {
+    const { snapshot } = invocation.state;
+    if (this.spec.telemetry === undefined || snapshot === undefined) {
+      return;
+    }
+    reportCommandStart({
+      host: invocation.runtime,
+      telemetry: this.spec.telemetry,
+      name: this.spec.name,
+      version: this.spec.version,
+      snapshot,
+    });
+  }
+
   private async executeMounted(
     invocation: Invocation,
     entry: CommandTreeEntry,
@@ -393,6 +418,7 @@ export class EngineImpl implements Engine {
       state.argv,
       values,
     );
+    this.fireTelemetry(invocation);
     if (entry.def.kind === "server-command") {
       await this.executeServer(invocation, entry, rawFlags);
       return;

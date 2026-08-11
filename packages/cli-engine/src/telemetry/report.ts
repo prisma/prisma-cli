@@ -1,0 +1,127 @@
+import type { EngineCommandSnapshot } from "../run-summary";
+import type { Runtime } from "../runtime";
+import { resolveTelemetryEndpoint } from "./endpoint";
+import { resolveGating } from "./gating";
+import { composeTelemetryPayload } from "./payload";
+import {
+  ensureInstallationId,
+  readUserConfig,
+  userConfigPath,
+} from "./user-config";
+
+/**
+ * What a CLI declares to report. One field: the endpoint, the opt-out
+ * variable names, the config path and the disclosure wording are Prisma
+ * constants the engine owns. Omitting the declaration means the CLI
+ * reports nothing at all.
+ */
+export interface TelemetryDeclaration {
+  /** Named in the first-run disclosure as where to read what is collected. */
+  readonly docsUrl: string;
+}
+
+/** The Runtime members reporting reads. */
+export type TelemetryHost = Pick<
+  Runtime,
+  "env" | "cwd" | "stderr" | "isCI" | "spawnTelemetry"
+>;
+
+export interface TelemetryReportInputs {
+  readonly host: TelemetryHost;
+  readonly telemetry: TelemetryDeclaration;
+  /** The CLI's own name and version, from `createCli`. */
+  readonly name: string;
+  readonly version: string;
+  readonly snapshot: EngineCommandSnapshot;
+}
+
+/**
+ * The command path the whole telemetry surface is exempt from. Running
+ * `telemetry disable` must not report a usage event on its way to
+ * disabling, and `telemetry status` must not mint an id while merely
+ * reporting state.
+ */
+const EXEMPT_COMMAND = "telemetry";
+
+/**
+ * The one-time first-run disclosure. The resolved absolute path to the
+ * user-level config file is substituted in so the user can see exactly
+ * which file to edit; `<name> telemetry disable` is named as the
+ * primary, friendliest opt-out, alongside the env vars and that edit.
+ */
+export function firstRunNotice(
+  cliName: string,
+  docsUrl: string,
+  configPath: string,
+): string {
+  return [
+    "Prisma collects anonymous CLI usage data, enabled by default.",
+    `What's collected and why: ${docsUrl}.`,
+    `Opt out: run "${cliName} telemetry disable", set DO_NOT_TRACK=1 or`,
+    `PRISMA_NEXT_DISABLE_TELEMETRY=1, or set "enableTelemetry": false in ${configPath}.`,
+  ].join(" ");
+}
+
+/**
+ * The first enabled run on this machine: disclose, then mint. Both are
+ * best-effort. A failed write returns no id, which skips the event
+ * rather than sending a junk one, and leaves the notice to print again
+ * next run — the stored id is what makes it print exactly once.
+ */
+function discloseAndMint(inputs: TelemetryReportInputs): string | undefined {
+  const { host } = inputs;
+  try {
+    host.stderr.write(
+      `${firstRunNotice(inputs.name, inputs.telemetry.docsUrl, userConfigPath(host.env))}\n`,
+    );
+  } catch {
+    // An unwritable stderr must not cost the run its command.
+  }
+  try {
+    return ensureInstallationId(host.env);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Report one run, at command start — before the handler, from the
+ * parse-time snapshot. Exempt the telemetry command, resolve gating,
+ * disclose and mint on a first enabled run, compose, hand the payload to
+ * the host's seam. The engine composes; the host spawns.
+ *
+ * Every failure is swallowed: a malformed stored config, an unwritable
+ * config directory and a throwing seam all leave the run's exit code,
+ * stdout and stderr exactly as they would have been.
+ */
+export function reportCommandStart(inputs: TelemetryReportInputs): void {
+  try {
+    const { host, snapshot } = inputs;
+    if (snapshot.commandPath[0] === EXEMPT_COMMAND) {
+      return;
+    }
+    const config = readUserConfig(host.env);
+    if (!resolveGating({ env: host.env, config, inCI: host.isCI }).enabled) {
+      return;
+    }
+    const stored = config.installationId;
+    const installationId =
+      typeof stored === "string" && stored.length > 0
+        ? stored
+        : discloseAndMint(inputs);
+    if (installationId === undefined) {
+      return;
+    }
+    host.spawnTelemetry?.(
+      composeTelemetryPayload({
+        installationId,
+        version: inputs.version,
+        projectRoot: host.cwd,
+        endpoint: resolveTelemetryEndpoint(host.env),
+        snapshot,
+      }),
+    );
+  } catch {
+    // Telemetry must never break a command.
+  }
+}

@@ -19,6 +19,7 @@ import {
 } from "../auth/state-file";
 import { fetchWorkspaceName } from "../auth/workspace-name";
 import { spawnChild } from "./spawn";
+import { isCI } from "./telemetry/is-ci";
 
 export type SignalProcess = Pick<HostProcess, "on" | "off" | "exit">;
 
@@ -91,6 +92,7 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       stdout: proc.stdout.isTTY === true,
       stderr: proc.stderr.isTTY === true,
     },
+    isCI: isCI(),
     exit: (code) => proc.exit(code),
     onSignal: makeOnSignal(proc),
     loadConfig: (configPath) => loadConfig(proc.cwd(), configPath),
