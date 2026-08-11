@@ -190,6 +190,62 @@ describe("construction-time validation", () => {
     );
   });
 
+  test("two families claiming the same retired flag fail construction", () => {
+    const first = defineCommandFamily({
+      commands: { status },
+      redirects: [
+        {
+          from: "migration status",
+          flag: "graph",
+          replacement: "migration graph",
+        },
+      ],
+    });
+    const second = defineCommandFamily({
+      commands: {},
+      redirects: [
+        {
+          from: "migration status",
+          flag: "graph",
+          replacement: "migration graph --wide",
+        },
+      ],
+    });
+
+    expect(() =>
+      createTestCli({
+        commandFamilies: [first, second],
+        commands: { "migration status": status },
+        groups: MIGRATION_GROUP,
+      }),
+    ).toThrow(
+      "redirect for flag 'graph' on 'migration status' is declared twice",
+    );
+  });
+
+  test("a retired flag named in kebab-case fails construction", () => {
+    const family = defineCommandFamily({
+      commands: { status },
+      redirects: [
+        {
+          from: "migration status",
+          flag: "skip-generate",
+          replacement: "migration status",
+        },
+      ],
+    });
+
+    expect(() =>
+      createTestCli({
+        commandFamilies: [family],
+        commands: { "migration status": status },
+        groups: MIGRATION_GROUP,
+      }),
+    ).toThrow(
+      "redirect for flag 'skip-generate' on 'migration status' must name the flag in camelCase",
+    );
+  });
+
   test("a verb and a flag redirect may share a path", () => {
     const family = defineCommandFamily({
       commands: { status },
