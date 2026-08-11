@@ -4,7 +4,11 @@ import {
   type RouteMap as StricliRouteMap,
 } from "@stricli/core";
 import { type PositionalSpec, positionalRuntime } from "../args";
-import type { CommandFamily, MountedTree } from "../command-family";
+import type {
+  CommandFamily,
+  CommandRedirect,
+  MountedTree,
+} from "../command-family";
 import type { AnyCommand } from "../commands";
 import type { CommandContext } from "../context";
 import type { ActiveCredential } from "../credential-manager";
@@ -17,7 +21,14 @@ import type { InputStream, Runtime } from "../runtime";
 import { type ChildStatusSettlement, isChildStatusSettlement } from "../spawn";
 import { makeContext } from "./command-context";
 import { buildCommandSnapshot } from "./command-snapshot";
-import { buildCommandTree, type CommandTreeEntry } from "./command-tree";
+import {
+  buildCommandTree,
+  buildRedirectTable,
+  type CommandTreeEntry,
+  matchFlagRedirect,
+  matchVerbRedirect,
+  type RedirectTable,
+} from "./command-tree";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import {
   configFlagGivenNoValue,
@@ -25,8 +36,10 @@ import {
   versionFlagGiven,
 } from "./pre-parse-argv";
 import {
+  commandSegments,
   settleBug,
   settleChildStatus,
+  settleCommandMoved,
   settleCompleted,
   settleErrored,
   settleSessionCompleted,
@@ -51,6 +64,7 @@ import {
   buildRoutes,
   capturingText,
   type EngineRunContext,
+  usageErrorCode,
 } from "./stricli-adapter";
 
 export interface EngineSpec {
@@ -113,6 +127,9 @@ export interface RunState {
   /** The run's raw argv — consulted only to derive which flag NAMES
    *  were explicitly passed for the settlement snapshot. */
   argv: readonly string[];
+  /** Flags the parse could not resolve, spelled as the user typed them
+   *  and without their leading dashes; consulted for flag redirects. */
+  unresolvedFlagNames: string[];
   /** The value-free snapshot captured when a command mounted;
    *  undefined for runs that never reached one (help, usage errors). */
   snapshot: EngineCommandSnapshot | undefined;
@@ -222,6 +239,7 @@ type ErasedServerHandler = (
 export class EngineImpl implements Engine {
   private readonly spec: EngineSpec;
   private readonly root: StricliRouteMap<EngineRunContext>;
+  private readonly redirects: RedirectTable;
   private readonly now: () => Date;
   private readonly delay: (ms: number, signal: AbortSignal) => Promise<void>;
   private readonly configSections: readonly string[];
@@ -242,6 +260,7 @@ export class EngineImpl implements Engine {
       (invocation, entry, flags, values) =>
         this.executeMounted(invocation, entry, flags, values),
     );
+    this.redirects = buildRedirectTable(spec);
   }
 
   async execute(
@@ -268,6 +287,7 @@ export class EngineImpl implements Engine {
       stricliStderr: "",
       stdinIterator: undefined,
       argv,
+      unresolvedFlagNames: [],
       snapshot: undefined,
       delegatedTerminal: undefined,
       activePrompts: 0,
@@ -352,12 +372,64 @@ export class EngineImpl implements Engine {
     const exitCode =
       state.settledExitCode !== undefined
         ? state.settledExitCode
-        : settleUnhandled(this.spec, invocation, stricliProcess.exitCode);
+        : this.settleRouting(invocation, stricliProcess.exitCode);
     this.fireOnSettled(invocation, exitCode, startedAtMs);
     if (state.pendingForceExit !== undefined) {
       runtime.exit(state.pendingForceExit === "SIGTERM" ? 143 : 130);
     }
     return exitCode;
+  }
+
+  /** stricli routed or parsed nothing runnable. When the redirect table
+   *  claims the invocation the user typed, the run names its
+   *  replacement; otherwise it settles as the usage error it is. */
+  private settleRouting(
+    invocation: Invocation,
+    stricliExitCode: number | string | null | undefined,
+  ): number {
+    const matched = this.matchRedirect(invocation.state, stricliExitCode);
+    if (matched === undefined) {
+      return settleUnhandled(this.spec, invocation, stricliExitCode);
+    }
+    return settleCommandMoved(
+      this.spec,
+      invocation,
+      matched.redirect,
+      matched.commandId,
+    );
+  }
+
+  private matchRedirect(
+    state: RunState,
+    stricliExitCode: number | string | null | undefined,
+  ):
+    | { readonly redirect: CommandRedirect; readonly commandId: string }
+    | undefined {
+    const failure =
+      typeof stricliExitCode === "number"
+        ? usageErrorCode(stricliExitCode)
+        : undefined;
+    if (failure === "CLI.UNKNOWN_COMMAND") {
+      const redirect = matchVerbRedirect(
+        this.redirects,
+        attemptedPath(state.argv),
+      );
+      return redirect === undefined
+        ? undefined
+        : { redirect, commandId: redirect.from.replaceAll(" ", ".") };
+    }
+    if (failure !== "CLI.INVALID_ARGUMENTS") {
+      return undefined;
+    }
+    const segments = commandSegments(this.spec, state.prefix);
+    const redirect = matchFlagRedirect(
+      this.redirects,
+      segments.join(" "),
+      state.unresolvedFlagNames,
+    );
+    return redirect === undefined
+      ? undefined
+      : { redirect, commandId: segments.join(".") };
   }
 
   /** The onSettled delivery: once per run, after the exit code is
@@ -579,6 +651,19 @@ export class EngineImpl implements Engine {
       settleThrown(invocation, cause);
     }
   }
+}
+
+/** The path the user typed, for argv that routed to no command: the
+ *  leading tokens up to the first flag or argument escape. */
+function attemptedPath(argv: readonly string[]): readonly string[] {
+  const segments: string[] = [];
+  for (const token of argv) {
+    if (token.startsWith("-")) {
+      break;
+    }
+    segments.push(token);
+  }
+  return segments;
 }
 
 /** The closed set of config section names. Every mounted command

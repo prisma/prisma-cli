@@ -1,10 +1,16 @@
+import { kebabCase } from "../args";
+import type { CommandRedirect } from "../command-family";
 import type {
   AnyCommand,
   CompletedEnvelope,
   ErroredEnvelope,
 } from "../commands";
 import { PRESENTED, type PresentedResult } from "../presentation";
-import { CliStructuredError, type Diagnostic } from "../protocol";
+import {
+  CliStructuredError,
+  type Diagnostic,
+  type NextAction,
+} from "../protocol";
 import { type ChildStatusSettlement, isEngineSpawned } from "../spawn";
 import type { EngineSpec, Invocation } from "./engine";
 import {
@@ -15,7 +21,7 @@ import {
   writeDiagnostic,
 } from "./rendering";
 import { emitFrame } from "./reporting";
-import { usageErrorCode } from "./stricli-adapter";
+import { resolveExample, usageErrorCode } from "./stricli-adapter";
 
 function undocumentedExitCode(
   def: AnyCommand,
@@ -324,6 +330,58 @@ export function settleVersion(
   return 0;
 }
 
+/** What the user typed that no longer exists: a retired path, or a
+ *  retired flag on a command that still exists. */
+function retiredInvocation(redirect: CommandRedirect): string {
+  if (redirect.flag === undefined) {
+    return `\`${redirect.from}\``;
+  }
+  return `\`--${kebabCase(redirect.flag)}\` on \`${redirect.from}\``;
+}
+
+/** A retired invocation the redirect table claims: the run names its
+ *  replacement instead of failing as an unknown command or flag. A
+ *  retired flag can name a server command, whose stdout belongs to a
+ *  foreign client — so this settlement renders to stderr for the same
+ *  reason settleUnhandled does. */
+export function settleCommandMoved(
+  spec: EngineSpec,
+  invocation: Invocation,
+  redirect: CommandRedirect,
+  commandId: string,
+): number {
+  if (spec.commands[redirect.from]?.kind === "server-command") {
+    invocation.state.format = "human";
+  }
+  const useReplacement: NextAction = {
+    kind: "run-command",
+    label: "Use the replacement",
+    command: resolveExample(redirect.replacement, spec.name),
+  };
+  emitErrored(invocation, {
+    ok: false,
+    commandId,
+    error: {
+      code: "CLI.COMMAND_MOVED",
+      severity: "error",
+      summary: `${retiredInvocation(redirect)} has been replaced`,
+      ...(redirect.reason === undefined ? {} : { why: redirect.reason }),
+      nextActions: [useReplacement],
+    },
+    diagnostics: [],
+    nextActions: [useReplacement],
+  });
+  return 2;
+}
+
+/** The command path stricli resolved, without the binary name. */
+export function commandSegments(
+  spec: EngineSpec,
+  prefix: readonly string[],
+): readonly string[] {
+  return prefix[0] === spec.name ? prefix.slice(1) : prefix;
+}
+
 /** Maps stricli's own settlement (parse/route failures, framework bugs)
  *  onto the engine protocol when the pipeline never settled. A failure
  *  addressed at a server command renders to stderr — a foreign client on
@@ -338,8 +396,7 @@ export function settleUnhandled(
   if (raw === 0) {
     return 0;
   }
-  const segments =
-    state.prefix[0] === spec.name ? state.prefix.slice(1) : state.prefix;
+  const segments = commandSegments(spec, state.prefix);
   if (spec.commands[segments.join(" ")]?.kind === "server-command") {
     state.format = "human";
   }
