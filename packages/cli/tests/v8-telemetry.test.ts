@@ -179,8 +179,8 @@ describe("prisma-v8 telemetry enable", () => {
       `Telemetry enabled. Preference stored in ${configPath}.\n`,
     );
     const config = storedConfig();
-    expect(config["enableTelemetry"]).toBe(true);
-    expect(config["installationId"]).toMatch(V4_UUID);
+    expect(config.enableTelemetry).toBe(true);
+    expect(config.installationId).toMatch(V4_UUID);
   });
 
   it("preserves an existing installation id rather than rotating it", async () => {
@@ -192,8 +192,8 @@ describe("prisma-v8 telemetry enable", () => {
     });
 
     const config = storedConfig();
-    expect(config["enableTelemetry"]).toBe(true);
-    expect(config["installationId"]).toBe("sticky-id");
+    expect(config.enableTelemetry).toBe(true);
+    expect(config.installationId).toBe("sticky-id");
   });
 
   it("serializes the consent decision as the json envelope result", async () => {
@@ -236,8 +236,8 @@ describe("prisma-v8 telemetry disable", () => {
     });
 
     const config = storedConfig();
-    expect(config["enableTelemetry"]).toBe(false);
-    expect(config["installationId"]).toBe("sticky-id");
+    expect(config.enableTelemetry).toBe(false);
+    expect(config.installationId).toBe("sticky-id");
   });
 
   it("serializes the consent decision as the json envelope result", async () => {

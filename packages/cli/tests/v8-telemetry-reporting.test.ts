@@ -128,7 +128,7 @@ describe("the runtime's telemetry seam", () => {
 
 describe("the suite never reports", () => {
   it("the harness sets PRISMA_DISABLE_TELEMETRY=1", () => {
-    expect(process.env["PRISMA_DISABLE_TELEMETRY"]).toBe("1");
+    expect(process.env.PRISMA_DISABLE_TELEMETRY).toBe("1");
   });
 
   it("a real run neither forks the sender nor writes a config file", async () => {
@@ -138,7 +138,7 @@ describe("the suite never reports", () => {
         XDG_CONFIG_HOME: configRoot,
         APPDATA: configRoot,
         PRISMA_AUTH_FILE: join(configRoot, "auth.json"),
-        PRISMA_DISABLE_TELEMETRY: process.env["PRISMA_DISABLE_TELEMETRY"],
+        PRISMA_DISABLE_TELEMETRY: process.env.PRISMA_DISABLE_TELEMETRY,
       },
     });
 

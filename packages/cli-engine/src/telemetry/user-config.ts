@@ -62,20 +62,20 @@ function set(raw: string | undefined): string | undefined {
  */
 function configDir(env: Env): string | undefined {
   if (process.platform === "win32") {
-    const appData = set(env["APPDATA"]);
+    const appData = set(env.APPDATA);
     if (appData !== undefined) {
       return join(appData, APP_DIR);
     }
-    const userProfile = set(env["USERPROFILE"]);
+    const userProfile = set(env.USERPROFILE);
     return userProfile === undefined
       ? undefined
       : join(userProfile, "AppData", "Roaming", APP_DIR);
   }
-  const xdg = set(env["XDG_CONFIG_HOME"]);
+  const xdg = set(env.XDG_CONFIG_HOME);
   if (xdg !== undefined) {
     return join(xdg, APP_DIR);
   }
-  const home = set(env["HOME"]);
+  const home = set(env.HOME);
   return home === undefined ? undefined : join(home, ".config", APP_DIR);
 }
 
@@ -132,11 +132,8 @@ export function readUserConfig(env: Env): UserConfig {
 export function writeUserConfig(env: Env, partial: Partial<UserConfig>): void {
   const current = readUserConfig(env);
   const merged: Record<string, unknown> = { ...current, ...partial };
-  if (
-    partial.enableTelemetry === true &&
-    merged["installationId"] === undefined
-  ) {
-    merged["installationId"] = randomUUID();
+  if (partial.enableTelemetry === true && merged.installationId === undefined) {
+    merged.installationId = randomUUID();
   }
   const path = userConfigPath(env);
   if (path === undefined) {

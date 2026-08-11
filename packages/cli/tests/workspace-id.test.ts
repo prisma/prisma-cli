@@ -94,23 +94,25 @@ describe("readProjectListLocalBinding", () => {
    *  returned, so neither form can make a linked directory read as
    *  invalid. */
   it("reports a directory as linked whichever id form the pin holds", async () => {
-    for (const workspaceId of [API_WORKSPACE_ID, CREDENTIAL_WORKSPACE_ID]) {
-      const cwd = await createTempCwd();
-      const written = await writeLocalResolutionPin(
-        cwd,
-        { workspaceId, projectId: "proj_123" },
-        AbortSignal.timeout(5_000),
-      );
-      expect(written.isOk()).toBe(true);
+    const bindings = await Promise.all(
+      [API_WORKSPACE_ID, CREDENTIAL_WORKSPACE_ID].map(async (workspaceId) => {
+        const cwd = await createTempCwd();
+        const written = await writeLocalResolutionPin(
+          cwd,
+          { workspaceId, projectId: "proj_123" },
+          AbortSignal.timeout(5_000),
+        );
+        expect(written.isOk(), workspaceId).toBe(true);
 
-      const binding = await readProjectListLocalBinding(
-        cwd,
-        [{ id: "proj_123" }],
-        AbortSignal.timeout(5_000),
-      );
+        return readProjectListLocalBinding(
+          cwd,
+          [{ id: "proj_123" }],
+          AbortSignal.timeout(5_000),
+        );
+      }),
+    );
 
-      expect(binding).toEqual({ status: "linked" });
-    }
+    expect(bindings).toEqual([{ status: "linked" }, { status: "linked" }]);
   });
 
   it("reports invalid when the pinned project is not one the API returned", async () => {

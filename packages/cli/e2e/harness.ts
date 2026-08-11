@@ -194,47 +194,12 @@ export class E2eSession {
         `the CLI is not built: ${CLI_BINARY} does not exist. Run \`pnpm build\` first.`,
       );
     }
-    const cwd = options.cwd ?? this.#home;
     const argv = args.includes("--json") ? [...args] : [...args, "--json"];
-
-    let stdout = "";
-    let stderr = "";
-    let exitCode = 0;
-    try {
-      const done = await execFileAsync(
-        process.execPath,
-        [CLI_BINARY, ...argv],
-        {
-          cwd,
-          env: childEnvironment(this.#credentials, this.#home, options.env),
-          timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-          maxBuffer: 32 * 1024 * 1024,
-        },
-      );
-      stdout = done.stdout;
-      stderr = done.stderr;
-    } catch (failure) {
-      const spawned = failure as {
-        code?: number;
-        stdout?: string;
-        stderr?: string;
-        killed?: boolean;
-      };
-      if (spawned.stdout === undefined) throw failure;
-      // A timed-out child was killed, so its output stops mid-stream and
-      // carries no result frame. Left alone that surfaces as "no
-      // terminal result frame", which blames the CLI for the clock.
-      if (spawned.killed === true) {
-        const limit = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-        throw new Error(
-          `\`${argv.join(" ")}\` was killed after ${limit}ms\n` +
-            `${(spawned.stderr ?? "").slice(0, 2000)}`,
-        );
-      }
-      stdout = spawned.stdout;
-      stderr = spawned.stderr ?? "";
-      exitCode = typeof spawned.code === "number" ? spawned.code : 1;
-    }
+    const { stdout, stderr, exitCode } = await executeCli(argv, {
+      cwd: options.cwd ?? this.#home,
+      env: childEnvironment(this.#credentials, this.#home, options.env),
+      timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    });
 
     const envelope = parseResultFrame(stdout);
     if (options.expectOk !== false && !envelope.ok) {
@@ -245,6 +210,47 @@ export class E2eSession {
       );
     }
     return { exitCode, stdout, stderr, envelope };
+  }
+}
+
+async function executeCli(
+  argv: readonly string[],
+  child: {
+    readonly cwd: string;
+    readonly env: Record<string, string>;
+    readonly timeoutMs: number;
+  },
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  try {
+    const done = await execFileAsync(process.execPath, [CLI_BINARY, ...argv], {
+      cwd: child.cwd,
+      env: child.env,
+      timeout: child.timeoutMs,
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    return { stdout: done.stdout, stderr: done.stderr, exitCode: 0 };
+  } catch (failure) {
+    const spawned = failure as {
+      code?: number;
+      stdout?: string;
+      stderr?: string;
+      killed?: boolean;
+    };
+    if (spawned.stdout === undefined) throw failure;
+    // A timed-out child was killed, so its output stops mid-stream and
+    // carries no result frame. Left alone that surfaces as "no
+    // terminal result frame", which blames the CLI for the clock.
+    if (spawned.killed === true) {
+      throw new Error(
+        `\`${argv.join(" ")}\` was killed after ${child.timeoutMs}ms\n` +
+          `${(spawned.stderr ?? "").slice(0, 2000)}`,
+      );
+    }
+    return {
+      stdout: spawned.stdout,
+      stderr: spawned.stderr ?? "",
+      exitCode: typeof spawned.code === "number" ? spawned.code : 1,
+    };
   }
 }
 
