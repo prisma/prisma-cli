@@ -1088,13 +1088,13 @@ describe("a failure carrying several findings", () => {
   }
 
   const STDERR =
-    "✖ [COMPOSER.CONFIG_INVALID] prisma.config.ts has 3 problems.\n" +
+    "✘ [COMPOSER.CONFIG_INVALID] prisma.config.ts has 3 problems.\n" +
     "  why: Every problem found is listed below.\n" +
     "→ Fix all three, then run the command again.\n" +
-    "✖ [COMPOSER.MISSING_NAME] services[0] has no name.\n" +
+    "✘ [COMPOSER.MISSING_NAME] services[0] has no name.\n" +
     "→ Give services[0] a name.\n" +
-    "✖ [COMPOSER.UNKNOWN_ENGINE] services[1].engine 'postgres9' is not a known engine.\n" +
-    "✖ [COMPOSER.PORT_OUT_OF_RANGE] services[1].port 70000 is above 65535.\n";
+    "✘ [COMPOSER.UNKNOWN_ENGINE] services[1].engine 'postgres9' is not a known engine.\n" +
+    "✘ [COMPOSER.PORT_OUT_OF_RANGE] services[1].port 70000 is above 65535.\n";
 
   const compose = defineCommand({
     help: { summary: "Fails with everything it found" },
@@ -1282,7 +1282,7 @@ describe("a structured error built by another copy of the engine", () => {
   }
 
   const STDERR =
-    "✖ [COMPOSER.UNREADABLE] prisma.config.ts could not be read.\n";
+    "✘ [COMPOSER.UNREADABLE] prisma.config.ts could not be read.\n";
 
   function cli(fields: Record<string, unknown>) {
     return createTestCli({
