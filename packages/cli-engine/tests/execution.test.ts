@@ -683,7 +683,7 @@ describe("sensitive field rows", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("name: deploy key\ntoken: ********\n");
+    expect(result.stderr).toBe("name:   deploy key\ntoken:  ********\n");
   });
 
   test("the json result payload is the command's own and stays unmasked", async () => {

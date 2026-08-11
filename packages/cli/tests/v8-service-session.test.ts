@@ -150,7 +150,7 @@ describe("prisma-v8 service — the workspace comes from the engine session", ()
     expect(result.presented?.data).toMatchObject({
       workspace: { id: "ws_1", name: "ws_1" },
     });
-    expect(result.stderr).toContain("workspace: ws_1");
+    expect(result.stderr).toContain("workspace:     ws_1");
   });
 
   it("fails with the engine sign-in error when there is no session", async () => {

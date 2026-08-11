@@ -96,7 +96,7 @@ describe("prisma-v8 auth whoami", () => {
     expect(result.stdout).toBe("status: signed out\n");
     expect(result.stderr).toBe(
       "ℹ Showing the active authenticated identity.\n" +
-        "status: signed out\n" +
+        "status:  signed out\n" +
         "→ Sign in: prisma-cli auth login\n",
     );
   });
@@ -112,9 +112,9 @@ describe("prisma-v8 auth whoami", () => {
     );
     expect(result.stderr).toBe(
       "ℹ Showing the active authenticated identity.\n" +
-        "status: signed in\n" +
-        "user: bob@example.com\n" +
-        "workspace: Acme Inc\n",
+        "status:     signed in\n" +
+        "user:       bob@example.com\n" +
+        "workspace:  Acme Inc\n",
     );
   });
 
@@ -285,9 +285,9 @@ describe("prisma-v8 auth whoami", () => {
     );
     expect(result.stderr).toBe(
       "ℹ Showing the active authenticated identity.\n" +
-        "status: signed in\n" +
-        "user: bob@example.com\n" +
-        "workspace: Acme Inc\n",
+        "status:     signed in\n" +
+        "user:       bob@example.com\n" +
+        "workspace:  Acme Inc\n",
     );
   });
 });

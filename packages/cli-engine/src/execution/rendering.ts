@@ -1,7 +1,15 @@
 import type { EngineEvent } from "../events";
-import type { Block, PresentedResult, Status } from "../presentation";
+import type {
+  Block,
+  PresentedResult,
+  Status,
+  Text,
+  Tone,
+  TreeNode,
+} from "../presentation";
 import type { Diagnostic, NextAction } from "../protocol";
 import type { Invocation, RunState } from "./engine";
+import { makePaint, type Paint, renderText, textWidth } from "./palette";
 
 export function firstLine(text: string): string {
   const newline = text.indexOf("\n");
@@ -71,56 +79,180 @@ const STATUS_SYMBOL: Readonly<Record<Status, string>> = {
   info: "ℹ",
 };
 
-export function renderBlock(block: Block, write: (line: string) => void): void {
+const MASK = "********";
+const COLUMN_GAP = "  ";
+const RAIL = "│";
+const BRANCH = "├─";
+const LAST_BRANCH = "└─";
+const TRAILING_SPACES = / +$/;
+
+/**
+ * The engine draws; a command describes. Every escape sequence in the
+ * output originates here, which is what makes width measurable and
+ * alignment safe: a handler hands over spans, never bytes.
+ */
+export function renderBlock(
+  block: Block,
+  paint: Paint,
+  write: (line: string) => void,
+): void {
   switch (block.kind) {
-    case "summary":
-      write(`${STATUS_SYMBOL[block.status]} ${block.text}`);
+    case "summary": {
+      const glyph = paint(
+        block.tone ?? block.status,
+        STATUS_SYMBOL[block.status],
+      );
+      write(`${glyph} ${renderText(block.text, paint)}`);
       return;
+    }
     case "fields":
-      for (const row of block.rows) {
-        write(
-          `${row.label}: ${row.sensitive === true ? "********" : row.value}`,
-        );
-      }
+      writeFields(block.rows, block.rail === true, paint, write);
       return;
     case "table":
-      write(block.columns.join("  "));
-      for (const row of block.rows) {
-        write(row.join("  "));
-      }
+      writeTable(block.columns, block.rows, paint, write);
       return;
     case "list":
       for (const item of block.items) {
-        write(`- ${item}`);
+        write(`- ${renderText(item, paint)}`);
       }
       return;
     case "tree":
-      writeTree(block.roots, 0, write);
+      for (const root of block.roots) {
+        write(treeLabel(root, paint));
+        writeBranches(root.children ?? [], "", paint, write);
+      }
+      return;
+    case "drawing":
+      for (const line of block.lines) {
+        write(renderText(line, paint));
+      }
       return;
   }
 }
 
-function writeTree(
-  nodes: ReadonlyArray<{
-    readonly label: string;
-    readonly children?: ReadonlyArray<{
-      readonly label: string;
-      readonly children?: readonly unknown[];
-    }>;
+/** Appends to the text's last span, so a pad or a colon inherits the
+ *  tone of the run it extends — which is what makes a padded key one
+ *  continuous coloured field, as the legacy card drew it. */
+function extend(text: Text, suffix: string): Text {
+  if (suffix === "") {
+    return text;
+  }
+  if (typeof text === "string") {
+    return `${text}${suffix}`;
+  }
+  const last = text.at(-1);
+  if (last === undefined) {
+    return suffix;
+  }
+  return [...text.slice(0, -1), { ...last, text: `${last.text}${suffix}` }];
+}
+
+function padTo(text: Text, width: number): Text {
+  const gap = width - textWidth(text);
+  return gap > 0 ? extend(text, " ".repeat(gap)) : text;
+}
+
+/** The tone a cell falls back to when it states none of its own. */
+function toned(text: Text, tone: Tone): Text {
+  if (typeof text === "string") {
+    return [{ text, tone }];
+  }
+  return text.map((span) =>
+    span.tone === undefined ? { ...span, tone } : span,
+  );
+}
+
+/**
+ * The legacy card, restored: `${label}:` padded to a common width so
+ * every value starts in the same column, the label in the accent
+ * colour, two spaces between the two.
+ */
+function writeFields(
+  rows: ReadonlyArray<{
+    readonly label: Text;
+    readonly value: Text;
+    readonly sensitive?: boolean;
   }>,
-  depth: number,
+  rail: boolean,
+  paint: Paint,
   write: (line: string) => void,
 ): void {
-  for (const node of nodes) {
-    write(`${"  ".repeat(depth)}${node.label}`);
-    if (node.children !== undefined) {
-      writeTree(
-        node.children as Parameters<typeof writeTree>[0],
-        depth + 1,
-        write,
-      );
+  const cells = rows.map((row) => ({
+    label: toned(extend(row.label, ":"), "heading"),
+    value: row.sensitive === true ? MASK : row.value,
+  }));
+  const width = Math.max(0, ...cells.map((cell) => textWidth(cell.label)));
+  const prefix = rail ? `${paint("structure", RAIL)}${COLUMN_GAP}` : "";
+  for (const cell of cells) {
+    const label = renderText(padTo(cell.label, width), paint);
+    write(`${prefix}${label}${COLUMN_GAP}${renderText(cell.value, paint)}`);
+  }
+}
+
+/**
+ * Every column as wide as its widest cell, measured on the text rather
+ * than the bytes so colour cannot shift a column. The last column is
+ * never padded, so no line carries trailing whitespace.
+ */
+function writeTable(
+  columns: readonly Text[],
+  rows: ReadonlyArray<readonly Text[]>,
+  paint: Paint,
+  write: (line: string) => void,
+): void {
+  const all = [columns.map((column) => toned(column, "heading")), ...rows];
+  const widths: number[] = [];
+  for (const row of all) {
+    for (const [index, cell] of row.entries()) {
+      widths[index] = Math.max(widths[index] ?? 0, textWidth(cell));
     }
   }
+  for (const row of all) {
+    const cells = row.map((cell, index) =>
+      renderText(
+        index === row.length - 1 ? cell : padTo(cell, widths[index]),
+        paint,
+      ),
+    );
+    write(cells.join(COLUMN_GAP).replace(TRAILING_SPACES, ""));
+  }
+}
+
+/** Roots carry no connector; every level below is drawn from its
+ *  parent's prefix, so a deep branch stays under its own lane. */
+function writeBranches(
+  nodes: readonly TreeNode[],
+  prefix: string,
+  paint: Paint,
+  write: (line: string) => void,
+): void {
+  for (const [index, node] of nodes.entries()) {
+    const last = index === nodes.length - 1;
+    const connector = paint("structure", last ? LAST_BRANCH : BRANCH);
+    write(`${prefix}${connector} ${treeLabel(node, paint)}`);
+    const continuation = last
+      ? "   "
+      : `${paint("structure", RAIL)}${COLUMN_GAP}`;
+    writeBranches(
+      node.children ?? [],
+      `${prefix}${continuation}`,
+      paint,
+      write,
+    );
+  }
+}
+
+function treeLabel(node: TreeNode, paint: Paint): string {
+  const tone = node.tone ?? node.status;
+  const label = renderText(
+    tone === undefined ? node.label : toned(node.label, tone),
+    paint,
+  );
+  if (node.status === undefined) {
+    return label;
+  }
+  const glyph = paint(node.tone ?? node.status, STATUS_SYMBOL[node.status]);
+  return `${glyph} ${label}`;
 }
 
 const DIAGNOSTIC_SYMBOL: Readonly<Record<Diagnostic["severity"], string>> = {
@@ -182,8 +314,9 @@ export function renderCompletedHuman(
   presented: PresentedResult<unknown>,
 ): void {
   const { runtime, state } = invocation;
+  const paint = makePaint(state.colorEnabled);
   for (const block of presented.presentation.human) {
-    renderBlock(block, (line) => runtime.stderr.write(`${line}\n`));
+    renderBlock(block, paint, (line) => runtime.stderr.write(`${line}\n`));
   }
   for (const action of presented.presentation.next) {
     runtime.stderr.write(`${renderNextAction(action)}\n`);

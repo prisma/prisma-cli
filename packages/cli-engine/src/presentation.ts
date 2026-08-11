@@ -67,41 +67,6 @@ export interface Presentations {
 }
 
 /**
- * Deliberately small; grows by the same evidence rule as events.
- * Recorded findings are NOT a Block — they are the outcome's
- * diagnostics; the engine renders them and carries them into the
- * envelope, so the two surfaces cannot diverge.
- */
-export type Block =
-  | {
-      readonly kind: "summary";
-      readonly status: Status;
-      /** Overrides the colour the status implies. Never the glyph. */
-      readonly tone?: Tone;
-      readonly text: string;
-    }
-  | {
-      readonly kind: "fields";
-      readonly rows: ReadonlyArray<{
-        readonly label: string;
-        readonly value: string;
-        readonly sensitive?: boolean;
-      }>;
-    }
-  | {
-      readonly kind: "table";
-      readonly columns: readonly string[];
-      readonly rows: ReadonlyArray<readonly string[]>;
-    }
-  | { readonly kind: "list"; readonly items: readonly string[] }
-  | { readonly kind: "tree"; readonly roots: readonly TreeNode[] };
-
-export interface TreeNode {
-  readonly label: string;
-  readonly children?: readonly TreeNode[];
-}
-
-/**
  * What happened: it selects the glyph (✔ ✘ ⚠ ℹ) and carries a default
  * Tone of the same name. Separate from Tone because a failure can be
  * painted in a colour that is not `error` — a tree node in its branch
@@ -151,6 +116,63 @@ export interface Span {
 
 /** Display text anywhere a block or Ui takes it. A bare string is untoned. */
 export type Text = string | readonly Span[];
+
+/**
+ * Deliberately small; grows by the same evidence rule as events.
+ * Recorded findings are NOT a Block — they are the outcome's
+ * diagnostics; the engine renders them and carries them into the
+ * envelope, so the two surfaces cannot diverge.
+ */
+export type Block =
+  | {
+      readonly kind: "summary";
+      readonly status: Status;
+      /** Overrides the colour the status implies. Never the glyph. */
+      readonly tone?: Tone;
+      readonly text: Text;
+    }
+  | {
+      /** A key/value card: the engine pads the keys so every value
+       *  starts in the same column. */
+      readonly kind: "fields";
+      readonly rows: ReadonlyArray<{
+        readonly label: Text;
+        readonly value: Text;
+        readonly sensitive?: boolean;
+      }>;
+      /** Draws the dim `│` rail down the left of the card. A command
+       *  knows whether it is drawing a header card or a plain one, so
+       *  this is per block rather than a global setting. */
+      readonly rail?: boolean;
+    }
+  | {
+      /** The engine sizes every column to its widest cell. */
+      readonly kind: "table";
+      readonly columns: readonly Text[];
+      readonly rows: ReadonlyArray<readonly Text[]>;
+    }
+  | { readonly kind: "list"; readonly items: readonly Text[] }
+  | { readonly kind: "tree"; readonly roots: readonly TreeNode[] }
+  | {
+      /**
+       * Lines of spans, rendered verbatim — no layout, no reflow, no
+       * truncation. For output whose two-dimensional structure the
+       * engine cannot derive, such as a migration graph's lane gutter,
+       * where the same hue has to reach the gutter cell, the node glyph
+       * and the label alike.
+       */
+      readonly kind: "drawing";
+      readonly lines: readonly Text[];
+    };
+
+export interface TreeNode {
+  readonly label: Text;
+  /** Renders its glyph before the label. */
+  readonly status?: Status;
+  /** Colours the glyph and the label; defaults to the status. */
+  readonly tone?: Tone;
+  readonly children?: readonly TreeNode[];
+}
 
 /** Styling helpers usable inside block text; no direct writing. */
 export interface Ui {
