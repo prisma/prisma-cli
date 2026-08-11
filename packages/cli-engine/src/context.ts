@@ -68,6 +68,16 @@ export interface CommandContext<
    */
   readonly spawn: (options: SpawnOptions) => Promise<ChildResult>;
 
+  /**
+   * How the run's most recent completed child ended, or undefined when
+   * none has run. The engine records every child ctx.spawn returns, so
+   * a handler whose spawn happens deep in its own layering can still
+   * ask "did my child fail?" where it settles, without threading the
+   * result back by hand. This is the same record exitWithChildStatus
+   * settles from.
+   */
+  readonly lastChild: () => ChildResult | undefined;
+
   /** The one way to emit while running. */
   readonly report: (event: EngineEvent) => void;
 

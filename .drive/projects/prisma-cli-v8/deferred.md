@@ -37,6 +37,18 @@ Nothing here is tracked outside this file.
   engine's `flag.number` accepts negatives and non-integers; legacy
   `composer log --tail` rejected both. Either the flag gains
   validation or the divergence entry widens.
+- **`v8-spawn-adapter.test.ts` has a race that fails under load.**
+  In `packages/cli/tests/v8-spawn-adapter.test.ts`, the "kill
+  delivers the signal to the live child" case runs an inline child
+  that writes its `ready` marker BEFORE calling
+  `process.on('SIGTERM', ...)`. The test waits on that marker and
+  then kills, so a kill landing in the gap hits the default SIGTERM
+  disposition: the child dies by signal instead of exiting 42, and
+  the assertion fails. Reproduced on a loaded machine (2 of 4 runs)
+  while verifying the child-record change, which does not touch
+  `packages/cli`. Fix: have the child write `ready` only after the
+  handler is installed — the same ordering the engine's own
+  `tests/fixtures/child.mjs` `trap-term` fixture already uses.
 
 ## Upstream, not ours to land
 

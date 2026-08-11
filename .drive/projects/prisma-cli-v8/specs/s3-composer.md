@@ -67,20 +67,33 @@ const child = await ctx.spawn({ command, args, cwd, env });
 - **Reentrancy**: one live child per run; a second `ctx.spawn`
   while one is live is a construction error. `dev` coalesces
   rebuilds, as today's loop does.
-- **Afterwards**: the handler resumes with the child's status.
-  **A signal-killed child is an ABORT, not a failure** — handlers
-  branch on `signal` before `exitCode`. To exit with the child's
-  code verbatim the handler settles via the sanctioned
-  `exitWithChildStatus(child, opts?)` outcome — `opts` carries
+- **Afterwards**: the handler resumes with the child's status, and
+  so does the ENGINE — it records every child `ctx.spawn` returns.
+  `ctx.lastChild()` reports the run's most recent completed child,
+  or undefined when none ran, which is what lets a handler ask how
+  its child ended at the point it settles when the spawn itself
+  happened somewhere else in its own layering.
+  To exit with the child's code verbatim the handler settles via
+  the sanctioned `exitWithChildStatus(opts?)` outcome. It names no
+  child — the engine settles from its record — and `opts` carries
   `{ nextActions? }`, rendered to stderr in the engine's
   next-action style before the exit (R-S3-4's reproduce hint; the
-  envelope stays absent) — which uses the settlement bypass server
-  commands already have (no envelope; a signal-killed child
-  settles 128+signal; an unknown termination settles 1, never 0).
-  The bypass is FENCED twice, each a construction error: settling
+  envelope stays absent). It uses the settlement bypass server
+  commands already have.
+  The ORDER that settlement is read in is the ENGINE's, not the
+  handler's: **a signal-killed child is an ABORT, not a failure**,
+  and settles 128+signal with no envelope and NO next actions —
+  the hint is dropped even when the handler passed one, because the
+  user stopped the run and there is nothing to reproduce. Otherwise
+  the child's own code passes through verbatim, and an unknown
+  termination settles 1, never 0. A handler reading a `ChildResult`
+  for its own purposes still branches on `signal` before `exitCode`.
+  The bypass is FENCED, each fence a construction error: settling
   it from a command that does not declare `maySpawn`, and settling
-  it with a child result the engine did not itself produce from a
-  real spawn (amended 2026-08-11 — see the exit-code rule below).
+  it when no child ran at all (amended 2026-08-11, operator review
+  of composer#220 — the earlier "a child result the engine did not
+  produce" fence is gone, because with no child argument there is
+  nothing left to invent).
   The session kind's settlement is amended to permit non-zero
   through this path (it used to hard-code 0, and now also settles
   130/143 on its own — below),
@@ -92,8 +105,9 @@ const child = await ctx.spawn({ command, args, cwd, env });
   ENGINE's own record of that signal, for both command kinds and
   including the handler that caught the signal, cleaned up and
   returned successfully. A handler cannot author 130/143 —
-  documented codes stop at 99, and the child-status bypass now
-  refuses an invented child result. The verbatim codes stay
+  documented codes stop at 99, and the child-status bypass takes
+  its code from the engine's record of the child rather than from
+  anything the handler hands back. The verbatim codes stay
   verbatim: a real child's status passes through untouched (the
   child owned the terminal and the signal reached it too), as does
   a server command's protocol conclusion.
@@ -210,7 +224,8 @@ Committed consequences:
 ## Mapping rules
 
 R-S3-1 **Engine additions** (D1, `packages/cli-engine`):
-`ctx.spawn` per above; `Runtime.spawn` + harness fake;
+`ctx.spawn` and `ctx.lastChild` per above; `Runtime.spawn` +
+harness fake;
 `exitWithChildStatus`; parse-time `--json` rejection + the two
 kind amendments; credential injection (SPI amendment recorded);
 the signal record-and-replay + SIGTERM forwarding + abort ladder;
@@ -265,13 +280,14 @@ family:
 - `deploy <entry>` / `destroy <entry>`: result commands. Handler:
   section/args → near-expiry check → config evaluation → pipeline/preflight/artifact with engine
   presentation, authenticated via the in-process leg →
-  `ctx.spawn(alchemy converge)` → branch on `signal` FIRST
-  (signal-killed = abort: settle 128+signal, no failure envelope,
-  no reproduce hint — replacing the status collapse at
-  `run-alchemy.ts:61`) → failure: `exitWithChildStatus` with the
-  reproduce hint as `nextActions` (stage stays container-derived,
-  inventory H8) → success: read the deployment-result file,
-  present the summary. `deploy --production` (accepted-but-always-
+  `ctx.spawn(alchemy converge)` → failure: `exitWithChildStatus`
+  with the reproduce hint as `nextActions` (stage stays
+  container-derived, inventory H8) → success: read the
+  deployment-result file, present the summary. The handler does not
+  order the signal case itself: the ENGINE settles a signal-killed
+  child as the abort (128+signal, no failure envelope, no reproduce
+  hint) whatever the handler asked for, which is what replaces the
+  status collapse at `run-alchemy.ts:61`. `deploy --production` (accepted-but-always-
   errors today) is dropped. The `.alchemy` destroy warning ports
   verbatim, correctness tracked as H6.
 - `dev <entry>`: session command (kind amendments apply). Watch
@@ -405,10 +421,8 @@ install footprint acknowledged as a committed consequence
 
 PR-136 review round (architect + PE on D1, 2026-08-11; orchestrator
 rulings applied): the child-status settlement bypass is fenced to
-`maySpawn` commands (runtime check; the architect blocker) — and,
-since the 2026-08-11 exit-code ruling, to child results the engine
-itself produced;
-`exitWithChildStatus(child, opts?)` gains `{ nextActions? }` rendered
+`maySpawn` commands (runtime check; the architect blocker);
+`exitWithChildStatus(opts?)` gains `{ nextActions? }` rendered
 before the exit — the R-S3-4 surface as written now exists; the spawn
 path's storage read is replaced by the named manager operation
 `activeAccessToken()` and the Auth section's `source` conditional is
@@ -421,3 +435,20 @@ credentials need is structural); a second recorded signal press is
 forwarded to the child as SIGTERM (the direct-signal escalation path);
 the environment-only `CredentialManager` the rebase dropped is
 restored as `EnvironmentCredentialManager` on the main entrypoint.
+
+composer#220 review round (operator on the D3 family, 2026-08-11):
+two things composer's `converge.ts` was hand-rolling belong to the
+engine, and move there. Composer kept a mutable closure recording
+whatever `ctx.spawn` returned, so its handler could read the child
+where it settles — the engine mints every `ChildResult` anyway, so it
+now keeps the run's most recent one and exposes it as
+`ctx.lastChild()`. And composer's `settleConverge` hand-rolled the
+order the outcome is read in — signal-killed child first, then a
+failure that reached a failing child, then an ordinary structured
+error — so the signal-first half becomes the engine's:
+`exitWithChildStatus` loses its child argument, settles from the
+record, and settles a signal-killed child as the abort whatever
+`nextActions` the caller passed. The "invented child result" fence
+retires with the argument that made the misuse reachable; a run that
+settles this way with no child on record is the construction error
+that takes its place.

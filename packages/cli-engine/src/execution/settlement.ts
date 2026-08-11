@@ -11,7 +11,7 @@ import {
   type Diagnostic,
   type NextAction,
 } from "../protocol";
-import { type ChildStatusSettlement, isEngineSpawned } from "../spawn";
+import { type ChildStatusSettlement, childExitCode } from "../spawn";
 import type { EngineSpec, Invocation } from "./engine";
 import {
   firstLine,
@@ -197,14 +197,16 @@ export function settleVerbatimExitCode(
  * never documented, because the code is not the handler's own
  * conclusion, it is the child's.
  *
- * Two conditions fence it, both construction errors. The command must
+ * The status comes from the engine's own record of the child, never
+ * from the handler, so there is nothing here for a handler to state.
+ * Two conditions fence it, both construction errors: the command must
  * hand the terminal to another program — reachable from a
  * non-declaring handler this would also end a json stream without its
- * terminal result frame. And the status must be one the engine watched
- * a real child produce: a handler that invents a child result is
- * choosing an exit code through a door meant for reporting one, and a
- * handler interrupted mid-run has no need to, because the engine
- * settles a signal-terminated run itself.
+ * terminal result frame — and a child must actually have run.
+ *
+ * A signal-killed child overrules whatever the handler asked for. The
+ * user stopped the run: it settles 128 + the signal number, with no
+ * envelope and no next actions, because there is nothing to reproduce.
  */
 export function settleChildStatus(
   invocation: Invocation,
@@ -216,16 +218,19 @@ export function settleChildStatus(
       `@prisma/cli-engine: command '${invocation.state.commandId}' returned exitWithChildStatus without declaring maySpawn — only a command that hands the terminal to another program may settle with that program's status`,
     );
   }
-  if (!isEngineSpawned(settlement)) {
+  const child = invocation.state.lastChild;
+  if (child === undefined) {
     throw new Error(
-      `@prisma/cli-engine: command '${invocation.state.commandId}' returned exitWithChildStatus for a child result the engine did not produce — only the result of a ctx.spawn carries a child's status`,
+      `@prisma/cli-engine: command '${invocation.state.commandId}' returned exitWithChildStatus without a child having run — that settlement reports the status of a child ctx.spawn started, and this run started none`,
     );
   }
   // Only human format is reachable here: maySpawn forces it.
-  for (const action of settlement.nextActions) {
-    invocation.runtime.stderr.write(`${renderNextAction(action)}\n`);
+  if (child.signal === null) {
+    for (const action of settlement.nextActions) {
+      invocation.runtime.stderr.write(`${renderNextAction(action)}\n`);
+    }
   }
-  settleVerbatimExitCode(invocation, settlement.exitCode);
+  settleVerbatimExitCode(invocation, childExitCode(child));
 }
 
 /** A session command that returned ok shut down cleanly: no

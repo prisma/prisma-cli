@@ -44,8 +44,8 @@ const converge = defineCommand({
   help: { summary: "Hands the terminal to a child" },
   maySpawn: true,
   handler: async (_args, ctx) => {
-    const child = await ctx.spawn({ command: "alchemy", args: ["deploy"] });
-    return ok(exitWithChildStatus(child));
+    await ctx.spawn({ command: "alchemy", args: ["deploy"] });
+    return ok(exitWithChildStatus());
   },
 });
 
@@ -135,8 +135,10 @@ describe("the child's status", () => {
     const dev = defineSessionCommand({
       help: { summary: "A session that converges through a child" },
       maySpawn: true,
-      handler: async (_args, ctx) =>
-        ok(exitWithChildStatus(await ctx.spawn({ command: "alchemy" }))),
+      handler: async (_args, ctx) => {
+        await ctx.spawn({ command: "alchemy" });
+        return ok(exitWithChildStatus());
+      },
     });
     const cli = createTestCli({
       commands: { dev },
@@ -161,6 +163,109 @@ describe("the child's status", () => {
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("CLI.SPAWN_FAILED");
     expect(result.stderr).toContain("ENOENT");
+  });
+});
+
+/** Composer's shape: the spawn happens down in an operations layer
+ *  that hands the handler nothing back, so the only place the child's
+ *  status can come from is the engine's own record. */
+async function convergeInAnotherLayer(ctx: {
+  readonly spawn: (options: { readonly command: string }) => Promise<unknown>;
+}): Promise<void> {
+  await ctx.spawn({ command: "alchemy" });
+}
+
+describe("the run records its most recent child", () => {
+  test("ctx.lastChild() is undefined until a child has run", async () => {
+    const asking = defineCommand({
+      help: { summary: "Asks for a child before running one" },
+      maySpawn: true,
+      handler: async (_args, ctx) =>
+        ok(
+          ctx.present({ data: ctx.lastChild() ?? "none" }, { human: () => [] }),
+        ),
+    });
+    const cli = createTestCli({ commands: { asking }, now: CLOCK });
+
+    const result = await cli.run(["asking"]);
+
+    expect(result.presented?.data).toBe("none");
+    expect(result.spawns).toEqual([]);
+  });
+
+  test("ctx.lastChild() reports how the child ended", async () => {
+    const asking = defineCommand({
+      help: { summary: "Reads its child off the run" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        await ctx.spawn({ command: "alchemy" });
+        return ok(ctx.present({ data: ctx.lastChild() }, { human: () => [] }));
+      },
+    });
+    const cli = createTestCli({
+      commands: { asking },
+      now: CLOCK,
+      spawnScript: () => ({ exitCode: 9, signal: null }),
+    });
+
+    const result = await cli.run(["asking"]);
+
+    expect(result.presented?.data).toEqual({ exitCode: 9, signal: null });
+  });
+
+  test("after two children it is the LAST one, not the first", async () => {
+    const twice = defineCommand({
+      help: { summary: "Runs two children in sequence" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        await ctx.spawn({ command: "first" });
+        const afterFirst = ctx.lastChild();
+        await ctx.spawn({ command: "second" });
+        return ok(
+          ctx.present(
+            { data: { afterFirst, afterSecond: ctx.lastChild() } },
+            { human: () => [] },
+          ),
+        );
+      },
+    });
+    const cli = createTestCli({
+      commands: { twice },
+      now: CLOCK,
+      spawnScript: (request) => ({
+        exitCode: request.command === "first" ? 4 : 5,
+        signal: null,
+      }),
+    });
+
+    const result = await cli.run(["twice"]);
+
+    expect(result.presented?.data).toEqual({
+      afterFirst: { exitCode: 4, signal: null },
+      afterSecond: { exitCode: 5, signal: null },
+    });
+    expect(result.spawns.map((spawn) => spawn.command)).toEqual([
+      "first",
+      "second",
+    ]);
+  });
+
+  test("exitWithChildStatus settles from the record, not from the handler", async () => {
+    const layered = defineCommand({
+      help: { summary: "Spawns through a layer that returns nothing" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        await convergeInAnotherLayer(ctx);
+        return ok(exitWithChildStatus());
+      },
+    });
+    const cli = createTestCli({
+      commands: { layered },
+      now: CLOCK,
+      spawnScript: () => ({ exitCode: 6, signal: null }),
+    });
+
+    expect((await cli.run(["layered"])).exitCode).toBe(6);
   });
 });
 
@@ -255,7 +360,8 @@ describe("the spawn request", () => {
       maySpawn: true,
       handler: async (_args, ctx) => {
         handlerRan = true;
-        return ok(exitWithChildStatus(await ctx.spawn({ command: "alchemy" })));
+        await ctx.spawn({ command: "alchemy" });
+        return ok(exitWithChildStatus());
       },
     });
     const cli = createCli({
@@ -454,8 +560,8 @@ describe("signals", () => {
       handler: async (_args, ctx) => {
         ctx.report({ kind: "status", subject: "run", status: "ready" });
         await new Promise((resolve) => setTimeout(resolve, 0));
-        const child = await ctx.spawn({ command: "alchemy" });
-        return ok(exitWithChildStatus(child));
+        await ctx.spawn({ command: "alchemy" });
+        return ok(exitWithChildStatus());
       },
     });
     const cli = createTestCli({
@@ -487,8 +593,8 @@ const credentialedConverge = defineCommand({
   maySpawn: true,
   needs: { credentials: "child" },
   handler: async (_args, ctx) => {
-    const child = await ctx.spawn({ command: "alchemy", args: ["deploy"] });
-    return ok(exitWithChildStatus(child));
+    await ctx.spawn({ command: "alchemy", args: ["deploy"] });
+    return ok(exitWithChildStatus());
   },
 });
 
@@ -512,8 +618,8 @@ describe("credential injection", () => {
       needs: { credentials: "child" },
       handler: async (_args, ctx) => {
         ctx.report({ kind: "status", subject: "run", status: "pre-spawn" });
-        const child = await ctx.spawn({ command: "alchemy" });
-        return ok(exitWithChildStatus(child));
+        await ctx.spawn({ command: "alchemy" });
+        return ok(exitWithChildStatus());
       },
     });
     const cli = createTestCli({
@@ -698,8 +804,7 @@ describe("the settlement bypass is fenced to declaring commands", () => {
   test("a result command without maySpawn returning exitWithChildStatus is a construction error", async () => {
     const undeclared = defineCommand({
       help: { summary: "Settles a child status it never earned" },
-      handler: async () =>
-        ok(exitWithChildStatus({ exitCode: 7, signal: null })),
+      handler: async () => ok(exitWithChildStatus()),
     });
     const cli = createTestCli({ commands: { undeclared }, now: CLOCK });
 
@@ -714,8 +819,7 @@ describe("the settlement bypass is fenced to declaring commands", () => {
   test("in json mode the stream still ends with its result frame", async () => {
     const undeclared = defineCommand({
       help: { summary: "Settles a child status it never earned" },
-      handler: async () =>
-        ok(exitWithChildStatus({ exitCode: 7, signal: null })),
+      handler: async () => ok(exitWithChildStatus()),
     });
     const cli = createTestCli({ commands: { undeclared }, now: CLOCK });
 
@@ -730,8 +834,7 @@ describe("the settlement bypass is fenced to declaring commands", () => {
   test("a session command without maySpawn is fenced the same way", async () => {
     const undeclared = defineSessionCommand({
       help: { summary: "A session settling a child status it never earned" },
-      handler: async () =>
-        ok(exitWithChildStatus({ exitCode: 7, signal: null })),
+      handler: async () => ok(exitWithChildStatus()),
     });
     const cli = createTestCli({ commands: { undeclared }, now: CLOCK });
 
@@ -743,28 +846,22 @@ describe("the settlement bypass is fenced to declaring commands", () => {
     expect(result.stderr).toContain("without declaring maySpawn");
   });
 
-  test("a declaring command inventing a child result is a construction error", async () => {
-    const inventing = defineSessionCommand({
-      help: { summary: "Describes a child that never existed" },
+  test("a declaring command that never spawned is a construction error", async () => {
+    const empty = defineSessionCommand({
+      help: { summary: "Settles a child status without running a child" },
       maySpawn: true,
-      handler: async (_args, ctx) => {
-        await ctx.spawn({ command: "alchemy" });
-        return ok(exitWithChildStatus({ exitCode: null, signal: "SIGINT" }));
-      },
+      handler: async () => ok(exitWithChildStatus()),
     });
-    const cli = createTestCli({
-      commands: { inventing },
-      now: CLOCK,
-      spawnScript: () => ({ exitCode: 0, signal: null }),
-    });
+    const cli = createTestCli({ commands: { empty }, now: CLOCK });
 
-    const result = await cli.run(["inventing"], { isTty: { stdout: true } });
+    const result = await cli.run(["empty"], { isTty: { stdout: true } });
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("the engine did not produce");
+    expect(result.stderr).toContain("without a child having run");
+    expect(result.spawns).toEqual([]);
   });
 
-  test("the child result ctx.spawn returned settles normally", async () => {
+  test("the child ctx.spawn ran settles normally", async () => {
     const cli = createTestCli({
       commands: { converge },
       now: CLOCK,
@@ -778,38 +875,55 @@ describe("the settlement bypass is fenced to declaring commands", () => {
 });
 
 describe("next actions on a child-status settlement", () => {
+  const hinting = defineCommand({
+    help: { summary: "A converge that always asks for a reproduce hint" },
+    maySpawn: true,
+    handler: async (_args, ctx) => {
+      await ctx.spawn({ command: "alchemy" });
+      return ok(
+        exitWithChildStatus({
+          nextActions: [
+            {
+              kind: "run-command",
+              label: "Reproduce the failed converge",
+              command: "alchemy deploy ./entry.ts",
+            },
+          ],
+        }),
+      );
+    },
+  });
+
   test("they render to stderr before the run exits with the child's code", async () => {
-    const failing = defineCommand({
-      help: { summary: "A converge that fails with a reproduce hint" },
-      maySpawn: true,
-      handler: async (_args, ctx) => {
-        const child = await ctx.spawn({ command: "alchemy" });
-        return ok(
-          exitWithChildStatus(child, {
-            nextActions: [
-              {
-                kind: "run-command",
-                label: "Reproduce the failed converge",
-                command: "alchemy deploy ./entry.ts",
-              },
-            ],
-          }),
-        );
-      },
-    });
     const cli = createTestCli({
-      commands: { failing },
+      commands: { hinting },
       now: CLOCK,
       spawnScript: () => ({ exitCode: 3, signal: null }),
     });
 
-    const result = await cli.run(["failing"]);
+    const result = await cli.run(["hinting"]);
 
     expect(result.exitCode).toBe(3);
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain(
       "→ Reproduce the failed converge: alchemy deploy ./entry.ts",
     );
+  });
+
+  test("a signal-killed child drops them and settles the abort", async () => {
+    const cli = createTestCli({
+      commands: { hinting },
+      now: CLOCK,
+      spawnScript: () => ({ exitCode: null, signal: "SIGINT" }),
+    });
+
+    const result = await cli.run(["hinting"]);
+
+    // The user stopped the converge, so there is nothing to reproduce:
+    // the abort wins over what the handler asked for.
+    expect(result.exitCode).toBe(130);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
   });
 });
 
@@ -934,8 +1048,8 @@ describe("signal replay routes every force exit after settlement", () => {
       handler: async (_args, ctx) => {
         deliver("SIGINT");
         await new Promise((resolve) => setTimeout(resolve, 0));
-        const child = await ctx.spawn({ command: "alchemy" });
-        return ok(exitWithChildStatus(child));
+        await ctx.spawn({ command: "alchemy" });
+        return ok(exitWithChildStatus());
       },
     });
     const cli = createCli({
@@ -1090,8 +1204,8 @@ describe("the terminal has one owner at a time", () => {
       maySpawn: true,
       handler: async (_args, ctx) => {
         await ctx.prompt.confirm("Proceed?", { default: true });
-        const child = await ctx.spawn({ command: "alchemy" });
-        return ok(exitWithChildStatus(child));
+        await ctx.spawn({ command: "alchemy" });
+        return ok(exitWithChildStatus());
       },
     });
     const cli = createTestCli({ commands: { sequential }, now: CLOCK });
