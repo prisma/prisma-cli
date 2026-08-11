@@ -200,10 +200,15 @@ never reads process globals — the same rule that keeps TTY detection on the
 Runtime.
 
 That rule binds the preference store too, and it is the one place a
-port-as-is would break it. `$XDG_CONFIG_HOME` and `%APPDATA%` are invocation
-inputs: they must resolve from `runtime.env`, threaded through the path
-resolver, the reader, the writer and the id mint, not read from
-`process.env`. The engine reads `process.env` nowhere today — five separate
+port-as-is would break it. `$XDG_CONFIG_HOME`, `%APPDATA%`, `$HOME` and
+`%USERPROFILE%` are all invocation inputs: they must resolve from
+`runtime.env`, threaded through the path resolver, the reader, the writer and
+the id mint, not read from `process.env` — and `os.homedir()` is a
+`process.env` read wearing a different hat, so it has no place here either.
+When none of the four is present the store has no path, and telemetry reports
+nothing rather than guessing at one. In production every host sets `$HOME`, so
+this only ever fires in a test that seeded no environment — where doing
+nothing is the correct answer. The engine reads `process.env` nowhere today — five separate
 doc comments across `context.ts`, `credential-manager.ts`,
 `environment-credential-manager.ts` and `execution/debug.ts` say so — and a
 telemetry module that did would also mean any `createTestCli` run touched the
@@ -339,6 +344,16 @@ Both are recorded in `assets/s2/parity-divergences.md` as part of the slice.
   decision — and recorded so the next person to touch `cli.ts` can weigh it.
 - **The `prisma-next` directory name and `PRISMA_NEXT_DISABLE_TELEMETRY`**
   outlive the product name they came from. Ecosystem cutover.
+- **The engine has two different answers to "am I in CI".** Interactivity
+  is decided by `runtime.isTty.stdin && runtime.env.CI === undefined`
+  (`src/execution/shared-flags.ts`), overridable with `--no-interactive`;
+  telemetry gates on `Runtime.isCI`, which the bin fills from `ci-info`. They
+  disagree on `CI=false`, and on a vendor that sets its own marker but not
+  `CI` — and `--no-interactive` moves one and not the other. Nothing is wrong
+  today, because each is used only where it was meant to be, and `ctx.isCI`'s
+  documentation now says so explicitly. Reconciling them is its own change:
+  it decides whether `--no-interactive` should also suppress telemetry, which
+  is a product question, not a cleanup.
 - **`Runtime.isCI` is a required field on a published interface.** Every host
   that constructs a `Runtime` must add it. Correct — a host that forgot an
   optional one would silently report from CI — but it needs a release note at
