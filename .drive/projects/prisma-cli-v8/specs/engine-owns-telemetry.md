@@ -110,14 +110,19 @@ before any command output — and exactly once per run:
    an id while merely reporting state. This is the only command-specific
    exemption, and it is the one the ORM already has.
 2. **Resolve gating**, in the ORM's order: CI hard-disables first, then the
-   environment opt-outs (`PRISMA_NEXT_DISABLE_TELEMETRY` truthy, or
+   environment opt-outs (`PRISMA_DISABLE_TELEMETRY` truthy, or
    `DO_NOT_TRACK=1`), then a stored `enableTelemetry: false`, then a stored
    `true`, then the opt-out default (absent means on). The resolution carries
    its reason from the five-value union in §2.3.
 3. **Print the first-run disclosure** when the decision is enabled and no
    installation id is stored yet — to stderr, never stdout, so it cannot
-   corrupt piped output. Composed by the engine from the CLI name, the
-   declared `docsUrl` and the resolved config path (§2.6).
+   corrupt piped output. Composed by the engine from the CLI name and the
+   declared `docsUrl`. It names the `telemetry disable` command and the two
+   environment variables, and does **not** name the preference file: that
+   file is machine-edited, which is what the commands are for (operator
+   ruling, 2026-08-11). `telemetry status` reports its path for anyone who
+   wants it — describing where the preference lives is not the same as
+   telling someone to edit it there.
 4. **Mint and store the installation id** — a v4 UUID, written without
    touching `enableTelemetry`, so a default-on first run records no consent
    the user never gave. Never rotated, never derived from anything
@@ -146,7 +151,7 @@ order:
 ```ts
 type TelemetryStatusReason =
   | 'ci'              // a CI environment was detected
-  | 'env-opt-out'     // DO_NOT_TRACK / PRISMA_NEXT_DISABLE_TELEMETRY
+  | 'env-opt-out'     // DO_NOT_TRACK / PRISMA_DISABLE_TELEMETRY
   | 'stored-opt-out'  // "enableTelemetry": false
   | 'stored-opt-in'   // "enableTelemetry": true
   | 'default-on';     // no explicit choice stored
@@ -231,7 +236,7 @@ endpoint.
 | `cli-telemetry/src/gating.ts` | engine — resolving to the §2.3 union |
 | `cli-telemetry/src/user-config.ts` | engine — read, write, mint, path resolution |
 | `cli-telemetry/src/sanitize.ts` | engine — importing the real `EngineCommandSnapshot` instead of redeclaring it |
-| `cli-telemetry/src/endpoint.ts` | engine — constant plus the `PRISMA_NEXT_TELEMETRY_ENDPOINT` test override |
+| `cli-telemetry/src/endpoint.ts` | engine — constant plus the `PRISMA_TELEMETRY_ENDPOINT` test override |
 | `ParentToSenderPayload` (the type) | engine — it is what the engine composes |
 | `isParentToSenderPayload` (the validator) | stays in `cli-telemetry` — it guards the child's trust boundary |
 | `cli-telemetry/src/enrich.ts`, `sender.ts` | stay — the child still probes the system and POSTs |
@@ -243,24 +248,43 @@ endpoint.
 `spawnTelemetry`; `main.ts` drops its `resolveTelemetryHooks` block; `cli.ts`
 mounts the engine's three commands in place of its own.
 
-## 3. What must not change
+## 3. What must not change, and the one thing that does
 
-**The wire shape, the endpoint, the user-config file path and existing
-installation ids.** An existing user's id survives; events from the platform
-CLI before and after this change are indistinguishable to the backend; a user
-who has opted out stays opted out.
+**The wire shape and the endpoint.** The 13-field `TelemetryEvent` is
+untouched, and the parent still sends
+`{ installationId, version, command, flags, projectRoot, endpoint }` over IPC,
+so events from the platform CLI before and after this change are
+indistinguishable to the backend.
 
-Concretely: the 13-field `TelemetryEvent` is untouched; the parent still
-sends `{ installationId, version, command, flags, projectRoot, endpoint }`
-over IPC; the preference still lives at
-`$XDG_CONFIG_HOME/prisma-next/config.json` (falling back to
-`~/.config/prisma-next/config.json`, and `%APPDATA%\prisma-next\config.json`
-on Windows), still shared by both binaries so one answer and one id serve
-both; `PRISMA_NEXT_DISABLE_TELEMETRY` and `DO_NOT_TRACK` still work.
+**The `prisma-next` naming goes, with no legacy support** (operator ruling,
+2026-08-11). This overrides the earlier draft, which required the config path
+and environment variables to stay put:
 
-The `prisma-next`-branded directory and environment variable under a binary
-called `prisma` are a known wart. Renaming them is ecosystem cutover, which
-this project lists as a non-goal.
+| Was | Is |
+| --- | --- |
+| `$XDG_CONFIG_HOME/prisma-next/config.json`, `~/.config/prisma-next/config.json`, `%APPDATA%\prisma-next\config.json` | the same three, under `prisma` |
+| `PRISMA_NEXT_DISABLE_TELEMETRY` | `PRISMA_DISABLE_TELEMETRY` |
+| `PRISMA_NEXT_TELEMETRY_ENDPOINT` | `PRISMA_TELEMETRY_ENDPOINT` |
+| `PRISMA_NEXT_DEBUG` | `PRISMA_DEBUG` |
+
+`DO_NOT_TRACK` is a community convention and does not move.
+
+No read fallback, no dual-write, no migration: the old location is not
+consulted and the old variable names do nothing. Tests pin that absence, so a
+fallback cannot creep back in later.
+
+Two consequences, both accepted on the ruling. Every stored preference and
+installation id at the old path is abandoned — an existing opt-out reverts to
+the opt-out default and an existing id is orphaned, so the backend sees the
+population turn over once. And the file stops being shared with the ORM's
+`prisma-next` binary, so until that binary ports onto the engine each holds
+its own answer. Both are acceptable because this is semver zero and retiring
+that binary is the project's whole purpose.
+
+`PRISMA_DEBUG` is now one switch for every diagnostic the CLI has — the
+engine's execution valve, the auth layer's state-file logging, the telemetry
+spawner and the child sender. Renaming only the telemetry half would have left
+a user setting one variable and getting half an answer.
 
 `ParentToSenderPayload.databaseTarget` stays on the type for wire
 compatibility and the engine never populates it — the ORM's parent never did
@@ -359,8 +383,12 @@ left open:
 - **`CliRunHooks.onSettled` has no consumer left.** It was introduced for
   telemetry. Kept as-is here — removing published engine surface is its own
   decision — and recorded so the next person to touch `cli.ts` can weigh it.
-- **The `prisma-next` directory name and `PRISMA_NEXT_DISABLE_TELEMETRY`**
-  outlive the product name they came from. Ecosystem cutover.
+- **prisma/prisma's `docs/Telemetry.md` documents the old names.** The page
+  describes the `prisma-next` binary as shipped, which still reads
+  `prisma-next/config.json` and `PRISMA_NEXT_DISABLE_TELEMETRY`, so it is
+  correct today and would be wrong if updated now. It changes when that binary
+  ports onto the engine. The hand-editing half of the ruling did not have to
+  wait and is already in flight as prisma/prisma#29976.
 - **The engine has two different answers to "am I in CI".** Interactivity
   is decided by `runtime.isTty.stdin && runtime.env.CI === undefined`
   (`src/execution/shared-flags.ts`), overridable with `--no-interactive`;

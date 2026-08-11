@@ -200,6 +200,25 @@ on every `whoami`/`list` and wrote them back. Accepted and stated.
   before the command runs), same opt-out instructions, and the same
   `installationId`-keyed once-only behaviour. The ORM inherits this
   wording when its bin ports onto the engine.
+- **The preference file and the opt-out variables drop `prisma-next`, and
+  the file stops being shared.** Ruled by the operator on 2026-08-11: this is
+  semver zero and the `prisma-next` binary is being retired, which is the
+  point of the project. The preference now lives under `prisma/` rather than
+  `prisma-next/`; `PRISMA_NEXT_DISABLE_TELEMETRY`, `PRISMA_NEXT_TELEMETRY_
+  ENDPOINT` and `PRISMA_NEXT_DEBUG` become `PRISMA_DISABLE_TELEMETRY`,
+  `PRISMA_TELEMETRY_ENDPOINT` and `PRISMA_DEBUG`. No read fallback, no
+  dual-write, no migration — the old location is not consulted and the old
+  variable names do nothing, pinned by tests so a fallback cannot return.
+  Consequences, both accepted: every stored preference and installation id
+  at the old path is abandoned, so an existing opt-out reverts to the
+  opt-out default and the backend sees its population turn over once; and
+  the two binaries stop sharing one answer until the ORM's ports onto the
+  engine. `DO_NOT_TRACK` is a community convention and does not move.
+- **The first-run notice no longer offers to be opted out of by hand.** It
+  named the config file as a third route ("or set `enableTelemetry: false`
+  in …"); the operator ruled the file is machine-edited and the commands
+  exist for this. The notice keeps `telemetry disable` and both environment
+  variables, and `telemetry status` still prints the path.
 - **A negated flag ships one name, not two.** Commander gives
   `--no-color` the same attribute name as `--color`, so the ORM CLI's
   sanitiser sees both option entries sourced from the command line and
