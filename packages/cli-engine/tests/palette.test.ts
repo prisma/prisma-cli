@@ -129,6 +129,8 @@ const styled = defineCommand({
     ),
 });
 
+const HEADING_ON = "\u001b[36mH\u001b[39m";
+
 function makeCli() {
   return createTestCli({ commands: { styled } });
 }
@@ -136,6 +138,55 @@ function makeCli() {
 /** Format is a separate question from colour — it asks whether stdout
  *  is a pipe — so these runs state it rather than letting a TTY pick. */
 const HUMAN = ["styled", "--format", "human"];
+
+describe("colour resolution", () => {
+  test("colour is on when stderr is a terminal", async () => {
+    const result = await makeCli().run(HUMAN, { isTty: { stderr: true } });
+    expect(result.stderr).toContain(HEADING_ON);
+  });
+
+  test("colour is off when stderr is not a terminal", async () => {
+    const result = await makeCli().run(HUMAN, { isTty: { stderr: false } });
+    expect(result.stderr).toContain("✔ H\n");
+  });
+
+  test("stdout redirected to a file keeps colour on a terminal stderr", async () => {
+    const result = await makeCli().run(HUMAN, {
+      isTty: { stdout: false, stderr: true },
+    });
+    expect(result.stderr).toContain(HEADING_ON);
+  });
+
+  test("stderr redirected to a file loses colour on a terminal stdout", async () => {
+    const result = await makeCli().run(HUMAN, {
+      isTty: { stdout: true, stderr: false },
+    });
+    expect(result.stderr).toContain("✔ H\n");
+  });
+
+  test("NO_COLOR disables colour on a terminal", async () => {
+    const result = await makeCli().run(HUMAN, {
+      isTty: { stderr: true },
+      env: { NO_COLOR: "1" },
+    });
+    expect(result.stderr).toContain("✔ H\n");
+  });
+
+  test("--color beats NO_COLOR, and does not need a terminal", async () => {
+    const result = await makeCli().run([...HUMAN, "--color"], {
+      isTty: { stderr: false },
+      env: { NO_COLOR: "1" },
+    });
+    expect(result.stderr).toContain(HEADING_ON);
+  });
+
+  test("--no-color disables colour on a terminal", async () => {
+    const result = await makeCli().run([...HUMAN, "--no-color"], {
+      isTty: { stderr: true },
+    });
+    expect(result.stderr).toContain("✔ H\n");
+  });
+});
 
 describe("ui.width", () => {
   test("is stderr's columns", async () => {

@@ -153,10 +153,24 @@ export function applySharedFlags(
   state.confirmValues = [...(shared.confirm ?? [])];
   state.interactive = shared.interactive ?? defaultInteractive(runtime);
   state.logLevel = resolveLogLevel(shared);
-  state.colorEnabled =
-    shared.color ??
-    (runtime.isTty.stdout && runtime.env.NO_COLOR === undefined);
+  state.colorEnabled = resolveColorEnabled(shared, runtime);
   state.configPath = shared.config;
+}
+
+/**
+ * Explicit flag, then the environment, then the stream. The stream is
+ * stderr because that is where blocks render: keying off stdout meant
+ * `cmd > file` lost colour a human was watching and `cmd 2> file` kept
+ * colour nobody could see.
+ */
+function resolveColorEnabled(shared: SharedFlags, runtime: Runtime): boolean {
+  if (shared.color !== undefined) {
+    return shared.color;
+  }
+  if (runtime.env.NO_COLOR !== undefined) {
+    return false;
+  }
+  return runtime.isTty.stderr;
 }
 
 /** Interactive iff TTY stdin outside CI; --interactive and
