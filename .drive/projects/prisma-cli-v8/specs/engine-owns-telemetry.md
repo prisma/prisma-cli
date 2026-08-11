@@ -339,6 +339,23 @@ Both are recorded in `assets/s2/parity-divergences.md` as part of the slice.
 
 ## 8. Follow-ups
 
+Two questions were raised during review and ruled by the operator rather than
+left open:
+
+- **A non-boolean `enableTelemetry` leaves telemetry on.** `readUserConfig`
+  casts parsed JSON without validating field types, so a hand-edited
+  `"enableTelemetry": "false"` — the string — matches neither the `false` nor
+  the `true` branch and lands on the opt-out default. **Ruled: leave it**
+  (operator, 2026-08-11). It is the ORM's behaviour exactly, it takes a
+  malformed hand-edit to reach, and the three other opt-out routes — the
+  `telemetry disable` command and both environment variables — cannot be
+  mistyped into the wrong answer.
+- **The first-run notice named `prisma-v8`.** The engine composes it from
+  `createCli`'s `name`, which the shell hardcoded, while every other
+  user-facing string in the same shell used the `CLI_NAME` constant.
+  **Ruled: pass the constant** (operator, 2026-08-11). Fixed; the shell no
+  longer contradicts itself between its help output and its next actions.
+
 - **`CliRunHooks.onSettled` has no consumer left.** It was introduced for
   telemetry. Kept as-is here — removing published engine surface is its own
   decision — and recorded so the next person to touch `cli.ts` can weigh it.
