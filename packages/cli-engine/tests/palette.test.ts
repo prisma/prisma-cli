@@ -7,6 +7,7 @@ import { defineCommand, type Tone } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { createTestCli } from "@prisma/cli-engine/testing";
 import { describe, expect, test } from "vitest";
+import { makeUi } from "../src/execution/command-context";
 import { makePaint, renderText, textWidth } from "../src/execution/palette";
 
 /**
@@ -210,5 +211,50 @@ describe("ui.width", () => {
       isTty: { stdout: true, stderr: false },
     });
     expect(result.stderr).toContain("- width=Infinity\n");
+  });
+});
+
+describe("the Ui a command is handed", () => {
+  /** A stream whose width the test can change under the Ui, which is
+   *  what a terminal does when the user resizes the window. */
+  function stream(columns?: number): {
+    write(text: string): void;
+    columns?: number;
+  } {
+    return { write: () => {}, columns };
+  }
+
+  test("width is read on every access, never cached at construction", () => {
+    const stderr = stream(80);
+    const ui = makeUi(false, stderr);
+
+    expect(ui.width).toBe(80);
+    stderr.columns = 40;
+    expect(ui.width).toBe(40);
+  });
+
+  test("a stream that stops reporting a width goes back to unbounded", () => {
+    const stderr = stream(80);
+    const ui = makeUi(false, stderr);
+
+    stderr.columns = undefined;
+    expect(ui.width).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  test("tone paints, and emphasize and dim keep the bytes they always emitted", () => {
+    const ui = makeUi(true, stream());
+
+    expect(ui.tone("heading", "H")).toBe(HEADING_ON);
+    expect(ui.emphasize("X")).toBe("\u001b[1mX\u001b[22m");
+    expect(ui.dim("X")).toBe("\u001b[2mX\u001b[22m");
+    expect(ui.code("X")).toBe("`X`");
+  });
+
+  test("every verb is the identity function when colour is off", () => {
+    const ui = makeUi(false, stream());
+
+    expect(ui.tone("heading", "H")).toBe("H");
+    expect(ui.emphasize("X")).toBe("X");
+    expect(ui.dim("X")).toBe("X");
   });
 });
