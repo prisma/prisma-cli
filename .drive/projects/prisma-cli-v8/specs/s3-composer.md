@@ -41,7 +41,11 @@ const child = await ctx.spawn({ command, args, cwd, env });
   force-exit path skips handler cleanup that has not had a turn.
   The engine always outlives the child. SIGTERM (no native path to
   the child — supervisors signal the engine pid) is forwarded to
-  the child during a live window.
+  the child during a live window, and a SECOND recorded press of
+  any signal is forwarded as SIGTERM (PR-136 review, §10): when
+  the engine was signalled directly and no process group delivered
+  the first press to the child, the escalation is the interrupt
+  path that keeps the child reachable.
 - **Programmatic abort** (`ctx.signal` aborted by non-signal
   means, or non-TTY contexts): the engine terminates the child —
   SIGTERM, a stated grace period (ruled in D1), then SIGKILL; the
@@ -65,9 +69,14 @@ const child = await ctx.spawn({ command, args, cwd, env });
   **A signal-killed child is an ABORT, not a failure** — handlers
   branch on `signal` before `exitCode`. To exit with the child's
   code verbatim the handler settles via the sanctioned
-  `exitWithChildStatus(child)` outcome, which uses the settlement
-  bypass server commands already have (no envelope; a
-  signal-killed child settles 128+signal). The session kind's
+  `exitWithChildStatus(child, opts?)` outcome — `opts` carries
+  `{ nextActions? }`, rendered to stderr in the engine's
+  next-action style before the exit (R-S3-4's reproduce hint; the
+  envelope stays absent) — which uses the settlement bypass server
+  commands already have (no envelope; a signal-killed child
+  settles 128+signal; an unknown termination settles 1, never 0).
+  The bypass is FENCED: settling it from a command that does not
+  declare `maySpawn` is a construction error. The session kind's
   settlement is amended to permit non-zero through this path
   (today `settleSessionCompleted` hard-codes 0), and the
   session-kind "always supports json" guarantee is amended: a
@@ -88,14 +97,22 @@ it. A command declares credentials; handlers never touch token
 material; the engine's own process env is NEVER mutated.
 
 - **The CHILD leg**: the engine resolves the current session into
-  the affordance's child env. `source: "environment"` passes the
-  env token through (no accessor call — an env session's
-  workspaceId may be empty); `source: "stored"` reads
-  `tokenStorage(workspaceId).getTokens().accessToken` at spawn
-  time — the ONE credential-manager SPI amendment this slice
-  makes, recorded in `credential-manager-design.md` with the
-  single named call site. The injected token is a snapshot; the
-  child never refreshes; the refresh token is NEVER injected.
+  the affordance's child env through ONE unified read — the
+  manager operation `activeAccessToken()`, called at spawn time
+  whatever the credential's origin. (Amended in the PR-136 review
+  round, §10: rev 2 prescribed a `source` conditional — env
+  pass-through vs `tokenStorage(workspaceId)` — but branching on
+  `origin.source` outside whoami is a defect by the
+  credential-manager design; an environment-only manager satisfies
+  the operation by passing the env token through, no accessor
+  call, which preserves what the conditional was for.) The
+  operation is the ONE credential-manager SPI amendment this slice
+  makes, recorded in `credential-manager-design.md` §11.5 with its
+  single named consumer. The injected token is a snapshot; the
+  child never refreshes; the refresh token is NEVER injected. A
+  credential naming no workspace DELETES an inherited
+  `PRISMA_WORKSPACE_ID` from the child env — the two variables are
+  one protocol, written as a unit.
 - **The IN-PROCESS leg**: container ensure/locate and preflight
   run in the engine process before any spawn, and composer's code
   reads env directly there today (`container.ts:138-149`,
@@ -368,3 +385,20 @@ registration, scopes hooks to owned locks); the sole-listener test
 remains as the detector. Operator items:
 install footprint acknowledged as a committed consequence
 (accepted — operator proceeded to implementation, 2026-08-11); everything else mechanical.
+
+PR-136 review round (architect + PE on D1, 2026-08-11; orchestrator
+rulings applied): the child-status settlement bypass is fenced to
+`maySpawn` commands (runtime check; the architect blocker);
+`exitWithChildStatus(child, opts?)` gains `{ nextActions? }` rendered
+before the exit — the R-S3-4 surface as written now exists; the spawn
+path's storage read is replaced by the named manager operation
+`activeAccessToken()` and the Auth section's `source` conditional is
+amended away (branching on `origin.source` outside whoami is a defect
+by the credential-manager design — the code's unified read stands and
+the contract now describes it); handing credentials to the child is
+declared `needs: { credentials: "child" }` (the top-level
+`credentialsForSpawn` coinage is gone; the entailment of the
+credentials need is structural); a second recorded signal press is
+forwarded to the child as SIGTERM (the direct-signal escalation path);
+the environment-only `CredentialManager` the rebase dropped is
+restored as `EnvironmentCredentialManager` on the main entrypoint.

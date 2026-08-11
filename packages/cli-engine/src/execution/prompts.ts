@@ -28,6 +28,7 @@ import {
   clackCapable,
   makeClackRenderer,
 } from "./clack-renderer";
+import { constructionError } from "./command-tree";
 import type { Invocation, RunState } from "./engine";
 import { announceUrl } from "./open-url";
 
@@ -311,7 +312,17 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
     return true;
   };
 
-  return {
+  /** A prompt writes to stderr and reads the engine's stdin — the same
+   *  terminal a live child inherited. Like ctx.present, prompting while
+   *  a child owns the terminal is a construction error. */
+  const requireOwnTerminal = (): void => {
+    if (state.delegatedTerminal !== undefined) {
+      throw constructionError(
+        `command '${state.commandId}' called ctx.prompt while a child owned the terminal`,
+      );
+    }
+  };
+  const surface: PromptSurface = {
     confirm: async (question, opts) => {
       const fallback = opts?.default;
       if (state.yes || !state.interactive) {
@@ -432,6 +443,32 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
           invocation.signal,
         );
       }
+    },
+  };
+  return {
+    confirm: async (question, opts) => {
+      requireOwnTerminal();
+      return surface.confirm(question, opts);
+    },
+    consent: async (question, opts) => {
+      requireOwnTerminal();
+      return surface.consent(question, opts);
+    },
+    select: async <T extends string>(
+      question: string,
+      options: ReadonlyArray<{ value: T; label: string }>,
+      opts?: { readonly default?: T },
+    ) => {
+      requireOwnTerminal();
+      return surface.select(question, options, opts);
+    },
+    text: async (question, opts) => {
+      requireOwnTerminal();
+      return surface.text(question, opts);
+    },
+    browserWait: async (request) => {
+      requireOwnTerminal();
+      return surface.browserWait(request);
     },
   };
 }

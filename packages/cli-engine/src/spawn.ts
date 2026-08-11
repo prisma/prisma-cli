@@ -3,6 +3,7 @@
  * the child-status settlement are built from. The engine never imports
  * node:child_process — the bin injects an adapter satisfying SpawnChild.
  */
+import type { NextAction } from "./protocol";
 
 /** A fully composed child invocation. `env` is the child's COMPLETE
  *  environment: the engine has already merged the invocation
@@ -56,13 +57,25 @@ export const CHILD_STATUS: unique symbol = Symbol.for(
 /**
  * The sanctioned settlement outcome for "exit with the child's status
  * verbatim": no envelope, the same settlement bypass server commands
- * use. Built exclusively by exitWithChildStatus.
+ * use. Built exclusively by exitWithChildStatus, and only settled by a
+ * command that declares maySpawn. `nextActions` render to stderr before
+ * the process exits with the child's code.
  */
 export interface ChildStatusSettlement {
   readonly [CHILD_STATUS]: true;
   readonly exitCode: number;
+  readonly nextActions: readonly NextAction[];
 }
 
+export interface ExitWithChildStatusOptions {
+  /** Engine-styled guidance printed to stderr before the exit — a
+   *  failed converge's reproduce hint. The envelope stays absent. */
+  readonly nextActions?: readonly NextAction[];
+}
+
+/** Signal numbers shared by Linux, macOS and the BSDs. Numbers that
+ *  differ by platform (SIGBUS, SIGUSR1, SIGUSR2, …) are deliberately
+ *  absent — a wrong 128+n is worse than the unknown-signal fallback. */
 const SIGNAL_NUMBERS: Readonly<Record<string, number>> = {
   SIGHUP: 1,
   SIGINT: 2,
@@ -70,29 +83,35 @@ const SIGNAL_NUMBERS: Readonly<Record<string, number>> = {
   SIGILL: 4,
   SIGTRAP: 5,
   SIGABRT: 6,
-  SIGBUS: 7,
   SIGFPE: 8,
   SIGKILL: 9,
-  SIGUSR1: 10,
   SIGSEGV: 11,
-  SIGUSR2: 12,
   SIGPIPE: 13,
   SIGALRM: 14,
   SIGTERM: 15,
 };
 
 /** A signal-killed child settles 128 + the signal number; otherwise the
- *  child's own exit code, verbatim. */
-export function exitWithChildStatus(child: ChildResult): ChildStatusSettlement {
+ *  child's own exit code, verbatim. Unknown is never success: a signal
+ *  outside the portable table, or an adapter that cannot say how the
+ *  child ended (exitCode and signal both null), settles 1. */
+export function exitWithChildStatus(
+  child: ChildResult,
+  options?: ExitWithChildStatusOptions,
+): ChildStatusSettlement {
+  const nextActions = Object.freeze([...(options?.nextActions ?? [])]);
   if (child.signal !== null) {
+    const signalNumber = SIGNAL_NUMBERS[child.signal];
     return Object.freeze({
       [CHILD_STATUS]: true as const,
-      exitCode: 128 + (SIGNAL_NUMBERS[child.signal] ?? 0),
+      exitCode: signalNumber === undefined ? 1 : 128 + signalNumber,
+      nextActions,
     });
   }
   return Object.freeze({
     [CHILD_STATUS]: true as const,
-    exitCode: child.exitCode ?? 0,
+    exitCode: child.exitCode ?? 1,
+    nextActions,
   });
 }
 

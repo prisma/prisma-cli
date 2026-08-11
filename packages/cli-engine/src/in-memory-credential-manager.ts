@@ -264,6 +264,14 @@ export class InMemoryCredentialManager implements CredentialManager {
     return this.activeStorage;
   }
 
+  /** The spawn path's read: the active credential's access token,
+   *  fresh on every call, never the refresh token. */
+  async activeAccessToken(): Promise<string | null> {
+    const storage = await this.activeCredentialStorage();
+    const tokens = await storage.getTokens();
+    return tokens === null ? null : tokens.accessToken;
+  }
+
   private buildActiveStorage(): TokenStorage {
     const pin = this.pin;
     if (pin.kind === "environment") {

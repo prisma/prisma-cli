@@ -35,7 +35,9 @@ const spawnChild = (request) => {
 const childArgs = {
   "unframed-stdout": ["print"],
   "native-sigint": ["idle", join(dir, "ready")],
-  "double-sigint": ["ready-then-exit", join(dir, "ready")],
+  // Idles forever: the test controls when it ends (the engine's
+  // second-press SIGTERM escalation), so nothing races a timer.
+  "double-sigint": ["idle", join(dir, "ready")],
 }[scenario];
 
 const command = defineCommand({

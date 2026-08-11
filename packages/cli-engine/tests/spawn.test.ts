@@ -217,10 +217,10 @@ describe("the spawn request", () => {
     expect(JSON.stringify(result.json)).toContain("without declaring maySpawn");
   });
 
-  test("credentialsForSpawn without maySpawn fails construction", () => {
+  test("needs.credentials 'child' without maySpawn fails construction", () => {
     const wrong = defineCommand({
       help: { summary: "Wants credentials it cannot hand over" },
-      credentialsForSpawn: true,
+      needs: { credentials: "child" },
       handler: async (_args, ctx) =>
         ok(ctx.present({ data: null }, { human: () => [] })),
     });
@@ -233,7 +233,33 @@ describe("the spawn request", () => {
         groups: {},
         commands: { wrong },
       }),
-    ).toThrow("credentialsForSpawn without maySpawn");
+    ).toThrow("needs credentials for a child without declaring maySpawn");
+  });
+
+  test("a maySpawn command on a Runtime without a spawn adapter refuses before the handler runs", async () => {
+    const { runtime, stderr } = controllableRuntime();
+    let handlerRan = false;
+    const stranded = defineCommand({
+      help: { summary: "Spawns on a host with no adapter" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        handlerRan = true;
+        return ok(exitWithChildStatus(await ctx.spawn({ command: "alchemy" })));
+      },
+    });
+    const cli = createCli({
+      name: "t",
+      version: "0.0.0",
+      commandFamilies: [],
+      groups: {},
+      commands: { stranded },
+    });
+
+    const exitCode = await cli.run(["stranded"], runtime);
+
+    expect(exitCode).toBe(1);
+    expect(handlerRan).toBe(false);
+    expect(stderr()).toContain("no spawn adapter");
   });
 });
 
@@ -417,8 +443,7 @@ describe("signals", () => {
 const credentialedConverge = defineCommand({
   help: { summary: "Hands credentials to a child" },
   maySpawn: true,
-  credentialsForSpawn: true,
-  needs: { credentials: true },
+  needs: { credentials: "child" },
   handler: async (_args, ctx) => {
     const child = await ctx.spawn({ command: "alchemy", args: ["deploy"] });
     return ok(exitWithChildStatus(child));
@@ -426,23 +451,33 @@ const credentialedConverge = defineCommand({
 });
 
 describe("credential injection", () => {
-  test("a stored session's access token is read at spawn time", async () => {
+  test("a stored session's access token is read at spawn time, not at mount", async () => {
     let seen: Readonly<Record<string, string | undefined>> = {};
-    const token = jwtExpiringIn(3600, "ws_1");
+    const mountToken = jwtExpiringIn(3600, "ws_1");
+    const rotatedToken = jwtExpiringIn(7200, "ws_1");
+    const record = (token: string) => ({
+      workspaceId: "ws_1",
+      workspaceName: undefined,
+      credential: {
+        token,
+        refreshToken: "refresh-material",
+        expiresAt: undefined,
+      },
+    });
+    const reportThenSpawn = defineCommand({
+      help: { summary: "Reports, then hands credentials to a child" },
+      maySpawn: true,
+      needs: { credentials: "child" },
+      handler: async (_args, ctx) => {
+        ctx.report({ kind: "status", subject: "run", status: "pre-spawn" });
+        const child = await ctx.spawn({ command: "alchemy" });
+        return ok(exitWithChildStatus(child));
+      },
+    });
     const cli = createTestCli({
-      commands: { converge: credentialedConverge },
+      commands: { converge: reportThenSpawn },
       now: CLOCK,
-      sessions: [
-        {
-          workspaceId: "ws_1",
-          workspaceName: undefined,
-          credential: {
-            token,
-            refreshToken: "refresh-material",
-            expiresAt: undefined,
-          },
-        },
-      ],
+      sessions: [record(mountToken)],
       selectedWorkspaceId: "ws_1",
       spawnScript: (request) => {
         seen = request.env;
@@ -450,10 +485,20 @@ describe("credential injection", () => {
       },
     });
 
-    const result = await cli.run(["converge"]);
+    const result = await cli.run(["converge"], {
+      onEvent: (event) => {
+        if (event.kind === "status") {
+          // Another process rotates the stored token between mount
+          // and spawn; the spawn-time read must see the new one.
+          cli.credentialManager.overwriteStoredState({
+            sessions: [record(rotatedToken)],
+          });
+        }
+      },
+    });
 
     expect(result.exitCode).toBe(0);
-    expect(seen.PRISMA_SERVICE_TOKEN).toBe(token);
+    expect(seen.PRISMA_SERVICE_TOKEN).toBe(rotatedToken);
     expect(seen.PRISMA_WORKSPACE_ID).toBe("ws_1");
     expect(Object.values(seen)).not.toContain("refresh-material");
   });
@@ -516,11 +561,23 @@ describe("credential injection", () => {
     expect((await cli.run(["converge"])).exitCode).toBe(0);
   });
 
-  test("a command without credentialsForSpawn gets no injected credentials", async () => {
+  test("a command without the child-credentials need gets no injected credentials", async () => {
     let seen: Readonly<Record<string, string | undefined>> = {};
     const cli = createTestCli({
       commands: { converge },
       now: CLOCK,
+      sessions: [
+        {
+          workspaceId: "ws_1",
+          workspaceName: undefined,
+          credential: {
+            token: jwtExpiringIn(3600, "ws_1"),
+            refreshToken: undefined,
+            expiresAt: undefined,
+          },
+        },
+      ],
+      selectedWorkspaceId: "ws_1",
       spawnScript: (request) => {
         seen = request.env;
         return { exitCode: 0, signal: null };
@@ -529,16 +586,337 @@ describe("credential injection", () => {
 
     await cli.run(["converge"]);
 
+    expect(seen.PRISMA_SERVICE_TOKEN).toBeUndefined();
     expect(seen.PRISMA_WORKSPACE_ID).toBeUndefined();
+  });
+
+  test("a credential naming no workspace deletes an inherited PRISMA_WORKSPACE_ID", async () => {
+    let seen: Readonly<Record<string, string | undefined>> = {};
+    const claimlessToken = mintTestJwt({ sub: "user_1" });
+    const cli = createTestCli({
+      commands: { converge: credentialedConverge },
+      now: CLOCK,
+      environmentCredential: {
+        token: claimlessToken,
+        refreshToken: undefined,
+        expiresAt: undefined,
+      },
+      spawnScript: (request) => {
+        seen = request.env;
+        return { exitCode: 0, signal: null };
+      },
+    });
+
+    const result = await cli.run(["converge"], {
+      env: { PRISMA_WORKSPACE_ID: "ws_stale" },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(seen.PRISMA_SERVICE_TOKEN).toBe(claimlessToken);
+    expect(seen.PRISMA_WORKSPACE_ID).toBeUndefined();
+  });
+});
+
+describe("the settlement bypass is fenced to declaring commands", () => {
+  test("a result command without maySpawn returning exitWithChildStatus is a construction error", async () => {
+    const undeclared = defineCommand({
+      help: { summary: "Settles a child status it never earned" },
+      handler: async () =>
+        ok(exitWithChildStatus({ exitCode: 7, signal: null })),
+    });
+    const cli = createTestCli({ commands: { undeclared }, now: CLOCK });
+
+    const result = await cli.run(["undeclared"], {
+      isTty: { stdout: true },
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("without declaring maySpawn");
+  });
+
+  test("in json mode the stream still ends with its result frame", async () => {
+    const undeclared = defineCommand({
+      help: { summary: "Settles a child status it never earned" },
+      handler: async () =>
+        ok(exitWithChildStatus({ exitCode: 7, signal: null })),
+    });
+    const cli = createTestCli({ commands: { undeclared }, now: CLOCK });
+
+    const result = await cli.run(["undeclared", "--json"]);
+
+    expect(result.exitCode).toBe(1);
+    const resultFrames = result.json.filter((frame) => frame.kind === "result");
+    expect(resultFrames).toHaveLength(1);
+    expect(JSON.stringify(resultFrames[0])).toContain("CLI.INTERNAL_ERROR");
+  });
+
+  test("a session command without maySpawn is fenced the same way", async () => {
+    const undeclared = defineSessionCommand({
+      help: { summary: "A session settling a child status it never earned" },
+      handler: async () =>
+        ok(exitWithChildStatus({ exitCode: 7, signal: null })),
+    });
+    const cli = createTestCli({ commands: { undeclared }, now: CLOCK });
+
+    const result = await cli.run(["undeclared"], {
+      isTty: { stdout: true },
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("without declaring maySpawn");
+  });
+});
+
+describe("next actions on a child-status settlement", () => {
+  test("they render to stderr before the run exits with the child's code", async () => {
+    const failing = defineCommand({
+      help: { summary: "A converge that fails with a reproduce hint" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        const child = await ctx.spawn({ command: "alchemy" });
+        return ok(
+          exitWithChildStatus(child, {
+            nextActions: [
+              {
+                kind: "run-command",
+                label: "Reproduce the failed converge",
+                command: "alchemy deploy ./entry.ts",
+              },
+            ],
+          }),
+        );
+      },
+    });
+    const cli = createTestCli({
+      commands: { failing },
+      now: CLOCK,
+      spawnScript: () => ({ exitCode: 3, signal: null }),
+    });
+
+    const result = await cli.run(["failing"]);
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain(
+      "→ Reproduce the failed converge: alchemy deploy ./entry.ts",
+    );
+  });
+});
+
+describe("unknown terminations are never success", () => {
+  test("an adapter that cannot say how the child ended settles 1", async () => {
+    const cli = createTestCli({
+      commands: { converge },
+      now: CLOCK,
+      spawnScript: () => ({ exitCode: null, signal: null }),
+    });
+
+    expect((await cli.run(["converge"])).exitCode).toBe(1);
+  });
+
+  test("a signal outside the portable table settles 1, not 128", async () => {
+    const cli = createTestCli({
+      commands: { converge },
+      now: CLOCK,
+      spawnScript: () => ({ exitCode: null, signal: "SIGWEIRD" }),
+    });
+
+    expect((await cli.run(["converge"])).exitCode).toBe(1);
+  });
+});
+
+describe("a handler that abandons the spawn promise", () => {
+  test("resolving with a live child is a construction error, not a silent orphan", async () => {
+    const abandoning = defineSessionCommand({
+      help: { summary: "Returns while its child is still live" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        void ctx.spawn({ command: "alchemy" }).catch(() => {});
+        return ok(undefined);
+      },
+    });
+    const cli = createTestCli({
+      commands: { abandoning },
+      now: CLOCK,
+      spawnScript: () => new Promise(() => {}),
+    });
+
+    const result = await cli.run(["abandoning"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("resolved while a child was still live");
+  });
+
+  test("throwing with a live child is the same error, naming the throw", async () => {
+    const throwing = defineCommand({
+      help: { summary: "Throws while its child is still live" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        void ctx.spawn({ command: "alchemy" }).catch(() => {});
+        throw new Error("boom mid-child");
+      },
+    });
+    const cli = createTestCli({
+      commands: { throwing },
+      now: CLOCK,
+      spawnScript: () => new Promise(() => {}),
+    });
+
+    const result = await cli.run(["throwing"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("resolved while a child was still live");
+    expect(result.stderr).toContain("boom mid-child");
+  });
+});
+
+describe("signal replay routes every force exit after settlement", () => {
+  test("a signal recorded after a pre-spawn abort force-exits only after telemetry", async () => {
+    const { runtime, exited, deliver } = controllableRuntime();
+    const summaries: number[] = [];
+    const late = defineCommand({
+      help: { summary: "Spawns after the signal already fired" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        deliver("SIGINT");
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const child = await ctx.spawn({ command: "alchemy" });
+        return ok(exitWithChildStatus(child));
+      },
+    });
+    const cli = createCli({
+      name: "t",
+      version: "0.0.0",
+      commandFamilies: [],
+      groups: {},
+      commands: { late },
+    });
+
+    const running = cli.run(
+      ["late"],
+      {
+        ...runtime,
+        spawn: () => ({
+          ended: (async () => {
+            deliver("SIGINT");
+            return { exitCode: 0, signal: null };
+          })(),
+          kill: () => {},
+        }),
+      },
+      { onSettled: (summary) => summaries.push(summary.exitCode) },
+    );
+
+    await expect(running).rejects.toThrow("runtime.exit(130)");
+    expect(exited).toEqual([130]);
+    expect(summaries).toEqual([0]);
+  });
+
+  test("a second recorded signal forwards SIGTERM so the child stays reachable", async () => {
+    const { runtime, exited, deliver } = controllableRuntime();
+    const kills: string[] = [];
+    const cli = createCli({
+      name: "t",
+      version: "0.0.0",
+      commandFamilies: [],
+      groups: {},
+      commands: { converge },
+    });
+
+    const running = cli.run(["converge"], {
+      ...runtime,
+      spawn: () => ({
+        ended: (async () => {
+          deliver("SIGINT");
+          deliver("SIGINT");
+          return { exitCode: null, signal: "SIGTERM" };
+        })(),
+        kill: (signal) => {
+          kills.push(signal);
+        },
+      }),
+    });
+
+    await expect(running).rejects.toThrow("runtime.exit(130)");
+    expect(kills).toEqual(["SIGTERM"]);
+    expect(exited).toEqual([130]);
+  });
+});
+
+describe("the commentary buffer is bounded", () => {
+  test("events past the cap are dropped and the flush says how many", async () => {
+    const chatty = defineCommand({
+      help: { summary: "Reports far past the cap during a child" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        const child = ctx.spawn({ command: "alchemy" });
+        for (let index = 0; index < 1005; index += 1) {
+          ctx.report({
+            kind: "message",
+            severity: "info",
+            text: `event-${index}`,
+          });
+        }
+        await child;
+        return ok(ctx.present({ data: null }, { human: () => [] }));
+      },
+    });
+    const messages: string[] = [];
+    const cli = createTestCli({ commands: { chatty }, now: CLOCK });
+
+    const result = await cli.run(["chatty"], {
+      onEvent: (event) => {
+        if (event.kind === "message") {
+          messages.push(event.text);
+        }
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    const dropped = messages.filter((text) => text.includes("dropped"));
+    expect(dropped).toEqual([
+      "5 buffered events dropped while a child owned the terminal",
+    ]);
+    expect(messages).toHaveLength(1001);
+    expect(messages[999]).toBe("event-999");
+  });
+});
+
+describe("prompts while a child owns the terminal", () => {
+  test("ctx.prompt during a live child is a construction error", async () => {
+    const prompting = defineCommand({
+      help: { summary: "Prompts mid-child" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        const child = ctx.spawn({ command: "alchemy" });
+        const failure = await ctx.prompt
+          .confirm("Proceed?", { default: true })
+          .then(() => "no error", String);
+        await child;
+        return ok(ctx.present({ data: failure }, { human: () => [] }));
+      },
+    });
+    const cli = createTestCli({ commands: { prompting }, now: CLOCK });
+
+    const result = await cli.run(["prompting"]);
+
+    expect(result.presented?.data).toContain(
+      "called ctx.prompt while a child owned the terminal",
+    );
   });
 });
 
 function controllableRuntime() {
   let subscriber: ((signal: "SIGINT" | "SIGTERM") => void) | undefined;
   const exited: number[] = [];
+  const stderrText: string[] = [];
   const runtime: Runtime = {
     stdout: { write: () => {} },
-    stderr: { write: () => {} },
+    stderr: {
+      write: (text) => {
+        stderrText.push(text);
+      },
+    },
     stdin: {
       async *[Symbol.asyncIterator]() {},
     },
@@ -562,6 +940,7 @@ function controllableRuntime() {
   return {
     runtime,
     exited,
+    stderr: () => stderrText.join(""),
     deliver: (signal: "SIGINT" | "SIGTERM") => subscriber?.(signal),
   };
 }

@@ -21,7 +21,7 @@ import {
   type PositionalSpec,
   positionalRuntime,
 } from "../args";
-import { type AnyCommand, commandMaySpawn } from "../commands";
+import type { AnyCommand } from "../commands";
 import type { CommandTreeEntry, CommandTreeNode } from "./command-tree";
 import type { EngineSpec, Invocation, RunState } from "./engine";
 import { SHARED_ALIASES, SHARED_FLAG_PARAMETERS } from "./shared-flags";
@@ -184,7 +184,7 @@ function commandDocs(
   const examples = def.help.examples.map((example) =>
     resolveExample(example, cliName),
   );
-  const notes = commandMaySpawn(def) ? ["", NO_JSON_NOTE] : [];
+  const notes = def.maySpawn ? ["", NO_JSON_NOTE] : [];
   if (examples.length === 0 && notes.length === 0) {
     return { brief: def.help.summary, fullDescription: def.help.description };
   }

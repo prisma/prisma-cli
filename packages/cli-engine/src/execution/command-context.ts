@@ -75,7 +75,7 @@ export function makeContext(
     },
     presentations: Presentations,
   ): PresentedResult<T> => {
-    if (state.liveSpawn !== undefined) {
+    if (state.delegatedTerminal !== undefined) {
       throw constructionError(
         `command '${state.commandId}' called ctx.present while a child owned the terminal`,
       );

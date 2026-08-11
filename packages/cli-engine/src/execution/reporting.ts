@@ -1,6 +1,13 @@
 import type { EngineEvent, Severity, StreamEvent } from "../events";
 import type { Invocation } from "./engine";
 import { renderEventHuman } from "./rendering";
+import type { DelegatedTerminal } from "./spawn";
+
+/** Commentary buffered during a live child is capped: a session that
+ *  holds a converge open for an hour must not accumulate (or later
+ *  flush) an unbounded backlog. Events past the cap are dropped and
+ *  counted; the flush ends with an explicit dropped-events marker. */
+export const SPAWN_COMMENTARY_BUFFER_CAP = 1_000;
 
 export const SEVERITY_RANK: Readonly<Record<Severity, number>> = {
   error: 0,
@@ -37,10 +44,15 @@ export function reportEvent(invocation: Invocation, event: EngineEvent): void {
     reportAfterResolution(invocation);
     return;
   }
-  // No engine write may interleave with a live child's terminal
+  // No engine write may interleave with a delegated terminal's child
   // output; the buffer is flushed in order when the child ends.
-  if (state.liveSpawn !== undefined) {
-    state.liveSpawn.buffered.push(event);
+  const terminal = state.delegatedTerminal;
+  if (terminal !== undefined) {
+    if (terminal.buffered.length >= SPAWN_COMMENTARY_BUFFER_CAP) {
+      terminal.dropped += 1;
+      return;
+    }
+    terminal.buffered.push(event);
     return;
   }
   invocation.hooks.onEvent?.(event);
@@ -64,10 +76,17 @@ export function reportEvent(invocation: Invocation, event: EngineEvent): void {
 
 export function flushBufferedEvents(
   invocation: Invocation,
-  buffered: readonly EngineEvent[],
+  terminal: DelegatedTerminal,
 ): void {
-  for (const event of buffered) {
+  for (const event of terminal.buffered) {
     reportEvent(invocation, event);
+  }
+  if (terminal.dropped > 0) {
+    reportEvent(invocation, {
+      kind: "message",
+      severity: "warn",
+      text: `${terminal.dropped} buffered event${terminal.dropped === 1 ? "" : "s"} dropped while a child owned the terminal`,
+    });
   }
 }
 

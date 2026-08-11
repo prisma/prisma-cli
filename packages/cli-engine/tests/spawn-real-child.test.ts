@@ -323,6 +323,10 @@ describe.skipIf(process.platform === "win32")(
 
       const host = startHost("double-sigint", dir);
       await waitForFile(join(dir, "ready"));
+      // The engine is signalled directly (no group), so the child never
+      // sees the first SIGINT; the second press is the escalation that
+      // forwards SIGTERM and ends the idling child. The child's end is
+      // driven by that forward, never by a timer.
       process.kill(host.pid, "SIGINT");
       await new Promise((resolve) => setTimeout(resolve, 60));
       process.kill(host.pid, "SIGINT");
@@ -332,9 +336,9 @@ describe.skipIf(process.platform === "win32")(
       // before the force exit.
       const result = JSON.parse(
         readFileSync(join(dir, "result.json"), "utf8"),
-      ) as { exitCode: number | null; aborted: boolean };
+      ) as { exitCode: number | null; signal: string | null; aborted: boolean };
       expect(result.aborted).toBe(true);
-      expect(result.exitCode).toBe(0);
+      expect(result.signal).toBe("SIGTERM");
       expect(run.exitCode).toBe(130);
     });
   },

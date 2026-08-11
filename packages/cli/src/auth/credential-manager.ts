@@ -267,6 +267,14 @@ export class FileCredentialManager implements CredentialManager {
     return this.#activeStorage;
   }
 
+  /** The spawn path's read: the active credential's access token,
+   *  fresh on every call, never the refresh token. */
+  async activeAccessToken(): Promise<string | null> {
+    const storage = await this.activeCredentialStorage();
+    const tokens = await storage.getTokens();
+    return tokens === null ? null : tokens.accessToken;
+  }
+
   /** §11.2: which storage is chosen once, when the pin resolves. Each
    *  has exactly one source of truth — the file, or process memory. */
   #buildActiveStorage(): TokenStorage {

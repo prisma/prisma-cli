@@ -104,17 +104,18 @@ export {
   type Runtime,
 } from "../runtime";
 export {
-  claimedExpiresAt,
-  claimedIdentity,
-  claimedWorkspaceId,
-  credentialWorkspaceId,
-} from "../token-claims";
-export {
   type ChildResult,
   type ChildStatusSettlement,
+  type ExitWithChildStatusOptions,
   exitWithChildStatus,
   type SpawnChild,
   type SpawnedChild,
   type SpawnOptions,
   type SpawnRequest,
 } from "../spawn";
+export {
+  claimedExpiresAt,
+  claimedIdentity,
+  claimedWorkspaceId,
+  credentialWorkspaceId,
+} from "../token-claims";

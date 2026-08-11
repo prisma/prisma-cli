@@ -60,8 +60,17 @@ export interface NeedsSpec<TConfig> {
    * its error diagnostics, hand me the value as ctx.config.
    */
   readonly config?: ConfigSection<TConfig>;
-  /** Fail early with the sign-in error when unauthenticated. */
-  readonly credentials?: true;
+  /**
+   * Fail early with the sign-in error when unauthenticated. The
+   * `"child"` form (S3) additionally makes the engine compose the
+   * active credential into every child environment
+   * (PRISMA_SERVICE_TOKEN, PRISMA_WORKSPACE_ID) and refuse the run
+   * before the handler when that credential expires too soon to hand
+   * out — a child cannot refresh the snapshot it is given. It
+   * requires `maySpawn` (construction error otherwise) and entails
+   * the plain credentials need.
+   */
+  readonly credentials?: true | "child";
   /**
    * Optional peer dependencies this command cannot run without; the
    * engine probes resolvability and phrases the install error.
@@ -83,7 +92,7 @@ export interface NeedsSpec<TConfig> {
 /** The normalized preconditions a definition carries. */
 export interface CommandNeeds<TConfig> {
   readonly config: ConfigSection<TConfig> | undefined;
-  readonly credentials: boolean;
+  readonly credentials: boolean | "child";
   readonly dependencies: readonly string[];
   readonly interaction: boolean;
 }
@@ -109,20 +118,17 @@ function normalizeArgs<
 }
 
 /**
- * The terminal-handoff declarations, normalized onto every result and
- * session definition.
+ * The terminal-handoff declaration, normalized onto every definition
+ * (server commands normalize to false: they own stdio already).
  *
- * `maySpawn` unlocks ctx.spawn and makes the command reject `--json` at
- * parse time: output delegated to a child process cannot be framed.
- *
- * `credentialsForSpawn` makes the engine compose the active
- * credential into every child environment (PRISMA_SERVICE_TOKEN,
- * PRISMA_WORKSPACE_ID) and refuse the run before the handler when that
- * credential expires too soon to hand out. It requires `maySpawn`.
+ * `maySpawn` unlocks ctx.spawn and makes the command reject `--json`
+ * as soon as the command is known, before anything runs: output
+ * delegated to a child process cannot be framed. Handing credentials
+ * to the child is a precondition, declared as
+ * `needs: { credentials: "child" }`.
  */
 export interface SpawnDeclarations {
   readonly maySpawn?: boolean;
-  readonly credentialsForSpawn?: boolean;
 }
 
 function normalizeNeeds<TConfig>(
@@ -130,7 +136,7 @@ function normalizeNeeds<TConfig>(
 ): CommandNeeds<TConfig> {
   return Object.freeze({
     config: spec?.config,
-    credentials: spec?.credentials === true,
+    credentials: spec?.credentials ?? false,
     dependencies: spec?.dependencies ?? [],
     interaction: spec?.interaction === true,
   });
@@ -173,8 +179,6 @@ export interface CommandDefinition<
 
   /** See SpawnDeclarations. */
   readonly maySpawn: boolean;
-  /** See SpawnDeclarations. */
-  readonly credentialsForSpawn: boolean;
 
   /**
    * The handler function, referenced directly — never a dynamic import
@@ -284,7 +288,6 @@ export function defineCommand<
     exitCodes: def.exitCodes ?? ({} as Readonly<Record<TCode, string>>),
     managesCredentials: def.managesCredentials ?? false,
     maySpawn: def.maySpawn ?? false,
-    credentialsForSpawn: def.credentialsForSpawn ?? false,
     handler: def.handler,
   });
 }
@@ -318,8 +321,6 @@ export interface SessionCommandDefinition<
   readonly needs: CommandNeeds<TConfig>;
   /** See SpawnDeclarations. */
   readonly maySpawn: boolean;
-  /** See SpawnDeclarations. */
-  readonly credentialsForSpawn: boolean;
   readonly handler: (
     args: Args<TFlags, TPositionals>,
     ctx: CommandContext<TConfig>,
@@ -354,7 +355,6 @@ export function defineSessionCommand<
     args: normalizeArgs(def.args),
     needs: normalizeNeeds(def.needs),
     maySpawn: def.maySpawn ?? false,
-    credentialsForSpawn: def.credentialsForSpawn ?? false,
     handler: def.handler,
   });
 }
@@ -376,6 +376,9 @@ export interface ServerCommandDefinition<
   readonly help: CommandHelp;
   readonly args: CommandArgs<TFlags, Record<never, PositionalSpec<unknown>>>;
   readonly needs: CommandNeeds<TConfig>;
+  /** Always false — a server command owns stdio already. Normalized so
+   *  every definition carries the field and callers read it directly. */
+  readonly maySpawn: false;
   readonly handler: (
     args: Args<TFlags, Record<never, PositionalSpec<unknown>>>,
     io: {
@@ -407,6 +410,7 @@ export function defineServerCommand<
     help: normalizeHelp(def.help),
     args: normalizeArgs(def.args),
     needs: normalizeNeeds(def.needs),
+    maySpawn: false as const,
     handler: def.handler,
   });
 }
@@ -440,16 +444,6 @@ export type AnyCommand =
       ServerCommandDefinition<Record<string, FlagSpec<unknown>>, unknown>,
       "handler"
     > & { readonly handler: unknown });
-
-/** Server commands own stdio already and carry no spawn declarations;
- *  these narrow the erased union for the engine's own checks. */
-export function commandMaySpawn(def: AnyCommand): boolean {
-  return def.kind !== "server-command" && def.maySpawn;
-}
-
-export function commandNeedsCredentialsForSpawn(def: AnyCommand): boolean {
-  return def.kind !== "server-command" && def.credentialsForSpawn;
-}
 
 export interface CompletedEnvelope<T = unknown> {
   /**

@@ -5,8 +5,9 @@ import {
 } from "@stricli/core";
 import { type PositionalSpec, positionalRuntime } from "../args";
 import type { CommandFamily, MountedTree } from "../command-family";
-import { type AnyCommand, commandMaySpawn } from "../commands";
+import type { AnyCommand } from "../commands";
 import type { CommandContext } from "../context";
+import type { ActiveCredential } from "../credential-manager";
 import type { EngineEvent, Severity, StreamEvent } from "../events";
 import type { ManagementApiClient } from "../management-api";
 import type { Format, PresentedResult } from "../presentation";
@@ -26,6 +27,7 @@ import {
   settleSessionCompleted,
   settleThrown,
   settleUnhandled,
+  settleVerbatimExitCode,
   settleVersion,
 } from "./settlement";
 import {
@@ -35,7 +37,7 @@ import {
   type SharedFlags,
   sniffFormat,
 } from "./shared-flags";
-import { type LiveSpawn, recordSignalDuringSpawn } from "./spawn";
+import { type DelegatedTerminal, recordSignalDuringSpawn } from "./spawn";
 import {
   buildRoutes,
   capturingText,
@@ -106,10 +108,14 @@ export interface RunState {
   /** Set while ctx.spawn is awaiting a child that owns the terminal:
    *  signals are recorded rather than acted on, and commentary is
    *  buffered. */
-  liveSpawn: LiveSpawn | undefined;
-  /** The second signal recorded during a live child, replayed as the
-   *  force exit once the handler has resolved. */
+  delegatedTerminal: DelegatedTerminal | undefined;
+  /** A signal past the first delivery recorded during a live child,
+   *  replayed as the force exit once the run has settled. */
   pendingForceExit: "SIGINT" | "SIGTERM" | undefined;
+  /** The credential the needs check resolved for a
+   *  `credentials: "child"` command, carried to the spawn path so it
+   *  is never re-resolved. */
+  spawnCredential: ActiveCredential | undefined;
 }
 
 export interface Invocation {
@@ -237,8 +243,9 @@ export class EngineImpl implements Engine {
       stdinIterator: undefined,
       argv,
       snapshot: undefined,
-      liveSpawn: undefined,
+      delegatedTerminal: undefined,
       pendingForceExit: undefined,
+      spawnCredential: undefined,
     };
     const startedAtMs = this.now().getTime();
     const controller = new AbortController();
@@ -247,8 +254,8 @@ export class EngineImpl implements Engine {
      *  terminal: it records, and the affordance replays on child exit,
      *  so the engine always outlives the child. */
     const deliverSignal = (signal: "SIGINT" | "SIGTERM"): void => {
-      if (state.liveSpawn !== undefined) {
-        recordSignalDuringSpawn(state.liveSpawn, signal);
+      if (state.delegatedTerminal !== undefined) {
+        recordSignalDuringSpawn(state.delegatedTerminal, signal);
         return;
       }
       if (signalDelivered) {
@@ -365,15 +372,28 @@ export class EngineImpl implements Engine {
       await this.executeServer(invocation, entry, rawFlags);
       return;
     }
-    if (commandMaySpawn(entry.def) && explicitFormat(state.argv) === "json") {
+    if (entry.def.maySpawn && explicitFormat(state.argv) === "json") {
       state.format = "human";
       settleErrored(invocation, jsonUnsupportedError(entry.id));
+      return;
+    }
+    if (entry.def.maySpawn && invocation.runtime.spawn === undefined) {
+      // A host that mounts a maySpawn command and supplies no adapter
+      // is misconfigured; the run is doomed and refuses here, before
+      // the needs check, rather than mid-handler after side effects.
+      state.format = "human";
+      settleBug(
+        invocation,
+        new Error(
+          `@prisma/cli-engine: command '${entry.id}' declares maySpawn but the Runtime supplies no spawn adapter`,
+        ),
+      );
       return;
     }
     let needsOutcome: NeedsOutcome;
     try {
       applySharedFlags(state, rawFlags as SharedFlags, invocation.runtime);
-      if (commandMaySpawn(entry.def)) {
+      if (entry.def.maySpawn) {
         state.format = "human";
       }
       needsOutcome = await checkNeeds(entry.def, invocation);
@@ -389,6 +409,7 @@ export class EngineImpl implements Engine {
       settleBug(invocation, needsOutcome.cause);
       return;
     }
+    state.spawnCredential = needsOutcome.spawnCredential;
     const handler: unknown = entry.def.handler;
     const args = {
       flags: declaredFlags(entry.def, rawFlags),
@@ -404,15 +425,21 @@ export class EngineImpl implements Engine {
       try {
         const result = await (handler as ErasedSessionHandler)(args, ctx);
         state.resolved = true;
+        if (this.settleAbandonedChild(invocation, false)) {
+          return;
+        }
         if (!result.ok) {
           settleErrored(invocation, result.failure);
         } else if (isChildStatusSettlement(result.value)) {
-          settleChildStatus(invocation, result.value);
+          settleChildStatus(invocation, entry.def, result.value);
         } else {
           settleSessionCompleted(invocation);
         }
       } catch (cause) {
         state.resolved = true;
+        if (this.settleAbandonedChild(invocation, true, cause)) {
+          return;
+        }
         settleThrown(invocation, cause);
       }
       return;
@@ -420,17 +447,50 @@ export class EngineImpl implements Engine {
     try {
       const result = await (handler as ErasedHandler)(args, ctx);
       state.resolved = true;
+      if (this.settleAbandonedChild(invocation, false)) {
+        return;
+      }
       if (!result.ok) {
         settleErrored(invocation, result.failure);
       } else if (isChildStatusSettlement(result.value)) {
-        settleChildStatus(invocation, result.value);
+        settleChildStatus(invocation, entry.def, result.value);
       } else {
         settleCompleted(invocation, entry.def, result.value);
       }
     } catch (cause) {
       state.resolved = true;
+      if (this.settleAbandonedChild(invocation, true, cause)) {
+        return;
+      }
       settleThrown(invocation, cause);
     }
+  }
+
+  /** "The engine always outlives the child" holds only while the
+   *  handler is suspended on the ctx.spawn promise. A handler that
+   *  resolves or throws with the child still live has broken that
+   *  contract — settling normally would write to a terminal the child
+   *  owns and exit under a live child — so it settles as a
+   *  construction error instead of silently orphaning it. */
+  private settleAbandonedChild(
+    invocation: Invocation,
+    threw: boolean,
+    cause?: unknown,
+  ): boolean {
+    const state = invocation.state;
+    if (state.delegatedTerminal === undefined) {
+      return false;
+    }
+    const how = threw
+      ? ` (the handler threw: ${String(cause instanceof Error ? cause.message : cause).split("\n")[0]})`
+      : "";
+    settleBug(
+      invocation,
+      new Error(
+        `@prisma/cli-engine: command '${state.commandId}' resolved while a child was still live — a handler must stay suspended on the ctx.spawn promise until the child ends${how}`,
+      ),
+    );
+    return true;
   }
 
   /** The stdio handoff: a foreign client owns the conversation, so the
@@ -480,7 +540,7 @@ export class EngineImpl implements Engine {
         );
         return;
       }
-      state.settledExitCode = exitCode;
+      settleVerbatimExitCode(invocation, exitCode);
     } catch (cause) {
       settleThrown(invocation, cause);
     }

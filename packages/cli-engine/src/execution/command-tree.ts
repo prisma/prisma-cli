@@ -1,10 +1,6 @@
 import { flagRuntime, type PositionalSpec, positionalRuntime } from "../args";
 import type { CommandFamily } from "../command-family";
-import {
-  type AnyCommand,
-  commandMaySpawn,
-  commandNeedsCredentialsForSpawn,
-} from "../commands";
+import type { AnyCommand } from "../commands";
 import type { EngineSpec } from "./engine";
 import { RESERVED_ALIASES, RESERVED_FLAG_NAMES } from "./shared-flags";
 
@@ -88,9 +84,9 @@ function validateExitCodes(path: string, def: AnyCommand): void {
 }
 
 function validateSpawnDeclarations(path: string, def: AnyCommand): void {
-  if (commandNeedsCredentialsForSpawn(def) && !commandMaySpawn(def)) {
+  if (def.needs.credentials === "child" && !def.maySpawn) {
     throw constructionError(
-      `command '${path}' declares credentialsForSpawn without maySpawn (there is nothing to hand credentials to)`,
+      `command '${path}' needs credentials for a child without declaring maySpawn (there is nothing to hand credentials to)`,
     );
   }
 }
