@@ -4,7 +4,6 @@ import type {
   CredentialManager,
 } from "../credential-manager";
 import type { ManagementApiClient } from "../management-api";
-import type { PackageOperations } from "../package-manager";
 import { resolvePackageManager } from "../package-manager";
 import {
   PRESENTED,
@@ -145,12 +144,12 @@ export function makeContext(
     });
   }
   if (capabilities.installsPackages) {
-    /** A host with no runner is not an error here: the operation is
-     *  offered and reports the structured failure when it is called. */
-    const packages: PackageOperations = makePackageOperations(invocation);
+    // Unlike credentials, a Runtime with no runner is not an error
+    // here: the operation is offered, and reports the structured
+    // failure when it is called.
     Object.defineProperty(context, "packages", {
       enumerable: true,
-      value: packages,
+      value: makePackageOperations(invocation),
     });
   }
   return context;

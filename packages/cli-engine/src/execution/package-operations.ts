@@ -58,15 +58,19 @@ function failed(
     readonly reason?: "runner-unavailable";
   },
 ): CliStructuredError {
-  const spelt = {
-    ...outcome,
+  const spellings = {
     command: redactSecrets(command.line),
     runnableCommand: command.line,
   };
   return packageManagerFailedError(
     operation.form === "install"
-      ? { ...spelt, form: "install" }
-      : { ...spelt, form: "run", package: operation.package },
+      ? { ...outcome, ...spellings, form: "install" }
+      : {
+          ...outcome,
+          ...spellings,
+          form: "run",
+          package: operation.package,
+        },
   );
 }
 
