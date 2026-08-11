@@ -62,7 +62,7 @@ export function resolveTelemetryStatus(inputs: {
 const REASON_EXPLANATION: Record<TelemetryStatusReason, string> = {
   ci: "CI environment detected — telemetry is hard-disabled.",
   "env-opt-out":
-    "an environment opt-out is set (DO_NOT_TRACK / PRISMA_NEXT_DISABLE_TELEMETRY).",
+    "an environment opt-out is set (DO_NOT_TRACK / PRISMA_DISABLE_TELEMETRY).",
   "stored-opt-out": '"enableTelemetry": false is stored in your config.',
   "stored-opt-in": '"enableTelemetry": true is stored in your config.',
   "default-on": "no explicit choice is stored, so the opt-out default applies.",

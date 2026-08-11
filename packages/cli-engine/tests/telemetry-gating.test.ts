@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { resolveGating } from "../src/telemetry/gating";
 import type { UserConfig } from "../src/telemetry/user-config";
 
-/** Values of `PRISMA_NEXT_DISABLE_TELEMETRY` that opt out. */
+/** Values of `PRISMA_DISABLE_TELEMETRY` that opt out. */
 const DISABLING_PRISMA_VAR = ["1", "true", "yes", "on", "anything-truthy"];
 /** Set-but-falsy spellings, trimmed and case-insensitive: not an opt-out. */
 const KEPT_PRISMA_VAR = [undefined, "", "0", "false", "FALSE", "  false  "];
@@ -49,9 +49,9 @@ function combinations(
   return prismaSpellings.flatMap((prisma) =>
     doNotTrackSpellings.flatMap((doNotTrack) =>
       stored.map((entry) => ({
-        label: `PRISMA_NEXT_DISABLE_TELEMETRY=${show(prisma)} DO_NOT_TRACK=${show(doNotTrack)} stored=${entry.label}`,
+        label: `PRISMA_DISABLE_TELEMETRY=${show(prisma)} DO_NOT_TRACK=${show(doNotTrack)} stored=${entry.label}`,
         env: {
-          PRISMA_NEXT_DISABLE_TELEMETRY: prisma,
+          PRISMA_DISABLE_TELEMETRY: prisma,
           DO_NOT_TRACK: doNotTrack,
         },
         config: entry.config,
@@ -74,7 +74,7 @@ describe("resolveGating", () => {
     }
   });
 
-  it("a truthy PRISMA_NEXT_DISABLE_TELEMETRY disables whatever is stored", () => {
+  it("a truthy PRISMA_DISABLE_TELEMETRY disables whatever is stored", () => {
     for (const { label, env, config } of combinations(
       DISABLING_PRISMA_VAR,
       ALL_DO_NOT_TRACK,
@@ -137,6 +137,16 @@ describe("resolveGating", () => {
         reason: "default-on",
       });
     }
+  });
+
+  it("ignores the retired PRISMA_NEXT_DISABLE_TELEMETRY", () => {
+    expect(
+      resolveGating({
+        env: { PRISMA_NEXT_DISABLE_TELEMETRY: "1" },
+        config: {},
+        inCI: false,
+      }),
+    ).toEqual({ enabled: true, reason: "default-on" });
   });
 
   it("ignores unknown stored fields and unrelated environment variables", () => {

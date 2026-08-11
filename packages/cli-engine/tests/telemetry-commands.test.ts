@@ -32,7 +32,7 @@ function isolatedEnv(): Record<string, string> {
 /** The path that env resolves to, computed here rather than asked of
  *  the code under test. */
 function configPath(): string {
-  return join(configRoot, "prisma-next", "config.json");
+  return join(configRoot, "prisma", "config.json");
 }
 
 const telemetry = telemetryCommandGroup({ docsUrl: DOCS_URL });
@@ -123,7 +123,7 @@ describe("telemetry status", () => {
     });
 
     expect(result.stdout).toContain(
-      "Telemetry is disabled: an environment opt-out is set (DO_NOT_TRACK / PRISMA_NEXT_DISABLE_TELEMETRY).",
+      "Telemetry is disabled: an environment opt-out is set (DO_NOT_TRACK / PRISMA_DISABLE_TELEMETRY).",
     );
   });
 

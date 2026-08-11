@@ -12,24 +12,32 @@ describe("resolveTelemetryEndpoint", () => {
     expect(resolveTelemetryEndpoint({})).toBe(PRODUCTION);
   });
 
-  it("honours PRISMA_NEXT_TELEMETRY_ENDPOINT", () => {
+  it("honours PRISMA_TELEMETRY_ENDPOINT", () => {
     expect(
       resolveTelemetryEndpoint({
-        PRISMA_NEXT_TELEMETRY_ENDPOINT: "http://127.0.0.1:54321",
+        PRISMA_TELEMETRY_ENDPOINT: "http://127.0.0.1:54321",
       }),
     ).toBe(`http://127.0.0.1:54321${TELEMETRY_ENDPOINT_PATH}`);
   });
 
-  it("treats an empty override as unset", () => {
+  it("ignores the retired PRISMA_NEXT_TELEMETRY_ENDPOINT", () => {
     expect(
-      resolveTelemetryEndpoint({ PRISMA_NEXT_TELEMETRY_ENDPOINT: "" }),
+      resolveTelemetryEndpoint({
+        PRISMA_NEXT_TELEMETRY_ENDPOINT: "http://127.0.0.1:54321",
+      }),
     ).toBe(PRODUCTION);
+  });
+
+  it("treats an empty override as unset", () => {
+    expect(resolveTelemetryEndpoint({ PRISMA_TELEMETRY_ENDPOINT: "" })).toBe(
+      PRODUCTION,
+    );
   });
 
   it("resolves the events path against an override that carries a trailing slash", () => {
     expect(
       resolveTelemetryEndpoint({
-        PRISMA_NEXT_TELEMETRY_ENDPOINT: "http://127.0.0.1:54321/",
+        PRISMA_TELEMETRY_ENDPOINT: "http://127.0.0.1:54321/",
       }),
     ).toBe(`http://127.0.0.1:54321${TELEMETRY_ENDPOINT_PATH}`);
   });
@@ -38,7 +46,7 @@ describe("resolveTelemetryEndpoint", () => {
     for (const malformed of ["invalid-url", "://nope", " ", "127.0.0.1:1234"]) {
       expect(
         resolveTelemetryEndpoint({
-          PRISMA_NEXT_TELEMETRY_ENDPOINT: malformed,
+          PRISMA_TELEMETRY_ENDPOINT: malformed,
         }),
         malformed,
       ).toBe(PRODUCTION);

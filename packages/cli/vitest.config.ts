@@ -13,7 +13,7 @@ export default defineConfig({
     // that exercise the enabled path pass an explicit env object,
     // which this does not touch.
     env: {
-      PRISMA_NEXT_DISABLE_TELEMETRY: "1",
+      PRISMA_DISABLE_TELEMETRY: "1",
     },
   },
 });

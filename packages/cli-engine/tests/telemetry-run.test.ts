@@ -39,13 +39,13 @@ function isolatedEnv(): Record<string, string> {
 /** The path that env resolves to, computed here rather than asked of
  *  the code under test. */
 function configPath(): string {
-  return join(configRoot, "prisma-next", "config.json");
+  return join(configRoot, "prisma", "config.json");
 }
 
 /** The disclosure, spelled out here rather than imported, so a change to
  *  the wording has to be made twice on purpose. */
 function notice(): string {
-  return `Prisma collects anonymous CLI usage data, enabled by default. What's collected and why: ${DOCS_URL}. Opt out: run "prisma-test telemetry disable", set DO_NOT_TRACK=1 or PRISMA_NEXT_DISABLE_TELEMETRY=1, or set "enableTelemetry": false in ${configPath()}.\n`;
+  return `Prisma collects anonymous CLI usage data, enabled by default. What's collected and why: ${DOCS_URL}. Opt out: run "prisma-test telemetry disable", set DO_NOT_TRACK=1 or PRISMA_DISABLE_TELEMETRY=1.\n`;
 }
 
 const deploy = defineCommand({
@@ -375,11 +375,35 @@ describe("gating, through a run", () => {
     expect(result.stderr).not.toContain("anonymous CLI usage data");
   });
 
+  it("ignores the retired PRISMA_NEXT_DISABLE_TELEMETRY — the old name does nothing", async () => {
+    const result = await run(makeCli(), DEPLOY_ARGV, {
+      env: { ...isolatedEnv(), PRISMA_NEXT_DISABLE_TELEMETRY: "1" },
+    });
+
+    expect(result.telemetry).toHaveLength(1);
+  });
+
+  it("ignores a preference stored at the retired prisma-next path", async () => {
+    mkdirSync(join(configRoot, "prisma-next"), { recursive: true });
+    writeFileSync(
+      join(configRoot, "prisma-next", "config.json"),
+      JSON.stringify({ enableTelemetry: false, installationId: "old-id" }),
+    );
+
+    const result = await run(makeCli(), DEPLOY_ARGV);
+
+    expect(
+      result.telemetry.map((payload) => payload.installationId),
+    ).not.toEqual(["old-id"]);
+    expect(result.telemetry).toHaveLength(1);
+    expect(existsSync(configPath())).toBe(true);
+  });
+
   it("still reports when an opt-out variable is set to a falsy spelling", async () => {
     const result = await run(makeCli(), DEPLOY_ARGV, {
       env: {
         ...isolatedEnv(),
-        PRISMA_NEXT_DISABLE_TELEMETRY: "false",
+        PRISMA_DISABLE_TELEMETRY: "false",
         DO_NOT_TRACK: "0",
       },
     });
@@ -401,7 +425,7 @@ describe("gating, through a run", () => {
     const result = await run(makeCli(), DEPLOY_ARGV, {
       env: {
         ...isolatedEnv(),
-        PRISMA_NEXT_TELEMETRY_ENDPOINT: "http://127.0.0.1:4000",
+        PRISMA_TELEMETRY_ENDPOINT: "http://127.0.0.1:4000",
       },
     });
 

@@ -44,21 +44,19 @@ export interface TelemetryReportInputs {
 const EXEMPT_COMMAND = "telemetry";
 
 /**
- * The one-time first-run disclosure. The resolved absolute path to the
- * user-level config file is substituted in so the user can see exactly
- * which file to edit; `<name> telemetry disable` is named as the
- * primary, friendliest opt-out, alongside the env vars and that edit.
+ * The one-time first-run disclosure. `<name> telemetry disable` is named
+ * as the primary, friendliest opt-out, alongside the environment
+ * variables. The config file is not named and hand-editing it is not
+ * suggested: the preference is machine-edited, which is what the
+ * telemetry commands are for, and `telemetry status` reports the path
+ * for anyone who wants it.
  */
-export function firstRunNotice(
-  cliName: string,
-  docsUrl: string,
-  configPath: string,
-): string {
+export function firstRunNotice(cliName: string, docsUrl: string): string {
   return [
     "Prisma collects anonymous CLI usage data, enabled by default.",
     `What's collected and why: ${docsUrl}.`,
     `Opt out: run "${cliName} telemetry disable", set DO_NOT_TRACK=1 or`,
-    `PRISMA_NEXT_DISABLE_TELEMETRY=1, or set "enableTelemetry": false in ${configPath}.`,
+    "PRISMA_DISABLE_TELEMETRY=1.",
   ].join(" ");
 }
 
@@ -68,14 +66,11 @@ export function firstRunNotice(
  * rather than sending a junk one, and leaves the notice to print again
  * next run — the stored id is what makes it print exactly once.
  */
-function discloseAndMint(
-  inputs: TelemetryReportInputs,
-  configPath: string,
-): string | undefined {
+function discloseAndMint(inputs: TelemetryReportInputs): string | undefined {
   const { host } = inputs;
   try {
     host.stderr.write(
-      `${firstRunNotice(inputs.name, inputs.telemetry.docsUrl, configPath)}\n`,
+      `${firstRunNotice(inputs.name, inputs.telemetry.docsUrl)}\n`,
     );
   } catch {
     // An unwritable stderr must not cost the run its command.
@@ -125,7 +120,7 @@ export function reportCommandStart(inputs: TelemetryReportInputs): void {
     const installationId =
       typeof stored === "string" && stored.length > 0
         ? stored
-        : discloseAndMint(inputs, configPath);
+        : discloseAndMint(inputs);
     if (installationId === undefined) {
       return;
     }

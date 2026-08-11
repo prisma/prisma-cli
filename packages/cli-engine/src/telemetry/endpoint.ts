@@ -12,7 +12,7 @@ export const TELEMETRY_ENDPOINT_PATH = "/events";
 
 /**
  * Resolve the full POST URL the sender targets. The
- * `PRISMA_NEXT_TELEMETRY_ENDPOINT` env var is an integration-testing
+ * `PRISMA_TELEMETRY_ENDPOINT` env var is an integration-testing
  * affordance only — it lets a test suite spin up a mock HTTP server on an
  * ephemeral port and point the spawned sender at it. The override is
  * intentionally undocumented in user-facing material.
@@ -24,7 +24,7 @@ export const TELEMETRY_ENDPOINT_PATH = "/events";
 export function resolveTelemetryEndpoint(
   env: Readonly<Record<string, string | undefined>>,
 ): string {
-  const override = env["PRISMA_NEXT_TELEMETRY_ENDPOINT"];
+  const override = env["PRISMA_TELEMETRY_ENDPOINT"];
   const base =
     override !== undefined && override.length > 0
       ? override

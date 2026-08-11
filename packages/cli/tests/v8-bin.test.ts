@@ -48,7 +48,7 @@ function makeProcess(overrides?: {
     // first-run notice on stderr, nothing sent), and a config home of
     // our own so nothing here resolves the developer's real one.
     env: {
-      PRISMA_NEXT_DISABLE_TELEMETRY: "1",
+      PRISMA_DISABLE_TELEMETRY: "1",
       XDG_CONFIG_HOME: CONFIG_HOME,
       APPDATA: CONFIG_HOME,
       ...overrides?.env,

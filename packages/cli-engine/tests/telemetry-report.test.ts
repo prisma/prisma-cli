@@ -49,7 +49,7 @@ function isolatedEnv(): Record<string, string> {
 /** The path that env resolves to, computed here rather than asked of
  *  the code under test. */
 function configPath(): string {
-  return join(configRoot, "prisma-next", "config.json");
+  return join(configRoot, "prisma", "config.json");
 }
 
 function makeHost(overrides?: {
@@ -104,10 +104,15 @@ afterEach(() => {
 });
 
 describe("firstRunNotice", () => {
-  it("names the CLI, the docs and the file to edit, in the shipped wording", () => {
-    expect(firstRunNotice("prisma", DOCS_URL, "/home/ada/config.json")).toBe(
-      'Prisma collects anonymous CLI usage data, enabled by default. What\'s collected and why: https://example.invalid/docs/telemetry. Opt out: run "prisma telemetry disable", set DO_NOT_TRACK=1 or PRISMA_NEXT_DISABLE_TELEMETRY=1, or set "enableTelemetry": false in /home/ada/config.json.',
+  it("names the CLI, the docs and the two ways out — and no file to hand-edit", () => {
+    expect(firstRunNotice("prisma", DOCS_URL)).toBe(
+      'Prisma collects anonymous CLI usage data, enabled by default. What\'s collected and why: https://example.invalid/docs/telemetry. Opt out: run "prisma telemetry disable", set DO_NOT_TRACK=1 or PRISMA_DISABLE_TELEMETRY=1.',
     );
+  });
+
+  it("does not name the config file — the preference is machine-edited", () => {
+    expect(firstRunNotice("prisma", DOCS_URL)).not.toContain("config.json");
+    expect(firstRunNotice("prisma", DOCS_URL)).not.toContain("enableTelemetry");
   });
 });
 
@@ -132,7 +137,7 @@ describe("reportCommandStart", () => {
       makeHost({
         env: {
           ...isolatedEnv(),
-          PRISMA_NEXT_TELEMETRY_ENDPOINT: "http://127.0.0.1:4000",
+          PRISMA_TELEMETRY_ENDPOINT: "http://127.0.0.1:4000",
         },
       }),
     );
@@ -148,7 +153,7 @@ describe("reportCommandStart", () => {
     const minted = readUserConfig(isolatedEnv()).installationId;
     report(makeHost());
 
-    expect(first).toBe(`${firstRunNotice("prisma", DOCS_URL, configPath())}\n`);
+    expect(first).toBe(`${firstRunNotice("prisma", DOCS_URL)}\n`);
     expect(stderrText).toBe(first);
     expect(minted).toEqual(expect.any(String));
     expect(payloads.map((payload) => payload.installationId)).toEqual([
@@ -199,7 +204,7 @@ describe("reportCommandStart", () => {
     report(makeHost({ env: { ...isolatedEnv(), DO_NOT_TRACK: "1" } }));
     report(
       makeHost({
-        env: { ...isolatedEnv(), PRISMA_NEXT_DISABLE_TELEMETRY: "yes" },
+        env: { ...isolatedEnv(), PRISMA_DISABLE_TELEMETRY: "yes" },
       }),
     );
 

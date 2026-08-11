@@ -25,7 +25,7 @@ export interface UserConfig {
   readonly [key: string]: unknown;
 }
 
-const APP_DIR = "prisma-next";
+const APP_DIR = "prisma";
 const FILE_NAME = "config.json";
 
 /** The invocation's environment, from `runtime.env`. */
@@ -37,16 +37,16 @@ function set(raw: string | undefined): string | undefined {
 
 /**
  * Resolves the user-level config directory:
- *   - Windows: `%APPDATA%\prisma-next\` (fallback: `%USERPROFILE%\AppData\Roaming\prisma-next\`).
- *   - Unix (incl. macOS): `$XDG_CONFIG_HOME/prisma-next/` if set, else
- *     `$HOME/.config/prisma-next/` per the XDG Base Directory Specification.
+ *   - Windows: `%APPDATA%\prisma\` (fallback: `%USERPROFILE%\AppData\Roaming\prisma\`).
+ *   - Unix (incl. macOS): `$XDG_CONFIG_HOME/prisma/` if set, else
+ *     `$HOME/.config/prisma/` per the XDG Base Directory Specification.
  *
  * XDG is chosen over the macOS-native `~/Library/Preferences/`
  * convention so the path resolution follows an environment variable and
- * matches the documented behaviour on all *nix platforms. The
- * `prisma-next` directory name is deliberate: this file is SHARED with
- * the ORM binary (same path, same format), so both CLIs read one
- * consent answer and one installation id.
+ * matches the documented behaviour on all *nix platforms. The directory
+ * is `prisma`, after the binary: the `prisma-next` name it carried is
+ * retired with that binary, and nothing reads the old location — no
+ * fallback, no migration.
  *
  * EVERY variable comes from the invocation's env — the engine reads no
  * process globals, and `os.homedir()` is one: it answers from the

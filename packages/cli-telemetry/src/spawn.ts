@@ -30,7 +30,7 @@ export type TelemetryRunOutcome =
  * synchronously — the child runs in the background and never blocks the
  * parent. Every failure mode is swallowed; the parent's stdout/stderr is
  * untouched in normal operation, the only escape valve being
- * `PRISMA_NEXT_DEBUG=1` which routes diagnostics to stderr.
+ * `PRISMA_DEBUG=1` which routes diagnostics to stderr.
  */
 export function runTelemetry(inputs: RunTelemetryInputs): TelemetryRunOutcome {
   try {
@@ -45,7 +45,7 @@ export function runTelemetry(inputs: RunTelemetryInputs): TelemetryRunOutcome {
     // is swallowed unconditionally.
     child.on("error", () => {});
     child.send(inputs.payload, (err) => {
-      if (err !== null && process.env["PRISMA_NEXT_DEBUG"] === "1") {
+      if (err !== null && process.env["PRISMA_DEBUG"] === "1") {
         process.stderr.write(
           `[cli-telemetry] parent send error: ${String(err)}\n`,
         );
@@ -55,7 +55,7 @@ export function runTelemetry(inputs: RunTelemetryInputs): TelemetryRunOutcome {
     child.unref();
     return { spawned: true };
   } catch (err) {
-    if (process.env["PRISMA_NEXT_DEBUG"] === "1") {
+    if (process.env["PRISMA_DEBUG"] === "1") {
       process.stderr.write(
         `[cli-telemetry] parent fork failed: ${String(err)}\n`,
       );

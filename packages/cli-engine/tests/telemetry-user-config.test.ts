@@ -36,7 +36,7 @@ function configEnv(root: string): Record<string, string> {
 /** The path the env above resolves to, computed here rather than asked
  *  of the module under test. */
 function configPath(): string {
-  return join(configRoot, "prisma-next", "config.json");
+  return join(configRoot, "prisma", "config.json");
 }
 
 let configRoot: string;
@@ -53,16 +53,14 @@ afterEach(() => {
 });
 
 describe("userConfigPath", () => {
-  it("resolves the shared prisma-next config file (the same file the ORM binary reads)", () => {
-    expect(userConfigPath(env)).toBe(
-      join(configRoot, "prisma-next", "config.json"),
-    );
+  it("resolves the user-level prisma config file", () => {
+    expect(userConfigPath(env)).toBe(join(configRoot, "prisma", "config.json"));
   });
 
   it("resolves against the env it is given, not a captured one", () => {
     const other = mkdtempSync(join(tmpdir(), "prisma-cli-engine-telemetry-"));
     expect(userConfigPath(configEnv(other))).toBe(
-      join(other, "prisma-next", "config.json"),
+      join(other, "prisma", "config.json"),
     );
     rmSync(other, { recursive: true, force: true });
   });
@@ -73,16 +71,19 @@ describe("userConfigPath", () => {
       ? { USERPROFILE: "C:\\Users\\Ada" }
       : { HOME: "/home/ada" };
     const expected = onWindows
-      ? join(
-          "C:\\Users\\Ada",
-          "AppData",
-          "Roaming",
-          "prisma-next",
-          "config.json",
-        )
-      : join("/home/ada", ".config", "prisma-next", "config.json");
+      ? join("C:\\Users\\Ada", "AppData", "Roaming", "prisma", "config.json")
+      : join("/home/ada", ".config", "prisma", "config.json");
 
     expect(userConfigPath(env)).toBe(expected);
+  });
+
+  it("resolves the prisma directory, not the retired prisma-next one", () => {
+    expect(userConfigPath({ XDG_CONFIG_HOME: "/cfg" })).toBe(
+      join("/cfg", "prisma", "config.json"),
+    );
+    expect(userConfigPath({ XDG_CONFIG_HOME: "/cfg" })).not.toContain(
+      "prisma-next",
+    );
   });
 
   it("is undefined when the env names no config directory at all", () => {

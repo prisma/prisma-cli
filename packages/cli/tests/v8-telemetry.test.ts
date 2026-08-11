@@ -55,7 +55,7 @@ function storedConfig(): Record<string, unknown> {
 
 beforeEach(() => {
   configRoot = mkdtempSync(join(tmpdir(), "v8-telemetry-cmd-"));
-  configPath = join(configRoot, "prisma-next", "config.json");
+  configPath = join(configRoot, "prisma", "config.json");
   mkdirSync(dirname(configPath), { recursive: true });
 });
 
@@ -125,7 +125,7 @@ describe("prisma-v8 telemetry status", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(
-      "Telemetry is disabled: an environment opt-out is set (DO_NOT_TRACK / PRISMA_NEXT_DISABLE_TELEMETRY).",
+      "Telemetry is disabled: an environment opt-out is set (DO_NOT_TRACK / PRISMA_DISABLE_TELEMETRY).",
     );
   });
 
