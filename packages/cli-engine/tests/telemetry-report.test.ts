@@ -25,7 +25,7 @@ import {
   reportCommandStart,
   type TelemetryHost,
 } from "../src/telemetry/report";
-import { readUserConfig, userConfigPath } from "../src/telemetry/user-config";
+import { readUserConfig } from "../src/telemetry/user-config";
 
 const DOCS_URL = "https://example.invalid/docs/telemetry";
 
@@ -44,6 +44,12 @@ let stderrText: string;
 
 function isolatedEnv(): Record<string, string> {
   return { XDG_CONFIG_HOME: configRoot, APPDATA: configRoot };
+}
+
+/** The path that env resolves to, computed here rather than asked of
+ *  the code under test. */
+function configPath(): string {
+  return join(configRoot, "prisma-next", "config.json");
 }
 
 function makeHost(overrides?: {
@@ -90,7 +96,7 @@ beforeEach(() => {
   configRoot = mkdtempSync(join(tmpdir(), "prisma-cli-engine-report-"));
   payloads = [];
   stderrText = "";
-  mkdirSync(dirname(userConfigPath(isolatedEnv())), { recursive: true });
+  mkdirSync(dirname(configPath()), { recursive: true });
 });
 
 afterEach(() => {
@@ -142,9 +148,7 @@ describe("reportCommandStart", () => {
     const minted = readUserConfig(isolatedEnv()).installationId;
     report(makeHost());
 
-    expect(first).toBe(
-      `${firstRunNotice("prisma", DOCS_URL, userConfigPath(isolatedEnv()))}\n`,
-    );
+    expect(first).toBe(`${firstRunNotice("prisma", DOCS_URL, configPath())}\n`);
     expect(stderrText).toBe(first);
     expect(minted).toEqual(expect.any(String));
     expect(payloads.map((payload) => payload.installationId)).toEqual([
@@ -168,7 +172,7 @@ describe("reportCommandStart", () => {
 
     expect(payloads).toEqual([]);
     expect(stderrText).toBe("");
-    expect(existsSync(userConfigPath(isolatedEnv()))).toBe(false);
+    expect(existsSync(configPath())).toBe(false);
   });
 
   it("exempts only a top-level telemetry command, not one nested under a group", () => {
@@ -188,7 +192,7 @@ describe("reportCommandStart", () => {
 
     expect(payloads).toEqual([]);
     expect(stderrText).toBe("");
-    expect(existsSync(userConfigPath(isolatedEnv()))).toBe(false);
+    expect(existsSync(configPath())).toBe(false);
   });
 
   it("reports nothing under either environment opt-out", () => {
@@ -201,14 +205,11 @@ describe("reportCommandStart", () => {
 
     expect(payloads).toEqual([]);
     expect(stderrText).toBe("");
-    expect(existsSync(userConfigPath(isolatedEnv()))).toBe(false);
+    expect(existsSync(configPath())).toBe(false);
   });
 
   it("reports nothing on a stored opt-out, and leaves the file alone", () => {
-    writeFileSync(
-      userConfigPath(isolatedEnv()),
-      JSON.stringify({ enableTelemetry: false }),
-    );
+    writeFileSync(configPath(), JSON.stringify({ enableTelemetry: false }));
 
     report(makeHost());
 
@@ -219,7 +220,7 @@ describe("reportCommandStart", () => {
 
   it("reports on a stored opt-in without disclosing again", () => {
     writeFileSync(
-      userConfigPath(isolatedEnv()),
+      configPath(),
       JSON.stringify({ enableTelemetry: true, installationId: "stored-id" }),
     );
 
@@ -252,12 +253,19 @@ describe("reportCommandStart", () => {
     );
   });
 
+  it("does nothing at all when the env names no config directory — nowhere to read, nowhere to mint", () => {
+    report(makeHost({ env: {} }));
+
+    expect(payloads).toEqual([]);
+    expect(stderrText).toBe("");
+  });
+
   it("does nothing at all when the host wires no seam — a CLI that cannot deliver must not disclose or mint", () => {
     report(makeHost({ spawnTelemetry: null }));
 
     expect(payloads).toEqual([]);
     expect(stderrText).toBe("");
-    expect(existsSync(userConfigPath(isolatedEnv()))).toBe(false);
+    expect(existsSync(configPath())).toBe(false);
   });
 
   it("skips the event rather than sending a junk id when the mint fails", () => {
@@ -273,7 +281,7 @@ describe("reportCommandStart", () => {
   });
 
   it("treats a malformed stored config as no stored choice, and reports", () => {
-    writeFileSync(userConfigPath(isolatedEnv()), "{not valid json");
+    writeFileSync(configPath(), "{not valid json");
 
     report(makeHost());
 

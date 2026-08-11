@@ -68,11 +68,14 @@ export function firstRunNotice(
  * rather than sending a junk one, and leaves the notice to print again
  * next run — the stored id is what makes it print exactly once.
  */
-function discloseAndMint(inputs: TelemetryReportInputs): string | undefined {
+function discloseAndMint(
+  inputs: TelemetryReportInputs,
+  configPath: string,
+): string | undefined {
   const { host } = inputs;
   try {
     host.stderr.write(
-      `${firstRunNotice(inputs.name, inputs.telemetry.docsUrl, userConfigPath(host.env))}\n`,
+      `${firstRunNotice(inputs.name, inputs.telemetry.docsUrl, configPath)}\n`,
     );
   } catch {
     // An unwritable stderr must not cost the run its command.
@@ -94,7 +97,9 @@ function discloseAndMint(inputs: TelemetryReportInputs): string | undefined {
  * read: a CLI that cannot deliver an event must not tell the user it
  * collects data, and must not mint an installation id it has no use
  * for. Declaring telemetry and wiring the seam are two halves of one
- * decision; either one missing means the run reports nothing.
+ * decision; either one missing means the run reports nothing. An
+ * environment that says nothing about where the user's config lives is
+ * turned away at the same point and for the same reason.
  *
  * Every failure is swallowed: a malformed stored config, an unwritable
  * config directory and a throwing seam all leave the run's exit code,
@@ -104,7 +109,12 @@ export function reportCommandStart(inputs: TelemetryReportInputs): void {
   try {
     const { host, snapshot } = inputs;
     const deliver = host.spawnTelemetry;
-    if (deliver === undefined || snapshot.commandPath[0] === EXEMPT_COMMAND) {
+    const configPath = userConfigPath(host.env);
+    if (
+      deliver === undefined ||
+      configPath === undefined ||
+      snapshot.commandPath[0] === EXEMPT_COMMAND
+    ) {
       return;
     }
     const config = readUserConfig(host.env);
@@ -115,7 +125,7 @@ export function reportCommandStart(inputs: TelemetryReportInputs): void {
     const installationId =
       typeof stored === "string" && stored.length > 0
         ? stored
-        : discloseAndMint(inputs);
+        : discloseAndMint(inputs, configPath);
     if (installationId === undefined) {
       return;
     }

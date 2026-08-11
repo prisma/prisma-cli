@@ -6,7 +6,6 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 /**
@@ -32,6 +31,10 @@ const FILE_NAME = "config.json";
 /** The invocation's environment, from `runtime.env`. */
 type Env = Readonly<Record<string, string | undefined>>;
 
+function set(raw: string | undefined): string | undefined {
+  return raw !== undefined && raw.length > 0 ? raw : undefined;
+}
+
 /**
  * Resolves the user-level config directory:
  *   - Windows: `%APPDATA%\prisma-next\` (fallback: `%USERPROFILE%\AppData\Roaming\prisma-next\`).
@@ -45,28 +48,46 @@ type Env = Readonly<Record<string, string | undefined>>;
  * the ORM binary (same path, same format), so both CLIs read one
  * consent answer and one installation id.
  *
- * Both variables come from the invocation's env, never `process.env` —
- * the engine reads no process globals. `process.platform` stays: it does
- * not vary with an invocation and is not modelled on the Runtime.
+ * EVERY variable comes from the invocation's env — the engine reads no
+ * process globals, and `os.homedir()` is one: it answers from the
+ * process's own `$HOME`, not the invocation's. An env that names none of
+ * them resolves to `undefined`: the preference store is unavailable, and
+ * the engine then reads nothing, writes nothing and reports nothing.
+ * Failing closed is the only safe direction for a privacy feature —
+ * `runtime.env` is `process.env` in production, where `HOME` (or
+ * `USERPROFILE`) is always set, so this is a test-shaped state.
+ *
+ * `process.platform` stays: it does not vary with an invocation and is
+ * not modelled on the Runtime.
  */
-function configDir(env: Env): string {
+function configDir(env: Env): string | undefined {
   if (process.platform === "win32") {
-    const appData = env["APPDATA"];
-    if (appData !== undefined && appData.length > 0) {
+    const appData = set(env["APPDATA"]);
+    if (appData !== undefined) {
       return join(appData, APP_DIR);
     }
-    return join(homedir(), "AppData", "Roaming", APP_DIR);
+    const userProfile = set(env["USERPROFILE"]);
+    return userProfile === undefined
+      ? undefined
+      : join(userProfile, "AppData", "Roaming", APP_DIR);
   }
-  const xdg = env["XDG_CONFIG_HOME"];
-  if (xdg !== undefined && xdg.length > 0) {
+  const xdg = set(env["XDG_CONFIG_HOME"]);
+  if (xdg !== undefined) {
     return join(xdg, APP_DIR);
   }
-  return join(homedir(), ".config", APP_DIR);
+  const home = set(env["HOME"]);
+  return home === undefined ? undefined : join(home, ".config", APP_DIR);
 }
 
-/** Path to the user-level config file for this invocation. */
-export function userConfigPath(env: Env): string {
-  return join(configDir(env), FILE_NAME);
+/**
+ * Path to the user-level config file for this invocation, or `undefined`
+ * when the environment says nothing about where the user's config
+ * directory is. Callers treat `undefined` as "the preference store is
+ * unavailable".
+ */
+export function userConfigPath(env: Env): string | undefined {
+  const dir = configDir(env);
+  return dir === undefined ? undefined : join(dir, FILE_NAME);
 }
 
 /**
@@ -76,7 +97,7 @@ export function userConfigPath(env: Env): string {
  */
 export function readUserConfig(env: Env): UserConfig {
   const path = userConfigPath(env);
-  if (!existsSync(path)) return {};
+  if (path === undefined || !existsSync(path)) return {};
   try {
     const raw = readFileSync(path, "utf-8");
     const parsed: unknown = JSON.parse(raw);
@@ -118,6 +139,11 @@ export function writeUserConfig(env: Env, partial: Partial<UserConfig>): void {
     merged["installationId"] = randomUUID();
   }
   const path = userConfigPath(env);
+  if (path === undefined) {
+    throw new Error(
+      "@prisma/cli-engine: cannot resolve the user config directory — the environment sets none of XDG_CONFIG_HOME, HOME, APPDATA or USERPROFILE",
+    );
+  }
   const dir = dirname(path);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });

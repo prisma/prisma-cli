@@ -116,9 +116,11 @@ export interface CommandContext<
   readonly env: Readonly<Record<string, string | undefined>>;
 
   /**
-   * True when this process runs in CI, from Runtime.isCI. Handlers
-   * detect CI no more than they detect a TTY — a command that skips a
-   * prompt or a spinner reads this.
+   * The host's answer to "is this CI", from Runtime.isCI — what
+   * telemetry gates on. Not the engine's interactivity decision, which
+   * is its own thing (stdin a TTY, no CI in the environment,
+   * --interactive/--no-interactive), so prompts and spinners follow
+   * ctx.prompt and the engine's interaction handling, not this.
    */
   readonly isCI: boolean;
 

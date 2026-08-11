@@ -17,7 +17,7 @@ import { dirname, join } from "node:path";
 import { telemetryCommandGroup } from "@prisma/cli-engine";
 import { createTestCli } from "@prisma/cli-engine/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readUserConfig, userConfigPath } from "../src/telemetry/user-config";
+import { readUserConfig } from "../src/telemetry/user-config";
 
 const DOCS_URL = "https://example.invalid/docs/telemetry";
 const V4_UUID =
@@ -27,6 +27,12 @@ let configRoot: string;
 
 function isolatedEnv(): Record<string, string> {
   return { XDG_CONFIG_HOME: configRoot, APPDATA: configRoot };
+}
+
+/** The path that env resolves to, computed here rather than asked of
+ *  the code under test. */
+function configPath(): string {
+  return join(configRoot, "prisma-next", "config.json");
 }
 
 const telemetry = telemetryCommandGroup({ docsUrl: DOCS_URL });
@@ -64,12 +70,12 @@ function jsonResult(frames: readonly unknown[]): unknown {
 }
 
 function seedConfig(config: Record<string, unknown>): void {
-  writeFileSync(userConfigPath(isolatedEnv()), JSON.stringify(config));
+  writeFileSync(configPath(), JSON.stringify(config));
 }
 
 beforeEach(() => {
   configRoot = mkdtempSync(join(tmpdir(), "prisma-cli-engine-commands-"));
-  mkdirSync(dirname(userConfigPath(isolatedEnv())), { recursive: true });
+  mkdirSync(dirname(configPath()), { recursive: true });
 });
 
 afterEach(() => {
@@ -84,9 +90,7 @@ describe("telemetry status", () => {
     expect(result.stdout).toContain(
       "Telemetry is enabled: no explicit choice is stored, so the opt-out default applies.",
     );
-    expect(result.stdout).toContain(
-      `Config file: ${userConfigPath(isolatedEnv())}`,
-    );
+    expect(result.stdout).toContain(`Config file: ${configPath()}`);
     expect(result.stdout).toContain("Installation ID: not stored");
   });
 
@@ -147,7 +151,7 @@ describe("telemetry status", () => {
     const result = await run(["telemetry", "status"]);
 
     expect(result.exitCode).toBe(0);
-    expect(existsSync(userConfigPath(isolatedEnv()))).toBe(false);
+    expect(existsSync(configPath())).toBe(false);
   });
 
   it("never prints the installation id itself", async () => {
@@ -159,7 +163,7 @@ describe("telemetry status", () => {
     expect(jsonResult(result.json)).toEqual({
       enabled: true,
       reason: "default-on",
-      configPath: userConfigPath(isolatedEnv()),
+      configPath: configPath(),
       installationIdStored: true,
     });
   });
@@ -178,7 +182,7 @@ describe("telemetry enable", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(
-      `Telemetry enabled. Preference stored in ${userConfigPath(isolatedEnv())}.`,
+      `Telemetry enabled. Preference stored in ${configPath()}.`,
     );
     const stored = readUserConfig(isolatedEnv());
     expect(stored.enableTelemetry).toBe(true);
@@ -201,7 +205,7 @@ describe("telemetry enable", () => {
 
     expect(jsonResult(result.json)).toEqual({
       enableTelemetry: true,
-      configPath: userConfigPath(isolatedEnv()),
+      configPath: configPath(),
     });
   });
 
@@ -218,7 +222,7 @@ describe("telemetry disable", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(
-      `Telemetry disabled. Preference stored in ${userConfigPath(isolatedEnv())}.`,
+      `Telemetry disabled. Preference stored in ${configPath()}.`,
     );
     expect(readUserConfig(isolatedEnv())).toEqual({ enableTelemetry: false });
   });
@@ -239,7 +243,7 @@ describe("telemetry disable", () => {
 
     expect(jsonResult(result.json)).toEqual({
       enableTelemetry: false,
-      configPath: userConfigPath(isolatedEnv()),
+      configPath: configPath(),
     });
   });
 
@@ -247,6 +251,23 @@ describe("telemetry disable", () => {
     const result = await run(["telemetry", "disable"]);
 
     expect(result.telemetry).toEqual([]);
+  });
+});
+
+describe("an env that names no config directory", () => {
+  it("fails each command with one structured error instead of guessing a location", async () => {
+    for (const argv of [
+      ["telemetry", "status"],
+      ["telemetry", "enable"],
+      ["telemetry", "disable"],
+    ]) {
+      const result = await run([...argv, "--json"], { env: {} });
+
+      expect(result.exitCode, argv.join(" ")).toBe(2);
+      expect(JSON.stringify(result.json), argv.join(" ")).toContain(
+        "CLI.USER_CONFIG_UNRESOLVED",
+      );
+    }
   });
 });
 

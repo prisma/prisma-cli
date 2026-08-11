@@ -27,9 +27,16 @@ import {
 
 const V4_UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const UNRESOLVED_DIRECTORY = /cannot resolve the user config directory/;
 
 function configEnv(root: string): Record<string, string> {
   return { XDG_CONFIG_HOME: root, APPDATA: root };
+}
+
+/** The path the env above resolves to, computed here rather than asked
+ *  of the module under test. */
+function configPath(): string {
+  return join(configRoot, "prisma-next", "config.json");
 }
 
 let configRoot: string;
@@ -38,7 +45,7 @@ let env: Record<string, string>;
 beforeEach(() => {
   configRoot = mkdtempSync(join(tmpdir(), "prisma-cli-engine-telemetry-"));
   env = configEnv(configRoot);
-  mkdirSync(dirname(userConfigPath(env)), { recursive: true });
+  mkdirSync(dirname(configPath()), { recursive: true });
 });
 
 afterEach(() => {
@@ -59,32 +66,71 @@ describe("userConfigPath", () => {
     );
     rmSync(other, { recursive: true, force: true });
   });
+
+  it("falls back to the home directory the env names, never the process's own", () => {
+    const onWindows = process.platform === "win32";
+    const env = onWindows
+      ? { USERPROFILE: "C:\\Users\\Ada" }
+      : { HOME: "/home/ada" };
+    const expected = onWindows
+      ? join(
+          "C:\\Users\\Ada",
+          "AppData",
+          "Roaming",
+          "prisma-next",
+          "config.json",
+        )
+      : join("/home/ada", ".config", "prisma-next", "config.json");
+
+    expect(userConfigPath(env)).toBe(expected);
+  });
+
+  it("is undefined when the env names no config directory at all", () => {
+    expect(userConfigPath({})).toBeUndefined();
+    expect(userConfigPath({ XDG_CONFIG_HOME: "", HOME: "" })).toBeUndefined();
+  });
+});
+
+describe("an env that names no config directory", () => {
+  it("reads as an empty config — there is nothing to read", () => {
+    expect(readUserConfig({})).toEqual({});
+  });
+
+  it("refuses to write rather than guessing a location", () => {
+    expect(() => writeUserConfig({}, { enableTelemetry: false })).toThrow(
+      UNRESOLVED_DIRECTORY,
+    );
+  });
+
+  it("mints nothing", () => {
+    expect(() => ensureInstallationId({})).toThrow();
+  });
 });
 
 describe("readUserConfig", () => {
   it("returns {} when the file does not exist", () => {
     expect(readUserConfig(env)).toEqual({});
-    expect(existsSync(userConfigPath(env))).toBe(false);
+    expect(existsSync(configPath())).toBe(false);
   });
 
   it("returns {} when the file cannot be read", () => {
-    mkdirSync(userConfigPath(env));
+    mkdirSync(configPath());
     expect(readUserConfig(env)).toEqual({});
   });
 
   it("returns {} when the file is malformed", () => {
-    writeFileSync(userConfigPath(env), "{not valid json");
+    writeFileSync(configPath(), "{not valid json");
     expect(readUserConfig(env)).toEqual({});
   });
 
   it("returns {} when the file parses to something other than an object", () => {
-    writeFileSync(userConfigPath(env), "[1, 2, 3]");
+    writeFileSync(configPath(), "[1, 2, 3]");
     expect(readUserConfig(env)).toEqual({});
   });
 
   it("exposes both known fields from a well-formed file", () => {
     writeFileSync(
-      userConfigPath(env),
+      configPath(),
       JSON.stringify({
         enableTelemetry: true,
         installationId: "pre-existing-uuid",
@@ -98,7 +144,7 @@ describe("readUserConfig", () => {
 
   it("passes unknown fields through verbatim", () => {
     writeFileSync(
-      userConfigPath(env),
+      configPath(),
       JSON.stringify({ someFutureField: "opaque", nested: { foo: "bar" } }),
     );
     const config = readUserConfig(env);
@@ -110,7 +156,7 @@ describe("readUserConfig", () => {
 describe("writeUserConfig", () => {
   it("keeps unknown fields already on disk", () => {
     writeFileSync(
-      userConfigPath(env),
+      configPath(),
       JSON.stringify({
         installationId: "kept",
         someFutureField: "preserve-me",
@@ -138,10 +184,10 @@ describe("writeUserConfig", () => {
 
   it("writes through a temp file and leaves none behind", () => {
     writeUserConfig(env, { enableTelemetry: true });
-    const written = readFileSync(userConfigPath(env), "utf-8");
+    const written = readFileSync(configPath(), "utf-8");
     expect(() => JSON.parse(written)).not.toThrow();
     expect(
-      readdirSync(dirname(userConfigPath(env))).filter((name) =>
+      readdirSync(dirname(configPath())).filter((name) =>
         name.endsWith(".tmp"),
       ),
     ).toEqual([]);
@@ -150,7 +196,7 @@ describe("writeUserConfig", () => {
   it("creates the config directory when it is missing", () => {
     rmSync(configRoot, { recursive: true, force: true });
     writeUserConfig(env, { enableTelemetry: false });
-    expect(existsSync(userConfigPath(env))).toBe(true);
+    expect(existsSync(configPath())).toBe(true);
   });
 });
 

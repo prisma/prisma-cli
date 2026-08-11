@@ -6,9 +6,24 @@
 import type { MountedTree } from "../command-family";
 import { defineCommand } from "../commands";
 import type { Presentations } from "../presentation";
-import { ok } from "../protocol";
+import { CliStructuredError, notOk, ok } from "../protocol";
 import { resolveGating, type TelemetryStatusReason } from "./gating";
 import { readUserConfig, userConfigPath, writeUserConfig } from "./user-config";
+
+/**
+ * The environment names no config directory, so there is no preference
+ * to read or write. Unreachable in production — `runtime.env` is
+ * `process.env`, where `HOME` (or `USERPROFILE`) is always set.
+ */
+function storeUnavailableError(): CliStructuredError {
+  return new CliStructuredError(
+    "CLI.USER_CONFIG_UNRESOLVED",
+    "Cannot tell where your telemetry preference is stored.",
+    {
+      why: "The environment sets none of XDG_CONFIG_HOME, HOME, APPDATA or USERPROFILE, so the user-level config directory cannot be resolved.",
+    },
+  );
+}
 
 export interface TelemetryStatus {
   readonly enabled: boolean;
@@ -26,6 +41,7 @@ export interface TelemetryStatus {
 export function resolveTelemetryStatus(inputs: {
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly inCI: boolean;
+  readonly configPath: string;
 }): TelemetryStatus {
   const config = readUserConfig(inputs.env);
   const installationId = config.installationId;
@@ -37,7 +53,7 @@ export function resolveTelemetryStatus(inputs: {
   return {
     enabled: gating.enabled,
     reason: gating.reason,
-    configPath: userConfigPath(inputs.env),
+    configPath: inputs.configPath,
     installationIdStored:
       typeof installationId === "string" && installationId.length > 0,
   };
@@ -107,7 +123,15 @@ export const telemetryStatusCommand = defineCommand({
     examples: ["telemetry status", "telemetry status --json"],
   },
   handler: async (_args, ctx) => {
-    const status = resolveTelemetryStatus({ env: ctx.env, inCI: ctx.isCI });
+    const configPath = userConfigPath(ctx.env);
+    if (configPath === undefined) {
+      return notOk(storeUnavailableError());
+    }
+    const status = resolveTelemetryStatus({
+      env: ctx.env,
+      inCI: ctx.isCI,
+      configPath,
+    });
     return ok(ctx.present({ data: status }, statusPresentations(status)));
   },
 });
@@ -121,8 +145,11 @@ export const telemetryEnableCommand = defineCommand({
     examples: ["telemetry enable"],
   },
   handler: async (_args, ctx) => {
-    writeUserConfig(ctx.env, { enableTelemetry: true });
     const configPath = userConfigPath(ctx.env);
+    if (configPath === undefined) {
+      return notOk(storeUnavailableError());
+    }
+    writeUserConfig(ctx.env, { enableTelemetry: true });
     const decision = { enableTelemetry: true, configPath };
     return ok(
       ctx.present(
@@ -145,8 +172,11 @@ export const telemetryDisableCommand = defineCommand({
     examples: ["telemetry disable"],
   },
   handler: async (_args, ctx) => {
-    writeUserConfig(ctx.env, { enableTelemetry: false });
     const configPath = userConfigPath(ctx.env);
+    if (configPath === undefined) {
+      return notOk(storeUnavailableError());
+    }
+    writeUserConfig(ctx.env, { enableTelemetry: false });
     const decision = { enableTelemetry: false, configPath };
     return ok(
       ctx.present(

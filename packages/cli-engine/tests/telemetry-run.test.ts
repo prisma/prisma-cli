@@ -24,7 +24,7 @@ import {
 import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
 import { createTestCli } from "@prisma/cli-engine/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readUserConfig, userConfigPath } from "../src/telemetry/user-config";
+import { readUserConfig } from "../src/telemetry/user-config";
 
 const DOCS_URL = "https://example.invalid/docs/telemetry";
 
@@ -36,10 +36,16 @@ function isolatedEnv(): Record<string, string> {
   return { XDG_CONFIG_HOME: configRoot, APPDATA: configRoot };
 }
 
+/** The path that env resolves to, computed here rather than asked of
+ *  the code under test. */
+function configPath(): string {
+  return join(configRoot, "prisma-next", "config.json");
+}
+
 /** The disclosure, spelled out here rather than imported, so a change to
  *  the wording has to be made twice on purpose. */
 function notice(): string {
-  return `Prisma collects anonymous CLI usage data, enabled by default. What's collected and why: ${DOCS_URL}. Opt out: run "prisma-test telemetry disable", set DO_NOT_TRACK=1 or PRISMA_NEXT_DISABLE_TELEMETRY=1, or set "enableTelemetry": false in ${userConfigPath(isolatedEnv())}.\n`;
+  return `Prisma collects anonymous CLI usage data, enabled by default. What's collected and why: ${DOCS_URL}. Opt out: run "prisma-test telemetry disable", set DO_NOT_TRACK=1 or PRISMA_NEXT_DISABLE_TELEMETRY=1, or set "enableTelemetry": false in ${configPath()}.\n`;
 }
 
 const deploy = defineCommand({
@@ -178,7 +184,7 @@ const DEPLOY_ARGV = [
 beforeEach(() => {
   configRoot = mkdtempSync(join(tmpdir(), "prisma-cli-engine-run-"));
   order = [];
-  mkdirSync(dirname(userConfigPath(isolatedEnv())), { recursive: true });
+  mkdirSync(dirname(configPath()), { recursive: true });
 });
 
 afterEach(() => {
@@ -272,7 +278,7 @@ describe("the engine reports at command start", () => {
     expect(help.telemetry).toEqual([]);
     expect(version.telemetry).toEqual([]);
     expect(unknown.telemetry).toEqual([]);
-    expect(existsSync(userConfigPath(isolatedEnv()))).toBe(false);
+    expect(existsSync(configPath())).toBe(false);
   });
 
   it("exempts the telemetry command — no event, no mint, no disclosure", async () => {
@@ -281,7 +287,16 @@ describe("the engine reports at command start", () => {
     expect(result.exitCode).toBe(0);
     expect(result.telemetry).toEqual([]);
     expect(result.stderr).toBe("");
-    expect(existsSync(userConfigPath(isolatedEnv()))).toBe(false);
+    expect(existsSync(configPath())).toBe(false);
+  });
+
+  it("reports nothing when the run's env names no config directory", async () => {
+    const result = await run(makeCli(), DEPLOY_ARGV, { env: {} });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.telemetry).toEqual([]);
+    expect(result.stderr).not.toContain("anonymous CLI usage data");
+    expect(existsSync(configPath())).toBe(false);
   });
 
   it("reports nothing at all when the CLI declares no telemetry", async () => {
@@ -289,7 +304,7 @@ describe("the engine reports at command start", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.telemetry).toEqual([]);
-    expect(existsSync(userConfigPath(isolatedEnv()))).toBe(false);
+    expect(existsSync(configPath())).toBe(false);
   });
 });
 
@@ -336,10 +351,7 @@ describe("the first-run disclosure", () => {
   });
 
   it("never prints when the user has stored an opt-out", async () => {
-    writeFileSync(
-      userConfigPath(isolatedEnv()),
-      JSON.stringify({ enableTelemetry: false }),
-    );
+    writeFileSync(configPath(), JSON.stringify({ enableTelemetry: false }));
 
     const result = await run(makeCli(), DEPLOY_ARGV);
 
@@ -351,7 +363,7 @@ describe("the first-run disclosure", () => {
 describe("gating, through a run", () => {
   it("reports on a stored opt-in", async () => {
     writeFileSync(
-      userConfigPath(isolatedEnv()),
+      configPath(),
       JSON.stringify({ enableTelemetry: true, installationId: "stored-id" }),
     );
 
@@ -408,7 +420,7 @@ describe("no telemetry failure is observable in the run", () => {
 
   it("a throwing seam changes nothing — not the exit code, not one byte of output", async () => {
     writeFileSync(
-      userConfigPath(isolatedEnv()),
+      configPath(),
       JSON.stringify({ installationId: "stored-id" }),
     );
     const expected = await baseline();
@@ -437,13 +449,13 @@ describe("no telemetry failure is observable in the run", () => {
     expect(result.stdout).toBe(expected.stdout);
     expect(result.stderr).toBe(expected.stderr);
     expect(result.stderr).not.toContain("anonymous CLI usage data");
-    expect(existsSync(userConfigPath(isolatedEnv()))).toBe(false);
+    expect(existsSync(configPath())).toBe(false);
     expect(result.telemetry).toEqual([]);
   });
 
   it("a malformed stored config costs the run nothing but the disclosure it was due", async () => {
     const expected = await baseline();
-    writeFileSync(userConfigPath(isolatedEnv()), "{not valid json");
+    writeFileSync(configPath(), "{not valid json");
 
     const result = await run(makeCli(), DEPLOY_ARGV);
 

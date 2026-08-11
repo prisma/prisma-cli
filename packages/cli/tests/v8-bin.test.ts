@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Runtime } from "@prisma/cli-engine";
@@ -24,6 +25,11 @@ const NAMED_CONFIG_PATH = join(
 
 const SEMVER_PREFIX = /^\d+\.\d+\.\d+/;
 
+/** A config home outside any real one, so the telemetry preference
+ *  store resolves somewhere harmless. Nothing writes here: telemetry is
+ *  opted out below, and `telemetry status` is read-only. */
+const CONFIG_HOME = join(tmpdir(), "v8-bin-test-config-home");
+
 function makeProcess(overrides?: {
   argv?: string[];
   env?: NodeJS.ProcessEnv;
@@ -38,10 +44,15 @@ function makeProcess(overrides?: {
   const exitedWith: number[] = [];
   const proc = {
     argv: overrides?.argv ?? ["node", "bin.js"],
-    // Telemetry env opt-out so main()'s gating resolution stays inert
-    // (no first-run notice on stderr, no dependence on the developer's
-    // real user config).
-    env: { PRISMA_NEXT_DISABLE_TELEMETRY: "1", ...overrides?.env },
+    // Telemetry env opt-out so the engine's gating stays inert (no
+    // first-run notice on stderr, nothing sent), and a config home of
+    // our own so nothing here resolves the developer's real one.
+    env: {
+      PRISMA_NEXT_DISABLE_TELEMETRY: "1",
+      XDG_CONFIG_HOME: CONFIG_HOME,
+      APPDATA: CONFIG_HOME,
+      ...overrides?.env,
+    },
     cwd: () => "/tmp/v8-bin-test-cwd",
     listeners,
     exitedWith,
