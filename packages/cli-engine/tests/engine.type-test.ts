@@ -11,6 +11,7 @@ import type {
   CommandContext,
   CommandFamily,
   CommandHandler,
+  CommandRedirect,
   CompletedEnvelope,
   ConfigSection,
   CredentialManager,
@@ -22,6 +23,7 @@ import type {
   MountedTree,
   Presentations,
   PresentedResult,
+  RedirectSpec,
   Runtime,
   SectionValidation,
   Session,
@@ -30,6 +32,7 @@ import type {
 import {
   type createCli,
   defineCommand,
+  defineCommandFamily,
   defineConfigSection,
   defineServerCommand,
   defineSessionCommand,
@@ -281,7 +284,37 @@ export const commandFamily: CommandFamily = {
   configSection: checkSection,
   commands: { check: checkCommand, dev: devSession, lsp: lspServer },
   docsBaseUrl: "https://example.invalid/docs",
+  redirects: [],
 };
+
+// redirects is optional on the spec defineCommandFamily accepts
+export const familyWithoutRedirects = defineCommandFamily({
+  commands: { check: checkCommand },
+});
+export const familyWithRedirects = defineCommandFamily({
+  commands: { check: checkCommand },
+  redirects: [
+    { from: "migration apply", replacement: "migrate --to <ref>" },
+    {
+      from: "migration status",
+      flag: "graph",
+      replacement: "migration graph",
+      reason: "The --graph flag became its own command.",
+    },
+  ],
+});
+// …and always present on the normalized family, whether or not it was given
+export const normalizedRedirects: MutuallyAssignable<
+  (typeof familyWithoutRedirects)["redirects"],
+  readonly CommandRedirect[]
+> = true;
+// A normalized redirect carries every field, undefined where unset
+export const normalizedRedirectFlag: string | undefined =
+  familyWithRedirects.redirects[0].flag;
+export const normalizedRedirectReason: string | undefined =
+  familyWithRedirects.redirects[0].reason;
+// @ts-expect-error a redirect spec needs a replacement
+export const redirectWithoutReplacement: RedirectSpec = { from: "migration" };
 
 // Normalized definitions: every field is always present
 export const normalizedHelp: MutuallyAssignable<
