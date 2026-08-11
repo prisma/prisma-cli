@@ -21,7 +21,11 @@ defineCommand({
 })
 ```
 
-Declaring `installsPackages: true` intersects `packages: PackageOperations` onto the handler's `CommandContext`. Commands without the declaration have no `ctx.packages` (a compile error, exactly as `ctx.credentialManager` behaves). Like `managesCredentials`, this needs its own `defineCommand` overload if inference collapses — check how the credentials overload solved it and mirror the mechanism.
+Declaring `installsPackages: true` intersects `packages: PackageOperations` onto the handler's `CommandContext`. Commands without the declaration have no `ctx.packages` (a compile error, exactly as `ctx.credentialManager` behaves).
+
+**`defineCommand` has no overloads** (operator ruling, 2026-08-11). The v8 draft carried two, with a note that a single signature had been tried and inference collapsed. A second capability flag would have made that four, and every further flag doubles it again. The claim was retested against the real API: one generic signature with both flags optional, each constrained `extends boolean`, infers correctly in all four combinations — the handler is context-sensitive, so TypeScript fixes both booleans from the object literal before checking the handler body, and a primitive-constrained parameter does not widen its literal. The overloads are deleted. Two consequences: an explicit `managesCredentials: false` now compiles where the overloads rejected it as an excess property, and `defineCommand`'s body carries one cast that only an explicit type-argument call could defeat.
+
+The ruling came with a condition: **the type tests must use vitest's type matchers** (`expectTypeOf` / `assertType`) rather than the `@ts-expect-error` and `export const x: true = …` style the existing tests use, so the inference claim is asserted by a suite that runs rather than by a file that merely compiles. This means enabling `test.typecheck` in `packages/cli-engine/vitest.config.ts`, which the package does not do today, and making the `test` script run it. Coverage: all four flag combinations, the `CommandHandler<typeof def>` annotation path, and explicit `false` behaving as omission.
 
 ### 2.2 `ctx.packages`
 
@@ -32,14 +36,14 @@ interface PackageOperations {
     readonly dev?: boolean;                 // dev dependency; default false
     readonly cwd?: string;                  // default ctx.cwd
     readonly manager?: PackageManagerId;    // explicit override; default = detection (§3.1)
-  }): Promise<Result<{ command: string }, CliStructuredError>>;
+  }): Promise<Result<void, CliStructuredError>>;
 
   run(request: {
     readonly package: string;               // the package whose bin to execute, e.g. "skills"
     readonly args: readonly string[];
     readonly cwd?: string;                  // default ctx.cwd
     readonly manager?: PackageManagerId;    // explicit override; default = detection (§3.1)
-  }): Promise<Result<{ command: string }, CliStructuredError>>;
+  }): Promise<Result<void, CliStructuredError>>;
 }
 
 type PackageManagerId = 'npm' | 'pnpm' | 'yarn' | 'bun' | 'deno';
@@ -51,7 +55,7 @@ Note which ORM function the runner table comes from: `skill-install.ts`'s `forma
 
 - `install` adds dependencies to the project at `cwd` (the manager's own add/install verb, with the manager's dev flag when `dev` is true).
 - `run` is the one-off runner form — `npx` / `pnpm dlx` / `yarn dlx` / `bunx` — for executing a package's bin without adding a dependency. (The ORM `init`'s agent-skill install is this form.)
-- Success resolves `ok({ command })` where `command` is the exact human-readable command line the engine ran (for presentation and telemetry-free logging by the caller).
+- Success resolves `okVoid()`. The caller gets NO command line back (operator ruling, 2026-08-11): the whole point of the capability is to hold the command away from the package manager, so returning a rendered command line on success hands back exactly what was abstracted away — and under R5 a product cannot print it anyway. The engine announces the command in the step label before it runs, streams the manager's output while it runs, and carries the runnable line on the failure's next action. Nothing is left for the caller to do with the string.
 - Failure resolves `notOk(CliStructuredError)` — never a throw for an install that failed; a throw remains what it always is (a bug). The single exception is cancellation, which throws (§3.6).
 - The `manager` override exists so a caller can retry with a different manager (§5). It is an override of the *choice*, not a bypass of the machinery.
 - Neither operation can be called while another is still running (§3.7).
@@ -188,3 +192,14 @@ Each entry names what the first draft said, what it says now, and why.
 8. **The bin implements the seam in this change** (§2.3). Why: optional on the interface is for the test harness, not for the shipped binary; without it every `ctx.packages` call fails at runtime.
 9. **Consumers verified** (§5a). Composer never invokes a package manager by design and needs none of this; this repo's own `init` is a second consumer via S2d.
 10. **Documenting the code moves out of this slice** (§9) into project slice S9.
+11. **Success returns nothing** (§2.2). Was: `ok({ command })`. Why: the capability exists to keep the command away from the package manager, and returning a rendered command line on success hands back precisely what was abstracted away. R5 forbids a product printing it regardless.
+12. **`defineCommand`'s overloads are deleted** in favour of one generic signature (§2.1), with vitest type matchers required to prove the inference holds.
+
+## 11. Open — needs a ruling before the ORM port
+
+**How a command offers a package-manager command it did NOT run.** The ORM's `init --no-install` prints the commands it would have run as manual steps. Ported, that becomes a `run-command` next action — and building one needs a spelled command line while nothing executes. Amendment 11 removed the only way a handler could obtain one, correctly, but this case is real and R5 forbids the product spelling it itself. Two candidate shapes, neither built:
+
+- **A spelling-only call** on `ctx.packages` that returns the line and runs nothing. Small; matches how the failure's next action already works; the string exists only where it is meant to be runnable.
+- **A next-action shape the engine fills in** — the handler names the operation, the engine renders the whole action. Tighter, but it adds to the shared next-action vocabulary and only earns that if other engine surfaces want the same thing.
+
+This does not block the current PR: nothing in this repo needs it until `init` ports.
