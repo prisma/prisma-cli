@@ -8,7 +8,6 @@ import { notOk, ok } from "@prisma/cli-engine/protocol";
 import { serializeBucketKeyList } from "../../presenters/bucket";
 import { usageError } from "../../shell/errors";
 import type { BucketKeyListResult } from "../../types/bucket";
-import { listBucketKeys } from "../../use-cases/bucket/list-bucket-keys";
 import { bucketPositional, resolveBucketProviderOnly } from "./context";
 import { mapBucketOperationError } from "./errors";
 import { bucketKeyRows } from "./presentation";
@@ -57,10 +56,11 @@ export const bucketKeyListCommand = defineCommand({
         );
       }
 
-      const result = await listBucketKeys(resolveBucketProviderOnly(ctx), {
-        bucketId,
+      const keys = await resolveBucketProviderOnly(ctx).listKeys(bucketId, {
         signal: ctx.signal,
       });
+
+      const result: BucketKeyListResult = { bucketId, keys };
       return ok(ctx.present({ data: result }, listPresentations(result)));
     } catch (error) {
       const mapped = mapBucketOperationError(error);

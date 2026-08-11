@@ -8,7 +8,6 @@ import { notOk, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import { usageError } from "../../shell/errors";
 import type { BucketDeleteResult } from "../../types/bucket";
-import { deleteBucket } from "../../use-cases/bucket/delete-bucket";
 import { bucketPositional, resolveBucketProviderOnly } from "./context";
 import { mapBucketOperationError } from "./errors";
 
@@ -53,10 +52,11 @@ export const bucketDeleteCommand = defineCommand({
 
       await ctx.prompt.consent(CONSENT_QUESTION, { token: bucketId });
 
-      const result = await deleteBucket(resolveBucketProviderOnly(ctx), {
-        bucketId,
+      await resolveBucketProviderOnly(ctx).deleteBucket(bucketId, {
         signal: ctx.signal,
       });
+
+      const result: BucketDeleteResult = { bucket: { id: bucketId } };
       return ok(ctx.present({ data: result }, deletePresentations(result)));
     } catch (error) {
       const mapped = mapBucketOperationError(error);

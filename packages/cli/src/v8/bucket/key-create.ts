@@ -8,9 +8,15 @@ import {
 import { notOk, ok } from "@prisma/cli-engine/protocol";
 import { usageError } from "../../shell/errors";
 import type { BucketKeyCreateResult } from "../../types/bucket";
-import { createBucketKey } from "../../use-cases/bucket/create-bucket-key";
+import type { BucketKeyRole } from "../../use-cases/bucket/provider";
 import { bucketPositional, resolveBucketProviderOnly } from "./context";
 import { mapBucketOperationError } from "./errors";
+
+/** Legacy `resolveKeyRole`: anything that is not exactly `read` — the
+ *  omitted flag included — is `read_write`. */
+function resolveKeyRole(role: BucketKeyRole | undefined): BucketKeyRole {
+  return role === "read" ? "read" : "read_write";
+}
 
 function createPresentations(result: BucketKeyCreateResult): Presentations {
   return {
@@ -92,12 +98,14 @@ export const bucketKeyCreateCommand = defineCommand({
         );
       }
 
-      const result = await createBucketKey(resolveBucketProviderOnly(ctx), {
+      const created = await resolveBucketProviderOnly(ctx).createKey({
         bucketId,
         name: args.flags.name?.trim() || undefined,
-        role: args.flags.role,
+        role: resolveKeyRole(args.flags.role),
         signal: ctx.signal,
       });
+
+      const result: BucketKeyCreateResult = { bucketId, ...created };
       return ok(ctx.present({ data: result }, createPresentations(result)));
     } catch (error) {
       const mapped = mapBucketOperationError(error);

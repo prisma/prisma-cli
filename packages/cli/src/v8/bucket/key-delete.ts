@@ -8,7 +8,6 @@ import {
 import { notOk, ok } from "@prisma/cli-engine/protocol";
 import { usageError } from "../../shell/errors";
 import type { BucketKeyDeleteResult } from "../../types/bucket";
-import { deleteBucketKey } from "../../use-cases/bucket/delete-bucket-key";
 import { bucketPositional, resolveBucketProviderOnly } from "./context";
 import { mapBucketOperationError } from "./errors";
 
@@ -51,11 +50,11 @@ export const bucketKeyDeleteCommand = defineCommand({
         );
       }
 
-      const result = await deleteBucketKey(resolveBucketProviderOnly(ctx), {
-        bucketId,
-        keyId,
+      await resolveBucketProviderOnly(ctx).deleteKey(bucketId, keyId, {
         signal: ctx.signal,
       });
+
+      const result: BucketKeyDeleteResult = { key: { id: keyId } };
       return ok(ctx.present({ data: result }, deletePresentations(result)));
     } catch (error) {
       const mapped = mapBucketOperationError(error);
