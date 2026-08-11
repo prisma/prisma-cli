@@ -42,6 +42,17 @@ describe("resolveTelemetryEndpoint", () => {
     ).toBe(`http://127.0.0.1:54321${TELEMETRY_ENDPOINT_PATH}`);
   });
 
+  it("drops a path on the override — the events path is root-absolute", () => {
+    // Worth pinning rather than leaving implicit: an override written
+    // with a prefix silently loses it, so a mis-specified endpoint posts
+    // to the host's root instead of where its author meant.
+    expect(
+      resolveTelemetryEndpoint({
+        PRISMA_TELEMETRY_ENDPOINT: "http://127.0.0.1:54321/base",
+      }),
+    ).toBe(`http://127.0.0.1:54321${TELEMETRY_ENDPOINT_PATH}`);
+  });
+
   it("falls back to the pinned backend, without throwing, when the override is malformed", () => {
     for (const malformed of ["invalid-url", "://nope", " ", "127.0.0.1:1234"]) {
       expect(

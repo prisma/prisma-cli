@@ -138,10 +138,17 @@ command, a usage error) builds no snapshot and therefore reports nothing.
 
 **No values, ever.** The payload carries the command path joined with
 spaces and the *names* of the options whose source is `cli` — the options
-the user actually typed, in the engine's own kebab-case spelling, with no
-per-command filtering. Option values, positional values and raw argv never
-reach the payload. `positionalCount` exists on the snapshot and is
-deliberately never read.
+the user actually typed, with no per-command filtering. Option values,
+positional values and raw argv never reach the payload. `positionalCount`
+exists on the snapshot and is deliberately never read.
+
+The name reported is the option's **declared key** in the engine's
+kebab-case spelling, not the token the user typed. A negated spelling
+reports its base key — `--no-color` reports `color` — so polarity never
+reaches the wire, and an alias reports the long name it resolves to.
+Affects `--color` and `--interactive`, the only negatable options.
+`assets/s2/parity-divergences.md` records the counting consequence
+against the ORM CLI, which emits both spellings.
 
 ### 2.3 The status reasons
 

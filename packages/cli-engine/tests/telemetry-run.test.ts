@@ -268,6 +268,20 @@ describe("the engine reports at command start", () => {
     expect(serialized).not.toContain("dry-run");
   });
 
+  it("reports a negated option under its declared key, without the polarity", async () => {
+    const result = await run(makeCli(), [
+      "app",
+      "deploy",
+      "--no-color",
+      "prod-target",
+    ]);
+
+    expect(result.telemetry.map((payload) => payload.flags)).toEqual([
+      ["color"],
+    ]);
+    expect(JSON.stringify(result.telemetry)).not.toContain("no-color");
+  });
+
   it("reports nothing for --help, --version or an unknown command", async () => {
     const cli = makeCli();
 
