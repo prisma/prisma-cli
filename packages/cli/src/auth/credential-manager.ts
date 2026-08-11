@@ -11,7 +11,6 @@ import type {
 import {
   claimedExpiresAt,
   claimedIdentity,
-  claimedWorkspaceId,
   credentialsRequiredError,
   credentialWorkspaceId,
   credentialWorkspaceMismatchError,
@@ -160,7 +159,7 @@ export class FileCredentialManager implements CredentialManager {
     workspaceId: string,
   ): Promise<Session> {
     const environmentInForce = this.#environmentToken() !== undefined;
-    const claimed = claimedWorkspaceId(credential.token);
+    const claimed = credentialWorkspaceId(credential.token);
     if (claimed !== undefined && claimed !== workspaceId) {
       throw credentialWorkspaceMismatchError(workspaceId);
     }
@@ -314,7 +313,7 @@ export class FileCredentialManager implements CredentialManager {
 
       setTokens: async (tokens) => {
         this.#debug(`rotation write for session ${workspaceId}`);
-        const claimed = claimedWorkspaceId(tokens.accessToken);
+        const claimed = credentialWorkspaceId(tokens.accessToken);
         if (claimed !== undefined && claimed !== workspaceId) {
           throw credentialWorkspaceMismatchError(workspaceId);
         }

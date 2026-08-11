@@ -38,14 +38,13 @@ function twoWorkspaceRoutes(overrides: Routes = {}): Routes {
 }
 
 /**
- * A service token neither workspace derivation can place: no
- * `workspace_id` claim, and a `sub` that is not `workspace:<id>`. Both
- * derivations now live in the engine — `claimedWorkspaceId` reads the
- * claim, `credentialWorkspaceId` also accepts the `sub` form — so a
- * token carrying only `sub` would be refused under one and accepted
- * under the other. The test asserts the wider derivation places no
- * workspace in this one, so the refusal it pins is the refusal the
- * product makes.
+ * A token the one workspace derivation cannot place: no `workspace_id`
+ * claim, and a `sub` that is not `workspace:<id>`. The platform mints
+ * no such credential — an OAuth token carries `workspace_id`, and a
+ * service token's subject is always `workspace:<id>` — so this pins the
+ * refusal for a shape only a malformed credential could have. It calls
+ * the product's own derivation, so the day that changes this fails
+ * rather than quietly pinning a refusal the product never makes.
  */
 const UNSCOPED_SERVICE_TOKEN = mintTestJwt({ sub: "usr_1" });
 

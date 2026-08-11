@@ -20,7 +20,6 @@ describe("main export", () => {
       "authServiceError",
       "claimedExpiresAt",
       "claimedIdentity",
-      "claimedWorkspaceId",
       "createCli",
       "credentialRejectedError",
       "credentialWorkspaceId",

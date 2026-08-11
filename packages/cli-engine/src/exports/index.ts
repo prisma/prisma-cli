@@ -105,6 +105,5 @@ export {
 export {
   claimedExpiresAt,
   claimedIdentity,
-  claimedWorkspaceId,
   credentialWorkspaceId,
 } from "../token-claims";
