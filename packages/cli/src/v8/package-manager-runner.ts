@@ -8,16 +8,55 @@ const STDERR_TAIL_BYTES = 64 * 1024;
  *  code of its own; the run still failed, and the engine reports it. */
 const NO_EXIT_CODE = 1;
 
+const LINE_BREAKS = [0x0a, 0x0d];
+
+/**
+ * The engine redacts a URL by its scheme, and the bound cuts at an
+ * arbitrary byte: a cut inside `https://` leaves `user:secret@host`,
+ * which no pattern recognises. So the tail starts after the first line
+ * break in what was kept. A window with no line break at all is one
+ * truncated line whose start cannot be trusted, and is dropped.
+ */
+function fromLineStart(window: Buffer): Buffer {
+  const breaks = LINE_BREAKS.map((byte) => window.indexOf(byte)).filter(
+    (at) => at !== -1,
+  );
+  if (breaks.length === 0) {
+    return Buffer.alloc(0);
+  }
+  return window.subarray(Math.min(...breaks) + 1);
+}
+
+/** Keeps the last `limit` bytes by dropping whole chunks off the front,
+ *  so a manager writing megabytes in small pieces does not recopy the
+ *  window once per piece. */
 function boundedTail(limit: number) {
-  let bytes = Buffer.alloc(0);
+  const chunks: Buffer[] = [];
+  let written = 0;
+  let kept = 0;
   return {
     push(chunk: Buffer): void {
-      bytes = Buffer.concat([bytes, chunk]);
-      if (bytes.length > limit) {
-        bytes = bytes.subarray(bytes.length - limit);
+      chunks.push(chunk);
+      written += chunk.length;
+      kept += chunk.length;
+      let first = chunks[0];
+      while (first !== undefined && kept - first.length >= limit) {
+        chunks.shift();
+        kept -= first.length;
+        first = chunks[0];
       }
     },
-    text: (): string => bytes.toString("utf8"),
+    /** Every byte the child wrote, whether or not it was kept. */
+    get bytes(): number {
+      return written;
+    },
+    text(): string {
+      const all = Buffer.concat(chunks);
+      if (written <= limit) {
+        return all.toString("utf8");
+      }
+      return fromLineStart(all.subarray(all.length - limit)).toString("utf8");
+    },
   };
 }
 
@@ -62,11 +101,10 @@ export const runPackageManager: PackageManagerRunner = async ({
   forward(subprocess.stdout, (text) => onOutput("data", text));
   forward(subprocess.stderr, (text) => onOutput("diagnostic", text), tail.push);
   const result = await subprocess;
-  const written = tail.text();
   return {
     exitCode: result.exitCode ?? NO_EXIT_CODE,
     // A child that never started wrote nothing, and why it never
     // started is the only account of the failure anyone gets.
-    stderr: written === "" ? (result.shortMessage ?? "") : written,
+    stderr: tail.bytes === 0 ? (result.shortMessage ?? "") : tail.text(),
   };
 };

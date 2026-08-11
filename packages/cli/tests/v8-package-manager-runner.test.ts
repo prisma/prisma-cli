@@ -1,8 +1,10 @@
 /**
- * The bin's half of Runtime.runPackageManager: the only place in the
- * repo that spawns a package manager. Driven against real child
- * processes, because what is being asserted is how a real child's
- * output, exit code, and death reach the engine.
+ * The bin's half of Runtime.runPackageManager. It is the only place on
+ * the v8 engine that spawns a package manager; the legacy commander
+ * shell still spawns its own (src/controllers/init.ts and
+ * src/lib/agent/package-manager.ts) until S2d retires it. Driven
+ * against real child processes, because what is being asserted is how a
+ * real child's output, exit code, and death reach the engine.
  */
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -114,7 +116,7 @@ describe("runPackageManager", () => {
       file: NODE,
       args: [
         "-e",
-        `process.stderr.write("HEAD" + "x".repeat(100 * 1024) + "TAIL");
+        `process.stderr.write("HEAD" + "x\\n".repeat(50 * 1024) + "TAIL");
          process.exitCode = 1;`,
       ],
       cwd: dir,
@@ -123,10 +125,56 @@ describe("runPackageManager", () => {
     });
 
     expect(result.exitCode).toBe(1);
-    expect(Buffer.byteLength(result.stderr)).toBe(64 * 1024);
+    expect(Buffer.byteLength(result.stderr)).toBeGreaterThan(64 * 1024 - 4);
+    expect(Buffer.byteLength(result.stderr)).toBeLessThanOrEqual(64 * 1024);
     expect(result.stderr.endsWith("TAIL")).toBe(true);
     expect(result.stderr).not.toContain("HEAD");
     expect(joined(chunks, "diagnostic")).toHaveLength(100 * 1024 + 8);
+  });
+
+  it("a cut inside a URL's scheme leaves no bare userinfo in the tail", async () => {
+    const { onOutput } = collect();
+    // Redaction recognises a URL by its scheme, so what the 64 KiB cut
+    // must never hand over is a line beginning "ci:s3cret@host/…".
+    const url = "https://ci:s3cret@registry.acme.dev/prisma";
+    const exposed = url.slice("https://".length);
+    const trailerBytes = 64 * 1024 - exposed.length - 1;
+    const trailer = "npm ERR! detail\n".repeat(4200).slice(0, trailerBytes);
+
+    const result = await runPackageManager({
+      file: NODE,
+      args: [
+        "-e",
+        `process.stderr.write("npm ERR! 401 ${url}\\n" +
+           "npm ERR! detail\\n".repeat(4200).slice(0, ${String(trailerBytes)}));
+         process.exitCode = 1;`,
+      ],
+      cwd: dir,
+      signal: new AbortController().signal,
+      onOutput,
+    });
+
+    expect(result.stderr).not.toContain("s3cret");
+    expect(result.stderr).toBe(trailer);
+  });
+
+  it("output with no line break at all yields no tail rather than a partial line", async () => {
+    const { onOutput } = collect();
+
+    const result = await runPackageManager({
+      file: NODE,
+      args: [
+        "-e",
+        `process.stderr.write("https://ci:s3cret@registry.acme.dev/" +
+           "x".repeat(70 * 1024));
+         process.exitCode = 1;`,
+      ],
+      cwd: dir,
+      signal: new AbortController().signal,
+      onOutput,
+    });
+
+    expect(result.stderr).toBe("");
   });
 
   it("decodes a multi-byte character split across two chunks", async () => {
