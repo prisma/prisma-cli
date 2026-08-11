@@ -1,5 +1,4 @@
 import { fork } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import type { ParentToSenderPayload } from "./payload";
 
 export interface RunTelemetryInputs {
@@ -63,15 +62,4 @@ export function runTelemetry(inputs: RunTelemetryInputs): TelemetryRunOutcome {
     }
     return { spawned: false, reason: "fork-failed" };
   }
-}
-
-/**
- * Resolve the path to the compiled sender entry relative to a consumer
- * that has captured its own `import.meta.url`. The `tsdown`-emitted
- * entry sits at `<dist>/sender.js` next to the consumer's own entry;
- * the consumer asks `senderModuleUrl()` and forwards the result to
- * `runTelemetry({ senderPath })`.
- */
-export function senderModuleUrl(importMetaUrl: string): string {
-  return fileURLToPath(new URL("./sender.js", importMetaUrl));
 }

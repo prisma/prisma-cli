@@ -7,7 +7,7 @@ import { fork } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParentToSenderPayload } from "../src/payload";
-import { runTelemetry, senderModuleUrl } from "../src/spawn";
+import { runTelemetry } from "../src/spawn";
 
 vi.mock("node:child_process", () => ({ fork: vi.fn() }));
 
@@ -67,12 +67,5 @@ describe("runTelemetry", () => {
     expect(
       runTelemetry({ payload: PAYLOAD, senderPath: "/sender/path.js" }),
     ).toEqual({ spawned: false, reason: "fork-failed" });
-  });
-});
-
-describe("senderModuleUrl", () => {
-  it("resolves the sender entry relative to the consumer's import.meta.url", () => {
-    const consumer = "file:///some/consumer/dist/cli.js";
-    expect(senderModuleUrl(consumer)).toBe("/some/consumer/dist/sender.js");
   });
 });
