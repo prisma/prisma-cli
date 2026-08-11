@@ -67,9 +67,9 @@ describe("redactSecrets", () => {
   });
 
   test("a name that merely contains a secret word keeps its value", () => {
-    expect(redactSecrets("monkey=1 keyword=x tokenizer=on passwords_ok=2")).toBe(
-      "monkey=1 keyword=x tokenizer=on passwords_ok=2",
-    );
+    expect(
+      redactSecrets("monkey=1 keyword=x tokenizer=on passwords_ok=2"),
+    ).toBe("monkey=1 keyword=x tokenizer=on passwords_ok=2");
   });
 
   test("a quoted value goes whole, so nothing after the space survives", () => {
@@ -583,10 +583,12 @@ describe("the two ways an operation does not resolve notOk", () => {
       maySpawn: true,
       handler: async (_args, ctx) => {
         const child = ctx.spawn({ command: "alchemy" });
-        const failure = await ctx.packages.install({ packages: ["prisma"] }).then(
-          () => "no error",
-          (cause: unknown) => String(cause),
-        );
+        const failure = await ctx.packages
+          .install({ packages: ["prisma"] })
+          .then(
+            () => "no error",
+            (cause: unknown) => String(cause),
+          );
         await child;
         return ok(ctx.present({ data: failure }, { human: () => [] }));
       },
