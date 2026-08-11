@@ -23,6 +23,16 @@ import { describe, expect, test } from "vitest";
 const NOW = new Date("2030-01-01T00:00:00.000Z");
 const CLOCK = () => NOW;
 
+function signalDone(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    signal.addEventListener("abort", () => resolve(), { once: true });
+  });
+}
+
 function jwtExpiringIn(seconds: number, workspaceId: string): string {
   return mintTestJwt({
     workspace_id: workspaceId,
@@ -355,10 +365,41 @@ describe("signals", () => {
       },
     });
 
-    await cli.run(["watcher"], { abort: controller.signal });
+    const result = await cli.run(["watcher"], { abort: controller.signal });
 
     expect(abortedInsideChild).toBe(false);
     expect(abortedAfterChild).toBe(true);
+    // The replayed signal is a delivered signal like any other: the
+    // handler completed successfully after it, and the run still
+    // settles as interrupted.
+    expect(result.exitCode).toBe(130);
+  });
+
+  test("a session interrupted during a child cleans up and settles 130", async () => {
+    const controller = new AbortController();
+    const dev = defineSessionCommand({
+      help: { summary: "Converges, then runs until the signal fires" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        await ctx.spawn({ command: "alchemy" });
+        await signalDone(ctx.signal);
+        ctx.report({ kind: "message", severity: "info", text: "stopped" });
+        return ok(undefined);
+      },
+    });
+    const cli = createTestCli({
+      commands: { dev },
+      now: CLOCK,
+      spawnScript: () => {
+        controller.abort();
+        return { exitCode: 0, signal: null };
+      },
+    });
+
+    const result = await cli.run(["dev"], { abort: controller.signal });
+
+    expect(result.exitCode).toBe(130);
+    expect(result.stderr).toContain("stopped");
   });
 
   test("a delivered SIGTERM is forwarded to the child during the window", async () => {
@@ -700,6 +741,39 @@ describe("the settlement bypass is fenced to declaring commands", () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("without declaring maySpawn");
+  });
+
+  test("a declaring command inventing a child result is a construction error", async () => {
+    const inventing = defineSessionCommand({
+      help: { summary: "Describes a child that never existed" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        await ctx.spawn({ command: "alchemy" });
+        return ok(exitWithChildStatus({ exitCode: null, signal: "SIGINT" }));
+      },
+    });
+    const cli = createTestCli({
+      commands: { inventing },
+      now: CLOCK,
+      spawnScript: () => ({ exitCode: 0, signal: null }),
+    });
+
+    const result = await cli.run(["inventing"], { isTty: { stdout: true } });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("the engine did not produce");
+  });
+
+  test("the child result ctx.spawn returned settles normally", async () => {
+    const cli = createTestCli({
+      commands: { converge },
+      now: CLOCK,
+      spawnScript: () => ({ exitCode: 7, signal: null }),
+    });
+
+    const result = await cli.run(["converge"]);
+
+    expect(result.exitCode).toBe(7);
   });
 });
 

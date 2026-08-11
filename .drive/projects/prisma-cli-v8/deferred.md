@@ -6,14 +6,6 @@ Nothing here is tracked outside this file.
 
 ## Owned by S3/D4 (the slice's closing dispatch)
 
-- **`dev` settles 130 through a fabricated child result.** Session
-  commands hard-code exit 0, and the child-status bypass is the only
-  non-zero path, so `dev` hands it `{exitCode: null, signal:
-  "SIGINT"}` for a child that never existed. The engine already
-  records the delivered signal (the #136 latch) and can settle
-  128+signal from its own record, which removes the fiction.
-  Operator-informed 2026-08-11; engine fix planned in D4 so the
-  tandem release publishes engine and composer together.
 - **`loadAppConfigDiagnostics()` is called by nothing.** D2 rewrote
   composer's config loading to return diagnostics instead of
   throwing (contract R-S3-2), but `pipeline.ts` still calls the
