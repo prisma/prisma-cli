@@ -154,12 +154,32 @@ function unreadableDiagnostic(path: string, cause: unknown): Diagnostic {
 }
 
 /**
- * Evaluates the file at `path` and returns its default export. The c12
- * call is prisma/composer's `loadAppConfig` — explicit configFile, cwd
- * at that file's directory, the three lookups it turns off — with
- * prisma/prisma's dynamic import, so a run with no config file never
- * pays for loading c12 or jiti, plus the options below that composer
- * has no need of and this loader does.
+ * Everything c12 does beyond evaluating the one file it was handed.
+ * Composer leaves the last five at their defaults and can afford to:
+ * its config has a fixed set of keys, where every top-level key here is
+ * a user-authored section name, so all five are reachable from an
+ * ordinary config file.
+ */
+const EVALUATE_ONE_FILE_ONLY = {
+  rcFile: false,
+  globalRc: false,
+  packageJson: false,
+  /** Else `$production` blocks merge over the root under NODE_ENV. */
+  envName: false,
+  /** Else `$prismaConfig` is stripped and every config reads unmarked. */
+  omit$Keys: false,
+  /** Else `extends` is a merge directive rather than a section name. */
+  extend: false,
+  /** Else an `extends` URL is fetched over the network and evaluated. */
+  giget: false,
+  /** Else a neighbouring .env is read into process.env. */
+  dotenv: false,
+} as const;
+
+/**
+ * Evaluates the file at `path` and returns its default export. The call
+ * is prisma/composer's `loadAppConfig` with prisma/prisma's dynamic
+ * import, so a run with no config file never pays for c12 or jiti.
  *
  * The loaded-file check is in both references: c12 is asked for one
  * exact path and must not answer with another.
@@ -170,50 +190,7 @@ async function evaluateConfigFile(path: string): Promise<unknown> {
     name: "prisma",
     configFile: path,
     cwd: dirname(path),
-    rcFile: false,
-    globalRc: false,
-    packageJson: false,
-    // The five options composer leaves at their defaults and this
-    // loader cannot. Composer's config has a fixed set of keys and no
-    // `$`-prefixed marker, so none of these behaviours can reach it;
-    // this CLI's top-level key space IS the section namespace, so every
-    // one of them is reachable from an ordinary user config.
-    //
-    // envName defaults to process.env.NODE_ENV, and c12 then merges the
-    // file's `$<NODE_ENV>` and `$env.<NODE_ENV>` blocks over the root.
-    // A file with a `$production` block would mean one thing in a
-    // normal shell and another under NODE_ENV=production. false turns
-    // the merge off, so the file means the same thing everywhere.
-    //
-    // omit$Keys is already falsy by default, and this loader depends on
-    // that: `$prismaConfig` is the version marker, so stripping
-    // `$`-keys would make every valid config read as unmarked, and an
-    // unrecognised `$`-key would vanish instead of being reported as an
-    // unknown section. Pinned so a change of default cannot take both
-    // away at once.
-    //
-    // extend defaults to reading a top-level `extends` key as an
-    // instruction to merge further files into this one. Here `extends`
-    // has to be an ordinary key like any other: with the directive on,
-    // a section by that name disappears instead of being read, and the
-    // merged-in file contributes sections without ever being checked
-    // for the version marker.
-    //
-    // giget downloads and unpacks an `extends` value beginning http://,
-    // https://, gh:, github:, gitlab: or bitbucket:, then evaluates
-    // what it fetched. What a config file means must never depend on a
-    // network fetch. Unreachable while extend is false, and pinned so
-    // the two cannot come apart.
-    //
-    // dotenv reads a .env beside the config file into process.env.
-    // Loading a config must not mutate the process. Falsy by default
-    // today, and pinned because a change of default would turn reading
-    // a file into a side effect on every later env lookup.
-    envName: false,
-    omit$Keys: false,
-    extend: false,
-    giget: false,
-    dotenv: false,
+    ...EVALUATE_ONE_FILE_ONLY,
   });
   // composer's comparison, not prisma/prisma's raw string equality:
   // realpath normalises the separators and casing c12 hands back on
