@@ -184,13 +184,22 @@ on every `whoami`/`list` and wrote them back. Accepted and stated.
   removed: `databaseTarget` ships `null` (unless a parent-side override
   is supplied on the wire, kept for compatibility) and `extensions`
   ships `[]`, always. The wire shape is unchanged.
-- **Emission timing.** The ORM CLI emitted from a commander `preAction`
-  hook, before the command body ran. v8 emits at settlement
-  (`onSettled`, by design) with the first-run disclosure printed
-  pre-run, before the command's output. Consequence: a run that
-  crashes, is SIGKILLed, or leaves through `process.exit` before
-  settlement emits NO telemetry event, where the reference emitted one
-  before the command started.
+- **Emission timing — retired, no longer a divergence.** v8 briefly
+  emitted at settlement (`onSettled`), so a run that crashed, was
+  SIGKILLed, or left through `process.exit` emitted nothing where the
+  reference emitted one before the command started. The engine now
+  fires at command start from the parse-time snapshot, immediately
+  after it is built and before the handler — the same point the ORM
+  CLI's commander `preAction` hook fires from. ADR 217 (prisma/prisma),
+  which makes "spawned at command start" the isolation decision, stays
+  true and needs no amendment.
+- **First-run disclosure wording.** The ORM CLI says "Prisma Next
+  collects anonymous CLI usage data"; the engine composes one
+  disclosure for one product and says "Prisma collects anonymous CLI
+  usage data". Same channel (stderr), same timing (first enabled run,
+  before the command runs), same opt-out instructions, and the same
+  `installationId`-keyed once-only behaviour. The ORM inherits this
+  wording when its bin ports onto the engine.
 
 ### Test surface
 
