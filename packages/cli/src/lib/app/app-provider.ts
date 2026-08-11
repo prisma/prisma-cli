@@ -192,7 +192,7 @@ export interface AppProvider {
   ): Promise<AppRecord[]>;
   removeApp(
     appId: string,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; progress?: unknown },
   ): Promise<RemovedAppRecord>;
   listDomains(
     appId: string,
@@ -356,6 +356,7 @@ export function createAppProvider(
         timeoutSeconds: 120,
         pollIntervalMs: 2_000,
         signal: options?.signal,
+        progress: options?.progress as never,
       });
 
       if (destroyResult.isErr()) {

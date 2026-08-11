@@ -1,5 +1,5 @@
 import {
-  claimedWorkspaceId,
+  credentialWorkspaceId,
   defineCommand,
   type Presentations,
   type Session,
@@ -123,7 +123,7 @@ export const authLoginCommand = defineCommand({
         onVerificationUrl: (url) =>
           ctx.report({ kind: "endpoint", name: "verification", url }),
       });
-      const workspaceId = claimedWorkspaceId(credential.token);
+      const workspaceId = credentialWorkspaceId(credential.token);
       if (workspaceId === undefined) {
         throw loginWorkspaceUnknownError();
       }
