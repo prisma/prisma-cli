@@ -34,12 +34,42 @@ describe("redactSecrets", () => {
     );
   });
 
+  test("a password containing @ goes whole, not up to its first @", () => {
+    expect(
+      redactSecrets("npm ERR! https://bot:p@ssw0rd-secret@registry.acme.dev/x"),
+    ).toBe("npm ERR! https://…@registry.acme.dev/x");
+  });
+
+  test("a password of nothing but @ goes whole too", () => {
+    expect(
+      redactSecrets("https://bot:p@ss@w0rd@more@registry.acme.dev/prisma"),
+    ).toBe("https://…@registry.acme.dev/prisma");
+  });
+
+  test("an @ in the path of a URL that has no userinfo is left alone", () => {
+    const url = "https://registry.acme.dev/scoped/@acme/pkg/-/pkg-1.0.0.tgz";
+
+    expect(redactSecrets(url)).toBe(url);
+  });
+
   test("assignments whose name says secret lose their value", () => {
     expect(
       redactSecrets(
         "NPM_TOKEN=abc123 PRISMA_API_KEY=xyz ci_secret=q MY_PASSWORD=hunter2",
       ),
     ).toBe("NPM_TOKEN=… PRISMA_API_KEY=… ci_secret=… MY_PASSWORD=…");
+  });
+
+  test("npm's own camelCase secret name is one of them", () => {
+    expect(
+      redactSecrets("//registry.acme.dev/:_authToken=npm_abc123 --loglevel=x"),
+    ).toBe("//registry.acme.dev/:_authToken=… --loglevel=x");
+  });
+
+  test("a name that merely contains a secret word keeps its value", () => {
+    expect(redactSecrets("monkey=1 keyword=x tokenizer=on passwords_ok=2")).toBe(
+      "monkey=1 keyword=x tokenizer=on passwords_ok=2",
+    );
   });
 
   test("a quoted value goes whole, so nothing after the space survives", () => {

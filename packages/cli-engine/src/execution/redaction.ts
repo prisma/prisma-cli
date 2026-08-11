@@ -1,10 +1,24 @@
 const REDACTED = "…";
 
-const URL_USERINFO = /([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^\s/@]+@/g;
+/** The userinfo run stops only at the path, so the LAST `@` before it
+ *  ends the userinfo: a password containing `@` goes whole. Backtracking
+ *  cannot cross a `/`, so a URL whose path contains `@` and whose
+ *  userinfo is absent stays as it is. */
+const URL_USERINFO = /([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^\s/]+@/g;
 
 const ASSIGNMENT = /\b([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S+)/g;
 
-const SECRET_NAME = /TOKEN|KEY|SECRET|PASSWORD/i;
+const SECRET_WORDS = new Set(["TOKEN", "KEY", "SECRET", "PASSWORD"]);
+
+/** Underscores and camelCase humps: `MY_API_TOKEN` and `_authToken`
+ *  name a secret, `monkey` and `tokenizer` do not. */
+const NAME_WORDS = /_+|(?<=[a-z0-9])(?=[A-Z])/;
+
+function namesSecret(name: string): boolean {
+  return name
+    .split(NAME_WORDS)
+    .some((word) => SECRET_WORDS.has(word.toUpperCase()));
+}
 
 /**
  * Removes the two shapes a package manager's output leaks credentials
@@ -16,6 +30,6 @@ export function redactSecrets(text: string): string {
   return text
     .replace(URL_USERINFO, `$1${REDACTED}@`)
     .replace(ASSIGNMENT, (assignment, name: string) =>
-      SECRET_NAME.test(name) ? `${name}=${REDACTED}` : assignment,
+      namesSecret(name) ? `${name}=${REDACTED}` : assignment,
     );
 }
