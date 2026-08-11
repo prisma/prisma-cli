@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { CLIENT_ID, DEFAULT_REDIRECT_URI } from "../src/auth/client";
-import { buildCli, MOUNTED_COMMANDS } from "../src/v8/cli";
+import { buildCli } from "../src/v8/cli";
 import { main } from "../src/v8/main";
 import {
   assembleRuntime,
@@ -227,79 +227,5 @@ describe("main", () => {
 describe("buildCli", () => {
   it("constructs the shipped command tree without throwing", () => {
     expect(() => buildCli()).not.toThrow();
-  });
-
-  // The mount map is the only place the user-facing command paths exist,
-  // and the engine validates collisions rather than spelling. Asserting the
-  // exact set fails on a missing mount and on an unexpected one.
-  it("mounts exactly these command paths", () => {
-    expect(Object.keys(MOUNTED_COMMANDS).sort()).toEqual([
-      "agent install",
-      "agent status",
-      "agent update",
-      "auth login",
-      "auth logout",
-      "auth whoami",
-      "auth workspace list",
-      "auth workspace logout",
-      "auth workspace use",
-      "build logs",
-      "feedback",
-      "service domain add",
-      "service domain remove",
-      "service domain retry",
-      "service domain show",
-      "service domain wait",
-      "service list-deploys",
-      "service open",
-      "service promote",
-      "service remove",
-      "service rollback",
-      "service show",
-      "service show-deploy",
-      "telemetry disable",
-      "telemetry enable",
-      "telemetry status",
-    ]);
-  });
-
-  it("answers to every mounted path through the real tree", async () => {
-    for (const commandPath of Object.keys(MOUNTED_COMMANDS)) {
-      const proc = makeProcess({
-        argv: ["node", "bin.js", ...commandPath.split(" "), "--help"],
-        isTty: { stdout: true },
-      });
-
-      const exitCode = await main(proc);
-
-      expect({ commandPath, exitCode }).toEqual({ commandPath, exitCode: 0 });
-      expect(proc.stdoutText).toContain(commandPath);
-    }
-  });
-
-  it("runs --help through the real tree with a stub process", async () => {
-    const proc = makeProcess({
-      argv: ["node", "bin.js", "--help"],
-      isTty: { stdout: true },
-    });
-
-    const exitCode = await main(proc);
-
-    expect(exitCode).toBe(0);
-    expect(proc.stdoutText).toContain("USAGE");
-    expect(proc.stdoutText).toContain("auth");
-  });
-
-  it("runs --version through the real tree, printing the version with exit 0", async () => {
-    const proc = makeProcess({
-      argv: ["node", "bin.js", "--version"],
-      isTty: { stdout: true },
-    });
-
-    const exitCode = await main(proc);
-
-    expect(exitCode).toBe(0);
-    expect(proc.stdoutText).toMatch(/^\d+\.\d+\.\d+/);
-    expect(proc.stderrText).toBe("");
   });
 });

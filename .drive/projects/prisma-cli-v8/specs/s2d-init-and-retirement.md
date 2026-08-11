@@ -58,8 +58,9 @@ go.
 
 R-S2d-5 **Grammar completeness check**: a build-time test asserts the
 mounted tree equals the S2 target grammar exactly (every inventory
-command minus ruled removals plus ruled renames; `service run` per
-Q2's outcome). This is the platform slice of the S7 grammar check.
+command minus ruled removals plus ruled renames; `service run` is
+a ruled removal, so nothing of the legacy shell survives on its
+account). This is the platform slice of the S7 grammar check.
 
 R-S2d-6 **Final parity review**: the cumulative S2 divergence list
 (S2a+S2b+S2c+S2d) is consolidated into one document for operator

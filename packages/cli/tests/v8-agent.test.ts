@@ -4,11 +4,11 @@ import { createTestCli } from "@prisma/cli-engine/testing";
 import { execa } from "execa";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { makeTempCwd, mountedCommands } from "./v8-service-testkit";
+import { makeTempCwd, mountsFor } from "./v8-service-testkit";
 
 vi.mock("execa", () => ({ execa: vi.fn() }));
 
-const AGENT_COMMANDS = mountedCommands(["agent"]);
+const AGENT_COMMANDS = mountsFor(["agent"]);
 
 /** The whole group is local: no session is ever seeded, so every run
  *  here also proves the unauthenticated axis of R-S2b-9. */

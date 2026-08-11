@@ -14,7 +14,7 @@ import {
 } from "@prisma/cli-engine/testing";
 import { onTestFinished } from "vitest";
 import type { AuthStateResult } from "../src/types/auth";
-import { MOUNTED_COMMANDS } from "../src/v8/cli";
+import { mountedCommands } from "../src/v8/cli";
 
 export const WORKSPACE = { id: "ws_1", name: "Acme Inc" };
 
@@ -295,9 +295,9 @@ const SERVICE_GROUPS = {
  * The shipped mount map narrowed to the groups a suite exercises, so no
  * test file restates a command path that `src/v8/cli.ts` owns.
  */
-export function mountedCommands(groups: readonly string[]): MountedTree {
+export function mountsFor(groups: readonly string[]): MountedTree {
   return Object.fromEntries(
-    Object.entries(MOUNTED_COMMANDS).filter(([commandPath]) =>
+    Object.entries(mountedCommands).filter(([commandPath]) =>
       groups.some(
         (group) => commandPath === group || commandPath.startsWith(`${group} `),
       ),
@@ -305,7 +305,7 @@ export function mountedCommands(groups: readonly string[]): MountedTree {
   );
 }
 
-const SERVICE_COMMANDS = mountedCommands(["service", "build"]);
+const SERVICE_COMMANDS = mountsFor(["service", "build"]);
 
 export interface ServiceCliOptions {
   routes?: Routes;
