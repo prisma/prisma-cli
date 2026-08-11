@@ -36,6 +36,37 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
     "Needs a connected repository, which `git connect` cannot create here.",
 };
 
+/**
+ * Commands that were already mounted when this convention arrived and
+ * still need a happy path written. This is a backlog, not a second
+ * exclusions list: every entry is work owed, and nothing new belongs
+ * here. A command added from today on needs a test or an EXCLUSIONS
+ * entry saying why it cannot have one.
+ *
+ * `service` and `build` act on a deployed service, which Composer
+ * creates and this repo cannot; covering them needs a fixture service
+ * that outlives a CI run. `agent` writes local agent context files and
+ * should be straightforward to cover.
+ */
+const AWAITING_COVERAGE: readonly string[] = [
+  "service show",
+  "service open",
+  "service list-deploys",
+  "service show-deploy",
+  "service promote",
+  "service rollback",
+  "service remove",
+  "service domain add",
+  "service domain show",
+  "service domain remove",
+  "service domain retry",
+  "service domain wait",
+  "build logs",
+  "agent install",
+  "agent update",
+  "agent status",
+];
+
 async function mountedCommands(): Promise<string[]> {
   const source = await readFile(CLI_SOURCE, "utf8");
   const marker = "mountedCommands: Readonly<Record<string, AnyCommand>> = {";
@@ -69,7 +100,10 @@ describe("real-API end-to-end coverage", () => {
     const covered = await coveredCommands();
 
     const uncovered = mounted.filter(
-      (command) => !covered.has(command) && EXCLUSIONS[command] === undefined,
+      (command) =>
+        !covered.has(command) &&
+        EXCLUSIONS[command] === undefined &&
+        !AWAITING_COVERAGE.includes(command),
     );
 
     expect(
@@ -81,13 +115,23 @@ describe("real-API end-to-end coverage", () => {
     ).toEqual([]);
   });
 
-  it("has no exclusion for a command that no longer exists", async () => {
+  it("has no exclusion or backlog entry for a command that no longer exists", async () => {
     const mounted = new Set(await mountedCommands());
-    const stale = Object.keys(EXCLUSIONS).filter(
+    const stale = [...Object.keys(EXCLUSIONS), ...AWAITING_COVERAGE].filter(
       (command) => !mounted.has(command),
     );
 
-    expect(stale, `stale exclusions: ${stale.join(", ")}`).toEqual([]);
+    expect(stale, `stale entries: ${stale.join(", ")}`).toEqual([]);
+  });
+
+  it("does not leave a command both covered and listed as owed", async () => {
+    const covered = await coveredCommands();
+    const done = AWAITING_COVERAGE.filter((command) => covered.has(command));
+
+    expect(
+      done,
+      `these now have tests and should be removed from AWAITING_COVERAGE: ${done.join(", ")}`,
+    ).toEqual([]);
   });
 
   it("does not declare the same command in two files", async () => {

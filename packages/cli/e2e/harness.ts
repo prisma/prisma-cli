@@ -12,6 +12,7 @@
  * believed.
  */
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -175,6 +176,14 @@ export class E2eSession {
     args: readonly string[],
     options: RunOptions = {},
   ): Promise<CliRun> {
+    // An unbuilt dist made every test here fail with "no terminal result
+    // frame", which reads like the CLI misbehaving rather than like a
+    // missing artifact. Say which it is.
+    if (!existsSync(CLI_BINARY)) {
+      throw new Error(
+        `the CLI is not built: ${CLI_BINARY} does not exist. Run \`pnpm build\` first.`,
+      );
+    }
     const cwd = options.cwd ?? this.#home;
     const argv = args.includes("--json") ? [...args] : [...args, "--json"];
 
