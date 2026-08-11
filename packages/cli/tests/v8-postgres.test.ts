@@ -96,34 +96,29 @@ function postgresClient(spec: PostgresClientSpec = {}): ManagementApiClient {
   const databases = spec.databases ?? [DB_ONE, DB_TWO];
   const page = { hasMore: false, nextCursor: null };
 
-  const dispatch = (method: string, apiPath: string, init: Call["init"]) => {
-    const call: Call = { method, path: apiPath, init: init ?? {} };
-    spec.calls?.push(call);
-    const route = spec.routes?.[`${method} ${apiPath}`];
-    if (route) {
-      return route(call);
-    }
-
-    if (method === "GET" && apiPath === "/v1/projects") {
-      return { data: { data: PROJECTS } };
-    }
-    if (method === "GET" && apiPath === "/v1/databases") {
-      return { data: { data: databases, pagination: page } };
-    }
-    if (method === "GET" && apiPath === "/v1/databases/{databaseId}") {
-      const id = init?.params?.path?.databaseId;
+  const routes: Record<string, Responder | undefined> = {
+    "GET /v1/projects": () => ({ data: { data: PROJECTS } }),
+    "GET /v1/databases": () => ({
+      data: { data: databases, pagination: page },
+    }),
+    "GET /v1/databases/{databaseId}": (call) => {
+      const id = call.init.params?.path?.databaseId;
       const found = databases.find((database) => database.id === id);
       return found
         ? { data: { data: found } }
         : { error: undefined, response: new Response(null, { status: 404 }) };
-    }
-    if (
-      method === "GET" &&
-      apiPath === "/v1/databases/{databaseId}/connections"
-    ) {
-      return { data: { data: spec.connections ?? [] } };
-    }
-    return { data: { data: {} } };
+    },
+    "GET /v1/databases/{databaseId}/connections": () => ({
+      data: { data: spec.connections ?? [] },
+    }),
+    ...spec.routes,
+  };
+
+  const dispatch = (method: string, apiPath: string, init: Call["init"]) => {
+    const call: Call = { method, path: apiPath, init: init ?? {} };
+    spec.calls?.push(call);
+    const route = routes[`${method} ${apiPath}`];
+    return route ? route(call) : { data: { data: {} } };
   };
 
   return {
@@ -564,7 +559,7 @@ describe("prisma-v8 postgres create", () => {
     expect(blocks(result.presented)).toEqual([
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: 'Created database "my-db" in Billing / main.',
       },
       {
@@ -973,7 +968,7 @@ describe("prisma-v8 postgres restore", () => {
     expect(blocks(result.presented)).toEqual([
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: "Restoring database from backup.",
       },
       {
@@ -1296,7 +1291,7 @@ describe("prisma-v8 postgres remove", () => {
       ),
     ).toBe(true);
     expect(blocks(result.presented)).toEqual([
-      { kind: "summary", tone: "ok", text: "Removing database." },
+      { kind: "summary", status: "ok", text: "Removing database." },
       {
         kind: "fields",
         rows: [
@@ -1795,7 +1790,7 @@ describe("prisma-v8 postgres connection create", () => {
     ]);
     expect(blocks(result.presented)[0]).toEqual({
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: 'Added a connection to "acme-production" in Billing / main.',
     });
     expect(
@@ -1943,7 +1938,7 @@ describe("prisma-v8 postgres connection rotate", () => {
     ]);
     expect(blocks(result.presented)[0]).toEqual({
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: 'Rotated credentials for "acme-production". The previous credentials no longer work.',
     });
   });
@@ -1972,7 +1967,7 @@ describe("prisma-v8 postgres connection rotate", () => {
 
     expect(blocks(result.presented)[0]).toEqual({
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: "Rotated credentials for connection conn_1. The previous credentials no longer work.",
     });
   });
@@ -2201,7 +2196,7 @@ describe("prisma-v8 postgres connection remove", () => {
       ),
     ).toBe(true);
     expect(blocks(result.presented)).toEqual([
-      { kind: "summary", tone: "ok", text: "Removing database connection." },
+      { kind: "summary", status: "ok", text: "Removing database connection." },
       {
         kind: "fields",
         rows: [{ label: "connection", value: "conn_1" }],

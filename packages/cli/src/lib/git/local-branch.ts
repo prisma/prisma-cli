@@ -12,6 +12,7 @@ export async function readLocalGitBranch(
   signal: AbortSignal,
 ): Promise<string | null> {
   for (let directory = path.resolve(cwd); ; ) {
+    // biome-ignore lint/performance/noAwaitInLoops: the walk stops at the first directory that holds a `.git`, and which directory that is decides whether the parent is looked at at all.
     const headPath = await resolveGitHeadPath(
       path.join(directory, ".git"),
       signal,

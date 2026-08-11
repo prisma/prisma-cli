@@ -22,7 +22,7 @@ function createPresentations(result: BucketKeyCreateResult): Presentations {
     human: (): Block[] => [
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: `Created key "${result.key.name}" for bucket "${result.bucketName}".`,
       },
       {

@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Runtime } from "@prisma/cli-engine";
@@ -23,24 +24,36 @@ const NAMED_CONFIG_PATH = join(
 
 const SEMVER_PREFIX = /^\d+\.\d+\.\d+/;
 
+/** A config home outside any real one, so the telemetry preference
+ *  store resolves somewhere harmless. Nothing writes here: telemetry is
+ *  opted out below, and `telemetry status` is read-only. */
+const CONFIG_HOME = join(tmpdir(), "v8-bin-test-config-home");
+
 function makeProcess(overrides?: {
   argv?: string[];
   env?: NodeJS.ProcessEnv;
   isTty?: { stdin?: boolean; stdout?: boolean; stderr?: boolean };
+  columns?: number;
 }): HostProcess & {
   listeners: Map<string, Array<() => void>>;
   exitedWith: number[];
   stderrText: string;
   stdoutText: string;
+  stderr: { columns?: number };
 } {
   const listeners = new Map<string, Array<() => void>>();
   const exitedWith: number[] = [];
   const proc = {
     argv: overrides?.argv ?? ["node", "bin.js"],
-    // Telemetry env opt-out so main()'s gating resolution stays inert
-    // (no first-run notice on stderr, no dependence on the developer's
-    // real user config).
-    env: { PRISMA_NEXT_DISABLE_TELEMETRY: "1", ...overrides?.env },
+    // Telemetry env opt-out so the engine's gating stays inert (no
+    // first-run notice on stderr, nothing sent), and a config home of
+    // our own so nothing here resolves the developer's real one.
+    env: {
+      PRISMA_DISABLE_TELEMETRY: "1",
+      XDG_CONFIG_HOME: CONFIG_HOME,
+      APPDATA: CONFIG_HOME,
+      ...overrides?.env,
+    },
     cwd: () => "/tmp/v8-bin-test-cwd",
     listeners,
     exitedWith,
@@ -54,6 +67,8 @@ function makeProcess(overrides?: {
     },
     stderr: {
       isTTY: overrides?.isTty?.stderr,
+      /** Node updates this on SIGWINCH, so the test can move it. */
+      columns: overrides?.columns,
       write(text: string) {
         proc.stderrText += text;
       },
@@ -143,6 +158,21 @@ describe("assembleRuntime", () => {
     runtime.stderr.write("err");
     expect(proc.stdoutText).toBe("out");
     expect(proc.stderrText).toBe("err");
+  });
+
+  /**
+   * The engine reads stderr's width at render time so a terminal
+   * resized mid-run reports its new size. That only holds if the bin
+   * forwards the live property instead of copying it once, here, while
+   * assembling the runtime — a copy freezes ui.width at process start.
+   */
+  it("forwards stderr's width live, not as a snapshot", async () => {
+    const proc = makeProcess({ isTty: { stderr: true }, columns: 120 });
+    const runtime = await assembleRuntime(proc);
+
+    expect(runtime.stderr.columns).toBe(120);
+    proc.stderr.columns = 60;
+    expect(runtime.stderr.columns).toBe(60);
   });
 
   it("wires the credential manager, the SDK client config, and the browser opener", async () => {

@@ -239,6 +239,7 @@ describe("the engine owns the double-signal policy", () => {
     let subscriber: ((signal: "SIGINT" | "SIGTERM") => void) | undefined;
     const exited: number[] = [];
     const runtime: Runtime = {
+      isCI: false,
       stdout: { write: () => {} },
       stderr: { write: () => {} },
       stdin: {

@@ -116,6 +116,15 @@ export interface CommandContext<
   readonly env: Readonly<Record<string, string | undefined>>;
 
   /**
+   * The host's answer to "is this CI", from Runtime.isCI — what
+   * telemetry gates on. Not the engine's interactivity decision, which
+   * is its own thing (stdin a TTY, no CI in the environment,
+   * --interactive/--no-interactive), so prompts and spinners follow
+   * ctx.prompt and the engine's interaction handling, not this.
+   */
+  readonly isCI: boolean;
+
+  /**
    * Conditional optional-dependency need. Resolves when the
    * optional peer dependency is importable from the user's project;
    * otherwise returns the engine's structured missing-dependency error

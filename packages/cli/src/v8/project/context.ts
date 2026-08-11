@@ -65,9 +65,8 @@ export function legacyOperationContext(
 
 export function listWorkspaceProjects(
   ctx: ProjectCommandContext,
-  workspace: AuthWorkspace,
 ): Promise<ProjectCandidate[]> {
-  return listRealWorkspaceProjects(ctx.api, workspace, ctx.signal);
+  return listRealWorkspaceProjects(ctx.api, ctx.signal);
 }
 
 /** Explicit `--project`, else the `.prisma/local.json` pin, else the
@@ -84,7 +83,7 @@ export async function resolvePinnedProject(
     context: legacyOperationContext(ctx),
     workspace,
     explicitProject,
-    listProjects: () => listWorkspaceProjects(ctx, workspace),
+    listProjects: () => listWorkspaceProjects(ctx),
     commandName,
   });
   if (target.isErr()) {

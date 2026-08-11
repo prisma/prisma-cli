@@ -48,7 +48,7 @@ const requiresCredentials = defineCommand({
     ok(
       ctx.present(
         { data: null },
-        { human: () => [{ kind: "summary", tone: "ok", text: "ran" }] },
+        { human: () => [{ kind: "summary", status: "ok", text: "ran" }] },
       ),
     ),
   needs: { credentials: true },
@@ -96,7 +96,7 @@ describe("prisma-v8 auth whoami", () => {
     expect(result.stdout).toBe("status: signed out\n");
     expect(result.stderr).toBe(
       "ℹ Showing the active authenticated identity.\n" +
-        "status: signed out\n" +
+        "status:  signed out\n" +
         "→ Sign in: prisma-cli auth login\n",
     );
   });
@@ -112,9 +112,9 @@ describe("prisma-v8 auth whoami", () => {
     );
     expect(result.stderr).toBe(
       "ℹ Showing the active authenticated identity.\n" +
-        "status: signed in\n" +
-        "user: bob@example.com\n" +
-        "workspace: Acme Inc\n",
+        "status:     signed in\n" +
+        "user:       bob@example.com\n" +
+        "workspace:  Acme Inc\n",
     );
   });
 
@@ -285,9 +285,9 @@ describe("prisma-v8 auth whoami", () => {
     );
     expect(result.stderr).toBe(
       "ℹ Showing the active authenticated identity.\n" +
-        "status: signed in\n" +
-        "user: bob@example.com\n" +
-        "workspace: Acme Inc\n",
+        "status:     signed in\n" +
+        "user:       bob@example.com\n" +
+        "workspace:  Acme Inc\n",
     );
   });
 });
@@ -301,7 +301,7 @@ describe("needs.credentials early failure", () => {
     expect(result.exitCode).toBe(2);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "✖ [CLI.CREDENTIALS_REQUIRED] You must be signed in to run this command.\n" +
+      "✘ [CLI.CREDENTIALS_REQUIRED] You must be signed in to run this command.\n" +
         "→ Sign in, then run the command again.\n",
     );
   });

@@ -108,9 +108,15 @@ importers:
       c12:
         specifier: 3.3.4
         version: 3.3.4(magicast@0.5.3)
+      colorette:
+        specifier: ^2.0.20
+        version: 2.0.20
       package-manager-detector:
         specifier: 1.8.0
         version: 1.8.0
+      string-width:
+        specifier: ^8.2.1
+        version: 8.2.1
     devDependencies:
       '@repo/tsconfig':
         specifier: workspace:8.0.0-rc.1

@@ -27,13 +27,13 @@ function fields(rows: FieldRow[]): Block {
 
 /** The heading a command that only reports opens with. */
 function title(text: string): Block {
-  return { kind: "summary", tone: "info", text };
+  return { kind: "summary", status: "info", text };
 }
 
 /** The line a command that changed something ends on: what it did, in
  *  the past tense, marked as a success. */
 function completed(text: string): Block {
-  return { kind: "summary", tone: "ok", text };
+  return { kind: "summary", status: "ok", text };
 }
 
 function formatRecentDeployments(
@@ -128,7 +128,7 @@ export function listDeploysPresentations(
       result.deployments.length === 0
         ? {
             kind: "summary",
-            tone: "info",
+            status: "info",
             text: result.service
               ? "No deployments found."
               : "No services found.",

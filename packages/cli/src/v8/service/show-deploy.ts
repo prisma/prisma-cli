@@ -63,17 +63,16 @@ export const serviceShowDeployCommand = defineCommand({
           )
         : null;
     }
-    const providerLiveDeploymentId = deployment.app?.liveDeploymentId ?? null;
+    const liveDeploymentId =
+      deployment.app?.liveDeploymentId || knownLiveDeploymentId;
 
     const result: ServiceShowDeployResult = {
       service: deployment.app ? toServiceSummary(deployment.app) : null,
       deployment: {
         ...deployment.deployment,
-        live: providerLiveDeploymentId
-          ? deployment.deployment.id === providerLiveDeploymentId
-          : knownLiveDeploymentId
-            ? deployment.deployment.id === knownLiveDeploymentId
-            : deployment.deployment.live,
+        live: liveDeploymentId
+          ? deployment.deployment.id === liveDeploymentId
+          : deployment.deployment.live,
       },
     };
     return ok(ctx.present({ data: result }, showDeployPresentations(result)));

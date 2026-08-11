@@ -102,6 +102,10 @@ export {
   PRESENTED,
   type Presentations,
   type PresentedResult,
+  type Span,
+  type Status,
+  type Text,
+  type Tone,
   type TreeNode,
   type Ui,
 } from "../presentation";
@@ -124,6 +128,13 @@ export {
   type SpawnOptions,
   type SpawnRequest,
 } from "../spawn";
+export {
+  type TelemetryStatus,
+  telemetryCommandGroup,
+} from "../telemetry/commands";
+export type { TelemetryStatusReason } from "../telemetry/gating";
+export type { TelemetryPayload } from "../telemetry/payload";
+export type { TelemetryDeclaration } from "../telemetry/report";
 export {
   claimedExpiresAt,
   claimedIdentity,

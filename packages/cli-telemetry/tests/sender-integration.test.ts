@@ -160,7 +160,7 @@ function spawnSender(options: {
  */
 function childEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return {
-    PATH: process.env["PATH"],
+    PATH: process.env.PATH,
     ...extra,
   };
 }
@@ -265,10 +265,10 @@ describe("sender end-to-end via a local mock backend", () => {
     expect(captured).toHaveLength(0);
   });
 
-  it("emits diagnostics to stderr under PRISMA_NEXT_DEBUG=1", async () => {
+  it("emits diagnostics to stderr under PRISMA_DEBUG=1", async () => {
     const result = await spawnSender({
       payload: buildPayload({ endpoint: "http://127.0.0.1:1/events" }),
-      env: childEnv({ PRISMA_NEXT_DEBUG: "1" }),
+      env: childEnv({ PRISMA_DEBUG: "1" }),
     });
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");

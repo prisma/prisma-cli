@@ -19,6 +19,12 @@ import {
 
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000;
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
+const UNIT_MULTIPLIER_MS: Record<string, number> = {
+  ms: 1,
+  s: 1000,
+  m: 60_000,
+  h: 3_600_000,
+};
 
 function parseWaitTimeout(value: string | undefined): number {
   if (!value) {
@@ -33,9 +39,7 @@ function parseWaitTimeout(value: string | undefined): number {
     throw timeoutInvalidError(value);
   }
   const amount = Number.parseInt(match[1] as string, 10);
-  const unit = match[2];
-  const multiplier =
-    unit === "h" ? 3_600_000 : unit === "m" ? 60_000 : unit === "s" ? 1000 : 1;
+  const multiplier = UNIT_MULTIPLIER_MS[match[2] as string] ?? 1;
   return amount * multiplier;
 }
 
@@ -149,6 +153,7 @@ export const serviceDomainWaitCommand = defineCommand({
         throw domainVerificationTimeoutError(hostname, current.status);
       }
 
+      // biome-ignore lint/performance/noAwaitInLoops: this polls one domain until it settles, reporting each status change in the order it happened; the sleep between reads keeps the management API request rate down.
       await sleep(
         Math.min(interval, Math.max(deadline - Date.now(), 0)),
         ctx.signal,

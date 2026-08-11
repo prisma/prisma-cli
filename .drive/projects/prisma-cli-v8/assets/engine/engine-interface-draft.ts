@@ -1236,36 +1236,102 @@ export type AnyCommand =
 // §7 Presentation primitives — the R5 vocabulary
 // ————————————————————————————————————————————————————————————————————————
 
+// Amended by the engine-colour slice (specs/engine-colour.md, ruled
+// 2026-08-11): Status split out of tone, Text everywhere, the drawing
+// block, the card's rail, and Ui's palette and width.
+
+/** What happened: selects the glyph (✔ ✘ ⚠ ℹ) and carries a default Tone
+ *  of the same name. Separate from Tone because a failure can be painted
+ *  a colour that is not `error` — a tree node in its branch lane's hue. */
+export type Status = 'ok' | 'error' | 'warn' | 'info'
+
+/** What colour to paint, and nothing else. The indexed colours are for
+ *  telling adjacent things apart and exclude red, so no series member
+ *  reads as an error. */
+export type Tone =
+  | 'ok'
+  | 'warn'
+  | 'error'
+  | 'info'
+  | 'heading'
+  | 'identifier'
+  | 'ref'
+  | 'placeholder'
+  | 'link'
+  | 'emphasis'
+  | 'muted'
+  | 'structure'
+  | 'highlight'
+  | 'color-1'
+  | 'color-2'
+  | 'color-3'
+  | 'color-4'
+  | 'color-5'
+  | 'color-6'
+
+/** A run of text and the meaning of its colour. A handler never emits
+ *  escape sequences, so the engine measures width from `text` and colour
+ *  cannot break alignment. */
+export interface Span {
+  readonly text: string
+  readonly tone?: Tone
+}
+
+/** Display text anywhere a block or Ui takes it. A bare string is untoned. */
+export type Text = string | readonly Span[]
+
 /** Deliberately small; grows by the same evidence rule as events. */
 export type Block =
   | {
       readonly kind: 'summary'
-      readonly tone: 'ok' | 'error' | 'warn' | 'info'
-      readonly text: string
+      readonly status: Status
+      /** Overrides the colour the status implies. Never the glyph. */
+      readonly tone?: Tone
+      readonly text: Text
     }
   | {
+      /** A key/value card: the engine pads the keys so every value starts
+       *  in the same column. `rail` draws the dim `│` down the left. */
       readonly kind: 'fields'
-      readonly rows: ReadonlyArray<{ label: string; value: string; sensitive?: boolean }>
+      readonly rows: ReadonlyArray<{ label: Text; value: Text; sensitive?: boolean }>
+      readonly rail?: boolean
     }
   | {
+      /** The engine sizes every column to its widest cell. */
       readonly kind: 'table'
-      readonly columns: readonly string[]
-      readonly rows: ReadonlyArray<readonly string[]>
+      readonly columns: readonly Text[]
+      readonly rows: ReadonlyArray<readonly Text[]>
     }
-  | { readonly kind: 'list'; readonly items: readonly string[] }
+  | { readonly kind: 'list'; readonly items: readonly Text[] }
   | { readonly kind: 'tree'; readonly roots: readonly TreeNode[] }
+  | {
+      /** Lines of spans, rendered verbatim — no layout, no reflow, no
+       *  truncation. For output whose two-dimensional structure the engine
+       *  cannot derive, such as a migration graph's lane gutter. */
+      readonly kind: 'drawing'
+      readonly lines: readonly Text[]
+    }
 // NOTE: recorded findings are NOT a Block — they are the outcome's
 // diagnostics; the engine renders them with the top-level error layout
 // and carries them into the envelope, so the two surfaces cannot
 // diverge.
 
 export interface TreeNode {
-  readonly label: string
+  readonly label: Text
+  /** Renders the status glyph before the label. */
+  readonly status?: Status
+  /** Colours the glyph and the label; defaults from `status`. */
+  readonly tone?: Tone
   readonly children?: readonly TreeNode[]
 }
 
-/** Styling helpers usable inside block text; no direct writing. */
+/** Styling helpers usable inside block text; no direct writing. `width`
+ *  is the printing stream's columns, POSITIVE_INFINITY off-terminal — the
+ *  engine never truncates, so a command that wants to fit is told how much
+ *  room it has. */
 export interface Ui {
+  readonly width: number
+  readonly tone: (tone: Tone, text: string) => string
   readonly emphasize: (text: string) => string
   readonly dim: (text: string) => string
   readonly code: (text: string) => string

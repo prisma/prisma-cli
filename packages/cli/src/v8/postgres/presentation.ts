@@ -83,7 +83,7 @@ export function secretBlocks(
   connectionString: string,
 ): Block[] {
   return [
-    { kind: "summary", tone: "ok", text: headline },
+    { kind: "summary", status: "ok", text: headline },
     {
       kind: "list",
       items: ["The connection URL below is shown once, so save it now."],

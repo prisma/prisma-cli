@@ -38,7 +38,11 @@ function restorePresentations(
 
   return {
     human: (): Block[] => [
-      { kind: "summary", tone: "ok", text: "Restoring database from backup." },
+      {
+        kind: "summary",
+        status: "ok",
+        text: "Restoring database from backup.",
+      },
       { kind: "fields", rows },
       {
         kind: "list",

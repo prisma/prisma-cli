@@ -391,15 +391,21 @@ export function selectedServiceMissingError(
   );
 }
 
+function formatDomainFailureWhy(domain: DomainRecord): string {
+  if (!domain.failureReason) {
+    return "The platform reported a terminal failed state for this custom domain.";
+  }
+  if (!domain.failureCategory) {
+    return domain.failureReason;
+  }
+  return `${domain.failureCategory}: ${domain.failureReason}`;
+}
+
 export function domainVerificationFailedError(
   hostname: string,
   domain: DomainRecord,
 ): CliStructuredError {
-  const why = domain.failureReason
-    ? domain.failureCategory
-      ? `${domain.failureCategory}: ${domain.failureReason}`
-      : domain.failureReason
-    : "The platform reported a terminal failed state for this custom domain.";
+  const why = formatDomainFailureWhy(domain);
   const guidance = formatDomainFailureFix(domain);
   return new CliStructuredError(
     "SERVICE.DOMAIN_VERIFICATION_FAILED",
@@ -464,125 +470,9 @@ export function domainCommandError(
   hostname: string,
 ): CliStructuredError {
   if (error instanceof DomainApiError) {
-    if (
-      command === "add" &&
-      (error.status === 400 || error.status === 422) &&
-      isDomainDnsError(error)
-    ) {
-      return domainDnsNotConfiguredError(hostname, error);
-    }
-
-    if (command === "add" && error.status === 400) {
-      return new CliStructuredError(
-        "SERVICE.DOMAIN_HOSTNAME_INVALID",
-        `Invalid custom domain "${hostname}"`,
-        {
-          why: error.message,
-          meta: debugMeta(error),
-          nextActions: [
-            adviceAction(
-              "Pass a valid hostname like shop.acme.com and make sure DNS can be verified.",
-            ),
-            runCommandAction(
-              "Add a domain",
-              "service domain add shop.acme.com",
-            ),
-          ],
-        },
-      );
-    }
-
-    if (
-      command === "add" &&
-      (error.status === 429 || isDomainQuotaError(error))
-    ) {
-      return new CliStructuredError(
-        "SERVICE.DOMAIN_QUOTA_EXCEEDED",
-        "Custom domain quota exceeded",
-        {
-          why: error.message,
-          meta: debugMeta(error),
-          nextActions: [
-            adviceAction(
-              "Remove an existing custom domain before adding another one.",
-            ),
-            runCommandAction(
-              "Remove a domain",
-              "service domain remove <hostname>",
-            ),
-          ],
-        },
-      );
-    }
-
-    if (command === "add" && error.status === 409) {
-      return new CliStructuredError(
-        "SERVICE.DOMAIN_ALREADY_REGISTERED",
-        `Custom domain "${hostname}" is already registered`,
-        {
-          why: error.hint ?? error.message,
-          meta: debugMeta(error),
-          nextActions: [
-            adviceAction(
-              "Select the service that owns this hostname and remove it there, or contact Prisma support if you cannot access it.",
-            ),
-          ],
-        },
-      );
-    }
-
-    if (command === "add" && error.status === 422) {
-      return new CliStructuredError(
-        "SERVICE.NO_DEPLOYMENTS",
-        "Custom domain requires a live production deployment",
-        {
-          why: "The selected production service does not have a promoted version that can receive a custom domain.",
-          meta: debugMeta(error),
-          nextActions: [
-            // Legacy paired "rerun the domain command" with the fix line
-            // that told the user what to do first. The deploy action went
-            // with the dropped command; without the advice the only thing
-            // left told the user to rerun what had just failed.
-            adviceAction(
-              "Promote a deployment on the service's production branch, then add the domain again.",
-            ),
-            runCommandAction(
-              "Add the domain",
-              `service domain add ${hostname}`,
-            ),
-          ],
-        },
-      );
-    }
-
-    if (
-      (command === "show" ||
-        command === "remove" ||
-        command === "retry" ||
-        command === "wait") &&
-      error.status === 404
-    ) {
-      return domainNotFoundError(hostname);
-    }
-
-    if (command === "retry" && error.status === 409) {
-      return new CliStructuredError(
-        "SERVICE.DOMAIN_RETRY_NOT_ELIGIBLE",
-        `Custom domain "${hostname}" is not eligible for retry`,
-        {
-          why: error.message,
-          meta: debugMeta(error),
-          nextActions: [
-            adviceAction(
-              "Wait for the current verification or TLS step to finish, then rerun retry if the domain fails.",
-            ),
-            runCommandAction(
-              "Show the domain",
-              `service domain show ${hostname}`,
-            ),
-          ],
-        },
-      );
+    const known = domainApiFailure(command, error, hostname);
+    if (known) {
+      return known;
     }
   }
 
@@ -596,6 +486,148 @@ export function domainCommandError(
         runCommandAction("Show the domain", `service domain show ${hostname}`),
       ],
       cause: error,
+    },
+  );
+}
+
+function domainApiFailure(
+  command: DomainCommand,
+  error: DomainApiError,
+  hostname: string,
+): CliStructuredError | null {
+  if (command === "add") {
+    return domainAddFailure(error, hostname);
+  }
+  if (error.status === 404) {
+    return domainNotFoundError(hostname);
+  }
+  if (command === "retry" && error.status === 409) {
+    return domainRetryNotEligibleError(hostname, error);
+  }
+  return null;
+}
+
+function domainAddFailure(
+  error: DomainApiError,
+  hostname: string,
+): CliStructuredError | null {
+  if (
+    (error.status === 400 || error.status === 422) &&
+    isDomainDnsError(error)
+  ) {
+    return domainDnsNotConfiguredError(hostname, error);
+  }
+  if (error.status === 400) {
+    return domainHostnameRejectedError(hostname, error);
+  }
+  if (error.status === 429 || isDomainQuotaError(error)) {
+    return domainQuotaExceededError(error);
+  }
+  if (error.status === 409) {
+    return domainAlreadyRegisteredError(hostname, error);
+  }
+  if (error.status === 422) {
+    return domainRequiresDeploymentError(hostname, error);
+  }
+  return null;
+}
+
+function domainHostnameRejectedError(
+  hostname: string,
+  error: DomainApiError,
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.DOMAIN_HOSTNAME_INVALID",
+    `Invalid custom domain "${hostname}"`,
+    {
+      why: error.message,
+      meta: debugMeta(error),
+      nextActions: [
+        adviceAction(
+          "Pass a valid hostname like shop.acme.com and make sure DNS can be verified.",
+        ),
+        runCommandAction("Add a domain", "service domain add shop.acme.com"),
+      ],
+    },
+  );
+}
+
+function domainQuotaExceededError(error: DomainApiError): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.DOMAIN_QUOTA_EXCEEDED",
+    "Custom domain quota exceeded",
+    {
+      why: error.message,
+      meta: debugMeta(error),
+      nextActions: [
+        adviceAction(
+          "Remove an existing custom domain before adding another one.",
+        ),
+        runCommandAction("Remove a domain", "service domain remove <hostname>"),
+      ],
+    },
+  );
+}
+
+function domainAlreadyRegisteredError(
+  hostname: string,
+  error: DomainApiError,
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.DOMAIN_ALREADY_REGISTERED",
+    `Custom domain "${hostname}" is already registered`,
+    {
+      why: error.hint ?? error.message,
+      meta: debugMeta(error),
+      nextActions: [
+        adviceAction(
+          "Select the service that owns this hostname and remove it there, or contact Prisma support if you cannot access it.",
+        ),
+      ],
+    },
+  );
+}
+
+function domainRequiresDeploymentError(
+  hostname: string,
+  error: DomainApiError,
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.NO_DEPLOYMENTS",
+    "Custom domain requires a live production deployment",
+    {
+      why: "The selected production service does not have a promoted version that can receive a custom domain.",
+      meta: debugMeta(error),
+      nextActions: [
+        // Legacy paired "rerun the domain command" with the fix line
+        // that told the user what to do first. The deploy action went
+        // with the dropped command; without the advice the only thing
+        // left told the user to rerun what had just failed.
+        adviceAction(
+          "Promote a deployment on the service's production branch, then add the domain again.",
+        ),
+        runCommandAction("Add the domain", `service domain add ${hostname}`),
+      ],
+    },
+  );
+}
+
+function domainRetryNotEligibleError(
+  hostname: string,
+  error: DomainApiError,
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.DOMAIN_RETRY_NOT_ELIGIBLE",
+    `Custom domain "${hostname}" is not eligible for retry`,
+    {
+      why: error.message,
+      meta: debugMeta(error),
+      nextActions: [
+        adviceAction(
+          "Wait for the current verification or TLS step to finish, then rerun retry if the domain fails.",
+        ),
+        runCommandAction("Show the domain", `service domain show ${hostname}`),
+      ],
     },
   );
 }

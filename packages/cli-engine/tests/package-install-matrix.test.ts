@@ -68,7 +68,7 @@ function fallbackWarning(stderrTail: string): string {
 }
 
 function warnBlock(text: string): Block {
-  return { kind: "summary", tone: "warn", text };
+  return { kind: "summary", status: "warn", text };
 }
 
 /**
@@ -428,8 +428,8 @@ describe("a manager that exited non-zero", () => {
     expect(result.stderr).toBe(
       `▸ ${NPM_ADD_RUNTIME}\n` +
         "npm: resolving\n" +
-        `✖ ${NPM_ADD_RUNTIME}\n` +
-        "✖ [CLI.PACKAGE_MANAGER_FAILED] Installing packages with npm failed.\n" +
+        `✘ ${NPM_ADD_RUNTIME}\n` +
+        "✘ [CLI.PACKAGE_MANAGER_FAILED] Installing packages with npm failed.\n" +
         "  why: npm exited with code 1.\n" +
         `→ Run the install yourself: ${NPM_ADD_RUNTIME}\n`,
     );
@@ -485,7 +485,7 @@ describe("the ORM's pnpm-to-npm fallback", () => {
     expect(result.stderr).toBe(
       `▸ ${PNPM_ADD_RUNTIME}\n` +
         "pnpm: resolving\n" +
-        `✖ ${PNPM_ADD_RUNTIME}\n` +
+        `✘ ${PNPM_ADD_RUNTIME}\n` +
         `▸ ${NPM_ADD_RUNTIME}\n` +
         "npm: resolving\n" +
         `✔ ${NPM_ADD_RUNTIME}\n` +
@@ -566,8 +566,8 @@ describe("cancellation", () => {
     expect(cancelled.stderr).toBe(
       `▸ ${PNPM_ADD_RUNTIME}\n` +
         "pnpm: resolving\n" +
-        `✖ ${PNPM_ADD_RUNTIME}\n` +
-        "✖ [CLI.ABORTED] The command was aborted before it completed.\n",
+        `✘ ${PNPM_ADD_RUNTIME}\n` +
+        "✘ [CLI.ABORTED] The command was aborted before it completed.\n",
     );
     expect(failed.exitCode).toBe(2);
     expect(errorOf(failed.json).code).toBe("CLI.PACKAGE_MANAGER_FAILED");
@@ -654,7 +654,7 @@ describe("a host that wires no runner", () => {
 
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "✖ [CLI.PACKAGE_MANAGER_FAILED] Installing packages with pnpm failed.\n" +
+      "✘ [CLI.PACKAGE_MANAGER_FAILED] Installing packages with pnpm failed.\n" +
         "  why: This host wires no package-manager runner, so nothing was run.\n" +
         `→ Run the install yourself: ${PNPM_ADD_RUNTIME}\n`,
     );
@@ -698,7 +698,7 @@ describe("two operations at once", () => {
       `▸ ${PNPM_ADD_RUNTIME}\n` +
         "pnpm: resolving\n" +
         `✔ ${PNPM_ADD_RUNTIME}\n` +
-        "✖ [CLI.INTERNAL_ERROR] @prisma/cli-engine: ctx.packages runs one operation at a time, so two package managers can never write one project at once\n",
+        "✘ [CLI.INTERNAL_ERROR] @prisma/cli-engine: ctx.packages runs one operation at a time, so two package managers can never write one project at once\n",
     );
   });
 });
