@@ -145,6 +145,22 @@ describe("assembleRuntime", () => {
     expect(proc.stderrText).toBe("");
   });
 
+  it("wires a package-manager runner that really spawns", async () => {
+    const runtime = await assembleRuntime(makeProcess());
+
+    const chunks: string[] = [];
+    const result = await runtime.runPackageManager?.({
+      file: process.execPath,
+      args: ["-e", `process.stdout.write("ran")`],
+      cwd: process.cwd(),
+      signal: new AbortController().signal,
+      onOutput: (_channel, chunk) => chunks.push(chunk),
+    });
+
+    expect(result).toEqual({ exitCode: 0, stderr: "" });
+    expect(chunks.join("")).toBe("ran");
+  });
+
   it("warns once when the credentials file is named by the deprecated variable", async () => {
     const proc = makeProcess({
       env: { PRISMA_COMPUTE_AUTH_FILE: "/tmp/v8-bin-test-legacy-auth.json" },
