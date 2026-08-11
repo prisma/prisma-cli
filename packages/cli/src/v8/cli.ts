@@ -6,7 +6,7 @@ import {
   defineCommandFamily,
   telemetryCommandGroup,
 } from "@prisma/cli-engine";
-import { CLI_DOCS_URL } from "../cli-name";
+import { CLI_DOCS_URL, CLI_NAME } from "../cli-name";
 import { getCliVersion } from "../lib/version";
 import { agentInstallCommand } from "./agent/install";
 import { agentStatusCommand } from "./agent/status";
@@ -210,7 +210,7 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
 
 export function buildCli(): Cli {
   return createCli({
-    name: "prisma-v8",
+    name: CLI_NAME,
     version: getCliVersion(),
     commandFamilies: [platformCommandFamily],
     groups: cliGroups,
