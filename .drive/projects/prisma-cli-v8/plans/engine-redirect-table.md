@@ -46,6 +46,19 @@ above.
 
 ## Open items
 
+- **A command that hands the terminal to a child still frames its pre-mount
+  usage errors as json.** The engine refuses `--json` for such a command
+  thoroughly — exit 2, no frames — but that refusal lives in
+  `executeMounted`, which a parse or routing failure never reaches. Verified
+  empirically on the merged tree: an unknown flag on such a command emits a
+  json `CLI.INVALID_ARGUMENTS` frame on stdout, and a retired flag emits a
+  json `CLI.COMMAND_MOVED` frame the same way. This predates the redirect
+  table and is identical for both settlements, so the redirect work
+  introduces no new divergence. Guarding only the redirect settlement would
+  make the two siblings disagree, which is why it was not done here. The
+  question — whether that refusal should cover failures that never reach the
+  command — belongs to whoever owns the `--json` refusal next.
+
 - **A re-mount silently kills a redirect, and nothing fails at construction
   to say so.** `from` is an absolute path in the shell's tree, so it is a
   fact about the shell, declared in family code. If the shell later moves a
