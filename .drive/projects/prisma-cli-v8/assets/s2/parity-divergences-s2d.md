@@ -74,3 +74,13 @@ Splitting one legacy `USAGE_ERROR` into nine codes changes the json `error.code`
 
 - **R-S2d-1's own summary lists steps the shipping command does not have.** It names "project name" and "env write-out" as wizard steps. Today's `init` has no project-name prompt — the app name comes from `--name`, then `package.json`, then the directory name — and writes no env file. The port follows the inventory, which R-S2d-1 itself names as the contract. A project-name prompt does exist, but inside `project link`'s create-a-Project branch, which `init` reaches only when the user picks "create a new Project".
 - **`init`'s link step is now literally `project link`.** The inventory records that legacy `init` called `runProjectLink`, and `runProjectLink` is what the v8 `project link` command ports. Rather than a second picker, `project link`'s handler body is extracted as `linkDirectoryToProject` and both call it, so the two commands cannot drift.
+
+## Carried out of this slice: commands no longer read `process`
+
+Not a user-visible divergence, but it changes the engine surface and two files on the services branch, so it belongs in the record.
+
+Three ported commands reached directly into `process` for host facts, because nothing else offered them: `v8/init/agent-setup.ts` and `v8/agent/skills-cli.ts` both for `process.platform === "win32"`, and `v8/feedback.ts` for `process.version`, `process.platform` and `process.arch`. Handlers already take the working directory and the environment from the context so they never touch process globals; there was no equivalent for the machine.
+
+`Runtime.host` now carries it, `ctx.host` hands it to commands, and the bin fills it once. The shape is `{ runtime: { name, version }, platform, arch }` — not node-shaped, so bun and deno describe themselves instead of being flattened into a field called `nodeVersion`, which is what R4's runtime-agnostic rule asks for.
+
+`init` is converted. **The two call sites in the services branch are not**, because converting them means touching that branch. `v8/feedback.ts` should send `ctx.host` rather than building its own payload, and its wire field `nodeVersion` should follow the same renaming. Both are recorded for the deletion pass, which already sweeps the whole tree.
