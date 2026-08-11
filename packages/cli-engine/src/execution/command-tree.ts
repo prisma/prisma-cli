@@ -113,16 +113,24 @@ function emptyNode(): CommandTreeNode {
   return { commands: new Map(), children: new Map() };
 }
 
+/** A path is segments separated by single spaces, so an empty segment
+ *  means a doubled, leading or trailing space — a path no invocation
+ *  can produce. Mounted paths and redirects are held to this one rule;
+ *  each says so in its own words. */
+function hasEmptySegment(path: string): boolean {
+  return path.split(" ").some((segment) => segment.length === 0);
+}
+
 function insertCommand(
   root: CommandTreeNode,
   path: string,
   def: AnyCommand,
   docsBaseUrl: string | undefined,
 ): void {
-  const segments = path.split(" ");
-  if (segments.some((segment) => segment.length === 0)) {
+  if (hasEmptySegment(path)) {
     throw constructionError(`invalid command path '${path}'`);
   }
+  const segments = path.split(" ");
   let node = root;
   for (const segment of segments.slice(0, -1)) {
     if (node.commands.has(segment)) {
@@ -340,6 +348,11 @@ export function buildRedirectTable(spec: EngineSpec): RedirectTable {
   const byFlag = new Map<string, CommandRedirect>();
   for (const commandFamily of spec.commandFamilies) {
     for (const redirect of commandFamily.redirects) {
+      if (hasEmptySegment(redirect.from)) {
+        throw constructionError(
+          `redirect '${redirect.from}' has an empty path segment, so no invocation can produce it`,
+        );
+      }
       if (redirect.flag === undefined) {
         addVerbRedirect(spec, byPath, redirect);
       } else {
