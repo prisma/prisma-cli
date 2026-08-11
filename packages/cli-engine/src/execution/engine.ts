@@ -18,7 +18,11 @@ import type { Format, PresentedResult } from "../presentation";
 import { CliStructuredError, type Result } from "../protocol";
 import type { EngineCommandSnapshot, RunSummary } from "../run-summary";
 import type { InputStream, Runtime } from "../runtime";
-import { type ChildStatusSettlement, isChildStatusSettlement } from "../spawn";
+import {
+  type ChildResult,
+  type ChildStatusSettlement,
+  isChildStatusSettlement,
+} from "../spawn";
 import { makeContext } from "./command-context";
 import { buildCommandSnapshot } from "./command-snapshot";
 import {
@@ -137,6 +141,10 @@ export interface RunState {
    *  signals are recorded rather than acted on, and commentary is
    *  buffered. */
   delegatedTerminal: DelegatedTerminal | undefined;
+  /** How the run's most recent completed child ended, as ctx.spawn
+   *  reported it. The engine's own record: what ctx.lastChild()
+   *  returns, and the only status exitWithChildStatus can settle. */
+  lastChild: ChildResult | undefined;
   /** How many prompts are reading the terminal. Claimed before a
    *  prompt's first await, so an unawaited prompt still blocks
    *  ctx.spawn from handing the same terminal to a child. */
@@ -290,6 +298,7 @@ export class EngineImpl implements Engine {
       unresolvedFlagNames: [],
       snapshot: undefined,
       delegatedTerminal: undefined,
+      lastChild: undefined,
       activePrompts: 0,
       deliveredSignal: undefined,
       pendingForceExit: undefined,

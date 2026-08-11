@@ -51,11 +51,11 @@ function childCommand(...childArgs: string[]) {
     help: { summary: "Runs the fixture child" },
     maySpawn: true,
     handler: async (_args, ctx) => {
-      const child = await ctx.spawn({
+      await ctx.spawn({
         command: NODE,
         args: [CHILD, ...childArgs],
       });
-      return ok(exitWithChildStatus(child));
+      return ok(exitWithChildStatus());
     },
   });
 }
@@ -126,10 +126,10 @@ describe.skipIf(process.platform === "win32")(
         help: { summary: "Spawns a program that does not exist" },
         maySpawn: true,
         handler: async (_args, ctx) => {
-          const child = await ctx.spawn({
+          await ctx.spawn({
             command: "/definitely/not/a/real/binary-s3",
           });
-          return ok(exitWithChildStatus(child));
+          return ok(exitWithChildStatus());
         },
       });
       const cli = createTestCli({
@@ -197,9 +197,9 @@ describe.skipIf(process.platform === "win32")(
           await waitForFile(ready);
           controller.abort();
           abortedDuringChild = ctx.signal.aborted;
-          const child = await live;
+          await live;
           abortedAfterChild = ctx.signal.aborted;
-          return ok(exitWithChildStatus(child));
+          return ok(exitWithChildStatus());
         },
       });
       const cli = createTestCli({
@@ -225,11 +225,11 @@ describe.skipIf(process.platform === "win32")(
         handler: async (_args, ctx) => {
           ctx.report({ kind: "status", subject: "run", status: "ready" });
           await new Promise((resolve) => setTimeout(resolve, 0));
-          const child = await ctx.spawn({
+          await ctx.spawn({
             command: NODE,
             args: [CHILD, "ignore-term", ready],
           });
-          return ok(exitWithChildStatus(child));
+          return ok(exitWithChildStatus());
         },
       });
       const cli = createTestCli({
