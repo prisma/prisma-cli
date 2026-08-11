@@ -6,7 +6,7 @@ Status: ruled 2026-08-11 (the operator approved building the affordance; this do
 
 A command like `prisma init` scaffolds a project and installs the dependencies it just wrote into `package.json`. Today (in the ORM CLI being ported) the command spawns `pnpm add` / `npm install` / `npx skills add …` itself: it detects the manager, spells the argv, parses stderr, and phrases the failure prose.
 
-Engine requirement R13 says the CLI never touches a package manager. Its intent is that the CLI must not become a second, worse package manager — installing command submodules into hidden `node_modules`, guessing at lockfiles, hiding what it runs. Running the user's own package manager, in the user's own project, at the user's explicit request, with the command visible and the failure structured, is not that. The operator has ruled the engine gains a first-class affordance for it, and that R13's text is amended to name the exception (§7).
+Engine requirement R13 said, before this change, that the CLI never touches a package manager. Its intent was that the CLI must not become a second, worse package manager — installing command submodules into hidden `node_modules`, guessing at lockfiles, hiding what it runs. Running the user's own package manager, in the user's own project, at the user's explicit request, with the command visible and the failure structured, is not that. The operator has ruled the engine gains a first-class affordance for it, and that R13's text is amended to name the exception (§7).
 
 The shape follows the engine's existing capability pattern (`managesCredentials`): a **capability, not a need** — declaring it never fails a run; it only adds a surface to the command's context.
 
