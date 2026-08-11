@@ -1,5 +1,5 @@
 import { flagRuntime, type PositionalSpec, positionalRuntime } from "../args";
-import type { CommandFamily } from "../command-family";
+import type { CommandFamily, CommandRedirect } from "../command-family";
 import type { AnyCommand } from "../commands";
 import type { EngineSpec } from "./engine";
 import { RESERVED_ALIASES, RESERVED_FLAG_NAMES } from "./shared-flags";
@@ -198,4 +198,143 @@ export function buildCommandTree(spec: EngineSpec): CommandTreeNode {
     insertCommand(root, path, def, commandFamilyOf(spec, def)?.docsBaseUrl);
   }
   return root;
+}
+
+/**
+ * Every mounted command family's retired invocations, merged and keyed
+ * for lookup. The two halves never compete: `byPath` is consulted when
+ * argv routes to no command, `byFlag` when a live command's parse fails
+ * on an unknown flag.
+ */
+export interface RedirectTable {
+  readonly byPath: ReadonlyMap<string, CommandRedirect>;
+  readonly byFlag: ReadonlyMap<string, CommandRedirect>;
+}
+
+function flagRedirectKey(commandPath: string, flag: string): string {
+  return `${commandPath} --${flag}`;
+}
+
+function camelCase(raw: string): string {
+  return raw.replace(/-([a-zA-Z0-9])/g, (_, char: string) =>
+    char.toUpperCase(),
+  );
+}
+
+/** Where a path sits in the mounted tree; a group is a path some
+ *  command mounts under. */
+function mountedAs(
+  spec: EngineSpec,
+  path: string,
+): "command" | "command group" | undefined {
+  if (spec.commands[path] !== undefined) {
+    return "command";
+  }
+  const groupPrefix = `${path} `;
+  return Object.keys(spec.commands).some((mounted) =>
+    mounted.startsWith(groupPrefix),
+  )
+    ? "command group"
+    : undefined;
+}
+
+/** Engine-injected shared flags count: a command answers them whether
+ *  or not it declared them, so a redirect for one could never fire. */
+function acceptsFlag(def: AnyCommand, flag: string): boolean {
+  if (def.args.flags[flag] !== undefined) {
+    return true;
+  }
+  return def.kind !== "server-command" && RESERVED_FLAG_NAMES.has(flag);
+}
+
+function addVerbRedirect(
+  spec: EngineSpec,
+  table: Map<string, CommandRedirect>,
+  redirect: CommandRedirect,
+): void {
+  const mounted = mountedAs(spec, redirect.from);
+  if (mounted !== undefined) {
+    throw constructionError(
+      `redirect '${redirect.from}' collides with a mounted ${mounted}`,
+    );
+  }
+  if (table.has(redirect.from)) {
+    throw constructionError(`redirect '${redirect.from}' is declared twice`);
+  }
+  table.set(redirect.from, redirect);
+}
+
+function addFlagRedirect(
+  spec: EngineSpec,
+  table: Map<string, CommandRedirect>,
+  redirect: CommandRedirect,
+  flag: string,
+): void {
+  const def = spec.commands[redirect.from];
+  if (def === undefined) {
+    throw constructionError(
+      `redirect for flag '${flag}' names '${redirect.from}', which is not a mounted command`,
+    );
+  }
+  if (acceptsFlag(def, flag)) {
+    throw constructionError(
+      `redirect for flag '${flag}' on '${redirect.from}' names a flag that command still accepts`,
+    );
+  }
+  const key = flagRedirectKey(redirect.from, flag);
+  if (table.has(key)) {
+    throw constructionError(
+      `redirect for flag '${flag}' on '${redirect.from}' is declared twice`,
+    );
+  }
+  table.set(key, redirect);
+}
+
+export function buildRedirectTable(spec: EngineSpec): RedirectTable {
+  const byPath = new Map<string, CommandRedirect>();
+  const byFlag = new Map<string, CommandRedirect>();
+  for (const commandFamily of spec.commandFamilies) {
+    for (const redirect of commandFamily.redirects) {
+      if (redirect.flag === undefined) {
+        addVerbRedirect(spec, byPath, redirect);
+      } else {
+        addFlagRedirect(spec, byFlag, redirect, redirect.flag);
+      }
+    }
+  }
+  return { byPath, byFlag };
+}
+
+/** Longest match wins, since one retired path may prefix another.
+ *  Segments match exactly: a redirect is never a spelling suggestion. */
+export function matchVerbRedirect(
+  table: RedirectTable,
+  segments: readonly string[],
+): CommandRedirect | undefined {
+  for (let length = segments.length; length > 0; length -= 1) {
+    const redirect = table.byPath.get(segments.slice(0, length).join(" "));
+    if (redirect !== undefined) {
+      return redirect;
+    }
+  }
+  return undefined;
+}
+
+/** `typedFlags` are spelled as the user typed them, without the leading
+ *  dashes; the scanner accepts kebab for camel, so both spellings
+ *  resolve to the declared camelCase name. */
+export function matchFlagRedirect(
+  table: RedirectTable,
+  commandPath: string,
+  typedFlags: readonly string[],
+): CommandRedirect | undefined {
+  for (const typed of typedFlags) {
+    const redirect = table.byFlag.get(
+      flagRedirectKey(commandPath, camelCase(typed)),
+    );
+    if (redirect !== undefined) {
+      return redirect;
+    }
+  }
+  return undefined;
 }

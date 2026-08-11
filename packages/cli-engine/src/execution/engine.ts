@@ -15,7 +15,12 @@ import type { EngineCommandSnapshot, RunSummary } from "../run-summary";
 import type { InputStream, Runtime } from "../runtime";
 import { makeContext } from "./command-context";
 import { buildCommandSnapshot } from "./command-snapshot";
-import { buildCommandTree, type CommandTreeEntry } from "./command-tree";
+import {
+  buildCommandTree,
+  buildRedirectTable,
+  type CommandTreeEntry,
+  type RedirectTable,
+} from "./command-tree";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import {
   settleBug,
@@ -177,6 +182,7 @@ type ErasedServerHandler = (
 export class EngineImpl implements Engine {
   private readonly spec: EngineSpec;
   private readonly root: StricliRouteMap<EngineRunContext>;
+  private readonly redirects: RedirectTable;
   private readonly now: () => Date;
   private readonly delay: (ms: number, signal: AbortSignal) => Promise<void>;
 
@@ -195,6 +201,7 @@ export class EngineImpl implements Engine {
       (invocation, entry, flags, values) =>
         this.executeMounted(invocation, entry, flags, values),
     );
+    this.redirects = buildRedirectTable(spec);
   }
 
   async execute(
