@@ -340,6 +340,11 @@ export function buildRedirectTable(spec: EngineSpec): RedirectTable {
   const byFlag = new Map<string, CommandRedirect>();
   for (const commandFamily of spec.commandFamilies) {
     for (const redirect of commandFamily.redirects) {
+      if (redirect.from === "") {
+        throw constructionError(
+          "redirect declares an empty path, so no invocation can produce it",
+        );
+      }
       if (redirect.flag === undefined) {
         addVerbRedirect(spec, byPath, redirect);
       } else {

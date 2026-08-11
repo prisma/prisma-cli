@@ -223,6 +223,27 @@ describe("construction-time validation", () => {
     );
   });
 
+  test.each([
+    "",
+    "   ",
+    "\t",
+  ])("a retired path of %o fails construction", (from) => {
+    const family = defineCommandFamily({
+      commands: { status },
+      redirects: [{ from, replacement: "migrate --to <ref>" }],
+    });
+
+    expect(() =>
+      createTestCli({
+        commandFamilies: [family],
+        commands: { "migration status": status },
+        groups: MIGRATION_GROUP,
+      }),
+    ).toThrow(
+      "redirect declares an empty path, so no invocation can produce it",
+    );
+  });
+
   test("a retired flag named in kebab-case fails construction", () => {
     const family = defineCommandFamily({
       commands: { status },
@@ -376,6 +397,26 @@ describe("retired verbs", () => {
     );
   });
 
+  test.each([
+    ["a doubled space", "migration  apply"],
+    ["a leading space", " migration apply"],
+    ["a trailing space", "migration apply "],
+    ["a tab", "migration\tapply"],
+  ])("a retired path written with %s still fires", async (_shape, from) => {
+    const result = await redirectingCli([
+      { from, replacement: "migrate --to <ref>" },
+    ]).run(["migration", "apply", "--json"]);
+
+    expect(result.exitCode).toBe(2);
+    const envelope = erroredEnvelope(result.json);
+    expect(envelope.error.code).toBe("CLI.COMMAND_MOVED");
+    // The summary quotes the normalized path, not what the author typed.
+    expect(envelope.error.summary).toBe("`migration apply` has been replaced");
+    expect(envelope.nextActions[0].command).toBe(
+      "prisma-test migrate --to <ref>",
+    );
+  });
+
   test("a redirect under a live group fires", async () => {
     const cli = createTestCli({
       commandFamilies: [
@@ -502,6 +543,22 @@ describe("retired flags", () => {
       "--json",
     ]);
     expect(erroredEnvelope(camel.json).error.code).toBe("CLI.COMMAND_MOVED");
+  });
+
+  test("the command path is normalized here too", async () => {
+    const result = await redirectingCli([
+      {
+        from: " migration \t status ",
+        flag: "graph",
+        replacement: "migration graph",
+      },
+    ]).run(["migration", "status", "--graph", "--json"]);
+
+    const envelope = erroredEnvelope(result.json);
+    expect(envelope.error.code).toBe("CLI.COMMAND_MOVED");
+    expect(envelope.error.summary).toBe(
+      "`--graph` on `migration status` has been replaced",
+    );
   });
 
   test("a retired flag carrying a value still matches", async () => {
