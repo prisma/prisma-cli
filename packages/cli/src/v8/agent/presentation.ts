@@ -8,7 +8,7 @@ function fields(rows: Array<{ label: string; value: string }>): Block {
 }
 
 function title(text: string): Block {
-  return { kind: "summary", tone: "info", text };
+  return { kind: "summary", status: "info", text };
 }
 
 function operationSummary(result: AgentInstallResult): string {
@@ -64,7 +64,7 @@ export function installPresentations(
     human: () => [
       {
         kind: "summary",
-        tone: result.skills.status === "installed" ? "ok" : "info",
+        status: result.skills.status === "installed" ? "ok" : "info",
         text: `${operationSummary(result)} Prisma skills.`,
       },
       fields([

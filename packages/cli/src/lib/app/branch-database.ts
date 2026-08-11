@@ -114,19 +114,26 @@ export async function inspectBranchDatabaseSignal(
     : selectedPrismaOrmSchema.schema;
   const unsupportedSchema = schema
     ? null
-    : unsupportedPrismaNextConfig
-      ? {
-          kind: "prisma-next" as const,
-          path: unsupportedPrismaNextConfig.path,
-          target: unsupportedPrismaNextConfig.target,
-        }
-      : selectedPrismaOrmSchema.unsupportedSchema;
+    : (toUnsupportedSchema(unsupportedPrismaNextConfig) ??
+      selectedPrismaOrmSchema.unsupportedSchema);
 
   return {
     schema,
     unsupportedSchema,
     databaseUrlReferences: state.databaseUrlReferences,
   };
+}
+
+function toUnsupportedSchema(
+  config: {
+    path: string;
+    target: UnsupportedBranchDatabaseSchemaTarget;
+  } | null,
+): UnsupportedBranchDatabaseSchema | null {
+  if (!config) {
+    return null;
+  }
+  return { kind: "prisma-next", path: config.path, target: config.target };
 }
 
 export function hasBranchDatabaseSignal(signal: BranchDatabaseSignal): boolean {
@@ -166,16 +173,7 @@ async function scanDirectory(
     return;
   }
 
-  let entries: Dirent[];
-  try {
-    entries = await readdir(directory, { withFileTypes: true });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return;
-    }
-    throw error;
-  }
-  entries.sort((left, right) => left.name.localeCompare(right.name));
+  const entries = await readSortedDirectoryEntries(directory);
 
   for (const entry of entries) {
     signal.throwIfAborted();
@@ -184,10 +182,9 @@ async function scanDirectory(
     }
 
     const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      if (!SKIPPED_DIRECTORIES.has(entry.name)) {
-        await scanDirectory(cwd, entryPath, depth + 1, state, signal);
-      }
+    if (isScannableDirectory(entry)) {
+      // biome-ignore lint/performance/noAwaitInLoops: the whole scan shares one MAX_SCAN_FILES budget and stops the moment it runs out, so subtrees have to be walked one after another in sorted order for the scan to stop at the same place every time.
+      await scanDirectory(cwd, entryPath, depth + 1, state, signal);
       continue;
     }
 
@@ -196,14 +193,7 @@ async function scanDirectory(
     }
 
     state.filesVisited += 1;
-
-    if (entry.name === "schema.prisma") {
-      state.schemaCandidates.push(entryPath);
-    }
-
-    if (isPrismaNextConfigFile(entry.name)) {
-      state.prismaNextConfigCandidates.push(entryPath);
-    }
+    recordSchemaCandidates(entry.name, entryPath, state);
 
     if (
       state.databaseUrlReferences.length < MAX_DATABASE_URL_REFERENCE_FILES &&
@@ -217,6 +207,47 @@ async function scanDirectory(
   }
 }
 
+async function readSortedDirectoryEntries(
+  directory: string,
+): Promise<Dirent[]> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+
+  return entries.sort((left, right) => compareCodeUnits(left.name, right.name));
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  if (left < right) {
+    return -1;
+  }
+  return left > right ? 1 : 0;
+}
+
+function isScannableDirectory(entry: Dirent): boolean {
+  return entry.isDirectory() && !SKIPPED_DIRECTORIES.has(entry.name);
+}
+
+function recordSchemaCandidates(
+  fileName: string,
+  filePath: string,
+  state: ScanState,
+): void {
+  if (fileName === "schema.prisma") {
+    state.schemaCandidates.push(filePath);
+  }
+
+  if (isPrismaNextConfigFile(fileName)) {
+    state.prismaNextConfigCandidates.push(filePath);
+  }
+}
+
 async function selectPrismaOrmSchema(
   cwd: string,
   candidates: string[],
@@ -225,6 +256,7 @@ async function selectPrismaOrmSchema(
   const sorted = sortByPreferredRelativePath(cwd, candidates, "schema.prisma");
 
   for (const schemaPath of sorted) {
+    // biome-ignore lint/performance/noAwaitInLoops: the candidates are in preference order and the first usable one wins, so reading past it would open files the caller never needed.
     const target = await classifyPrismaOrmSchemaTarget(schemaPath, signal);
     if (target === "postgresql" || target === "unknown") {
       const hasMigrations = await hasMigrationsDirectory(
@@ -314,7 +346,7 @@ function sortByPreferredRelativePath(
       if (right.relative === preferredRootFile) return 1;
       return (
         left.relative.length - right.relative.length ||
-        left.relative.localeCompare(right.relative)
+        compareCodeUnits(left.relative, right.relative)
       );
     })
     .map((candidate) => candidate.absolute);

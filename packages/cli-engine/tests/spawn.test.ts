@@ -1224,6 +1224,7 @@ function controllableRuntime() {
   const exited: number[] = [];
   const stderrText: string[] = [];
   const runtime: Runtime = {
+    isCI: false,
     stdout: { write: () => {} },
     stderr: {
       write: (text) => {
@@ -1252,7 +1253,6 @@ function controllableRuntime() {
       diagnostics: [],
     }),
     managementApi: { baseUrl: "https://test.invalid" },
-    packageManager: "unknown",
   };
   return {
     runtime,

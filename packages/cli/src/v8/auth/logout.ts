@@ -28,16 +28,16 @@ function presentationsFor(
     human: () => [
       {
         kind: "summary",
-        tone: "info",
+        status: "info",
         text: "Clearing your stored workspace sessions.",
       },
       { kind: "fields", rows },
-      { kind: "summary", tone: "ok", text: summary },
+      { kind: "summary", status: "ok", text: summary },
       ...(environmentInForce
         ? [
             {
               kind: "summary",
-              tone: "info",
+              status: "info",
               text: ENVIRONMENT_CREDENTIAL_NOTICE,
             } as const,
           ]

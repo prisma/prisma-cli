@@ -159,7 +159,7 @@ export const projectLinkCommand = defineCommand({
   handler: async (args, ctx) => {
     try {
       const workspace = await resolveActiveWorkspace(ctx);
-      const projects = await listWorkspaceProjects(ctx, workspace);
+      const projects = await listWorkspaceProjects(ctx);
       const projectRef = args.positionals.project?.trim();
 
       const result = projectRef

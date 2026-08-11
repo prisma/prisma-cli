@@ -28,7 +28,7 @@ function backupListPresentations(
   const stdoutRows = backupStdoutRows(result.backups);
   return {
     human: (): Block[] => [
-      { kind: "summary", tone: "info", text: TITLE },
+      { kind: "summary", status: "info", text: TITLE },
       {
         kind: "fields",
         rows: [

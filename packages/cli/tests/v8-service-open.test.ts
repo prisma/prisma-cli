@@ -26,7 +26,7 @@ describe("prisma-v8 service open", () => {
     });
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
-      tone: "info",
+      status: "info",
       text: "Resolved the live URL for the selected service.",
     });
     expect(result.events).toContainEqual({
@@ -68,7 +68,7 @@ describe("prisma-v8 service open", () => {
     expect(result.presented?.data).toMatchObject({ opened: true });
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: "Opened the live URL for the selected service.",
     });
     expect(result.events).toContainEqual({

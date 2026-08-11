@@ -23,7 +23,11 @@ import {
   type ChildStatusSettlement,
   isChildStatusSettlement,
 } from "../spawn";
-import { makeContext } from "./command-context";
+import {
+  reportCommandStart,
+  type TelemetryDeclaration,
+} from "../telemetry/report";
+import { type CommandCapabilities, makeContext } from "./command-context";
 import { buildCommandSnapshot } from "./command-snapshot";
 import {
   buildCommandTree,
@@ -79,6 +83,8 @@ export interface EngineSpec {
     Record<string, { readonly brief: string; readonly description?: string }>
   >;
   readonly commands: MountedTree;
+  /** Absent means this CLI reports nothing. */
+  readonly telemetry?: TelemetryDeclaration;
 }
 
 export interface RunHooks {
@@ -149,6 +155,11 @@ export interface RunState {
    *  prompt's first await, so an unawaited prompt still blocks
    *  ctx.spawn from handing the same terminal to a child. */
   activePrompts: number;
+  /** Set while a ctx.packages operation is in flight. It serializes the
+   *  operations against each other, and blocks ctx.spawn: a child
+   *  writing the terminal directly while the manager's output is being
+   *  streamed leaves the two in no defined order. */
+  packageOperationRunning: boolean;
   /** The signal the engine delivered to this run, if one reached it.
    *  The engine's own record of how the run ended: a run a signal
    *  terminated settles 128 + that signal's number whatever its handler
@@ -300,6 +311,7 @@ export class EngineImpl implements Engine {
       delegatedTerminal: undefined,
       lastChild: undefined,
       activePrompts: 0,
+      packageOperationRunning: false,
       deliveredSignal: undefined,
       pendingForceExit: undefined,
       spawnCredential: undefined,
@@ -467,6 +479,92 @@ export class EngineImpl implements Engine {
     }
   }
 
+  /** The refusals a maySpawn command can hit before anything runs: a
+   *  child's terminal output cannot be framed as a json stream, and a
+   *  host that mounts the command without a spawn adapter is
+   *  misconfigured. Returns whether the run was settled here. */
+  private refuseUnspawnable(
+    invocation: Invocation,
+    entry: CommandTreeEntry,
+  ): boolean {
+    const state = invocation.state;
+    if (!entry.def.maySpawn) {
+      return false;
+    }
+    if (formatFlagGiven(state.argv) === "json") {
+      state.format = "human";
+      settleErrored(invocation, jsonUnsupportedError(entry.id));
+      return true;
+    }
+    if (invocation.runtime.spawn === undefined) {
+      // The run is doomed, and refuses here, before the needs check,
+      // rather than mid-handler after side effects.
+      state.format = "human";
+      settleBug(
+        invocation,
+        new Error(
+          `@prisma/cli-engine: command '${entry.id}' declares maySpawn but the Runtime supplies no spawn adapter`,
+        ),
+      );
+      return true;
+    }
+    return false;
+  }
+
+  /** Every mounted handler settles the same way: an abandoned child
+   *  wins over the handler's own outcome, a failure settles errored, a
+   *  child-status value settles as that child's exit, and any other
+   *  value is the command's own completion. */
+  private async settleHandlerOutcome<T>(
+    invocation: Invocation,
+    entry: CommandTreeEntry,
+    runHandler: () => Promise<
+      Result<T | ChildStatusSettlement, CliStructuredError>
+    >,
+    settleCompletion: (value: T) => void,
+  ): Promise<void> {
+    const state = invocation.state;
+    try {
+      const result = await runHandler();
+      if (await this.settleAbandonedChild(invocation, false)) {
+        return;
+      }
+      state.resolved = true;
+      if (!result.ok) {
+        settleErrored(invocation, result.failure, result.failure.diagnostics);
+      } else if (isChildStatusSettlement(result.value)) {
+        settleChildStatus(invocation, entry.def, result.value);
+      } else {
+        settleCompletion(result.value);
+      }
+    } catch (cause) {
+      if (await this.settleAbandonedChild(invocation, true, cause)) {
+        return;
+      }
+      state.resolved = true;
+      settleThrown(invocation, cause);
+    }
+  }
+
+  /** The telemetry fire, at command start: once per run, from the
+   *  parse-time snapshot, before the handler and before any command
+   *  output. A CLI that declared no telemetry block reports nothing —
+   *  no config read, no disclosure, no mint, no seam call. Runs that
+   *  never mount a command never reach here and so never report. */
+  private fireTelemetry(invocation: Invocation): void {
+    const { snapshot } = invocation.state;
+    if (this.spec.telemetry === undefined || snapshot === undefined) {
+      return;
+    }
+    reportCommandStart({
+      host: invocation.runtime,
+      telemetry: this.spec.telemetry,
+      name: this.spec.name,
+      version: this.spec.version,
+      snapshot,
+    });
+  }
+
   private async executeMounted(
     invocation: Invocation,
     entry: CommandTreeEntry,
@@ -482,26 +580,12 @@ export class EngineImpl implements Engine {
       state.argv,
       values,
     );
+    this.fireTelemetry(invocation);
     if (entry.def.kind === "server-command") {
       await this.executeServer(invocation, entry, rawFlags);
       return;
     }
-    if (entry.def.maySpawn && formatFlagGiven(state.argv) === "json") {
-      state.format = "human";
-      settleErrored(invocation, jsonUnsupportedError(entry.id));
-      return;
-    }
-    if (entry.def.maySpawn && invocation.runtime.spawn === undefined) {
-      // A host that mounts a maySpawn command and supplies no adapter
-      // is misconfigured; the run is doomed and refuses here, before
-      // the needs check, rather than mid-handler after side effects.
-      state.format = "human";
-      settleBug(
-        invocation,
-        new Error(
-          `@prisma/cli-engine: command '${entry.id}' declares maySpawn but the Runtime supplies no spawn adapter`,
-        ),
-      );
+    if (this.refuseUnspawnable(invocation, entry)) {
       return;
     }
     let needsOutcome: NeedsOutcome;
@@ -533,51 +617,23 @@ export class EngineImpl implements Engine {
       invocation,
       entry.def,
       needsOutcome.config,
-      entry.def.kind === "result-command" && entry.def.managesCredentials,
+      declaredCapabilities(entry.def),
     );
     if (entry.def.kind === "session-command") {
-      try {
-        const result = await (handler as ErasedSessionHandler)(args, ctx);
-        if (await this.settleAbandonedChild(invocation, false)) {
-          return;
-        }
-        state.resolved = true;
-        if (!result.ok) {
-          settleErrored(invocation, result.failure);
-        } else if (isChildStatusSettlement(result.value)) {
-          settleChildStatus(invocation, entry.def, result.value);
-        } else {
-          settleSessionCompleted(invocation);
-        }
-      } catch (cause) {
-        if (await this.settleAbandonedChild(invocation, true, cause)) {
-          return;
-        }
-        state.resolved = true;
-        settleThrown(invocation, cause);
-      }
+      await this.settleHandlerOutcome<undefined>(
+        invocation,
+        entry,
+        () => (handler as ErasedSessionHandler)(args, ctx),
+        () => settleSessionCompleted(invocation),
+      );
       return;
     }
-    try {
-      const result = await (handler as ErasedHandler)(args, ctx);
-      if (await this.settleAbandonedChild(invocation, false)) {
-        return;
-      }
-      state.resolved = true;
-      if (!result.ok) {
-        settleErrored(invocation, result.failure);
-      } else if (isChildStatusSettlement(result.value)) {
-        settleChildStatus(invocation, entry.def, result.value);
-      } else {
-        settleCompleted(invocation, entry.def, result.value);
-      }
-    } catch (cause) {
-      if (await this.settleAbandonedChild(invocation, true, cause)) {
-        return;
-      }
-      state.resolved = true;
-      settleThrown(invocation, cause);
-    }
+    await this.settleHandlerOutcome<PresentedResult<unknown>>(
+      invocation,
+      entry,
+      () => (handler as ErasedHandler)(args, ctx),
+      (presented) => settleCompleted(invocation, entry.def, presented),
+    );
   }
 
   /** The handler resolved or threw with its child still live. The
@@ -711,6 +767,16 @@ function jsonUnsupportedError(commandId: string): CliStructuredError {
       ],
     },
   );
+}
+
+function declaredCapabilities(def: AnyCommand): CommandCapabilities {
+  if (def.kind !== "result-command") {
+    return { managesCredentials: false, installsPackages: false };
+  }
+  return {
+    managesCredentials: def.managesCredentials,
+    installsPackages: def.installsPackages,
+  };
 }
 
 function declaredFlags(

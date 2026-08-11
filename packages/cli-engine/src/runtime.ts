@@ -1,11 +1,17 @@
 import type { CredentialManager } from "./credential-manager";
 import type { ManagementApiClientConfig } from "./management-api";
+import type { PackageManagerId, PackageManagerRunner } from "./package-manager";
 import type { Diagnostic } from "./protocol";
 import type { SpawnChild } from "./spawn";
+import type { TelemetryPayload } from "./telemetry/payload";
 
 /** Minimal structural stream types; no NodeJS.* in the public surface. */
 export interface OutputStream {
   write(text: string): void;
+  /** The stream's terminal width, absent when it is not a terminal.
+   *  The engine reads it at render time rather than caching it, so a
+   *  terminal resized mid-run is respected by the next thing drawn. */
+  readonly columns?: number;
 }
 
 /**
@@ -29,6 +35,13 @@ export interface Runtime {
     readonly stdout: boolean;
     readonly stderr: boolean;
   };
+  /**
+   * True when this process runs in CI, where telemetry never reports.
+   * The bin wires `ci-info`; the engine detects CI no more than it
+   * detects a TTY. Required, not optional: a host that forgot it would
+   * silently report from CI.
+   */
+  readonly isCI: boolean;
   /**
    * Ends the process. The bin passes process.exit; the engine is the
    * only caller (second-signal force exit, 130/143).
@@ -80,13 +93,31 @@ export interface Runtime {
    * handler run, so ctx.spawn is never reached.
    */
   readonly spawn?: SpawnChild;
+  /**
+   * Fire-and-forget delivery of one composed telemetry payload. The bin
+   * owns the process work and the detachment, which is why the engine
+   * imports no child_process and performs no network I/O for telemetry.
+   * Absent means this host reports nothing — not an error, and the whole
+   * sequence is skipped rather than only the delivery: no config read,
+   * no disclosure, no mint.
+   */
+  readonly spawnTelemetry?: (payload: TelemetryPayload) => void;
   /** Management API endpoint config; the bin derives baseUrl from env. */
   readonly managementApi: { readonly baseUrl: string };
   /**
-   * Used by the ENGINE to phrase install commands (handlers never do —
-   * see needs.dependencies and ctx.requireDependency).
+   * A host that knows its user's package manager better than detection
+   * does. Absent — the normal case — means the engine detects it from
+   * the project at cwd.
    */
-  readonly packageManager: "npm" | "pnpm" | "yarn" | "bun" | "unknown";
+  readonly packageManager?: PackageManagerId;
+  /**
+   * Spawns the package manager the engine composed. The engine never
+   * imports child_process; this is the only way a manager runs. It is
+   * optional so a harness can exercise the no-runner path — every
+   * shipped host wires it, and a host without it can run no package
+   * operation at all.
+   */
+  readonly runPackageManager?: PackageManagerRunner;
 }
 
 /**
@@ -99,7 +130,11 @@ export interface HostProcess {
   readonly env: Readonly<Record<string, string | undefined>>;
   cwd(): string;
   readonly stdout: { write(text: string): unknown; isTTY?: boolean };
-  readonly stderr: { write(text: string): unknown; isTTY?: boolean };
+  readonly stderr: {
+    write(text: string): unknown;
+    isTTY?: boolean;
+    columns?: number;
+  };
   readonly stdin: {
     isTTY?: boolean;
     setRawMode?(enabled: boolean): unknown;

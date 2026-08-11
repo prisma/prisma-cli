@@ -107,7 +107,6 @@ const runtime = {
     diagnostics: [],
   }),
   managementApi: { baseUrl: "https://test.invalid" },
-  packageManager: "unknown",
   spawn: spawnChild,
 };
 

@@ -319,15 +319,9 @@ describe("selectComputeDeployTarget", () => {
 
   it("requires a target when multiple apps are configured", () => {
     const result = selectComputeDeployTarget(multi, undefined);
-    expect(result.isErr() && result.error).toBeInstanceOf(
-      ComputeConfigTargetRequiredError,
-    );
-    if (
-      result.isErr() &&
-      result.error instanceof ComputeConfigTargetRequiredError
-    ) {
-      expect(result.error.availableTargets).toEqual(["web", "worker"]);
-    }
+    const error = result.isErr() ? result.error : undefined;
+    expect(error).toBeInstanceOf(ComputeConfigTargetRequiredError);
+    expect(error).toMatchObject({ availableTargets: ["web", "worker"] });
   });
 
   it("selects a multi-app target by key", () => {

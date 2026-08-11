@@ -128,7 +128,7 @@ function connectPresentations(
     human: (): Block[] => [
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: "Connecting Git to the resolved project.",
       },
       {

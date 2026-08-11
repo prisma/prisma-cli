@@ -39,6 +39,7 @@ async function waitForFile(path: string, timeoutMs = 10_000): Promise<void> {
     if (Date.now() > deadline) {
       throw new Error(`timed out waiting for ${path}`);
     }
+    // biome-ignore lint/performance/noAwaitInLoops: this waits for another process to create the file, so the loop has to pause between checks rather than issue them all at once.
     await new Promise((resolve) => setTimeout(resolve, 15));
   }
 }

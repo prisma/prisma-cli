@@ -138,6 +138,12 @@ engine layout `✖ [AUTH.CONFIG_INVALID] … / why: … / → <next action>`
 on stderr, versus the current CLI's `✖ summary [CODE]` +
 `Why:`/`Fix:` + "More: Re-run with --trace" block.
 
+(The engine's failure mark became `✘` in the engine-colour slice, which
+brought every surface onto the one the style guide and
+`docs/product/output-conventions.md` already specified. The engine
+layout above is otherwise unchanged; the legacy `✖` is accurate for the
+CLI it describes.)
+
 ## 7. Exit-code semantics generally
 
 Both exit 0 for signed-in AND signed-out whoami (parity kept: whoami

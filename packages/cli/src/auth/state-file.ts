@@ -43,7 +43,7 @@ export function makeDebugLog(
     process.stderr.write(text);
   },
 ): DebugLog {
-  if (env.PRISMA_NEXT_DEBUG !== "1") return () => {};
+  if (env.PRISMA_DEBUG !== "1") return () => {};
   return (message) => {
     write(`prisma auth: ${message}\n`);
   };

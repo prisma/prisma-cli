@@ -87,6 +87,7 @@ function makeRuntime(overrides?: {
   let stderrText = "";
   let stdoutText = "";
   return {
+    isCI: false,
     stdout: {
       write: (text) => {
         stdoutText += text;
@@ -115,7 +116,6 @@ function makeRuntime(overrides?: {
     credentialManager: overrides?.credentialManager,
     managementApiClientConfig: CLIENT_CONFIG,
     managementApi: { baseUrl: "https://test.invalid" },
-    packageManager: "unknown",
     stderrText: () => stderrText,
     stdoutText: () => stdoutText,
   };
@@ -635,10 +635,10 @@ describe("the engine's debug valve", () => {
       managementApiClientConfig: CLIENT_CONFIG,
     });
 
-  test("PRISMA_NEXT_DEBUG=1 records the refresh attempt and the endpoint's verdict", async () => {
+  test("PRISMA_DEBUG=1 records the refresh attempt and the endpoint's verdict", async () => {
     refreshRejectedAsInvalidGrant();
     const { stderr } = await cliWithDebug().run(["toy", "--json"], {
-      env: { PRISMA_NEXT_DEBUG: "1" },
+      env: { PRISMA_DEBUG: "1" },
     });
     expect(stderr).toContain("refresh attempted for session workspace-1");
     expect(stderr).toContain(
@@ -655,7 +655,7 @@ describe("the engine's debug valve", () => {
         : jsonResponse(401, { message: "unauthorized" }),
     );
     const { stderr } = await cliWithDebug().run(["toy", "--json"], {
-      env: { PRISMA_NEXT_DEBUG: "1" },
+      env: { PRISMA_DEBUG: "1" },
     });
     expect(stderr).toContain(
       "refresh failed: refreshTokenInvalid=false error=Token request failed with status 503",
@@ -672,7 +672,7 @@ describe("the engine's debug valve", () => {
         : jsonResponse(401, { message: "unauthorized" }),
     );
     const { stderr } = await cliWithDebug().run(["toy", "--json"], {
-      env: { PRISMA_NEXT_DEBUG: "1" },
+      env: { PRISMA_DEBUG: "1" },
     });
     expect(stderr).toContain("refresh failed without an AuthError (Error)");
   });
@@ -698,9 +698,10 @@ describe("the engine's debug valve", () => {
           ? failure.clone()
           : jsonResponse(401, { message: "unauthorized" }),
       );
+      // biome-ignore lint/performance/noAwaitInLoops: scriptFetch above swaps the one shared fetch stub, so a run has to finish before the next iteration rewrites the response it is answering with.
       const { stderr, stdout, json } = await cliWithDebug().run(
         ["toy", "--json"],
-        { env: { PRISMA_NEXT_DEBUG: "1" } },
+        { env: { PRISMA_DEBUG: "1" } },
       );
       const everything = stderr + stdout + JSON.stringify(json);
       expect(stderr).toContain("refresh attempted for session workspace-1");

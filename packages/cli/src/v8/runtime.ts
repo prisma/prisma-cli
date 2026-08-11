@@ -1,9 +1,12 @@
+import { fileURLToPath } from "node:url";
 import {
   type HostProcess,
   type InputStream,
   loadConfig,
   type Runtime,
 } from "@prisma/cli-engine";
+import { runTelemetry } from "@repo/cli-telemetry";
+import { isCI } from "ci-info";
 import open from "open";
 import {
   CLIENT_ID,
@@ -18,6 +21,7 @@ import {
   STATE_FILE_ENV_VAR,
 } from "../auth/state-file";
 import { fetchWorkspaceName } from "../auth/workspace-name";
+import { runPackageManager } from "./package-manager-runner";
 import { spawnChild } from "./spawn";
 
 export type SignalProcess = Pick<HostProcess, "on" | "off" | "exit">;
@@ -39,16 +43,19 @@ export function makeOnSignal(proc: SignalProcess): Runtime["onSignal"] {
   };
 }
 
-export function detectPackageManager(
-  env: NodeJS.ProcessEnv,
-): Runtime["packageManager"] {
-  const userAgent = env.npm_config_user_agent ?? "";
-  for (const name of ["pnpm", "yarn", "bun", "npm"] as const) {
-    if (userAgent.startsWith(name)) {
-      return name;
-    }
+/**
+ * Path to the compiled sender entry. In the workspace (dev runs and the
+ * monorepo dist) the package specifier resolves to
+ * `packages/cli-telemetry/dist/sender.js`; in the published cli the
+ * telemetry package is bundled away, so the fallback resolves the copy
+ * tsdown emits next to the v8 entry (`dist/v8/sender.js`).
+ */
+function resolveSenderPath(): string {
+  try {
+    return fileURLToPath(import.meta.resolve("@repo/cli-telemetry/sender"));
+  } catch {
+    return fileURLToPath(new URL("./sender.js", import.meta.url));
   }
-  return "unknown";
 }
 
 /** PRISMA_COMPUTE_AUTH_FILE still names the credentials file, but
@@ -82,6 +89,9 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       write: (text) => {
         proc.stderr.write(text);
       },
+      get columns() {
+        return proc.stderr.columns;
+      },
     },
     stdin,
     cwd: proc.cwd(),
@@ -91,6 +101,7 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       stdout: proc.stdout.isTTY === true,
       stderr: proc.stderr.isTTY === true,
     },
+    isCI,
     exit: (code) => proc.exit(code),
     onSignal: makeOnSignal(proc),
     loadConfig: (configPath) => loadConfig(proc.cwd(), configPath),
@@ -105,10 +116,16 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       authBaseUrl: getAuthBaseUrl(proc.env),
     },
     spawn: spawnChild,
+    /** The engine has already decided and composed; the bin only forks
+     *  the detached sender and hands the payload over. Every failure is
+     *  swallowed inside runTelemetry. */
+    spawnTelemetry: (payload) => {
+      runTelemetry({ payload, senderPath: resolveSenderPath() });
+    },
     openUrl: async (url) => {
       await open(url);
     },
     managementApi: { baseUrl: apiBaseUrl },
-    packageManager: detectPackageManager(proc.env),
+    runPackageManager,
   };
 }

@@ -65,7 +65,7 @@ describe("prisma-v8 service rollback", () => {
     });
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: "Rolled hello-world back to dep_1.",
     });
   });
@@ -101,7 +101,7 @@ describe("prisma-v8 service rollback", () => {
     expect(result.events).toEqual([]);
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: "dep_2 was already live for hello-world.",
     });
   });

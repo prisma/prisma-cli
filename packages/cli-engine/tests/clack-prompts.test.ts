@@ -60,7 +60,7 @@ function promptCli(run: (prompt: PromptSurface) => Promise<unknown>) {
             human: (): readonly Block[] => [
               {
                 kind: "summary",
-                tone: "ok",
+                status: "ok",
                 text: `answer=${JSON.stringify(answer)}`,
               },
             ],
@@ -86,6 +86,7 @@ async function runInteractive(
   let stdout = "";
   let stderr = "";
   const runtime: Runtime = {
+    isCI: false,
     stdout: {
       write: (text) => {
         stdout += text;
@@ -110,7 +111,6 @@ async function runInteractive(
       diagnostics: [],
     }),
     managementApi: { baseUrl: "https://test.invalid" },
-    packageManager: "unknown",
   };
   const exitCode = await promptCli(run).run(["probe"], runtime);
   // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI stripping

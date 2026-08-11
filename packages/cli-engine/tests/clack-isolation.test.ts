@@ -35,7 +35,7 @@ function promptCommand(run: (prompt: PromptSurface) => Promise<unknown>) {
           { data: { answer } },
           {
             human: (): readonly Block[] => [
-              { kind: "summary", tone: "ok", text: `answer=${answer}` },
+              { kind: "summary", status: "ok", text: `answer=${answer}` },
             ],
           },
         ),
@@ -93,6 +93,7 @@ describe("scripted and non-TTY paths are clack-free", () => {
   test("canary: a raw-mode-capable TTY run does reach the clack import", async () => {
     let stderr = "";
     const runtime: Runtime = {
+      isCI: false,
       stdout: { write: () => {} },
       stderr: {
         write: (text) => {
@@ -122,7 +123,6 @@ describe("scripted and non-TTY paths are clack-free", () => {
         diagnostics: [],
       }),
       managementApi: { baseUrl: "https://test.invalid" },
-      packageManager: "unknown",
     };
     const cli = createCli({
       name: "probe",

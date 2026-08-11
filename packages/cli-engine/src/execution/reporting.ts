@@ -34,7 +34,7 @@ function eventDisplaySeverity(event: EngineEvent): Severity | undefined {
  *  surface as an unhandled rejection in a detached async context. */
 function reportAfterResolution(invocation: Invocation): void {
   invocation.runtime.stderr.write(
-    "✖ [CLI.INTERNAL_ERROR] @prisma/cli-engine: report() was called after the handler resolved\n",
+    "✘ [CLI.INTERNAL_ERROR] @prisma/cli-engine: report() was called after the handler resolved\n",
   );
 }
 

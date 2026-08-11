@@ -447,39 +447,41 @@ describe("preview build strategy", () => {
       { lockfile: "package-lock.json", command: "npm run build" },
     ];
 
-    for (const testCase of cases) {
-      const cwd = await createTempCwd();
-      const appPath = path.join(cwd, "app");
+    await Promise.all(
+      cases.map(async (testCase) => {
+        const cwd = await createTempCwd();
+        const appPath = path.join(cwd, "app");
 
-      await mkdir(appPath, { recursive: true });
-      await writeFile(
-        path.join(appPath, "package.json"),
-        JSON.stringify(
-          {
-            scripts: {
-              build: "next build",
+        await mkdir(appPath, { recursive: true });
+        await writeFile(
+          path.join(appPath, "package.json"),
+          JSON.stringify(
+            {
+              scripts: {
+                build: "next build",
+              },
+              dependencies: {
+                next: "15.0.0",
+              },
             },
-            dependencies: {
-              next: "15.0.0",
-            },
-          },
-          null,
-          2,
-        ),
-        "utf8",
-      );
-      await writeFile(path.join(appPath, testCase.lockfile), "", "utf8");
+            null,
+            2,
+          ),
+          "utf8",
+        );
+        await writeFile(path.join(appPath, testCase.lockfile), "", "utf8");
 
-      await expect(
-        resolveAppBuildSettings({
-          appPath,
-          buildType: "nextjs",
-        }),
-      ).resolves.toMatchObject({
-        buildCommand: testCase.command,
-        buildCommandSource: "package.json scripts.build",
-      });
-    }
+        await expect(
+          resolveAppBuildSettings({
+            appPath,
+            buildType: "nextjs",
+          }),
+        ).resolves.toMatchObject({
+          buildCommand: testCase.command,
+          buildCommandSource: "package.json scripts.build",
+        });
+      }),
+    );
   });
 
   it("detects the package manager from the workspace root for app build scripts", async () => {
@@ -503,48 +505,52 @@ describe("preview build strategy", () => {
       },
     ];
 
-    for (const testCase of cases) {
-      const cwd = await createTempCwd();
-      const appPath = path.join(cwd, "apps", "web");
+    await Promise.all(
+      cases.map(async (testCase) => {
+        const cwd = await createTempCwd();
+        const appPath = path.join(cwd, "apps", "web");
 
-      await mkdir(appPath, { recursive: true });
-      if (testCase.rootPackageJson) {
+        await mkdir(appPath, { recursive: true });
+        if (testCase.rootPackageJson) {
+          await writeFile(
+            path.join(cwd, "package.json"),
+            JSON.stringify(testCase.rootPackageJson, null, 2),
+            "utf8",
+          );
+        }
+        await Promise.all(
+          testCase.rootFiles.map((rootFile) =>
+            writeFile(path.join(cwd, rootFile), "", "utf8"),
+          ),
+        );
         await writeFile(
-          path.join(cwd, "package.json"),
-          JSON.stringify(testCase.rootPackageJson, null, 2),
+          path.join(appPath, "package.json"),
+          JSON.stringify(
+            {
+              scripts: {
+                build: "next build",
+              },
+              dependencies: {
+                next: "15.0.0",
+              },
+            },
+            null,
+            2,
+          ),
           "utf8",
         );
-      }
-      for (const rootFile of testCase.rootFiles) {
-        await writeFile(path.join(cwd, rootFile), "", "utf8");
-      }
-      await writeFile(
-        path.join(appPath, "package.json"),
-        JSON.stringify(
-          {
-            scripts: {
-              build: "next build",
-            },
-            dependencies: {
-              next: "15.0.0",
-            },
-          },
-          null,
-          2,
-        ),
-        "utf8",
-      );
 
-      await expect(
-        resolveAppBuildSettings({
-          appPath,
-          buildType: "nextjs",
-        }),
-      ).resolves.toMatchObject({
-        buildCommand: testCase.command,
-        buildCommandSource: "package.json scripts.build",
-      });
-    }
+        await expect(
+          resolveAppBuildSettings({
+            appPath,
+            buildType: "nextjs",
+          }),
+        ).resolves.toMatchObject({
+          buildCommand: testCase.command,
+          buildCommandSource: "package.json scripts.build",
+        });
+      }),
+    );
   });
 
   it("prefers the app-level lockfile over the workspace root lockfile", async () => {

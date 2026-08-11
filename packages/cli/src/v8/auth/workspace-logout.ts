@@ -25,13 +25,13 @@ function logoutPresentations(spec: {
     human: () => [
       {
         kind: "summary",
-        tone: "info",
+        status: "info",
         text: "Ending a workspace session.",
       },
       { kind: "fields", rows },
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: spec.wasSelected
           ? "Ended the current workspace session; no replacement was selected."
           : "Ended the workspace session.",
@@ -40,7 +40,7 @@ function logoutPresentations(spec: {
         ? [
             {
               kind: "summary",
-              tone: "info",
+              status: "info",
               text: ENVIRONMENT_CREDENTIAL_NOTICE,
             } as const,
           ]

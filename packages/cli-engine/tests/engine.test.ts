@@ -39,6 +39,7 @@ describe("main export", () => {
       "loadConfig",
       "noSessionForWorkspaceError",
       "positional",
+      "telemetryCommandGroup",
     ]);
   });
 

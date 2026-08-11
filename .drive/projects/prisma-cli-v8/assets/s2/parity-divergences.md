@@ -184,13 +184,54 @@ on every `whoami`/`list` and wrote them back. Accepted and stated.
   removed: `databaseTarget` ships `null` (unless a parent-side override
   is supplied on the wire, kept for compatibility) and `extensions`
   ships `[]`, always. The wire shape is unchanged.
-- **Emission timing.** The ORM CLI emitted from a commander `preAction`
-  hook, before the command body ran. v8 emits at settlement
-  (`onSettled`, by design) with the first-run disclosure printed
-  pre-run, before the command's output. Consequence: a run that
-  crashes, is SIGKILLed, or leaves through `process.exit` before
-  settlement emits NO telemetry event, where the reference emitted one
-  before the command started.
+- **Emission timing — retired, no longer a divergence.** v8 briefly
+  emitted at settlement (`onSettled`), so a run that crashed, was
+  SIGKILLed, or left through `process.exit` emitted nothing where the
+  reference emitted one before the command started. The engine now
+  fires at command start from the parse-time snapshot, immediately
+  after it is built and before the handler — the same point the ORM
+  CLI's commander `preAction` hook fires from. ADR 217 (prisma/prisma),
+  which makes "spawned at command start" the isolation decision, stays
+  true and needs no amendment.
+- **First-run disclosure wording.** The ORM CLI says "Prisma Next
+  collects anonymous CLI usage data"; the engine composes one
+  disclosure for one product and says "Prisma collects anonymous CLI
+  usage data". Same channel (stderr), same timing (first enabled run,
+  before the command runs), same opt-out instructions, and the same
+  `installationId`-keyed once-only behaviour. The ORM inherits this
+  wording when its bin ports onto the engine.
+- **The preference file and the opt-out variables drop `prisma-next`, and
+  the file stops being shared.** Ruled by the operator on 2026-08-11: this is
+  semver zero and the `prisma-next` binary is being retired, which is the
+  point of the project. The preference now lives under `prisma/` rather than
+  `prisma-next/`; `PRISMA_NEXT_DISABLE_TELEMETRY`, `PRISMA_NEXT_TELEMETRY_
+  ENDPOINT` and `PRISMA_NEXT_DEBUG` become `PRISMA_DISABLE_TELEMETRY`,
+  `PRISMA_TELEMETRY_ENDPOINT` and `PRISMA_DEBUG`. No read fallback, no
+  dual-write, no migration — the old location is not consulted and the old
+  variable names do nothing, pinned by tests so a fallback cannot return.
+  Consequences, both accepted: every stored preference and installation id
+  at the old path is abandoned, so an existing opt-out reverts to the
+  opt-out default and the backend sees its population turn over once; and
+  the two binaries stop sharing one answer until the ORM's ports onto the
+  engine. `DO_NOT_TRACK` is a community convention and does not move.
+- **The first-run notice no longer offers to be opted out of by hand.** It
+  named the config file as a third route ("or set `enableTelemetry: false`
+  in …"); the operator ruled the file is machine-edited and the commands
+  exist for this. The notice keeps `telemetry disable` and both environment
+  variables, and `telemetry status` still prints the path.
+- **A negated flag ships one name, not two.** Commander gives
+  `--no-color` the same attribute name as `--color`, so the ORM CLI's
+  sanitiser sees both option entries sourced from the command line and
+  emits `["color", "no-color"]` — whichever spelling the user typed.
+  The engine maps a `--no-<flag>` token back to its base key and emits
+  `["color"]`. Neither preserves polarity, so nothing is lost: the ORM
+  simply ships a flag the user never typed and double-counts these in
+  aggregate. Affects `--color` and `--interactive`, the only negatable
+  flags on either side. This is not new — the engine's snapshot builder
+  has behaved this way since S1 — but the engine becoming the shared
+  implementation is when the ORM's counts for those two flags change,
+  so the backend should expect the discontinuity at its cutover, not at
+  this PR.
 
 ### Test surface
 

@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Runtime } from "@prisma/cli-engine";
@@ -8,7 +9,6 @@ import { buildCli } from "../src/v8/cli";
 import { main } from "../src/v8/main";
 import {
   assembleRuntime,
-  detectPackageManager,
   type HostProcess,
   makeOnSignal,
 } from "../src/v8/runtime";
@@ -32,24 +32,36 @@ const COMPOSER_SECTION_CONFIG_PATH = join(
 
 const SEMVER_PREFIX = /^\d+\.\d+\.\d+/;
 
+/** A config home outside any real one, so the telemetry preference
+ *  store resolves somewhere harmless. Nothing writes here: telemetry is
+ *  opted out below, and `telemetry status` is read-only. */
+const CONFIG_HOME = join(tmpdir(), "v8-bin-test-config-home");
+
 function makeProcess(overrides?: {
   argv?: string[];
   env?: NodeJS.ProcessEnv;
   isTty?: { stdin?: boolean; stdout?: boolean; stderr?: boolean };
+  columns?: number;
 }): HostProcess & {
   listeners: Map<string, Array<() => void>>;
   exitedWith: number[];
   stderrText: string;
   stdoutText: string;
+  stderr: { columns?: number };
 } {
   const listeners = new Map<string, Array<() => void>>();
   const exitedWith: number[] = [];
   const proc = {
     argv: overrides?.argv ?? ["node", "bin.js"],
-    // Telemetry env opt-out so main()'s gating resolution stays inert
-    // (no first-run notice on stderr, no dependence on the developer's
-    // real user config).
-    env: { PRISMA_NEXT_DISABLE_TELEMETRY: "1", ...overrides?.env },
+    // Telemetry env opt-out so the engine's gating stays inert (no
+    // first-run notice on stderr, nothing sent), and a config home of
+    // our own so nothing here resolves the developer's real one.
+    env: {
+      PRISMA_DISABLE_TELEMETRY: "1",
+      XDG_CONFIG_HOME: CONFIG_HOME,
+      APPDATA: CONFIG_HOME,
+      ...overrides?.env,
+    },
     cwd: () => "/tmp/v8-bin-test-cwd",
     listeners,
     exitedWith,
@@ -63,6 +75,8 @@ function makeProcess(overrides?: {
     },
     stderr: {
       isTTY: overrides?.isTty?.stderr,
+      /** Node updates this on SIGWINCH, so the test can move it. */
+      columns: overrides?.columns,
       write(text: string) {
         proc.stderrText += text;
       },
@@ -101,24 +115,6 @@ function fire(
   }
 }
 
-describe("detectPackageManager", () => {
-  it.each([
-    ["pnpm/9.0.0 npm/? node/v22", "pnpm"],
-    ["yarn/4.0.0 npm/? node/v22", "yarn"],
-    ["bun/1.1.0 npm/? node/v22", "bun"],
-    ["npm/10.0.0 node/v22", "npm"],
-    ["deno/2.0.0", "unknown"],
-  ])("maps user agent %s to %s", (userAgent, expected) => {
-    expect(detectPackageManager({ npm_config_user_agent: userAgent })).toBe(
-      expected,
-    );
-  });
-
-  it("is unknown when no user agent is set", () => {
-    expect(detectPackageManager({})).toBe("unknown");
-  });
-});
-
 describe("makeOnSignal", () => {
   it("forwards process signals to the subscriber, applying no policy of its own", () => {
     const proc = makeProcess();
@@ -156,7 +152,7 @@ describe("assembleRuntime", () => {
 
     expect(runtime.cwd).toBe("/tmp/v8-bin-test-cwd");
     expect(runtime.isTty).toEqual({ stdin: true, stdout: true, stderr: false });
-    expect(runtime.packageManager).toBe("pnpm");
+    expect(runtime.packageManager).toBeUndefined();
     expect(runtime.managementApi).toEqual({ baseUrl: "https://api.prisma.io" });
     // resolve, not join: the loader makes the path absolute, and on
     // Windows that puts a drive on this cwd.
@@ -170,6 +166,21 @@ describe("assembleRuntime", () => {
     runtime.stderr.write("err");
     expect(proc.stdoutText).toBe("out");
     expect(proc.stderrText).toBe("err");
+  });
+
+  /**
+   * The engine reads stderr's width at render time so a terminal
+   * resized mid-run reports its new size. That only holds if the bin
+   * forwards the live property instead of copying it once, here, while
+   * assembling the runtime — a copy freezes ui.width at process start.
+   */
+  it("forwards stderr's width live, not as a snapshot", async () => {
+    const proc = makeProcess({ isTty: { stderr: true }, columns: 120 });
+    const runtime = await assembleRuntime(proc);
+
+    expect(runtime.stderr.columns).toBe(120);
+    proc.stderr.columns = 60;
+    expect(runtime.stderr.columns).toBe(60);
   });
 
   it("wires the credential manager, the SDK client config, and the browser opener", async () => {
@@ -190,6 +201,22 @@ describe("assembleRuntime", () => {
     });
     expect(typeof runtime.openUrl).toBe("function");
     expect(proc.stderrText).toBe("");
+  });
+
+  it("wires a package-manager runner that really spawns", async () => {
+    const runtime = await assembleRuntime(makeProcess());
+
+    const chunks: string[] = [];
+    const result = await runtime.runPackageManager?.({
+      file: process.execPath,
+      args: ["-e", `process.stdout.write("ran")`],
+      cwd: process.cwd(),
+      signal: new AbortController().signal,
+      onOutput: (_channel, chunk) => chunks.push(chunk),
+    });
+
+    expect(result).toEqual({ exitCode: 0, stderr: "" });
+    expect(chunks.join("")).toBe("ran");
   });
 
   it("warns once when the credentials file is named by the deprecated variable", async () => {

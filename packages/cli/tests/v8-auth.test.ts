@@ -373,7 +373,7 @@ describe("sessions held with none selected", () => {
       ok(
         ctx.present(
           { data: null },
-          { human: () => [{ kind: "summary", tone: "ok", text: "ran" }] },
+          { human: () => [{ kind: "summary", status: "ok", text: "ran" }] },
         ),
       ),
   });
@@ -385,7 +385,7 @@ describe("sessions held with none selected", () => {
       return ok(
         ctx.present(
           { data: null },
-          { human: () => [{ kind: "summary", tone: "ok", text: "ran" }] },
+          { human: () => [{ kind: "summary", status: "ok", text: "ran" }] },
         ),
       );
     },
@@ -405,6 +405,7 @@ describe("sessions held with none selected", () => {
 
     const errors = [];
     for (const argv of [["auth", "whoami"], ["locked"], ["touch"]]) {
+      // biome-ignore lint/performance/noAwaitInLoops: the three commands run through one CLI instance whose session state they share, and the assertions below compare errors[1] and errors[2] against errors[0].
       const run = await cli.run([...argv, "--json"]);
       expect(run.exitCode).toBe(2);
       errors.push(errorOf(run));

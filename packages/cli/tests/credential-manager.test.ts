@@ -30,6 +30,7 @@ const NO_SPACE_LEFT = /no space left/;
 const POSIX_MODES = process.platform !== "win32";
 
 function expectOwnerOnly(mode: number): void {
+  // biome-ignore lint/nursery/noConditionalExpect: the condition is the host platform, not test data — it is fixed before any test runs, so it cannot vary with the code under test and cannot hide a regression. On POSIX, where the permission bits exist, the assertion always runs.
   if (POSIX_MODES) expect(mode & 0o777).toBe(0o600);
 }
 
@@ -366,7 +367,7 @@ describe("the state file", () => {
       await Promise.all(
         [WORKSPACE_B, WORKSPACE_C].map((workspaceId) =>
           makeManager({
-            env: { PRISMA_NEXT_DEBUG: "1" },
+            env: { PRISMA_DEBUG: "1" },
             debugWrite: (text) => debugLines.push(text),
           }).createSession(credentialFor(workspaceId), workspaceId),
         ),
@@ -1020,7 +1021,7 @@ describe("token material never leaks", () => {
     const rotatedSecret = "s3cret-rotated-refresh-token";
     const debugLines: string[] = [];
     const manager = makeManager({
-      env: { PRISMA_NEXT_DEBUG: "1" },
+      env: { PRISMA_DEBUG: "1" },
       debugWrite: (text) => debugLines.push(text),
     });
     const credential = {
@@ -1044,7 +1045,7 @@ describe("token material never leaks", () => {
     });
 
     const secondProcess = makeManager({
-      env: { PRISMA_NEXT_DEBUG: "1" },
+      env: { PRISMA_DEBUG: "1" },
       debugWrite: (text) => debugLines.push(text),
     });
     await secondProcess.createSession(

@@ -1,24 +1,4 @@
-export {
-  resolveTelemetryEndpoint,
-  TELEMETRY_BACKEND_URL,
-  TELEMETRY_ENDPOINT_PATH,
-} from "../endpoint";
-export type {
-  GatingDisabledReason,
-  GatingEnabledReason,
-  GatingInputs,
-  GatingResolution,
-} from "../gating";
-export { resolveGating } from "../gating";
 export type { ParentToSenderPayload, TelemetryEvent } from "../payload";
-export type { SanitizedCommand } from "../sanitize";
-export { sanitizeEngineSnapshot } from "../sanitize";
+export { isParentToSenderPayload } from "../payload";
 export type { RunTelemetryInputs, TelemetryRunOutcome } from "../spawn";
-export { runTelemetry, senderModuleUrl } from "../spawn";
-export type { UserConfig } from "../user-config";
-export {
-  ensureInstallationId,
-  readUserConfig,
-  userConfigPath,
-  writeUserConfig,
-} from "../user-config";
+export { runTelemetry } from "../spawn";

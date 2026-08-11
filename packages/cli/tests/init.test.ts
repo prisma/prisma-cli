@@ -188,6 +188,7 @@ describe("init", () => {
       ["init", "--framework", "hono", "--region", "mars-1", "--json"],
       ["init", "--framework", "rails", "--json"],
     ]) {
+      // biome-ignore lint/performance/noAwaitInLoops: all three runs share one cwd and state directory, and the assertion after the loop is that none of them wrote a config — overlapping runs could not tell you that.
       const result = await executeCli({ argv, cwd, stateDir, fixturePath });
       const payload = JSON.parse(result.stdout);
       expect(result.exitCode).toBe(2);
@@ -635,6 +636,7 @@ describe("init config format", () => {
       ["init", "--framework", "hono", "--json"],
       ["init", "--framework", "hono", "--format", "json", "--json"],
     ]) {
+      // biome-ignore lint/performance/noAwaitInLoops: both runs share one cwd holding the prisma.compute.json they must refuse to overwrite, so the second run has to see the file the first one left alone.
       const result = await executeCli({ argv, cwd, stateDir, fixturePath });
       const payload = JSON.parse(result.stdout);
       expect(result.exitCode).toBe(1);

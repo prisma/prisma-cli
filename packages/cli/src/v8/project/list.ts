@@ -55,7 +55,7 @@ function listPresentations(result: ProjectListResult): Presentations {
   const stdoutRows = projectStdoutRows(result);
   return {
     human: () => [
-      { kind: "summary", tone: "info", text: TITLE },
+      { kind: "summary", status: "info", text: TITLE },
       {
         kind: "fields",
         rows: [{ label: "workspace", value: result.workspace.name }],
@@ -85,12 +85,9 @@ export const projectListCommand = defineCommand({
   handler: async (_args, ctx) => {
     try {
       const workspace = await resolveActiveWorkspace(ctx);
-      const projects = sortProjects(
-        await listWorkspaceProjects(ctx, workspace),
-      );
+      const projects = sortProjects(await listWorkspaceProjects(ctx));
       const localBinding = await readProjectListLocalBinding(
         ctx.cwd,
-        workspace,
         projects,
         ctx.signal,
       );

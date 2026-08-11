@@ -54,7 +54,7 @@ export const postgresConnectionRemoveCommand = defineCommand({
             human: (): Block[] => [
               {
                 kind: "summary",
-                tone: "ok",
+                status: "ok",
                 text: "Removing database connection.",
               },
               {

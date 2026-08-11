@@ -19,7 +19,7 @@ import { mapProjectOperationError } from "./errors";
 function renamePresentations(result: ProjectRenameResult): Presentations {
   return {
     human: () => [
-      { kind: "summary", tone: "ok", text: "Renaming project." },
+      { kind: "summary", status: "ok", text: "Renaming project." },
       {
         kind: "fields",
         rows: [
