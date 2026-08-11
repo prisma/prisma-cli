@@ -157,20 +157,23 @@ Committed consequences:
    import check anchored at the family entrypoint and run against
    BUILT OUTPUT (type-only imports must be proven erased), catching
    any handler that statically imports an executor.
-4. **Signal listeners**: alchemy registers process listeners at
-   import time (the @alchemy.run/node-utils exit-hook), and it
-   enters the process TWICE — at config evaluation, and again at
-   local-target thunk resolution for `dev`/`log`
-   (`execute-dev.ts:74`, `execute-log.ts:158-169`). The family's
-   shared machinery exposes one `reclaimSignals()` called after
-   BOTH points. The strip is a DIFF, never `removeAllListeners`:
-   snapshot `process.listeners('SIGINT'|'SIGTERM')` before the
-   load, remove only listeners that appeared and were not in the
-   snapshot — the engine's own listener is in the snapshot and is
-   never touched. Stated limitation: catches import-time
-   registration only; the upstream ask removes the residual.
-   Tests assert the engine is the sole signal stakeholder after
-   each reclaim point.
+4. **Signal listeners**: alchemy's import-time listener
+   registration (the @alchemy.run/node-utils exit-hook) is being
+   fixed upstream — alchemy-run/node-utils#6 scopes the hooks to
+   owned locks, so a bare import registers nothing. OPERATOR
+   RULING (2026-08-11): NO workaround is built. The slice proceeds
+   on the basis that the fix lands through the delivery chain
+   (node-utils release → alchemy's exact pin bump → composer's
+   alchemy bump) before D3 ships. The family's test suite keeps
+   ONE assertion as the detector: after a composer command's
+   config evaluation (and dev/log local-target resolution) the
+   engine is the sole SIGINT/SIGTERM listener. If the chain has
+   not delivered by D3, that failing test is the STOP that
+   resurfaces this decision — nothing ships with alchemy's exit
+   handlers live in the engine process. Residual (accepted):
+   in-process alchemy code that ACQUIRES a lockfile lock registers
+   handlers for the lock's duration; D2/D3 verify no in-process
+   path takes locks.
 
 ## Mapping rules
 
@@ -228,8 +231,7 @@ composer's CI before the prisma bin mounts it.
 R-S3-4 **The four commands** (D3), engine handlers in composer's
 family:
 - `deploy <entry>` / `destroy <entry>`: result commands. Handler:
-  section/args → near-expiry check → config evaluation
-  (`reclaimSignals`) → pipeline/preflight/artifact with engine
+  section/args → near-expiry check → config evaluation → pipeline/preflight/artifact with engine
   presentation, authenticated via the in-process leg →
   `ctx.spawn(alchemy converge)` → branch on `signal` FIRST
   (signal-killed = abort: settle 128+signal, no failure envelope,
@@ -251,8 +253,7 @@ family:
   divergence). Windows: refuses, as today.
 - `log <entry> [address]`: session command reading the LOCAL
   dev-emulator daemon (§4c; not the platform logs surface — S8
-  note stands); local-target resolution + `reclaimSignals`.
-  Windows: refuses, as today.
+  note stands). Windows: refuses, as today.
 - Auth: `deploy`/`destroy` declare credentials (both legs);
   `dev`/`log` credential-free.
 
@@ -310,9 +311,10 @@ operator); 1c deliverable 2 beyond the config-load effect check
       one-client invariant outcome).
 - [ ] Composer family static graph alchemy-free + effect-free on
       BUILT output (CI check anchored at the family entrypoint);
-      executors remain behind the dynamic-import boundary;
-      `reclaimSignals` covered at BOTH anchors with the
-      engine-sole-listener assertion.
+      executors remain behind the dynamic-import boundary; the
+      engine-sole-listener DETECTOR assertion after config
+      evaluation and local-target resolution (see design
+      consequence 4 — no workaround behind it, by ruling).
 - [ ] Composer's rebuilt CLI (engine + own family + env-only
       manager) replaces clipanion; e2e tests drive the exported
       commands; old shell/runner deleted in D3; D2/D3 stacked.
@@ -359,6 +361,10 @@ patch); executor lazy boundary named as the static-graph
 mechanism + built-output check; production env-only credential
 manager added to D1 (composer's rebuilt CLI needs one; only a
 testing implementation exists); PATH_MISMATCH conditional
-retirement; session-kind settlement amendment. Operator items:
+retirement; session-kind settlement amendment. Post-fold operator
+ruling: the reclaimSignals workaround is OMITTED on the basis of
+alchemy-run/node-utils#6 (verified: deletes the module-scope
+registration, scopes hooks to owned locks); the sole-listener test
+remains as the detector. Operator items:
 install footprint acknowledged as a committed consequence
-(pending explicit acceptance); everything else mechanical.
+(accepted — operator proceeded to implementation, 2026-08-11); everything else mechanical.
