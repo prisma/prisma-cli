@@ -517,8 +517,8 @@ describe("the ORM's pnpm-to-npm fallback", () => {
     });
   });
 
-  test("redaction leaves the token the predicate matches on", async () => {
-    const { runner } = fakeManager({
+  test("a pnpm failure the predicate does not recognise is not retried", async () => {
+    const { calls, runner } = fakeManager({
       ...PNPM_WORKSPACE_FAILURE,
       stderr: PNPM_WORKSPACE_FAILURE.stderr.replace(
         "ERR_PNPM_WORKSPACE_PKG_NOT_FOUND",
@@ -531,6 +531,7 @@ describe("the ORM's pnpm-to-npm fallback", () => {
     });
 
     expect(result.exitCode).toBe(2);
+    expect(calls).toHaveLength(1);
     expect(errorOf(result.json).meta?.manager).toBe("pnpm");
   });
 });
