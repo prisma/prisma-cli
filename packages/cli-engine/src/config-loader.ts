@@ -106,7 +106,7 @@ function firstLine(text: string): string {
 
 function unsupportedVersionDiagnostic(path: string, found: number): Diagnostic {
   return {
-    code: "CLI.CONFIG_INVALID",
+    code: "CLI.CONFIG_VERSION_UNSUPPORTED",
     severity: "error",
     summary: `${path} declares config version ${found}, but this CLI supports only version ${PRISMA_CONFIG_VERSION}.`,
     nextActions: [

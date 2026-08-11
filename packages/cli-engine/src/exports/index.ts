@@ -66,14 +66,15 @@ export {
   emptyServiceTokenError,
   noSessionForWorkspaceError,
 } from "../credential-errors";
-export type {
-  ActiveCredential,
-  Credential,
-  CredentialIdentity,
-  CredentialManager,
-  CredentialOrigin,
-  Session,
-  StoredSessions,
+export {
+  type ActiveCredential,
+  type Credential,
+  type CredentialIdentity,
+  type CredentialManager,
+  type CredentialOrigin,
+  SERVICE_TOKEN_ENV_VAR,
+  type Session,
+  type StoredSessions,
 } from "../credential-manager";
 export { EnvironmentCredentialManager } from "../environment-credential-manager";
 export type {
@@ -119,6 +120,5 @@ export {
 export {
   claimedExpiresAt,
   claimedIdentity,
-  claimedWorkspaceId,
   credentialWorkspaceId,
 } from "../token-claims";

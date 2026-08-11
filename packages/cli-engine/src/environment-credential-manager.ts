@@ -7,12 +7,14 @@
  * here reads process.env.
  */
 import { emptyServiceTokenError } from "./credential-errors";
-import type {
-  ActiveCredential,
-  Credential,
-  CredentialManager,
-  Session,
-  StoredSessions,
+import {
+  type ActiveCredential,
+  type Credential,
+  type CredentialManager,
+  SERVICE_TOKEN_ENV_VAR,
+  type Session,
+  type StoredSessions,
+  WORKSPACE_ID_ENV_VAR,
 } from "./credential-manager";
 import type { TokenStorage } from "./management-api";
 import { CliStructuredError } from "./protocol";
@@ -21,9 +23,6 @@ import {
   claimedIdentity,
   credentialWorkspaceId,
 } from "./token-claims";
-
-const SERVICE_TOKEN_ENV_VAR = "PRISMA_SERVICE_TOKEN";
-const WORKSPACE_ID_ENV_VAR = "PRISMA_WORKSPACE_ID";
 
 /** The SDK's Tokens requires a workspace id; an environment credential
  *  that names none is given this instead. It never leaves the manager

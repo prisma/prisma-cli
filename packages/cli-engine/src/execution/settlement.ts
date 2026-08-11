@@ -11,7 +11,7 @@ import {
   type Diagnostic,
   type NextAction,
 } from "../protocol";
-import type { ChildStatusSettlement } from "../spawn";
+import { type ChildStatusSettlement, isEngineSpawned } from "../spawn";
 import type { EngineSpec, Invocation } from "./engine";
 import {
   firstLine,
@@ -65,7 +65,8 @@ export function settleCompleted(
   }
   const state = invocation.state;
   invocation.hooks.onPresented?.(presented);
-  state.settledExitCode = presented.exitCode;
+  const exitCode = runExitCode(invocation, presented.exitCode);
+  state.settledExitCode = exitCode;
   if (state.format === "json") {
     const envelope: CompletedEnvelope = {
       ok: true,
@@ -74,7 +75,7 @@ export function settleCompleted(
         presented.presentation.json === undefined
           ? presented.data
           : presented.presentation.json,
-      exitCode: presented.exitCode,
+      exitCode,
       diagnostics: presented.diagnostics.map((diagnostic) =>
         withDocsUrl(state, diagnostic),
       ),
@@ -112,10 +113,27 @@ export function settleErrored(
   });
 }
 
-/** Signal exit codes: 130 SIGINT, 143 SIGTERM. The engine's own
- *  controller only ever aborts with a signal name. */
-function signalExitCode(reason: unknown): number {
-  return reason === "SIGTERM" ? 143 : 130;
+/** The conventional code for a delivered signal: 128 + its number, so
+ *  130 for SIGINT and 143 for SIGTERM. */
+function signalExitCode(signal: "SIGINT" | "SIGTERM"): number {
+  return signal === "SIGTERM" ? 143 : 130;
+}
+
+/**
+ * The engine's own signal record decides how a run ends. A run a
+ * delivered signal terminated settles 128 + that signal's number even
+ * when its handler caught the signal, cleaned up, and returned
+ * successfully: the exit code states how the RUN ended, and a handler
+ * cannot author it — the documented codes stop at 99.
+ *
+ * Verbatim codes are the exception, because they were never this CLI's
+ * to state: a real child's status (the child owned the terminal and the
+ * signal reached it too) and a server command's protocol conclusion
+ * both pass through untouched.
+ */
+function runExitCode(invocation: Invocation, completed: number): number {
+  const signal = invocation.state.deliveredSignal;
+  return signal === undefined ? completed : signalExitCode(signal);
 }
 
 function isAbortCause(cause: unknown, signal: AbortSignal): boolean {
@@ -140,7 +158,11 @@ export function settleThrown(invocation: Invocation, cause: unknown): void {
 
 function settleAborted(invocation: Invocation): void {
   const state = invocation.state;
-  state.settledExitCode = signalExitCode(invocation.signal.reason);
+  const signal = state.deliveredSignal;
+  // The run's signal is aborted from one place, and it records the
+  // signal first, so an abort without one would be an engine fault;
+  // it settles cancelled rather than claiming a signal that never came.
+  state.settledExitCode = signal === undefined ? 3 : signalExitCode(signal);
   emitErrored(invocation, {
     ok: false,
     commandId: state.commandId,
@@ -159,7 +181,8 @@ function settleAborted(invocation: Invocation): void {
  * Settle an exit code the engine did not author, verbatim, with no
  * envelope and no presentation: something other than this CLI's code
  * space produced it. The two callers are the child-status settlement
- * and the server-command handoff.
+ * and the server-command handoff. A delivered signal does not overrule
+ * it — a code from outside is reported as it was received.
  */
 export function settleVerbatimExitCode(
   invocation: Invocation,
@@ -170,13 +193,18 @@ export function settleVerbatimExitCode(
 
 /**
  * The child owned the terminal, so its status becomes the run's
- * verbatim. This is the one path on which a session command settles
- * non-zero without erroring, and the one path on which a result
- * command settles a code it never documented: neither is the handler's
- * own conclusion, it is the child's. Only a command that hands the
- * terminal to another program may settle this way — reachable from a
- * non-declaring handler it would also end a json stream without its
- * terminal result frame.
+ * verbatim: the one path on which a result command settles a code it
+ * never documented, because the code is not the handler's own
+ * conclusion, it is the child's.
+ *
+ * Two conditions fence it, both construction errors. The command must
+ * hand the terminal to another program — reachable from a
+ * non-declaring handler this would also end a json stream without its
+ * terminal result frame. And the status must be one the engine watched
+ * a real child produce: a handler that invents a child result is
+ * choosing an exit code through a door meant for reporting one, and a
+ * handler interrupted mid-run has no need to, because the engine
+ * settles a signal-terminated run itself.
  */
 export function settleChildStatus(
   invocation: Invocation,
@@ -188,6 +216,11 @@ export function settleChildStatus(
       `@prisma/cli-engine: command '${invocation.state.commandId}' returned exitWithChildStatus without declaring maySpawn — only a command that hands the terminal to another program may settle with that program's status`,
     );
   }
+  if (!isEngineSpawned(settlement)) {
+    throw new Error(
+      `@prisma/cli-engine: command '${invocation.state.commandId}' returned exitWithChildStatus for a child result the engine did not produce — only the result of a ctx.spawn carries a child's status`,
+    );
+  }
   // Only human format is reachable here: maySpawn forces it.
   for (const action of settlement.nextActions) {
     invocation.runtime.stderr.write(`${renderNextAction(action)}\n`);
@@ -195,12 +228,15 @@ export function settleChildStatus(
   settleVerbatimExitCode(invocation, settlement.exitCode);
 }
 
-/** A session command that returned ok — including after the signal
- *  fired — shut down cleanly: exit 0, no presentation. In json mode the
- *  stream still terminates with exactly one result frame. */
+/** A session command that returned ok shut down cleanly: no
+ *  presentation, and exit 0 — unless a signal ended the run, which
+ *  settles 130/143 from the engine's record even though the shutdown
+ *  itself succeeded. In json mode the stream still terminates with
+ *  exactly one result frame. */
 export function settleSessionCompleted(invocation: Invocation): void {
   const state = invocation.state;
-  state.settledExitCode = 0;
+  const exitCode = runExitCode(invocation, 0);
+  state.settledExitCode = exitCode;
   if (state.format !== "json") {
     return;
   }
@@ -208,7 +244,7 @@ export function settleSessionCompleted(invocation: Invocation): void {
     ok: true,
     commandId: state.commandId,
     result: null,
-    exitCode: 0,
+    exitCode,
     diagnostics: [],
     nextActions: [],
   };

@@ -37,6 +37,8 @@ const child = await ctx.spawn({ command, args, cwd, env });
   RECORDS delivered signals; on child exit it replays them into its
   normal ladder (one recorded → `ctx.signal` aborts as if just
   delivered; two+ → abort fires and the next signal force-exits).
+  A replayed signal is a delivered signal like any other, so the
+  run settles from the engine's record the same way (below).
   The latch never advances past what the user pressed; no
   force-exit path skips handler cleanup that has not had a turn.
   The engine always outlives the child. SIGTERM (no native path to
@@ -75,13 +77,26 @@ const child = await ctx.spawn({ command, args, cwd, env });
   envelope stays absent) — which uses the settlement bypass server
   commands already have (no envelope; a signal-killed child
   settles 128+signal; an unknown termination settles 1, never 0).
-  The bypass is FENCED: settling it from a command that does not
-  declare `maySpawn` is a construction error. The session kind's
-  settlement is amended to permit non-zero through this path
-  (today `settleSessionCompleted` hard-codes 0), and the
-  session-kind "always supports json" guarantee is amended: a
-  command that may spawn rejects `--json` at PARSE time (delegated
-  terminal output cannot be framed; stated in help).
+  The bypass is FENCED twice, each a construction error: settling
+  it from a command that does not declare `maySpawn`, and settling
+  it with a child result the engine did not itself produce from a
+  real spawn (amended 2026-08-11 — see the exit-code rule below).
+  The session kind's settlement is amended to permit non-zero
+  through this path (it used to hard-code 0, and now also settles
+  130/143 on its own — below),
+  and the session-kind "always supports json" guarantee is amended:
+  a command that may spawn rejects `--json` at PARSE time
+  (delegated terminal output cannot be framed; stated in help).
+- **Exit codes are the engine's** (operator ruling, 2026-08-11): a
+  run a delivered signal terminated settles 128+signal from the
+  ENGINE's own record of that signal, for both command kinds and
+  including the handler that caught the signal, cleaned up and
+  returned successfully. A handler cannot author 130/143 —
+  documented codes stop at 99, and the child-status bypass now
+  refuses an invented child result. The verbatim codes stay
+  verbatim: a real child's status passes through untouched (the
+  child owned the terminal and the signal reached it too), as does
+  a server command's protocol conclusion.
 - **Seam**: spawning enters through `Runtime.spawn` (the bin
   passes a `node:child_process` adapter; the engine never imports
   `node:child_process`); `createTestCli` seeds a scripted fake
@@ -267,7 +282,9 @@ family:
   AFTER, it is a warn event and the session continues. A
   signal-killed converge is SHUTDOWN (cleanup, settle 130), never
   `converge-failed`. Ctrl-C settles 130 (legacy exits 0 —
-  divergence). Windows: refuses, as today.
+  divergence): the handler cleans up and returns `ok(undefined)`,
+  and the ENGINE settles 130 from its own signal record — `dev`
+  states no exit code of its own. Windows: refuses, as today.
 - `log <entry> [address]`: session command reading the LOCAL
   dev-emulator daemon (§4c; not the platform logs surface — S8
   note stands). Windows: refuses, as today.
@@ -388,7 +405,9 @@ install footprint acknowledged as a committed consequence
 
 PR-136 review round (architect + PE on D1, 2026-08-11; orchestrator
 rulings applied): the child-status settlement bypass is fenced to
-`maySpawn` commands (runtime check; the architect blocker);
+`maySpawn` commands (runtime check; the architect blocker) — and,
+since the 2026-08-11 exit-code ruling, to child results the engine
+itself produced;
 `exitWithChildStatus(child, opts?)` gains `{ nextActions? }` rendered
 before the exit — the R-S3-4 surface as written now exists; the spawn
 path's storage read is replaced by the named manager operation

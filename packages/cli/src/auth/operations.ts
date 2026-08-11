@@ -1,12 +1,15 @@
 import type { Credential } from "@prisma/cli-engine";
-import { claimedExpiresAt, claimedWorkspaceId } from "@prisma/cli-engine";
+import {
+  claimedExpiresAt,
+  credentialWorkspaceId,
+  SERVICE_TOKEN_ENV_VAR,
+} from "@prisma/cli-engine";
 import type {
   ManagementApiClient,
   TokenStorage,
   Tokens,
 } from "@prisma/management-api-sdk";
 import type { AuthStateResult } from "../types/auth";
-import { SERVICE_TOKEN_ENV_VAR } from "./client";
 import { authenticatedManagementApiClient } from "./guard";
 import { AuthError, login } from "./login";
 import { FileTokenStorage } from "./token-storage";
@@ -116,7 +119,7 @@ export async function storeLegacyCredential(
   credential: Credential,
   signal?: AbortSignal,
 ): Promise<void> {
-  const workspaceId = claimedWorkspaceId(credential.token);
+  const workspaceId = credentialWorkspaceId(credential.token);
   if (workspaceId === undefined) return;
 
   await new FileTokenStorage(env, signal, {

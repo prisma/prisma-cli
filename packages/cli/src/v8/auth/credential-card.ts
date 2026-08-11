@@ -1,5 +1,8 @@
-import type { ActiveCredential, CredentialIdentity } from "@prisma/cli-engine";
-import { SERVICE_TOKEN_ENV_VAR } from "../../auth/client";
+import {
+  type ActiveCredential,
+  type CredentialIdentity,
+  SERVICE_TOKEN_ENV_VAR,
+} from "@prisma/cli-engine";
 
 export interface FieldRow {
   readonly label: string;
@@ -30,7 +33,10 @@ export function credentialFieldRows(spec: {
     });
   }
   if (credential.origin.source === "environment") {
-    rows.push({ label: "source", value: SERVICE_TOKEN_ENV_VAR });
+    // The label is not "source": whoami's json result already spends
+    // that word on "stored" | "environment", and this value is the name
+    // of a variable the user can unset.
+    rows.push({ label: "environment variable", value: SERVICE_TOKEN_ENV_VAR });
   }
   return rows;
 }

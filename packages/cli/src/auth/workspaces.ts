@@ -1,3 +1,4 @@
+import { SERVICE_TOKEN_ENV_VAR } from "@prisma/cli-engine";
 import {
   createManagementApiSdk,
   type TokenStorage,
@@ -9,12 +10,7 @@ import type {
   AuthWorkspaceLogoutResult,
   AuthWorkspaceUseResult,
 } from "../types/auth";
-import {
-  CLIENT_ID,
-  getApiBaseUrl,
-  SERVICE_TOKEN_ENV_VAR,
-  UNUSED_REDIRECT_URI,
-} from "./client";
+import { CLIENT_ID, getApiBaseUrl, UNUSED_REDIRECT_URI } from "./client";
 import {
   workspaceAmbiguousError,
   workspaceNotAuthenticatedError,

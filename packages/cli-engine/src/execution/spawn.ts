@@ -1,22 +1,24 @@
 import type { AnyCommand } from "../commands";
 import { credentialsRequiredError } from "../credential-errors";
+import {
+  SERVICE_TOKEN_ENV_VAR,
+  WORKSPACE_ID_ENV_VAR,
+} from "../credential-manager";
 import type { EngineEvent } from "../events";
 import { CliStructuredError } from "../protocol";
-import type {
-  ChildResult,
-  SpawnChild,
-  SpawnedChild,
-  SpawnOptions,
-  SpawnRequest,
+import {
+  type ChildResult,
+  engineSpawnedResult,
+  type SpawnChild,
+  type SpawnedChild,
+  type SpawnOptions,
+  type SpawnRequest,
 } from "../spawn";
 import { constructionError } from "./command-tree";
 import { makeDebugLog } from "./debug";
 import type { Invocation } from "./engine";
 import { firstLine } from "./rendering";
 import { flushBufferedEvents } from "./reporting";
-
-const SERVICE_TOKEN_ENV_VAR = "PRISMA_SERVICE_TOKEN";
-const WORKSPACE_ID_ENV_VAR = "PRISMA_WORKSPACE_ID";
 
 /**
  * D1 ruling (S3): how long a child terminated by a programmatic abort
@@ -183,7 +185,7 @@ async function runChild(
   const ended = new AbortController();
   armTerminationLadder(invocation, terminal, child, ended.signal);
   try {
-    return await child.ended;
+    return engineSpawnedResult(await child.ended);
   } catch (cause) {
     throw spawnFailedError(request.command, cause);
   } finally {

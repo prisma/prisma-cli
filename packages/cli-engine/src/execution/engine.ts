@@ -31,6 +31,11 @@ import {
 } from "./command-tree";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import {
+  configFlagGivenNoValue,
+  formatFlagGiven,
+  versionFlagGiven,
+} from "./pre-parse-argv";
+import {
   commandSegments,
   settleBug,
   settleChildStatus,
@@ -45,10 +50,8 @@ import {
 } from "./settlement";
 import {
   applySharedFlags,
+  configFlagGivenNoValueError,
   defaultInteractive,
-  emptyConfigAssignment,
-  emptyConfigAssignmentError,
-  explicitFormat,
   type SharedFlags,
   sniffFormat,
 } from "./shared-flags";
@@ -138,6 +141,11 @@ export interface RunState {
    *  prompt's first await, so an unawaited prompt still blocks
    *  ctx.spawn from handing the same terminal to a child. */
   activePrompts: number;
+  /** The signal the engine delivered to this run, if one reached it.
+   *  The engine's own record of how the run ended: a run a signal
+   *  terminated settles 128 + that signal's number whatever its handler
+   *  concluded, and no handler can author those codes. */
+  deliveredSignal: "SIGINT" | "SIGTERM" | undefined;
   /** A signal past the first delivery recorded during a live child,
    *  replayed as the force exit once the run has settled. */
   pendingForceExit: "SIGINT" | "SIGTERM" | undefined;
@@ -283,12 +291,12 @@ export class EngineImpl implements Engine {
       snapshot: undefined,
       delegatedTerminal: undefined,
       activePrompts: 0,
+      deliveredSignal: undefined,
       pendingForceExit: undefined,
       spawnCredential: undefined,
     };
     const startedAtMs = this.now().getTime();
     const controller = new AbortController();
-    let signalDelivered = false;
     /** The engine neither aborts nor exits while a child owns the
      *  terminal: it records, and the affordance replays on child exit,
      *  so the engine always outlives the child. */
@@ -297,11 +305,11 @@ export class EngineImpl implements Engine {
         recordSignalDuringSpawn(state.delegatedTerminal, signal);
         return;
       }
-      if (signalDelivered) {
+      if (state.deliveredSignal !== undefined) {
         runtime.exit(signal === "SIGTERM" ? 143 : 130);
         return;
       }
-      signalDelivered = true;
+      state.deliveredSignal = signal;
       controller.abort(signal);
     };
     const unsubscribe = runtime.onSignal(deliverSignal);
@@ -315,13 +323,13 @@ export class EngineImpl implements Engine {
       configSections: this.configSections,
       deliverSignal,
     };
-    if (versionRequested(argv)) {
+    if (versionFlagGiven(argv)) {
       unsubscribe();
       return settleVersion(this.spec, invocation);
     }
-    if (emptyConfigAssignment(argv)) {
+    if (configFlagGivenNoValue(argv)) {
       unsubscribe();
-      settleErrored(invocation, emptyConfigAssignmentError());
+      settleErrored(invocation, configFlagGivenNoValueError());
       return 2;
     }
     const stricliProcess = {
@@ -469,7 +477,7 @@ export class EngineImpl implements Engine {
       await this.executeServer(invocation, entry, rawFlags);
       return;
     }
-    if (entry.def.maySpawn && explicitFormat(state.argv) === "json") {
+    if (entry.def.maySpawn && formatFlagGiven(state.argv) === "json") {
       state.format = "human";
       settleErrored(invocation, jsonUnsupportedError(entry.id));
       return;
@@ -694,18 +702,6 @@ function jsonUnsupportedError(commandId: string): CliStructuredError {
       ],
     },
   );
-}
-
-function versionRequested(argv: readonly string[]): boolean {
-  for (const argument of argv) {
-    if (argument === "--") {
-      return false;
-    }
-    if (argument === "--version") {
-      return true;
-    }
-  }
-  return false;
 }
 
 function declaredFlags(

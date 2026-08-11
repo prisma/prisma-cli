@@ -13,7 +13,7 @@ import {
 } from "@prisma/compute-sdk/config";
 import { matchError, type Result } from "better-result";
 
-import { CliError } from "../../shell/errors";
+import { CliError } from "../../errors";
 
 // The compute config contract (types, validation, discovery, loading) lives
 // in @prisma/compute-sdk/config so the CLI, build-runner, and scaffolding

@@ -1,5 +1,7 @@
-import { emptyServiceTokenError } from "@prisma/cli-engine";
-import { SERVICE_TOKEN_ENV_VAR } from "./client";
+import {
+  emptyServiceTokenError,
+  SERVICE_TOKEN_ENV_VAR,
+} from "@prisma/cli-engine";
 
 /**
  * The env-supplied service token, trimmed — or undefined when the var
