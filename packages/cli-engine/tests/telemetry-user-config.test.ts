@@ -1,7 +1,10 @@
 /**
- * Every case here drives the config path through `XDG_CONFIG_HOME`
- * pointed at a fresh temp directory, so no test reads or writes the
- * real user config.
+ * Every case here hands the store an env record pointing at a fresh temp
+ * directory, so no test reads or writes the real user config. The record
+ * sets BOTH `XDG_CONFIG_HOME` and `APPDATA`: the path resolves from the
+ * first on POSIX and the second on win32, and a record carrying only one
+ * of them would resolve to the contributor's real config file on the
+ * other platform.
  */
 import {
   existsSync,
@@ -25,88 +28,69 @@ import {
 const V4_UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-// The config path resolves from XDG_CONFIG_HOME on POSIX and APPDATA on
-// win32, so both must point at the temp dir for the tests to be hermetic
-// on every platform.
-const CONFIG_ENV_VARS = ["XDG_CONFIG_HOME", "APPDATA"] as const;
+function configEnv(root: string): Record<string, string> {
+  return { XDG_CONFIG_HOME: root, APPDATA: root };
+}
 
 let configRoot: string;
-let originalConfigEnv: Record<string, string | undefined>;
-
-function pointConfigEnvAt(root: string): void {
-  for (const name of CONFIG_ENV_VARS) {
-    process.env[name] = root;
-  }
-}
+let env: Record<string, string>;
 
 beforeEach(() => {
   configRoot = mkdtempSync(join(tmpdir(), "prisma-cli-engine-telemetry-"));
-  originalConfigEnv = {};
-  for (const name of CONFIG_ENV_VARS) {
-    originalConfigEnv[name] = process.env[name];
-  }
-  pointConfigEnvAt(configRoot);
-  mkdirSync(dirname(userConfigPath()), { recursive: true });
+  env = configEnv(configRoot);
+  mkdirSync(dirname(userConfigPath(env)), { recursive: true });
 });
 
 afterEach(() => {
-  for (const name of CONFIG_ENV_VARS) {
-    const original = originalConfigEnv[name];
-    if (original === undefined) {
-      delete process.env[name];
-    } else {
-      process.env[name] = original;
-    }
-  }
   rmSync(configRoot, { recursive: true, force: true });
 });
 
 describe("userConfigPath", () => {
   it("resolves the shared prisma-next config file (the same file the ORM binary reads)", () => {
-    expect(userConfigPath()).toBe(
+    expect(userConfigPath(env)).toBe(
       join(configRoot, "prisma-next", "config.json"),
     );
   });
 
-  it("re-resolves per call, so a changed config directory is honoured", () => {
+  it("resolves against the env it is given, not a captured one", () => {
     const other = mkdtempSync(join(tmpdir(), "prisma-cli-engine-telemetry-"));
-    pointConfigEnvAt(other);
-    expect(userConfigPath()).toBe(join(other, "prisma-next", "config.json"));
-    pointConfigEnvAt(configRoot);
+    expect(userConfigPath(configEnv(other))).toBe(
+      join(other, "prisma-next", "config.json"),
+    );
     rmSync(other, { recursive: true, force: true });
   });
 });
 
 describe("readUserConfig", () => {
   it("returns {} when the file does not exist", () => {
-    expect(readUserConfig()).toEqual({});
-    expect(existsSync(userConfigPath())).toBe(false);
+    expect(readUserConfig(env)).toEqual({});
+    expect(existsSync(userConfigPath(env))).toBe(false);
   });
 
   it("returns {} when the file cannot be read", () => {
-    mkdirSync(userConfigPath());
-    expect(readUserConfig()).toEqual({});
+    mkdirSync(userConfigPath(env));
+    expect(readUserConfig(env)).toEqual({});
   });
 
   it("returns {} when the file is malformed", () => {
-    writeFileSync(userConfigPath(), "{not valid json");
-    expect(readUserConfig()).toEqual({});
+    writeFileSync(userConfigPath(env), "{not valid json");
+    expect(readUserConfig(env)).toEqual({});
   });
 
   it("returns {} when the file parses to something other than an object", () => {
-    writeFileSync(userConfigPath(), "[1, 2, 3]");
-    expect(readUserConfig()).toEqual({});
+    writeFileSync(userConfigPath(env), "[1, 2, 3]");
+    expect(readUserConfig(env)).toEqual({});
   });
 
   it("exposes both known fields from a well-formed file", () => {
     writeFileSync(
-      userConfigPath(),
+      userConfigPath(env),
       JSON.stringify({
         enableTelemetry: true,
         installationId: "pre-existing-uuid",
       }),
     );
-    expect(readUserConfig()).toMatchObject({
+    expect(readUserConfig(env)).toMatchObject({
       enableTelemetry: true,
       installationId: "pre-existing-uuid",
     });
@@ -114,10 +98,10 @@ describe("readUserConfig", () => {
 
   it("passes unknown fields through verbatim", () => {
     writeFileSync(
-      userConfigPath(),
+      userConfigPath(env),
       JSON.stringify({ someFutureField: "opaque", nested: { foo: "bar" } }),
     );
-    const config = readUserConfig();
+    const config = readUserConfig(env);
     expect(config["someFutureField"]).toBe("opaque");
     expect(config["nested"]).toEqual({ foo: "bar" });
   });
@@ -126,16 +110,15 @@ describe("readUserConfig", () => {
 describe("writeUserConfig", () => {
   it("keeps unknown fields already on disk", () => {
     writeFileSync(
-      userConfigPath(),
+      userConfigPath(env),
       JSON.stringify({
         installationId: "kept",
         someFutureField: "preserve-me",
         nested: { foo: 1 },
       }),
     );
-    writeUserConfig({ enableTelemetry: true });
-    const config = readUserConfig();
-    expect(config).toEqual({
+    writeUserConfig(env, { enableTelemetry: true });
+    expect(readUserConfig(env)).toEqual({
       enableTelemetry: true,
       installationId: "kept",
       someFutureField: "preserve-me",
@@ -144,21 +127,21 @@ describe("writeUserConfig", () => {
   });
 
   it("mints a v4 installation id alongside an explicit opt-in", () => {
-    writeUserConfig({ enableTelemetry: true });
-    expect(readUserConfig().installationId).toMatch(V4_UUID);
+    writeUserConfig(env, { enableTelemetry: true });
+    expect(readUserConfig(env).installationId).toMatch(V4_UUID);
   });
 
   it("mints no installation id for an explicit opt-out", () => {
-    writeUserConfig({ enableTelemetry: false });
-    expect(readUserConfig()).toEqual({ enableTelemetry: false });
+    writeUserConfig(env, { enableTelemetry: false });
+    expect(readUserConfig(env)).toEqual({ enableTelemetry: false });
   });
 
   it("writes through a temp file and leaves none behind", () => {
-    writeUserConfig({ enableTelemetry: true });
-    const written = readFileSync(userConfigPath(), "utf-8");
+    writeUserConfig(env, { enableTelemetry: true });
+    const written = readFileSync(userConfigPath(env), "utf-8");
     expect(() => JSON.parse(written)).not.toThrow();
     expect(
-      readdirSync(dirname(userConfigPath())).filter((name) =>
+      readdirSync(dirname(userConfigPath(env))).filter((name) =>
         name.endsWith(".tmp"),
       ),
     ).toEqual([]);
@@ -166,46 +149,46 @@ describe("writeUserConfig", () => {
 
   it("creates the config directory when it is missing", () => {
     rmSync(configRoot, { recursive: true, force: true });
-    writeUserConfig({ enableTelemetry: false });
-    expect(existsSync(userConfigPath())).toBe(true);
+    writeUserConfig(env, { enableTelemetry: false });
+    expect(existsSync(userConfigPath(env))).toBe(true);
   });
 });
 
 describe("ensureInstallationId", () => {
   it("mints a v4 UUID and persists it", () => {
-    const id = ensureInstallationId();
+    const id = ensureInstallationId(env);
     expect(id).toMatch(V4_UUID);
-    expect(readUserConfig().installationId).toBe(id);
+    expect(readUserConfig(env).installationId).toBe(id);
   });
 
   it("records no consent the user never gave — enableTelemetry stays absent", () => {
-    ensureInstallationId();
-    expect(readUserConfig()).toEqual({
+    ensureInstallationId(env);
+    expect(readUserConfig(env)).toEqual({
       installationId: expect.stringMatching(V4_UUID),
     });
   });
 
   it("returns the stored id instead of minting a second one", () => {
-    const first = ensureInstallationId();
-    expect(ensureInstallationId()).toBe(first);
-    expect(ensureInstallationId()).toBe(first);
+    const first = ensureInstallationId(env);
+    expect(ensureInstallationId(env)).toBe(first);
+    expect(ensureInstallationId(env)).toBe(first);
   });
 
   it("keeps the same id across an on → off → on cycle", () => {
-    const minted = ensureInstallationId();
-    writeUserConfig({ enableTelemetry: true });
-    expect(readUserConfig().installationId).toBe(minted);
-    writeUserConfig({ enableTelemetry: false });
-    expect(readUserConfig().installationId).toBe(minted);
-    writeUserConfig({ enableTelemetry: true });
-    expect(readUserConfig().installationId).toBe(minted);
-    expect(ensureInstallationId()).toBe(minted);
+    const minted = ensureInstallationId(env);
+    writeUserConfig(env, { enableTelemetry: true });
+    expect(readUserConfig(env).installationId).toBe(minted);
+    writeUserConfig(env, { enableTelemetry: false });
+    expect(readUserConfig(env).installationId).toBe(minted);
+    writeUserConfig(env, { enableTelemetry: true });
+    expect(readUserConfig(env).installationId).toBe(minted);
+    expect(ensureInstallationId(env)).toBe(minted);
   });
 
   it("leaves an existing stored opt-out untouched while minting", () => {
-    writeUserConfig({ enableTelemetry: false });
-    const id = ensureInstallationId();
-    expect(readUserConfig()).toEqual({
+    writeUserConfig(env, { enableTelemetry: false });
+    const id = ensureInstallationId(env);
+    expect(readUserConfig(env)).toEqual({
       enableTelemetry: false,
       installationId: id,
     });

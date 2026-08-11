@@ -29,6 +29,9 @@ export interface UserConfig {
 const APP_DIR = "prisma-next";
 const FILE_NAME = "config.json";
 
+/** The invocation's environment, from `runtime.env`. */
+type Env = Readonly<Record<string, string | undefined>>;
+
 /**
  * Resolves the user-level config directory:
  *   - Windows: `%APPDATA%\prisma-next\` (fallback: `%USERPROFILE%\AppData\Roaming\prisma-next\`).
@@ -36,33 +39,34 @@ const FILE_NAME = "config.json";
  *     `$HOME/.config/prisma-next/` per the XDG Base Directory Specification.
  *
  * XDG is chosen over the macOS-native `~/Library/Preferences/`
- * convention so the path resolution is test-overridable via
- * `XDG_CONFIG_HOME` and matches the documented behaviour on all *nix
- * platforms. The `prisma-next` directory name is deliberate: this file
- * is SHARED with the ORM binary (same path, same format), so both CLIs
- * read one consent answer and one installation id.
+ * convention so the path resolution follows an environment variable and
+ * matches the documented behaviour on all *nix platforms. The
+ * `prisma-next` directory name is deliberate: this file is SHARED with
+ * the ORM binary (same path, same format), so both CLIs read one
+ * consent answer and one installation id.
+ *
+ * Both variables come from the invocation's env, never `process.env` —
+ * the engine reads no process globals. `process.platform` stays: it does
+ * not vary with an invocation and is not modelled on the Runtime.
  */
-function configDir(): string {
+function configDir(env: Env): string {
   if (process.platform === "win32") {
-    const appData = process.env["APPDATA"];
+    const appData = env["APPDATA"];
     if (appData !== undefined && appData.length > 0) {
       return join(appData, APP_DIR);
     }
     return join(homedir(), "AppData", "Roaming", APP_DIR);
   }
-  const xdg = process.env["XDG_CONFIG_HOME"];
+  const xdg = env["XDG_CONFIG_HOME"];
   if (xdg !== undefined && xdg.length > 0) {
     return join(xdg, APP_DIR);
   }
   return join(homedir(), ".config", APP_DIR);
 }
 
-/**
- * Path to the user-level config file. Resolved per call so test
- * harnesses can mutate `$XDG_CONFIG_HOME` between cases.
- */
-export function userConfigPath(): string {
-  return join(configDir(), FILE_NAME);
+/** Path to the user-level config file for this invocation. */
+export function userConfigPath(env: Env): string {
+  return join(configDir(env), FILE_NAME);
 }
 
 /**
@@ -70,8 +74,8 @@ export function userConfigPath(): string {
  * `{}` (the absence of consent is the same answer in every error mode).
  * Unknown fields from a future client are passed through verbatim.
  */
-export function readUserConfig(): UserConfig {
-  const path = userConfigPath();
+export function readUserConfig(env: Env): UserConfig {
+  const path = userConfigPath(env);
   if (!existsSync(path)) return {};
   try {
     const raw = readFileSync(path, "utf-8");
@@ -104,8 +108,8 @@ export function readUserConfig(): UserConfig {
  * default-on first-send path mints its id separately via
  * {@link ensureInstallationId}, which records no consent answer.
  */
-export function writeUserConfig(partial: Partial<UserConfig>): void {
-  const current = readUserConfig();
+export function writeUserConfig(env: Env, partial: Partial<UserConfig>): void {
+  const current = readUserConfig(env);
   const merged: Record<string, unknown> = { ...current, ...partial };
   if (
     partial.enableTelemetry === true &&
@@ -113,7 +117,7 @@ export function writeUserConfig(partial: Partial<UserConfig>): void {
   ) {
     merged["installationId"] = randomUUID();
   }
-  const path = userConfigPath();
+  const path = userConfigPath(env);
   const dir = dirname(path);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
@@ -132,12 +136,12 @@ export function writeUserConfig(partial: Partial<UserConfig>): void {
  * Used by the default-on first-run fire path: the gating resolution has
  * already come back enabled, so this only ever runs when telemetry is on.
  */
-export function ensureInstallationId(): string {
-  const existing = readUserConfig().installationId;
+export function ensureInstallationId(env: Env): string {
+  const existing = readUserConfig(env).installationId;
   if (typeof existing === "string" && existing.length > 0) {
     return existing;
   }
   const installationId = randomUUID();
-  writeUserConfig({ installationId });
+  writeUserConfig(env, { installationId });
   return installationId;
 }
