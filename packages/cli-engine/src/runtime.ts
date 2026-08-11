@@ -70,8 +70,9 @@ export interface Runtime {
   /**
    * Starts a child process with inherited stdio, wired by the bin (a
    * node:child_process adapter) so the engine never imports it. Absent
-   * means this host cannot hand the terminal to a child: ctx.spawn then
-   * fails with the engine's internal error.
+   * means this host cannot hand the terminal to a child: a maySpawn
+   * command is refused as an internal error before its needs check and
+   * handler run, so ctx.spawn is never reached.
    */
   readonly spawn?: SpawnChild;
   /** Management API endpoint config; the bin derives baseUrl from env. */

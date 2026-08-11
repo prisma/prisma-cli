@@ -16,12 +16,14 @@ Contract R-S3-1: the affordance (inherited stdio, same group,
 record-and-replay signal latch, SIGTERM forwarding, abort ladder,
 outlive-child, buffered commentary, reentrancy rule),
 `Runtime.spawn` seam + harness fake, `exitWithChildStatus` +
-session-kind settlement amendment, parse-time `--json` rejection,
-credential injection with the SPI amendment (env pass-through
-branch; stored-session read at the one named call site;
-near-expiry refusal threshold ruled here), the production
-environment-only CredentialManager exported from the main
-entrypoint, draft amendments, the real-child/fake-spawn test split
+session-kind settlement amendment, `--json` rejected as soon as
+the command is known, credential injection with the SPI amendment
+(the manager operation `activeAccessToken()` is the one unified
+read for every credential origin — no source-based branch; an
+environment-only manager implements it as a pass-through of the
+env token; near-expiry refusal threshold ruled here), the
+production environment-only CredentialManager exported from the
+main entrypoint, draft amendments, the real-child/fake-spawn test split
 from the contract's acceptance.
 
 ### D2 — composer foundations (prisma/composer)

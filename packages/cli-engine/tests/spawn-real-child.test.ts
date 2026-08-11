@@ -96,6 +96,17 @@ function scratch(): string {
   return mkdtempSync(join(tmpdir(), "spawn-real-"));
 }
 
+/** Whether a pid is still a live process. Signal 0 tests whether the
+ *  signal could be delivered without sending anything. */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 describe.skipIf(process.platform === "win32")(
   "ctx.spawn, real child",
   () => {
@@ -291,10 +302,11 @@ describe.skipIf(process.platform === "win32")(
 
       expect(run.exitCode).toBe(0);
       expect(run.stdout).toBe("child-said-hello\n");
-      const childLine = run.stderr.indexOf("child-said-stderr");
-      const flushed = run.stderr.indexOf("during-child");
-      expect(childLine).toBeGreaterThanOrEqual(0);
-      expect(flushed).toBeGreaterThan(childLine);
+      expect(run.stderr).toContain("child-said-stderr");
+      expect(run.stderr).toContain("during-child");
+      expect(run.stderr.indexOf("during-child")).toBeGreaterThan(
+        run.stderr.indexOf("child-said-stderr"),
+      );
     });
 
     test("native Ctrl-C reaches the child through the shared process group", async () => {
@@ -328,7 +340,10 @@ describe.skipIf(process.platform === "win32")(
       // forwards SIGTERM and ends the idling child. The child's end is
       // driven by that forward, never by a timer.
       process.kill(host.pid, "SIGINT");
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      // The host writes this marker only after the engine has finished
+      // handling the first press, so the second press cannot arrive
+      // early enough to be mistaken for part of the first.
+      await waitForFile(join(dir, "signal-1"));
       process.kill(host.pid, "SIGINT");
       const run = await host.done;
 
@@ -340,6 +355,19 @@ describe.skipIf(process.platform === "win32")(
       expect(result.aborted).toBe(true);
       expect(result.signal).toBe("SIGTERM");
       expect(run.exitCode).toBe(130);
+    });
+
+    test("a child the handler abandoned is ended before the engine exits", async () => {
+      const dir = scratch();
+
+      const host = startHost("abandon-child", dir);
+      const run = await host.done;
+
+      const childPid = Number(readFileSync(join(dir, "child-pid"), "utf8"));
+      expect(run.exitCode).toBe(1);
+      expect(run.stderr).toContain("resolved while a child was still live");
+      // The host has exited. An orphan would still be running here.
+      expect(alive(childPid)).toBe(false);
     });
   },
   20_000,

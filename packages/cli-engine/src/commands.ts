@@ -298,11 +298,12 @@ export function defineCommand<
  * presentation, no exit-code set.
  *
  * A session supports json mode — the event stream is its json surface —
- * UNLESS it declares `maySpawn`, in which case it rejects --json at
- * parse time (S3): output delegated to a child process cannot be
- * framed. A session that returns ok(undefined) exits 0; one that returns
- * ok(exitWithChildStatus(child)) exits with the child's status, which is
- * the only way a session settles non-zero without erroring.
+ * UNLESS it declares `maySpawn`, in which case it rejects --json as soon
+ * as the command is known, before anything runs (S3): output delegated
+ * to a child process cannot be framed. A session that returns
+ * ok(undefined) exits 0; one that returns ok(exitWithChildStatus(child))
+ * exits with the child's status, which is the only way a session
+ * settles non-zero without erroring.
  */
 export interface SessionCommandDefinition<
   TFlags extends Record<string, FlagSpec<unknown>> = Record<

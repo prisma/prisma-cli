@@ -131,24 +131,26 @@ describe("the engine-facing reads", () => {
 });
 
 describe("wired as a Runtime's manager", () => {
-  test("a child-credentials command injects the env credential through it", async () => {
-    let seen: Readonly<Record<string, string | undefined>> = {};
-    const converge = defineCommand({
-      help: { summary: "Hands credentials to a child" },
-      maySpawn: true,
-      needs: { credentials: "child" },
-      handler: async (_args, ctx) =>
-        ok(exitWithChildStatus(await ctx.spawn({ command: "alchemy" }))),
-    });
-    const cli = createCli({
-      name: "t",
-      version: "0.0.0",
-      commandFamilies: [],
-      groups: {},
-      commands: { converge },
-    });
-    const env = { PRISMA_SERVICE_TOKEN: CLAIMED_TOKEN };
-    const runtime: Runtime = {
+  const converge = defineCommand({
+    help: { summary: "Hands credentials to a child" },
+    maySpawn: true,
+    needs: { credentials: "child" },
+    handler: async (_args, ctx) =>
+      ok(exitWithChildStatus(await ctx.spawn({ command: "alchemy" }))),
+  });
+  const cli = createCli({
+    name: "t",
+    version: "0.0.0",
+    commandFamilies: [],
+    groups: {},
+    commands: { converge },
+  });
+
+  function runtimeFor(
+    env: Readonly<Record<string, string | undefined>>,
+    record: (childEnv: Readonly<Record<string, string | undefined>>) => void,
+  ): Runtime {
+    return {
       stdout: { write: () => {} },
       stderr: { write: () => {} },
       stdin: {
@@ -170,7 +172,7 @@ describe("wired as a Runtime's manager", () => {
         authBaseUrl: "https://auth.test.invalid",
       },
       spawn: (request) => {
-        seen = request.env;
+        record(request.env);
         return {
           ended: Promise.resolve({ exitCode: 0, signal: null }),
           kill: () => {},
@@ -179,11 +181,43 @@ describe("wired as a Runtime's manager", () => {
       managementApi: { baseUrl: "https://test.invalid" },
       packageManager: "unknown",
     };
+  }
 
-    const exitCode = await cli.run(["converge"], runtime);
+  test("a child-credentials command injects the env credential through it", async () => {
+    let seen: Readonly<Record<string, string | undefined>> = {};
+    const env = { PRISMA_SERVICE_TOKEN: CLAIMED_TOKEN };
+
+    const exitCode = await cli.run(
+      ["converge"],
+      runtimeFor(env, (childEnv) => (seen = childEnv)),
+    );
 
     expect(exitCode).toBe(0);
     expect(seen.PRISMA_SERVICE_TOKEN).toBe(CLAIMED_TOKEN);
     expect(seen.PRISMA_WORKSPACE_ID).toBe("ws_claimed");
+  });
+
+  // A service token need not say when it expires. A missing `exp` claim
+  // maps to no expiry at all, which the near-expiry refusal must read as
+  // "nothing to refuse", not as "expires now".
+  test("a token with no exp claim is not refused as near-expiry", async () => {
+    let seen: Readonly<Record<string, string | undefined>> = {};
+    const env = {
+      PRISMA_SERVICE_TOKEN: CLAIMLESS_TOKEN,
+      PRISMA_WORKSPACE_ID: "ws_env",
+    };
+
+    expect(
+      (await new EnvironmentCredentialManager({ env }).activeCredential())
+        ?.expiresAt,
+    ).toBeUndefined();
+
+    const exitCode = await cli.run(
+      ["converge"],
+      runtimeFor(env, (childEnv) => (seen = childEnv)),
+    );
+
+    expect(exitCode).toBe(0);
+    expect(seen.PRISMA_SERVICE_TOKEN).toBe(CLAIMLESS_TOKEN);
   });
 });

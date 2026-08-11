@@ -37,7 +37,11 @@ import {
   type SharedFlags,
   sniffFormat,
 } from "./shared-flags";
-import { type DelegatedTerminal, recordSignalDuringSpawn } from "./spawn";
+import {
+  type DelegatedTerminal,
+  endAbandonedChild,
+  recordSignalDuringSpawn,
+} from "./spawn";
 import {
   buildRoutes,
   capturingText,
@@ -109,6 +113,10 @@ export interface RunState {
    *  signals are recorded rather than acted on, and commentary is
    *  buffered. */
   delegatedTerminal: DelegatedTerminal | undefined;
+  /** How many prompts are reading the terminal. Claimed before a
+   *  prompt's first await, so an unawaited prompt still blocks
+   *  ctx.spawn from handing the same terminal to a child. */
+  activePrompts: number;
   /** A signal past the first delivery recorded during a live child,
    *  replayed as the force exit once the run has settled. */
   pendingForceExit: "SIGINT" | "SIGTERM" | undefined;
@@ -244,6 +252,7 @@ export class EngineImpl implements Engine {
       argv,
       snapshot: undefined,
       delegatedTerminal: undefined,
+      activePrompts: 0,
       pendingForceExit: undefined,
       spawnCredential: undefined,
     };
@@ -424,10 +433,10 @@ export class EngineImpl implements Engine {
     if (entry.def.kind === "session-command") {
       try {
         const result = await (handler as ErasedSessionHandler)(args, ctx);
-        state.resolved = true;
-        if (this.settleAbandonedChild(invocation, false)) {
+        if (await this.settleAbandonedChild(invocation, false)) {
           return;
         }
+        state.resolved = true;
         if (!result.ok) {
           settleErrored(invocation, result.failure);
         } else if (isChildStatusSettlement(result.value)) {
@@ -436,20 +445,20 @@ export class EngineImpl implements Engine {
           settleSessionCompleted(invocation);
         }
       } catch (cause) {
-        state.resolved = true;
-        if (this.settleAbandonedChild(invocation, true, cause)) {
+        if (await this.settleAbandonedChild(invocation, true, cause)) {
           return;
         }
+        state.resolved = true;
         settleThrown(invocation, cause);
       }
       return;
     }
     try {
       const result = await (handler as ErasedHandler)(args, ctx);
-      state.resolved = true;
-      if (this.settleAbandonedChild(invocation, false)) {
+      if (await this.settleAbandonedChild(invocation, false)) {
         return;
       }
+      state.resolved = true;
       if (!result.ok) {
         settleErrored(invocation, result.failure);
       } else if (isChildStatusSettlement(result.value)) {
@@ -458,29 +467,30 @@ export class EngineImpl implements Engine {
         settleCompleted(invocation, entry.def, result.value);
       }
     } catch (cause) {
-      state.resolved = true;
-      if (this.settleAbandonedChild(invocation, true, cause)) {
+      if (await this.settleAbandonedChild(invocation, true, cause)) {
         return;
       }
+      state.resolved = true;
       settleThrown(invocation, cause);
     }
   }
 
-  /** "The engine always outlives the child" holds only while the
-   *  handler is suspended on the ctx.spawn promise. A handler that
-   *  resolves or throws with the child still live has broken that
-   *  contract — settling normally would write to a terminal the child
-   *  owns and exit under a live child — so it settles as a
-   *  construction error instead of silently orphaning it. */
-  private settleAbandonedChild(
+  /** The handler resolved or threw with its child still live. The
+   *  engine ends that child — SIGTERM, the ruled grace period, then
+   *  SIGKILL — and waits for it to exit before settling the run as a
+   *  construction error, so no run finishes under a live child. */
+  private async settleAbandonedChild(
     invocation: Invocation,
     threw: boolean,
     cause?: unknown,
-  ): boolean {
+  ): Promise<boolean> {
     const state = invocation.state;
-    if (state.delegatedTerminal === undefined) {
+    const terminal = state.delegatedTerminal;
+    if (terminal === undefined) {
       return false;
     }
+    await endAbandonedChild(terminal);
+    state.resolved = true;
     const how = threw
       ? ` (the handler threw: ${String(cause instanceof Error ? cause.message : cause).split("\n")[0]})`
       : "";

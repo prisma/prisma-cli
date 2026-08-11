@@ -34,6 +34,13 @@ export interface DelegatedTerminal {
   readonly buffered: EngineEvent[];
   dropped: number;
   child: SpawnedChild | undefined;
+  /** Aborted to end a child the handler walked away from; the
+   *  termination ladder arms on it exactly as it does on ctx.signal, so
+   *  a child that has not attached yet is still terminated on attach. */
+  readonly termination: AbortController;
+  /** Resolves when the delegated window has fully closed — the child
+   *  ended and the buffered events were flushed. Never rejects. */
+  ended: Promise<void>;
 }
 
 /** A signal delivered while a child owns the terminal: recorded for
@@ -60,7 +67,6 @@ export function makeSpawn(
 ): (options: SpawnOptions) => Promise<ChildResult> {
   return async (options) => {
     const state = invocation.state;
-    const debug = makeDebugLog(invocation.runtime);
     if (!def.maySpawn) {
       throw constructionError(
         `command '${state.commandId}' called ctx.spawn without declaring maySpawn`,
@@ -69,6 +75,11 @@ export function makeSpawn(
     if (state.delegatedTerminal !== undefined) {
       throw constructionError(
         `command '${state.commandId}' called ctx.spawn while a child was still live (one live child per run)`,
+      );
+    }
+    if (state.activePrompts > 0) {
+      throw constructionError(
+        `command '${state.commandId}' called ctx.spawn while a prompt owned the terminal`,
       );
     }
     const spawnChild = invocation.runtime.spawn;
@@ -84,34 +95,73 @@ export function makeSpawn(
       buffered: [],
       dropped: 0,
       child: undefined,
+      termination: new AbortController(),
+      ended: Promise.resolve(),
     };
     state.delegatedTerminal = terminal;
-    try {
-      const request: SpawnRequest = {
-        command: options.command,
-        args: options.args ?? [],
-        cwd: options.cwd ?? invocation.runtime.cwd,
-        env: await composeChildEnv(invocation, def, options.env),
-      };
-      debug(
-        `spawn: ${request.command} ${request.args.join(" ")} (cwd ${request.cwd})`,
-      );
-      const result = await runChild(invocation, terminal, spawnChild, request);
-      debug(
-        `spawn ended: exitCode=${String(result.exitCode)} signal=${String(result.signal)} recorded=[${terminal.recorded.join(",")}]`,
-      );
-      return result;
-    } finally {
-      state.delegatedTerminal = undefined;
-      // A handler that abandoned the spawn promise has already settled
-      // the run by the time the child ends; its backlog has nowhere
-      // valid to go and is dropped rather than reported as late bugs.
-      if (!state.resolved) {
-        flushBufferedEvents(invocation, terminal);
-        replayRecordedSignals(invocation, terminal.recorded);
-      }
-    }
+    const running = runDelegated(
+      invocation,
+      def,
+      terminal,
+      spawnChild,
+      options,
+    );
+    // Recorded in the same turn the terminal is claimed, so a handler
+    // that abandons the promise still leaves the engine a handle to
+    // wait on. The catch also keeps an abandoned rejection handled.
+    terminal.ended = running.then(
+      () => undefined,
+      () => undefined,
+    );
+    return await running;
   };
+}
+
+async function runDelegated(
+  invocation: Invocation,
+  def: AnyCommand,
+  terminal: DelegatedTerminal,
+  spawnChild: SpawnChild,
+  options: SpawnOptions,
+): Promise<ChildResult> {
+  const state = invocation.state;
+  const debug = makeDebugLog(invocation.runtime);
+  try {
+    const request: SpawnRequest = {
+      command: options.command,
+      args: options.args ?? [],
+      cwd: options.cwd ?? invocation.runtime.cwd,
+      env: await composeChildEnv(invocation, def, options.env),
+    };
+    debug(
+      `spawn: ${request.command} ${request.args.join(" ")} (cwd ${request.cwd})`,
+    );
+    const result = await runChild(invocation, terminal, spawnChild, request);
+    debug(
+      `spawn ended: exitCode=${String(result.exitCode)} signal=${String(result.signal)} recorded=[${terminal.recorded.join(",")}]`,
+    );
+    return result;
+  } finally {
+    state.delegatedTerminal = undefined;
+    // The engine waits for an abandoned child before it settles, so the
+    // run is still open here in every ordinary case. A spawn started by
+    // detached work the handler left running is the exception: it ends
+    // after settlement, and its backlog has nowhere valid to go.
+    if (!state.resolved) {
+      flushBufferedEvents(invocation, terminal);
+      replayRecordedSignals(invocation, terminal.recorded);
+    }
+  }
+}
+
+/** A handler that resolved or threw with its child still live: the
+ *  engine ends the child on the abort ladder and waits for it, because
+ *  the engine outliving the child is not negotiable. */
+export async function endAbandonedChild(
+  terminal: DelegatedTerminal,
+): Promise<void> {
+  terminal.termination.abort();
+  await terminal.ended;
 }
 
 async function runChild(
@@ -131,7 +181,7 @@ async function runChild(
     child.kill("SIGTERM");
   }
   const ended = new AbortController();
-  armTerminationLadder(invocation, child, ended.signal);
+  armTerminationLadder(invocation, terminal, child, ended.signal);
   try {
     return await child.ended;
   } catch (cause) {
@@ -142,9 +192,11 @@ async function runChild(
 }
 
 /** A programmatic abort of ctx.signal (a delivered signal is recorded
- *  instead) terminates the child: SIGTERM, the grace period, SIGKILL. */
+ *  instead), or the engine ending a child the handler abandoned,
+ *  terminates the child: SIGTERM, the grace period, SIGKILL. */
 function armTerminationLadder(
   invocation: Invocation,
+  terminal: DelegatedTerminal,
   child: SpawnedChild,
   ended: AbortSignal,
 ): void {
@@ -161,11 +213,15 @@ function armTerminationLadder(
       child.kill("SIGKILL");
     }
   };
-  if (invocation.signal.aborted) {
+  const trigger = AbortSignal.any([
+    invocation.signal,
+    terminal.termination.signal,
+  ]);
+  if (trigger.aborted) {
     void terminate();
     return;
   }
-  invocation.signal.addEventListener("abort", () => void terminate(), {
+  trigger.addEventListener("abort", () => void terminate(), {
     once: true,
     signal: ended,
   });

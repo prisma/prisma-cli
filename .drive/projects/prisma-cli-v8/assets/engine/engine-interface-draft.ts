@@ -415,7 +415,7 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
    *  the pinned session's client, built from the injected client
    *  config on first method CALL, once per run (process pinning makes
    *  the memoization correct). A stored session gets the SDK's
-   *  refreshing path over manager.tokenStorage(workspaceId); an env
+   *  refreshing path over manager.activeCredentialStorage(); an env
    *  session gets the SDK's static-token path with its error mapping
    *  at the call site. Request failures pass through the engine-side
    *  mapping (design §6): refreshTokenInvalid === true → the expired
@@ -568,10 +568,14 @@ export interface CredentialManager {
   /** Log out entirely: remove all sessions and the marker. */
   endAllSessions(): Promise<void>
   /** ENGINE-FACING, not a user operation: the SDK TokenStorage view
-   *  for one workspace's session. The engine forwards it into SDK
-   *  client config and never calls its methods itself — no
+   *  of the ACTIVE credential. Zero-argument — process pinning ruled
+   *  there is one credential per process, and an environment
+   *  credential may have no workspace id to key on; the earlier
+   *  tokenStorage(workspaceId) is deleted rather than reshaped
+   *  (credential-manager-design.md §11.5). The engine forwards it
+   *  into SDK client config and never calls its methods itself — no
    *  exceptions; the engine's own token read is activeAccessToken(). */
-  tokenStorage(workspaceId: string): TokenStorage
+  activeCredentialStorage(): Promise<TokenStorage>
   /** ENGINE-FACING (S3, amended after the PR-136 review): the active
    *  credential's ACCESS token, read fresh, for handing to a child
    *  process that authenticates as this process does. Never the

@@ -21,6 +21,7 @@ const spawnChild = (request) => {
     env: request.env,
     stdio: "inherit",
   });
+  writeFileSync(join(dir, "child-pid"), String(child.pid));
   return {
     ended: new Promise((resolve, reject) => {
       child.on("error", reject);
@@ -38,6 +39,9 @@ const childArgs = {
   // Idles forever: the test controls when it ends (the engine's
   // second-press SIGTERM escalation), so nothing races a timer.
   "double-sigint": ["idle", join(dir, "ready")],
+  // Idles forever, and the handler walks away from it: only the engine
+  // ending the child can stop this process leaving an orphan behind.
+  "abandon-child": ["idle", join(dir, "ready")],
 }[scenario];
 
 const command = defineCommand({
@@ -50,6 +54,10 @@ const command = defineCommand({
     });
     if (scenario === "unframed-stdout") {
       ctx.report({ kind: "message", severity: "info", text: "during-child" });
+    }
+    if (scenario === "abandon-child") {
+      live.catch(() => {});
+      return ok(ctx.present({ data: null }, { human: () => [] }));
     }
     const child = await live;
     writeFileSync(
@@ -75,8 +83,17 @@ const runtime = {
   isTty: { stdin: false, stdout: false, stderr: false },
   exit: (code) => process.exit(code),
   onSignal: (subscriber) => {
-    const onSigint = () => subscriber("SIGINT");
-    const onSigterm = () => subscriber("SIGTERM");
+    // The marker is written AFTER the engine has handled the press, so
+    // the test can gate the next signal on the previous one landing
+    // instead of sleeping.
+    let delivered = 0;
+    const deliver = (signal) => {
+      subscriber(signal);
+      delivered += 1;
+      writeFileSync(join(dir, `signal-${delivered}`), signal);
+    };
+    const onSigint = () => deliver("SIGINT");
+    const onSigterm = () => deliver("SIGTERM");
     process.on("SIGINT", onSigint);
     process.on("SIGTERM", onSigterm);
     return () => {
@@ -99,5 +116,8 @@ const cli = createCli({
 });
 
 writeFileSync(join(dir, "host-ready"), "ready");
-const exitCode = await cli.run(["go"], runtime);
-process.exit(exitCode);
+// Not process.exit: stdout and stderr are pipes under the real-child
+// tests, and it would truncate writes still queued on them — including
+// the commentary the engine flushes as the run settles. The engine has
+// already unsubscribed its signal handlers, so the loop drains.
+process.exitCode = await cli.run(["go"], runtime);

@@ -15,6 +15,7 @@ import { ok } from "@prisma/cli-engine/protocol";
 import {
   createTestCli,
   mintTestJwt,
+  type ScriptedChildProgram,
   type SpawnRecord,
 } from "@prisma/cli-engine/testing";
 import { describe, expect, test } from "vitest";
@@ -547,6 +548,41 @@ describe("credential injection", () => {
     expect(result.spawns).toEqual([]);
   });
 
+  // The threshold is five minutes. Bracketing it at 60 s and 3600 s
+  // would pass even with the wrong unit or comparison, so both sides of
+  // the boundary are pinned to the second.
+  test("a session expiring at exactly five minutes refuses", async () => {
+    const cli = createTestCli({
+      commands: { converge: credentialedConverge },
+      now: CLOCK,
+      credential: {
+        token: jwtExpiringIn(300, "ws_1"),
+        refreshToken: undefined,
+        expiresAt: undefined,
+      },
+    });
+
+    const result = await cli.run(["converge"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("expires too soon");
+    expect(result.spawns).toEqual([]);
+  });
+
+  test("a session expiring one second past five minutes runs", async () => {
+    const cli = createTestCli({
+      commands: { converge: credentialedConverge },
+      now: CLOCK,
+      credential: {
+        token: jwtExpiringIn(301, "ws_1"),
+        refreshToken: undefined,
+        expiresAt: undefined,
+      },
+    });
+
+    expect((await cli.run(["converge"])).exitCode).toBe(0);
+  });
+
   test("a session outside the threshold runs", async () => {
     const cli = createTestCli({
       commands: { converge: credentialedConverge },
@@ -726,7 +762,19 @@ describe("unknown terminations are never success", () => {
 });
 
 describe("a handler that abandons the spawn promise", () => {
-  test("resolving with a live child is a construction error, not a silent orphan", async () => {
+  /** A child that never ends on its own: only the engine's termination
+   *  ladder can end it, so the run settling at all proves the engine
+   *  drove that ladder and waited. */
+  function childEndingOnlyWhenKilled(order: string[]): ScriptedChildProgram {
+    return async (_request, { nextKill }) => {
+      const signal = await nextKill();
+      order.push("child ended");
+      return { exitCode: null, signal };
+    };
+  }
+
+  test("resolving with a live child ends that child before the run settles", async () => {
+    const order: string[] = [];
     const abandoning = defineSessionCommand({
       help: { summary: "Returns while its child is still live" },
       maySpawn: true,
@@ -738,16 +786,20 @@ describe("a handler that abandons the spawn promise", () => {
     const cli = createTestCli({
       commands: { abandoning },
       now: CLOCK,
-      spawnScript: () => new Promise(() => {}),
+      spawnScript: childEndingOnlyWhenKilled(order),
     });
 
     const result = await cli.run(["abandoning"]);
+    order.push("run settled");
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("resolved while a child was still live");
+    expect(result.spawns[0].kills[0]).toBe("SIGTERM");
+    expect(order).toEqual(["child ended", "run settled"]);
   });
 
   test("throwing with a live child is the same error, naming the throw", async () => {
+    const order: string[] = [];
     const throwing = defineCommand({
       help: { summary: "Throws while its child is still live" },
       maySpawn: true,
@@ -759,14 +811,42 @@ describe("a handler that abandons the spawn promise", () => {
     const cli = createTestCli({
       commands: { throwing },
       now: CLOCK,
-      spawnScript: () => new Promise(() => {}),
+      spawnScript: childEndingOnlyWhenKilled(order),
     });
 
     const result = await cli.run(["throwing"]);
+    order.push("run settled");
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("resolved while a child was still live");
     expect(result.stderr).toContain("boom mid-child");
+    expect(order).toEqual(["child ended", "run settled"]);
+  });
+
+  test("commentary buffered before the abandonment still reaches stderr", async () => {
+    const order: string[] = [];
+    const abandoning = defineSessionCommand({
+      help: { summary: "Reports, then returns while its child is live" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        void ctx.spawn({ command: "alchemy" }).catch(() => {});
+        ctx.report({
+          kind: "message",
+          severity: "info",
+          text: "during-child",
+        });
+        return ok(undefined);
+      },
+    });
+    const cli = createTestCli({
+      commands: { abandoning },
+      now: CLOCK,
+      spawnScript: childEndingOnlyWhenKilled(order),
+    });
+
+    const result = await cli.run(["abandoning"]);
+
+    expect(result.stderr).toContain("during-child");
   });
 });
 
@@ -882,7 +962,7 @@ describe("the commentary buffer is bounded", () => {
   });
 });
 
-describe("prompts while a child owns the terminal", () => {
+describe("the terminal has one owner at a time", () => {
   test("ctx.prompt during a live child is a construction error", async () => {
     const prompting = defineCommand({
       help: { summary: "Prompts mid-child" },
@@ -904,10 +984,55 @@ describe("prompts while a child owns the terminal", () => {
       "called ctx.prompt while a child owned the terminal",
     );
   });
+
+  test("ctx.spawn during an unawaited prompt is a construction error", async () => {
+    const prompting = defineCommand({
+      help: { summary: "Spawns while a prompt is reading stdin" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        // Never awaited: the prompt has already started reading stdin
+        // by the time the next line asks for the same terminal.
+        const answer = ctx.prompt.confirm("Proceed?", { default: true });
+        const failure = await ctx
+          .spawn({ command: "alchemy" })
+          .then(() => "no error", String);
+        await answer;
+        return ok(ctx.present({ data: failure }, { human: () => [] }));
+      },
+    });
+    const cli = createTestCli({ commands: { prompting }, now: CLOCK });
+
+    const result = await cli.run(["prompting"]);
+
+    expect(result.presented?.data).toContain(
+      "called ctx.spawn while a prompt owned the terminal",
+    );
+    expect(result.spawns).toEqual([]);
+  });
+
+  test("a settled prompt releases the terminal for a later spawn", async () => {
+    const sequential = defineCommand({
+      help: { summary: "Prompts, then spawns" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        await ctx.prompt.confirm("Proceed?", { default: true });
+        const child = await ctx.spawn({ command: "alchemy" });
+        return ok(exitWithChildStatus(child));
+      },
+    });
+    const cli = createTestCli({ commands: { sequential }, now: CLOCK });
+
+    const result = await cli.run(["sequential"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.spawns).toHaveLength(1);
+  });
 });
 
 function controllableRuntime() {
-  let subscriber: ((signal: "SIGINT" | "SIGTERM") => void) | undefined;
+  // A set, like the real runtime's: a second registration must not
+  // displace the first, and one unsubscribe must not clear the others.
+  const subscribers = new Set<(signal: "SIGINT" | "SIGTERM") => void>();
   const exited: number[] = [];
   const stderrText: string[] = [];
   const runtime: Runtime = {
@@ -928,9 +1053,9 @@ function controllableRuntime() {
       throw new Error(`runtime.exit(${code})`);
     },
     onSignal: (cb) => {
-      subscriber = cb;
+      subscribers.add(cb);
       return () => {
-        subscriber = undefined;
+        subscribers.delete(cb);
       };
     },
     config: { sections: {}, diagnostics: [] },
@@ -941,6 +1066,13 @@ function controllableRuntime() {
     runtime,
     exited,
     stderr: () => stderrText.join(""),
-    deliver: (signal: "SIGINT" | "SIGTERM") => subscriber?.(signal),
+    deliver: (signal: "SIGINT" | "SIGTERM") => {
+      if (subscribers.size === 0) {
+        throw new Error("deliver() ran with no signal subscriber registered");
+      }
+      for (const cb of [...subscribers]) {
+        cb(signal);
+      }
+    },
   };
 }

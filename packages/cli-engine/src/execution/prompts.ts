@@ -445,30 +445,30 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
       }
     },
   };
+  /** The claim is taken synchronously, before the prompt's first await:
+   *  a handler that starts a prompt without awaiting it has already
+   *  begun reading stdin, so ctx.spawn must not hand the same terminal
+   *  to a child. */
+  const claimTerminal = async <T>(prompt: () => Promise<T>): Promise<T> => {
+    requireOwnTerminal();
+    state.activePrompts += 1;
+    try {
+      return await prompt();
+    } finally {
+      state.activePrompts -= 1;
+    }
+  };
   return {
-    confirm: async (question, opts) => {
-      requireOwnTerminal();
-      return surface.confirm(question, opts);
-    },
-    consent: async (question, opts) => {
-      requireOwnTerminal();
-      return surface.consent(question, opts);
-    },
-    select: async <T extends string>(
+    confirm: (question, opts) =>
+      claimTerminal(() => surface.confirm(question, opts)),
+    consent: (question, opts) =>
+      claimTerminal(() => surface.consent(question, opts)),
+    select: <T extends string>(
       question: string,
       options: ReadonlyArray<{ value: T; label: string }>,
       opts?: { readonly default?: T },
-    ) => {
-      requireOwnTerminal();
-      return surface.select(question, options, opts);
-    },
-    text: async (question, opts) => {
-      requireOwnTerminal();
-      return surface.text(question, opts);
-    },
-    browserWait: async (request) => {
-      requireOwnTerminal();
-      return surface.browserWait(request);
-    },
+    ) => claimTerminal(() => surface.select(question, options, opts)),
+    text: (question, opts) => claimTerminal(() => surface.text(question, opts)),
+    browserWait: (request) => claimTerminal(() => surface.browserWait(request)),
   };
 }
