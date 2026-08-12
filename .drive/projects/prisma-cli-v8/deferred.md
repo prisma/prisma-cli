@@ -172,6 +172,18 @@ composer can use it.
   "repair" forever. The deploy path is unaffected (it plans on props
   only — see the S8 note below), so this is a courtesy report to the
   maintainer, not a blocker.
+- **The ORM family's entry module loads esbuild and arktype on every
+  invocation.** `@prisma/orm-toolchain`'s `./cli` subpath statically
+  imports `esbuild`, `arktype` and eight `@prisma/orm-framework`
+  subpaths, so mounting the family (S7 D1) makes every run of this bin
+  pay that import — `prisma --version` included, which touches no ORM
+  code. Composer solved the same problem by keeping its heavy graph
+  behind dynamic executor imports; orm-toolchain has not. It costs
+  startup time only: no output and no exit code changes. The fix is
+  prisma/prisma's to land (dynamic handler imports in orm-toolchain's
+  CLI entry), and it closes when a published orm-toolchain's `cli.mjs`
+  no longer imports those modules at the top level. Recorded also in
+  `assets/s2/parity-divergences-s7.md`.
 
 ## Answered, feeding a later slice
 
