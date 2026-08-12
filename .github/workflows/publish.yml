@@ -194,30 +194,43 @@ jobs:
       # changelog signal. The Release is created at $GITHUB_SHA so the
       # tag points at the same commit the publish ran from.
       #
-      # Idempotent on workflow rerun: if a Release for `v$VERSION` already
-      # exists (e.g. a previous run published to npm but failed before this
-      # step), edit it in place rather than re-creating it.
+      # This repo's releases are immutable: once published, neither the
+      # assets nor the tag can change (uploading to a published release
+      # answers HTTP 422). So the Release is created as a DRAFT with the
+      # smoked tarballs already attached, then published — assets first,
+      # publish second. On a rerun that finds the Release already
+      # published there is nothing left to repair; the step says so and
+      # succeeds.
       - name: Create GitHub Release
         if: ${{ steps.version.outputs.publish == 'true' && steps.version.outputs.release == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "Release v$VERSION already exists and releases are immutable — nothing to repair."
+            exit 0
+          fi
           PRERELEASE_FLAG=""
           case "$VERSION" in
             *-rc.*) PRERELEASE_FLAG="--prerelease" ;;
           esac
-          if gh release view "v$VERSION" >/dev/null 2>&1; then
-            gh release edit "v$VERSION" \
-              --target "$GITHUB_SHA" \
-              --title "v$VERSION"
-          else
-            gh release create "v$VERSION" \
-              --target "$GITHUB_SHA" \
-              --title "v$VERSION" \
-              --generate-notes \
-              $PRERELEASE_FLAG
+          gh release create "v$VERSION" \
+            --draft \
+            --target "$GITHUB_SHA" \
+            --title "v$VERSION" \
+            --generate-notes \
+            $PRERELEASE_FLAG \
+            artifacts/tarballs/*.tgz
+          # A draft's tag does not exist yet, so `gh release edit
+          # <tag> --draft=false` cannot address it; publish through the
+          # API by the draft's id.
+          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+            --jq ".[] | select(.draft and .tag_name == \"v$VERSION\") | .id" | head -1)
+          if [ -z "$release_id" ]; then
+            echo "Could not find the draft release for v$VERSION" >&2
+            exit 1
           fi
-          # The exact tarballs the smoke verified, attached to the
-          # Release. --clobber keeps reruns idempotent.
-          gh release upload "v$VERSION" artifacts/tarballs/*.tgz --clobber
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+            -F draft=false >/dev/null
+          echo "Published release v$VERSION with $(ls artifacts/tarballs/*.tgz | wc -l | tr -d ' ') asset(s)."
