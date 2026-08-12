@@ -92,8 +92,9 @@ contract is `specs/s8-services.md`. The four questions below are
 answered there: no ownership note for now, records verified
 compatible, the log-ownership conflict dissolved on investigation
 (`composer log` reads the local dev daemon, not the platform), and
-`service logs` stays shelved while the operator asks the API owners
-the transport question.
+the transport question is ANSWERED — the API owners accept HTTP with
+live streaming later, so `service logs` stays shelved only until the
+endpoint serves HTTP, and no engine WebSocket transport is built.
 
 Repo: prisma-cli. Give the platform's service resources an atomic CLI surface, replacing what S2c ported for continuity.
 

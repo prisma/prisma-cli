@@ -11,7 +11,7 @@ per-command tests are `packages/cli/tests/v8-service-*.test.ts` over
 `v8-service-testkit.ts`; the API surface is
 `packages/cli/src/lib/app/app-provider.ts`.
 
-### D1 — the `deployment` subgroup + presenter corrections
+## D1 — the `deployment` subgroup + presenter corrections
 
 Outcome: the four renamed commands exist ONLY under
 `service deployment` (`list|show|promote|rollback`), and the two
@@ -32,7 +32,7 @@ Completed when: renamed suites green; a grep for the old spellings
 in `src/v8` and help output returns nothing; corrected `url`/`live`
 pinned by test.
 
-### D2 — `service list` + `service create`
+## D2 — `service list` + `service create`
 
 Outcome: services can be enumerated and born without deploying.
 `service list` on `GET /v1/apps`; `service create` on
@@ -49,7 +49,7 @@ Completed when: both commands green through the harness; `create`
 proven against the real API in the e2e suite including no-region /
 no-branch defaults.
 
-### D3 — deployment lifecycle: `start` / `stop` / `delete`
+## D3 — deployment lifecycle: `start` / `stop` / `delete`
 
 Outcome: `service deployment start|stop|delete` exist per R-S8-2 —
 result commands on `POST /v1/deployments/{id}/start|stop` and
@@ -65,7 +65,7 @@ Hands to D4: the full S8 grammar in place.
 Completed when: three commands green; consent path tested; the
 delete-live-deployment behavior recorded (or surfaced as a STOP).
 
-### D4 — closure
+## D4 — closure
 
 Outcome: the records match the shipped surface. Divergence file
 `assets/s2/parity-divergences-s8.md` (four renames, deleted
