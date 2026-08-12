@@ -18,7 +18,7 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=22.18.0"
   },
   "keywords": [
     "prisma",
@@ -47,7 +47,7 @@
   "dependencies": {
     "@clack/prompts": "1.5.0",
     "@prisma/cli-engine": "workspace:8.0.0-rc.1",
-    "@prisma/composer": "0.6.0-dev.15",
+    "@prisma/composer": "0.6.0-dev.16",
     "@prisma/compute-sdk": "0.39.0",
     "@prisma/credentials-store": "^7.8.0",
     "@prisma/management-api-sdk": "1.55.0",

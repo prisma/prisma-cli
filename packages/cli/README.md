@@ -104,7 +104,7 @@ npx prisma-cli app promote <deployment-id>
 
 ## Beta notes
 
-- Requires Node.js 24 or newer.
+- Requires Node.js 22.18 or newer.
 - This is a beta package and may change quickly.
 - Official beta releases publish as `@prisma/cli`.
 - The package binary is `prisma-cli`, not `prisma`, during beta.

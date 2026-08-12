@@ -13,6 +13,10 @@ Requirements:
 - Node.js 24 or newer
 - pnpm 10
 
+Published `@prisma/cli` declares a lower floor (Node 22.18, matching
+`@prisma/composer`), but the test suite needs 24: composer's deploy executor
+fails to load on Node 22, which the composer startup-isolation test catches.
+
 Install dependencies:
 
 ```bash
