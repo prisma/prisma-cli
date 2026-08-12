@@ -2,7 +2,7 @@
 
 Contract: `specs/s6-conformance.md` revision 3. Read it first; this plan decides nothing the contract leaves open.
 
-**State: D1 and D2 are DONE.** `packages/cli-conformance` holds the module graph, check 1 and check 2, with 35 tests written before the code. Both checks pass against what this repo ships: composer's real validator survives the 21-case hostile corpus, and both published packages' built output imports only what they declare. `pnpm lint`, `pnpm typecheck` and the package suite are green. D3, D4 and D5 remain blocked as marked below.
+**State: D1 and D2 are DONE.** `packages/cli-conformance` holds the module graph, check 1 and check 2; the two checked packages call them on themselves. 35 tests, written before the code: 31 in the checker's own suite, 3 in the shell's, 1 in the engine's. Both checks pass against what this repo ships — composer's real validator survives the 21-case hostile corpus, and both published packages' built output imports only what they declare. `pnpm lint`, `pnpm typecheck` and `turbo run test --concurrency=1` are green; plain `pnpm test` fails on a pre-existing race recorded in `deferred.md`, which the base commit fails too. D3, D4 and D5 remain blocked as marked below.
 
 **Scope split against the open questions.** Revision 1 claimed D1–D4 were correct under every ruling. That was wrong, and the architect review said so: D3 builds the exception list that STOP-3 might discard, its bin-start input shape depends on STOP-6, the package's name and privacy depend on STOP-4, and D4 edits records that STOP-1 and STOP-2 settle. The honest split:
 
@@ -12,22 +12,27 @@ Contract: `specs/s6-conformance.md` revision 3. Read it first; this plan decides
 
 ## Shape
 
-One workspace package holding the checks as injected functions, plus a thin entry supplying prisma-cli's own subjects. The split is what makes the same checks reusable from another repo later: a second repo needs a new entry, not a new checker. Note the limit the architect review identified — under STOP-4(a) there is exactly one consumer, so this shape buys testability rather than reuse, and check 1 cannot express the assertion composer actually needs ("this specifier must *survive* in the built output", because composer bundles its internal scope and an inlined engine leaves no specifier at all). That is composer's existing `check-cli-engine-pin.mjs`, and it stays composer's.
+One workspace package holding the checks as injected functions, and each checked package calling them on itself. That split is what makes the same checks reusable from another repo later: a second repo needs its own call site, not its own checker.
+
+Note the limit the architect review identified: under STOP-4(a) there is exactly one repo consuming this, so the shape buys testability rather than reuse today. And check 1 cannot express the assertion composer actually needs — "this specifier must *survive* in the built output", because composer bundles its internal scope and an inlined engine leaves no specifier at all. That is composer's existing `check-cli-engine-pin.mjs`, and it stays composer's.
 
 ```text
 packages/cli-conformance/          @repo/cli-conformance, private — name per STOP-4
-  src/
+  src/                             depends on es-module-lexer and nothing it checks
     findings.ts                    Finding, Report, exitCodeFor, human + json rendering   DONE
     module-graph.ts                bare import roots of built output, via es-module-lexer  DONE
-    subjects.ts                    the engine's own section union, from families+commands  DONE
+    subjects.ts                    CheckableSection + the engine's own section union       DONE
     checks/import-purity.ts        check 1                                                 DONE
     checks/validator-no-throw.ts   check 2 + the 21-case hostile corpus                    DONE
     checks/tarball.ts              checks 3a, 3b, 3c                                       D3
-    run.ts                         runs supplied subjects, returns a Report                D3
-    bin.ts                         prisma-cli's subjects                                   D3
-  tests/                           vitest, per check + shipped-subjects.test.ts
+  tests/                           31 tests over injected values and source strings
   tests/fixtures/built-output/     the one on-disk fixture: the directory walk
+
+packages/cli-engine/tests/conformance.test.ts   check 1 on its own built output    DONE
+packages/cli/tests/v8-conformance.test.ts       check 1 + check 2 on the shell      DONE
 ```
+
+**Each subject is checked by the package that owns it.** Revisions 1 and 2 put the real-subject runs inside the conformance package, which meant it had to depend on `@prisma/cli` — and that inverted arrangement made its `tsc --noEmit` traverse the shell's whole command tree and depend on the engine's built declarations. It failed in practice. The checker now depends on nothing it checks, declares the one shape it needs structurally, and the two consumers call it on themselves from suites that already typecheck those trees.
 
 Reached through a **turbo task**, not a bare root script: `"conformance": { "dependsOn": ["^build"], "cache": false }` in `turbo.json`, owned by `@repo/cli-conformance`, with root script `"check:conformance": "turbo run conformance"`. The checks read `packages/cli/dist` and `packages/cli-engine/dist`, and neither workflow guarantees them — `pr-quality.yml`'s Test job never runs `pnpm build`, and turbo's `test` task depends on `^build`, which excludes `@prisma/cli`'s own build. The task makes that the graph's problem rather than a step-ordering convention nobody can see, and removes the need for a step condition in `publish.yml`.
 
@@ -44,7 +49,7 @@ Tests first, in this order:
 
 Then implement `checkImportPurity({ label, output, manifest, allowedPrivate, allowedUnimported, requiredSpecifiers })`. The swept output is **injected** rather than read from a path inside the check, which is what lets 3a reuse the same function against an extracted tarball, and lets every case above be a plain value with nothing mocked.
 
-**Acceptance:** both suites pass; run against the real `packages/cli/dist` and `packages/cli-engine/dist` it returns no findings. **Met:** 22 tests, and `tests/shipped-subjects.test.ts` runs both real packages with `requiredSpecifiers` set, so a run that swept the wrong directory fails instead of reporting a clean sweep.
+**Acceptance:** both suites pass; run against the real `packages/cli/dist` and `packages/cli-engine/dist` it returns no findings. **Met:** 22 tests in the checker's own suite, plus one test in each consumer package running the real built output with `requiredSpecifiers` set, so a run that swept the wrong directory fails instead of reporting a clean sweep.
 
 ## D2 — check 2 (validator no-throw) — DONE
 
@@ -55,9 +60,9 @@ Tests first:
 
 Then implement `checkValidatorNoThrow({ sections })` over the corpus the contract fixes.
 
-**Subject derivation.** `sectionsFrom({ families, commands })` builds the union the engine uses, per contract §3: family `configSection`s plus every mounted command's `needs.config`, matching `packages/cli-engine/src/execution/engine.ts:740-751`. Both inputs are already exported from `packages/cli/src/v8/cli.ts` — `mountedCommands` at 170, the families at 74 and 136 — and are reached by relative source import, the only available route (contract §4). Its parameter type is structural, so a test can pass toy families and commands without building a command. Under STOP-8(a) the checker re-derives the union and the drift risk is recorded.
+**Subject derivation.** `sectionsFrom({ families, commands })` builds the union the engine uses, per contract §3: family `configSection`s plus every mounted command's `needs.config`, matching `packages/cli-engine/src/execution/engine.ts:740-751`. Both inputs are already exported from `packages/cli/src/v8/cli.ts` — `mountedCommands` at 170, the families at 74 and 136 — and are reached from the shell's OWN test suite by relative import of `../src/v8/cli`, the convention that suite already uses. `sectionsFrom`'s parameter type is structural, so the checker needs no dependency on the engine and a test can pass toy families and commands without building one. Under STOP-8(a) the checker re-derives the union and the drift risk is recorded.
 
-**Acceptance:** the suite passes; run against the shell's sections it returns no findings. **Met:** 13 tests. `shipped-subjects.test.ts` pins that the shell mounts exactly `["composer"]` — so the day the ORM slice adds a second section, that test fails and the new validator is checked rather than silently skipped — and that composer's shipped validator survives all 21 hostile inputs.
+**Acceptance:** the suite passes; run against the shell's sections it returns no findings. **Met:** 9 tests in the checker's suite, plus `packages/cli/tests/v8-conformance.test.ts`, which pins that the shell mounts exactly `["composer"]` — so the day the ORM slice adds a second section that test fails and the new validator gets checked rather than silently skipped — and that composer's shipped validator survives all 21 hostile inputs.
 
 ## D3 — check 3 (tarball verification) — BLOCKED on STOP-3, STOP-6
 
