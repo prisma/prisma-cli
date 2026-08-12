@@ -4,9 +4,9 @@ Every known place where the v8 ports differ from the shipping `prisma-cli`, in o
 
 The S1 whoami-scoped record — [`../engine/whoami-parity-divergences.md`](../engine/whoami-parity-divergences.md) — remains the baseline for everything the engine changes globally (json framing, format auto-selection, stderr/stdout channel discipline, rendering style, `--quiet` as a log-level alias, exit-code semantics, the dropped `--trace`, the shared flag family). Those apply to every ported command and are not repeated per command below.
 
-## What needs a decision before sign-off
+## Signed off
 
-Everything else in this document was built to a stated default and is ratified by signing off. These items are different: each is either an explicit open choice or an escalated gap.
+**Ratified by the operator, 2026-08-12**, together with the whole document: every divergence built to a stated default stands, including the items below, which were surfaced as explicit choices rather than defaults. The escalated engine gaps stay ratified-as-shipped; the work to close them is recorded in `../../deferred.md`.
 
 1. **`init`'s optional steps default to no** — S2d list, entry 10 (marked DECIDE). Interactive users press `y` where they pressed Enter; unattended runs keep today's behaviour exactly. One line per prompt to flip.
 2. **A service token whose workspace only the server knows is now refused** — S2c, "ESCALATED — engine gap".
