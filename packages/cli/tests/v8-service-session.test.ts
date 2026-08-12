@@ -118,6 +118,36 @@ describe("prisma-v8 service — the workspace comes from the engine session", ()
     expect(result.presented?.data).toMatchObject({ projectId: "proj_1" });
   });
 
+  /**
+   * A refused listing is not an empty workspace. Reading one as the
+   * other told the user their local binding was stale and sent them to
+   * re-link a project that was never the problem.
+   */
+  it("raises a refused project listing instead of reporting no projects", async () => {
+    const harness = await makeServiceCli({
+      routes: readFlowRoutes({
+        "GET /v1/projects": () => ({
+          error: { error: { message: "Access denied for this token." } },
+          status: 403,
+        }),
+      }),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "show", "--project", "acme-app", "--json"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).not.toBe("SERVICE.LOCAL_STATE_STALE");
+    expect(frame.envelope.error.summary).toBe("Failed to list projects");
+    expect(frame.envelope.error.why).toContain("Access denied for this token.");
+  });
+
   it("refuses a project the API did not return", async () => {
     const harness = await makeServiceCli({ routes: workspaceRoutes() });
 

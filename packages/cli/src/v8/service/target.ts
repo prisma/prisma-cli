@@ -20,6 +20,7 @@ import {
 } from "../../lib/app/compute-config";
 import { resolveReadBranch } from "../../lib/app/read-branch";
 import { readLocalGitBranch } from "../../lib/git/local-branch";
+import { projectApiError } from "../../lib/project/provider";
 import {
   type ProjectCandidate,
   type ProjectResolutionContext,
@@ -230,13 +231,26 @@ export function toBranchKind(name: string): BranchKind {
  * command report the pinned project as missing. #144 removed it from
  * the legacy listing this mirrors; the copy here was written from the
  * version that still had it.
+ *
+ * A refused request is raised, not read as an empty workspace. Without
+ * that, a 401, 403 or 500 becomes "no projects", the caller finds the
+ * pinned project missing, and the user is told their local binding is
+ * stale — sent to re-link a project that was never the problem. That is
+ * the same wrong recovery path the missing filter produced.
  */
 async function listWorkspaceProjects(
   ctx: ServiceContext,
 ): Promise<ProjectCandidate[]> {
-  const { data } = await ctx.api.GET("/v1/projects", { signal: ctx.signal });
+  const { data, error, response } = await ctx.api.GET("/v1/projects", {
+    signal: ctx.signal,
+  });
+  if (error || !data) {
+    throw fromLegacyCliError(
+      projectApiError("Failed to list projects", response, error),
+    );
+  }
   return sortProjects(
-    (data?.data ?? []).map((project) => ({
+    (data.data ?? []).map((project) => ({
       id: project.id,
       name: project.name,
       ...("url" in project && typeof project.url === "string"
@@ -268,6 +282,11 @@ export async function resolveServiceProjectContext(
   },
 ): Promise<ResolvedServiceProjectContext> {
   const workspace = await requireWorkspace(ctx);
+  // Listed here rather than from inside `resolveProjectTarget`, which
+  // runs its body in a Result generator: a throw in the callback comes
+  // back as an opaque "generator body threw" instead of the API's own
+  // refusal. Fetching first lets that error settle as itself.
+  const projects = await listWorkspaceProjects(ctx);
   const resolvedResult = await resolveProjectTarget({
     context: resolutionContext(ctx),
     workspace,
@@ -278,7 +297,7 @@ export async function resolveServiceProjectContext(
     ...(options.projectDir !== undefined
       ? { projectDir: options.projectDir }
       : {}),
-    listProjects: () => listWorkspaceProjects(ctx),
+    listProjects: () => Promise.resolve(projects),
     commandName: options.commandName,
   });
   if (resolvedResult.isErr()) {
