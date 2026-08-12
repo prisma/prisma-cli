@@ -12,11 +12,20 @@ const AGENT_COMMANDS = mountsFor(["agent"]);
 
 /** The whole group is local: no session is ever seeded, so every run
  *  here also proves the unauthenticated axis of R-S2b-9. */
-function makeCli() {
+function makeCli(platform?: string) {
   return createTestCli({
     commands: AGENT_COMMANDS,
     groups: { agent: { brief: "Install Prisma context for AI coding agents" } },
     now: () => new Date(0),
+    ...(platform === undefined
+      ? {}
+      : {
+          host: {
+            runtime: { name: "node", version: "v22.12.0" },
+            platform,
+            arch: "x64",
+          },
+        }),
   });
 }
 
@@ -30,21 +39,6 @@ async function makeCwd(): Promise<{
 
 /** Runs `body` with process.platform reporting `platform`, which is the
  *  only input to the installer's --copy rule. */
-async function withPlatform<T>(
-  platform: NodeJS.Platform,
-  body: () => Promise<T>,
-): Promise<T> {
-  const original = Object.getOwnPropertyDescriptor(process, "platform");
-  Object.defineProperty(process, "platform", { ...original, value: platform });
-  try {
-    return await body();
-  } finally {
-    if (original) {
-      Object.defineProperty(process, "platform", original);
-    }
-  }
-}
-
 function skillsListStdout(skills: unknown): { stdout: string; stderr: string } {
   return { stdout: JSON.stringify(skills), stderr: "" };
 }
@@ -88,7 +82,7 @@ beforeEach(() => {
   vi.mocked(execa).mockReset();
 });
 
-describe("prisma-v8 agent install", () => {
+describe("prisma-cli agent install", () => {
   it("declares no credential needs and runs without a session", async () => {
     for (const command of Object.values(AGENT_COMMANDS)) {
       expect(command.needs.credentials).toBe(false);
@@ -233,18 +227,17 @@ describe("prisma-v8 agent install", () => {
 
   it("forces --copy on Windows and leaves it off on other platforms", async () => {
     const { cwd, env } = await makeCwd();
-    const installerCommandOn = async (platform: NodeJS.Platform) =>
-      withPlatform(platform, async () => {
-        const result = await makeCli().run(["agent", "install", "--dry-run"], {
-          cwd,
-          env,
-        });
-        return (result.presented?.data as { skills: { command: string[] } })
-          .skills.command;
-      });
+    const installerCommandOn = async (platform: string) => {
+      const result = await makeCli(platform).run(
+        ["agent", "install", "--dry-run"],
+        { cwd, env },
+      );
+      return (result.presented?.data as { skills: { command: string[] } })
+        .skills.command;
+    };
 
     // Each platform's expectation is written out rather than rebuilt from
-    // process.platform, so inverting the rule fails this test instead of
+    // the host's platform, so inverting the rule fails this test instead of
     // being mirrored by it.
     expect(await installerCommandOn("win32")).toContain("--copy");
     expect(await installerCommandOn("linux")).not.toContain("--copy");
@@ -322,7 +315,7 @@ describe("prisma-v8 agent install", () => {
   });
 });
 
-describe("prisma-v8 agent update", () => {
+describe("prisma-cli agent update", () => {
   it("runs the same operation under the update name", async () => {
     vi.mocked(execa).mockResolvedValue({ stdout: "", stderr: "" } as never);
     const { cwd, env } = await makeCwd();
@@ -361,7 +354,7 @@ describe("prisma-v8 agent update", () => {
   });
 });
 
-describe("prisma-v8 agent status", () => {
+describe("prisma-cli agent status", () => {
   it("reports the Prisma skills the skills CLI lists and drops the rest", async () => {
     vi.mocked(execa).mockResolvedValue(
       skillsListStdout([

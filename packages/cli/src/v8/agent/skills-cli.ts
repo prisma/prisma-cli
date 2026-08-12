@@ -11,7 +11,10 @@ import { skillsInstallFailedError } from "./errors";
 import type { AgentInstalledSkill } from "./results";
 
 /** What the skills CLI calls need from the handler context. */
-export type AgentContext = Pick<CommandContext, "cwd" | "env" | "signal">;
+export type AgentContext = Pick<
+  CommandContext,
+  "cwd" | "env" | "signal" | "host"
+>;
 
 export interface AgentInstallInputs {
   readonly agent?: readonly string[];
@@ -61,7 +64,7 @@ export async function buildSkillsInstallCommand(
     command.push("--global");
   }
 
-  if (inputs.copy || process.platform === "win32") {
+  if (inputs.copy || ctx.host.platform === "win32") {
     command.push("--copy");
   }
 

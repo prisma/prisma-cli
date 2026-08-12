@@ -19,7 +19,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface FeedbackContext {
   cliVersion: string;
-  nodeVersion: string;
+  runtime: { name: string; version: string };
   platform: string;
   arch: string;
 }
@@ -101,7 +101,7 @@ function feedbackPresentations(result: FeedbackResult): Presentations {
           { label: "sent as", value: result.email ?? "anonymous" },
           {
             label: "included",
-            value: `CLI ${result.context.cliVersion}, node ${result.context.nodeVersion}, ${result.context.platform} ${result.context.arch}`,
+            value: `CLI ${result.context.cliVersion}, ${result.context.runtime.name} ${result.context.runtime.version}, ${result.context.platform} ${result.context.arch}`,
           },
         ],
       },
@@ -239,9 +239,9 @@ export const feedbackCommand = defineCommand({
 
     const context: FeedbackContext = {
       cliVersion: getCliVersion(),
-      nodeVersion: process.version,
-      platform: process.platform,
-      arch: process.arch,
+      runtime: { ...ctx.host.runtime },
+      platform: ctx.host.platform,
+      arch: ctx.host.arch,
     };
     const id = await postFeedback(
       ctx.env.PRISMA_CLI_FEEDBACK_URL || DEFAULT_FEEDBACK_ENDPOINT,

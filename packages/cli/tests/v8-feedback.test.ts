@@ -94,7 +94,7 @@ function completedFrame(json: readonly unknown[]) {
   };
 }
 
-describe("prisma-v8 feedback", () => {
+describe("prisma-cli feedback", () => {
   it("declares no credential needs and sends without a session", async () => {
     expect(feedbackCommand.needs.credentials).toBe(false);
     const { url, requests } = await startFeedbackService({});
@@ -107,9 +107,9 @@ describe("prisma-v8 feedback", () => {
       email: null,
       context: {
         cliVersion: expect.any(String),
-        nodeVersion: process.version,
-        platform: process.platform,
-        arch: process.arch,
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
       },
     });
     expect(requests).toHaveLength(1);
@@ -119,9 +119,9 @@ describe("prisma-v8 feedback", () => {
         cliVersion: (
           result.presented?.data as { context: { cliVersion: string } }
         ).context.cliVersion,
-        nodeVersion: process.version,
-        platform: process.platform,
-        arch: process.arch,
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
       },
     });
     expect(requests[0]?.userAgent).toMatch(USER_AGENT_PREFIX);
