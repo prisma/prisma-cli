@@ -37,8 +37,6 @@ async function makeCwd(): Promise<{
   return { cwd, env: { PRISMA_CLI_STATE_DIR: path.join(cwd, ".state") } };
 }
 
-/** Runs `body` with process.platform reporting `platform`, which is the
- *  only input to the installer's --copy rule. */
 function skillsListStdout(skills: unknown): { stdout: string; stderr: string } {
   return { stdout: JSON.stringify(skills), stderr: "" };
 }
@@ -158,7 +156,8 @@ describe("prisma-cli agent install", () => {
       "codex",
       "--agent",
       "claude-code",
-      ...(process.platform === "win32" ? ["--copy"] : []),
+      // The harness host is fixed to linux, so --copy never joins here;
+      // the Windows rule has its own test below.
       "--yes",
     ];
     expect(execa).toHaveBeenCalledWith(
@@ -289,10 +288,9 @@ describe("prisma-cli agent install", () => {
       {
         kind: "run-command",
         label: "Retry the installer directly",
+        // The harness host is fixed to linux, whatever machine runs this.
         command:
-          process.platform === "win32"
-            ? "npx -y skills@latest add prisma/skills --skill '*' --agent codex --agent claude-code --copy --yes"
-            : "npx -y skills@latest add prisma/skills --skill '*' --agent codex --agent claude-code --yes",
+          "npx -y skills@latest add prisma/skills --skill '*' --agent codex --agent claude-code --yes",
       },
     ]);
   });
