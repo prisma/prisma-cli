@@ -1081,7 +1081,7 @@ describe("help examples", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("USAGE");
+    expect(result.stderr).toContain("Usage");
   });
 });
 

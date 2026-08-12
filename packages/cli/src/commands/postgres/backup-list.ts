@@ -39,7 +39,13 @@ function backupListPresentations(
         ],
       },
       ...(rows.length === 0
-        ? [{ kind: "list" as const, items: ["No backups found."] }]
+        ? [
+            {
+              kind: "summary" as const,
+              status: "info" as const,
+              text: "No backups found.",
+            },
+          ]
         : [
             {
               kind: "table" as const,

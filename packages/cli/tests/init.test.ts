@@ -356,7 +356,12 @@ describe("init writes the config", () => {
       outcome: "ok",
       data: { path: "prisma.compute.ts" },
     });
-    expect(result.stdout).toBe("prisma.compute.ts\n");
+    // Both streams are the same terminal here, so the machine mirror is
+    // suppressed; the path still travels in the presented stdout lines.
+    expect(result.stdout).toBe("");
+    expect(result.presented?.presentation.stdout).toEqual([
+      "prisma.compute.ts",
+    ]);
     expect(result.presented?.presentation.human).toContainEqual({
       kind: "summary",
       status: "ok",

@@ -211,8 +211,9 @@ describe("prisma-cli branch list", () => {
     );
 
     expect(blocks(result.presented)).toContainEqual({
-      kind: "list",
-      items: ["No branches found."],
+      kind: "summary",
+      status: "info",
+      text: "No branches found.",
     });
     expect(result.presented?.presentation.stdout).toEqual([]);
   });
@@ -247,7 +248,7 @@ describe("prisma-cli branch list", () => {
     });
   });
 
-  it('maps an unbound directory to PROJECT.SETUP_REQUIRED reading "this command"', async () => {
+  it("maps an unbound directory to PROJECT.SETUP_REQUIRED naming the command", async () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), "branch-unpinned-"));
     const result = await makeCli(branchClient()).run(
       ["branch", "list", "--json"],
@@ -262,7 +263,7 @@ describe("prisma-cli branch list", () => {
       error: {
         code: "PROJECT.SETUP_REQUIRED",
         summary: "Choose a Project before running this command",
-        why: "This directory is not linked to a Prisma Project, and this command will not choose one from package or directory names.",
+        why: "This directory is not linked to a Prisma Project, and prisma-cli branch list will not choose one from package or directory names.",
       },
     });
   });

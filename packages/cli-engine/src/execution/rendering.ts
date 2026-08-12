@@ -183,7 +183,7 @@ function writeFields(
 ): void {
   const cells = rows.map((row) => ({
     label: toned(extend(row.label, ":"), "heading"),
-    value: row.sensitive === true ? MASK : row.value,
+    value: row.sensitive === true ? MASK : orPlaceholder(row.value),
   }));
   const width = Math.max(0, ...cells.map((cell) => textWidth(cell.label)));
   const prefix = rail ? `${paint("structure", RAIL)}${COLUMN_GAP}` : "";
@@ -198,13 +198,35 @@ function writeFields(
  * than the bytes so colour cannot shift a column. The last column is
  * never padded, so no line carries trailing whitespace.
  */
+/** One header convention for every table: plain-string headers are
+ *  normalized to sentence case, so casing is not a per-command choice. */
+function sentenceCase(text: Text): Text {
+  if (typeof text !== "string" || text === "") {
+    return text;
+  }
+  return `${text[0].toUpperCase()}${text.slice(1)}`;
+}
+
+const PLACEHOLDER = "—";
+
+/** An absent value renders as a dim em dash rather than invented prose
+ *  ("none", "n/a") in data tone. */
+function orPlaceholder(cell: Text): Text {
+  const empty =
+    cell === "" || (typeof cell !== "string" && textWidth(cell) === 0);
+  return empty ? [{ text: PLACEHOLDER, tone: "placeholder" }] : cell;
+}
+
 function writeTable(
   columns: readonly Text[],
   rows: ReadonlyArray<readonly Text[]>,
   paint: Paint,
   write: (line: string) => void,
 ): void {
-  const all = [columns.map((column) => toned(column, "heading")), ...rows];
+  const all = [
+    columns.map((column) => toned(sentenceCase(column), "heading")),
+    ...rows.map((row) => row.map(orPlaceholder)),
+  ];
   const widths: number[] = [];
   for (const row of all) {
     for (const [index, cell] of row.entries()) {
@@ -265,21 +287,29 @@ const DIAGNOSTIC_SYMBOL: Readonly<Record<Diagnostic["severity"], string>> = {
   info: "ℹ",
 };
 
+const PLAIN = makePaint(false);
+
 export function writeDiagnostic(
   stream: { write(text: string): void },
   diagnostic: Diagnostic,
+  paint: Paint = PLAIN,
 ): void {
-  stream.write(
-    `${DIAGNOSTIC_SYMBOL[diagnostic.severity]} [${diagnostic.code}] ${diagnostic.summary}\n`,
+  const glyph = paint(
+    diagnostic.severity,
+    DIAGNOSTIC_SYMBOL[diagnostic.severity],
   );
+  const code = paint("muted", `[${diagnostic.code}]`);
+  stream.write(`${glyph} ${code} ${diagnostic.summary}\n`);
   if (diagnostic.why !== undefined) {
-    stream.write(`  why: ${diagnostic.why}\n`);
+    stream.write(`  ${paint("muted", `why: ${diagnostic.why}`)}\n`);
   }
   for (const action of diagnostic.nextActions) {
-    stream.write(`${renderNextAction(action)}\n`);
+    stream.write(`${renderNextAction(action, paint)}\n`);
   }
   if (diagnostic.docsUrl !== undefined) {
-    stream.write(`  docs: ${diagnostic.docsUrl}\n`);
+    stream.write(
+      `  ${paint("muted", "docs:")} ${paint("link", diagnostic.docsUrl)}\n`,
+    );
   }
 }
 
@@ -288,10 +318,25 @@ export function writeDiagnostic(
  *  beside it — has nothing to put in the label but the command itself.
  *  Only the renderer sees both fields, so only it can tell they are the
  *  same string and print it once. */
-export function renderNextAction(action: NextAction): string {
+export function renderNextAction(
+  action: NextAction,
+  paint: Paint = PLAIN,
+): string {
   const target = action.command ?? action.url;
   const repeatsTheLabel = target === undefined || target === action.label;
-  return `→ ${action.label}${repeatsTheLabel ? "" : `: ${target}`}`;
+  const arrow = paint("heading", "→");
+  if (repeatsTheLabel) {
+    const label =
+      action.command !== undefined
+        ? paint("identifier", action.label)
+        : action.label;
+    return `${arrow} ${label}`;
+  }
+  const painted =
+    action.command !== undefined
+      ? paint("identifier", target as string)
+      : paint("link", target as string);
+  return `${arrow} ${action.label}: ${painted}`;
 }
 
 /** Populates docsUrl from the owning family's docsBaseUrl (base + code)
@@ -323,12 +368,20 @@ export function renderCompletedHuman(
     renderBlock(block, paint, (line) => runtime.stderr.write(`${line}\n`));
   }
   for (const action of presented.presentation.next) {
-    runtime.stderr.write(`${renderNextAction(action)}\n`);
+    runtime.stderr.write(`${renderNextAction(action, paint)}\n`);
   }
   for (const diagnostic of presented.diagnostics) {
-    writeDiagnostic(runtime.stderr, withDocsUrl(state, diagnostic));
+    writeDiagnostic(runtime.stderr, withDocsUrl(state, diagnostic), paint);
   }
-  for (const line of presented.presentation.stdout) {
-    runtime.stdout.write(`${line}\n`);
+  /** The machine lines exist for a consumer on the other end of
+   *  stdout. Only when stdout and stderr BOTH render to a terminal do
+   *  the blocks and the mirror land on the same screen as visible
+   *  duplication, so that is the one case that skips them (amends the
+   *  2026-08-09 "always" ruling; any redirection of either stream
+   *  keeps the mirror, so pipes still receive exactly the data lines). */
+  if (!(runtime.isTty.stdout && runtime.isTty.stderr)) {
+    for (const line of presented.presentation.stdout) {
+      runtime.stdout.write(`${line}\n`);
+    }
   }
 }

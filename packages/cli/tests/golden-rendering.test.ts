@@ -109,9 +109,9 @@ describe("golden rendering", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe(
       "ℹ Listing your workspace sessions on this machine.\n" +
-        "name      id    status\n" +
+        "Name      Id    Status\n" +
         "Acme Inc  ws_1  current\n" +
-        "Globex    ws_2\n",
+        "Globex    ws_2  \u2014\n",
     );
     expect(result.stdout).toBe("Acme Inc  ws_1  current\nGlobex  ws_2\n");
   });
@@ -199,9 +199,9 @@ describe("golden rendering", () => {
 
     expect(result.stderr).toBe(
       "\u001b[34m\u2139\u001b[39m Listing your workspace sessions on this machine.\n" +
-        "\u001b[36mname    \u001b[39m  \u001b[36mid  \u001b[39m  \u001b[36mstatus\u001b[39m\n" +
+        "\u001b[36mName    \u001b[39m  \u001b[36mId  \u001b[39m  \u001b[36mStatus\u001b[39m\n" +
         "Acme Inc  ws_1  current\n" +
-        "Globex    ws_2\n",
+        "Globex    ws_2  [2m\u2014[22m\n",
     );
   });
 });

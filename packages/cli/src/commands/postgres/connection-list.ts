@@ -50,7 +50,13 @@ function listPresentations(
         rows: [{ label: "database", value: result.database.name }],
       },
       ...(rows.length === 0
-        ? [{ kind: "list" as const, items: ["No database connections found."] }]
+        ? [
+            {
+              kind: "summary" as const,
+              status: "info" as const,
+              text: "No database connections found.",
+            },
+          ]
         : [
             {
               kind: "table" as const,

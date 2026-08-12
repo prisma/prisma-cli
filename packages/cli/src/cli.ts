@@ -311,6 +311,13 @@ export function buildCli(): Cli {
     ],
     groups: cliGroups,
     commands: mountedCommands,
+    help: {
+      tagline: "The Prisma Developer Platform, from your terminal",
+      description:
+        "Deploy your app with isolated infrastructure for every branch.",
+      examples: ["init", "auth login", "project list"],
+      docsUrl: CLI_DOCS_URL,
+    },
     telemetry: { docsUrl: CLI_DOCS_URL },
   });
 }

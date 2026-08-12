@@ -2,6 +2,7 @@
 import {
   type Block,
   defineCommand,
+  flag,
   type Presentations,
 } from "@prisma/cli-engine";
 import { notOk, ok } from "@prisma/cli-engine/protocol";
@@ -31,7 +32,13 @@ function listPresentations(result: BranchListResult): Presentations {
         rows: [{ label: "project", value: result.projectName }],
       },
       ...(rows.length === 0
-        ? [{ kind: "list" as const, items: ["No branches found."] }]
+        ? [
+            {
+              kind: "summary" as const,
+              status: "info" as const,
+              text: "No branches found.",
+            },
+          ]
         : [
             {
               kind: "table" as const,
@@ -47,19 +54,25 @@ function listPresentations(result: BranchListResult): Presentations {
 export const branchListCommand = defineCommand({
   help: {
     summary: "List Platform branches for the resolved project",
-    examples: ["branch list", "branch list --json"],
+    examples: ["branch list", "branch list --project my-app"],
+  },
+  args: {
+    flags: {
+      project: flag.string({
+        brief: "Project id or name",
+        placeholder: "id-or-name",
+      }),
+    },
   },
   needs: { credentials: true },
-  handler: async (_args, ctx) => {
+  handler: async (args, ctx) => {
     try {
       const workspace = await resolveActiveWorkspace(ctx);
-      /** Legacy quirk: `branch list` has no `--project` and passes no
-       *  command name, so an unbound directory reads "this command". */
       const target = await resolvePinnedProject(
         ctx,
         workspace,
-        undefined,
-        undefined,
+        args.flags.project,
+        "branch list",
       );
       const branches = await listBranches(
         ctx.api,

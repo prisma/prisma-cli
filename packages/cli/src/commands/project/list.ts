@@ -17,11 +17,13 @@ import { toNextActions } from "./presentation";
 
 const TITLE = "Listing projects for the authenticated workspace.";
 
+/** An absent region stays empty; the table renderer draws the dim
+ *  placeholder dash. */
 function projectRows(result: ProjectListResult): string[][] {
   return result.projects.map((project) => [
     project.name,
     project.id,
-    project.defaultRegion ?? "none",
+    project.defaultRegion ?? "",
   ]);
 }
 
@@ -61,7 +63,13 @@ function listPresentations(result: ProjectListResult): Presentations {
         rows: [{ label: "workspace", value: result.workspace.name }],
       },
       ...(rows.length === 0
-        ? [{ kind: "list", items: ["No projects found."] } as const]
+        ? [
+            {
+              kind: "summary",
+              status: "info",
+              text: "No projects found.",
+            } as const,
+          ]
         : [
             {
               kind: "table",

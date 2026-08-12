@@ -105,7 +105,11 @@ export function statusPresentations(
         ...projectStatusRows(result),
       ]),
       result.skills.length === 0
-        ? { kind: "list", items: ["No Prisma skills reported."] }
+        ? {
+            kind: "summary",
+            status: "info",
+            text: "No Prisma skills reported.",
+          }
         : {
             kind: "table",
             columns: ["skill", "scope", "agents"],
