@@ -60,12 +60,10 @@ export const serviceShowCommand = defineCommand({
       .listDeployments(state.selected.id, { signal: ctx.signal })
       .catch((error) => {
         throw deployFailedError("Failed to inspect service", error, [
-          runCommandAction("List deployments", "service list-deploys"),
+          runCommandAction("List deployments", "service deployment list"),
         ]);
       });
-    const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
-      state.stateStore,
-      state.projectId,
+    const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(
       deploymentsResult.app,
       deploymentsResult.deployments,
     );
@@ -91,7 +89,10 @@ export const serviceShowCommand = defineCommand({
       projectId: state.projectId,
       service: toServiceSummary(deploymentsResult.app),
       liveDeployment,
-      liveUrl: deploymentsResult.app.liveUrl,
+      // A service that was never promoted still carries an endpoint
+      // domain, and that domain does not resolve. Only a service with a
+      // live deployment has a URL to show.
+      liveUrl: liveDeployment ? deploymentsResult.app.liveUrl : null,
       recentDeployments: deployments.slice(0, 5),
     };
     return ok(ctx.present({ data: result }, showPresentations(result)));

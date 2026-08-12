@@ -58,18 +58,23 @@ import { projectRemoveCommand } from "./project/remove";
 import { projectRenameCommand } from "./project/rename";
 import { projectShowCommand } from "./project/show";
 import { projectTransferCommand } from "./project/transfer";
+import { serviceCreateCommand } from "./service/create";
+import { serviceDeploymentDeleteCommand } from "./service/deployment-delete";
+import { serviceDeploymentListCommand } from "./service/deployment-list";
+import { serviceDeploymentPromoteCommand } from "./service/deployment-promote";
+import { serviceDeploymentRollbackCommand } from "./service/deployment-rollback";
+import { serviceDeploymentShowCommand } from "./service/deployment-show";
+import { serviceDeploymentStartCommand } from "./service/deployment-start";
+import { serviceDeploymentStopCommand } from "./service/deployment-stop";
 import { serviceDomainAddCommand } from "./service/domain-add";
 import { serviceDomainRemoveCommand } from "./service/domain-remove";
 import { serviceDomainRetryCommand } from "./service/domain-retry";
 import { serviceDomainShowCommand } from "./service/domain-show";
 import { serviceDomainWaitCommand } from "./service/domain-wait";
-import { serviceListDeploysCommand } from "./service/list-deploys";
+import { serviceListCommand } from "./service/list";
 import { serviceOpenCommand } from "./service/open";
-import { servicePromoteCommand } from "./service/promote";
 import { serviceRemoveCommand } from "./service/remove";
-import { serviceRollbackCommand } from "./service/rollback";
 import { serviceShowCommand } from "./service/show";
-import { serviceShowDeployCommand } from "./service/show-deploy";
 
 export const platformCommandFamily: CommandFamily = defineCommandFamily({
   commands: {
@@ -110,12 +115,17 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     branchList: branchListCommand,
     gitConnect: gitConnectCommand,
     gitDisconnect: gitDisconnectCommand,
+    serviceList: serviceListCommand,
+    serviceCreate: serviceCreateCommand,
     serviceShow: serviceShowCommand,
     serviceOpen: serviceOpenCommand,
-    serviceListDeploys: serviceListDeploysCommand,
-    serviceShowDeploy: serviceShowDeployCommand,
-    servicePromote: servicePromoteCommand,
-    serviceRollback: serviceRollbackCommand,
+    serviceDeploymentList: serviceDeploymentListCommand,
+    serviceDeploymentShow: serviceDeploymentShowCommand,
+    serviceDeploymentPromote: serviceDeploymentPromoteCommand,
+    serviceDeploymentRollback: serviceDeploymentRollbackCommand,
+    serviceDeploymentStart: serviceDeploymentStartCommand,
+    serviceDeploymentStop: serviceDeploymentStopCommand,
+    serviceDeploymentDelete: serviceDeploymentDeleteCommand,
     serviceRemove: serviceRemoveCommand,
     serviceDomainAdd: serviceDomainAddCommand,
     serviceDomainShow: serviceDomainShowCommand,
@@ -158,6 +168,7 @@ export const cliGroups: Readonly<
   git: { brief: "Manage Git repository connections for a project" },
   service: { brief: "Manage services and deployments for a project" },
   "service domain": { brief: "Manage custom domains for a service" },
+  "service deployment": { brief: "Manage deployments for a service" },
   build: { brief: "Inspect builds created by a git push or Console" },
   composer: {
     brief: "Run and deploy applications composed from Prisma modules",
@@ -205,12 +216,17 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "branch list": branchListCommand,
   "git connect": gitConnectCommand,
   "git disconnect": gitDisconnectCommand,
+  "service list": serviceListCommand,
+  "service create": serviceCreateCommand,
   "service show": serviceShowCommand,
   "service open": serviceOpenCommand,
-  "service list-deploys": serviceListDeploysCommand,
-  "service show-deploy": serviceShowDeployCommand,
-  "service promote": servicePromoteCommand,
-  "service rollback": serviceRollbackCommand,
+  "service deployment list": serviceDeploymentListCommand,
+  "service deployment show": serviceDeploymentShowCommand,
+  "service deployment promote": serviceDeploymentPromoteCommand,
+  "service deployment rollback": serviceDeploymentRollbackCommand,
+  "service deployment start": serviceDeploymentStartCommand,
+  "service deployment stop": serviceDeploymentStopCommand,
+  "service deployment delete": serviceDeploymentDeleteCommand,
   "service remove": serviceRemoveCommand,
   "service domain add": serviceDomainAddCommand,
   "service domain show": serviceDomainShowCommand,

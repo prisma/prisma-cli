@@ -16,6 +16,32 @@ export interface ServiceDeploymentSummary {
   live: boolean | null;
 }
 
+/** A service as `service list` and `service create` report it. `liveUrl`
+ *  is null until a deployment is promoted: the endpoint domain a service
+ *  carries before that does not resolve. */
+export interface ServiceListEntry {
+  id: string;
+  name: string;
+  region: string | null;
+  liveDeploymentId: string | null;
+  liveUrl: string | null;
+}
+
+export interface ServiceListResult {
+  projectId: string;
+  branch: string;
+  services: ServiceListEntry[];
+}
+
+export interface ServiceCreateResult {
+  projectId: string;
+  branch: string;
+  service: ServiceListEntry;
+  /** True when a service of that name already existed on the branch and
+   *  this run returned it instead of creating a second one. */
+  existing: boolean;
+}
+
 export interface ServiceShowResult {
   projectId: string;
   service: ServiceSummary | null;
@@ -24,13 +50,13 @@ export interface ServiceShowResult {
   recentDeployments: ServiceDeploymentSummary[];
 }
 
-export interface ServiceListDeploysResult {
+export interface ServiceDeploymentListResult {
   projectId: string;
   service: ServiceSummary | null;
   deployments: ServiceDeploymentSummary[];
 }
 
-export interface ServiceShowDeployResult {
+export interface ServiceDeploymentShowResult {
   service: ServiceSummary | null;
   deployment: ServiceDeploymentSummary;
 }
@@ -50,6 +76,23 @@ export interface ServicePromoteResult {
 
 export interface ServiceRollbackResult extends ServicePromoteResult {
   previousLiveDeploymentId: string | null;
+}
+
+/** What `service deployment start` and `stop` report. `alreadyInState`
+ *  is true when the deployment already had the status the command asks
+ *  for, so the run made no call. */
+export interface ServiceDeploymentRunStateResult {
+  projectId: string;
+  service: ServiceSummary;
+  deployment: ServiceDeploymentSummary;
+  alreadyInState: boolean;
+}
+
+export interface ServiceDeploymentDeleteResult {
+  projectId: string;
+  service: ServiceSummary;
+  deploymentId: string;
+  deleted: true;
 }
 
 export interface ServiceRemoveResult {

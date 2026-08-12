@@ -1,7 +1,12 @@
 import type { Block, Presentations } from "@prisma/cli-engine";
 import type { NextAction } from "@prisma/cli-engine/protocol";
-import { runCommandAction } from "./errors";
+import { adviceAction, runCommandAction } from "./errors";
 import type {
+  ServiceCreateResult,
+  ServiceDeploymentDeleteResult,
+  ServiceDeploymentListResult,
+  ServiceDeploymentRunStateResult,
+  ServiceDeploymentShowResult,
   ServiceDeploymentSummary,
   ServiceDomainAddResult,
   ServiceDomainRemoveResult,
@@ -10,12 +15,11 @@ import type {
   ServiceDomainSummary,
   ServiceDomainTarget,
   ServiceDomainWaitResult,
-  ServiceListDeploysResult,
+  ServiceListResult,
   ServiceOpenResult,
   ServicePromoteResult,
   ServiceRemoveResult,
   ServiceRollbackResult,
-  ServiceShowDeployResult,
   ServiceShowResult,
 } from "./results";
 
@@ -80,6 +84,102 @@ function domainFailureRows(domain: ServiceDomainSummary): FieldRow[] {
   ];
 }
 
+export function listPresentations(result: ServiceListResult): Presentations {
+  return {
+    human: () => [
+      title("Listing services for the selected project."),
+      fields([
+        { label: "project", value: result.projectId },
+        { label: "branch", value: result.branch },
+      ]),
+      ...(result.services.length === 0
+        ? [
+            {
+              kind: "summary",
+              status: "info",
+              text: "No services found.",
+            } as const,
+          ]
+        : [
+            {
+              kind: "table",
+              columns: ["name", "id", "region", "live url"],
+              rows: result.services.map((service) => [
+                service.name,
+                service.id,
+                service.region ?? "none",
+                service.liveUrl ?? "not deployed",
+              ]),
+            } as const,
+          ]),
+    ],
+    /** The machine rows leave an absent region and an undeployed service
+     *  empty, rather than repeating the words the human table shows. */
+    stdout: () =>
+      result.services.map((service) =>
+        [
+          service.name,
+          service.id,
+          service.region ?? "",
+          service.liveUrl ?? "",
+        ].join("\t"),
+      ),
+    next: () => {
+      const first = result.services[0];
+      return first
+        ? [
+            runCommandAction(
+              "Show a service",
+              `service show --service ${first.name}`,
+            ),
+          ]
+        : // Not a run-command: `command` is executed verbatim, and
+          // `service create <name>` would make a service literally
+          // called "<name>". Naming it is the user's choice, which is
+          // what a user-choice action is for.
+          [
+            adviceAction(
+              "Create a service with service create <name>, choosing the name.",
+            ),
+          ];
+    },
+  };
+}
+
+export function createPresentations(
+  result: ServiceCreateResult,
+): Presentations {
+  return {
+    human: () => [
+      result.existing
+        ? title(
+            `${result.service.name} already exists on ${result.branch}; showing it.`,
+          )
+        : completed(`Created ${result.service.name} on ${result.branch}.`),
+      fields([
+        { label: "project", value: result.projectId },
+        { label: "branch", value: result.branch },
+        { label: "service", value: result.service.name },
+        { label: "id", value: result.service.id },
+        { label: "region", value: result.service.region ?? "none" },
+        // A service with no deployment has no address that resolves, so
+        // it reports what it needs next instead of a dead URL.
+        {
+          label: "live url",
+          value: result.service.liveUrl ?? "not deployed",
+        },
+      ]),
+    ],
+    next: () => [
+      runCommandAction("Deploy to the service", "composer deploy"),
+      runCommandAction(
+        "Show the service",
+        `service show --service ${result.service.name}`,
+      ),
+    ],
+  };
+}
+
 export function showPresentations(result: ServiceShowResult): Presentations {
   const next: NextAction[] = [];
   if (result.liveUrl) {
@@ -90,7 +190,7 @@ export function showPresentations(result: ServiceShowResult): Presentations {
     next.push(
       runCommandAction(
         "Show the deployment",
-        `service show-deploy ${inspectable.id}`,
+        `service deployment show ${inspectable.id}`,
       ),
     );
   }
@@ -115,8 +215,8 @@ export function showPresentations(result: ServiceShowResult): Presentations {
   };
 }
 
-export function listDeploysPresentations(
-  result: ServiceListDeploysResult,
+export function deploymentListPresentations(
+  result: ServiceDeploymentListResult,
 ): Presentations {
   return {
     human: () => [
@@ -150,7 +250,7 @@ export function listDeploysPresentations(
         ? [
             runCommandAction(
               "Show the newest deployment",
-              `service show-deploy ${newest.id}`,
+              `service deployment show ${newest.id}`,
             ),
           ]
         : [];
@@ -158,8 +258,8 @@ export function listDeploysPresentations(
   };
 }
 
-export function showDeployPresentations(
-  result: ServiceShowDeployResult,
+export function deploymentShowPresentations(
+  result: ServiceDeploymentShowResult,
 ): Presentations {
   return {
     human: () => [
@@ -203,7 +303,7 @@ export function openPresentations(
       runCommandAction("Inspect the service", "service show"),
       runCommandAction(
         "Show the live deployment",
-        `service show-deploy ${liveDeploymentId}`,
+        `service deployment show ${liveDeploymentId}`,
       ),
     ],
   };
@@ -211,10 +311,10 @@ export function openPresentations(
 
 function deploymentNextActions(deploymentId: string): NextAction[] {
   return [
-    runCommandAction("List deployments", "service list-deploys"),
+    runCommandAction("List deployments", "service deployment list"),
     runCommandAction(
       "Show the deployment",
-      `service show-deploy ${deploymentId}`,
+      `service deployment show ${deploymentId}`,
     ),
   ];
 }
@@ -273,6 +373,70 @@ export function rollbackPresentations(
   };
 }
 
+export function deploymentStartPresentations(
+  result: ServiceDeploymentRunStateResult,
+): Presentations {
+  return {
+    human: () => [
+      completed(
+        result.alreadyInState
+          ? `${result.deployment.id} was already running.`
+          : `Started ${result.deployment.id}.`,
+      ),
+      fields([
+        { label: "project", value: result.projectId },
+        { label: "service", value: result.service.name },
+        { label: "deployment", value: result.deployment.id },
+        { label: "status", value: result.deployment.status },
+        ...(result.deployment.url
+          ? [{ label: "url", value: result.deployment.url }]
+          : []),
+      ]),
+    ],
+    next: () => deploymentNextActions(result.deployment.id),
+  };
+}
+
+export function deploymentStopPresentations(
+  result: ServiceDeploymentRunStateResult,
+): Presentations {
+  return {
+    human: () => [
+      completed(
+        result.alreadyInState
+          ? `${result.deployment.id} was already stopped.`
+          : `Stopped ${result.deployment.id}.`,
+      ),
+      fields([
+        { label: "project", value: result.projectId },
+        { label: "service", value: result.service.name },
+        { label: "deployment", value: result.deployment.id },
+        { label: "status", value: result.deployment.status },
+      ]),
+    ],
+    next: () => deploymentNextActions(result.deployment.id),
+  };
+}
+
+export function deploymentDeletePresentations(
+  result: ServiceDeploymentDeleteResult,
+): Presentations {
+  return {
+    human: () => [
+      completed(`Deleted ${result.deploymentId} from ${result.service.name}.`),
+      fields([
+        { label: "project", value: result.projectId },
+        { label: "service", value: result.service.name },
+        { label: "deployment", value: result.deploymentId },
+        { label: "deleted", value: "yes" },
+      ]),
+    ],
+    next: () => [
+      runCommandAction("List deployments", "service deployment list"),
+    ],
+  };
+}
+
 export function removePresentations(
   result: ServiceRemoveResult,
 ): Presentations {
@@ -287,7 +451,9 @@ export function removePresentations(
         { label: "removed", value: "yes" },
       ]),
     ],
-    next: () => [runCommandAction("List deployments", "service list-deploys")],
+    next: () => [
+      runCommandAction("List deployments", "service deployment list"),
+    ],
   };
 }
 

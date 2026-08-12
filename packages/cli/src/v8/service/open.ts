@@ -64,9 +64,7 @@ export const serviceOpenCommand = defineCommand({
           runCommandAction("Inspect the service", "service show"),
         ]);
       });
-    const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
-      state.stateStore,
-      state.projectId,
+    const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(
       deploymentsResult.app,
       deploymentsResult.deployments,
     );

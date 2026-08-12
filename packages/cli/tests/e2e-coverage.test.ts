@@ -42,6 +42,12 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
     "A session command: it runs until SIGINT or SIGTERM, redeploying on file change, so it has no happy path that terminates on its own.",
   "composer log":
     "A session command that streams until interrupted, against an app only `composer deploy` could have deployed.",
+  "service deployment start":
+    "Acts on a deployment, and the API only accepts a start once an artifact has been uploaded. Only `composer deploy` produces one, which this suite cannot run.",
+  "service deployment stop":
+    "Acts on a deployment, which only `composer deploy` can create here. Same reason as `service deployment start`.",
+  "service deployment delete":
+    "Deletes a deployment, which only `composer deploy` can create here. Same reason as `service deployment start`.",
 };
 
 /**
@@ -51,18 +57,28 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  * here. A command added from today on needs a test or an EXCLUSIONS
  * entry saying why it cannot have one.
  *
- * `service` and `build` act on a deployed service, which Composer
- * creates and this repo cannot; covering them needs a fixture service
- * that outlives a CI run.
+ * These entries are owed for two different reasons, and the difference
+ * matters to whoever picks one up.
+ *
+ * `service open`, the four `service deployment *` commands and
+ * `build logs` need a service that has been DEPLOYED, which Composer
+ * does and this repo cannot; covering them needs a fixture service that
+ * outlives a CI run.
+ *
+ * `service show` and the five `service domain *` commands need no such
+ * thing — they act on a service that merely exists, and `service create`
+ * makes one without deploying. They are simply unwritten. `service show`
+ * is the easiest of them: D1's unit tests already cover it against a
+ * service that was never promoted, so a real happy path in
+ * `e2e/service.e2e.ts` has no remaining obstacle.
  */
 const AWAITING_COVERAGE: readonly string[] = [
   "service show",
   "service open",
-  "service list-deploys",
-  "service show-deploy",
-  "service promote",
-  "service rollback",
-  "service remove",
+  "service deployment list",
+  "service deployment show",
+  "service deployment promote",
+  "service deployment rollback",
   "service domain add",
   "service domain show",
   "service domain remove",
