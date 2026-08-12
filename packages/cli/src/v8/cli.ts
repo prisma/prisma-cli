@@ -6,8 +6,8 @@ import {
   defineCommandFamily,
   telemetryCommandGroup,
 } from "@prisma/cli-engine";
-// TODO(release): @prisma/composer@0.6.0-dev.15 pins
-// @prisma/cli-engine@0.0.7, while this package ships the workspace
+// TODO(release): @prisma/composer@0.6.0-dev.16 pins
+// @prisma/cli-engine@0.0.9, while this package ships the workspace
 // engine at the lockstep version (8.0.0-rc.1). Those are different
 // versions, so an install of @prisma/cli resolves two copies of the
 // engine. Closing it is composer's move, not this repo's: composer
