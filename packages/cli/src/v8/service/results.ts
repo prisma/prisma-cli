@@ -78,6 +78,23 @@ export interface ServiceRollbackResult extends ServicePromoteResult {
   previousLiveDeploymentId: string | null;
 }
 
+/** What `service deployment start` and `stop` report. `alreadyInState`
+ *  is true when the deployment already had the status the command asks
+ *  for, so the run made no call. */
+export interface ServiceDeploymentRunStateResult {
+  projectId: string;
+  service: ServiceSummary;
+  deployment: ServiceDeploymentSummary;
+  alreadyInState: boolean;
+}
+
+export interface ServiceDeploymentDeleteResult {
+  projectId: string;
+  service: ServiceSummary;
+  deploymentId: string;
+  deleted: true;
+}
+
 export interface ServiceRemoveResult {
   projectId: string;
   service: ServiceSummary;

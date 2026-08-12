@@ -21,8 +21,9 @@ export interface ServiceReleaseState {
   service: AppRecord;
 }
 
-/** The read flow for promote / rollback / remove, which all act on a
- *  service that must already exist. */
+/** The read flow for the commands that act on a service which must
+ *  already exist: every `service deployment` verb, plus `service
+ *  remove`, which is the one that does not sit under that group. */
 export async function resolveServiceReleaseState(
   ctx: ServiceContext,
   options: {
@@ -30,7 +31,7 @@ export async function resolveServiceReleaseState(
     projectRef?: string;
     configTarget?: string;
     branchName?: string;
-    command: "promote" | "rollback" | "remove";
+    command: "promote" | "rollback" | "remove" | "start" | "stop" | "delete";
   },
 ): Promise<ServiceReleaseState> {
   const commandName =

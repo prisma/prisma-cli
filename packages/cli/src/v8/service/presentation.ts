@@ -3,7 +3,9 @@ import type { NextAction } from "@prisma/cli-engine/protocol";
 import { runCommandAction } from "./errors";
 import type {
   ServiceCreateResult,
+  ServiceDeploymentDeleteResult,
   ServiceDeploymentListResult,
+  ServiceDeploymentRunStateResult,
   ServiceDeploymentShowResult,
   ServiceDeploymentSummary,
   ServiceDomainAddResult,
@@ -360,6 +362,70 @@ export function rollbackPresentations(
       ]),
     ],
     next: () => deploymentNextActions(result.deployment.id),
+  };
+}
+
+export function deploymentStartPresentations(
+  result: ServiceDeploymentRunStateResult,
+): Presentations {
+  return {
+    human: () => [
+      completed(
+        result.alreadyInState
+          ? `${result.deployment.id} was already running.`
+          : `Started ${result.deployment.id}.`,
+      ),
+      fields([
+        { label: "project", value: result.projectId },
+        { label: "service", value: result.service.name },
+        { label: "deployment", value: result.deployment.id },
+        { label: "status", value: result.deployment.status },
+        ...(result.deployment.url
+          ? [{ label: "url", value: result.deployment.url }]
+          : []),
+      ]),
+    ],
+    next: () => deploymentNextActions(result.deployment.id),
+  };
+}
+
+export function deploymentStopPresentations(
+  result: ServiceDeploymentRunStateResult,
+): Presentations {
+  return {
+    human: () => [
+      completed(
+        result.alreadyInState
+          ? `${result.deployment.id} was already stopped.`
+          : `Stopped ${result.deployment.id}.`,
+      ),
+      fields([
+        { label: "project", value: result.projectId },
+        { label: "service", value: result.service.name },
+        { label: "deployment", value: result.deployment.id },
+        { label: "status", value: result.deployment.status },
+      ]),
+    ],
+    next: () => deploymentNextActions(result.deployment.id),
+  };
+}
+
+export function deploymentDeletePresentations(
+  result: ServiceDeploymentDeleteResult,
+): Presentations {
+  return {
+    human: () => [
+      completed(`Deleted ${result.deploymentId} from ${result.service.name}.`),
+      fields([
+        { label: "project", value: result.projectId },
+        { label: "service", value: result.service.name },
+        { label: "deployment", value: result.deploymentId },
+        { label: "deleted", value: "yes" },
+      ]),
+    ],
+    next: () => [
+      runCommandAction("List deployments", "service deployment list"),
+    ],
   };
 }
 

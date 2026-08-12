@@ -59,10 +59,13 @@ import { projectRenameCommand } from "./project/rename";
 import { projectShowCommand } from "./project/show";
 import { projectTransferCommand } from "./project/transfer";
 import { serviceCreateCommand } from "./service/create";
+import { serviceDeploymentDeleteCommand } from "./service/deployment-delete";
 import { serviceDeploymentListCommand } from "./service/deployment-list";
 import { serviceDeploymentPromoteCommand } from "./service/deployment-promote";
 import { serviceDeploymentRollbackCommand } from "./service/deployment-rollback";
 import { serviceDeploymentShowCommand } from "./service/deployment-show";
+import { serviceDeploymentStartCommand } from "./service/deployment-start";
+import { serviceDeploymentStopCommand } from "./service/deployment-stop";
 import { serviceDomainAddCommand } from "./service/domain-add";
 import { serviceDomainRemoveCommand } from "./service/domain-remove";
 import { serviceDomainRetryCommand } from "./service/domain-retry";
@@ -120,6 +123,9 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     serviceDeploymentShow: serviceDeploymentShowCommand,
     serviceDeploymentPromote: serviceDeploymentPromoteCommand,
     serviceDeploymentRollback: serviceDeploymentRollbackCommand,
+    serviceDeploymentStart: serviceDeploymentStartCommand,
+    serviceDeploymentStop: serviceDeploymentStopCommand,
+    serviceDeploymentDelete: serviceDeploymentDeleteCommand,
     serviceRemove: serviceRemoveCommand,
     serviceDomainAdd: serviceDomainAddCommand,
     serviceDomainShow: serviceDomainShowCommand,
@@ -218,6 +224,9 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "service deployment show": serviceDeploymentShowCommand,
   "service deployment promote": serviceDeploymentPromoteCommand,
   "service deployment rollback": serviceDeploymentRollbackCommand,
+  "service deployment start": serviceDeploymentStartCommand,
+  "service deployment stop": serviceDeploymentStopCommand,
+  "service deployment delete": serviceDeploymentDeleteCommand,
   "service remove": serviceRemoveCommand,
   "service domain add": serviceDomainAddCommand,
   "service domain show": serviceDomainShowCommand,

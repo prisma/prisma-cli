@@ -42,6 +42,12 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
     "A session command: it runs until SIGINT or SIGTERM, redeploying on file change, so it has no happy path that terminates on its own.",
   "composer log":
     "A session command that streams until interrupted, against an app only `composer deploy` could have deployed.",
+  "service deployment start":
+    "Acts on a deployment, and the API only accepts a start once an artifact has been uploaded. Only `composer deploy` produces one, which this suite cannot run.",
+  "service deployment stop":
+    "Acts on a deployment, which only `composer deploy` can create here. Same reason as `service deployment start`.",
+  "service deployment delete":
+    "Deletes a deployment, which only `composer deploy` can create here. Same reason as `service deployment start`.",
 };
 
 /**
