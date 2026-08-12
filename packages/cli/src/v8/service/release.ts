@@ -46,7 +46,10 @@ export async function resolveServiceReleaseState(
     ...(options.branchName !== undefined
       ? { branchName: options.branchName }
       : {}),
-    commandName: `service ${options.command}`,
+    commandName:
+      options.command === "remove"
+        ? "service remove"
+        : `service deployment ${options.command}`,
   });
   if (!state.selected) {
     throw releaseTargetRequiredError(options.command);

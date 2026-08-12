@@ -24,13 +24,13 @@ export interface ServiceShowResult {
   recentDeployments: ServiceDeploymentSummary[];
 }
 
-export interface ServiceListDeploysResult {
+export interface ServiceDeploymentListResult {
   projectId: string;
   service: ServiceSummary | null;
   deployments: ServiceDeploymentSummary[];
 }
 
-export interface ServiceShowDeployResult {
+export interface ServiceDeploymentShowResult {
   service: ServiceSummary | null;
   deployment: ServiceDeploymentSummary;
 }

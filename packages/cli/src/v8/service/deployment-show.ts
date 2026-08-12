@@ -5,8 +5,8 @@ import {
   deploymentNotFoundError,
   runCommandAction,
 } from "./errors";
-import { showDeployPresentations } from "./presentation";
-import type { ServiceShowDeployResult } from "./results";
+import { deploymentShowPresentations } from "./presentation";
+import type { ServiceDeploymentShowResult } from "./results";
 import {
   openServiceStateStore,
   requireWorkspace,
@@ -14,10 +14,10 @@ import {
   toServiceSummary,
 } from "./target";
 
-export const serviceShowDeployCommand = defineCommand({
+export const serviceDeploymentShowCommand = defineCommand({
   help: {
     summary: "Show a deployment in detail",
-    examples: ["service show-deploy dep_123"],
+    examples: ["service deployment show dep_123"],
   },
   args: {
     positionals: {
@@ -35,7 +35,7 @@ export const serviceShowDeployCommand = defineCommand({
       .showDeployment(deploymentId, { signal: ctx.signal })
       .catch((error) => {
         throw deployFailedError("Failed to show deployment", error, [
-          runCommandAction("List deployments", "service list-deploys"),
+          runCommandAction("List deployments", "service deployment list"),
         ]);
       });
 
@@ -66,7 +66,7 @@ export const serviceShowDeployCommand = defineCommand({
     const liveDeploymentId =
       deployment.app?.liveDeploymentId || knownLiveDeploymentId;
 
-    const result: ServiceShowDeployResult = {
+    const result: ServiceDeploymentShowResult = {
       service: deployment.app ? toServiceSummary(deployment.app) : null,
       deployment: {
         ...deployment.deployment,
@@ -75,6 +75,8 @@ export const serviceShowDeployCommand = defineCommand({
           : deployment.deployment.live,
       },
     };
-    return ok(ctx.present({ data: result }, showDeployPresentations(result)));
+    return ok(
+      ctx.present({ data: result }, deploymentShowPresentations(result)),
+    );
   },
 });

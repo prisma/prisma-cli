@@ -2,6 +2,8 @@ import type { Block, Presentations } from "@prisma/cli-engine";
 import type { NextAction } from "@prisma/cli-engine/protocol";
 import { runCommandAction } from "./errors";
 import type {
+  ServiceDeploymentListResult,
+  ServiceDeploymentShowResult,
   ServiceDeploymentSummary,
   ServiceDomainAddResult,
   ServiceDomainRemoveResult,
@@ -10,12 +12,10 @@ import type {
   ServiceDomainSummary,
   ServiceDomainTarget,
   ServiceDomainWaitResult,
-  ServiceListDeploysResult,
   ServiceOpenResult,
   ServicePromoteResult,
   ServiceRemoveResult,
   ServiceRollbackResult,
-  ServiceShowDeployResult,
   ServiceShowResult,
 } from "./results";
 
@@ -90,7 +90,7 @@ export function showPresentations(result: ServiceShowResult): Presentations {
     next.push(
       runCommandAction(
         "Show the deployment",
-        `service show-deploy ${inspectable.id}`,
+        `service deployment show ${inspectable.id}`,
       ),
     );
   }
@@ -115,8 +115,8 @@ export function showPresentations(result: ServiceShowResult): Presentations {
   };
 }
 
-export function listDeploysPresentations(
-  result: ServiceListDeploysResult,
+export function deploymentListPresentations(
+  result: ServiceDeploymentListResult,
 ): Presentations {
   return {
     human: () => [
@@ -150,7 +150,7 @@ export function listDeploysPresentations(
         ? [
             runCommandAction(
               "Show the newest deployment",
-              `service show-deploy ${newest.id}`,
+              `service deployment show ${newest.id}`,
             ),
           ]
         : [];
@@ -158,8 +158,8 @@ export function listDeploysPresentations(
   };
 }
 
-export function showDeployPresentations(
-  result: ServiceShowDeployResult,
+export function deploymentShowPresentations(
+  result: ServiceDeploymentShowResult,
 ): Presentations {
   return {
     human: () => [
@@ -203,7 +203,7 @@ export function openPresentations(
       runCommandAction("Inspect the service", "service show"),
       runCommandAction(
         "Show the live deployment",
-        `service show-deploy ${liveDeploymentId}`,
+        `service deployment show ${liveDeploymentId}`,
       ),
     ],
   };
@@ -211,10 +211,10 @@ export function openPresentations(
 
 function deploymentNextActions(deploymentId: string): NextAction[] {
   return [
-    runCommandAction("List deployments", "service list-deploys"),
+    runCommandAction("List deployments", "service deployment list"),
     runCommandAction(
       "Show the deployment",
-      `service show-deploy ${deploymentId}`,
+      `service deployment show ${deploymentId}`,
     ),
   ];
 }
@@ -287,7 +287,9 @@ export function removePresentations(
         { label: "removed", value: "yes" },
       ]),
     ],
-    next: () => [runCommandAction("List deployments", "service list-deploys")],
+    next: () => [
+      runCommandAction("List deployments", "service deployment list"),
+    ],
   };
 }
 

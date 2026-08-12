@@ -60,7 +60,7 @@ export const serviceShowCommand = defineCommand({
       .listDeployments(state.selected.id, { signal: ctx.signal })
       .catch((error) => {
         throw deployFailedError("Failed to inspect service", error, [
-          runCommandAction("List deployments", "service list-deploys"),
+          runCommandAction("List deployments", "service deployment list"),
         ]);
       });
     const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(

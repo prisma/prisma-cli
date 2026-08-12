@@ -2,20 +2,23 @@ import { describe, expect, it } from "vitest";
 
 import { makeServiceCli, readFlowRoutes } from "./v8-service-testkit";
 
-/** show-deploy scans projects to find the owning service. */
+/** deployment show scans projects to find the owning service. */
 function showDeployRoutes(overrides = {}) {
   return readFlowRoutes(overrides);
 }
 
-describe("prisma-v8 service show-deploy", () => {
+describe("prisma-v8 service deployment show", () => {
   it("presents the deployment with the live flag from the provider live pointer", async () => {
     const harness = await makeServiceCli({ routes: showDeployRoutes() });
 
-    const result = await harness.cli.run(["service", "show-deploy", "dep_2"], {
-      cwd: harness.cwd,
-      env: harness.env,
-      isTty: { stdout: true },
-    });
+    const result = await harness.cli.run(
+      ["service", "deployment", "show", "dep_2"],
+      {
+        cwd: harness.cwd,
+        env: harness.env,
+        isTty: { stdout: true },
+      },
+    );
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({
@@ -34,7 +37,7 @@ describe("prisma-v8 service show-deploy", () => {
     const harness = await makeServiceCli({ routes: showDeployRoutes() });
 
     const result = await harness.cli.run(
-      ["service", "show-deploy", "dep_missing", "--json"],
+      ["service", "deployment", "show", "dep_missing", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -60,7 +63,7 @@ describe("prisma-v8 service show-deploy", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "show-deploy", "dep_2", "--json"],
+      ["service", "deployment", "show", "dep_2", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -72,11 +75,11 @@ describe("prisma-v8 service show-deploy", () => {
     expect(frame.envelope.error.code).toBe("SERVICE.DEPLOY_FAILED");
   });
 
-  it("emits the completed json envelope with commandId service.show-deploy", async () => {
+  it("emits the completed json envelope with commandId service.deployment.show", async () => {
     const harness = await makeServiceCli({ routes: showDeployRoutes() });
 
     const result = await harness.cli.run(
-      ["service", "show-deploy", "dep_1", "--json"],
+      ["service", "deployment", "show", "dep_1", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -85,7 +88,7 @@ describe("prisma-v8 service show-deploy", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.show-deploy");
+    expect(frame.envelope.commandId).toBe("service.deployment.show");
     expect(frame.envelope.result).toMatchObject({
       deployment: { id: "dep_1", live: false },
     });
@@ -97,11 +100,14 @@ describe("prisma-v8 service show-deploy", () => {
       authenticated: false,
     });
 
-    const result = await harness.cli.run(["service", "show-deploy", "dep_1"], {
-      cwd: harness.cwd,
-      env: harness.env,
-      isTty: { stdout: true },
-    });
+    const result = await harness.cli.run(
+      ["service", "deployment", "show", "dep_1"],
+      {
+        cwd: harness.cwd,
+        env: harness.env,
+        isTty: { stdout: true },
+      },
+    );
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("CLI.CREDENTIALS_REQUIRED");

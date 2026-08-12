@@ -49,7 +49,7 @@ describe("prisma-v8 service remove", () => {
       {
         kind: "run-command",
         label: "List deployments",
-        command: "prisma-cli service list-deploys",
+        command: "prisma-cli service deployment list",
       },
     ]);
   });
@@ -404,7 +404,7 @@ describe("prisma-v8 service remove", () => {
       {
         kind: "run-command",
         label: "List deployments",
-        command: "prisma-cli service list-deploys",
+        command: "prisma-cli service deployment list",
       },
     ]);
   });

@@ -9,13 +9,14 @@ import {
   releaseRoutes,
 } from "./v8-service-testkit";
 
-describe("prisma-v8 service promote", () => {
+describe("prisma-v8 service deployment promote", () => {
   it("promotes the requested deployment and reports it as the live one", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "promote",
         "dep_1",
         "--project",
@@ -45,6 +46,7 @@ describe("prisma-v8 service promote", () => {
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "promote",
         "dep_1",
         "--project",
@@ -86,6 +88,7 @@ describe("prisma-v8 service promote", () => {
     await harness.cli.run(
       [
         "service",
+        "deployment",
         "promote",
         "dep_1",
         "--project",
@@ -112,6 +115,7 @@ describe("prisma-v8 service promote", () => {
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "promote",
         "dep_2",
         "--project",
@@ -139,12 +143,13 @@ describe("prisma-v8 service promote", () => {
     });
   });
 
-  it("emits the completed json envelope with commandId service.promote", async () => {
+  it("emits the completed json envelope with commandId service.deployment.promote", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "promote",
         "dep_1",
         "--project",
@@ -161,7 +166,7 @@ describe("prisma-v8 service promote", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.promote");
+    expect(frame.envelope.commandId).toBe("service.deployment.promote");
     expect(frame.envelope.result).toMatchObject({
       service: { id: "svc_1", name: "hello-world" },
       deployment: { id: "dep_1" },
@@ -174,6 +179,7 @@ describe("prisma-v8 service promote", () => {
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "promote",
         "dep_missing",
         "--project",
@@ -206,6 +212,7 @@ describe("prisma-v8 service promote", () => {
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "promote",
         "dep_1",
         "--project",
@@ -236,7 +243,15 @@ describe("prisma-v8 service promote", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "promote", "dep_1", "--project", "acme-app", "--json"],
+      [
+        "service",
+        "deployment",
+        "promote",
+        "dep_1",
+        "--project",
+        "acme-app",
+        "--json",
+      ],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -258,7 +273,7 @@ describe("prisma-v8 service promote", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "promote", "dep_1", "--project", "acme-app"],
+      ["service", "deployment", "promote", "dep_1", "--project", "acme-app"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 

@@ -2,14 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import { makeServiceCli, page, readFlowRoutes } from "./v8-service-testkit";
 
-describe("prisma-v8 service list-deploys", () => {
+describe("prisma-v8 service deployment list", () => {
   it("lists deployments newest first with the live hint applied", async () => {
     const harness = await makeServiceCli();
 
     const result = await harness.cli.run(
       [
         "service",
-        "list-deploys",
+        "deployment",
+        "list",
         "--project",
         "acme-app",
         "--service",
@@ -47,7 +48,7 @@ describe("prisma-v8 service list-deploys", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "list-deploys", "--project", "acme-app"],
+      ["service", "deployment", "list", "--project", "acme-app"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -62,13 +63,14 @@ describe("prisma-v8 service list-deploys", () => {
     expect(result.presented?.presentation.next).toEqual([]);
   });
 
-  it("emits the completed json envelope with commandId service.list-deploys", async () => {
+  it("emits the completed json envelope with commandId service.deployment.list", async () => {
     const harness = await makeServiceCli();
 
     const result = await harness.cli.run(
       [
         "service",
-        "list-deploys",
+        "deployment",
+        "list",
         "--project",
         "acme-app",
         "--service",
@@ -83,7 +85,7 @@ describe("prisma-v8 service list-deploys", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.list-deploys");
+    expect(frame.envelope.commandId).toBe("service.deployment.list");
     expect(frame.envelope.result).toMatchObject({
       projectId: "proj_1",
       service: { id: "svc_1", name: "hello-world" },
@@ -103,7 +105,8 @@ describe("prisma-v8 service list-deploys", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "list-deploys",
+        "deployment",
+        "list",
         "--project",
         "acme-app",
         "--service",
@@ -129,7 +132,7 @@ describe("prisma-v8 service list-deploys", () => {
     const harness = await makeServiceCli({ authenticated: false });
 
     const result = await harness.cli.run(
-      ["service", "list-deploys", "--project", "acme-app"],
+      ["service", "deployment", "list", "--project", "acme-app"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 

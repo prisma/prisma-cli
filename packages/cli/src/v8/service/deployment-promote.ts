@@ -15,13 +15,13 @@ import {
   toServiceSummary,
 } from "./target";
 
-export const servicePromoteCommand = defineCommand({
+export const serviceDeploymentPromoteCommand = defineCommand({
   help: {
     summary:
       "Promote a deployment to production by rebuilding with production env vars",
     examples: [
-      "service promote dep_123",
-      "service promote dep_123 --service my-service",
+      "service deployment promote dep_123",
+      "service deployment promote dep_123 --service my-service",
     ],
   },
   args: {
@@ -57,7 +57,7 @@ export const servicePromoteCommand = defineCommand({
       .listDeployments(state.service.id, { signal: ctx.signal })
       .catch((error) => {
         throw deployFailedError("Failed to list service deployments", error, [
-          runCommandAction("List deployments", "service list-deploys"),
+          runCommandAction("List deployments", "service deployment list"),
         ]);
       });
     const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
@@ -95,7 +95,7 @@ export const servicePromoteCommand = defineCommand({
           outcome: "failed",
         });
         throw deployFailedError("Failed to promote deployment", error, [
-          runCommandAction("List deployments", "service list-deploys"),
+          runCommandAction("List deployments", "service deployment list"),
         ]);
       }
       ctx.report({ kind: "step-finished", step: "promote", outcome: "ok" });

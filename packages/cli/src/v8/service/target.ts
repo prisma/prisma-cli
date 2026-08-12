@@ -553,7 +553,7 @@ export interface ServiceReadState {
   selected: AppRecord | null;
 }
 
-/** The shared read flow for show / list-deploys / open: config context,
+/** The shared read flow for show / deployment list / open: config context,
  *  project + branch resolution, service listing, and selection. */
 export async function resolveServiceReadState(
   ctx: ServiceContext,

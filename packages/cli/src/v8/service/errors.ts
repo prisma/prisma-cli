@@ -122,9 +122,9 @@ export function serviceSelectionInvalidError(
       why: `The service "${serviceName}" could not be found in resolved project "${projectId}".`,
       nextActions: [
         adviceAction(
-          "Pass the name of an existing service, or rerun list-deploys in a TTY to choose one.",
+          "Pass the name of an existing service, or rerun the command in a TTY to choose one.",
         ),
-        runCommandAction("List deployments", "service list-deploys"),
+        runCommandAction("List deployments", "service deployment list"),
       ],
     },
   );
@@ -177,7 +177,7 @@ export function deploymentNotFoundError(
       nextActions: [
         runCommandAction(
           "Choose an available deployment id",
-          "service list-deploys",
+          "service deployment list",
         ),
       ],
     },
@@ -196,7 +196,7 @@ export function deploymentNotFoundForServiceError(
       nextActions: [
         runCommandAction(
           "Choose an available deployment id",
-          "service list-deploys",
+          "service deployment list",
         ),
       ],
     },
@@ -216,7 +216,7 @@ export function releaseTargetRequiredError(
         adviceAction(
           `Deploy a service first, or rerun ${command} with --service <name> once a service exists.`,
         ),
-        runCommandAction("List deployments", "service list-deploys"),
+        runCommandAction("List deployments", "service deployment list"),
       ],
     },
   );
@@ -232,7 +232,7 @@ export function noPreviousDeploymentError(): CliStructuredError {
         adviceAction(
           "Deploy a second version first, or pass --to <deployment-id> for a specific earlier deployment.",
         ),
-        runCommandAction("List deployments", "service list-deploys"),
+        runCommandAction("List deployments", "service deployment list"),
       ],
     },
   );
@@ -249,9 +249,9 @@ export function liveDeploymentUnknownError(): CliStructuredError {
       nextActions: [
         runCommandAction(
           "Roll back to a named deployment",
-          "service rollback --to <deployment>",
+          "service deployment rollback --to <deployment>",
         ),
-        runCommandAction("List deployments", "service list-deploys"),
+        runCommandAction("List deployments", "service deployment list"),
       ],
     },
   );
@@ -265,7 +265,7 @@ export function removeFailedError(
     why: cause instanceof Error ? cause.message : String(cause),
     nextActions: [
       runCommandAction("Inspect the service", "service show"),
-      runCommandAction("List deployments", "service list-deploys"),
+      runCommandAction("List deployments", "service deployment list"),
     ],
     cause,
   });
