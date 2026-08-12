@@ -397,6 +397,9 @@ function renderSuccessPage(workspaceName: string | null): string {
       --foreground: #1f2430;
       --muted: #4f5665;
       --mark-color: #050812;
+      --surface: #f6f7fb;
+      --border: #e4e7ee;
+      --success: #15803d;
     }
 
     @media (prefers-color-scheme: dark) {
@@ -405,6 +408,9 @@ function renderSuccessPage(workspaceName: string | null): string {
         --foreground: #f6f7fb;
         --muted: #c5cad6;
         --mark-color: #ffffff;
+        --surface: #0d1322;
+        --border: #232a3d;
+        --success: #4ade80;
       }
     }
 
@@ -458,6 +464,81 @@ function renderSuccessPage(workspaceName: string | null): string {
       line-height: 1.55;
       letter-spacing: 0;
     }
+
+    .skills {
+      margin-top: 40px;
+      padding-top: 28px;
+      border-top: 1px solid var(--border);
+      text-align: left;
+    }
+
+    .skills-lead {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 12px;
+      font-size: 15px;
+      color: var(--foreground);
+    }
+
+    .skills-lead svg {
+      flex: none;
+      color: var(--muted);
+    }
+
+    .command {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 8px 10px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .command code {
+      flex: 1;
+      overflow-x: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13.5px;
+      white-space: nowrap;
+    }
+
+    .command .prompt {
+      color: var(--muted);
+      user-select: none;
+    }
+
+    .copy {
+      flex: none;
+      display: grid;
+      place-items: center;
+      padding: 6px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .copy:hover {
+      background: var(--border);
+      color: var(--foreground);
+    }
+
+    .copy .icon-check,
+    .copy.copied .icon-copy {
+      display: none;
+    }
+
+    .copy.copied .icon-check {
+      display: block;
+    }
+
+    .copy.copied,
+    .copy.copied:hover {
+      color: var(--success);
+    }
   </style>
 </head>
 <body>
@@ -465,7 +546,45 @@ function renderSuccessPage(workspaceName: string | null): string {
   <main>
     <h1>You're all set.</h1>
     <p>${body}</p>
+    <section class="skills">
+      <div class="skills-lead">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/></svg>
+        Using an AI coding agent? Add the Prisma skills:
+      </div>
+      <div class="command">
+        <code><span class="prompt">$ </span>npx skills add prisma/skills</code>
+        <button class="copy" type="button" aria-label="Copy command to clipboard">
+          <svg class="icon-copy" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+          <svg class="icon-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+        </button>
+      </div>
+    </section>
   </main>
+  <script>
+    (() => {
+      const command = "npx skills add prisma/skills";
+      const button = document.querySelector(".copy");
+      let timer;
+      button.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(command);
+        } catch {
+          // Clipboard access denied: select the command so Cmd/Ctrl+C works.
+          const range = document.createRange();
+          range.selectNodeContents(document.querySelector(".command code"));
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          return;
+        }
+        button.classList.add("copied");
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          button.classList.remove("copied");
+        }, 2000);
+      });
+    })();
+  </script>
 </body>
 </html>`;
 }
