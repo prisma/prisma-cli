@@ -87,7 +87,10 @@ narrow it to the entries that need a deployed service, or write
 from D3: deleting the live deployment leaves the service with a
 non-resolving `endpointDomain` (server clears `latestDeploymentId`
 but not the domain) — presenters already guard on
-`latestDeploymentId`, divergence note only; `deferred.md` gains the
+`latestDeploymentId`, divergence note only; from D3's review round:
+`stop` takes production offline with no consent while `delete`
+demands a typed token — contract-faithful, but say so in the
+divergence file now that the grammar puts the verbs side by side; `deferred.md` gains the
 ownership-note revisit (R-S8-4) and the logs follow-up slice
 (R-S8-5); golden-rendering updates; review loop; PR.
 
