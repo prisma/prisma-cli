@@ -80,7 +80,14 @@ assertion is vacuous — seed the key or drop the clause, reviewer's
 entry has both options); from D2's review round: `service create
 --branch` resolves-or-creates the named branch — a typo silently
 creates a branch — inherited from the provider path the contract
-grounds the command in, recorded as a divergence note not a defect; `deferred.md` gains the
+grounds the command in, recorded as a divergence note not a defect; finding D2-R2-1
+(e2e-coverage.test.ts's rewritten backlog comment overclaims —
+narrow it to the entries that need a deployed service, or write
+`service show`'s e2e via `service create` and drop its entry);
+from D3: deleting the live deployment leaves the service with a
+non-resolving `endpointDomain` (server clears `latestDeploymentId`
+but not the domain) — presenters already guard on
+`latestDeploymentId`, divergence note only; `deferred.md` gains the
 ownership-note revisit (R-S8-4) and the logs follow-up slice
 (R-S8-5); golden-rendering updates; review loop; PR.
 

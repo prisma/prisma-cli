@@ -127,9 +127,20 @@ Composer — not coming back); S7's grammar-tree completeness check
   not present a dead URL as live. Present the domain only when a
   live deployment exists (`latestDeploymentId` set).
 - `DELETE /v1/deployments/{id}` against the currently-promoted
-  deployment: API behavior unverified. Implementer verifies against
-  the real API before shaping the error path; STOP-and-surface if
-  the API allows deleting the live deployment silently.
+  deployment: ANSWERED during D3 (2026-08-12), from the control
+  plane's source (`pdp-control-plane`,
+  `packages/interactors/src/compute/deployment.ts:494-522` and
+  `tearDownDeployment.ts`; integration tests pin the order
+  detach-endpoint → stop → delete). The API permits it and handles
+  liveness by teardown, not refusal; `latestDeploymentId` is cleared
+  in the same transaction. No CLI-side guard. Consequence for the
+  divergence file: the server does NOT clear the service's
+  `endpointDomain`, so after deleting the live deployment the
+  service keeps a non-resolving domain — already neutralized in the
+  CLI because every S8 presenter reports a live url only when
+  `latestDeploymentId` is set. Caveat: read from a checkout one
+  minor ahead (SDK 1.56.0 vs the pinned 1.55.0); shape unchanged
+  across the drift.
 
 ## Acceptance
 
