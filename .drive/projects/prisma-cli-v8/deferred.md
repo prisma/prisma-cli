@@ -4,26 +4,52 @@ Work identified during a slice that is not part of that slice's
 contract. Each entry: what, why it was deferred, where it lands.
 Nothing here is tracked outside this file.
 
-## Owned by S3/D4 (the slice's closing dispatch)
+## Still open after S3/D4 — mostly the composer repo, two items need both
+
+D4 landed the prisma-cli half (the mount, the node floor, the divergence
+file, the ledger corrections, the 1c closure). The first two items below
+need a composer checkout and nothing else. The last two need a change in
+each repo: the engine pin has to match what prisma-cli depends on, and
+the help-example fix needs a new placeholder in this repo's engine before
+composer can use it.
 
 - **`loadAppConfigDiagnostics()` is called by nothing.** D2 rewrote
   composer's config loading to return diagnostics instead of
   throwing (contract R-S3-2), but `pipeline.ts` still calls the
   throwing `loadAppConfig`, so the rewrite is currently dead code —
-  and the effect-resolution check that moved into it never runs.
+  the name does not appear outside comments in the published
+  `0.6.0-dev.16` bundles. The effect-resolution check is unaffected and
+  does run: it sits in `configSource`, the front both loader shapes
+  share, so the throwing path the pipeline uses runs it first.
 - **`check:npm-effect-resolution` fixes are unverified.** D3 updated
   three assertions (help proves the family mounted; the adversarial
   `deploy` gets a service token because the credential check now
   precedes the tree check; `--help` must survive a broken dependency
   tree because the family's static graph is alchemy-free). The check
   performs real npm installs, so it needs network to run.
-- **The engine pin moves off `0.0.3`** to whatever the tandem release
-  publishes, in both composer manifests.
-- **Contract corrections at closure**: ledger Q2 (main's #135 dropped
-  `service run` outright, so S3 no longer "closes" it by building the
-  mechanism — the mechanism exists, the command does not), and the
-  coverage-ledger rows for "refresh under long runs" and "config
-  sections" (see contract §10).
+- **The engine pin moves to whatever the tandem release publishes**, in
+  both composer manifests — and it must be the SAME version prisma-cli
+  depends on. They disagree today: prisma-cli builds against the
+  workspace engine (`8.0.0-rc.1`) and composer `0.6.0-dev.16` pins
+  `@prisma/cli-engine@0.0.9` exactly, so an install of `@prisma/cli`
+  carries two copies of the engine. It works for the one crossing that
+  is tested: the engine's cross-copy markers are `Symbol.for`, and
+  `packages/cli-engine/tests/execution.test.ts` ("a structured error
+  built by another copy of the engine") and `tests/protocol.test.ts`
+  prove a structured error raised by one copy is recognised by the
+  other. Nothing tests execution or signal behaviour across two copies,
+  and the honest reason is that it is not worth writing: matching pins
+  is a **release requirement for the tandem release**, so the two-copy
+  install is a preview-only state to end rather than a configuration to
+  support.
+- **The prisma bin's mount makes composer's help examples wrong.**
+  Composer writes them as `{bin} deploy src/service.ts`; mounted under
+  the `composer` root the invocation is `prisma composer deploy`, and
+  the engine's `resolveExample` substitutes only `{bin}`. Fix needs both
+  repos: a mount-aware placeholder in the engine (`{command}` → the
+  command's mounted path) and composer's eight example strings — two on
+  each of the four commands — rewritten to use it. Recorded in
+  `assets/s2/parity-divergences-s3.md`.
 
 ## Owned by whoever lands the next engine change
 
@@ -33,10 +59,25 @@ Nothing here is tracked outside this file.
   If rev 6's storage surface reshapes again, the single named
   consumer (`packages/cli-engine/src/execution/spawn.ts`) moves with
   it. Recorded in `assets/engine/credential-manager-design.md`.
-- **`--tail` validation is wider than the recorded divergence.** The
-  engine's `flag.number` accepts negatives and non-integers; legacy
-  `composer log --tail` rejected both. Either the flag gains
-  validation or the divergence entry widens.
+- **Nothing bounds a child run to the token it was given.** A
+  `credentials: "child"` command hands the child a snapshot of the
+  access token and never the refresh token
+  (`packages/cli-engine/src/execution/spawn.ts`), and the only check is
+  the near-expiry refusal in `execution/needs.ts`:
+  `CREDENTIAL_NEAR_EXPIRY_MS` is 5 minutes, so the guarantee at spawn is
+  "more than five minutes left", not "enough for this run". A converge
+  that outlives the snapshot fails on an expired token, after the child
+  has already created resources. Two ways out, both unbuilt: hand the
+  child something that can refresh, or bound the child's run and refuse
+  when the remaining lifetime cannot cover it. Recorded as a release
+  limitation in `plan.md`'s coverage ledger.
+- **A validated number flag**, if `--tail`'s old constraint is wanted
+  back. `flag.number` accepts negatives and fractions, so "non-negative
+  integer" is enforced nowhere. D4 took the other branch this item
+  offered and widened the divergence entry instead
+  (`assets/s2/parity-divergences-s3.md`), which also corrects this
+  item's claim that legacy rejected non-integers — legacy truncated
+  them silently, and rejected only negatives and `NaN`.
 - **`pnpm --filter @prisma/cli test` can report green against a stale
   engine build.** Vitest resolves `@prisma/cli-engine` through the
   package's own `exports` map, which points at `./dist`; the `paths`
@@ -108,6 +149,27 @@ Nothing here is tracked outside this file.
   composer's alchemy bump. Exit condition recorded in
   `skills-contrib/upgrade-alchemy-effect/SKILL.md` in the composer
   repo.
+  **The patch does not reach the prisma bin, and D4 measured what that
+  costs.** A pnpm patch applies in the repo that declares it, so a
+  `prisma` install resolves the unpatched `@alchemy.run/node-utils`.
+  D4's canary (`packages/cli/tests/v8-composer-isolation.test.ts`)
+  imports one composer executor in a fresh prisma bin process and
+  asserts what the import alone leaves behind: one SIGINT and one
+  SIGTERM listener — the exact condition the contract's design
+  consequence 4 says nothing ships with. Both counts are assertions, not
+  observations, so the day the patch reaches us this test says so.
+  What those listeners do is the reason it matters: `lib/exit-hook.js`
+  calls `process.exit(128 + signal)` from inside them, which is a
+  synchronous exit the engine's abort, child teardown and settlement do
+  not get to finish behind. Whether they actually preempt the engine on
+  a real Ctrl-C during a composer command is untested — the listeners
+  are proven present, the race is not proven either way.
+  It does not fire on a normal run: the same process running
+  `--version` loads no alchemy at all and holds no listener, which is
+  what the test asserts. It fires once a composer command evaluates its
+  config. Until the release chain delivers, composer's own
+  sole-listener detector passes on the patch and the prisma bin has no
+  such protection.
 - **Alchemy's `sync` reports permanent drift on Composer resources.**
   `Deployment.read` returns `previewDomain` while `reconcile`
   persists `appEndpointDomain`; `Sync.ts` deep-equals live against

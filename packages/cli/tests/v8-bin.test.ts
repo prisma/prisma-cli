@@ -1,7 +1,8 @@
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Runtime } from "@prisma/cli-engine";
+import type { Runtime, StreamEvent } from "@prisma/cli-engine";
+import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { describe, expect, it } from "vitest";
 
 import { CLIENT_ID, DEFAULT_REDIRECT_URI } from "../src/auth/client";
@@ -20,6 +21,14 @@ const NAMED_CONFIG_PATH = join(
   "fixtures",
   "v8-config",
   "elsewhere.config.ts",
+);
+
+/** A prisma.config.ts whose only section is composer's. */
+const COMPOSER_SECTION_CONFIG_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "fixtures",
+  "v8-config",
+  "composer-section.config.ts",
 );
 
 const SEMVER_PREFIX = /^\d+\.\d+\.\d+/;
@@ -376,6 +385,95 @@ describe("buildCli", () => {
       "Read this config file instead of ./prisma.config.ts",
     );
   });
+
+  /** The error the bin's stream settled on, read from the terminal
+   *  result frame. Parsed rather than matched against the raw text:
+   *  stdout is not a TTY here, so the stream is JSON, and JSON escapes
+   *  every separator in a Windows path — no path the CLI printed is a
+   *  substring of the stream that carried it. */
+  function resultError(stdoutText: string): Diagnostic {
+    const frames = stdoutText
+      .split("\n")
+      .filter((line) => line !== "")
+      .map((line) => JSON.parse(line) as StreamEvent);
+    const last = frames.at(-1);
+    if (last?.kind !== "result" || last.envelope.ok) {
+      throw new Error(`expected a failed result frame, got: ${stdoutText}`);
+    }
+    return last.envelope.error;
+  }
+
+  /** `composer log` through the real bin, against the fixture whose
+   *  composer section names a config file that is not there. */
+  async function runComposerLog(): Promise<{
+    readonly exitCode: number;
+    readonly error: Diagnostic;
+  }> {
+    const proc = makeProcess({
+      argv: [
+        "node",
+        "bin.js",
+        "composer",
+        "log",
+        "--config",
+        COMPOSER_SECTION_CONFIG_PATH,
+        "src/service.ts",
+      ],
+    });
+
+    const exitCode = await main(proc);
+    return { exitCode, error: resultError(proc.stdoutText) };
+  }
+
+  /**
+   * The mount's config wiring, end to end: the section name composer's
+   * family declares, read by the bin's real disk loader, reaching
+   * composer's own handler as the path it acts on.
+   *
+   * Every platform but Windows. `dev` and `log` are the only composer
+   * commands that reach config discovery without credentials — deploy
+   * and destroy stop at the credential check — and both refuse Windows
+   * before they read the section they were handed, so no shipped
+   * command can show the section arriving there. The test after this
+   * one pins what Windows can still show.
+   */
+  it.skipIf(process.platform === "win32")(
+    "hands the composer section of prisma.config.ts to the composer family",
+    async () => {
+      const { exitCode, error } = await runComposerLog();
+
+      expect(exitCode).toBe(2);
+      expect(error.code).toBe("CONFIG.FILE_MISSING");
+      // resolve, not join: composer resolves the section's relative
+      // path against this cwd, and on Windows that puts a drive on it —
+      // written to stay right for the day this runs there again.
+      expect(error.where?.path).toBe(
+        join(resolve("/tmp/v8-bin-test-cwd"), "named-by-the-section.config.ts"),
+      );
+      expect(error.why).toContain("there is no walk to fall back on");
+    },
+  );
+
+  /**
+   * What Windows still shows: the bin evaluated the config file, the
+   * engine accepted its `composer` section, and the command reached
+   * composer's own operation — which then refuses the platform. A
+   * mis-wired section would fail here as a config diagnostic instead.
+   * What it does not show is the section's path reaching composer's
+   * config discovery, since the refusal comes first.
+   *
+   * When composer supports Windows this test fails, and the pair
+   * collapses back into the one above.
+   */
+  it.runIf(process.platform === "win32")(
+    "on Windows, composer's log refuses the platform before it reads the section",
+    async () => {
+      const { exitCode, error } = await runComposerLog();
+
+      expect(exitCode).toBe(2);
+      expect(error.code).toBe("LOG.PLATFORM_UNSUPPORTED");
+    },
+  );
 
   it("runs --version through the real tree, printing the version with exit 0", async () => {
     const proc = makeProcess({

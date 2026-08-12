@@ -1,5 +1,13 @@
 # Brief: composer config-contract compliance and control-API test double
 
+> **CLOSED at S3 closure (D4, 2026-08-11).** This brief was paused, and
+> S3 has now settled all three deliverables — two of them by doing the
+> work under a different contract, one by handing the remainder back.
+> The dispositions are recorded at the end of this file. The brief is
+> kept, not deleted: it is the statement of the problem each disposition
+> answers, and the paused-work record in
+> `../s3/composer-inventory.md` §6 points here.
+
 Repo: prisma/composer (main). Three deliverables. Operator: Will Madden. Process: verify every claim against current code first; stop and report numbered questions with options and a recommendation on anything this brief doesn't settle.
 
 ## Context
@@ -36,3 +44,49 @@ Hosts driving `@prisma/composer/control` (deploy/destroy/dev/log) need a double 
 ## Commit discipline
 
 Explicit staging only. `git commit -s --trailer "Signed-off-by: Will Madden <madden@prisma.io>"`, body ends with `Co-Authored-By: <your model attribution>`. Composer's `origin` in the operator's clones is the bot SSH alias; verify the target PR is open before pushing to an existing PR branch.
+
+## Dispositions (S3 closure, D4)
+
+**Deliverable 1 — config validation returns diagnostics: SUPERSEDED, and
+done.** S3's contract rule R-S3-2 asked for the same semantics from a
+different starting point — the engine's `ConfigSection.validate` must
+return `SectionValidation<T>` and must never throw — so composer's
+throwing loader was rewritten to value-plus-diagnostics under that rule
+in D2 rather than under this brief. What the brief asked for is what
+shipped: a loaded config carries structured diagnostics tagged with the
+section they concern, commands fail only on a section they need, an
+unevaluable module yields one evaluation diagnostic, and nothing throws
+from construction. The rendering is the engine's rather than composer's
+own. One thing the brief listed is not S3's to claim: the
+before/after pinning of rendered output for currently-failing configs.
+The rendering surface changed wholesale with the engine port, so the
+guarantee "user-visible behaviour may only change in framing" was
+overtaken; the change is enumerated in
+`../s2/parity-divergences-s3.md` instead.
+
+**Deliverable 2 — effect-resolution preflight becomes a diagnostic:
+SPLIT.** The part S3 had to own is the part with nowhere else to live:
+the prisma bin has no composer `bin.ts` to run an import-time check in,
+so the check moved INTO the shared config-load machinery (R-S3-2),
+where it surfaces as the already-registered
+`DEPS.EFFECT_VERSION_CONFLICT` diagnostic. The user-visible consequence
+— commands that need no config, `--help` included, now survive a
+mismatched `effect` in the consumer's tree — is recorded in the
+divergence file. **The rest stays with the composer team**: the
+`DEPS.EXECUTOR_UNLOADABLE` backstop is untouched by S3 and was never
+verified against the new path, and the two checks the brief names
+(`check:npm-effect-resolution`, the effect CI probe) were updated in D3
+but not run, because they perform real npm installs and need network —
+tracked in `../../deferred.md`. Whoever runs them owns any fallout.
+
+**Deliverable 3 — published control-API test double: DELIVERED**, as
+S3's R-S3-5 test surface (2). It is exported from composer's `./testing`
+entrypoint, fixture-backed with the same operation signatures and a
+working `DevSession` double, with the compile-time conformance check the
+brief asked for, plus one requirement the brief did not state and S3
+does: its built chunk must contain no import path to the real
+implementation, verified by building the tarball and grepping the chunk
+for alchemy and effect. The family export takes an optional operations
+argument (`createComposerFamily({ operations })`) so a host can mount
+the real grammar against the double, which is how prisma-cli's family
+tests stay free of alchemy and containers.

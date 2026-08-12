@@ -10,8 +10,13 @@ is unclear, update the relevant product doc before changing the command surface.
 
 Requirements:
 
-- Node.js 22.12 or newer
+- Node.js 24 or newer
 - pnpm 10
+
+Published `@prisma/cli` declares a lower floor (Node 22.18, matching
+`@prisma/composer`), and composer runs fine there. The repo develops and tests
+on 24 because the startup-isolation probe cannot run on Node 22; the reason is
+recorded in `packages/cli/tests/v8-composer-isolation.test.ts`.
 
 Install dependencies:
 

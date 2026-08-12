@@ -92,7 +92,10 @@ describe("the shipped spawn adapter", () => {
         command: NODE,
         args: [
           "-e",
-          "require('node:fs').writeFileSync(process.argv[1], 'r'); process.on('SIGTERM', () => process.exit(42)); setInterval(() => {}, 60_000);",
+          // The handler is installed before the ready marker is written,
+          // so a kill that lands the instant the test sees the marker
+          // cannot hit the default SIGTERM disposition instead.
+          "process.on('SIGTERM', () => process.exit(42)); require('node:fs').writeFileSync(process.argv[1], 'r'); setInterval(() => {}, 60_000);",
           ready,
         ],
         cwd: process.cwd(),

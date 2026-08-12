@@ -6,6 +6,14 @@ import {
   defineCommandFamily,
   telemetryCommandGroup,
 } from "@prisma/cli-engine";
+// TODO(release): @prisma/composer@0.6.0-dev.15 pins
+// @prisma/cli-engine@0.0.7, while this package ships the workspace
+// engine at the lockstep version (8.0.0-rc.1). Those are different
+// versions, so an install of @prisma/cli resolves two copies of the
+// engine. Closing it is composer's move, not this repo's: composer
+// must pin the same engine version prisma-cli publishes, per the
+// tandem release order engine → composer → prisma-cli (R-S3-6).
+import { createComposerFamily } from "@prisma/composer/family";
 import { CLI_DOCS_URL, CLI_NAME } from "../cli-name";
 import { getCliVersion } from "../lib/version";
 import { agentInstallCommand } from "./agent/install";
@@ -118,6 +126,15 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
   },
 });
 
+/**
+ * Composer's commands, contributed by composer's own package and run by
+ * this process. Only the command definitions and their handler entry
+ * functions load here; the alchemy and effect constellation stays behind
+ * composer's dynamic executor imports, so mounting costs an unrelated
+ * command nothing.
+ */
+export const composerCommandFamily: CommandFamily = createComposerFamily();
+
 /** The engine ships the three telemetry commands and the group help
  *  text that belongs to them; both halves are spread in below. */
 const telemetry = telemetryCommandGroup({ docsUrl: CLI_DOCS_URL });
@@ -142,6 +159,9 @@ export const cliGroups: Readonly<
   service: { brief: "Manage services and deployments for a project" },
   "service domain": { brief: "Manage custom domains for a service" },
   build: { brief: "Inspect builds created by a git push or Console" },
+  composer: {
+    brief: "Run and deploy applications composed from Prisma modules",
+  },
   agent: { brief: "Manage Prisma skills for AI coding agents" },
   "auth workspace": { brief: "Manage local workspace sessions" },
   ...telemetry.groups,
@@ -199,6 +219,10 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "service domain wait": serviceDomainWaitCommand,
   // Platform builds are their own group; there is no local build verb.
   "build logs": buildLogsCommand,
+  "composer deploy": composerCommandFamily.commands.deploy,
+  "composer destroy": composerCommandFamily.commands.destroy,
+  "composer dev": composerCommandFamily.commands.dev,
+  "composer log": composerCommandFamily.commands.log,
   // Local utilities: no owning package, no config section, no API.
   "agent install": agentInstallCommand,
   "agent update": agentUpdateCommand,
@@ -212,7 +236,7 @@ export function buildCli(): Cli {
   return createCli({
     name: CLI_NAME,
     version: getCliVersion(),
-    commandFamilies: [platformCommandFamily],
+    commandFamilies: [platformCommandFamily, composerCommandFamily],
     groups: cliGroups,
     commands: mountedCommands,
     telemetry: { docsUrl: CLI_DOCS_URL },

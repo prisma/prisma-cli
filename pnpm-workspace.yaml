@@ -3,6 +3,12 @@ packages:
 
 allowBuilds:
   esbuild: true
+  # Transitive arrivals from composer's constellation. Neither build runs
+  # any code this repo executes: workerd's postinstall only links the
+  # platform binary from its own optional dependency, and msgpackr-extract
+  # compiles a native accelerator that falls back to JavaScript.
+  msgpackr-extract: false
+  workerd: false
 
 # First-party SDKs we publish from our own CI (with npm provenance) and consume
 # the same day. minimumReleaseAge is a quarantine for untrusted third-party
@@ -12,3 +18,6 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - '@prisma/compute-sdk'
   - '@prisma/management-api-sdk'
+  - '@prisma/composer'
+  # Reached through @prisma/composer, which pins it exactly.
+  - '@prisma/cli-engine'
