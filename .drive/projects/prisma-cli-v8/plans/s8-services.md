@@ -74,7 +74,10 @@ spellings, `live` derivation, `url` change; from D1's review round:
 when the service names no live deployment, a JSON-only change; and
 `service show` suppresses `liveUrl` when the named live deployment
 is missing from the listing, narrower than "present when
-`latestDeploymentId` is set"; the retired local live-state writes); `deferred.md` gains the
+`latestDeploymentId` is set"; the retired local live-state writes);
+finding D1-R2-1 (v8-service-remove.test.ts's live-state clearing
+assertion is vacuous — seed the key or drop the clause, reviewer's
+entry has both options); `deferred.md` gains the
 ownership-note revisit (R-S8-4) and the logs follow-up slice
 (R-S8-5); golden-rendering updates; review loop; PR.
 
