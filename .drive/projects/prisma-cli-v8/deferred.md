@@ -95,6 +95,32 @@ composer can use it.
   each of the four commands — rewritten to use it. Recorded in
   `assets/s2/parity-divergences-s3.md`.
 
+## A live bug carried out of the port (found closing PR #92, 2026-08-12)
+
+- **The production branch is still resolved by name, not role.**
+  `packages/cli/src/commands/service/target.ts` derives branch kind from
+  the literal name (`toBranchKind`, used where domain attachment decides
+  production-ness), so a project whose production branch is named
+  `master` cannot attach a custom domain. Closed PR #92 fixed exactly
+  this in the old controller and died with it; the fix should land in
+  `target.ts`, taking the role from the API's branch record.
+
+## Orphaned by the stale-PR sweep (2026-08-12) — capabilities with no engine successor
+
+Nine pre-port PRs were closed as unmergeable after the shell deletion
+(#139). Most were superseded outright; these wanted things the engine
+CLI does not do, and each restarts as engine work if wanted:
+
+- **`branch remove` / branch CRUD** (#110, #73): the `branch` group is
+  list-only. Returns with exact-id consent if wanted.
+- **`env pull` into a dotenv file** (#79): `project env list` never
+  returns values by design, so an engine `env pull` needs a ruling on
+  secret handling before it is built.
+- **A `github` group for workspace-level GitHub connections** (#113):
+  the engine ships repo-level `git connect|disconnect` only.
+- **Transient-read retry on `build logs` streaming** (#104): joins the
+  existing streaming follow-ups below.
+
 ## Ratified-as-shipped at the S2 sign-off (2026-08-12) — the gaps stay real
 
 - **Streaming service logs is unavailable in any form.** `app logs` died

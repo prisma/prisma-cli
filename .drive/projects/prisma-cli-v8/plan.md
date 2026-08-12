@@ -28,6 +28,8 @@ draft returns to the operator as design questions; the draft in
 
 ### S2 — Platform family port + auth extraction
 
+**CLOSED 2026-08-12** — shipped as prisma-cli #130 (S2a), #133 (S2b), #132 (S2c), #139 (S2d: init port, shell deletion, bin cutover, the v8 working name retired). Acceptance verified against `specs/s2d-init-and-retirement.md`; the cumulative divergence record `assets/s2/parity-divergences.md` was ratified by the operator on 2026-08-12; the deletion's survivor list is `assets/s2/shell-deletion-survivors.md`; ratified-as-shipped gaps and the stale-PR sweep's orphaned capabilities are in `deferred.md`.
+
 Repo: prisma-cli. Port the ~60 management-API commands onto the engine
 in grouped batches (auth + project; database + bucket; app + build +
 git + agent + env; init wizard last — it stresses prompts hardest).
