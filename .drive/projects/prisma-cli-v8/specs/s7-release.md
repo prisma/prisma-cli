@@ -199,19 +199,7 @@ surfaces (expected: none; the file says so explicitly if so).
 
 ## 4. Open questions (STOP)
 
-**STOP-1 — the release trigger's exact shape.** The mandate says "from a
-tagged commit, CI emits a publishable prisma@8.0.0-rc1 artifact"; the
-ruled versioning model is deliberately tagless-in, tag-out (the pipeline
-CREATES `v8.0.0-rc.N` after publishing; nothing triggers ON tags).
-Options: **(a) keep the ruled model** — the "tagged commit" is the release
-commit the pipeline tags; the artifact is emitted by the same run that
-tags it; the operator's one action remains merging the bump PR —
-recommended, zero new trigger surface, no second way to publish;
-(b) a literal tag-push trigger — overturns a 2026-08-10 ruling and
-versioning.md's explicit rejection of tag triggers, creates a path where
-a pushed tag ships code no bump PR reviewed; (c) dispatch-only artifact
-emission from an existing tag. I will not build (b) or (c) without your
-ruling; the mandate lists this escalation by name.
+**STOP-1 — CLOSED (operator, 2026-08-12).** Option (a): the repo's existing publishing mechanisms stand. The mandate's "tagged commit" wording is set aside; the release commit is the merged bump PR, the pipeline tags it after publishing, and no tag-triggered path exists. D5 is built inside `publish.yml`.
 
 **STOP-2 — CLOSED (operator, 2026-08-12).** rc1 publishes under the
 current names; the one action is merging the bump PR, exactly as
@@ -232,21 +220,11 @@ commands behind the exception list is a following step, recorded in
 `deferred.md`, not this slice. Additions to the set still require an
 operator ruling recorded in the test file.
 
-**STOP-5 — S6 wiring without duplication.** The mandate says wire the
-conformance checker in, not duplicate it — but #161's checks 1–2 live
-unmerged on its branch and check 3 awaits your S6 rulings. Options:
-**(a)** rule S6's STOPs, its implementation lands on main first, S7
-consumes `pnpm conformance` in the publish path and adds only the
-`prisma` tarball to its subject list — cleanest, serializes S7 behind
-S6; (b) S7 lands first with D5's smoke implemented inline in publish.yml
-(the one S6 mechanism rc1 cannot ship without), S6 later absorbs it into
-check 3b — duplicates ~40 lines temporarily, keeps the slices parallel;
-(c) S7 cherry-picks S6's built checks onto its branch — two open PRs
-sharing unmerged code, no. If you rule (b), the inline smoke is written
-to S6's spec (same override computation, same `--ignore-scripts` stance)
-so absorption is a move, not a rewrite.
+**STOP-5 — CLOSED (operator, 2026-08-12).** Option (b): S6 proceeds in parallel and S7 carries the install smoke itself (`scripts/tarball-smoke.mjs` + `tarball-smoke-utils.mjs`), written to S6's check-3b design — same override computation, same `--ignore-scripts` stance, sandbox outside the workspace — so S6 absorbs it as a move, not a rewrite.
 
-**STOP-6 — S8 tree interaction.** #162 adds platform-family commands, so
+**STOP-6 — CLOSED by events (2026-08-12).** #162 merged first; this branch carries main's S8 merge, and the mount-path collision resolved as the predicted textual union. The original question, for the record:
+
+#162 adds platform-family commands, so
 the completeness check is order-independent with S7 — but
 `EXPECTED_MOUNT_PATHS`, `cliGroups`, and `v8/cli.ts` imports collide
 textually in both orders. Preference? (a) S7 lands first, #162 rebases
@@ -261,7 +239,9 @@ this branch rebase in whichever order you merge them, the collision is
 textual only (STOP-6); no S6 mechanism is duplicated in D1/D2 — the
 smoke question only arises at D5 (STOP-5).
 
-**STOP-7 — engine-pin convergence choreography for rc1.** For rc1's
+**STOP-7 — DEFERRED (operator, 2026-08-12).** The convergence choreography below is set aside until `8.0.0-rc.1` actually publishes; the committed interim pins (orm-toolchain `8.0.0-rc.1-dev.40`, composer `0.6.0-dev.16`, both carrying engine `0.0.9` beside the workspace engine) stand, and the two-copy install remains the accepted preview state. The original question, kept for that day:
+
+For rc1's
 install to resolve ONE engine, before the rc1 bump PR merges:
 prisma-cli publishes engine `8.0.0-rc.N` (the existing lockstep publish
 does this — note it publishes `@prisma/cli` in the same run, which is
