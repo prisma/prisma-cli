@@ -14,19 +14,51 @@ function blocks(presented: unknown) {
   return value?.presentation.human ?? [];
 }
 
-/** Records which deployments the run asked the API to start, so a test
- *  can prove the call was made — or skipped. */
-function startRoutes(overrides: Routes = {}): {
+/**
+ * Records which deployments the run asked the API to start, so a test
+ * can prove the call was made — or skipped.
+ *
+ * `reportedStatus` is what the deployment reads back as afterwards.
+ * The command re-reads rather than assuming, so a fixture that accepts
+ * the start and still reports "stopped" is a case worth having.
+ */
+function startRoutes(
+  overrides: Routes = {},
+  reportedStatus = "running",
+): {
   routes: Routes;
   started: string[];
 } {
   const started: string[] = [];
+  const statuses = new Map([
+    ["dep_1", "stopped"],
+    ["dep_2", "running"],
+  ]);
   return {
     started,
     routes: releaseRoutes({
       "POST /v1/deployments/{deploymentId}/start": (init) => {
-        started.push(init.params?.path?.deploymentId as string);
+        const id = init.params?.path?.deploymentId as string;
+        started.push(id);
+        statuses.set(id, reportedStatus);
         return { data: { data: {} } };
+      },
+      "GET /v1/deployments/{deploymentId}": (init) => {
+        const id = init.params?.path?.deploymentId as string;
+        const status = statuses.get(id);
+        if (!status) {
+          return { error: { error: { message: "not found" } }, status: 404 };
+        }
+        return {
+          data: {
+            data: {
+              id,
+              status,
+              createdAt: "2026-08-01T00:00:00.000Z",
+              previewDomain: `${id}.prisma.app`,
+            },
+          },
+        };
       },
       ...overrides,
     }),
@@ -77,6 +109,28 @@ describe("prisma-v8 service deployment start", () => {
         // "<id>.prisma.app", and the listing reads those details.
         { label: "url", value: "https://dep_1.prisma.app" },
       ],
+    });
+  });
+
+  /**
+   * The start endpoint answers with nothing, so the status is read back
+   * rather than assumed. A deployment still coming up reports the state
+   * the API gives, not the one the command asked for.
+   */
+  it("reports the status the API reads back, not the one it requested", async () => {
+    const start = startRoutes({}, "starting");
+    const harness = await makeServiceCli({ routes: start.routes });
+
+    const result = await harness.cli.run(
+      ["service", "deployment", "start", "dep_1", ...TARGET],
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(start.started).toEqual(["dep_1"]);
+    expect(result.presented?.data).toMatchObject({
+      deployment: { id: "dep_1", status: "starting" },
+      alreadyInState: false,
     });
   });
 

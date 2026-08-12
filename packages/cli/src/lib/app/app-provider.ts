@@ -240,6 +240,13 @@ export interface AppProvider {
     deploymentId: string;
     signal?: AbortSignal;
   }): Promise<void>;
+  /** One deployment's own record. Unlike `showDeployment` this does not
+   *  hunt for the owning service, so it is the cheap re-read for a
+   *  caller that already knows which service it is acting on. */
+  readDeployment(options: {
+    deploymentId: string;
+    signal?: AbortSignal;
+  }): Promise<DeploymentRecord>;
   deployApp(options: {
     cwd: string;
     projectId: string;
@@ -541,6 +548,26 @@ export function createAppProvider(
       if (result.isErr()) {
         throw new Error(result.error.message);
       }
+    },
+
+    async readDeployment(options) {
+      const result = await sdk.showDeployment({
+        deploymentId: options.deploymentId,
+        signal: options.signal,
+      });
+      if (result.isErr()) {
+        throw new Error(result.error.message);
+      }
+
+      return {
+        id: result.value.id,
+        status: result.value.status,
+        createdAt: result.value.createdAt,
+        url: toAbsoluteUrl(result.value.previewDomain ?? null),
+        // Liveness is the service record's to state, and this reads the
+        // deployment alone.
+        live: null,
+      };
     },
 
     async deployApp(options) {
