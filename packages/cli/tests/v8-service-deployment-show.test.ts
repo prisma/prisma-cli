@@ -2,11 +2,50 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { makeServiceCli, readFlowRoutes } from "./v8-service-testkit";
+import {
+  makeServiceCli,
+  page,
+  readFlowRoutes,
+  SERVICE,
+  SERVICE_DETAIL,
+  type ServiceCliHarness,
+} from "./v8-service-testkit";
 
 /** deployment show scans projects to find the owning service. */
 function showDeployRoutes(overrides = {}) {
   return readFlowRoutes(overrides);
+}
+
+/** A service that has never been promoted: it names no live deployment,
+ *  so nothing is live and its `appEndpointDomain` serves nothing. */
+function neverPromotedRoutes() {
+  return readFlowRoutes({
+    "GET /v1/apps": () => ({
+      data: page([{ ...SERVICE, latestDeploymentId: null }]),
+    }),
+    "GET /v1/apps/{appId}": () => ({
+      data: { data: { ...SERVICE_DETAIL, latestDeploymentId: null } },
+    }),
+  });
+}
+
+/** Seeds the state file the retired local-state fallback used to read:
+ *  the remembered project plus a service-to-deployment entry. */
+async function seedRememberedLiveDeployment(
+  harness: ServiceCliHarness,
+): Promise<void> {
+  await mkdir(harness.stateDir, { recursive: true });
+  await writeFile(
+    path.join(harness.stateDir, "state.json"),
+    JSON.stringify({
+      project: {
+        rememberedByWorkspace: {
+          ws_1: { id: "proj_1", name: "acme-app", workspaceId: "ws_1" },
+        },
+      },
+      app: { knownLiveDeploymentByProject: { proj_1: { svc_1: "dep_1" } } },
+    }),
+  );
 }
 
 describe("prisma-v8 service deployment show", () => {
@@ -36,14 +75,8 @@ describe("prisma-v8 service deployment show", () => {
   });
 
   it("ignores a live deployment named only by local CLI state", async () => {
-    const harness = await makeServiceCli({ routes: showDeployRoutes() });
-    await mkdir(harness.stateDir, { recursive: true });
-    await writeFile(
-      path.join(harness.stateDir, "state.json"),
-      JSON.stringify({
-        app: { knownLiveDeploymentByProject: { proj_1: { svc_1: "dep_1" } } },
-      }),
-    );
+    const harness = await makeServiceCli({ routes: neverPromotedRoutes() });
+    await seedRememberedLiveDeployment(harness);
 
     const result = await harness.cli.run(
       ["service", "deployment", "show", "dep_1"],
@@ -53,6 +86,34 @@ describe("prisma-v8 service deployment show", () => {
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
       deployment: { id: "dep_1", live: false },
+    });
+  });
+
+  it("shows the deployment's own preview url when the service has never been promoted", async () => {
+    const harness = await makeServiceCli({ routes: neverPromotedRoutes() });
+
+    const result = await harness.cli.run(
+      ["service", "deployment", "show", "dep_1"],
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({
+      deployment: { id: "dep_1", url: "https://dep1.prisma.app" },
+    });
+  });
+
+  it("shows a non-live deployment's own preview url, not the promoted address", async () => {
+    const harness = await makeServiceCli({ routes: showDeployRoutes() });
+
+    const result = await harness.cli.run(
+      ["service", "deployment", "show", "dep_1"],
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({
+      deployment: { id: "dep_1", url: "https://dep1.prisma.app", live: false },
     });
   });
 

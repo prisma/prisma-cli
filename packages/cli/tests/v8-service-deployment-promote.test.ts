@@ -82,7 +82,7 @@ describe("prisma-v8 service deployment promote", () => {
     });
   });
 
-  it("caches the selected service and the known live deployment", async () => {
+  it("caches the selected service and writes no local live-deployment state", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     await harness.cli.run(
@@ -106,7 +106,7 @@ describe("prisma-v8 service deployment promote", () => {
       id: "svc_1",
       name: "hello-world",
     });
-    expect(state.app.knownLiveDeploymentByProject.proj_1.svc_1).toBe("dep_1");
+    expect(state.app.knownLiveDeploymentByProject).toEqual({});
   });
 
   it("warns instead of promoting when the target is already live", async () => {

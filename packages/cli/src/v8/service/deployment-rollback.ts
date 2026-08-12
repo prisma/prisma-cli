@@ -123,12 +123,6 @@ export const serviceDeploymentRollbackCommand = defineCommand({
       ctx.report({ kind: "step-finished", step: "rollback", outcome: "ok" });
     }
 
-    await state.stateStore.setKnownLiveDeployment(
-      state.projectId,
-      deploymentsResult.app.id,
-      targetDeployment.id,
-    );
-
     const result: ServiceRollbackResult = {
       projectId: state.projectId,
       service: toServiceSummary(deploymentsResult.app),

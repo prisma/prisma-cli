@@ -726,17 +726,22 @@ export function createAppProvider(
         options?.signal,
       );
 
+      // The promoted address is the live deployment's address only. A
+      // deployment that is not live is not served there, so it keeps its
+      // own preview domain.
+      const promotedUrl =
+        app !== null && app.liveDeploymentId === deploymentResult.value.id
+          ? app.liveUrl
+          : null;
+
       return {
         app,
         deployment: {
           id: deploymentResult.value.id,
           status: deploymentResult.value.status,
           createdAt: deploymentResult.value.createdAt,
-          // The promoted address the deploy reported, so this never shows
-          // a URL the deploy did not. Without the owning service record
-          // the preview domain is all there is.
           url:
-            app?.liveUrl ??
+            promotedUrl ??
             toAbsoluteUrl(deploymentResult.value.previewDomain ?? null),
           live: null,
         },

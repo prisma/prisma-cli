@@ -99,12 +99,6 @@ export const serviceDeploymentPromoteCommand = defineCommand({
       ctx.report({ kind: "step-finished", step: "promote", outcome: "ok" });
     }
 
-    await state.stateStore.setKnownLiveDeployment(
-      state.projectId,
-      deploymentsResult.app.id,
-      targetDeployment.id,
-    );
-
     const result: ServicePromoteResult = {
       projectId: state.projectId,
       service: toServiceSummary(deploymentsResult.app),
