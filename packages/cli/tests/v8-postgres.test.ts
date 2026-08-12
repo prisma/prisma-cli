@@ -40,6 +40,7 @@ interface RawDatabase {
   name: string;
   projectId?: string;
   branchGitName?: string | null;
+  branchId?: string | null;
   region?: string | null;
   status?: string | null;
   isDefault?: boolean | null;
@@ -221,6 +222,64 @@ describe("prisma-v8 postgres list", () => {
       "acme-preview\t\t\t\tdb_2",
       "acme-production\tmain\tus-east-1\tready\tdb_1",
     ]);
+  });
+
+  it("does not call a branch-scoped database unscoped when only its name is absent", async () => {
+    // The shape the live API actually returns: a branch id, and none of
+    // the four spellings of the branch name the CLI looks for. Reading
+    // that as "unscoped" told the user the database belongs to no
+    // branch, which is a different claim from not knowing its name.
+    const result = await makeCli(
+      postgresClient({
+        databases: [
+          {
+            ...DB_ONE,
+            branchGitName: undefined,
+            branchId: "br_wj8iwh5foody6aqr82kp0mol",
+          },
+        ],
+      }),
+    ).run(["postgres", "list"], {
+      cwd: await pinnedCwd(),
+      isTty: { stdout: true },
+    });
+
+    expect(
+      blocks(result.presented).find((block) => block.kind === "table"),
+    ).toEqual({
+      kind: "table",
+      columns: ["Name", "Branch", "Region", "Status", "Id"],
+      rows: [
+        [
+          "acme-production",
+          "br_wj8iwh5foody6aqr82kp0mol",
+          "us-east-1",
+          "ready",
+          "db_1",
+        ],
+      ],
+    });
+  });
+
+  it("reports a database with no branch at all as unscoped", async () => {
+    const result = await makeCli(
+      postgresClient({
+        databases: [
+          { ...DB_ONE, branchGitName: undefined, branchId: undefined },
+        ],
+      }),
+    ).run(["postgres", "list"], {
+      cwd: await pinnedCwd(),
+      isTty: { stdout: true },
+    });
+
+    expect(
+      blocks(result.presented).find((block) => block.kind === "table"),
+    ).toEqual({
+      kind: "table",
+      columns: ["Name", "Branch", "Region", "Status", "Id"],
+      rows: [["acme-production", "unscoped", "us-east-1", "ready", "db_1"]],
+    });
   });
 
   it("reports an absent status as unknown even for the default database", async () => {

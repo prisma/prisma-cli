@@ -50,7 +50,7 @@ export function renderDatabaseList(
 
   const rows = result.databases.map((database) => [
     database.name,
-    database.branchName ?? "unscoped",
+    branchLabel(database),
     database.region ?? "unknown",
     formatStatus(database),
     database.id,
@@ -111,8 +111,8 @@ export function renderDatabaseShow(
         { key: "id", value: result.database.id, tone: "dim" },
         {
           key: "branch",
-          value: result.database.branchName ?? "unscoped",
-          tone: result.database.branchName ? "default" : "dim",
+          value: branchLabel(result.database),
+          tone: result.database.branchId ? "default" : "dim",
         },
         {
           key: "region",
@@ -601,6 +601,13 @@ function formatUsageMetric(metric: DatabaseUsageMetric): string {
  *  different fact and never stands in for a status. */
 function formatStatus(database: DatabaseSummary): string {
   return database.status ?? "unknown";
+}
+
+/** "unscoped" is a claim that the database belongs to no branch, so only
+ *  an absent `branchId` may produce it. The API does not always send a
+ *  branch name beside the id it does send. */
+function branchLabel(database: DatabaseSummary): string {
+  return database.branchName ?? database.branchId ?? "unscoped";
 }
 
 function formatDatabaseTarget(

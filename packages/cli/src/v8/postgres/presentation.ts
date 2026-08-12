@@ -29,6 +29,14 @@ export function formatStatus(database: DatabaseSummary): string {
   return database.status ?? "unknown";
 }
 
+/** The reader's branch cell. "unscoped" is a claim about the database —
+ *  that it belongs to no branch — so only an absent `branchId` may
+ *  produce it. The API does not always send a branch name beside the id
+ *  it does send, and reporting that database as unscoped was wrong. */
+export function branchLabel(database: DatabaseSummary): string {
+  return database.branchName ?? database.branchId ?? "unscoped";
+}
+
 /** The stdout status cell. The Option A channel ruling makes stdout the
  *  machine-usable payload, so it carries the raw status and nothing
  *  else: an absent status is an empty field, and `isDefault` is a

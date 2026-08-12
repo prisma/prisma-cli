@@ -10,14 +10,14 @@ import { serializeDatabaseList } from "../../presenters/database";
 import type { DatabaseListResult } from "../../types/database";
 import { branchFlag, projectFlag, resolvePostgresContext } from "./context";
 import { mapPostgresOperationError } from "./errors";
-import { formatStatus, statusValue } from "./presentation";
+import { branchLabel, formatStatus, statusValue } from "./presentation";
 
 const TITLE = "Listing databases for the resolved project.";
 
 function databaseRows(result: DatabaseListResult): string[][] {
   return result.databases.map((database) => [
     database.name,
-    database.branchName ?? "unscoped",
+    branchLabel(database),
     database.region ?? "unknown",
     formatStatus(database),
     database.id,
