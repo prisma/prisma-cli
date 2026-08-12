@@ -82,3 +82,15 @@ export function assertCanonicalBase(base: string): void {
     );
   }
 }
+
+/**
+ * The dist-tag a release-bump push publishes under. RC-line versions go
+ * to `next`: `latest` keeps serving the pre-v8 CLI until the operator
+ * deliberately moves it (rollout plan step 5), by dispatching the
+ * publish workflow with `dist-tag: latest` or by widening this rule
+ * when the RC line is ready. Stable versions go to `latest`.
+ */
+export function releaseDistTag(base: string): "latest" | "next" {
+  assertCanonicalBase(base);
+  return base.includes("-rc.") ? "next" : "latest";
+}

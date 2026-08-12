@@ -5,6 +5,7 @@ import {
   computeNextMinor,
   computeNextReleaseVersion,
   parseVersion,
+  releaseDistTag,
 } from "./determine-version-utils.ts";
 
 const NOT_CANONICAL = /not canonical/;
@@ -133,5 +134,21 @@ describe("assertCanonicalBase", () => {
     assert.throws(() => assertCanonicalBase("1.02.3"), NOT_CANONICAL);
     assert.throws(() => assertCanonicalBase("1.2.03"), NOT_CANONICAL);
     assert.throws(() => assertCanonicalBase("8.0.0-rc.01"), NOT_CANONICAL);
+  });
+});
+
+describe("releaseDistTag", () => {
+  it("sends an RC-line bump to next, so latest stays put until the deliberate flip", () => {
+    assert.equal(releaseDistTag("8.0.0-rc.1"), "next");
+    assert.equal(releaseDistTag("8.0.0-rc.12"), "next");
+  });
+
+  it("sends a stable bump to latest", () => {
+    assert.equal(releaseDistTag("8.0.0"), "latest");
+    assert.equal(releaseDistTag("8.1.0"), "latest");
+  });
+
+  it("refuses a non-canonical base", () => {
+    assert.throws(() => releaseDistTag("8.0.0-rc.1-dev.3"), NOT_CANONICAL);
   });
 });
