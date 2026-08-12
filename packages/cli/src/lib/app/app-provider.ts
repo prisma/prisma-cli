@@ -228,6 +228,18 @@ export interface AppProvider {
     signal?: AbortSignal;
     progress?: unknown;
   }): Promise<void>;
+  startDeployment(options: {
+    deploymentId: string;
+    signal?: AbortSignal;
+  }): Promise<void>;
+  stopDeployment(options: {
+    deploymentId: string;
+    signal?: AbortSignal;
+  }): Promise<void>;
+  deleteDeployment(options: {
+    deploymentId: string;
+    signal?: AbortSignal;
+  }): Promise<void>;
   deployApp(options: {
     cwd: string;
     projectId: string;
@@ -498,6 +510,36 @@ export function createAppProvider(
 
       if (promoteResult.isErr()) {
         throw new Error(promoteResult.error.message);
+      }
+    },
+
+    async startDeployment(options) {
+      const result = await sdk.startDeployment({
+        deploymentId: options.deploymentId,
+        signal: options.signal,
+      });
+      if (result.isErr()) {
+        throw new Error(result.error.message);
+      }
+    },
+
+    async stopDeployment(options) {
+      const result = await sdk.stopDeployment({
+        deploymentId: options.deploymentId,
+        signal: options.signal,
+      });
+      if (result.isErr()) {
+        throw new Error(result.error.message);
+      }
+    },
+
+    async deleteDeployment(options) {
+      const result = await sdk.deleteDeployment({
+        deploymentId: options.deploymentId,
+        signal: options.signal,
+      });
+      if (result.isErr()) {
+        throw new Error(result.error.message);
       }
     },
 
