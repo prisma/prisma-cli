@@ -87,6 +87,14 @@ wired into both products' publish CI as S3/S5 land.
 
 ### S8 — Service primitives (design first; after S3, before S7)
 
+**Design settled 2026-08-12** (operator discussion); the slice
+contract is `specs/s8-services.md`. The four questions below are
+answered there: no ownership note for now, records verified
+compatible, the log-ownership conflict dissolved on investigation
+(`composer log` reads the local dev daemon, not the platform), and
+`service logs` stays shelved while the operator asks the API owners
+the transport question.
+
 Repo: prisma-cli. Give the platform's service resources an atomic CLI surface, replacing what S2c ported for continuity.
 
 **Why this slice exists.** The legacy `app` group fused three concerns — building an artifact, wiring a GitHub repo, and deploying — into single commands, most visibly `app deploy`, which builds, creates a project, creates branches, sets environment variables, optionally provisions a database, and deploys. Composer replaces the building and deploying. What the CLI should own is managing the remote resource, and today it cannot: there is no `service list` and no `service create` despite `GET`/`POST /v1/apps`, no deployment start or stop despite `POST /v1/deployments/{id}/start|stop`, and no deployment delete. A service can currently only be born as a side effect of deploying to it. S2c ported the surviving commands under their legacy names so the commander shell could die in S2d; that port is continuity, not endorsement of the shape.
@@ -139,10 +147,23 @@ space still being written; cataloguing before the old CLI is retired
 would document two competing spaces at once. So: after S5 (ports done),
 after S2d (commander shell deleted), after S7 if it slips.
 
+### S10 — Skills catch up (last, after S9)
+
+Repo: prisma-cli (+ wherever each skill lives). Every agent skill
+that teaches or drives these CLIs is rewritten against the shipped
+v8 surface: the Composer skills (`skills-contrib/` in the composer
+repo), the ORM skills, and the platform-CLI command skills. The v8
+port renames commands, moves them between families, deletes
+spellings, and changes output shapes; a skill written against the
+legacy CLI silently teaches commands that exit 2. Added at operator
+instruction (2026-08-12). Last, because skills document the shipped
+surface: after S9, or after S7 if S9 slips — whichever means the
+command tree and error catalogue have stopped moving.
+
 ## Dependency graph
 
 ```text
-S1 ──► S2 ──► S3 ──► S5 ──► S7 ──► S9
+S1 ──► S2 ──► S3 ──► S5 ──► S7 ──► S9 ──► S10
         │      ▲      ▲             ▲
         └──────┘      │             │
 S4 (prisma/prisma) ───┴──► S5       │
