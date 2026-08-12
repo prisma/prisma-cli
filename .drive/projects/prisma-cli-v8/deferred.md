@@ -4,6 +4,26 @@ Work identified during a slice that is not part of that slice's
 contract. Each entry: what, why it was deferred, where it lands.
 Nothing here is tracked outside this file.
 
+## After S7's first real publish
+
+- **The `v8.0.0-rc.1` GitHub Release has no tarballs attached, and
+  none can be added.** The first real `next` publish (2026-08-12, run
+  31618278670) published both packages to npm successfully, then the
+  Release step published the Release before uploading assets — and this
+  repo's releases are immutable, so the upload was refused (HTTP 422)
+  and the Release froze empty. npm is unaffected; the smoked tarballs
+  remain retrievable from that run's workflow artifacts (which expire
+  on the repo's retention schedule) and from npm itself. PR #165 fixes
+  the step for every future release (draft → attach assets → publish,
+  the order GitHub's own docs recommend). Repairing rc.1's Release
+  itself, if ever wanted: merge #165 first, try
+  `gh release delete v8.0.0-rc.1` (docs are silent on whether a
+  published immutable release can be deleted; the attempt is the test),
+  and if deletion works, re-dispatch the publish workflow — the
+  already-published npm versions are tolerated and the run recreates
+  the Release complete. Operator ruling (2026-08-12): cosmetic, not
+  immediate.
+
 ## Still open after S3/D4 — mostly the composer repo, two items need both
 
 D4 landed the prisma-cli half (the mount, the node floor, the divergence
