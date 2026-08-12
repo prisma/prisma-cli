@@ -55,16 +55,22 @@ export function makeUi(colorEnabled: boolean, stderr: OutputStream): Ui {
 /** Materializes ONLY the active format's presentation functions, at the
  *  return site: human → human + stdout + next; json → json + next.
  *
- *  `next` is still called optionally, and it is the one field here that
- *  is. `Presentations` requires all four, so nothing compiled against
- *  this engine can omit one — but a family compiled against an earlier
- *  engine can, and one does: `@prisma/orm-toolchain@8.0.0-rc.1-dev.40`
- *  declares `human`, `stdout` and `json` for `migration list` and no
- *  `next`. Calling it unconditionally makes that command exit 2.
- *  `stdout` and `json` are called unconditionally because both published
- *  families already declare them. Drop the `?? []` when the toolchain and
- *  composer pins converge on this engine — the tandem release
- *  `deferred.md` describes. */
+ *  `next` may be absent at runtime, so it alone is called with `?.()`.
+ *  `Presentations` requires all four, so no command compiled against
+ *  this engine can omit one — but a command family compiled against an
+ *  earlier engine can, and one shipped does:
+ *  `@prisma/orm-toolchain@8.0.0-rc.1-dev.40` declares `human`, `stdout`
+ *  and `json` for `migration list` and no `next`, so calling `next`
+ *  unconditionally makes that command exit 2.
+ *
+ *  `stdout` and `json` are called unconditionally, which was checked
+ *  rather than assumed: both published families declare both, and
+ *  requiring them breaks no test. They stay strict because a missing
+ *  `json` is the defect this change exists to remove — it used to make
+ *  the envelope publish the handler's internal `data`.
+ *
+ *  Delete the `?.()` when the toolchain and composer pins converge on
+ *  this engine, in the tandem release `deferred.md` describes. */
 function materializePresentation(
   state: RunState,
   ui: Ui,

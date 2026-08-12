@@ -120,6 +120,34 @@ const throwing = defineCommand({
   },
 });
 
+/** Its `data` and its json presentation deliberately differ. Every other
+ *  fixture here passes the same value to both, so none of them can tell
+ *  which one the envelope published — `data` is what the handler worked
+ *  with, `result` is what the command chose to publish, and the engine
+ *  used to publish `data` for any command that declared no json.
+ *
+ *  What this catches: settlement publishing `data` rather than the json
+ *  presentation. What it does not catch: the old conditional fallback
+ *  returning, because this command declares a json presentation, so the
+ *  fallback's branch is never taken. Nothing compiled against this
+ *  engine can omit `json`, so that branch is unreachable rather than
+ *  untested. */
+const divergent = defineCommand({
+  help: { summary: "Publishes something other than its working data" },
+  handler: async (_args, ctx) =>
+    ok(
+      ctx.present(
+        { data: { internal: "the handler's own object" } },
+        {
+          human: () => [],
+          stdout: () => [],
+          json: () => ({ published: "what the command states" }),
+          next: () => [],
+        },
+      ),
+    ),
+});
+
 const whoami = defineCommand({
   help: { summary: "Show the signed-in user" },
   needs: { credentials: true },
@@ -152,6 +180,7 @@ function makeCli() {
       failing,
       check,
       throwing,
+      divergent,
       "tool greet": greet,
       "auth whoami": whoami,
     },
@@ -202,6 +231,15 @@ describe("completed commands", () => {
         timestamp: T0,
       },
     ]);
+  });
+
+  test("the envelope's result is the json presentation, never the handler's data", async () => {
+    const result = await makeCli().run(["divergent", "--json"]);
+
+    const last = result.json[result.json.length - 1];
+    expect(
+      last.kind === "result" && last.envelope.ok && last.envelope.result,
+    ).toEqual({ published: "what the command states" });
   });
 
   test("commandId is the full dotted mount path", async () => {

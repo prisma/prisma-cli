@@ -165,7 +165,21 @@ CLI does not do, and each restarts as engine work if wanted:
   (`assets/s2/parity-divergences-s3.md`), which also corrects this
   item's claim that legacy rejected non-integers — legacy truncated
   them silently, and rejected only negatives and `NaN`.
-- **Two packages rebuild the same `dist` while the other reads it, so `npm test` fails at random.** Vitest resolves `@prisma/cli-engine` through the package's own `exports` map, which points at `./dist`; the `paths` entries in `tsconfig.json` are read by `tsc`, not vitest, and no path-resolving plugin is configured. Both `test` scripts now begin with `pnpm run build` — the engine's is `pnpm run build && pnpm run typecheck && vitest run`, the CLI's is `pnpm run build && vitest run` — so when turbo runs them concurrently the engine rewrites `packages/cli-engine/dist` while the CLI's vitest is importing from it. The failure is `Cannot find package '@prisma/cli-engine/testing'`, reported at file level, and the count varies run to run: 13, 34 and 43 files across three runs of one branch, with `npx turbo run test --concurrency=1` passing all 60 every time and `npx vitest run` inside `packages/cli` passing all 60 too. Nothing is wrong with the code when this fires, which is the danger — it looks like a mass breakage. This entry previously said the CLI's script was a bare `vitest run` and that `turbo run test` was therefore honest; the build step has since been added to both, which is what created the race. The fix is to stop the two tasks racing on one directory: let `turbo.json`'s `dependsOn: ["^build"]` do the sequencing and drop the build from the package `test` scripts, or give each package its own build output to read.
+- **`pnpm --filter @prisma/cli test` can report green against a stale
+  engine build.** Vitest resolves `@prisma/cli-engine` through the
+  package's own `exports` map, which points at `./dist`; the `paths`
+  entries in `tsconfig.json` are read by `tsc`, not vitest, and no
+  path-resolving plugin is configured. `packages/cli`'s `test` script is
+  a bare `vitest run` with no build step, so run on its own it exercises
+  whatever engine `dist` happens to be on disk. The engine's own `test`
+  script builds first, so a gate that runs the engine suite before the
+  CLI suite — as every gate in this project does — is honest, and
+  `turbo run test` is honest too because `turbo.json` declares `test` as
+  `dependsOn: ["^build"]`. The trap is running one filter in isolation
+  after editing engine source. Surfaced in the engine-colour slice when
+  a deliberately introduced defect failed to fail. The mechanism to fix
+  it already exists in `turbo.json`; the change is to `packages/cli`'s
+  test script.
 - **`spawn-real-child.test.ts` also fails under load, and is a different test from the one below.** In `packages/cli-engine/tests/spawn-real-child.test.ts`, the case "native Ctrl-C reaches the child through the shared process group" failed twice during the engine-colour slice, both times on a machine running the engine and CLI suites concurrently — on the second sighting that run's import phase took 92s against a normal 3–7s. It passed on every isolated and sequential run either side. Nothing in that slice goes near spawn or signals, so this is not its doing. Two independent sightings under load make it worth diagnosing rather than watching: the likely shape is the same as the entry below, a test that waits on a marker the child writes before it is actually ready for the signal. Third sighting, 2026-08-12: it failed on a GitHub runner during #158, a PR that changes no engine file, and passed on a re-run of the same commit and on the same machine in isolation. That moves it from a loaded-laptop annoyance to a test that reddens the shared `Test` check on unrelated work, which teaches people to re-run a red check rather than read it. Worth fixing before the next slice rather than after.
 - **`v8-spawn-adapter.test.ts` has a race that fails under load.**
   In `packages/cli/tests/v8-spawn-adapter.test.ts`, the "kill
@@ -350,6 +364,14 @@ CLI does not do, and each restarts as engine work if wanted:
   build` from the engine's `test` script and let turbo's `^build`
   dependency do that work, or stop the engine's build cleaning a
   directory another package reads while it runs.
+  Seen again on the presentations branch (2026-08-12) with a second
+  message for the same cause — `Cannot find package
+  '@prisma/cli-engine/testing'` — and a failure count that varied 13,
+  34 and 43 files across three runs of one commit, while
+  `--concurrency=1` and a direct `npx vitest run` in `packages/cli`
+  both passed all 60 every time. The varying count is the tell: a
+  change that touches many files shifts the timing and makes it fire
+  more often, which reads as "this branch broke everything".
 - **The packed shell manifest carries `devDependencies` on private
   packages at versions no registry has** — `@repo/cli-telemetry` and
   `@repo/tsconfig`, both at `8.0.0-rc.1`. Harmless when a consumer
