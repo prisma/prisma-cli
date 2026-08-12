@@ -116,6 +116,26 @@ jobs:
         if: ${{ steps.version.outputs.publish == 'true' }}
         run: pnpm test:scripts
 
+      # Pack the publishable tarballs and prove they survive a registry
+      # consumer's install: out-of-workspace sandbox, npm with
+      # --ignore-scripts, unpublished workspace siblings resolved through
+      # computed file: overrides, every declared bin started on plain
+      # Node at exit 0. The tarballs this step packs are the ones
+      # uploaded below; what was verified is what ships.
+      - name: Pack tarballs and smoke the install
+        if: ${{ steps.version.outputs.publish == 'true' }}
+        run: node scripts/tarball-smoke.mjs
+
+      # The verified tarballs, retrievable per run. On a real release the
+      # same files are attached to the GitHub Release below.
+      - name: Upload tarball artifacts
+        if: ${{ steps.version.outputs.publish == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: npm-tarballs
+          path: artifacts/tarballs/*.tgz
+          if-no-files-found: error
+
       # NODE_AUTH_TOKEN is intentionally NOT set. npm detects the OIDC
       # environment (id-token: write) and authenticates via Trusted
       # Publishing automatically. Setting NODE_AUTH_TOKEN to any value --
@@ -176,3 +196,6 @@ jobs:
               --generate-notes \
               $PRERELEASE_FLAG
           fi
+          # The exact tarballs the smoke verified, attached to the
+          # Release. --clobber keeps reruns idempotent.
+          gh release upload "v$VERSION" artifacts/tarballs/*.tgz --clobber
