@@ -28,6 +28,17 @@
         "$TURBO_ROOT$/packages/tsconfig/base.json"
       ]
     },
+    // The grammar completeness check: every family command mounted,
+    // every mounted command family-owned, every path spelled as
+    // expected. It runs in the test suite too, but it also runs on its
+    // own before anything is published, so a release cannot ship a tree
+    // that has lost a command. Never cached: a green cache entry would
+    // let a publish skip the one check standing between it and a
+    // half-assembled CLI.
+    "check:grammar": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
     "test:e2e": {
       // The package's OWN build, not just its dependencies': these
       // tests run dist/v8/cli.js, so a stale dist would test the last

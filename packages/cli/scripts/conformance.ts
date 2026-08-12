@@ -27,6 +27,7 @@ import { checkValidatorNoThrow } from "@repo/cli-conformance/validator-no-throw"
 import {
   composerCommandFamily,
   mountedCommands,
+  ormCommandFamily,
   platformCommandFamily,
 } from "../src/v8/cli";
 
@@ -62,7 +63,11 @@ async function importPurity(): Promise<readonly Finding[]> {
 function validatorNoThrow(): readonly Finding[] {
   return checkValidatorNoThrow({
     sections: sectionsFrom({
-      families: [platformCommandFamily, composerCommandFamily],
+      families: [
+        platformCommandFamily,
+        composerCommandFamily,
+        ormCommandFamily,
+      ],
       commands: mountedCommands,
     }),
   });
@@ -77,7 +82,7 @@ async function tarball(): Promise<readonly Finding[]> {
       ],
       shellPackage: "@prisma/cli",
       enginePackage: "@prisma/cli-engine",
-      familyPackages: ["@prisma/composer"],
+      familyPackages: ["@prisma/composer", "@prisma/orm-toolchain"],
       exceptions: [
         {
           familyPackage: "@prisma/composer",
@@ -88,10 +93,25 @@ async function tarball(): Promise<readonly Finding[]> {
           removeWhen:
             "composer republishes pinning the engine version prisma-cli ships (tandem order engine → composer → prisma-cli, R-S3-6)",
         },
+        {
+          familyPackage: "@prisma/orm-toolchain",
+          familyPin: "0.0.9",
+          shellPin: "8.0.0-rc.1",
+          reason:
+            "same class, same ruling: the ORM toolchain cannot pin an engine version that is not published yet",
+          removeWhen:
+            "prisma/prisma republishes @prisma/orm-toolchain pinning the engine version prisma-cli ships",
+        },
       ],
       sandboxDir: join(WORK_DIR, "sandbox"),
     },
-    realTarballIo(WORK_DIR),
+    realTarballIo(WORK_DIR, {
+      // The tarballs the checks verify are the ones publish CI uploads
+      // and attaches to the GitHub Release: what was verified is what
+      // ships. (This absorbed scripts/tarball-smoke.mjs, which S7 wrote
+      // to this check's design as a placeholder for this move.)
+      tarballDir: join(CLI_DIR, "..", "..", "artifacts", "tarballs"),
+    }),
   );
 }
 

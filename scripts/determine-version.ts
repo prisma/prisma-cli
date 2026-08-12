@@ -9,21 +9,26 @@
  * event:
  *
  * - `push`              → if the root `version` changed in this push,
- *                          `<base>`, dist-tag `latest`. This is how a
- *                          merged `chore(release): ...` PR ships a
- *                          release automatically — on the RC line
- *                          `latest` tracks the newest `8.0.0-rc.N`.
+ *                          `<base>`, dist-tag from `releaseDistTag`:
+ *                          `next` on the RC line, `latest` for stable.
+ *                          This is how a merged `chore(release): ...`
+ *                          PR ships a release automatically — `latest`
+ *                          keeps serving the pre-v8 CLI until the
+ *                          operator deliberately moves it.
  *                          Otherwise there is nothing to publish: the
  *                          committed version is already on the registry.
  *                          `publish` is written as `false` and the
  *                          workflow skips the remaining steps.
  * - `workflow_dispatch` → `<base>` (no suffix), dist-tag from
- *                          `INPUT_DIST_TAG` (defaults to `latest`).
- *                          Useful as a manual escape hatch (re-publish
- *                          after a transient failure, cut a beta).
+ *                          `INPUT_DIST_TAG`; empty means the version's
+ *                          canonical tag (`releaseDistTag`). Useful as a
+ *                          manual escape hatch (re-publish after a
+ *                          transient failure, cut a beta) — and passing
+ *                          `latest` explicitly for an RC version is the
+ *                          deliberate cutover act.
  *
- * Outputs `publish`, `version` and `tag` to `$GITHUB_OUTPUT` for
- * downstream workflow steps to consume.
+ * Outputs `publish`, `version`, `tag` and `release` to `$GITHUB_OUTPUT`
+ * for downstream workflow steps to consume.
  *
  * This script never rewrites a manifest. The version it reports is the
  * one committed at this ref, always — which is the whole point of
@@ -35,7 +40,10 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { VersionResult } from "./determine-version-utils.ts";
-import { assertCanonicalBase } from "./determine-version-utils.ts";
+import {
+  assertCanonicalBase,
+  releaseDistTag,
+} from "./determine-version-utils.ts";
 
 const ALL_ZERO_SHA_PATTERN = /^0+$/;
 
@@ -98,6 +106,12 @@ function writeGitHubOutput(
   if (result === undefined) return;
   appendFileSync(outputFile, `version<<EOF\n${result.version}\nEOF\n`);
   appendFileSync(outputFile, `tag<<EOF\n${result.tag}\nEOF\n`);
+  // A run is a release — and gets the GitHub Release + tag — when it
+  // publishes under the canonical tag for its version. Push bumps
+  // always do; a dispatch counts only when the chosen tag matches
+  // (re-publishing a release), not for beta/preview cuts.
+  const release = result.tag === releaseDistTag(result.version);
+  appendFileSync(outputFile, `release<<EOF\n${String(release)}\nEOF\n`);
 }
 
 const eventName = process.env.GITHUB_EVENT_NAME;
@@ -113,9 +127,15 @@ let result: VersionResult | undefined;
 
 switch (eventName) {
   case "workflow_dispatch":
-    // `??` is wrong here: an empty INPUT_DIST_TAG would slip through as
-    // the dist-tag and cause `pnpm publish --tag ""` to fail downstream.
-    result = { version: baseVersion, tag: inputDistTag || "latest" };
+    // `??` is wrong here: an empty INPUT_DIST_TAG must fall through to
+    // the canonical tag, not become `pnpm publish --tag ""` downstream.
+    // Empty (the input's default) means "this version's canonical tag",
+    // so a routine re-publish dispatch can never move `latest` onto the
+    // RC line by accident; moving it takes an explicit `latest` input.
+    result = {
+      version: baseVersion,
+      tag: inputDistTag || releaseDistTag(baseVersion),
+    };
     break;
 
   case "push": {
@@ -134,7 +154,7 @@ switch (eventName) {
       console.log(
         `Previous root version: ${previous.version ?? "(unset)"} → release bump detected.`,
       );
-      result = { version: baseVersion, tag: "latest" };
+      result = { version: baseVersion, tag: releaseDistTag(baseVersion) };
     } else {
       console.log(
         previous.available

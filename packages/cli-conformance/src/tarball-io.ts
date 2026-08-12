@@ -26,15 +26,23 @@ const TGZ_SUFFIX = /\.tgz$/;
  * install sandbox. It is deleted at the START of a run, not the end, so
  * a failed run leaves its evidence on disk.
  */
-export function realTarballIo(workDir: string): TarballIo {
+export function realTarballIo(
+  workDir: string,
+  options: { readonly tarballDir?: string } = {},
+): TarballIo {
   const absWork = resolve(workDir);
   rmSync(absWork, { recursive: true, force: true });
   mkdirSync(absWork, { recursive: true });
+  // Callers may point packing somewhere meaningful — this repo packs
+  // into artifacts/tarballs so the tarballs the checks verified are the
+  // exact files CI uploads and attaches to the GitHub Release.
+  const tarballDir = resolve(options.tarballDir ?? join(absWork, "tarballs"));
+  rmSync(tarballDir, { recursive: true, force: true });
   const sandbox = () => join(absWork, "sandbox");
 
   return {
     async pack(pkgDir) {
-      const dest = join(absWork, "tarballs");
+      const dest = tarballDir;
       mkdirSync(dest, { recursive: true });
       try {
         const before = new Set(readdirSync(dest));
@@ -187,6 +195,9 @@ export function realTarballIo(workDir: string): TarballIo {
           [binPath, ...argv],
           {
             cwd: sandboxDir,
+            // A near-empty environment: the bin must start for a user
+            // whose shell carries none of this repo's variables.
+            env: { PATH: process.env.PATH, TMPDIR: process.env.TMPDIR },
             timeout: timeoutMs,
             killSignal: "SIGKILL",
           },

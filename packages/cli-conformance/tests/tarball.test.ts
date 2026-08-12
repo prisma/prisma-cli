@@ -331,6 +331,77 @@ describe("checkTarball", () => {
     expect(bins[0]?.summary).toContain("timed out");
   });
 
+  test("overrides are version-qualified and cover workspace siblings transitively", async () => {
+    // The shell depends on the auth library, which depends on the
+    // engine; the engine is NOT a direct dependency of the shell. A
+    // non-recursive override map would miss it and the install would
+    // fall back to the registry.
+    let seen: Readonly<Record<string, string>> = {};
+    const manifests: Record<string, PackageManifest & { version?: string }> = {
+      "packages/cli.tgz": {
+        bin: { "prisma-cli": "./dist/cli.js" },
+        dependencies: { "@repo/auth": "8.0.0-rc.1" },
+      } as PackageManifest,
+      "packages/auth.tgz": {
+        version: "8.0.0-rc.1",
+        dependencies: { "@prisma/cli-engine": "8.0.0-rc.1" },
+      },
+      "packages/cli-engine.tgz": { version: "8.0.0-rc.1" },
+    };
+    const io = fakeIo({
+      pack: (pkgDir) => Promise.resolve({ tarball: `/abs/${pkgDir}.tgz` }),
+      readPackedManifest: (tarball) =>
+        Promise.resolve(
+          manifests[tarball.replace("/abs/", "")] ?? SHELL_MANIFEST,
+        ),
+      installSandbox: ({ overrides }) => {
+        seen = overrides;
+        return Promise.resolve({ ok: true as const });
+      },
+    });
+    await checkTarball(
+      input({
+        packages: [
+          { name: "@prisma/cli", dir: "packages/cli" },
+          { name: "@repo/auth", dir: "packages/auth" },
+          { name: "@prisma/cli-engine", dir: "packages/cli-engine" },
+        ],
+      }),
+      io,
+    );
+    expect(seen).toEqual({
+      "@repo/auth@8.0.0-rc.1": "file:/abs/packages/auth.tgz",
+      "@prisma/cli-engine@8.0.0-rc.1": "file:/abs/packages/cli-engine.tgz",
+    });
+  });
+
+  test("a string-shorthand bin is started under the unscoped package name", async () => {
+    const started: { binName: string; relPath: string }[] = [];
+    const io = fakeIo({
+      readPackedManifest: (tarball) =>
+        Promise.resolve(
+          tarball.includes("cli-engine")
+            ? ENGINE_MANIFEST
+            : ({
+                ...SHELL_MANIFEST,
+                name: "@prisma/cli",
+                bin: "./dist/cli.js",
+              } as unknown as typeof SHELL_MANIFEST),
+        ),
+      startBin: ({ binName, relPath }) => {
+        started.push({ binName, relPath });
+        return Promise.resolve({
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          timedOut: false,
+        });
+      },
+    });
+    await checkTarball(input(), io);
+    expect(started).toEqual([{ binName: "cli", relPath: "./dist/cli.js" }]);
+  });
+
   test("no packages at all is a finding, not a pass", async () => {
     const findings = await checkTarball(input({ packages: [] }), fakeIo());
     expect(kinds(findings)).toEqual(["no-subjects"]);

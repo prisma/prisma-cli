@@ -4,8 +4,22 @@ import { checkImportPurity, type PackageManifest } from "./import-purity";
 
 /** A packed manifest also names its bins. */
 export interface PackedManifest extends PackageManifest {
+  readonly name?: string;
   readonly version?: string;
-  readonly bin?: Readonly<Record<string, string>>;
+  /** npm's object form, or the string shorthand named after the package. */
+  readonly bin?: Readonly<Record<string, string>> | string;
+}
+
+/** Bin entries as name → path, expanding the string shorthand. */
+export function declaredBins(
+  manifest: PackedManifest,
+): readonly [string, string][] {
+  if (manifest.bin === undefined) return [];
+  if (typeof manifest.bin === "string") {
+    const name = manifest.name?.split("/").at(-1) ?? "bin";
+    return [[name, manifest.bin]];
+  }
+  return Object.entries(manifest.bin);
 }
 
 /**
@@ -181,13 +195,20 @@ async function sandboxFindings(
   packed: ReadonlyMap<string, { tarball: string; manifest: PackedManifest }>,
   io: TarballIo,
 ): Promise<readonly Finding[]> {
+  // Transitive: a sibling reached only through another sibling still
+  // needs its override, or the install falls back to the registry.
   const overrides: Record<string, string> = {};
-  for (const [name, pack] of packed) {
-    if (name === input.shellPackage) continue;
-    const declared = shell.manifest.dependencies?.[name];
-    if (declared === undefined) continue;
-    overrides[`${name}@${declared}`] = `file:${pack.tarball}`;
-  }
+  const visit = (manifest: PackedManifest): void => {
+    for (const name of Object.keys(manifest.dependencies ?? {})) {
+      const entry = packed.get(name);
+      if (entry === undefined) continue;
+      const key = `${name}@${entry.manifest.version ?? ""}`;
+      if (key in overrides) continue;
+      overrides[key] = `file:${entry.tarball}`;
+      visit(entry.manifest);
+    }
+  };
+  visit(shell.manifest);
   const install = await io.installSandbox({
     sandboxDir: input.sandboxDir,
     rootTarball: shell.tarball,
@@ -215,7 +236,7 @@ async function binFindings(
   io: TarballIo,
 ): Promise<readonly Finding[]> {
   const findings: Finding[] = [];
-  for (const [binName, relPath] of Object.entries(shellManifest.bin ?? {})) {
+  for (const [binName, relPath] of declaredBins(shellManifest)) {
     // biome-ignore lint/performance/noAwaitInLoops: bins start one at a time so a failure names its bin and concurrent processes cannot confound each other's exit
     const run = await io.startBin({
       sandboxDir: input.sandboxDir,
