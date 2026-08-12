@@ -37,9 +37,6 @@ import {
   createManagementProjectProvider,
   type ProjectProvider,
   projectApiError,
-  projectRemoveBlockedError,
-  projectRenameFailedError,
-  projectTransferRejectedError,
 } from "../lib/project/provider";
 import {
   buildProjectSetupNextActions,
@@ -64,7 +61,6 @@ import { formatCommandArgument } from "../shell/command-arguments";
 import {
   authRequiredError,
   CliError,
-  featureUnavailableError,
   usageError,
   workspaceRequiredError,
 } from "../shell/errors";
@@ -83,8 +79,6 @@ import type {
   ProjectSummary,
   ProjectTransferResult,
 } from "../types/project";
-import { createCliUseCaseGateways } from "../use-cases/create-cli-gateways";
-import { createProjectUseCases } from "../use-cases/project";
 import { requireAuthenticatedAuthState } from "./auth";
 
 export interface GitConnectOptions {
@@ -97,13 +91,6 @@ export interface GitDisconnectOptions {
 
 export const GITHUB_INSTALL_POLL_INTERVAL_MS = 2_000;
 export const GITHUB_INSTALL_POLL_TIMEOUT_MS = 120_000;
-
-function isRealMode(context: CommandContext): boolean {
-  return (
-    !context.runtime.fixturePath &&
-    !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH
-  );
-}
 
 export async function readProjectListLocalBinding(
   cwd: string,
@@ -154,44 +141,19 @@ export async function runProjectList(
     throw workspaceRequiredError();
   }
 
-  if (isRealMode(context)) {
-    const client = await authenticatedManagementApiClient(
-      context.runtime.env,
-      context.runtime.signal,
-    );
-    if (!client) {
-      throw authRequiredError();
-    }
-    const projects = sortProjects(
-      await listRealWorkspaceProjects(client, context.runtime.signal),
-    );
-    const localBinding = await readProjectListLocalBinding(
-      context.runtime.cwd,
-      projects,
-      context.runtime.signal,
-    );
-    const nextActions = buildProjectListNextActions(localBinding);
-
-    return {
-      command: "project.list",
-      result: {
-        workspace,
-        projects: projects.map(toProjectSummary),
-        localBinding,
-      },
-      warnings: [],
-      nextSteps: [],
-      nextActions,
-    };
-  }
-
-  const projectUseCases = createProjectUseCases(
-    createCliUseCaseGateways(context),
+  const client = await authenticatedManagementApiClient(
+    context.runtime.env,
+    context.runtime.signal,
   );
-  const result = await projectUseCases.list(authState);
+  if (!client) {
+    throw authRequiredError();
+  }
+  const projects = sortProjects(
+    await listRealWorkspaceProjects(client, context.runtime.signal),
+  );
   const localBinding = await readProjectListLocalBinding(
     context.runtime.cwd,
-    result.projects,
+    projects,
     context.runtime.signal,
   );
   const nextActions = buildProjectListNextActions(localBinding);
@@ -199,7 +161,8 @@ export async function runProjectList(
   return {
     command: "project.list",
     result: {
-      ...result,
+      workspace,
+      projects: projects.map(toProjectSummary),
       localBinding,
     },
     warnings: [],
@@ -232,13 +195,11 @@ export async function runProjectShow(
     throw workspaceRequiredError();
   }
 
-  const result = isRealMode(context)
-    ? await resolveProjectShowInRealMode(context, workspace, explicitProject)
-    : await resolveProjectShowInFixtureMode(
-        context,
-        workspace,
-        explicitProject,
-      );
+  const result = await resolveProjectShowInRealMode(
+    context,
+    workspace,
+    explicitProject,
+  );
 
   return {
     command: "project.show",
@@ -270,16 +231,6 @@ export async function runProjectCreate(
 
   if (!isValidProjectSetupName(projectName)) {
     throw projectSetupNameRequiredError("project create");
-  }
-
-  if (!isRealMode(context)) {
-    throw featureUnavailableError(
-      "Project create is not available in fixture mode",
-      "Creating Projects requires live platform integration.",
-      "Rerun without fixture mode enabled to create a Project.",
-      ["prisma-cli auth login"],
-      "project",
-    );
   }
 
   const client = await authenticatedManagementApiClient(
@@ -345,21 +296,18 @@ export async function runProjectLink(
     throw workspaceRequiredError();
   }
 
-  let provider: ReturnType<typeof createAppProvider> | null = null;
-  let projects: ProjectCandidate[];
-  if (isRealMode(context)) {
-    const client = await authenticatedManagementApiClient(
-      context.runtime.env,
-      context.runtime.signal,
-    );
-    if (!client) {
-      throw authRequiredError();
-    }
-    provider = createAppProvider(client);
-    projects = await listRealWorkspaceProjects(client, context.runtime.signal);
-  } else {
-    projects = listFixtureWorkspaceProjects(context, workspace);
+  const client = await authenticatedManagementApiClient(
+    context.runtime.env,
+    context.runtime.signal,
+  );
+  if (!client) {
+    throw authRequiredError();
   }
+  const provider = createAppProvider(client);
+  const projects = await listRealWorkspaceProjects(
+    client,
+    context.runtime.signal,
+  );
 
   let result: ProjectSetupResult;
   if (projectRef?.trim()) {
@@ -397,28 +345,18 @@ async function resolveInteractiveProjectLinkSetup(
   context: CommandContext,
   workspace: AuthWorkspace,
   projects: ProjectCandidate[],
-  provider: ReturnType<typeof createAppProvider> | null,
+  provider: ReturnType<typeof createAppProvider>,
 ): Promise<ProjectSetupResult> {
   const setup = await promptForProjectSetupChoice({
     context,
     projects,
-    createProject: (projectName) => {
-      if (!provider) {
-        throw featureUnavailableError(
-          "Project create is not available in fixture mode",
-          "Creating Projects requires live platform integration.",
-          "Rerun without fixture mode enabled to create a Project.",
-          ["prisma-cli auth login"],
-          "project",
-        );
-      }
-      return createProjectForLinkSetup(
+    createProject: (projectName) =>
+      createProjectForLinkSetup(
         provider,
         projectName,
         workspace,
         context.runtime.signal,
-      );
-    },
+      ),
     cancel: {
       why: "Project link needs a Project before it can continue.",
       fix: "Choose an existing Project or create a new one, then rerun project link.",
@@ -747,10 +685,7 @@ async function resolveTransferRecipient(
   if (recipientToken) {
     return {
       accessToken: recipientToken,
-      workspaceId: isRealMode(context)
-        ? null
-        : // Fixture convention: the recipient token is the target workspace id.
-          recipientToken,
+      workspaceId: null,
       workspaceName: null,
       source: "recipient-token",
     };
@@ -761,48 +696,11 @@ async function resolveTransferRecipient(
     throw transferRecipientRequiredError(formatCommand);
   }
 
-  if (!isRealMode(context)) {
-    return resolveTransferRecipientInFixtureMode(context, workspaceRef);
-  }
-
   if (context.runtime.env[SERVICE_TOKEN_ENV_VAR] !== undefined) {
     throw transferRecipientUnavailableError(formatCommand);
   }
 
   return resolveTransferRecipientFromWorkspaceSession(context, workspaceRef);
-}
-
-function resolveTransferRecipientInFixtureMode(
-  context: CommandContext,
-  workspaceRef: string,
-): ResolvedTransferRecipient {
-  const workspaces = context.api.listWorkspaces();
-  const matches = workspaces.filter(
-    (candidate) =>
-      candidate.id === workspaceRef ||
-      candidate.name.toLowerCase() === workspaceRef.toLowerCase(),
-  );
-  const match = matches[0];
-  if (match === undefined) {
-    throw workspaceNotAuthenticatedError(workspaceRef);
-  }
-  if (matches.length > 1) {
-    throw workspaceAmbiguousError(
-      workspaceRef,
-      matches.map((match) => ({
-        id: match.id,
-        name: match.name,
-        credentialWorkspaceId: match.id,
-      })),
-    );
-  }
-  return {
-    // Fixture transfers authorize by workspace id instead of a real token.
-    accessToken: match.id,
-    workspaceId: match.id,
-    workspaceName: match.name,
-    source: "workspace-session",
-  };
 }
 
 async function resolveTransferRecipientFromWorkspaceSession(
@@ -856,19 +754,12 @@ interface ProjectMutationContext {
 
 async function requireProjectMutationContext(
   context: CommandContext,
-  workspace: AuthWorkspace,
+  _workspace: AuthWorkspace,
 ): Promise<ProjectMutationContext> {
-  if (isRealMode(context)) {
-    const client = await requireProjectClient(context);
-    return {
-      provider: createManagementProjectProvider(client),
-      projects: await listRealWorkspaceProjects(client, context.runtime.signal),
-    };
-  }
-
+  const client = await requireProjectClient(context);
   return {
-    provider: createFixtureProjectProvider(context),
-    projects: listFixtureWorkspaceProjects(context, workspace),
+    provider: createManagementProjectProvider(client),
+    projects: await listRealWorkspaceProjects(client, context.runtime.signal),
   };
 }
 
@@ -878,12 +769,9 @@ async function requireProjectCommandContext(
   explicitProject: string | undefined,
   commandName: string,
 ): Promise<{ provider: ProjectProvider; target: ResolvedProjectTarget }> {
-  const realMode = isRealMode(context);
-  const client = realMode ? await requireProjectClient(context) : null;
+  const client = await requireProjectClient(context);
   const listProjects = async () =>
-    client
-      ? listRealWorkspaceProjects(client, context.runtime.signal)
-      : listFixtureWorkspaceProjects(context, workspace);
+    listRealWorkspaceProjects(client, context.runtime.signal);
 
   const targetResult = await resolveProjectTarget({
     context,
@@ -896,11 +784,10 @@ async function requireProjectCommandContext(
     throw projectResolutionErrorToCliError(targetResult.error);
   }
 
-  const provider = client
-    ? createManagementProjectProvider(client)
-    : createFixtureProjectProvider(context);
-
-  return { provider, target: targetResult.value };
+  return {
+    provider: createManagementProjectProvider(client),
+    target: targetResult.value,
+  };
 }
 
 async function requireProjectClient(
@@ -914,58 +801,6 @@ async function requireProjectClient(
     throw authRequiredError();
   }
   return client;
-}
-
-function createFixtureProjectProvider(
-  context: CommandContext,
-): ProjectProvider {
-  const fixtureFormatCommand = resolvePrismaCliPackageCommandFormatterSync(
-    context.runtime.cwd,
-  );
-  return {
-    async renameProject(options) {
-      const renamed = context.api.renameProject(
-        options.projectId,
-        options.name,
-      );
-      if (!renamed) {
-        throw projectRenameFailedError(options.name, undefined);
-      }
-      return {
-        id: renamed.id,
-        name: renamed.name,
-        ...(renamed.url ? { url: renamed.url } : {}),
-      };
-    },
-
-    async removeProject(options) {
-      const removed = context.api.removeProject(options.projectId);
-      if (removed.outcome === "blocked") {
-        throw projectRemoveBlockedError(options.projectId, undefined);
-      }
-      if (removed.outcome === "not-found") {
-        throw new CliError({
-          code: "PROJECT_NOT_FOUND",
-          domain: "project",
-          summary: "Project not found",
-          why: `No project matched "${options.projectId}".`,
-          fix: `Pass a project id or name from ${fixtureFormatCommand(["project", "list"])}.`,
-          exitCode: 1,
-          nextSteps: [fixtureFormatCommand(["project", "list"])],
-        });
-      }
-    },
-
-    async transferProject(options) {
-      const transferred = context.api.transferProject(
-        options.projectId,
-        options.recipientAccessToken,
-      );
-      if (transferred.outcome !== "transferred") {
-        throw projectTransferRejectedError(options.projectId, undefined);
-      }
-    },
-  };
 }
 
 function requireProjectExactConfirmation(options: {
@@ -1130,101 +965,30 @@ export async function runGitConnect(
     throw workspaceRequiredError();
   }
 
-  if (isRealMode(context)) {
-    const client = await authenticatedManagementApiClient(
-      context.runtime.env,
-      context.runtime.signal,
-    );
-    if (!client) {
-      throw authRequiredError();
-    }
-
-    const target = await resolveRequiredProjectInRealMode(
-      context,
-      workspace,
-      options.project,
-      "git connect",
-    );
-    const repository = await resolveRepositoryForConnect(context, gitUrl);
-    const api = client as unknown as SourceRepositoryApiClient;
-    const existing = await readFirstSourceRepository(
-      api,
-      target.project.id,
-      context.runtime.signal,
-    );
-
-    if (existing) {
-      const existingConnection = toRepositoryConnection(existing);
-      if (
-        repositoryFullNamesMatch(
-          existingConnection.repository.fullName,
-          repository.fullName,
-        )
-      ) {
-        return {
-          command: "git.connect",
-          result: {
-            ...target,
-            repositoryConnection: existingConnection,
-          },
-          warnings: [],
-          nextSteps: [],
-        };
-      }
-
-      throw repoAlreadyConnectedError(existingConnection.repository.fullName);
-    }
-
-    const resolvedRepository = await resolveInstalledRepository(
-      context,
-      api,
-      workspace.id,
-      repository,
-    );
-    const { data, error, response } = await api.POST(
-      "/v1/source-repositories",
-      {
-        body: {
-          projectId: target.project.id,
-          provider: "github",
-          providerRepositoryId: resolvedRepository.repository.id,
-          installationId: resolvedRepository.installation.id,
-        },
-        signal: context.runtime.signal,
-      },
-    );
-
-    if (error || !data) {
-      throw repoConnectionApiError(
-        "Failed to connect GitHub repository",
-        response,
-        error,
-      );
-    }
-
-    return {
-      command: "git.connect",
-      result: {
-        ...target,
-        repositoryConnection: toRepositoryConnection(data.data),
-      },
-      warnings: [],
-      nextSteps: [],
-    };
+  const client = await authenticatedManagementApiClient(
+    context.runtime.env,
+    context.runtime.signal,
+  );
+  if (!client) {
+    throw authRequiredError();
   }
 
-  const target = await resolveRequiredProjectInFixtureMode(
+  const target = await resolveRequiredProjectInRealMode(
     context,
     workspace,
     options.project,
     "git connect",
   );
   const repository = await resolveRepositoryForConnect(context, gitUrl);
-  const existingConnection = await context.stateStore.readRepositoryConnection(
+  const api = client;
+  const existing = await readFirstSourceRepository(
+    api,
     target.project.id,
+    context.runtime.signal,
   );
 
-  if (existingConnection) {
+  if (existing) {
+    const existingConnection = toRepositoryConnection(existing);
     if (
       repositoryFullNamesMatch(
         existingConnection.repository.fullName,
@@ -1245,17 +1009,35 @@ export async function runGitConnect(
     throw repoAlreadyConnectedError(existingConnection.repository.fullName);
   }
 
-  const connection = createPendingRepositoryConnection(repository);
-  await context.stateStore.setRepositoryConnection(
-    target.project.id,
-    connection,
+  const resolvedRepository = await resolveInstalledRepository(
+    context,
+    api,
+    workspace.id,
+    repository,
   );
+  const { data, error, response } = await api.POST("/v1/source-repositories", {
+    body: {
+      projectId: target.project.id,
+      provider: "github",
+      providerRepositoryId: resolvedRepository.repository.id,
+      installationId: resolvedRepository.installation.id,
+    },
+    signal: context.runtime.signal,
+  });
+
+  if (error || !data) {
+    throw repoConnectionApiError(
+      "Failed to connect GitHub repository",
+      response,
+      error,
+    );
+  }
 
   return {
     command: "git.connect",
     result: {
       ...target,
-      repositoryConnection: connection,
+      repositoryConnection: toRepositoryConnection(data.data),
     },
     warnings: [],
     nextSteps: [],
@@ -1272,84 +1054,53 @@ export async function runGitDisconnect(
     throw workspaceRequiredError();
   }
 
-  if (isRealMode(context)) {
-    const client = await authenticatedManagementApiClient(
-      context.runtime.env,
-      context.runtime.signal,
-    );
-    if (!client) {
-      throw authRequiredError();
-    }
-
-    const target = await resolveRequiredProjectInRealMode(
-      context,
-      workspace,
-      options.project,
-      "git disconnect",
-    );
-    const api = client as unknown as SourceRepositoryApiClient;
-    const existing = await readFirstSourceRepository(
-      api,
-      target.project.id,
-      context.runtime.signal,
-    );
-
-    if (!existing) {
-      throw repoNotConnectedError();
-    }
-
-    const { error, response } = await api.DELETE(
-      "/v1/source-repositories/{id}",
-      {
-        params: {
-          path: {
-            id: existing.id,
-          },
-        },
-        signal: context.runtime.signal,
-      },
-    );
-
-    if (error) {
-      throw repoConnectionApiError(
-        "Failed to disconnect GitHub repository",
-        response,
-        error,
-      );
-    }
-
-    return {
-      command: "git.disconnect",
-      result: {
-        ...target,
-        repositoryConnection: toRepositoryConnection(existing),
-      },
-      warnings: [],
-      nextSteps: [],
-    };
+  const client = await authenticatedManagementApiClient(
+    context.runtime.env,
+    context.runtime.signal,
+  );
+  if (!client) {
+    throw authRequiredError();
   }
 
-  const target = await resolveRequiredProjectInFixtureMode(
+  const target = await resolveRequiredProjectInRealMode(
     context,
     workspace,
     options.project,
     "git disconnect",
   );
-  const existingConnection = await context.stateStore.readRepositoryConnection(
+  const api = client;
+  const existing = await readFirstSourceRepository(
+    api,
     target.project.id,
+    context.runtime.signal,
   );
 
-  if (!existingConnection) {
+  if (!existing) {
     throw repoNotConnectedError();
   }
 
-  await context.stateStore.clearRepositoryConnection(target.project.id);
+  const { error, response } = await api.DELETE("/v1/source-repositories/{id}", {
+    params: {
+      path: {
+        id: existing.id,
+      },
+    },
+    signal: context.runtime.signal,
+  });
+
+  if (error) {
+    throw repoConnectionApiError(
+      "Failed to disconnect GitHub repository",
+      response,
+      error,
+    );
+  }
 
   return {
     command: "git.disconnect",
     result: {
       ...target,
-      repositoryConnection: existingConnection,
+      repositoryConnection: toRepositoryConnection(existing),
     },
     warnings: [],
     nextSteps: [],
@@ -1411,43 +1162,6 @@ async function resolveRequiredProjectInRealMode(
   return result.value;
 }
 
-async function resolveProjectShowInFixtureMode(
-  context: CommandContext,
-  workspace: AuthWorkspace,
-  explicitProject: string | undefined,
-): Promise<ProjectShowResult> {
-  const result = await inspectProjectBinding({
-    context,
-    workspace,
-    explicitProject,
-    listProjects: async () => listFixtureWorkspaceProjects(context, workspace),
-    commandName: "project show",
-  });
-  if (result.isErr()) {
-    throw projectResolutionErrorToCliError(result.error);
-  }
-  return result.value;
-}
-
-async function resolveRequiredProjectInFixtureMode(
-  context: CommandContext,
-  workspace: AuthWorkspace,
-  explicitProject: string | undefined,
-  commandName: string,
-): Promise<ResolvedProjectTarget> {
-  const result = await resolveProjectTarget({
-    context,
-    workspace,
-    explicitProject,
-    listProjects: async () => listFixtureWorkspaceProjects(context, workspace),
-    commandName,
-  });
-  if (result.isErr()) {
-    throw projectResolutionErrorToCliError(result.error);
-  }
-  return result.value;
-}
-
 /** The projects the API returns for the active credential, sorted.
  *  Takes no workspace: the credential names one, and the API answers
  *  within it. */
@@ -1492,21 +1206,6 @@ export async function listRealWorkspaceProjects(
         id: project.workspace.id,
         name: project.workspace.name,
       },
-    })),
-  );
-}
-
-export function listFixtureWorkspaceProjects(
-  context: CommandContext,
-  workspace: AuthWorkspace,
-): ProjectCandidate[] {
-  return sortProjects(
-    context.api.listProjectsForWorkspace(workspace.id).map((project) => ({
-      id: project.id,
-      name: project.name,
-      ...(project.url ? { url: project.url } : {}),
-      slug: project.slug,
-      workspace,
     })),
   );
 }
@@ -1566,122 +1265,6 @@ export interface SourceRepositoryApiError {
   };
 }
 
-interface SourceRepositoryApiResult<T> {
-  data?: T;
-  error?: SourceRepositoryApiError;
-  response?: Response;
-}
-
-export interface SourceRepositoryApiClient {
-  POST(
-    path: "/v1/source-repositories",
-    options: {
-      body: {
-        projectId: string;
-        provider: "github";
-        providerRepositoryId: number;
-        installationId?: string;
-      };
-      signal?: AbortSignal;
-    },
-  ): Promise<SourceRepositoryApiResult<{ data: SourceRepositoryResponse }>>;
-  POST(
-    path: "/v1/scm-installations/install-intents",
-    options: {
-      body: {
-        provider: "github";
-        workspaceId: string;
-      };
-      signal?: AbortSignal;
-    },
-  ): Promise<
-    SourceRepositoryApiResult<{
-      data: {
-        type: "install-intent";
-        provider: "github";
-        workspaceId: string;
-        installUrl: string;
-      };
-    }>
-  >;
-  GET(
-    path: "/v1/source-repositories",
-    options: {
-      params: {
-        query: {
-          projectId: string;
-          cursor?: string;
-          limit?: number;
-        };
-      };
-      signal?: AbortSignal;
-    },
-  ): Promise<
-    SourceRepositoryApiResult<{
-      data: SourceRepositoryResponse[];
-      pagination: {
-        nextCursor: string | null;
-        hasMore: boolean;
-      };
-    }>
-  >;
-  GET(
-    path: "/v1/scm-installations",
-    options: {
-      params: {
-        query: {
-          workspaceId: string;
-          cursor?: string;
-          limit?: number;
-        };
-      };
-      signal?: AbortSignal;
-    },
-  ): Promise<
-    SourceRepositoryApiResult<{
-      data: ScmInstallationResponse[];
-      pagination: {
-        nextCursor: string | null;
-        hasMore: boolean;
-      };
-    }>
-  >;
-  GET(
-    path: "/v1/scm-installations/{installationId}/repositories",
-    options: {
-      params: {
-        path: {
-          installationId: string;
-        };
-        query: {
-          cursor?: string;
-          limit?: number;
-        };
-      };
-      signal?: AbortSignal;
-    },
-  ): Promise<
-    SourceRepositoryApiResult<{
-      data: ScmRepositoryResponse[];
-      pagination: {
-        nextCursor: string | null;
-        hasMore: boolean;
-      };
-    }>
-  >;
-  DELETE(
-    path: "/v1/source-repositories/{id}",
-    options: {
-      params: {
-        path: {
-          id: string;
-        };
-      };
-      signal?: AbortSignal;
-    },
-  ): Promise<SourceRepositoryApiResult<unknown>>;
-}
-
 async function resolveRepositoryForConnect(
   context: CommandContext,
   gitUrl: string | undefined,
@@ -1710,7 +1293,7 @@ async function resolveRepositoryForConnect(
 
 async function resolveInstalledRepository(
   context: CommandContext,
-  api: SourceRepositoryApiClient,
+  api: ManagementApiClient,
   workspaceId: string,
   repository: GitHubRepositoryReference,
 ): Promise<InstalledRepositoryMatch> {
@@ -1765,7 +1348,7 @@ async function resolveInstalledRepository(
 }
 
 export async function findRepositoryInInstallations(
-  api: SourceRepositoryApiClient,
+  api: ManagementApiClient,
   installations: ScmInstallationResponse[],
   repository: GitHubRepositoryReference,
   signal: AbortSignal,
@@ -1808,7 +1391,7 @@ export async function findRepositoryInInstallations(
 
 async function waitForInstalledRepository(
   context: CommandContext,
-  api: SourceRepositoryApiClient,
+  api: ManagementApiClient,
   workspaceId: string,
   repository: GitHubRepositoryReference,
 ): Promise<{
@@ -1911,7 +1494,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 export async function listScmInstallations(
-  api: SourceRepositoryApiClient,
+  api: ManagementApiClient,
   workspaceId: string,
   signal: AbortSignal,
 ): Promise<ScmInstallationResponse[]> {
@@ -1953,7 +1536,7 @@ export async function listScmInstallations(
 }
 
 async function findRepositoryInInstallation(
-  api: SourceRepositoryApiClient,
+  api: ManagementApiClient,
   installationId: string,
   repository: GitHubRepositoryReference,
   signal: AbortSignal,
@@ -2033,7 +1616,7 @@ function readNextPaginationCursor(
 }
 
 async function findRepositoryInInstallationIfAvailable(
-  api: SourceRepositoryApiClient,
+  api: ManagementApiClient,
   installationId: string,
   repository: GitHubRepositoryReference,
   signal: AbortSignal,
@@ -2064,7 +1647,7 @@ function isUnavailableScmInstallationError(error: unknown): boolean {
 }
 
 export async function createGitHubInstallIntent(
-  api: SourceRepositoryApiClient,
+  api: ManagementApiClient,
   workspaceId: string,
   signal: AbortSignal,
 ): Promise<string> {
@@ -2111,7 +1694,7 @@ async function openInstallUrlIfInteractive(
 }
 
 export async function readFirstSourceRepository(
-  api: SourceRepositoryApiClient,
+  api: ManagementApiClient,
   projectId: string,
   signal: AbortSignal,
 ): Promise<SourceRepositoryResponse | null> {
@@ -2134,31 +1717,6 @@ export async function readFirstSourceRepository(
   }
 
   return data.data[0] ?? null;
-}
-
-function createPendingRepositoryConnection(
-  repository: GitHubRepositoryReference,
-): GitRepositoryConnection {
-  return {
-    id: null,
-    provider: "github",
-    repoId: null,
-    repository,
-    defaultBranch: null,
-    isPrivate: null,
-    status: "pending",
-    installation: {
-      id: null,
-      status: "pending",
-    },
-    automation: {
-      branches: false,
-      pullRequests: false,
-      comments: false,
-    },
-    connectedAt: new Date().toISOString(),
-    updatedAt: null,
-  };
 }
 
 export function toRepositoryConnection(

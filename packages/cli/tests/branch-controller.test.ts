@@ -29,7 +29,7 @@ function createMockClient() {
                     id: "proj_123",
                     name: "Acme Dashboard",
                     slug: "acme-dashboard",
-                    workspace: { id: "ws_123", name: "Acme Inc" },
+                    workspace: { id: "wksp_ws_123", name: "Acme Inc" },
                   },
                 ],
               },

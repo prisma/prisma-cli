@@ -10,8 +10,6 @@ import {
 } from "../src/update-check";
 import { createTempCwd, executeCli } from "./helpers";
 
-const fixturePath = path.resolve("fixtures/mock-api.json");
-
 describe("automatic update check", () => {
   it("prints a cached update notice to stderr before eligible command output", async () => {
     const { cwd, stateDir, updateCheckDir } = await createUpdateCheckTestDirs();
@@ -21,7 +19,6 @@ describe("automatic update check", () => {
       argv: ["auth", "whoami"],
       cwd,
       stateDir,
-      fixturePath,
       isTTY: true,
       env: enableUpdateCheck(updateCheckDir),
     });
@@ -47,7 +44,6 @@ describe("automatic update check", () => {
       argv: ["project", "show", "--no-interactive"],
       cwd,
       stateDir,
-      fixturePath,
       isTTY: true,
       env: enableUpdateCheck(updateCheckDir),
     });
@@ -66,7 +62,6 @@ describe("automatic update check", () => {
       argv: ["--json", "auth", "whoami"],
       cwd,
       stateDir,
-      fixturePath,
       isTTY: true,
       env: enableUpdateCheck(updateCheckDir),
     });
@@ -129,7 +124,6 @@ describe("automatic update check", () => {
       argv,
       cwd,
       stateDir,
-      fixturePath,
       isTTY,
       preserveCI,
       env: {
@@ -150,7 +144,6 @@ describe("automatic update check", () => {
       argv: ["auth", "whoami"],
       cwd,
       stateDir,
-      fixturePath,
       isTTY: true,
       env: enableUpdateCheck(updateCheckDir),
     });
@@ -174,7 +167,6 @@ describe("automatic update check", () => {
       argv: ["auth", "whoami"],
       cwd,
       stateDir,
-      fixturePath,
       isTTY: true,
       env: enableUpdateCheck(updateCheckDir),
     });
@@ -197,7 +189,6 @@ describe("automatic update check", () => {
       argv: ["auth", "whoami"],
       cwd,
       stateDir,
-      fixturePath,
       isTTY: true,
       env,
     });
@@ -205,7 +196,6 @@ describe("automatic update check", () => {
       argv: ["auth", "whoami"],
       cwd,
       stateDir,
-      fixturePath,
       isTTY: true,
       env,
     });
@@ -221,7 +211,6 @@ describe("automatic update check", () => {
       argv: ["auth", "whoami"],
       cwd,
       stateDir,
-      fixturePath,
       isTTY: true,
       env: enableUpdateCheck(updateCheckDir),
     });
@@ -243,7 +232,6 @@ describe("automatic update check", () => {
       argv: ["--json", "auth", "whoami"],
       cwd,
       stateDir,
-      fixturePath,
       isTTY: true,
       env: enableUpdateCheck(updateCheckDir),
     });
@@ -266,7 +254,6 @@ describe("automatic update check", () => {
       argv: ["auth", "whoami"],
       cwd,
       stateDir,
-      fixturePath,
       isTTY: true,
       env: enableUpdateCheck(updateCheckDir),
     });

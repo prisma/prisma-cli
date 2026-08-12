@@ -1,6 +1,5 @@
 import type { Command } from "commander";
 import { LocalStateStore } from "../adapters/local-state";
-import { MockApi } from "../adapters/mock-api";
 import { DEFAULT_STATE_DIR_NAME, resolveStateDir } from "../state-dir";
 import type { GlobalFlags } from "./global-flags";
 import { renderHelp } from "./help";
@@ -19,12 +18,10 @@ export interface CliRuntime {
   stdout: NodeJS.WriteStream;
   stderr: NodeJS.WriteStream;
   env: NodeJS.ProcessEnv;
-  fixturePath?: string;
   stateDir?: string;
 }
 
 export interface CommandContext {
-  api: MockApi;
   stateStore: LocalStateStore;
   output: CliOutput;
   flags: GlobalFlags;
@@ -59,26 +56,9 @@ export async function createCommandContext(
   runtime: CliRuntime,
   flags: GlobalFlags,
 ): Promise<CommandContext> {
-  const fixturePath =
-    runtime.fixturePath ?? runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH;
   const stateDir = await resolveStateDir(runtime);
 
-  // Load the mock API only when fixture mode is explicitly enabled.
-  let loadedApi: MockApi | undefined;
-  if (fixturePath) {
-    loadedApi = await MockApi.load(fixturePath, runtime.signal);
-  }
-
   return {
-    get api(): MockApi {
-      if (!loadedApi) {
-        throw new Error(
-          "context.api accessed in real mode. Set runtime.fixturePath or PRISMA_CLI_MOCK_FIXTURE_PATH to use fixture mode.",
-        );
-      }
-
-      return loadedApi;
-    },
     stateStore: new LocalStateStore(stateDir, runtime.signal),
     output: {
       stdout: runtime.stdout,

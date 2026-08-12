@@ -48,7 +48,6 @@ export async function executeCli(options: {
   argv: string[];
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  fixturePath?: string;
   stateDir?: string;
   isTTY?: boolean;
   stdinText?: string;
@@ -72,7 +71,6 @@ export async function executeCli(options: {
     cwd,
     env,
     signal: new AbortController().signal,
-    fixturePath: options.fixturePath,
     stateDir: options.stateDir,
     stdin: stdin as unknown as NodeJS.ReadStream,
     stdout: stdout as unknown as NodeJS.WriteStream,
@@ -97,7 +95,6 @@ export async function createTestCommandContext(options: {
   argv?: string[];
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  fixturePath?: string;
   stateDir?: string;
   isTTY?: boolean;
   stdinText?: string;
@@ -127,7 +124,6 @@ export async function createTestCommandContext(options: {
     cwd: options.cwd ?? (await createTempCwd()),
     env: createTestEnv(options.env, options.preserveCI),
     signal: new AbortController().signal,
-    fixturePath: options.fixturePath,
     stateDir: options.stateDir,
     stdin: stdin as unknown as NodeJS.ReadStream,
     stdout: stdout as unknown as NodeJS.WriteStream,

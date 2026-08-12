@@ -7,8 +7,6 @@ import { createTempCwd, executeCli } from "./helpers";
 const DATABASE_HELP_ROW =
   /database\s+Manage Prisma Postgres databases for a project/;
 
-const fixturePath = path.resolve("fixtures/mock-api.json");
-
 describe("database commands", () => {
   it("renders database and connection help without aliases or connection show", async () => {
     const cwd = await createTempCwd();
@@ -18,19 +16,16 @@ describe("database commands", () => {
       argv: ["--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const database = await executeCli({
       argv: ["database", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const connection = await executeCli({
       argv: ["database", "connection", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(root.exitCode).toBe(0);

@@ -6,8 +6,6 @@ import { describe, expect, it } from "vitest";
 import { FileTokenStorage } from "../src/auth/token-storage";
 import { createTempCwd, executeCli } from "./helpers";
 
-const fixturePath = path.resolve("fixtures/mock-api.json");
-
 async function writeAuthFile(
   authFilePath: string,
   tokens: unknown[],
@@ -52,7 +50,6 @@ describe("auth commands", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
         PRISMA_COMPUTE_AUTH_FILE: authFilePath,
         PRISMA_SERVICE_TOKEN: undefined,
       },
@@ -103,7 +100,6 @@ describe("auth commands", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
         PRISMA_COMPUTE_AUTH_FILE: authFilePath,
         PRISMA_SERVICE_TOKEN: undefined,
       },
@@ -162,7 +158,6 @@ describe("auth commands", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
         PRISMA_COMPUTE_AUTH_FILE: authFilePath,
         PRISMA_SERVICE_TOKEN: undefined,
       },
@@ -225,7 +220,6 @@ describe("auth commands", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
         PRISMA_COMPUTE_AUTH_FILE: authFilePath,
         PRISMA_SERVICE_TOKEN: "service-token",
       },
@@ -269,7 +263,6 @@ describe("auth commands", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
         PRISMA_COMPUTE_AUTH_FILE: authFilePath,
         PRISMA_SERVICE_TOKEN: "service-token",
       },
@@ -324,7 +317,6 @@ describe("auth commands", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
         PRISMA_COMPUTE_AUTH_FILE: authFilePath,
         PRISMA_SERVICE_TOKEN: undefined,
       },
@@ -368,7 +360,6 @@ describe("auth commands", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
         PRISMA_COMPUTE_AUTH_FILE: authFilePath,
         PRISMA_SERVICE_TOKEN: undefined,
       },
@@ -422,7 +413,6 @@ describe("auth commands", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
         PRISMA_COMPUTE_AUTH_FILE: authFilePath,
         PRISMA_SERVICE_TOKEN: undefined,
       },
@@ -476,7 +466,6 @@ describe("auth commands", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
         PRISMA_COMPUTE_AUTH_FILE: authFilePath,
         PRISMA_SERVICE_TOKEN: undefined,
       },
@@ -506,7 +495,6 @@ describe("auth commands", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
         PRISMA_SERVICE_TOKEN: "service-token",
       },
     });
@@ -532,7 +520,6 @@ describe("auth commands", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
         PRISMA_SERVICE_TOKEN: "  ",
       },
     });
@@ -557,7 +544,6 @@ describe("auth commands", () => {
       argv: ["auth", "login", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(result.exitCode).toBe(0);
@@ -579,7 +565,6 @@ describe("auth commands", () => {
       argv: ["auth", "workspace", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(result.exitCode).toBe(0);
@@ -597,7 +582,6 @@ describe("auth commands", () => {
       argv: ["auth", "whoami"],
       cwd,
       stateDir,
-      fixturePath,
       isTTY: true,
     });
 
