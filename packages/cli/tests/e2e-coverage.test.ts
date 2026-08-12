@@ -88,9 +88,9 @@ async function mountedCommands(): Promise<string[]> {
   );
 }
 
-async function coveredCommands(): Promise<Map<string, string[]>> {
+async function readSuites(): Promise<Array<{ entry: string; source: string }>> {
   const entries = await readdir(E2E_DIR);
-  const suites = await Promise.all(
+  return Promise.all(
     entries
       .filter((name) => name.endsWith(".e2e.ts"))
       .map(async (entry) => ({
@@ -98,6 +98,10 @@ async function coveredCommands(): Promise<Map<string, string[]>> {
         source: await readFile(path.join(E2E_DIR, entry), "utf8"),
       })),
   );
+}
+
+async function coveredCommands(): Promise<Map<string, string[]>> {
+  const suites = await readSuites();
 
   const covered = new Map<string, string[]>();
   for (const { entry, source } of suites) {
@@ -107,6 +111,26 @@ async function coveredCommands(): Promise<Map<string, string[]>> {
     }
   }
   return covered;
+}
+
+const ASSERTION = /expect\(([^\n]*)/g;
+const ENVELOPE_OK_ASSERTION = /^\s*run\d*\.envelope\.ok\s*\)/;
+const EXIT_CODE_ASSERTION = /^\s*run\d*\.exitCode\s*\)/;
+
+/** Each `describeCommand("x", () => { … })` in a file, as the command it
+ *  names plus the source between it and the next one. Good enough to
+ *  attribute assertions to a command without parsing TypeScript. */
+function splitDescribeCommandBlocks(
+  source: string,
+): Array<{ command: string; body: string }> {
+  const starts = [...source.matchAll(/describeCommand\(\s*"([^"]+)"/g)];
+  return starts.map((match, index) => ({
+    command: match[1] as string,
+    body: source.slice(
+      match.index,
+      index + 1 < starts.length ? starts[index + 1]?.index : undefined,
+    ),
+  }));
 }
 
 describe("real-API end-to-end coverage", () => {
@@ -156,6 +180,41 @@ describe("real-API end-to-end coverage", () => {
       .map(([command, files]) => `${command} (${files.join(", ")})`);
 
     expect(duplicated).toEqual([]);
+  });
+
+  /**
+   * A happy path that only checks `envelope.ok` or `exitCode` proves the
+   * command returned, and nothing about what it returned. `auth whoami`
+   * showed why: with no credential at all it answers ok, with
+   * `authenticated: false` and exit 0, so the weak form passed on a CLI
+   * that had authenticated nobody. Every block must read something out
+   * of the result.
+   */
+  it("has no happy path that only checks ok or exitCode", async () => {
+    const suites = await readSuites();
+    const weak: string[] = [];
+
+    for (const { entry, source } of suites) {
+      for (const block of splitDescribeCommandBlocks(source)) {
+        const assertions = [...block.body.matchAll(ASSERTION)].map(
+          (match) => match[1] as string,
+        );
+        const substantive = assertions.filter(
+          (assertion) =>
+            !ENVELOPE_OK_ASSERTION.test(assertion) &&
+            !EXIT_CODE_ASSERTION.test(assertion),
+        );
+        if (assertions.length > 0 && substantive.length === 0) {
+          weak.push(`${entry}: ${block.command}`);
+        }
+      }
+    }
+
+    expect(
+      weak,
+      "These read nothing out of the result, so they pass on any " +
+        `successful response: ${weak.join(", ")}`,
+    ).toEqual([]);
   });
 
   it("finds the command registry and the e2e suite at all", async () => {

@@ -18,6 +18,8 @@ const scratch = useScratchProject("lifecycle");
 
 const PROJECT_ID = /^proj_/;
 const SCRATCH_LIFECYCLE_NAME = /^e2e-lifecycle-/;
+const BRANCH_ID = /^br_/;
+const ENV_VARIABLE_ID = /^envvar_/;
 
 describeCommand("project create", () => {
   it("created the scratch project and wrote its local pin", async () => {
@@ -56,84 +58,153 @@ describeCommand("project link", () => {
 });
 
 describeCommand("project rename", () => {
-  it("renames the scratch project", async () => {
+  it("renames the scratch project and reports the previous name", async () => {
+    const before = scratch.project().name;
     const renamed = scratchName("renamed");
 
     const run = await scratch.run(["project", "rename", renamed]);
     const result = run.envelope.result as {
-      readonly project: { readonly name: string };
+      readonly project: { readonly id: string; readonly name: string };
+      readonly previousName: string;
     };
 
+    expect(result.project.id).toBe(scratch.project().id);
     expect(result.project.name).toBe(renamed);
+    expect(result.previousName).toBe(before);
   });
 });
 
 describeCommand("branch list", () => {
-  it("lists the branches of the linked project", async () => {
+  it("lists the linked project's branches", async () => {
     const run = await scratch.run(["branch", "list"]);
+    const result = run.envelope.result as {
+      readonly projectId: string;
+      readonly branches: ReadonlyArray<{
+        readonly id: string;
+        readonly name: string;
+        readonly role: string;
+      }>;
+    };
 
     expect(run.exitCode).toBe(0);
-    expect(run.envelope.ok).toBe(true);
+    expect(result.projectId).toBe(scratch.project().id);
+    // A new project always has its production branch, so an empty list
+    // here is the same silently-emptied response this suite exists for.
+    expect(result.branches.length).toBeGreaterThan(0);
+    expect(result.branches.map((branch) => branch.role)).toContain(
+      "production",
+    );
+    for (const branch of result.branches) {
+      expect(branch.id).toMatch(BRANCH_ID);
+      expect(branch.name).toBeTruthy();
+    }
   });
 });
 
 /** Environment variables are scoped to a role or a branch, and the
  *  commands refuse to guess which. */
 const ROLE = ["--role", "production"] as const;
+const KEY = "E2E_SAMPLE";
+
+interface EnvVariable {
+  readonly id: string;
+  readonly key: string;
+  readonly updatedAt: string;
+}
+
+interface EnvMutationResult {
+  readonly projectId: string;
+  readonly scope: { readonly kind: string; readonly role?: string };
+  readonly variable: EnvVariable;
+}
+
+/** List results carry both a generic `items`/`count` pair for rendering
+ *  and the domain array the assertions want. */
+interface EnvListResult {
+  readonly projectId: string;
+  readonly variables: readonly EnvVariable[];
+  readonly items: readonly unknown[];
+  readonly count: number;
+}
+
+/** Carried from `add` to `update`, so the update can be shown to have
+ *  changed the variable rather than merely returned a success. */
+let addedAt: string | undefined;
 
 describeCommand("project env add", () => {
-  it("adds an environment variable", async () => {
+  it("adds an environment variable in the production scope", async () => {
     const run = await scratch.run([
       "project",
       "env",
       "add",
-      "E2E_SAMPLE=first",
+      `${KEY}=first`,
       ...ROLE,
     ]);
+    const result = run.envelope.result as EnvMutationResult;
 
-    expect(run.envelope.ok).toBe(true);
+    expect(result.projectId).toBe(scratch.project().id);
+    expect(result.variable.key).toBe(KEY);
+    expect(result.variable.id).toMatch(ENV_VARIABLE_ID);
+    expect(result.scope).toMatchObject({ kind: "role", role: "production" });
+    addedAt = result.variable.updatedAt;
   });
 });
 
 describeCommand("project env list", () => {
   it("lists the variable that was just added", async () => {
     const run = await scratch.run(["project", "env", "list", ...ROLE]);
+    const listed = run.envelope.result as EnvListResult;
 
-    expect(run.envelope.ok).toBe(true);
-    expect(JSON.stringify(run.envelope.result)).toContain("E2E_SAMPLE");
+    expect(listed.projectId).toBe(scratch.project().id);
+    expect(listed.variables.map((row) => row.key)).toContain(KEY);
+    expect(listed.count).toBe(listed.items.length);
   });
 });
 
 describeCommand("project env update", () => {
-  it("updates the variable's value", async () => {
+  it("updates the variable in place", async () => {
     const run = await scratch.run([
       "project",
       "env",
       "update",
-      "E2E_SAMPLE=second",
+      `${KEY}=second`,
       ...ROLE,
     ]);
+    const result = run.envelope.result as EnvMutationResult;
 
-    expect(run.envelope.ok).toBe(true);
+    expect(result.variable.key).toBe(KEY);
+    // Same variable, not a replacement, and actually touched: the API
+    // returns the same id with a later timestamp. Without this the test
+    // passed on any successful response at all.
+    expect(result.variable.updatedAt).not.toBe(addedAt);
+    expect(Date.parse(result.variable.updatedAt)).toBeGreaterThanOrEqual(
+      Date.parse(addedAt ?? result.variable.updatedAt),
+    );
   });
 });
 
 describeCommand("project env remove", () => {
-  it("removes the variable", async () => {
+  it("removes the variable, and the list agrees", async () => {
     const run = await scratch.run([
       "project",
       "env",
       "remove",
-      "E2E_SAMPLE",
+      KEY,
       ...ROLE,
       "--confirm",
-      "E2E_SAMPLE",
+      KEY,
     ]);
+    const removed = run.envelope.result as {
+      readonly projectId: string;
+      readonly key: string;
+    };
 
-    expect(run.envelope.ok).toBe(true);
+    expect(removed.projectId).toBe(scratch.project().id);
+    expect(removed.key).toBe(KEY);
 
     const after = await scratch.run(["project", "env", "list", ...ROLE]);
-    expect(JSON.stringify(after.envelope.result)).not.toContain("E2E_SAMPLE");
+    const listed = after.envelope.result as EnvListResult;
+    expect(listed.variables.map((row) => row.key)).not.toContain(KEY);
   });
 });
 
@@ -155,7 +226,14 @@ describeCommand("project remove", () => {
       const run = await cli.run(["project", "remove", id, "--confirm", id], {
         cwd,
       });
-      expect(run.envelope.ok).toBe(true);
+      const result = run.envelope.result as {
+        readonly project: { readonly id: string };
+        readonly localPin: { readonly cleared: boolean };
+      };
+      expect(result.project.id).toBe(id);
+      // Removing the project must also drop this directory's binding,
+      // or the next command here resolves a project that is gone.
+      expect(result.localPin.cleared).toBe(true);
       removed = true;
 
       const remaining = (await cli.run(["project", "list"], { cwd })).envelope
