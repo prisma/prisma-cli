@@ -100,19 +100,7 @@ composer can use it.
   a deliberately introduced defect failed to fail. The mechanism to fix
   it already exists in `turbo.json`; the change is to `packages/cli`'s
   test script.
-- **`spawn-real-child.test.ts` also fails under load, and is a
-  different test from the one below.** In
-  `packages/cli-engine/tests/spawn-real-child.test.ts`, the case
-  "native Ctrl-C reaches the child through the shared process group"
-  failed twice during the engine-colour slice, both times on a machine
-  running the engine and CLI suites concurrently — on the second
-  sighting that run's import phase took 92s against a normal 3–7s. It
-  passed on every isolated and sequential run either side. Nothing in
-  that slice goes near spawn or signals, so this is not its doing.
-  Two independent sightings under load make it worth diagnosing rather
-  than watching: the likely shape is the same as the entry below, a
-  test that waits on a marker the child writes before it is actually
-  ready for the signal.
+- **`spawn-real-child.test.ts` also fails under load, and is a different test from the one below.** In `packages/cli-engine/tests/spawn-real-child.test.ts`, the case "native Ctrl-C reaches the child through the shared process group" failed twice during the engine-colour slice, both times on a machine running the engine and CLI suites concurrently — on the second sighting that run's import phase took 92s against a normal 3–7s. It passed on every isolated and sequential run either side. Nothing in that slice goes near spawn or signals, so this is not its doing. Two independent sightings under load make it worth diagnosing rather than watching: the likely shape is the same as the entry below, a test that waits on a marker the child writes before it is actually ready for the signal. Third sighting, 2026-08-12: it failed on a GitHub runner during #158, a PR that changes no engine file, and passed on a re-run of the same commit and on the same machine in isolation. That moves it from a loaded-laptop annoyance to a test that reddens the shared `Test` check on unrelated work, which teaches people to re-run a red check rather than read it. Worth fixing before the next slice rather than after.
 - **`v8-spawn-adapter.test.ts` has a race that fails under load.**
   In `packages/cli/tests/v8-spawn-adapter.test.ts`, the "kill
   delivers the signal to the live child" case runs an inline child
