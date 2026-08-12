@@ -116,9 +116,10 @@ export interface CommandContext<
   readonly env: Readonly<Record<string, string | undefined>>;
 
   /**
-   * The host's answer to "is this CI", from Runtime.isCI — what
-   * telemetry gates on. Not the engine's interactivity decision, which
-   * is its own thing (stdin a TTY, no CI in the environment,
+   * Whether this run is in CI: detected from the environment the host
+   * injected, or forced by Runtime.isCIOverride. This is what telemetry
+   * gates on. It is one input to the engine's interactivity decision
+   * rather than the whole of it (which also weighs a TTY stdin and
    * --interactive/--no-interactive), so prompts and spinners follow
    * ctx.prompt and the engine's interaction handling, not this.
    */

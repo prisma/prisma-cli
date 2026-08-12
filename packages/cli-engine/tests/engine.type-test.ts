@@ -411,7 +411,6 @@ export const loadedConfig: LoadedConfig = {
 };
 
 export const runtimeShape: Runtime = {
-  isCI: false,
   stdout: { write() {} },
   stderr: { write() {} },
   stdin: undefined as unknown as InputStream,
@@ -432,6 +431,13 @@ export const runtimeShape: Runtime = {
 export const runtimeWithPackageManagerOverride: Runtime = {
   ...runtimeShape,
   packageManager: "pnpm",
+};
+
+/** runtimeShape answers nothing about CI and still conforms: a host is
+ *  never required to. Forcing the answer stays available. */
+export const runtimeWithCIOverride: Runtime = {
+  ...runtimeShape,
+  isCIOverride: true,
 };
 
 export const runtimeWithUnrecognizedPackageManager: Runtime = {

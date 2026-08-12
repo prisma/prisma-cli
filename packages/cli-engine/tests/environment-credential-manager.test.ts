@@ -153,7 +153,6 @@ describe("wired as a Runtime's manager", () => {
     record: (childEnv: Readonly<Record<string, string | undefined>>) => void,
   ): Runtime {
     return {
-      isCI: false,
       stdout: { write: () => {} },
       stderr: { write: () => {} },
       stdin: {

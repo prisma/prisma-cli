@@ -6,7 +6,6 @@ import {
   type Runtime,
 } from "@prisma/cli-engine";
 import { runTelemetry } from "@repo/cli-telemetry";
-import { isCI } from "ci-info";
 import open from "open";
 import {
   CLIENT_ID,
@@ -101,7 +100,6 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       stdout: proc.stdout.isTTY === true,
       stderr: proc.stderr.isTTY === true,
     },
-    isCI,
     exit: (code) => proc.exit(code),
     onSignal: makeOnSignal(proc),
     loadConfig: (configPath) => loadConfig(proc.cwd(), configPath),

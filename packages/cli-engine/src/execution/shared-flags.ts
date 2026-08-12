@@ -1,3 +1,4 @@
+import { resolveIsCI } from "../ci";
 import type { Severity } from "../events";
 import type { Format } from "../presentation";
 import { CliStructuredError } from "../protocol";
@@ -177,9 +178,13 @@ function resolveColorEnabled(shared: SharedFlags, runtime: Runtime): boolean {
  *  --no-interactive override in either direction. Format never decides
  *  interactivity (operator ruling, 2026-08-09): an interactive json run
  *  may prompt — the prompt UI writes to stderr, so stdout stays a clean
- *  frame stream. */
+ *  frame stream.
+ *
+ *  This asks the engine's CI detection rather than testing `CI` for
+ *  being set at all: a Jenkins, TeamCity or Azure Pipelines job sets no
+ *  `CI` variable, and used to be offered a prompt no one could answer. */
 export function defaultInteractive(runtime: Runtime): boolean {
-  return runtime.isTty.stdin && runtime.env.CI === undefined;
+  return runtime.isTty.stdin && !resolveIsCI(runtime);
 }
 
 function resolveAutoFormat(shared: SharedFlags, runtime: Runtime): Format {

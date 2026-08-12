@@ -1,3 +1,4 @@
+import { resolveIsCI } from "../ci";
 import type { EngineCommandSnapshot } from "../run-summary";
 import type { Runtime } from "../runtime";
 import { resolveTelemetryEndpoint } from "./endpoint";
@@ -23,7 +24,7 @@ export interface TelemetryDeclaration {
 /** The Runtime members reporting reads. */
 export type TelemetryHost = Pick<
   Runtime,
-  "env" | "cwd" | "stderr" | "isCI" | "spawnTelemetry"
+  "env" | "cwd" | "stderr" | "isCIOverride" | "spawnTelemetry"
 >;
 
 export interface TelemetryReportInputs {
@@ -113,7 +114,9 @@ export function reportCommandStart(inputs: TelemetryReportInputs): void {
       return;
     }
     const config = readUserConfig(host.env);
-    if (!resolveGating({ env: host.env, config, inCI: host.isCI }).enabled) {
+    if (
+      !resolveGating({ env: host.env, config, inCI: resolveIsCI(host) }).enabled
+    ) {
       return;
     }
     const stored = config.installationId;

@@ -52,7 +52,6 @@
     "@prisma/management-api-sdk": "1.55.0",
     "@vercel/detect-agent": "^1.2.3",
     "better-result": "^2.9.2",
-    "ci-info": "^4.3.1",
     "colorette": "^2.0.20",
     "commander": "^14.0.3",
     "dotenv": "^17.4.2",

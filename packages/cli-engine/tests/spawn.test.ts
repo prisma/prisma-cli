@@ -1224,7 +1224,6 @@ function controllableRuntime() {
   const exited: number[] = [];
   const stderrText: string[] = [];
   const runtime: Runtime = {
-    isCI: false,
     stdout: { write: () => {} },
     stderr: {
       write: (text) => {
