@@ -1,6 +1,8 @@
 /** The `project link` command. */
 import { defineCommand, positional } from "@prisma/cli-engine";
 import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { formatCommandArgument } from "../../command-arguments";
+import { usageError } from "../../errors";
 import { createAppProvider } from "../../lib/app/app-provider";
 import {
   inferTargetName,
@@ -14,8 +16,6 @@ import {
   resolveProjectForSetup,
   toProjectSummary,
 } from "../../lib/project/setup";
-import { formatCommandArgument } from "../../shell/command-arguments";
-import { usageError } from "../../shell/errors";
 import type { AuthWorkspace } from "../../types/auth";
 import type { ProjectSetupResult, ProjectSummary } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";

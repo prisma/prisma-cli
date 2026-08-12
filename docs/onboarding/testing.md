@@ -16,17 +16,6 @@ publishing preparation:
 pnpm --filter @prisma/cli pack --dry-run
 ```
 
-Run the Next.js artifact smoke before publishing a preview CLI build that
-touches build, archive, or deploy packaging. This uses the compiled
-`packages/cli/dist/cli.js` against `examples/next-smoke` and verifies that the
-staged standalone artifact can resolve Next's pnpm-managed transitive
-dependencies:
-
-```bash
-pnpm build:cli
-pnpm smoke:cli-nextjs
-```
-
 ## What To Test
 
 - Command behavior and resolution rules.
@@ -40,12 +29,12 @@ pnpm smoke:cli-nextjs
 
 ## Test Styles
 
-Use in-process CLI tests for most command behavior. The shared test helpers can
-run `runCli` with captured stdin, stdout, stderr, environment variables, and
-temporary state.
+Use in-process CLI tests for most command behavior. `createTestCli` from
+`@prisma/cli-engine/testing` runs a mounted command with captured streams,
+environment variables, and temporary state.
 
-Use controller or use-case tests when the behavior is easier to express without
-going through Commander.
+Use operation-layer tests when the behavior is easier to express without going
+through the engine.
 
 Use package smoke tests when changing:
 

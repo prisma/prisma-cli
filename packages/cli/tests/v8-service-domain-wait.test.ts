@@ -34,7 +34,7 @@ function waitEnv(env: Record<string, string | undefined>) {
   return { ...env, PRISMA_CLI_DOMAIN_WAIT_POLL_MS: "1" };
 }
 
-describe("prisma-v8 service domain wait", () => {
+describe("prisma-cli service domain wait", () => {
   it("emits a status event per transition and completes when the domain activates", async () => {
     const harness = await makeServiceCli({
       routes: waitRoutes(["pending_dns", "verifying", "active"]),

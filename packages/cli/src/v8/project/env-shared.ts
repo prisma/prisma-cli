@@ -4,9 +4,9 @@ import { type Block, flag, type Presentations } from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { resolveScopeToApi } from "../../controllers/app-env";
 import type { ResolvedEnvFileScope } from "../../controllers/app-env-file";
+import { usageError } from "../../errors";
 import { type EnvScope, resolveEnvScope } from "../../lib/app/env-config";
 import { scopeLabel } from "../../presenters/app-env";
-import { usageError } from "../../shell/errors";
 import type {
   EnvResolvedContext,
   EnvScopeDescriptor,

@@ -6,7 +6,7 @@ import {
   positional,
 } from "@prisma/cli-engine";
 import { notOk, ok } from "@prisma/cli-engine/protocol";
-import { usageError } from "../../shell/errors";
+import { usageError } from "../../errors";
 import type { BucketKeyDeleteResult } from "../../types/bucket";
 import { bucketPositional, resolveBucketProviderOnly } from "./context";
 import { mapBucketOperationError } from "./errors";

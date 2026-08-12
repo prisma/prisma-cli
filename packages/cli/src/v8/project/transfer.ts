@@ -19,19 +19,19 @@ import {
 } from "../../auth/recipient";
 import { WorkspaceSelectionError } from "../../auth/token-storage";
 import { CLI_NAME } from "../../cli-name";
+import { formatCommandArgument } from "../../command-arguments";
 import {
   rewriteOrClearLocalPinForProject,
   transferRecipientRequiredError,
   transferRecipientUnavailableError,
 } from "../../controllers/project";
+import { usageError } from "../../errors";
 import type { PrismaCliPackageCommandFormatter } from "../../lib/agent/cli-command";
 import { createManagementProjectProvider } from "../../lib/project/provider";
 import {
   resolveProjectForSetup,
   toProjectSummary,
 } from "../../lib/project/setup";
-import { formatCommandArgument } from "../../shell/command-arguments";
-import { usageError } from "../../shell/errors";
 import type { ProjectTransferResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import {

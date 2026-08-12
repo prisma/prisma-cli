@@ -197,7 +197,7 @@ function blocks(presented: unknown) {
 
 const PLAN_LIMIT_BODY = { error: { code: "planLimitReached" } };
 
-describe("prisma-v8 postgres list", () => {
+describe("prisma-cli postgres list", () => {
   it("lists the project's databases sorted by branch, name and id", async () => {
     const result = await makeCli(postgresClient()).run(["postgres", "list"], {
       cwd: await pinnedCwd(),
@@ -447,7 +447,7 @@ describe("prisma-v8 postgres list", () => {
   });
 });
 
-describe("prisma-v8 postgres show", () => {
+describe("prisma-cli postgres show", () => {
   it("shows a database addressed by id", async () => {
     const result = await makeCli(
       postgresClient({
@@ -658,7 +658,7 @@ const CREATED_DATABASE = {
   ],
 };
 
-describe("prisma-v8 postgres create", () => {
+describe("prisma-cli postgres create", () => {
   it("prints the one-time URL on stdout and masks it in the card", async () => {
     const calls: Call[] = [];
     const result = await makeCli(
@@ -888,7 +888,7 @@ const USAGE_BODY = {
   generatedAt: "2026-07-01T00:00:00.000Z",
 };
 
-describe("prisma-v8 postgres usage", () => {
+describe("prisma-cli postgres usage", () => {
   it("shows the usage card", async () => {
     const result = await makeCli(
       postgresClient({
@@ -1178,7 +1178,7 @@ describe("prisma-v8 postgres usage", () => {
 
 const RESTORED = { ...DB_ONE, status: "recovering" };
 
-describe("prisma-v8 postgres restore", () => {
+describe("prisma-cli postgres restore", () => {
   it("restores the database and points at the show command", async () => {
     const calls: Call[] = [];
     const result = await makeCli(
@@ -1512,7 +1512,7 @@ describe("prisma-v8 postgres restore", () => {
   });
 });
 
-describe("prisma-v8 postgres remove", () => {
+describe("prisma-cli postgres remove", () => {
   it("removes the database", async () => {
     const calls: Call[] = [];
     const result = await makeCli(postgresClient({ calls })).run(
@@ -1696,7 +1696,7 @@ const BACKUP_BODY = {
   pagination: { hasMore: false },
 };
 
-describe("prisma-v8 postgres backup list", () => {
+describe("prisma-cli postgres backup list", () => {
   it("lists the backups with sizes and retention", async () => {
     const result = await makeCli(
       postgresClient({
@@ -1893,7 +1893,7 @@ describe("prisma-v8 postgres backup list", () => {
   });
 });
 
-describe("prisma-v8 postgres connection list", () => {
+describe("prisma-cli postgres connection list", () => {
   it("lists the connection metadata", async () => {
     const result = await makeCli(
       postgresClient({
@@ -2001,7 +2001,7 @@ const CREATED_CONNECTION = {
   endpoints: { pooled: { connectionString: "postgres://pooled/db" } },
 };
 
-describe("prisma-v8 postgres connection create", () => {
+describe("prisma-cli postgres connection create", () => {
   it("names the connection after the CLI when --name is omitted", async () => {
     const calls: Call[] = [];
     const result = await makeCli(
@@ -2152,7 +2152,7 @@ const ROTATED_CONNECTION = {
   connectionString: "postgres://rotated/db",
 };
 
-describe("prisma-v8 postgres connection rotate", () => {
+describe("prisma-cli postgres connection rotate", () => {
   it("rotates the credentials and prints the new URL", async () => {
     const result = await makeCli(
       postgresClient({
@@ -2418,7 +2418,7 @@ describe("prisma-v8 postgres connection rotate", () => {
   });
 });
 
-describe("prisma-v8 postgres connection remove", () => {
+describe("prisma-cli postgres connection remove", () => {
   it("removes the connection", async () => {
     const calls: Call[] = [];
     const result = await makeCli(postgresClient({ calls })).run(

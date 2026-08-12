@@ -48,7 +48,7 @@ async function seedRememberedLiveDeployment(
   );
 }
 
-describe("prisma-v8 service deployment show", () => {
+describe("prisma-cli service deployment show", () => {
   it("presents the promoted service url and takes the live flag from the service's latest deployment", async () => {
     const harness = await makeServiceCli({ routes: showDeployRoutes() });
 

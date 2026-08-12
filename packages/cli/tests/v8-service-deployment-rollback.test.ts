@@ -39,7 +39,7 @@ function unknownLiveDeploymentRoutes(overrides: Routes = {}): Routes {
   });
 }
 
-describe("prisma-v8 service deployment rollback", () => {
+describe("prisma-cli service deployment rollback", () => {
   it("rolls back to the deployment before the live one by default", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 

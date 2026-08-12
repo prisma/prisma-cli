@@ -122,7 +122,7 @@ function outputData(events: readonly { kind: string }[]) {
     .map((event) => (event as unknown as { data?: unknown }).data);
 }
 
-describe("prisma-v8 build logs", () => {
+describe("prisma-cli build logs", () => {
   it("streams every log record in order, routed by source and level", async () => {
     const harness = await makeServiceCli({
       routes: logRoutes([

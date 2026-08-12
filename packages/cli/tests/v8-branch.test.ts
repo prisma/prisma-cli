@@ -130,7 +130,7 @@ function blocks(presented: unknown) {
   return value?.presentation.human ?? [];
 }
 
-describe("prisma-v8 branch list", () => {
+describe("prisma-cli branch list", () => {
   it("lists production branches first, then the rest alphabetically", async () => {
     const result = await makeCli(branchClient()).run(["branch", "list"], {
       cwd: await pinnedCwd(),

@@ -11,47 +11,43 @@ the implementation is organized so contributors know where changes belong.
 
 ```mermaid
 flowchart TD
-  Bin["bin.ts"] --> Cli["cli.ts"]
-  Cli --> Commands["commands/*"]
-  Commands --> Runner["shell/command-runner"]
-  Runner --> Controllers["controllers/*"]
-  Controllers --> UseCases["use-cases/*"]
-  UseCases --> Adapters["adapters/* and lib/*"]
-  Controllers --> Presenters["presenters/*"]
-  Presenters --> Output["shell/output"]
+  Bin["v8/bin.ts"] --> Main["v8/main.ts"]
+  Main --> Cli["v8/cli.ts"]
+  Cli --> Engine["@prisma/cli-engine"]
+  Engine --> Handlers["v8/<group>/<command>.ts"]
+  Handlers --> Operations["controllers/*, lib/*, adapters/*"]
+  Handlers --> Presentations["ctx.present(...) blocks"]
 ```
 
 ## Command Flow
 
-1. `packages/cli/src/bin.ts` starts the Node process and calls the CLI runner.
-2. `packages/cli/src/cli.ts` assembles the Commander program and attaches command
-   groups.
-3. `commands/*` defines command names, arguments, flags, and help text.
-4. `shell/*` creates command context, parses global flags, handles prompts,
-   output streams, and error rendering.
-5. `controllers/*` translate CLI inputs into application operations.
-6. `use-cases/*` hold product rules such as project resolution, auth behavior,
-   and branch targeting.
-7. `adapters/*` and feature `lib/*` modules isolate local state, config, auth,
-   and platform-facing operations.
-8. `presenters/*` convert command results into human and structured output.
+1. `packages/cli/src/v8/bin.ts` starts the Node process and calls `main`.
+2. `packages/cli/src/v8/main.ts` builds the CLI, runs the update check, and
+   hands the engine a runtime assembled from `process`.
+3. `packages/cli/src/v8/cli.ts` mounts every command and command family.
+4. The engine parses argv, decides interactivity and credentials, dispatches
+   the handler, and renders its result.
+5. `v8/<group>/<command>.ts` defines one command: its flags, its help, and a
+   handler that returns a presented result.
+6. `controllers/*`, `lib/*`, and `adapters/*` are the operation layer: project
+   resolution, environment variables, local state, and platform API calls.
+7. Handlers describe output as presentation blocks; the engine owns the bytes.
 
 ## Contributor Boundaries
 
 - Command files should describe the CLI grammar, not own product behavior.
-- Controllers should orchestrate one command path and stay thin.
-- Use cases should enforce documented product rules.
+- Handlers should orchestrate one command path and stay thin.
 - Adapters and client modules should own filesystem, state, auth, and platform
   boundaries.
-- Presenters and shell output helpers should own terminal and JSON rendering.
+- The engine owns terminal and JSON rendering; handlers describe blocks.
 
 When behavior is unclear, update the relevant product doc before changing code.
 
 ## Provider And Client Boundaries
 
 Remote platform access should stay behind adapter or client modules. Command
-definitions, controllers, and presenters should not depend on a concrete
-provider implementation.
+definitions and handlers should not depend on a concrete provider
+implementation.
 
 Local state boundaries are also explicit:
 

@@ -137,7 +137,9 @@ export async function resolveFramework(
     };
   }
 
-  const { detectDeployFramework } = await import("../../controllers/app");
+  const { detectDeployFramework } = await import(
+    "../../lib/app/deploy-framework"
+  );
   const detected = await detectDeployFramework(
     step.engine.cwd,
     step.engine.signal,

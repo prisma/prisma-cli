@@ -2,8 +2,8 @@
 import type { Presentations } from "@prisma/cli-engine";
 import type { Diagnostic, NextAction } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
+import type { NextAction as LegacyNextAction } from "../../next-actions";
 import { serializeProjectSetup } from "../../presenters/project";
-import type { NextAction as LegacyNextAction } from "../../shell/next-actions";
 import type { ProjectSetupResult } from "../../types/project";
 import { portCommandString } from "./errors";
 

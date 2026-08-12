@@ -86,7 +86,7 @@ function signedInCli() {
   });
 }
 
-describe("prisma-v8 auth whoami", () => {
+describe("prisma-cli auth whoami", () => {
   it("renders the signed-out human card on stderr and the payload lines on stdout, exit 0", async () => {
     const result = await makeCli().run(["auth", "whoami"], {
       isTty: { stdout: true },

@@ -11,7 +11,7 @@
 import type { NextAction } from "@prisma/cli-engine/protocol";
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
-import { CliError } from "../../shell/errors";
+import { CliError } from "../../errors";
 
 const PROJECT_CODE_MAP: Readonly<Record<string, `${string}.${string}`>> = {
   USAGE_ERROR: "PROJECT.USAGE_ERROR",
@@ -29,8 +29,6 @@ const PROJECT_CODE_MAP: Readonly<Record<string, `${string}.${string}`>> = {
   TRANSFER_RECIPIENT_UNAVAILABLE: "PROJECT.TRANSFER_RECIPIENT_UNAVAILABLE",
   CONFIRMATION_REQUIRED: "PROJECT.CONFIRMATION_REQUIRED",
   PROJECT_LINK_TARGET_REQUIRED: "PROJECT.LINK_TARGET_REQUIRED",
-  WORKSPACE_NOT_AUTHENTICATED: "AUTH.WORKSPACE_NOT_AUTHENTICATED",
-  WORKSPACE_AMBIGUOUS: "AUTH.WORKSPACE_AMBIGUOUS",
   ENV_VARIABLE_ALREADY_EXISTS: "PROJECT.ENV_VARIABLE_ALREADY_EXISTS",
   ENV_VARIABLE_NOT_FOUND: "PROJECT.ENV_VARIABLE_NOT_FOUND",
   ENV_BRANCH_NOT_FOUND: "PROJECT.ENV_BRANCH_NOT_FOUND",

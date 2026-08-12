@@ -44,7 +44,7 @@ Use subprocess or package smoke tests when changing packaging or runtime entrypo
 Good fit:
 
 - `prisma-cli` binary behavior
-- built `dist/cli.js`
+- built `dist/v8/cli.js`
 - package manifest fields
 - npm tarball contents
 - publish preparation

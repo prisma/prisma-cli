@@ -295,10 +295,6 @@ function projectAmbiguousCliError(
   });
 }
 
-export function localStateStaleError(): CliError {
-  return projectResolutionErrorToCliError(new LocalStateStaleError());
-}
-
 function localStateStaleCliError(): CliError {
   return new CliError({
     code: "LOCAL_STATE_STALE",
@@ -315,16 +311,6 @@ function localStateStaleCliError(): CliError {
       "prisma-cli project link <id-or-name>",
     ],
   });
-}
-
-export function localProjectWorkspaceMismatchError(options: {
-  pinnedWorkspaceId: string;
-  pinnedProjectId: string;
-  activeWorkspace: AuthWorkspace;
-}): CliError {
-  return projectResolutionErrorToCliError(
-    new LocalProjectWorkspaceMismatchError(options),
-  );
 }
 
 function localProjectWorkspaceMismatchCliError(options: {

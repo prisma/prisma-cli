@@ -27,7 +27,7 @@ function domainRoutes(overrides: Routes = {}): Routes {
 
 const TARGET_ARGS = ["--project", "acme-app", "--service", "hello-world"];
 
-describe("prisma-v8 service domain add", () => {
+describe("prisma-cli service domain add", () => {
   it("registers the domain and presents the target with dns records", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
@@ -333,7 +333,7 @@ describe("prisma-v8 service domain add", () => {
   });
 });
 
-describe("prisma-v8 service domain show", () => {
+describe("prisma-cli service domain show", () => {
   it("presents the domain detail", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
@@ -424,7 +424,7 @@ describe("prisma-v8 service domain show", () => {
   });
 });
 
-describe("prisma-v8 service domain retry", () => {
+describe("prisma-cli service domain retry", () => {
   it("retries verification and presents the refreshed domain", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
@@ -521,7 +521,7 @@ describe("prisma-v8 service domain retry", () => {
   });
 });
 
-describe("prisma-v8 service domain remove", () => {
+describe("prisma-cli service domain remove", () => {
   /** `removed` collects the id of every domain the run deleted. */
   function removeRoutes(removed: string[] = []): Routes {
     return domainRoutes({

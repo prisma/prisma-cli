@@ -177,7 +177,7 @@ function blocks(presented: unknown) {
   return value?.presentation.human ?? [];
 }
 
-describe("prisma-v8 bucket list", () => {
+describe("prisma-cli bucket list", () => {
   it("lists the project's buckets", async () => {
     const result = await makeCli(bucketClient()).run(["bucket", "list"], {
       cwd: await pinnedCwd(),
@@ -301,7 +301,7 @@ describe("prisma-v8 bucket list", () => {
   });
 });
 
-describe("prisma-v8 bucket create", () => {
+describe("prisma-cli bucket create", () => {
   it("creates a named bucket", async () => {
     const calls: Call[] = [];
     const result = await makeCli(
@@ -425,7 +425,7 @@ describe("prisma-v8 bucket create", () => {
   });
 });
 
-describe("prisma-v8 bucket delete", () => {
+describe("prisma-cli bucket delete", () => {
   it("deletes the bucket", async () => {
     const calls: Call[] = [];
     const result = await makeCli(bucketClient({ calls })).run(
@@ -584,7 +584,7 @@ describe("prisma-v8 bucket delete", () => {
   });
 });
 
-describe("prisma-v8 bucket key list", () => {
+describe("prisma-cli bucket key list", () => {
   it("lists the bucket's access keys", async () => {
     const result = await makeCli(bucketClient()).run(
       ["bucket", "key", "list", "bkt_1"],
@@ -696,7 +696,7 @@ const CREATED_KEY = {
   bucketName: "assets",
 };
 
-describe("prisma-v8 bucket key create", () => {
+describe("prisma-cli bucket key create", () => {
   it("prints the credentials on stdout and masks the secrets in the card", async () => {
     const result = await makeCli(
       bucketClient({
@@ -860,7 +860,7 @@ describe("prisma-v8 bucket key create", () => {
   });
 });
 
-describe("prisma-v8 bucket key delete", () => {
+describe("prisma-cli bucket key delete", () => {
   it("deletes the access key", async () => {
     const calls: Call[] = [];
     const result = await makeCli(bucketClient({ calls })).run(

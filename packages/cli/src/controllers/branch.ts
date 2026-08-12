@@ -1,86 +1,12 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Branch pagination requests must run sequentially.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-import { authenticatedManagementApiClient } from "../auth/guard";
-import {
-  projectResolutionErrorToCliError,
-  resolveProjectTarget,
-} from "../lib/project/resolution";
-import {
-  authRequiredError,
-  CliError,
-  workspaceRequiredError,
-} from "../shell/errors";
-import type { CommandSuccess } from "../shell/output";
-import type { CommandContext } from "../shell/runtime";
-import type {
-  BranchListResult,
-  BranchRole,
-  BranchSummary,
-} from "../types/branch";
-import { requireAuthenticatedAuthState } from "./auth";
-import { listRealWorkspaceProjects } from "./project";
+import { CliError } from "../errors";
+import type { BranchRole, BranchSummary } from "../types/branch";
 
 export interface RawBranchRecord {
   id: string;
   gitName: string;
   role: BranchRole;
-}
-
-export async function runBranchList(
-  context: CommandContext,
-): Promise<CommandSuccess<BranchListResult>> {
-  return {
-    command: "branch.list",
-    result: await listRealBranches(context),
-    warnings: [],
-    nextSteps: [],
-  };
-}
-
-async function listRealBranches(
-  context: CommandContext,
-): Promise<BranchListResult> {
-  const authState = await requireAuthenticatedAuthState(context);
-  const client = await authenticatedManagementApiClient(
-    context.runtime.env,
-    context.runtime.signal,
-  );
-  if (!client) {
-    throw authRequiredError(["prisma-cli auth login"]);
-  }
-
-  const workspace = authState.workspace;
-  if (!workspace) {
-    throw workspaceRequiredError();
-  }
-
-  const targetResult = await resolveProjectTarget({
-    context,
-    workspace,
-    listProjects: () =>
-      listRealWorkspaceProjects(client, context.runtime.signal),
-  });
-  if (targetResult.isErr()) {
-    throw projectResolutionErrorToCliError(targetResult.error);
-  }
-  const target = targetResult.value;
-
-  const branches = await listBranches(
-    client,
-    target.project.id,
-    context.runtime.signal,
-  );
-
-  return {
-    projectId: target.project.id,
-    projectName: target.project.name,
-    verboseContext: {
-      workspace,
-      project: target.project,
-      resolution: target.resolution,
-    },
-    branches: sortBranches(branches.map(toBranchSummary)),
-  };
 }
 
 export function sortBranches(branches: BranchSummary[]): BranchSummary[] {

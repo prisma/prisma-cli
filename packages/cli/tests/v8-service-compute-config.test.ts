@@ -81,7 +81,7 @@ function settledError(result: { readonly json: readonly StreamEvent[] }) {
   return frame.envelope.error;
 }
 
-describe("prisma-v8 service — the compute config", () => {
+describe("prisma-cli service — the compute config", () => {
   it("maps an unknown target through the legacy error mapper, in service prose", async () => {
     const harness = await makeServiceCli();
     await writeComputeConfig(harness.cwd, {

@@ -68,7 +68,7 @@ function stopRoutes(
 
 const TARGET = ["--project", "acme-app", "--service", "hello-world"];
 
-describe("prisma-v8 service deployment stop", () => {
+describe("prisma-cli service deployment stop", () => {
   it("stops a running deployment and reports it stopped", async () => {
     const stop = stopRoutes();
     const harness = await makeServiceCli({ routes: stop.routes });

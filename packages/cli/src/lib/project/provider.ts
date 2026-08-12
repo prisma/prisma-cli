@@ -1,7 +1,7 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
-import { formatPrismaCliCommand } from "../../shell/cli-command";
-import { CliError } from "../../shell/errors";
+import { formatPrismaCliCommand } from "../../cli-command";
+import { CliError } from "../../errors";
 import type { ProjectSummary } from "../../types/project";
 
 export interface ProjectProvider {

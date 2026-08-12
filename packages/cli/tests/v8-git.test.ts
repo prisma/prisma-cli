@@ -228,7 +228,7 @@ beforeEach(() => {
   readOrigin.mockResolvedValue(null);
 });
 
-describe("prisma-v8 git connect", () => {
+describe("prisma-cli git connect", () => {
   it("connects the repository named by the positional", async () => {
     const calls: Call[] = [];
     const result = await makeCli(gitClient({ calls })).run(
@@ -733,7 +733,7 @@ describe("prisma-v8 git connect", () => {
   });
 });
 
-describe("prisma-v8 git disconnect", () => {
+describe("prisma-cli git disconnect", () => {
   it("disconnects the connected repository", async () => {
     const calls: Call[] = [];
     const result = await makeCli(

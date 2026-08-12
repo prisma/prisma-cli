@@ -36,7 +36,7 @@ function deleteRoutes(overrides: Routes = {}): {
   };
 }
 
-describe("prisma-v8 service deployment delete", () => {
+describe("prisma-cli service deployment delete", () => {
   it("deletes the deployment once consent is typed back", async () => {
     const removal = deleteRoutes();
     const harness = await makeServiceCli({ routes: removal.routes });

@@ -1,7 +1,7 @@
 /** The `postgres connection rotate` command. */
 import { defineCommand, positional } from "@prisma/cli-engine";
 import { notOk, ok } from "@prisma/cli-engine/protocol";
-import { usageError } from "../../shell/errors";
+import { usageError } from "../../errors";
 import type { DatabaseConnectionRotateResult } from "../../types/database";
 import { legacyCommandFormatter, resolvePostgresProviderOnly } from "./context";
 import { mapPostgresOperationError } from "./errors";

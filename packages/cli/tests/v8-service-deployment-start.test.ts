@@ -67,7 +67,7 @@ function startRoutes(
 
 const TARGET = ["--project", "acme-app", "--service", "hello-world"];
 
-describe("prisma-v8 service deployment start", () => {
+describe("prisma-cli service deployment start", () => {
   it("starts a stopped deployment and reports it running", async () => {
     const start = startRoutes();
     const harness = await makeServiceCli({ routes: start.routes });

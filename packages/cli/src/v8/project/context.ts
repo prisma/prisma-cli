@@ -7,6 +7,7 @@
 import path from "node:path";
 import type { CommandContext } from "@prisma/cli-engine";
 import { listRealWorkspaceProjects } from "../../controllers/project";
+import type { CommandContext as LegacyCommandContext } from "../../legacy/runtime";
 import {
   ensureLocalResolutionPinGitignore,
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
@@ -19,7 +20,6 @@ import {
   resolveProjectTarget,
 } from "../../lib/project/resolution";
 import { projectDirectoryBindingErrorToCliError } from "../../lib/project/setup";
-import type { CommandContext as LegacyCommandContext } from "../../shell/runtime";
 import type { AuthWorkspace } from "../../types/auth";
 import type { ProjectSetupResult, ProjectSummary } from "../../types/project";
 

@@ -8,11 +8,13 @@ Use this playbook when making common changes to the CLI.
    - [command spec](../product/command-spec.md)
    - [command principles](../product/command-principles.md)
    - [resource model](../product/resource-model.md), when resources or resolution rules change
-2. Add or update the command grammar in `packages/cli/src/commands`.
-3. Put command orchestration in `packages/cli/src/controllers`.
-4. Put product rules and resource resolution in `packages/cli/src/use-cases`.
-5. Add presenter changes when output shape changes.
-6. Add tests for human output, `--json`, non-interactive behavior, and errors.
+2. Add or update the command in `packages/cli/src/v8/<group>/` and mount it in
+   `packages/cli/src/v8/cli.ts`.
+3. Put product rules and resource resolution in the operation layer
+   (`packages/cli/src/controllers`, `packages/cli/src/lib`).
+4. Update the handler's presentation blocks when output shape changes.
+5. Add tests for human output, `--format json`, non-interactive behavior, and
+   errors.
 
 ## Change Output
 

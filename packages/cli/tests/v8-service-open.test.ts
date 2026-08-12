@@ -7,7 +7,7 @@ import {
   SERVICE_DETAIL,
 } from "./v8-service-testkit";
 
-describe("prisma-v8 service open", () => {
+describe("prisma-cli service open", () => {
   it("reports the live URL as an endpoint event and opens nothing when the session is not interactive", async () => {
     const opener = vi.fn();
     const harness = await makeServiceCli({ openUrl: opener });

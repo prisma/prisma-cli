@@ -55,37 +55,6 @@ describe("bun compatibility", () => {
     );
   });
 
-  it("detects a Bun project from package.json main and a bun dev script", async () => {
-    const cwd = await createTempCwd();
-
-    await writeFile(
-      path.join(cwd, "package.json"),
-      JSON.stringify(
-        {
-          main: "index.ts",
-          devDependencies: {
-            "@types/bun": "latest",
-          },
-          scripts: {
-            dev: "bun --watch index.ts",
-          },
-        },
-        null,
-        2,
-      ),
-      "utf8",
-    );
-    await writeFile(
-      path.join(cwd, "index.ts"),
-      "console.log('hello');\n",
-      "utf8",
-    );
-
-    const { detectLocalBuildType } = await import("../src/lib/app/local-dev");
-
-    await expect(detectLocalBuildType(cwd)).resolves.toBe("bun");
-  });
-
   it("forwards explicit build types to the SDK strategy resolver", async () => {
     const cwd = await createTempCwd();
 

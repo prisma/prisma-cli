@@ -9,7 +9,7 @@ import {
   releaseRoutes,
 } from "./v8-service-testkit";
 
-describe("prisma-v8 service deployment promote", () => {
+describe("prisma-cli service deployment promote", () => {
   it("promotes the requested deployment and reports it as the live one", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 

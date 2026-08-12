@@ -19,7 +19,7 @@ registerHooks({
 const CONSTELLATION = /\/node_modules\/(\.pnpm\/)?(@?alchemy|@?effect)[.@/]/;
 const UP_TO_NODE_MODULES = /^.*\/node_modules\//;
 
-process.argv = [process.argv[0], "prisma-v8", "--version"];
+process.argv = [process.argv[0], "prisma-cli", "--version"];
 const { main } = await import("../../src/v8/main.ts");
 const exitCode = await main(process);
 

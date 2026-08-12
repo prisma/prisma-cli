@@ -14,6 +14,7 @@ import {
   selectComputeDeployTarget,
 } from "@prisma/compute-sdk/config";
 import { afterEach, describe, expect, it } from "vitest";
+import { CliError } from "../src/errors";
 import {
   type ComputeDeployTarget,
   computeConfigErrorToCliError,
@@ -23,7 +24,6 @@ import {
   mergeComputeDeployInputs,
   mergeComputeLocalInputs,
 } from "../src/lib/app/compute-config";
-import { CliError } from "../src/shell/errors";
 
 const CONFIG_PATH = "/repo/prisma.compute.ts";
 
@@ -777,7 +777,7 @@ describe("compute config discovery and state location", () => {
   });
 
   it("anchors the default state directory at the config directory", async () => {
-    const { resolveStateDir } = await import("../src/shell/runtime");
+    const { resolveStateDir } = await import("../src/state-dir");
     const dir = await createTempDir();
     const appCwd = path.join(dir, "apps", "api");
     await mkdir(path.join(dir, ".git"), { recursive: true });
@@ -804,7 +804,7 @@ describe("compute config discovery and state location", () => {
   });
 
   it("keeps the default state directory at the invocation directory without a config", async () => {
-    const { resolveStateDir } = await import("../src/shell/runtime");
+    const { resolveStateDir } = await import("../src/state-dir");
     const dir = await createTempDir();
     const appCwd = path.join(dir, "apps", "api");
     await mkdir(path.join(dir, ".git"), { recursive: true });

@@ -9,7 +9,7 @@ import {
   SERVICE,
 } from "./v8-service-testkit";
 
-describe("prisma-v8 service show", () => {
+describe("prisma-cli service show", () => {
   it("presents the selected service with live deployment, url, and recent deployments", async () => {
     const harness = await makeServiceCli();
 

@@ -9,7 +9,7 @@ import {
 import { notOk, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import { resolveDatabase } from "../../controllers/database";
-import { usageError } from "../../shell/errors";
+import { usageError } from "../../errors";
 import type { DatabaseRestoreResult } from "../../types/database";
 import {
   branchFlag,

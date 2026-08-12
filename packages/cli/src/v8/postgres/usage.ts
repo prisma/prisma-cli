@@ -7,7 +7,7 @@ import {
 } from "@prisma/cli-engine";
 import { notOk, ok } from "@prisma/cli-engine/protocol";
 import { parseUsageDate, resolveDatabase } from "../../controllers/database";
-import { usageError } from "../../shell/errors";
+import { usageError } from "../../errors";
 import type { DatabaseUsageResult } from "../../types/database";
 import {
   branchFlag,

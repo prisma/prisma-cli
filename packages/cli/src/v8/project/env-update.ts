@@ -18,8 +18,8 @@ import {
   toMetadata,
 } from "../../controllers/app-env-api";
 import { runEnvUpdateFile } from "../../controllers/app-env-file";
+import { CliError } from "../../errors";
 import { formatScopeLabel } from "../../lib/app/env-config";
-import { CliError } from "../../shell/errors";
 import type { EnvUpdateResult } from "../../types/app-env";
 import { legacyOperationContext } from "./context";
 import {

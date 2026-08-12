@@ -8,7 +8,7 @@
 
 import type { NextAction } from "@prisma/cli-engine/protocol";
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
-import { CliError } from "../../shell/errors";
+import { CliError } from "../../errors";
 import { mapProjectOperationError, portCommandString } from "../project/errors";
 
 const BUCKET_CODE_MAP: Readonly<Record<string, `${string}.${string}`>> = {

@@ -15,7 +15,7 @@ import {
   repoInstallationRequiredError,
   repoNotAccessibleError,
 } from "../../controllers/project";
-import { CliError } from "../../shell/errors";
+import { CliError } from "../../errors";
 import { mapProjectOperationError, portCommandString } from "../project/errors";
 
 const GIT_CODE_MAP: Readonly<Record<string, `${string}.${string}`>> = {

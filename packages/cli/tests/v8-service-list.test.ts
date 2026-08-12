@@ -32,7 +32,7 @@ function listRoutes(services: RawService[] = [SERVICE, UNDEPLOYED]) {
   });
 }
 
-describe("prisma-v8 service list", () => {
+describe("prisma-cli service list", () => {
   it("lists the project's services with the live url of each", async () => {
     const harness = await makeServiceCli({ routes: listRoutes() });
 

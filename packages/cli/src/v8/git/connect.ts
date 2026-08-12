@@ -29,8 +29,8 @@ import {
   toRepositoryConnection,
   unsupportedRepositoryProviderError,
 } from "../../controllers/project";
+import { usageError } from "../../errors";
 import { formatGitConnectionDetail } from "../../presenters/project";
-import { usageError } from "../../shell/errors";
 import type { ProjectRepositoryConnectionResult } from "../../types/project";
 import {
   type GitCommandContext,

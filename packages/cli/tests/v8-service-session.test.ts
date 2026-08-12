@@ -85,7 +85,7 @@ function domainRoutes(): Routes {
   });
 }
 
-describe("prisma-v8 service — the workspace comes from the engine session", () => {
+describe("prisma-cli service — the workspace comes from the engine session", () => {
   it("resolves the project the API returns", async () => {
     const harness = await makeServiceCli({ routes: workspaceRoutes() });
 

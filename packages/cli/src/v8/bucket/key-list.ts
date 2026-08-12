@@ -5,8 +5,8 @@ import {
   type Presentations,
 } from "@prisma/cli-engine";
 import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { usageError } from "../../errors";
 import { serializeBucketKeyList } from "../../presenters/bucket";
-import { usageError } from "../../shell/errors";
 import type { BucketKeyListResult } from "../../types/bucket";
 import { bucketPositional, resolveBucketProviderOnly } from "./context";
 import { mapBucketOperationError } from "./errors";

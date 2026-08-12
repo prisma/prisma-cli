@@ -20,15 +20,6 @@ import {
 } from "@prisma/cli-engine/testing";
 import { describe, expect, it } from "vitest";
 
-import type { GlobalFlags } from "../src/shell/global-flags";
-import type { CliRuntime } from "../src/shell/runtime";
-import {
-  createShellUi,
-  renderFieldRows,
-  renderVerboseBlock,
-  type ShellUi,
-} from "../src/shell/ui";
-
 import { authLogoutCommand } from "../src/v8/auth/logout";
 import { authWorkspaceListCommand } from "../src/v8/auth/workspace-list";
 import { authWorkspaceLogoutCommand } from "../src/v8/auth/workspace-logout";
@@ -218,9 +209,9 @@ describe("v8 golden rendering", () => {
 /**
  * The card the v8 `fields` block draws is the card the commander shell
  * drew — same padding, same accent on the key, same two-space gutter,
- * and the same dim rail when a command asks for one. Asserting against
- * the shipped legacy renderers rather than a copied byte string is what
- * makes that a fact rather than a claim.
+ * and the same dim rail when a command asks for one. The shell is gone,
+ * so these are the bytes its renderers produced, captured from
+ * `renderFieldRows` and `renderVerboseBlock` before they were deleted.
  */
 describe("the restored card matches the shell it replaced", () => {
   const ROWS = [
@@ -228,23 +219,15 @@ describe("the restored card matches the shell it replaced", () => {
     { key: "workspace", value: "Acme Inc" },
   ];
 
-  function legacyUi(): ShellUi {
-    return createShellUi(
-      {
-        stderr: { isTTY: true, columns: 80 },
-        env: {},
-      } as unknown as CliRuntime,
-      {
-        json: false,
-        quiet: false,
-        verbose: true,
-        trace: false,
-        yes: false,
-        interactive: undefined,
-        color: undefined,
-      } satisfies GlobalFlags,
-    );
-  }
+  const SHELL_FIELD_ROWS = [
+    "\u001b[36mstatus:   \u001b[39m  signed in",
+    "\u001b[36mworkspace:\u001b[39m  Acme Inc",
+  ];
+
+  const SHELL_VERBOSE_RAIL_ROWS = [
+    "\u001b[2m\u2502\u001b[22m  \u001b[36mstatus:   \u001b[39m  signed in",
+    "\u001b[2m\u2502\u001b[22m  \u001b[36mworkspace:\u001b[39m  Acme Inc",
+  ];
 
   async function renderCard(rail: boolean): Promise<string[]> {
     const card: Block = {
@@ -263,14 +246,11 @@ describe("the restored card matches the shell it replaced", () => {
     return result.stderr.split("\n").slice(0, ROWS.length);
   }
 
-  it("reproduces renderFieldRows", async () => {
-    expect(await renderCard(false)).toEqual(renderFieldRows(legacyUi(), ROWS));
+  it("reproduces the shell's renderFieldRows bytes", async () => {
+    expect(await renderCard(false)).toEqual(SHELL_FIELD_ROWS);
   });
 
-  it("reproduces the rail rows of renderVerboseBlock", async () => {
-    // The first two lines are the block's blank line and its title.
-    expect(await renderCard(true)).toEqual(
-      renderVerboseBlock(legacyUi(), ROWS).slice(2),
-    );
+  it("reproduces the rail rows the shell's renderVerboseBlock drew", async () => {
+    expect(await renderCard(true)).toEqual(SHELL_VERBOSE_RAIL_ROWS);
   });
 });

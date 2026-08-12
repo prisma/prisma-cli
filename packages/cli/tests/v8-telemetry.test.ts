@@ -67,7 +67,7 @@ function seedConfig(config: Record<string, unknown>): void {
   writeFileSync(configPath, JSON.stringify(config));
 }
 
-describe("prisma-v8 telemetry status", () => {
+describe("prisma-cli telemetry status", () => {
   it("reports the opt-out default when no choice is stored, without writing anything", async () => {
     const result = await makeCli().run(["telemetry", "status"], {
       env: isolatedEnv(),
@@ -167,7 +167,7 @@ describe("prisma-v8 telemetry status", () => {
   });
 });
 
-describe("prisma-v8 telemetry enable", () => {
+describe("prisma-cli telemetry enable", () => {
   it("stores the opt-in, mints an installation id, and names the config file", async () => {
     const result = await makeCli().run(["telemetry", "enable"], {
       env: isolatedEnv(),
@@ -213,7 +213,7 @@ describe("prisma-v8 telemetry enable", () => {
   });
 });
 
-describe("prisma-v8 telemetry disable", () => {
+describe("prisma-cli telemetry disable", () => {
   it("stores the opt-out without minting an installation id", async () => {
     const result = await makeCli().run(["telemetry", "disable"], {
       env: isolatedEnv(),

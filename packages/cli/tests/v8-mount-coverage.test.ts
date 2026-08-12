@@ -109,7 +109,7 @@ const MOUNTED_FAMILIES = {
   composer: composerCommandFamily,
 };
 
-describe("prisma-v8 mount coverage", () => {
+describe("prisma-cli mount coverage", () => {
   it("mounts exactly the expected command paths", () => {
     expect(Object.keys(mountedCommands).sort()).toEqual(EXPECTED_MOUNT_PATHS);
   });

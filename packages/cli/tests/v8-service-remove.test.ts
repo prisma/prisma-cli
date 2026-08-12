@@ -11,7 +11,7 @@ import {
 
 const INTERACTIVE = { stdin: true, stdout: true, stderr: true };
 
-describe("prisma-v8 service remove", () => {
+describe("prisma-cli service remove", () => {
   it("removes the selected service once consent is granted", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 

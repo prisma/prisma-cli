@@ -3,7 +3,7 @@ import { defineCommand, flag, positional } from "@prisma/cli-engine";
 import { notOk, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import { ensureProjectId } from "../../controllers/database";
-import { usageError } from "../../shell/errors";
+import { usageError } from "../../errors";
 import type { DatabaseCreateResult } from "../../types/database";
 import { branchFlag, projectFlag, resolvePostgresContext } from "./context";
 import { mapPostgresOperationError } from "./errors";

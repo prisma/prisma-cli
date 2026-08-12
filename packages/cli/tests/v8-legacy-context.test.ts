@@ -64,7 +64,9 @@ describe("the v8 legacy-context adapter", () => {
   it("refuses a runtime field it cannot serve, and names it", () => {
     const context = legacyOperationContext(stubContext("/somewhere"));
 
-    expect(() => context.runtime.stdout).toThrow(
+    expect(
+      () => (context.runtime as unknown as { stdout: unknown }).stdout,
+    ).toThrow(
       "the v8 legacy-context adapter provides only runtime.cwd, runtime.env and runtime.signal; runtime.stdout was read",
     );
   });
@@ -72,7 +74,7 @@ describe("the v8 legacy-context adapter", () => {
   it("refuses a top-level field it cannot serve, and names it", () => {
     const context = legacyOperationContext(stubContext("/somewhere"));
 
-    expect(() => context.ui).toThrow(
+    expect(() => (context as unknown as { ui: unknown }).ui).toThrow(
       "the v8 legacy-context adapter provides only runtime.cwd, runtime.env and runtime.signal; ui was read",
     );
   });

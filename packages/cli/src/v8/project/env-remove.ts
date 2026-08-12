@@ -11,9 +11,9 @@ import {
   apiCallError,
   findVariableByNaturalKey,
 } from "../../controllers/app-env-api";
+import { CliError } from "../../errors";
 import { formatScopeLabel } from "../../lib/app/env-config";
 import { scopeLabel } from "../../presenters/app-env";
-import { CliError } from "../../shell/errors";
 import type { EnvRmResult } from "../../types/app-env";
 import {
   branchFlag,

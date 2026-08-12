@@ -164,7 +164,7 @@ function blocks(presented: unknown) {
   return value?.presentation.human ?? [];
 }
 
-describe("prisma-v8 project list", () => {
+describe("prisma-cli project list", () => {
   it("lists the workspace projects and reports the linked binding", async () => {
     const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
     const result = await makeCli(fakeClient()).run(["project", "list"], {
@@ -338,7 +338,7 @@ describe("prisma-v8 project list", () => {
   });
 });
 
-describe("prisma-v8 project show", () => {
+describe("prisma-cli project show", () => {
   it("shows the bound project for a pinned directory", async () => {
     const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
     const result = await makeCli(fakeClient()).run(["project", "show"], {
@@ -519,7 +519,7 @@ describe("prisma-v8 project show", () => {
   });
 });
 
-describe("prisma-v8 project create", () => {
+describe("prisma-cli project create", () => {
   it("creates the project, writes the pin and ignores it in git", async () => {
     const cwd = await tempCwd();
     const created = {
@@ -705,7 +705,7 @@ describe("prisma-v8 project create", () => {
   });
 });
 
-describe("prisma-v8 project link", () => {
+describe("prisma-cli project link", () => {
   it("links the directory to the project named by the positional", async () => {
     const cwd = await tempCwd();
     const result = await makeCli(fakeClient()).run(
@@ -883,7 +883,7 @@ describe("prisma-v8 project link", () => {
   });
 });
 
-describe("prisma-v8 project rename", () => {
+describe("prisma-cli project rename", () => {
   it("renames the pinned project", async () => {
     const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
     const result = await makeCli(
@@ -1006,7 +1006,7 @@ describe("prisma-v8 project rename", () => {
   });
 });
 
-describe("prisma-v8 project workspace requirement", () => {
+describe("prisma-cli project workspace requirement", () => {
   it("names the workspace of the engine's pinned credential", async () => {
     const workspace = await resolveActiveWorkspace({
       activeCredential: async () => ({
@@ -1202,7 +1202,7 @@ async function pinnedCwd() {
   return await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
 }
 
-describe("prisma-v8 project env add", () => {
+describe("prisma-cli project env add", () => {
   it("creates a variable in the role scope", async () => {
     const writes: unknown[] = [];
     const result = await makeCli(envClient({ writes })).run(
@@ -1659,7 +1659,7 @@ describe("prisma-v8 project env add", () => {
   });
 });
 
-describe("prisma-v8 project env update", () => {
+describe("prisma-cli project env update", () => {
   it("replaces the value of an existing variable", async () => {
     const writes: unknown[] = [];
     const result = await makeCli(
@@ -2042,7 +2042,7 @@ describe("prisma-v8 project env update", () => {
   });
 });
 
-describe("prisma-v8 project env list", () => {
+describe("prisma-cli project env list", () => {
   it("lists the variables of an explicit role scope", async () => {
     const result = await makeCli(
       envClient({
@@ -2311,7 +2311,7 @@ describe("prisma-v8 project env list", () => {
   });
 });
 
-describe("prisma-v8 project env remove", () => {
+describe("prisma-cli project env remove", () => {
   it("removes the variable from the scope", async () => {
     const writes: unknown[] = [];
     const result = await makeCli(
@@ -2491,7 +2491,7 @@ describe("prisma-v8 project env remove", () => {
   });
 });
 
-describe("prisma-v8 project remove", () => {
+describe("prisma-cli project remove", () => {
   it("removes the project and clears a pin that points at it", async () => {
     const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
     const result = await makeCli(fakeClient()).run(
@@ -2706,7 +2706,7 @@ describe("prisma-v8 project remove", () => {
   });
 });
 
-describe("prisma-v8 project transfer", () => {
+describe("prisma-cli project transfer", () => {
   it("transfers to a locally authenticated workspace and rewrites the pin", async () => {
     vi.mocked(resolveRecipientWorkspaceSession).mockResolvedValue({
       workspace: { id: "ws_2", name: "Prisma Labs" },
