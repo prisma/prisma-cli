@@ -47,6 +47,12 @@ describe("prisma-v8 service deployment stop", () => {
 
     expect(result.exitCode).toBe(0);
     expect(stop.stopped).toEqual(["dep_2"]);
+    expect(result.events[0]).toEqual({ kind: "step-started", step: "stop" });
+    expect(result.events.at(-1)).toEqual({
+      kind: "step-finished",
+      step: "stop",
+      outcome: "ok",
+    });
     expect(result.presented?.data).toMatchObject({
       projectId: "proj_1",
       service: { id: "svc_1", name: "hello-world" },

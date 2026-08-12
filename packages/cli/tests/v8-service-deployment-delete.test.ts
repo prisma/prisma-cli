@@ -53,6 +53,12 @@ describe("prisma-v8 service deployment delete", () => {
 
     expect(result.exitCode).toBe(0);
     expect(removal.deleted).toEqual(["dep_1"]);
+    expect(result.events[0]).toEqual({ kind: "step-started", step: "delete" });
+    expect(result.events.at(-1)).toEqual({
+      kind: "step-finished",
+      step: "delete",
+      outcome: "ok",
+    });
     expect(result.presented?.data).toEqual({
       projectId: "proj_1",
       service: { id: "svc_1", name: "hello-world" },
