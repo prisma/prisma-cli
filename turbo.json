@@ -35,6 +35,13 @@
       "dependsOn": ["build"],
       "cache": false
     },
+    "conformance": {
+      // Packs and installs the real tarballs, so never cached; the
+      // package's own build is a dependency because the entry reads
+      // dist/ before packing rebuilds it.
+      "dependsOn": ["build"],
+      "cache": false
+    },
     "typecheck": {
       "dependsOn": ["^build"],
       "inputs": [

@@ -86,3 +86,9 @@ jobs:
 
       - name: Script tests
         run: pnpm test:scripts
+
+      # Finds a broken tarball on the pull request instead of at publish
+      # time. The turbo task builds its own dependencies, so no explicit
+      # build step is needed here.
+      - name: Conformance checks
+        run: pnpm check:conformance

@@ -108,6 +108,15 @@ jobs:
         if: ${{ steps.version.outputs.publish == 'true' }}
         run: pnpm test:scripts
 
+      # The three conformance checks against what is about to ship:
+      # built output imports only declared dependencies, every mounted
+      # config-section validator survives hostile input, and the packed
+      # tarballs install into a clean tree with agreeing engine pins.
+      # Runs before BOTH publish paths so the dry run is covered too.
+      - name: Run conformance checks
+        if: ${{ steps.version.outputs.publish == 'true' }}
+        run: pnpm check:conformance
+
       # NODE_AUTH_TOKEN is intentionally NOT set. npm detects the OIDC
       # environment (id-token: write) and authenticates via Trusted
       # Publishing automatically. Setting NODE_AUTH_TOKEN to any value --

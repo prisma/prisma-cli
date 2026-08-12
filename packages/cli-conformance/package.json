@@ -10,7 +10,9 @@
     "./validator-no-throw": "./src/checks/validator-no-throw.ts",
     "./subjects": "./src/subjects.ts",
     "./findings": "./src/findings.ts",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./tarball": "./src/checks/tarball.ts",
+    "./tarball-io": "./src/tarball-io.ts"
   },
   "engines": {
     "node": ">=22.12.0"

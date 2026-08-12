@@ -1,14 +1,10 @@
-# S6 dispatch plan — Conformance checker (revision 3)
+# S6 dispatch plan — Conformance checker (revision 4)
 
-Contract: `specs/s6-conformance.md` revision 3. Read it first; this plan decides nothing the contract leaves open.
+Contract: `specs/s6-conformance.md` revision 4. Read it first; this plan decides nothing the contract leaves open.
 
-**State: D1 and D2 are DONE.** `packages/cli-conformance` holds the module graph, check 1 and check 2; the two checked packages call them on themselves. 35 tests, written before the code: 31 in the checker's own suite, 3 in the shell's, 1 in the engine's. Both checks pass against what this repo ships — composer's real validator survives the 21-case hostile corpus, and both published packages' built output imports only what they declare. `pnpm lint`, `pnpm typecheck` and `turbo run test --concurrency=1` are green; plain `pnpm test` fails on a pre-existing race recorded in `deferred.md`, which the base commit fails too. D3, D4 and D5 remain blocked as marked below.
+**State: D1 and D2 are DONE.** `packages/cli-conformance` holds the module graph, check 1 and check 2; the two checked packages call them on themselves. 35 tests, written before the code: 31 in the checker's own suite, 3 in the shell's, 1 in the engine's. Both checks pass against what this repo ships — composer's real validator survives the 21-case hostile corpus, and both published packages' built output imports only what they declare. `pnpm lint`, `pnpm typecheck` and `turbo run test --concurrency=1` are green; plain `pnpm test` fails on a pre-existing race recorded in `deferred.md`, which the base commit fails too. D3, D4 and D5 are unblocked — every question is closed.
 
-**Scope split against the open questions.** Revision 1 claimed D1–D4 were correct under every ruling. That was wrong, and the architect review said so: D3 builds the exception list that STOP-3 might discard, its bin-start input shape depends on STOP-6, the package's name and privacy depend on STOP-4, and D4 edits records that STOP-1 and STOP-2 settle. The honest split:
-
-- **D1 and D2 are ruling-independent.** The module graph, check 1 and check 2 are the same code under every answer to every question.
-- **D3 and D4 need STOP-3, STOP-4 and STOP-6 first.** They are specified here so the shape is visible and reviewable, and dispatched once ruled.
-- **D5, the cross-repo wiring, needs STOP-1, STOP-2 and STOP-4.**
+**All questions closed (operator, 2026-08-12; contract §5).** Nothing is blocked. The composer pin mismatch ships as one recorded exception; bins started are the ones the tarball declares; the sandbox is an in-repo gitignored path; no repo consumes the tool — prisma/prisma gets the checks as its own scripts, per the per-repo precedent both sibling repos already follow.
 
 ## Shape
 
@@ -64,7 +60,7 @@ Then implement `checkValidatorNoThrow({ sections })` over the corpus the contrac
 
 **Acceptance:** the suite passes; run against the shell's sections it returns no findings. **Met:** 9 tests in the checker's suite, plus `packages/cli/tests/v8-conformance.test.ts`, which pins that the shell mounts exactly `["composer"]` — so the day the ORM slice adds a second section that test fails and the new validator gets checked rather than silently skipped — and that composer's shipped validator survives all 21 hostile inputs.
 
-## D3 — check 3 (tarball verification) — BLOCKED on STOP-3, STOP-6
+## D3 — check 3 (tarball verification) — READY
 
 Add `export const commandFamilies: readonly CommandFamily[] = [platformCommandFamily, composerCommandFamily]` to `packages/cli/src/v8/cli.ts`, used by `buildCli()`. This serves **check 2**, whose subjects are section objects the families carry. It does **not** serve 3c: `CommandFamily` carries `configSection`, `commands`, `docsBaseUrl` and `redirects` and no package identity at all (`packages/cli-engine/src/command-family.ts:49-59`), so 3c cannot learn a family's package name from it. 3c's family-package list is therefore hand-written in `bin.ts` alongside the shell's own imports, and a test asserts every name in it appears in the shell's packed manifest `dependencies` — which is what keeps it in step, since a family the shell mounts must be a package the shell depends on.
 
@@ -104,7 +100,7 @@ The sandbox lives at a gitignored in-repo path carrying the package name, and is
 
 **Acceptance:** the suite passes; `check:conformance` locally packs both published packages, installs out of the workspace, starts every declared bin plus `dist/v8/cli.js` at exit 0 (per STOP-6(b)), reports no 3a findings, and reports the composer mismatch as suppressed by a named exception with its reason printed.
 
-## D4 — wire prisma-cli's publish path, and the records — BLOCKED on STOP-1, STOP-2, STOP-4
+## D4 — wire prisma-cli's publish path, and the records — READY
 
 - `.github/workflows/publish.yml`: a `Run conformance checks` step calling `pnpm check:conformance`, after `Run script tests` and before both publish steps so it guards the dry-run and the real publish alike. It still carries `if: ${{ steps.version.outputs.publish == 'true' }}`, matching both its neighbours at lines 103-109 — the turbo task removes the *build-ordering* need for a condition, not the reason to skip the work on a push that publishes nothing.
 - `.github/workflows/pr-quality.yml`: the same script in the Test job. No explicit `pnpm build` step is needed once `conformance` is a turbo task with `dependsOn: ["^build"]`; that is the whole reason for making it one. If the install proves too slow for pull requests, the fast checks run there and the full set only at publish, decided by measurement.
@@ -116,9 +112,9 @@ The sandbox lives at a gitignored in-repo path carrying the package name, and is
 
 **Acceptance:** `pnpm typecheck`, root `pnpm lint` and the touched suites green, each measured as pnpm's own exit code; `check:conformance` green locally.
 
-## D5 — cross-repo wiring — BLOCKED on STOP-1, STOP-2, STOP-4
+## D5 — prisma/prisma's publish path — READY
 
-Not dispatched. Under the recommended answers: composer's `check-cli-engine-pin.mjs` gains a comparison against the shell's published engine pin, and composer's existing packed-output checks move from pull-request CI into its publish path — they are absent there today, which is a real hole independent of S6. prisma/prisma is wired as part of S5. Push access is not a blocker: the bot has push on `prisma/composer`, `prisma/prisma` and `prisma/prisma-cli` (checked 2026-08-12).
+prisma/prisma has landed S5 and has real subjects for all three checks: the `orm` section validator (`packages/1-framework/3-tooling/cli/src/orm/config-section.ts`), the published `@prisma/orm-toolchain` built output, and the engine pin `0.0.9` in three manifests. Following that repo's own conventions (`scripts/*.mjs` + `node --test`, wired into `publish.yml` alongside `check:publish-deps`), add the checks there in a separate PR from the bot. Push access confirmed 2026-08-12.
 
 ## Verification per dispatch
 
