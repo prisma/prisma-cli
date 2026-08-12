@@ -1602,3 +1602,7 @@ Three ported commands reached directly into `process` for host facts, because no
 3. **The feedback payload changes shape.** `{ cliVersion, nodeVersion, platform, arch }` becomes `{ cliVersion, runtime: { name, version }, platform, arch }`, read from `ctx.host` rather than `process`, so a bun or deno binary reports itself truthfully. The human summary line is unchanged; the wire payload and `--format json` result are not.
 4. **The bin is the engine shell.** `prisma-cli` resolves to `dist/v8/cli.js`; the `prisma-v8` working name and its root script are gone; `commander` and five other now-unimported dependencies leave the manifest. Proven from a packed tarball on plain Node.
 5. **The survivor list** — every legacy file the v8 tree still reaches, and where each went — is [`shell-deletion-survivors.md`](shell-deletion-survivors.md).
+
+## Ruled during the S7 merge (operator, 2026-08-12)
+
+**Top-level `init` is the platform's compute-config wizard; the ORM's project initializer mounts at `orm init`.** The unified grammar had both families claiming `init` — the S2d contract for the platform wizard, the ORM family's own command key for the initializer — and the collision only became mountable when S7 landed the ORM family. Users of the old ORM CLI who type `prisma init` expecting a schema scaffold now get the compute wizard and must type `orm init`. The `orm` group exists solely for this command until the ORM family grows more residents or the ruling is revisited (TML-3189 holds the final grammar).
