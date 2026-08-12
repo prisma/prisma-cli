@@ -1,4 +1,4 @@
-# S7 dispatch plan — Release pipeline + rc1 (revision 1 — blocked on STOPs)
+# S7 dispatch plan — Release pipeline + rc1 (revision 2)
 
 Contract: `../specs/s7-release.md` rev 1. One repo (prisma-cli), branch
 `claude/s7-release-pipeline-rc1-92c89d`, base `main`. Implementers on
@@ -7,9 +7,12 @@ plans: tests before implementation, no `vi.mock`/`vi.doMock`, pnpm only
 (tarball smoke's sandbox npm install excepted, as ruled in S6), explicit
 staging, bot identity with dual sign-off, push to the bot remote only.
 
-**Nothing dispatches until the operator rules STOP-1 … STOP-8.** The
-decomposition below is written against the contract's recommendations
-and marks where a different ruling reshapes it.
+Rulings applied (2026-08-12): the goal is all available commands in one
+binary; rc1 publishes under the current names (`@prisma/cli`, bin
+`prisma-cli`); the bare-`prisma` cutover and the exception-list
+reconciliation are follow-up work. STOP-2/3/4/8 closed. **D1 and D2 are
+dispatched on the contract's working defaults; D4/D5 wait on STOP-1,
+STOP-5 and STOP-7.**
 
 Ordering: D1 → D2 are independent of the release machinery and can run
 while STOP-5/7/8 settle; D3 → D4 → D5 are strictly ordered (the package
@@ -47,20 +50,15 @@ rule that additions require an operator ruling.
 Reshaped by: STOP-4 (if utilities move into the platform family, the
 exception set shrinks to the telemetry trio).
 
-### D3 — The `prisma` package (packages/prisma + packages/cli)
+### D3 — The shipped bin becomes the v8 tree (packages/cli)
 
-Blocked by: STOP-3. Written against (a):
-Tests first: a packaging test asserting the built `dist/prisma.js`
-exists, is executable-shaped (shebang), and `node dist/prisma.js
---version` in a bare env prints the lockstep version at exit 0 (run
-against the built workspace, not a mock); `set-version-utils.test.ts`
-extended for the new lockstep member.
-Then: `packages/prisma` (name `prisma`, lockstep version, bin map,
-`files: ["dist"]`, README, exact workspace pin on `@prisma/cli`);
-`@prisma/cli` gains the `"./v8-bin"` export and declares the v8 entry
-as a second bin (`prisma` → `dist/v8/cli.js`) so both names ship the
-same tree; `scripts/set-version.ts` lockstep set + `bump-version`
-updated; tsdown config for the facade.
+Per the 2026-08-12 ruling: no `prisma` package. Tests first: a
+packaging test asserting the DECLARED bin (`package.json` `bin`
+entry read, not a hard-coded path) is the v8 entry and that running
+it with `--version` on plain Node in a bare env prints the lockstep
+version at exit 0. Then: flip `bin.prisma-cli` from `./dist/cli.js`
+to `./dist/v8/cli.js`. The legacy entry keeps building and shipping
+in the tarball (S2d owns its deletion). Nothing else changes.
 
 ### D4 — Committed versions + conformance wiring (manifests + CI)
 
@@ -68,9 +66,9 @@ Blocked by: STOP-5, STOP-7. Written against STOP-5(a) — S6 lands
 first:
 `packages/cli` pins `@prisma/composer` and `@prisma/orm-toolchain`
 exact (already the style; versions per STOP-7); `pnpm conformance`
-added to `publish.yml` before publish steps, its subject list extended
-with the `prisma` tarball; the S6-3c interim exception entry (dated
-triple) committed if the pins have not converged by then.
+added to `publish.yml` before publish steps; the S6-3c interim
+exception entries (dated triples, one per family) committed if the
+pins have not converged by then.
 If STOP-5(b): D4 instead implements the inline smoke per the contract
 (S6 3b mechanics, ~40 lines, written to S6's spec so absorption is a
 move), and the 3c pin comparison is NOT built here — the pins' exactness
@@ -79,22 +77,23 @@ smoke resolving a single engine copy.
 
 ### D5 — The pipeline (publish.yml + scripts)
 
-Blocked by: STOP-1, STOP-2, STOP-8. Written against 1(a)/2(a)/8:
+Blocked by: STOP-1. Written against 1(a):
 Tests first where testable: the override-computation helper (workspace
 package → packed tarball map, recursive) as a pure function with its
 own unit tests in `scripts/`; `determine-version` untouched (nothing
-dynamic added). Then, in `publish.yml`: pack stage (three tarballs via
-`pnpm pack` — order matters, packing rebuilds dist per S6's finding
-16, so the grammar check and conformance run before packing);
-out-of-workspace install smoke (npm, `--ignore-scripts`, absolute
-`file:` overrides, every declared bin from every packed manifest
-started with `--version` under a timeout, exit 0 required); tarball
-upload as workflow artifacts; Release assets attached in the existing
-Release step; the guarded `prisma` publish step (STOP-8's
-`publish-prisma` dispatch input, default false). Dry-run dispatch path
-covers pack + smoke + upload, skipping registry writes and Release —
-this is the verification surface for the whole slice (never a real
-publish from this work; a real publish is the operator's action).
+dynamic added). Then, in `publish.yml`: pack stage (engine + cli
+tarballs via `pnpm pack` — order matters, packing rebuilds dist per
+S6's finding 16, so the grammar check and conformance run before
+packing); out-of-workspace install smoke (npm, `--ignore-scripts`,
+absolute `file:` overrides, every declared bin from every packed
+manifest started with `--version` under a timeout, exit 0 required —
+after D3 the declared bin IS the v8 tree, so the smoke exercises the
+composer and ORM family boundaries); tarball upload as workflow
+artifacts; Release assets attached in the existing Release step.
+Dry-run dispatch path covers pack + smoke + upload, skipping registry
+writes and Release — this is the verification surface for the whole
+slice (never a real publish from this work; a real publish is the
+operator's action).
 
 ### D6 — Docs, records, close-out prep
 
