@@ -50,6 +50,7 @@ import type {
   ServiceDeploymentSummary,
   ServiceDomainSummary,
   ServiceDomainTarget,
+  ServiceListEntry,
   ServiceSummary,
 } from "./results";
 
@@ -317,7 +318,7 @@ function isMissingProjectError(error: unknown): boolean {
   return error instanceof Error && error.message === "Resource Not Found";
 }
 
-async function listServices(
+export async function listServices(
   ctx: ServiceContext,
   provider: AppProvider,
   projectId: string,
@@ -444,6 +445,20 @@ export function toServiceSummary(
   service: Pick<AppRecord, "id" | "name">,
 ): ServiceSummary {
   return { id: service.id, name: service.name };
+}
+
+/** A service record as the listing and create presenters report it. A
+ *  service that names no live deployment has no URL to show: the
+ *  endpoint domain it already carries does not resolve until the first
+ *  promote. */
+export function toServiceListEntry(service: AppRecord): ServiceListEntry {
+  return {
+    id: service.id,
+    name: service.name,
+    region: service.region,
+    liveDeploymentId: service.liveDeploymentId,
+    liveUrl: service.liveDeploymentId ? service.liveUrl : null,
+  };
 }
 
 export function toServiceDomainSummary(

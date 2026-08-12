@@ -16,6 +16,32 @@ export interface ServiceDeploymentSummary {
   live: boolean | null;
 }
 
+/** A service as `service list` and `service create` report it. `liveUrl`
+ *  is null until a deployment is promoted: the endpoint domain a service
+ *  carries before that does not resolve. */
+export interface ServiceListEntry {
+  id: string;
+  name: string;
+  region: string | null;
+  liveDeploymentId: string | null;
+  liveUrl: string | null;
+}
+
+export interface ServiceListResult {
+  projectId: string;
+  branch: string;
+  services: ServiceListEntry[];
+}
+
+export interface ServiceCreateResult {
+  projectId: string;
+  branch: string;
+  service: ServiceListEntry;
+  /** True when a service of that name already existed on the branch and
+   *  this run returned it instead of creating a second one. */
+  existing: boolean;
+}
+
 export interface ServiceShowResult {
   projectId: string;
   service: ServiceSummary | null;

@@ -130,6 +130,20 @@ export function serviceSelectionInvalidError(
   );
 }
 
+export function serviceNameRequiredError(): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.NAME_REQUIRED",
+    "Service create requires a name",
+    {
+      why: "The name positional was empty or only whitespace.",
+      nextActions: [
+        adviceAction("Pass a name, as in service create my-service."),
+        runCommandAction("List services", "service list"),
+      ],
+    },
+  );
+}
+
 export function projectNotFoundError(projectId: string): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.PROJECT_NOT_FOUND",

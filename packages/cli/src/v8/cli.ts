@@ -58,6 +58,7 @@ import { projectRemoveCommand } from "./project/remove";
 import { projectRenameCommand } from "./project/rename";
 import { projectShowCommand } from "./project/show";
 import { projectTransferCommand } from "./project/transfer";
+import { serviceCreateCommand } from "./service/create";
 import { serviceDeploymentListCommand } from "./service/deployment-list";
 import { serviceDeploymentPromoteCommand } from "./service/deployment-promote";
 import { serviceDeploymentRollbackCommand } from "./service/deployment-rollback";
@@ -67,6 +68,7 @@ import { serviceDomainRemoveCommand } from "./service/domain-remove";
 import { serviceDomainRetryCommand } from "./service/domain-retry";
 import { serviceDomainShowCommand } from "./service/domain-show";
 import { serviceDomainWaitCommand } from "./service/domain-wait";
+import { serviceListCommand } from "./service/list";
 import { serviceOpenCommand } from "./service/open";
 import { serviceRemoveCommand } from "./service/remove";
 import { serviceShowCommand } from "./service/show";
@@ -110,6 +112,8 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     branchList: branchListCommand,
     gitConnect: gitConnectCommand,
     gitDisconnect: gitDisconnectCommand,
+    serviceList: serviceListCommand,
+    serviceCreate: serviceCreateCommand,
     serviceShow: serviceShowCommand,
     serviceOpen: serviceOpenCommand,
     serviceDeploymentList: serviceDeploymentListCommand,
@@ -206,6 +210,8 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "branch list": branchListCommand,
   "git connect": gitConnectCommand,
   "git disconnect": gitDisconnectCommand,
+  "service list": serviceListCommand,
+  "service create": serviceCreateCommand,
   "service show": serviceShowCommand,
   "service open": serviceOpenCommand,
   "service deployment list": serviceDeploymentListCommand,

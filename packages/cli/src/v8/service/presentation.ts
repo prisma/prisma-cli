@@ -2,6 +2,7 @@ import type { Block, Presentations } from "@prisma/cli-engine";
 import type { NextAction } from "@prisma/cli-engine/protocol";
 import { runCommandAction } from "./errors";
 import type {
+  ServiceCreateResult,
   ServiceDeploymentListResult,
   ServiceDeploymentShowResult,
   ServiceDeploymentSummary,
@@ -12,6 +13,7 @@ import type {
   ServiceDomainSummary,
   ServiceDomainTarget,
   ServiceDomainWaitResult,
+  ServiceListResult,
   ServiceOpenResult,
   ServicePromoteResult,
   ServiceRemoveResult,
@@ -78,6 +80,94 @@ function domainFailureRows(domain: ServiceDomainSummary): FieldRow[] {
         : domain.failureReason,
     },
   ];
+}
+
+export function listPresentations(result: ServiceListResult): Presentations {
+  return {
+    human: () => [
+      title("Listing services for the selected project."),
+      fields([
+        { label: "project", value: result.projectId },
+        { label: "branch", value: result.branch },
+      ]),
+      ...(result.services.length === 0
+        ? [
+            {
+              kind: "summary",
+              status: "info",
+              text: "No services found.",
+            } as const,
+          ]
+        : [
+            {
+              kind: "table",
+              columns: ["name", "id", "region", "live url"],
+              rows: result.services.map((service) => [
+                service.name,
+                service.id,
+                service.region ?? "none",
+                service.liveUrl ?? "not deployed",
+              ]),
+            } as const,
+          ]),
+    ],
+    /** The machine rows leave an absent region and an undeployed service
+     *  empty, rather than repeating the words the human table shows. */
+    stdout: () =>
+      result.services.map((service) =>
+        [
+          service.name,
+          service.id,
+          service.region ?? "",
+          service.liveUrl ?? "",
+        ].join("\t"),
+      ),
+    next: () => {
+      const first = result.services[0];
+      return first
+        ? [
+            runCommandAction(
+              "Show a service",
+              `service show --service ${first.name}`,
+            ),
+          ]
+        : [runCommandAction("Create a service", "service create <name>")];
+    },
+  };
+}
+
+export function createPresentations(
+  result: ServiceCreateResult,
+): Presentations {
+  return {
+    human: () => [
+      result.existing
+        ? title(
+            `${result.service.name} already exists on ${result.branch}; showing it.`,
+          )
+        : completed(`Created ${result.service.name} on ${result.branch}.`),
+      fields([
+        { label: "project", value: result.projectId },
+        { label: "branch", value: result.branch },
+        { label: "service", value: result.service.name },
+        { label: "id", value: result.service.id },
+        { label: "region", value: result.service.region ?? "none" },
+        // A service with no deployment has no address that resolves, so
+        // it reports what it needs next instead of a dead URL.
+        {
+          label: "live url",
+          value: result.service.liveUrl ?? "not deployed",
+        },
+      ]),
+    ],
+    next: () => [
+      runCommandAction("Deploy to the service", "composer deploy"),
+      runCommandAction(
+        "Show the service",
+        `service show --service ${result.service.name}`,
+      ),
+    ],
+  };
 }
 
 export function showPresentations(result: ServiceShowResult): Presentations {
