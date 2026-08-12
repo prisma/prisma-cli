@@ -4,7 +4,7 @@
   "description": "Command-line interface for the Prisma Developer Platform.",
   "type": "module",
   "bin": {
-    "prisma-cli": "./dist/v8/cli.js"
+    "prisma-cli": "./dist/cli.js"
   },
   "exports": {
     "./package.json": "./package.json"
@@ -40,7 +40,7 @@
   "scripts": {
     "build": "tsdown",
     "prepack": "pnpm run build",
-    "check:grammar": "vitest run tests/v8-mount-coverage.test.ts",
+    "check:grammar": "vitest run tests/mount-coverage.test.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts"

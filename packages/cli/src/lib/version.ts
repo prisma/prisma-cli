@@ -10,19 +10,28 @@ interface PackageMetadata {
 
 const requireFromHere = createRequire(import.meta.url);
 
+/** The bundled entry sits one directory below the package root
+ *  (`dist/cli.js`); this source file sits two below (`src/lib/`). Both
+ *  are tried, nearest first, so the same code serves either. */
+const PACKAGE_JSON_CANDIDATES = ["../package.json", "../../package.json"];
+
 function readPackageMetadata(): PackageMetadata {
-  try {
-    return requireFromHere("../../package.json") as PackageMetadata;
-  } catch {
-    return {};
+  for (const candidate of PACKAGE_JSON_CANDIDATES) {
+    try {
+      const metadata = requireFromHere(candidate) as PackageMetadata;
+      if (metadata.version) return metadata;
+    } catch {
+      // Try the next candidate.
+    }
   }
+  return {};
 }
 
 export function getCliVersion(): string {
   const pkg = readPackageMetadata();
 
   if (!pkg.version) {
-    // The v8 bin builds the CLI before it can present anything, and
+    // The bin builds the CLI before it can present anything, and
     // prints a construction failure as one plain stderr line, so this
     // carries its whole explanation in the message.
     throw new Error(

@@ -38,7 +38,7 @@ export function hasCredentials(): boolean {
  */
 export function describeCommand(command: string, define: () => void): void {
   const run = hasCredentials() ? describe : describe.skip;
-  run(`prisma-v8 ${command}`, define);
+  run(`prisma ${command}`, define);
 }
 
 /** Suites that share one scratch project rather than one per command. */
@@ -47,5 +47,5 @@ export function describeCommands(
   define: () => void,
 ): void {
   const run = hasCredentials() ? describe : describe.skip;
-  run(`prisma-v8 ${commands.join(" + ")}`, define);
+  run(`prisma ${commands.join(" + ")}`, define);
 }

@@ -8,8 +8,8 @@ Use this playbook when making common changes to the CLI.
    - [command spec](../product/command-spec.md)
    - [command principles](../product/command-principles.md)
    - [resource model](../product/resource-model.md), when resources or resolution rules change
-2. Add or update the command in `packages/cli/src/v8/<group>/` and mount it in
-   `packages/cli/src/v8/cli.ts`.
+2. Add or update the command in `packages/cli/src/commands/<group>/` and mount it in
+   `packages/cli/src/cli.ts`.
 3. Put product rules and resource resolution in the operation layer
    (`packages/cli/src/controllers`, `packages/cli/src/lib`).
 4. Update the handler's presentation blocks when output shape changes.

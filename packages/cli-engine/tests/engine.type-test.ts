@@ -1,7 +1,6 @@
 /**
- * Permanent type-tests for the compile-verified claims in
- * .drive/projects/prisma-cli-v8/assets/engine/reviews/
- * code-review-r4-closure.md (r4) and code-review-r5-delta.md (r5).
+ * Permanent type-tests for the compile-verified claims raised in the
+ * engine code reviews (rounds 4 and 5).
  * Checked by `tsc --noEmit`; never executed. Stale @ts-expect-error
  * directives fail the build (TS2578).
  */
@@ -381,7 +380,7 @@ export const normalizedExitCodes: Readonly<Record<never, string>> =
   plainCommand.exitCodes;
 
 export const createCliSpec: Parameters<typeof createCli>[0] = {
-  name: "prisma-v8",
+  name: "prisma-cli",
   version: "0.0.0",
   commandFamilies: [commandFamily],
   groups: { auth: { brief: "Authentication" } },

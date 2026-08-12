@@ -64,7 +64,7 @@
     {
       // Re-export hubs whose shape is the point: the tsdown entrypoints,
       // and the shims left behind in the commander shell when the modules
-      // it shared with the v8 tree moved out of it. The shims die with the
+      // it shared with the engine tree moved out of it. The shims die with the
       // shell.
       "includes": [
         "packages/cli-engine/src/exports/**",

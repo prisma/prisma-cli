@@ -13,7 +13,7 @@
  *                          `next` on the RC line, `latest` for stable.
  *                          This is how a merged `chore(release): ...`
  *                          PR ships a release automatically — `latest`
- *                          keeps serving the pre-v8 CLI until the
+ *                          keeps serving the pre-8 CLI until the
  *                          operator deliberately moves it.
  *                          Otherwise there is nothing to publish: the
  *                          committed version is already on the registry.

@@ -11,7 +11,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const CLI_SOURCE = path.resolve(import.meta.dirname, "../src/v8/cli.ts");
+const CLI_SOURCE = path.resolve(import.meta.dirname, "../src/cli.ts");
 const E2E_DIR = path.resolve(import.meta.dirname, "../e2e");
 
 /**
@@ -24,11 +24,11 @@ const E2E_DIR = path.resolve(import.meta.dirname, "../e2e");
  * exists to cover: they work against local files and the user's own
  * database. Their real end-to-end suite lives in prisma/prisma (R7,
  * argv-in/bytes-out against the engine harness); what this repo owes is
- * composition, which `tests/v8-orm-mount.test.ts` proves per family
+ * composition, which `tests/orm-mount.test.ts` proves per family
  * (R8).
  */
 const ORM_FAMILY_REASON =
-  "ORM command: no management API involved. Real e2e lives in prisma/prisma (R7); the shell proves composition in v8-orm-mount.test.ts (R8).";
+  "ORM command: no management API involved. Real e2e lives in prisma/prisma (R7); the shell proves composition in orm-mount.test.ts (R8).";
 
 const EXCLUSIONS: Readonly<Record<string, string>> = {
   "contract emit": ORM_FAMILY_REASON,

@@ -169,7 +169,7 @@ describeCommand("postgres usage", () => {
 
   // The check that a metric is never an invented zero cannot live here.
   // It needs a response that reports no measurement, and against a live
-  // API we cannot ask for one. `tests/v8-postgres.test.ts` makes that
+  // API we cannot ask for one. `tests/postgres.test.ts` makes that
   // response with a fake and asserts the answer is "unknown", not `0`.
   // What this test can do is confirm the live API's answer parses into
   // the shape the fix assumes: every field measured or null, never

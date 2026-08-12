@@ -11,23 +11,23 @@ the implementation is organized so contributors know where changes belong.
 
 ```mermaid
 flowchart TD
-  Bin["v8/bin.ts"] --> Main["v8/main.ts"]
-  Main --> Cli["v8/cli.ts"]
+  Bin["bin.ts"] --> Main["main.ts"]
+  Main --> Cli["cli.ts"]
   Cli --> Engine["@prisma/cli-engine"]
-  Engine --> Handlers["v8/<group>/<command>.ts"]
+  Engine --> Handlers["commands/<group>/<command>.ts"]
   Handlers --> Operations["controllers/*, lib/*, adapters/*"]
   Handlers --> Presentations["ctx.present(...) blocks"]
 ```
 
 ## Command Flow
 
-1. `packages/cli/src/v8/bin.ts` starts the Node process and calls `main`.
-2. `packages/cli/src/v8/main.ts` builds the CLI, runs the update check, and
+1. `packages/cli/src/bin.ts` starts the Node process and calls `main`.
+2. `packages/cli/src/main.ts` builds the CLI, runs the update check, and
    hands the engine a runtime assembled from `process`.
-3. `packages/cli/src/v8/cli.ts` mounts every command and command family.
+3. `packages/cli/src/cli.ts` mounts every command and command family.
 4. The engine parses argv, decides interactivity and credentials, dispatches
    the handler, and renders its result.
-5. `v8/<group>/<command>.ts` defines one command: its flags, its help, and a
+5. `commands/<group>/<command>.ts` defines one command: its flags, its help, and a
    handler that returns a presented result.
 6. `controllers/*`, `lib/*`, and `adapters/*` are the operation layer: project
    resolution, environment variables, local state, and platform API calls.

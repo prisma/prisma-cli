@@ -9,10 +9,10 @@ The root workspace owns shared scripts, docs, release preparation, and examples.
 
 ## CLI Source Layout
 
-- `src/v8/bin.ts`: process entrypoint for the `prisma-cli` binary.
-- `src/v8/main.ts`: builds the CLI and hands the engine a runtime.
-- `src/v8/cli.ts`: mounts every command and command family.
-- `src/v8/<group>/*`: one file per command — flags, help, handler.
+- `src/bin.ts`: process entrypoint for the `prisma-cli` binary.
+- `src/main.ts`: builds the CLI and hands the engine a runtime.
+- `src/cli.ts`: mounts every command and command family.
+- `src/commands/<group>/*`: one file per command — flags, help, handler.
 - `src/controllers/*` and `src/presenters/*`: the operation layer the handlers
   call, and the serializers they reuse.
 - `src/auth/*`: sessions, credentials, and token storage.

@@ -89,7 +89,8 @@ describe("listRealWorkspaceProjects", () => {
 
 describe("readProjectListLocalBinding", () => {
   /** The pin records the workspace id the CLI held when it was written,
-   *  which is the bare form under v8 and the prefixed form under v7.
+   *  which is the bare form under Prisma 8 and the prefixed form under
+   *  Prisma 7.
    *  The binding is judged by whether the pinned project is one the API
    *  returned, so neither form can make a linked directory read as
    *  invalid. */
