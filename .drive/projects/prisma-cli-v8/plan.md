@@ -123,11 +123,7 @@ One standing caveat: every endpoint above is marked experimental and subject to 
 
 ### S7 — Release pipeline + rc1
 
-Repo: prisma-cli. The `prisma` binary package assembled: full grammar
-tree mounted with the build-time grammar check, committed-versions
-release automation, pinned product versions, and the pipeline emitting
-a publishable `prisma@8.0.0-rc1` artifact from a tagged commit. Ends
-when the operator can publish with one action (project DoD).
+Repo: prisma-cli. **In flight (PR #164).** Ruled 2026-08-12: rc1 publishes under the existing names (`@prisma/cli`, bin `prisma-cli`); the bare-`prisma` cutover follows once `prisma7` frees the name. Shipped so far: the ORM family mounted (one binary answers platform, composer and ORM), the grammar check promoted to `pnpm check:grammar` running in `pr-quality.yml` and before every publish, the declared bin flipped to the v8 tree, and the tarball install smoke in the publish path (packed tarballs verified out-of-workspace on plain Node, uploaded as artifacts, attached to the Release). The operator's one action is merging the bump PR, per `docs/oss/versioning.md`. Engine-pin convergence is deferred until `8.0.0-rc.1` publishes (contract STOP-7).
 
 ### S9 — The error-code catalogue (last)
 

@@ -40,6 +40,7 @@
   "scripts": {
     "build": "tsdown",
     "prepack": "pnpm run build",
+    "check:grammar": "vitest run tests/v8-mount-coverage.test.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
@@ -50,6 +51,7 @@
     "@prisma/compute-sdk": "0.39.0",
     "@prisma/credentials-store": "^7.8.0",
     "@prisma/management-api-sdk": "1.55.0",
+    "@prisma/orm-toolchain": "8.0.0-rc.1-dev.40",
     "@vercel/detect-agent": "^1.2.3",
     "better-result": "^2.9.2",
     "dotenv": "^17.4.2",
