@@ -20,6 +20,8 @@ One detail from it survives the merge. `listRealWorkspaceProjects` still reads o
 
 ## Findings
 
+Each finding describes the code as it stood when the audit was written. Where a finding has since been fixed, a **Status** line under the heading says so and the prose below it is left as the record of what was wrong. A finding with no Status line is still live.
+
 ### 1. `app rollback` with no `--to` rolls forward, and reports it as a rollback
 
 `packages/cli/src/controllers/app.ts:3200-3209`, reached from `runAppRollback` at `:1975-1979`.
@@ -52,6 +54,8 @@ Latest and live are the same value only until someone uses `--no-promote`. The C
 
 ### 2. `postgres usage` prints `0` for a metric the API did not send, in a unit the CLI chose
 
+**Status.** Fixed in #158. `normalizeUsageMetric` carries both `used` and `unit` as `null`, the card reads `unknown`, and stdout and `--json` leave the field empty.
+
 `packages/cli/src/lib/database/provider.ts:666-686`:
 
 ```ts
@@ -74,6 +78,8 @@ Latest and live are the same value only until someone uses `--no-promote`. The C
 **Reachable.** Yes. `v8/postgres/usage.ts:33-42` prints `${used} ${unit}` into the human card, the stdout lane and the `--json` record. Unlike most of the placeholders in the v8 presentation layer, this one is not confined to the human lane — `stdoutFieldRows` at `:50-58` emits `String(result.metrics.operations.used)`, so a script consuming stdout gets the invented zero too.
 
 ### 3. `postgres list` and `postgres show` print `default` in the Status column
+
+**Status.** Fixed in #158. `formatStatus` returns the API's status or `unknown`; `isDefault` no longer reaches the Status cell.
 
 `packages/cli/src/v8/postgres/presentation.ts:23-34`:
 
@@ -98,6 +104,8 @@ When the API reports no status, the human table answers a different question —
 **Reachable.** Yes, `postgres list` (`v8/postgres/list.ts:22`) and `postgres show` (`v8/postgres/show.ts:28`). The stdout and `--json` lanes are correct, so only the human table misreports — but that is the lane a person reads before deciding nothing is wrong.
 
 ### 4. `resolveDatabase` substitutes a stale row when the API says the database is gone
+
+**Status.** The stale row is fixed in #158: a `null` from `showDatabase` now raises `DATABASE_NOT_FOUND`, which the postgres mapper emits as `POSTGRES.NOT_FOUND`. The `ensureProjectId` concern in the last paragraph stands — it still fills in a `projectId` the API did not send.
 
 `packages/cli/src/controllers/database.ts:947-952`:
 
@@ -428,7 +436,7 @@ These are the same instinct in smaller doses. Each is real; none is worth its ow
 
 ## Looked at and not reporting
 
-`repositoryFullNamesMatch` (`controllers/project.ts:2260-2262`) lowercases both sides, which is right — GitHub owner and repo names are case-insensitive. `readFirstSourceRepository` (`:2092-2116`) sends `limit: 1` and takes `data.data[0]`, which is the API choosing, not the CLI. `sortProjects`, `sortDatabases` and `sortBranches` order a complete set for display rather than re-deriving an order the API stated. The `?? "unknown"` placeholders in the v8 presentation layer — `v8/postgres/presentation.ts:55-65`, `connection-list.ts:25`, `list.ts:18-19`, `bucket/presentation.ts:17` — are each paired with a stdout row that emits the raw value, which is the right split; they matter only as the area affected when a field is renamed, and `unknown` at least reports ignorance honestly. (`unscoped` for an absent branch name is weaker: it asserts the resource is not branch-scoped, which is a different claim from "the API did not say".) `v8/project/context.ts:42-54`'s `refuseUnknownReads` proxy is the opposite of this defect class — it refuses to invent rather than filling a gap. The `v8/*/errors.ts` mappers pass unmapped API codes through as `GROUP.<RAW_CODE>` by explicit rule. `v8/auth/whoami.ts:80-98` merges the token claims with `/v1/me`, which the comment above it justifies as the offline fallback; the reasoning is sound, though the `samePerson` check treats a missing id on either side as proof of a match, so if `/v1/me` stops returning `user.id` the CLI will splice one person's email onto another's name — worth a comment, not a finding.
+`repositoryFullNamesMatch` (`controllers/project.ts:2260-2262`) lowercases both sides, which is right — GitHub owner and repo names are case-insensitive. `readFirstSourceRepository` (`:2092-2116`) sends `limit: 1` and takes `data.data[0]`, which is the API choosing, not the CLI. `sortProjects`, `sortDatabases` and `sortBranches` order a complete set for display rather than re-deriving an order the API stated. The `?? "unknown"` placeholders in the v8 presentation layer — `v8/postgres/presentation.ts:55-65`, `connection-list.ts:25`, `list.ts:18-19`, `bucket/presentation.ts:17` — are each paired with a stdout row that emits the raw value, which is the right split; they matter only as the area affected when a field is renamed, and `unknown` at least reports ignorance honestly. (`unscoped` for an absent branch name is weaker: it asserts the resource is not branch-scoped, which is a different claim from "the API did not say".) That parenthetical under-rated it. Reading the live API afterwards showed it returning `branchId` with `branchName: null` for every database in a real workspace, so the Branch column read `unscoped` for databases that were all branch-scoped — a wrong answer on every row, not a weak placeholder. Fixed for `postgres list` and `show` in #158, where the label falls back to `branchId` and only a missing id can produce `unscoped`. The same substitution in the other listings named here was not audited against live output and may be wrong in the same way. `v8/project/context.ts:42-54`'s `refuseUnknownReads` proxy is the opposite of this defect class — it refuses to invent rather than filling a gap. The `v8/*/errors.ts` mappers pass unmapped API codes through as `GROUP.<RAW_CODE>` by explicit rule. `v8/auth/whoami.ts:80-98` merges the token claims with `/v1/me`, which the comment above it justifies as the offline fallback; the reasoning is sound, though the `samePerson` check treats a missing id on either side as proof of a match, so if `/v1/me` stops returning `user.id` the CLI will splice one person's email onto another's name — worth a comment, not a finding.
 
 ## What the pattern is
 
