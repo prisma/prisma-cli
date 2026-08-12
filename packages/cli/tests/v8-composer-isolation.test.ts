@@ -39,10 +39,14 @@ async function runProbe(scenario: "plain" | "canary"): Promise<ProbeReport> {
     "report.json",
   );
   await new Promise<void>((resolve, reject) => {
-    // Node 24 only, and that limit is this probe's rather than composer's:
-    // tsx bypasses Node's module-syntax detection, so @alchemy.run/node-utils
-    // (ESM in lib/*.js with no "type": "module") stops loading on 22 — and
-    // the probe's own registerHooks load hook cannot run on 22.18 either.
+    // Node 24 only, and that limit is this probe's rather than composer's.
+    // Node 22 fails a scenario each way: 22.18 rejects the probe's own
+    // registerHooks load hook with ERR_INVALID_RETURN_PROPERTY_VALUE (the
+    // API is there from 22.15 — it is the value the hook returns that 22.18
+    // will not take, and 22.22 takes it), and on 22.22 the canary's import
+    // fails because tsx bypasses Node's module-syntax detection, so
+    // @alchemy.run/node-utils (ESM in lib/*.js with no "type": "module") is
+    // read as CommonJS and provides none of the named exports.
     const child = spawn(
       process.execPath,
       ["--import", "tsx", PROBE, scenario, reportPath],
@@ -77,7 +81,7 @@ describe("composer's family costs an unrelated command nothing", () => {
     expect(report.signalListeners).toEqual({ SIGINT: 0, SIGTERM: 0 });
   }, 120_000);
 
-  test("canary: the executor import a composer command makes does load the constellation", async () => {
+  test("canary: the executor import a composer command makes loads the constellation, and one signal listener per signal comes with it", async () => {
     const report = await runProbe("canary");
 
     expect(report.constellation.length).toBeGreaterThan(0);
@@ -87,5 +91,10 @@ describe("composer's family costs an unrelated command nothing", () => {
     expect(report.constellation.some((id) => id.startsWith("effect/"))).toBe(
       true,
     );
+    // The unpatched @alchemy.run/node-utils registers these at import time
+    // and never removes them; their handlers exit 130/143 themselves. The
+    // count is what the deferred entry on that patch reports, so it is
+    // asserted rather than only recorded.
+    expect(report.signalListeners).toEqual({ SIGINT: 1, SIGTERM: 1 });
   }, 120_000);
 });

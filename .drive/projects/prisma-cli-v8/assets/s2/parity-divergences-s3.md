@@ -35,16 +35,21 @@ difference.
 **Help examples name the wrong invocation under the prisma bin.**
 Composer writes its examples as `{bin} deploy src/service.ts`, which is
 right for `prisma-composer` and wrong for `prisma`, where the command is
-`prisma composer deploy`. The engine substitutes `{bin}` with the CLI
-name and nothing else (operator ruling, 2026-08-09: examples never
-contain the binary name), and composer cannot know where a host mounted
-it. So `prisma composer deploy --help` currently shows
-`prisma deploy src/service.ts` in its Examples block. Nothing else in
-the help is wrong, and the same defect is unreachable from composer's
-own CLI. Fixing it needs a mount-aware placeholder in the engine
-(`{command}` substituted with the command's mounted path) and composer
-rewriting its four example strings to use it — a coordinated change
-across both repos, recorded in `deferred.md`.
+`prisma composer deploy`. The engine's `resolveExample`
+(`packages/cli-engine/src/execution/stricli-adapter.ts`) substitutes
+`{bin}` with the CLI name and nothing else (operator ruling, 2026-08-09:
+examples never contain the binary name), and composer cannot know where
+a host mounted it. So `prisma composer deploy --help` currently shows
+`prisma deploy src/service.ts` in its Examples block — an invocation the
+bin answers to with `CLI.UNKNOWN_COMMAND`, since there is no top-level
+`deploy`. All eight examples are wrong the same way: two on each of the
+four commands, verified in `@prisma/composer@0.6.0-dev.16`'s
+`dist/family.mjs`. Nothing else in the help is wrong, and the same
+defect is unreachable from composer's own CLI. Fixing it needs a
+mount-aware placeholder in the engine (`{command}` substituted with the
+command's mounted path) and composer rewriting those eight strings to
+use it — a coordinated change across both repos, recorded in
+`deferred.md`.
 
 ## `deploy --production` is dropped
 
@@ -66,7 +71,7 @@ When the alchemy child failed, legacy printed the `DEPLOY.ENGINE_FAILED`
 envelope and then two bare `console.error` lines to stderr
 (`render-error.ts:27-37`):
 
-```
+```text
 Generated stack file: <path>
 Run `<alchemy command>` from <cwd> to reproduce this directly.
 ```
@@ -256,7 +261,14 @@ Three refusals are new, and all three move work earlier in the run:
   `DEPS.EFFECT_VERSION_CONFLICT` diagnostic, so commands that need no
   config still work on a broken dependency tree, and `prisma --help`,
   `prisma composer --help` and every platform command are unaffected by
-  composer's dependency resolution.
+  composer's dependency resolution. Where it moved to, in the published
+  `0.6.0-dev.16`: `configSource`, the front that the throwing loader and
+  the diagnostics-returning loader both go through, so every config load
+  runs it first whichever shape called. (That the diagnostics-returning
+  loader itself is still uncalled — the `deferred.md` item — does not
+  reach this check.) A failed executor import diagnoses the same
+  condition a second time, turning the load failure into
+  `DEPS.EFFECT_VERSION_CONFLICT` rather than `DEPS.EXECUTOR_UNLOADABLE`.
 
 ## Not a divergence, recorded because it looks like one
 
