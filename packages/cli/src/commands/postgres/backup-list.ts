@@ -27,6 +27,7 @@ function backupListPresentations(
   const rows = backupRows(result.backups);
   const stdoutRows = backupStdoutRows(result.backups);
   return {
+    next: () => [],
     human: (): Block[] => [
       { kind: "summary", status: "info", text: TITLE },
       {

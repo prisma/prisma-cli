@@ -92,6 +92,9 @@ function emailInvalidError(value: string): CliStructuredError {
 
 function feedbackPresentations(result: FeedbackResult): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
     human: () => [
       { kind: "summary", status: "ok", text: "Feedback sent. Thank you!" },
       {

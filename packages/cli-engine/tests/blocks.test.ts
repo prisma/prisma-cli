@@ -25,7 +25,17 @@ async function render(
   const show = defineCommand({
     help: { summary: "Render the fixture blocks" },
     handler: async (_args, ctx) =>
-      ok(ctx.present({ data: null }, { human: () => blocks })),
+      ok(
+        ctx.present(
+          { data: null },
+          {
+            human: () => blocks,
+            stdout: () => [],
+            json: () => null,
+            next: () => [],
+          },
+        ),
+      ),
   });
   const result = await createTestCli({ commands: { show } }).run(
     [
@@ -323,6 +333,9 @@ describe("one character per meaning", () => {
               human: () => [
                 { kind: "summary", status: "error", text: "Failed." },
               ],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
             },
           ),
         );
@@ -371,6 +384,9 @@ describe("one character per meaning", () => {
                 { kind: "summary", status: "warn", text: "Slowly." },
                 { kind: "summary", status: "info", text: "Noted." },
               ],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
             },
           ),
         );

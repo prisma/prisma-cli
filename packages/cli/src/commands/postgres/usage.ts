@@ -67,6 +67,8 @@ function stdoutFieldRows(result: DatabaseUsageResult): FieldRow[] {
 function usagePresentations(result: DatabaseUsageResult): Presentations {
   const rows = fieldRows(result);
   return {
+    json: () => result,
+    next: () => [],
     human: (): Block[] => [
       { kind: "summary", status: "info", text: TITLE },
       { kind: "fields", rows },

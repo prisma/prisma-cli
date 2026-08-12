@@ -43,6 +43,7 @@ export function toNextActions(
 
 export function setupPresentations(result: ProjectSetupResult): Presentations {
   return {
+    stdout: () => [],
     human: () => [
       ...(result.action === "created"
         ? [

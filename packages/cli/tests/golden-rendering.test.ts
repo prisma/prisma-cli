@@ -238,7 +238,17 @@ describe("the restored card matches the shell it replaced", () => {
     const show = defineCommand({
       help: { summary: "Draw the card" },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [card] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [card],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const result = await createTestCli({ commands: { show } }).run(["show"], {
       isTty: { stdout: true, stderr: true },

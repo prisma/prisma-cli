@@ -72,6 +72,7 @@ function showPresentations(
 ): Presentations {
   const rows = fieldRows(result, cwd, env);
   return {
+    json: () => result,
     human: () => [
       result.project === null
         ? {

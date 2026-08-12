@@ -43,6 +43,7 @@ function listPresentations(
   const rows = connectionRows(result);
   const stdoutRows = connectionStdoutRows(result);
   return {
+    next: () => [],
     human: (): Block[] => [
       { kind: "summary", status: "info", text: TITLE },
       {

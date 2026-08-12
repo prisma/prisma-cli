@@ -71,10 +71,7 @@ export function settleCompleted(
     const envelope: CompletedEnvelope = {
       ok: true,
       commandId: state.commandId,
-      result:
-        presented.presentation.json === undefined
-          ? presented.data
-          : presented.presentation.json,
+      result: presented.presentation.json,
       exitCode,
       diagnostics: presented.diagnostics.map((diagnostic) =>
         withDocsUrl(state, diagnostic),

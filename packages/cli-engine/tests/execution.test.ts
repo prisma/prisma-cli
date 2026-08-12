@@ -105,6 +105,9 @@ const check = defineCommand({
         },
         {
           human: () => [{ kind: "summary", status: "warn", text: "1 finding" }],
+          stdout: () => [],
+          json: () => ({ findings: 1 }),
+          next: () => [],
         },
       ),
     ),
@@ -133,6 +136,9 @@ const whoami = defineCommand({
               text: `Signed in (${active?.workspaceId})`,
             },
           ],
+          stdout: () => [],
+          json: () => ({ workspaceId: active?.workspaceId }),
+          next: () => [],
         },
       ),
     );
@@ -517,7 +523,17 @@ describe("needs preconditions", () => {
         }),
       },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
   }
 
@@ -626,7 +642,12 @@ describe("undocumented completion exit codes", () => {
         ok(
           ctx.present(
             { data: null, exitCode: 7 } as unknown as { data: null },
-            { human: () => [] },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
           ),
         ),
     });
@@ -647,7 +668,17 @@ describe("undocumented completion exit codes", () => {
       help: { summary: "Documents 4 but returns 5" },
       exitCodes: { 4: "findings" },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null, exitCode: 5 as 4 }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null, exitCode: 5 as 4 },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createTestCli({ commands: { rogue }, now: EPOCH });
     const result = await cli.run(["rogue", "--json"]);
@@ -683,6 +714,9 @@ describe("sensitive field rows", () => {
                 ],
               },
             ],
+            stdout: () => [],
+            json: () => ({ token: "tok_secret" }),
+            next: () => [],
           },
         ),
       ),
@@ -715,7 +749,17 @@ describe("report() after the handler resolved", () => {
       help: { summary: "Leaks its report function" },
       handler: async (_args, ctx) => {
         smuggled = ctx.report;
-        return ok(ctx.present({ data: null }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createCli({
@@ -776,7 +820,17 @@ describe("credentials that cannot be read", () => {
       help: { summary: "Needs credentials" },
       needs: { credentials: true },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createCli({
       name: "t",
@@ -887,7 +941,17 @@ describe("parse and route failures", () => {
         },
       },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createTestCli({ commands: { strict }, now: EPOCH });
     const result = await cli.run(["strict", "--mode", "z", "--count", "q"], {
@@ -910,7 +974,17 @@ describe("parse and route failures", () => {
         flags: { count: flag.number({ brief: "how many", placeholder: "n" }) },
       },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createTestCli({ commands: { counting }, now: EPOCH });
     const result = await cli.run(["counting", "--count", ""], {
@@ -954,7 +1028,12 @@ describe("parse and route failures", () => {
         ok(
           ctx.present(
             { data: { bang: args.flags.withBang } },
-            { human: () => [] },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => ({ bang: args.flags.withBang }),
+              next: () => [],
+            },
           ),
         ),
     });
@@ -970,7 +1049,17 @@ describe("ctx.host", () => {
   const reporting = defineCommand({
     help: { summary: "Report the host" },
     handler: async (_args, ctx) =>
-      ok(ctx.present({ data: ctx.host }, { human: () => [] })),
+      ok(
+        ctx.present(
+          { data: ctx.host },
+          {
+            human: () => [],
+            stdout: () => [],
+            json: () => ctx.host,
+            next: () => [],
+          },
+        ),
+      ),
   });
 
   test("a command reads the runtime, platform and arch from the context", async () => {
@@ -1016,6 +1105,9 @@ describe("flag.optionalBoolean", () => {
           { data: { link: args.flags.link ?? null } },
           {
             human: () => [],
+            stdout: () => [],
+            json: () => ({ link: args.flags.link ?? null }),
+            next: () => [],
           },
         ),
       ),
@@ -1062,7 +1154,17 @@ describe("help examples", () => {
         examples: ["greet world --loud", "{bin} greet world | cat"],
       },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createTestCli({ commands: { greet: exemplified }, now: EPOCH });
     const result = await cli.run(["greet", "--help"], {

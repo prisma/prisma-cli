@@ -61,6 +61,8 @@ export function installPresentations(
   statusCommand: string | null,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
     human: () => [
       {
         kind: "summary",
@@ -90,6 +92,8 @@ export function statusPresentations(
   installCommand: string | null,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
     human: () => [
       title(`Checking ${result.statusScope} Prisma skills.`),
       fields([

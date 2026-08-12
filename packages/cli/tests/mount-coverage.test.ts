@@ -216,7 +216,17 @@ describe("the completeness comparisons report what is wrong", () => {
     defineCommand({
       help: { summary },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null, exitCode: 0 }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null, exitCode: 0 },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
 
   const kept = toy("kept");

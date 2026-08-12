@@ -39,6 +39,9 @@ const TITLE = "Setting a new environment variable.";
 
 function singlePresentations(result: EnvAddResult): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
     human: (): Block[] => [
       { kind: "summary", status: "info", text: TITLE },
       {
@@ -127,13 +130,16 @@ export const projectEnvAddCommand = defineCommand({
               data: result,
               diagnostics: previewDefaultDiagnostics(written.warnings),
             },
-            fileWritePresentations({
-              title: "Setting new environment variables from file.",
-              emptyMessage: "No environment variables imported.",
-              scope: result.scope,
-              filePath: result.file.path,
-              variables: result.variables,
-            }),
+            fileWritePresentations(
+              {
+                title: "Setting new environment variables from file.",
+                emptyMessage: "No environment variables imported.",
+                scope: result.scope,
+                filePath: result.file.path,
+                variables: result.variables,
+              },
+              result,
+            ),
           ),
         );
       }

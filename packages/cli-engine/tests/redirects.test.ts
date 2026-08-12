@@ -22,7 +22,12 @@ const status = defineCommand({
   help: { summary: "Show migration status" },
   args: { flags: { detailed: flag.boolean({ brief: "more detail" }) } },
   handler: async (_args, ctx) =>
-    ok(ctx.present({ data: null }, { human: () => [] })),
+    ok(
+      ctx.present(
+        { data: null },
+        { human: () => [], stdout: () => [], json: () => null, next: () => [] },
+      ),
+    ),
 });
 
 const MIGRATION_GROUP = { migration: { brief: "Migrations" } };
@@ -590,7 +595,17 @@ describe("retired flags", () => {
     const list = defineCommand({
       help: { summary: "List migrations" },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createTestCli({
       commandFamilies: [

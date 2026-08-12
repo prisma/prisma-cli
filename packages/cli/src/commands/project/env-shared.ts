@@ -138,15 +138,21 @@ export function variableFieldRows(
   ];
 }
 
-export function fileWritePresentations(input: {
-  readonly title: string;
-  readonly emptyMessage: string;
-  readonly scope: EnvScopeDescriptor;
-  readonly filePath: string;
-  readonly variables: readonly EnvVariableMetadata[];
-}): Presentations {
+export function fileWritePresentations(
+  input: {
+    readonly title: string;
+    readonly emptyMessage: string;
+    readonly scope: EnvScopeDescriptor;
+    readonly filePath: string;
+    readonly variables: readonly EnvVariableMetadata[];
+  },
+  result: unknown,
+): Presentations {
   const rows = variableRows(input.variables);
   return {
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
     human: (): Block[] => [
       { kind: "summary", status: "info", text: input.title },
       {

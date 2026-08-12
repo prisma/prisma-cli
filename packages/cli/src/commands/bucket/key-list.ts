@@ -17,6 +17,7 @@ const TITLE = "Listing access keys for bucket.";
 function listPresentations(result: BucketKeyListResult): Presentations {
   const rows = bucketKeyRows(result.keys);
   return {
+    next: () => [],
     human: (): Block[] => [
       { kind: "summary", status: "info", text: TITLE },
       { kind: "fields", rows: [{ label: "bucket", value: result.bucketId }] },

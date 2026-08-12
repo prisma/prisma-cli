@@ -40,9 +40,8 @@ export interface PresentedResult<T> {
   readonly diagnostics: readonly Diagnostic[];
   /**
    * Only the active format's presentation is materialized; the other
-   * format's fields are normalized to empty. `json` stays undefined
-   * when the handler supplied no json presentation — the envelope's
-   * `result` then falls back to `data`.
+   * format's fields are normalized to empty. In human mode `json` is
+   * undefined because the json presentation was never invoked.
    */
   readonly presentation: {
     readonly human: readonly Block[];
@@ -54,16 +53,19 @@ export interface PresentedResult<T> {
 
 /**
  * The per-format presentation functions a handler supplies to
- * ctx.present. Only the active format's functions are invoked, at the
- * return site. `human` composes engine primitives, rendered to stderr;
- * `stdout` is the machine-consumable data lines — what a pipe
- * receives, the human mode's only stdout writes.
+ * ctx.present. Every one is required: a command states each output
+ * surface it publishes rather than inheriting one by omission. Only the
+ * active format's functions are invoked, at the return site. `human`
+ * composes engine primitives, rendered to stderr; `stdout` is the
+ * machine-consumable data lines — what a pipe receives, the human
+ * mode's only stdout writes; `json` is the `--json` envelope's
+ * `result`; `next` is the suggested follow-up actions.
  */
 export interface Presentations {
   readonly human: (ui: Ui) => readonly Block[];
-  readonly stdout?: () => readonly string[];
-  readonly json?: () => unknown;
-  readonly next?: () => readonly NextAction[];
+  readonly stdout: () => readonly string[];
+  readonly json: () => unknown;
+  readonly next: () => readonly NextAction[];
 }
 
 /**

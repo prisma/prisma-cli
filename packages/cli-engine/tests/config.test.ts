@@ -701,6 +701,9 @@ function showCommand(
             human: () => [
               { kind: "summary", status: "ok", text: ctx.config.greeting },
             ],
+            stdout: () => [],
+            json: () => ctx.config,
+            next: () => [],
           },
         ),
       );
@@ -878,7 +881,17 @@ describe("needs.config", { timeout: 60_000 }, () => {
     const plain = defineCommand({
       help: { summary: "No needs at all" },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createCli({
       name: "t",
@@ -1037,7 +1050,17 @@ describe("--config on the command line", { timeout: 60_000 }, () => {
       help: { summary: "Echoes a message" },
       args: { flags: { message: flag.string({ brief: "message" }) } },
       handler: async (args, ctx) =>
-        ok(ctx.present({ data: args.flags.message }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: args.flags.message },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => args.flags.message,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createTestCli({ commands: { echo } });
     const run = await cli.run(["echo", "--message", "--config="]);
@@ -1061,7 +1084,17 @@ describe("--config on the command line", { timeout: 60_000 }, () => {
         },
       },
       handler: async (args, ctx) =>
-        ok(ctx.present({ data: args.positionals.rest }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: args.positionals.rest },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => args.positionals.rest,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createTestCli({ commands: { passthrough } });
     const run = await cli.run(["passthrough", "--", "--config="]);

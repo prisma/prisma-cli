@@ -28,6 +28,9 @@ const TITLE = "Removing the environment variable from the scope.";
 
 function removePresentations(result: EnvRmResult): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
     human: (): Block[] => [
       { kind: "summary", status: "info", text: TITLE },
       {

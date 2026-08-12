@@ -121,7 +121,9 @@ const init = defineCommand({
         { data: { warnings } },
         {
           human: () => warnings.map(warnBlock),
+          stdout: () => [],
           json: () => ({ warnings }),
+          next: () => [],
         },
       ),
     );
@@ -168,7 +170,12 @@ const vendored = defineCommand({
     if (!installed.ok) {
       return notOk(installed.failure);
     }
-    return ok(ctx.present({ data: null }, { human: () => [] }));
+    return ok(
+      ctx.present(
+        { data: null },
+        { human: () => [], stdout: () => [], json: () => null, next: () => [] },
+      ),
+    );
   },
 });
 

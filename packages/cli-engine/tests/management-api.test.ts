@@ -147,7 +147,17 @@ const succeed = (
     help: { summary: "toy" },
     handler: async (_args, ctx) => {
       await body?.(ctx);
-      return ok(ctx.present({ data: null }, { human: () => [] }));
+      return ok(
+        ctx.present(
+          { data: null },
+          {
+            human: () => [],
+            stdout: () => [],
+            json: () => null,
+            next: () => [],
+          },
+        ),
+      );
     },
   });
 

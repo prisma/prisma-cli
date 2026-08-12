@@ -69,7 +69,12 @@ const deploy = defineCommand({
     return ok(
       ctx.present(
         { data: null },
-        { human: () => [{ kind: "summary", status: "ok", text: "deployed" }] },
+        {
+          human: () => [{ kind: "summary", status: "ok", text: "deployed" }],
+          stdout: () => [],
+          json: () => null,
+          next: () => [],
+        },
       ),
     );
   },
@@ -86,7 +91,12 @@ const telemetryStatus = defineCommand({
     ok(
       ctx.present(
         { data: null },
-        { human: () => [{ kind: "summary", status: "ok", text: "enabled" }] },
+        {
+          human: () => [{ kind: "summary", status: "ok", text: "enabled" }],
+          stdout: () => [],
+          json: () => null,
+          next: () => [],
+        },
       ),
     ),
 });
@@ -101,7 +111,12 @@ const signedOut = defineCommand({
     return ok(
       ctx.present(
         { data: null },
-        { human: () => [{ kind: "summary", status: "ok", text: "signed in" }] },
+        {
+          human: () => [{ kind: "summary", status: "ok", text: "signed in" }],
+          stdout: () => [],
+          json: () => null,
+          next: () => [],
+        },
       ),
     );
   },
@@ -116,7 +131,12 @@ const spawning = defineCommand({
     return ok(
       ctx.present(
         { data: null },
-        { human: () => [{ kind: "summary", status: "ok", text: "spawned" }] },
+        {
+          human: () => [{ kind: "summary", status: "ok", text: "spawned" }],
+          stdout: () => [],
+          json: () => null,
+          next: () => [],
+        },
       ),
     );
   },

@@ -24,6 +24,8 @@ function listPresentations(result: BranchListResult): Presentations {
     branch.envMap,
   ]);
   return {
+    json: () => result,
+    next: () => [],
     human: (): Block[] => [
       { kind: "summary", status: "info", text: TITLE },
       {

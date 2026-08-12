@@ -72,6 +72,8 @@ export const postgresConnectionRotateCommand = defineCommand({
                 result.connectionString,
               ),
             stdout: () => [result.connectionString],
+            json: () => result,
+            next: () => [],
           },
         ),
       );
