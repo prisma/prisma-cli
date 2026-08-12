@@ -61,15 +61,24 @@ endpoints, presenters in the established `service` style:
 R-S8-3 **Two presenter corrections**, in files this slice rewrites
 anyway (both wrong today for Composer-deployed services):
 
-- `service deployment show`'s `url` renders the promoted
-  `appEndpointDomain`, not `previewDomain` — Composer reports the
-  promoted address at deploy time, so the CLI must not show a
-  different URL than the deploy did (`app-provider.ts:701,735`).
-- The local-CLI-state fallback for `live`
-  (`readKnownLiveDeployment`, `target.ts:400-448`) is REMOVED. Only
-  the deleted legacy `app deploy` ever wrote that state; Composer
-  never does, so the fallback is permanently empty. `live` derives
-  from the service's `latestDeploymentId` alone.
+- `service deployment show`'s `url`: for the LIVE deployment, the
+  promoted `appEndpointDomain` — Composer reports the promoted
+  address at deploy time, so the CLI must not show a different URL
+  than the deploy did (`app-provider.ts:735`; `listDeployments`'s
+  per-row preview domains at `:701` stay — identical promoted URLs
+  on every row would be wrong, and no presenter renders that field).
+  For a NON-live deployment, its own `previewDomain` — the promoted
+  domain does not serve it (amended after D1, 2026-08-12: the
+  original flat "always `appEndpointDomain`" violated its own
+  rationale for non-live deployments).
+- Local CLI live-state is RETIRED in both directions: the read
+  fallback (`readKnownLiveDeployment`, `target.ts:400-448`) and the
+  writes (`setKnownLiveDeployment` in promote/rollback) go. `live`
+  derives from the service's `latestDeploymentId` alone. (Amended
+  after D1, 2026-08-12: the premise "only legacy `app deploy` wrote
+  that state" was falsified — v8 promote/rollback wrote it too;
+  nothing in v8 reads it, so the writes are dead and go with the
+  reads. Divergence entry.)
 
 R-S8-4 **No Composer-ownership note** (ruled, 2026-08-12): `promote`,
 `rollback`, `start`, `stop` print no "Composer will overwrite this"
@@ -81,13 +90,16 @@ service as Composer-managed anyway — the only fingerprint is the
 fetches. Revisit later; not now.
 
 R-S8-5 **`service logs` stays shelved** (ruled, 2026-08-12). The
-deployment-logs endpoint is WebSocket-only; the engine is HTTP-only;
-the operator is talking to the API owners about the transport
-(socket per `assets/engine/websocket-transport-design.md`, vs plain
-HTTP like `build logs`). Nothing in this slice builds the transport
-or the command. The shelved handler is reviewed and green in the
-`s2c-services` history; restoring it is a follow-up slice once the
-transport question is answered.
+transport question is ANSWERED (API owners via operator, 2026-08-12):
+**HTTP instead of WebSocket is acceptable, provided live streaming
+can be added at a later date.** So no engine socket transport is
+built — `service logs` returns as a copy of `build logs` (plain
+HTTP, `parseAs: "stream"`) in a follow-up slice once the endpoint
+serves HTTP. The engine WebSocket design
+(`assets/engine/websocket-transport-design.md`) is shelved as the
+later live-streaming path, not deleted. Nothing in this slice builds
+the command; the shelved handler in the `s2c-services` history
+remains the starting point.
 
 R-S8-6 **What this slice depends on.** Every endpoint above is
 marked experimental in the Management API specification. The slice
@@ -158,6 +170,9 @@ the plan's four questions:
    streams (`execute-log.ts`), a `service deployment logs` would
    read the platform endpoint. Different data, no shared subgroup.
    Shelved per R-S8-5 regardless, pending the transport answer.
-4. Transport: operator takes the question to the API owners; the
-   engine socket design (`websocket-transport-design.md`) stays
-   design-only until then.
+4. Transport: ANSWERED (API owners via operator, 2026-08-12). HTTP
+   is acceptable in place of the WebSocket, as long as live
+   streaming can be added later. Consequence: the engine socket
+   affordance is not built; `service logs` follows the `build logs`
+   HTTP shape once the endpoint serves it; the socket design shelves
+   as the future live-streaming path.

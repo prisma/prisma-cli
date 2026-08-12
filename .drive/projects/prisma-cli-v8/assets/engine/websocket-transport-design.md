@@ -1,6 +1,6 @@
 # Engine-owned WebSocket transport — design
 
-Written 2026-08-10 by the S2c orchestrating agent, at the operator's instruction, after `service logs` was shelved for want of this affordance. Status: **design, not yet scheduled against an implementer.** The slice entry is in `../../plan.md`.
+Written 2026-08-10 by the S2c orchestrating agent, at the operator's instruction, after `service logs` was shelved for want of this affordance. Status: **shelved, not scheduled** (2026-08-12): §7's question 2 was answered — the API owners accept serving deployment logs over plain HTTP, provided live streaming can be added later. `service logs` will therefore follow the `build logs` HTTP shape and needs no socket. This design stays on the shelf as the future live-streaming path; build it only when that date arrives.
 
 ## 1. Why this exists
 
