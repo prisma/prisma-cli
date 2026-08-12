@@ -48,7 +48,13 @@ composer can use it.
   and the honest reason is that it is not worth writing: matching pins
   is a **release requirement for the tandem release**, so the two-copy
   install is a preview-only state to end rather than a configuration to
-  support.
+  support. S7 update (operator ruling, 2026-08-12): the convergence
+  choreography is deferred until `8.0.0-rc.1` publishes; the S7 branch
+  adds a third pin in the same shape (`@prisma/orm-toolchain@
+  8.0.0-rc.1-dev.40`, also carrying engine `0.0.9`). The sequence, when
+  it runs: engine `8.0.0-rc.N` publishes from this repo → orm-toolchain
+  and composer bump their engine pins and publish → the rc1 bump PR
+  here pins those versions.
 - **The prisma bin's mount makes composer's help examples wrong.**
   Composer writes them as `{bin} deploy src/service.ts`; mounted under
   the `composer` root the invocation is `prisma composer deploy`, and
@@ -172,6 +178,18 @@ composer can use it.
   "repair" forever. The deploy path is unaffected (it plans on props
   only — see the S8 note below), so this is a courtesy report to the
   maintainer, not a blocker.
+- **The ORM family's entry module loads esbuild and arktype on every
+  invocation.** `@prisma/orm-toolchain`'s `./cli` subpath statically
+  imports `esbuild`, `arktype` and eight `@prisma/orm-framework`
+  subpaths, so mounting the family (S7 D1) makes every run of this bin
+  pay that import — `prisma --version` included, which touches no ORM
+  code. Composer solved the same problem by keeping its heavy graph
+  behind dynamic executor imports; orm-toolchain has not. It costs
+  startup time only: no output and no exit code changes. The fix is
+  prisma/prisma's to land (dynamic handler imports in orm-toolchain's
+  CLI entry), and it closes when a published orm-toolchain's `cli.mjs`
+  no longer imports those modules at the top level. Recorded also in
+  `assets/s2/parity-divergences-s7.md`.
 
 ## Answered, feeding a later slice
 

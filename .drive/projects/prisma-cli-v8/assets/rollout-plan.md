@@ -8,7 +8,7 @@ unified CLI reaches npm, from first pre-release through owning the bare
 
 | npm name | Today | End state |
 | --- | --- | --- |
-| `@prisma/cli` | Platform CLI 3.x, published from this repo (OIDC) | Carries v8 RC releases under `latest` via merged bump PRs; deprecated at cutover |
+| `@prisma/cli` | Platform CLI 3.x, published from this repo (OIDC) | Carries v8 RC releases under `next` via merged bump PRs (`latest` stays pre-v8 until the deliberate flip; ruling 2026-08-12); deprecated at cutover |
 | `prisma-next` | Prisma 8 ORM CLI, published from prisma/prisma `main` | Handed off to this repo at S5; rc channel for ORM early adopters; deprecated at cutover |
 | `prisma7` | Does not exist yet | The v7-and-under release train's new home, published from prisma/prisma |
 | `prisma` | Prisma 7 CLI, published by prisma/prisma's release train | Owned by this repo via OIDC trusted publishing; the unified CLI |
@@ -20,14 +20,13 @@ unified CLI reaches npm, from first pre-release through owning the bare
    the automatic `dev`-tag publish on main merges continues and is
    harmless.
 2. **S2 done (platform family ported).** v8 RC-line versions
-   (`8.0.0-rc.N`) publish as `@prisma/cli` under **`latest`**, moved
-   only by a deliberately merged version-bump PR (operator ruling
-   2026-08-10, supersedes the earlier next-tag interim: "Me creating a
-   version bump PR and merging it counts as a deliberate explicit
-   action to alter latest"). This repo already owns the name with
-   OIDC; no cross-repo coordination. Semantically honest: the first
-   v8 surface is the platform family, i.e. the next major of the
-   platform CLI.
+   (`8.0.0-rc.N`) publish as `@prisma/cli`. Tag ruling reversed again
+   (operator, 2026-08-12, during S7): RC-line bump PRs publish under
+   **`next`**; `latest` keeps serving the pre-v8 CLI until the operator
+   moves it deliberately (an explicit `dist-tag: latest` dispatch, or
+   widening `releaseDistTag` when the line is ready). Merging the bump
+   PR remains the deliberate publishing act. This repo already owns the
+   name with OIDC; no cross-repo coordination.
 3. **S5 done (ORM family ported).** The `prisma-next` name is handed
    off: prisma/prisma stops publishing it and its npm trusted-publisher
    config moves to this repo (npm allows one publisher config per
@@ -54,9 +53,11 @@ unified CLI reaches npm, from first pre-release through owning the bare
 - Every publish path uses OIDC trusted publishing with provenance; no
   pasted tokens anywhere (a manual-token fallback for prisma/prisma was
   considered and rejected — the `prisma7` rename makes it unnecessary).
-- `latest` moves only through a deliberately merged version-bump PR (or
-  a manual workflow dispatch), on any of the names (reworded per the
-  2026-08-10 operator ruling; previously "never moves automatically").
+- `latest` moves only by an explicit operator act, on any of the names
+  (tightened per the 2026-08-12 ruling: RC-line bump PRs publish under
+  `next`, so on this repo's names even a merged bump PR cannot move
+  `latest` while the line is RC — only an explicit `dist-tag: latest`
+  dispatch or a stable-version bump can).
 - Version pins across the tandem packages follow the committed-versions
   ruling (S3).
 

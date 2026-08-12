@@ -14,6 +14,11 @@ import {
 // must pin the same engine version prisma-cli publishes, per the
 // tandem release order engine → composer → prisma-cli (R-S3-6).
 import { createComposerFamily } from "@prisma/composer/family";
+// TODO(release): @prisma/orm-toolchain@8.0.0-rc.1-dev.40 pins
+// @prisma/cli-engine@0.0.9, the same second copy composer's pin
+// installs. Both close the same way: the two packages pin the engine
+// version prisma-cli publishes, per the tandem release order.
+import { ormCommandFamily as ormToolchainFamily } from "@prisma/orm-toolchain/cli";
 import { CLI_DOCS_URL, CLI_NAME } from "../cli-name";
 import { getCliVersion } from "../lib/version";
 import { agentInstallCommand } from "./agent/install";
@@ -145,6 +150,16 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
  */
 export const composerCommandFamily: CommandFamily = createComposerFamily();
 
+/**
+ * The ORM commands, contributed by orm-toolchain's own package. The
+ * family object carries its `orm` config section, its docs base and its
+ * redirect table, so nothing here is wired per command. Unlike
+ * composer's, this family's entry module imports esbuild and arktype
+ * statically, so every invocation of this bin pays that import; fixing
+ * that is orm-toolchain's move.
+ */
+export const ormCommandFamily: CommandFamily = ormToolchainFamily;
+
 /** The engine ships the three telemetry commands and the group help
  *  text that belongs to them; both halves are spread in below. */
 const telemetry = telemetryCommandGroup({ docsUrl: CLI_DOCS_URL });
@@ -175,6 +190,10 @@ export const cliGroups: Readonly<
   },
   agent: { brief: "Manage Prisma skills for AI coding agents" },
   "auth workspace": { brief: "Manage local workspace sessions" },
+  contract: { brief: "Define and emit your application data contract" },
+  db: { brief: "Verify, sign and update your database against the contract" },
+  migration: { brief: "Plan, inspect and scaffold on-disk migrations" },
+  ref: { brief: "Manage named refs that point at contracts" },
   ...telemetry.groups,
 };
 
@@ -239,6 +258,31 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "composer destroy": composerCommandFamily.commands.destroy,
   "composer dev": composerCommandFamily.commands.dev,
   "composer log": composerCommandFamily.commands.log,
+  // The ORM family. Written out per path: the shell owns the tree
+  // (R12), so this map — not the family's own keying — is the source of
+  // truth for where each command mounts.
+  "contract emit": ormCommandFamily.commands["contract emit"],
+  "contract infer": ormCommandFamily.commands["contract infer"],
+  "db init": ormCommandFamily.commands["db init"],
+  "db schema": ormCommandFamily.commands["db schema"],
+  "db sign": ormCommandFamily.commands["db sign"],
+  "db update": ormCommandFamily.commands["db update"],
+  "db verify": ormCommandFamily.commands["db verify"],
+  format: ormCommandFamily.commands.format,
+  init: ormCommandFamily.commands.init,
+  lsp: ormCommandFamily.commands.lsp,
+  migrate: ormCommandFamily.commands.migrate,
+  "migration check": ormCommandFamily.commands["migration check"],
+  "migration graph": ormCommandFamily.commands["migration graph"],
+  "migration list": ormCommandFamily.commands["migration list"],
+  "migration log": ormCommandFamily.commands["migration log"],
+  "migration new": ormCommandFamily.commands["migration new"],
+  "migration plan": ormCommandFamily.commands["migration plan"],
+  "migration show": ormCommandFamily.commands["migration show"],
+  "migration status": ormCommandFamily.commands["migration status"],
+  "ref delete": ormCommandFamily.commands["ref delete"],
+  "ref list": ormCommandFamily.commands["ref list"],
+  "ref set": ormCommandFamily.commands["ref set"],
   // Local utilities: no owning package, no config section, no API.
   "agent install": agentInstallCommand,
   "agent update": agentUpdateCommand,
@@ -252,7 +296,11 @@ export function buildCli(): Cli {
   return createCli({
     name: CLI_NAME,
     version: getCliVersion(),
-    commandFamilies: [platformCommandFamily, composerCommandFamily],
+    commandFamilies: [
+      platformCommandFamily,
+      composerCommandFamily,
+      ormCommandFamily,
+    ],
     groups: cliGroups,
     commands: mountedCommands,
     telemetry: { docsUrl: CLI_DOCS_URL },

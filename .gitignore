@@ -8,6 +8,7 @@ packages/*/.prisma/
 tmp/
 
 # Build and test output
+artifacts/
 dist/
 .publish/
 coverage/

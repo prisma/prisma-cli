@@ -21,3 +21,7 @@ minimumReleaseAgeExclude:
   - '@prisma/composer'
   # Reached through @prisma/composer, which pins it exactly.
   - '@prisma/cli-engine'
+  # The ORM family and the framework it reaches through, at the exact
+  # interim versions packages/cli pins until the rc lines converge.
+  - '@prisma/orm-toolchain@8.0.0-rc.1-dev.40'
+  - '@prisma/orm-framework@8.0.0-rc.1-dev.40'

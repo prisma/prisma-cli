@@ -13,11 +13,11 @@ name: Publish to npm
 #     publish; the committed version is already on the registry. Use
 #     the per-PR pkg.pr.new previews to try an unreleased build.
 #   - push to `main` with the root `version` changed   → publish `<base>`
-#     under dist-tag `latest` and create a GitHub Release (marked
-#     pre-release for RC-line versions like `8.0.0-rc.N`). `latest`
-#     tracks the newest release, RC or stable. This is how a merged
-#     `chore(release): ...` PR auto-ships — merging the bump PR is the
-#     operator's deliberate act that moves `latest`.
+#     under its canonical dist-tag — `next` on the RC line, `latest` for
+#     stable — and create a GitHub Release (marked pre-release on the RC
+#     line). `latest` keeps serving the pre-v8 CLI until the operator
+#     deliberately moves it (operator ruling 2026-08-12). This is how a
+#     merged `chore(release): ...` PR auto-ships.
 #   - workflow_dispatch                                 → publish `<base>`
 #     under the chosen dist-tag (default `latest`); also the dry-run path.
 #
@@ -33,9 +33,9 @@ on:
   workflow_dispatch:
     inputs:
       dist-tag:
-        description: "npm dist-tag (e.g., latest, dev, beta)"
-        required: true
-        default: "latest"
+        description: "npm dist-tag. Empty = the version's canonical tag (next on the RC line, latest for stable). Pass latest explicitly to move latest onto an RC — that is the deliberate cutover act."
+        required: false
+        default: ""
         type: string
       dry-run:
         description: "Dry-run only (build + pack, no npm publish, no GitHub Release)."
@@ -104,9 +104,37 @@ jobs:
         if: ${{ steps.version.outputs.publish == 'true' }}
         run: pnpm build
 
+      # The assembled command tree, checked before anything reaches the
+      # registry: every family command mounted, every mounted command
+      # owned by a family, every path spelled as expected. A publish
+      # that has lost a command fails here instead of shipping.
+      - name: Check grammar completeness
+        if: ${{ steps.version.outputs.publish == 'true' }}
+        run: pnpm check:grammar
+
       - name: Run script tests
         if: ${{ steps.version.outputs.publish == 'true' }}
         run: pnpm test:scripts
+
+      # Pack the publishable tarballs and prove they survive a registry
+      # consumer's install: out-of-workspace sandbox, npm with
+      # --ignore-scripts, unpublished workspace siblings resolved through
+      # computed file: overrides, every declared bin started on plain
+      # Node at exit 0. The tarballs this step packs are the ones
+      # uploaded below; what was verified is what ships.
+      - name: Pack tarballs and smoke the install
+        if: ${{ steps.version.outputs.publish == 'true' }}
+        run: node scripts/tarball-smoke.mjs
+
+      # The verified tarballs, retrievable per run. On a real release the
+      # same files are attached to the GitHub Release below.
+      - name: Upload tarball artifacts
+        if: ${{ steps.version.outputs.publish == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: npm-tarballs
+          path: artifacts/tarballs/*.tgz
+          if-no-files-found: error
 
       # NODE_AUTH_TOKEN is intentionally NOT set. npm detects the OIDC
       # environment (id-token: write) and authenticates via Trusted
@@ -130,25 +158,47 @@ jobs:
           pnpm --filter @prisma/cli-engine publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks --dry-run
           pnpm --filter @prisma/cli publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks --dry-run
 
+      # A rerun (or a re-publish dispatch) meets versions that are
+      # already on the registry. npm refuses to publish over them —
+      # correctly — but that refusal must not stop the run before the
+      # Release step gets to repair a missing Release or its assets. An
+      # already-published version is treated as done; every other
+      # publish failure still fails the run.
       - name: Publish packages
         if: ${{ steps.version.outputs.publish == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true') }}
         env:
           NPM_CONFIG_PROVENANCE: "true"
+          DIST_TAG: ${{ steps.version.outputs.tag }}
         run: |
-          pnpm --filter @prisma/cli-engine publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks
-          pnpm --filter @prisma/cli publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks
+          publish_one() {
+            local out
+            if out=$(pnpm --filter "$1" publish --tag "$DIST_TAG" --access public --no-git-checks 2>&1); then
+              printf '%s\n' "$out"
+            else
+              printf '%s\n' "$out"
+              if grep -qiE 'E409|EPUBLISHCONFLICT|cannot publish over|previously published' <<<"$out"; then
+                echo "$1: this version is already on the registry — continuing so the Release step can run."
+              else
+                return 1
+              fi
+            fi
+          }
+          publish_one @prisma/cli-engine
+          publish_one @prisma/cli
 
-      # Emit a GitHub Release for `latest` publishes only (marked
-      # pre-release when the version is on the RC line). Dev / beta builds
-      # publish to npm but do not produce a Release — those would drown out
-      # the changelog signal. The Release is created at $GITHUB_SHA so the
+      # Emit a GitHub Release for releases only — runs whose dist-tag is
+      # the canonical one for their version (`next` on the RC line,
+      # `latest` for stable; `release` from determine-version.ts). Marked
+      # pre-release on the RC line. Beta / preview cuts publish to npm
+      # but do not produce a Release — those would drown out the
+      # changelog signal. The Release is created at $GITHUB_SHA so the
       # tag points at the same commit the publish ran from.
       #
       # Idempotent on workflow rerun: if a Release for `v$VERSION` already
       # exists (e.g. a previous run published to npm but failed before this
       # step), edit it in place rather than re-creating it.
-      - name: Create GitHub Release for latest publishes
-        if: ${{ steps.version.outputs.publish == 'true' && steps.version.outputs.tag == 'latest' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true') }}
+      - name: Create GitHub Release
+        if: ${{ steps.version.outputs.publish == 'true' && steps.version.outputs.release == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -168,3 +218,6 @@ jobs:
               --generate-notes \
               $PRERELEASE_FLAG
           fi
+          # The exact tarballs the smoke verified, attached to the
+          # Release. --clobber keeps reruns idempotent.
+          gh release upload "v$VERSION" artifacts/tarballs/*.tgz --clobber
