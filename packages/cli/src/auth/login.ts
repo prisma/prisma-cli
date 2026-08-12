@@ -539,6 +539,18 @@ function renderSuccessPage(workspaceName: string | null): string {
     .copy.copied:hover {
       color: var(--success);
     }
+
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }
   </style>
 </head>
 <body>
@@ -552,18 +564,20 @@ function renderSuccessPage(workspaceName: string | null): string {
         Using an AI coding agent? Add the Prisma skills:
       </div>
       <div class="command">
-        <code><span class="prompt">$ </span>npx skills add prisma/skills</code>
+        <code><span class="prompt">$ </span><span class="command-text">npx skills add prisma/skills</span></code>
         <button class="copy" type="button" aria-label="Copy command to clipboard">
           <svg class="icon-copy" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
           <svg class="icon-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
         </button>
       </div>
+      <span class="visually-hidden skills-status" role="status"></span>
     </section>
   </main>
   <script>
     (() => {
       const command = "npx skills add prisma/skills";
       const button = document.querySelector(".copy");
+      const status = document.querySelector(".skills-status");
       let timer;
       button.addEventListener("click", async () => {
         try {
@@ -571,16 +585,20 @@ function renderSuccessPage(workspaceName: string | null): string {
         } catch {
           // Clipboard access denied: select the command so Cmd/Ctrl+C works.
           const range = document.createRange();
-          range.selectNodeContents(document.querySelector(".command code"));
+          range.selectNodeContents(document.querySelector(".command-text"));
           const selection = window.getSelection();
           selection.removeAllRanges();
           selection.addRange(range);
+          status.textContent =
+            "Copying failed. The command is selected; press Ctrl+C or Cmd+C to copy it.";
           return;
         }
         button.classList.add("copied");
+        status.textContent = "Command copied to clipboard.";
         clearTimeout(timer);
         timer = setTimeout(() => {
           button.classList.remove("copied");
+          status.textContent = "";
         }, 2000);
       });
     })();
