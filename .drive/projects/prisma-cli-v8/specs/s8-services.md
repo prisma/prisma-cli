@@ -1,8 +1,16 @@
 # S8 — Service primitives (slice contract)
 
-Status: rev 1 (2026-08-12) — design settled in operator discussion,
-2026-08-12; rulings recorded in §Dispositions. One PR into `main`,
-branch `s8-service-primitives`. Repo: prisma-cli only.
+Status: CLOSED 2026-08-12 — shipped as PR #162 (squash `9730012`).
+Acceptance verified line by line at closure (D4) and the one
+by-convention line — `service create` against the real API — proven
+on the PR: the e2e suite's first real run failed on a genuine defect
+(the service tree's stale workspace filter, pre-#144 copy; fixed in
+`bd8aa78`) and passed after it. One ruling still owed: `service
+create`'s 409-idempotent semantics (divergence file marks it
+operator-ruling-pending). Follow-ups in `deferred.md`. Was rev 1
+(2026-08-12) — design settled in operator discussion, 2026-08-12;
+rulings in §Dispositions. One PR into `main`, branch
+`s8-service-primitives`. Repo: prisma-cli only.
 
 Gives the platform's service resources the atomic CLI surface the
 plan describes: the resource model the Management API already draws

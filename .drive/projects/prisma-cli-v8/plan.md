@@ -87,6 +87,12 @@ wired into both products' publish CI as S3/S5 land.
 
 ### S8 — Service primitives (design first; after S3, before S7)
 
+**CLOSED 2026-08-12** — shipped as PR #162; acceptance verified in
+the contract's Status line, follow-ups in `deferred.md`. The e2e
+suite's first real run caught a family-wide defect (the stale
+workspace filter) that four review rounds and 1250 unit tests
+missed — the convention earned its keep.
+
 **Design settled 2026-08-12** (operator discussion); the slice
 contract is `specs/s8-services.md`. The four questions below are
 answered there: no ownership note for now, records verified
