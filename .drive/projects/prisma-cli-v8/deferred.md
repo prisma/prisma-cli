@@ -185,6 +185,13 @@ composer can use it.
 
 ## Left open by S8 — the service family
 
+- **`resolvePinnedProject` can mask an API refusal as "generator body
+  threw".** `v8/project/context.ts` passes a throwing `listProjects`
+  into `resolveProjectTarget`, whose `Result.gen` body swallows the
+  thrown error's message. S8 hit the same shape in the service tree
+  (fixed in #162 by moving the fetch to the call site); the project
+  path has the latent equivalent, unverified. Whoever next works the
+  project family should reproduce and fix it the same way.
 - **`auth`'s workspace-ref lookup rejects the `wksp_`-prefixed id the
   Console shows.** `src/v8/auth/session-ref.ts:24` compares a
   user-typed workspace ref against stored session ids with no prefix
