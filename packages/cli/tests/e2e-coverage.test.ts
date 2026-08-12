@@ -57,13 +57,23 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  * here. A command added from today on needs a test or an EXCLUSIONS
  * entry saying why it cannot have one.
  *
- * The `service` and `build` entries left here act on a service that has
- * been DEPLOYED, which Composer does and this repo cannot; covering them
- * needs a fixture service that outlives a CI run. Commands that only
- * need the service to exist are no longer among them: `service create`
- * makes one without deploying, which is how `service remove` got its
- * happy path. `agent` writes local agent context files and should be
- * straightforward to cover.
+ * These entries are owed for two different reasons, and the difference
+ * matters to whoever picks one up.
+ *
+ * `service open`, the four `service deployment *` commands and
+ * `build logs` need a service that has been DEPLOYED, which Composer
+ * does and this repo cannot; covering them needs a fixture service that
+ * outlives a CI run.
+ *
+ * `service show` and the five `service domain *` commands need no such
+ * thing — they act on a service that merely exists, and `service create`
+ * makes one without deploying. They are simply unwritten. `service show`
+ * is the easiest of them: D1's unit tests already cover it against a
+ * service that was never promoted, so a real happy path in
+ * `e2e/service.e2e.ts` has no remaining obstacle.
+ *
+ * `agent` writes local agent context files and should be straightforward
+ * to cover.
  */
 const AWAITING_COVERAGE: readonly string[] = [
   "service show",

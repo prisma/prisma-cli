@@ -42,6 +42,8 @@ describe("prisma-v8 service list", () => {
     );
 
     expect(result.exitCode).toBe(0);
+    // A listing reports: it runs no steps and streams nothing.
+    expect(result.events).toEqual([]);
     expect(result.presented?.data).toEqual({
       projectId: "proj_1",
       branch: "main",

@@ -62,6 +62,8 @@ describe("prisma-v8 service create", () => {
     );
 
     expect(result.exitCode).toBe(0);
+    // One API call behind no progress reporting: the run streams nothing.
+    expect(result.events).toEqual([]);
     expect(result.presented?.data).toEqual({
       projectId: "proj_1",
       branch: "main",
