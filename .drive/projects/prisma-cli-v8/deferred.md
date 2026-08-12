@@ -185,6 +185,15 @@ composer can use it.
 
 ## Left open by S8 — the service family
 
+- **`auth`'s workspace-ref lookup rejects the `wksp_`-prefixed id the
+  Console shows.** `src/v8/auth/session-ref.ts:24` compares a
+  user-typed workspace ref against stored session ids with no prefix
+  tolerance — the same bare-vs-`wksp_`-prefixed mismatch behind #144
+  and S8's workspace-filter defect (`bd8aa78`). Unlike those, it
+  fails loudly (falls back to name matching, then errors), so it is
+  an annoyance, not silent data loss. Found by S8's review sweep of
+  cross-origin id comparisons; the auth family is untouched by S8, so
+  it lands with whoever next works that family.
 - **The Composer-ownership note is deliberately not built (R-S8-4).**
   `promote`, `rollback`, `start` and `stop` print no "Composer will
   overwrite this on the next deploy" warning. Ruled NOT NOW (operator,
