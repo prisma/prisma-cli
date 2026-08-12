@@ -167,7 +167,6 @@ describe("app deploy branch database setup", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -330,7 +329,6 @@ describe("app deploy branch database setup", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -479,7 +477,6 @@ describe("app deploy branch database setup", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -595,7 +592,6 @@ describe("app deploy branch database setup", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -725,7 +721,6 @@ describe("app deploy branch database setup", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -856,7 +851,6 @@ describe("app deploy branch database setup", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -995,7 +989,6 @@ describe("app deploy branch database setup", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1137,7 +1130,6 @@ describe("app deploy branch database setup", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1269,7 +1261,6 @@ describe("app deploy branch database setup", () => {
       isTTY: true,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1365,7 +1356,6 @@ describe("app deploy branch database setup", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1447,7 +1437,6 @@ describe("app deploy branch database setup", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1518,7 +1507,6 @@ describe("app deploy branch database setup", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1619,7 +1607,6 @@ describe("app deploy branch database setup", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1845,7 +1832,6 @@ describe("app deploy branch database setup", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 

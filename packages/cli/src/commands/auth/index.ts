@@ -1,7 +1,6 @@
 import { Command, Option } from "commander";
 
 import {
-  type AuthLoginCommandOptions,
   type AuthLogoutCommandOptions,
   runAuthLogin,
   runAuthLogout,
@@ -55,11 +54,6 @@ function createAuthLoginCommand(runtime: CliRuntime): Command {
     "auth.login",
   );
 
-  command
-    .addOption(new Option("--provider <provider>").hideHelp())
-    .addOption(new Option("--user <id>").hideHelp())
-    .addOption(new Option("--workspace <id>").hideHelp());
-
   addGlobalFlags(command);
 
   command.action(async (options) => {
@@ -67,7 +61,7 @@ function createAuthLoginCommand(runtime: CliRuntime): Command {
       runtime,
       "auth.login",
       options as Record<string, unknown>,
-      (context) => runAuthLogin(context, options as AuthLoginCommandOptions),
+      (context) => runAuthLogin(context),
       {
         renderHuman: (context, descriptor, result) =>
           renderAuthSuccess(context, descriptor, "auth.login", result),

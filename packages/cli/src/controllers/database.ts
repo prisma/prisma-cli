@@ -7,8 +7,6 @@ import {
 import {
   createManagementDatabaseProvider,
   type DatabaseProvider,
-  normalizeConnection,
-  normalizeDatabase,
 } from "../lib/database/provider";
 import {
   projectResolutionErrorToCliError,
@@ -38,10 +36,7 @@ import type {
   DatabaseUsageResult,
 } from "../types/database";
 import { requireAuthenticatedAuthState } from "./auth";
-import {
-  listFixtureWorkspaceProjects,
-  listRealWorkspaceProjects,
-} from "./project";
+import { listRealWorkspaceProjects } from "./project";
 
 interface DatabaseCommandFlags {
   projectRef?: string;
@@ -86,13 +81,6 @@ interface DatabaseConnectionRotateFlags {
 interface ResolvedDatabaseContext {
   provider: DatabaseProvider;
   target: ResolvedProjectTarget;
-}
-
-function isRealMode(context: CommandContext): boolean {
-  return (
-    !context.runtime.fixturePath &&
-    !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH
-  );
 }
 
 export async function runDatabaseList(
@@ -713,15 +701,15 @@ async function requireDatabaseContext(
     throw workspaceRequiredError();
   }
 
-  if (isRealMode(context)) {
-    const client = await authenticatedManagementApiClient(
-      context.runtime.env,
-      context.runtime.signal,
-    );
-    if (!client) {
-      throw authRequiredError();
-    }
+  const client = await authenticatedManagementApiClient(
+    context.runtime.env,
+    context.runtime.signal,
+  );
+  if (!client) {
+    throw authRequiredError();
+  }
 
+  {
     const targetResult = await resolveProjectTarget({
       context,
       workspace,
@@ -744,22 +732,6 @@ async function requireDatabaseContext(
       target: targetResult.value,
     };
   }
-
-  const targetResult = await resolveProjectTarget({
-    context,
-    workspace,
-    explicitProject: flags.projectRef,
-    listProjects: async () => listFixtureWorkspaceProjects(context, workspace),
-    commandName,
-  });
-  if (targetResult.isErr()) {
-    throw projectResolutionErrorToCliError(targetResult.error);
-  }
-
-  return {
-    provider: createFixtureDatabaseProvider(context),
-    target: targetResult.value,
-  };
 }
 
 async function requireDatabaseProviderOnly(
@@ -767,146 +739,19 @@ async function requireDatabaseProviderOnly(
 ): Promise<DatabaseProvider> {
   const authState = await requireAuthenticatedAuthState(context);
 
-  if (isRealMode(context)) {
-    const client = await authenticatedManagementApiClient(
-      context.runtime.env,
-      context.runtime.signal,
-    );
-    if (!client) {
-      throw authRequiredError();
-    }
-    return createManagementDatabaseProvider(client, {
-      formatCommand: resolvePrismaCliPackageCommandFormatterSync(
-        context.runtime.cwd,
-      ),
-      workspaceId: authState.workspace?.id,
-    });
+  const client = await authenticatedManagementApiClient(
+    context.runtime.env,
+    context.runtime.signal,
+  );
+  if (!client) {
+    throw authRequiredError();
   }
-
-  return createFixtureDatabaseProvider(context);
-}
-
-function createFixtureDatabaseProvider(
-  context: CommandContext,
-): DatabaseProvider {
-  return {
-    async listDatabases(options) {
-      return context.api
-        .listDatabasesForProject(options.projectId, options.branchName)
-        .map((database) => normalizeDatabase(database, database.projectId));
-    },
-
-    async showDatabase(databaseId) {
-      const database = context.api.getDatabase(databaseId);
-      return database ? normalizeDatabase(database, database.projectId) : null;
-    },
-
-    async createDatabase(options) {
-      const created = context.api.createDatabase(options);
-      return {
-        database: normalizeDatabase(
-          created.database,
-          created.database.projectId,
-        ),
-        connection: normalizeConnection(
-          created.connection,
-          created.connection.databaseId,
-        ),
-        connectionString: created.connectionString,
-      };
-    },
-
-    async removeDatabase(databaseId) {
-      const removed = context.api.removeDatabase(databaseId);
-      if (!removed) {
-        throw databaseNotFoundError(databaseId);
-      }
-    },
-
-    async listConnections(databaseId) {
-      if (!context.api.getDatabase(databaseId)) {
-        throw databaseNotFoundError(databaseId);
-      }
-      return context.api
-        .listDatabaseConnections(databaseId)
-        .map((connection) =>
-          normalizeConnection(connection, connection.databaseId),
-        );
-    },
-
-    async createConnection(options) {
-      const created = context.api.createDatabaseConnection(options);
-      if (!created) {
-        throw databaseNotFoundError(options.databaseId);
-      }
-      return {
-        connection: normalizeConnection(
-          created.connection,
-          created.connection.databaseId,
-        ),
-        connectionString: created.connectionString,
-      };
-    },
-
-    async removeConnection(connectionId) {
-      const removed = context.api.removeDatabaseConnection(connectionId);
-      if (!removed) {
-        throw connectionNotFoundError(connectionId);
-      }
-    },
-
-    async getUsage(databaseId, options) {
-      if (!context.api.getDatabase(databaseId)) {
-        throw databaseNotFoundError(databaseId);
-      }
-      return context.api.getDatabaseUsage(databaseId, {
-        from: options?.from,
-        to: options?.to,
-      });
-    },
-
-    async listBackups(databaseId, options) {
-      if (!context.api.getDatabase(databaseId)) {
-        throw databaseNotFoundError(databaseId);
-      }
-      return context.api.listDatabaseBackups(databaseId, options?.limit);
-    },
-
-    async restoreDatabase(options) {
-      const restored = context.api.restoreDatabase({
-        targetDatabaseId: options.targetDatabaseId,
-        sourceDatabaseId: options.sourceDatabaseId,
-        backupId: options.backupId,
-      });
-      if (restored.outcome === "target-not-found") {
-        throw databaseNotFoundError(options.targetDatabaseId);
-      }
-      if (restored.outcome === "backup-not-found") {
-        throw backupNotFoundError(
-          options.backupId,
-          options.sourceDatabaseId,
-          resolvePrismaCliPackageCommandFormatterSync(context.runtime.cwd),
-        );
-      }
-      return normalizeDatabase(restored.database, options.projectId);
-    },
-
-    async rotateConnection(connectionId) {
-      const rotated = context.api.rotateDatabaseConnection(connectionId);
-      if (!rotated) {
-        throw connectionNotFoundError(connectionId);
-      }
-      const database = context.api.getDatabase(rotated.connection.databaseId);
-      return {
-        connection: normalizeConnection(
-          rotated.connection,
-          rotated.connection.databaseId,
-        ),
-        database: database ? { id: database.id, name: database.name } : null,
-        connectionString: rotated.connectionString,
-      };
-    },
-  };
+  return createManagementDatabaseProvider(client, {
+    formatCommand: resolvePrismaCliPackageCommandFormatterSync(
+      context.runtime.cwd,
+    ),
+    workspaceId: authState.workspace?.id,
+  });
 }
 
 export async function resolveDatabase(
@@ -1059,7 +904,7 @@ function databaseAmbiguousError(
   });
 }
 
-function backupNotFoundError(
+function _backupNotFoundError(
   backupId: string,
   sourceDatabaseId: string,
   formatCommand: PrismaCliPackageCommandFormatter,
@@ -1081,7 +926,7 @@ function backupNotFoundError(
   });
 }
 
-function connectionNotFoundError(connectionId: string): CliError {
+function _connectionNotFoundError(connectionId: string): CliError {
   return new CliError({
     code: "DATABASE_CONNECTION_NOT_FOUND",
     domain: "database",

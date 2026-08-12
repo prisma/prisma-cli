@@ -31,7 +31,7 @@ const PROJECTS = [
   {
     id: "proj_1",
     name: "Billing",
-    workspace: { id: "ws_1", name: "Acme Inc" },
+    workspace: { id: "wksp_ws_1", name: "Acme Inc" },
   },
 ];
 

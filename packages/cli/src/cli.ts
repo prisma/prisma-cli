@@ -208,7 +208,6 @@ function resolveRuntime(options: RunCliOptions): CliRuntime {
     stdin: options.stdin ?? process.stdin,
     stdout: options.stdout ?? process.stdout,
     stderr: options.stderr ?? process.stderr,
-    fixturePath: options.fixturePath,
     stateDir: options.stateDir,
   };
 }

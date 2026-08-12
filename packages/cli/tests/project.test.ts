@@ -4,8 +4,6 @@ import { describe, expect, it } from "vitest";
 
 import { createTempCwd, executeCli } from "./helpers";
 
-const fixturePath = path.resolve("fixtures/mock-api.json");
-
 describe("project commands", () => {
   it("shows Public Beta project, setup, and git help", async () => {
     const cwd = await createTempCwd();
@@ -15,43 +13,36 @@ describe("project commands", () => {
       argv: ["project", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const showHelp = await executeCli({
       argv: ["project", "show", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const createHelp = await executeCli({
       argv: ["project", "create", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const linkHelp = await executeCli({
       argv: ["project", "link", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const gitHelp = await executeCli({
       argv: ["git", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const connectRepoHelp = await executeCli({
       argv: ["git", "connect", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const disconnectRepoHelp = await executeCli({
       argv: ["git", "disconnect", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const stderr = stripAnsi(
       `${projectHelp.stderr}\n${showHelp.stderr}\n${createHelp.stderr}\n${linkHelp.stderr}\n${gitHelp.stderr}\n${connectRepoHelp.stderr}\n${disconnectRepoHelp.stderr}`,
@@ -86,13 +77,11 @@ describe("project commands", () => {
       argv: ["project", "env", "remove", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const rmHelp = await executeCli({
       argv: ["project", "env", "rm", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(removeHelp.exitCode).toBe(0);

@@ -125,9 +125,13 @@ export async function login(options: LoginOptions = {}): Promise<void> {
           settle(resolve);
         } catch (error) {
           res.statusCode = 400;
-          const message =
-            error instanceof Error ? error.message : String(error);
-          res.end(message);
+          // The browser gets a fixed sentence. Whatever went wrong here
+          // is an internal failure, and its message can carry details of
+          // the exchange — or of the code that failed — to a page this
+          // process does not control. The operator still sees the real
+          // error: it is what this promise rejects with.
+          res.setHeader("Content-Type", "text/plain; charset=utf-8");
+          res.end("Sign-in could not be completed. Return to your terminal.");
           settle(() => reject(error));
           return;
         }

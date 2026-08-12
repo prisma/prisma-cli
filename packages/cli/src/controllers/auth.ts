@@ -29,9 +29,6 @@ import type {
   AuthWorkspaceLogoutResult,
   AuthWorkspaceUseResult,
 } from "../types/auth";
-import { createAuthUseCases } from "../use-cases/auth";
-import type { LoginSelection, SelectPromptPort } from "../use-cases/contracts";
-import { createCliUseCaseGateways } from "../use-cases/create-cli-gateways";
 import { createSelectPromptPort } from "./select-prompt-port";
 
 export interface AuthLoginCommandOptions {
@@ -50,34 +47,19 @@ function workspaceOperationContext(
   return { env: context.runtime.env, signal: context.runtime.signal };
 }
 
-function isRealMode(context: CommandContext): boolean {
-  return (
-    !context.runtime.fixturePath &&
-    !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH
-  );
-}
-
 export async function runAuthLogin(
   context: CommandContext,
-  options: AuthLoginCommandOptions,
 ): Promise<CommandSuccess<AuthStateResult>> {
-  let result: AuthStateResult;
-
-  if (isRealMode(context)) {
-    const credential = await performLogin(
-      context.runtime.env,
-      context.runtime.signal,
-    );
-    await storeLegacyCredential(
-      context.runtime.env,
-      credential,
-      context.runtime.signal,
-    );
-    result = await readAuthState(context.runtime.env, context.runtime.signal);
-  } else {
-    const useCases = createAuthUseCases(createCliUseCaseGateways(context));
-    result = await loginWithSelectionFlow(context, useCases, options);
-  }
+  const credential = await performLogin(
+    context.runtime.env,
+    context.runtime.signal,
+  );
+  await storeLegacyCredential(
+    context.runtime.env,
+    credential,
+    context.runtime.signal,
+  );
+  let result = await readAuthState(context.runtime.env, context.runtime.signal);
 
   const agentSetupTipCommand = await resolveAgentSetupTipCommand(context);
   if (agentSetupTipCommand) {
@@ -99,15 +81,11 @@ export async function runAuthLogin(
 export async function runAuthLogout(
   context: CommandContext,
 ): Promise<CommandSuccess<AuthStateResult>> {
-  let result: AuthStateResult;
-
-  if (isRealMode(context)) {
-    await performLogout(context.runtime.env, context.runtime.signal);
-    result = await readAuthState(context.runtime.env, context.runtime.signal);
-  } else {
-    const useCases = createAuthUseCases(createCliUseCaseGateways(context));
-    result = await useCases.logout();
-  }
+  await performLogout(context.runtime.env, context.runtime.signal);
+  const result = await readAuthState(
+    context.runtime.env,
+    context.runtime.signal,
+  );
 
   return createAuthSuccess("auth.logout", result, ["prisma-cli auth login"]);
 }
@@ -115,14 +93,10 @@ export async function runAuthLogout(
 export async function runAuthWhoAmI(
   context: CommandContext,
 ): Promise<CommandSuccess<AuthStateResult>> {
-  let result: AuthStateResult;
-
-  if (isRealMode(context)) {
-    result = await readAuthState(context.runtime.env, context.runtime.signal);
-  } else {
-    const useCases = createAuthUseCases(createCliUseCaseGateways(context));
-    result = await useCases.whoami();
-  }
+  const result = await readAuthState(
+    context.runtime.env,
+    context.runtime.signal,
+  );
 
   return createAuthSuccess(
     "auth.whoami",
@@ -134,11 +108,7 @@ export async function runAuthWhoAmI(
 export async function runAuthWorkspaceList(
   context: CommandContext,
 ): Promise<CommandSuccess<AuthWorkspaceListResult>> {
-  const result = isRealMode(context)
-    ? await listAuthWorkspaces(workspaceOperationContext(context))
-    : await createAuthUseCases(
-        createCliUseCaseGateways(context),
-      ).listWorkspaces();
+  const result = await listAuthWorkspaces(workspaceOperationContext(context));
 
   return {
     command: "auth.workspace.list",
@@ -157,14 +127,10 @@ export async function runAuthWorkspaceUse(
     ? trimmedWorkspaceRef
     : await selectWorkspaceSession(context);
 
-  const result = isRealMode(context)
-    ? await switchAuthWorkspace(
-        workspaceOperationContext(context),
-        selectedWorkspaceRef,
-      )
-    : await createAuthUseCases(createCliUseCaseGateways(context)).useWorkspace(
-        selectedWorkspaceRef,
-      );
+  const result = await switchAuthWorkspace(
+    workspaceOperationContext(context),
+    selectedWorkspaceRef,
+  );
 
   return {
     command: "auth.workspace.use",
@@ -188,14 +154,10 @@ export async function runAuthWorkspaceLogout(
     );
   }
 
-  const result = isRealMode(context)
-    ? await logoutAuthWorkspace(
-        workspaceOperationContext(context),
-        workspaceRef,
-      )
-    : await createAuthUseCases(
-        createCliUseCaseGateways(context),
-      ).logoutWorkspace(workspaceRef);
+  const result = await logoutAuthWorkspace(
+    workspaceOperationContext(context),
+    workspaceRef,
+  );
 
   return {
     command: "auth.workspace.logout",
@@ -213,34 +175,10 @@ export async function runAuthWorkspaceLogout(
 export async function requireAuthenticatedAuthState(
   context: CommandContext,
 ): Promise<AuthStateResult> {
-  if (isRealMode(context)) {
-    const current = await readAuthState(
-      context.runtime.env,
-      context.runtime.signal,
-    );
-    if (current.authenticated) {
-      return current;
-    }
-
-    if (!canPrompt(context)) {
-      throw authRequiredError();
-    }
-
-    const credential = await performLogin(
-      context.runtime.env,
-      context.runtime.signal,
-    );
-    await storeLegacyCredential(
-      context.runtime.env,
-      credential,
-      context.runtime.signal,
-    );
-    return readAuthState(context.runtime.env, context.runtime.signal);
-  }
-
-  const useCases = createAuthUseCases(createCliUseCaseGateways(context));
-  const current = await useCases.whoami();
-
+  const current = await readAuthState(
+    context.runtime.env,
+    context.runtime.signal,
+  );
   if (current.authenticated) {
     return current;
   }
@@ -249,22 +187,26 @@ export async function requireAuthenticatedAuthState(
     throw authRequiredError();
   }
 
-  return loginWithSelectionFlow(context, useCases, {});
+  const credential = await performLogin(
+    context.runtime.env,
+    context.runtime.signal,
+  );
+  await storeLegacyCredential(
+    context.runtime.env,
+    credential,
+    context.runtime.signal,
+  );
+  return readAuthState(context.runtime.env, context.runtime.signal);
 }
 
 async function selectWorkspaceSession(
   context: CommandContext,
 ): Promise<string> {
-  const realMode = isRealMode(context);
-  if (realMode && context.runtime.env[SERVICE_TOKEN_ENV_VAR] !== undefined) {
+  if (context.runtime.env[SERVICE_TOKEN_ENV_VAR] !== undefined) {
     throw workspaceSwitchUnavailableError();
   }
 
-  const result = realMode
-    ? await listAuthWorkspaces(workspaceOperationContext(context))
-    : await createAuthUseCases(
-        createCliUseCaseGateways(context),
-      ).listWorkspaces();
+  const result = await listAuthWorkspaces(workspaceOperationContext(context));
   const workspaces = result.workspaces.filter(
     (workspace) => workspace.switchable,
   );
@@ -303,120 +245,6 @@ async function selectWorkspaceSession(
   });
 
   return selected.id;
-}
-
-async function loginWithSelectionFlow(
-  context: CommandContext,
-  useCases: ReturnType<typeof createAuthUseCases>,
-  options: AuthLoginCommandOptions,
-): Promise<AuthStateResult> {
-  const prompt = canPrompt(context) ? createSelectPromptPort(context) : null;
-  const selection = await resolveLoginSelection(useCases, prompt, options);
-  return useCases.login(selection);
-}
-
-async function resolveLoginSelection(
-  useCases: ReturnType<typeof createAuthUseCases>,
-  prompt: SelectPromptPort | null,
-  options: AuthLoginCommandOptions,
-): Promise<LoginSelection> {
-  const provider = options.provider
-    ? (await useCases.resolveProvider(options.provider)).id
-    : (await selectProvider(useCases, prompt)).id;
-  const user = options.user
-    ? await useCases.resolveUserForProvider(provider, options.user)
-    : await selectUser(useCases, prompt, provider);
-  const workspace = options.workspace
-    ? await useCases.resolveWorkspaceForUser(user.id, options.workspace)
-    : await selectWorkspace(useCases, prompt, user.id);
-
-  return {
-    provider,
-    userId: user.id,
-    workspaceId: workspace.id,
-  };
-}
-
-async function selectProvider(
-  useCases: ReturnType<typeof createAuthUseCases>,
-  prompt: SelectPromptPort | null,
-) {
-  if (!prompt) {
-    throw nonInteractiveLoginError(
-      "Re-run prisma-cli auth login in a TTY, or provide --provider and --user, and --workspace when required.",
-    );
-  }
-
-  const providers = await useCases.listProviders();
-  return prompt.select({
-    message: "Select a provider",
-    choices: providers.map((provider) => ({
-      label: provider.name,
-      value: provider,
-    })),
-  });
-}
-
-async function selectUser(
-  useCases: ReturnType<typeof createAuthUseCases>,
-  prompt: SelectPromptPort | null,
-  provider: LoginSelection["provider"],
-) {
-  const users = await useCases.listUsersForProvider(provider);
-
-  if (!prompt) {
-    throw nonInteractiveLoginError(
-      "Re-run prisma-cli auth login in a TTY, or provide --provider and --user, and --workspace when required.",
-    );
-  }
-
-  return prompt.select({
-    message: "Select a user",
-    choices: users.map((user) => ({
-      label: `${user.name} <${user.email}>`,
-      value: user,
-    })),
-  });
-}
-
-async function selectWorkspace(
-  useCases: ReturnType<typeof createAuthUseCases>,
-  prompt: SelectPromptPort | null,
-  userId: string,
-) {
-  const workspaces = await useCases.listWorkspacesForUser(userId);
-
-  if (workspaces.length === 1) {
-    return workspaces[0];
-  }
-
-  if (!prompt) {
-    throw usageError(
-      "Login requires explicit selectors in non-interactive mode",
-      "The selected mock user belongs to more than one workspace and the shell cannot prompt in the current mode.",
-      "Re-run prisma-cli auth login in a TTY, or provide --workspace.",
-      ["prisma-cli auth login"],
-      "auth",
-    );
-  }
-
-  return prompt.select({
-    message: "Select a workspace",
-    choices: workspaces.map((workspace) => ({
-      label: `${workspace.name} (${workspace.id})`,
-      value: workspace,
-    })),
-  });
-}
-
-function nonInteractiveLoginError(fix: string) {
-  return usageError(
-    "Login requires explicit selectors in non-interactive mode",
-    "The fixture mode cannot prompt in the current mode.",
-    fix,
-    ["prisma-cli auth login"],
-    "auth",
-  );
 }
 
 function createAuthSuccess(

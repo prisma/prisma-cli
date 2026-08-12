@@ -52,14 +52,14 @@ function mockClient(
                   name: "Billing API",
                   slug: "billing-api",
                   url: "https://prisma.build/acme/billing-api",
-                  workspace: { id: "ws_123", name: "Acme Inc" },
+                  workspace: { id: "wksp_ws_123", name: "Acme Inc" },
                 },
                 {
                   id: "proj_123",
                   name: "Acme Dashboard",
                   slug: "acme-dashboard",
                   url: "https://prisma.build/acme/acme-dashboard",
-                  workspace: { id: "ws_123", name: "Acme Inc" },
+                  workspace: { id: "wksp_ws_123", name: "Acme Inc" },
                 },
               ],
             },
@@ -153,7 +153,6 @@ describe("real project mode", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -220,7 +219,6 @@ describe("real project mode", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -334,7 +332,6 @@ describe("real project mode", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -404,7 +401,6 @@ describe("real project mode", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -480,7 +476,6 @@ describe("real project mode", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 

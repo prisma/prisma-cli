@@ -53,8 +53,7 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  *
  * `service` and `build` act on a deployed service, which Composer
  * creates and this repo cannot; covering them needs a fixture service
- * that outlives a CI run. `agent` writes local agent context files and
- * should be straightforward to cover.
+ * that outlives a CI run.
  */
 const AWAITING_COVERAGE: readonly string[] = [
   "service show",
@@ -70,9 +69,6 @@ const AWAITING_COVERAGE: readonly string[] = [
   "service domain retry",
   "service domain wait",
   "build logs",
-  "agent install",
-  "agent update",
-  "agent status",
 ];
 
 async function mountedCommands(): Promise<string[]> {

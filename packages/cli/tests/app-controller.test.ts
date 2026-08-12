@@ -254,7 +254,6 @@ async function setupAgentPromptDeployTest(options: {
     isTTY: true,
     env: {
       ...process.env,
-      PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
     },
   });
 
@@ -333,7 +332,6 @@ describe("app controller", () => {
       stateDir: path.join(cwd, ".state"),
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -430,7 +428,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -501,7 +498,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -534,7 +530,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -591,7 +586,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -650,7 +644,6 @@ describe("app controller", () => {
       env: {
         ...process.env,
         PRISMA_APP_ID: "app_frontend",
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -715,7 +708,6 @@ describe("app controller", () => {
       stateDir: path.join(cwd, ".state"),
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -758,7 +750,6 @@ describe("app controller", () => {
       stateDir: path.join(cwd, ".state"),
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -856,7 +847,6 @@ describe("app controller", () => {
       stateDir: path.join(repoDir, ".state"),
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -928,7 +918,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1105,7 +1094,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1181,7 +1169,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1282,7 +1269,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1339,7 +1325,6 @@ describe("app controller", () => {
       isTTY: true,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1417,7 +1402,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1480,7 +1464,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1546,7 +1529,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1618,7 +1600,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1689,7 +1670,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1751,7 +1731,6 @@ describe("app controller", () => {
       flags: { yes: true },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1778,7 +1757,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1849,7 +1827,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -1915,7 +1892,6 @@ describe("app controller", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -2030,7 +2006,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -2180,7 +2155,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -2248,7 +2222,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -2329,7 +2302,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -2421,7 +2393,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -2481,7 +2452,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -2555,7 +2525,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -2664,7 +2633,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -2761,7 +2729,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -2901,7 +2868,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -2975,7 +2941,6 @@ describe("app controller", () => {
       env: {
         ...process.env,
         PRISMA_PROJECT_ID: "proj_123",
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -3045,7 +3010,6 @@ describe("app controller", () => {
       env: {
         ...process.env,
         PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -3108,7 +3072,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -3132,7 +3095,6 @@ describe("app controller", () => {
       env: {
         ...process.env,
         PRISMA_PROJECT_ID: "proj_123",
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -3200,7 +3162,6 @@ describe("app controller", () => {
       env: {
         ...process.env,
         PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
     await context.stateStore.setAgentSetupPromptDismissedAt(
@@ -3287,7 +3248,6 @@ describe("app controller", () => {
       env: {
         ...process.env,
         PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -3393,7 +3353,6 @@ describe("app controller", () => {
       isTTY: true,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -3460,7 +3419,6 @@ describe("app controller", () => {
       isTTY: true,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -3598,7 +3556,6 @@ describe("app controller", () => {
       env: {
         ...process.env,
         PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -3664,7 +3621,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -3717,7 +3673,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -3782,7 +3737,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -3841,7 +3795,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -3873,7 +3826,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -3938,7 +3890,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -3973,7 +3924,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -4001,7 +3951,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -4065,7 +4014,6 @@ describe("app controller", () => {
       isTTY: true,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
     await context.stateStore.setAgentSetupPromptDismissedAt(
@@ -4140,7 +4088,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -4204,7 +4151,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -4276,7 +4222,6 @@ describe("app controller", () => {
       env: {
         ...process.env,
         PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -4381,7 +4326,6 @@ describe("app controller", () => {
       env: {
         ...process.env,
         PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -4476,7 +4420,6 @@ describe("app controller", () => {
       env: {
         ...process.env,
         PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -4606,7 +4549,6 @@ describe("app controller", () => {
       env: {
         ...process.env,
         PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -4673,7 +4615,6 @@ describe("app controller", () => {
       env: {
         ...process.env,
         PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -4731,7 +4672,6 @@ describe("app controller", () => {
       env: {
         ...process.env,
         PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -4805,7 +4745,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -4891,7 +4830,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -4934,7 +4872,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -5009,7 +4946,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -5067,7 +5003,6 @@ describe("app controller", () => {
       env: {
         ...process.env,
         PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -5129,7 +5064,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -5213,7 +5147,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -5321,7 +5254,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -5392,7 +5324,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -5459,7 +5390,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -5520,7 +5450,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -5581,7 +5510,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -5642,7 +5570,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -5696,7 +5623,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -5773,7 +5699,6 @@ describe("app controller", () => {
       isTTY: true,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -5851,7 +5776,6 @@ describe("app controller", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -5923,7 +5847,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -5994,7 +5917,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -6072,7 +5994,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -6161,7 +6082,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -6233,7 +6153,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -6315,7 +6234,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -6412,7 +6330,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -6510,7 +6427,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -6584,7 +6500,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -6647,7 +6562,6 @@ describe("app controller", () => {
         ...process.env,
         PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "proj_456",
         PRISMA_CLI_TEST_REMEMBER_PROJECT_NAME: "Billing API",
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -6745,7 +6659,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -6838,7 +6751,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -6910,7 +6822,6 @@ describe("app controller", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -7000,7 +6911,6 @@ describe("app controller", () => {
       env: {
         ...process.env,
         PRISMA_SERVICE_TOKEN: "token",
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -7079,7 +6989,6 @@ describe("app controller", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -7165,7 +7074,6 @@ describe("app controller", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -7220,7 +7128,6 @@ describe("app controller", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -7300,7 +7207,6 @@ describe("app controller", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -7382,7 +7288,6 @@ describe("app controller", () => {
       isTTY: true,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -7444,7 +7349,6 @@ describe("app controller", () => {
       isTTY: false,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -7505,7 +7409,6 @@ describe("app controller", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -7566,7 +7469,6 @@ describe("app controller", () => {
       },
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -7641,7 +7543,6 @@ describe("app controller", () => {
       stateDir: path.join(cwd, ".state"),
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -7732,7 +7633,6 @@ describe("app controller", () => {
       stateDir: path.join(cwd, ".state"),
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
