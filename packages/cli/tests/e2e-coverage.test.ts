@@ -71,9 +71,6 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  * is the easiest of them: D1's unit tests already cover it against a
  * service that was never promoted, so a real happy path in
  * `e2e/service.e2e.ts` has no remaining obstacle.
- *
- * `agent` writes local agent context files and should be straightforward
- * to cover.
  */
 const AWAITING_COVERAGE: readonly string[] = [
   "service show",
@@ -88,9 +85,6 @@ const AWAITING_COVERAGE: readonly string[] = [
   "service domain retry",
   "service domain wait",
   "build logs",
-  "agent install",
-  "agent update",
-  "agent status",
 ];
 
 async function mountedCommands(): Promise<string[]> {
