@@ -49,6 +49,26 @@ describeCommand("postgres create", () => {
   });
 });
 
+interface ListedDatabase {
+  readonly id: string;
+  readonly status: string | null;
+  readonly isDefault: boolean | null;
+}
+
+/**
+ * The status the API sent, or null. Never the word the CLI used to put
+ * here: when the API reported no status, `formatStatus` answered a
+ * different question — is this the project's default database — in the
+ * status field, so a stopped database read as "default".
+ *
+ * A mock cannot check this. Its author decides whether the API sends a
+ * status at all, which is the assumption under test.
+ */
+function expectReportedStatus(status: unknown): void {
+  expect(status === null || typeof status === "string").toBe(true);
+  expect(status).not.toBe("default");
+}
+
 describeCommand("postgres list", () => {
   it("lists the database that was just created", async () => {
     const run = await scratch.run(["postgres", "list"]);
@@ -57,6 +77,22 @@ describeCommand("postgres list", () => {
     };
 
     expect(listed.items.map((item) => item.id)).toContain(requireDatabase());
+  });
+
+  it("reports the API's status, and the default flag as its own field", async () => {
+    const run = await scratch.run(["postgres", "list"]);
+    const listed = run.envelope.result as {
+      readonly databases: readonly ListedDatabase[];
+    };
+    const created = listed.databases.find(
+      (database) => database.id === requireDatabase(),
+    );
+
+    expect(created).toBeDefined();
+    expectReportedStatus(created?.status);
+    // Two separate facts, carried separately. The defect was the second
+    // one standing in for the first.
+    expect(typeof created?.isDefault).toBe("boolean");
   });
 });
 
@@ -67,6 +103,17 @@ describeCommand("postgres show", () => {
     expect(run.envelope.ok).toBe(true);
     expect(JSON.stringify(run.envelope.result)).toContain(requireDatabase());
   });
+
+  it("reports the API's status for the database it read", async () => {
+    const run = await scratch.run(["postgres", "show", requireDatabase()]);
+    const shown = run.envelope.result as {
+      readonly database: ListedDatabase;
+    };
+
+    expect(shown.database.id).toBe(requireDatabase());
+    expectReportedStatus(shown.database.status);
+    expect(typeof shown.database.isDefault).toBe("boolean");
+  });
 });
 
 describeCommand("postgres usage", () => {
@@ -74,6 +121,53 @@ describeCommand("postgres usage", () => {
     const run = await scratch.run(["postgres", "usage", requireDatabase()]);
 
     expect(run.envelope.ok).toBe(true);
+  });
+
+  it("reports each metric as measured or as absent, never as an invented zero", async () => {
+    const run = await scratch.run(["postgres", "usage", requireDatabase()]);
+    const usage = run.envelope.result as {
+      readonly period: {
+        readonly start: string | null;
+        readonly end: string | null;
+      };
+      readonly metrics: {
+        readonly operations: {
+          readonly used: number | null;
+          readonly unit: string | null;
+        };
+        readonly storage: {
+          readonly used: number | null;
+          readonly unit: string | null;
+        };
+      };
+      readonly generatedAt: string | null;
+    };
+
+    for (const metric of [usage.metrics.operations, usage.metrics.storage]) {
+      expect(metric.used === null || typeof metric.used === "number").toBe(
+        true,
+      );
+      expect(metric.unit === null || typeof metric.unit === "string").toBe(
+        true,
+      );
+      // The check that separates the fix from the defect. A database
+      // minutes old is exactly the case where the API may report
+      // nothing, and the CLI used to answer `0 ops` and `0 GiB` — a
+      // measurement, in units it picked, for something nobody measured.
+      // A unit can only be here because the API named it.
+      expect(
+        metric.used === null && metric.unit !== null,
+        `${metric.unit} is a unit with no measurement beside it, which the API cannot have sent`,
+      ).toBe(false);
+    }
+
+    for (const timestamp of [
+      usage.period.start,
+      usage.period.end,
+      usage.generatedAt,
+    ]) {
+      expect(timestamp === null || typeof timestamp === "string").toBe(true);
+    }
   });
 });
 
