@@ -69,7 +69,12 @@ delete-live-deployment behavior recorded (or surfaced as a STOP).
 
 Outcome: the records match the shipped surface. Divergence file
 `assets/s2/parity-divergences-s8.md` (four renames, deleted
-spellings, `live` derivation, `url` change); `deferred.md` gains the
+spellings, `live` derivation, `url` change; from D1's review round:
+`service deployment list` rows report `live: null` — not `false` —
+when the service names no live deployment, a JSON-only change; and
+`service show` suppresses `liveUrl` when the named live deployment
+is missing from the listing, narrower than "present when
+`latestDeploymentId` is set"; the retired local live-state writes); `deferred.md` gains the
 ownership-note revisit (R-S8-4) and the logs follow-up slice
 (R-S8-5); golden-rendering updates; review loop; PR.
 
