@@ -116,15 +116,21 @@ jobs:
         if: ${{ steps.version.outputs.publish == 'true' }}
         run: pnpm test:scripts
 
-      # Pack the publishable tarballs and prove they survive a registry
-      # consumer's install: out-of-workspace sandbox, npm with
-      # --ignore-scripts, unpublished workspace siblings resolved through
+      # The three conformance checks against what is about to ship:
+      # built output imports only declared dependencies, every mounted
+      # config-section validator survives hostile input, and the packed
+      # tarballs survive a registry consumer's install — clean sandbox,
+      # npm with --ignore-scripts, unpublished workspace siblings via
       # computed file: overrides, every declared bin started on plain
-      # Node at exit 0. The tarballs this step packs are the ones
-      # uploaded below; what was verified is what ships.
-      - name: Pack tarballs and smoke the install
+      # Node at exit 0, engine pins agreeing everywhere. Runs before
+      # BOTH publish paths so the dry run is covered too. The tarballs
+      # it packs land in artifacts/tarballs and are the ones uploaded
+      # below: what was verified is what ships. (This absorbed the
+      # interim scripts/tarball-smoke.mjs, which was written to this
+      # check's design.)
+      - name: Run conformance checks
         if: ${{ steps.version.outputs.publish == 'true' }}
-        run: node scripts/tarball-smoke.mjs
+        run: pnpm check:conformance
 
       # The verified tarballs, retrievable per run. On a real release the
       # same files are attached to the GitHub Release below.

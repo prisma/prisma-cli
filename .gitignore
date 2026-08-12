@@ -42,3 +42,4 @@ wip/
 # than in .git/info/exclude because biome reads .gitignore, and a clone
 # carrying its own root config fails `pnpm lint` before it lints anything.
 .reference/
+.conformance/

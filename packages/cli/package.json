@@ -42,8 +42,9 @@
     "prepack": "pnpm run build",
     "check:grammar": "vitest run tests/mount-coverage.test.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+    "test": "pnpm run build && vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "conformance": "tsx scripts/conformance.ts"
   },
   "dependencies": {
     "@prisma/cli-engine": "workspace:8.0.0-rc.1",
@@ -59,6 +60,7 @@
     "open": "^11.0.0"
   },
   "devDependencies": {
+    "@repo/cli-conformance": "workspace:8.0.0-rc.1",
     "@repo/cli-telemetry": "workspace:8.0.0-rc.1",
     "@repo/tsconfig": "workspace:8.0.0-rc.1",
     "@types/node": "^22.19.19",
