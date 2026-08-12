@@ -122,6 +122,11 @@ describe("scripted and non-TTY paths are clack-free", () => {
         diagnostics: [],
       }),
       managementApi: { baseUrl: "https://test.invalid" },
+      host: {
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
+      },
     };
     const cli = createCli({
       name: "probe",

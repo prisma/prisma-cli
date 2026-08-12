@@ -9,10 +9,7 @@ import {
   resolveBuildStrategy,
   stageStandaloneArtifact,
 } from "@prisma/compute-sdk";
-import {
-  FRAMEWORKS,
-  type FrameworkBuildType,
-} from "@prisma/compute-sdk/config";
+import type { FrameworkBuildType } from "@prisma/compute-sdk/config";
 
 import type { AppBuildSettings } from "./build-settings";
 
@@ -25,28 +22,6 @@ export type {
 
 export type AppBuildType = BuildType;
 export type ResolvedAppBuildType = FrameworkBuildType;
-
-export const RESOLVED_APP_BUILD_TYPES: readonly ResolvedAppBuildType[] = [
-  ...frameworkBuildTypesByLastOccurrence(),
-];
-
-export const APP_BUILD_TYPES: readonly AppBuildType[] = [
-  "auto",
-  ...RESOLVED_APP_BUILD_TYPES,
-];
-
-export const APP_BUILD_TYPE_LABELS = APP_BUILD_TYPES.join(", ");
-
-function frameworkBuildTypesByLastOccurrence(): Set<FrameworkBuildType> {
-  const buildTypes = new Set<FrameworkBuildType>();
-  for (const framework of FRAMEWORKS) {
-    if (buildTypes.has(framework.buildType)) {
-      buildTypes.delete(framework.buildType);
-    }
-    buildTypes.add(framework.buildType);
-  }
-  return buildTypes;
-}
 
 export class AppBuildStrategy implements BuildStrategy {
   readonly #appPath: string;

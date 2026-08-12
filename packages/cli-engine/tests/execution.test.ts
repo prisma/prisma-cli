@@ -577,6 +577,11 @@ describe("needs preconditions", () => {
             })
           : undefined,
       managementApi: { baseUrl: "https://test.invalid" },
+      host: {
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
+      },
     };
     const exitCode = await cli.run(["demanding", "--format", "human"], runtime);
     return { exitCode, stderr: stderrText };
@@ -744,6 +749,11 @@ describe("report() after the handler resolved", () => {
         diagnostics: [],
       }),
       managementApi: { baseUrl: "https://test.invalid" },
+      host: {
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
+      },
     };
     const exitCode = await cli.run(["leaky", "--format", "human"], runtime);
 
@@ -809,6 +819,11 @@ describe("credentials that cannot be read", () => {
         },
       } as unknown as Runtime["credentialManager"],
       managementApi: { baseUrl: "https://test.invalid" },
+      host: {
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
+      },
     };
     const exitCode = await cli.run(["locked"], runtime);
 
@@ -948,6 +963,94 @@ describe("parse and route failures", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({ bang: true });
+  });
+});
+
+describe("ctx.host", () => {
+  const reporting = defineCommand({
+    help: { summary: "Report the host" },
+    handler: async (_args, ctx) =>
+      ok(ctx.present({ data: ctx.host }, { human: () => [] })),
+  });
+
+  test("a command reads the runtime, platform and arch from the context", async () => {
+    const result = await createTestCli({
+      commands: { reporting },
+      now: EPOCH,
+      host: {
+        runtime: { name: "bun", version: "1.2.3" },
+        platform: "win32",
+        arch: "arm64",
+      },
+    }).run(["reporting", "--json"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual({
+      runtime: { name: "bun", version: "1.2.3" },
+      platform: "win32",
+      arch: "arm64",
+    });
+  });
+
+  test("the harness supplies a fixed host, so a payload asserts the same everywhere", async () => {
+    const result = await createTestCli({
+      commands: { reporting },
+      now: EPOCH,
+    }).run(["reporting", "--json"]);
+
+    expect(result.presented?.data).toEqual({
+      runtime: { name: "node", version: "v22.12.0" },
+      platform: "linux",
+      arch: "x64",
+    });
+  });
+});
+
+describe("flag.optionalBoolean", () => {
+  const linking = defineCommand({
+    help: { summary: "Link things" },
+    args: { flags: { link: flag.optionalBoolean({ brief: "link it" }) } },
+    handler: async (args, ctx) =>
+      ok(
+        ctx.present(
+          { data: { link: args.flags.link ?? null } },
+          {
+            human: () => [],
+          },
+        ),
+      ),
+  });
+
+  const runWith = (argv: readonly string[]) =>
+    createTestCli({ commands: { linking }, now: EPOCH }).run([
+      "linking",
+      ...argv,
+      "--json",
+    ]);
+
+  test("--flag is true, --no-flag is false, and neither is undefined", async () => {
+    expect((await runWith(["--link"])).presented?.data).toEqual({ link: true });
+    expect((await runWith(["--no-link"])).presented?.data).toEqual({
+      link: false,
+    });
+    expect((await runWith([])).presented?.data).toEqual({ link: null });
+  });
+
+  test("all three settle successfully", async () => {
+    for (const argv of [["--link"], ["--no-link"], []]) {
+      // biome-ignore lint/performance/noAwaitInLoops: each run builds its own CLI, and the assertion reads clearest one spelling at a time.
+      expect((await runWith(argv)).exitCode).toBe(0);
+    }
+  });
+
+  test("help names both spellings", async () => {
+    const result = await createTestCli({
+      commands: { linking },
+      now: EPOCH,
+    }).run(["linking", "--help"], { isTty: { stdout: true } });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("--link/--no-link");
   });
 });
 

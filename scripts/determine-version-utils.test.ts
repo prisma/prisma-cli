@@ -61,7 +61,7 @@ describe("computeNextReleaseVersion", () => {
     assert.equal(computeNextReleaseVersion("8.0.0-rc.41"), "8.0.0-rc.42");
   });
 
-  it("transitions a pre-8 stable base onto the v8 rc line", () => {
+  it("transitions a pre-8 stable base onto the Prisma 8 rc line", () => {
     assert.equal(computeNextReleaseVersion("0.17.0"), "8.0.0-rc.1");
     assert.equal(computeNextReleaseVersion("0.18.0"), "8.0.0-rc.1");
   });

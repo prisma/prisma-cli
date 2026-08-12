@@ -41,7 +41,7 @@
     },
     "test:e2e": {
       // The package's OWN build, not just its dependencies': these
-      // tests run dist/v8/cli.js, so a stale dist would test the last
+      // tests run dist/cli.js, so a stale dist would test the last
       // build instead of this change.
       "dependsOn": ["build"],
       "cache": false

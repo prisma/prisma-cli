@@ -1,7 +1,7 @@
 /**
  * The real-API end-to-end harness.
  *
- * Every test here runs the SHIPPED binary (`dist/v8/cli.js`) as a child
+ * Every test here runs the SHIPPED binary (`dist/cli.js`) as a child
  * process against the real management API. Nothing is mocked, because
  * the whole point is to catch the things a mock cannot: the API's real
  * id formats, its real response shapes, and the real credential path.
@@ -24,10 +24,7 @@ const execFileAsync = promisify(execFile);
 /** The built binary, not the TypeScript sources. A stale or misbuilt
  *  dist is itself a shipping defect, so the artifact under test is the
  *  one users get. */
-export const CLI_BINARY = path.resolve(
-  import.meta.dirname,
-  "../dist/v8/cli.js",
-);
+export const CLI_BINARY = path.resolve(import.meta.dirname, "../dist/cli.js");
 
 /** Deliberately not PRISMA_SERVICE_TOKEN: these tests create and delete
  *  real resources, so they must never pick up whatever credential a

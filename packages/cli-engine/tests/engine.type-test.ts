@@ -1,7 +1,6 @@
 /**
- * Permanent type-tests for the compile-verified claims in
- * .drive/projects/prisma-cli-v8/assets/engine/reviews/
- * code-review-r4-closure.md (r4) and code-review-r5-delta.md (r5).
+ * Permanent type-tests for the compile-verified claims raised in the
+ * engine code reviews (rounds 4 and 5).
  * Checked by `tsc --noEmit`; never executed. Stale @ts-expect-error
  * directives fail the build (TS2578).
  */
@@ -77,6 +76,54 @@ export const enumFlag: FlagSpec<"a" | "b" | undefined> = flag.enum({
   values: ["a", "b"],
   alias: "F",
 });
+
+// —————————————————————————————————————————————————————————————————————
+// flag.optionalBoolean: the --flag / --no-flag / absent tri-state.
+// flag.boolean can only be true or false, so a command cannot tell "the
+// user said no" from "the user said nothing".
+// —————————————————————————————————————————————————————————————————————
+
+export const optionalBooleanFlag: FlagSpec<boolean | undefined> =
+  flag.optionalBoolean({ brief: "link the directory" });
+export const aliasedOptionalBoolean = flag.optionalBoolean({
+  brief: "link",
+  alias: "l",
+});
+
+export const multiAliasOptionalBoolean = flag.optionalBoolean({
+  brief: "link",
+  // @ts-expect-error the single-character alias rule applies here too
+  alias: "ln",
+});
+
+export const linkCommand = defineCommand({
+  help: { summary: "Link the directory" },
+  args: {
+    flags: {
+      link: flag.optionalBoolean({ brief: "link the directory" }),
+      force: flag.boolean({ brief: "overwrite" }),
+    },
+  },
+  handler: null as never,
+});
+
+type LinkFlags = Parameters<CommandHandler<typeof linkCommand>>[0]["flags"];
+
+// All three states reach the handler: true, false and undefined
+export const linkTrue: LinkFlags["link"] = true;
+export const linkFalse: LinkFlags["link"] = false;
+export const linkAbsent: LinkFlags["link"] = undefined;
+export const linkIsTriState: MutuallyAssignable<
+  LinkFlags["link"],
+  boolean | undefined
+> = true;
+
+// The contrast that makes the constructor worth having: flag.boolean
+// arrives as exactly boolean, so absence is indistinguishable from false
+export const forceIsTotal: MutuallyAssignable<LinkFlags["force"], boolean> =
+  true;
+// @ts-expect-error a plain boolean flag never arrives as undefined
+export const forceAbsent: LinkFlags["force"] = undefined;
 
 // Args specs are phantom-typed, not symbol-branded: the carrier is a
 // never-assigned optional property, and inference still flows from the
@@ -333,7 +380,7 @@ export const normalizedExitCodes: Readonly<Record<never, string>> =
   plainCommand.exitCodes;
 
 export const createCliSpec: Parameters<typeof createCli>[0] = {
-  name: "prisma-v8",
+  name: "prisma-cli",
   version: "0.0.0",
   commandFamilies: [commandFamily],
   groups: { auth: { brief: "Authentication" } },
@@ -344,6 +391,11 @@ export const createTestCliSpec: Parameters<typeof createTestCli>[0] = {
   commands: tree,
   config: { check: { strict: true } },
   managementApi: { baseUrl: "https://test.invalid" },
+  host: {
+    runtime: { name: "node", version: "v22.12.0" },
+    platform: "linux",
+    arch: "x64",
+  },
   packageManager: "pnpm",
   packageManagerRunner: async () => ({ exitCode: 0, stderr: "" }),
   now: () => new Date(0),
@@ -426,6 +478,11 @@ export const runtimeShape: Runtime = {
       ? { path: "/project/prisma.config.ts", sections: {}, diagnostics: [] }
       : loadedConfig,
   managementApi: { baseUrl: "https://test.invalid" },
+  host: {
+    runtime: { name: "node", version: "v22.12.0" },
+    platform: "linux",
+    arch: "x64",
+  },
 };
 
 export const runtimeWithPackageManagerOverride: Runtime = {

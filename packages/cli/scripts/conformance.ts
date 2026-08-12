@@ -29,7 +29,7 @@ import {
   mountedCommands,
   ormCommandFamily,
   platformCommandFamily,
-} from "../src/v8/cli";
+} from "../src/cli";
 
 const CLI_DIR = fileURLToPath(new URL("..", import.meta.url));
 const ENGINE_DIR = join(CLI_DIR, "..", "cli-engine");

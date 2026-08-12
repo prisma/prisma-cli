@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { LocalStateStore } from "../src/adapters/local-state";
-import { DEFAULT_STATE_DIR_NAME } from "../src/shell/runtime";
+import { DEFAULT_STATE_DIR_NAME } from "../src/state-dir";
 import { createTempCwd } from "./helpers";
 
 describe("app local state", () => {

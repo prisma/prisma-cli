@@ -6,6 +6,17 @@ Nothing here is tracked outside this file.
 
 ## After S7's first real publish
 
+- **The publish/Release shell in `publish.yml` should become a tested
+  script.** The operator called the inline `gh` calls janky
+  (2026-08-12); the agreed direction, not yet ruled go, is a
+  `scripts/publish-release.mjs` beside `determine-version.ts` — the
+  draft-create/attach/publish flow and the already-published tolerance
+  unit-tested like every other script, the yml steps collapsing to
+  one-liners. The alternative considered (pinning
+  `softprops/action-gh-release` into the job that holds
+  `id-token: write`) widens the trusted set of the repo's most
+  privileged workflow and was recommended against.
+
 - **The `v8.0.0-rc.1` GitHub Release has no tarballs attached, and
   none can be added.** The first real `next` publish (2026-08-12, run
   31618278670) published both packages to npm successfully, then the
@@ -83,6 +94,23 @@ composer can use it.
   command's mounted path) and composer's eight example strings — two on
   each of the four commands — rewritten to use it. Recorded in
   `assets/s2/parity-divergences-s3.md`.
+
+## Ratified-as-shipped at the S2 sign-off (2026-08-12) — the gaps stay real
+
+- **Streaming service logs is unavailable in any form.** `app logs` died
+  with the commander shell and `service logs` waits on an engine
+  streaming transport. The one capability loss of S2d; the S2c record
+  has the design notes.
+- **`build logs` cannot exit 1 on a failed build** until the engine
+  grows a way for a stream to settle with a documented non-zero code.
+- **The crash-recovery feedback action does not port** (the legacy
+  crash envelope pre-filled a `feedback` command; the engine's crash
+  path has no hook for it).
+- **A service token whose workspace only the server knows is refused**;
+  accepting it needs an engine change to resolve the workspace online
+  during the needs check.
+- **Q6: the telemetry docs URL is the interim prisma.io CLI page**;
+  the real page is still owed and ships as a one-line change.
 
 ## Owned by whoever lands the next engine change
 

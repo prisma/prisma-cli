@@ -1,7 +1,6 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-
+import { authRequiredError, CliError } from "../errors";
 import type { EnvVarRole } from "../lib/app/env-config";
-import { authRequiredError, CliError } from "../shell/errors";
 import type { EnvScopeDescriptor, EnvVariableMetadata } from "../types/app-env";
 
 export interface ResolvedEnvApiScope {

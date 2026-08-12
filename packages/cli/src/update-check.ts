@@ -9,7 +9,7 @@ import { CLI_DOCS_URL } from "./cli-name";
 import { getCliName, getCliVersion } from "./lib/version";
 
 /** The exact runtime surface the update check reads; both the legacy
- *  shell's CliRuntime and the v8 bin's host process satisfy it. */
+ *  shell's CliRuntime and the bin's host process satisfy it. */
 export interface UpdateCheckRuntime {
   readonly env: NodeJS.ProcessEnv;
   readonly argv: readonly string[];

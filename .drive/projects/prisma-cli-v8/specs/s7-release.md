@@ -277,31 +277,46 @@ plan.
 
 Written against the final rulings (2026-08-12): STOP-1 keep the existing publish model, STOP-2/3/8 as applied, STOP-4 as listed, STOP-5(b) — the smoke lives in this slice, so "conformance" below means the inline tarball smoke, not S6's checker — and STOP-7 deferred, so pin agreement is NOT an acceptance item; the interim pins stand until `8.0.0-rc.1` publishes. A later ruling (same day) sends RC-line releases to the `next` dist-tag; the one-action item reads accordingly.
 
-- [ ] `prisma migration list`, `prisma db verify --help`, `prisma init
+- [x] `prisma migration list`, `prisma db verify --help`, `prisma init
       --help`, `prisma migrate --help` answer from the assembled tree;
       one ORM command proven end to end through `createTestCli`; the
       family's redirects and config section reachable through the shell.
-- [ ] The completeness check covers platform + composer + ORM families
+- [x] The completeness check covers platform + composer + ORM families
       both directions, fails the build on a seeded omission in either
       direction (test proves it), runs in `pr-quality.yml` and in
       `publish.yml` before any publish step, and its exception list is
       exactly the ratified one.
-- [ ] `@prisma/cli`'s declared `prisma-cli` bin is the v8 tree; the
+- [x] `@prisma/cli`'s declared `prisma-cli` bin is the v8 tree; the
       packed tarball's bin prints the lockstep version on plain Node at
       exit 0.
-- [ ] All product pins exact and committed; no publish-time version
+- [x] All product pins exact and committed; no publish-time version
       resolution. (Pin AGREEMENT is deferred with STOP-7; S6-3c arrives
       with S6.)
-- [ ] A release run (dry-run dispatch proves it end to end without
+- [x] A release run (dry-run dispatch proves it end to end without
       registry writes) produces: build → grammar check → conformance →
       pack (engine + cli tarballs) → out-of-workspace install smoke
       (every bin starts on plain Node, exit 0) → publish steps →
       GitHub Release with tarballs attached.
-- [ ] The operator's release action is exactly one: merging the
+- [x] The operator's release action is exactly one: merging the
       `chore(release): 8.0.0-rc.N` PR. Nothing between that merge and
       the published artifacts requires a human.
-- [ ] `pnpm typecheck`, root `pnpm lint`, touched suites green, measured
+- [x] `pnpm typecheck`, root `pnpm lint`, touched suites green, measured
       as pnpm's own exit codes.
+
+## Close-out (2026-08-12)
+
+Acceptance verified against source, merged PRs, and the registry: prisma-cli #164 (the slice, squash-merged `c5fe09d`) and #166 (the Release-immutability fix). Evidence, per item: the ORM mount and its end-to-end proof are `packages/cli/tests/v8-orm-mount.test.ts` (real `migration list` run, redirect settlement, section validation, group help) with every mount path written out in `packages/cli/src/v8/cli.ts` (operator review: the bin is the source of truth for mount points, R12); the completeness check's both-directions failure proof is the constructed-family suite at the bottom of `packages/cli/tests/v8-mount-coverage.test.ts`, and the check runs as the `Grammar Completeness` job in `pr-quality.yml` and as `pnpm check:grammar` in `publish.yml` before any publish step; the declared-bin proof is `packages/cli/e2e/declared-bin.e2e.ts` (manifest-read bin, plain Node, bare env, envelope-asserted); the install smoke is `scripts/tarball-smoke.mjs` with its override computation unit-tested in `scripts/tarball-smoke-utils.test.mjs`; the release-tag rule is `releaseDistTag` in `scripts/determine-version-utils.ts`. Two dry-run dispatches (runs 31601868449, 31602392124) proved the pipeline without registry writes.
+
+The slice was also proven by fire the same day: the operator performed the first real publish. `@prisma/cli-engine@8.0.0-rc.1` and `@prisma/cli@8.0.0-rc.1` are live on npm under `next` with `latest` untouched — the project's DoD artifact exists, published. Two incidents from that run, both now handled:
+
+- **npm's trusted publisher for `@prisma/cli` still named the deleted `publish-cli.yml`**, so the OIDC token exchange 404'd; the engine (already configured for `publish.yml`) published, the CLI did not. The operator updated the registered workflow filename and re-dispatched; the rerun-tolerance in `publish.yml` (built for exactly this) carried the run past the already-published engine.
+- **The GitHub Release published before its assets uploaded, and this repo's releases are immutable** — `v8.0.0-rc.1` froze assetless (HTTP 422 on upload). #166 reorders the step (draft with tarballs attached, then publish by the draft's id) so every future Release carries its assets. rc.1's Release stays assetless permanently; ruled cosmetic, repair path in `deferred.md`.
+
+One item shipped amended, deliberately: "GitHub Release with tarballs attached" holds for every release from #166 onward, not for `v8.0.0-rc.1` itself.
+
+A same-day ruling extended the slice beyond the contract: RC-line bump PRs publish under `next` and `latest` waits for a deliberate flip (an explicit `dist-tag: latest` dispatch is the cutover act). The rule, its Release condition, and the accident-proof dispatch default are in `scripts/determine-version.ts` / `releaseDistTag`, documented in `docs/oss/versioning.md`.
+
+Everything carried out of the slice is in `deferred.md`: the pin-convergence choreography (deferred until the products bump to engine `8.0.0-rc.1`), the assetless rc.1 Release, the ORM family's static import weight (prisma/prisma's to fix), and the offered-but-undecided extraction of the publish/Release shell into a tested script. The S5 cutover in prisma/prisma — the retirement this slice's mount made possible — has its own brief: `assets/briefs/s5-cutover-handover.md`.
 
 ## 6. Out of scope
 

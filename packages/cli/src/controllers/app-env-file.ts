@@ -1,12 +1,11 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Environment variable mutations and lookups are intentionally sequential.
 // biome-ignore-all lint/style/noNestedTernary: Existing error formatting expression is intentionally compact.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-
+import { CliError } from "../errors";
+import type { CommandSuccess } from "../legacy/output";
+import type { CommandContext } from "../legacy/runtime";
 import { type EnvScope, formatScopeLabel } from "../lib/app/env-config";
 import type { EnvFileAssignment } from "../lib/app/env-file";
-import { CliError } from "../shell/errors";
-import type { CommandSuccess } from "../shell/output";
-import type { CommandContext } from "../shell/runtime";
 import type {
   EnvAddResult,
   EnvResolvedContext,

@@ -1,6 +1,6 @@
 /**
  * The bin the package DECLARES is the bin users get. Every other test
- * here hard-codes the v8 entry; this one starts from `package.json`'s
+ * here hard-codes the built entry; this one starts from `package.json`'s
  * `bin` map, so a manifest pointing at the wrong tree fails even while
  * both trees still build. No credentials: `--version` must answer in a
  * bare environment on plain Node.
@@ -17,8 +17,8 @@ const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(import.meta.dirname, "..");
 
 describe("the declared bin", () => {
-  it("maps prisma-cli to the v8 tree", () => {
-    expect(packageJson.bin).toEqual({ "prisma-cli": "./dist/v8/cli.js" });
+  it("maps prisma-cli to the built CLI", () => {
+    expect(packageJson.bin).toEqual({ "prisma-cli": "./dist/cli.js" });
   });
 
   it("prints the lockstep version on plain Node at exit 0", async () => {

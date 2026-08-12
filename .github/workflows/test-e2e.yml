@@ -63,7 +63,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # These tests run dist/v8/cli.js, so the artifact has to exist.
+      # These tests run dist/cli.js, so the artifact has to exist.
       # `pnpm --filter` runs the package script directly and never
       # consults turbo, so turbo's dependsOn cannot supply this.
       - name: Build workspace packages

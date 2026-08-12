@@ -1,11 +1,10 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import { CliError } from "../src/errors";
 import {
   createManagementDatabaseProvider,
   SUBSCRIPTION_LOOKUP_TIMEOUT_MS,
 } from "../src/lib/database/provider";
-import { CliError } from "../src/shell/errors";
 
 const workspaceId = "ws_synthetic";
 const upgradeUrl =

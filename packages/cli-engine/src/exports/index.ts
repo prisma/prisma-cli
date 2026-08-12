@@ -1,11 +1,8 @@
 /**
- * The v8 engine surface: everything a command-family package imports
+ * The engine surface: everything a command-family package imports
  * for CLI purposes — definition constructors, flag/positional builders,
  * the context/envelope/runtime types, and the createCli entry point.
  * The test harness lives on the ./testing subpath.
- *
- * Normative source: .drive/projects/prisma-cli-v8/assets/engine/
- * engine-interface-draft.ts (v8).
  */
 
 export {
@@ -111,6 +108,7 @@ export {
 } from "../presentation";
 export type { EngineCommandSnapshot, RunSummary } from "../run-summary";
 export {
+  type Host,
   type HostProcess,
   type InputStream,
   type LoadedConfig,

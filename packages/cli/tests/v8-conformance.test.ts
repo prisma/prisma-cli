@@ -23,7 +23,7 @@ import {
   mountedCommands,
   ormCommandFamily,
   platformCommandFamily,
-} from "../src/v8/cli";
+} from "../src/cli";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 

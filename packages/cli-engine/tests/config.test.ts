@@ -865,6 +865,11 @@ describe("needs.config", { timeout: 60_000 }, () => {
         return loadConfig(cwd, configPath);
       },
       managementApi: { baseUrl: "https://test.invalid" },
+      host: {
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
+      },
     };
     return { runtime, stdout: () => stdoutText };
   }
