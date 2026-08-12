@@ -39,6 +39,10 @@ async function runProbe(scenario: "plain" | "canary"): Promise<ProbeReport> {
     "report.json",
   );
   await new Promise<void>((resolve, reject) => {
+    // Node 24 only, and that limit is this probe's rather than composer's:
+    // tsx bypasses Node's module-syntax detection, so @alchemy.run/node-utils
+    // (ESM in lib/*.js with no "type": "module") stops loading on 22 — and
+    // the probe's own registerHooks load hook cannot run on 22.18 either.
     const child = spawn(
       process.execPath,
       ["--import", "tsx", PROBE, scenario, reportPath],

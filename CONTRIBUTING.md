@@ -14,8 +14,9 @@ Requirements:
 - pnpm 10
 
 Published `@prisma/cli` declares a lower floor (Node 22.18, matching
-`@prisma/composer`), but the test suite needs 24: composer's deploy executor
-fails to load on Node 22, which the composer startup-isolation test catches.
+`@prisma/composer`), and composer runs fine there. The repo develops and tests
+on 24 because the startup-isolation probe cannot run on Node 22; the reason is
+recorded in `packages/cli/tests/v8-composer-isolation.test.ts`.
 
 Install dependencies:
 
