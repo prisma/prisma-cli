@@ -15,6 +15,7 @@ import type {
   DatabaseRestoreResult,
   DatabaseShowResult,
   DatabaseSummary,
+  DatabaseUsageMetric,
   DatabaseUsageResult,
 } from "../types/database";
 import {
@@ -49,7 +50,7 @@ export function renderDatabaseList(
 
   const rows = result.databases.map((database) => [
     database.name,
-    database.branchName ?? "unscoped",
+    branchLabel(database),
     database.region ?? "unknown",
     formatStatus(database),
     database.id,
@@ -110,8 +111,8 @@ export function renderDatabaseShow(
         { key: "id", value: result.database.id, tone: "dim" },
         {
           key: "branch",
-          value: result.database.branchName ?? "unscoped",
-          tone: result.database.branchName ? "default" : "dim",
+          value: branchLabel(result.database),
+          tone: result.database.branchId ? "default" : "dim",
         },
         {
           key: "region",
@@ -353,12 +354,9 @@ export function renderDatabaseUsage(
         },
         {
           key: "operations",
-          value: `${result.metrics.operations.used} ${result.metrics.operations.unit}`,
+          value: formatUsageMetric(result.metrics.operations),
         },
-        {
-          key: "storage",
-          value: `${result.metrics.storage.used} ${result.metrics.storage.unit}`,
-        },
+        { key: "storage", value: formatUsageMetric(result.metrics.storage) },
         {
           key: "generated",
           value: formatUsageTimestamp(result.generatedAt),
@@ -586,12 +584,30 @@ function formatBackupSize(size: number | null): string {
   return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GiB`;
 }
 
-function formatUsageTimestamp(value: string): string {
+function formatUsageTimestamp(value: string | null): string {
   return value || "unknown";
 }
 
+/** A metric the API did not report reads "unknown", and a measurement
+ *  with no unit prints alone. See `v8/postgres/presentation.ts`. */
+function formatUsageMetric(metric: DatabaseUsageMetric): string {
+  if (metric.used === null) {
+    return "unknown";
+  }
+  return metric.unit ? `${metric.used} ${metric.unit}` : String(metric.used);
+}
+
+/** The status the API reported, or the word for none. `isDefault` is a
+ *  different fact and never stands in for a status. */
 function formatStatus(database: DatabaseSummary): string {
-  return database.status ?? (database.isDefault ? "default" : "unknown");
+  return database.status ?? "unknown";
+}
+
+/** "unscoped" is a claim that the database belongs to no branch, so only
+ *  an absent `branchId` may produce it. The API does not always send a
+ *  branch name beside the id it does send. */
+function branchLabel(database: DatabaseSummary): string {
+  return database.branchName ?? database.branchId ?? "unscoped";
 }
 
 function formatDatabaseTarget(

@@ -14,7 +14,12 @@ import {
   resolvePostgresContext,
 } from "./context";
 import { mapPostgresOperationError } from "./errors";
-import { type FieldRow, formatStatus, statusValue } from "./presentation";
+import {
+  branchLabel,
+  type FieldRow,
+  formatStatus,
+  statusValue,
+} from "./presentation";
 
 const TITLE = "Showing database metadata.";
 
@@ -23,7 +28,7 @@ function fieldRows(result: DatabaseShowResult): FieldRow[] {
     { label: "project", value: result.projectName },
     { label: "database", value: result.database.name },
     { label: "id", value: result.database.id },
-    { label: "branch", value: result.database.branchName ?? "unscoped" },
+    { label: "branch", value: branchLabel(result.database) },
     { label: "region", value: result.database.region ?? "unknown" },
     { label: "status", value: formatStatus(result.database) },
     { label: "connections", value: String(result.connections.length) },

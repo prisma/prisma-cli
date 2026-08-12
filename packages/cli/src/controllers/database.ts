@@ -794,7 +794,31 @@ export async function resolveDatabase(
     projectId: target.project.id,
     signal,
   });
-  return ensureProjectId(shown ?? selected, target.project.id);
+  // `showDatabase` returns null for one condition only: a 404 that is not
+  // a plan-limit error, which is the API saying the database is gone.
+  // Falling back to the row from the list call taken moments earlier let
+  // `postgres remove` name a database in its confirmation prompt that no
+  // longer existed. A read the API refused is a failure, not a reason to
+  // use an older copy.
+  if (shown === null) {
+    throw databaseRemovedDuringResolutionError(selected, target.project.name);
+  }
+  return ensureProjectId(shown, target.project.id);
+}
+
+function databaseRemovedDuringResolutionError(
+  database: DatabaseSummary,
+  projectName: string,
+): CliError {
+  return new CliError({
+    code: "DATABASE_NOT_FOUND",
+    domain: "database",
+    summary: "Database not found",
+    why: `"${database.name}" (${database.id}) was listed for project "${projectName}", but reading it returned 404. It was most likely removed while this command was running.`,
+    fix: "Re-run the command, or list the project's databases to see what is there now.",
+    exitCode: 1,
+    nextSteps: ["prisma-cli database list"],
+  });
 }
 
 export function ensureProjectId(

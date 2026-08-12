@@ -3,6 +3,7 @@ import type { Block } from "@prisma/cli-engine";
 import type {
   DatabaseBackupSummary,
   DatabaseSummary,
+  DatabaseUsageMetric,
 } from "../../types/database";
 
 export interface FieldRow {
@@ -19,10 +20,21 @@ export function postgresTargetLabel(
   return branchName ? `${projectName} / ${branchName}` : projectName;
 }
 
-/** The human status cell: the database's own status, or what we can say
- *  about it when the API did not report one. */
+/** The human status cell: the database's own status, or the word for a
+ *  status the API did not report. Whether the database is the project's
+ *  default is a different fact and never stands in for this one — a
+ *  reader could not tell that substitution from a real status, and a
+ *  stopped database would have read as healthy. */
 export function formatStatus(database: DatabaseSummary): string {
-  return database.status ?? (database.isDefault ? "default" : "unknown");
+  return database.status ?? "unknown";
+}
+
+/** The reader's branch cell. "unscoped" is a claim about the database —
+ *  that it belongs to no branch — so only an absent `branchId` may
+ *  produce it. The API does not always send a branch name beside the id
+ *  it does send, and reporting that database as unscoped was wrong. */
+export function branchLabel(database: DatabaseSummary): string {
+  return database.branchName ?? database.branchId ?? "unscoped";
 }
 
 /** The stdout status cell. The Option A channel ruling makes stdout the
@@ -31,6 +43,23 @@ export function formatStatus(database: DatabaseSummary): string {
  *  different fact that does not belong in this one. */
 export function statusValue(database: DatabaseSummary): string {
   return database.status ?? "";
+}
+
+/** The human usage cell: the measurement with the unit the API gave it.
+ *  A metric the API did not report reads "unknown" rather than `0`, and a
+ *  measurement with no unit prints alone rather than against a unit the
+ *  CLI picked. */
+export function formatUsageMetric(metric: DatabaseUsageMetric): string {
+  if (metric.used === null) {
+    return "unknown";
+  }
+  return metric.unit ? `${metric.used} ${metric.unit}` : String(metric.used);
+}
+
+/** The stdout usage cell: the number the API measured, or an empty field
+ *  when it measured none. */
+export function usageMetricValue(metric: DatabaseUsageMetric): string {
+  return metric.used === null ? "" : String(metric.used);
 }
 
 /** The human size cell. `formatBackupSize` is for reading; stdout gets
