@@ -74,7 +74,7 @@ Then implement `checkTarball({ packages, exceptions, io })` where `io` carries `
 
 ## D5 — cross-repo wiring (BLOCKED on questions 1, 2 and 4)
 
-Not dispatched. Under the contract's recommended answers this is: composer's `check-cli-engine-pin.mjs` gains a comparison against the shell's published engine pin, composer's existing packed-output checks move from pull-request CI into its publish path (they are absent there today, which is a real hole independent of S6), and prisma/prisma is wired as part of S5 rather than now. Under other answers it is a larger change in two repos this slice does not own. Either way it needs push access to those repos confirmed, which is a separate question from the three above.
+Not dispatched. Under the contract's recommended answers this is: composer's `check-cli-engine-pin.mjs` gains a comparison against the shell's published engine pin, composer's existing packed-output checks move from pull-request CI into its publish path (they are absent there today, which is a real hole independent of S6), and prisma/prisma is wired as part of S5 rather than now. Under other answers it is a larger change in two repos this slice does not own. Push access is not a blocker: the bot has push on `prisma/composer`, `prisma/prisma` and `prisma/prisma-cli` (checked 2026-08-12).
 
 ## Verification per dispatch
 

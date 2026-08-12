@@ -24,7 +24,11 @@ node_modules/.pnpm/@prisma+cli-engine@0.0.9_magicast@0.5.3     # composer's copy
                                                                 # the shell's is the workspace link
 ```
 
-Two engine copies mean the family object composer constructs is built by a different engine instance than the one the shell runs, so type identity across the boundary is not guaranteed. `packages/cli/src/v8/cli.ts:9-15` already records this as a known release problem and names it composer's to fix under the tandem release order (R-S3-6). Nothing in any of the three repos checks it: composer's own `check-cli-engine-pin.mjs` compares its two manifests against each other, never against the shell's. This is the defect class S6 exists to catch, and it is live right now.
+This is already a recorded project decision, and the decision is what makes it S6's business. `deferred.md:37-51` states that the engine pin "must be the SAME version prisma-cli depends on", records the current disagreement, and rules that **matching pins is a release requirement for the tandem release** — the two-copy install is "a preview-only state to end rather than a configuration to support". `packages/cli/src/v8/cli.ts:9-15` says the same and names the fix as composer's under the tandem order (R-S3-6).
+
+Note what is *not* the argument here, because the difference decides how the check is written. The engine deliberately survives two copies for structured errors: its cross-copy markers are `Symbol.for`, and two tests prove an error raised by one copy is recognised by the other (`packages/cli-engine/tests/execution.test.ts`, "a structured error built by another copy of the engine", and `tests/protocol.test.ts`). So the check is not defending type identity, which is defended already. What is untested across two copies is execution and signal behaviour, and `deferred.md` rules that not worth testing precisely *because* matching pins is a release requirement.
+
+That leaves the requirement with no enforcement anywhere. Composer's own `check-cli-engine-pin.mjs` compares composer's two manifests against each other and never against the shell's; no repo compares across the boundary. A check in the publish path is the enforcement the existing ruling implies, and it is the one thing in this slice that nobody has built.
 
 ## 2. What already exists (the non-duplication boundary)
 
@@ -128,7 +132,7 @@ The mechanism 3b depends on destroys the evidence 3c looks for. Comparing declar
 
 **STOP-6 — which bin does 3b start?** `@prisma/cli`'s only declared bin today is `prisma-cli` → `dist/cli.js`, the legacy commander shell. The v8 entry ships in the tarball at `dist/v8/cli.js` but is not a bin, so "the bin starts" currently tests the shell S2d is retiring. Options: **(a) start every entry in the packed `bin` map, which is self-maintaining and picks up the `prisma` bin when S7 adds it** — recommended; (b) additionally start `dist/v8/cli.js` by path, pinning the v8 entry now at the cost of naming a file the manifest does not.
 
-**STOP-7 — where does the ruling that gave S6 this check actually live?** The brief cites `specs/s5-orm.md` STOP-10 and requirement R-S5-28 as having ruled the engine-version-mismatch class to be S6's. Neither exists: there is no `specs/s5-orm.md` in the project directory, and `R-S5-28` and `STOP-10` appear nowhere in the repo. S5 has not started. I have built §3c to the description in the brief itself. Confirm that is the ruling, or point me at where it is recorded.
+**STOP-7 — a citation in the brief does not exist; confirm I substituted the right ruling.** The brief cites `specs/s5-orm.md` STOP-10 and requirement R-S5-28 as having ruled the engine-mismatch class to be S6's. Neither exists: there is no `specs/s5-orm.md`, and `R-S5-28` and `STOP-10` appear nowhere in the repo. S5 has not started. What *is* recorded is `deferred.md:37-51`, which requires the pins to match and calls it a release requirement for the tandem release — quoted in §1. I have built 3c to that ruling plus the brief's own description of the check. This is the smallest of the seven questions; confirm and it closes.
 
 ## 6. Acceptance
 
