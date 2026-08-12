@@ -77,7 +77,10 @@ is missing from the listing, narrower than "present when
 `latestDeploymentId` is set"; the retired local live-state writes);
 finding D1-R2-1 (v8-service-remove.test.ts's live-state clearing
 assertion is vacuous — seed the key or drop the clause, reviewer's
-entry has both options); `deferred.md` gains the
+entry has both options); from D2's review round: `service create
+--branch` resolves-or-creates the named branch — a typo silently
+creates a branch — inherited from the provider path the contract
+grounds the command in, recorded as a divergence note not a defect; `deferred.md` gains the
 ownership-note revisit (R-S8-4) and the logs follow-up slice
 (R-S8-5); golden-rendering updates; review loop; PR.
 
