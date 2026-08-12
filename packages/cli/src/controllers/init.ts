@@ -71,6 +71,15 @@ interface ResolvedInitFramework {
   source: string;
 }
 
+/** Every app setting init resolved, each with where its value came from. */
+interface ResolvedInitSettings {
+  name: { value: string; source: string };
+  framework: ResolvedInitFramework;
+  entry: { value: string; source: string } | undefined;
+  httpPort: { value: number; source: string };
+  region: ComputeRegion | undefined;
+}
+
 export async function runInit(
   context: CommandContext,
   flags: InitFlags,
@@ -82,34 +91,16 @@ export async function runInit(
   const formatCommand = resolvePrismaCliPackageCommandFormatterSync(cwd);
 
   const format = parseInitFormat(flags.format, formatCommand);
-  if (format.value === "json" && flags.install === true) {
-    throw usageError(
-      "--install does not apply to the JSON config format",
-      `${COMPUTE_CONFIG_JSON_FILENAME} is a dependency-free static config; the ${COMPUTE_SDK_PACKAGE} devDependency exists only for ${COMPUTE_CONFIG_FILENAME} editor types.`,
-      "Drop --install, or use the TypeScript format.",
-      [formatCommand(["init", "--format", "json"])],
-      "app",
-    );
-  }
+  rejectInstallFlagForJsonFormat(format.value, flags, formatCommand);
 
-  const existingConfig = await findExistingComputeConfig(cwd, signal);
-  if (existingConfig) {
-    const solePath =
-      existingConfig.candidates.length === 1
-        ? existingConfig.candidates[0]
-        : undefined;
-    const soleIsJson =
-      solePath !== undefined && path.extname(solePath) === ".json";
-    // Conversion must be explicit: plain init refuses every existing config.
-    if (soleIsJson && format.value === "typescript" && format.explicit) {
-      rejectConversionResolutionFlags(flags, formatCommand);
-      return runInitConversion(context, flags, solePath, formatCommand);
-    }
-    if (solePath && !soleIsJson && format.value === "json") {
-      throw initConvertUnsupportedError(solePath);
-    }
-    throw initConfigExistsError(
-      existingConfig.candidates[0] ?? existingConfig.directory,
+  const route = await routeExistingComputeConfig(cwd, signal, format);
+  if (route.kind === "convert") {
+    rejectConversionResolutionFlags(flags, formatCommand);
+    return runInitConversion(
+      context,
+      flags,
+      route.jsonConfigPath,
+      formatCommand,
     );
   }
 
@@ -126,79 +117,29 @@ export async function runInit(
   framework = adjusted.framework;
   httpPort = adjusted.httpPort;
 
-  // The custom framework needs build.outputDirectory and build.entrypoint,
-  // which init does not collect. The TypeScript format carries a commented
-  // build stub to fill in; strict JSON cannot hold comments, so refuse here
-  // instead of writing a config that deploy would reject.
-  if (format.value === "json" && framework.key === "custom") {
-    throw usageError(
-      "Custom framework requires the TypeScript config format",
-      "The custom framework needs build.outputDirectory and build.entrypoint, which init does not collect; the TypeScript format includes a commented build stub to complete, and strict JSON cannot carry it.",
-      `Rerun without --format json and fill in the build stub, or write ${COMPUTE_CONFIG_JSON_FILENAME} by hand with a build object.`,
-      [formatCommand(["init", "--framework", "custom"])],
-      "app",
-    );
-  }
+  rejectCustomFrameworkForJsonFormat(format.value, framework, formatCommand);
 
   // Entry resolves against the FINAL framework so an interactive framework
   // switch cannot leave a stale (or missing) entry in the written config.
   const entry = await resolveInitEntry(cwd, framework, flags.entry, signal);
 
-  const settings: InitSettingRow[] = [
-    { key: "app", value: name.value, source: name.source },
-    {
-      key: "framework",
-      value: framework.displayName,
-      source: framework.source,
-    },
-    ...(entry
-      ? [{ key: "entry", value: entry.value, source: entry.source }]
-      : []),
-    {
-      key: "http port",
-      value: String(httpPort.value),
-      source: httpPort.source,
-    },
-    ...(region ? [{ key: "region", value: region, source: "flag" }] : []),
-  ];
+  const resolved: ResolvedInitSettings = {
+    name,
+    framework,
+    entry,
+    httpPort,
+    region,
+  };
+  const settings = initSettingRows(resolved);
 
   renderInitSettingsPreview(context, settings);
 
-  const config: ComputeConfig = {
-    app: {
-      name: name.value,
-      framework: framework.key,
-      httpPort: httpPort.value,
-      ...(entry ? { entry: entry.value } : {}),
-      ...(region ? { region } : {}),
-    },
-  };
-
-  const configFilename =
-    format.value === "json"
-      ? COMPUTE_CONFIG_JSON_FILENAME
-      : COMPUTE_CONFIG_FILENAME;
-  const configPath = path.join(cwd, configFilename);
-  let source: string;
-  if (format.value === "json") {
-    source = serializeComputeConfigJson(config);
-  } else {
-    source = serializeComputeConfig(config);
-    if (framework.key === "custom") {
-      source += CUSTOM_BUILD_STUB;
-    }
-  }
+  const app = initAppConfig(resolved);
+  const configFile = initConfigFile({ app }, format.value, framework.key);
+  const configPath = path.join(cwd, configFile.filename);
 
   signal.throwIfAborted();
-  try {
-    // wx: fail instead of clobbering a config that appeared since the check.
-    await writeFile(configPath, source, { encoding: "utf8", flag: "wx" });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-      throw initConfigExistsError(configPath);
-    }
-    throw error;
-  }
+  await writeInitConfigFile(configPath, configFile.source);
 
   const warnings: string[] = [];
   // The JSON format exists to be dependency-free, so the types install step
@@ -219,34 +160,145 @@ export async function runInit(
   });
   warnings.push(...(await maybePromptForAgentSetup(context, cwd)));
 
-  const unlinked = link.status !== "linked" && link.status !== "already-linked";
-  const typesMissing =
-    types.status !== "installed" && types.status !== "already-installed";
   return {
     command: "init",
     result: {
-      configPath: configFilename,
+      configPath: configFile.filename,
       format: format.value,
       converted: false,
       directory: formatInitDirectory(cwd),
-      app: {
-        name: name.value,
-        framework: framework.key,
-        httpPort: httpPort.value,
-        ...(entry ? { entry: entry.value } : {}),
-        ...(region ? { region } : {}),
-      },
+      app,
       settings,
       types,
       link,
     },
     warnings,
-    nextSteps: [
-      ...(typesMissing && types.installCommand ? [types.installCommand] : []),
-      formatCommand(["app", "deploy"]),
-      ...(unlinked ? [formatCommand(["project", "link"])] : []),
-    ],
+    nextSteps: initNextSteps(types, link, formatCommand),
   };
+}
+
+function rejectInstallFlagForJsonFormat(
+  format: InitConfigFormat,
+  flags: InitFlags,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): void {
+  if (format !== "json" || flags.install !== true) {
+    return;
+  }
+  throw usageError(
+    "--install does not apply to the JSON config format",
+    `${COMPUTE_CONFIG_JSON_FILENAME} is a dependency-free static config; the ${COMPUTE_SDK_PACKAGE} devDependency exists only for ${COMPUTE_CONFIG_FILENAME} editor types.`,
+    "Drop --install, or use the TypeScript format.",
+    [formatCommand(["init", "--format", "json"])],
+    "app",
+  );
+}
+
+/**
+ * The custom framework needs build.outputDirectory and build.entrypoint,
+ * which init does not collect. The TypeScript format carries a commented
+ * build stub to fill in; strict JSON cannot hold comments, so refuse here
+ * instead of writing a config that deploy would reject.
+ */
+function rejectCustomFrameworkForJsonFormat(
+  format: InitConfigFormat,
+  framework: ResolvedInitFramework,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): void {
+  if (format !== "json" || framework.key !== "custom") {
+    return;
+  }
+  throw usageError(
+    "Custom framework requires the TypeScript config format",
+    "The custom framework needs build.outputDirectory and build.entrypoint, which init does not collect; the TypeScript format includes a commented build stub to complete, and strict JSON cannot carry it.",
+    `Rerun without --format json and fill in the build stub, or write ${COMPUTE_CONFIG_JSON_FILENAME} by hand with a build object.`,
+    [formatCommand(["init", "--framework", "custom"])],
+    "app",
+  );
+}
+
+/** Preview rows for a fresh init, one per resolved setting. */
+function initSettingRows(resolved: ResolvedInitSettings): InitSettingRow[] {
+  const { name, framework, entry, httpPort, region } = resolved;
+  return [
+    { key: "app", value: name.value, source: name.source },
+    {
+      key: "framework",
+      value: framework.displayName,
+      source: framework.source,
+    },
+    ...(entry
+      ? [{ key: "entry", value: entry.value, source: entry.source }]
+      : []),
+    {
+      key: "http port",
+      value: String(httpPort.value),
+      source: httpPort.source,
+    },
+    ...(region ? [{ key: "region", value: region, source: "flag" }] : []),
+  ];
+}
+
+/** App identity written to the config and reported in the result. */
+function initAppConfig(resolved: ResolvedInitSettings) {
+  const { name, framework, entry, httpPort, region } = resolved;
+  return {
+    name: name.value,
+    framework: framework.key,
+    httpPort: httpPort.value,
+    ...(entry ? { entry: entry.value } : {}),
+    ...(region ? { region } : {}),
+  };
+}
+
+/** Name and contents of the config file for the chosen format. */
+function initConfigFile(
+  config: ComputeConfig,
+  format: InitConfigFormat,
+  framework: ComputeFramework,
+): { filename: string; source: string } {
+  if (format === "json") {
+    return {
+      filename: COMPUTE_CONFIG_JSON_FILENAME,
+      source: serializeComputeConfigJson(config),
+    };
+  }
+
+  const source = serializeComputeConfig(config);
+  return {
+    filename: COMPUTE_CONFIG_FILENAME,
+    source: framework === "custom" ? source + CUSTOM_BUILD_STUB : source,
+  };
+}
+
+async function writeInitConfigFile(
+  configPath: string,
+  source: string,
+): Promise<void> {
+  try {
+    // wx: fail instead of clobbering a config that appeared since the check.
+    await writeFile(configPath, source, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw initConfigExistsError(configPath);
+    }
+    throw error;
+  }
+}
+
+function initNextSteps(
+  types: InitTypesState,
+  link: InitLinkState,
+  formatCommand: PrismaCliPackageCommandFormatter,
+): string[] {
+  const typesMissing =
+    types.status !== "installed" && types.status !== "already-installed";
+  const unlinked = link.status !== "linked" && link.status !== "already-linked";
+  return [
+    ...(typesMissing && types.installCommand ? [types.installCommand] : []),
+    formatCommand(["app", "deploy"]),
+    ...(unlinked ? [formatCommand(["project", "link"])] : []),
+  ];
 }
 
 /** Dev dependency that provides editor types for the generated config. */
@@ -277,25 +329,15 @@ async function resolveInitTypes(
   hooks: { onWarning: (message: string) => void },
 ): Promise<InitTypesState> {
   const cwd = context.runtime.cwd;
-  // This step runs after prisma.compute.ts is written; an unreadable
-  // package.json (malformed JSON, permissions) must not turn the already
-  // successful write into a command failure, so it degrades to a skip.
-  let packageJson: Awaited<ReturnType<typeof readBunPackageJson>>;
-  try {
-    packageJson = await readBunPackageJson(cwd, context.runtime.signal);
-  } catch (error) {
-    if (context.runtime.signal.aborted) {
-      throw error;
-    }
-    hooks.onWarning(
-      `Skipped the ${COMPUTE_SDK_PACKAGE} types install: package.json could not be read (${error instanceof Error ? error.message.split("\n")[0] : String(error)}).`,
-    );
+  const read = await readPackageJsonForTypes(context, hooks);
+  if (!read.readable) {
     return {
       status: "skipped",
       package: COMPUTE_SDK_PACKAGE,
       installCommand: null,
     };
   }
+  const packageJson = read.packageJson;
   if (hasComputeSdkDependency(packageJson)) {
     return {
       status: "already-installed",
@@ -318,34 +360,90 @@ async function resolveInitTypes(
     return state("skipped");
   }
 
-  if (flags.install === false) {
-    return state("skipped");
+  const decision = await resolveTypesInstallDecision(
+    context,
+    flags,
+    installCommandText,
+  );
+  if (decision !== "install") {
+    return state(decision);
   }
 
-  let shouldInstall = flags.install === true;
-  if (!shouldInstall) {
-    if (!canPrompt(context) || context.flags.yes) {
-      return state("skipped");
+  return state(await installComputeSdkTypes(context, installCommand, hooks));
+}
+
+/**
+ * The types install runs after the config is written, so an unreadable
+ * package.json (malformed JSON, permissions) must not turn the already
+ * successful write into a command failure; it degrades to a skip.
+ */
+async function readPackageJsonForTypes(
+  context: CommandContext,
+  hooks: { onWarning: (message: string) => void },
+): Promise<
+  | {
+      readable: true;
+      packageJson: Awaited<ReturnType<typeof readBunPackageJson>>;
     }
-    try {
-      shouldInstall = await confirmPrompt({
-        input: context.runtime.stdin,
-        output: context.output.stderr,
-        signal: context.runtime.signal,
-        message: `Install ${COMPUTE_SDK_PACKAGE} for config types? (${installCommandText})`,
-        initialValue: true,
-      });
-    } catch (error) {
-      if (isPromptCancelError(error)) {
-        return state("declined");
-      }
+  | { readable: false }
+> {
+  try {
+    return {
+      readable: true,
+      packageJson: await readBunPackageJson(
+        context.runtime.cwd,
+        context.runtime.signal,
+      ),
+    };
+  } catch (error) {
+    if (context.runtime.signal.aborted) {
       throw error;
     }
-    if (!shouldInstall) {
-      return state("declined");
-    }
+    hooks.onWarning(
+      `Skipped the ${COMPUTE_SDK_PACKAGE} types install: package.json could not be read (${firstErrorLine(error)}).`,
+    );
+    return { readable: false };
+  }
+}
+
+async function resolveTypesInstallDecision(
+  context: CommandContext,
+  flags: InitFlags,
+  installCommandText: string,
+): Promise<"install" | "skipped" | "declined"> {
+  if (flags.install === false) {
+    return "skipped";
+  }
+  if (flags.install === true) {
+    return "install";
+  }
+  if (!canPrompt(context) || context.flags.yes) {
+    return "skipped";
   }
 
+  try {
+    const confirmed = await confirmPrompt({
+      input: context.runtime.stdin,
+      output: context.output.stderr,
+      signal: context.runtime.signal,
+      message: `Install ${COMPUTE_SDK_PACKAGE} for config types? (${installCommandText})`,
+      initialValue: true,
+    });
+    return confirmed ? "install" : "declined";
+  } catch (error) {
+    if (isPromptCancelError(error)) {
+      return "declined";
+    }
+    throw error;
+  }
+}
+
+async function installComputeSdkTypes(
+  context: CommandContext,
+  installCommand: string[],
+  hooks: { onWarning: (message: string) => void },
+): Promise<"installed" | "failed"> {
+  const installCommandText = installCommand.join(" ");
   const command = resolveInitInstallCommandOverride(context) ?? installCommand;
   if (!context.flags.quiet && !context.flags.json) {
     context.output.stderr.write(`Installing ${COMPUTE_SDK_PACKAGE}...\n`);
@@ -353,24 +451,22 @@ async function resolveInitTypes(
   try {
     const [executable, ...args] = command;
     await execa(executable as string, args, {
-      cwd,
+      cwd: context.runtime.cwd,
       env: context.runtime.env,
       cancelSignal: context.runtime.signal,
       stdin: "ignore",
     });
-    return state("installed");
+    return "installed";
   } catch (error) {
     if (context.runtime.signal.aborted) {
       throw error;
     }
     // execa's first message line is the short "Command failed" summary; the
     // full package-manager output stays out of the warning.
-    const detail =
-      error instanceof Error ? error.message.split("\n")[0] : String(error);
     hooks.onWarning(
-      `Installing ${COMPUTE_SDK_PACKAGE} failed: ${detail}. Install it later with ${installCommandText}.`,
+      `Installing ${COMPUTE_SDK_PACKAGE} failed: ${firstErrorLine(error)}. Install it later with ${installCommandText}.`,
     );
-    return state("failed");
+    return "failed";
   }
 }
 
@@ -436,6 +532,39 @@ async function findExistingComputeConfig(
     directory: configDir,
     candidates: await findComputeConfigCandidates(configDir, signal),
   };
+}
+
+/**
+ * Init's route when a config already exists: convert a sole JSON config that
+ * an explicit `--format ts` asked for, or refuse. A directory with no config
+ * proceeds fresh.
+ */
+async function routeExistingComputeConfig(
+  cwd: string,
+  signal: AbortSignal,
+  format: { value: InitConfigFormat; explicit: boolean },
+): Promise<{ kind: "fresh" } | { kind: "convert"; jsonConfigPath: string }> {
+  const existingConfig = await findExistingComputeConfig(cwd, signal);
+  if (!existingConfig) {
+    return { kind: "fresh" };
+  }
+
+  const solePath =
+    existingConfig.candidates.length === 1
+      ? existingConfig.candidates[0]
+      : undefined;
+  const soleIsJson =
+    solePath !== undefined && path.extname(solePath) === ".json";
+  // Conversion must be explicit: plain init refuses every existing config.
+  if (soleIsJson && format.value === "typescript" && format.explicit) {
+    return { kind: "convert", jsonConfigPath: solePath };
+  }
+  if (solePath && !soleIsJson && format.value === "json") {
+    throw initConvertUnsupportedError(solePath);
+  }
+  throw initConfigExistsError(
+    existingConfig.candidates[0] ?? existingConfig.directory,
+  );
 }
 
 function parseInitFormat(
@@ -534,54 +663,17 @@ async function runInitConversion(
   const cwd = context.runtime.cwd;
   const signal = context.runtime.signal;
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(await readFile(jsonConfigPath, "utf8"));
-  } catch (error) {
-    if (signal.aborted) {
-      throw error;
-    }
-    throw initConvertInvalidError(jsonConfigPath, [
-      error instanceof Error
-        ? (error.message.split("\n")[0] as string)
-        : String(error),
-    ]);
-  }
-
-  // "$schema" is editor tooling metadata, not config; the TypeScript format
-  // carries types through its import instead.
-  const config = stripJsonSchemaKey(parsed);
-  const normalized = normalizeComputeConfig(config, jsonConfigPath);
-  if (normalized.isErr()) {
-    throw initConvertInvalidError(jsonConfigPath, normalized.error.issues);
-  }
-  const loaded = normalized.value;
+  const { config, loaded } = await readConvertibleJsonConfig(
+    jsonConfigPath,
+    signal,
+  );
 
   const tsConfigPath = path.join(loaded.configDir, COMPUTE_CONFIG_FILENAME);
   const source = serializeComputeConfig(config as ComputeConfig);
 
   signal.throwIfAborted();
-  try {
-    // wx: fail instead of clobbering a config that appeared since discovery.
-    await writeFile(tsConfigPath, source, { encoding: "utf8", flag: "wx" });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-      throw initConfigExistsError(tsConfigPath);
-    }
-    throw error;
-  }
-  try {
-    await rm(jsonConfigPath);
-  } catch (error) {
-    // Two coexisting config files are a hard loader error, so a failed
-    // delete rolls the write back and leaves the JSON config untouched.
-    try {
-      await rm(tsConfigPath, { force: true });
-    } catch {
-      throw initConvertIncompleteError(jsonConfigPath, tsConfigPath);
-    }
-    throw error;
-  }
+  await writeInitConfigFile(tsConfigPath, source);
+  await removeConvertedJsonConfig(jsonConfigPath, tsConfigPath);
 
   const settings = conversionSettings(loaded);
   renderInitSettingsPreview(context, settings);
@@ -606,9 +698,6 @@ async function runInitConversion(
     ...(await maybePromptForAgentSetup(stepContext, loaded.configDir)),
   );
 
-  const unlinked = link.status !== "already-linked" && link.status !== "linked";
-  const typesMissing =
-    types.status !== "installed" && types.status !== "already-installed";
   return {
     command: "init",
     result: {
@@ -622,12 +711,55 @@ async function runInitConversion(
       link,
     },
     warnings,
-    nextSteps: [
-      ...(typesMissing && types.installCommand ? [types.installCommand] : []),
-      formatCommand(["app", "deploy"]),
-      ...(unlinked ? [formatCommand(["project", "link"])] : []),
-    ],
+    nextSteps: initNextSteps(types, link, formatCommand),
   };
+}
+
+/**
+ * The JSON config a conversion transports: its parsed contents, plus the
+ * normalized view the preview and result are built from.
+ */
+async function readConvertibleJsonConfig(
+  jsonConfigPath: string,
+  signal: AbortSignal,
+): Promise<{ config: unknown; loaded: LoadedComputeConfig }> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(jsonConfigPath, "utf8"));
+  } catch (error) {
+    if (signal.aborted) {
+      throw error;
+    }
+    throw initConvertInvalidError(jsonConfigPath, [firstErrorLine(error)]);
+  }
+
+  // "$schema" is editor tooling metadata, not config; the TypeScript format
+  // carries types through its import instead.
+  const config = stripJsonSchemaKey(parsed);
+  const normalized = normalizeComputeConfig(config, jsonConfigPath);
+  if (normalized.isErr()) {
+    throw initConvertInvalidError(jsonConfigPath, normalized.error.issues);
+  }
+
+  return { config, loaded: normalized.value };
+}
+
+async function removeConvertedJsonConfig(
+  jsonConfigPath: string,
+  tsConfigPath: string,
+): Promise<void> {
+  try {
+    await rm(jsonConfigPath);
+  } catch (error) {
+    // Two coexisting config files are a hard loader error, so a failed
+    // delete rolls the write back and leaves the JSON config untouched.
+    try {
+      await rm(tsConfigPath, { force: true });
+    } catch {
+      throw initConvertIncompleteError(jsonConfigPath, tsConfigPath);
+    }
+    throw error;
+  }
 }
 
 /** The same command context, acting from `cwd` instead of the invocation directory. */
@@ -1006,35 +1138,59 @@ async function resolveInitLink(
     return { status: "already-linked", project: null };
   }
 
-  if (flags.link === false) {
-    return { status: "skipped", project: null };
-  }
-
   const explicitProject = flags.project?.trim();
-  let shouldLink = Boolean(explicitProject) || flags.link === true;
-  if (!shouldLink) {
-    if (!canPrompt(context) || context.flags.yes) {
-      return { status: "skipped", project: null };
-    }
-    try {
-      shouldLink = await confirmPrompt({
-        input: context.runtime.stdin,
-        output: context.output.stderr,
-        signal: context.runtime.signal,
-        message: "Link this directory to a Prisma Project now?",
-        initialValue: true,
-      });
-    } catch (error) {
-      if (isPromptCancelError(error)) {
-        return { status: "declined", project: null };
-      }
-      throw error;
-    }
-    if (!shouldLink) {
-      return { status: "declined", project: null };
-    }
+  const decision = await resolveProjectLinkDecision(
+    context,
+    flags,
+    explicitProject,
+  );
+  if (decision !== "link") {
+    return { status: decision, project: null };
   }
 
+  return attemptProjectLink(context, explicitProject, hooks);
+}
+
+async function resolveProjectLinkDecision(
+  context: CommandContext,
+  flags: InitFlags,
+  explicitProject: string | undefined,
+): Promise<"link" | "skipped" | "declined"> {
+  if (flags.link === false) {
+    return "skipped";
+  }
+  if (explicitProject || flags.link === true) {
+    return "link";
+  }
+  if (!canPrompt(context) || context.flags.yes) {
+    return "skipped";
+  }
+
+  try {
+    const confirmed = await confirmPrompt({
+      input: context.runtime.stdin,
+      output: context.output.stderr,
+      signal: context.runtime.signal,
+      message: "Link this directory to a Prisma Project now?",
+      initialValue: true,
+    });
+    return confirmed ? "link" : "declined";
+  } catch (error) {
+    if (isPromptCancelError(error)) {
+      return "declined";
+    }
+    throw error;
+  }
+}
+
+async function attemptProjectLink(
+  context: CommandContext,
+  explicitProject: string | undefined,
+  hooks: {
+    onWarning: (message: string) => void;
+    formatCommand: PrismaCliPackageCommandFormatter;
+  },
+): Promise<InitLinkState> {
   try {
     const linked = await runProjectLink(context, explicitProject || undefined);
     return {
@@ -1057,6 +1213,10 @@ async function resolveInitLink(
     }
     throw error;
   }
+}
+
+function firstErrorLine(error: unknown): string {
+  return error instanceof Error ? error.message.split("\n")[0] : String(error);
 }
 
 function formatInitDirectory(cwd: string): string {

@@ -48,7 +48,7 @@ export const bucketCreateCommand = defineCommand({
             human: () => [
               {
                 kind: "summary",
-                tone: "ok",
+                status: "ok",
                 text: `Created bucket "${bucket.name}" in ${bucketTargetLabel(projectName, bucket.branchId)}.`,
               },
             ],

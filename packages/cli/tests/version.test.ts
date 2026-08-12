@@ -10,7 +10,6 @@ import { createTempCwd, executeCli } from "./helpers";
 
 const requireFromHere = createRequire(import.meta.url);
 const pkg = requireFromHere("../package.json") as { version: string };
-const fixturePath = path.resolve("fixtures/mock-api.json");
 
 describe("version", () => {
   it("prints the CLI version to stdout when --version is passed", async () => {
@@ -152,7 +151,6 @@ describe("version", () => {
       argv: ["--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(result.exitCode).toBe(0);

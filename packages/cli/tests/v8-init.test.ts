@@ -359,7 +359,7 @@ describe("init writes the config", () => {
     expect(result.stdout).toBe("prisma.compute.ts\n");
     expect(result.presented?.presentation.human).toContainEqual({
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: "Wrote prisma.compute.ts",
     });
   });
@@ -425,6 +425,7 @@ describe("init refuses to clobber", () => {
       ["init", "--framework", "hono", "--json"],
       ["init", "--framework", "hono", "--config-format", "json", "--json"],
     ]) {
+      // biome-ignore lint/performance/noAwaitInLoops: both spellings run in the same sandbox directory, so the first must settle before the second checks the same file.
       const result = await run(argv);
       expect(result.exitCode).toBe(2);
       expect(errorOf(result).code).toBe("INIT.CONFIG_EXISTS");
@@ -494,6 +495,7 @@ describe("init argument validation", () => {
     ];
 
     for (const [argv, code] of cases) {
+      // biome-ignore lint/performance/noAwaitInLoops: the cases share one sandbox, and the per-case failure message needs them one at a time.
       const result = await run(argv);
       expect(result.exitCode, code).toBe(2);
       expect(errorOf(result).code).toBe(code);
@@ -1175,7 +1177,7 @@ describe("init conversion", () => {
     expect(result.exitCode).toBe(0);
     expect(result.presented?.presentation.human).toContainEqual({
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: "Converted prisma.compute.json to prisma.compute.ts",
     });
   });

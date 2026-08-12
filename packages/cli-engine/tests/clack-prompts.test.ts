@@ -14,6 +14,8 @@ import {
 import { ok } from "@prisma/cli-engine/protocol";
 import { describe, expect, test } from "vitest";
 
+const ANSWER_LINE = /answer=(.*)\n/;
+
 const DOWN = "\x1b[B";
 const ENTER = "\r";
 const CTRL_C = "\x03";
@@ -58,7 +60,7 @@ function promptCli(run: (prompt: PromptSurface) => Promise<unknown>) {
             human: (): readonly Block[] => [
               {
                 kind: "summary",
-                tone: "ok",
+                status: "ok",
                 text: `answer=${JSON.stringify(answer)}`,
               },
             ],
@@ -102,9 +104,12 @@ async function runInteractive(
       throw new Error(`runtime.exit(${code})`);
     },
     onSignal: () => () => {},
-    config: { sections: {}, diagnostics: [] },
+    loadConfig: async () => ({
+      path: "/prisma.config.ts",
+      sections: {},
+      diagnostics: [],
+    }),
     managementApi: { baseUrl: "https://test.invalid" },
-    packageManager: "unknown",
     host: {
       runtime: { name: "node", version: "v22.12.0" },
       platform: "linux",
@@ -118,7 +123,7 @@ async function runInteractive(
 }
 
 function answerIn(plainStderr: string): string | undefined {
-  const match = plainStderr.match(/answer=(.*)\n/);
+  const match = plainStderr.match(ANSWER_LINE);
   return match?.[1];
 }
 

@@ -39,7 +39,7 @@ const TITLE = "Replacing the environment variable's value.";
 function singlePresentations(result: EnvUpdateResult): Presentations {
   return {
     human: (): Block[] => [
-      { kind: "summary", tone: "info", text: TITLE },
+      { kind: "summary", status: "info", text: TITLE },
       {
         kind: "fields",
         rows: variableFieldRows(

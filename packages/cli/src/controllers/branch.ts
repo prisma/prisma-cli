@@ -17,17 +17,8 @@ import type {
   BranchRole,
   BranchSummary,
 } from "../types/branch";
-import { createBranchUseCases } from "../use-cases/branch";
-import { createCliUseCaseGateways } from "../use-cases/create-cli-gateways";
 import { requireAuthenticatedAuthState } from "./auth";
 import { listRealWorkspaceProjects } from "./project";
-
-function isRealMode(context: CommandContext): boolean {
-  return (
-    !context.runtime.fixturePath &&
-    !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH
-  );
-}
 
 export interface RawBranchRecord {
   id: string;
@@ -38,21 +29,9 @@ export interface RawBranchRecord {
 export async function runBranchList(
   context: CommandContext,
 ): Promise<CommandSuccess<BranchListResult>> {
-  if (isRealMode(context)) {
-    return {
-      command: "branch.list",
-      result: await listRealBranches(context),
-      warnings: [],
-      nextSteps: [],
-    };
-  }
-
-  const useCases = createBranchUseCases(createCliUseCaseGateways(context));
-  const result = await useCases.list();
-
   return {
     command: "branch.list",
-    result,
+    result: await listRealBranches(context),
     warnings: [],
     nextSteps: [],
   };
@@ -79,7 +58,7 @@ async function listRealBranches(
     context,
     workspace,
     listProjects: () =>
-      listRealWorkspaceProjects(client, workspace, context.runtime.signal),
+      listRealWorkspaceProjects(client, context.runtime.signal),
   });
   if (targetResult.isErr()) {
     throw projectResolutionErrorToCliError(targetResult.error);

@@ -26,7 +26,7 @@ const PROJECTS = [
   {
     id: "proj_1",
     name: "Billing",
-    workspace: { id: "ws_1", name: "Acme Inc" },
+    workspace: { id: "wksp_ws_1", name: "Acme Inc" },
   },
 ];
 
@@ -188,7 +188,7 @@ describe("prisma-v8 bucket list", () => {
     expect(blocks(result.presented)).toEqual([
       {
         kind: "summary",
-        tone: "info",
+        status: "info",
         text: "Listing object-store buckets for the resolved project.",
       },
       { kind: "fields", rows: [{ label: "project", value: "Billing" }] },
@@ -327,7 +327,7 @@ describe("prisma-v8 bucket create", () => {
     expect(blocks(result.presented)).toEqual([
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: 'Created bucket "assets" in Billing / main.',
       },
     ]);
@@ -354,7 +354,7 @@ describe("prisma-v8 bucket create", () => {
     expect(blocks(result.presented)).toEqual([
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: 'Created bucket "uploads" in Billing.',
       },
     ]);
@@ -441,7 +441,7 @@ describe("prisma-v8 bucket delete", () => {
       ),
     ).toBe(true);
     expect(blocks(result.presented)).toEqual([
-      { kind: "summary", tone: "ok", text: "Deleting object-store bucket." },
+      { kind: "summary", status: "ok", text: "Deleting object-store bucket." },
       { kind: "fields", rows: [{ label: "bucket", value: "bkt_1" }] },
       {
         kind: "list",
@@ -595,7 +595,7 @@ describe("prisma-v8 bucket key list", () => {
     expect(blocks(result.presented)).toEqual([
       {
         kind: "summary",
-        tone: "info",
+        status: "info",
         text: "Listing access keys for bucket.",
       },
       { kind: "fields", rows: [{ label: "bucket", value: "bkt_1" }] },
@@ -720,7 +720,7 @@ describe("prisma-v8 bucket key create", () => {
     expect(blocks(result.presented)).toEqual([
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: 'Created key "ci-key" for bucket "assets".',
       },
       {
@@ -877,7 +877,7 @@ describe("prisma-v8 bucket key delete", () => {
       ),
     ).toBe(true);
     expect(blocks(result.presented)).toEqual([
-      { kind: "summary", tone: "ok", text: "Deleting bucket access key." },
+      { kind: "summary", status: "ok", text: "Deleting bucket access key." },
       { kind: "fields", rows: [{ label: "key", value: "bkey_1" }] },
       { kind: "list", items: ["The access key was revoked and removed."] },
     ]);

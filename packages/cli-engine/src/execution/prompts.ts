@@ -28,6 +28,7 @@ import {
   clackCapable,
   makeClackRenderer,
 } from "./clack-renderer";
+import { constructionError } from "./command-tree";
 import type { Invocation, RunState } from "./engine";
 import { announceUrl } from "./open-url";
 
@@ -54,22 +55,33 @@ function makeLineReader(
   const decoder = new TextDecoder();
   let buffer = "";
   let done = false;
+  const takeBufferedLine = (): string | undefined => {
+    const newline = buffer.indexOf("\n");
+    if (newline === -1) {
+      return undefined;
+    }
+    const line = buffer.slice(0, newline);
+    buffer = buffer.slice(newline + 1);
+    return line.endsWith("\r") ? line.slice(0, -1) : line;
+  };
+  const takeFinalLine = (): string | undefined => {
+    if (buffer.length === 0) {
+      return undefined;
+    }
+    const line = buffer;
+    buffer = "";
+    return line;
+  };
   return async () => {
     for (;;) {
-      const newline = buffer.indexOf("\n");
-      if (newline !== -1) {
-        const line = buffer.slice(0, newline);
-        buffer = buffer.slice(newline + 1);
-        return line.endsWith("\r") ? line.slice(0, -1) : line;
+      const buffered = takeBufferedLine();
+      if (buffered !== undefined) {
+        return buffered;
       }
       if (done) {
-        if (buffer.length > 0) {
-          const line = buffer;
-          buffer = "";
-          return line;
-        }
-        return undefined;
+        return takeFinalLine();
       }
+      // biome-ignore lint/performance/noAwaitInLoops: stdin is pulled one chunk at a time until a newline turns up; asking for the next chunk before the current one has been appended to the buffer would reorder the user's input.
       const next = await iterator.next();
       if (next.done === true) {
         done = true;
@@ -106,6 +118,19 @@ function promptUnanswerable(
       ],
     },
   );
+}
+
+/** What a prompt resolves to when it cannot be shown: its declared
+ *  default, or a halt when it has none. */
+function answerWithoutAsking<T>(
+  question: string,
+  fallback: T | undefined,
+  state: RunState,
+): T {
+  if (fallback === undefined) {
+    throw promptUnanswerable(question, state);
+  }
+  return fallback;
 }
 
 function consentUnavailable(
@@ -311,14 +336,67 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
     return true;
   };
 
-  return {
+  const askSelect = async <T extends string>(
+    question: string,
+    options: ReadonlyArray<{ value: T; label: string }>,
+    fallback: T | undefined,
+  ): Promise<T> => {
+    const rendered = [
+      `? ${question}`,
+      ...options.map(
+        (option) =>
+          `  ${option.value === fallback ? "▸" : " "} ${option.value}: ${option.label}`,
+      ),
+      "> ",
+    ].join("\n");
+    const raw = await ask(question, rendered);
+    if (typeof raw !== "string") {
+      throw promptInvalid(question, String(raw));
+    }
+    const answer = raw.trim();
+    if (answer === "") {
+      if (fallback === undefined) {
+        throw promptInvalid(question, raw);
+      }
+      return fallback;
+    }
+    const match = options.find((option) => option.value === answer);
+    if (match === undefined) {
+      throw promptInvalid(question, raw);
+    }
+    return match.value;
+  };
+
+  const askText = async (
+    question: string,
+    fallback: string | undefined,
+  ): Promise<string> => {
+    const hint = fallback === undefined ? "" : ` (${fallback})`;
+    const raw = await ask(question, `? ${question}${hint} `);
+    if (typeof raw !== "string") {
+      throw promptInvalid(question, String(raw));
+    }
+    if (raw === "") {
+      return fallback ?? "";
+    }
+    return raw;
+  };
+
+  /** A prompt writes to stderr and reads the engine's stdin — the same
+   *  terminal a live child inherited. Like ctx.present, prompting while
+   *  a child owns the terminal is a construction error. */
+  const requireOwnTerminal = (): void => {
+    if (state.delegatedTerminal !== undefined) {
+      throw constructionError(
+        `command '${state.commandId}' called ctx.prompt while a child owned the terminal`,
+      );
+    }
+  };
+  const surface: PromptSurface = {
     confirm: async (question, opts) => {
       const fallback = opts?.default;
       if (state.yes || !state.interactive) {
-        if (fallback === undefined) {
-          throw promptUnanswerable(question, state);
-        }
-        return fallback;
+        return answerWithoutAsking(question, fallback, state);
       }
       if (useClack()) {
         return renderWithClack(question, (r) => r.confirm(question, fallback));
@@ -352,64 +430,27 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
     select: async (question, options, opts) => {
       const fallback = opts?.default;
       if (state.yes || !state.interactive) {
-        if (fallback === undefined) {
-          throw promptUnanswerable(question, state);
-        }
-        return fallback;
+        return answerWithoutAsking(question, fallback, state);
       }
       if (useClack()) {
         return renderWithClack(question, (r) =>
           r.select(question, options, fallback),
         );
       }
-      const rendered = [
-        `? ${question}`,
-        ...options.map(
-          (option) =>
-            `  ${option.value === fallback ? "▸" : " "} ${option.value}: ${option.label}`,
-        ),
-        "> ",
-      ].join("\n");
-      const raw = await ask(question, rendered);
-      if (typeof raw !== "string") {
-        throw promptInvalid(question, String(raw));
-      }
-      const answer = raw.trim();
-      if (answer === "") {
-        if (fallback === undefined) {
-          throw promptInvalid(question, raw);
-        }
-        return fallback;
-      }
-      const match = options.find((option) => option.value === answer);
-      if (match === undefined) {
-        throw promptInvalid(question, raw);
-      }
-      return match.value;
+      return askSelect(question, options, fallback);
     },
     text: async (question, opts) => {
       const fallback = opts?.default;
       if (state.yes || !state.interactive) {
-        if (fallback === undefined) {
-          throw promptUnanswerable(question, state);
-        }
-        return fallback;
+        return answerWithoutAsking(question, fallback, state);
       }
-      if (useClack()) {
-        const value = await renderWithClack<string>(question, (r) =>
-          r.text(question, opts?.placeholder, fallback),
-        );
-        return value === "" ? (fallback ?? "") : value;
+      if (!useClack()) {
+        return askText(question, fallback);
       }
-      const hint = fallback === undefined ? "" : ` (${fallback})`;
-      const raw = await ask(question, `? ${question}${hint} `);
-      if (typeof raw !== "string") {
-        throw promptInvalid(question, String(raw));
-      }
-      if (raw === "") {
-        return fallback ?? "";
-      }
-      return raw;
+      const value = await renderWithClack<string>(question, (r) =>
+        r.text(question, opts?.placeholder, fallback),
+      );
+      return value === "" ? (fallback ?? "") : value;
     },
     browserWait: async ({ url, message, poll, timeout, interval }) => {
       if (!state.interactive) {
@@ -421,6 +462,7 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
         if (invocation.signal.aborted) {
           throw promptCancelled(message);
         }
+        // biome-ignore lint/performance/noAwaitInLoops: polling waits for the browser to finish; each poll must observe the state left by the one before it, and the delay below is what keeps the request rate down.
         if (await poll(invocation.signal)) {
           return;
         }
@@ -433,5 +475,31 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
         );
       }
     },
+  };
+  /** The claim is taken synchronously, before the prompt's first await:
+   *  a handler that starts a prompt without awaiting it has already
+   *  begun reading stdin, so ctx.spawn must not hand the same terminal
+   *  to a child. */
+  const claimTerminal = async <T>(prompt: () => Promise<T>): Promise<T> => {
+    requireOwnTerminal();
+    state.activePrompts += 1;
+    try {
+      return await prompt();
+    } finally {
+      state.activePrompts -= 1;
+    }
+  };
+  return {
+    confirm: (question, opts) =>
+      claimTerminal(() => surface.confirm(question, opts)),
+    consent: (question, opts) =>
+      claimTerminal(() => surface.consent(question, opts)),
+    select: <T extends string>(
+      question: string,
+      options: ReadonlyArray<{ value: T; label: string }>,
+      opts?: { readonly default?: T },
+    ) => claimTerminal(() => surface.select(question, options, opts)),
+    text: (question, opts) => claimTerminal(() => surface.text(question, opts)),
+    browserWait: (request) => claimTerminal(() => surface.browserWait(request)),
   };
 }

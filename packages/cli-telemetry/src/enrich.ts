@@ -80,6 +80,9 @@ function resolveRuntime(versions: VersionsSnapshot): {
   return { name: "node", version: versions.node };
 }
 
+const WHITESPACE = /\s+/;
+const SEMVER_RANGE_PREFIX = /^[\^~]/;
+
 /**
  * Parse `npm_config_user_agent` into a `<pm>/<version>` token. The
  * value, when present, looks like
@@ -90,7 +93,7 @@ export function parsePackageManager(
   userAgent: string | undefined,
 ): string | null {
   if (userAgent === undefined) return null;
-  const first = userAgent.split(/\s+/)[0];
+  const first = userAgent.split(WHITESPACE)[0];
   if (first === undefined || first.length === 0) return null;
   if (!first.includes("/")) return null;
   return first;
@@ -114,17 +117,16 @@ export function readTsVersionFromPackageJson(
     return null;
   }
   const candidate =
-    pickStringDep(parsed["devDependencies"]) ??
-    pickStringDep(parsed["dependencies"]);
+    pickStringDep(parsed.devDependencies) ?? pickStringDep(parsed.dependencies);
   if (candidate === null) return null;
-  return candidate.replace(/^[\^~]/, "");
+  return candidate.replace(SEMVER_RANGE_PREFIX, "");
 }
 
 function pickStringDep(deps: unknown): string | null {
   if (deps === null || typeof deps !== "object" || Array.isArray(deps)) {
     return null;
   }
-  const value = (deps as Record<string, unknown>)["typescript"];
+  const value = (deps as Record<string, unknown>).typescript;
   return typeof value === "string" ? value : null;
 }
 
@@ -148,7 +150,7 @@ export function buildTelemetryEvent(
     runtimeVersion: runtime.version,
     os: env.platform,
     arch: env.arch,
-    packageManager: parsePackageManager(env.env["npm_config_user_agent"]),
+    packageManager: parsePackageManager(env.env.npm_config_user_agent),
     databaseTarget: projectConfig.databaseTarget,
     tsVersion: readTsVersionFromPackageJson(env.readProjectPackageJson()),
     agent: env.agent,

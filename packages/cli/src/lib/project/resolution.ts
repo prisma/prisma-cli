@@ -8,10 +8,9 @@ import {
   type UnhandledException,
 } from "better-result";
 
-import { formatCommandArgument } from "../../shell/command-arguments";
-import { CliError } from "../../shell/errors";
-import type { NextAction } from "../../shell/next-actions";
-import type { CommandContext } from "../../shell/runtime";
+import { formatCommandArgument } from "../../command-arguments";
+import { CliError } from "../../errors";
+import type { NextAction } from "../../next-actions";
 import type { AuthWorkspace } from "../../types/auth";
 import type {
   BoundProjectShowResult,
@@ -21,6 +20,7 @@ import type {
   ProjectSource,
   ProjectSummary,
 } from "../../types/project";
+import { sameWorkspaceId } from "../workspace-id";
 import {
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
   type LocalResolutionPinReadAbortedError,
@@ -141,8 +141,19 @@ export interface InferredTargetName {
   source: InferredTargetNameSource;
 }
 
+/**
+ * What project resolution reads from its caller: where the command was
+ * invoked, and the run's abort signal. Deliberately not the shell's
+ * CommandContext — resolution needs neither its output streams nor its
+ * flags, and typing it that way forced every other caller to be, or to
+ * impersonate, the shell.
+ */
+export interface ProjectResolutionContext {
+  runtime: { cwd: string; signal: AbortSignal };
+}
+
 export interface ResolveProjectOptions {
-  context: CommandContext;
+  context: ProjectResolutionContext;
   workspace: AuthWorkspace;
   explicitProject?: string;
   envProjectId?: string;
@@ -540,8 +551,10 @@ export async function inferTargetName(
   };
 }
 
+const INFERRED_TARGET_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+
 function isValidInferredTargetName(value: string): boolean {
-  return /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(value);
+  return INFERRED_TARGET_NAME.test(value);
 }
 
 export function sortProjects<T extends Pick<ProjectCandidate, "id" | "name">>(
@@ -634,7 +647,7 @@ async function resolveBoundProjectTarget(
     return Result.ok(null);
   }
   if (localPin.kind === "present") {
-    if (localPin.pin.workspaceId !== options.workspace.id) {
+    if (!sameWorkspaceId(localPin.pin.workspaceId, options.workspace.id)) {
       return Result.err(
         new LocalProjectWorkspaceMismatchError({
           pinnedWorkspaceId: localPin.pin.workspaceId,
@@ -662,7 +675,7 @@ async function resolveBoundProjectTarget(
   const platformMapping = await resolveDurablePlatformMapping();
   if (
     platformMapping &&
-    platformMapping.workspace.id === options.workspace.id
+    sameWorkspaceId(platformMapping.workspace.id, options.workspace.id)
   ) {
     return Result.ok(
       resolvedTarget(options.workspace, platformMapping, "platform-mapping", {
@@ -701,7 +714,7 @@ async function readImplicitLocalPin(
   const localPin = localPinResult.value;
   if (
     localPin.kind === "present" &&
-    localPin.pin.workspaceId !== options.workspace.id
+    !sameWorkspaceId(localPin.pin.workspaceId, options.workspace.id)
   ) {
     return Result.err(
       new LocalProjectWorkspaceMismatchError({

@@ -61,6 +61,7 @@ for (const pkg of workspacePackages) {
     continue;
   }
   const packageJsonPath = path.join(pkg.path, "package.json");
+  // biome-ignore lint/performance/noAwaitInLoops: each package prints its "Updated" line as its manifest is rewritten, so a run that fails part way through leaves an accurate record of which manifests already changed.
   const content = await fs.readFile(packageJsonPath, "utf-8");
   const packageJson: PackageJson = JSON.parse(content);
 
@@ -92,9 +93,9 @@ const trackedManifests = execSync("git ls-files -- '*package.json'", {
   .filter((abs) => !memberPaths.has(abs));
 
 for (const manifestPath of trackedManifests) {
-  const packageJson: PackageJson = JSON.parse(
-    await fs.readFile(manifestPath, "utf-8"),
-  );
+  // biome-ignore lint/performance/noAwaitInLoops: each manifest prints its "Updated" line as it is rewritten, so a run that fails part way through leaves an accurate record of which manifests already changed.
+  const content = await fs.readFile(manifestPath, "utf-8");
+  const packageJson: PackageJson = JSON.parse(content);
   if (!participatesInLockstep(packageJson)) continue;
   packageJson.version = version;
   rewriteWorkspaceDeps(packageJson, version);

@@ -4,6 +4,7 @@ import type { ManagementApiClient } from "./management-api";
 import type { Outcome, Presentations, PresentedResult } from "./presentation";
 import type { CliStructuredError, Result } from "./protocol";
 import type { Host } from "./runtime";
+import type { ChildResult, SpawnOptions } from "./spawn";
 
 /** The handler context — the whole world arrives as one argument. */
 export interface CommandContext<
@@ -45,6 +46,39 @@ export interface CommandContext<
    */
   readonly api: ManagementApiClient;
 
+  /**
+   * Hands the terminal to a child process and resolves when it ends.
+   * The child inherits stdio and runs in this process's own group
+   * (POSIX) or console (Windows), so Ctrl-C reaches it natively.
+   *
+   * While a child is live the engine neither aborts nor exits on a
+   * delivered signal: it records signals and replays them into its
+   * normal ladder once the child has ended, so the engine always
+   * outlives the child. SIGTERM, which has no native path to the child,
+   * is forwarded to it. A programmatic abort of ctx.signal terminates
+   * the child with SIGTERM, a grace period, then SIGKILL.
+   *
+   * ctx.report is buffered for the duration and flushed in order when
+   * the child ends; ctx.present during a live child, and a second
+   * concurrent ctx.spawn, are engine-internal errors. A launch failure
+   * (no such command) throws CLI.SPAWN_FAILED.
+   *
+   * Only commands declaring `maySpawn` may call it. Branch on `signal`
+   * before `exitCode`: a signal-killed child is an abort, not a
+   * failure.
+   */
+  readonly spawn: (options: SpawnOptions) => Promise<ChildResult>;
+
+  /**
+   * How the run's most recent completed child ended, or undefined when
+   * none has run. The engine records every child ctx.spawn returns, so
+   * a handler whose spawn happens deep in its own layering can still
+   * ask "did my child fail?" where it settles, without threading the
+   * result back by hand. This is the same record exitWithChildStatus
+   * settles from.
+   */
+  readonly lastChild: () => ChildResult | undefined;
+
   /** The one way to emit while running. */
   readonly report: (event: EngineEvent) => void;
 
@@ -66,6 +100,10 @@ export interface CommandContext<
    * Fires on Ctrl-C/SIGTERM (engine-owned; a second signal force-exits
    * through the runtime's exit proxy). Session commands run until it
    * fires.
+   *
+   * Once it has fired the engine settles the run at 130/143 from its
+   * own record of the signal, whatever the handler goes on to return —
+   * so cleanup code never states an exit code of its own.
    */
   readonly signal: AbortSignal;
 
@@ -85,6 +123,16 @@ export interface CommandContext<
    * platform difference do not each reinvent the lookup.
    */
   readonly host: Host;
+
+  /**
+   * Whether this run is in CI: detected from the environment the host
+   * injected, or forced by Runtime.isCIOverride. This is what telemetry
+   * gates on. It is one input to the engine's interactivity decision
+   * rather than the whole of it (which also weighs a TTY stdin and
+   * --interactive/--no-interactive), so prompts and spinners follow
+   * ctx.prompt and the engine's interaction handling, not this.
+   */
+  readonly isCI: boolean;
 
   /**
    * Conditional optional-dependency need. Resolves when the

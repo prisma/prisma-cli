@@ -3,7 +3,7 @@
   "version": "8.0.0-rc.1",
   "private": true,
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=24"
   },
   "packageManager": "pnpm@11.6.0",
   "scripts": {
@@ -11,7 +11,7 @@
     "build:cli": "turbo run build --filter=@prisma/cli",
     "build:compute": "pnpm --filter @prisma/compute build",
     "format": "biome format . --write",
-    "lint": "biome check .",
+    "lint": "biome check . --error-on-warnings",
     "lint:fix": "biome check . --write",
     "smoke:cli-nextjs": "node scripts/smoke-cli-nextjs-artifact.mjs",
     "bump-version": "node scripts/bump-version.ts",

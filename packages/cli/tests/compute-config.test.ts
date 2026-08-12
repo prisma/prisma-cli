@@ -1,8 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { defineComputeConfig } from "@prisma/compute-sdk/config";
-import { afterEach, describe, expect, it } from "vitest";
 import {
   COMPUTE_CONFIG_FILENAME,
   ComputeConfigAmbiguousError,
@@ -10,16 +8,20 @@ import {
   ComputeConfigLoadError,
   ComputeConfigTargetRequiredError,
   ComputeConfigTargetUnknownError,
+  defineComputeConfig,
+  inferComputeTargetFromCwd,
+  normalizeComputeConfig,
+  selectComputeDeployTarget,
+} from "@prisma/compute-sdk/config";
+import { afterEach, describe, expect, it } from "vitest";
+import {
   type ComputeDeployTarget,
   computeConfigErrorToCliError,
   computeFrameworkToBuildType,
-  inferComputeTargetFromCwd,
   type LoadedComputeConfig,
   loadComputeConfig,
   mergeComputeDeployInputs,
   mergeComputeLocalInputs,
-  normalizeComputeConfig,
-  selectComputeDeployTarget,
 } from "../src/lib/app/compute-config";
 import { CliError } from "../src/shell/errors";
 
@@ -317,15 +319,9 @@ describe("selectComputeDeployTarget", () => {
 
   it("requires a target when multiple apps are configured", () => {
     const result = selectComputeDeployTarget(multi, undefined);
-    expect(result.isErr() && result.error).toBeInstanceOf(
-      ComputeConfigTargetRequiredError,
-    );
-    if (
-      result.isErr() &&
-      result.error instanceof ComputeConfigTargetRequiredError
-    ) {
-      expect(result.error.availableTargets).toEqual(["web", "worker"]);
-    }
+    const error = result.isErr() ? result.error : undefined;
+    expect(error).toBeInstanceOf(ComputeConfigTargetRequiredError);
+    expect(error).toMatchObject({ availableTargets: ["web", "worker"] });
   });
 
   it("selects a multi-app target by key", () => {

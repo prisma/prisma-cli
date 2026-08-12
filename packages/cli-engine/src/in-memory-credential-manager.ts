@@ -22,7 +22,6 @@ import {
 import type {
   ActiveCredential,
   Credential,
-  CredentialIdentity,
   CredentialManager,
   Session,
   StoredSessions,
@@ -31,7 +30,6 @@ import type { TokenStorage } from "./management-api";
 import {
   claimedExpiresAt,
   claimedIdentity,
-  claimedWorkspaceId,
   credentialWorkspaceId,
 } from "./token-claims";
 
@@ -168,7 +166,7 @@ export class InMemoryCredentialManager implements CredentialManager {
     this.selection = seed.selectedWorkspaceId;
     this.environmentCredential = seed.environmentCredential;
     if (seed.credential !== undefined) {
-      const workspaceId = claimedWorkspaceId(seed.credential.token);
+      const workspaceId = credentialWorkspaceId(seed.credential.token);
       if (workspaceId === undefined) {
         throw new Error(
           "@prisma/cli-engine/testing: the `credential` seed runs createSession's claims derivation — the token must be a JWT with `workspace_id` (use mintTestJwt)",
@@ -264,6 +262,19 @@ export class InMemoryCredentialManager implements CredentialManager {
     return this.activeStorage;
   }
 
+  /** The spawn path's read: the active credential's access token,
+   *  fresh on every call, never the refresh token. Null when there is
+   *  no active credential to read — storage exists only once
+   *  activeCredential() has returned non-null. */
+  async activeAccessToken(): Promise<string | null> {
+    if ((await this.activeCredential()) === null) {
+      return null;
+    }
+    const storage = await this.activeCredentialStorage();
+    const tokens = await storage.getTokens();
+    return tokens === null ? null : tokens.accessToken;
+  }
+
   private buildActiveStorage(): TokenStorage {
     const pin = this.pin;
     if (pin.kind === "environment") {
@@ -304,7 +315,7 @@ export class InMemoryCredentialManager implements CredentialManager {
           // production mapping rather than a harness-only shape.
           throw credentialsRequiredError("session-ended");
         }
-        const claimed = claimedWorkspaceId(tokens.accessToken);
+        const claimed = credentialWorkspaceId(tokens.accessToken);
         if (claimed !== undefined && claimed !== workspaceId) {
           throw credentialWorkspaceMismatchError(workspaceId);
         }
@@ -408,7 +419,7 @@ export class InMemoryCredentialManager implements CredentialManager {
     credential: Credential,
     workspaceId: string,
   ): Session {
-    const claimed = claimedWorkspaceId(credential.token);
+    const claimed = credentialWorkspaceId(credential.token);
     if (claimed !== undefined && claimed !== workspaceId) {
       throw credentialWorkspaceMismatchError(workspaceId);
     }

@@ -17,7 +17,11 @@ import {
   resolvePostgresContext,
 } from "./context";
 import { mapPostgresOperationError } from "./errors";
-import type { FieldRow } from "./presentation";
+import {
+  type FieldRow,
+  formatUsageMetric,
+  usageMetricValue,
+} from "./presentation";
 
 const TITLE = "Showing database usage metrics.";
 
@@ -32,12 +36,9 @@ function fieldRows(result: DatabaseUsageResult): FieldRow[] {
     },
     {
       label: "operations",
-      value: `${result.metrics.operations.used} ${result.metrics.operations.unit}`,
+      value: formatUsageMetric(result.metrics.operations),
     },
-    {
-      label: "storage",
-      value: `${result.metrics.storage.used} ${result.metrics.storage.unit}`,
-    },
+    { label: "storage", value: formatUsageMetric(result.metrics.storage) },
     { label: "generated", value: result.generatedAt || "unknown" },
   ];
 }
@@ -54,8 +55,11 @@ function stdoutFieldRows(result: DatabaseUsageResult): FieldRow[] {
     { label: "id", value: result.database.id },
     { label: "period start", value: result.period.start || "" },
     { label: "period end", value: result.period.end || "" },
-    { label: "operations", value: String(result.metrics.operations.used) },
-    { label: "storage", value: String(result.metrics.storage.used) },
+    {
+      label: "operations",
+      value: usageMetricValue(result.metrics.operations),
+    },
+    { label: "storage", value: usageMetricValue(result.metrics.storage) },
     { label: "generated", value: result.generatedAt || "" },
   ];
 }
@@ -64,7 +68,7 @@ function usagePresentations(result: DatabaseUsageResult): Presentations {
   const rows = fieldRows(result);
   return {
     human: (): Block[] => [
-      { kind: "summary", tone: "info", text: TITLE },
+      { kind: "summary", status: "info", text: TITLE },
       { kind: "fields", rows },
     ],
     stdout: () =>

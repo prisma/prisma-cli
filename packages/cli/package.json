@@ -18,7 +18,7 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.18.0"
   },
   "keywords": [
     "prisma",
@@ -41,17 +41,18 @@
     "build": "tsdown",
     "prepack": "pnpm run build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
     "@clack/prompts": "1.5.0",
     "@prisma/cli-engine": "workspace:8.0.0-rc.1",
+    "@prisma/composer": "0.6.0-dev.16",
     "@prisma/compute-sdk": "0.39.0",
     "@prisma/credentials-store": "^7.8.0",
     "@prisma/management-api-sdk": "1.55.0",
     "@vercel/detect-agent": "^1.2.3",
     "better-result": "^2.9.2",
-    "ci-info": "^4.3.1",
     "colorette": "^2.0.20",
     "commander": "^14.0.3",
     "dotenv": "^17.4.2",

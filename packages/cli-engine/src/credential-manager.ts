@@ -1,5 +1,12 @@
 import type { TokenStorage } from "./management-api";
 
+/** The environment variables that supply a credential to a process: a
+ *  service token, plus the workspace it acts in when the token's own
+ *  claims name none. EnvironmentCredentialManager reads the pair; the
+ *  spawn path writes it into a child's environment. */
+export const SERVICE_TOKEN_ENV_VAR = "PRISMA_SERVICE_TOKEN";
+export const WORKSPACE_ID_ENV_VAR = "PRISMA_WORKSPACE_ID";
+
 /**
  * The proof material. Seen by the login flow (which mints it),
  * createSession (which stores it), and the engine (which authenticates
@@ -125,6 +132,21 @@ export interface CredentialManager {
    * already ruled there is one credential per process, and an
    * environment credential may have no workspace id to key on. Only
    * valid once `activeCredential()` has returned non-null.
+   *
+   * The engine forwards the storage into SDK client config and never
+   * calls its methods itself — no exceptions. The engine's own read of
+   * token material goes through `activeAccessToken()`.
    */
   activeCredentialStorage(): Promise<TokenStorage>;
+
+  /**
+   * ENGINE-FACING. The active credential's ACCESS token, read fresh on
+   * every call, for handing to a child process that authenticates as
+   * this process does. Never the refresh token: the child gets a
+   * snapshot it cannot refresh. Null when the material is gone (the
+   * session ended). Single consumer: ctx.spawn's credential injection
+   * (credential-manager-design.md §11.5) — the read builds no second
+   * API client, so the one-client-per-process invariant holds.
+   */
+  activeAccessToken(): Promise<string | null>;
 }

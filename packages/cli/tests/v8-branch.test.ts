@@ -21,7 +21,7 @@ const PROJECTS = [
   {
     id: "proj_1",
     name: "Billing",
-    workspace: { id: "ws_1", name: "Acme Inc" },
+    workspace: { id: "wksp_ws_1", name: "Acme Inc" },
   },
 ];
 
@@ -141,7 +141,7 @@ describe("prisma-v8 branch list", () => {
     expect(blocks(result.presented)).toEqual([
       {
         kind: "summary",
-        tone: "info",
+        status: "info",
         text: "Listing branches for the resolved project.",
       },
       { kind: "fields", rows: [{ label: "project", value: "Billing" }] },

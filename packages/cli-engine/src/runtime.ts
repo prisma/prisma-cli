@@ -1,10 +1,17 @@
 import type { CredentialManager } from "./credential-manager";
 import type { ManagementApiClientConfig } from "./management-api";
+import type { PackageManagerId, PackageManagerRunner } from "./package-manager";
 import type { Diagnostic } from "./protocol";
+import type { SpawnChild } from "./spawn";
+import type { TelemetryPayload } from "./telemetry/payload";
 
 /** Minimal structural stream types; no NodeJS.* in the public surface. */
 export interface OutputStream {
   write(text: string): void;
+  /** The stream's terminal width, absent when it is not a terminal.
+   *  The engine reads it at render time rather than caching it, so a
+   *  terminal resized mid-run is respected by the next thing drawn. */
+  readonly columns?: number;
 }
 
 /**
@@ -29,6 +36,18 @@ export interface Runtime {
     readonly stderr: boolean;
   };
   /**
+   * Forces the answer to "is this CI", where telemetry never reports.
+   * Absent — the normal case — means the engine detects CI from `env`
+   * using ci-info's vendor table, which is why no host has to answer:
+   * unlike a TTY, CI-ness is derivable from the environment the host
+   * already injects, and every host computing the same boolean was the
+   * same detection table forked N ways. Set it only where detection
+   * cannot be right — an exotic platform, or a test that needs both
+   * sides of the branch. Absence means detected, never false, so a host
+   * that says nothing still stays silent in CI.
+   */
+  readonly isCIOverride?: boolean;
+  /**
    * Ends the process. The bin passes process.exit; the engine is the
    * only caller (second-signal force exit, 130/143).
    */
@@ -41,10 +60,15 @@ export interface Runtime {
    */
   readonly onSignal: (cb: (signal: "SIGINT" | "SIGTERM") => void) => () => void;
   /**
-   * Loaded config + file-level diagnostics; the shell builds this via
-   * the unified loader. Tests hand in fixtures.
+   * Reads prisma.config.ts, on demand. The engine calls it only when
+   * the command it is about to run declares a config section, so a run
+   * that needs no config never touches the file. `configPath` is the
+   * file `--config` named: the loader resolves it against the runtime's
+   * cwd and reports its absence. Absent means look for prisma.config.ts
+   * in cwd, where absence is not an error. The bin wires the real disk
+   * loader; tests hand in fixtures.
    */
-  readonly config: LoadedConfig;
+  readonly loadConfig: (configPath?: string) => Promise<LoadedConfig>;
   /**
    * The credential manager the bin wires. It is the only source of
    * the needs check, ctx.activeCredential, and ctx.api; absent means
@@ -66,13 +90,39 @@ export interface Runtime {
    * announces the URL instead.
    */
   readonly openUrl?: (url: string) => Promise<void> | void;
+  /**
+   * Starts a child process with inherited stdio, wired by the bin (a
+   * node:child_process adapter) so the engine never imports it. Absent
+   * means this host cannot hand the terminal to a child: a maySpawn
+   * command is refused as an internal error before its needs check and
+   * handler run, so ctx.spawn is never reached.
+   */
+  readonly spawn?: SpawnChild;
+  /**
+   * Fire-and-forget delivery of one composed telemetry payload. The bin
+   * owns the process work and the detachment, which is why the engine
+   * imports no child_process and performs no network I/O for telemetry.
+   * Absent means this host reports nothing — not an error, and the whole
+   * sequence is skipped rather than only the delivery: no config read,
+   * no disclosure, no mint.
+   */
+  readonly spawnTelemetry?: (payload: TelemetryPayload) => void;
   /** Management API endpoint config; the bin derives baseUrl from env. */
   readonly managementApi: { readonly baseUrl: string };
   /**
-   * Used by the ENGINE to phrase install commands (handlers never do —
-   * see needs.dependencies and ctx.requireDependency).
+   * A host that knows its user's package manager better than detection
+   * does. Absent — the normal case — means the engine detects it from
+   * the project at cwd.
    */
-  readonly packageManager: "npm" | "pnpm" | "yarn" | "bun" | "unknown";
+  readonly packageManager?: PackageManagerId;
+  /**
+   * Spawns the package manager the engine composed. The engine never
+   * imports child_process; this is the only way a manager runs. It is
+   * optional so a harness can exercise the no-runner path — every
+   * shipped host wires it, and a host without it can run no package
+   * operation at all.
+   */
+  readonly runPackageManager?: PackageManagerRunner;
   /** What this process is running on. The bin reads it once; commands
    *  take it from ctx.host rather than from process. */
   readonly host: Host;
@@ -106,7 +156,11 @@ export interface HostProcess {
   readonly arch: string;
   cwd(): string;
   readonly stdout: { write(text: string): unknown; isTTY?: boolean };
-  readonly stderr: { write(text: string): unknown; isTTY?: boolean };
+  readonly stderr: {
+    write(text: string): unknown;
+    isTTY?: boolean;
+    columns?: number;
+  };
   readonly stdin: {
     isTTY?: boolean;
     setRawMode?(enabled: boolean): unknown;
@@ -119,8 +173,18 @@ export interface HostProcess {
 
 export interface LoadedConfig {
   /**
+   * The file this config came from, absolute: the one `--config` named,
+   * or prisma.config.ts in cwd. A loader that found no file still names
+   * the file it looked for — with no file there are no sections, and
+   * the engine reads the path only to name the file when it reports a
+   * top-level key that is not one of the CLI's sections.
+   */
+  readonly path: string;
+  /**
    * Raw section values by name; validation happens per command via its
-   * command family's section token.
+   * command family's section token. The engine, not the loader, checks
+   * these names against the sections the CLI declares, so the closed
+   * set holds whatever loader a host wires.
    */
   readonly sections: Readonly<Record<string, unknown>>;
   /**

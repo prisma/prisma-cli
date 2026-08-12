@@ -2,10 +2,10 @@ import type { Runtime } from "../runtime";
 
 export type DebugLog = (message: string) => void;
 
-const DEBUG_ENV_VAR = "PRISMA_NEXT_DEBUG";
+const DEBUG_ENV_VAR = "PRISMA_DEBUG";
 
 /**
- * The engine's debug valve: silent unless PRISMA_NEXT_DEBUG=1 in the
+ * The engine's debug valve: silent unless PRISMA_DEBUG=1 in the
  * injected env (never process.env), writing to the injected stderr.
  * Token material never reaches it.
  */

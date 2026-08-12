@@ -1,19 +1,29 @@
+import { telemetryCommandGroup } from "@prisma/cli-engine";
 import { describe, expect, it } from "vitest";
-
+import { CLI_DOCS_URL } from "../src/cli-name";
+import { agentInstallCommand } from "../src/v8/agent/install";
+import { agentStatusCommand } from "../src/v8/agent/status";
+import { agentUpdateCommand } from "../src/v8/agent/update";
 import {
   cliGroups,
+  composerCommandFamily,
   mountedCommands,
   platformCommandFamily,
 } from "../src/v8/cli";
+import { feedbackCommand } from "../src/v8/feedback";
 import { initCommand } from "../src/v8/init/init";
-import { telemetryDisableCommand } from "../src/v8/telemetry/disable";
-import { telemetryEnableCommand } from "../src/v8/telemetry/enable";
-import { telemetryStatusCommand } from "../src/v8/telemetry/status";
 
-const SHELL_OWNED: ReadonlySet<unknown> = new Set([
-  telemetryStatusCommand,
-  telemetryEnableCommand,
-  telemetryDisableCommand,
+/**
+ * Commands that deliberately belong to no family: the engine's consent
+ * surface, which cli.ts spreads in whole, and the local utilities that
+ * contribute no config section and call no API.
+ */
+const FAMILYLESS: ReadonlySet<unknown> = new Set([
+  ...Object.values(telemetryCommandGroup({ docsUrl: CLI_DOCS_URL }).commands),
+  agentInstallCommand,
+  agentUpdateCommand,
+  agentStatusCommand,
+  feedbackCommand,
   initCommand,
 ]);
 
@@ -25,6 +35,9 @@ const SHELL_OWNED: ReadonlySet<unknown> = new Set([
  * adding its path here.
  */
 const EXPECTED_MOUNT_PATHS: readonly string[] = [
+  "agent install",
+  "agent status",
+  "agent update",
   "auth login",
   "auth logout",
   "auth whoami",
@@ -38,6 +51,12 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "bucket key delete",
   "bucket key list",
   "bucket list",
+  "build logs",
+  "composer deploy",
+  "composer destroy",
+  "composer dev",
+  "composer log",
+  "feedback",
   "git connect",
   "git disconnect",
   "init",
@@ -63,31 +82,57 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "project rename",
   "project show",
   "project transfer",
+  "service create",
+  "service deployment delete",
+  "service deployment list",
+  "service deployment promote",
+  "service deployment rollback",
+  "service deployment show",
+  "service deployment start",
+  "service deployment stop",
+  "service domain add",
+  "service domain remove",
+  "service domain retry",
+  "service domain show",
+  "service domain wait",
+  "service list",
+  "service open",
+  "service remove",
+  "service show",
   "telemetry disable",
   "telemetry enable",
   "telemetry status",
 ];
+
+const MOUNTED_FAMILIES = {
+  platform: platformCommandFamily,
+  composer: composerCommandFamily,
+};
 
 describe("prisma-v8 mount coverage", () => {
   it("mounts exactly the expected command paths", () => {
     expect(Object.keys(mountedCommands).sort()).toEqual(EXPECTED_MOUNT_PATHS);
   });
 
-  it("mounts every command in the platform family", () => {
+  it.each(
+    Object.entries(MOUNTED_FAMILIES),
+  )("mounts every command in the %s family", (_name, commandFamily) => {
     const mounted = new Set(Object.values(mountedCommands));
-    const unmounted = Object.entries(platformCommandFamily.commands)
+    const unmounted = Object.entries(commandFamily.commands)
       .filter(([, command]) => !mounted.has(command))
       .map(([key]) => key);
 
     expect(unmounted).toEqual([]);
   });
 
-  it("gives every mounted command a family, except the shell-owned ones", () => {
-    const family = new Set(Object.values(platformCommandFamily.commands));
+  it("gives every mounted command a family, except the deliberately familyless ones", () => {
+    const owned = new Set(
+      Object.values(MOUNTED_FAMILIES).flatMap((commandFamily) =>
+        Object.values(commandFamily.commands),
+      ),
+    );
     const unowned = Object.entries(mountedCommands)
-      .filter(
-        ([, command]) => !family.has(command) && !SHELL_OWNED.has(command),
-      )
+      .filter(([, command]) => !owned.has(command) && !FAMILYLESS.has(command))
       .map(([path]) => path);
 
     expect(unowned).toEqual([]);

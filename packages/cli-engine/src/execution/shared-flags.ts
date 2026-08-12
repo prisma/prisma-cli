@@ -1,7 +1,10 @@
+import { resolveIsCI } from "../ci";
 import type { Severity } from "../events";
 import type { Format } from "../presentation";
+import { CliStructuredError } from "../protocol";
 import type { Runtime } from "../runtime";
 import type { RunState } from "./engine";
+import { formatFlagGiven } from "./pre-parse-argv";
 
 /** The engine-injected shared flag family. Commands cannot declare
  *  these names or aliases; handlers never see their values. */
@@ -15,6 +18,7 @@ export const RESERVED_FLAG_NAMES: ReadonlySet<string> = new Set([
   "confirm",
   "interactive",
   "color",
+  "config",
   "help",
   "helpAll",
   "version",
@@ -81,7 +85,42 @@ export const SHARED_FLAG_PARAMETERS = {
     withNegated: true,
     brief: "Force ANSI color on or off",
   },
+  config: {
+    kind: "parsed",
+    parse: parseConfigPath,
+    placeholder: "path",
+    optional: true,
+    brief: "Read this config file instead of ./prisma.config.ts",
+  },
 } as const;
+
+/** Rejects `--config ""`, which a shell produces from
+ *  `--config "$UNSET_VAR"`. prisma/prisma treats the empty value as a
+ *  usage error rather than letting it reach the loader as an empty
+ *  path, and so does this: the parser turns the throw into the run's
+ *  usage error. */
+function parseConfigPath(input: string): string {
+  if (input === "") {
+    throw new Error("--config needs a path, and was given an empty value");
+  }
+  return input;
+}
+
+export function configFlagGivenNoValueError(): CliStructuredError {
+  return new CliStructuredError(
+    "CLI.INVALID_ARGUMENTS",
+    "--config needs a path, and was given an empty value",
+    {
+      why: "`--config=` binds the flag to an empty value.",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label: "Pass a config path: --config <path> or --config=<path>.",
+        },
+      ],
+    },
+  );
+}
 
 export const SHARED_ALIASES = { v: "verbose", q: "quiet", y: "yes" } as const;
 
@@ -95,36 +134,14 @@ export interface SharedFlags {
   readonly confirm?: readonly string[];
   readonly interactive?: boolean;
   readonly color?: boolean;
+  readonly config?: string;
 }
 
 /** The pre-parse format decision: json framing must be in effect before
  *  stricli parses (its own failure output is framed too), so the format
- *  flags are scanned from raw argv. */
+ *  flags are read from raw argv and a TTY stdout decides the rest. */
 export function sniffFormat(argv: readonly string[], runtime: Runtime): Format {
-  return explicitFormat(argv) ?? (runtime.isTty.stdout ? "human" : "json");
-}
-
-/** The format requested by --json / --format / --format=<value>, if
- *  any. Arguments after a bare `--` are positionals, never flags. */
-function explicitFormat(argv: readonly string[]): Format | undefined {
-  for (const [index, argument] of argv.entries()) {
-    if (argument === "--") {
-      return undefined;
-    }
-    if (argument === "--json" || argument === "--format=json") {
-      return "json";
-    }
-    if (argument === "--format=human") {
-      return "human";
-    }
-    if (argument === "--format") {
-      const value = argv[index + 1];
-      if (value === "json" || value === "human") {
-        return value;
-      }
-    }
-  }
-  return undefined;
+  return formatFlagGiven(argv) ?? (runtime.isTty.stdout ? "human" : "json");
 }
 
 export function applySharedFlags(
@@ -137,18 +154,37 @@ export function applySharedFlags(
   state.confirmValues = [...(shared.confirm ?? [])];
   state.interactive = shared.interactive ?? defaultInteractive(runtime);
   state.logLevel = resolveLogLevel(shared);
-  state.colorEnabled =
-    shared.color ??
-    (runtime.isTty.stdout && runtime.env.NO_COLOR === undefined);
+  state.colorEnabled = resolveColorEnabled(shared, runtime);
+  state.configPath = shared.config;
+}
+
+/**
+ * Explicit flag, then the environment, then the stream. The stream is
+ * stderr because that is where blocks render: keying off stdout meant
+ * `cmd > file` lost colour a human was watching and `cmd 2> file` kept
+ * colour nobody could see.
+ */
+function resolveColorEnabled(shared: SharedFlags, runtime: Runtime): boolean {
+  if (shared.color !== undefined) {
+    return shared.color;
+  }
+  if (runtime.env.NO_COLOR !== undefined) {
+    return false;
+  }
+  return runtime.isTty.stderr;
 }
 
 /** Interactive iff TTY stdin outside CI; --interactive and
  *  --no-interactive override in either direction. Format never decides
  *  interactivity (operator ruling, 2026-08-09): an interactive json run
  *  may prompt — the prompt UI writes to stderr, so stdout stays a clean
- *  frame stream. */
+ *  frame stream.
+ *
+ *  This asks the engine's CI detection rather than testing `CI` for
+ *  being set at all: a Jenkins, TeamCity or Azure Pipelines job sets no
+ *  `CI` variable, and used to be offered a prompt no one could answer. */
 export function defaultInteractive(runtime: Runtime): boolean {
-  return runtime.isTty.stdin && runtime.env.CI === undefined;
+  return runtime.isTty.stdin && !resolveIsCI(runtime);
 }
 
 function resolveAutoFormat(shared: SharedFlags, runtime: Runtime): Format {

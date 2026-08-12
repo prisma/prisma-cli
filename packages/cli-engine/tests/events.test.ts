@@ -69,7 +69,7 @@ const noisy = defineCommand({
         { data: { done: true } },
         {
           human: (): readonly Block[] => [
-            { kind: "summary", tone: "ok", text: "done" },
+            { kind: "summary", status: "ok", text: "done" },
           ],
           stdout: () => ["done"],
           next: () => [{ kind: "done", label: "Nothing else" }],

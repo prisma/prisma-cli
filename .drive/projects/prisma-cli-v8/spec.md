@@ -98,8 +98,11 @@ ADR 239 amendment), **prisma/composer** (Composer product integration).
   amended, ADR 245; composer ADR-0043/0044) hold everywhere.
 - The exit-code contract: 0 completed / 1 bug only / 2 errored /
   3 abort / 4–99 documented / 130,143 signals.
-- The CLI never touches a package manager (R13); optional capability =
-  optional peer dependency + engine-phrased error.
+- The CLI is never a package manager (R13, amended 2026-08-11); optional
+  capability = optional peer dependency + engine-phrased error. A command
+  may run the USER's manager, in the user's project, at their request,
+  through the engine's package operations — visible command, structured
+  failure, bin-owned execution.
 - Runtime-agnostic products (R4): context-not-environment discipline
   throughout the ports.
 - The engine design artifacts live in this project directory

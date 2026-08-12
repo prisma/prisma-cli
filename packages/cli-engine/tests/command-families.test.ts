@@ -67,6 +67,61 @@ describe("foreign-section references", () => {
   });
 });
 
+/**
+ * The config file's top-level keys are the declared section names, so a
+ * section may only be named something the file format leaves free.
+ * `$`-prefixed keys are metadata ($prismaConfig is the version marker,
+ * and a $meta key is deleted before the loader sees it), and `extends`
+ * is the key config loaders take as a merge directive. That is a
+ * construction error, raised at build time.
+ */
+describe("section names the config file reserves", () => {
+  function sectionNamed(name: string) {
+    return defineConfigSection<null>({
+      name,
+      validate: () => ({ ok: true, value: null, diagnostics: [] }),
+    });
+  }
+
+  function familyClaiming(name: string) {
+    const section = sectionNamed(name);
+    const command = configCommand(section);
+    return {
+      commandFamilies: [
+        defineCommandFamily({ configSection: section, commands: { command } }),
+      ],
+      commands: { command },
+    };
+  }
+
+  test.each([
+    "extends",
+    "__proto__",
+    "$env",
+    "$meta",
+    "$prismaConfig",
+    "$production",
+  ])("a command family claiming the section '%s' fails construction", (name) => {
+    expect(() => createTestCli(familyClaiming(name))).toThrow(
+      `command family declares config section '${name}', a name the config file reserves`,
+    );
+  });
+
+  /** The shell mounts commands with no family at all, so the check
+   *  cannot be on the families alone. */
+  test("a command with no command family claiming a reserved name fails construction too", () => {
+    const command = configCommand(sectionNamed("$env"));
+
+    expect(() => createTestCli({ commands: { command } })).toThrow(
+      "command 'command' declares config section '$env', a name the config file reserves",
+    );
+  });
+
+  test("an ordinary section name still constructs", () => {
+    expect(() => createTestCli(familyClaiming("extended"))).not.toThrow();
+  });
+});
+
 describe("docs-URL derivation", () => {
   const BASE = "https://pris.ly/cli/errors/";
 
@@ -137,7 +192,7 @@ describe("docs-URL derivation", () => {
     });
 
     expect(result.stderr).toBe(
-      `✖ [TOY.BROKEN] It broke\n  docs: ${BASE}TOY.BROKEN\n`,
+      `✘ [TOY.BROKEN] It broke\n  docs: ${BASE}TOY.BROKEN\n`,
     );
   });
 

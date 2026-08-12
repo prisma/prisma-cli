@@ -11,13 +11,11 @@ import type {
 import {
   claimedExpiresAt,
   claimedIdentity,
-  claimedWorkspaceId,
   credentialsRequiredError,
   credentialWorkspaceId,
   credentialWorkspaceMismatchError,
   noSessionForWorkspaceError,
 } from "@prisma/cli-engine";
-import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import { environmentServiceToken } from "./service-token";
 import {
   type CredentialState,
@@ -160,7 +158,7 @@ export class FileCredentialManager implements CredentialManager {
     workspaceId: string,
   ): Promise<Session> {
     const environmentInForce = this.#environmentToken() !== undefined;
-    const claimed = claimedWorkspaceId(credential.token);
+    const claimed = credentialWorkspaceId(credential.token);
     if (claimed !== undefined && claimed !== workspaceId) {
       throw credentialWorkspaceMismatchError(workspaceId);
     }
@@ -267,6 +265,19 @@ export class FileCredentialManager implements CredentialManager {
     return this.#activeStorage;
   }
 
+  /** The spawn path's read: the active credential's access token,
+   *  fresh on every call, never the refresh token. Null when there is
+   *  no active credential to read — storage exists only once
+   *  activeCredential() has returned non-null. */
+  async activeAccessToken(): Promise<string | null> {
+    if ((await this.activeCredential()) === null) {
+      return null;
+    }
+    const storage = await this.activeCredentialStorage();
+    const tokens = await storage.getTokens();
+    return tokens === null ? null : tokens.accessToken;
+  }
+
   /** §11.2: which storage is chosen once, when the pin resolves. Each
    *  has exactly one source of truth — the file, or process memory. */
   #buildActiveStorage(): TokenStorage {
@@ -314,7 +325,7 @@ export class FileCredentialManager implements CredentialManager {
 
       setTokens: async (tokens) => {
         this.#debug(`rotation write for session ${workspaceId}`);
-        const claimed = claimedWorkspaceId(tokens.accessToken);
+        const claimed = credentialWorkspaceId(tokens.accessToken);
         if (claimed !== undefined && claimed !== workspaceId) {
           throw credentialWorkspaceMismatchError(workspaceId);
         }

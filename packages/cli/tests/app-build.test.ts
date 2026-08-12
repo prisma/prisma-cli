@@ -22,7 +22,7 @@ afterEach(() => {
 describe("preview build strategy", () => {
   it("resolves inferred Next.js settings without writing any file", async () => {
     const { resolveInferredAppBuildSettings } = await import(
-      "../src/lib/app/build"
+      "../src/lib/app/build-settings"
     );
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
@@ -66,7 +66,7 @@ describe("preview build strategy", () => {
 
   it("describes the strategy-owned builds for nuxt and astro", async () => {
     const { resolveInferredAppBuildSettings } = await import(
-      "../src/lib/app/build"
+      "../src/lib/app/build-settings"
     );
     const cwd = await createTempCwd();
 
@@ -189,7 +189,7 @@ describe("preview build strategy", () => {
 
   it("infers TanStack and Hono build defaults", async () => {
     const { resolveInferredAppBuildSettings } = await import(
-      "../src/lib/app/build"
+      "../src/lib/app/build-settings"
     );
     const cwd = await createTempCwd();
     const tanstackPath = path.join(cwd, "tanstack");
@@ -251,7 +251,9 @@ describe("preview build strategy", () => {
   });
 
   it("classifies leftover prisma.app.json files for migration", async () => {
-    const { detectLegacyBuildSettings } = await import("../src/lib/app/build");
+    const { detectLegacyBuildSettings } = await import(
+      "../src/lib/app/build-settings"
+    );
     const cwd = await createTempCwd();
     const effective = {
       buildCommand: "bun run build",
@@ -299,7 +301,9 @@ describe("preview build strategy", () => {
   });
 
   it("resolves package.json build scripts and literal framework output directories", async () => {
-    const { resolveAppBuildSettings } = await import("../src/lib/app/build");
+    const { resolveAppBuildSettings } = await import(
+      "../src/lib/app/build-settings"
+    );
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
 
@@ -341,7 +345,9 @@ describe("preview build strategy", () => {
   });
 
   it("only reads Next.js distDir from the exported config object", async () => {
-    const { resolveAppBuildSettings } = await import("../src/lib/app/build");
+    const { resolveAppBuildSettings } = await import(
+      "../src/lib/app/build-settings"
+    );
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
 
@@ -385,7 +391,9 @@ describe("preview build strategy", () => {
   });
 
   it("ignores commented or unrelated Next.js distDir values", async () => {
-    const { resolveAppBuildSettings } = await import("../src/lib/app/build");
+    const { resolveAppBuildSettings } = await import(
+      "../src/lib/app/build-settings"
+    );
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
 
@@ -429,7 +437,9 @@ describe("preview build strategy", () => {
   });
 
   it("detects the package manager for package.json build scripts", async () => {
-    const { resolveAppBuildSettings } = await import("../src/lib/app/build");
+    const { resolveAppBuildSettings } = await import(
+      "../src/lib/app/build-settings"
+    );
     const cases = [
       { lockfile: "bun.lock", command: "bun run build" },
       { lockfile: "pnpm-lock.yaml", command: "pnpm run build" },
@@ -437,43 +447,47 @@ describe("preview build strategy", () => {
       { lockfile: "package-lock.json", command: "npm run build" },
     ];
 
-    for (const testCase of cases) {
-      const cwd = await createTempCwd();
-      const appPath = path.join(cwd, "app");
+    await Promise.all(
+      cases.map(async (testCase) => {
+        const cwd = await createTempCwd();
+        const appPath = path.join(cwd, "app");
 
-      await mkdir(appPath, { recursive: true });
-      await writeFile(
-        path.join(appPath, "package.json"),
-        JSON.stringify(
-          {
-            scripts: {
-              build: "next build",
+        await mkdir(appPath, { recursive: true });
+        await writeFile(
+          path.join(appPath, "package.json"),
+          JSON.stringify(
+            {
+              scripts: {
+                build: "next build",
+              },
+              dependencies: {
+                next: "15.0.0",
+              },
             },
-            dependencies: {
-              next: "15.0.0",
-            },
-          },
-          null,
-          2,
-        ),
-        "utf8",
-      );
-      await writeFile(path.join(appPath, testCase.lockfile), "", "utf8");
+            null,
+            2,
+          ),
+          "utf8",
+        );
+        await writeFile(path.join(appPath, testCase.lockfile), "", "utf8");
 
-      await expect(
-        resolveAppBuildSettings({
-          appPath,
-          buildType: "nextjs",
-        }),
-      ).resolves.toMatchObject({
-        buildCommand: testCase.command,
-        buildCommandSource: "package.json scripts.build",
-      });
-    }
+        await expect(
+          resolveAppBuildSettings({
+            appPath,
+            buildType: "nextjs",
+          }),
+        ).resolves.toMatchObject({
+          buildCommand: testCase.command,
+          buildCommandSource: "package.json scripts.build",
+        });
+      }),
+    );
   });
 
   it("detects the package manager from the workspace root for app build scripts", async () => {
-    const { resolveAppBuildSettings } = await import("../src/lib/app/build");
+    const { resolveAppBuildSettings } = await import(
+      "../src/lib/app/build-settings"
+    );
     const cases = [
       {
         rootFiles: ["pnpm-workspace.yaml", "pnpm-lock.yaml"],
@@ -491,52 +505,58 @@ describe("preview build strategy", () => {
       },
     ];
 
-    for (const testCase of cases) {
-      const cwd = await createTempCwd();
-      const appPath = path.join(cwd, "apps", "web");
+    await Promise.all(
+      cases.map(async (testCase) => {
+        const cwd = await createTempCwd();
+        const appPath = path.join(cwd, "apps", "web");
 
-      await mkdir(appPath, { recursive: true });
-      if (testCase.rootPackageJson) {
+        await mkdir(appPath, { recursive: true });
+        if (testCase.rootPackageJson) {
+          await writeFile(
+            path.join(cwd, "package.json"),
+            JSON.stringify(testCase.rootPackageJson, null, 2),
+            "utf8",
+          );
+        }
+        await Promise.all(
+          testCase.rootFiles.map((rootFile) =>
+            writeFile(path.join(cwd, rootFile), "", "utf8"),
+          ),
+        );
         await writeFile(
-          path.join(cwd, "package.json"),
-          JSON.stringify(testCase.rootPackageJson, null, 2),
+          path.join(appPath, "package.json"),
+          JSON.stringify(
+            {
+              scripts: {
+                build: "next build",
+              },
+              dependencies: {
+                next: "15.0.0",
+              },
+            },
+            null,
+            2,
+          ),
           "utf8",
         );
-      }
-      for (const rootFile of testCase.rootFiles) {
-        await writeFile(path.join(cwd, rootFile), "", "utf8");
-      }
-      await writeFile(
-        path.join(appPath, "package.json"),
-        JSON.stringify(
-          {
-            scripts: {
-              build: "next build",
-            },
-            dependencies: {
-              next: "15.0.0",
-            },
-          },
-          null,
-          2,
-        ),
-        "utf8",
-      );
 
-      await expect(
-        resolveAppBuildSettings({
-          appPath,
-          buildType: "nextjs",
-        }),
-      ).resolves.toMatchObject({
-        buildCommand: testCase.command,
-        buildCommandSource: "package.json scripts.build",
-      });
-    }
+        await expect(
+          resolveAppBuildSettings({
+            appPath,
+            buildType: "nextjs",
+          }),
+        ).resolves.toMatchObject({
+          buildCommand: testCase.command,
+          buildCommandSource: "package.json scripts.build",
+        });
+      }),
+    );
   });
 
   it("prefers the app-level lockfile over the workspace root lockfile", async () => {
-    const { resolveAppBuildSettings } = await import("../src/lib/app/build");
+    const { resolveAppBuildSettings } = await import(
+      "../src/lib/app/build-settings"
+    );
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "apps", "web");
 
@@ -572,7 +592,9 @@ describe("preview build strategy", () => {
   });
 
   it("does not use lockfiles above the repository root", async () => {
-    const { resolveAppBuildSettings } = await import("../src/lib/app/build");
+    const { resolveAppBuildSettings } = await import(
+      "../src/lib/app/build-settings"
+    );
     const cwd = await createTempCwd();
     const repoPath = path.join(cwd, "repo");
     const appPath = path.join(repoPath, "app");
@@ -608,7 +630,9 @@ describe("preview build strategy", () => {
   });
 
   it("uses the literal package.json build script when no package manager is detected", async () => {
-    const { resolveAppBuildSettings } = await import("../src/lib/app/build");
+    const { resolveAppBuildSettings } = await import(
+      "../src/lib/app/build-settings"
+    );
     const cwd = await createTempCwd();
     const appPath = path.join(cwd, "app");
 

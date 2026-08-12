@@ -1,5 +1,5 @@
 import {
-  claimedWorkspaceId,
+  credentialWorkspaceId,
   defineCommand,
   type Presentations,
   type Session,
@@ -80,13 +80,13 @@ function presentationsFor(spec: {
   ];
   return {
     human: () => [
-      { kind: "summary", tone: "info", text: TITLE },
+      { kind: "summary", status: "info", text: TITLE },
       { kind: "fields", rows },
       ...(spec.environmentCredentialInForce
         ? [
             {
               kind: "summary",
-              tone: "info",
+              status: "info",
               text: ENVIRONMENT_CREDENTIAL_NOTICE,
             } as const,
           ]
@@ -96,7 +96,7 @@ function presentationsFor(spec: {
         : [
             {
               kind: "summary",
-              tone: "info",
+              status: "info",
               text: `Install Prisma skills for this project with ${spec.agentSetupTipCommand}.`,
             } as const,
           ]),
@@ -123,7 +123,7 @@ export const authLoginCommand = defineCommand({
         onVerificationUrl: (url) =>
           ctx.report({ kind: "endpoint", name: "verification", url }),
       });
-      const workspaceId = claimedWorkspaceId(credential.token);
+      const workspaceId = credentialWorkspaceId(credential.token);
       if (workspaceId === undefined) {
         throw loginWorkspaceUnknownError();
       }

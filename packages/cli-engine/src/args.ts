@@ -187,6 +187,18 @@ export interface CommandArgs<
   readonly positionals: TPositionals;
 }
 
+/** The two directions of one rule: a flag key is camelCase in code and
+ *  --kebab-case on the CLI. */
+export function kebabCase(key: string): string {
+  return key.replace(/[A-Z]/g, (upper) => `-${upper.toLowerCase()}`);
+}
+
+export function camelCase(typed: string): string {
+  return typed.replace(/-([a-zA-Z0-9])/g, (_, char: string) =>
+    char.toUpperCase(),
+  );
+}
+
 /**
  * What a handler receives: separate namespaces, symmetric access —
  * `args.flags.to`, `args.positionals.name`. Declared flag keys are

@@ -4,9 +4,21 @@ import {
   type CommandFamily,
   createCli,
   defineCommandFamily,
+  telemetryCommandGroup,
 } from "@prisma/cli-engine";
-import { CLI_DOCS_URL } from "../cli-name";
+// TODO(release): @prisma/composer@0.6.0-dev.15 pins
+// @prisma/cli-engine@0.0.7, while this package ships the workspace
+// engine at the lockstep version (8.0.0-rc.1). Those are different
+// versions, so an install of @prisma/cli resolves two copies of the
+// engine. Closing it is composer's move, not this repo's: composer
+// must pin the same engine version prisma-cli publishes, per the
+// tandem release order engine → composer → prisma-cli (R-S3-6).
+import { createComposerFamily } from "@prisma/composer/family";
+import { CLI_DOCS_URL, CLI_NAME } from "../cli-name";
 import { getCliVersion } from "../lib/version";
+import { agentInstallCommand } from "./agent/install";
+import { agentStatusCommand } from "./agent/status";
+import { agentUpdateCommand } from "./agent/update";
 import { authLoginCommand } from "./auth/login";
 import { authLogoutCommand } from "./auth/logout";
 import { authWhoamiCommand } from "./auth/whoami";
@@ -20,6 +32,8 @@ import { bucketKeyCreateCommand } from "./bucket/key-create";
 import { bucketKeyDeleteCommand } from "./bucket/key-delete";
 import { bucketKeyListCommand } from "./bucket/key-list";
 import { bucketListCommand } from "./bucket/list";
+import { buildLogsCommand } from "./build/logs";
+import { feedbackCommand } from "./feedback";
 import { gitConnectCommand } from "./git/connect";
 import { gitDisconnectCommand } from "./git/disconnect";
 import { initCommand } from "./init/init";
@@ -45,9 +59,23 @@ import { projectRemoveCommand } from "./project/remove";
 import { projectRenameCommand } from "./project/rename";
 import { projectShowCommand } from "./project/show";
 import { projectTransferCommand } from "./project/transfer";
-import { telemetryDisableCommand } from "./telemetry/disable";
-import { telemetryEnableCommand } from "./telemetry/enable";
-import { telemetryStatusCommand } from "./telemetry/status";
+import { serviceCreateCommand } from "./service/create";
+import { serviceDeploymentDeleteCommand } from "./service/deployment-delete";
+import { serviceDeploymentListCommand } from "./service/deployment-list";
+import { serviceDeploymentPromoteCommand } from "./service/deployment-promote";
+import { serviceDeploymentRollbackCommand } from "./service/deployment-rollback";
+import { serviceDeploymentShowCommand } from "./service/deployment-show";
+import { serviceDeploymentStartCommand } from "./service/deployment-start";
+import { serviceDeploymentStopCommand } from "./service/deployment-stop";
+import { serviceDomainAddCommand } from "./service/domain-add";
+import { serviceDomainRemoveCommand } from "./service/domain-remove";
+import { serviceDomainRetryCommand } from "./service/domain-retry";
+import { serviceDomainShowCommand } from "./service/domain-show";
+import { serviceDomainWaitCommand } from "./service/domain-wait";
+import { serviceListCommand } from "./service/list";
+import { serviceOpenCommand } from "./service/open";
+import { serviceRemoveCommand } from "./service/remove";
+import { serviceShowCommand } from "./service/show";
 
 export const platformCommandFamily: CommandFamily = defineCommandFamily({
   commands: {
@@ -88,8 +116,39 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     branchList: branchListCommand,
     gitConnect: gitConnectCommand,
     gitDisconnect: gitDisconnectCommand,
+    serviceList: serviceListCommand,
+    serviceCreate: serviceCreateCommand,
+    serviceShow: serviceShowCommand,
+    serviceOpen: serviceOpenCommand,
+    serviceDeploymentList: serviceDeploymentListCommand,
+    serviceDeploymentShow: serviceDeploymentShowCommand,
+    serviceDeploymentPromote: serviceDeploymentPromoteCommand,
+    serviceDeploymentRollback: serviceDeploymentRollbackCommand,
+    serviceDeploymentStart: serviceDeploymentStartCommand,
+    serviceDeploymentStop: serviceDeploymentStopCommand,
+    serviceDeploymentDelete: serviceDeploymentDeleteCommand,
+    serviceRemove: serviceRemoveCommand,
+    serviceDomainAdd: serviceDomainAddCommand,
+    serviceDomainShow: serviceDomainShowCommand,
+    serviceDomainRemove: serviceDomainRemoveCommand,
+    serviceDomainRetry: serviceDomainRetryCommand,
+    serviceDomainWait: serviceDomainWaitCommand,
+    buildLogs: buildLogsCommand,
   },
 });
+
+/**
+ * Composer's commands, contributed by composer's own package and run by
+ * this process. Only the command definitions and their handler entry
+ * functions load here; the alchemy and effect constellation stays behind
+ * composer's dynamic executor imports, so mounting costs an unrelated
+ * command nothing.
+ */
+export const composerCommandFamily: CommandFamily = createComposerFamily();
+
+/** The engine ships the three telemetry commands and the group help
+ *  text that belongs to them; both halves are spread in below. */
+const telemetry = telemetryCommandGroup({ docsUrl: CLI_DOCS_URL });
 
 export const cliGroups: Readonly<
   Record<string, { brief: string; description?: string }>
@@ -108,14 +167,16 @@ export const cliGroups: Readonly<
   "bucket key": { brief: "Manage access keys for an object-store bucket" },
   branch: { brief: "View your Platform branches" },
   git: { brief: "Manage Git repository connections for a project" },
-  "auth workspace": { brief: "Manage local workspace sessions" },
-  telemetry: {
-    brief: "Inspect and change anonymous CLI telemetry",
-    description:
-      "Show telemetry status, or enable / disable anonymous CLI usage data.\n" +
-      `Telemetry is on by default (opt-out); see ${CLI_DOCS_URL}\n` +
-      "for what is collected and why.",
+  service: { brief: "Manage services and deployments for a project" },
+  "service domain": { brief: "Manage custom domains for a service" },
+  "service deployment": { brief: "Manage deployments for a service" },
+  build: { brief: "Inspect builds created by a git push or Console" },
+  composer: {
+    brief: "Run and deploy applications composed from Prisma modules",
   },
+  agent: { brief: "Manage Prisma skills for AI coding agents" },
+  "auth workspace": { brief: "Manage local workspace sessions" },
+  ...telemetry.groups,
 };
 
 export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
@@ -156,10 +217,36 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "branch list": branchListCommand,
   "git connect": gitConnectCommand,
   "git disconnect": gitDisconnectCommand,
-  // Shell-owned consent surface (no command family).
-  "telemetry status": telemetryStatusCommand,
-  "telemetry enable": telemetryEnableCommand,
-  "telemetry disable": telemetryDisableCommand,
+  "service list": serviceListCommand,
+  "service create": serviceCreateCommand,
+  "service show": serviceShowCommand,
+  "service open": serviceOpenCommand,
+  "service deployment list": serviceDeploymentListCommand,
+  "service deployment show": serviceDeploymentShowCommand,
+  "service deployment promote": serviceDeploymentPromoteCommand,
+  "service deployment rollback": serviceDeploymentRollbackCommand,
+  "service deployment start": serviceDeploymentStartCommand,
+  "service deployment stop": serviceDeploymentStopCommand,
+  "service deployment delete": serviceDeploymentDeleteCommand,
+  "service remove": serviceRemoveCommand,
+  "service domain add": serviceDomainAddCommand,
+  "service domain show": serviceDomainShowCommand,
+  "service domain remove": serviceDomainRemoveCommand,
+  "service domain retry": serviceDomainRetryCommand,
+  "service domain wait": serviceDomainWaitCommand,
+  // Platform builds are their own group; there is no local build verb.
+  "build logs": buildLogsCommand,
+  "composer deploy": composerCommandFamily.commands.deploy,
+  "composer destroy": composerCommandFamily.commands.destroy,
+  "composer dev": composerCommandFamily.commands.dev,
+  "composer log": composerCommandFamily.commands.log,
+  // Local utilities: no owning package, no config section, no API.
+  "agent install": agentInstallCommand,
+  "agent update": agentUpdateCommand,
+  "agent status": agentStatusCommand,
+  feedback: feedbackCommand,
+  // The engine's consent surface, mounted whole (no command family).
+  ...telemetry.commands,
   // Top-level, and not the platform package's: init writes a local
   // compute config. It joins the compute family when S3 brings one.
   init: initCommand,
@@ -167,10 +254,11 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
 
 export function buildCli(): Cli {
   return createCli({
-    name: "prisma-v8",
+    name: CLI_NAME,
     version: getCliVersion(),
-    commandFamilies: [platformCommandFamily],
+    commandFamilies: [platformCommandFamily, composerCommandFamily],
     groups: cliGroups,
     commands: mountedCommands,
+    telemetry: { docsUrl: CLI_DOCS_URL },
   });
 }

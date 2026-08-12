@@ -1,73 +1,66 @@
+/**
+ * The platform CLI's telemetry commands, driven through the tree
+ * `cli.ts` actually mounts. The commands themselves are the engine's and
+ * are tested there; what this file pins is that this CLI mounts them,
+ * with its own docs URL in the group help, and that they act on the real
+ * file at the real path.
+ *
+ * The config path resolves from XDG_CONFIG_HOME on POSIX and APPDATA on
+ * win32, so both are pointed at the temp dir for the tests to be
+ * hermetic on every platform. Assertions read the file on disk rather
+ * than asking the engine's own reader what the engine wrote.
+ */
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createTestCli } from "@prisma/cli-engine/testing";
-import { readUserConfig, userConfigPath } from "@repo/cli-telemetry";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { telemetryDisableCommand } from "../src/v8/telemetry/disable";
-import { telemetryEnableCommand } from "../src/v8/telemetry/enable";
-import { isCI } from "../src/v8/telemetry/is-ci";
-import { telemetryStatusCommand } from "../src/v8/telemetry/status";
-
-vi.mock("../src/v8/telemetry/is-ci", () => ({ isCI: vi.fn(() => false) }));
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { CLI_DOCS_URL } from "../src/cli-name";
+import { cliGroups, mountedCommands } from "../src/v8/cli";
 
 const V4_UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
+let configRoot: string;
+let configPath: string;
+
+function isolatedEnv(): Record<string, string> {
+  return { XDG_CONFIG_HOME: configRoot, APPDATA: configRoot };
+}
+
 function makeCli() {
   return createTestCli({
-    commands: {
-      "telemetry status": telemetryStatusCommand,
-      "telemetry enable": telemetryEnableCommand,
-      "telemetry disable": telemetryDisableCommand,
-    },
-    groups: {
-      telemetry: {
-        brief: "Show or change whether the CLI sends anonymous usage data",
-      },
-    },
+    commands: mountedCommands,
+    groups: cliGroups,
+    telemetry: { docsUrl: CLI_DOCS_URL },
     now: () => new Date(0),
   });
 }
 
-// The config path resolves from XDG_CONFIG_HOME on POSIX and APPDATA on
-// win32, so both must point at the temp dir for the tests to be hermetic
-// on every platform.
-const CONFIG_ENV_VARS = ["XDG_CONFIG_HOME", "APPDATA"] as const;
-
-let xdgRoot: string;
-let originalConfigEnv: Record<string, string | undefined>;
-let configPath: string;
+/** What is actually on disk, parsed. Absent file reads as `{}`. */
+function storedConfig(): Record<string, unknown> {
+  if (!existsSync(configPath)) return {};
+  return JSON.parse(readFileSync(configPath, "utf-8")) as Record<
+    string,
+    unknown
+  >;
+}
 
 beforeEach(() => {
-  xdgRoot = mkdtempSync(join(tmpdir(), "v8-telemetry-cmd-"));
-  originalConfigEnv = {};
-  for (const name of CONFIG_ENV_VARS) {
-    originalConfigEnv[name] = process.env[name];
-    process.env[name] = xdgRoot;
-  }
-  configPath = userConfigPath();
+  configRoot = mkdtempSync(join(tmpdir(), "v8-telemetry-cmd-"));
+  configPath = join(configRoot, "prisma", "config.json");
   mkdirSync(dirname(configPath), { recursive: true });
-  vi.mocked(isCI).mockReset();
-  vi.mocked(isCI).mockReturnValue(false);
 });
 
 afterEach(() => {
-  for (const name of CONFIG_ENV_VARS) {
-    const original = originalConfigEnv[name];
-    if (original === undefined) {
-      delete process.env[name];
-    } else {
-      process.env[name] = original;
-    }
-  }
-  rmSync(xdgRoot, { recursive: true, force: true });
+  rmSync(configRoot, { recursive: true, force: true });
 });
 
 function seedConfig(config: Record<string, unknown>): void {
@@ -77,6 +70,7 @@ function seedConfig(config: Record<string, unknown>): void {
 describe("prisma-v8 telemetry status", () => {
   it("reports the opt-out default when no choice is stored, without writing anything", async () => {
     const result = await makeCli().run(["telemetry", "status"], {
+      env: isolatedEnv(),
       isTty: { stdout: true },
     });
 
@@ -95,6 +89,7 @@ describe("prisma-v8 telemetry status", () => {
     seedConfig({ enableTelemetry: true, installationId: "id-secret-123" });
 
     const result = await makeCli().run(["telemetry", "status"], {
+      env: isolatedEnv(),
       isTty: { stdout: true },
     });
 
@@ -110,6 +105,7 @@ describe("prisma-v8 telemetry status", () => {
     seedConfig({ enableTelemetry: false });
 
     const result = await makeCli().run(["telemetry", "status"], {
+      env: isolatedEnv(),
       isTty: { stdout: true },
     });
 
@@ -123,21 +119,22 @@ describe("prisma-v8 telemetry status", () => {
     seedConfig({ enableTelemetry: true, installationId: "id-1" });
 
     const result = await makeCli().run(["telemetry", "status"], {
-      env: { DO_NOT_TRACK: "1" },
+      env: { ...isolatedEnv(), DO_NOT_TRACK: "1" },
       isTty: { stdout: true },
     });
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(
-      "Telemetry is disabled: an environment opt-out is set (DO_NOT_TRACK / PRISMA_NEXT_DISABLE_TELEMETRY).",
+      "Telemetry is disabled: an environment opt-out is set (DO_NOT_TRACK / PRISMA_DISABLE_TELEMETRY).",
     );
   });
 
   it("reports CI as hard-disabled ahead of every other signal", async () => {
-    vi.mocked(isCI).mockReturnValue(true);
     seedConfig({ enableTelemetry: true, installationId: "id-1" });
 
     const result = await makeCli().run(["telemetry", "status"], {
+      env: isolatedEnv(),
+      isCI: true,
       isTty: { stdout: true },
     });
 
@@ -150,7 +147,9 @@ describe("prisma-v8 telemetry status", () => {
   it("serializes the full status as the json envelope result", async () => {
     seedConfig({ enableTelemetry: true, installationId: "id-1" });
 
-    const result = await makeCli().run(["telemetry", "status", "--json"]);
+    const result = await makeCli().run(["telemetry", "status", "--json"], {
+      env: isolatedEnv(),
+    });
 
     expect(result.exitCode).toBe(0);
     expect(result.json).toHaveLength(1);
@@ -171,6 +170,7 @@ describe("prisma-v8 telemetry status", () => {
 describe("prisma-v8 telemetry enable", () => {
   it("stores the opt-in, mints an installation id, and names the config file", async () => {
     const result = await makeCli().run(["telemetry", "enable"], {
+      env: isolatedEnv(),
       isTty: { stdout: true },
     });
 
@@ -178,7 +178,7 @@ describe("prisma-v8 telemetry enable", () => {
     expect(result.stdout).toBe(
       `Telemetry enabled. Preference stored in ${configPath}.\n`,
     );
-    const config = readUserConfig();
+    const config = storedConfig();
     expect(config.enableTelemetry).toBe(true);
     expect(config.installationId).toMatch(V4_UUID);
   });
@@ -187,16 +187,19 @@ describe("prisma-v8 telemetry enable", () => {
     seedConfig({ installationId: "sticky-id" });
 
     await makeCli().run(["telemetry", "enable"], {
+      env: isolatedEnv(),
       isTty: { stdout: true },
     });
 
-    const config = readUserConfig();
+    const config = storedConfig();
     expect(config.enableTelemetry).toBe(true);
     expect(config.installationId).toBe("sticky-id");
   });
 
   it("serializes the consent decision as the json envelope result", async () => {
-    const result = await makeCli().run(["telemetry", "enable", "--json"]);
+    const result = await makeCli().run(["telemetry", "enable", "--json"], {
+      env: isolatedEnv(),
+    });
 
     expect(result.exitCode).toBe(0);
     const frame = result.json[0];
@@ -213,6 +216,7 @@ describe("prisma-v8 telemetry enable", () => {
 describe("prisma-v8 telemetry disable", () => {
   it("stores the opt-out without minting an installation id", async () => {
     const result = await makeCli().run(["telemetry", "disable"], {
+      env: isolatedEnv(),
       isTty: { stdout: true },
     });
 
@@ -220,25 +224,26 @@ describe("prisma-v8 telemetry disable", () => {
     expect(result.stdout).toBe(
       `Telemetry disabled. Preference stored in ${configPath}.\n`,
     );
-    const config = readUserConfig();
-    expect(config.enableTelemetry).toBe(false);
-    expect(config.installationId).toBeUndefined();
+    expect(storedConfig()).toEqual({ enableTelemetry: false });
   });
 
   it("keeps an existing installation id while disabling (MAU continuity on re-enable)", async () => {
     seedConfig({ enableTelemetry: true, installationId: "sticky-id" });
 
     await makeCli().run(["telemetry", "disable"], {
+      env: isolatedEnv(),
       isTty: { stdout: true },
     });
 
-    const config = readUserConfig();
+    const config = storedConfig();
     expect(config.enableTelemetry).toBe(false);
     expect(config.installationId).toBe("sticky-id");
   });
 
   it("serializes the consent decision as the json envelope result", async () => {
-    const result = await makeCli().run(["telemetry", "disable", "--json"]);
+    const result = await makeCli().run(["telemetry", "disable", "--json"], {
+      env: isolatedEnv(),
+    });
 
     expect(result.exitCode).toBe(0);
     const frame = result.json[0];

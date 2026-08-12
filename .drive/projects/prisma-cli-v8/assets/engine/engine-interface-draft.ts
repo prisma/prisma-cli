@@ -30,6 +30,41 @@
  * ctx.openUrl (§4), and prompt.browserWait (§4a). All three are
  * engine-owned so command code never reads TTY or CI state and never
  * invents its own consent-skipping flag.
+ * Amended 2026-08-11 for S3 (the TERMINAL HANDOFF, contract
+ * s3-composer.md): §4 gains ctx.spawn and §4c its shapes +
+ * exitWithChildStatus; §6 gains the SpawnDeclarations (maySpawn) and
+ * the two kind amendments (a maySpawn command rejects --json as soon
+ * as the command is known — after routing, before the needs check and
+ * before anything runs; a session settles non-zero through
+ * exitWithChildStatus and no other way); §10 gains Runtime.spawn. D1
+ * rulings: abort-ladder grace 5s; near-expiry refusal threshold 5min.
+ * Re-amended after the PR-136 review round: handing credentials to the
+ * child is a PRECONDITION, `needs: { credentials: 'child' }` — the
+ * separate credentialsForSpawn declaration is gone, and the entailment
+ * (child credentials imply the credentials need) is structural. The
+ * manager gains the named engine-facing operation activeAccessToken()
+ * for the spawn path's read, so the "engine never calls storage
+ * methods" rule is absolute — no sanctioned exception.
+ * exitWithChildStatus(opts?) takes { nextActions? }, rendered
+ * to stderr before the exit (R-S3-4's reproduce hint).
+ * Amended 2026-08-11 (operator ruling) — SIGNAL SETTLEMENT IS THE
+ * ENGINE'S: a run a delivered signal terminated settles 128+signal
+ * from the engine's own record of that signal, whatever its handler
+ * returns (EXIT CODES below).
+ * Amended 2026-08-11 (operator review of composer#220) — THE ENGINE
+ * RECORDS THE CHILD, AND OWNS HOW A HANDOFF SETTLES. §4 gains
+ * ctx.lastChild(): the run's most recent completed child, kept by the
+ * engine because ctx.spawn already mints every ChildResult. And
+ * exitWithChildStatus LOSES its child argument — it settles from that
+ * record. Two consequences, both deliberate. Handlers stop threading
+ * the child result out of whatever layer spawned it (composer was
+ * hand-rolling a recorder for exactly this). And the settlement
+ * ORDERING becomes the engine's: a signal-killed child settles as the
+ * abort — 128+signal, no envelope, no nextActions — even when the
+ * caller passed nextActions, so a Ctrl-C'd converge never carries a
+ * reproduce hint. The "invented child result" fence disappears with
+ * the argument that made the misuse possible; the maySpawn fence
+ * stays, joined by a construction error when no child ran at all.
  *
  * THE MODEL, in one analogy (operator, 2026-08-09): commands settle like
  * promises. A command can COMPLETE — and its completion can be
@@ -115,6 +150,24 @@
  * signal fires context.signal and awaits teardown (settling 130/143);
  * a second exits immediately through the runtime's exit proxy — the
  * engine ends the process only ever via Runtime.exit.
+ *
+ * The signal codes are the ENGINE's to settle, from its own record of
+ * the signal it delivered, and never from anything a handler returns
+ * (operator ruling, 2026-08-11). A run a delivered signal terminated
+ * settles 128 + that signal's number for BOTH command kinds —
+ * including the handler that caught context.signal, cleaned up, and
+ * returned successfully. The exit code states how the RUN ended, not
+ * how well the cleanup went, so a session that shuts down cleanly on
+ * Ctrl-C settles 130 while still reporting a completed envelope. No
+ * handler can author these codes: documented codes stop at 99, and
+ * the child-status bypass takes its code from the engine's own record
+ * of the child rather than from anything the handler hands back — the
+ * handler names no child and no code at all. Two codes are exempt,
+ * because neither was this CLI's to
+ * state in the first place, and both pass through verbatim: a real
+ * child's status (the child owned the terminal and the signal reached
+ * it too — that is why exitWithChildStatus reports 128+signal itself)
+ * and a server command's protocol conclusion.
  */
 
 // ————————————————————————————————————————————————————————————————————————
@@ -398,7 +451,7 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
    *  the pinned session's client, built from the injected client
    *  config on first method CALL, once per run (process pinning makes
    *  the memoization correct). A stored session gets the SDK's
-   *  refreshing path over manager.tokenStorage(workspaceId); an env
+   *  refreshing path over manager.activeCredentialStorage(); an env
    *  session gets the SDK's static-token path with its error mapping
    *  at the call site. Request failures pass through the engine-side
    *  mapping (design §6): refreshTokenInvalid === true → the expired
@@ -411,6 +464,42 @@ export interface CommandContext<TConfig = undefined, TCode extends number = neve
    *  CLI.CREDENTIALS_REQUIRED error (the same constructor the
    *  needs.credentials check uses). */
   readonly api: ManagementApiClient
+
+  /**
+   * S3: hands the terminal to a child process and resolves when it
+   * ends. Inherited stdio, same process group (POSIX) / console
+   * (Windows), no detach — the terminal delivers Ctrl-C to the child
+   * natively. While a child is live the engine neither aborts nor
+   * exits: delivered signals are RECORDED and replayed into the
+   * normal ladder on child exit (one recorded → ctx.signal aborts as
+   * if just delivered; a signal past that arms a force exit fired
+   * only after settlement and telemetry), so the engine always
+   * outlives the child and no path force-exits from inside ctx.spawn.
+   * SIGTERM — no native path to the child — is forwarded during the
+   * window, and so is a SECOND recorded press of any signal (as
+   * SIGTERM): when the engine was signalled directly and no group
+   * delivered the first press, the escalation keeps the child
+   * reachable. A programmatic abort terminates the child: SIGTERM, a
+   * 5s grace (D1 ruling), SIGKILL. ctx.report during a live child is
+   * buffered (capped, with a dropped-events marker on flush) and
+   * flushed in order on exit; ctx.present, ctx.prompt, and a second
+   * concurrent spawn are construction errors — and so is resolving or
+   * throwing while the child is still live: a handler stays suspended
+   * on the spawn promise. Only commands declaring `maySpawn` (§6) may
+   * call it, and a maySpawn command whose Runtime supplies no spawn
+   * adapter refuses before the needs check ever runs.
+   * Handlers branch on `signal` before `exitCode`: a signal-killed
+   * child is an abort, not a failure.
+   */
+  readonly spawn: (options: SpawnOptions) => Promise<ChildResult>
+
+  /** S3: how the run's most recent COMPLETED child ended, or undefined
+   *  when none has run. The engine records every child ctx.spawn
+   *  returns — it mints them all anyway — so a handler whose spawn
+   *  happens somewhere else in its own layering can still ask "did my
+   *  child fail?" where it settles, instead of threading the result
+   *  back by hand. Same record exitWithChildStatus settles from. */
+  readonly lastChild: () => ChildResult | undefined
 
   /** The one way to emit while running (§1). */
   readonly report: (event: EngineEvent) => void
@@ -527,9 +616,22 @@ export interface CredentialManager {
   /** Log out entirely: remove all sessions and the marker. */
   endAllSessions(): Promise<void>
   /** ENGINE-FACING, not a user operation: the SDK TokenStorage view
-   *  for one workspace's session. The engine forwards it into SDK
-   *  client config and never calls its methods itself. */
-  tokenStorage(workspaceId: string): TokenStorage
+   *  of the ACTIVE credential. Zero-argument — process pinning ruled
+   *  there is one credential per process, and an environment
+   *  credential may have no workspace id to key on; the earlier
+   *  tokenStorage(workspaceId) is deleted rather than reshaped
+   *  (credential-manager-design.md §11.5). The engine forwards it
+   *  into SDK client config and never calls its methods itself — no
+   *  exceptions; the engine's own token read is activeAccessToken(). */
+  activeCredentialStorage(): Promise<TokenStorage>
+  /** ENGINE-FACING (S3, amended after the PR-136 review): the active
+   *  credential's ACCESS token, read fresh, for handing to a child
+   *  process that authenticates as this process does. Never the
+   *  refresh token — the child gets a snapshot it cannot refresh.
+   *  Single consumer: ctx.spawn's credential injection. The read
+   *  builds no second API client, so the one-client-per-process
+   *  invariant holds (credential-manager-design.md §11.5). */
+  activeAccessToken(): Promise<string | null>
 }
 
 /** The SDK's typed client and token-storage contract, re-exported by
@@ -553,6 +655,85 @@ export interface ManagementApiClientConfig {
   readonly apiBaseUrl: string
   readonly authBaseUrl: string
 }
+
+// —— §4c The terminal handoff (S3) ——
+
+/** What a handler passes to ctx.spawn. */
+export interface SpawnOptions {
+  readonly command: string
+  readonly args?: readonly string[]
+  /** Defaults to ctx.cwd. */
+  readonly cwd?: string
+  /** Added to, and overriding, the invocation environment. The
+   *  engine's credential variables are applied last and cannot be
+   *  overridden. */
+  readonly env?: Readonly<Record<string, string | undefined>>
+}
+
+/** How a child ended. Branch on `signal` first: a signal-killed child
+ *  is an abort, not a failure. */
+export interface ChildResult {
+  readonly exitCode: number | null
+  readonly signal: string | null
+}
+
+/** A fully composed child invocation, as the Runtime adapter receives
+ *  it: env is the child's COMPLETE environment, credentials already
+ *  injected by the engine (the active credential's access token, read
+ *  at spawn time through the manager's activeAccessToken();
+ *  PRISMA_WORKSPACE_ID alongside when the credential names a
+ *  workspace, and DELETED from the inherited environment when it does
+ *  not — the two variables are one protocol, written as a unit; the
+ *  refresh token NEVER). */
+export interface SpawnRequest {
+  readonly command: string
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+}
+
+/** The live child an adapter returns. `ended` rejects only when the
+ *  child could not be launched; the engine phrases that as the
+ *  structured CLI.SPAWN_FAILED. */
+export interface SpawnedChild {
+  readonly ended: Promise<ChildResult>
+  readonly kill: (signal: 'SIGTERM' | 'SIGKILL') => void
+}
+
+/** The Runtime seam (§10): starts the child with INHERITED stdio, in
+ *  the caller's own process group (POSIX) / console (Windows) — no
+ *  `detached`, no new console. The bin adapts node:child_process; the
+ *  engine never imports it. */
+export type SpawnChild = (request: SpawnRequest) => SpawnedChild
+
+/** Opaque: built exclusively by exitWithChildStatus. It carries no
+ *  exit code — the code is not the handler's to state, so the engine
+ *  reads it off its own record of the child at settlement. */
+export interface ChildStatusSettlement {
+  readonly nextActions: readonly NextAction[]
+}
+
+/** The sanctioned "exit with the child's status verbatim" outcome:
+ *  returned inside ok(...), it settles through the no-envelope bypass
+ *  server commands already have, with the status of the child THIS
+ *  RUN spawned — ctx.lastChild(). The handler names no child, so
+ *  there is no way to describe one that never existed. Two
+ *  construction errors fence it: settling it from a command that does
+ *  not declare maySpawn, and settling it when no child ran at all.
+ *
+ *  The engine owns the ORDERING, which is composer's converge rule
+ *  promoted into the engine. A signal-killed child is the user
+ *  aborting: it settles 128 + the signal number (portable signals),
+ *  with no envelope and NO nextActions — the hint is dropped even
+ *  when the caller passed one, because there is nothing to reproduce.
+ *  Otherwise the child's own code passes through verbatim and
+ *  `nextActions` (a failed converge's reproduce hint, R-S3-4) render
+ *  to stderr in the engine's next-action style before the process
+ *  exits with that code. An unknown signal, or an adapter that cannot
+ *  say how the child ended, settles 1 — unknown is never success. */
+export declare function exitWithChildStatus(
+  opts?: { readonly nextActions?: readonly NextAction[] },
+): ChildStatusSettlement
 
 /**
  * §4a Prompts (operator ruling, 2026-08-09: prompts return their answer
@@ -826,8 +1007,15 @@ export interface NeedsSpec<TConfig> {
   /** The command family's config section token: validate it, fail me on its
    *  error diagnostics, hand me the value as ctx.config. */
   readonly config?: ConfigSection<TConfig>
-  /** Fail early with the sign-in error when unauthenticated. */
-  readonly credentials?: true
+  /** Fail early with the sign-in error when unauthenticated. The
+   *  'child' form (S3, amended after the PR-136 review — this
+   *  precondition previously lived at the top level as
+   *  credentialsForSpawn) additionally composes the active credential
+   *  into every child environment and refuses the run before the
+   *  handler when it expires within the 5-minute threshold (D1
+   *  ruling). Requires maySpawn (construction error otherwise), and
+   *  structurally entails the plain credentials need. */
+  readonly credentials?: true | 'child'
   /** Optional peer dependencies this command cannot run without; the
    *  engine probes resolvability and phrases the install error.
    *  (Conditional needs use ctx.requireDependency instead.) */
@@ -848,7 +1036,7 @@ export interface NeedsSpec<TConfig> {
 /** The normalized preconditions a definition carries. */
 export interface CommandNeeds<TConfig> {
   readonly config: ConfigSection<TConfig> | undefined
-  readonly credentials: boolean
+  readonly credentials: boolean | 'child'
   readonly dependencies: readonly string[]
   readonly interaction: boolean
 }
@@ -885,6 +1073,9 @@ export interface CommandDefinition<
    */
   readonly managesCredentials: TManagesCredentials
 
+  /** See SpawnDeclarations (S3). */
+  readonly maySpawn: boolean
+
   /** The handler function, referenced directly — never a dynamic import
    *  (operator ruling, 2026-08-09: "DO NOT DYNAMICALLY IMPORT HANDLERS").
    *  R9's keep-heavy-work-out-of-startup concern is the handler BODY's
@@ -906,7 +1097,29 @@ export type Handler<
     (TManagesCredentials extends true
       ? { readonly credentialManager: CredentialManager }
       : unknown),
-) => Promise<Result<PresentedResult<unknown>, CliStructuredError>>
+) => Promise<Result<PresentedResult<unknown> | ChildStatusSettlement, CliStructuredError>>
+
+/**
+ * S3: the terminal-handoff declaration, accepted by defineCommand and
+ * defineSessionCommand and normalized onto every definition (server
+ * commands normalize maySpawn to false: they own stdio already).
+ * `maySpawn` unlocks ctx.spawn and makes the command reject `--json`
+ * as soon as the command is known — after routing, before the needs
+ * check and before anything runs (the rule depends on which command
+ * was selected, so "parse time" was loose wording) — exit 2, stated
+ * in help (delegated terminal output cannot be framed). Handing
+ * credentials to the child is a PRECONDITION, not a declaration:
+ * `needs: { credentials: 'child' }` (see NeedsSpec).
+ * Naming note (PR-136 review, considered and rejected): renaming
+ * maySpawn to delegatesTerminal would state the --json rule's premise
+ * directly, but the identifier is already woven through the S3 stack
+ * (D2/D3 handlers, tests, this draft) and the rename's churn was
+ * judged to outweigh the clarity gain. Do not re-open without new
+ * evidence.
+ */
+export interface SpawnDeclarations {
+  readonly maySpawn?: boolean
+}
 
 /** For impl files: `const run: CommandHandler<typeof migrateCommand> = …` */
 export type CommandHandler<D> = D extends CommandDefinition<infer F, infer P, infer C, infer K, infer M>
@@ -928,7 +1141,7 @@ export declare function defineCommand<
   readonly exitCodes?: Readonly<Record<TCode, string>>
   readonly managesCredentials: true
   readonly handler: Handler<TFlags, TPositionals, TConfig, TCode, true>
-}): CommandDefinition<TFlags, TPositionals, TConfig, TCode, true>
+} & SpawnDeclarations): CommandDefinition<TFlags, TPositionals, TConfig, TCode, true>
 export declare function defineCommand<
   TFlags extends Record<string, FlagSpec<unknown>> = {},
   TPositionals extends Record<string, PositionalSpec<unknown>> = {},
@@ -940,13 +1153,21 @@ export declare function defineCommand<
   readonly needs?: NeedsSpec<TConfig>
   readonly exitCodes?: Readonly<Record<TCode, string>>
   readonly handler: Handler<TFlags, TPositionals, TConfig, TCode>
-}): CommandDefinition<TFlags, TPositionals, TConfig, TCode>
+} & SpawnDeclarations): CommandDefinition<TFlags, TPositionals, TConfig, TCode>
 
 /**
  * A session command (dev, log tail): runs until the signal fires,
  * speaks entirely through events, returns Result<void>. No
- * presentation, no exit-code set. A session always supports json mode:
- * the event stream is its json surface.
+ * presentation, no exit-code set.
+ *
+ * S3 amendments: a session supports json mode — the event stream is
+ * its json surface — UNLESS it declares maySpawn, in which case it
+ * rejects --json as soon as the command is known. A session that
+ * returns ok(undefined) exits 0 — or 130/143 when a delivered signal
+ * ended the run, which the engine settles from its own record (EXIT
+ * CODES); one that returns ok(exitWithChildStatus()) exits with the
+ * status of the child it spawned. Those are the two ways a session settles
+ * non-zero without erroring, and neither is a code the handler picks.
  */
 export interface SessionCommandDefinition<
   TFlags extends Record<string, FlagSpec<unknown>> = {},
@@ -957,10 +1178,12 @@ export interface SessionCommandDefinition<
   readonly help: CommandHelp
   readonly args: CommandArgs<TFlags, TPositionals>
   readonly needs: CommandNeeds<TConfig>
+  /** See SpawnDeclarations (S3). */
+  readonly maySpawn: boolean
   readonly handler: (
     args: Args<TFlags, TPositionals>,
     ctx: CommandContext<TConfig>,
-  ) => Promise<Result<void, CliStructuredError>>
+  ) => Promise<Result<void | ChildStatusSettlement, CliStructuredError>>
 }
 
 export declare function defineSessionCommand<
@@ -972,7 +1195,7 @@ export declare function defineSessionCommand<
   readonly args?: ArgsSpec<TFlags, TPositionals>
   readonly needs?: NeedsSpec<TConfig>
   readonly handler: SessionCommandDefinition<TFlags, TPositionals, TConfig>['handler']
-}): SessionCommandDefinition<TFlags, TPositionals, TConfig>
+} & SpawnDeclarations): SessionCommandDefinition<TFlags, TPositionals, TConfig>
 
 /**
  * A server command (lsp): a foreign client on the other end of stdio
@@ -989,6 +1212,9 @@ export interface ServerCommandDefinition<
   readonly help: CommandHelp
   readonly args: CommandArgs<TFlags, {}>
   readonly needs: CommandNeeds<TConfig>
+  /** Always false — normalized so every definition carries the field
+   *  and the engine reads it directly (S3, PR-136 review). */
+  readonly maySpawn: false
   readonly handler: (
     args: Args<TFlags, {}>,
     io: {
@@ -1023,36 +1249,102 @@ export type AnyCommand =
 // §7 Presentation primitives — the R5 vocabulary
 // ————————————————————————————————————————————————————————————————————————
 
+// Amended by the engine-colour slice (specs/engine-colour.md, ruled
+// 2026-08-11): Status split out of tone, Text everywhere, the drawing
+// block, the card's rail, and Ui's palette and width.
+
+/** What happened: selects the glyph (✔ ✘ ⚠ ℹ) and carries a default Tone
+ *  of the same name. Separate from Tone because a failure can be painted
+ *  a colour that is not `error` — a tree node in its branch lane's hue. */
+export type Status = 'ok' | 'error' | 'warn' | 'info'
+
+/** What colour to paint, and nothing else. The indexed colours are for
+ *  telling adjacent things apart and exclude red, so no series member
+ *  reads as an error. */
+export type Tone =
+  | 'ok'
+  | 'warn'
+  | 'error'
+  | 'info'
+  | 'heading'
+  | 'identifier'
+  | 'ref'
+  | 'placeholder'
+  | 'link'
+  | 'emphasis'
+  | 'muted'
+  | 'structure'
+  | 'highlight'
+  | 'color-1'
+  | 'color-2'
+  | 'color-3'
+  | 'color-4'
+  | 'color-5'
+  | 'color-6'
+
+/** A run of text and the meaning of its colour. A handler never emits
+ *  escape sequences, so the engine measures width from `text` and colour
+ *  cannot break alignment. */
+export interface Span {
+  readonly text: string
+  readonly tone?: Tone
+}
+
+/** Display text anywhere a block or Ui takes it. A bare string is untoned. */
+export type Text = string | readonly Span[]
+
 /** Deliberately small; grows by the same evidence rule as events. */
 export type Block =
   | {
       readonly kind: 'summary'
-      readonly tone: 'ok' | 'error' | 'warn' | 'info'
-      readonly text: string
+      readonly status: Status
+      /** Overrides the colour the status implies. Never the glyph. */
+      readonly tone?: Tone
+      readonly text: Text
     }
   | {
+      /** A key/value card: the engine pads the keys so every value starts
+       *  in the same column. `rail` draws the dim `│` down the left. */
       readonly kind: 'fields'
-      readonly rows: ReadonlyArray<{ label: string; value: string; sensitive?: boolean }>
+      readonly rows: ReadonlyArray<{ label: Text; value: Text; sensitive?: boolean }>
+      readonly rail?: boolean
     }
   | {
+      /** The engine sizes every column to its widest cell. */
       readonly kind: 'table'
-      readonly columns: readonly string[]
-      readonly rows: ReadonlyArray<readonly string[]>
+      readonly columns: readonly Text[]
+      readonly rows: ReadonlyArray<readonly Text[]>
     }
-  | { readonly kind: 'list'; readonly items: readonly string[] }
+  | { readonly kind: 'list'; readonly items: readonly Text[] }
   | { readonly kind: 'tree'; readonly roots: readonly TreeNode[] }
+  | {
+      /** Lines of spans, rendered verbatim — no layout, no reflow, no
+       *  truncation. For output whose two-dimensional structure the engine
+       *  cannot derive, such as a migration graph's lane gutter. */
+      readonly kind: 'drawing'
+      readonly lines: readonly Text[]
+    }
 // NOTE: recorded findings are NOT a Block — they are the outcome's
 // diagnostics; the engine renders them with the top-level error layout
 // and carries them into the envelope, so the two surfaces cannot
 // diverge.
 
 export interface TreeNode {
-  readonly label: string
+  readonly label: Text
+  /** Renders the status glyph before the label. */
+  readonly status?: Status
+  /** Colours the glyph and the label; defaults from `status`. */
+  readonly tone?: Tone
   readonly children?: readonly TreeNode[]
 }
 
-/** Styling helpers usable inside block text; no direct writing. */
+/** Styling helpers usable inside block text; no direct writing. `width`
+ *  is the printing stream's columns, POSITIVE_INFINITY off-terminal — the
+ *  engine never truncates, so a command that wants to fit is told how much
+ *  room it has. */
 export interface Ui {
+  readonly width: number
+  readonly tone: (tone: Tone, text: string) => string
   readonly emphasize: (text: string) => string
   readonly dim: (text: string) => string
   readonly code: (text: string) => string
@@ -1268,6 +1560,12 @@ export interface Runtime {
    *  fails a command; absent means this host cannot open a browser,
    *  and the URL is announced instead. */
   readonly openUrl?: (url: string) => Promise<void> | void
+  /** S3: the terminal-handoff seam (§4c) — starts a child with
+   *  inherited stdio, wired by the bin as a node:child_process
+   *  adapter so the engine never imports it. Absent means this host
+   *  cannot hand the terminal to a child: ctx.spawn then fails with
+   *  the engine's internal error. */
+  readonly spawn?: SpawnChild
   /** Management API endpoint config; the bin derives baseUrl from env
    *  (getApiBaseUrl). */
   readonly managementApi: { readonly baseUrl: string }
@@ -1360,6 +1658,21 @@ export declare function createTestCli(spec: {
    *  browser is never a test dependency; pass a spy to assert what was
    *  opened, or a thrower for the could-not-open path. */
   readonly openUrl?: (url: string) => Promise<void> | void
+  /** S3: the spawn adapter behind ctx.spawn. Defaults to the scripted
+   *  fake below; the real-child tests pass a node:child_process
+   *  adapter, which is how the engine package itself never imports
+   *  one. Every run records its spawns — command, args, cwd, env
+   *  KEYS (values never: a recording must not carry token material),
+   *  and the signals the engine delivered. */
+  readonly spawn?: SpawnChild
+  /** S3: scripts the built-in fake child (defaults to exit 0). The
+   *  script receives the composed SpawnRequest and a nextKill()
+   *  awaiting each engine-delivered signal, so it can model a child
+   *  that ignores SIGTERM and dies only on SIGKILL. */
+  readonly spawnScript?: (
+    request: SpawnRequest,
+    child: { readonly nextKill: () => Promise<'SIGTERM' | 'SIGKILL'> },
+  ) => ChildResult | Promise<ChildResult>
 }): TestCli
 
 /** Mints an unsigned JWT whose payload is exactly `claims` — the

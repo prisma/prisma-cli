@@ -30,7 +30,7 @@ const PROJECTS = [
   {
     id: "proj_1",
     name: "Billing",
-    workspace: { id: "ws_1", name: "Acme Inc" },
+    workspace: { id: "wksp_ws_1", name: "Acme Inc" },
   },
 ];
 
@@ -110,39 +110,28 @@ function apiFailure(status: number, body?: unknown) {
 function gitClient(spec: GitClientSpec = {}): ManagementApiClient {
   const page = { hasMore: false, nextCursor: null };
 
+  const routes: Record<string, Responder | undefined> = {
+    "GET /v1/projects": () => ({ data: { data: PROJECTS } }),
+    "GET /v1/source-repositories": () => ({
+      data: { data: spec.sourceRepositories ?? [], pagination: page },
+    }),
+    "GET /v1/scm-installations": () => ({
+      data: { data: spec.installations ?? [INSTALLATION], pagination: page },
+    }),
+    "GET /v1/scm-installations/{installationId}/repositories": () => ({
+      data: { data: spec.repositories ?? [SCM_REPOSITORY], pagination: page },
+    }),
+    "POST /v1/source-repositories": () => ({
+      data: { data: SOURCE_REPOSITORY },
+    }),
+    ...spec.routes,
+  };
+
   const dispatch = (method: string, apiPath: string, init: Call["init"]) => {
     const call: Call = { method, path: apiPath, init: init ?? {} };
     spec.calls?.push(call);
-    const route = spec.routes?.[`${method} ${apiPath}`];
-    if (route) {
-      return route(call);
-    }
-
-    if (method === "GET" && apiPath === "/v1/projects") {
-      return { data: { data: PROJECTS } };
-    }
-    if (method === "GET" && apiPath === "/v1/source-repositories") {
-      return {
-        data: { data: spec.sourceRepositories ?? [], pagination: page },
-      };
-    }
-    if (method === "GET" && apiPath === "/v1/scm-installations") {
-      return {
-        data: { data: spec.installations ?? [INSTALLATION], pagination: page },
-      };
-    }
-    if (
-      method === "GET" &&
-      apiPath === "/v1/scm-installations/{installationId}/repositories"
-    ) {
-      return {
-        data: { data: spec.repositories ?? [SCM_REPOSITORY], pagination: page },
-      };
-    }
-    if (method === "POST" && apiPath === "/v1/source-repositories") {
-      return { data: { data: SOURCE_REPOSITORY } };
-    }
-    return { data: { data: {} } };
+    const route = routes[`${method} ${apiPath}`];
+    return route ? route(call) : { data: { data: {} } };
   };
 
   return {
@@ -262,7 +251,7 @@ describe("prisma-v8 git connect", () => {
     expect(blocks(result.presented)).toEqual([
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: "Connecting Git to the resolved project.",
       },
       {
@@ -765,7 +754,7 @@ describe("prisma-v8 git disconnect", () => {
     expect(blocks(result.presented)).toEqual([
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: "Disconnecting Git from the resolved project.",
       },
       {

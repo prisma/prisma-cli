@@ -35,7 +35,7 @@ function promptCommand(run: (prompt: PromptSurface) => Promise<unknown>) {
           { data: { answer } },
           {
             human: (): readonly Block[] => [
-              { kind: "summary", tone: "ok", text: `answer=${answer}` },
+              { kind: "summary", status: "ok", text: `answer=${answer}` },
             ],
           },
         ),
@@ -116,9 +116,12 @@ describe("scripted and non-TTY paths are clack-free", () => {
         throw new Error(`runtime.exit(${code})`);
       },
       onSignal: () => () => {},
-      config: { sections: {}, diagnostics: [] },
+      loadConfig: async () => ({
+        path: "/prisma.config.ts",
+        sections: {},
+        diagnostics: [],
+      }),
       managementApi: { baseUrl: "https://test.invalid" },
-      packageManager: "unknown",
       host: {
         runtime: { name: "node", version: "v22.12.0" },
         platform: "linux",

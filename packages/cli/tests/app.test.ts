@@ -4,8 +4,6 @@ import { describe, expect, it } from "vitest";
 
 import { createTempCwd, executeCli } from "./helpers";
 
-const fixturePath = path.resolve("fixtures/mock-api.json");
-
 describe("app commands", () => {
   it("shows the documented help text for app commands and adds app to root help", async () => {
     const cwd = await createTempCwd();
@@ -15,115 +13,96 @@ describe("app commands", () => {
       argv: ["--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const appHelp = await executeCli({
       argv: ["app", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const buildHelp = await executeCli({
       argv: ["app", "build", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const runHelp = await executeCli({
       argv: ["app", "run", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const deployHelp = await executeCli({
       argv: ["app", "deploy", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const showHelp = await executeCli({
       argv: ["app", "show", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const openHelp = await executeCli({
       argv: ["app", "open", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const domainHelp = await executeCli({
       argv: ["app", "domain", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const domainAddHelp = await executeCli({
       argv: ["app", "domain", "add", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const domainShowHelp = await executeCli({
       argv: ["app", "domain", "show", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const domainRemoveHelp = await executeCli({
       argv: ["app", "domain", "remove", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const domainRetryHelp = await executeCli({
       argv: ["app", "domain", "retry", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const domainWaitHelp = await executeCli({
       argv: ["app", "domain", "wait", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const logsHelp = await executeCli({
       argv: ["app", "logs", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const listDeploysHelp = await executeCli({
       argv: ["app", "list-deploys", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const showDeployHelp = await executeCli({
       argv: ["app", "show-deploy", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const promoteHelp = await executeCli({
       argv: ["app", "promote", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const rollbackHelp = await executeCli({
       argv: ["app", "rollback", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const removeHelp = await executeCli({
       argv: ["app", "remove", "--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(rootHelp.exitCode).toBe(0);
@@ -272,13 +251,11 @@ describe("app commands", () => {
       argv: ["app", "update-env"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const listEnv = await executeCli({
       argv: ["app", "list-env"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(updateEnv.exitCode).not.toBe(0);
@@ -295,7 +272,6 @@ describe("app commands", () => {
       argv: ["app", "deploy", "--db", "--no-db", "--yes"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(result.exitCode).toBe(2);

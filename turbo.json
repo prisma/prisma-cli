@@ -17,6 +17,9 @@
       "inputs": [
         "src/**",
         "tests/**",
+        // The coverage check reads the e2e suite, so a change there
+        // must invalidate the unit run that enforces it.
+        "e2e/**",
         "fixtures/**",
         "package.json",
         "tsconfig.json",
@@ -25,11 +28,19 @@
         "$TURBO_ROOT$/packages/tsconfig/base.json"
       ]
     },
+    "test:e2e": {
+      // The package's OWN build, not just its dependencies': these
+      // tests run dist/v8/cli.js, so a stale dist would test the last
+      // build instead of this change.
+      "dependsOn": ["build"],
+      "cache": false
+    },
     "typecheck": {
       "dependsOn": ["^build"],
       "inputs": [
         "src/**",
         "tests/**",
+        "e2e/**",
         "package.json",
         "tsconfig.json",
         "$TURBO_ROOT$/packages/tsconfig/base.json"

@@ -1,13 +1,22 @@
 /**
- * The minimal prisma.config.ts loader behind Runtime.config:
- * discover the file in cwd (cwd only — no walking up), evaluate it,
- * check the defineConfig version marker, and produce LoadedConfig.
+ * The prisma.config.ts loader behind Runtime.loadConfig: resolve the
+ * file (the one `--config` named, otherwise prisma.config.ts in cwd —
+ * cwd only, no walking up), evaluate it, check the defineConfig version
+ * marker, and produce LoadedConfig.
  *
- * Absence is not an error: section validators own absence, so a missing
- * file is an empty LoadedConfig. An evaluated file WITHOUT the marker (a
- * classic Prisma 7 config, which uses the same filename) fails early
- * with one typed diagnostic — the loader never partially interprets an
- * unmarked file, and never guesses.
+ * Which section names a CLI recognises is not this module's business:
+ * it hands back every top-level key the file had, and the engine — not
+ * a Runtime member a host can replace — checks them against the
+ * sections the mounted commands declare.
+ *
+ * Absence of an undiscovered file is not an error: section validators
+ * own absence, so no prisma.config.ts in cwd yields no sections and no
+ * diagnostics.
+ * Absence of a file the user NAMED with --config is an error — they
+ * said which file to read and it was not there. An evaluated file
+ * WITHOUT the marker (a classic Prisma 7 config, which uses the same
+ * filename) fails early with one typed diagnostic — the loader never
+ * partially interprets an unmarked file, and never guesses.
  *
  * Evaluation goes through c12, the same loader prisma/prisma and
  * prisma/composer use, because the shipped CLI runs on ordinary Node,
@@ -15,8 +24,8 @@
  * Every c12 feature beyond "evaluate this one file" is switched off
  * below so discovery and merging stay exactly as they were.
  */
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import type { Diagnostic } from "./protocol";
 import type { LoadedConfig } from "./runtime";
 import { PRISMA_CONFIG_VERSION } from "./runtime";
@@ -26,9 +35,34 @@ export const CONFIG_FILE_NAME = "prisma.config.ts";
 const MARKER_KEY = "$prismaConfig";
 
 /**
- * Attaches the version marker to a prisma.config.ts export. Top-level
- * keys are the config sections. Never throws — bad section values are
- * the section validator's problem, not defineConfig's.
+ * Top-level keys the config file format keeps for itself, so no
+ * section may be named one of them; buildCommandTree rejects the
+ * declaration at construction.
+ *
+ * `$`-prefixed keys are metadata: `$prismaConfig` is the version
+ * marker, and config loaders read `$env`, `$<NODE_ENV>` and `$meta` —
+ * c12 deletes `$meta` from the config object whatever else it is told.
+ * `extends` is the key config loaders take as "merge another file into
+ * this one". This loader switches that off (`extend: false`), so a key
+ * by that name does reach the config object. It stays reserved anyway:
+ * the file format has no layering of its own, `extends` is the name it
+ * would want if it gained some, and a section called `extends` would
+ * disappear the moment anything switched merging back on.
+ *
+ * `__proto__` is reserved for the reason `$meta` is: c12 merges layers
+ * with defu, which drops the key rather than let a config file reach an
+ * object's prototype, so a section by that name could never be read.
+ */
+export function reservedConfigSectionName(name: string): boolean {
+  return name === "extends" || name === "__proto__" || name.startsWith("$");
+}
+
+/**
+ * Attaches the version marker to a prisma.config.ts export. Each
+ * top-level key names a config section, and the recognised section
+ * names are exactly the ones the CLI's command families declare. Never
+ * throws — bad section values are the section validator's problem, not
+ * defineConfig's.
  */
 export function defineConfig<T extends Record<string, unknown>>(
   config: T,
@@ -44,16 +78,15 @@ function hasVersionMarker(value: unknown): value is Record<string, unknown> {
   );
 }
 
-function fileLevelConfig(diagnostic: Diagnostic): LoadedConfig {
-  return { sections: {}, diagnostics: [{ section: null, diagnostic }] };
+function fileLevelConfig(path: string, diagnostic: Diagnostic): LoadedConfig {
+  return { path, sections: {}, diagnostics: [{ section: null, diagnostic }] };
 }
 
 function missingMarkerDiagnostic(path: string): Diagnostic {
   return {
     code: "CLI.CONFIG_MISSING_MARKER",
     severity: "error",
-    summary:
-      "This prisma.config.ts was not written for this version of the Prisma CLI, so it cannot be used.",
+    summary: `${path} was not written for this version of the Prisma CLI, so it cannot be used.`,
     why: "Configs for this CLI are created with defineConfig, which records a version marker on the exported object. This file's default export has no marker — it is most likely a Prisma 7 config, which uses the same filename — and the CLI stops rather than misread it.",
     nextActions: [
       {
@@ -73,9 +106,9 @@ function firstLine(text: string): string {
 
 function unsupportedVersionDiagnostic(path: string, found: number): Diagnostic {
   return {
-    code: "CLI.CONFIG_INVALID",
+    code: "CLI.CONFIG_VERSION_UNSUPPORTED",
     severity: "error",
-    summary: `prisma.config.ts declares config version ${found}, but this CLI supports only version ${PRISMA_CONFIG_VERSION}.`,
+    summary: `${path} declares config version ${found}, but this CLI supports only version ${PRISMA_CONFIG_VERSION}.`,
     nextActions: [
       {
         kind: "user-choice",
@@ -87,12 +120,29 @@ function unsupportedVersionDiagnostic(path: string, found: number): Diagnostic {
   };
 }
 
+function missingNamedFileDiagnostic(path: string): Diagnostic {
+  return {
+    code: "CLI.CONFIG_NOT_FOUND",
+    severity: "error",
+    summary: `--config named ${path}, and there is no file there.`,
+    why: "A config file found by discovery may be absent — the section validators supply their defaults. A config file named on the command line may not: the CLI would otherwise run against different settings than the ones asked for.",
+    nextActions: [
+      {
+        kind: "user-choice",
+        label:
+          "Correct the path passed to --config, or drop the flag to use the prisma.config.ts in the current directory.",
+      },
+    ],
+    where: { path },
+  };
+}
+
 function unreadableDiagnostic(path: string, cause: unknown): Diagnostic {
   const message = cause instanceof Error ? cause.message : String(cause);
   return {
     code: "CLI.CONFIG_UNREADABLE",
     severity: "error",
-    summary: `prisma.config.ts could not be evaluated: ${firstLine(message)}`,
+    summary: `${path} could not be evaluated: ${firstLine(message)}`,
     nextActions: [
       {
         kind: "user-choice",
@@ -104,11 +154,32 @@ function unreadableDiagnostic(path: string, cause: unknown): Diagnostic {
 }
 
 /**
- * Evaluates the file at `path` and returns its default export. The c12
- * call is prisma/composer's `loadAppConfig` verbatim — explicit
- * configFile, cwd at that file's directory, the three lookups it turns
- * off — with prisma/prisma's dynamic import, so a run with no config
- * file never pays for loading c12 or jiti.
+ * Everything c12 does beyond evaluating the one file it was handed.
+ * Composer leaves the last five at their defaults and can afford to:
+ * its config has a fixed set of keys, where every top-level key here is
+ * a user-authored section name, so all five are reachable from an
+ * ordinary config file.
+ */
+const EVALUATE_ONE_FILE_ONLY = {
+  rcFile: false,
+  globalRc: false,
+  packageJson: false,
+  /** Else `$production` blocks merge over the root under NODE_ENV. */
+  envName: false,
+  /** Else `$prismaConfig` is stripped and every config reads unmarked. */
+  omit$Keys: false,
+  /** Else `extends` is a merge directive rather than a section name. */
+  extend: false,
+  /** Else an `extends` URL is fetched over the network and evaluated. */
+  giget: false,
+  /** Else a neighbouring .env is read into process.env. */
+  dotenv: false,
+} as const;
+
+/**
+ * Evaluates the file at `path` and returns its default export. The call
+ * is prisma/composer's `loadAppConfig` with prisma/prisma's dynamic
+ * import, so a run with no config file never pays for c12 or jiti.
  *
  * The loaded-file check is in both references: c12 is asked for one
  * exact path and must not answer with another.
@@ -119,53 +190,81 @@ async function evaluateConfigFile(path: string): Promise<unknown> {
     name: "prisma",
     configFile: path,
     cwd: dirname(path),
-    rcFile: false,
-    globalRc: false,
-    packageJson: false,
-    // The one deviation from the references, and it is forced: their
-    // configs have a fixed set of keys, ours says every top-level key
-    // is a section name. c12 reads `extends` as an instruction to merge
-    // another config layer, so with their options a user's section
-    // called `extends` is consumed and disappears — demonstrated by the
-    // test, not assumed.
-    extend: false,
+    ...EVALUATE_ONE_FILE_ONLY,
   });
-  if (result.configFile !== path) {
+  // composer's comparison, not prisma/prisma's raw string equality:
+  // realpath normalises the separators and casing c12 hands back on
+  // Windows, where the raw compare fails on a file it did load.
+  const loadedFile = result.configFile;
+  if (
+    typeof loadedFile !== "string" ||
+    realpathSync(loadedFile) !== realpathSync(path)
+  ) {
     throw new Error(
-      `config loading resolved ${String(result.configFile)} instead of ${path}`,
+      `config loading resolved ${String(loadedFile)} instead of ${path}`,
     );
   }
   return result.config;
 }
 
+/** Built with fromEntries rather than assigned key by key: assigning a
+ *  key named `__proto__` runs Object.prototype's setter instead of
+ *  creating an own property, so that one key would disappear from
+ *  Object.keys and never be reported as unrecognised. */
+function sectionsOf(
+  exported: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(exported).filter(([key]) => key !== MARKER_KEY),
+  );
+}
+
 /**
- * The real-disk loader behind Runtime.config: reads prisma.config.ts
- * from cwd (cwd only — no walking up) and produces LoadedConfig. The
- * bin builds Runtime.config with this; tests hand in fixtures.
+ * The file to read, always absolute: the one --config named, resolved
+ * against cwd, or prisma.config.ts in cwd.
+ *
+ * Absolute is not cosmetic, and it is one more thing than either
+ * reference repository does — both are handed an absolute path before
+ * they reach c12, so neither has to resolve one. Given a relative path,
+ * c12 resolves it a second time against its own cwd and looks for a
+ * file that is not there, and jiti cannot import a relative specifier
+ * at all. Resolving here also makes the file's path in every diagnostic
+ * absolute, and makes the loaded-file comparison compare like with
+ * like.
  */
-export async function loadConfig(cwd: string): Promise<LoadedConfig> {
-  const path = join(cwd, CONFIG_FILE_NAME);
+function fileToRead(cwd: string, configPath: string | undefined): string {
+  const root = resolve(cwd);
+  return configPath === undefined
+    ? join(root, CONFIG_FILE_NAME)
+    : resolve(root, configPath);
+}
+
+/**
+ * The real-disk loader behind Runtime.loadConfig. The bin binds it to
+ * the process cwd; tests hand in fixtures.
+ */
+export async function loadConfig(
+  cwd: string,
+  configPath?: string,
+): Promise<LoadedConfig> {
+  const path = fileToRead(cwd, configPath);
   if (!existsSync(path)) {
-    return { sections: {}, diagnostics: [] };
+    return configPath === undefined
+      ? { path, sections: {}, diagnostics: [] }
+      : fileLevelConfig(path, missingNamedFileDiagnostic(path));
   }
   let exported: unknown;
   try {
     exported = await evaluateConfigFile(path);
   } catch (cause) {
-    return fileLevelConfig(unreadableDiagnostic(path, cause));
+    return fileLevelConfig(path, unreadableDiagnostic(path, cause));
   }
   if (!hasVersionMarker(exported)) {
-    return fileLevelConfig(missingMarkerDiagnostic(path));
+    return fileLevelConfig(path, missingMarkerDiagnostic(path));
   }
   const version = exported[MARKER_KEY] as number;
   if (version !== PRISMA_CONFIG_VERSION) {
-    return fileLevelConfig(unsupportedVersionDiagnostic(path, version));
+    return fileLevelConfig(path, unsupportedVersionDiagnostic(path, version));
   }
-  const sections: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(exported)) {
-    if (key !== MARKER_KEY) {
-      sections[key] = value;
-    }
-  }
-  return { sections, diagnostics: [] };
+  return { path, sections: sectionsOf(exported), diagnostics: [] };
 }

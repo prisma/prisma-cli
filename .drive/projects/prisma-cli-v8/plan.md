@@ -40,6 +40,11 @@ deleted, per-family shell integration proofs, parity list reviewed.
 
 ### S3 — Composer adoption (first cross-repo consumer)
 
+**CLOSED 2026-08-12** — shipped as prisma-cli #136/#145/#150/#151/#155
+plus the mount (#152) and composer #220/#224/#226; acceptance verified
+in `specs/s3-composer.md`'s Close-out section; leftovers in
+`deferred.md`. Next by the dependency graph: S8 (design first).
+
 Repos: composer + prisma-cli. Composer exports a `CommandFamily`
 (the `composer` config section token — its validator rewritten from the
 current throwing loader per the section API — plus its command set);
@@ -82,6 +87,21 @@ wired into both products' publish CI as S3/S5 land.
 
 ### S8 — Service primitives (design first; after S3, before S7)
 
+**CLOSED 2026-08-12** — shipped as PR #162; acceptance verified in
+the contract's Status line, follow-ups in `deferred.md`. The e2e
+suite's first real run caught a family-wide defect (the stale
+workspace filter) that four review rounds and 1250 unit tests
+missed — the convention earned its keep.
+
+**Design settled 2026-08-12** (operator discussion); the slice
+contract is `specs/s8-services.md`. The four questions below are
+answered there: no ownership note for now, records verified
+compatible, the log-ownership conflict dissolved on investigation
+(`composer log` reads the local dev daemon, not the platform), and
+the transport question is ANSWERED — the API owners accept HTTP with
+live streaming later, so `service logs` stays shelved only until the
+endpoint serves HTTP, and no engine WebSocket transport is built.
+
 Repo: prisma-cli. Give the platform's service resources an atomic CLI surface, replacing what S2c ported for continuity.
 
 **Why this slice exists.** The legacy `app` group fused three concerns — building an artifact, wiring a GitHub repo, and deploying — into single commands, most visibly `app deploy`, which builds, creates a project, creates branches, sets environment variables, optionally provisions a database, and deploys. Composer replaces the building and deploying. What the CLI should own is managing the remote resource, and today it cannot: there is no `service list` and no `service create` despite `GET`/`POST /v1/apps`, no deployment start or stop despite `POST /v1/deployments/{id}/start|stop`, and no deployment delete. A service can currently only be born as a side effect of deploying to it. S2c ported the surviving commands under their legacy names so the commander shell could die in S2d; that port is continuity, not endorsement of the shape.
@@ -90,11 +110,12 @@ Repo: prisma-cli. Give the platform's service resources an atomic CLI surface, r
 
 That makes the shape of the slice mostly a rename plus filling holes — a `service deployment` subgroup absorbing `list-deploys`, `show-deploy`, `logs`, `promote` and `rollback`, plus the five operations that have no command at all. The expensive parts (engine, auth, presenters, error model, the `service` rename) are done.
 
-**Why it still waits for the design work.** Three questions need answers that only S3 can give, and none of them is about whether the resources exist.
+**Why it still waits for the design work.** Four questions need answers, and none of them is about whether the resources exist. The first three are S3's to give; the fourth is for the engine and the Management API owners, because it asks what can open an authenticated log socket and whether one is needed at all.
 
 1. ~~Does Alchemy hold desired state?~~ **Answered (operator, 2026-08-10): yes, and changing the platform directly is overwritten on the next `composer deploy`. Accepted.** So the imperative operations stay, and their effect on a Composer-managed service is understood to be transient. What remains for the design is only whether the CLI says so at the point of use — a service the CLI can tell is Composer-managed could carry a line on `promote`, `rollback`, `start` and `stop` noting the next deploy reconciles it. That depends on question 2: whether the records carry anything identifying a service as Composer-managed.
 2. What do Composer's app and deployment records actually contain? If the Alchemy path populates a different subset of fields than `app deploy` did, `service show` and `service deployment show` are presenting a shape nobody has looked at.
 3. Where does log reading live? `composer log` and a `service deployment logs` would be two ways to read the same thing, and the project spec rules that a subgroup is owned by exactly one command family.
+4. **If log reading lands here, what opens the socket?** Added during S2c, which shelved `service logs` rather than ship it. Deployment logs are the one endpoint in the list that upgrades to a **WebSocket**, and the engine's client is HTTP-only, so the port had been taking a raw token and letting the compute SDK build the URL and set the `Authorization` header itself. The rev-6 credential model rules that out — credentials never reach commands, and `getCredentials` is now deleted — so the command cannot come back until the engine can open an authenticated socket. The design for that, written at the operator's instruction, is `assets/engine/websocket-transport-design.md`: the engine opens the socket and hands back a decoded record stream, with reconnection across the ten-minute cutoff owned by the engine rather than reimplemented per command. **Read its §7 before building anything** — if deployment logs can be served over plain HTTP the way `build logs` already is, the transport work disappears and the command becomes a copy of `build logs`. The shelved handler is reviewed, green, and in the `s2c-services` history, so restoring it is small once the transport question is answered.
 
 One standing caveat: every endpoint above is marked experimental and subject to change without notice. Designing a stable CLI surface over an unstable API is how the next bastardization gets built, so the design has to say what it is willing to depend on.
 
@@ -108,10 +129,48 @@ release automation, pinned product versions, and the pipeline emitting
 a publishable `prisma@8.0.0-rc1` artifact from a tagged commit. Ends
 when the operator can publish with one action (project DoD).
 
+### S9 — The error-code catalogue (last)
+
+Repo: prisma-cli. The engine raises its `CLI.*` codes from sixteen-plus
+construction sites and catalogues them nowhere;
+`docs/product/error-conventions.md` catalogues the LEGACY flat code
+space (`BUILD_FAILED` and friends), which dies with the commander
+shell. ADR 0003 requires a new error code to update that document, so
+today every new engine code either updates the wrong catalogue or
+silently skips the rule.
+
+This slice writes the real one: every `CLI.*` code the shipped engine
+raises, with its meaning, its exit code, and its `meta` shape; the
+legacy flat catalogue is replaced, not appended to; ADR 0003's rule is
+re-pointed at the new document. Products' own namespaces (`AUTH.*`,
+`PROJECT.*`, `POSTGRES.*`, and the ORM/Composer families) are listed by
+namespace owner, not enumerated here — each family documents its own.
+
+**Ordering.** Last, deliberately. Ruled by the operator (2026-08-11)
+while triaging the package-manager capability, whose spec asked for
+"documented wherever the engine catalogues its own codes" and found no
+such place. Cataloguing before the ports land would document a code
+space still being written; cataloguing before the old CLI is retired
+would document two competing spaces at once. So: after S5 (ports done),
+after S2d (commander shell deleted), after S7 if it slips.
+
+### S10 — Skills catch up (last, after S9)
+
+Repo: prisma-cli (+ wherever each skill lives). Every agent skill
+that teaches or drives these CLIs is rewritten against the shipped
+v8 surface: the Composer skills (`skills-contrib/` in the composer
+repo), the ORM skills, and the platform-CLI command skills. The v8
+port renames commands, moves them between families, deletes
+spellings, and changes output shapes; a skill written against the
+legacy CLI silently teaches commands that exit 2. Added at operator
+instruction (2026-08-12). Last, because skills document the shipped
+surface: after S9, or after S7 if S9 slips — whichever means the
+command tree and error catalogue have stopped moving.
+
 ## Dependency graph
 
 ```text
-S1 ──► S2 ──► S3 ──► S5 ──► S7
+S1 ──► S2 ──► S3 ──► S5 ──► S7 ──► S9 ──► S10
         │      ▲      ▲             ▲
         └──────┘      │             │
 S4 (prisma/prisma) ───┴──► S5       │
@@ -119,21 +178,42 @@ S6 (after S1) ─────────────► wired in during S3/S5
 S3 ──► S8 (design first) ───────────┘
 ```
 
+## Follow-ups parked on other work
+
+Recorded so they are not lost between slices.
+
+- **Restore the "what to run next" hints that pointed at `service
+  deploy`.** S2c dropped `service deploy` and `service build` (operator
+  ruling: they conflated local compiling with uploading a tarball, and
+  Composer supersedes them). Ten typed next actions in the surviving
+  service commands suggested running `service deploy`, and were removed
+  rather than left pointing at a command the binary no longer answers
+  to — `show`, `list-deploys`, `open`, `promote`, `rollback`, `remove`
+  and the domain commands now explain a failure without offering a
+  follow-up command. **Once Composer's deploy commands exist, add them
+  back pointing there** (operator instruction, 2026-08-10). The removal
+  is recorded in `assets/s2/parity-divergences-s2c.md`.
+- **`service logs` returns in S8**, once the engine can open an
+  authenticated socket. Shelved, not rejected — unlike `service deploy`,
+  which is not coming back in that shape.
+
 ## Coverage ledger (what proves what)
 
 | Engine surface | Proven by |
 | --- | --- |
 | Sync commands, presenters, envelopes, exit codes | S1, S2 |
 | Prompts (defaults, consent, wizard) | S2 (init) |
-| Poll + status events; output streams | S2 (domain wait; app/build logs) |
-| Auth via context, refresh under long runs | S2, S3 (deploy) |
-| Config sections, command families, validator absence | S3, S5 |
+| Poll + status events; output streams | S2 (domain wait; `build logs` — `service logs` moved to S8) |
+| Auth via context | S2, S3 (deploy, destroy) |
+| Refresh under long runs | **Still unproven** (corrected at S3 closure). S3 proves the STATIC-token handoff instead: the child is given a snapshot that never refreshes, and the refresh token is never injected, so a long converge runs on a token that can expire mid-run. The contract accepts that and refuses up front when the session is near expiry. **The bound that refusal buys is five minutes** (`CREDENTIAL_NEAR_EXPIRY_MS` in `execution/needs.ts`): a run starts only when more than five minutes remain, and nothing limits how long the child then runs, so a converge outliving the snapshot fails on an expired token after it has created resources. That is a release limitation, recorded in `deferred.md`, not a solved problem. The in-process leg uses the engine's refreshing client, but nothing in S3 runs long enough to make it refresh. |
+| Config sections, command families, validator absence | Two levels, and they are proven in different places. The section machinery — a total validator including absence, a validator's warning diagnostic, and the engine's unknown-section check — is proven by the engine's own suite (`packages/cli-engine/tests/config.test.ts`) against toy sections. What S3 adds is ONE real section end to end: composer's, a single optional string field, declared by one family, read from disk by the bin's real loader, accepted by composer's own validator, and arriving at composer's handler as the path it acts on (`v8-bin.test.ts`, "hands the composer section of prisma.config.ts to the composer family"). Only the accepting path is covered there: nothing in the bin shows composer's validator refusing a section, running on an absent one, or warning on an unknown key, because `log` against that one fixture is the only run a shipped composer command makes to config without credentials. The platform family declares no section, so two families contributing to one config file is unproven, and so is any section with required or structured fields. Both wait for S5. |
 | Session commands, signal lifetime | S3 (dev, log) |
 | Cross-repo/published consumption, pins, tandem releases | S3 |
 | Child-status passthrough exception | S3 |
 | Diagnostics model, catalogued exit codes | S5 |
 | Server command (stdio) | S5 (lsp) |
 | Grammar tree completeness | S7 |
+| Engine error-code catalogue | S9 |
 
 ## Out of plan (per spec non-goals)
 

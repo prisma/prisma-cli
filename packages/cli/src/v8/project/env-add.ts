@@ -40,7 +40,7 @@ const TITLE = "Setting a new environment variable.";
 function singlePresentations(result: EnvAddResult): Presentations {
   return {
     human: (): Block[] => [
-      { kind: "summary", tone: "info", text: TITLE },
+      { kind: "summary", status: "info", text: TITLE },
       {
         kind: "fields",
         rows: variableFieldRows(

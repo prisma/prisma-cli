@@ -21,21 +21,25 @@ not rendering — they stay byte-asserted). The auth-linking step uses
 login) + a sign-in nextAction when unauthenticated (R-S2b-2 spirit;
 enumerate divergence from any legacy auto-login).
 
+R-S2d-1a **`init`'s dependency install**: today's `init` installs the
+compute SDK by spawning the user's package manager through execa
+(`packages/cli/src/controllers/init.ts`) — a step this contract did not
+previously mention. It ports onto the engine's package-manager
+capability: the handler declares `installsPackages: true` and calls
+`ctx.packages.install(...)`; it does not spawn, spell a manager command
+line, or phrase the failure itself. The current behavior of treating a
+failed install as a warning and continuing (rather than failing the
+command) is preserved — the capability returns a `Result`, so the
+handler keeps that choice. Prerequisite: the capability must have
+landed (`engine-package-manager-capability.md`); until it does, this
+sub-rule is the reason `init` cannot be ported.
+
 R-S2d-2 **`version`**: the engine's `--version` surface already
 exists; the `version` COMMAND ports as a result command presenting
 the inventory's current fields (version, node, platform) with a json
 serializer. Trivial but user-visible; test matrix applies.
 
-R-S2d-3 **The bin cutover**: `packages/cli/package.json` `bin`
-(`prisma-cli`) points at the v8 entry; the tsdown build bundles the
-v8 tree; the `prisma-v8` working name and root script are deleted.
-The config-loader plain-Node
-constraint is resolved: RULED (operator, 2026-08-11) to copy
-prisma/prisma and prisma/composer, which both load the config with
-`c12` — a dependency, dynamically imported, called as
-`loadConfig({ name, cwd, configFile? })`, with `typescript` as a peer
-dependency. Nothing to design; port their shape. This no longer blocks
-any part of the slice.
+R-S2d-3 **The bin cutover**: `packages/cli/package.json` `bin` (`prisma-cli`) points at the v8 entry; the tsdown build bundles the v8 tree; the `prisma-v8` working name and root script are deleted. The config-loader plain-Node constraint is resolved: RULED (operator, 2026-08-11) to copy prisma/prisma and prisma/composer, which both load the config with `c12` — a dependency, dynamically imported, called as `loadConfig({ name, cwd, configFile? })`. `c12@3.3.4` depends on `jiti` directly, so an ordinary `dependencies` entry is all that has to be declared; its only peer dependency is `magicast`, which is optional. Nothing to design; port their shape. This no longer blocks any part of the slice.
 
 R-S2d-4 **Deletions** (after all ports green; single dedicated
 commit series): the commander shell (`src/cli.ts` program wiring,

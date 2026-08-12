@@ -64,8 +64,8 @@ describe("the v8 legacy-context adapter", () => {
   it("refuses a runtime field it cannot serve, and names it", () => {
     const context = legacyOperationContext(stubContext("/somewhere"));
 
-    expect(() => context.runtime.fixturePath).toThrow(
-      "the v8 legacy-context adapter provides only runtime.cwd, runtime.env and runtime.signal; runtime.fixturePath was read",
+    expect(() => context.runtime.stdout).toThrow(
+      "the v8 legacy-context adapter provides only runtime.cwd, runtime.env and runtime.signal; runtime.stdout was read",
     );
   });
 

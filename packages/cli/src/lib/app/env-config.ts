@@ -1,4 +1,4 @@
-import { usageError } from "../../shell/errors";
+import { usageError } from "../../errors";
 
 export type EnvVarRole = "production" | "preview";
 

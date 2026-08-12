@@ -18,7 +18,7 @@ function listPresentations(result: BucketKeyListResult): Presentations {
   const rows = bucketKeyRows(result.keys);
   return {
     human: (): Block[] => [
-      { kind: "summary", tone: "info", text: TITLE },
+      { kind: "summary", status: "info", text: TITLE },
       { kind: "fields", rows: [{ label: "bucket", value: result.bucketId }] },
       ...(rows.length === 0
         ? [{ kind: "list" as const, items: ["No keys found."] }]

@@ -32,13 +32,15 @@ describe("runTelemetry — async fork error", () => {
     const exitCodeBefore = process.exitCode;
 
     const outcome = runTelemetry({
-      command: { commandPath: ["init"], flags: [], positionalCount: 0 },
-      version: "0.9.0",
-      projectRoot: process.cwd(),
+      payload: {
+        installationId: "id-1",
+        version: "0.9.0",
+        command: "init",
+        flags: [],
+        projectRoot: process.cwd(),
+        endpoint: "https://telemetry.invalid/events",
+      },
       senderPath: "/sender/path.js",
-      isCI: false,
-      env: {},
-      userConfig: { enableTelemetry: true, installationId: "id-1" },
     });
     expect(outcome).toEqual({ spawned: true });
 

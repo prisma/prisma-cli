@@ -8,13 +8,13 @@ import {
   sortProjects,
 } from "../../lib/project/resolution";
 import {
-  formatCommandArgument,
   isValidProjectSetupName,
   projectCreateFailedError,
   projectSetupNameRequiredError,
   resolveProjectForSetup,
   toProjectSummary,
 } from "../../lib/project/setup";
+import { formatCommandArgument } from "../../shell/command-arguments";
 import { usageError } from "../../shell/errors";
 import type { AuthWorkspace } from "../../types/auth";
 import type { ProjectSetupResult, ProjectSummary } from "../../types/project";
@@ -146,7 +146,7 @@ export async function linkDirectoryToProject(
   projectRef: string | undefined,
 ): Promise<ProjectSetupResult> {
   const workspace = await resolveActiveWorkspace(ctx);
-  const projects = await listWorkspaceProjects(ctx, workspace);
+  const projects = await listWorkspaceProjects(ctx);
   const ref = projectRef?.trim();
 
   return ref

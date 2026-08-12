@@ -26,7 +26,7 @@ function typesBlock(result: InitResult): Block | undefined {
   if (result.types.status === "installed") {
     return {
       kind: "summary",
-      tone: "ok",
+      status: "ok",
       text: `Installed ${result.types.package} (config types)`,
     };
   }
@@ -36,7 +36,7 @@ function typesBlock(result: InitResult): Block | undefined {
   ) {
     return {
       kind: "summary",
-      tone: "info",
+      status: "info",
       text: `For editor types: ${result.types.installCommand}`,
     };
   }
@@ -53,7 +53,7 @@ function linkBlock(
     case "linked":
       return {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: `Linked "${result.directory}" to Project "${result.link.project?.name ?? ""}"`,
       };
     case "already-linked":
@@ -62,7 +62,7 @@ function linkBlock(
     default:
       return {
         kind: "summary",
-        tone: "info",
+        status: "info",
         text: `Not linked to a Project yet; link with ${formatCommand(["project", "link"])}.`,
       };
   }
@@ -77,7 +77,7 @@ export function initPresentations(
       [
         {
           kind: "summary",
-          tone: "ok",
+          status: "ok",
           text: result.converted
             ? `Converted ${COMPUTE_CONFIG_JSON_FILENAME} to ${result.configPath}`
             : `Wrote ${result.configPath}`,

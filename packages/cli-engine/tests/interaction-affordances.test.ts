@@ -39,7 +39,7 @@ function probeCommand(run: (ctx: CommandContext) => Promise<unknown>) {
           { data: { answer } },
           {
             human: (): readonly Block[] => [
-              { kind: "summary", tone: "ok", text: `answer=${answer}` },
+              { kind: "summary", status: "ok", text: `answer=${answer}` },
             ],
           },
         ),

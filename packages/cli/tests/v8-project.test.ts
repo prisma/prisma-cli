@@ -35,6 +35,16 @@ beforeEach(() => {
   vi.mocked(resolveRecipientWorkspaceSession).mockReset();
 });
 
+/**
+ * The two ids one workspace has. A credential's `workspace_id` claim
+ * carries the bare form; the management API answers with the same id
+ * behind a `wksp_` prefix. Fixtures that used one string for both could
+ * not see the mismatch that made `project list` report "No projects
+ * found." for a workspace full of projects.
+ */
+const WORKSPACE_ID = "ws_1";
+const API_WORKSPACE_ID = `wksp_${WORKSPACE_ID}`;
+
 const ACME_SESSION = {
   workspaceId: "ws_1",
   workspaceName: "Acme Inc",
@@ -45,24 +55,22 @@ const ACME_SESSION = {
   },
 };
 
+/** What `/v1/projects` returns for a credential: the projects of the one
+ *  workspace that credential names. It does not return other
+ *  workspaces' projects, and a fixture that pretends otherwise invites
+ *  client-side filtering to handle a case the API never produces. */
 const API_PROJECTS = [
   {
     id: "proj_1",
     name: "Billing",
     defaultRegion: "us-east-1",
-    workspace: { id: "ws_1", name: "Acme Inc" },
+    workspace: { id: API_WORKSPACE_ID, name: "Acme Inc" },
   },
   {
     id: "proj_2",
     name: "Storefront",
     defaultRegion: null,
-    workspace: { id: "ws_1", name: "Acme Inc" },
-  },
-  {
-    id: "proj_9",
-    name: "Other workspace",
-    defaultRegion: null,
-    workspace: { id: "ws_other", name: "Globex" },
+    workspace: { id: API_WORKSPACE_ID, name: "Acme Inc" },
   },
 ];
 
@@ -166,7 +174,7 @@ describe("prisma-v8 project list", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
-      workspace: { id: "ws_1", name: "Acme Inc" },
+      workspace: { id: WORKSPACE_ID, name: "Acme Inc" },
       localBinding: { status: "linked" },
       projects: [
         { id: "proj_1", name: "Billing", defaultRegion: "us-east-1" },
@@ -229,8 +237,8 @@ describe("prisma-v8 project list", () => {
     ]);
   });
 
-  it("reports an invalid binding when the pin names another workspace", async () => {
-    const cwd = await tempCwd({ workspaceId: "ws_other", projectId: "proj_1" });
+  it("reports an invalid binding when the pinned project is not one the API returned", async () => {
+    const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_gone" });
     const result = await makeCli(fakeClient()).run(["project", "list"], {
       cwd,
     });
@@ -241,6 +249,22 @@ describe("prisma-v8 project list", () => {
     expect(result.presented?.presentation.next?.[0]?.reason).toBe(
       "This directory has an invalid local Project binding. Ask the user which Prisma Project to link before running Project-scoped commands.",
     );
+  });
+
+  /** The pin records whichever workspace-id form the CLI held when it
+   *  was written — v7 wrote the API's `wksp_`-prefixed id, v8 writes the
+   *  credential's bare one. Neither may turn a working link into an
+   *  invalid one, so the binding is judged only by whether the pinned
+   *  project is among those the API returned. */
+  it("stays linked when the pin records the workspace id in another form", async () => {
+    const cwd = await tempCwd({ workspaceId: "wksp_1", projectId: "proj_1" });
+    const result = await makeCli(fakeClient()).run(["project", "list"], {
+      cwd,
+    });
+
+    expect(result.presented?.data).toMatchObject({
+      localBinding: { status: "linked" },
+    });
   });
 
   it("renders an empty-state list block when the workspace has no projects", async () => {
@@ -365,7 +389,7 @@ describe("prisma-v8 project show", () => {
     });
     expect(blocks(result.presented)[0]).toEqual({
       kind: "summary",
-      tone: "warn",
+      status: "warn",
       text: "This directory is not linked to a Prisma Project.",
     });
     expect(result.presented?.presentation.next?.at(-1)).toEqual({
@@ -477,7 +501,7 @@ describe("prisma-v8 project show", () => {
       ok: true,
       commandId: "project.show",
       result: {
-        workspace: { id: "ws_1", name: "Acme Inc" },
+        workspace: { id: WORKSPACE_ID, name: "Acme Inc" },
         project: { id: "proj_2", name: "Storefront" },
         resolution: { projectSource: "local-pin", targetName: "Storefront" },
       },
@@ -514,13 +538,13 @@ describe("prisma-v8 project create", () => {
       action: "created",
     });
     expect(blocks(result.presented)).toEqual([
-      { kind: "summary", tone: "ok", text: 'Created Project "my-app"' },
+      { kind: "summary", status: "ok", text: 'Created Project "my-app"' },
       {
         kind: "summary",
-        tone: "ok",
+        status: "ok",
         text: `Linked "./${path.basename(cwd)}" to Project "my-app"`,
       },
-      { kind: "summary", tone: "info", text: "Saved .prisma/local.json" },
+      { kind: "summary", status: "info", text: "Saved .prisma/local.json" },
     ]);
     expect(
       JSON.parse(
@@ -651,7 +675,7 @@ describe("prisma-v8 project create", () => {
       ok: true,
       commandId: "project.create",
       result: {
-        workspace: { id: "ws_1", name: "Acme Inc" },
+        workspace: { id: WORKSPACE_ID, name: "Acme Inc" },
         project: { id: "proj_new", name: "my-app" },
         localPin: { path: ".prisma/local.json", written: true },
         action: "created",
@@ -880,7 +904,7 @@ describe("prisma-v8 project rename", () => {
       previousName: "Billing",
     });
     expect(blocks(result.presented)).toEqual([
-      { kind: "summary", tone: "ok", text: "Renaming project." },
+      { kind: "summary", status: "ok", text: "Renaming project." },
       {
         kind: "fields",
         rows: [
@@ -1202,7 +1226,7 @@ describe("prisma-v8 project env add", () => {
     });
     expect(blocks(result.presented)[0]).toEqual({
       kind: "summary",
-      tone: "info",
+      status: "info",
       text: "Setting a new environment variable.",
     });
   });
@@ -1649,7 +1673,7 @@ describe("prisma-v8 project env update", () => {
     expect(writes).toEqual([{ envVarId: "env_1", value: "sk_new" }]);
     expect(blocks(result.presented)[0]).toEqual({
       kind: "summary",
-      tone: "info",
+      status: "info",
       text: "Replacing the environment variable's value.",
     });
   });
@@ -1861,7 +1885,7 @@ describe("prisma-v8 project env update", () => {
     });
     expect(blocks(result.presented)[0]).toEqual({
       kind: "summary",
-      tone: "info",
+      status: "info",
       text: "Replacing environment variable values from file.",
     });
   });
@@ -2302,7 +2326,7 @@ describe("prisma-v8 project env remove", () => {
     expect(blocks(result.presented)).toEqual([
       {
         kind: "summary",
-        tone: "info",
+        status: "info",
         text: "Removing the environment variable from the scope.",
       },
       {
@@ -2481,7 +2505,7 @@ describe("prisma-v8 project remove", () => {
       localPin: { cleared: true },
     });
     expect(blocks(result.presented)).toEqual([
-      { kind: "summary", tone: "ok", text: "Removing project." },
+      { kind: "summary", status: "ok", text: "Removing project." },
       {
         kind: "fields",
         rows: [
@@ -2657,7 +2681,7 @@ describe("prisma-v8 project remove", () => {
       ok: true,
       commandId: "project.remove",
       result: {
-        workspace: { id: "ws_1", name: "Acme Inc" },
+        workspace: { id: WORKSPACE_ID, name: "Acme Inc" },
         project: { id: "proj_1", name: "Billing" },
         localPin: { cleared: false },
       },

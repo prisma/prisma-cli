@@ -80,27 +80,21 @@ can overrule before the affected dispatch runs.
   `auth login` nextAction (consistent, agent-friendly). Ratify or
   reinstate auto-login as an engine feature.
 - **Q2 — `service run`. RULED (operator, 2026-08-11): dropped.** It does
-  not port, and the engine does not grow a child-exit-code passthrough
-  for it. The command started a local dev server and passed its exit
+  not port. The command started a local dev server and passed its exit
   code through, which is Composer's `dev`. Nothing of the commander
   shell survives S2d on its account, and the removal joins the divergence
   list alongside `service build` and `service deploy`.
+  **Corrected at S3 closure (D4):** this row used to add that the engine
+  does not grow a child-exit-code passthrough, and S3 built one —
+  `ctx.spawn` plus the `exitWithChildStatus` settlement, for composer's
+  converge. So the mechanism exists and the command does not, which is
+  the opposite of the reading S3 was once planned around ("S3 closes Q2
+  by building the mechanism"). Q2 stays closed by main's #135, which
+  dropped the command outright; anything that ever revives it rides the
+  mechanism that is now there.
 - **Q3 — `project env remove`'s `rm` alias** (the only alias in the
   tree) does not port. Ratify the drop or rule alias support.
-- **Q4 — reading the config file from the shipped binary. RULED
-  (operator, 2026-08-11): copy prisma/prisma and prisma/composer, which
-  both use `c12`.** Our loader does a plain dynamic `import()` of
-  `prisma.config.ts`, which only works under a TypeScript-capable
-  runtime; the shipped binary runs on ordinary Node. Both reference
-  repositories solved this already and identically, so there is nothing
-  to design. `c12` is a dependency, imported dynamically at the call
-  site, invoked as `loadConfig({ name, cwd, configFile? })`, with
-  `typescript` declared as a peer dependency. See
-  `packages/1-framework/3-tooling/config-loader/src/load.ts` in
-  prisma/prisma, and the `cli` and `composer` packages in
-  prisma/composer. Copy the dependency declarations too, not just the
-  call: `c12` evaluates TypeScript through `jiti`, which it declares as
-  a peer, and that is the part that makes it work on plain Node.
+- **Q4 — reading the config file from the shipped binary. RULED (operator, 2026-08-11): copy prisma/prisma and prisma/composer, which both use `c12`.** Our loader does a plain dynamic `import()` of `prisma.config.ts`, which only works under a TypeScript-capable runtime; the shipped binary runs on ordinary Node. Both reference repositories solved this already and identically, so there is nothing to design. `c12` is a dependency, imported dynamically at the call site, invoked as `loadConfig({ name, cwd, configFile? })`. See `packages/1-framework/3-tooling/config-loader/src/load.ts` in prisma/prisma, and the `cli` and `composer` packages in prisma/composer. One ordinary `dependencies` entry is the whole contract: `c12` evaluates TypeScript through `jiti`, which `c12@3.3.4` depends on directly, so installing `c12` installs the part that makes it work on plain Node. `c12`'s only peer dependency is `magicast`, and that one is optional.
 - **Q5 — exit-code unification.** R-S2b-3 changes user-visible codes:
   legacy consent failures split 1/2 and prod-deploy cancel exits 0;
   engine rules make these 2 (structural) and 3 (cancel). Built to

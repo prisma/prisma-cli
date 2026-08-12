@@ -44,7 +44,7 @@ function listPresentations(
   const stdoutRows = connectionStdoutRows(result);
   return {
     human: (): Block[] => [
-      { kind: "summary", tone: "info", text: TITLE },
+      { kind: "summary", status: "info", text: TITLE },
       {
         kind: "fields",
         rows: [{ label: "database", value: result.database.name }],

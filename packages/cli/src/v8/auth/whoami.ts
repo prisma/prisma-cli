@@ -105,13 +105,13 @@ function presentationsFor(spec: {
   const fromEnvironment = spec.credential?.origin.source === "environment";
   return {
     human: () => [
-      { kind: "summary", tone: "info", text: TITLE },
+      { kind: "summary", status: "info", text: TITLE },
       { kind: "fields", rows },
       ...(fromEnvironment
         ? [
             {
               kind: "summary",
-              tone: "info",
+              status: "info",
               text: ENVIRONMENT_CREDENTIAL_NOTICE,
             } as const,
           ]

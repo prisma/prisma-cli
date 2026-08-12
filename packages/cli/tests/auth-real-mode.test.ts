@@ -3,14 +3,8 @@ import path from "node:path";
 import stripAnsi from "strip-ansi";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { MockApi } from "../src/adapters/mock-api";
-import {
-  renderAuthSuccess,
-  renderAuthWorkspaceList,
-} from "../src/presenters/auth";
+import { renderAuthWorkspaceList } from "../src/presenters/auth";
 import { getCommandDescriptor } from "../src/shell/command-meta";
-
-const fixturePath = path.resolve("fixtures/mock-api.json");
 
 afterEach(() => {
   vi.doUnmock("../src/auth/operations");
@@ -57,11 +51,10 @@ describe("real auth mode", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
-    const result = await runAuthLogin(context, {});
+    const result = await runAuthLogin(context);
 
     expect(performLogin).toHaveBeenCalledWith(
       context.runtime.env,
@@ -78,72 +71,6 @@ describe("real auth mode", () => {
         name: "Real Workspace",
       },
     });
-  });
-
-  it("stays in mock mode when fixture mode is enabled", async () => {
-    const performLogin = vi.fn().mockResolvedValue({
-      token: "real-mode-access-token",
-      refreshToken: undefined,
-      expiresAt: undefined,
-    });
-    const readAuthState = vi.fn().mockResolvedValue(null);
-    const performLogout = vi.fn().mockResolvedValue(undefined);
-
-    vi.doMock("../src/auth/operations", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("../src/auth/operations")>()),
-      performLogin,
-      readAuthState,
-      performLogout,
-    }));
-
-    const { createTempCwd, createTestCommandContext } = await import(
-      "./helpers"
-    );
-    const { runAuthLogin } = await import("../src/controllers/auth");
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({
-      cwd,
-      stateDir,
-      fixturePath,
-    });
-
-    const result = await runAuthLogin(context, {
-      provider: "github",
-      user: "usr_456",
-    });
-
-    expect(performLogin).not.toHaveBeenCalled();
-    expect(readAuthState).not.toHaveBeenCalled();
-    expect(result.result).toMatchObject({
-      authenticated: true,
-      provider: "github",
-      workspace: {
-        name: "Acme Inc",
-      },
-    });
-  });
-
-  it("does not eagerly load fixtures in real mode", async () => {
-    const loadSpy = vi.spyOn(MockApi, "load");
-    const { createTempCwd, createTestCommandContext } = await import(
-      "./helpers"
-    );
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({
-      cwd,
-      stateDir,
-      env: {
-        ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
-      },
-    });
-
-    expect(loadSpy).not.toHaveBeenCalled();
-    expect(() => context.api).toThrow(
-      "context.api accessed in real mode. Set runtime.fixturePath or PRISMA_CLI_MOCK_FIXTURE_PATH to use fixture mode.",
-    );
   });
 
   it("returns service-token identity in real auth JSON output", async () => {
@@ -179,7 +106,6 @@ describe("real auth mode", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -241,7 +167,6 @@ describe("real auth mode", () => {
     const authFilePath = path.join(cwd, "auth.json");
     const env = {
       ...process.env,
-      PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       PRISMA_COMPUTE_AUTH_FILE: authFilePath,
       PRISMA_SERVICE_TOKEN: "service-token",
     };
@@ -317,7 +242,6 @@ describe("real auth mode", () => {
     const authFilePath = path.join(cwd, "auth.json");
     const env = {
       ...process.env,
-      PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       PRISMA_COMPUTE_AUTH_FILE: authFilePath,
       PRISMA_SERVICE_TOKEN: undefined,
     };
@@ -393,7 +317,6 @@ describe("real auth mode", () => {
     const authFilePath = path.join(cwd, "auth.json");
     const env = {
       ...process.env,
-      PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       PRISMA_COMPUTE_AUTH_FILE: authFilePath,
       PRISMA_SERVICE_TOKEN: undefined,
     };
@@ -478,7 +401,6 @@ describe("real auth mode", () => {
     const authFilePath = path.join(cwd, "auth.json");
     const env = {
       ...process.env,
-      PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       PRISMA_COMPUTE_AUTH_FILE: authFilePath,
       PRISMA_SERVICE_TOKEN: undefined,
     };
@@ -512,113 +434,5 @@ describe("real auth mode", () => {
     await expect(storage.getTokens()).resolves.toMatchObject({
       workspaceId: "cmmxworkspace2",
     });
-  });
-
-  it("omits empty provider and workspace rows in auth output", async () => {
-    const { createTempCwd, createTestCommandContext } = await import(
-      "./helpers"
-    );
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({
-      cwd,
-      stateDir,
-      fixturePath,
-    });
-
-    const output = renderAuthSuccess(
-      context,
-      getCommandDescriptor("auth.login"),
-      "auth.login",
-      {
-        authenticated: true,
-        provider: null,
-        user: {
-          email: "real@example.com",
-        },
-        workspace: null,
-        credential: null,
-      },
-    ).join("");
-
-    const plain = stripAnsi(output);
-
-    expect(plain).toContain("user:");
-    expect(plain).not.toContain("provider:");
-    expect(plain).not.toContain("workspace:");
-  });
-
-  it("omits the user row when a real auth state has no email", async () => {
-    const { createTempCwd, createTestCommandContext } = await import(
-      "./helpers"
-    );
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({
-      cwd,
-      stateDir,
-      fixturePath,
-    });
-
-    const output = renderAuthSuccess(
-      context,
-      getCommandDescriptor("auth.whoami"),
-      "auth.whoami",
-      {
-        authenticated: true,
-        provider: null,
-        user: null,
-        workspace: {
-          id: "ws_real",
-          name: "Real Workspace",
-        },
-        credential: null,
-      },
-    ).join("");
-
-    const plain = stripAnsi(output);
-
-    expect(plain).toContain("status:     signed in");
-    expect(plain).not.toContain("user:");
-    expect(plain).not.toContain("<>");
-  });
-
-  it("shows service-token identity when no human user is present", async () => {
-    const { createTempCwd, createTestCommandContext } = await import(
-      "./helpers"
-    );
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({
-      cwd,
-      stateDir,
-      fixturePath,
-    });
-
-    const output = renderAuthSuccess(
-      context,
-      getCommandDescriptor("auth.whoami"),
-      "auth.whoami",
-      {
-        authenticated: true,
-        provider: null,
-        user: null,
-        workspace: {
-          id: "wksp_real",
-          name: "Real Workspace",
-        },
-        credential: {
-          type: "service_token",
-          id: "itgr_ci",
-          name: "ci-deploys-prod",
-        },
-      },
-    ).join("");
-
-    const plain = stripAnsi(output);
-
-    expect(plain).toContain("status:     signed in");
-    expect(plain).toContain("user:       <service token: ci-deploys-prod>");
-    expect(plain).toContain("workspace:  Real Workspace");
   });
 });

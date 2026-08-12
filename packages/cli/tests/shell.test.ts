@@ -13,8 +13,6 @@ import {
 import { maskValue } from "../src/shell/ui";
 import { createTempCwd, executeCli } from "./helpers";
 
-const fixturePath = path.resolve("fixtures/mock-api.json");
-
 describe("shell behavior", () => {
   it("formats command arguments for shell-safe next steps", () => {
     expect(formatCommandArgument("billing-api")).toBe("billing-api");
@@ -121,7 +119,6 @@ describe("shell behavior", () => {
       argv: ["--help"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(result.exitCode).toBe(0);
@@ -162,31 +159,26 @@ describe("shell behavior", () => {
       argv: [],
       cwd,
       stateDir,
-      fixturePath,
     });
     const authResult = await executeCli({
       argv: ["auth"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const projectResult = await executeCli({
       argv: ["project"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const branchResult = await executeCli({
       argv: ["branch"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const databaseResult = await executeCli({
       argv: ["database"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(rootResult.exitCode).toBe(0);
@@ -231,7 +223,6 @@ describe("shell behavior", () => {
       argv: ["--json", "auth", "whoami"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(result.exitCode).toBe(0);
@@ -253,7 +244,6 @@ describe("shell behavior", () => {
       argv: ["auth", "--quiet", "whoami"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(result.exitCode).toBe(0);
@@ -269,7 +259,6 @@ describe("shell behavior", () => {
       argv: ["--no-interactive", "project", "show"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(result.exitCode).toBe(1);
@@ -284,7 +273,6 @@ describe("shell behavior", () => {
       argv: ["auth", "logni"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(result.exitCode).toBe(2);
@@ -300,7 +288,6 @@ describe("shell behavior", () => {
       argv: ["auth", "whoami", "--quiet"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(result.exitCode).toBe(0);
@@ -316,7 +303,6 @@ describe("shell behavior", () => {
       argv: ["project", "show", "--no-interactive", "--trace"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(result.exitCode).toBe(1);
@@ -332,7 +318,6 @@ describe("shell behavior", () => {
       argv: ["auth", "whoami"],
       cwd,
       stateDir,
-      fixturePath,
       isTTY: true,
       env: {
         ...process.env,
@@ -352,7 +337,6 @@ describe("shell behavior", () => {
       argv: ["auth", "whoami", "--color"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(result.exitCode).toBe(0);

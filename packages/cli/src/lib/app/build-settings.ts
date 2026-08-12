@@ -71,12 +71,7 @@ export async function detectLegacyBuildSettings(options: {
   let legacy: { buildCommand: string | null; outputDirectory: string };
   try {
     const parsed = JSON.parse(content) as Record<string, unknown>;
-    const buildCommand =
-      parsed.buildCommand === null || typeof parsed.buildCommand === "string"
-        ? typeof parsed.buildCommand === "string"
-          ? parsed.buildCommand.trim() || null
-          : null
-        : undefined;
+    const buildCommand = normalizeLegacyBuildCommand(parsed.buildCommand);
     const outputDirectory =
       typeof parsed.outputDirectory === "string"
         ? normalizeRelativePath(parsed.outputDirectory)
@@ -175,6 +170,20 @@ export function hasAnyPackageDependency(
   });
 }
 
+const WINDOWS_DRIVE_PREFIX = /^[A-Za-z]:/;
+
+function normalizeLegacyBuildCommand(
+  value: unknown,
+): string | null | undefined {
+  if (typeof value === "string") {
+    return value.trim() || null;
+  }
+  if (value === null) {
+    return null;
+  }
+  return undefined;
+}
+
 function normalizeRelativePath(value: string): string | undefined {
   const raw = value.trim().replace(/\\/g, "/");
   if (raw.length === 0 || raw.split("/").includes("..")) {
@@ -182,7 +191,7 @@ function normalizeRelativePath(value: string): string | undefined {
   }
   // Windows drive-relative paths ("C:dir") escape the base directory but
   // are not absolute under either path.win32 or path.posix.
-  if (/^[A-Za-z]:/.test(raw)) {
+  if (WINDOWS_DRIVE_PREFIX.test(raw)) {
     return undefined;
   }
 

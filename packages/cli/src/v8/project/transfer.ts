@@ -5,10 +5,14 @@ import {
   flag,
   type Presentations,
   positional,
+  SERVICE_TOKEN_ENV_VAR,
 } from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { notOk, ok } from "@prisma/cli-engine/protocol";
-import { SERVICE_TOKEN_ENV_VAR } from "../../auth/client";
+import {
+  workspaceAmbiguousError,
+  workspaceNotAuthenticatedError,
+} from "../../auth/errors";
 import {
   RecipientSessionInvalidError,
   resolveRecipientWorkspaceSession,
@@ -23,15 +27,11 @@ import {
 import type { PrismaCliPackageCommandFormatter } from "../../lib/agent/cli-command";
 import { createManagementProjectProvider } from "../../lib/project/provider";
 import {
-  formatCommandArgument,
   resolveProjectForSetup,
   toProjectSummary,
 } from "../../lib/project/setup";
-import {
-  usageError,
-  workspaceAmbiguousError,
-  workspaceNotAuthenticatedError,
-} from "../../shell/errors";
+import { formatCommandArgument } from "../../shell/command-arguments";
+import { usageError } from "../../shell/errors";
 import type { ProjectTransferResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import {
@@ -123,7 +123,7 @@ function transferPresentations(
 ): Presentations {
   return {
     human: (): Block[] => [
-      { kind: "summary", tone: "ok", text: "Transferring project." },
+      { kind: "summary", status: "ok", text: "Transferring project." },
       {
         kind: "fields",
         rows: [
@@ -226,7 +226,7 @@ export const projectTransferCommand = defineCommand({
         throw transferRecipientRequiredError(formatCommand);
       }
 
-      const projects = await listWorkspaceProjects(ctx, workspace);
+      const projects = await listWorkspaceProjects(ctx);
       const project = toProjectSummary(
         resolveProjectForSetup(
           args.positionals.project.trim(),

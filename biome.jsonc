@@ -19,26 +19,33 @@
     "rules": {
       "recommended": true,
       "complexity": {
-        "noExcessiveCognitiveComplexity": "on",
+        // "on" would take this rule's own default severity, info, which
+        // --error-on-warnings does not promote. Pinned so CI fails on it.
+        "noExcessiveCognitiveComplexity": "error",
         "noForEach": "on",
-        "noImplicitCoercions": "on"
+        "noImplicitCoercions": "on",
+        // Defaults to info via "recommended", which --error-on-warnings does
+        // not promote. Listed explicitly so CI fails on it.
+        "useLiteralKeys": "error"
       },
       "nursery": {
-        "noConditionalExpect": "on",
+        "noConditionalExpect": "error",
         "noFloatingPromises": "on",
         "noForIn": "on",
         "noLoopFunc": "on",
         "useDisposables": "on"
       },
       "performance": {
-        "noAwaitInLoops": "on",
+        // "on" would take this rule's own default severity, info, which
+        // --error-on-warnings does not promote. Pinned so CI fails on it.
+        "noAwaitInLoops": "error",
         "noBarrelFile": "on",
         "useTopLevelRegex": "on"
       },
       "style": {
         "useCollapsedElseIf": "on",
         "useCollapsedIf": "on",
-        "noNestedTernary": "on",
+        "noNestedTernary": "error",
         "noParameterAssign": "on"
       },
       "suspicious": {
@@ -55,10 +62,17 @@
   },
   "overrides": [
     {
-      // The tsdown entrypoints: re-export hubs are their intended shape.
+      // Re-export hubs whose shape is the point: the tsdown entrypoints,
+      // and the shims left behind in the commander shell when the modules
+      // it shared with the v8 tree moved out of it. The shims die with the
+      // shell.
       "includes": [
         "packages/cli-engine/src/exports/**",
-        "packages/cli-telemetry/src/exports/**"
+        "packages/cli-telemetry/src/exports/**",
+        "packages/cli/src/shell/cli-command.ts",
+        "packages/cli/src/shell/command-arguments.ts",
+        "packages/cli/src/shell/errors.ts",
+        "packages/cli/src/shell/next-actions.ts"
       ],
       "linter": {
         "rules": {

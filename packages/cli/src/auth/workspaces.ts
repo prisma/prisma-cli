@@ -1,3 +1,4 @@
+import { SERVICE_TOKEN_ENV_VAR } from "@prisma/cli-engine";
 import {
   createManagementApiSdk,
   type TokenStorage,
@@ -9,12 +10,7 @@ import type {
   AuthWorkspaceLogoutResult,
   AuthWorkspaceUseResult,
 } from "../types/auth";
-import {
-  CLIENT_ID,
-  getApiBaseUrl,
-  SERVICE_TOKEN_ENV_VAR,
-  UNUSED_REDIRECT_URI,
-} from "./client";
+import { CLIENT_ID, getApiBaseUrl, UNUSED_REDIRECT_URI } from "./client";
 import {
   workspaceAmbiguousError,
   workspaceNotAuthenticatedError,
@@ -194,6 +190,7 @@ async function hydrateLocalAuthWorkspaces(
     );
     if (!tokens) continue;
 
+    // biome-ignore lint/performance/noAwaitInLoops: rememberResolvedWorkspaceMetadata below rewrites the one shared auth file, reading it and writing it back; resolving workspaces at once would let those writes clobber each other.
     const resolved = await resolveOAuthWorkspaceMetadata(context, tokens);
     if (!resolved) continue;
 

@@ -8,6 +8,7 @@ import {
   type ApplicationText,
   buildCommand,
   buildRouteMap,
+  FlagNotFoundError,
   type CommandContext as StricliBaseContext,
   type Command as StricliCommand,
   type RouteMap as StricliRouteMap,
@@ -172,12 +173,18 @@ function commandParameters(def: AnyCommand): Record<string, unknown> {
 
 /** Help examples never contain the binary name (operator ruling,
  *  2026-08-09): `{bin}` is substituted with the CLI name; an example
- *  without `{bin}` gets the name prepended. */
-function resolveExample(example: string, cliName: string): string {
+ *  without `{bin}` gets the name prepended. A redirect's replacement is
+ *  written the same way and rendered by the same rule. */
+export function resolveExample(example: string, cliName: string): string {
   return example.includes("{bin}")
     ? example.replaceAll("{bin}", cliName)
     : `${cliName} ${example}`;
 }
+
+/** The --json refusal is stated in help, so a machine consumer learns
+ *  it without running the command. */
+const NO_JSON_NOTE =
+  "This command hands the terminal to another program and does not support --json.";
 
 function commandDocs(
   def: AnyCommand,
@@ -186,16 +193,18 @@ function commandDocs(
   const examples = def.help.examples.map((example) =>
     resolveExample(example, cliName),
   );
-  if (examples.length === 0) {
+  const notes = def.maySpawn ? ["", NO_JSON_NOTE] : [];
+  if (examples.length === 0 && notes.length === 0) {
     return { brief: def.help.summary, fullDescription: def.help.description };
   }
   return {
     brief: def.help.summary,
     fullDescription: [
       def.help.description ?? def.help.summary,
-      "",
-      "Examples:",
-      ...examples.map((example) => `  ${example}`),
+      ...notes,
+      ...(examples.length === 0
+        ? []
+        : ["", "Examples:", ...examples.map((example) => `  ${example}`)]),
     ].join("\n"),
   };
 }
@@ -257,6 +266,11 @@ export function capturingText(state: RunState): ApplicationText {
   return {
     ...text_en,
     exceptionWhileParsingArguments(exc, ansiColor) {
+      // Formatting is the only place stricli hands over the parse
+      // exception itself, one call per failure.
+      if (exc instanceof FlagNotFoundError) {
+        state.unresolvedFlagNames.push(exc.input);
+      }
       const message = text_en.exceptionWhileParsingArguments.call(
         text_en,
         exc,

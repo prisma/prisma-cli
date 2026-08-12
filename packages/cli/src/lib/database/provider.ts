@@ -6,6 +6,9 @@ import { CliError } from "../../shell/errors";
 import type {
   DatabaseConnectionSummary,
   DatabaseSummary,
+  DatabaseUsageMetric,
+  DatabaseUsageMetrics,
+  DatabaseUsagePeriod,
 } from "../../types/database";
 import type { PrismaCliPackageCommandFormatter } from "../agent/cli-command";
 
@@ -39,15 +42,9 @@ export interface DatabaseConnectionCreateRecord {
 }
 
 export interface DatabaseUsageRecord {
-  period: {
-    start: string;
-    end: string;
-  };
-  metrics: {
-    operations: { used: number; unit: string };
-    storage: { used: number; unit: string };
-  };
-  generatedAt: string;
+  period: DatabaseUsagePeriod;
+  metrics: DatabaseUsageMetrics;
+  generatedAt: string | null;
 }
 
 export interface DatabaseBackupRecord {
@@ -663,25 +660,30 @@ function extractConnectionString(
   );
 }
 
+/** Absence is carried, not filled in. A `0` here reached the card, the
+ *  stdout lane and the json record as though the API had measured it, and
+ *  "you used nothing" is the answer a user acts on. The unit is the same
+ *  problem an order of magnitude worse: `GiB` was a guess, and a value the
+ *  API denominates in bytes would print against it unchanged. */
+function normalizeUsageMetric(
+  metric: { used?: number | null; unit?: string | null } | null | undefined,
+): DatabaseUsageMetric {
+  return { used: metric?.used ?? null, unit: metric?.unit ?? null };
+}
+
 export function normalizeUsage(
   usage: RawDatabaseUsageRecord,
 ): DatabaseUsageRecord {
   return {
     period: {
-      start: usage.period?.start ?? "",
-      end: usage.period?.end ?? "",
+      start: usage.period?.start ?? null,
+      end: usage.period?.end ?? null,
     },
     metrics: {
-      operations: {
-        used: usage.metrics?.operations?.used ?? 0,
-        unit: usage.metrics?.operations?.unit ?? "ops",
-      },
-      storage: {
-        used: usage.metrics?.storage?.used ?? 0,
-        unit: usage.metrics?.storage?.unit ?? "GiB",
-      },
+      operations: normalizeUsageMetric(usage.metrics?.operations),
+      storage: normalizeUsageMetric(usage.metrics?.storage),
     },
-    generatedAt: usage.generatedAt ?? "",
+    generatedAt: usage.generatedAt ?? null,
   };
 }
 
@@ -803,52 +805,7 @@ async function databaseApiError(options: {
   signal?: AbortSignal;
 }): Promise<CliError> {
   if (isPlanLimitApiError(options.error)) {
-    const subscription = options.workspaceId
-      ? await readWorkspaceSubscription(
-          options.client,
-          options.workspaceId,
-          options.signal,
-        )
-      : null;
-    const workspaceLine = options.workspaceId
-      ? `Workspace: ${options.workspaceId}`
-      : "Workspace: unavailable";
-    const planName = subscription?.planName || null;
-    const usageBlocked = subscription?.usageBlocked ?? null;
-    const upgradeUrl = subscription?.upgradeUrl || null;
-    const recoveryLines = [
-      ...(planName ? [`Current plan: ${planName}`] : []),
-      upgradeUrl
-        ? `Upgrade: ${upgradeUrl}`
-        : "Upgrade: Open Prisma Console and upgrade the affected workspace plan.",
-    ];
-
-    return new CliError({
-      code: "PLAN_LIMIT_REACHED",
-      domain: "database",
-      summary: "Workspace plan limit reached",
-      why: "Database operations are blocked because this workspace has used the operations included in its plan. This is a workspace plan limit, not a Prisma outage.",
-      fix: upgradeUrl
-        ? `Upgrade the workspace plan at ${upgradeUrl}.`
-        : "Open Prisma Console and upgrade the affected workspace plan.",
-      meta: {
-        workspaceId: options.workspaceId ?? null,
-        blockedFeature: null,
-        planName,
-        usageBlocked,
-        upgradeUrl,
-      },
-      exitCode: 1,
-      nextSteps: [],
-      humanLines: [
-        "Workspace plan limit reached [PLAN_LIMIT_REACHED]",
-        "",
-        "Database operations are blocked because this workspace has used the operations included in its plan. This is a workspace plan limit, not a Prisma outage.",
-        "",
-        workspaceLine,
-        ...recoveryLines,
-      ],
-    });
+    return planLimitReachedError(options);
   }
 
   const status = options.response?.status ?? 0;
@@ -864,6 +821,59 @@ async function databaseApiError(options: {
       "Re-run with --trace for the underlying API response details.",
     exitCode: 1,
     nextSteps: [],
+  });
+}
+
+async function planLimitReachedError(options: {
+  client: ManagementApiClient;
+  workspaceId?: string;
+  signal?: AbortSignal;
+}): Promise<CliError> {
+  const subscription = options.workspaceId
+    ? await readWorkspaceSubscription(
+        options.client,
+        options.workspaceId,
+        options.signal,
+      )
+    : null;
+  const workspaceLine = options.workspaceId
+    ? `Workspace: ${options.workspaceId}`
+    : "Workspace: unavailable";
+  const planName = subscription?.planName || null;
+  const usageBlocked = subscription?.usageBlocked ?? null;
+  const upgradeUrl = subscription?.upgradeUrl || null;
+  const recoveryLines = [
+    ...(planName ? [`Current plan: ${planName}`] : []),
+    upgradeUrl
+      ? `Upgrade: ${upgradeUrl}`
+      : "Upgrade: Open Prisma Console and upgrade the affected workspace plan.",
+  ];
+
+  return new CliError({
+    code: "PLAN_LIMIT_REACHED",
+    domain: "database",
+    summary: "Workspace plan limit reached",
+    why: "Database operations are blocked because this workspace has used the operations included in its plan. This is a workspace plan limit, not a Prisma outage.",
+    fix: upgradeUrl
+      ? `Upgrade the workspace plan at ${upgradeUrl}.`
+      : "Open Prisma Console and upgrade the affected workspace plan.",
+    meta: {
+      workspaceId: options.workspaceId ?? null,
+      blockedFeature: null,
+      planName,
+      usageBlocked,
+      upgradeUrl,
+    },
+    exitCode: 1,
+    nextSteps: [],
+    humanLines: [
+      "Workspace plan limit reached [PLAN_LIMIT_REACHED]",
+      "",
+      "Database operations are blocked because this workspace has used the operations included in its plan. This is a workspace plan limit, not a Prisma outage.",
+      "",
+      workspaceLine,
+      ...recoveryLines,
+    ],
   });
 }
 

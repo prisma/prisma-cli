@@ -6,20 +6,10 @@
  * only for WHICH flag names appear, never for values), and the parsed
  * positional slots (reduced to a count on the spot).
  */
-import { flagRuntime } from "../args";
+import { camelCase, flagRuntime, kebabCase } from "../args";
 import type { AnyCommand } from "../commands";
 import type { EngineCommandSnapshot } from "../run-summary";
 import { SHARED_ALIASES, SHARED_FLAG_PARAMETERS } from "./shared-flags";
-
-function kebabCase(key: string): string {
-  return key.replace(/[A-Z]/g, (upper) => `-${upper.toLowerCase()}`);
-}
-
-function camelCase(raw: string): string {
-  return raw.replace(/-([a-zA-Z0-9])/g, (_, char: string) =>
-    char.toUpperCase(),
-  );
-}
 
 function declaredFlagKeys(def: AnyCommand): readonly string[] {
   const own = Object.keys(def.args.flags);
@@ -46,13 +36,62 @@ function aliasMap(def: AnyCommand): ReadonlyMap<string, string> {
 }
 
 /**
+ * The key a long token marks. Long tokens match in both the kebab and
+ * camel spellings (the scanner allows kebab-for-camel), and a
+ * `--no-<flag>` token marks its base flag. Values are irrelevant here:
+ * `--name=value` is cut at the `=` before matching.
+ */
+function longFlagKey(
+  token: string,
+  declared: ReadonlySet<string>,
+): string | undefined {
+  const equals = token.indexOf("=");
+  const raw = token.slice(2, equals === -1 ? undefined : equals);
+  const exact = camelCase(raw);
+  if (declared.has(exact)) {
+    return exact;
+  }
+  if (!raw.startsWith("no-")) {
+    return undefined;
+  }
+  const negated = camelCase(raw.slice(3));
+  return declared.has(negated) ? negated : undefined;
+}
+
+function shortFlagKeys(
+  token: string,
+  declared: ReadonlySet<string>,
+  aliases: ReadonlyMap<string, string>,
+): readonly string[] {
+  const keys: string[] = [];
+  for (const char of token.slice(1)) {
+    const key = aliases.get(char);
+    if (key !== undefined && declared.has(key)) {
+      keys.push(key);
+    }
+  }
+  return keys;
+}
+
+function tokenFlagKeys(
+  token: string,
+  declared: ReadonlySet<string>,
+  aliases: ReadonlyMap<string, string>,
+): readonly string[] {
+  if (token.startsWith("--")) {
+    const key = longFlagKey(token, declared);
+    return key === undefined ? [] : [key];
+  }
+  if (token.startsWith("-") && token.length > 1) {
+    return shortFlagKeys(token, declared, aliases);
+  }
+  return [];
+}
+
+/**
  * The flag keys explicitly present on argv, resolved against the
- * command's declared keys and aliases. Long tokens match in both the
- * kebab and camel spellings (the scanner allows kebab-for-camel), a
- * `--no-<flag>` token marks its base flag, and single-dash tokens are
- * resolved character-by-character through the alias map. Everything
- * after a bare `--` is positional and never consulted. Values are
- * irrelevant here: `--name=value` is cut at the `=` before matching.
+ * command's declared keys and aliases. Everything after a bare `--` is
+ * positional and never consulted.
  */
 function explicitFlagKeys(
   def: AnyCommand,
@@ -66,29 +105,8 @@ function explicitFlagKeys(
     if (token === "--") {
       break;
     }
-    if (token.startsWith("--")) {
-      const equals = token.indexOf("=");
-      const raw = token.slice(2, equals === -1 ? undefined : equals);
-      const exact = camelCase(raw);
-      if (declaredSet.has(exact)) {
-        explicit.add(exact);
-        continue;
-      }
-      if (raw.startsWith("no-")) {
-        const negated = camelCase(raw.slice(3));
-        if (declaredSet.has(negated)) {
-          explicit.add(negated);
-        }
-      }
-      continue;
-    }
-    if (token.startsWith("-") && token.length > 1) {
-      for (const char of token.slice(1)) {
-        const key = aliases.get(char);
-        if (key !== undefined && declaredSet.has(key)) {
-          explicit.add(key);
-        }
-      }
+    for (const key of tokenFlagKeys(token, declaredSet, aliases)) {
+      explicit.add(key);
     }
   }
   return explicit;

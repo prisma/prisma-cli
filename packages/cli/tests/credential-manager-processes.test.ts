@@ -250,7 +250,7 @@ describe("across processes", () => {
 
     const debugLines: string[] = [];
     const manager = new FileCredentialManager({
-      env: { PRISMA_AUTH_FILE: stateFilePath, PRISMA_NEXT_DEBUG: "1" },
+      env: { PRISMA_AUTH_FILE: stateFilePath, PRISMA_DEBUG: "1" },
       debugWrite: (text) => debugLines.push(text),
     });
     await manager.createSession(
