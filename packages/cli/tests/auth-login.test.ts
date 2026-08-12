@@ -54,6 +54,16 @@ describe("auth login callback", () => {
     expect(result.body).not.toContain('Acme <Corp> & "Team"');
   });
 
+  it("offers the skills install command with a copy button", async () => {
+    const result = await requestSuccessPage({ workspaceName: "Acme Corp" });
+
+    expect(result.body).toContain(
+      '<span class="command-text">npx skills add prisma/skills</span>',
+    );
+    expect(result.body).toContain('aria-label="Copy command to clipboard"');
+    expect(result.body).toContain('role="status"');
+  });
+
   it("includes dark-mode theme CSS", async () => {
     const result = await requestSuccessPage({ workspaceName: "Acme Corp" });
 
