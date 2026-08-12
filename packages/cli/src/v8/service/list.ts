@@ -1,4 +1,4 @@
-import { defineCommand, flag, positional } from "@prisma/cli-engine";
+import { defineCommand, flag } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { listPresentations } from "./presentation";
 import type { ServiceListResult } from "./results";
@@ -26,19 +26,14 @@ export const serviceListCommand = defineCommand({
         placeholder: "branch",
       }),
     },
-    positionals: {
-      service: positional.optionalString({
-        brief:
-          "Service target from prisma.compute.ts when the config defines multiple services",
-        placeholder: "service",
-      }),
-    },
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
+    // Listing every service selects none, so no config target is passed:
+    // the only thing this call contributes is the project directory.
     const compute = await resolveComputeManagementContext(
       ctx,
-      args.positionals.service,
+      undefined,
       "list",
     );
     const target = await resolveServiceProjectContext(ctx, args.flags.project, {

@@ -3,10 +3,11 @@
  * deploying anything: `service create` is the only way to make a service
  * exist on its own, and `service list` is what proves it did.
  *
- * A created service is torn down with `service remove`, which demands
- * the service name back as consent. Teardown reports every way it can
- * fail and raises none of them, so a stranded service is visible in the
- * log rather than masking the failure the test itself found.
+ * The blocks run in file order, so the service one creates is the one
+ * the next two read and then remove. `service remove` asserts like any
+ * other case rather than swallowing failures: the scratch project's
+ * teardown removes everything it contains regardless, so nothing here
+ * has to double as cleanup.
  */
 import { expect, it } from "vitest";
 
@@ -92,29 +93,28 @@ describeCommand("service list", () => {
     // Still undeployed, so still no live URL in the listing either.
     expect(found?.liveUrl).toBeNull();
   });
+});
 
-  it("removes the service it created", async () => {
+describeCommand("service remove", () => {
+  it("removes the service, and the listing no longer reports it", async () => {
     const existing = requireService();
-    const removal = await scratch.run(
-      [
-        "service",
-        "remove",
-        "--service",
-        existing.name,
-        "--confirm",
-        existing.name,
-      ],
-      { expectOk: false },
-    );
-    if (!removal.envelope.ok) {
-      console.warn(
-        `e2e teardown could not remove service ${existing.name} ` +
-          `(${existing.id}): ${removal.envelope.error?.code ?? "(no code)"} — ` +
-          `${removal.envelope.error?.summary ?? "(no summary)"}. It goes with ` +
-          "the scratch project.",
-      );
-      return;
-    }
+    const removal = await scratch.run([
+      "service",
+      "remove",
+      "--service",
+      existing.name,
+      "--confirm",
+      existing.name,
+    ]);
+    const removed = removal.envelope.result as {
+      readonly projectId: string;
+      readonly service: { readonly id: string; readonly name: string };
+      readonly removed: boolean;
+    };
+
+    expect(removed.projectId).toBe(scratch.project().id);
+    expect(removed.service.id).toBe(existing.id);
+    expect(removed.removed).toBe(true);
 
     const after = await scratch.run(["service", "list"]);
     const remaining = after.envelope.result as {

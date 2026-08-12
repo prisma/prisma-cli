@@ -51,10 +51,13 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  * here. A command added from today on needs a test or an EXCLUSIONS
  * entry saying why it cannot have one.
  *
- * `service` and `build` act on a deployed service, which Composer
- * creates and this repo cannot; covering them needs a fixture service
- * that outlives a CI run. `agent` writes local agent context files and
- * should be straightforward to cover.
+ * The `service` and `build` entries left here act on a service that has
+ * been DEPLOYED, which Composer does and this repo cannot; covering them
+ * needs a fixture service that outlives a CI run. Commands that only
+ * need the service to exist are no longer among them: `service create`
+ * makes one without deploying, which is how `service remove` got its
+ * happy path. `agent` writes local agent context files and should be
+ * straightforward to cover.
  */
 const AWAITING_COVERAGE: readonly string[] = [
   "service show",
@@ -63,7 +66,6 @@ const AWAITING_COVERAGE: readonly string[] = [
   "service deployment show",
   "service deployment promote",
   "service deployment rollback",
-  "service remove",
   "service domain add",
   "service domain show",
   "service domain remove",
