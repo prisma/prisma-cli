@@ -27,12 +27,20 @@ interface TelemetryStatus {
 }
 
 describeCommand("telemetry status", () => {
-  it("reports the current consent state", async () => {
+  it("reports the consent state and where it is stored", async () => {
     const cli = await session();
-    const run = await cli.run(["telemetry", "status"]);
+    const cwd = await cli.workdir();
+    const run = await cli.run(["telemetry", "status"], { cwd });
+    const status = run.envelope.result as TelemetryStatus & {
+      readonly configPath: string;
+    };
 
     expect(run.exitCode).toBe(0);
-    expect(run.envelope.ok).toBe(true);
+    expect(typeof status.enabled).toBe("boolean");
+    expect(status.reason).toBeTruthy();
+    // The suite gives every run its own HOME, so the config it reports
+    // must sit inside that HOME rather than the developer's own.
+    expect(status.configPath).toContain("prisma-e2e-home-");
   });
 });
 
